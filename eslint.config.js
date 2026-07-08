@@ -9,6 +9,8 @@ export default tseslint.config(
       "**/coverage/**",
       "**/convex/_generated/**",
       "**/routeTree.gen.ts",
+      "**/doctypes.gen.ts",
+      "**/hooks.gen.ts",
     ],
   },
   {

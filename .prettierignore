@@ -3,5 +3,8 @@ dist/
 coverage/
 package-lock.json
 apps/web/convex/_generated/
+apps/web/convex/doctypes.gen.ts
+apps/web/convex/hooks.gen.ts
+apps/web/doctypes/
 apps/web/src/routeTree.gen.ts
 CHANGELOG.md
