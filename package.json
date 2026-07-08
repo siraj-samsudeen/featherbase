@@ -1,0 +1,30 @@
+{
+  "name": "featherbase-monorepo",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w apps/web",
+    "build": "npm run build -w apps/web",
+    "test": "npm run test -w apps/web",
+    "test:coverage": "npm run test:coverage -w apps/web",
+    "typecheck": "npm run typecheck -w apps/web",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@vitest/eslint-plugin": "^1.6.21",
+    "eslint": "^10.6.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "prettier": "^3.9.4",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.63.0"
+  }
+}

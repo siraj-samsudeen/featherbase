@@ -21,9 +21,9 @@ The critical failure to avoid, learned from Frappe: users start runtime tables, 
 
 - Definition-to-git promotion and index materialization (ADR 0004) are **independent axes** — a table can gain native indexes while remaining site-owned, or move to git without materializing, or both.
 - The AI authoring loop becomes machine-checkable end-to-end: generate → JSON-schema validate → apply to ephemeral in-memory test site (`convex-test`) → run generated tests → preview → approve → commit.
-- Excel import is an *authoring input*, not a storage concern: infer columns → types/enums/relation suggestions → preview → approve → emits a DocType JSON (+ seed data) into whichever source the actor is working in.
+- Excel import is an _authoring input_, not a storage concern: infer columns → types/enums/relation suggestions → preview → approve → emits a DocType JSON (+ seed data) into whichever source the actor is working in.
 
 ## Alternatives rejected
 
-- **Everything-is-code-always** (GlideOS/Chef pattern: runtime edits trigger programmatic deploys via Convex's Management API): maximal git purity, but a production ERP user adding a lookup table must not trigger a code deployment, and mode 2 would disappear. We keep its *agent loop* at the artifact level only.
+- **Everything-is-code-always** (GlideOS/Chef pattern: runtime edits trigger programmatic deploys via Convex's Management API): maximal git purity, but a production ERP user adding a lookup table must not trigger a code deployment, and mode 2 would disappear. We keep its _agent loop_ at the artifact level only.
 - **YAML canonical:** worse round-trip guarantees, no benefit for machine-authored files.

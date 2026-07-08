@@ -12,13 +12,13 @@ The project needed a name fitting Siraj's existing **feather** ecosystem (feathe
 
 ## Why
 
-The only candidate that both extends the existing feather brand and describes the category (`-base` signals the Airtable/Supabase-adjacent data platform). Clearly distinct from FeathersJS. The promotion ladder gets a natural vocabulary for free: a runtime table *fledges* into code.
+The only candidate that both extends the existing feather brand and describes the category (`-base` signals the Airtable/Supabase-adjacent data platform). Clearly distinct from FeathersJS. The promotion ladder gets a natural vocabulary for free: a runtime table _fledges_ into code.
 
 ## Alternatives considered
 
-| Name | npm at check | Rejected because |
-|---|---|---|
-| Featherstack | available | Accurate but generic |
-| Calamus (a feather's quill shaft) | available | Elegant but obscure; abandons feather brand equity |
-| Quillbase | available | Diverges from the feather-* ecosystem name |
-| Feather / Fledge / Plume / Pluma | taken | npm collisions; FeathersJS adjacency |
+| Name                              | npm at check | Rejected because                                   |
+| --------------------------------- | ------------ | -------------------------------------------------- |
+| Featherstack                      | available    | Accurate but generic                               |
+| Calamus (a feather's quill shaft) | available    | Elegant but obscure; abandons feather brand equity |
+| Quillbase                         | available    | Diverges from the feather-* ecosystem name         |
+| Feather / Fledge / Plume / Pluma  | taken        | npm collisions; FeathersJS adjacency               |

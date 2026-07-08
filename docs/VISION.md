@@ -19,12 +19,14 @@ The site goes up fast; iteration happens from there. End users get a second mode
 We ran production systems on Frappe. What we keep and what we fix:
 
 **Keep (Frappe's genius):**
+
 - The DocType metadata system — schema and UI as one artifact, driving everything (tables, forms, lists, API, permissions)
 - Document lifecycle events as a universal automation bus
 - Customize-without-forking (layered overrides as data)
 - Real physical table per DocType — developer-defined and user-created tables get identical treatment
 
 **Fix (the pain):**
+
 - **The promotion path.** Users start runtime tables, hit complexity, and need to convert them to code. Frappe offers this exit but it was buggy and unreliable. In Featherbase, promotion is a metadata/codegen change with **zero data movement**, testable as a round-trip property. This is a design invariant, not a feature.
 - The fragmented automation story (five doctypes, five condition syntaxes, five log locations) — replaced by one Flow object with Glide's three-primitive grammar (Action / Loop / Condition) on a durable execution substrate
 - The dated UI stack and Python/bench operational weight — replaced by React + Vite + Convex

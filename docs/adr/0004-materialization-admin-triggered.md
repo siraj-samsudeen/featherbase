@@ -16,13 +16,13 @@ The admin opens a DocType's performance panel → picks fields to index → the 
 
 The resulting ladder — each rung a metadata/codegen change, zero data movement, independently reversible, round-trip tested:
 
-| Tier | Definition lives | Query path | How you get here |
-|---|---|---|---|
-| Runtime | DB row | Sidecar | User creates it in the UI |
-| Materialized | DB row | Native indexes | Admin one-click + deploy |
-| Package | JSON in git | Native indexes + typed validator + code hooks | Developer writes it, or promotes |
+| Tier         | Definition lives | Query path                                    | How you get here                 |
+| ------------ | ---------------- | --------------------------------------------- | -------------------------------- |
+| Runtime      | DB row           | Sidecar                                       | User creates it in the UI        |
+| Materialized | DB row           | Native indexes                                | Admin one-click + deploy         |
+| Package      | JSON in git      | Native indexes + typed validator + code hooks | Developer writes it, or promotes |
 
-Later (same mechanics): a scheduled "schema sync" that batches pending materializations and *suggests* candidates from sidecar query statistics.
+Later (same mechanics): a scheduled "schema sync" that batches pending materializations and _suggests_ candidates from sidecar query statistics.
 
 ## Consequences
 

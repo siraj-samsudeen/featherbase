@@ -1,0 +1,42 @@
+{
+  "name": "@featherbase/web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@convex-dev/react-query": "^0.1.0",
+    "@tanstack/react-query": "^5.90.0",
+    "@tanstack/react-router": "^1.170.17",
+    "convex": "^1.42.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@convex-dev/auth": "^0.0.90",
+    "@edge-runtime/vm": "^5.0.0",
+    "@tanstack/router-plugin": "^1.168.19",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.10",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "@vitest/coverage-v8": "^4.1.10",
+    "convex-test": "^0.0.54",
+    "feather-testing-convex": "^0.5.7",
+    "jsdom": "^29.1.1",
+    "typescript": "~5.9.3",
+    "vite": "^8.1.3",
+    "vitest": "^4.1.10"
+  }
+}
