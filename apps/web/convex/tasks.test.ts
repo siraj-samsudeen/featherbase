@@ -50,3 +50,8 @@ test("rejects unauthenticated add", async ({ testClient }) => {
     testClient.mutation(api.tasks.add, { text: "Sneaky task" }),
   ).rejects.toThrow("Not authenticated");
 });
+
+test("returns empty list when unauthenticated", async ({ testClient }) => {
+  const tasks = await testClient.query(api.tasks.list, {});
+  expect(tasks).toEqual([]);
+});

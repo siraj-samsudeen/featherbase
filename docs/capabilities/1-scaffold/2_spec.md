@@ -76,7 +76,7 @@ featherbase/
 
 ## Test matrix
 
-Authored before code, per the testing philosophy (human defines states, agent fills tests). **9 states → 9 tests.**
+Authored before code, per the testing philosophy (human defines states, agent fills tests). One test per row.
 
 | # | State (bucket) | Layer / env | Approach | Verify |
 |---|---|---|---|---|
@@ -86,13 +86,14 @@ Authored before code, per the testing philosophy (human defines states, agent fi
 | B4 | add inserts a task for the caller | backend / edge-runtime | integration | `client.mutation(api.tasks.add, {text})` → query returns it, `completed: false` |
 | B5 | add rejects blank text | backend / edge-runtime | integration | mutation with `"  "` → rejects |
 | B6 | add rejects unauthenticated caller | backend / edge-runtime | integration | `testClient.mutation(…)` → rejects |
+| B7 | list returns empty when unauthenticated | backend / edge-runtime | integration | `testClient.query(api.tasks.list)` → `[]` (spec'd no-throw behavior) |
 | I1 | shows loading state | component / jsdom | **mock** (transient state — query resolves too fast to observe) | never-resolving query → "Loading…" visible |
 | I2 | shows empty state when no tasks | component / jsdom | integration | render via harness → "No tasks yet" |
 | I3 | **shows seeded tasks** ← tracer bullet | component / jsdom | integration | `seed("tasks", {text: "Buy milk"})` → render → `findByText("Buy milk")` |
 | I4 | adds a task and shows it | component / jsdom | integration | type into "Task", click "Add" → new text appears (no remount) |
 | R1 | index route renders the app | component / jsdom | integration | memory-history router at `/` → heading + TaskList visible |
 
-(B = backend, I = component integration/mock, R = router. 11 rows total — "9 states" above refers to the MECE component/backend split; B5/B6 are backend edges of the same `add` behavior. Row count == test count is the review invariant.)
+(B = backend, I = component integration/mock, R = router. 12 rows total. Row count == test count is the review invariant. B7 was added during implementation when the coverage floor exposed that the matrix missed the spec'd unauthenticated-list behavior — the floor doing exactly its job.)
 
 ## Coverage exclusions (exhaustive)
 
