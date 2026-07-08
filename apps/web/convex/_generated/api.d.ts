@@ -13,6 +13,9 @@ import type {
   FilterApi,
   FunctionReference,
 } from "convex/server";
+import type * as doctype_codegen from "../doctype/codegen.js";
+import type * as doctype_definition from "../doctype/definition.js";
+import type * as hooks_invoice from "../hooks/invoice.js";
 import type * as tasks from "../tasks.js";
 
 /**
@@ -24,6 +27,9 @@ import type * as tasks from "../tasks.js";
  * ```
  */
 declare const fullApi: ApiFromModules<{
+  "doctype/codegen": typeof doctype_codegen;
+  "doctype/definition": typeof doctype_definition;
+  "hooks/invoice": typeof hooks_invoice;
   tasks: typeof tasks;
 }>;
 export declare const api: FilterApi<
