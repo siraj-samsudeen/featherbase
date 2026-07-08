@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- July 2026 decision revalidation report — all five ADRs reaffirmed against live primary sources; ADR 0004 amended with staged indexes; capability-workflow right-sizing rules; capability-3 grid re-research flagged (#4)
 - npm-workspaces monorepo (ESM-only, strict TypeScript) with `apps/web`: React 19 + Vite + TanStack Router (file-based routes) + TanStack Query via the `@convex-dev/react-query` bridge (#2)
 - Convex backend: `users`/`tasks` schema, `tasks.list`/`tasks.add` functions, committed `_generated` code with a CI drift check (#2)
 - feather-testing-convex harness on Vitest 4 projects — edge-runtime for `convex/**`, jsdom for `src/**` — with a 12-test matrix including the seeded-integration tracer bullet (#2)
