@@ -10,6 +10,13 @@ import {
 
 export const RECORD_TABLE_PREFIX = "dt_";
 
+// materializations.json entry: a plain field name gets an enabled native
+// index; `{ field, staged: true }` gets a Convex staged index (ADR 0004
+// amendment) — backfills without blocking the deploy, and stays OUT of
+// nativeIndexes so the repository keeps the sidecar path until a follow-up
+// regen/deploy drops the flag.
+export type MaterializationEntry = string | { field: string; staged?: boolean };
+
 export function recordTable(doctype: string): string {
   return `${RECORD_TABLE_PREFIX}${doctype}`;
 }
@@ -75,8 +82,27 @@ ${fields}
   })${indexes ? `\n    ${indexes}` : ""},`;
 }
 
-function materializedTableEntry(doctype: string, fields: string[]): string {
-  const indexes = indexChain(fields);
+function normalizeEntry(entry: MaterializationEntry): {
+  field: string;
+  staged: boolean;
+} {
+  return typeof entry === "string"
+    ? { field: entry, staged: false }
+    : { field: entry.field, staged: entry.staged === true };
+}
+
+function materializedTableEntry(
+  doctype: string,
+  entries: MaterializationEntry[],
+): string {
+  const indexes = entries
+    .map(normalizeEntry)
+    .map(({ field, staged }) =>
+      staged
+        ? `.index("by_${field}", { fields: ["${field}"], staged: true })`
+        : `.index("by_${field}", ["${field}"])`,
+    )
+    .join("\n    ");
   return `  ${recordTable(doctype)}: defineTable(v.any())${
     indexes ? `\n    ${indexes}` : ""
   },`;
@@ -93,7 +119,7 @@ function typeEntry(definition: DocTypeDefinition): string {
 // definitions for `doctypes.sync`, and one TS type per package DocType.
 export function generateDoctypesModule(
   definitions: DocTypeDefinition[],
-  materializations: Record<string, string[]>,
+  materializations: Record<string, MaterializationEntry[]>,
 ): string {
   const sortedDefinitions = [...definitions].sort((a, b) =>
     a.name < b.name ? -1 : 1,
@@ -103,16 +129,26 @@ export function generateDoctypesModule(
     .map((name) => [name, materializations[name] ?? []] as const);
 
   const tables = [
-    ...sortedMaterializations.map(([name, fields]) =>
-      materializedTableEntry(name, fields),
+    ...sortedMaterializations.map(([name, entries]) =>
+      materializedTableEntry(name, entries),
     ),
     ...sortedDefinitions.map(packageTableEntry),
   ]
     .sort()
     .join("\n");
 
+  // Staged entries are deliberately absent: not native until enabled.
   const native = [
-    ...sortedMaterializations,
+    ...sortedMaterializations.map(
+      ([name, entries]) =>
+        [
+          name,
+          entries
+            .map(normalizeEntry)
+            .filter(({ staged }) => !staged)
+            .map(({ field }) => field),
+        ] as const,
+    ),
     ...sortedDefinitions.map(
       (definition) => [definition.name, filterableFields(definition)] as const,
     ),

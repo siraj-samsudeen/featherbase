@@ -11,9 +11,9 @@
 2. **Metadata + sidecar core tables** in `schema.ts`: `doctypes` (definition + `source`, `by_name` index), `fieldIndex` (`{doctype, field, value, docId}`, indexes `by_doctype_field_value` + `by_doctype_docId`); spreads generated `doctypeTables`.
 3. **Repository module** `convex/doctype/repository.ts` (the single record-access seam): create/get/update/remove/list with declarative validation, hook invocation, sidecar maintenance, native-vs-sidecar path selection, plus sidecar cleanup/rebuild helpers. One contained cast to `GenericDatabaseWriter<AnyDataModel>`.
 4. **Codegen**: pure `convex/doctype/codegen.ts` (`generateDoctypesModule`, `generateHookStub`, `generateHooksModule`) + `scripts/codegen-doctypes.ts` (tsx wrapper) reading `apps/web/doctypes/`; generated `convex/doctypes.gen.ts` + `convex/hooks.gen.ts` committed and drift-checked in CI; `npm run gen:doctypes` script.
-5. **Sample app package** `apps/web/doctypes/`: `invoice.json` (covers all four field types) + `materializations.json` (`{"customer": ["email"]}`); hand-completed hook `convex/hooks/invoice.ts` (validate: `amount > 0`; beforeSave: trim `customer`).
+5. **Sample app package** `apps/web/doctypes/`: `invoice.json` (covers all four field types) + `materializations.json` — entries are `"field"` (enabled native index) or `{"field": "...", "staged": true}` (emitted as a Convex staged index per the ADR 0004 amendment: backfills without blocking the deploy, **excluded from `nativeIndexes`** so the repository keeps serving it from the sidecar until a follow-up regen/deploy drops the flag). Sample: `{"customer": ["email", {"field": "company", "staged": true}]}`. Hand-completed hook `convex/hooks/invoice.ts` (validate: `amount > 0`; beforeSave: trim `customer`).
 6. **Public functions**: `convex/doctypes.ts` (`create`, `list`, `get`, `sync`, `promote`, `demote`, `materialize`, `rebuildSidecar`) and `convex/records.ts` (`create`, `get`, `update`, `remove`, `list`) — all require auth (`requireUser` helper, throws).
-7. **Test suite** implementing the matrix (53 rows), `fast-check` for L3/L4.
+7. **Test suite** implementing the matrix (54 rows), `fast-check` for L3/L4.
 8. CI: `gen:doctypes` drift check step; CHANGELOG + README status updates; CLAUDE.md gains the `gen:doctypes` command.
 
 ## Definition format (canonical JSON)
@@ -113,7 +113,8 @@ would add an unreachable-in-practice branch for no behavioral gain, and idempote
 doubles as re-export.) Fixture DocTypes: `product` (site, sidecar:
 `title` text req+filterable, `price` number filterable, `active` boolean, `category` select
 [gadget, tool] filterable, `notes` text), `customer` (site, in `materializations.json`:
-`email` text req+filterable, `company` text), `invoice` (package: see JSON above).
+`email` text req+filterable with an **enabled** native index, `company` text filterable with a
+**staged** native index — still sidecar-served), `invoice` (package: see JSON above).
 
 ### D — definition management
 
@@ -188,17 +189,19 @@ doubles as re-export.) Fixture DocTypes: `product` (site, sidecar:
 
 ### L — materialization ladder + promotion round-trip
 
-| #   | State                                           | Verify                                                                                                                                            |
-| --- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| L1  | promote flips source and moves zero data        | site product + records → promote returns canonical JSON parsing to the same definition; source package; records readable at same ids              |
-| L2  | demote flips source back                        | demote → source site; records + sidecar filters still intact                                                                                      |
-| L3  | serialization round-trips byte-identically      | **property** (fast-check): ∀ valid def `d`: `serialize(parse(serialize(d))) === serialize(d)`                                                     |
-| L4  | promotion round-trips arbitrary definitions     | **property, sampled integration** (fixed-seed `fc.sample`, 25 defs): create → record → promote → demote → definition deep-equal, record untouched |
-| L5  | materialize drops sidecar rows, filters survive | customer (in registry): seed stale sidecar rows directly → `materialize` → rows gone, `email` filter still correct (native)                       |
-| L6  | rejects materializing without deployed indexes  | `materialize(product)` (not in registry) → rejects                                                                                                |
-| L7  | rebuildSidecar restores sidecar rows            | product records, sidecar rows wiped directly (simulated post-dematerialize) → `rebuildSidecar` → filters work, rows back                          |
+| #   | State                                           | Verify                                                                                                                                                                                       |
+| --- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| L1  | promote flips source and moves zero data        | site product + records → promote returns canonical JSON parsing to the same definition; source package; records readable at same ids                                                         |
+| L2  | demote flips source back                        | demote → source site; records + sidecar filters still intact                                                                                                                                 |
+| L3  | serialization round-trips byte-identically      | **property** (fast-check): ∀ valid def `d`: `serialize(parse(serialize(d))) === serialize(d)`                                                                                                |
+| L4  | promotion round-trips arbitrary definitions     | **property, sampled integration** (fixed-seed `fc.sample`, 25 defs): create → record → promote → demote → definition deep-equal, record untouched                                            |
+| L5  | materialize drops sidecar rows, filters survive | customer (in registry): seed stale `email` sidecar rows directly → `materialize` → `email` rows gone (staged `company` rows survive — not native yet), `email` filter still correct (native) |
+| L6  | rejects materializing without deployed indexes  | `materialize(product)` (not in registry) → rejects                                                                                                                                           |
+| L7  | rebuildSidecar restores sidecar rows            | product records, sidecar rows wiped directly (simulated post-dematerialize) → `rebuildSidecar` → filters work, rows back                                                                     |
+| L8  | keeps staged-index fields on the sidecar path   | customer record with `company` → `company` filter works via sidecar (rows present in `fieldIndex`) while `email` has none (native) — staged index not consulted until enabled                |
 
-**53 rows. Row count == test count is the review invariant.**
+**54 rows. Row count == test count is the review invariant. (L8 added when the ADR 0004
+staged-index amendment merged to main mid-capability; spec updated before code, per workflow.)**
 
 ## Coverage
 

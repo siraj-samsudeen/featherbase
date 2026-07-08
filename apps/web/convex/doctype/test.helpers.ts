@@ -21,13 +21,14 @@ export const productDefinition: DocTypeDefinition = {
   ],
 };
 
-// Matches the doctypes/materializations.json entry: email has a deployed
-// native index (dt_customer in the generated schema), company does not.
+// Matches the doctypes/materializations.json entry: email has an enabled
+// native index (dt_customer in the generated schema); company's index is
+// staged (ADR 0004 amendment) so it stays on the sidecar path.
 export const customerDefinition: DocTypeDefinition = {
   name: "customer",
   fields: [
     { name: "email", type: "text", required: true, filterable: true },
-    { name: "company", type: "text" },
+    { name: "company", type: "text", filterable: true },
   ],
 };
 

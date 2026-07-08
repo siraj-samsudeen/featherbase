@@ -16,6 +16,7 @@ import {
   generateDoctypesModule,
   generateHookStub,
   generateHooksModule,
+  type MaterializationEntry,
 } from "../convex/doctype/codegen";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -37,7 +38,7 @@ const definitions = files.map((file) => {
 
 const materializations = JSON.parse(
   readFileSync(join(doctypesDir, "materializations.json"), "utf8"),
-) as Record<string, string[]>;
+) as Record<string, MaterializationEntry[]>;
 
 for (const name of Object.keys(materializations)) {
   if (definitions.some((definition) => definition.name === name)) {

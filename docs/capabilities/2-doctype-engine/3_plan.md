@@ -79,10 +79,10 @@ validated in-handler; everything else precisely typed. Regenerate `_generated`.
 `convex/doctype/definition.test.ts` (D5–D14 via the pure validator where natural, L3 property),
 `convex/doctypes.test.ts` (D1–D4, D15, U1, L1, L2, L5–L7), `convex/records.test.ts` (R rows, U2),
 `convex/records.filter.test.ts` (F rows incl. F11), `convex/packageMode.test.ts` (G rows, L4).
-Split is organizational; the binding rule is **53 tests for 53 rows**, verb-first names.
+Split is organizational; the binding rule is **54 tests for 54 rows**, verb-first names.
 Shared `arbDefinition` fast-check arbitrary (normalized-form definitions) in a test helper.
 
-**G6:** `npx vitest run` — 53 new tests + 12 capability-1 tests green; count verified against the
+**G6:** `npx vitest run` — 54 new tests + 12 capability-1 tests green; count verified against the
 matrix; F11 runtime sane (< ~15 s).
 
 ## Step 7 — Coverage floor
@@ -132,3 +132,11 @@ push and confirm CI green.
 4. **G1 widened during the coverage gate**: "deterministic" now asserted to include input-order
    independence (two-definition permutation check) — the name-sort comparator is dead code with a
    single package doctype, and the floor flagged it.
+5. **ADR 0004 staged-index amendment merged to main mid-capability** (revalidation PR #5).
+   Adopted: `materializations.json` entries may be `{"field": "...", "staged": true}` → codegen
+   emits `.index("by_<field>", [...], { staged: true })` and **excludes** the field from
+   `nativeIndexes`, so the repository keeps serving it from the sidecar until the enabling
+   regen/deploy — the registry-driven path flip maps 1:1 onto the amendment's two-deploy
+   sequence. Matrix grew 53 → 54 (L8); L5 narrowed to assert cleanup only touches enabled-native
+   fields. The automatic row-count threshold for choosing staged stays future work (needs the
+   admin flow + stats, ADR 0004 phase 2).

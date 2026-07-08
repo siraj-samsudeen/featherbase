@@ -161,6 +161,15 @@ arrives with ADR 0004's stats-suggested phase). The reverse rung `doctypes.rebui
 repopulates sidecar rows from the record table after a de-materializing deploy — making the rung
 independently reversible as invariant 3 requires.
 
+**Staged indexes (ADR 0004 amendment, merged to main mid-capability):** the registry-driven flip
+maps 1:1 onto the amendment's two-deploy sequence. A registry entry marked
+`{"field": "...", "staged": true}` is emitted as `.index(..., { staged: true })` (backfills
+without blocking the deploy) and **excluded from `nativeIndexes`** — so writes keep maintaining
+sidecar rows and reads keep using them, exactly the "don't flip until enabled" requirement. The
+enabling step is dropping the flag and regenerating: the field enters `nativeIndexes`, the next
+deploy flips the path, and `materialize` cleans up. Choosing staged automatically above a
+row-count threshold needs runtime stats — ADR 0004 phase 2, not this capability.
+
 ### 7. Hooks: package-mode only, invoked by the repository
 
 Per ADR 0003 §4, site DocTypes get declarative validation only; code hooks require package mode.

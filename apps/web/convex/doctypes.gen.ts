@@ -6,7 +6,8 @@ import type { DocTypeDefinition } from "./doctype/definition";
 
 export const doctypeTables = {
   dt_customer: defineTable(v.any())
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .index("by_company", { fields: ["company"], staged: true }),
   dt_invoice: defineTable({
     owner: v.string(),
     creation: v.number(),

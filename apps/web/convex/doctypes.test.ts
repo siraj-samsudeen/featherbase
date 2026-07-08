@@ -249,19 +249,51 @@ test("materialize drops sidecar rows and keeps filters", async ({
 
   await client.mutation(api.doctypes.materialize, { name: "customer" });
 
+  // Cleanup only touches enabled-native fields: email rows drop, the staged
+  // company field's sidecar rows survive (still serving reads).
   const rows = await testClient.run(async (ctx: MutationCtx) => {
     return await ctx.db
       .query("fieldIndex")
       .withIndex("by_doctype_docId", (q) => q.eq("doctype", "customer"))
       .collect();
   });
-  expect(rows).toHaveLength(0);
+  expect(rows.map((row: { field: string }) => row.field)).toEqual(["company"]);
   const filtered = await client.query(api.records.list, {
     doctype: "customer",
     filter: { field: "email", value: "a@acme.test" },
   });
   expect(filtered).toHaveLength(1);
   expect(filtered[0]?._id).toBe(id);
+});
+
+test("keeps staged-index fields on the sidecar path", async ({
+  client,
+  testClient,
+}) => {
+  await client.mutation(api.doctypes.create, {
+    definition: customerDefinition,
+  });
+  const id = await client.mutation(api.records.create, {
+    doctype: "customer",
+    data: { email: "a@acme.test", company: "Acme" },
+  });
+
+  // company's native index exists but is staged — not in nativeIndexes, so
+  // the repository still writes sidecar rows and serves filters from them.
+  const filtered = await client.query(api.records.list, {
+    doctype: "customer",
+    filter: { field: "company", value: "Acme" },
+  });
+  expect(filtered).toHaveLength(1);
+  expect(filtered[0]?._id).toBe(id);
+  const fieldsWithRows = await testClient.run(async (ctx: MutationCtx) => {
+    const rows = await ctx.db
+      .query("fieldIndex")
+      .withIndex("by_doctype_docId", (q) => q.eq("doctype", "customer"))
+      .collect();
+    return rows.map((row) => row.field);
+  });
+  expect(fieldsWithRows).toEqual(["company"]);
 });
 
 test("rejects materializing without deployed indexes", async ({ client }) => {
