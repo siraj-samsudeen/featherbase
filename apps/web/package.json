@@ -21,6 +21,7 @@
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
+    "@convex-dev/auth": "^0.0.90",
     "@edge-runtime/vm": "^5.0.0",
     "@tanstack/router-plugin": "^1.168.19",
     "@testing-library/jest-dom": "^6.9.1",
