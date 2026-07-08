@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+package-lock.json
+apps/web/convex/_generated/
+apps/web/src/routeTree.gen.ts
+CHANGELOG.md
