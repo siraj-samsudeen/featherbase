@@ -2,7 +2,18 @@
 
 A free and open-source, metadata-driven app platform in TypeScript — Frappe's core ideas re-imagined on a modern stack (Convex + React + Vite), fused with Glide-style visual workflows and built for an AI-agent-first authoring loop with 100% automated testing.
 
-**Status:** design phase. No code yet — the research and architecture decisions live in [docs/](docs/).
+**Status:** capability 1 (scaffold) — monorepo with React + Vite + TanStack Router, Convex, and the feather-testing-convex harness wired in, gated by CI that runs the full test matrix. Research and architecture decisions live in [docs/](docs/).
+
+## Development
+
+```bash
+npm install            # workspace install
+npm test               # full test matrix (backend + component integration)
+npm run test:coverage  # with the 100% line-coverage floor enforced
+npm run dev            # vite dev server (apps/web)
+```
+
+See [CLAUDE.md](CLAUDE.md) for the full command list and the issue-driven docs workflow.
 
 ## Orientation
 

@@ -28,7 +28,10 @@ npm run typecheck      # tsc --noEmit
 npm run lint           # eslint (flat config, root)
 npm run format:check   # prettier
 npm run build          # vite build
-npx convex codegen     # regenerate convex/_generated (run in apps/web; committed)
+npx convex codegen --system-udfs --typecheck disable
+                       # regenerate convex/_generated (run in apps/web; committed).
+                       # --system-udfs forces the local-only codegen path; without
+                       # it the CLI demands a deployment (see 1-scaffold/3_plan.md)
 ```
 
 ## Testing conventions (binding — see docs/research/feather-testing-study.md)
