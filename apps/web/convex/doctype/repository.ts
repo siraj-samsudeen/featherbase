@@ -285,9 +285,7 @@ export async function listRecords(
     const docs = native.includes(field.name)
       ? await db
           .query(table)
-          .withIndex(`by_${field.name}`, (q) =>
-            q.eq(field.name, filter.value),
-          )
+          .withIndex(`by_${field.name}`, (q) => q.eq(field.name, filter.value))
           .collect()
       : await hydrate(
           db,

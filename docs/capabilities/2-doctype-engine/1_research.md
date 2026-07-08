@@ -34,12 +34,15 @@ So the production design and the test harness agree; no fallback needed.
 ### Typing dynamic table access
 
 Convex's generated `DataModel` can't type tables that exist only at runtime. `convex/server`
-exports `AnyDataModel` (every table name allowed, documents `any`-shaped, index names free-form);
-`GenericDatabaseReader/Writer<AnyDataModel>` accepts dynamic `db.query(tableName)`,
-`withIndex(\`by_${field}\`, …)`, `insert`, `patch`, `normalizeId`. The repository does **one**
-contained cast from the generated `ctx.db` to that type — no `any` literals leaking into
-call sites. `defineSchema(..., { strictTableNameTypes: false })` is *not* needed since all dynamic
-access goes through the cast; core tables keep strict names.
+exports `AnyDataModel` (every table name allowed, documents `any`-shaped), but its `indexes` are
+typed as system indexes only, so dynamic `withIndex("by_<field>", …)` doesn't typecheck against
+it (confirmed during implementation — recorded as plan deviation 1). Instead the repository
+declares its own `DynamicDataModel` satisfying `GenericDataModel`: documents as
+`Record<string, Value>` (no `any`), free-form table and index names, and index fields typed as a
+fixed-length tuple because `IndexRangeBuilder.eq()` only chains while the index-fields type has a
+literal length. The repository does **one** contained cast from the generated `ctx.db` to
+`GenericDatabaseWriter<DynamicDataModel>`. `defineSchema(..., { strictTableNameTypes: false })`
+is _not_ needed since all dynamic access goes through the cast; core tables keep strict names.
 
 ### `defineTable(v.any())` with indexes
 
@@ -49,9 +52,9 @@ declared columns. Used verbatim for materialized site DocTypes in the generated 
 
 ### Version snapshot (registry, 2026-07-08)
 
-| Package    | Latest | Use                                                                                             |
-| ---------- | ------ | ----------------------------------------------------------------------------------------------- |
-| fast-check | 4.8.0  | property tests for the promotion round-trip (works fine in the edge-runtime vitest project)     |
+| Package    | Latest | Use                                                                                            |
+| ---------- | ------ | ---------------------------------------------------------------------------------------------- |
+| fast-check | 4.8.0  | property tests for the promotion round-trip (works fine in the edge-runtime vitest project)    |
 | tsx        | 4.23.0 | runs the TS codegen script under both Node 22 (dev container) and Node 24 (CI) without a build |
 
 Everything else is already pinned by capability 1.
@@ -128,9 +131,9 @@ it to the 100% floor. A thin `scripts/codegen-doctypes.ts` (run via `tsx`, outsi
 reads `apps/web/doctypes/*.json` + `materializations.json` and writes:
 
 - `convex/doctypes.gen.ts` — package DocTypes as fully-typed `defineTable` entries (system fields
-  + typed user fields, `by_<field>` indexes for filterable fields); materialized site DocTypes as
-  `defineTable(v.any())` + indexes (ADR 0004); `nativeIndexes` registry; parsed
-  `packageDefinitions` (for site sync); generated TS types per package DocType.
+  - typed user fields, `by_<field>` indexes for filterable fields); materialized site DocTypes as
+    `defineTable(v.any())` + indexes (ADR 0004); `nativeIndexes` registry; parsed
+    `packageDefinitions` (for site sync); generated TS types per package DocType.
 - `convex/hooks/<name>.ts` — typed lifecycle stubs (`validate`, `beforeSave`), generated **only
   if absent** (they're user-owned code afterwards — the one non-idempotent output, same policy as
   Frappe controller stubs).
@@ -146,7 +149,7 @@ Rejected: an npm workspace package (`packages/engine`) for the pure core. The Co
 bundler + vitest + tsx would each need to resolve TS-source workspace exports; nothing outside
 `apps/web` consumes the engine yet. Extract when a second consumer exists (the CLI, capability 4+).
 
-### 6. Materialization: the generated registry *is* the path flip
+### 6. Materialization: the generated registry _is_ the path flip
 
 ADR 0004's sequence — regenerate schema, deploy, flip repository metadata, cleanup — collapses
 one step: since the repository consults the generated `nativeIndexes` at runtime, the deploy

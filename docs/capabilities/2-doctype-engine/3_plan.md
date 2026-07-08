@@ -117,4 +117,18 @@ push and confirm CI green.
 
 ## Deviations discovered during implementation
 
-(recorded as they happen, per the plan's own rule)
+1. **`AnyDataModel` can't type dynamic `withIndex`** — its `indexes` slot is system-indexes-only,
+   and `IndexRangeBuilder.eq()` stops chaining once the index-fields type loses a literal length
+   (`string[]` → `IndexRange` after one `.eq`). The repository defines its own `DynamicDataModel`
+   (documents `Record<string, Value>`, index fields as a 4-tuple) — strictly better than the
+   researched approach: no `any`-shaped documents. Research §"Typing dynamic table access" updated.
+2. **ESLint test-file overrides extended** with `no-unsafe-argument`/`no-unsafe-return` — same
+   root cause capability 1 recorded for the other three unsafe-\* rules (feather-testing-convex
+   fixtures are `any`-typed at the boundary); the new tests pass fixture clients into typed
+   helpers, which trips the two rules the scaffold's tests never hit.
+3. **Matrix grew 51 → 53 before implementation** (D16, R11) and promote/demote were re-spec'd
+   idempotent — coverage planning caught reject branches with no owning row; spec updated first
+   (note in the spec's matrix section).
+4. **G1 widened during the coverage gate**: "deterministic" now asserted to include input-order
+   independence (two-definition permutation check) — the name-sort comparator is dead code with a
+   single package doctype, and the floor flagged it.

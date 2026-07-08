@@ -154,9 +154,7 @@ ${types === "" ? "" : `\n${types}\n`}`;
 }
 
 // Emits convex/hooks.gen.ts: the registry wiring hook modules to DocType names.
-export function generateHooksModule(
-  definitions: DocTypeDefinition[],
-): string {
+export function generateHooksModule(definitions: DocTypeDefinition[]): string {
   const sorted = [...definitions].sort((a, b) => (a.name < b.name ? -1 : 1));
   const imports = sorted
     .map(

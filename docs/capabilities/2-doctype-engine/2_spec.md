@@ -23,9 +23,25 @@
   "name": "invoice",
   "label": "Invoice",
   "fields": [
-    { "name": "customer", "label": "Customer", "type": "text", "required": true, "filterable": true },
-    { "name": "amount", "type": "number", "required": true, "filterable": true },
-    { "name": "status", "type": "select", "filterable": true, "options": ["draft", "paid"] },
+    {
+      "name": "customer",
+      "label": "Customer",
+      "type": "text",
+      "required": true,
+      "filterable": true
+    },
+    {
+      "name": "amount",
+      "type": "number",
+      "required": true,
+      "filterable": true
+    },
+    {
+      "name": "status",
+      "type": "select",
+      "filterable": true,
+      "options": ["draft", "paid"]
+    },
     { "name": "archived", "type": "boolean", "filterable": true },
     { "name": "notes", "type": "text" }
   ]
@@ -101,86 +117,86 @@ doubles as re-export.) Fixture DocTypes: `product` (site, sidecar:
 
 ### D — definition management
 
-| #   | State                                       | Verify                                                             |
-| --- | ------------------------------------------- | ------------------------------------------------------------------ |
-| D1  | create stores a site doctype                | create product → `get` returns normalized definition, source site |
-| D2  | list returns created doctypes               | create two → both in `list`                                        |
-| D3  | get returns null for unknown name           | `get({name:"ghost"})` → null                                       |
-| D4  | rejects duplicate doctype name              | create product twice → second rejects                              |
-| D5  | rejects malformed doctype name              | `"Bad Name"` → rejects                                             |
-| D6  | rejects definition without fields           | `fields: []` → rejects                                             |
-| D7  | rejects duplicate field names               | two fields `title` → rejects                                       |
-| D8  | rejects reserved field name                 | field `owner` → rejects                                            |
-| D9  | rejects malformed field name                | field `"First Name"` → rejects                                     |
-| D10 | rejects unknown field type                  | type `date` → rejects                                              |
-| D11 | rejects select field without options        | select, no options → rejects                                       |
-| D12 | rejects options on a non-select field       | text + options → rejects                                           |
-| D13 | rejects a non-object definition             | `"nope"` → rejects                                                 |
-| D14 | rejects wrong-typed field property          | `required: "yes"` → rejects                                        |
-| D15 | sync upserts package definitions once       | run `sync` twice → exactly one invoice row, source package         |
-| D16 | rejects unknown definition key              | `{..., extra: 1}` → rejects                                        |
+| #   | State                                 | Verify                                                            |
+| --- | ------------------------------------- | ----------------------------------------------------------------- |
+| D1  | create stores a site doctype          | create product → `get` returns normalized definition, source site |
+| D2  | list returns created doctypes         | create two → both in `list`                                       |
+| D3  | get returns null for unknown name     | `get({name:"ghost"})` → null                                      |
+| D4  | rejects duplicate doctype name        | create product twice → second rejects                             |
+| D5  | rejects malformed doctype name        | `"Bad Name"` → rejects                                            |
+| D6  | rejects definition without fields     | `fields: []` → rejects                                            |
+| D7  | rejects duplicate field names         | two fields `title` → rejects                                      |
+| D8  | rejects reserved field name           | field `owner` → rejects                                           |
+| D9  | rejects malformed field name          | field `"First Name"` → rejects                                    |
+| D10 | rejects unknown field type            | type `date` → rejects                                             |
+| D11 | rejects select field without options  | select, no options → rejects                                      |
+| D12 | rejects options on a non-select field | text + options → rejects                                          |
+| D13 | rejects a non-object definition       | `"nope"` → rejects                                                |
+| D14 | rejects wrong-typed field property    | `required: "yes"` → rejects                                       |
+| D15 | sync upserts package definitions once | run `sync` twice → exactly one invoice row, source package        |
+| D16 | rejects unknown definition key        | `{..., extra: 1}` → rejects                                       |
 
 ### U — auth guard
 
-| #   | State                                    | Verify                                          |
-| --- | ---------------------------------------- | ------------------------------------------------ |
-| U1  | doctype create rejects unauthenticated   | `testClient.mutation(doctypes.create)` → rejects |
-| U2  | record list rejects unauthenticated      | `testClient.query(records.list)` → rejects       |
+| #   | State                                  | Verify                                           |
+| --- | -------------------------------------- | ------------------------------------------------ |
+| U1  | doctype create rejects unauthenticated | `testClient.mutation(doctypes.create)` → rejects |
+| U2  | record list rejects unauthenticated    | `testClient.query(records.list)` → rejects       |
 
 ### R — record CRUD (site doctype, sidecar mode)
 
-| #   | State                                   | Verify                                                                  |
-| --- | --------------------------------------- | ------------------------------------------------------------------------ |
-| R1  | create stores record with system fields | returned id fetches doc: data flat, owner = caller, creation/modified numbers, docstatus 0 |
-| R2  | get returns null for unknown id         | id from another doctype's table → null                                   |
-| R3  | update patches fields and bumps modified| change `price` → new value, other fields intact, `modified` ≥ before     |
-| R4  | remove deletes the record               | remove → `get` null                                                      |
-| R5  | rejects unknown doctype                 | create on `ghost` → rejects                                              |
-| R6  | rejects unknown field                   | `{bogus: 1}` → rejects                                                   |
-| R7  | rejects missing required field          | create without `title` → rejects                                         |
-| R8  | rejects wrong value type                | `price: "cheap"` → rejects                                               |
-| R9  | rejects select value outside options    | `category: "food"` → rejects                                             |
-| R10 | list returns the doctype's records only | 3 product + 1 customer records → product list has exactly 3              |
-| R11 | update rejects unknown record id        | update with garbage id → rejects                                          |
+| #   | State                                    | Verify                                                                                     |
+| --- | ---------------------------------------- | ------------------------------------------------------------------------------------------ |
+| R1  | create stores record with system fields  | returned id fetches doc: data flat, owner = caller, creation/modified numbers, docstatus 0 |
+| R2  | get returns null for unknown id          | id from another doctype's table → null                                                     |
+| R3  | update patches fields and bumps modified | change `price` → new value, other fields intact, `modified` ≥ before                       |
+| R4  | remove deletes the record                | remove → `get` null                                                                        |
+| R5  | rejects unknown doctype                  | create on `ghost` → rejects                                                                |
+| R6  | rejects unknown field                    | `{bogus: 1}` → rejects                                                                     |
+| R7  | rejects missing required field           | create without `title` → rejects                                                           |
+| R8  | rejects wrong value type                 | `price: "cheap"` → rejects                                                                 |
+| R9  | rejects select value outside options     | `category: "food"` → rejects                                                               |
+| R10 | list returns the doctype's records only  | 3 product + 1 customer records → product list has exactly 3                                |
+| R11 | update rejects unknown record id         | update with garbage id → rejects                                                           |
 
 ### F — filter/sort on user-defined fields (sidecar path)
 
-| #   | State                                        | Verify                                                                       |
-| --- | -------------------------------------------- | ----------------------------------------------------------------------------- |
-| F1  | filters by text field value                  | filter `category = gadget` → exactly the matching records                     |
-| F2  | filters by number field value                | filter `price = 10` → matching records                                        |
-| F3  | rejects filter on unknown field              | filter `bogus` → rejects                                                      |
-| F4  | rejects filter on non-filterable field       | filter `notes` → rejects                                                      |
-| F5  | sorts ascending by number field              | sort `price asc` → values non-decreasing                                      |
-| F6  | sorts descending by number field             | sort `price desc` → values non-increasing                                     |
-| F7  | combines filter and sort                     | `category = gadget` + `price desc` → filtered subset, ordered                 |
-| F8  | reflects updates in filter results           | update category gadget→tool → appears under tool, gone from gadget            |
-| F9  | removes deleted records from filter results  | remove → filter excludes it **and** its `fieldIndex` rows are gone            |
-| F10 | omits records missing the filtered field     | record without `price` → absent from `price` filter and sort results          |
+| #   | State                                        | Verify                                                                                                                                                    |
+| --- | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F1  | filters by text field value                  | filter `category = gadget` → exactly the matching records                                                                                                 |
+| F2  | filters by number field value                | filter `price = 10` → matching records                                                                                                                    |
+| F3  | rejects filter on unknown field              | filter `bogus` → rejects                                                                                                                                  |
+| F4  | rejects filter on non-filterable field       | filter `notes` → rejects                                                                                                                                  |
+| F5  | sorts ascending by number field              | sort `price asc` → values non-decreasing                                                                                                                  |
+| F6  | sorts descending by number field             | sort `price desc` → values non-increasing                                                                                                                 |
+| F7  | combines filter and sort                     | `category = gadget` + `price desc` → filtered subset, ordered                                                                                             |
+| F8  | reflects updates in filter results           | update category gadget→tool → appears under tool, gone from gadget                                                                                        |
+| F9  | removes deleted records from filter results  | remove → filter excludes it **and** its `fieldIndex` rows are gone                                                                                        |
+| F10 | omits records missing the filtered field     | record without `price` → absent from `price` filter and sort results                                                                                      |
 | F11 | **filters and sorts 1,000 records** ← tracer | 1,000 records seeded through the repository (chunked `testClient.run`); filter equality returns the exact expected subset; sort order verified end-to-end |
 
 ### G — package mode: codegen + native path + hooks
 
-| #   | State                                        | Verify                                                                              |
-| --- | -------------------------------------------- | ------------------------------------------------------------------------------------ |
-| G1  | codegen is deterministic and in sync         | `generateDoctypesModule(pkg JSONs, registry)` run twice → identical strings, equal to committed `doctypes.gen.ts` (`?raw` import) |
-| G2  | creates package records through typed table  | `records.create` invoice → lands in `dt_invoice` (passes generated validator), system fields present |
-| G3  | filters package doctype via native index     | filter `status = paid` correct **and** `fieldIndex` has zero invoice rows (proves native path) |
-| G4  | sorts package doctype via native index       | sort `amount desc` → ordered                                                         |
-| G5  | validate hook rejects invalid record         | invoice `amount: -5` → rejects                                                       |
-| G6  | beforeSave hook normalizes data              | `customer: "  Acme  "` → stored `"Acme"`                                             |
+| #   | State                                       | Verify                                                                                                                            |
+| --- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| G1  | codegen is deterministic and in sync        | `generateDoctypesModule(pkg JSONs, registry)` run twice → identical strings, equal to committed `doctypes.gen.ts` (`?raw` import) |
+| G2  | creates package records through typed table | `records.create` invoice → lands in `dt_invoice` (passes generated validator), system fields present                              |
+| G3  | filters package doctype via native index    | filter `status = paid` correct **and** `fieldIndex` has zero invoice rows (proves native path)                                    |
+| G4  | sorts package doctype via native index      | sort `amount desc` → ordered                                                                                                      |
+| G5  | validate hook rejects invalid record        | invoice `amount: -5` → rejects                                                                                                    |
+| G6  | beforeSave hook normalizes data             | `customer: "  Acme  "` → stored `"Acme"`                                                                                          |
 
 ### L — materialization ladder + promotion round-trip
 
-| #   | State                                           | Verify                                                                              |
-| --- | ----------------------------------------------- | ------------------------------------------------------------------------------------ |
-| L1  | promote flips source and moves zero data        | site product + records → promote returns canonical JSON parsing to the same definition; source package; records readable at same ids |
-| L2  | demote flips source back                        | demote → source site; records + sidecar filters still intact                        |
-| L3  | serialization round-trips byte-identically      | **property** (fast-check): ∀ valid def `d`: `serialize(parse(serialize(d))) === serialize(d)` |
+| #   | State                                           | Verify                                                                                                                                            |
+| --- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| L1  | promote flips source and moves zero data        | site product + records → promote returns canonical JSON parsing to the same definition; source package; records readable at same ids              |
+| L2  | demote flips source back                        | demote → source site; records + sidecar filters still intact                                                                                      |
+| L3  | serialization round-trips byte-identically      | **property** (fast-check): ∀ valid def `d`: `serialize(parse(serialize(d))) === serialize(d)`                                                     |
 | L4  | promotion round-trips arbitrary definitions     | **property, sampled integration** (fixed-seed `fc.sample`, 25 defs): create → record → promote → demote → definition deep-equal, record untouched |
-| L5  | materialize drops sidecar rows, filters survive | customer (in registry): seed stale sidecar rows directly → `materialize` → rows gone, `email` filter still correct (native) |
-| L6  | rejects materializing without deployed indexes  | `materialize(product)` (not in registry) → rejects                                   |
-| L7  | rebuildSidecar restores sidecar rows            | product records, sidecar rows wiped directly (simulated post-dematerialize) → `rebuildSidecar` → filters work, rows back |
+| L5  | materialize drops sidecar rows, filters survive | customer (in registry): seed stale sidecar rows directly → `materialize` → rows gone, `email` filter still correct (native)                       |
+| L6  | rejects materializing without deployed indexes  | `materialize(product)` (not in registry) → rejects                                                                                                |
+| L7  | rebuildSidecar restores sidecar rows            | product records, sidecar rows wiped directly (simulated post-dematerialize) → `rebuildSidecar` → filters work, rows back                          |
 
 **53 rows. Row count == test count is the review invariant.**
 
