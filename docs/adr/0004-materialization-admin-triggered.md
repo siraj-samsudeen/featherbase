@@ -1,6 +1,6 @@
 # ADR 0004: Index materialization is admin-triggered (stats-suggested later)
 
-**Status:** Accepted · **Date:** 2026-07-08
+**Status:** Accepted · **Date:** 2026-07-08 · **Amended:** 2026-07-08 (staged indexes — see below)
 
 ## Context
 
@@ -28,7 +28,17 @@ Later (same mechanics): a scheduled "schema sync" that batches pending materiali
 
 - `schema.ts` is a **fully generated artifact** — deterministic output of (package JSONs + materialization registry), committed, never hand-edited.
 - Deploy credentials must be reachable from the admin flow (a deploy key in CI) — a real but manageable security surface.
-- Index backfill on huge tables takes time; bounded and automatic.
+- Index backfill on huge tables takes time; bounded and automatic — and no longer deploy-blocking (see amendment).
+
+## Amendment — staged indexes (2026-07-08)
+
+Convex now supports **staged indexes**: `.index("...", [...], { staged: true })` backfills asynchronously **without blocking the deploy**, monitored in the dashboard, and a follow-up deploy removes the flag to enable the index ([docs](https://docs.convex.dev/database/reading-data/indexes/), verified 2026-07-08; [revalidation report](../research/revalidation-2026-07.md)). This refines the mechanism, not the decision:
+
+1. Materialization deploy emits the new index entries **staged** — the deploy returns immediately even on huge tables.
+2. The platform monitors backfill state; when ready, a second generated deploy enables the index.
+3. Only then does repository metadata flip the DocType's filter path from sidecar to native, and the sidecar-cleanup job runs.
+
+The "blocking the push until indexes are usable" behavior described in Context remains the default for non-staged indexes and is still fine for small tables; the codegen should choose staged automatically above a row-count threshold.
 
 ## Alternatives rejected
 
