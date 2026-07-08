@@ -41,7 +41,7 @@ test("shows seeded tasks", async ({ client, seed }) => {
 
   renderWithConvexQueryAuth(<TaskList />, client);
 
-  expect(await screen.findByText("Buy milk")).toBeInTheDocument();
+  expect(screen.queryByText("NOT PRESENT — CI red check")).toBeInTheDocument();
   expect(screen.queryByText("No tasks yet")).not.toBeInTheDocument();
 });
 
