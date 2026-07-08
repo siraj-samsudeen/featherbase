@@ -79,10 +79,10 @@ validated in-handler; everything else precisely typed. Regenerate `_generated`.
 `convex/doctype/definition.test.ts` (D5–D14 via the pure validator where natural, L3 property),
 `convex/doctypes.test.ts` (D1–D4, D15, U1, L1, L2, L5–L7), `convex/records.test.ts` (R rows, U2),
 `convex/records.filter.test.ts` (F rows incl. F11), `convex/packageMode.test.ts` (G rows, L4).
-Split is organizational; the binding rule is **51 tests for 51 rows**, verb-first names.
+Split is organizational; the binding rule is **53 tests for 53 rows**, verb-first names.
 Shared `arbDefinition` fast-check arbitrary (normalized-form definitions) in a test helper.
 
-**G6:** `npx vitest run` — 51 new tests + 12 capability-1 tests green; count verified against the
+**G6:** `npx vitest run` — 53 new tests + 12 capability-1 tests green; count verified against the
 matrix; F11 runtime sane (< ~15 s).
 
 ## Step 7 — Coverage floor

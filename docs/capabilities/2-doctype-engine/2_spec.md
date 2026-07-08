@@ -13,7 +13,7 @@
 4. **Codegen**: pure `convex/doctype/codegen.ts` (`generateDoctypesModule`, `generateHookStub`, `generateHooksModule`) + `scripts/codegen-doctypes.ts` (tsx wrapper) reading `apps/web/doctypes/`; generated `convex/doctypes.gen.ts` + `convex/hooks.gen.ts` committed and drift-checked in CI; `npm run gen:doctypes` script.
 5. **Sample app package** `apps/web/doctypes/`: `invoice.json` (covers all four field types) + `materializations.json` (`{"customer": ["email"]}`); hand-completed hook `convex/hooks/invoice.ts` (validate: `amount > 0`; beforeSave: trim `customer`).
 6. **Public functions**: `convex/doctypes.ts` (`create`, `list`, `get`, `sync`, `promote`, `demote`, `materialize`, `rebuildSidecar`) and `convex/records.ts` (`create`, `get`, `update`, `remove`, `list`) — all require auth (`requireUser` helper, throws).
-7. **Test suite** implementing the matrix (51 rows), `fast-check` for L3/L4.
+7. **Test suite** implementing the matrix (53 rows), `fast-check` for L3/L4.
 8. CI: `gen:doctypes` drift check step; CHANGELOG + README status updates; CLAUDE.md gains the `gen:doctypes` command.
 
 ## Definition format (canonical JSON)
@@ -62,10 +62,11 @@ trip `serialize ∘ parse ∘ serialize = serialize` byte-identical (row L3).
 (`get` → `null` when unknown). **`doctypes.sync()`** — upserts every generated package definition
 with `source: "package"`; idempotent (deploy-time sync per ADR 0003).
 
-**`doctypes.promote({name})`** — requires an existing site-source DocType; flips `source` to
-`"package"` and returns the canonical JSON string (the file content the caller writes to
-`doctypes/<name>.json`). **`doctypes.demote({name})`** — the exact reverse (package → site).
-Neither touches a single record row.
+**`doctypes.promote({name})`** — requires an existing DocType; sets `source` to `"package"` and
+returns the canonical JSON string (the file content the caller writes to `doctypes/<name>.json`).
+Idempotent — re-promoting an already-package DocType just re-emits the file content (useful as
+re-export). **`doctypes.demote({name})`** — the exact reverse (sets `source: "site"`), equally
+idempotent. Neither touches a single record row.
 
 **`doctypes.materialize({name})`** — rejects unless the DocType exists **and** appears in the
 deployed `nativeIndexes` registry (models "deploy first", ADR 0004); deletes sidecar rows for the
@@ -89,7 +90,11 @@ All functions throw `"Not authenticated"` for unauthenticated callers.
 ## Test matrix
 
 One test per row, verb-first names. Env: all rows backend / edge-runtime integration against the
-real in-memory backend except where noted. Fixture DocTypes: `product` (site, sidecar:
+real in-memory backend except where noted. (D16 and R11 were added before implementation when
+coverage planning exposed reject branches the original 51 rows never exercised — the floor doing
+its job early. Promote/demote were re-spec'd idempotent at the same time: a source-state guard
+would add an unreachable-in-practice branch for no behavioral gain, and idempotent promote
+doubles as re-export.) Fixture DocTypes: `product` (site, sidecar:
 `title` text req+filterable, `price` number filterable, `active` boolean, `category` select
 [gadget, tool] filterable, `notes` text), `customer` (site, in `materializations.json`:
 `email` text req+filterable, `company` text), `invoice` (package: see JSON above).
@@ -113,6 +118,7 @@ real in-memory backend except where noted. Fixture DocTypes: `product` (site, si
 | D13 | rejects a non-object definition             | `"nope"` → rejects                                                 |
 | D14 | rejects wrong-typed field property          | `required: "yes"` → rejects                                        |
 | D15 | sync upserts package definitions once       | run `sync` twice → exactly one invoice row, source package         |
+| D16 | rejects unknown definition key              | `{..., extra: 1}` → rejects                                        |
 
 ### U — auth guard
 
@@ -135,6 +141,7 @@ real in-memory backend except where noted. Fixture DocTypes: `product` (site, si
 | R8  | rejects wrong value type                | `price: "cheap"` → rejects                                               |
 | R9  | rejects select value outside options    | `category: "food"` → rejects                                             |
 | R10 | list returns the doctype's records only | 3 product + 1 customer records → product list has exactly 3              |
+| R11 | update rejects unknown record id        | update with garbage id → rejects                                          |
 
 ### F — filter/sort on user-defined fields (sidecar path)
 
@@ -175,7 +182,7 @@ real in-memory backend except where noted. Fixture DocTypes: `product` (site, si
 | L6  | rejects materializing without deployed indexes  | `materialize(product)` (not in registry) → rejects                                   |
 | L7  | rebuildSidecar restores sidecar rows            | product records, sidecar rows wiped directly (simulated post-dematerialize) → `rebuildSidecar` → filters work, rows back |
 
-**51 rows. Row count == test count is the review invariant.**
+**53 rows. Row count == test count is the review invariant.**
 
 ## Coverage
 
