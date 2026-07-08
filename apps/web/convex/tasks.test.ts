@@ -20,7 +20,11 @@ test("returns the seeded task", async ({ client, seed }) => {
 
 test("scopes tasks to their owner", async ({ client, seed, createUser }) => {
   const bob = await createUser();
-  await seed("tasks", { text: "Bob's task", completed: false, userId: bob.userId });
+  await seed("tasks", {
+    text: "Bob's task",
+    completed: false,
+    userId: bob.userId,
+  });
 
   const myTasks = await client.query(api.tasks.list, {});
   expect(myTasks).toHaveLength(0);
@@ -40,9 +44,9 @@ test("adds a task for the caller", async ({ client }) => {
 });
 
 test("rejects blank task text", async ({ client }) => {
-  await expect(
-    client.mutation(api.tasks.add, { text: "   " }),
-  ).rejects.toThrow("Task text cannot be empty");
+  await expect(client.mutation(api.tasks.add, { text: "   " })).rejects.toThrow(
+    "Task text cannot be empty",
+  );
 });
 
 test("rejects unauthenticated add", async ({ testClient }) => {

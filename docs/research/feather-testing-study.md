@@ -14,9 +14,9 @@ Repo: `/Users/siraj/Desktop/NonDropBoxProjects/feather-testing-convex` (git repo
 
 **Philosophy** (`TESTING-PHILOSOPHY.md`, 25KB — the canonical doc, explicitly written for **human-defines / AI-agent-fills** test workflows):
 
-- **MECE decomposition**: decompose a component into *visual states*; exactly one test per state, many assertions per test. "Test explosion" (one assertion per test) is called out as the #1 AI-agent mistake.
+- **MECE decomposition**: decompose a component into _visual states_; exactly one test per state, many assertions per test. "Test explosion" (one assertion per test) is called out as the #1 AI-agent mistake.
 - **Three layers**:
-  - **E2E (Playwright)** — ~10 smoke tests for critical journeys only; a *deliberate exception to MECE* (intentionally overlaps integration for real-browser confidence).
+  - **E2E (Playwright)** — ~10 smoke tests for critical journeys only; a _deliberate exception to MECE_ (intentionally overlaps integration for real-browser confidence).
   - **Integration (this library)** — the workhorse; real in-memory backend + real React; happy paths + core failure paths; bulk of coverage.
   - **Unit/Mock** — only for states unreachable with a real backend (loading spinners, error states).
 - Integration-first as anti-pattern-killer: delete the backend-only test AND the mocked component test; one integration test covers both.
@@ -29,16 +29,16 @@ Repo: `/Users/siraj/Desktop/NonDropBoxProjects/feather-testing-convex` (git repo
 
 ~640 LOC of non-test source across 8 files, plus a separate backend-agnostic sibling package `feather-testing-core` (~376 LOC — "Phoenix Test-inspired fluent DSL").
 
-| Module | LOC | What it does |
-|---|---|---|
-| `src/ConvexTestProvider.tsx` | 107 | **The crux.** Fake client adapting convex-test's one-shot `query/mutation` to the reactive `watchQuery` API `ConvexProvider` expects. Two-level cache (query-ref → args → result) to avoid collisions; careful stable-reference work to avoid `setAuth`/`clearAuth` render cycles. |
-| `src/helpers.tsx` | 89 | `createConvexTest(schema, modules)` → Vitest `test.extend` with fixtures: `testClient`, `userId` (auto-created user), `client` (authenticated via `withIdentity`), `seed(table, data)` (auto-fills `userId`), `createUser()`. Plus `renderWithConvex`, `renderWithConvexAuth`, `wrapWithConvex`. |
-| `src/ConvexTestAuthProvider.tsx` | 51 | Injects `ConvexAuthActionsContext` (imported from an *internal* `@convex-dev/auth` path) so `useAuthActions`, `<Authenticated>`, `useConvexAuth()` work. `signIn/signOut` are pure React state toggles; `signInError` option simulates failed sign-in. |
-| `src/tanstack-query.tsx` | 295 | For `useQuery(convexQuery(...))` apps: custom `queryFn` routing `["convexQuery", name, args]` keys to the test backend via `makeFunctionReference`; **auto-invalidates queries after mutations** → reactive UI in tests (fixes the base provider's one-shot limitation). |
-| `src/vitest-plugin.ts` | 52 | Vite alias plugin working around `@convex-dev/auth` not exporting its context (upstream issue filed). |
-| `src/rtl/index.ts` | 12 | `renderWithSession` = `renderWithConvexAuth` + `createSession()` from core. |
-| `src/playwright/index.ts` | 23 | Extends the core Playwright `test` with an auto-cleanup fixture that calls a user-supplied `clearAll` Convex mutation after each test. |
-| `feather-testing-core` (dep) | ~376 | Fluent `Session` DSL: thenable action-queue (`fillIn`, `clickButton`, `assertText`, `within`, `submit`, ...) with two drivers — RTL and Playwright — and chain-trace error messages (`[ok]/[FAILED]/[skipped]` per step). |
+| Module                           | LOC  | What it does                                                                                                                                                                                                                                                                                     |
+| -------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/ConvexTestProvider.tsx`     | 107  | **The crux.** Fake client adapting convex-test's one-shot `query/mutation` to the reactive `watchQuery` API `ConvexProvider` expects. Two-level cache (query-ref → args → result) to avoid collisions; careful stable-reference work to avoid `setAuth`/`clearAuth` render cycles.               |
+| `src/helpers.tsx`                | 89   | `createConvexTest(schema, modules)` → Vitest `test.extend` with fixtures: `testClient`, `userId` (auto-created user), `client` (authenticated via `withIdentity`), `seed(table, data)` (auto-fills `userId`), `createUser()`. Plus `renderWithConvex`, `renderWithConvexAuth`, `wrapWithConvex`. |
+| `src/ConvexTestAuthProvider.tsx` | 51   | Injects `ConvexAuthActionsContext` (imported from an _internal_ `@convex-dev/auth` path) so `useAuthActions`, `<Authenticated>`, `useConvexAuth()` work. `signIn/signOut` are pure React state toggles; `signInError` option simulates failed sign-in.                                           |
+| `src/tanstack-query.tsx`         | 295  | For `useQuery(convexQuery(...))` apps: custom `queryFn` routing `["convexQuery", name, args]` keys to the test backend via `makeFunctionReference`; **auto-invalidates queries after mutations** → reactive UI in tests (fixes the base provider's one-shot limitation).                         |
+| `src/vitest-plugin.ts`           | 52   | Vite alias plugin working around `@convex-dev/auth` not exporting its context (upstream issue filed).                                                                                                                                                                                            |
+| `src/rtl/index.ts`               | 12   | `renderWithSession` = `renderWithConvexAuth` + `createSession()` from core.                                                                                                                                                                                                                      |
+| `src/playwright/index.ts`        | 23   | Extends the core Playwright `test` with an auto-cleanup fixture that calls a user-supplied `clearAll` Convex mutation after each test.                                                                                                                                                           |
+| `feather-testing-core` (dep)     | ~376 | Fluent `Session` DSL: thenable action-queue (`fillIn`, `clickButton`, `assertText`, `within`, `submit`, ...) with two drivers — RTL and Playwright — and chain-trace error messages (`[ok]/[FAILED]/[skipped]` per step).                                                                        |
 
 **Representative tests, verbatim.** Integration test (README quick start — the signature 3-liner):
 
@@ -55,7 +55,11 @@ Multi-user isolation from the library's own suite (`src/helpers.test.ts`):
 ```tsx
 test("multi-user data isolation", async ({ client, seed, createUser }) => {
   const bob = await createUser();
-  await seed("todos", { text: "Bob's todo", completed: false, userId: bob.userId });
+  await seed("todos", {
+    text: "Bob's todo",
+    completed: false,
+    userId: bob.userId,
+  });
 
   const myTodos = await client.query(api.todos.list, {});
   expect(myTodos).toHaveLength(0);
@@ -98,10 +102,11 @@ await session
 **Inherently Convex-specific (would not transfer):** essentially all of `src/` — the `watchQuery` adapter, the `@convex-dev/auth` context injection + vitest plugin, the TanStack `queryFn` (`convexQuery` keys, `makeFunctionReference`), and the fixture implementations (`convexTest`, `withIdentity`, `ctx.db.insert`). That's ~530 LOC of logic + ~670 LOC of tests.
 
 **Portable as-is (no rebuild):**
+
 - **`feather-testing-core`** — the Session DSL, both drivers, error-trace machinery. Zero Convex imports. Works today with any React app and any Playwright target.
 - **`TESTING-PHILOSOPHY.md`** — MECE, three layers, test matrix, naming convention, coverage rules, review checklist structure. ~90% stack-agnostic; only examples and 4–5 checklist items (seed/one-shot/withIdentity specifics) need rewriting.
 - **The `review-convex-tests` skill architecture** (checklist skill + reference files, dual file/plan mode).
-- **The design patterns**: `test.extend` fixtures (`client`/`seed`/`createUser`), "render with real backend provider", Playwright fixture with auto-cleanup mutation. The *shapes* transfer 1:1.
+- **The design patterns**: `test.extend` fixtures (`client`/`seed`/`createUser`), "render with real backend provider", Playwright fixture with auto-cleanup mutation. The _shapes_ transfer 1:1.
 
 **What a Supabase/InstantDB stack would need rebuilt:** the middle adapter — an in-process (or fast local) backend wired into the frontend data layer. For Supabase that's a different problem (real local Postgres via `supabase start`/pglite + Supabase JS client pointing at it, JWT-claim auth simulation, `seed()` over SQL/PostgREST) — less "clever adapter", more infrastructure, and reactivity (Realtime) is harder to make hermetic. For InstantDB, **no `convex-test` equivalent exists** — you'd be building the in-memory backend itself, which is the piece this library gets for free from Convex. That's the biggest hidden dependency: the library is ~600 LOC because Convex ships an official in-memory mock; its equivalent elsewhere could be 10x the effort.
 

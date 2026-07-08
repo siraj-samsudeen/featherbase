@@ -6,7 +6,7 @@
 
 # Open-Source App Builders & Workflow Tools — Research Report for Frappe-Based Workflow Features
 
-*Research current as of July 2026. Licensing verified against primary sources (LICENSE files / official announcements) because the host project is MIT and code-borrowing viability depends on it.*
+_Research current as of July 2026. Licensing verified against primary sources (LICENSE files / official announcements) because the host project is MIT and code-borrowing viability depends on it._
 
 ---
 
@@ -19,6 +19,7 @@
 **License.** **Open-core, copyleft:** core server/builder **GPL v3**; client and component libraries **MPL 2.0** (so built apps are freely licensable); paid "pro" packages under the **Business Source License**. → **Code cannot be copied into an MIT project** (GPL is incompatible with MIT distribution); ideas only.
 
 **Worth borrowing (ideas).**
+
 1. The **`AutomationContext` + binding-resolution pattern** — step inputs are templates resolved against accumulated step outputs; this maps almost 1:1 onto Frappe's Jinja/`frappe.render_template` and would feel native.
 2. **Event-emitter → filter → queue producer/consumer split** — mirrors Frappe's doc_events + RQ; a clean seam for a Frappe implementation.
 3. The **loop-step safety rails** (max iterations, failure condition, summarize-vs-full results) — cheap to implement, prevents the worst user footguns.
@@ -36,7 +37,8 @@
 **License.** **Relicensed January 2026** (v0.301.0+, GitHub discussion #12891): from **AGPL-3.0** to a **"Sustainable Use License"** — source-available, BUSL-like, internal-business/non-commercial use only. It is **no longer open source** by OSI standards. Pre-0.301.0 code remains AGPL-3.0 (still incompatible with MIT). → **No code borrowing, either era.**
 
 **Worth borrowing (ideas).**
-1. **"Record enters view" and "condition matched" triggers** — triggering when a row *starts matching a saved filter* is the single most Glide/Airtable-native trigger concept, and maps beautifully onto Frappe's filter/report metadata.
+
+1. **"Record enters view" and "condition matched" triggers** — triggering when a row _starts matching a saved filter_ is the single most Glide/Airtable-native trigger concept, and maps beautifully onto Frappe's filter/report metadata.
 2. The **webhook v3 event unification** (single vs bulk operations collapsed into one event shape) — Frappe's doc_events fire per-doc; a bulk-aware envelope is worth designing in early.
 3. The three-tier ladder **webhooks → scripts → visual workflows** as a coherent escalation of power.
 
@@ -52,7 +54,8 @@
 
 **License.** **MIT (Expat) core**, verified in the LICENSE file: everything is MIT **except** `premium/` and `enterprise/` (proprietary source-available) and `docs/` (CC BY-SA 4.0). Crucially, the automation engine lives at **`backend/src/baserow/contrib/automation`** — inside the MIT core, alongside `builder`, `dashboard`, `database`. → **Code is legally borrowable into an MIT project, and it's Python.**
 
-**Worth borrowing (ideas *and code*).**
+**Worth borrowing (ideas _and code_).**
+
 1. **The entire automation contrib module** — an MIT-licensed, Django-based trigger/action/router/iterator engine with node models, serializers, and run-history schema. The closest thing in existence to "a workflow engine already written for a Python metadata framework"; its node table design translates directly to Frappe DocTypes.
 2. **Draft / test-run / published lifecycle** — the cleanest publishing model of the eight; exactly what a Glide-like product needs so users can iterate safely.
 3. **Iterator drill-down run history** (inspect each iteration of nested loops) — superb debugging UX for non-programmers.
@@ -67,10 +70,11 @@
 
 **Workflow architecture.** Appsmith Workflows are **code-first, not visual**: you write JavaScript functions in a workflow editor and orchestrate queries/services in code. Triggers: **webhooks**, invocation **from Appsmith apps** (integrated datasource), and **scheduled cron jobs**. Execution is backed by **Temporal** (durable execution; workflow metadata/state in PostgreSQL), giving reliable long-running processes; run history is tracked for debugging. Human-in-the-loop approvals are marketed but were still "coming soon" in docs. **Workflows are a Business-tier (paid) feature** — not present in the open-source Community Edition at all.
 
-**License.** Core: **Apache 2.0** (permissive, MIT-compatible — Apache-2.0 code *can* be incorporated into an MIT-hosted project with NOTICE preservation). But the workflows product itself is commercial/EE, so the interesting code isn't in the Apache part.
+**License.** Core: **Apache 2.0** (permissive, MIT-compatible — Apache-2.0 code _can_ be incorporated into an MIT-hosted project with NOTICE preservation). But the workflows product itself is commercial/EE, so the interesting code isn't in the Apache part.
 
 **Worth borrowing (ideas).**
-1. **Durable-execution semantics as a north star** — Temporal's model (deterministic replay, resumable long-running workflows) is the right *mental* framework for "what does a paused approval workflow mean," even if you implement it lightly on RQ.
+
+1. **Durable-execution semantics as a north star** — Temporal's model (deterministic replay, resumable long-running workflows) is the right _mental_ framework for "what does a paused approval workflow mean," even if you implement it lightly on RQ.
 2. **"Trigger workflow from an app action"** as a first-class trigger — Glide-like products live on button-triggered workflows; Appsmith treats app→workflow invocation as a typed, documented interface.
 3. JS-function-as-workflow is a good **escape hatch tier** above visual flows (analogous to Frappe Server Scripts).
 
@@ -87,6 +91,7 @@
 **License.** **AGPL-3.0** for the core repo (verified: full AGPL text, changed from GPLv3 explicitly to close the SaaS loophole), plus a commercial **`ee/`** directory for Enterprise Edition features. → **No code borrowing into MIT.**
 
 **Worth borrowing (ideas).**
+
 1. **Workflows-as-callable-functions** — the Response node makes a workflow an RPC endpoint that apps invoke synchronously and use the return value. For a Frappe fork this is a killer pattern: a workflow doubles as a whitelisted API method a Desk button can call.
 2. The **app-trigger contract** (button click → workflow with typed params) — the clearest implementation of the Glide "button runs workflow" experience.
 3. Simple **env-var-based execution guardrails** (timeout/memory) — pragmatic and low-machinery.
@@ -104,6 +109,7 @@
 **License.** **Fair-code, NOT open source**: the **Sustainable Use License** (internal business use only; no reselling/hosting as a service) plus an **n8n Enterprise License** for `.ee.`-marked files. Historically Apache 2.0 + Commons Clause (also not OSI). → **No code borrowing, period** — and be careful even about close paraphrase of its source.
 
 **Worth borrowing (ideas).**
+
 1. **Items-array data flow with an expression language over prior nodes** (`$json`, `$node["X"].json`) — implicit iteration over rows is exactly the semantics a table-centric Frappe workflow wants (trigger yields N rows → each step maps over them).
 2. **Error workflows** — routing failures to a user-defined workflow (notify, compensate) instead of burying them in logs; trivially expressible in a trigger-action model.
 3. **Pinned data + partial replay** — the gold standard for workflow debugging; pin a trigger payload once, iterate on downstream steps without re-firing real events.
@@ -121,6 +127,7 @@
 **License.** Mixed, per the LICENSE file: `backend/` + `frontend/` **AGPLv3** (with proprietary enterprise snippets behind a compile flag); language **clients** (`python-client/`, `deno-client/`, `go-client/`, etc.) and — importantly — the **OpenFlow and OpenAPI specification files** are **Apache 2.0**. → **Engine code not borrowable (AGPL); the OpenFlow spec IS borrowable (Apache 2.0).**
 
 **Worth borrowing (ideas + the spec).**
+
 1. **Adopt/adapt the OpenFlow spec** (Apache 2.0) as the serialization format for flow definitions — an open, battle-tested schema for steps, input transforms, branches, loops, retries; storing it in a Frappe DocType JSON field gives portability for free.
 2. **Suspend/approval via signed resume URLs** — the best human-in-the-loop design in this survey, and a natural upgrade path for Frappe's existing Workflow (state-machine) approvals: an email link that resumes a paused flow.
 3. **Every-step-is-a-queued-job** — maps directly onto Frappe's RQ: each step enqueued individually buys you per-step retry, logging, and parallel branches almost for free.
@@ -137,7 +144,8 @@
 
 **License.** **MIT** for the Community Edition (verified in README), with enterprise features confined to **`packages/ee/` under a commercial license**. Pieces themselves are MIT npm packages. → **Code is borrowable into an MIT project** (TypeScript, so mostly for the builder UI and connector-framework design; server is Node not Python).
 
-**Worth borrowing (ideas *and code*).**
+**Worth borrowing (ideas _and code_).**
+
 1. **The pieces framework design** — declarative `createPiece`/`createAction`/`createTrigger` with typed props, auth definitions, and pluggable polling/webhook strategies. This is the blueprint for a Frappe "connector DocType + Python decorator" framework, and the MIT license means you can lift schemas and even UI code.
 2. **App ↔ Worker ↔ Sandbox ↔ Engine separation** — the flow-interpreter ("engine") is a standalone artifact that takes flow JSON + context and returns results; making your executor a pure function of (definition, trigger payload) is what makes testing and replay tractable.
 3. **The linear-chain editor UX** — of all eight, Activepieces' builder is the closest to Glide Workflows' feel (vertical steps, inline branch/loop nesting, step test panel with sample data). Its React flow-builder code is MIT.
@@ -148,16 +156,16 @@
 
 ## Comparison Table
 
-| Project | License (precise) | Workflow model | Editor style | Best-borrowable idea |
-|---|---|---|---|---|
-| **Budibase** | GPL v3 core; MPL 2.0 client libs; BSL pro packages — *ideas only* | 1 trigger → sequential steps; first-match branches; LOOP_V2; Bull/Redis queue + worker-thread orchestrator | Vertical chain w/ branch fan-out | `AutomationContext` + Handlebars/JS binding resolution per step |
-| **NocoDB** | **Sustainable Use License** (since Jan 2026, v0.301.0+; formerly AGPL-3.0) — *not open source; no borrowing* | Webhooks + JS Scripts + visual Workflows (beta, paid tier); 8 triggers; if/else + iterate nodes; sequential | Node-based visual flow | "Record enters view / condition matched" trigger type |
-| **Baserow** | **MIT core** (automation module included); premium/ & enterprise/ proprietary; docs CC BY-SA — *code borrowable* | Automation → Workflow → Nodes; trigger + sequential actions; Router (formula conditions); nestable Iterators; draft/test/publish | Vertical node chain + right sidebar config | The MIT-licensed Django automation module itself + draft/test-run/publish lifecycle |
-| **Appsmith** | Apache 2.0 core, but Workflows are commercial Business-tier — *engine not in OSS part* | Code-first JS workflows; webhook/cron/app triggers; Temporal-backed durable execution | Code editor (not visual) | App-action → workflow invocation as a typed, first-class trigger |
-| **ToolJet** | AGPL-3.0 + commercial `ee/` — *ideas only* | Canvas graph; app/webhook/schedule triggers; query, RunJS, If-Else, Loop, Response nodes; env-var timeouts | Free-form canvas (ReactFlow-style) | Workflows-as-callable-functions (Response node returns value to app) |
-| **n8n** | **Sustainable Use License** + Enterprise License (`.ee.` files); fair-code, **not OSI** — *no borrowing* | JSON node graph; items-array data flow; IF/Switch/Merge; Loop Over Items; queue mode (Redis/BullMQ workers); error workflows | Free-form canvas | Pinned data + partial replay; error workflows |
-| **Windmill** | AGPLv3 core + proprietary EE snippets; **clients & OpenFlow spec Apache 2.0** — *spec borrowable, code not* | OpenFlow DAG; every step = queued job (Postgres queue, Rust workers); branch-one/branch-all; for/while loops; retries, error handlers, suspend/approval | Structured top-down DAG + step panels | OpenFlow serialization spec (Apache 2.0) + suspend/approval with signed resume URLs |
-| **Activepieces** | **MIT** CE + commercial `packages/ee/` — *code borrowable* | 1 trigger + linear action chain w/ nested router/loops; Redis/BullMQ; worker→sandbox→engine execution; versioned flows | Vertical Zapier-style chain | Type-safe pieces/connector framework (declarative actions/triggers/auth/polling strategies) |
+| Project          | License (precise)                                                                                                | Workflow model                                                                                                                                          | Editor style                               | Best-borrowable idea                                                                        |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| **Budibase**     | GPL v3 core; MPL 2.0 client libs; BSL pro packages — _ideas only_                                                | 1 trigger → sequential steps; first-match branches; LOOP_V2; Bull/Redis queue + worker-thread orchestrator                                              | Vertical chain w/ branch fan-out           | `AutomationContext` + Handlebars/JS binding resolution per step                             |
+| **NocoDB**       | **Sustainable Use License** (since Jan 2026, v0.301.0+; formerly AGPL-3.0) — _not open source; no borrowing_     | Webhooks + JS Scripts + visual Workflows (beta, paid tier); 8 triggers; if/else + iterate nodes; sequential                                             | Node-based visual flow                     | "Record enters view / condition matched" trigger type                                       |
+| **Baserow**      | **MIT core** (automation module included); premium/ & enterprise/ proprietary; docs CC BY-SA — _code borrowable_ | Automation → Workflow → Nodes; trigger + sequential actions; Router (formula conditions); nestable Iterators; draft/test/publish                        | Vertical node chain + right sidebar config | The MIT-licensed Django automation module itself + draft/test-run/publish lifecycle         |
+| **Appsmith**     | Apache 2.0 core, but Workflows are commercial Business-tier — _engine not in OSS part_                           | Code-first JS workflows; webhook/cron/app triggers; Temporal-backed durable execution                                                                   | Code editor (not visual)                   | App-action → workflow invocation as a typed, first-class trigger                            |
+| **ToolJet**      | AGPL-3.0 + commercial `ee/` — _ideas only_                                                                       | Canvas graph; app/webhook/schedule triggers; query, RunJS, If-Else, Loop, Response nodes; env-var timeouts                                              | Free-form canvas (ReactFlow-style)         | Workflows-as-callable-functions (Response node returns value to app)                        |
+| **n8n**          | **Sustainable Use License** + Enterprise License (`.ee.` files); fair-code, **not OSI** — _no borrowing_         | JSON node graph; items-array data flow; IF/Switch/Merge; Loop Over Items; queue mode (Redis/BullMQ workers); error workflows                            | Free-form canvas                           | Pinned data + partial replay; error workflows                                               |
+| **Windmill**     | AGPLv3 core + proprietary EE snippets; **clients & OpenFlow spec Apache 2.0** — _spec borrowable, code not_      | OpenFlow DAG; every step = queued job (Postgres queue, Rust workers); branch-one/branch-all; for/while loops; retries, error handlers, suspend/approval | Structured top-down DAG + step panels      | OpenFlow serialization spec (Apache 2.0) + suspend/approval with signed resume URLs         |
+| **Activepieces** | **MIT** CE + commercial `packages/ee/` — _code borrowable_                                                       | 1 trigger + linear action chain w/ nested router/loops; Redis/BullMQ; worker→sandbox→engine execution; versioned flows                                  | Vertical Zapier-style chain                | Type-safe pieces/connector framework (declarative actions/triggers/auth/polling strategies) |
 
 ---
 
@@ -169,6 +177,6 @@
 
 **3. Windmill — the execution-engine semantics (ideas + an Apache-licensed spec).** The AGPL code is off-limits, but Windmill contributes the two hardest design answers: (a) **every step is an individually queued job** — which maps perfectly onto Frappe's existing Redis/RQ infrastructure and yields per-step retries, logs, parallel branches, and resumability without a bespoke scheduler; and (b) **suspend/approval via secret resume URLs**, the cleanest human-in-the-loop primitive, and a natural evolution of Frappe's existing state-machine Workflow doctype. Its **OpenFlow spec is Apache 2.0**, so the flow-definition schema itself can be adopted outright for portability.
 
-**Runner-up:** Budibase is architecturally the *most Frappe-like implementation* (events → Redis queue → orchestrator with template bindings and an accumulated context), and worth reading as a design document — but GPLv3 keeps it strictly ideas-only. n8n remains the UX/debugging benchmark (pinned data, partial replay, error workflows) — copy the concepts, never the code. And treat NocoDB's January 2026 relicense as the survey's cautionary tale: for an MIT host project, license diligence isn't pedantry — three of the eight "open" projects here (n8n, NocoDB, and effectively Appsmith Workflows) have their workflow engines outside OSI-open licensing entirely.
+**Runner-up:** Budibase is architecturally the _most Frappe-like implementation_ (events → Redis queue → orchestrator with template bindings and an accumulated context), and worth reading as a design document — but GPLv3 keeps it strictly ideas-only. n8n remains the UX/debugging benchmark (pinned data, partial replay, error workflows) — copy the concepts, never the code. And treat NocoDB's January 2026 relicense as the survey's cautionary tale: for an MIT host project, license diligence isn't pedantry — three of the eight "open" projects here (n8n, NocoDB, and effectively Appsmith Workflows) have their workflow engines outside OSI-open licensing entirely.
 
 **Sources:** [Budibase automation architecture (DeepWiki)](https://deepwiki.com/Budibase/budibase/4.1-automation-architecture), [Budibase branching docs](https://docs.budibase.com/docs/branching), [Budibase GitHub](https://github.com/Budibase/budibase), [NocoDB workflow docs](https://nocodb.com/docs/product-docs/automation/workflow), [NocoDB relicense discussion #12891](https://github.com/nocodb/nocodb/discussions/12891), [NocoDB GitHub](https://github.com/nocodb/nocodb), [Baserow workflow automation docs](https://baserow.io/user-docs/workflow-automation), [Baserow LICENSE](https://github.com/baserow/baserow/blob/develop/LICENSE), [Baserow contrib tree](https://github.com/baserow/baserow/tree/develop/backend/src/baserow/contrib), [Baserow 2.0 release notes](https://baserow.io/blog/baserow-2-0-release-notes), [Appsmith workflows docs](https://docs.appsmith.com/workflows), [Appsmith GitHub](https://github.com/appsmithorg/appsmith), [ToolJet workflows docs](https://docs.tooljet.ai/docs/workflows/overview), [ToolJet LICENSE](https://github.com/ToolJet/ToolJet/blob/develop/LICENSE), [ToolJet AGPL announcement](https://blog.tooljet.com/changing-license-to-agpl/), [n8n queue mode docs](https://docs.n8n.io/hosting/scaling/queue-mode/), [n8n Sustainable Use License](https://docs.n8n.io/sustainable-use-license/), [n8n deep dive (Jimmy Song)](https://jimmysong.io/blog/n8n-deep-dive/), [Windmill flow architecture](https://www.windmill.dev/docs/flows/architecture), [Windmill approvals](https://www.windmill.dev/docs/flows/flow_approval), [Windmill LICENSE](https://github.com/windmill-labs/windmill/blob/main/LICENSE), [Activepieces architecture overview](https://www.activepieces.com/docs/install/architecture/overview), [Activepieces GitHub](https://github.com/activepieces/activepieces).

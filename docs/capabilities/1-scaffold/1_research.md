@@ -27,46 +27,53 @@ The npm README's quick start uses `environmentMatchGlobs` to run `convex/**` in 
 
 ### Version compatibility snapshot (registry, 2026-07-08)
 
-| Package | Latest | Compat notes |
-|---|---|---|
-| convex | 1.42.1 | react ^18 \|\| ^19 peer ✓ |
-| convex-test | 0.0.54 | |
-| feather-testing-convex | 0.5.7 | vitest >=1 peer ✓ |
-| react / react-dom | 19.2.7 | |
-| vite | 8.1.3 | vitest 4 peers `vite ^6 || ^7 || ^8` ✓ |
-| @vitejs/plugin-react | 6.0.3 | requires vite ^8 ✓ |
-| vitest / @vitest/coverage-v8 | 4.1.10 | |
-| @tanstack/react-router | 1.170.17 | react >=18 ✓ |
-| @tanstack/router-plugin | 1.168.19 | vite >=8 supported ✓ |
-| typescript | 6.0.3 latest | **pin ~5.9.3** — matches reference repo; typescript-eslint supports <6.1.0 but TS 6 is weeks old, no upside for a scaffold |
-| eslint | 10.6.0 | typescript-eslint 8.63.0 supports eslint ^10 ✓ |
-| @vitest/eslint-plugin | 1.6.21 | |
-| @edge-runtime/vm | 5.0.0 | needed for the edge-runtime test project |
-| Node | 24 LTS | CI runtime |
+| Package                      | Latest       | Compat notes                                                                                                               |
+| ---------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| convex                       | 1.42.1       | react ^18 \|\| ^19 peer ✓                                                                                                  |
+| convex-test                  | 0.0.54       |                                                                                                                            |
+| feather-testing-convex       | 0.5.7        | vitest >=1 peer ✓                                                                                                          |
+| react / react-dom            | 19.2.7       |                                                                                                                            |
+| vite                         | 8.1.3        | vitest 4 peer-supports vite 6, 7 and 8 ✓                                                                                   |
+| @vitejs/plugin-react         | 6.0.3        | requires vite ^8 ✓                                                                                                         |
+| vitest / @vitest/coverage-v8 | 4.1.10       |                                                                                                                            |
+| @tanstack/react-router       | 1.170.17     | react >=18 ✓                                                                                                               |
+| @tanstack/router-plugin      | 1.168.19     | vite >=8 supported ✓                                                                                                       |
+| typescript                   | 6.0.3 latest | **pin ~5.9.3** — matches reference repo; typescript-eslint supports <6.1.0 but TS 6 is weeks old, no upside for a scaffold |
+| eslint                       | 10.6.0       | typescript-eslint 8.63.0 supports eslint ^10 ✓                                                                             |
+| @vitest/eslint-plugin        | 1.6.21       |                                                                                                                            |
+| @edge-runtime/vm             | 5.0.0        | needed for the edge-runtime test project                                                                                   |
+| Node                         | 24 LTS       | CI runtime                                                                                                                 |
 
 ## Decisions (options considered)
 
 ### 1. Monorepo: npm workspaces, no task runner
+
 Conventions mandate npm (`package-lock.json`). Layout: `apps/web` now; `packages/*` reserved for `@featherbase/*` (capability 2+, per ADR 0005). Turborepo/Nx rejected — one app, no build graph to orchestrate; YAGNI. Root scripts delegate with `npm run <script> -w apps/web`.
 
 ### 2. Data layer: TanStack Query bridge from day one
+
 Two candidate app data layers: bare `convex/react` `useQuery`, or `@tanstack/react-query` + `@convex-dev/react-query`. **Chosen: the TanStack Query bridge**, because (a) it's the natural pairing with TanStack Router, and (b) it unlocks the harness's best testing path — the `/tanstack-query` provider auto-invalidates after mutations, so "user adds a task and sees it appear" is testable without re-mounting (escapes the one-shot limitation from day one). Cost: two extra deps, both optional peers the harness already supports.
 
 ### 3. Auth: deferred
+
 `@convex-dev/auth` is not wired in. The `client` fixture's identity works via `withIdentity` without any auth package, and skipping auth avoids the `vitest-plugin` workaround entirely. Auth arrives with permissions (capability 5). The schema still ships a `users` table (fixture requirement, and `tasks.userId` exercises `seed()`'s auto-fill).
 
 ### 4. Lint (closes gap #3 from the study): ESLint flat config + Prettier
+
 - **ESLint 10** (flat config) + **typescript-eslint** (type-checked recommended) + **@vitest/eslint-plugin** + **eslint-plugin-react-hooks**.
 - The deciding factor over Biome: the testing philosophy's "ESLint enforces the snapshot ban" line was aspirational in feather-testing-convex — we make it real with `vitest/no-restricted-matchers` banning `toMatchSnapshot`/`toMatchInlineSnapshot`/`toBeDefined`. Biome has no Vitest-aware rules.
 - **Prettier** for formatting (checked in CI); ESLint stays logic-only.
 
 ### 5. `convex/_generated`: committed + drift-checked
+
 `npx convex codegen` runs offline (no deployment needed). Convention in Convex projects is to commit `_generated/`; tests and typecheck need it present after a bare clone. CI re-runs `convex codegen` and fails on `git diff` — committed artifacts can't silently drift (same policy ADR 0004 sets for the future generated `schema.ts`).
 
 ### 6. Coverage: 100% lines as floor, exclusions are generated/entry code only
+
 Per the testing philosophy ("coverage is the floor, review is the ceiling"). Excluded: `convex/_generated/**`, `src/routeTree.gen.ts` (TanStack Router codegen, committed), `src/main.tsx` (DOM bootstrap, unreachable in jsdom tests), config files, test setup files. No `v8 ignore` comments — humans only, and there are no humans writing code yet.
 
 ### 7. CI (closes gap #2): GitHub Actions, tests as a required gate
+
 The reference repo's CI publishes without testing — the exact failure mode capability 1 exists to prevent. Our workflow runs on PRs + pushes to main: install → codegen drift check → lint → format check → typecheck → **tests with coverage thresholds** → build. Any step failing fails the run.
 
 ## What we deliberately leave out

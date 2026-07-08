@@ -62,9 +62,19 @@ Update `CHANGELOG.md` (`[Unreleased]` → scaffold entries), update root `README
 
 **G9 (capability done):** PR opened referencing #2 → CI green on the PR → after merge, CI green on `main` (the tracer bullet passing on main is the ROADMAP's definition of done) → close #2. Merging is the maintainer's call — the plan ends with the PR + green CI + close-out comment ready.
 
+## Deviations discovered during implementation (all recorded per the plan's own rule)
+
+1. **`engines`: `>=22.12` not `>=24`** — the dev container runs Node 22; 22.12 is Vite 8's floor. CI still runs Node 24.
+2. **`npx convex codegen` now requires a deployment** (it pulls deployment config). The hidden `--system-udfs` flag takes the classic local-only `doCodegen` path and emits the fully typed api. Command everywhere (dev + CI drift check): `npx convex codegen --system-udfs --typecheck disable`.
+3. **The README's module glob matches nothing under Vite 8** — tinyglobby (Vite 6+) dropped extglob support, so `./**/!(*.*.*)*.*s` silently returns `{}`. Replaced with explicit include/exclude patterns in `convex/test.setup.ts`.
+4. **`@convex-dev/auth` is required after all** — feather-testing-convex's root export unconditionally imports `ConvexTestAuthProvider`, which imports an internal `@convex-dev/auth` path. Installed as a devDep, `convexTestProviderPlugin()` added to both vitest projects, and the library itself added to `server.deps.inline` so the plugin can intercept the import. (Research decision 3's "avoids the vitest-plugin workaround" was wrong; auth _usage_ remains deferred. Worth an upstream issue: optional peer leaking through the root export.)
+5. **`@vitejs/plugin-react` dropped from the vitest config** — Vite transforms TSX natively; the plugin is only needed for fast-refresh in the dev server (it stays in `vite.config.ts`).
+6. **Matrix grew to 12 rows** — the coverage floor exposed that the spec'd unauthenticated-list behavior had no row; added as B7 (spec updated first).
+7. **Coverage text reporter hides fully-covered files in Vitest 4** — the summary totals and thresholds are authoritative; don't be alarmed by a near-empty table.
+
 ## Rollback / risk notes
 
 - **Version drift** (research pins go stale): G1/G4 catch it at install/run time; record any substitution in this file's pin table.
 - **`environmentMatchGlobs` copy-paste risk**: forbidden — Vitest 4 rejects it; projects config is the only path (research §"README/reality gap").
-- **routeTree.gen.ts / _generated drift**: both committed, both regenerated + diff-checked in CI (G3, G8).
+- **routeTree.gen.ts / \_generated drift**: both committed, both regenerated + diff-checked in CI (G3, G8).
 - **jsdom vs edge-runtime flakiness**: if a backend test misbehaves under edge-runtime, the fallback proven by the reference repo is running it under jsdom — record as a spec deviation if taken.

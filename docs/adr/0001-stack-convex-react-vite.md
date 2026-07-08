@@ -14,7 +14,7 @@ An existing asset weighs on the decision: [feather-testing-convex](https://githu
 
 ## Why
 
-- Criterion 1 is *solvable by design* on Convex (see ADR 0002); criteria 2–4 are *not solvable well* anywhere else:
+- Criterion 1 is _solvable by design_ on Convex (see ADR 0002); criteria 2–4 are _not solvable well_ anywhere else:
   - **InstantDB** has no server-side execution at all (no functions, jobs, cron, queues) — disqualifying for the workflow pillar — and no test harness.
   - **Supabase** has no query-level reactivity (row events only) — Glide-style live computed columns would mean hand-building a reactivity layer — and durable workflows require bolting on a second platform (Trigger.dev/Inngest).
 - `@convex-dev/workflow` provides journaled, exactly-once, restart-surviving execution with `step.sleep()` and `step.awaitEvent()` — the human-in-the-loop primitive — for free.
@@ -23,7 +23,7 @@ An existing asset weighs on the decision: [feather-testing-convex](https://githu
 
 ## The counterargument we accepted
 
-Supabase is boring, unkillable Postgres where user tables are real tables and runtime `CREATE INDEX` is trivial — and Supabase ($5B, 4M devs) will outlive Convex (~11 people, Series A, FSL-licensed). We accept this because Featherbase's essence is *live computed data + workflows*, the two things Supabase gives least of, and the risk is hedged three layers deep: Convex Cloud → self-hosted Convex (FSL converts each release to Apache-2.0 after two years; runs on Postgres) → a Postgres port through the repository seam.
+Supabase is boring, unkillable Postgres where user tables are real tables and runtime `CREATE INDEX` is trivial — and Supabase ($5B, 4M devs) will outlive Convex (~11 people, Series A, FSL-licensed). We accept this because Featherbase's essence is _live computed data + workflows_, the two things Supabase gives least of, and the risk is hedged three layers deep: Convex Cloud → self-hosted Convex (FSL converts each release to Apache-2.0 after two years; runs on Postgres) → a Postgres port through the repository seam.
 
 ## Consequences
 

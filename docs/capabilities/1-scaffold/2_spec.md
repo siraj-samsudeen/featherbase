@@ -58,6 +58,7 @@ featherbase/
 **`tasks.add` (mutation):** inserts `{ text, completed: false, userId }` for the authenticated caller. Unauthenticated → throws. Empty/whitespace `text` → throws (gives the backend a real validation edge to test).
 
 **`<TaskList />`:** four visual states —
+
 1. Loading: query pending → "Loading…"
 2. Empty: `[]` → "No tasks yet"
 3. Data: renders one `<li>` per task with its text
@@ -78,32 +79,32 @@ featherbase/
 
 Authored before code, per the testing philosophy (human defines states, agent fills tests). One test per row.
 
-| # | State (bucket) | Layer / env | Approach | Verify |
-|---|---|---|---|---|
-| B1 | list returns empty for a new user | backend / edge-runtime | integration | `client.query(api.tasks.list)` → `[]` |
-| B2 | list returns the seeded task | backend / edge-runtime | integration | `seed("tasks", …)` → query returns 1 row, text matches |
-| B3 | list scopes tasks to their owner | backend / edge-runtime | integration | `createUser()` bob + seed with explicit `bob.userId` → alice sees 0, bob sees 1 |
-| B4 | add inserts a task for the caller | backend / edge-runtime | integration | `client.mutation(api.tasks.add, {text})` → query returns it, `completed: false` |
-| B5 | add rejects blank text | backend / edge-runtime | integration | mutation with `"  "` → rejects |
-| B6 | add rejects unauthenticated caller | backend / edge-runtime | integration | `testClient.mutation(…)` → rejects |
-| B7 | list returns empty when unauthenticated | backend / edge-runtime | integration | `testClient.query(api.tasks.list)` → `[]` (spec'd no-throw behavior) |
-| I1 | shows loading state | component / jsdom | **mock** (transient state — query resolves too fast to observe) | never-resolving query → "Loading…" visible |
-| I2 | shows empty state when no tasks | component / jsdom | integration | render via harness → "No tasks yet" |
-| I3 | **shows seeded tasks** ← tracer bullet | component / jsdom | integration | `seed("tasks", {text: "Buy milk"})` → render → `findByText("Buy milk")` |
-| I4 | adds a task and shows it | component / jsdom | integration | type into "Task", click "Add" → new text appears (no remount) |
-| R1 | index route renders the app | component / jsdom | integration | memory-history router at `/` → heading + TaskList visible |
+| #   | State (bucket)                          | Layer / env            | Approach                                                        | Verify                                                                          |
+| --- | --------------------------------------- | ---------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| B1  | list returns empty for a new user       | backend / edge-runtime | integration                                                     | `client.query(api.tasks.list)` → `[]`                                           |
+| B2  | list returns the seeded task            | backend / edge-runtime | integration                                                     | `seed("tasks", …)` → query returns 1 row, text matches                          |
+| B3  | list scopes tasks to their owner        | backend / edge-runtime | integration                                                     | `createUser()` bob + seed with explicit `bob.userId` → alice sees 0, bob sees 1 |
+| B4  | add inserts a task for the caller       | backend / edge-runtime | integration                                                     | `client.mutation(api.tasks.add, {text})` → query returns it, `completed: false` |
+| B5  | add rejects blank text                  | backend / edge-runtime | integration                                                     | mutation with `"  "` → rejects                                                  |
+| B6  | add rejects unauthenticated caller      | backend / edge-runtime | integration                                                     | `testClient.mutation(…)` → rejects                                              |
+| B7  | list returns empty when unauthenticated | backend / edge-runtime | integration                                                     | `testClient.query(api.tasks.list)` → `[]` (spec'd no-throw behavior)            |
+| I1  | shows loading state                     | component / jsdom      | **mock** (transient state — query resolves too fast to observe) | never-resolving query → "Loading…" visible                                      |
+| I2  | shows empty state when no tasks         | component / jsdom      | integration                                                     | render via harness → "No tasks yet"                                             |
+| I3  | **shows seeded tasks** ← tracer bullet  | component / jsdom      | integration                                                     | `seed("tasks", {text: "Buy milk"})` → render → `findByText("Buy milk")`         |
+| I4  | adds a task and shows it                | component / jsdom      | integration                                                     | type into "Task", click "Add" → new text appears (no remount)                   |
+| R1  | index route renders the app             | component / jsdom      | integration                                                     | memory-history router at `/` → heading + TaskList visible                       |
 
 (B = backend, I = component integration/mock, R = router. 12 rows total. Row count == test count is the review invariant. B7 was added during implementation when the coverage floor exposed that the matrix missed the spec'd unauthenticated-list behavior — the floor doing exactly its job.)
 
 ## Coverage exclusions (exhaustive)
 
-| Path | Why |
-|---|---|
-| `convex/_generated/**` | Convex codegen |
-| `src/routeTree.gen.ts` | TanStack Router codegen |
-| `src/main.tsx` | DOM bootstrap — unreachable from jsdom tests |
-| `src/test-setup.ts`, `convex/test.setup.ts` | harness wiring |
-| `*.config.*` | config files |
+| Path                                        | Why                                          |
+| ------------------------------------------- | -------------------------------------------- |
+| `convex/_generated/**`                      | Convex codegen                               |
+| `src/routeTree.gen.ts`                      | TanStack Router codegen                      |
+| `src/main.tsx`                              | DOM bootstrap — unreachable from jsdom tests |
+| `src/test-setup.ts`, `convex/test.setup.ts` | harness wiring                               |
+| `*.config.*`                                | config files                                 |
 
 Everything else: 100% line coverage, enforced as a Vitest threshold (CI fails below it). No `v8 ignore` comments.
 
