@@ -5,12 +5,14 @@ import { test } from "../../convex/test.setup";
 import { api } from "../../convex/_generated/api";
 import {
   renderApp,
+  renderFailing,
   renderPending,
   seedBooks,
   storedBook,
 } from "../test.fixtures";
 
 // Matrix rows D1–D6 (docs/capabilities/3-auto-ui/2_spec.md)
+// + E4, E5 (docs/capabilities/4-sign-in/research-spec-plan.md)
 
 test("shows record values prefilled for editing", async ({ client }) => {
   const [id] = await seedBooks(client, [
@@ -78,4 +80,31 @@ test("shows loading state while the record pends", async () => {
   renderPending("/doctypes/book/some-id", { "doctypes:get": storedBook });
 
   expect(await screen.findByText("Loading record…")).toBeInTheDocument();
+});
+
+// The record failing after the definition resolved is only reachable
+// through server states the UI can't produce — mocked (#13).
+test("shows error when the record query fails", async () => {
+  renderFailing("/doctypes/book/some-id", { "doctypes:get": storedBook });
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "records:get failed",
+  );
+});
+
+test("shows error when delete fails", async ({ client }) => {
+  const user = userEvent.setup();
+  const [id] = await seedBooks(client, [{ title: "Dune" }]);
+  renderApp(client, `/doctypes/book/${id}`);
+  await screen.findByRole("button", { name: "Delete" });
+  // The record vanishes out from under the open detail view (another tab,
+  // another user) — the direct backend delete doesn't refresh the UI.
+  await client.mutation(api.records.remove, { doctype: "book", id });
+
+  await user.click(screen.getByRole("button", { name: "Delete" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "record not found",
+  );
+  expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
 });

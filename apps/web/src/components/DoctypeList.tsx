@@ -8,7 +8,8 @@ export function DoctypeList() {
     convexQuery(api.doctypes.list, {}),
   );
 
-  if (error) return <p role="alert">Could not load DocTypes: {error.message}</p>;
+  if (error)
+    return <p role="alert">Could not load DocTypes: {error.message}</p>;
   if (doctypes === undefined) return <p>Loading…</p>;
 
   return (
