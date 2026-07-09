@@ -50,6 +50,25 @@ npm run gen:doctypes   # regenerate convex/doctypes.gen.ts + hooks.gen.ts from
 - Vitest 4 `test.projects` split: `convex/**` tests run in edge-runtime, `src/**` in jsdom.
   Do not use `environmentMatchGlobs` (removed in Vitest 4).
 
+## Deployment (see [#25](https://github.com/siraj-samsudeen/featherbase/issues/25) for the full runbook)
+
+Two hosted planes deploy **separately** — a Railway push does not touch the backend:
+
+- **Frontend** — Railway service `web` (project `featherbase`, JeyaRama workspace), connected to
+  GitHub `main` → **auto-deploys on every push to main**. Live: https://web-production-dea3d.up.railway.app
+- **Backend** — Convex prod deployment `gregarious-fox-422`. After merging any change under
+  `apps/web/convex/**` (functions, schema, `doctypes/*.json`), push it: `cd apps/web && npx convex deploy -y`.
+  Otherwise prod frontend calls functions/tables that don't exist yet.
+- `VITE_CONVEX_URL` (Railway build var) points the SPA at Convex prod; it's inlined at build time.
+
+**Gotchas (each cost a red CI run on 2026-07-09):**
+
+- **Never `git commit -a` while `npx convex dev` is running** — it rewrites `convex/_generated/*`
+  in dev form, which differs from the canonical `--system-udfs` codegen the CI drift-check expects.
+  Restore before committing: `git checkout -- apps/web/convex/_generated`.
+- **Let CI finish before merging**, even docs-only PRs. `docs/**` is prettier-checked; a worktree
+  edit that skips the local `format:check` reflex will pass review but fail CI.
+
 ## Commits
 
 Reference the capability issue: `feat(scaffold): ... \n\nRefs #2.`
