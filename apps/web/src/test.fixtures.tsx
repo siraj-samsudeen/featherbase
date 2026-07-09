@@ -1,9 +1,10 @@
-// Shared fixtures for the capability-3 matrix: the `book` DocType exercising
-// every field type in the generated UI, router-rendering helpers, and the
-// chunked seeding used by the realistic-count guard (G15).
+// Shared fixtures for the capability-3/4 matrices: the `book` DocType
+// exercising every field type in the generated UI, router-rendering helpers
+// (auth-aware since capability 4's shell gate), and the chunked seeding used
+// by the realistic-count guard (G15).
+import { useCallback, useMemo } from "react";
 import { render } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { ConvexProviderWithAuth, ConvexReactClient } from "convex/react";
 import {
   createMemoryHistory,
   createRouter,
@@ -65,12 +66,20 @@ export interface TestRunner {
   run: (fn: (ctx: MutationCtx) => Promise<void>) => Promise<void>;
 }
 
-export function renderApp(client: unknown, path: string) {
+export function renderApp(
+  client: unknown,
+  path: string,
+  options?: { authenticated?: boolean; signInError?: Error },
+) {
   const router = createRouter({
     routeTree,
     history: createMemoryHistory({ initialEntries: [path] }),
   });
-  return renderWithConvexQueryAuth(<RouterProvider router={router} />, client);
+  return renderWithConvexQueryAuth(
+    <RouterProvider router={router} />,
+    client,
+    options,
+  );
 }
 
 export async function createBookDoctype(client: TestBackend): Promise<void> {
@@ -127,37 +136,70 @@ export async function seedManyBooks(
   }
 }
 
-// Loading states are unreachable with the real in-memory backend (the only
-// mocked matrix rows): query fns that never resolve, optionally resolving
-// named functions first to pin the second guard of two-query components.
+// Loading and forced-failure states are unreachable with the real in-memory
+// backend (the only mocked matrix rows). A fake backend object stands in for
+// the convex-test client behind the same auth-aware provider stack every
+// other test uses, so the capability-4 shell gate still renders the routes:
+// named functions resolve from `resolved`, everything else pends or rejects.
+function renderWithFakeBackend(
+  path: string,
+  resolved: Record<string, unknown>,
+  fallback: (name: string) => Promise<unknown>,
+) {
+  const query = (fn: unknown) => {
+    const name = getFunctionName(fn as FunctionReference<"query">);
+    if (name in resolved) return Promise.resolve(resolved[name]);
+    return fallback(name);
+  };
+  const fake = { query, mutation: query, action: query };
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: [path] }),
+  });
+  return renderWithConvexQueryAuth(<RouterProvider router={router} />, fake);
+}
+
 export function renderPending(
   path: string,
   resolved: Record<string, unknown> = {},
 ) {
+  return renderWithFakeBackend(
+    path,
+    resolved,
+    () => new Promise(() => undefined),
+  );
+}
+
+export function renderFailing(
+  path: string,
+  resolved: Record<string, unknown> = {},
+) {
+  return renderWithFakeBackend(path, resolved, (name) =>
+    Promise.reject(new Error(`${name} failed`)),
+  );
+}
+
+// The auth-pending shell state (matrix A5): the fixture provider hardcodes
+// isLoading: false, so this one state renders through the real
+// ConvexProviderWithAuth with a useAuth that never finishes loading. No
+// query providers needed — the shell mounts nothing behind the gate.
+function useAuthPending() {
+  const fetchAccessToken = useCallback(() => Promise.resolve(null), []);
+  return useMemo(
+    () => ({ isLoading: true, isAuthenticated: false, fetchAccessToken }),
+    [fetchAccessToken],
+  );
+}
+
+export function renderAuthLoading(path: string) {
   const convex = new ConvexReactClient("https://test.convex.cloud");
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: false,
-        queryFn: ({ queryKey }) => {
-          const name = getFunctionName(
-            queryKey[1] as FunctionReference<"query">,
-          );
-          if (name in resolved) return Promise.resolve(resolved[name]);
-          return new Promise(() => undefined);
-        },
-      },
-    },
-  });
   const router = createRouter({
     routeTree,
     history: createMemoryHistory({ initialEntries: [path] }),
   });
   return render(
-    <ConvexProvider client={convex}>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>
-    </ConvexProvider>,
+    <ConvexProviderWithAuth client={convex} useAuth={useAuthPending}>
+      <RouterProvider router={router} />
+    </ConvexProviderWithAuth>,
   );
 }

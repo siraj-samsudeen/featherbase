@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { useMutation } from "convex/react";
@@ -34,13 +35,17 @@ export function RecordDetail({
   definition: DocTypeDefinition;
   id: string;
 }) {
-  const { data: record } = useQuery(
+  const { data: record, error } = useQuery(
     convexQuery(api.records.get, { doctype: definition.name, id }),
   );
   const update = useMutation(api.records.update);
   const remove = useMutation(api.records.remove);
   const navigate = useNavigate();
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  if (error) {
+    return <p role="alert">Could not load record: {error.message}</p>;
+  }
   if (record === undefined) return <p>Loading record…</p>;
   if (record === null) return <p>Record not found</p>;
 
@@ -73,11 +78,16 @@ export function RecordDetail({
       <button
         type="button"
         onClick={() =>
-          void remove({ doctype: definition.name, id }).then(() => toGrid())
+          void remove({ doctype: definition.name, id })
+            .then(() => toGrid())
+            .catch((removeError: unknown) =>
+              setDeleteError(String(removeError)),
+            )
         }
       >
         Delete
       </button>
+      {deleteError !== null && <p role="alert">{deleteError}</p>}
     </section>
   );
 }
