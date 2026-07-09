@@ -8,7 +8,10 @@ export default defineConfig({
       include: ["src/**", "convex/**"],
       exclude: [
         "convex/_generated/**",
+        "convex/doctypes.gen.ts",
+        "convex/hooks.gen.ts",
         "convex/test.setup.ts",
+        "convex/doctype/test.helpers.ts",
         "src/routeTree.gen.ts",
         "src/main.tsx",
         "src/test-setup.ts",

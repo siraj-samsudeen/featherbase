@@ -32,6 +32,10 @@ npx convex codegen --system-udfs --typecheck disable
                        # regenerate convex/_generated (run in apps/web; committed).
                        # --system-udfs forces the local-only codegen path; without
                        # it the CLI demands a deployment (see 1-scaffold/3_plan.md)
+npm run gen:doctypes   # regenerate convex/doctypes.gen.ts + hooks.gen.ts from
+                       # apps/web/doctypes/*.json + materializations.json
+                       # (committed, drift-checked in CI; hook stubs generated
+                       # only when missing — they're user-owned afterwards)
 ```
 
 ## Testing conventions (binding — see docs/research/feather-testing-study.md)

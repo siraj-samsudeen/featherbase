@@ -1,0 +1,3 @@
+{
+  "customer": ["email", { "field": "company", "staged": true }]
+}

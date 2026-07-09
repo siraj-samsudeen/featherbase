@@ -1,0 +1,37 @@
+{
+  "name": "invoice",
+  "label": "Invoice",
+  "fields": [
+    {
+      "name": "customer",
+      "label": "Customer",
+      "type": "text",
+      "required": true,
+      "filterable": true
+    },
+    {
+      "name": "amount",
+      "type": "number",
+      "required": true,
+      "filterable": true
+    },
+    {
+      "name": "status",
+      "type": "select",
+      "filterable": true,
+      "options": [
+        "draft",
+        "paid"
+      ]
+    },
+    {
+      "name": "archived",
+      "type": "boolean",
+      "filterable": true
+    },
+    {
+      "name": "notes",
+      "type": "text"
+    }
+  ]
+}

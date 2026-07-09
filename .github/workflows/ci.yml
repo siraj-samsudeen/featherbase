@@ -25,6 +25,11 @@ jobs:
           npx convex codegen --system-udfs --typecheck disable
           git diff --exit-code
 
+      - name: DocType codegen drift check
+        run: |
+          npm run gen:doctypes
+          git diff --exit-code
+
       - name: Lint
         run: npm run lint
 

@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "gen:doctypes": "tsx scripts/codegen-doctypes.ts"
   },
   "dependencies": {
     "@convex-dev/react-query": "^0.1.0",
@@ -33,8 +34,10 @@
     "@vitejs/plugin-react": "^6.0.3",
     "@vitest/coverage-v8": "^4.1.10",
     "convex-test": "^0.0.54",
+    "fast-check": "^4.8.0",
     "feather-testing-convex": "^0.5.7",
     "jsdom": "^29.1.1",
+    "tsx": "^4.23.0",
     "typescript": "~5.9.3",
     "vite": "^8.1.3",
     "vitest": "^4.1.10"

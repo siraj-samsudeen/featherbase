@@ -9,6 +9,8 @@ export default tseslint.config(
       "**/coverage/**",
       "**/convex/_generated/**",
       "**/routeTree.gen.ts",
+      "**/doctypes.gen.ts",
+      "**/hooks.gen.ts",
     ],
   },
   {
@@ -40,6 +42,8 @@ export default tseslint.config(
       "@typescript-eslint/no-unsafe-assignment": "off",
       "@typescript-eslint/no-unsafe-call": "off",
       "@typescript-eslint/no-unsafe-member-access": "off",
+      "@typescript-eslint/no-unsafe-argument": "off",
+      "@typescript-eslint/no-unsafe-return": "off",
       // The testing philosophy's bans, made real (feather-testing-study gap #3):
       // snapshots hide intent; toBeDefined()-style assertions assert nothing.
       "vitest/no-restricted-matchers": [
