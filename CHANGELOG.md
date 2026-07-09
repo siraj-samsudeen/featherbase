@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Sign-in: real authentication via Convex Auth (pinned 0.0.90), anonymous-first — one-click "Get started", sign-out in the shell; identity flows through the `requireUser` seam (`getAuthUserId`, so ownership doesn't fragment per session) and the schema adopts `authTables` (#22)
+- Auth-gated app shell: unauthenticated visitors get the sign-in state (never a hang), auth-pending shows loading, the nav and views render only once Convex confirms the identity (#22)
+- Query-error states: `DoctypeList`, `DoctypeGate`, `RecordGrid`, and `RecordDetail` show the error inline instead of a perpetual "Loading…"; failed deletes surface on the detail view (#13)
+- 14-row capability-4 test matrix including the sign-in tracer bullet (gate → design → record → grid → sign out) and real unauthenticated-client error rows (#22)
 - Auto-generated UI: metadata-driven grid, form, and detail views served by one route set (`/doctypes/...`) for every DocType — columns, controls, sorting, and typed filters all derived from the stored definition (#8)
 - DocType designer: create a DocType entirely in the UI (fields with type/required/filterable/options); server validation surfaced inline (#8)
 - Record grid on TanStack Table v8 (headless; chosen over the unmaintained Glide Data Grid and DOM-virtualized AG Grid after live-registry re-research): server-side filter/sort via the capability-2 repository query paths, previous rows kept on screen while refetching (#8)

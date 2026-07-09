@@ -35,9 +35,9 @@ Verified 2026-07-09 against the live npm registry, the installed package source
    all-optional fields, so existing empty user docs and `tasks.userId: v.id("users")` stay
    valid). No conflict with `convex/doctype/auth.ts` (different path).
 4. **`npx @convex-dev/auth` is deployment provisioning, not codegen.** It sets
-   `JWT_PRIVATE_KEY`/`JWKS`/`SITE_URL` env vars on the *configured deployment* and requires
+   `JWT_PRIVATE_KEY`/`JWKS`/`SITE_URL` env vars on the _configured deployment_ and requires
    interactive CLI credentials — neither exists in this environment. The code in this capability
-   is complete without it; the backend cannot *issue* tokens until it runs. → human step,
+   is complete without it; the backend cannot _issue_ tokens until it runs. → human step,
    § Deployment provisioning.
 5. **Convex Auth changes the subject format**: the JWT `subject` is `${userId}|${sessionId}`.
    `requireUser` returning `identity.subject` verbatim would fragment record ownership per
@@ -51,12 +51,12 @@ Verified 2026-07-09 against the live npm registry, the installed package source
    are real state toggles); the required `convexTestProviderPlugin()` has been in both vitest
    projects since capability 1. The raw `testClient` fixture allows a custom
    `withIdentity({ subject: "id|session" })` to pin the subject parsing. The in-memory backend
-   cannot *issue* real JWTs, so actual token issuance is verified in the browser after
+   cannot _issue_ real JWTs, so actual token issuance is verified in the browser after
    provisioning (tracer's manual half).
 7. **Query-error states (#13) become integration-testable, mostly.** An unauthenticated real
    client is the production failure this capability exists for — `doctypes.list`/`doctypes.get`
    rejections need no mocks. Two states stay mock-rows (rejecting query fns, same policy as the
-   four loading mocks): records/record failing *after* the definition resolved (only reachable
+   four loading mocks): records/record failing _after_ the definition resolved (only reachable
    through server states the UI can't produce, e.g. #12's stale sort). The existing
    `renderPending` fixture is reworked onto the auth-aware provider stack (a fake never-resolving
    client passed to `renderWithConvexQueryAuth`) — under the new shell gate the old bare
@@ -116,41 +116,41 @@ integration. E1/E2 use a **real unauthenticated client** — the actual producti
 
 #### A — auth shell (`src/routes/__root.tsx`)
 
-| #   | State                                    | Verify                                                                          |
-| --- | ---------------------------------------- | ------------------------------------------------------------------------------- |
-| A1  | shows sign-in state when unauthenticated | `/` with `authenticated: false` → "Get started"; no nav links                   |
-| A2  | signs in when get-started is clicked     | click "Get started" → nav + tasks view render                                   |
-| A3  | shows error when sign-in fails           | **mock** (`signInError`) → `role="alert"` with the message, button still there  |
-| A4  | signs out back to the sign-in state      | authenticated shell → click "Sign out" → sign-in state, nav gone                |
-| A5  | shows loading state while auth pends     | **mock** (`isLoading: true` useAuth) → "Loading…", neither sign-in nor nav      |
+| #   | State                                    | Verify                                                                         |
+| --- | ---------------------------------------- | ------------------------------------------------------------------------------ |
+| A1  | shows sign-in state when unauthenticated | `/` with `authenticated: false` → "Get started"; no nav links                  |
+| A2  | signs in when get-started is clicked     | click "Get started" → nav + tasks view render                                  |
+| A3  | shows error when sign-in fails           | **mock** (`signInError`) → `role="alert"` with the message, button still there |
+| A4  | signs out back to the sign-in state      | authenticated shell → click "Sign out" → sign-in state, nav gone               |
+| A5  | shows loading state while auth pends     | **mock** (`isLoading: true` useAuth) → "Loading…", neither sign-in nor nav     |
 
 #### B — identity seam (`convex/doctype/auth.ts`)
 
-| #   | State                                             | Verify                                                                                          |
-| --- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| #   | State                                             | Verify                                                                                            |
+| --- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | B1  | derives the owner from the user half of a subject | `withIdentity({ subject: "<userId>\|session123" })` → `records.create` → stored `owner` == userId |
 
 #### C — auth wiring (`convex/auth.ts`, `convex/http.ts`, `convex/auth.config.ts`)
 
 | #   | State                                          | Verify                                                                     |
-| --- | ---------------------------------------------- | --------------------------------------------------------------------------- |
+| --- | ---------------------------------------------- | -------------------------------------------------------------------------- |
 | C1  | serves the OpenID discovery document over HTTP | `t.fetch("/.well-known/openid-configuration")` → 200, JSON issuer present  |
 | C2  | declares the deployment as its own JWT issuer  | auth.config: one provider, `domain` == `CONVEX_SITE_URL`, appID `"convex"` |
 
 #### E — query errors (#13)
 
-| #   | State                                       | Verify                                                                                  |
-| --- | ------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| E1  | shows error when the doctype list fails     | real unauthenticated client, `/doctypes` → `role="alert"`, no perpetual "Loading…"      |
-| E2  | shows error when the definition fails       | real unauthenticated client, `/doctypes/book` → `role="alert"`                          |
-| E3  | shows error when the records query fails    | **mock** (definition resolves, records reject) → `role="alert"`                         |
-| E4  | shows error when the record query fails     | **mock** (definition resolves, get rejects) → `role="alert"`                            |
-| E5  | shows error when delete fails               | seed + open detail, delete the record backend-side, click Delete → `role="alert"`, stays |
+| #   | State                                    | Verify                                                                                   |
+| --- | ---------------------------------------- | ---------------------------------------------------------------------------------------- |
+| E1  | shows error when the doctype list fails  | real unauthenticated client, `/doctypes` → `role="alert"`, no perpetual "Loading…"       |
+| E2  | shows error when the definition fails    | real unauthenticated client, `/doctypes/book` → `role="alert"`                           |
+| E3  | shows error when the records query fails | **mock** (definition resolves, records reject) → `role="alert"`                          |
+| E4  | shows error when the record query fails  | **mock** (definition resolves, get rejects) → `role="alert"`                             |
+| E5  | shows error when delete fails            | seed + open detail, delete the record backend-side, click Delete → `role="alert"`, stays |
 
 #### T — tracer bullet
 
-| #   | State                                | Verify                                                                                                                          |
-| --- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| #   | State                                | Verify                                                                                                                            |
+| --- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
 | T1  | signs in and builds an app zero-code | start at `/` unauthenticated → "Get started" → design a DocType → create a record → row in grid → "Sign out" → sign-in state back |
 
 **14 rows. Row count == test count is the review invariant.** Capability-3 rows are untouched
@@ -216,7 +216,7 @@ delete → sign out.
 
 - **convex-test can't execute Convex Auth's function set** (auth.ts registers real
   actions/mutations): nothing in the matrix calls `api.auth.signIn` — fixtures toggle client
-  state; if merely *registering* the modules breaks the in-memory backend, exclude
+  state; if merely _registering_ the modules breaks the in-memory backend, exclude
   `convex/auth.ts`+`http.ts` from the test module glob and from coverage (logged deviation).
 - **`authTables` schema collision with existing `users` rows**: fields are all-optional, so
   dev/prod data validates; if prod deploy rejects, the fallback is a widen-migrate pass — but
@@ -226,4 +226,11 @@ delete → sign out.
 
 ### Deviations discovered during implementation
 
-_(logged as they happen)_
+1. **The coverage-question mark resolved cleanly** — no exclusions needed: convex-test's
+   `t.fetch` serves the discovery document (C1) with `CONVEX_SITE_URL` stubbed, and merely
+   registering Convex Auth's function set doesn't disturb the in-memory backend (the § Rollback
+   risk didn't materialize).
+2. **Negative coverage checks need the dead statement on its own line** — v8 line coverage
+   counts a line as covered when _any_ statement on it executes, so an unreachable `return`
+   sharing a line with an executed `if` doesn't trip the floor. First attempt at the G5
+   negative check passed spuriously; isolated on its own line it failed as intended.
