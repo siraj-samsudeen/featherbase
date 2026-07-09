@@ -34,7 +34,7 @@ Every capability PR gets an agent review at two possible levels:
    matrix missed.
 2. **Drift audit** — at user-facing milestones (first shipped UI, first deploy, ~every 3
    capabilities), or on request. Scope: the whole codebase against the four VISION.md
-   invariants (verify each is *enforced*, not just claimed — property tests, seams held by
+   invariants (verify each is _enforced_, not just claimed — property tests, seams held by
    construction); every ADR promise classified as delivered / deferred-and-logged / **silently
    dropped** (the last is the finding); leave-out ledgers checked for completeness; and forward
    flexibility against the next two roadmap capabilities (what will they press on — data
