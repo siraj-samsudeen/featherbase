@@ -3,6 +3,8 @@ dist/
 coverage/
 package-lock.json
 apps/web/convex/_generated/
+apps/web/.agents/
+apps/web/.claude/
 apps/web/convex/doctypes.gen.ts
 apps/web/convex/hooks.gen.ts
 apps/web/doctypes/
