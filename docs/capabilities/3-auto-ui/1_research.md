@@ -18,15 +18,15 @@ generated form, see it in the generated grid, open/edit it in the detail view, d
 
 Verified against the live npm registry on 2026-07-09:
 
-| Candidate                     | Latest                        | Published  | Verdict                                                                                                                                              |
-| ----------------------------- | ----------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@glideapps/glide-data-grid`  | 6.0.3                         | 2024-02-03 | **Dead** — ~2.5 years without a release, confirming the revalidation finding. Canvas-rendered, so it was also untestable in jsdom.                   |
-| `glide-data-grid-fork`        | 6.0.4-alpha9                  | 2026-01-03 | Only visible fork: alpha-tagged, single-maintainer, no community. Not a foundation.                                                                  |
-| `ag-grid-community` / `-react`| 36.0.0                        | 2026-06-24 | Alive and MIT at the core, but heavy (hundreds of kB), DOM-virtualized (rows outside the viewport don't exist in jsdom — breaks integration testing), config-driven theming, enterprise upsell surface. |
-| `react-data-grid`             | 7.0.0-beta.59                 | 2025-12-04 | Perpetual beta (7.0.0-beta since 2021).                                                                                                              |
-| `@inovua/reactdatagrid-community` | 5.10.2                    | 2023-07-31 | Dead.                                                                                                                                                |
-| `@tanstack/react-table`       | 8.21.3 (9.0.0-beta.36 active) | 2025-04-14 | **Chosen.** v8 stable, MIT, headless — renders real DOM we control, so feather-testing-convex jsdom integration tests work unmodified. v9 beta is publishing near-daily (beta.36 on 2026-07-07): don't chase the beta, same policy as Vitest 5. |
-| `@tanstack/react-virtual`     | 3.14.5                        | 2026-06-30 | Alive; **deferred** — see below.                                                                                                                     |
+| Candidate                         | Latest                        | Published  | Verdict                                                                                                                                                                                                                                         |
+| --------------------------------- | ----------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@glideapps/glide-data-grid`      | 6.0.3                         | 2024-02-03 | **Dead** — ~2.5 years without a release, confirming the revalidation finding. Canvas-rendered, so it was also untestable in jsdom.                                                                                                              |
+| `glide-data-grid-fork`            | 6.0.4-alpha9                  | 2026-01-03 | Only visible fork: alpha-tagged, single-maintainer, no community. Not a foundation.                                                                                                                                                             |
+| `ag-grid-community` / `-react`    | 36.0.0                        | 2026-06-24 | Alive and MIT at the core, but heavy (hundreds of kB), DOM-virtualized (rows outside the viewport don't exist in jsdom — breaks integration testing), config-driven theming, enterprise upsell surface.                                         |
+| `react-data-grid`                 | 7.0.0-beta.59                 | 2025-12-04 | Perpetual beta (7.0.0-beta since 2021).                                                                                                                                                                                                         |
+| `@inovua/reactdatagrid-community` | 5.10.2                        | 2023-07-31 | Dead.                                                                                                                                                                                                                                           |
+| `@tanstack/react-table`           | 8.21.3 (9.0.0-beta.36 active) | 2025-04-14 | **Chosen.** v8 stable, MIT, headless — renders real DOM we control, so feather-testing-convex jsdom integration tests work unmodified. v9 beta is publishing near-daily (beta.36 on 2026-07-07): don't chase the beta, same policy as Vitest 5. |
+| `@tanstack/react-virtual`         | 3.14.5                        | 2026-06-30 | Alive; **deferred** — see below.                                                                                                                                                                                                                |
 
 **Verdict: TanStack Table v8, headless, no virtualization yet.**
 
@@ -132,9 +132,9 @@ repository seam in chunked `testClient.run` transactions, same technique as F11.
 
 ## Version snapshot (registry, 2026-07-09)
 
-| Package                | Pin     | Use                                                     |
-| ---------------------- | ------- | ------------------------------------------------------- |
-| `@tanstack/react-table`| ^8.21.3 | headless grid: column model, sorting state, flexRender |
+| Package                 | Pin     | Use                                                    |
+| ----------------------- | ------- | ------------------------------------------------------ |
+| `@tanstack/react-table` | ^8.21.3 | headless grid: column model, sorting state, flexRender |
 
 Everything else is already pinned by capabilities 1–2.
 

@@ -86,4 +86,18 @@ checks — then push and confirm CI green.
 
 ## Deviations discovered during implementation
 
-(recorded as they happen)
+1. **TanStack Table sorts numeric columns descending-first by default** (`sortDescFirst` is
+   inferred from the first row's value type). Set `sortDescFirst: false` on the table so the
+   first header click sorts ascending as G4 specifies.
+2. **Filter/sort changes unmounted the grid mid-interaction**: a changed filter/sort changes the
+   query key, `records` drops to `undefined`, and the whole grid (filter controls included)
+   swapped to the loading state on every keystroke — real UX jank, caught by G8's typed filter.
+   Added `placeholderData: keepPreviousData` to the records query: prior rows stay on screen
+   while the refetch runs. G14 still pins the initial pending state (no previous data then).
+3. **N1 widened during the coverage gate**: no test ever typed into the designer's field-label
+   input (the thing that drives grid headers) — the floor flagged the untouched handler. N1 now
+   creates a labelled field; spec updated first.
+4. **`src/test.fixtures.tsx`, not `.ts`** — the router-render helpers are JSX.
+5. **Accepted lint warning** (not an error): React Compiler skips memoizing `RecordGrid` because
+   `useReactTable()` returns unmemoizable functions (`react-hooks/incompatible-library`) — a
+   documented TanStack Table v8 characteristic, revisit on v9.

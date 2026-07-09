@@ -15,7 +15,7 @@
    definition guard: loading + unknown-DocType states, render prop), `RecordGrid` (TanStack
    Table v8, `manualSorting`), `RecordForm` (shared by create and edit), `RecordDetail`.
 3. **Dependency**: `@tanstack/react-table ^8.21.3` (apps/web).
-4. **Test suite** implementing the matrix (38 rows) + shared UI fixtures (`src/test.fixtures.ts`:
+4. **Test suite** implementing the matrix (38 rows) + shared UI fixtures (`src/test.fixtures.tsx`:
    `book` definition, router-render helper, chunked seeding — coverage-excluded like
    `convex/doctype/test.helpers.ts`).
 5. CHANGELOG entry; README status; issue #8 checkboxes ticked at close-out.
@@ -65,75 +65,75 @@ via `doctypes.sync` — its validate hook rejects `amount ≤ 0`, F5).
 
 ### S — app shell
 
-| #   | State                              | Verify                                            |
-| --- | ---------------------------------- | ------------------------------------------------- |
+| #   | State                               | Verify                                           |
+| --- | ----------------------------------- | ------------------------------------------------ |
 | S1  | links from home to the DocType list | render `/` → click "DocTypes" nav → list renders |
 
 ### L — DocType list
 
-| #   | State                                    | Verify                                             |
-| --- | ---------------------------------------- | -------------------------------------------------- |
-| L1  | shows empty state when no doctypes       | `/doctypes` → "No DocTypes yet"                    |
-| L2  | lists doctypes with their labels         | create book + sync invoice → "Book" and "Invoice"  |
-| L3  | navigates to a doctype grid when clicked | click "Book" → book grid renders                   |
-| L4  | shows loading state while doctypes pend  | **mock** (never-resolving queries)                 |
+| #   | State                                    | Verify                                            |
+| --- | ---------------------------------------- | ------------------------------------------------- |
+| L1  | shows empty state when no doctypes       | `/doctypes` → "No DocTypes yet"                   |
+| L2  | lists doctypes with their labels         | create book + sync invoice → "Book" and "Invoice" |
+| L3  | navigates to a doctype grid when clicked | click "Book" → book grid renders                  |
+| L4  | shows loading state while doctypes pend  | **mock** (never-resolving queries)                |
 
 ### N — DocType designer
 
-| #   | State                                        | Verify                                                                                  |
-| --- | -------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| N1  | creates a doctype and opens its empty grid   | name+label+one field, submit → grid empty state; backend `doctypes.get` returns the definition |
-| N2  | adds and removes field rows                  | add two rows, remove one → one field row remains                                        |
-| N3  | shows options input only for select fields   | type→select shows options input; back to text hides it                                  |
-| N4  | submits required and filterable flags        | check both → stored field has `required: true`, `filterable: true`                      |
-| N5  | omits empty optional inputs                  | no label, flags unchecked → stored definition/field has no `label`/`required`/`filterable` keys |
-| N6  | shows server error for invalid definition    | create book first, submit designer with name `book` → "already exists" shown, still on designer |
+| #   | State                                      | Verify                                                                                                                                |
+| --- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| N1  | creates a doctype and opens its empty grid | name+label, labelled text field + select field with options, submit → grid empty state; backend `doctypes.get` returns the definition |
+| N2  | adds and removes field rows                | add two rows, remove one → one field row remains                                                                                      |
+| N3  | shows options input only for select fields | type→select shows options input; back to text hides it                                                                                |
+| N4  | submits required and filterable flags      | check both → stored field has `required: true`, `filterable: true`                                                                    |
+| N5  | omits empty optional inputs                | no label, flags unchecked → stored definition/field has no `label`/`required`/`filterable` keys                                       |
+| N6  | shows server error for invalid definition  | create book first, submit designer with name `book` → "already exists" shown, still on designer                                       |
 
 ### G — grid
 
-| #   | State                                        | Verify                                                                              |
-| --- | -------------------------------------------- | ------------------------------------------------------------------------------------ |
-| G1  | shows empty state when no records            | book, no records → "No records yet"                                                 |
-| G2  | renders a column per field and a row per record | headers Title/Pages/Signed/Genre/remarks; two seeded records → two data rows      |
-| G3  | renders booleans as Yes/No and missing values blank | `signed: true` → "Yes"; record without `pages` → empty cell                   |
-| G4  | sorts ascending when a sortable header is clicked | click Pages → cell order ascending                                             |
-| G5  | toggles descending on second click           | click Pages twice → descending                                                      |
-| G6  | offers sorting only on filterable fields     | `remarks` header is not a button; Pages header is                                   |
-| G7  | filters by select field option               | filter genre = fiction → only matching rows                                         |
-| G8  | filters by number field value                | field Pages → number input; value 100 → only matching rows                          |
-| G9  | filters by boolean field value               | field Signed → Yes/No select; Yes → only signed rows                                |
-| G10 | clears the filter to show all records        | apply filter, click Clear → all rows back                                           |
-| G11 | navigates to detail when a row is clicked    | click row → detail view for that record                                             |
-| G12 | shows message for unknown doctype            | `/doctypes/ghost` → unknown-DocType message                                         |
-| G13 | shows loading state while the definition pends | **mock** (never-resolving)                                                        |
-| G14 | shows loading state while records pend       | **mock** (definition resolves, records never)                                       |
+| #   | State                                                           | Verify                                                                                           |
+| --- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| G1  | shows empty state when no records                               | book, no records → "No records yet"                                                              |
+| G2  | renders a column per field and a row per record                 | headers Title/Pages/Signed/Genre/remarks; two seeded records → two data rows                     |
+| G3  | renders booleans as Yes/No and missing values blank             | `signed: true` → "Yes"; record without `pages` → empty cell                                      |
+| G4  | sorts ascending when a sortable header is clicked               | click Pages → cell order ascending                                                               |
+| G5  | toggles descending on second click                              | click Pages twice → descending                                                                   |
+| G6  | offers sorting only on filterable fields                        | `remarks` header is not a button; Pages header is                                                |
+| G7  | filters by select field option                                  | filter genre = fiction → only matching rows                                                      |
+| G8  | filters by number field value                                   | field Pages → number input; value 100 → only matching rows                                       |
+| G9  | filters by boolean field value                                  | field Signed → Yes/No select; Yes → only signed rows                                             |
+| G10 | clears the filter to show all records                           | apply filter, click Clear → all rows back                                                        |
+| G11 | navigates to detail when a row is clicked                       | click row → detail view for that record                                                          |
+| G12 | shows message for unknown doctype                               | `/doctypes/ghost` → unknown-DocType message                                                      |
+| G13 | shows loading state while the definition pends                  | **mock** (never-resolving)                                                                       |
+| G14 | shows loading state while records pend                          | **mock** (definition resolves, records never)                                                    |
 | G15 | renders 200 records filtered and sorted ← realistic-count guard | 200 seeded via chunked `run`; genre filter + pages desc → correct row count and first/last cells |
 
 ### F — record form
 
-| #   | State                                       | Verify                                                                          |
-| --- | ------------------------------------------- | -------------------------------------------------------------------------------- |
-| F1  | renders an input matching each field type   | text input, number input, checkbox, select with fiction/science options         |
-| F2  | marks required fields as required           | Title input `required`; Pages not                                               |
-| F3  | creates a record and returns to the grid    | from grid click New, fill title+pages+signed+genre, save → grid shows the row   |
-| F4  | omits unset optional fields                 | save with only title → backend record has no `pages`/`genre`/`signed`/`remarks` keys |
-| F5  | shows server error and stays on the form    | invoice, `amount: -5` → hook message shown, form still rendered                 |
+| #   | State                                     | Verify                                                                               |
+| --- | ----------------------------------------- | ------------------------------------------------------------------------------------ |
+| F1  | renders an input matching each field type | text input, number input, checkbox, select with fiction/science options              |
+| F2  | marks required fields as required         | Title input `required`; Pages not                                                    |
+| F3  | creates a record and returns to the grid  | from grid click New, fill title+pages+signed+genre, save → grid shows the row        |
+| F4  | omits unset optional fields               | save with only title → backend record has no `pages`/`genre`/`signed`/`remarks` keys |
+| F5  | shows server error and stays on the form  | invoice, `amount: -5` → hook message shown, form still rendered                      |
 
 ### D — detail
 
-| #   | State                                     | Verify                                                              |
-| --- | ----------------------------------------- | -------------------------------------------------------------------- |
-| D1  | shows record values prefilled for editing | inputs contain the stored values                                    |
-| D2  | shows system fields                       | owner, created, modified rendered                                   |
-| D3  | saves edits and reflects them in the grid | change pages, save → grid shows new value                           |
-| D4  | deletes the record and returns to the grid | Delete → grid empty state; backend `records.get` → null            |
-| D5  | shows message for unknown record          | create+delete a record, visit its id → "Record not found"           |
-| D6  | shows loading state while the record pends | **mock** (definition resolves, record never)                       |
+| #   | State                                      | Verify                                                    |
+| --- | ------------------------------------------ | --------------------------------------------------------- |
+| D1  | shows record values prefilled for editing  | inputs contain the stored values                          |
+| D2  | shows system fields                        | owner, created, modified rendered                         |
+| D3  | saves edits and reflects them in the grid  | change pages, save → grid shows new value                 |
+| D4  | deletes the record and returns to the grid | Delete → grid empty state; backend `records.get` → null   |
+| D5  | shows message for unknown record           | create+delete a record, visit its id → "Record not found" |
+| D6  | shows loading state while the record pends | **mock** (definition resolves, record never)              |
 
 ### T — tracer bullet
 
-| #   | State                              | Verify                                                                                                                                                                     |
-| --- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #   | State                               | Verify                                                                                                                                                                                                                               |
+| --- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | T1  | builds a working app with zero code | UI only, starting at `/`: nav → New DocType → design `book` (title text req+filterable, pages number filterable) → empty grid → New → fill → save → row in grid → click row → edit pages → save → grid updated → Delete → empty grid |
 
 **38 rows. Row count == test count is the review invariant.**
