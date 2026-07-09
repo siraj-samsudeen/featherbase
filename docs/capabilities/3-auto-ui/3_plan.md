@@ -101,3 +101,19 @@ checks — then push and confirm CI green.
 5. **Accepted lint warning** (not an error): React Compiler skips memoizing `RecordGrid` because
    `useReactTable()` returns unmemoizable functions (`react-hooks/incompatible-library`) — a
    documented TanStack Table v8 characteristic, revisit on v9.
+
+## Post-review fixes (PR #9 review, 2026-07-09)
+
+6. **Sort was un-clearable and hid unset-field records with no way back** (issue #11):
+   `enableSortingRemoval: false` limited the header cycle to asc ⇄ desc, while the sidecar sort
+   path returns only records with the field set — sorting silently dropped rows, permanently.
+   Removed the flag (cycle is now asc → desc → cleared) and added matrix row G16 pinning both
+   the hidden-while-sorted behavior and the third-click recovery; spec updated first (38 → 39
+   rows). Root cause of the gap: every original sort test seeded all rows with the sorted field.
+7. **Grid/detail state survived param-only navigation** (issue #12): `/doctypes/$doctype` is one
+   route, so book → invoice navigation preserved `RecordGrid`'s sorting/filter state (a stale
+   sort field makes `records.list` reject and the grid hang on its loading state); same
+   mechanism for `RecordDetail`'s form draft across record ids. Keyed `RecordGrid` by
+   `definition.name` and `RecordDetail` by `id` in the route files. No matrix row: the state
+   reset isn't reachable through any UI path yet (the only grid-to-grid route goes through
+   `/doctypes`, which unmounts) — defensive keying for the first future direct link.

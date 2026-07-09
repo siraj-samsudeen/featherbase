@@ -247,3 +247,25 @@ test("renders 200 records filtered and sorted", async ({
   expect(titles).toHaveLength(100);
   expect(titles[99]).toBe("b000");
 });
+
+test("clears sorting on third click, restoring unset-field records", async ({
+  client,
+}) => {
+  const user = userEvent.setup();
+  await seedBooks(client, [{ title: "Dune", pages: 412 }, { title: "Micro" }]);
+  renderApp(client, "/doctypes/book");
+  await screen.findByText("Micro");
+  expect(dataRows()).toHaveLength(2);
+
+  // Active sort hides the record with no `pages` (no sidecar row — capability
+  // 2 semantics); the third click clears the sort and restores it.
+  await user.click(screen.getByRole("button", { name: "Pages" }));
+  await waitFor(() =>
+    expect(screen.queryByText("Micro")).not.toBeInTheDocument(),
+  );
+  await user.click(screen.getByRole("button", { name: "Pages" }));
+  await user.click(screen.getByRole("button", { name: "Pages" }));
+
+  expect(await screen.findByText("Micro")).toBeInTheDocument();
+  expect(dataRows()).toHaveLength(2);
+});

@@ -130,7 +130,8 @@ export function RecordGrid({ definition }: { definition: DocTypeDefinition }) {
     state: { sorting },
     onSortingChange: setSorting,
     manualSorting: true,
-    enableSortingRemoval: false,
+    // Sort removal stays enabled: sorting hides records with the field unset
+    // (no sidecar row), so the cycle's third click is the recovery path (G16).
     // Numeric columns would otherwise sort descending on first click.
     sortDescFirst: false,
     getCoreRowModel: getCoreRowModel(),

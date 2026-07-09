@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DocType designer: create a DocType entirely in the UI (fields with type/required/filterable/options); server validation surfaced inline (#8)
 - Record grid on TanStack Table v8 (headless; chosen over the unmaintained Glide Data Grid and DOM-virtualized AG Grid after live-registry re-research): server-side filter/sort via the capability-2 repository query paths, previous rows kept on screen while refetching (#8)
 - Metadata-driven record forms (create + edit) that omit unset fields, preserving the engine's unset ⇒ no-sidecar-row semantics; detail view with system fields and delete (#8)
-- 38-row capability-3 test matrix including the zero-code tracer bullet (design → create → grid → edit → delete, through the UI alone) and a 200-row rendered-grid guard (#8)
+- 39-row capability-3 test matrix including the zero-code tracer bullet (design → create → grid → edit → delete, through the UI alone) and a 200-row rendered-grid guard (#8)
 - DocType engine: portable JSON definitions (canonical serialization, validated on intake) in a `doctypes` metadata table with `source: package | site` (#6)
 - Per-DocType record tables (`dt_<name>`, Frappe-style system fields) plus the fixed `fieldIndex` sidecar serving indexed filter/sort on user-defined fields (#6)
 - Repository layer — the single record-access seam: CRUD with declarative validation, lifecycle-hook invocation for package DocTypes, sidecar maintenance, native-vs-sidecar query-path selection (#6)

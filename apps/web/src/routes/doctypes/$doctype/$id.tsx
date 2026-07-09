@@ -10,7 +10,11 @@ function DetailPage() {
   const { doctype, id } = Route.useParams();
   return (
     <DoctypeGate name={doctype}>
-      {(definition) => <RecordDetail definition={definition} id={id} />}
+      {/* Keyed so the form draft can't leak across param-only navigation
+          between record ids (RecordForm seeds its draft once on mount). */}
+      {(definition) => (
+        <RecordDetail key={id} definition={definition} id={id} />
+      )}
     </DoctypeGate>
   );
 }

@@ -15,7 +15,7 @@
    definition guard: loading + unknown-DocType states, render prop), `RecordGrid` (TanStack
    Table v8, `manualSorting`), `RecordForm` (shared by create and edit), `RecordDetail`.
 3. **Dependency**: `@tanstack/react-table ^8.21.3` (apps/web).
-4. **Test suite** implementing the matrix (38 rows) + shared UI fixtures (`src/test.fixtures.tsx`:
+4. **Test suite** implementing the matrix (39 rows) + shared UI fixtures (`src/test.fixtures.tsx`:
    `book` definition, router-render helper, chunked seeding — coverage-excluded like
    `convex/doctype/test.helpers.ts`).
 5. CHANGELOG entry; README status; issue #8 checkboxes ticked at close-out.
@@ -35,8 +35,11 @@ labels, unchecked flags, and non-select options, then `doctypes.create` → navi
 
 **Grid** — inside `DoctypeGate`. Columns from `definition.fields` (header = label ?? name), rows
 from `records.list`. Cell rendering: `undefined` → empty, boolean → Yes/No, else string. Sorting:
-filterable columns render header buttons toggling asc → desc through TanStack sorting state →
-`records.list` `sort` arg; non-filterable headers are plain text. Filter bar: filterable-field
+filterable columns render header buttons cycling asc → desc → cleared through TanStack sorting
+state → `records.list` `sort` arg; non-filterable headers are plain text. While a sort is active,
+records with the sorted field unset are hidden (capability 2 semantics: no sidecar row ⇒ absent
+from sort results); the cycle's third click clears the sort and restores them — that recovery
+path is why sort removal stays enabled. Filter bar: filterable-field
 select + type-adapted value control (number input → `Number(...)`, Yes/No select → boolean,
 definition options for select fields, text input otherwise); empty value = no filter; "Clear"
 resets. Row click → detail. "New" → record form. Empty state "No records yet". Records pending
@@ -108,6 +111,7 @@ via `doctypes.sync` — its validate hook rejects `amount ≤ 0`, F5).
 | G13 | shows loading state while the definition pends                  | **mock** (never-resolving)                                                                       |
 | G14 | shows loading state while records pend                          | **mock** (definition resolves, records never)                                                    |
 | G15 | renders 200 records filtered and sorted ← realistic-count guard | 200 seeded via chunked `run`; genre filter + pages desc → correct row count and first/last cells |
+| G16 | clears sorting on third click, restoring unset-field records    | record without `pages` vanishes while Pages sort is active; third click clears sort → row back   |
 
 ### F — record form
 
@@ -136,7 +140,9 @@ via `doctypes.sync` — its validate hook rejects `amount ≤ 0`, F5).
 | --- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | T1  | builds a working app with zero code | UI only, starting at `/`: nav → New DocType → design `book` (title text req+filterable, pages number filterable) → empty grid → New → fill → save → row in grid → click row → edit pages → save → grid updated → Delete → empty grid |
 
-**38 rows. Row count == test count is the review invariant.**
+**39 rows. Row count == test count is the review invariant. (G16 added from the PR #9 review,
+issue #11 — the original suite never seeded a record with the sorted field unset, so the
+hidden-while-sorted behavior and its recovery path were unobserved.)**
 
 ## Coverage
 
