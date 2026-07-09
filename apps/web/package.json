@@ -14,6 +14,8 @@
     "gen:doctypes": "tsx scripts/codegen-doctypes.ts"
   },
   "dependencies": {
+    "@auth/core": "0.37.4",
+    "@convex-dev/auth": "0.0.90",
     "@convex-dev/react-query": "^0.1.0",
     "@tanstack/react-query": "^5.90.0",
     "@tanstack/react-router": "^1.170.17",
@@ -23,7 +25,6 @@
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
-    "@convex-dev/auth": "^0.0.90",
     "@edge-runtime/vm": "^5.0.0",
     "@tanstack/router-plugin": "^1.168.19",
     "@testing-library/jest-dom": "^6.9.1",
