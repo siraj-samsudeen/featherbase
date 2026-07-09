@@ -10,33 +10,102 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DoctypesIndexRouteImport } from './routes/doctypes/index'
+import { Route as DoctypesNewRouteImport } from './routes/doctypes/new'
+import { Route as DoctypesDoctypeIndexRouteImport } from './routes/doctypes/$doctype/index'
+import { Route as DoctypesDoctypeNewRouteImport } from './routes/doctypes/$doctype/new'
+import { Route as DoctypesDoctypeIdRouteImport } from './routes/doctypes/$doctype/$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DoctypesIndexRoute = DoctypesIndexRouteImport.update({
+  id: '/doctypes/',
+  path: '/doctypes/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DoctypesNewRoute = DoctypesNewRouteImport.update({
+  id: '/doctypes/new',
+  path: '/doctypes/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DoctypesDoctypeIndexRoute = DoctypesDoctypeIndexRouteImport.update({
+  id: '/doctypes/$doctype/',
+  path: '/doctypes/$doctype/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DoctypesDoctypeNewRoute = DoctypesDoctypeNewRouteImport.update({
+  id: '/doctypes/$doctype/new',
+  path: '/doctypes/$doctype/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DoctypesDoctypeIdRoute = DoctypesDoctypeIdRouteImport.update({
+  id: '/doctypes/$doctype/$id',
+  path: '/doctypes/$doctype/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/doctypes/new': typeof DoctypesNewRoute
+  '/doctypes/': typeof DoctypesIndexRoute
+  '/doctypes/$doctype/$id': typeof DoctypesDoctypeIdRoute
+  '/doctypes/$doctype/new': typeof DoctypesDoctypeNewRoute
+  '/doctypes/$doctype/': typeof DoctypesDoctypeIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/doctypes/new': typeof DoctypesNewRoute
+  '/doctypes': typeof DoctypesIndexRoute
+  '/doctypes/$doctype/$id': typeof DoctypesDoctypeIdRoute
+  '/doctypes/$doctype/new': typeof DoctypesDoctypeNewRoute
+  '/doctypes/$doctype': typeof DoctypesDoctypeIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/doctypes/new': typeof DoctypesNewRoute
+  '/doctypes/': typeof DoctypesIndexRoute
+  '/doctypes/$doctype/$id': typeof DoctypesDoctypeIdRoute
+  '/doctypes/$doctype/new': typeof DoctypesDoctypeNewRoute
+  '/doctypes/$doctype/': typeof DoctypesDoctypeIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/doctypes/new'
+    | '/doctypes/'
+    | '/doctypes/$doctype/$id'
+    | '/doctypes/$doctype/new'
+    | '/doctypes/$doctype/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/doctypes/new'
+    | '/doctypes'
+    | '/doctypes/$doctype/$id'
+    | '/doctypes/$doctype/new'
+    | '/doctypes/$doctype'
+  id:
+    | '__root__'
+    | '/'
+    | '/doctypes/new'
+    | '/doctypes/'
+    | '/doctypes/$doctype/$id'
+    | '/doctypes/$doctype/new'
+    | '/doctypes/$doctype/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DoctypesNewRoute: typeof DoctypesNewRoute
+  DoctypesIndexRoute: typeof DoctypesIndexRoute
+  DoctypesDoctypeIdRoute: typeof DoctypesDoctypeIdRoute
+  DoctypesDoctypeNewRoute: typeof DoctypesDoctypeNewRoute
+  DoctypesDoctypeIndexRoute: typeof DoctypesDoctypeIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +117,51 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/doctypes/': {
+      id: '/doctypes/'
+      path: '/doctypes'
+      fullPath: '/doctypes/'
+      preLoaderRoute: typeof DoctypesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/doctypes/new': {
+      id: '/doctypes/new'
+      path: '/doctypes/new'
+      fullPath: '/doctypes/new'
+      preLoaderRoute: typeof DoctypesNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/doctypes/$doctype/': {
+      id: '/doctypes/$doctype/'
+      path: '/doctypes/$doctype'
+      fullPath: '/doctypes/$doctype/'
+      preLoaderRoute: typeof DoctypesDoctypeIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/doctypes/$doctype/new': {
+      id: '/doctypes/$doctype/new'
+      path: '/doctypes/$doctype/new'
+      fullPath: '/doctypes/$doctype/new'
+      preLoaderRoute: typeof DoctypesDoctypeNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/doctypes/$doctype/$id': {
+      id: '/doctypes/$doctype/$id'
+      path: '/doctypes/$doctype/$id'
+      fullPath: '/doctypes/$doctype/$id'
+      preLoaderRoute: typeof DoctypesDoctypeIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DoctypesNewRoute: DoctypesNewRoute,
+  DoctypesIndexRoute: DoctypesIndexRoute,
+  DoctypesDoctypeIdRoute: DoctypesDoctypeIdRoute,
+  DoctypesDoctypeNewRoute: DoctypesDoctypeNewRoute,
+  DoctypesDoctypeIndexRoute: DoctypesDoctypeIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

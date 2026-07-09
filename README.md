@@ -2,7 +2,7 @@
 
 A free and open-source, metadata-driven app platform in TypeScript — Frappe's core ideas re-imagined on a modern stack (Convex + React + Vite), fused with Glide-style visual workflows and built for an AI-agent-first authoring loop with 100% automated testing.
 
-**Status:** capability 2 (DocType engine) — DocTypes as portable JSON definitions, per-DocType record tables with a fieldIndex sidecar for filter/sort on user-defined fields, one repository layer, package-mode codegen, and the promotion/materialization ladder (zero data movement, property-tested). Research and architecture decisions live in [docs/](docs/).
+**Status:** capability 3 (auto-generated UI) — create a DocType in the UI and get a working grid, form, and detail view, all rendered from the stored definition (TanStack Table v8 grid, server-side filter/sort through the repository layer). On capability 2's DocType engine: portable JSON definitions, per-DocType record tables with a fieldIndex sidecar, one repository layer, package-mode codegen, and the promotion/materialization ladder. Research and architecture decisions live in [docs/](docs/).
 
 ## Development
 

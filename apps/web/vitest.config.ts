@@ -15,6 +15,7 @@ export default defineConfig({
         "src/routeTree.gen.ts",
         "src/main.tsx",
         "src/test-setup.ts",
+        "src/test.fixtures.tsx",
         "**/*.test.*",
         "**/*.d.ts",
       ],
