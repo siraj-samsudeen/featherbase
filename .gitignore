@@ -6,3 +6,10 @@ coverage/
 !.env.example
 *.local
 .DS_Store
+
+# Machine-local symlinks into the ~/.claude/feather-flow package (see .claude/skills README note)
+.claude/skills/feather-brainstorm
+.claude/skills/feather-spec
+.claude/skills/feather-execute-task
+.claude/skills/feather-flow
+.claude/skills/matt-pocock-flow
