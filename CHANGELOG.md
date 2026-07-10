@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Playwright E2E suite (`npm run test:e2e`): 16 real-browser journeys — real anonymous sign-in with real JWTs, tasks demo, designer, grid sort/filter, record create/edit/delete, and the full zero-code tracer — against an anonymous local Convex deployment that the suite boots and auth-provisions itself (`docs/e2e-testing.md`) (#22)
 - Sign-in: real authentication via Convex Auth (pinned 0.0.90), anonymous-first — one-click "Get started", sign-out in the shell; identity flows through the `requireUser` seam (`getAuthUserId`, so ownership doesn't fragment per session) and the schema adopts `authTables` (#22)
 - Auth-gated app shell: unauthenticated visitors get the sign-in state (never a hang), auth-pending shows loading, the nav and views render only once Convex confirms the identity (#22)
 - Query-error states: `DoctypeList`, `DoctypeGate`, `RecordGrid`, and `RecordDetail` show the error inline instead of a perpetual "Loading…"; failed deletes surface on the detail view (#13)

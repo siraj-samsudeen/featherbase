@@ -212,6 +212,10 @@ Set prod `SITE_URL` to the Railway URL (https://web-production-dea3d.up.railway.
 browser tracer: open the Railway URL → Get started → design a DocType → record → grid → edit →
 delete → sign out.
 
+Non-interactive alternative (added with the E2E suite): `node scripts/provision-auth-env.mjs`
+generates the same key material via `npx convex env set` against whatever deployment the
+environment points at — no login prompt. Use `E2E_SITE_URL` to override the `SITE_URL` value.
+
 ### Rollback / risk notes
 
 - **convex-test can't execute Convex Auth's function set** (auth.ts registers real
@@ -234,3 +238,8 @@ delete → sign out.
    counts a line as covered when _any_ statement on it executes, so an unreachable `return`
    sharing a line with an executed `if` doesn't trip the floor. First attempt at the G5
    negative check passed spuriously; isolated on its own line it failed as intended.
+3. **The tracer's "manual half" got automated** (owner request, same session): the Playwright
+   suite ([docs/e2e-testing.md](../../e2e-testing.md)) runs the sign-in → zero-code loop against
+   a real local Convex deployment with real JWTs — research §6's "token issuance is verified in
+   the browser" now happens in `npm run test:e2e`, not by hand. The deployed-app walkthrough
+   after provisioning remains the release check.

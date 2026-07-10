@@ -24,6 +24,9 @@ Issue #N → docs/capabilities/N-name/ → 1_research.md → 2_spec.md → 3_pla
 npm install            # workspace install (root)
 npm test               # vitest run (apps/web, both projects)
 npm run test:coverage  # with 100%-line threshold enforced
+npm run test:e2e       # Playwright journeys against a real local stack (anonymous
+                       # local Convex deployment + vite, auth keys auto-provisioned);
+                       # matrix + sandbox notes in docs/e2e-testing.md
 npm run typecheck      # tsc --noEmit
 npm run lint           # eslint (flat config, root)
 npm run format:check   # prettier

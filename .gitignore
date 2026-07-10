@@ -6,3 +6,6 @@ coverage/
 !.env.example
 *.local
 .DS_Store
+.convex/
+test-results/
+playwright-report/
