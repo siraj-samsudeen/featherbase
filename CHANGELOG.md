@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Pre-PR preflight gate (`npm run preflight`): the full CI battery plus the Playwright E2E suite, enforced by a project-shared Claude Code hook that blocks PR creation until preflight is green on the exact working tree (`.claude/settings.json`, `scripts/preflight.sh`, `scripts/check-preflight.sh`) (#22)
 - Playwright E2E suite (`npm run test:e2e`): 16 real-browser journeys — real anonymous sign-in with real JWTs, tasks demo, designer, grid sort/filter, record create/edit/delete, and the full zero-code tracer — against an anonymous local Convex deployment that the suite boots and auth-provisions itself (`docs/e2e-testing.md`) (#22)
 - Sign-in: real authentication via Convex Auth (pinned 0.0.90), anonymous-first — one-click "Get started", sign-out in the shell; identity flows through the `requireUser` seam (`getAuthUserId`, so ownership doesn't fragment per session) and the schema adopts `authTables` (#22)
 - Auth-gated app shell: unauthenticated visitors get the sign-in state (never a hang), auth-pending shows loading, the nav and views render only once Convex confirms the identity (#22)

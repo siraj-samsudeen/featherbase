@@ -95,8 +95,23 @@ the vitest matrices — mock-only or unreachable against a healthy real backend)
 UI can't reach (promotion ladder, hooks beyond what the designer exposes — backend-matrix
 territory).
 
-## CI status
+## Where E2E is enforced: the preflight gate
 
-Not wired into `ci.yml` yet: the job needs the backend-binary download plus a Playwright browser
-install, and per the deployment-runbook lesson (#25) untested CI is how red runs happen. Wiring
-it in (as a separate job so the core gates stay fast) is logged as a follow-up.
+The suite is deliberately **not** in `ci.yml`: the job would need the backend-binary download
+plus a browser install, and per the deployment-runbook lesson (#25) untested CI is how red runs
+happen (wiring it as a separate GitHub Actions job stays a follow-up). Instead it gates PRs at
+the source — the agent's own machine, which has the full environment:
+
+- `npm run preflight` runs the entire `ci.yml` battery **plus this E2E suite**, and on success
+  writes `.git/preflight-ok` containing a content hash of the exact working tree
+  (`git write-tree` over a temp index — commit/branch moves with identical content stay fresh;
+  any file edit goes stale).
+- A `PreToolUse` hook in `.claude/settings.json` (project-shared, applies to any Claude Code
+  session in this repo) **denies** `gh pr create` and the GitHub MCP `create_pull_request` tool
+  until the marker matches the current tree, with the fix in the denial message. Everything
+  else passes through untouched.
+- `PREFLIGHT_SKIP_E2E=1 npm run preflight` is the explicit override for environments that
+  can't run a browser; the skip is recorded in the marker.
+
+So the flow for an agent is: implement → commit → `npm run preflight` → PR. Creating the PR
+first fails closed with instructions.

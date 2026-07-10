@@ -14,10 +14,19 @@ npx convex dev --once --typecheck disable
 # non-interactive stand-in for `npx @convex-dev/auth`).
 node scripts/provision-auth-env.mjs
 
-# Keep `convex dev` and restore the canonical --system-udfs codegen on exit:
-# dev mode rewrites convex/_generated in a form the CI drift check rejects
-# (see CLAUDE.md gotchas).
-trap 'git checkout -- convex/_generated 2>/dev/null || true' EXIT
+# Run `convex dev` as a child (NOT exec — exec would drop the trap): when
+# Playwright tears the webServer down, the trap forwards the signal to the
+# whole process group so the backend and vite die promptly, then restores
+# the canonical --system-udfs codegen that dev mode rewrites (the form the
+# CI drift check rejects — see CLAUDE.md gotchas).
+cleanup() {
+  [ -n "${child:-}" ] && kill -- -"$child" 2>/dev/null
+  wait 2>/dev/null || true
+  git checkout -- convex/_generated 2>/dev/null || true
+}
+trap cleanup EXIT TERM INT
 
-exec npx convex dev --typecheck disable --tail-logs disable \
-  --start "npx vite --port 5173 --strictPort"
+setsid npx convex dev --typecheck disable --tail-logs disable \
+  --start "npx vite --port 5173 --strictPort" &
+child=$!
+wait "$child"

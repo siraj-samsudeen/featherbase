@@ -27,6 +27,12 @@ npm run test:coverage  # with 100%-line threshold enforced
 npm run test:e2e       # Playwright journeys against a real local stack (anonymous
                        # local Convex deployment + vite, auth keys auto-provisioned);
                        # matrix + sandbox notes in docs/e2e-testing.md
+npm run preflight      # the pre-PR gate: the full ci.yml battery PLUS the E2E
+                       # suite; writes .git/preflight-ok for the current tree.
+                       # A PreToolUse hook (.claude/settings.json) BLOCKS PR
+                       # creation until this is green on the exact tree being
+                       # PR'd — run it after your final commit. Environments
+                       # that can't run a browser: PREFLIGHT_SKIP_E2E=1.
 npm run typecheck      # tsc --noEmit
 npm run lint           # eslint (flat config, root)
 npm run format:check   # prettier
