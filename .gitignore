@@ -9,3 +9,6 @@ coverage/
 .convex/
 test-results/
 playwright-report/
+
+# Local-only draft skill, pending rewrite-or-delete (featherbase #29)
+.claude/skills/matt-pocock-flow
