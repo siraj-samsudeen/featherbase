@@ -7,9 +7,5 @@ coverage/
 *.local
 .DS_Store
 
-# Machine-local symlinks into the ~/.claude/feather-flow package (see .claude/skills README note)
-.claude/skills/feather-brainstorm
-.claude/skills/feather-spec
-.claude/skills/feather-execute-task
-.claude/skills/feather-flow
+# Local-only draft skill, pending rewrite-or-delete (featherbase #29)
 .claude/skills/matt-pocock-flow
