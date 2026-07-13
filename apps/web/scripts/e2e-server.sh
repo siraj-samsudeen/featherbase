@@ -26,7 +26,11 @@ cleanup() {
 }
 trap cleanup EXIT TERM INT
 
-setsid npx convex dev --typecheck disable --tail-logs disable \
+# Job control (-m) puts the background job in its own process group — the
+# portable form of setsid, which macOS lacks.
+set -m
+npx convex dev --typecheck disable --tail-logs disable \
   --start "npx vite --port 5173 --strictPort" &
 child=$!
+set +m
 wait "$child"
