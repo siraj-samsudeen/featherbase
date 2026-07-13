@@ -35,7 +35,9 @@ const userId = await testClient.run(async (ctx: any) =>
 const session = renderWithSession(<App />, testClient);
 
 // ✅ Skips auth settle — fast
-const session = renderWithSession(<App />, testClient, { authenticated: false });
+const session = renderWithSession(<App />, testClient, {
+  authenticated: false,
+});
 await session.assertText("Sign in");
 ```
 
@@ -46,7 +48,9 @@ Pass `{ authenticated: false }` for any unauthenticated state test. Only omit it
 The `user?.email ?? null` branch (where a query looks up an authenticated user that no longer exists) is reachable in `convex-test` via `db.delete()`. This branch does NOT need a `/* v8 ignore */` annotation.
 
 ```tsx
-test("viewer returns null when user document is deleted after auth", async ({ testClient }) => {
+test("viewer returns null when user document is deleted after auth", async ({
+  testClient,
+}) => {
   const userId = await testClient.run(async (ctx: any) =>
     ctx.db.insert("users", { email: "x@example.com" }),
   );

@@ -5,13 +5,15 @@ import { test } from "../../convex/test.setup";
 import {
   createBookDoctype,
   renderApp,
+  renderFailing,
   renderPending,
   seedBooks,
   seedManyBooks,
   storedBook,
 } from "../test.fixtures";
 
-// Matrix rows G1–G15 (docs/capabilities/3-auto-ui/2_spec.md)
+// Matrix rows G1–G16 (docs/capabilities/3-auto-ui/2_spec.md)
+// + E2, E3 (docs/capabilities/4-sign-in/research-spec-plan.md)
 
 function dataRows(): HTMLElement[] {
   return screen.getAllByRole("row").slice(1);
@@ -268,4 +270,24 @@ test("clears sorting on third click, restoring unset-field records", async ({
 
   expect(await screen.findByText("Micro")).toBeInTheDocument();
   expect(dataRows()).toHaveLength(2);
+});
+
+// The gate's error state (#13): a real unauthenticated client — the
+// definition query itself rejects.
+test("shows error when the definition fails", async ({ testClient }) => {
+  renderApp(testClient, "/doctypes/book");
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Not authenticated",
+  );
+});
+
+// Records failing after the definition resolved is only reachable through
+// server states the UI can't produce (#12's stale sort) — mocked.
+test("shows error when the records query fails", async () => {
+  renderFailing("/doctypes/book", { "doctypes:get": storedBook });
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "records:list failed",
+  );
 });

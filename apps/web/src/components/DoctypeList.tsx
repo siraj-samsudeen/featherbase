@@ -4,8 +4,12 @@ import { Link } from "@tanstack/react-router";
 import { api } from "../../convex/_generated/api";
 
 export function DoctypeList() {
-  const { data: doctypes } = useQuery(convexQuery(api.doctypes.list, {}));
+  const { data: doctypes, error } = useQuery(
+    convexQuery(api.doctypes.list, {}),
+  );
 
+  if (error)
+    return <p role="alert">Could not load DocTypes: {error.message}</p>;
   if (doctypes === undefined) return <p>Loading…</p>;
 
   return (

@@ -103,7 +103,7 @@ export function RecordGrid({ definition }: { definition: DocTypeDefinition }) {
   // Filter/sort changes change the query key; keeping the previous rows on
   // screen while the new ones load stops the grid (and the filter controls)
   // from unmounting mid-interaction.
-  const { data: records } = useQuery({
+  const { data: records, error } = useQuery({
     ...convexQuery(api.records.list, {
       doctype: definition.name,
       filter: buildFilter(currentField, filterValue),
@@ -137,6 +137,9 @@ export function RecordGrid({ definition }: { definition: DocTypeDefinition }) {
     getCoreRowModel: getCoreRowModel(),
   });
 
+  if (error) {
+    return <p role="alert">Could not load records: {error.message}</p>;
+  }
   if (records === undefined) return <p>Loading records…</p>;
 
   return (

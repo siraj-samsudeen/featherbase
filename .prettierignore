@@ -10,3 +10,6 @@ apps/web/convex/hooks.gen.ts
 apps/web/doctypes/
 apps/web/src/routeTree.gen.ts
 CHANGELOG.md
+apps/web/.convex/
+apps/web/test-results/
+apps/web/playwright-report/

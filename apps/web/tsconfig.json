@@ -6,5 +6,13 @@
     "resolveJsonModule": true,
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
   },
-  "include": ["src", "convex", "scripts", "vite.config.ts", "vitest.config.ts"]
+  "include": [
+    "src",
+    "convex",
+    "scripts",
+    "e2e",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "playwright.config.ts"
+  ]
 }

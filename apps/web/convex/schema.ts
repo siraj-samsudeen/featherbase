@@ -1,9 +1,12 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { authTables } from "@convex-dev/auth/server";
 import { doctypeTables } from "./doctypes.gen";
 
 export default defineSchema({
-  users: defineTable({}),
+  // Convex Auth's tables — its `users` (all-optional fields) replaces the
+  // capability-1 bare table, so existing rows and `v.id("users")` refs hold.
+  ...authTables,
   tasks: defineTable({
     userId: v.id("users"),
     text: v.string(),

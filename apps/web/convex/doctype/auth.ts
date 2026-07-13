@@ -1,12 +1,16 @@
 import type { Auth } from "convex/server";
+import { getAuthUserId } from "@convex-dev/auth/server";
+import type { Id } from "../_generated/dataModel";
 
 // Every doctype/record function requires an authenticated caller — queries
-// included (capability 1's lenient unauthenticated `[]` existed for a UI this
-// layer doesn't have; real permission semantics arrive with capability 5).
-export async function requireUser(ctx: { auth: Auth }): Promise<string> {
-  const identity = await ctx.auth.getUserIdentity();
-  if (identity === null) {
+// included (real permission semantics arrive with the authorization
+// capability). Convex Auth encodes `${userId}|${sessionId}` in the subject
+// claim; getAuthUserId returns the user half, so record ownership doesn't
+// fragment per session.
+export async function requireUser(ctx: { auth: Auth }): Promise<Id<"users">> {
+  const userId = await getAuthUserId(ctx);
+  if (userId === null) {
     throw new Error("Not authenticated");
   }
-  return identity.subject;
+  return userId;
 }

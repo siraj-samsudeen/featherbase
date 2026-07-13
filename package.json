@@ -14,6 +14,8 @@
     "build": "npm run build -w apps/web",
     "test": "npm run test -w apps/web",
     "test:coverage": "npm run test:coverage -w apps/web",
+    "test:e2e": "npm run test:e2e -w apps/web",
+    "preflight": "bash scripts/preflight.sh",
     "typecheck": "npm run typecheck -w apps/web",
     "gen:doctypes": "npm run gen:doctypes -w apps/web",
     "lint": "eslint .",

@@ -6,7 +6,9 @@
 
 ```tsx
 // ❌ This does NOT work — query has already resolved; the list won't update
-await testClient.run(async (ctx) => ctx.db.insert("todos", { text: "New item" }));
+await testClient.run(async (ctx) =>
+  ctx.db.insert("todos", { text: "New item" }),
+);
 expect(screen.getByText("New item")).toBeInTheDocument(); // fails
 ```
 
@@ -44,7 +46,9 @@ await session2.assertText("Buy milk");
 `renderWithSession` has a `tanstackQuery: true` option that wraps the component with a TanStack Query provider. This provider auto-invalidates queries after mutations, giving live-update behavior:
 
 ```tsx
-const session = renderWithSession(<TodoList />, client, { tanstackQuery: true });
+const session = renderWithSession(<TodoList />, client, {
+  tanstackQuery: true,
+});
 await session.fillIn("Task", "Buy milk").clickButton("Add");
 await session.assertText("Buy milk"); // works — query re-ran after mutation
 ```

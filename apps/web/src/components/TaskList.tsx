@@ -6,10 +6,13 @@ import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 
 export function TaskList() {
-  const { data: tasks } = useQuery(convexQuery(api.tasks.list, {}));
+  const { data: tasks, error } = useQuery(convexQuery(api.tasks.list, {}));
   const addTask = useMutation(api.tasks.add);
   const [text, setText] = useState("");
 
+  if (error) {
+    return <p role="alert">Could not load tasks: {error.message}</p>;
+  }
   if (tasks === undefined) {
     return <p>Loading…</p>;
   }

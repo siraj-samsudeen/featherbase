@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|mcp__github__create_pull_request",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/check-preflight.sh",
+            "timeout": 30,
+            "statusMessage": "Checking the preflight gate before PR creation"
+          }
+        ]
+      }
+    ]
+  }
+}
