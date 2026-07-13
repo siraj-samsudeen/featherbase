@@ -2,9 +2,13 @@ import { expect } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { test } from "../../convex/test.setup";
-import { renderApp, renderAuthLoading } from "../test.fixtures";
+import {
+  renderApp,
+  renderAuthLoading,
+  renderSignInPending,
+} from "../test.fixtures";
 
-// Matrix rows A1–A5 (docs/capabilities/4-sign-in/research-spec-plan.md)
+// Matrix rows A1–A6 (docs/capabilities/4-sign-in/research-spec-plan.md)
 
 test("shows sign-in state when unauthenticated", async ({ client }) => {
   renderApp(client, "/", { authenticated: false });
@@ -58,6 +62,16 @@ test("signs out back to the sign-in state", async ({ client }) => {
   expect(
     screen.queryByRole("link", { name: "DocTypes" }),
   ).not.toBeInTheDocument();
+});
+
+test("disables get-started while sign-in pends", async () => {
+  const user = userEvent.setup();
+  renderSignInPending("/");
+  const button = await screen.findByRole("button", { name: "Get started" });
+
+  await user.click(button);
+
+  expect(button).toBeDisabled();
 });
 
 test("shows loading state while auth pends", async () => {

@@ -110,19 +110,21 @@ reactive (Convex requeries on auth/data change) or navigation.
 
 One test per row, verb-first names. Env: jsdom (`web` project) via
 `renderWithConvexQueryAuth` + real routeTree, except B/C rows (edge-runtime `convex` project).
-**Mock rows: A3, A5, E3, E4** — forced sign-in rejection, auth-pending, and post-definition
-query rejections are unreachable with the real in-memory backend; every other row is
-integration. E1/E2 use a **real unauthenticated client** — the actual production failure mode.
+**Mock rows: A3, A5, A6, E3, E4, E6** — forced sign-in rejection, auth-pending, the in-flight
+sign-in window, and query rejections behind resolved auth are unreachable with the real
+in-memory backend; every other row is integration. E1/E2 use a **real unauthenticated
+client** — the actual production failure mode.
 
 #### A — auth shell (`src/routes/__root.tsx`)
 
-| #   | State                                    | Verify                                                                         |
-| --- | ---------------------------------------- | ------------------------------------------------------------------------------ |
-| A1  | shows sign-in state when unauthenticated | `/` with `authenticated: false` → "Get started"; no nav links                  |
-| A2  | signs in when get-started is clicked     | click "Get started" → nav + tasks view render                                  |
-| A3  | shows error when sign-in fails           | **mock** (`signInError`) → `role="alert"` with the message, button still there |
-| A4  | signs out back to the sign-in state      | authenticated shell → click "Sign out" → sign-in state, nav gone               |
-| A5  | shows loading state while auth pends     | **mock** (`isLoading: true` useAuth) → "Loading…", neither sign-in nor nav     |
+| #   | State                                    | Verify                                                                                                              |
+| --- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| A1  | shows sign-in state when unauthenticated | `/` with `authenticated: false` → "Get started"; no nav links                                                       |
+| A2  | signs in when get-started is clicked     | click "Get started" → nav + tasks view render                                                                       |
+| A3  | shows error when sign-in fails           | **mock** (`signInError`) → `role="alert"` with the message, button still there                                      |
+| A4  | signs out back to the sign-in state      | authenticated shell → click "Sign out" → sign-in state, nav gone                                                    |
+| A5  | shows loading state while auth pends     | **mock** (`isLoading: true` useAuth) → "Loading…", neither sign-in nor nav                                          |
+| A6  | disables get-started while sign-in pends | **mock** (never-resolving signIn) → button disabled after click — a double-click would mint a second anonymous user |
 
 #### B — identity seam (`convex/doctype/auth.ts`)
 
@@ -146,6 +148,7 @@ integration. E1/E2 use a **real unauthenticated client** — the actual producti
 | E3  | shows error when the records query fails | **mock** (definition resolves, records reject) → `role="alert"`                          |
 | E4  | shows error when the record query fails  | **mock** (definition resolves, get rejects) → `role="alert"`                             |
 | E5  | shows error when delete fails            | seed + open detail, delete the record backend-side, click Delete → `role="alert"`, stays |
+| E6  | shows error when the tasks query fails   | **mock** (tasks.list rejects) → `role="alert"` on `/` — the post-sign-in landing view    |
 
 #### T — tracer bullet
 
@@ -153,7 +156,8 @@ integration. E1/E2 use a **real unauthenticated client** — the actual producti
 | --- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
 | T1  | signs in and builds an app zero-code | start at `/` unauthenticated → "Get started" → design a DocType → create a record → row in grid → "Sign out" → sign-in state back |
 
-**14 rows. Row count == test count is the review invariant.** Capability-3 rows are untouched
+**16 rows. Row count == test count is the review invariant.** (A6/E6 added by the PR #28
+review — see deviation 4.) Capability-3 rows are untouched
 (their tests render authenticated by default); the reworked `renderPending` keeps L4/G13/G14/D6
 observing the same states through the new shell gate. The in-browser half of the tracer (a real
 token from a real deployment) is manual, after § Deployment provisioning.
@@ -183,10 +187,10 @@ deps; add `convex/auth.ts`, `convex/http.ts`, `convex/auth.config.ts`; schema �
 **G3:** typecheck + lint clean; existing web-project tests still green (fixture rework lands
 here since the shell gate breaks the old `renderPending`).
 
-**Step 4 — matrix.** Fixtures per spec; `src/routes/__root.test.tsx` (A1–A5),
+**Step 4 — matrix.** Fixtures per spec; `src/routes/__root.test.tsx` (A1–A6),
 `convex/auth.wiring.test.ts` (B1, C1, C2), error rows in the owning components' test files
-(E1–E5), tracer in `src/zero-code.test.tsx` (T1).
-**G4:** 14 new tests, 119 total green.
+(E1–E6), tracer in `src/zero-code.test.tsx` (T1).
+**G4:** 16 new tests, 121 total green.
 
 **G5 (coverage):** `npm run test:coverage` at 100% lines. Negative check: comment out one error
 branch, confirm the floor fails, restore.
@@ -243,3 +247,10 @@ environment points at — no login prompt. Use `E2E_SITE_URL` to override the `S
    a real local Convex deployment with real JWTs — research §6's "token issuance is verified in
    the browser" now happens in `npm run test:e2e`, not by hand. The deployed-app walkthrough
    after provisioning remains the release check.
+4. **PR #28 review added two pre-merge fixes** (cheap + shipping-correctness, per the review
+   protocol): `TaskList` — the post-sign-in landing view — had no query-error branch and hung
+   on "Loading…", the exact class #13 eliminates elsewhere (row E6); and "Get started" could
+   double-fire during the sign-in round-trip, minting one anonymous user per click (row A6 —
+   the button now disables while sign-in pends, staying disabled through the token-confirmation
+   window). Matrix grows 14 → 16 rows. `e2e-server.sh` also swapped Linux-only `setsid` for
+   bash job control (`set -m`) — the suite could not boot on macOS.

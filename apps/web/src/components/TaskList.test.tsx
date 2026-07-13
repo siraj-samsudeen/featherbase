@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { test, renderWithConvexQueryAuth } from "../../convex/test.setup";
+import { renderFailing } from "../test.fixtures";
 import { TaskList } from "./TaskList";
 
 // Matrix rows I1–I4 (docs/capabilities/1-scaffold/2_spec.md)
@@ -26,6 +27,16 @@ test("shows loading state while query pends", () => {
   );
 
   expect(screen.getByText("Loading…")).toBeInTheDocument();
+});
+
+// E6 (capability 4, docs/capabilities/4-sign-in/research-spec-plan.md) —
+// mocked: a forced rejection is unreachable with the real in-memory backend.
+test("shows error when the tasks query fails", async () => {
+  renderFailing("/");
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "tasks:list failed",
+  );
 });
 
 test("shows empty state when no tasks", async ({ client }) => {

@@ -33,16 +33,24 @@ function RootLayout() {
 function SignIn() {
   const { signIn } = useAuthActions();
   const [error, setError] = useState<string | null>(null);
+  // Stays disabled after signIn resolves too: each anonymous signIn mints a
+  // fresh user, and the button remains mounted until the WebSocket confirms
+  // the token — a double-click there would create a second orphaned user.
+  const [pending, setPending] = useState(false);
   return (
     <section>
       <p>Build working apps from metadata — no account needed.</p>
       <button
         type="button"
-        onClick={() =>
-          void signIn("anonymous").catch((signInError: unknown) =>
-            setError(String(signInError)),
-          )
-        }
+        disabled={pending}
+        onClick={() => {
+          setPending(true);
+          setError(null);
+          void signIn("anonymous").catch((signInError: unknown) => {
+            setError(String(signInError));
+            setPending(false);
+          });
+        }}
       >
         Get started
       </button>

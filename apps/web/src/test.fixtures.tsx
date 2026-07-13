@@ -5,6 +5,10 @@
 import { useCallback, useMemo } from "react";
 import { render } from "@testing-library/react";
 import { ConvexProviderWithAuth, ConvexReactClient } from "convex/react";
+// @ts-expect-error — internal path not in the package's exports; resolved by
+// convexTestProviderPlugin in vitest.config.ts (same workaround as
+// feather-testing-convex's ConvexTestAuthProvider).
+import { ConvexAuthActionsContext } from "@convex-dev/auth/dist/react/client.js";
 import {
   createMemoryHistory,
   createRouter,
@@ -201,5 +205,35 @@ export function renderAuthLoading(path: string) {
     <ConvexProviderWithAuth client={convex} useAuth={useAuthPending}>
       <RouterProvider router={router} />
     </ConvexProviderWithAuth>,
+  );
+}
+
+// The in-flight sign-in state (matrix A6): the fixture's signIn resolves
+// synchronously, so the pending window is unreachable with it — a
+// never-resolving signIn behind the real provider stack stands in.
+function useAuthSignedOut() {
+  const fetchAccessToken = useCallback(() => Promise.resolve(null), []);
+  return useMemo(
+    () => ({ isLoading: false, isAuthenticated: false, fetchAccessToken }),
+    [fetchAccessToken],
+  );
+}
+
+export function renderSignInPending(path: string) {
+  const convex = new ConvexReactClient("https://test.convex.cloud");
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: [path] }),
+  });
+  const actions = {
+    signIn: () => new Promise(() => undefined),
+    signOut: () => Promise.resolve(),
+  };
+  return render(
+    <ConvexAuthActionsContext.Provider value={actions}>
+      <ConvexProviderWithAuth client={convex} useAuth={useAuthSignedOut}>
+        <RouterProvider router={router} />
+      </ConvexProviderWithAuth>
+    </ConvexAuthActionsContext.Provider>,
   );
 }
