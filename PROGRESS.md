@@ -1,5 +1,19 @@
 # Progress Log
 
+## 2026-07-15 — META-003 passing: DDL generation
+
+- `createTableDDL()` in doctype-engine: standard columns always, parent
+  linkage + (parent,idx) index for istable, per-field columns via
+  `columnType()`, unique constraints, no table for issingle. DDL runs in the
+  SAME transaction as metadata rows (verified rollback: pre-existing table
+  name → 500 and no orphan doctype row). `tableName()` = tab_<snake_case>.
+- Verified: vitest column-type assertions via information_schema + live API
+  created 'Task' → `\d tab_task` shows all columns/PK; cleaned up after.
+- Next: DOC-001 (save_doc insert through Document engine), which will also
+  complete META-005's auto-set behavior.
+
+---
+
 ## 2026-07-15 — META-002 passing: field type system
 
 - `doctype-engine.ts`: `columnType()` maps all 16 fieldtypes to PG column

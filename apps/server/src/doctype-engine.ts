@@ -91,6 +91,44 @@ function validateDef(def: DocTypeDef) {
     throw new AppError('ValidationError', 'Invalid DocType definition', fields)
 }
 
+export function tableName(doctype: string): string {
+  return 'tab_' + doctype.toLowerCase().replace(/\s+/g, '_')
+}
+
+// META-003: generate the CREATE TABLE statement for a DocType.
+// Standard columns (META-005) are always present; child tables (META-007)
+// additionally carry parent linkage. Singles (issingle) get no table.
+function createTableDDL(def: DocTypeDef): string | null {
+  if (def.issingle) return null
+  const cols: string[] = [
+    `"name" varchar(140) primary key`,
+    `"owner" varchar(140) not null default 'Administrator'`,
+    `"creation" timestamptz not null default now()`,
+    `"modified" timestamptz not null default now()`,
+    `"modified_by" varchar(140) not null default 'Administrator'`,
+    `"docstatus" smallint not null default 0`,
+    `"idx" integer not null default 0`,
+  ]
+  if (def.istable) {
+    cols.push(
+      `"parent" varchar(140)`,
+      `"parenttype" varchar(140)`,
+      `"parentfield" varchar(140)`,
+    )
+  }
+  const constraints: string[] = []
+  for (const f of def.fields) {
+    const type = columnType(f.fieldtype)
+    if (!type) continue
+    cols.push(`"${f.fieldname}" ${type}`)
+    if (f.unique)
+      constraints.push(
+        `constraint "${tableName(def.name)}_${f.fieldname}_uq" unique ("${f.fieldname}")`,
+      )
+  }
+  return `create table "${tableName(def.name)}" (\n  ${[...cols, ...constraints].join(',\n  ')}\n)`
+}
+
 export async function createDocType(input: unknown): Promise<DocTypeMeta> {
   const parsed = doctypeDefSchema.safeParse(input)
   if (!parsed.success) {
@@ -133,6 +171,14 @@ export async function createDocType(input: unknown): Promise<DocTypeMeta> {
         in_list_view: f.in_list_view ?? false,
         permlevel: f.permlevel ?? 0,
       })}`
+    }
+    const ddl = createTableDDL(def)
+    if (ddl) {
+      await tx.unsafe(ddl)
+      if (def.istable)
+        await tx.unsafe(
+          `create index "${tableName(def.name)}_parent_idx" on "${tableName(def.name)}" ("parent", "idx")`,
+        )
     }
   })
   return getMeta(def.name)
