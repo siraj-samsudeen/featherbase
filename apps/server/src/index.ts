@@ -9,6 +9,7 @@ import { cancelDoc, deleteDoc, getDoc, saveDoc, submitDoc } from './document'
 import { getList } from './query'
 import { loadControllers } from './controllers'
 import { login, resolveToken, type SessionUser } from './auth'
+import { getRoles } from './permissions'
 
 await loadControllers()
 
@@ -41,7 +42,10 @@ app.use('/api/*', async (c, next) => {
 
 const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').name
 
-app.get('/api/whoami', async (c) => c.json(c.get('user')))
+app.get('/api/whoami', async (c) => {
+  const user = c.get('user')
+  return c.json({ ...user, roles: await getRoles(user.name) })
+})
 
 app.get('/api/meta/:doctype', async (c) => {
   return c.json(await getMeta(c.req.param('doctype')))
