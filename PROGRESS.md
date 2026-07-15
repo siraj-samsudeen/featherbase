@@ -1,5 +1,17 @@
 # Progress Log
 
+## 2026-07-15 — META-008 passing: Link integrity
+
+- `validateLinks()` runs inside the save transaction for parents (insert +
+  update) and each child row (prefixed error keys like allocs.1.customer).
+  Empty links allowed; missing target DocType and missing target doc both
+  produce field-wise 417s.
+- Verified: 62 vitest + live e2e (bogus link 417, valid link 201).
+- 13/126 passing. Next: DOC-003 (lifecycle hooks) + DOC-004 (controller
+  registry) — they unlock DOC-006/007 and the whole business-logic layer.
+
+---
+
 ## 2026-07-15 — META-007 + DOC-005 passing: child tables
 
 - `pickChildInputs`/`saveChildren`/`loadChildren` in document.ts: Table

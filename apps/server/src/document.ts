@@ -138,6 +138,35 @@ function mapDbError(meta: DocTypeMeta, err: unknown): never {
   throw err as Error
 }
 
+// META-008: every Link value must reference an existing document of the
+// target DocType. Runs inside the save transaction alongside validation.
+async function validateLinks(
+  tx: typeof sql,
+  meta: DocTypeMeta,
+  fieldValues: DocValues,
+  prefix = '',
+) {
+  const errors: Record<string, string> = {}
+  for (const f of meta.fields) {
+    if (f.fieldtype !== 'Link') continue
+    const value = fieldValues[f.fieldname]
+    if (value == null || value === '') continue
+    const target = f.options
+    if (!target) continue
+    const [targetMeta] = await tx`select 1 from doctype where name = ${target}`
+    if (!targetMeta) {
+      errors[prefix + f.fieldname] = `Link target DocType ${target} does not exist`
+      continue
+    }
+    const [row] = await tx`
+      select 1 from ${tx(tableName(target))} where name = ${String(value)}`
+    if (!row)
+      errors[prefix + f.fieldname] = `${target} ${String(value)} does not exist`
+  }
+  if (Object.keys(errors).length)
+    throw new AppError('ValidationError', `Invalid links for ${meta.name}`, errors)
+}
+
 // META-007/DOC-005: extract Table-field arrays from the payload; they are
 // saved as child rows in the same transaction as the parent.
 function pickChildInputs(meta: DocTypeMeta, values: DocValues) {
@@ -188,6 +217,7 @@ async function saveChildren(
       else throw err
       continue
     }
+    await validateLinks(tx, childMeta, fieldValues, `${input.fieldname}.${i}.`)
     const now = new Date()
     if (isExisting) {
       keep.add(String(row.name))
@@ -277,6 +307,7 @@ export async function saveDoc(
         idx: 0,
         ...fieldValues,
       }
+      await validateLinks(tx as unknown as typeof sql, meta, fieldValues)
       const inserted = await tx`insert into ${tx(table)} ${tx(row)} returning *`
       for (const input of childInputs)
         await saveChildren(tx as unknown as typeof sql, meta, name, input, user)
@@ -315,6 +346,7 @@ async function updateDoc(
           'ConflictError',
           `${meta.name} ${name} has been modified after you loaded it`,
         )
+      await validateLinks(tx as unknown as typeof sql, meta, fieldValues)
       const row = { ...fieldValues, modified: new Date(), modified_by: user }
       const [updated] = await tx`
         update ${tx(table)} set ${tx(row)} where name = ${name} returning *`
