@@ -6,6 +6,7 @@ import { errorResponse } from './errors'
 import { getMeta } from './meta'
 import { createDocType } from './doctype-engine'
 import { getDoc, saveDoc } from './document'
+import { getList } from './query'
 import { AppError } from './errors'
 
 export const app = new Hono()
@@ -31,6 +32,27 @@ app.post('/api/save_doc', async (c) => {
 
 app.get('/api/doc/:doctype/:name', async (c) => {
   return c.json(await getDoc(c.req.param('doctype'), c.req.param('name')))
+})
+
+app.get('/api/list/:doctype', async (c) => {
+  const q = c.req.query()
+  const parse = (key: string) => {
+    if (q[key] == null) return undefined
+    try {
+      return JSON.parse(q[key])
+    } catch {
+      throw new AppError('ValidationError', `${key} must be valid JSON`)
+    }
+  }
+  return c.json(
+    await getList(c.req.param('doctype'), {
+      filters: parse('filters'),
+      fields: parse('fields'),
+      order_by: q.order_by,
+      limit_start: q.limit_start ? Number(q.limit_start) : undefined,
+      limit_page_length: q.limit_page_length ? Number(q.limit_page_length) : undefined,
+    }),
+  )
 })
 
 app.get('/api/ping', async (c) => {

@@ -1,5 +1,19 @@
 # Progress Log
 
+## 2026-07-15 — DOC-010 passing: get_list query engine
+
+- `query.ts`: `getList()` with [field, op, value] filters (=, !=, <, >, <=,
+  >=, like/not like as ilike, in/not in), field projection, order_by parsing
+  (regex-validated, identifier-quoted — injection attempts 417), pagination
+  (max 500) + total count. Every field name validated against meta columns.
+  `GET /api/list/:doctype` with JSON query params.
+- Verified: 40 vitest incl. injection attempt + live e2e (like filter,
+  unknown field 417).
+- Next: META-013 (shared zod schemas) + DOC-011 (field-wise validation) go
+  together; then META-006 naming series, META-009/010 flag enforcement.
+
+---
+
 ## 2026-07-15 — DOC-002 + META-005 passing: updates with optimistic concurrency
 
 - `saveDoc` now routes docs carrying a `name` to `updateDoc`: SELECT ... FOR
