@@ -1,5 +1,25 @@
 # Progress Log
 
+## 2026-07-15 — PERM-007 + UI-001 passing: if_owner scoping, Desk shell live
+
+- PERM-007: `permissionScope()` returns all/owner/none; unconditional rows
+  override if_owner rows. Doc-scoped checks (`assertDocPermission`) run
+  after the FOR UPDATE/select so ownership is authoritative: update, delete,
+  submit/cancel, getDoc; getList injects an owner=user filter for
+  owner-scope. Verified with two restricted users (vitest + live curl).
+- UI-001: Desk shell wired to the real API — `src/lib/api.ts` (token in
+  localStorage, 401 auto-logout redirect, listResource helper), functional
+  login page (error display), DeskLayout sidebar listing non-child DocTypes
+  via TanStack Query, session user footer, logout, route guards, and a
+  /desk/$doctype placeholder for UI-002. Playwright e2e covers: wrong
+  password error → login → sidebar shows User/Role/DocType → navigate →
+  reload persistence → logout → guard redirect. @types/node added to web.
+- 29/126. Next: UI-002 (generic ListView — columns from in_list_view,
+  sort, paginate), then UI-003 (filters), UI-004 (FormView). The UI block
+  is now unblocked end-to-end.
+
+---
+
 ## 2026-07-15 — Evaluation pass #2 + PERM-001/002/003/009 passing
 
 - **Evaluator pass #2**: tampered tokens 401, unauth doctype-create 401,
