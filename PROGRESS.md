@@ -1,5 +1,21 @@
 # Progress Log
 
+## 2026-07-15 — DOC-002 + META-005 passing: updates with optimistic concurrency
+
+- `saveDoc` now routes docs carrying a `name` to `updateDoc`: SELECT ... FOR
+  UPDATE, compares client-echoed `modified` timestamp against DB (409
+  ConflictError on mismatch, 417 if omitted), auto-bumps
+  modified/modified_by, preserves owner/creation. Standard-field payload
+  keys are ignored rather than rejected so clients can send whole docs back.
+- META-005 flipped too: columns verified via information_schema (ddl.test),
+  auto-set on insert (document.test) and update (update.test).
+- Verified: 36 vitest + live e2e (fresh update 201 → v2 in psql; replay of
+  same modified → 409; row unchanged).
+- Next: META-006 (naming series with atomic counter) or DOC-010 (get_list) —
+  both unlock a lot. Prefer DOC-010 next; then META-013/DOC-011 validation.
+
+---
+
 ## 2026-07-15 — DOC-001 passing: save_doc insert path
 
 - `document.ts`: `saveDoc()` loads meta, rejects unknown fields (field-wise
