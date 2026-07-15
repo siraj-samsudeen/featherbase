@@ -93,6 +93,55 @@ export async function assertPermission(
     )
 }
 
+export async function isBypassUser(user: string): Promise<boolean> {
+  if (user === 'Administrator') return true
+  return (await getRoles(user)).includes('System Manager')
+}
+
+// PERM-005: map of restricted DocType -> allowed document names for a user.
+export async function getUserPermissionMap(
+  user: string,
+): Promise<Map<string, Set<string>>> {
+  const map = new Map<string, Set<string>>()
+  const rows = await sql`
+    select allow, for_value from tab_user_permission where "user" = ${user}`
+  for (const r of rows) {
+    const key = r.allow as string
+    if (!map.has(key)) map.set(key, new Set())
+    map.get(key)!.add(r.for_value as string)
+  }
+  return map
+}
+
+// Throws when a document (or its link values) falls outside the user's
+// permitted values.
+export function checkUserPermissions(
+  user: string,
+  doctype: string,
+  linkFields: { fieldname: string; options: string | null }[],
+  doc: Record<string, unknown>,
+  map: Map<string, Set<string>>,
+) {
+  const own = map.get(doctype)
+  if (own && doc.name != null && !own.has(String(doc.name)))
+    throw new AppError(
+      'PermissionError',
+      `${doctype} ${String(doc.name)} is outside your permitted values`,
+    )
+  for (const f of linkFields) {
+    if (!f.options) continue
+    const allowed = map.get(f.options)
+    if (!allowed) continue
+    const value = doc[f.fieldname]
+    if (value == null || value === '') continue
+    if (!allowed.has(String(value)))
+      throw new AppError(
+        'PermissionError',
+        `${f.options} ${String(value)} is outside your permitted values`,
+      )
+  }
+}
+
 export async function assertSystemManager(user: string) {
   if (user === 'Administrator') return
   const roles = await getRoles(user)

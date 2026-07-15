@@ -2,7 +2,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta, type DocTypeMeta } from './meta'
 import { STANDARD_COLUMNS, tableName } from './doctype-engine'
-import { permissionScope } from './permissions'
+import { getUserPermissionMap, isBypassUser, permissionScope } from './permissions'
 
 export type Filter = [string, string, unknown]
 
@@ -45,6 +45,20 @@ export async function getList(doctype: string, args: ListArgs = {}, user = 'Admi
 
   const filters = [...(args.filters ?? [])]
   if (scope === 'owner') filters.push(['owner', '=', user])
+  // PERM-005: user permissions narrow lists by the doctype itself and by
+  // any Link field pointing at a restricted doctype.
+  if (!(await isBypassUser(user))) {
+    const upMap = await getUserPermissionMap(user)
+    if (upMap.size) {
+      const own = upMap.get(doctype)
+      if (own) filters.push(['name', 'in', [...own]])
+      for (const f of meta.fields) {
+        if (f.fieldtype !== 'Link' || !f.options) continue
+        const allowed = upMap.get(f.options)
+        if (allowed) filters.push([f.fieldname, 'in', [...allowed]])
+      }
+    }
+  }
   const conds = filters.map((flt) => {
     if (!Array.isArray(flt) || flt.length !== 3)
       throw new AppError('ValidationError', 'Each filter must be [field, operator, value]')

@@ -1,5 +1,21 @@
 # Progress Log
 
+## 2026-07-15 — PERM-005 passing: user permissions
+
+- Migration 0007 installs 'User Permission' DocType (user, allow→DocType,
+  for_value). permissions.ts: `getUserPermissionMap` + `checkUserPermissions`
+  + `isBypassUser`. getList injects name-in / linkfield-in filters for
+  non-bypass users; document paths (read/insert/update/delete/docstatus)
+  assert against the map — insert checks OUTGOING link values too.
+- Verified: 104 vitest (list narrowing on link + target doctype, 403 direct
+  reads, create-with-forbidden-link 403, admin unaffected) + live e2e
+  (restricted user lists only CoA, CoB read 403).
+- 37/126. Next: PERM-010 (its verify is now implementable: restricted link
+  search), then UI-006 (link autocomplete), PERM-006 (permlevel), PERM-008
+  (DocShare).
+
+---
+
 ## 2026-07-15 — UI-009 + META-013 passing: shared zod schema on the client
 
 - Web app now depends on the `shared` workspace package; FormView.save()

@@ -5,7 +5,13 @@ import { AppError } from './errors'
 import { getMeta, type DocTypeMeta } from './meta'
 import { STANDARD_COLUMNS, tableName } from './doctype-engine'
 import { runHooks, type HookContext } from './controllers'
-import { assertDocPermission, assertPermission } from './permissions'
+import {
+  assertDocPermission,
+  assertPermission,
+  checkUserPermissions,
+  getUserPermissionMap,
+  isBypassUser,
+} from './permissions'
 
 // Hooks may set any writable column; re-filter after they run so a hook
 // can't inject unknown keys into SQL.
@@ -180,6 +186,21 @@ async function validateLinks(
     throw new AppError('ValidationError', `Invalid links for ${meta.name}`, errors)
 }
 
+// PERM-005: gate a concrete document against the user's User Permissions.
+async function assertUserPermissions(
+  user: string,
+  meta: DocTypeMeta,
+  doc: DocValues,
+) {
+  if (await isBypassUser(user)) return
+  const map = await getUserPermissionMap(user)
+  if (!map.size) return
+  const linkFields = meta.fields
+    .filter((f) => f.fieldtype === 'Link')
+    .map((f) => ({ fieldname: f.fieldname, options: f.options }))
+  checkUserPermissions(user, meta.name, linkFields, doc, map)
+}
+
 // META-007/DOC-005: extract Table-field arrays from the payload; they are
 // saved as child rows in the same transaction as the parent.
 function pickChildInputs(meta: DocTypeMeta, values: DocValues) {
@@ -313,6 +334,7 @@ export async function saveDoc(
       throw new AppError('NotFoundError', `${doctype} ${values.name} not found`)
   }
   await assertPermission(user, doctype, 'create')
+  await assertUserPermissions(user, meta, values)
   const fieldValues = validateValues(
     meta,
     applyDefaults(meta, pickFieldValues(meta, values)),
@@ -387,6 +409,7 @@ async function updateDoc(
       if (!existing)
         throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
       await assertDocPermission(user, meta.name, 'write', String(existing.owner))
+      await assertUserPermissions(user, meta, existing as DocValues)
       const dbModified = (existing.modified as Date).getTime()
       const sentModified = new Date(String(values.modified)).getTime()
       if (Number.isNaN(sentModified) || dbModified !== sentModified)
@@ -456,6 +479,7 @@ async function setDocstatus(
       throw new AppError('NotFoundError', `${doctype} ${name} not found`)
     await assertDocPermission(
       user, doctype, event === 'on_submit' ? 'submit' : 'cancel', String(existing.owner))
+    await assertUserPermissions(user, meta, existing as DocValues)
     if ((existing.docstatus as number) !== from)
       throw new AppError(
         'ValidationError',
@@ -503,6 +527,7 @@ export async function deleteDoc(
     if (!existing)
       throw new AppError('NotFoundError', `${doctype} ${name} not found`)
     await assertDocPermission(user, doctype, 'delete', String(existing.owner))
+    await assertUserPermissions(user, meta, existing as DocValues)
     if ((existing.docstatus as number) === 1)
       throw new AppError(
         'ValidationError',
@@ -568,5 +593,6 @@ export async function getDoc(
     select * from ${sql(tableName(doctype))} where name = ${name}`
   if (!row) throw new AppError('NotFoundError', `${doctype} ${name} not found`)
   await assertDocPermission(user, doctype, 'read', String(row.owner))
+  await assertUserPermissions(user, meta, row as DocValues)
   return loadChildren(meta, { doctype, ...(row as DocValues) })
 }
