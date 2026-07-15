@@ -26,7 +26,11 @@ function baseSchema(f: SchemaField): z.ZodTypeAny {
     case 'Attach':
       return z.string()
     case 'Int':
-      return z.coerce.number().int()
+      return z.coerce
+        .number()
+        .int()
+        .gte(Number.MIN_SAFE_INTEGER, 'integer out of range')
+        .lte(Number.MAX_SAFE_INTEGER, 'integer out of range')
     case 'Float':
     case 'Currency':
       return z.coerce.number()

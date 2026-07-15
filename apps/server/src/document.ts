@@ -79,7 +79,8 @@ async function resolveName(
 }
 
 // Filter incoming values to real data fields; reject unknown keys so typos
-// fail loudly instead of silently dropping data.
+// fail loudly instead of silently dropping data. read_only fields are
+// system-managed (META-010): client-sent values for them are ignored.
 function pickFieldValues(meta: DocTypeMeta, values: DocValues): DocValues {
   const known = new Map(meta.fields.map((f) => [f.fieldname, f]))
   const out: DocValues = {}
@@ -93,11 +94,48 @@ function pickFieldValues(meta: DocTypeMeta, values: DocValues): DocValues {
       continue
     }
     if (NO_COLUMN_TYPES.has(field.fieldtype)) continue
+    if (field.read_only) continue
     out[key] = value ?? null
   }
   if (Object.keys(errors).length)
     throw new AppError('ValidationError', 'Unknown fields', errors)
   return out
+}
+
+// META-010: fill defaults for fields absent on insert (read_only included —
+// defaults are how system-managed fields get their values).
+function applyDefaults(meta: DocTypeMeta, values: DocValues): DocValues {
+  const out = { ...values }
+  for (const f of meta.fields) {
+    if (NO_COLUMN_TYPES.has(f.fieldtype)) continue
+    if (out[f.fieldname] != null) continue
+    if (f.default_value == null) continue
+    if (f.fieldtype === 'Int' || f.fieldtype === 'Float' || f.fieldtype === 'Currency')
+      out[f.fieldname] = Number(f.default_value)
+    else if (f.fieldtype === 'Check')
+      out[f.fieldname] = f.default_value === '1' || f.default_value === 'true'
+    else out[f.fieldname] = f.default_value
+  }
+  return out
+}
+
+// META-010: translate Postgres constraint violations into field-wise
+// ValidationErrors instead of opaque 500s.
+function mapDbError(meta: DocTypeMeta, err: unknown): never {
+  const e = err as { code?: string; constraint_name?: string; column_name?: string }
+  if (e?.code === '23505') {
+    const prefix = `${tableName(meta.name)}_`
+    const field =
+      e.constraint_name?.startsWith(prefix) && e.constraint_name.endsWith('_uq')
+        ? e.constraint_name.slice(prefix.length, -'_uq'.length)
+        : 'name'
+    throw new AppError('ValidationError', `Duplicate value for ${field}`, {
+      [field]: `${field} must be unique`,
+    })
+  }
+  if (e?.code === '22003' || e?.code === '22001' || e?.code === '22P02')
+    throw new AppError('ValidationError', 'Value out of range for a field')
+  throw err as Error
 }
 
 export async function saveDoc(
@@ -115,24 +153,30 @@ export async function saveDoc(
     if (meta.autoname !== 'prompt')
       throw new AppError('NotFoundError', `${doctype} ${values.name} not found`)
   }
-  const fieldValues = validateValues(meta, pickFieldValues(meta, values), 'insert')
+  const fieldValues = validateValues(
+    meta,
+    applyDefaults(meta, pickFieldValues(meta, values)),
+    'insert',
+  )
 
   const table = tableName(doctype)
-  const [saved] = await sql.begin(async (tx) => {
-    const name = await resolveName(tx as unknown as typeof sql, meta, values)
-    const now = new Date()
-    const row: DocValues = {
-      name,
-      owner: user,
-      modified_by: user,
-      creation: now,
-      modified: now,
-      docstatus: 0,
-      idx: 0,
-      ...fieldValues,
-    }
-    return tx`insert into ${tx(table)} ${tx(row)} returning *`
-  })
+  const [saved] = await sql
+    .begin(async (tx) => {
+      const name = await resolveName(tx as unknown as typeof sql, meta, values)
+      const now = new Date()
+      const row: DocValues = {
+        name,
+        owner: user,
+        modified_by: user,
+        creation: now,
+        modified: now,
+        docstatus: 0,
+        idx: 0,
+        ...fieldValues,
+      }
+      return tx`insert into ${tx(table)} ${tx(row)} returning *`
+    })
+    .catch((err) => mapDbError(meta, err))
   return { doctype, ...(saved as DocValues) }
 }
 
@@ -152,23 +196,25 @@ async function updateDoc(
     )
   const fieldValues = validateValues(meta, pickFieldValues(meta, values), 'update')
 
-  const saved = await sql.begin(async (tx) => {
-    const [existing] = await tx`
-      select * from ${tx(table)} where name = ${name} for update`
-    if (!existing)
-      throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
-    const dbModified = (existing.modified as Date).getTime()
-    const sentModified = new Date(String(values.modified)).getTime()
-    if (Number.isNaN(sentModified) || dbModified !== sentModified)
-      throw new AppError(
-        'ConflictError',
-        `${meta.name} ${name} has been modified after you loaded it`,
-      )
-    const row = { ...fieldValues, modified: new Date(), modified_by: user }
-    const [updated] = await tx`
-      update ${tx(table)} set ${tx(row)} where name = ${name} returning *`
-    return updated
-  })
+  const saved = await sql
+    .begin(async (tx) => {
+      const [existing] = await tx`
+        select * from ${tx(table)} where name = ${name} for update`
+      if (!existing)
+        throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
+      const dbModified = (existing.modified as Date).getTime()
+      const sentModified = new Date(String(values.modified)).getTime()
+      if (Number.isNaN(sentModified) || dbModified !== sentModified)
+        throw new AppError(
+          'ConflictError',
+          `${meta.name} ${name} has been modified after you loaded it`,
+        )
+      const row = { ...fieldValues, modified: new Date(), modified_by: user }
+      const [updated] = await tx`
+        update ${tx(table)} set ${tx(row)} where name = ${name} returning *`
+      return updated
+    })
+    .catch((err) => mapDbError(meta, err))
   return { doctype: meta.name, ...(saved as DocValues) }
 }
 

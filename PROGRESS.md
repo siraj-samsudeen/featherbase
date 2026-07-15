@@ -1,5 +1,25 @@
 # Progress Log
 
+## 2026-07-15 — Evaluation pass #1 + META-010 passing
+
+- **Evaluator pass** (3rd wakeup): re-drove META-006/009/003, DOC-002/011 on
+  fresh DocTypes via public HTTP. Held up: injection-safe prompt names,
+  stale-update 409s, SQL-keyword DocType names, empty-reqd/overlong-data
+  417s. **Finding: Int of 1e20 leaked a 500** (passed zod int check, blew
+  bigint range). No status flips warranted; defect fixed this session.
+- **META-010**: `applyDefaults()` (typed defaults incl. read_only fields),
+  read_only client values silently dropped in `pickFieldValues` (insert AND
+  update), `mapDbError()` translates PG 23505 unique violations to
+  field-wise 417s (constraint name → fieldname) and 22003/22001/22P02 range
+  errors to 417. Int schema now bounded to JS safe-integer range (fixes the
+  evaluator finding).
+- Verified: 53 vitest + live e2e (huge int 417, duplicate unique 417 with
+  fields.c).
+- Next: META-007 (child tables) + DOC-005 (transactional child saves), then
+  META-008 (link integrity).
+
+---
+
 ## 2026-07-15 — DOC-011 + META-009 passing: metadata-driven validation
 
 - `packages/shared/src/schema.ts`: `metaToZod(fields)` builds a zod object
