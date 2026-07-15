@@ -3,10 +3,15 @@ import { Hono } from 'hono'
 import { config } from './config'
 import { sql } from './db'
 import { errorResponse } from './errors'
+import { getMeta } from './meta'
 
 export const app = new Hono()
 
 app.onError((err, c) => errorResponse(c, err))
+
+app.get('/api/meta/:doctype', async (c) => {
+  return c.json(await getMeta(c.req.param('doctype')))
+})
 
 app.get('/api/ping', async (c) => {
   const [row] = await sql`select 1 as ok`

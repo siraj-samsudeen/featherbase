@@ -1,5 +1,19 @@
 # Progress Log
 
+## 2026-07-15 — META-001 passing: DocType metadata storage
+
+- Migration `0002_doctype.sql`: `doctype` + `docfield` tables (FK cascade,
+  `(parent, fieldname)` unique, ordered by `idx`). `src/meta.ts`: `getMeta()`
+  loads a `DocTypeMeta` with ordered fields; `GET /api/meta/:doctype` serves
+  it. `FIELD_TYPES` const defined (enforcement lands with META-002).
+- Verified: vitest (loader, HTTP, 404 envelope) + live e2e — SQL-inserted
+  'E2E Task' returned by the running server with fields; unknown doctype
+  404s; doctype delete cascades docfields.
+- Next: META-002 (fieldtype→pg column mapping + rejection of invalid
+  fieldtypes on a DocType-save path), then META-003 (DDL generation).
+
+---
+
 Newest entries first. Every session appends: date, feature ID worked on,
 what was done, how it was verified, what to pick up next, gotchas.
 
