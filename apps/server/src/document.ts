@@ -12,6 +12,47 @@ function hashName(): string {
   return randomBytes(5).toString('hex')
 }
 
+// META-006: resolve a new document's name from the DocType's autoname rule.
+// Series counters use INSERT ... ON CONFLICT DO UPDATE inside the save
+// transaction: concurrent savers serialize on the counter row, so names are
+// unique and sequential; a rolled-back save also rolls back the increment.
+async function resolveName(
+  tx: typeof sql,
+  meta: DocTypeMeta,
+  values: DocValues,
+): Promise<string> {
+  const rule = meta.autoname || 'hash'
+  if (rule === 'hash') return hashName()
+  if (rule === 'prompt') {
+    const name = String(values.name ?? '').trim()
+    if (!name)
+      throw new AppError('ValidationError', `${meta.name} requires a name`, {
+        name: 'Name is required',
+      })
+    return name
+  }
+  if (rule.startsWith('field:')) {
+    const fieldname = rule.slice('field:'.length)
+    const value = String(values[fieldname] ?? '').trim()
+    if (!value)
+      throw new AppError('ValidationError', `Naming field ${fieldname} is required`, {
+        [fieldname]: `${fieldname} is required for naming`,
+      })
+    return value
+  }
+  if (rule.includes('.#')) {
+    const dot = rule.indexOf('.')
+    const prefix = rule.slice(0, dot)
+    const digits = (rule.slice(dot + 1).match(/#/g) ?? []).length || 4
+    const [row] = await tx`
+      insert into series (name, current) values (${prefix}, 1)
+      on conflict (name) do update set current = series.current + 1
+      returning current`
+    return prefix + String(row.current).padStart(digits, '0')
+  }
+  throw new AppError('ValidationError', `Unsupported autoname rule ${rule}`)
+}
+
 // Filter incoming values to real data fields; reject unknown keys so typos
 // fail loudly instead of silently dropping data.
 function pickFieldValues(meta: DocTypeMeta, values: DocValues): DocValues {
@@ -42,25 +83,29 @@ export async function saveDoc(
   const meta = await getMeta(doctype)
   if (meta.issingle)
     throw new AppError('ValidationError', `${doctype} is a single DocType`)
-  if (values.name != null && values.name !== '')
-    return updateDoc(meta, String(values.name), values, user)
-  const fieldValues = pickFieldValues(meta, values)
-
-  const name = hashName()
-  const now = new Date()
-  const row: DocValues = {
-    name,
-    owner: user,
-    modified_by: user,
-    creation: now,
-    modified: now,
-    docstatus: 0,
-    idx: 0,
-    ...fieldValues,
+  if (values.name != null && values.name !== '') {
+    const [exists] = await sql`
+      select 1 from ${sql(tableName(doctype))} where name = ${String(values.name)}`
+    if (exists) return updateDoc(meta, String(values.name), values, user)
+    if (meta.autoname !== 'prompt')
+      throw new AppError('NotFoundError', `${doctype} ${values.name} not found`)
   }
+  const fieldValues = pickFieldValues(meta, values)
 
   const table = tableName(doctype)
   const [saved] = await sql.begin(async (tx) => {
+    const name = await resolveName(tx as unknown as typeof sql, meta, values)
+    const now = new Date()
+    const row: DocValues = {
+      name,
+      owner: user,
+      modified_by: user,
+      creation: now,
+      modified: now,
+      docstatus: 0,
+      idx: 0,
+      ...fieldValues,
+    }
     return tx`insert into ${tx(table)} ${tx(row)} returning *`
   })
   return { doctype, ...(saved as DocValues) }

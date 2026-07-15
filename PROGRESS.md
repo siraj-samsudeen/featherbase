@@ -1,5 +1,21 @@
 # Progress Log
 
+## 2026-07-15 — META-006 passing: naming engine
+
+- `resolveName()` in document.ts inside the save transaction: hash (default),
+  prompt (client name required; if the name already exists it becomes an
+  update), field:<fieldname>, and series `PREFIX-.####` via `series` table
+  with INSERT..ON CONFLICT DO UPDATE RETURNING (row-lock serializes
+  concurrent savers). Migration 0003 adds `series`.
+- saveDoc name-routing changed: name present → update if exists, else 404
+  unless autoname=prompt (insert-with-name).
+- Verified: 44 vitest incl. 50 parallel inserts → exactly NMINV-0001..0050,
+  no gaps/dupes; live e2e produced E2EINV-0001..0003.
+- Next: META-013 + DOC-011 (zod validation, field-wise errors), then
+  META-009/010.
+
+---
+
 ## 2026-07-15 — DOC-010 passing: get_list query engine
 
 - `query.ts`: `getList()` with [field, op, value] filters (=, !=, <, >, <=,
