@@ -5,7 +5,7 @@ import { AppError } from './errors'
 import { getMeta, type DocTypeMeta } from './meta'
 import { STANDARD_COLUMNS, tableName } from './doctype-engine'
 import { runHooks, type HookContext } from './controllers'
-import { assertPermission } from './permissions'
+import { assertDocPermission, assertPermission } from './permissions'
 
 // Hooks may set any writable column; re-filter after they run so a hook
 // can't inject unknown keys into SQL.
@@ -372,7 +372,6 @@ async function updateDoc(
       'ValidationError',
       'Updates must include the modified timestamp of the loaded document',
     )
-  await assertPermission(user, meta.name, 'write')
   const fieldValues = validateValues(meta, pickFieldValues(meta, values), 'update')
 
   const saved = await sql
@@ -382,6 +381,7 @@ async function updateDoc(
         select * from ${tx(table)} where name = ${name} for update`
       if (!existing)
         throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
+      await assertDocPermission(user, meta.name, 'write', String(existing.owner))
       const dbModified = (existing.modified as Date).getTime()
       const sentModified = new Date(String(values.modified)).getTime()
       if (Number.isNaN(sentModified) || dbModified !== sentModified)
@@ -442,7 +442,6 @@ async function setDocstatus(
   const meta = await getMeta(doctype)
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${doctype} is not submittable`)
-  await assertPermission(user, doctype, event === 'on_submit' ? 'submit' : 'cancel')
   const table = tableName(doctype)
   const [saved] = await sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
@@ -450,6 +449,8 @@ async function setDocstatus(
       select * from ${tx(table)} where name = ${name} for update`
     if (!existing)
       throw new AppError('NotFoundError', `${doctype} ${name} not found`)
+    await assertDocPermission(
+      user, doctype, event === 'on_submit' ? 'submit' : 'cancel', String(existing.owner))
     if ((existing.docstatus as number) !== from)
       throw new AppError(
         'ValidationError',
@@ -490,14 +491,13 @@ export async function deleteDoc(
   const meta = await getMeta(doctype)
   if (meta.issingle || meta.istable || ENGINE_MANAGED.has(doctype))
     throw new AppError('ValidationError', `${doctype} documents cannot be deleted directly`)
-  await assertPermission(user, doctype, 'delete')
-
   await sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     const [existing] = await tx`
       select * from ${tx(tableName(doctype))} where name = ${name} for update`
     if (!existing)
       throw new AppError('NotFoundError', `${doctype} ${name} not found`)
+    await assertDocPermission(user, doctype, 'delete', String(existing.owner))
     if ((existing.docstatus as number) === 1)
       throw new AppError(
         'ValidationError',
@@ -562,5 +562,6 @@ export async function getDoc(
   const [row] = await sql`
     select * from ${sql(tableName(doctype))} where name = ${name}`
   if (!row) throw new AppError('NotFoundError', `${doctype} ${name} not found`)
+  await assertDocPermission(user, doctype, 'read', String(row.owner))
   return loadChildren(meta, { doctype, ...(row as DocValues) })
 }

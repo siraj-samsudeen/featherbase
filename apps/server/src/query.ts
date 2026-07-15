@@ -2,7 +2,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta, type DocTypeMeta } from './meta'
 import { STANDARD_COLUMNS, tableName } from './doctype-engine'
-import { assertPermission } from './permissions'
+import { permissionScope } from './permissions'
 
 export type Filter = [string, string, unknown]
 
@@ -34,14 +34,17 @@ function assertColumn(cols: Set<string>, field: string, what: string) {
 
 export async function getList(doctype: string, args: ListArgs = {}, user = 'Administrator') {
   const meta = await getMeta(doctype)
-  await assertPermission(user, doctype, 'read')
+  const scope = await permissionScope(user, doctype, 'read')
+  if (scope === 'none')
+    throw new AppError('PermissionError', `No read permission on ${doctype} for ${user}`)
   const cols = columnSet(meta)
   const table = tableName(doctype)
 
   const fields = args.fields?.length ? args.fields : ['name']
   for (const f of fields) assertColumn(cols, f, 'selected')
 
-  const filters = args.filters ?? []
+  const filters = [...(args.filters ?? [])]
+  if (scope === 'owner') filters.push(['owner', '=', user])
   const conds = filters.map((flt) => {
     if (!Array.isArray(flt) || flt.length !== 3)
       throw new AppError('ValidationError', 'Each filter must be [field, operator, value]')

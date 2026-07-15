@@ -34,21 +34,51 @@ const ACTION_COLUMN: Record<PermAction, string> = {
   amend: 'can_amend',
 }
 
+// PERM-007: an if_owner grant applies only to documents the user owns.
+// 'all' = unconditional grant, 'owner' = owner-scoped only, 'none' = denied.
+export type PermScope = 'all' | 'owner' | 'none'
+
+export async function permissionScope(
+  user: string,
+  doctype: string,
+  action: PermAction,
+): Promise<PermScope> {
+  if (user === 'Administrator') return 'all'
+  const roles = await getRoles(user)
+  if (roles.includes('System Manager')) return 'all'
+  const rows = await sql`
+    select if_owner from tab_docperm
+    where ref_doctype = ${doctype} and permlevel = 0
+      and role in ${sql(roles)}
+      and ${sql(ACTION_COLUMN[action])} = true`
+  if (rows.some((r) => !r.if_owner)) return 'all'
+  if (rows.length) return 'owner'
+  return 'none'
+}
+
 export async function hasPermission(
   user: string,
   doctype: string,
   action: PermAction,
 ): Promise<boolean> {
-  if (user === 'Administrator') return true
-  const roles = await getRoles(user)
-  if (roles.includes('System Manager')) return true
-  const [row] = await sql`
-    select 1 from tab_docperm
-    where ref_doctype = ${doctype} and permlevel = 0
-      and role in ${sql(roles)}
-      and ${sql(ACTION_COLUMN[action])} = true
-    limit 1`
-  return Boolean(row)
+  return (await permissionScope(user, doctype, action)) !== 'none'
+}
+
+// For operations on a specific existing document: owner-scoped grants
+// require ownership.
+export async function assertDocPermission(
+  user: string,
+  doctype: string,
+  action: PermAction,
+  owner: string,
+) {
+  const scope = await permissionScope(user, doctype, action)
+  if (scope === 'all') return
+  if (scope === 'owner' && owner === user) return
+  throw new AppError(
+    'PermissionError',
+    `No ${action} permission on ${doctype} for ${user}`,
+  )
 }
 
 export async function assertPermission(
