@@ -1,5 +1,19 @@
 # Progress Log
 
+## 2026-07-15 — META-002 passing: field type system
+
+- `doctype-engine.ts`: `columnType()` maps all 16 fieldtypes to PG column
+  types (Table/Section Break/Column Break → no column); `createDocType()`
+  validates via zod (`doctypeDefSchema`) + semantic checks (reserved
+  `STANDARD_COLUMNS`, duplicate fieldnames, Link/Table/Select require
+  options), inserts doctype+docfield rows transactionally, 409 on duplicate.
+  `POST /api/doctype` endpoint. Field-wise 417 error envelope.
+- Verified: 25 vitest cases + live HTTP (invalid fieldtype 417 with
+  field-wise message; valid def persists rows).
+- NOTE: `POST /api/doctype` stores metadata only — DDL is META-003, next.
+
+---
+
 ## 2026-07-15 — META-001 passing: DocType metadata storage
 
 - Migration `0002_doctype.sql`: `doctype` + `docfield` tables (FK cascade,
