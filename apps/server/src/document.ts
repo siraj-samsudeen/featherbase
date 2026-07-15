@@ -406,6 +406,69 @@ async function updateDoc(
   return loadChildren(meta, { doctype: meta.name, ...(saved as DocValues) })
 }
 
+// DOC-006: a document referenced by Link fields anywhere cannot be deleted.
+export async function deleteDoc(
+  doctype: string,
+  name: string,
+  user = 'Administrator',
+): Promise<void> {
+  const meta = await getMeta(doctype)
+  if (meta.issingle || meta.istable)
+    throw new AppError('ValidationError', `${doctype} documents cannot be deleted directly`)
+
+  await sql.begin(async (tx) => {
+    const stx = tx as unknown as typeof sql
+    const [existing] = await tx`
+      select * from ${tx(tableName(doctype))} where name = ${name} for update`
+    if (!existing)
+      throw new AppError('NotFoundError', `${doctype} ${name} not found`)
+
+    // Any Link field in any DocType pointing at this doctype blocks deletion.
+    const linkFields = await tx`
+      select parent, fieldname from docfield
+      where fieldtype = 'Link' and options = ${doctype}`
+    for (const lf of linkFields) {
+      const parentDt = lf.parent as string
+      const [parentMeta] = await tx`
+        select issingle, istable from doctype where name = ${parentDt}`
+      if (!parentMeta || parentMeta.issingle) continue
+      const refCols = parentMeta.istable
+        ? ['name', 'parent', 'parenttype']
+        : ['name']
+      const [ref] = await tx`
+        select ${tx(refCols)} from ${tx(tableName(parentDt))}
+        where ${tx(lf.fieldname as string)} = ${name} limit 1`
+      if (ref) {
+        const holder = parentMeta.istable
+          ? `${ref.parenttype as string} ${ref.parent as string}`
+          : `${parentDt} ${ref.name as string}`
+        throw new AppError(
+          'ValidationError',
+          `Cannot delete ${doctype} ${name}: it is linked from ${holder}`,
+        )
+      }
+    }
+
+    const ctx: HookContext = {
+      doc: existing as DocValues,
+      meta,
+      user,
+      isNew: false,
+      tx: stx,
+    }
+    await runHooks('on_trash', ctx)
+
+    // Remove this document's own child rows, then the document.
+    for (const f of meta.fields) {
+      if (f.fieldtype !== 'Table') continue
+      await tx`
+        delete from ${tx(tableName(f.options!))}
+        where parent = ${name} and parenttype = ${doctype}`
+    }
+    await tx`delete from ${tx(tableName(doctype))} where name = ${name}`
+  })
+}
+
 export async function getDoc(
   doctype: string,
   name: string,

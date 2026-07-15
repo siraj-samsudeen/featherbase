@@ -1,5 +1,26 @@
 # Progress Log
 
+## 2026-07-15 — DOC-003/004/006 passing: hooks, controllers, safe deletes
+
+- `controllers.ts`: registry + file loader (src/controllers/*.ts default-
+  export {doctype, hooks}); chain runs INSIDE the save tx — insert:
+  before_insert→validate→before_save→INSERT→after_insert→after_save;
+  update: validate→before_save→UPDATE→after_save. Hooks mutate ctx.doc
+  (re-filtered via columnValues so hooks can't inject unknown SQL keys);
+  ctx has old/isNew/user/tx. Reference controller hook_file_demo.ts.
+- `deleteDoc()` + DELETE /api/doc/:dt/:name: blocks when any Link field
+  (parent or child row — child resolves to its parent doc in the message)
+  references the doc; runs on_trash; removes own child rows; blocks direct
+  child/single deletes. Gotcha found: don't select parent/parenttype from
+  non-child tables (column doesn't exist → was 500).
+- Verified: 71 vitest + live e2e (slug hook fired on running server;
+  linked delete 417 naming holder, then clean delete).
+- 17/126. Next: DOC-007 (submit/cancel), then API-001/002 (REST resource)
+  or META-004 (schema sync) to unlock CUST-001 later. META-011/012/014
+  (cache, bootstrap meta, seeds) also unblocked.
+
+---
+
 ## 2026-07-15 — META-008 passing: Link integrity
 
 - `validateLinks()` runs inside the save transaction for parents (insert +

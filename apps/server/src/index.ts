@@ -5,7 +5,7 @@ import { sql } from './db'
 import { errorResponse } from './errors'
 import { getMeta } from './meta'
 import { createDocType } from './doctype-engine'
-import { getDoc, saveDoc } from './document'
+import { deleteDoc, getDoc, saveDoc } from './document'
 import { getList } from './query'
 import { loadControllers } from './controllers'
 
@@ -35,6 +35,11 @@ app.post('/api/save_doc', async (c) => {
 
 app.get('/api/doc/:doctype/:name', async (c) => {
   return c.json(await getDoc(c.req.param('doctype'), c.req.param('name')))
+})
+
+app.delete('/api/doc/:doctype/:name', async (c) => {
+  await deleteDoc(c.req.param('doctype'), c.req.param('name'))
+  return c.json({ ok: true })
 })
 
 app.get('/api/list/:doctype', async (c) => {
