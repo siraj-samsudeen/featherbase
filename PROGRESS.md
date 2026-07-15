@@ -1,5 +1,21 @@
 # Progress Log
 
+## 2026-07-15 — UI-009 + META-013 passing: shared zod schema on the client
+
+- Web app now depends on the `shared` workspace package; FormView.save()
+  runs `metaToZod(meta.fields).safeParse(values)` BEFORE the network — the
+  literal same generator the server validates with. Field errors render
+  inline; the save request is never sent (verified with a Playwright route
+  counter: 0 calls on invalid, 1 on valid).
+- Note: UI-009 and META-013 were mutually-dependent halves (client usage
+  was META-013's missing clause; UI-009's dep was META-013) — implemented
+  and flipped together as one unit; recorded here per protocol.
+- 8 web e2e + 99 server tests green. 36/126.
+- Next: PERM-005 (user permissions) → unlocks PERM-010 → unlocks UI-006
+  (link autocomplete). Then UI-007/UI-008/UI-016.
+
+---
+
 ## 2026-07-15 — Evaluation pass #3 + UI-004/UI-005/META-012 passing: generic FormView
 
 - **Evaluator pass #3** (UI probes): core DocTypes render in ListView,

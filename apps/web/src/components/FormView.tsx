@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
+import { metaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api } from '../lib/api'
 import { NO_COLUMN_TYPES, useMeta, type DocField, type DocTypeMeta } from '../lib/meta'
 
@@ -53,6 +54,15 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   }
 
   async function save() {
+    // UI-009/META-013: the client validates with the SAME metadata-generated
+    // zod schema the server uses — invalid forms never reach the network.
+    const schema = metaToZod(m.fields)
+    const result = schema.safeParse(values)
+    if (!result.success) {
+      setErrors(zodFieldErrors(result.error))
+      setBanner('Please fix the highlighted fields')
+      return
+    }
     setSaving(true)
     setBanner(null)
     setErrors({})
