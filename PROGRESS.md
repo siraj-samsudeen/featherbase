@@ -1,5 +1,23 @@
 # Progress Log
 
+## 2026-07-15 — UI-002 passing: generic ListView
+
+- `components/ListView.tsx` + `lib/meta.ts`: ONE component renders any
+  DocType — columns from `listColumns()` (name + in_list_view fields,
+  fallback first two data fields), click-to-sort headers (toggles asc/desc,
+  resets paging), pagination (20/page, prev/next, page-info), keepPreviousData
+  for smooth paging, Check renders ✓/✗, name column links to
+  /desk/$doctype/$name (placeholder until UI-004).
+- Playwright verified on TWO DocTypes with zero doctype-specific code
+  ('UI List A' 30 docs: columns/pagination/sort asc+desc; 'UI List B':
+  different columns, Check rendering, row-link navigation). Fixtures are
+  idempotent via API (create-if-missing) since no DocType-delete path
+  exists yet — 'UI List A/B' persist in the dev DB deliberately.
+- All 4 web e2e + 99 server tests green.
+- 30/126. Next: UI-003 (filter UI) then UI-004/005 (FormView + save).
+
+---
+
 ## 2026-07-15 — PERM-007 + UI-001 passing: if_owner scoping, Desk shell live
 
 - PERM-007: `permissionScope()` returns all/owner/none; unconditional rows
