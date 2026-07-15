@@ -107,6 +107,20 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
 
   return (
     <div data-testid="form-view" className="max-w-3xl">
+      <nav className="mb-2 text-xs text-gray-500" data-testid="breadcrumbs">
+        <RouterLink to="/desk" className="hover:underline">Desk</RouterLink>
+        <span className="mx-1">/</span>
+        <RouterLink
+          to="/desk/$doctype"
+          params={{ doctype }}
+          search={{ filters: undefined }}
+          className="hover:underline"
+        >
+          {doctype}
+        </RouterLink>
+        <span className="mx-1">/</span>
+        <span className="text-gray-700">{isNew ? 'New' : name}</span>
+      </nav>
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold text-gray-900">
@@ -134,7 +148,11 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
         </p>
       )}
       {sections.map((fields, si) => (
-        <div key={si} className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div
+          key={si}
+          data-testid={`form-section-${si}`}
+          className="mb-6 grid grid-cols-1 gap-4 border-t border-gray-100 pt-4 first:border-t-0 first:pt-0 md:grid-cols-2"
+        >
           {fields.map((f) =>
             f.fieldtype === 'Column Break' ? (
               <div key={f.fieldname} className="hidden md:block" />
@@ -342,6 +360,13 @@ function ChildGrid({
   function setCell(i: number, fieldname: string, value: unknown) {
     onChange(rows.map((r, j) => (j === i ? { ...r, [fieldname]: value } : r)))
   }
+  function move(i: number, dir: -1 | 1) {
+    const j = i + dir
+    if (j < 0 || j >= rows.length) return
+    const next = [...rows]
+    ;[next[i], next[j]] = [next[j], next[i]]
+    onChange(next)
+  }
   return (
     <div className="overflow-x-auto rounded-md border border-gray-200" data-testid={`table-${field.fieldname}`}>
       <table className="w-full text-sm">
@@ -352,7 +377,7 @@ function ChildGrid({
                 {c.label ?? c.fieldname}
               </th>
             ))}
-            <th className="w-8 border-b border-gray-200" />
+            <th className="w-20 border-b border-gray-200" />
           </tr>
         </thead>
         <tbody>
@@ -368,11 +393,25 @@ function ChildGrid({
                   />
                 </td>
               ))}
-              <td className="px-1 text-center">
+              <td className="whitespace-nowrap px-1 text-center">
+                <button
+                  aria-label="Move row up"
+                  onClick={() => move(i, -1)}
+                  className="px-0.5 text-gray-300 hover:text-gray-700"
+                >
+                  ↑
+                </button>
+                <button
+                  aria-label="Move row down"
+                  onClick={() => move(i, 1)}
+                  className="px-0.5 text-gray-300 hover:text-gray-700"
+                >
+                  ↓
+                </button>
                 <button
                   aria-label="Remove row"
                   onClick={() => onChange(rows.filter((_, j) => j !== i))}
-                  className="text-gray-300 hover:text-red-600"
+                  className="px-0.5 text-gray-300 hover:text-red-600"
                 >
                   ×
                 </button>

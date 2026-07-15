@@ -1,5 +1,22 @@
 # Progress Log
 
+## 2026-07-15 — UI-007 + UI-008 + UI-016 passing: grid ops, sections, breadcrumbs
+
+- ChildGrid gained ↑/↓ reorder buttons (swap-based move). Playwright drives
+  the full loop: edit cell, delete row, add row, move it up, save — then
+  asserts the DB via API returns exact [item, qty, idx] order.
+- Section testids + first:border styling; 'UI Section DT' fixture with
+  Section Break + Column Break renders two grouped sections in metadata
+  order (fields provably in the right section, b1 absent from section 0).
+- Breadcrumbs (Desk / DocType / name) on FormView; doctype crumb navigates
+  back to the list; title bar Saved/Not saved cycle re-verified.
+- 12 web e2e + 107 server tests green. 42/126 — one-third done.
+- Next: DOC-008 (amend) + DOC-009 (versions) close the document engine;
+  then PERM-006 (permlevel), PERM-008 (DocShare), UI-011 (DocType builder
+  UI), META-004 (schema sync — needed by UI-011 editing).
+
+---
+
 ## 2026-07-15 — PERM-010 + UI-006 passing: filtered link search, autocomplete
 
 - PERM-010: dedicated suite proves the autocomplete query shape (list API,
