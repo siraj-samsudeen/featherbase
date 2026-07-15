@@ -1,5 +1,24 @@
 # Progress Log
 
+## 2026-07-15 — DOC-001 passing: save_doc insert path
+
+- `document.ts`: `saveDoc()` loads meta, rejects unknown fields (field-wise
+  errors), skips layout/Table fields, generates hash names, auto-sets
+  standard fields (owner/creation/modified/modified_by/docstatus/idx),
+  transactional insert, returns full doc. `getDoc()` reads back.
+  Endpoints: `POST /api/save_doc` {doctype, doc}, `GET /api/doc/:dt/:name`.
+- Verified: vitest (insert+readback, unknown-field 417, 404s, envelope) +
+  live e2e (create DocType → save_doc → row visible via psql).
+- Gotcha: postgres lib returns bigint columns as strings ('3' not 3) —
+  typed value coercion should land with META-013 zod schemas.
+- Gotcha: doctype tests that create DocTypes must also drop tab_* tables in
+  cleanup now that DDL runs (fixed doctype-engine.test.ts).
+- Note: DOC-001's dep META-005 is implemented (columns + auto-set on
+  insert) but stays failing until update-path auto-set exists (DOC-002).
+- Next: DOC-002 (update + conflict detection) → then META-005 flip.
+
+---
+
 ## 2026-07-15 — META-003 passing: DDL generation
 
 - `createTableDDL()` in doctype-engine: standard columns always, parent

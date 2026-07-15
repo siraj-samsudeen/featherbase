@@ -1,12 +1,18 @@
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
 import { columnType } from '../src/doctype-engine'
 import { app } from '../src/index'
 
 const DT = 'Engine Test Item'
 
+beforeAll(async () => {
+  await sql`delete from doctype where name = ${DT}`
+  await sql.unsafe('drop table if exists tab_engine_test_item')
+})
+
 afterAll(async () => {
   await sql`delete from doctype where name = ${DT}`
+  await sql.unsafe('drop table if exists tab_engine_test_item')
   await sql.end()
 })
 

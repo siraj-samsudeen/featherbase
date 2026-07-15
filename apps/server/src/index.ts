@@ -5,6 +5,8 @@ import { sql } from './db'
 import { errorResponse } from './errors'
 import { getMeta } from './meta'
 import { createDocType } from './doctype-engine'
+import { getDoc, saveDoc } from './document'
+import { AppError } from './errors'
 
 export const app = new Hono()
 
@@ -17,6 +19,18 @@ app.get('/api/meta/:doctype', async (c) => {
 app.post('/api/doctype', async (c) => {
   const meta = await createDocType(await c.req.json())
   return c.json(meta, 201)
+})
+
+app.post('/api/save_doc', async (c) => {
+  const body = (await c.req.json()) as { doctype?: string; doc?: Record<string, unknown> }
+  if (!body.doctype || typeof body.doc !== 'object' || body.doc === null)
+    throw new AppError('ValidationError', 'Expected { doctype, doc }')
+  const saved = await saveDoc(body.doctype, body.doc)
+  return c.json(saved, 201)
+})
+
+app.get('/api/doc/:doctype/:name', async (c) => {
+  return c.json(await getDoc(c.req.param('doctype'), c.req.param('name')))
 })
 
 app.get('/api/ping', async (c) => {
