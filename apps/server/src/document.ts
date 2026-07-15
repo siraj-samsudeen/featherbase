@@ -4,6 +4,18 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta, type DocTypeMeta } from './meta'
 import { STANDARD_COLUMNS, tableName } from './doctype-engine'
+import { runHooks, type HookContext } from './controllers'
+
+// Hooks may set any writable column; re-filter after they run so a hook
+// can't inject unknown keys into SQL.
+function columnValues(meta: DocTypeMeta, doc: DocValues): DocValues {
+  const out: DocValues = {}
+  for (const f of meta.fields) {
+    if (NO_COLUMN_TYPES.has(f.fieldtype)) continue
+    if (f.fieldname in doc) out[f.fieldname] = doc[f.fieldname]
+  }
+  return out
+}
 
 // DOC-011 + META-009: validate field values against the metadata-generated
 // zod schema. Inserts validate the whole doc (missing reqd fields fail);
@@ -295,9 +307,10 @@ export async function saveDoc(
   const table = tableName(doctype)
   const [saved] = await sql
     .begin(async (tx) => {
-      const name = await resolveName(tx as unknown as typeof sql, meta, values)
+      const stx = tx as unknown as typeof sql
+      const name = await resolveName(stx, meta, values)
       const now = new Date()
-      const row: DocValues = {
+      const doc: DocValues = {
         name,
         owner: user,
         modified_by: user,
@@ -307,10 +320,27 @@ export async function saveDoc(
         idx: 0,
         ...fieldValues,
       }
-      await validateLinks(tx as unknown as typeof sql, meta, fieldValues)
-      const inserted = await tx`insert into ${tx(table)} ${tx(row)} returning *`
+      const ctx: HookContext = { doc, meta, user, isNew: true, tx: stx }
+      await runHooks('before_insert', ctx)
+      await runHooks('validate', ctx)
+      await runHooks('before_save', ctx)
+      const row = {
+        ...columnValues(meta, doc),
+        name: String(doc.name),
+        owner: doc.owner,
+        modified_by: doc.modified_by,
+        creation: doc.creation,
+        modified: doc.modified,
+        docstatus: doc.docstatus,
+        idx: doc.idx,
+      }
+      await validateLinks(stx, meta, row)
+      const inserted = await tx`insert into ${tx(table)} ${tx(row as Record<string, never>)} returning *`
       for (const input of childInputs)
-        await saveChildren(tx as unknown as typeof sql, meta, name, input, user)
+        await saveChildren(stx, meta, name, input, user)
+      ctx.doc = { ...(inserted[0] as DocValues) }
+      await runHooks('after_insert', ctx)
+      await runHooks('after_save', ctx)
       return inserted
     })
     .catch((err) => mapDbError(meta, err))
@@ -335,6 +365,7 @@ async function updateDoc(
 
   const saved = await sql
     .begin(async (tx) => {
+      const stx = tx as unknown as typeof sql
       const [existing] = await tx`
         select * from ${tx(table)} where name = ${name} for update`
       if (!existing)
@@ -346,12 +377,29 @@ async function updateDoc(
           'ConflictError',
           `${meta.name} ${name} has been modified after you loaded it`,
         )
-      await validateLinks(tx as unknown as typeof sql, meta, fieldValues)
-      const row = { ...fieldValues, modified: new Date(), modified_by: user }
+      const doc: DocValues = { ...(existing as DocValues), ...fieldValues }
+      const ctx: HookContext = {
+        doc,
+        old: existing as DocValues,
+        meta,
+        user,
+        isNew: false,
+        tx: stx,
+      }
+      await runHooks('validate', ctx)
+      await runHooks('before_save', ctx)
+      const row = {
+        ...columnValues(meta, doc),
+        modified: new Date(),
+        modified_by: user,
+      }
+      await validateLinks(stx, meta, row)
       const [updated] = await tx`
         update ${tx(table)} set ${tx(row)} where name = ${name} returning *`
       for (const input of pickChildInputs(meta, values))
-        await saveChildren(tx as unknown as typeof sql, meta, name, input, user)
+        await saveChildren(stx, meta, name, input, user)
+      ctx.doc = { ...(updated as DocValues) }
+      await runHooks('after_save', ctx)
       return updated
     })
     .catch((err) => mapDbError(meta, err))

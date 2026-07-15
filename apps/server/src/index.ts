@@ -7,6 +7,9 @@ import { getMeta } from './meta'
 import { createDocType } from './doctype-engine'
 import { getDoc, saveDoc } from './document'
 import { getList } from './query'
+import { loadControllers } from './controllers'
+
+await loadControllers()
 import { AppError } from './errors'
 
 export const app = new Hono()
