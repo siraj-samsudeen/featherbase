@@ -16,14 +16,24 @@ async function migrate() {
   const applied = new Set(
     (await sql`select name from migration`).map((r) => r.name as string),
   )
-  const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()
+  const files = readdirSync(dir)
+    .filter((f) => f.endsWith('.sql') || f.endsWith('.ts'))
+    .sort()
   for (const file of files) {
     if (applied.has(file)) continue
-    const body = readFileSync(join(dir, file), 'utf8')
-    await sql.begin(async (tx) => {
-      await tx.unsafe(body)
-      await tx`insert into migration (name) values (${file})`
-    })
+    if (file.endsWith('.sql')) {
+      const body = readFileSync(join(dir, file), 'utf8')
+      await sql.begin(async (tx) => {
+        await tx.unsafe(body)
+        await tx`insert into migration (name) values (${file})`
+      })
+    } else {
+      // .ts migrations export up(); they use the engine itself (createDocType,
+      // saveDoc) so seed DocTypes get real DDL instead of duplicated SQL.
+      const mod = await import(new URL(`../migrations/${file}`, import.meta.url).href)
+      await mod.up()
+      await sql`insert into migration (name) values (${file})`
+    }
     console.log(`applied ${file}`)
   }
   console.log(`migrations up to date (${files.length} total)`)

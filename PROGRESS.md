@@ -1,5 +1,28 @@
 # Progress Log
 
+## 2026-07-15 — META-011 + META-014 passing; META-012 half done
+
+- META-011: meta cache in meta.ts (loads/hits stats exported for tests);
+  invalidateMeta() called by createDocType. NOTE: dev server caches meta —
+  e2e probes that delete DocTypes via psql leave stale entries until a
+  create invalidates or the server restarts.
+- Bootstrap refactor: doctype/docfield → tab_doctype/tab_docfield (migration
+  0004) with standard columns; DocType + DocField described by meta rows, so
+  /api/resource/DocType works generically (verified live: list + doc with 8
+  child fields). Generic writes/deletes to DocType/DocField are 417 —
+  DDL path is /api/doctype. **META-012 stays failing**: its verify also
+  needs the Desk form view to render DocType (UI-004).
+- META-014: migrate.ts now supports .ts migrations (export up());
+  0005_core_seeds.ts installs Role, Has Role, User, DocPerm, Comment,
+  Version, File through the engine + seeds System Manager/All/Guest roles,
+  Administrator (with System Manager) and Guest users. Verified per
+  criterion: scratch DB + migrate → all core DocTypes + Administrator; then
+  dropped. NOTE: psql -c can't run drop+create database in one call.
+- 22/126. Next: API-004 (auth/login vs User table), PERM-001/002/003 block,
+  or META-004 (schema sync). Auth unlocks the UI work.
+
+---
+
 ## 2026-07-15 — DOC-007 + API-001 + API-002 passing: submit lifecycle, REST resource
 
 - DOC-007: `submitDoc`/`cancelDoc` via shared `setDocstatus` (FOR UPDATE,
