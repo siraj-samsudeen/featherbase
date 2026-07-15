@@ -1,5 +1,29 @@
 # Progress Log
 
+## 2026-07-15 — Evaluation pass #4 + DOC-008/DOC-009 passing: versions, amend
+
+- **Evaluator pass #4**: child-row server errors surface in the banner and
+  never corrupt the doc (per-cell child error highlighting logged as
+  polish); child Link cells in the grid are plain text inputs (autocomplete
+  is parent-level only — noted, within UI-007's verified scope).
+- **DOC-009**: `recordVersion()` inside updateDoc's tx — field-level diff
+  ([field, old, new]) into tab_version when track_changes (skips
+  Version/DocType/DocField); no-op saves record nothing. GOTCHA: pass
+  objects (not JSON.stringify strings) to jsonb columns via the postgres
+  lib, or the value double-encodes as a JSON string scalar.
+- **DOC-008**: submittable DocTypes auto-gain a hidden amended_from Link
+  (createDocType + backfill migration 0008); `amendDoc()` requires
+  docstatus=2, copies fields + children (fresh child names), derives
+  NAME-n from the amended_from count, resolveName honors the pre-derived
+  name. POST /api/amend_doc. Amended docs are editable and resubmittable;
+  amending twice yields NAME-2.
+- Verified: 110 vitest + live e2e (version diff [["t","one","two"]] via
+  /api/resource/Version; amend produced <name>-1 draft).
+- 44/126. Next: PERM-006 (permlevel), PERM-008 (DocShare), META-004
+  (schema sync) + UI-011 (DocType builder), UI-010 (submit buttons in UI).
+
+---
+
 ## 2026-07-15 — UI-007 + UI-008 + UI-016 passing: grid ops, sections, breadcrumbs
 
 - ChildGrid gained ↑/↓ reorder buttons (swap-based move). Playwright drives

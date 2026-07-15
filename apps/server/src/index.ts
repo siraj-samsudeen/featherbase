@@ -5,7 +5,7 @@ import { sql } from './db'
 import { AppError, errorResponse } from './errors'
 import { getMeta } from './meta'
 import { createDocType } from './doctype-engine'
-import { cancelDoc, deleteDoc, getDoc, saveDoc, submitDoc } from './document'
+import { amendDoc, cancelDoc, deleteDoc, getDoc, saveDoc, submitDoc } from './document'
 import { getList } from './query'
 import { loadControllers } from './controllers'
 import { login, resolveToken, type SessionUser } from './auth'
@@ -81,6 +81,12 @@ app.post('/api/cancel_doc', async (c) => {
   const { doctype, name } = (await c.req.json()) as { doctype?: string; name?: string }
   if (!doctype || !name) throw new AppError('ValidationError', 'Expected { doctype, name }')
   return c.json(await cancelDoc(doctype, name, who(c)))
+})
+
+app.post('/api/amend_doc', async (c) => {
+  const { doctype, name } = (await c.req.json()) as { doctype?: string; name?: string }
+  if (!doctype || !name) throw new AppError('ValidationError', 'Expected { doctype, name }')
+  return c.json(await amendDoc(doctype, name, who(c)), 201)
 })
 
 app.delete('/api/doc/:doctype/:name', async (c) => {

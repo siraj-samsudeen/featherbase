@@ -65,6 +65,9 @@ async function resolveName(
   meta: DocTypeMeta,
   values: DocValues,
 ): Promise<string> {
+  // DOC-008: amended documents carry a pre-derived NAME-n.
+  if (values.amended_from != null && values.name)
+    return String(values.name)
   const rule = meta.autoname || 'hash'
   if (rule === 'hash') return hashName()
   if (rule === 'prompt') {
@@ -330,7 +333,7 @@ export async function saveDoc(
         throw new AppError('ConflictError', `${doctype} ${values.name} already exists`)
       return updateDoc(meta, String(values.name), values, user)
     }
-    if (meta.autoname !== 'prompt')
+    if (meta.autoname !== 'prompt' && values.amended_from == null)
       throw new AppError('NotFoundError', `${doctype} ${values.name} not found`)
   }
   await assertPermission(user, doctype, 'create')
@@ -448,12 +451,50 @@ async function updateDoc(
         update ${tx(table)} set ${tx(row)} where name = ${name} returning *`
       for (const input of pickChildInputs(meta, values))
         await saveChildren(stx, meta, name, input, user)
+      await recordVersion(stx, meta, name, existing as DocValues, updated as DocValues, user)
       ctx.doc = { ...(updated as DocValues) }
       await runHooks('after_save', ctx)
       return updated
     })
     .catch((err) => mapDbError(meta, err))
   return loadChildren(meta, { doctype: meta.name, ...(saved as DocValues) })
+}
+
+// DOC-009: record a field-level diff in the Version doctype on every
+// tracked update. Runs inside the save transaction.
+const UNVERSIONED = new Set(['Version', 'DocType', 'DocField'])
+
+async function recordVersion(
+  tx: typeof sql,
+  meta: DocTypeMeta,
+  name: string,
+  before: DocValues,
+  after: DocValues,
+  user: string,
+) {
+  if (!meta.track_changes || UNVERSIONED.has(meta.name)) return
+  const norm = (v: unknown) => (v instanceof Date ? v.toISOString() : v ?? null)
+  const changed: [string, unknown, unknown][] = []
+  for (const f of meta.fields) {
+    if (NO_COLUMN_TYPES.has(f.fieldtype)) continue
+    const b = norm(before[f.fieldname])
+    const a = norm(after[f.fieldname])
+    if (JSON.stringify(b) !== JSON.stringify(a)) changed.push([f.fieldname, b, a])
+  }
+  if (!changed.length) return
+  const now = new Date()
+  await tx`insert into tab_version ${tx({
+    name: hashName(),
+    owner: user,
+    modified_by: user,
+    creation: now,
+    modified: now,
+    docstatus: 0,
+    idx: 0,
+    ref_doctype: meta.name,
+    ref_name: name,
+    data: { changed } as unknown as string,
+  })}`
 }
 
 // DOC-007: docstatus transitions. Draft(0) -> submit -> Submitted(1) ->
@@ -509,6 +550,45 @@ export function submitDoc(doctype: string, name: string, user = 'Administrator')
 
 export function cancelDoc(doctype: string, name: string, user = 'Administrator') {
   return setDocstatus(doctype, name, 1, 2, 'on_cancel', user)
+}
+
+// DOC-008: create a fresh draft from a cancelled document. The copy carries
+// amended_from and a derived NAME-n; children are copied as new rows.
+export async function amendDoc(
+  doctype: string,
+  name: string,
+  user = 'Administrator',
+): Promise<DocValues> {
+  const meta = await getMeta(doctype)
+  if (!meta.is_submittable)
+    throw new AppError('ValidationError', `${doctype} is not submittable`)
+  const source = await getDoc(doctype, name, user)
+  if ((source.docstatus as number) !== 2)
+    throw new AppError('ValidationError', `${doctype} ${name} must be cancelled before amending`)
+  await assertDocPermission(user, doctype, 'amend', String(source.owner))
+
+  const [{ count }] = await sql`
+    select count(*)::int as count from ${sql(tableName(doctype))}
+    where amended_from = ${name}`
+  const newName = `${name}-${(count as number) + 1}`
+
+  const values: DocValues = { name: newName, amended_from: name }
+  for (const f of meta.fields) {
+    if (f.fieldname === 'amended_from') continue
+    if (f.fieldtype === 'Section Break' || f.fieldtype === 'Column Break') continue
+    if (f.fieldtype === 'Table') {
+      const rows = (source[f.fieldname] as DocValues[] | undefined) ?? []
+      values[f.fieldname] = rows.map((r) => {
+        const copy: DocValues = {}
+        for (const [k, v] of Object.entries(r))
+          if (!(STANDARD_COLUMNS as readonly string[]).includes(k)) copy[k] = v
+        return copy
+      })
+    } else {
+      values[f.fieldname] = source[f.fieldname]
+    }
+  }
+  return saveDoc(doctype, values, user)
 }
 
 // DOC-006: a document referenced by Link fields anywhere cannot be deleted.

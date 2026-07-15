@@ -138,6 +138,15 @@ export async function createDocType(input: unknown): Promise<DocTypeMeta> {
     throw new AppError('ValidationError', 'Invalid DocType definition', fields)
   }
   const def = parsed.data
+  // DOC-008: submittable documents track their cancelled predecessor.
+  if (def.is_submittable && !def.fields.some((f) => f.fieldname === 'amended_from'))
+    def.fields.push({
+      fieldname: 'amended_from',
+      label: 'Amended From',
+      fieldtype: 'Link',
+      options: def.name,
+      hidden: true,
+    })
   validateDef(def)
 
   const [existing] = await sql`select 1 from tab_doctype where name = ${def.name}`
