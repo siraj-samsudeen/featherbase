@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { sql } from './db'
 import { AppError } from './errors'
-import { FIELD_TYPES, type DocTypeMeta, getMeta } from './meta'
+import { FIELD_TYPES, type DocTypeMeta, getMeta, invalidateMeta } from './meta'
 
 // Columns every generated table has (META-005); user fields cannot shadow them.
 export const STANDARD_COLUMNS = [
@@ -195,5 +195,6 @@ export async function createDocType(input: unknown): Promise<DocTypeMeta> {
         )
     }
   })
+  invalidateMeta(def.name)
   return getMeta(def.name)
 }

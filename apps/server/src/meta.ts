@@ -55,10 +55,28 @@ export interface DocTypeMeta {
   fields: DocField[]
 }
 
+// META-011: per-process meta cache. Loads hit the DB once per DocType;
+// any metadata mutation must call invalidateMeta().
+const cache = new Map<string, DocTypeMeta>()
+export const metaCacheStats = { loads: 0, hits: 0 }
+
+export function invalidateMeta(name?: string) {
+  if (name) cache.delete(name)
+  else cache.clear()
+}
+
 export async function getMeta(name: string): Promise<DocTypeMeta> {
+  const cached = cache.get(name)
+  if (cached) {
+    metaCacheStats.hits++
+    return cached
+  }
   const [dt] = await sql`select * from doctype where name = ${name}`
   if (!dt) throw new AppError('NotFoundError', `DocType ${name} not found`)
   const fields = await sql<DocField[]>`
     select * from docfield where parent = ${name} order by idx, fieldname`
-  return { ...(dt as unknown as Omit<DocTypeMeta, 'fields'>), fields }
+  const meta = { ...(dt as unknown as Omit<DocTypeMeta, 'fields'>), fields }
+  metaCacheStats.loads++
+  cache.set(name, meta)
+  return meta
 }
