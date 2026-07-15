@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { metaToZod, zodFieldErrors } from 'shared'
-import { ApiError, api } from '../lib/api'
+import { ApiError, api, listResource } from '../lib/api'
+import { Link as RouterLink } from '@tanstack/react-router'
 import { NO_COLUMN_TYPES, useMeta, type DocField, type DocTypeMeta } from '../lib/meta'
 
 type Doc = Record<string, unknown>
@@ -294,15 +295,12 @@ function FieldControl({
       )
     case 'Link':
       return wrap(
-        <input
-          type="text"
-          role="combobox"
-          aria-expanded="false"
-          placeholder={`Link: ${field.options ?? ''}`}
-          value={String(value ?? '')}
-          onChange={(e) => onChange(e.target.value || null)}
+        <LinkControl
+          field={field}
+          value={value}
+          onChange={onChange}
           className={base}
-          {...common}
+          common={common}
         />,
       )
     default:
@@ -390,6 +388,100 @@ function ChildGrid({
       >
         + Add row
       </button>
+    </div>
+  )
+}
+
+
+// UI-006: debounced autocomplete over the permission-filtered list API.
+function LinkControl({
+  field,
+  value,
+  onChange,
+  className,
+  common,
+}: {
+  field: DocField
+  value: unknown
+  onChange: (value: unknown) => void
+  className: string
+  common: Record<string, unknown>
+}) {
+  const target = field.options ?? ''
+  const [query, setQuery] = useState<string | null>(null) // null = not searching
+  const [open, setOpen] = useState(false)
+  const [options, setOptions] = useState<string[]>([])
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  function search(q: string) {
+    clearTimeout(timer.current)
+    timer.current = setTimeout(async () => {
+      try {
+        const res = await listResource<{ name: string }>(target, {
+          filters: q ? [['name', 'like', `%${q}%`]] : [],
+          fields: ['name'],
+          limit_page_length: 10,
+        })
+        setOptions(res.data.map((r) => r.name))
+        setOpen(true)
+      } catch {
+        setOptions([])
+      }
+    }, 150)
+  }
+
+  const shown = query ?? String(value ?? '')
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        role="combobox"
+        aria-expanded={open}
+        placeholder={`Link: ${target}`}
+        value={shown}
+        onFocus={() => search(shown)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onChange={(e) => {
+          setQuery(e.target.value)
+          search(e.target.value)
+        }}
+        className={className}
+        {...common}
+      />
+      {open && (
+        <div
+          className="absolute z-10 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg"
+          data-testid={`link-options-${field.fieldname}`}
+        >
+          {options.map((o) => (
+            <button
+              key={o}
+              type="button"
+              onMouseDown={() => {
+                onChange(o)
+                setQuery(null)
+                setOpen(false)
+              }}
+              className="block w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50"
+              data-testid="link-option"
+            >
+              {o}
+            </button>
+          ))}
+          {!options.length && (
+            <p className="px-3 py-1.5 text-sm text-gray-400">No matches</p>
+          )}
+          <RouterLink
+            to="/desk/$doctype/$name"
+            params={{ doctype: target, name: 'new' }}
+            className="block border-t border-gray-100 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50"
+            data-testid="link-create-new"
+          >
+            + Create new {target}
+          </RouterLink>
+        </div>
+      )}
     </div>
   )
 }

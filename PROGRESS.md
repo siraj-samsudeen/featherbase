@@ -1,5 +1,22 @@
 # Progress Log
 
+## 2026-07-15 — PERM-010 + UI-006 passing: filtered link search, autocomplete
+
+- PERM-010: dedicated suite proves the autocomplete query shape (list API,
+  name-like filter) is permission-filtered: no-read 403, if_owner returns
+  only own docs, user permissions narrow further, bypass unaffected.
+- UI-006: `LinkControl` in FormView — debounced (150ms) search over
+  listResource, dropdown with matches, mousedown-select stores the name,
+  'No matches' state, '+ Create new <target>' footer navigating to
+  /desk/$target/new. Playwright: filter narrows 2→1, pick persists through
+  save+reload, create-new lands on a blank form.
+- 9 web e2e + 107 server tests green. 39/126.
+- Next: UI-007 (child grid verification), UI-008 (section layout — code
+  exists, needs breaks fixture + Playwright), UI-016 (title bar — mostly
+  built), PERM-006 (permlevel), DOC-008/009.
+
+---
+
 ## 2026-07-15 — PERM-005 passing: user permissions
 
 - Migration 0007 installs 'User Permission' DocType (user, allow→DocType,
