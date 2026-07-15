@@ -138,6 +138,103 @@ function mapDbError(meta: DocTypeMeta, err: unknown): never {
   throw err as Error
 }
 
+// META-007/DOC-005: extract Table-field arrays from the payload; they are
+// saved as child rows in the same transaction as the parent.
+function pickChildInputs(meta: DocTypeMeta, values: DocValues) {
+  const out: { fieldname: string; childDoctype: string; rows: DocValues[] }[] = []
+  for (const f of meta.fields) {
+    if (f.fieldtype !== 'Table') continue
+    const raw = values[f.fieldname]
+    if (raw === undefined) continue
+    if (!Array.isArray(raw))
+      throw new AppError('ValidationError', 'Invalid child table payload', {
+        [f.fieldname]: `${f.fieldname} must be an array of rows`,
+      })
+    out.push({ fieldname: f.fieldname, childDoctype: f.options!, rows: raw as DocValues[] })
+  }
+  return out
+}
+
+async function saveChildren(
+  tx: typeof sql,
+  parentMeta: DocTypeMeta,
+  parentName: string,
+  input: { fieldname: string; childDoctype: string; rows: DocValues[] },
+  user: string,
+) {
+  const childMeta = await getMeta(input.childDoctype)
+  const table = tableName(childMeta.name)
+  const existing = await tx`
+    select name from ${tx(table)}
+    where parent = ${parentName} and parenttype = ${parentMeta.name}
+      and parentfield = ${input.fieldname}`
+  const existingNames = new Set(existing.map((r) => r.name as string))
+  const keep = new Set<string>()
+  const errors: Record<string, string> = {}
+
+  for (const [i, row] of input.rows.entries()) {
+    const isExisting = row.name != null && existingNames.has(String(row.name))
+    let fieldValues: DocValues
+    try {
+      fieldValues = validateValues(
+        childMeta,
+        applyDefaults(childMeta, pickFieldValues(childMeta, row)),
+        isExisting ? 'update' : 'insert',
+      )
+    } catch (err) {
+      if (err instanceof AppError && err.fields)
+        for (const [k, v] of Object.entries(err.fields))
+          errors[`${input.fieldname}.${i}.${k}`] = v
+      else throw err
+      continue
+    }
+    const now = new Date()
+    if (isExisting) {
+      keep.add(String(row.name))
+      await tx`update ${tx(table)} set ${tx({
+        ...fieldValues,
+        idx: i + 1,
+        modified: now,
+        modified_by: user,
+      })} where name = ${String(row.name)}`
+    } else {
+      await tx`insert into ${tx(table)} ${tx({
+        name: hashName(),
+        owner: user,
+        modified_by: user,
+        creation: now,
+        modified: now,
+        docstatus: 0,
+        idx: i + 1,
+        parent: parentName,
+        parenttype: parentMeta.name,
+        parentfield: input.fieldname,
+        ...fieldValues,
+      })}`
+    }
+  }
+  if (Object.keys(errors).length)
+    throw new AppError('ValidationError', `Invalid child rows for ${input.fieldname}`, errors)
+
+  // Rows omitted from the payload are deleted — the payload is authoritative.
+  const remove = [...existingNames].filter((n) => !keep.has(n))
+  if (remove.length)
+    await tx`delete from ${tx(table)} where name in ${tx(remove)}`
+}
+
+async function loadChildren(meta: DocTypeMeta, doc: DocValues): Promise<DocValues> {
+  for (const f of meta.fields) {
+    if (f.fieldtype !== 'Table') continue
+    const rows = await sql`
+      select * from ${sql(tableName(f.options!))}
+      where parent = ${String(doc.name)} and parenttype = ${meta.name}
+        and parentfield = ${f.fieldname}
+      order by idx`
+    doc[f.fieldname] = rows
+  }
+  return doc
+}
+
 export async function saveDoc(
   doctype: string,
   values: DocValues,
@@ -146,6 +243,11 @@ export async function saveDoc(
   const meta = await getMeta(doctype)
   if (meta.issingle)
     throw new AppError('ValidationError', `${doctype} is a single DocType`)
+  if (meta.istable)
+    throw new AppError(
+      'ValidationError',
+      `${doctype} is a child DocType; save it through its parent`,
+    )
   if (values.name != null && values.name !== '') {
     const [exists] = await sql`
       select 1 from ${sql(tableName(doctype))} where name = ${String(values.name)}`
@@ -159,6 +261,7 @@ export async function saveDoc(
     'insert',
   )
 
+  const childInputs = pickChildInputs(meta, values)
   const table = tableName(doctype)
   const [saved] = await sql
     .begin(async (tx) => {
@@ -174,10 +277,13 @@ export async function saveDoc(
         idx: 0,
         ...fieldValues,
       }
-      return tx`insert into ${tx(table)} ${tx(row)} returning *`
+      const inserted = await tx`insert into ${tx(table)} ${tx(row)} returning *`
+      for (const input of childInputs)
+        await saveChildren(tx as unknown as typeof sql, meta, name, input, user)
+      return inserted
     })
     .catch((err) => mapDbError(meta, err))
-  return { doctype, ...(saved as DocValues) }
+  return loadChildren(meta, { doctype, ...(saved as DocValues) })
 }
 
 // DOC-002: optimistic concurrency — the client must echo back the
@@ -212,10 +318,12 @@ async function updateDoc(
       const row = { ...fieldValues, modified: new Date(), modified_by: user }
       const [updated] = await tx`
         update ${tx(table)} set ${tx(row)} where name = ${name} returning *`
+      for (const input of pickChildInputs(meta, values))
+        await saveChildren(tx as unknown as typeof sql, meta, name, input, user)
       return updated
     })
     .catch((err) => mapDbError(meta, err))
-  return { doctype: meta.name, ...(saved as DocValues) }
+  return loadChildren(meta, { doctype: meta.name, ...(saved as DocValues) })
 }
 
 export async function getDoc(
@@ -228,5 +336,5 @@ export async function getDoc(
   const [row] = await sql`
     select * from ${sql(tableName(doctype))} where name = ${name}`
   if (!row) throw new AppError('NotFoundError', `${doctype} ${name} not found`)
-  return { doctype, ...(row as DocValues) }
+  return loadChildren(meta, { doctype, ...(row as DocValues) })
 }

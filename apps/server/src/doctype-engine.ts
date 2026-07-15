@@ -144,6 +144,20 @@ export async function createDocType(input: unknown): Promise<DocTypeMeta> {
   if (existing)
     throw new AppError('ConflictError', `DocType ${def.name} already exists`)
 
+  // Table fields must point at an existing child (istable) DocType.
+  for (const f of def.fields) {
+    if (f.fieldtype !== 'Table') continue
+    const [child] = await sql`select istable from doctype where name = ${f.options!}`
+    if (!child)
+      throw new AppError('ValidationError', 'Invalid Table field target', {
+        [f.fieldname]: `Child DocType ${f.options} does not exist`,
+      })
+    if (!child.istable)
+      throw new AppError('ValidationError', 'Invalid Table field target', {
+        [f.fieldname]: `${f.options} is not a child DocType (istable)`,
+      })
+  }
+
   await sql.begin(async (tx) => {
     await tx`insert into doctype ${tx({
       name: def.name,

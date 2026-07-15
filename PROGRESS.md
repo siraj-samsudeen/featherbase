@@ -1,5 +1,21 @@
 # Progress Log
 
+## 2026-07-15 — META-007 + DOC-005 passing: child tables
+
+- `pickChildInputs`/`saveChildren`/`loadChildren` in document.ts: Table
+  fields carry arrays; rows validated against child meta (errors keyed
+  `field.i.child_field`), existing names updated, new rows inserted with
+  parent/parenttype/parentfield + idx by array order, omitted rows deleted
+  (payload authoritative) — all inside the parent's transaction (child
+  error rolls parent back; verified). Direct save of istable DocTypes is
+  blocked. createDocType validates Table options target is istable.
+  getDoc/save responses include children ordered by idx.
+- Verified: 59 vitest + live e2e (order with 2 rows; psql shows linkage).
+- Next: META-008 (Link integrity), then DOC-003/004 (hooks + controllers)
+  to unlock DOC-006/007.
+
+---
+
 ## 2026-07-15 — Evaluation pass #1 + META-010 passing
 
 - **Evaluator pass** (3rd wakeup): re-drove META-006/009/003, DOC-002/011 on
