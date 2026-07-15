@@ -54,8 +54,7 @@ app.delete('/api/doc/:doctype/:name', async (c) => {
   return c.json({ ok: true })
 })
 
-app.get('/api/list/:doctype', async (c) => {
-  const q = c.req.query()
+function listArgsFromQuery(q: Record<string, string>) {
   const parse = (key: string) => {
     if (q[key] == null) return undefined
     try {
@@ -64,15 +63,44 @@ app.get('/api/list/:doctype', async (c) => {
       throw new AppError('ValidationError', `${key} must be valid JSON`)
     }
   }
-  return c.json(
-    await getList(c.req.param('doctype'), {
-      filters: parse('filters'),
-      fields: parse('fields'),
-      order_by: q.order_by,
-      limit_start: q.limit_start ? Number(q.limit_start) : undefined,
-      limit_page_length: q.limit_page_length ? Number(q.limit_page_length) : undefined,
-    }),
-  )
+  return {
+    filters: parse('filters'),
+    fields: parse('fields'),
+    order_by: q.order_by,
+    limit_start: q.limit_start ? Number(q.limit_start) : undefined,
+    limit_page_length: q.limit_page_length ? Number(q.limit_page_length) : undefined,
+  }
+}
+
+app.get('/api/list/:doctype', async (c) => {
+  return c.json(await getList(c.req.param('doctype'), listArgsFromQuery(c.req.query())))
+})
+
+// API-001/API-002: Frappe-style REST resource — one generic handler set
+// serves CRUD for every DocType, driven entirely by metadata.
+app.get('/api/resource/:doctype', async (c) => {
+  return c.json(await getList(c.req.param('doctype'), listArgsFromQuery(c.req.query())))
+})
+
+app.post('/api/resource/:doctype', async (c) => {
+  const doc = (await c.req.json()) as Record<string, unknown>
+  delete doc.name
+  return c.json(await saveDoc(c.req.param('doctype'), doc), 201)
+})
+
+app.get('/api/resource/:doctype/:name', async (c) => {
+  return c.json(await getDoc(c.req.param('doctype'), c.req.param('name')))
+})
+
+app.put('/api/resource/:doctype/:name', async (c) => {
+  const doc = (await c.req.json()) as Record<string, unknown>
+  doc.name = c.req.param('name')
+  return c.json(await saveDoc(c.req.param('doctype'), doc))
+})
+
+app.delete('/api/resource/:doctype/:name', async (c) => {
+  await deleteDoc(c.req.param('doctype'), c.req.param('name'))
+  return c.json({ ok: true })
 })
 
 app.get('/api/ping', async (c) => {

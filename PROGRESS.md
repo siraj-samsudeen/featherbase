@@ -1,5 +1,23 @@
 # Progress Log
 
+## 2026-07-15 — DOC-007 + API-001 + API-002 passing: submit lifecycle, REST resource
+
+- DOC-007: `submitDoc`/`cancelDoc` via shared `setDocstatus` (FOR UPDATE,
+  from-state check, on_submit/on_cancel inside tx). Updates and deletes of
+  submitted docs 417; cancelled docs terminal for edits. Endpoints
+  /api/submit_doc, /api/cancel_doc.
+- API-001/002: /api/resource/:doctype[/name] — GET list (same query-param
+  parser as /api/list: filters/fields/order_by/limit_*), POST insert (name
+  stripped), GET one, PUT update (name from path), DELETE. All driven by
+  the same engine; unknown doctype 404s everywhere; field-wise errors
+  surface through.
+- Verified: 76 vitest + live e2e (submit→immutable→cancel; REST create+list).
+- 20/126. Next: META-011 (meta cache + invalidation), META-012 (bootstrap
+  DocType-of-DocTypes), META-014 (core seeds) — then auth (API-004) and
+  permissions block, then the Desk UI.
+
+---
+
 ## 2026-07-15 — DOC-003/004/006 passing: hooks, controllers, safe deletes
 
 - `controllers.ts`: registry + file loader (src/controllers/*.ts default-
