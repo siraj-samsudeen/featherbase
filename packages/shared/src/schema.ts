@@ -46,7 +46,16 @@ function baseSchema(f: SchemaField): z.ZodTypeAny {
         : z.string()
     }
     case 'Date':
-      return z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a YYYY-MM-DD date')
+      // Accept round-tripped values: DB date columns serialize as full ISO
+      // timestamps; normalize them back to the date part.
+      return z.preprocess(
+        (v) => {
+          if (v instanceof Date) return v.toISOString().slice(0, 10)
+          if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) return v.slice(0, 10)
+          return v
+        },
+        z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be a YYYY-MM-DD date'),
+      )
     case 'Datetime':
       return z.string().refine((v) => !Number.isNaN(Date.parse(v)), {
         message: 'must be a valid datetime',

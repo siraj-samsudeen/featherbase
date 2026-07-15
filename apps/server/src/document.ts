@@ -286,6 +286,7 @@ export async function saveDoc(
   doctype: string,
   values: DocValues,
   user = 'Administrator',
+  mode: 'upsert' | 'insert' = 'upsert',
 ): Promise<DocValues> {
   const meta = await getMeta(doctype)
   if (ENGINE_MANAGED.has(doctype))
@@ -303,7 +304,11 @@ export async function saveDoc(
   if (values.name != null && values.name !== '') {
     const [exists] = await sql`
       select 1 from ${sql(tableName(doctype))} where name = ${String(values.name)}`
-    if (exists) return updateDoc(meta, String(values.name), values, user)
+    if (exists) {
+      if (mode === 'insert')
+        throw new AppError('ConflictError', `${doctype} ${values.name} already exists`)
+      return updateDoc(meta, String(values.name), values, user)
+    }
     if (meta.autoname !== 'prompt')
       throw new AppError('NotFoundError', `${doctype} ${values.name} not found`)
   }

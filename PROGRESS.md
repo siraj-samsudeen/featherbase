@@ -1,5 +1,32 @@
 # Progress Log
 
+## 2026-07-15 — Evaluation pass #3 + UI-004/UI-005/META-012 passing: generic FormView
+
+- **Evaluator pass #3** (UI probes): core DocTypes render in ListView,
+  malformed filters URL doesn't crash, sort+filter compose. Finding fixed:
+  TanStack Query retried 4xx errors leaving missing/forbidden doctypes
+  stuck on "Loading…" — query client now fails fast on ApiError < 500.
+- **FormView** (components/FormView.tsx): one component renders + saves any
+  DocType. Controls per fieldtype (number/date/datetime-local/checkbox/
+  select/textarea/JSON mono/link combobox/child grid), Section/Column Break
+  layout grouping, reqd asterisks, read_only disabled, dirty tracking
+  (Save disabled when clean), field-wise server errors inline, create mode
+  at /desk/$doctype/new. ChildGrid: editable cells, add/remove rows (full
+  verification of grid ops is UI-007).
+- **API fix found by tests**: REST POST stripped doc.name, making
+  prompt-named DocTypes impossible to create via REST. POST now keeps the
+  name but is create-only (saveDoc mode='insert' → 409 on existing).
+- **Round-trip fix**: DB date columns serialize as full ISO timestamps and
+  failed Date re-validation on save; shared schema now normalizes.
+- META-012 flipped: FormView renders /desk/DocType/User with meta fields
+  and the DocField child grid (verified via Playwright probe).
+- 7 web e2e + 99 server tests green. 34/126.
+- Next: UI-006 (link autocomplete), UI-009 (client zod → flips META-013),
+  UI-007 (child grid verification), UI-016 (title bar indicator — mostly
+  done inside FormView already).
+
+---
+
 ## 2026-07-15 — UI-003 passing: list filters with URL persistence
 
 - FilterBar in ListView: field select (name + non-hidden data fields),

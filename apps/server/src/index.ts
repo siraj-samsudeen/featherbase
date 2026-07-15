@@ -116,10 +116,11 @@ app.get('/api/resource/:doctype', async (c) => {
   return c.json(await getList(c.req.param('doctype'), listArgsFromQuery(c.req.query()), who(c)))
 })
 
+// POST is create-only: a client-sent name is honored for prompt-named
+// DocTypes but an existing name conflicts instead of silently updating.
 app.post('/api/resource/:doctype', async (c) => {
   const doc = (await c.req.json()) as Record<string, unknown>
-  delete doc.name
-  return c.json(await saveDoc(c.req.param('doctype'), doc, who(c)), 201)
+  return c.json(await saveDoc(c.req.param('doctype'), doc, who(c), 'insert'), 201)
 })
 
 app.get('/api/resource/:doctype/:name', async (c) => {

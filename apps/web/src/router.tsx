@@ -8,6 +8,7 @@ import { LoginPage } from './pages/Login'
 import { DeskLayout } from './pages/DeskLayout'
 import { getToken } from './lib/api'
 import { ListView } from './components/ListView'
+import { FormView } from './components/FormView'
 
 const rootRoute = createRootRoute({ component: Outlet })
 
@@ -80,21 +81,18 @@ function DocTypeListPage() {
   )
 }
 
-// UI-004 replaces this placeholder with the generic FormView.
+// UI-004/UI-005: the generic FormView renders and saves every DocType.
 const docRoute = createRoute({
   getParentRoute: () => deskRoute,
   path: '$doctype/$name',
-  component: DocPlaceholder,
+  component: DocFormPage,
 })
 
-function DocPlaceholder() {
+function DocFormPage() {
   const { doctype, name } = docRoute.useParams()
   return (
     <div data-testid="doc-page">
-      <h1 className="text-lg font-semibold text-gray-900">
-        {doctype}: {name}
-      </h1>
-      <p className="mt-2 text-sm text-gray-500">Form view coming with UI-004.</p>
+      <FormView key={`${doctype}/${name}`} doctype={doctype} name={name} />
     </div>
   )
 }
