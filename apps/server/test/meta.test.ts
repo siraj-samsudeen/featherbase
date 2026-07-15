@@ -6,15 +6,15 @@ import { app } from '../src/index'
 const DT = 'Meta Test Note'
 
 beforeAll(async () => {
-  await sql`delete from doctype where name = ${DT}`
-  await sql`insert into doctype (name, module, autoname) values (${DT}, 'Core', 'hash')`
-  await sql`insert into docfield (parent, idx, fieldname, label, fieldtype, reqd) values
+  await sql`delete from tab_doctype where name = ${DT}`
+  await sql`insert into tab_doctype (name, module, autoname) values (${DT}, 'Core', 'hash')`
+  await sql`insert into tab_docfield (parent, idx, fieldname, label, fieldtype, reqd) values
     (${DT}, 1, 'title', 'Title', 'Data', true),
     (${DT}, 2, 'content', 'Content', 'Text', false)`
 })
 
 afterAll(async () => {
-  await sql`delete from doctype where name = ${DT}`
+  await sql`delete from tab_doctype where name = ${DT}`
   await sql.end()
 })
 

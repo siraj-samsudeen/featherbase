@@ -165,7 +165,7 @@ async function validateLinks(
     if (value == null || value === '') continue
     const target = f.options
     if (!target) continue
-    const [targetMeta] = await tx`select 1 from doctype where name = ${target}`
+    const [targetMeta] = await tx`select 1 from tab_doctype where name = ${target}`
     if (!targetMeta) {
       errors[prefix + f.fieldname] = `Link target DocType ${target} does not exist`
       continue
@@ -277,12 +277,21 @@ async function loadChildren(meta: DocTypeMeta, doc: DocValues): Promise<DocValue
   return doc
 }
 
+// DocType/DocField writes must go through the doctype engine (runs DDL);
+// the generic document path would silently skip table changes.
+const ENGINE_MANAGED = new Set(['DocType', 'DocField'])
+
 export async function saveDoc(
   doctype: string,
   values: DocValues,
   user = 'Administrator',
 ): Promise<DocValues> {
   const meta = await getMeta(doctype)
+  if (ENGINE_MANAGED.has(doctype))
+    throw new AppError(
+      'ValidationError',
+      `${doctype} documents are managed via /api/doctype`,
+    )
   if (meta.issingle)
     throw new AppError('ValidationError', `${doctype} is a single DocType`)
   if (meta.istable)
@@ -475,7 +484,7 @@ export async function deleteDoc(
   user = 'Administrator',
 ): Promise<void> {
   const meta = await getMeta(doctype)
-  if (meta.issingle || meta.istable)
+  if (meta.issingle || meta.istable || ENGINE_MANAGED.has(doctype))
     throw new AppError('ValidationError', `${doctype} documents cannot be deleted directly`)
 
   await sql.begin(async (tx) => {
@@ -492,12 +501,12 @@ export async function deleteDoc(
 
     // Any Link field in any DocType pointing at this doctype blocks deletion.
     const linkFields = await tx`
-      select parent, fieldname from docfield
+      select parent, fieldname from tab_docfield
       where fieldtype = 'Link' and options = ${doctype}`
     for (const lf of linkFields) {
       const parentDt = lf.parent as string
       const [parentMeta] = await tx`
-        select issingle, istable from doctype where name = ${parentDt}`
+        select issingle, istable from tab_doctype where name = ${parentDt}`
       if (!parentMeta || parentMeta.issingle) continue
       const refCols = parentMeta.istable
         ? ['name', 'parent', 'parenttype']

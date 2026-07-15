@@ -140,14 +140,14 @@ export async function createDocType(input: unknown): Promise<DocTypeMeta> {
   const def = parsed.data
   validateDef(def)
 
-  const [existing] = await sql`select 1 from doctype where name = ${def.name}`
+  const [existing] = await sql`select 1 from tab_doctype where name = ${def.name}`
   if (existing)
     throw new AppError('ConflictError', `DocType ${def.name} already exists`)
 
   // Table fields must point at an existing child (istable) DocType.
   for (const f of def.fields) {
     if (f.fieldtype !== 'Table') continue
-    const [child] = await sql`select istable from doctype where name = ${f.options!}`
+    const [child] = await sql`select istable from tab_doctype where name = ${f.options!}`
     if (!child)
       throw new AppError('ValidationError', 'Invalid Table field target', {
         [f.fieldname]: `Child DocType ${f.options} does not exist`,
@@ -159,7 +159,7 @@ export async function createDocType(input: unknown): Promise<DocTypeMeta> {
   }
 
   await sql.begin(async (tx) => {
-    await tx`insert into doctype ${tx({
+    await tx`insert into tab_doctype ${tx({
       name: def.name,
       module: def.module ?? 'Core',
       issingle: def.issingle ?? false,
@@ -170,7 +170,7 @@ export async function createDocType(input: unknown): Promise<DocTypeMeta> {
       description: def.description ?? null,
     })}`
     for (const [i, f] of def.fields.entries()) {
-      await tx`insert into docfield ${tx({
+      await tx`insert into tab_docfield ${tx({
         parent: def.name,
         idx: i + 1,
         fieldname: f.fieldname,

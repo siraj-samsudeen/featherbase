@@ -13,7 +13,7 @@ async function columns(table: string): Promise<Record<string, string>> {
 }
 
 afterAll(async () => {
-  await sql`delete from doctype where name in (${DT}, ${CHILD})`
+  await sql`delete from tab_doctype where name in (${DT}, ${CHILD})`
   await sql.unsafe(`drop table if exists tab_ddl_test_task`)
   await sql.unsafe(`drop table if exists tab_ddl_test_row`)
   await sql.end()
@@ -103,7 +103,7 @@ describe('META-003: DocType save generates its table', () => {
       }),
     })
     expect(res.status).toBe(500)
-    const [row] = await sql`select 1 from doctype where name = 'Ddl Ghost'`
+    const [row] = await sql`select 1 from tab_doctype where name = 'Ddl Ghost'`
     expect(row).toBeUndefined()
     await sql.unsafe(`drop table tab_ddl_ghost`)
   })

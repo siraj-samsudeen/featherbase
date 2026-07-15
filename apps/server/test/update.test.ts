@@ -14,7 +14,7 @@ async function post(body: unknown) {
 }
 
 beforeAll(async () => {
-  await sql`delete from doctype where name = ${DT}`
+  await sql`delete from tab_doctype where name = ${DT}`
   await sql.unsafe(`drop table if exists ${TABLE}`)
   await app.request('/api/doctype', {
     method: 'POST',
@@ -27,7 +27,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  await sql`delete from doctype where name = ${DT}`
+  await sql`delete from tab_doctype where name = ${DT}`
   await sql.unsafe(`drop table if exists ${TABLE}`)
   await sql.end()
 })

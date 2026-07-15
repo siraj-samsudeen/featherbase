@@ -71,10 +71,10 @@ export async function getMeta(name: string): Promise<DocTypeMeta> {
     metaCacheStats.hits++
     return cached
   }
-  const [dt] = await sql`select * from doctype where name = ${name}`
+  const [dt] = await sql`select * from tab_doctype where name = ${name}`
   if (!dt) throw new AppError('NotFoundError', `DocType ${name} not found`)
   const fields = await sql<DocField[]>`
-    select * from docfield where parent = ${name} order by idx, fieldname`
+    select * from tab_docfield where parent = ${name} order by idx, fieldname`
   const meta = { ...(dt as unknown as Omit<DocTypeMeta, 'fields'>), fields }
   metaCacheStats.loads++
   cache.set(name, meta)

@@ -17,7 +17,7 @@ async function post(path: string, body: unknown) {
 const fired: string[] = []
 
 beforeAll(async () => {
-  await sql`delete from doctype where name in (${DT}, ${PLAIN})`
+  await sql`delete from tab_doctype where name in (${DT}, ${PLAIN})`
   await sql.unsafe('drop table if exists tab_sbm_expense')
   await sql.unsafe('drop table if exists tab_sbm_plain')
   await post('/api/doctype', {
@@ -40,7 +40,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   clearControllers(DT)
-  await sql`delete from doctype where name in (${DT}, ${PLAIN})`
+  await sql`delete from tab_doctype where name in (${DT}, ${PLAIN})`
   await sql.unsafe('drop table if exists tab_sbm_expense')
   await sql.unsafe('drop table if exists tab_sbm_plain')
   await sql.end()

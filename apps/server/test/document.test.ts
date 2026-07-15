@@ -5,7 +5,7 @@ import { app } from '../src/index'
 const DT = 'Doc Test Note'
 
 beforeAll(async () => {
-  await sql`delete from doctype where name = ${DT}`
+  await sql`delete from tab_doctype where name = ${DT}`
   await sql.unsafe('drop table if exists tab_doc_test_note')
   const res = await app.request('/api/doctype', {
     method: 'POST',
@@ -22,7 +22,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  await sql`delete from doctype where name = ${DT}`
+  await sql`delete from tab_doctype where name = ${DT}`
   await sql.unsafe('drop table if exists tab_doc_test_note')
   await sql.end()
 })

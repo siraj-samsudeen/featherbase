@@ -17,7 +17,7 @@ async function post(path: string, body: unknown) {
 const save = (doc: Record<string, unknown>) => post('/api/save_doc', { doctype: PARENT, doc })
 
 beforeAll(async () => {
-  await sql`delete from doctype where name in (${PARENT}, ${CHILD})`
+  await sql`delete from tab_doctype where name in (${PARENT}, ${CHILD})`
   await sql.unsafe(`drop table if exists ${PTABLE}`)
   await sql.unsafe(`drop table if exists ${CTABLE}`)
   const c = await post('/api/doctype', {
@@ -39,7 +39,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  await sql`delete from doctype where name in (${PARENT}, ${CHILD})`
+  await sql`delete from tab_doctype where name in (${PARENT}, ${CHILD})`
   await sql.unsafe(`drop table if exists ${PTABLE}`)
   await sql.unsafe(`drop table if exists ${CTABLE}`)
   await sql.end()

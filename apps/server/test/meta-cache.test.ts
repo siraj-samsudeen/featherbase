@@ -6,7 +6,7 @@ import { app } from '../src/index'
 const DT = 'Cache Probe DT'
 
 beforeAll(async () => {
-  await sql`delete from doctype where name = ${DT}`
+  await sql`delete from tab_doctype where name = ${DT}`
   await sql.unsafe('drop table if exists tab_cache_probe_dt')
   await app.request('/api/doctype', {
     method: 'POST',
@@ -19,7 +19,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  await sql`delete from doctype where name = ${DT}`
+  await sql`delete from tab_doctype where name = ${DT}`
   await sql.unsafe('drop table if exists tab_cache_probe_dt')
   invalidateMeta(DT)
   await sql.end()
@@ -40,7 +40,7 @@ describe('META-011: meta cache with invalidation', () => {
 
   it('sees altered metadata after invalidation', async () => {
     expect((await getMeta(DT)).fields[0].label).toBe('Old Label')
-    await sql`update docfield set label = 'New Label' where parent = ${DT}`
+    await sql`update tab_docfield set label = 'New Label' where parent = ${DT}`
     // Still cached:
     expect((await getMeta(DT)).fields[0].label).toBe('Old Label')
     invalidateMeta(DT)

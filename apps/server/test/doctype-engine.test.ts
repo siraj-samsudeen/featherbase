@@ -6,12 +6,12 @@ import { app } from '../src/index'
 const DT = 'Engine Test Item'
 
 beforeAll(async () => {
-  await sql`delete from doctype where name = ${DT}`
+  await sql`delete from tab_doctype where name = ${DT}`
   await sql.unsafe('drop table if exists tab_engine_test_item')
 })
 
 afterAll(async () => {
-  await sql`delete from doctype where name = ${DT}`
+  await sql`delete from tab_doctype where name = ${DT}`
   await sql.unsafe('drop table if exists tab_engine_test_item')
   await sql.end()
 })

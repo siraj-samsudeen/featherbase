@@ -15,7 +15,7 @@ async function post(path: string, body: unknown) {
 }
 
 async function cleanup() {
-  await sql`delete from doctype where name in (${CUSTOMER}, ${TICKET}, ${ROW})`
+  await sql`delete from tab_doctype where name in (${CUSTOMER}, ${TICKET}, ${ROW})`
   await sql.unsafe('drop table if exists tab_lnk_ticket')
   await sql.unsafe('drop table if exists tab_lnk_alloc_row')
   await sql.unsafe('drop table if exists tab_lnk_customer')

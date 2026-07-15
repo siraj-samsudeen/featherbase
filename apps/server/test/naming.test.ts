@@ -28,7 +28,7 @@ async function save(doctype: string, doc: Record<string, unknown>) {
 }
 
 async function cleanup() {
-  await sql`delete from doctype where name in (${SERIES_DT}, ${FIELD_DT}, ${PROMPT_DT})`
+  await sql`delete from tab_doctype where name in (${SERIES_DT}, ${FIELD_DT}, ${PROMPT_DT})`
   await sql.unsafe('drop table if exists tab_nm_invoice')
   await sql.unsafe('drop table if exists tab_nm_country')
   await sql.unsafe('drop table if exists tab_nm_category')

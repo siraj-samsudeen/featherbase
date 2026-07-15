@@ -17,7 +17,7 @@ const del = (dt: string, name: string) =>
   app.request(`/api/doc/${encodeURIComponent(dt)}/${encodeURIComponent(name)}`, { method: 'DELETE' })
 
 async function cleanup() {
-  await sql`delete from doctype where name in (${CUSTOMER}, ${INVOICE}, ${ROW})`
+  await sql`delete from tab_doctype where name in (${CUSTOMER}, ${INVOICE}, ${ROW})`
   await sql.unsafe('drop table if exists tab_del_invoice')
   await sql.unsafe('drop table if exists tab_del_line_row')
   await sql.unsafe('drop table if exists tab_del_customer')
