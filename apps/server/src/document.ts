@@ -1,8 +1,33 @@
 import { randomBytes } from 'node:crypto'
+import { metaToZod, zodFieldErrors } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta, type DocTypeMeta } from './meta'
 import { STANDARD_COLUMNS, tableName } from './doctype-engine'
+
+// DOC-011 + META-009: validate field values against the metadata-generated
+// zod schema. Inserts validate the whole doc (missing reqd fields fail);
+// updates validate only the fields being changed.
+function validateValues(
+  meta: DocTypeMeta,
+  values: DocValues,
+  mode: 'insert' | 'update',
+): DocValues {
+  const schema = metaToZod(meta.fields)
+  const result = (mode === 'update' ? schema.partial() : schema).safeParse(values)
+  if (!result.success)
+    throw new AppError(
+      'ValidationError',
+      `Invalid values for ${meta.name}`,
+      zodFieldErrors(result.error),
+    )
+  const parsed = result.data as DocValues
+  // zod's empty-preprocess turns provided-but-empty optionals into
+  // undefined; write them back as explicit nulls so updates can clear values.
+  for (const key of Object.keys(values))
+    if (parsed[key] === undefined) parsed[key] = null
+  return parsed
+}
 
 export type DocValues = Record<string, unknown>
 
@@ -90,7 +115,7 @@ export async function saveDoc(
     if (meta.autoname !== 'prompt')
       throw new AppError('NotFoundError', `${doctype} ${values.name} not found`)
   }
-  const fieldValues = pickFieldValues(meta, values)
+  const fieldValues = validateValues(meta, pickFieldValues(meta, values), 'insert')
 
   const table = tableName(doctype)
   const [saved] = await sql.begin(async (tx) => {
@@ -125,7 +150,7 @@ async function updateDoc(
       'ValidationError',
       'Updates must include the modified timestamp of the loaded document',
     )
-  const fieldValues = pickFieldValues(meta, values)
+  const fieldValues = validateValues(meta, pickFieldValues(meta, values), 'update')
 
   const saved = await sql.begin(async (tx) => {
     const [existing] = await tx`

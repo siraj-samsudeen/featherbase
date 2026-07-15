@@ -1,5 +1,24 @@
 # Progress Log
 
+## 2026-07-15 — DOC-011 + META-009 passing: metadata-driven validation
+
+- `packages/shared/src/schema.ts`: `metaToZod(fields)` builds a zod object
+  per DocType (type-correct per fieldtype, Select→enum from options, reqd
+  enforcement, empty→undefined preprocess); `zodFieldErrors()` flattens to
+  {fieldname: message}. Server dep: `shared` workspace package.
+- document.ts `validateValues()`: full-object validation on insert,
+  `.partial()` on update (only changed fields), provided-but-empty values
+  become explicit SQL nulls so updates can clear fields.
+- DOC-011 + META-009 verified (48 vitest; live e2e returned both title
+  'Required' and qty NaN errors in one field-wise envelope).
+- META-013 stays failing: the CLIENT must consume the same schema (lands
+  with UI-009). META-010 (defaults, read_only, unique mapping) still open —
+  reqd alone doesn't satisfy it.
+- Next: META-010, then META-007/DOC-005 (child tables) or META-008 (link
+  integrity).
+
+---
+
 ## 2026-07-15 — META-006 passing: naming engine
 
 - `resolveName()` in document.ts inside the save transaction: hash (default),
