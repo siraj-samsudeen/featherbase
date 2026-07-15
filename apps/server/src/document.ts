@@ -5,6 +5,7 @@ import { AppError } from './errors'
 import { getMeta, type DocTypeMeta } from './meta'
 import { STANDARD_COLUMNS, tableName } from './doctype-engine'
 import { runHooks, type HookContext } from './controllers'
+import { assertPermission } from './permissions'
 
 // Hooks may set any writable column; re-filter after they run so a hook
 // can't inject unknown keys into SQL.
@@ -306,6 +307,7 @@ export async function saveDoc(
     if (meta.autoname !== 'prompt')
       throw new AppError('NotFoundError', `${doctype} ${values.name} not found`)
   }
+  await assertPermission(user, doctype, 'create')
   const fieldValues = validateValues(
     meta,
     applyDefaults(meta, pickFieldValues(meta, values)),
@@ -370,6 +372,7 @@ async function updateDoc(
       'ValidationError',
       'Updates must include the modified timestamp of the loaded document',
     )
+  await assertPermission(user, meta.name, 'write')
   const fieldValues = validateValues(meta, pickFieldValues(meta, values), 'update')
 
   const saved = await sql
@@ -439,6 +442,7 @@ async function setDocstatus(
   const meta = await getMeta(doctype)
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${doctype} is not submittable`)
+  await assertPermission(user, doctype, event === 'on_submit' ? 'submit' : 'cancel')
   const table = tableName(doctype)
   const [saved] = await sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
@@ -486,6 +490,7 @@ export async function deleteDoc(
   const meta = await getMeta(doctype)
   if (meta.issingle || meta.istable || ENGINE_MANAGED.has(doctype))
     throw new AppError('ValidationError', `${doctype} documents cannot be deleted directly`)
+  await assertPermission(user, doctype, 'delete')
 
   await sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
@@ -548,8 +553,10 @@ export async function deleteDoc(
 export async function getDoc(
   doctype: string,
   name: string,
+  user = 'Administrator',
 ): Promise<DocValues> {
   const meta = await getMeta(doctype)
+  await assertPermission(user, doctype, 'read')
   if (meta.issingle)
     throw new AppError('ValidationError', `${doctype} is a single DocType`)
   const [row] = await sql`

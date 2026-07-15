@@ -2,6 +2,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta, type DocTypeMeta } from './meta'
 import { STANDARD_COLUMNS, tableName } from './doctype-engine'
+import { assertPermission } from './permissions'
 
 export type Filter = [string, string, unknown]
 
@@ -31,8 +32,9 @@ function assertColumn(cols: Set<string>, field: string, what: string) {
     })
 }
 
-export async function getList(doctype: string, args: ListArgs = {}) {
+export async function getList(doctype: string, args: ListArgs = {}, user = 'Administrator') {
   const meta = await getMeta(doctype)
+  await assertPermission(user, doctype, 'read')
   const cols = columnSet(meta)
   const table = tableName(doctype)
 

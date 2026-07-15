@@ -6,6 +6,7 @@ import { areq } from './helpers'
 const USER = 'roletest@x.com'
 
 beforeAll(async () => {
+  await sql`delete from tab_has_role where parent = ${USER}`
   await sql`delete from tab_user where name = ${USER}`
   await areq('/api/save_doc', {
     method: 'POST',
@@ -17,6 +18,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
+  await sql`delete from tab_has_role where parent = ${USER}`
   await sql`delete from tab_user where name = ${USER}`
   await sql.end()
 })

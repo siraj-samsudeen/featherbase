@@ -9,7 +9,7 @@ import { cancelDoc, deleteDoc, getDoc, saveDoc, submitDoc } from './document'
 import { getList } from './query'
 import { loadControllers } from './controllers'
 import { login, resolveToken, type SessionUser } from './auth'
-import { getRoles } from './permissions'
+import { assertPermission, assertSystemManager, getRoles } from './permissions'
 
 await loadControllers()
 
@@ -48,10 +48,13 @@ app.get('/api/whoami', async (c) => {
 })
 
 app.get('/api/meta/:doctype', async (c) => {
-  return c.json(await getMeta(c.req.param('doctype')))
+  const meta = await getMeta(c.req.param('doctype'))
+  await assertPermission(who(c), meta.name, 'read')
+  return c.json(meta)
 })
 
 app.post('/api/doctype', async (c) => {
+  await assertSystemManager(who(c))
   const meta = await createDocType(await c.req.json())
   return c.json(meta, 201)
 })
@@ -65,7 +68,7 @@ app.post('/api/save_doc', async (c) => {
 })
 
 app.get('/api/doc/:doctype/:name', async (c) => {
-  return c.json(await getDoc(c.req.param('doctype'), c.req.param('name')))
+  return c.json(await getDoc(c.req.param('doctype'), c.req.param('name'), who(c)))
 })
 
 app.post('/api/submit_doc', async (c) => {
@@ -104,13 +107,13 @@ function listArgsFromQuery(q: Record<string, string>) {
 }
 
 app.get('/api/list/:doctype', async (c) => {
-  return c.json(await getList(c.req.param('doctype'), listArgsFromQuery(c.req.query())))
+  return c.json(await getList(c.req.param('doctype'), listArgsFromQuery(c.req.query()), who(c)))
 })
 
 // API-001/API-002: Frappe-style REST resource — one generic handler set
 // serves CRUD for every DocType, driven entirely by metadata.
 app.get('/api/resource/:doctype', async (c) => {
-  return c.json(await getList(c.req.param('doctype'), listArgsFromQuery(c.req.query())))
+  return c.json(await getList(c.req.param('doctype'), listArgsFromQuery(c.req.query()), who(c)))
 })
 
 app.post('/api/resource/:doctype', async (c) => {
@@ -120,7 +123,7 @@ app.post('/api/resource/:doctype', async (c) => {
 })
 
 app.get('/api/resource/:doctype/:name', async (c) => {
-  return c.json(await getDoc(c.req.param('doctype'), c.req.param('name')))
+  return c.json(await getDoc(c.req.param('doctype'), c.req.param('name'), who(c)))
 })
 
 app.put('/api/resource/:doctype/:name', async (c) => {

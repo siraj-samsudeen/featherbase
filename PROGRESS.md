@@ -1,5 +1,28 @@
 # Progress Log
 
+## 2026-07-15 — Evaluation pass #2 + PERM-001/002/003/009 passing
+
+- **Evaluator pass #2**: tampered tokens 401, unauth doctype-create 401,
+  disabled-user tokens die immediately (resolveToken re-reads the user row),
+  submitted docs immutable via REST PUT, migrate idempotent. Known-risk
+  note: meta cache serves stale meta after OUT-OF-BAND (psql) doctype
+  deletes — no product delete-DocType path exists yet; when META-004/
+  UI-011 add one, it MUST call invalidateMeta.
+- **Permission engine** (permissions.ts): getRoles (implicit 'All'; Guest
+  special), hasPermission via tab_docperm (role in user-roles, permlevel 0,
+  can_<action>), Administrator + System Manager bypass, assertSystemManager
+  for /api/doctype. Enforcement at engine level: create/write in saveDoc,
+  read in getDoc/getList/meta, delete/submit/cancel in their fns. Engine
+  callers default to 'Administrator' (seeds/hooks unaffected).
+- Verified: 97 vitest incl. restricted-user matrix + live e2e (read 403 →
+  DocPerm grant → read 200, create still 403).
+- Gotcha: deleting Users via SQL leaves tab_has_role orphans (no FK) —
+  test cleanups must delete child rows explicitly.
+- 27/126. Next: PERM-007 (if_owner) or PERM-005 (user permissions), then
+  UI-001 (login+shell) — auth + read APIs are ready for the Desk.
+
+---
+
 ## 2026-07-15 — API-004 passing: authentication
 
 - `auth.ts`: scrypt password hashing (32-byte key — 64-byte overflowed the
