@@ -377,6 +377,16 @@ async function updateDoc(
           'ConflictError',
           `${meta.name} ${name} has been modified after you loaded it`,
         )
+      if ((existing.docstatus as number) === 1)
+        throw new AppError(
+          'ValidationError',
+          `${meta.name} ${name} is submitted and cannot be modified (cancel it first)`,
+        )
+      if ((existing.docstatus as number) === 2)
+        throw new AppError(
+          'ValidationError',
+          `${meta.name} ${name} is cancelled and cannot be modified`,
+        )
       const doc: DocValues = { ...(existing as DocValues), ...fieldValues }
       const ctx: HookContext = {
         doc,
@@ -406,6 +416,58 @@ async function updateDoc(
   return loadChildren(meta, { doctype: meta.name, ...(saved as DocValues) })
 }
 
+// DOC-007: docstatus transitions. Draft(0) -> submit -> Submitted(1) ->
+// cancel -> Cancelled(2). Submitted docs are immutable; cancelled docs are
+// terminal (until amend, DOC-008).
+async function setDocstatus(
+  doctype: string,
+  name: string,
+  from: number,
+  to: number,
+  event: 'on_submit' | 'on_cancel',
+  user: string,
+): Promise<DocValues> {
+  const meta = await getMeta(doctype)
+  if (!meta.is_submittable)
+    throw new AppError('ValidationError', `${doctype} is not submittable`)
+  const table = tableName(doctype)
+  const [saved] = await sql.begin(async (tx) => {
+    const stx = tx as unknown as typeof sql
+    const [existing] = await tx`
+      select * from ${tx(table)} where name = ${name} for update`
+    if (!existing)
+      throw new AppError('NotFoundError', `${doctype} ${name} not found`)
+    if ((existing.docstatus as number) !== from)
+      throw new AppError(
+        'ValidationError',
+        `${doctype} ${name} has docstatus ${existing.docstatus}; expected ${from}`,
+      )
+    const [updated] = await tx`
+      update ${tx(table)} set docstatus = ${to}, modified = ${new Date()},
+        modified_by = ${user}
+      where name = ${name} returning *`
+    const ctx: HookContext = {
+      doc: updated as DocValues,
+      old: existing as DocValues,
+      meta,
+      user,
+      isNew: false,
+      tx: stx,
+    }
+    await runHooks(event, ctx)
+    return [updated]
+  })
+  return loadChildren(meta, { doctype, ...(saved as DocValues) })
+}
+
+export function submitDoc(doctype: string, name: string, user = 'Administrator') {
+  return setDocstatus(doctype, name, 0, 1, 'on_submit', user)
+}
+
+export function cancelDoc(doctype: string, name: string, user = 'Administrator') {
+  return setDocstatus(doctype, name, 1, 2, 'on_cancel', user)
+}
+
 // DOC-006: a document referenced by Link fields anywhere cannot be deleted.
 export async function deleteDoc(
   doctype: string,
@@ -422,6 +484,11 @@ export async function deleteDoc(
       select * from ${tx(tableName(doctype))} where name = ${name} for update`
     if (!existing)
       throw new AppError('NotFoundError', `${doctype} ${name} not found`)
+    if ((existing.docstatus as number) === 1)
+      throw new AppError(
+        'ValidationError',
+        `${doctype} ${name} is submitted and cannot be deleted (cancel it first)`,
+      )
 
     // Any Link field in any DocType pointing at this doctype blocks deletion.
     const linkFields = await tx`
