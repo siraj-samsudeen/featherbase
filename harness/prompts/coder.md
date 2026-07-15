@@ -27,6 +27,13 @@ Follow the session protocol in `CLAUDE.md` exactly. In short:
 
 - One feature per session. If you finish early, improve tests or fix
   regressions — do not start a second feature.
+- It is UNACCEPTABLE to remove, reword, or weaken entries in
+  `harness/features.json` — that leads to missing or buggy functionality.
+  Status flips are the only permitted change.
+- Before flipping a status, self-evaluate as a skeptical QA reviewer would:
+  does it work via the public interface, for a non-admin user, on a second
+  DocType, through the edge case in the `verify` field? Stubs, display-only
+  UI, and "wired but not functional" DO NOT count as passing.
 - Never mark `"passing"` on the strength of unit tests or code reading alone.
 - Never leave the tree dirty or the app unbootable. If blocked mid-feature,
   revert to the last working state and write down exactly where and why in

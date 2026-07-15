@@ -1,0 +1,9 @@
+{
+  "name": "shared",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "echo 'no tests yet'"
+  }
+}

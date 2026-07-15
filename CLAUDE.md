@@ -11,12 +11,14 @@ protocol — follow it in every session.
    stored in the `doctype` table. Tables, APIs, forms, list views, validation
    schemas, and RLS policies are all *generated* from that JSON. Never
    hand-write a per-model table, endpoint, or form component.
-2. **All writes go through the Document engine** (`apps/server`). Clients get
-   read-only access to Postgres via PostgREST/supabase-js; `INSERT`/`UPDATE`/
-   `DELETE` are denied by RLS. Every mutation calls the server's `save_doc` /
-   `submit_doc` / `delete_doc` endpoints, which run the full lifecycle hook
-   chain (`validate` → `before_save` → DB write → `after_save`) in one
-   transaction, including child tables and naming series.
+2. **All reads and writes go through the server** (`apps/server`); clients
+   never talk to Postgres directly. Every mutation calls the server's
+   `save_doc` / `submit_doc` / `delete_doc` endpoints, which run the full
+   lifecycle hook chain (`validate` → `before_save` → DB write →
+   `after_save`) in one transaction, including child tables and naming
+   series. Features that mention Supabase/PostgREST/RLS are satisfied with
+   local equivalents: native Postgres RLS, server-issued JWTs, server
+   websockets for realtime, and disk-backed file storage.
 3. **The Desk UI is generic.** One `ListView` and one `FormView` render every
    DocType from its metadata. Adding a DocType requires zero frontend code.
 
@@ -25,7 +27,9 @@ protocol — follow it in every session.
 - `apps/web` — React + Vite + TypeScript, TanStack Router + Query,
   Tailwind + shadcn/ui, react-hook-form + zod
 - `apps/server` — Node + Hono + TypeScript, `postgres` client, Zod
-- Database — Supabase local (Postgres); realtime, auth, storage via Supabase
+- Database — local Postgres 16 (native `pg_ctl`, data dir `.pgdata`,
+  port 5433); auth (JWT), realtime (ws), and file storage implemented in
+  `apps/server`. A Supabase swap is deferred until after the POC.
 - Monorepo — pnpm workspaces; run everything with `./init.sh`
 
 ## Session protocol (do this every session, in order)
