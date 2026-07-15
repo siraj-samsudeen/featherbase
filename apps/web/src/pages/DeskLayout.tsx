@@ -44,6 +44,7 @@ export function DeskLayout() {
               key={dt.name}
               to="/desk/$doctype"
               params={{ doctype: dt.name }}
+              search={{ filters: undefined }}
               className="block rounded px-2 py-1 text-sm text-gray-700 hover:bg-gray-200"
               activeProps={{ className: 'bg-gray-200 font-medium' }}
             >

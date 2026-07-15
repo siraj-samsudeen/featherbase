@@ -1,5 +1,23 @@
 # Progress Log
 
+## 2026-07-15 — UI-003 passing: list filters with URL persistence
+
+- FilterBar in ListView: field select (name + non-hidden data fields),
+  operators = != like > < >= <= (like auto-wraps %…%), Enter-to-add,
+  removable chips. Filters live in the route's `filters` search param
+  (JSON) via validateSearch on /desk/$doctype — reload/share-safe;
+  paging resets on filter change. Sidebar Links needed explicit
+  `search={{ filters: undefined }}` after adding validateSearch (TanStack
+  Router makes search params required on Links).
+- Playwright: stacked three filters (qty>=25 → 5; +title like; +title = →
+  1), URL contains filters=, reload restores chips + narrowed results,
+  chip removal widens. All 5 web e2e + server suite green.
+- 31/126. Next: UI-004 (generic FormView — all field types) + UI-005
+  (save with field-wise errors); those also complete META-012 and
+  META-013's client half.
+
+---
+
 ## 2026-07-15 — UI-002 passing: generic ListView
 
 - `components/ListView.tsx` + `lib/meta.ts`: ONE component renders any

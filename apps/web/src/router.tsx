@@ -42,18 +42,40 @@ const deskIndexRoute = createRoute({
   ),
 })
 
-// UI-002: the generic ListView renders every DocType.
+// UI-002/UI-003: the generic ListView renders every DocType; filters are
+// URL state so they survive reloads and are shareable.
 const doctypeRoute = createRoute({
   getParentRoute: () => deskRoute,
   path: '$doctype',
+  validateSearch: (search: Record<string, unknown>) => ({
+    filters: typeof search.filters === 'string' ? search.filters : undefined,
+  }),
   component: DocTypeListPage,
 })
 
 function DocTypeListPage() {
   const { doctype } = doctypeRoute.useParams()
+  const { filters } = doctypeRoute.useSearch()
+  const navigate = doctypeRoute.useNavigate()
+  let parsed: [string, string, unknown][] = []
+  try {
+    parsed = filters ? JSON.parse(filters) : []
+  } catch {
+    parsed = []
+  }
   return (
     <div data-testid="doctype-page">
-      <ListView key={doctype} doctype={doctype} />
+      <ListView
+        key={doctype}
+        doctype={doctype}
+        filters={parsed}
+        onFiltersChange={(next) =>
+          navigate({
+            search: { filters: next.length ? JSON.stringify(next) : undefined },
+            replace: true,
+          })
+        }
+      />
     </div>
   )
 }

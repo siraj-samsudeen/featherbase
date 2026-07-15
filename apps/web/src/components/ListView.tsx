@@ -1,8 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { listResource } from '../lib/api'
-import { listColumns, useMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, listColumns, useMeta } from '../lib/meta'
+
+export type Filter = [string, string, unknown]
+
+const OPS = ['=', '!=', 'like', '>', '<', '>=', '<='] as const
 
 const PAGE = 20
 
@@ -12,11 +16,21 @@ function cell(value: unknown): string {
   return String(value)
 }
 
-// UI-002: ONE list component renders every DocType from its metadata.
-export function ListView({ doctype }: { doctype: string }) {
+// UI-002/UI-003: ONE list component renders every DocType from its metadata.
+export function ListView({
+  doctype,
+  filters = [],
+  onFiltersChange,
+}: {
+  doctype: string
+  filters?: Filter[]
+  onFiltersChange?: (filters: Filter[]) => void
+}) {
   const meta = useMeta(doctype)
   const [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
   const [start, setStart] = useState(0)
+  const filterKey = JSON.stringify(filters)
+  useEffect(() => setStart(0), [filterKey])
 
   const columns = meta.data ? listColumns(meta.data) : []
   const orderBy = sort
@@ -26,11 +40,12 @@ export function ListView({ doctype }: { doctype: string }) {
       : undefined
 
   const list = useQuery({
-    queryKey: ['list', doctype, columns.map((c) => c.fieldname), orderBy, start],
+    queryKey: ['list', doctype, columns.map((c) => c.fieldname), orderBy, start, filterKey],
     enabled: Boolean(meta.data),
     placeholderData: keepPreviousData,
     queryFn: () =>
       listResource(doctype, {
+        filters,
         fields: columns.map((c) => c.fieldname),
         order_by: orderBy,
         limit_start: start,
@@ -61,6 +76,9 @@ export function ListView({ doctype }: { doctype: string }) {
           {total} total
         </span>
       </div>
+      {onFiltersChange && meta.data && (
+        <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
+      )}
       <div className="overflow-x-auto rounded-md border border-gray-200">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 text-left">
@@ -130,6 +148,100 @@ export function ListView({ doctype }: { doctype: string }) {
           Next
         </button>
       </div>
+    </div>
+  )
+}
+
+
+function FilterBar({
+  meta,
+  filters,
+  onChange,
+}: {
+  meta: import('../lib/meta').DocTypeMeta
+  filters: Filter[]
+  onChange: (filters: Filter[]) => void
+}) {
+  const fields = [
+    { fieldname: 'name', label: 'Name' },
+    ...meta.fields
+      .filter((f) => !NO_COLUMN_TYPES.has(f.fieldtype) && !f.hidden)
+      .map((f) => ({ fieldname: f.fieldname, label: f.label ?? f.fieldname })),
+  ]
+  const [field, setField] = useState('name')
+  const [op, setOp] = useState<string>('=')
+  const [value, setValue] = useState('')
+
+  function add() {
+    if (!value.trim()) return
+    const v = op === 'like' ? `%${value.trim()}%` : value.trim()
+    onChange([...filters, [field, op, v]])
+    setValue('')
+  }
+
+  return (
+    <div className="mb-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={field}
+          onChange={(e) => setField(e.target.value)}
+          data-testid="filter-field"
+          className="rounded border border-gray-300 px-2 py-1 text-sm"
+        >
+          {fields.map((f) => (
+            <option key={f.fieldname} value={f.fieldname}>
+              {f.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={op}
+          onChange={(e) => setOp(e.target.value)}
+          data-testid="filter-op"
+          className="rounded border border-gray-300 px-2 py-1 text-sm"
+        >
+          {OPS.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add()}
+          placeholder="Value"
+          data-testid="filter-value"
+          className="rounded border border-gray-300 px-2 py-1 text-sm"
+        />
+        <button
+          onClick={add}
+          data-testid="filter-add"
+          className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
+        >
+          Add filter
+        </button>
+      </div>
+      {filters.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2" data-testid="filter-chips">
+          {filters.map((f, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
+              data-testid="filter-chip"
+            >
+              {f[0]} {f[1]} {String(f[2])}
+              <button
+                aria-label="Remove filter"
+                onClick={() => onChange(filters.filter((_, j) => j !== i))}
+                className="text-gray-400 hover:text-gray-900"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
