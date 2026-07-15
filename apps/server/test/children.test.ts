@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
-import { app } from '../src/index'
+import { areq } from './helpers'
 
 const CHILD = 'Chd Item Row'
 const PARENT = 'Chd Order'
@@ -8,7 +8,7 @@ const CTABLE = 'tab_chd_item_row'
 const PTABLE = 'tab_chd_order'
 
 async function post(path: string, body: unknown) {
-  return app.request(path, {
+  return areq(path, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -138,7 +138,7 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
       await save({ title: 'o3', items: [{ item: 'z' }, { item: 'y' }] })
     ).json()) as Record<string, any>
     const read = (await (
-      await app.request(`/api/doc/${encodeURIComponent(PARENT)}/${doc.name}`)
+      await areq(`/api/doc/${encodeURIComponent(PARENT)}/${doc.name}`)
     ).json()) as Record<string, any>
     expect(read.items.map((r: any) => r.item)).toEqual(['z', 'y'])
   })

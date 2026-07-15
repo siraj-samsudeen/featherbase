@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
-import { app } from '../src/index'
+import { areq } from './helpers'
 
 const DT = 'Doc Test Note'
 
 beforeAll(async () => {
   await sql`delete from tab_doctype where name = ${DT}`
   await sql.unsafe('drop table if exists tab_doc_test_note')
-  const res = await app.request('/api/doctype', {
+  const res = await areq('/api/doctype', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -28,7 +28,7 @@ afterAll(async () => {
 })
 
 async function post(path: string, body: unknown) {
-  return app.request(path, {
+  return areq(path, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -51,7 +51,7 @@ describe('DOC-001: save_doc inserts through the Document engine', () => {
     expect(doc.title).toBe('hello')
     expect(doc.qty).toBe('3')
 
-    const read = await app.request(`/api/doc/${encodeURIComponent(DT)}/${doc.name}`)
+    const read = await areq(`/api/doc/${encodeURIComponent(DT)}/${doc.name}`)
     expect(read.status).toBe(200)
     expect(((await read.json()) as Record<string, unknown>).title).toBe('hello')
   })
@@ -68,7 +68,7 @@ describe('DOC-001: save_doc inserts through the Document engine', () => {
 
   it('404s for unknown doctype and unknown doc', async () => {
     expect((await post('/api/save_doc', { doctype: 'Missing DT', doc: {} })).status).toBe(404)
-    expect((await app.request(`/api/doc/${encodeURIComponent(DT)}/zzz`)).status).toBe(404)
+    expect((await areq(`/api/doc/${encodeURIComponent(DT)}/zzz`)).status).toBe(404)
   })
 
   it('rejects malformed envelope', async () => {

@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
-import { app } from '../src/index'
+import { areq } from './helpers'
 
 const DT = 'Ddl Test Task'
 const CHILD = 'Ddl Test Row'
@@ -21,7 +21,7 @@ afterAll(async () => {
 
 describe('META-003: DocType save generates its table', () => {
   it('creates tab_<name> with standard + field columns of correct types', async () => {
-    const res = await app.request('/api/doctype', {
+    const res = await areq('/api/doctype', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -70,7 +70,7 @@ describe('META-003: DocType save generates its table', () => {
   })
 
   it('child DocTypes (istable) get parent linkage columns and index', async () => {
-    const res = await app.request('/api/doctype', {
+    const res = await areq('/api/doctype', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -94,7 +94,7 @@ describe('META-003: DocType save generates its table', () => {
     // a fieldname that collides with a standard column being caught earlier.
     // Real transactional check: table already exists but doctype row absent.
     await sql.unsafe(`create table if not exists tab_ddl_ghost (name text)`)
-    const res = await app.request('/api/doctype', {
+    const res = await areq('/api/doctype', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({

@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
-import { app } from '../src/index'
 import { getMeta } from '../src/meta'
+import { areq } from './helpers'
 
 afterAll(async () => {
   await sql.end()
@@ -16,7 +16,7 @@ describe('META-012: DocType and DocField are themselves DocTypes', () => {
   })
 
   it('GET /api/resource/DocType lists DocTypes including DocType itself', async () => {
-    const res = await app.request(
+    const res = await areq(
       `/api/resource/DocType?${new URLSearchParams({
         filters: JSON.stringify([['name', 'in', ['DocType', 'DocField']]]),
         fields: JSON.stringify(['name', 'istable']),
@@ -32,20 +32,20 @@ describe('META-012: DocType and DocField are themselves DocTypes', () => {
   })
 
   it('GET /api/resource/DocType/<name> returns a DocType doc with its fields as children', async () => {
-    const res = await app.request('/api/resource/DocType/DocField')
+    const res = await areq('/api/resource/DocType/DocField')
     expect(res.status).toBe(200)
     const doc = (await res.json()) as { fields: { fieldname: string }[] }
     expect(doc.fields.map((f) => f.fieldname)).toContain('fieldtype')
   })
 
   it('generic writes/deletes to DocType/DocField are refused', async () => {
-    const save = await app.request('/api/save_doc', {
+    const save = await areq('/api/save_doc', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ doctype: 'DocType', doc: { module: 'X' } }),
     })
     expect(save.status).toBe(417)
-    const del = await app.request('/api/resource/DocType/DocField', { method: 'DELETE' })
+    const del = await areq('/api/resource/DocType/DocField', { method: 'DELETE' })
     expect(del.status).toBe(417)
   })
 })

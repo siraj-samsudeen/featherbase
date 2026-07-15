@@ -2,6 +2,7 @@ import type { Context } from 'hono'
 
 export type ErrorType =
   | 'ValidationError'
+  | 'AuthenticationError'
   | 'PermissionError'
   | 'NotFoundError'
   | 'ConflictError'
@@ -9,6 +10,7 @@ export type ErrorType =
 
 const STATUS: Record<ErrorType, number> = {
   ValidationError: 417,
+  AuthenticationError: 401,
   PermissionError: 403,
   NotFoundError: 404,
   ConflictError: 409,

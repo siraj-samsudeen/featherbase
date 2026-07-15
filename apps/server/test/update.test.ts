@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
-import { app } from '../src/index'
+import { areq } from './helpers'
 
 const DT = 'Upd Test Note'
 const TABLE = 'tab_upd_test_note'
 
 async function post(body: unknown) {
-  return app.request('/api/save_doc', {
+  return areq('/api/save_doc', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -16,7 +16,7 @@ async function post(body: unknown) {
 beforeAll(async () => {
   await sql`delete from tab_doctype where name = ${DT}`
   await sql.unsafe(`drop table if exists ${TABLE}`)
-  await app.request('/api/doctype', {
+  await areq('/api/doctype', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({

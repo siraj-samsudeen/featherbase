@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
-import { app } from '../src/index'
+import { areq } from './helpers'
 
 const SERIES_DT = 'Nm Invoice'
 const FIELD_DT = 'Nm Country'
 const PROMPT_DT = 'Nm Category'
 
 async function makeDT(name: string, autoname: string) {
-  const res = await app.request('/api/doctype', {
+  const res = await areq('/api/doctype', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -20,7 +20,7 @@ async function makeDT(name: string, autoname: string) {
 }
 
 async function save(doctype: string, doc: Record<string, unknown>) {
-  return app.request('/api/save_doc', {
+  return areq('/api/save_doc', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ doctype, doc }),

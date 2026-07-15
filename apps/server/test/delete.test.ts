@@ -1,20 +1,20 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
-import { app } from '../src/index'
+import { areq } from './helpers'
 
 const CUSTOMER = 'Del Customer'
 const INVOICE = 'Del Invoice'
 const ROW = 'Del Line Row'
 
 async function post(path: string, body: unknown) {
-  return app.request(path, {
+  return areq(path, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   })
 }
 const del = (dt: string, name: string) =>
-  app.request(`/api/doc/${encodeURIComponent(dt)}/${encodeURIComponent(name)}`, { method: 'DELETE' })
+  areq(`/api/doc/${encodeURIComponent(dt)}/${encodeURIComponent(name)}`, { method: 'DELETE' })
 
 async function cleanup() {
   await sql`delete from tab_doctype where name in (${CUSTOMER}, ${INVOICE}, ${ROW})`

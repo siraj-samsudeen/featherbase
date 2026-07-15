@@ -1,5 +1,26 @@
 # Progress Log
 
+## 2026-07-15 — API-004 passing: authentication
+
+- `auth.ts`: scrypt password hashing (32-byte key — 64-byte overflowed the
+  varchar(140) password_hash column), login by name OR email (enabled users
+  with a hash only), HS256 JWT (8h, secret env JWT_SECRET). Auth middleware
+  guards ALL /api/* except /api/ping and /api/login; `GET /api/whoami`.
+  AuthenticationError type → 401 (PermissionError stays 403 for authz).
+  User identity threads into saveDoc/submit/cancel/delete (owner/modified_by
+  = actual session user — verified with a non-admin user via live HTTP).
+  Migration 0006 sets Administrator password (env ADMIN_PASSWORD, default
+  'admin').
+- **GOTCHA: this hono version's `verify()` requires the alg argument** —
+  `verify(token, secret, 'HS256')`; without it every token 403s.
+- Tests all authenticate via `test/helpers.ts` `areq()` (cached admin token);
+  any new test file must use areq, not app.request (except auth negative
+  tests). Web login page still a shell — UI-001 will wire it to /api/login.
+- 23/126. Next: PERM-001..003 (roles/DocPerm/enforcement — DocPerm doctype
+  already seeded), then UI-001 (login + shell) since auth is ready.
+
+---
+
 ## 2026-07-15 — META-011 + META-014 passing; META-012 half done
 
 - META-011: meta cache in meta.ts (loads/hits stats exported for tests);

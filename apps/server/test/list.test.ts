@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
-import { app } from '../src/index'
+import { areq } from './helpers'
 
 const DT = 'List Test Item'
 const TABLE = 'tab_list_test_item'
@@ -8,7 +8,7 @@ const TABLE = 'tab_list_test_item'
 beforeAll(async () => {
   await sql`delete from tab_doctype where name = ${DT}`
   await sql.unsafe(`drop table if exists ${TABLE}`)
-  await app.request('/api/doctype', {
+  await areq('/api/doctype', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -26,7 +26,7 @@ beforeAll(async () => {
     ['gamma', 'Closed', 3],
     ['delta', 'Closed', 9],
   ]) {
-    await app.request('/api/save_doc', {
+    await areq('/api/save_doc', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ doctype: DT, doc: { title, status, qty } }),
@@ -42,7 +42,7 @@ afterAll(async () => {
 
 async function list(params: Record<string, string>) {
   const qs = new URLSearchParams(params).toString()
-  return app.request(`/api/list/${encodeURIComponent(DT)}?${qs}`)
+  return areq(`/api/list/${encodeURIComponent(DT)}?${qs}`)
 }
 
 describe('DOC-010: get_list with filters, fields, order_by, pagination', () => {

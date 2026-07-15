@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
 import { getMeta } from '../src/meta'
-import { app } from '../src/index'
+import { areq } from './helpers'
 
 const DT = 'Meta Test Note'
 
@@ -34,7 +34,7 @@ describe('META-001: doctype/docfield storage and Meta loader', () => {
   })
 
   it('serves meta over HTTP', async () => {
-    const res = await app.request(`/api/meta/${encodeURIComponent(DT)}`)
+    const res = await areq(`/api/meta/${encodeURIComponent(DT)}`)
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.name).toBe(DT)
@@ -42,7 +42,7 @@ describe('META-001: doctype/docfield storage and Meta loader', () => {
   })
 
   it('404s for an unknown DocType with the error envelope', async () => {
-    const res = await app.request('/api/meta/Nope')
+    const res = await areq('/api/meta/Nope')
     expect(res.status).toBe(404)
     const body = await res.json()
     expect(body.error.type).toBe('NotFoundError')

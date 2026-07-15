@@ -1,14 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
 import { getMeta, invalidateMeta, metaCacheStats } from '../src/meta'
-import { app } from '../src/index'
+import { areq } from './helpers'
 
 const DT = 'Cache Probe DT'
 
 beforeAll(async () => {
   await sql`delete from tab_doctype where name = ${DT}`
   await sql.unsafe('drop table if exists tab_cache_probe_dt')
-  await app.request('/api/doctype', {
+  await areq('/api/doctype', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -48,7 +48,7 @@ describe('META-011: meta cache with invalidation', () => {
   })
 
   it('creating a DocType invalidates and serves fresh meta over HTTP', async () => {
-    const res = await app.request(`/api/meta/${encodeURIComponent(DT)}`)
+    const res = await areq(`/api/meta/${encodeURIComponent(DT)}`)
     expect(((await res.json()) as { fields: { label: string }[] }).fields[0].label).toBe(
       'New Label',
     )

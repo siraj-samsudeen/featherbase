@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
 import { columnType } from '../src/doctype-engine'
-import { app } from '../src/index'
+import { areq } from './helpers'
 
 const DT = 'Engine Test Item'
 
@@ -49,7 +49,7 @@ describe('META-002: fieldtype -> Postgres column mapping', () => {
 
 describe('META-002: DocType save validates fieldtypes', () => {
   it('rejects an invalid fieldtype with a field-wise error', async () => {
-    const res = await app.request('/api/doctype', {
+    const res = await areq('/api/doctype', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -64,7 +64,7 @@ describe('META-002: DocType save validates fieldtypes', () => {
   })
 
   it('rejects Select/Link/Table fields without options', async () => {
-    const res = await app.request('/api/doctype', {
+    const res = await areq('/api/doctype', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -78,7 +78,7 @@ describe('META-002: DocType save validates fieldtypes', () => {
   })
 
   it('rejects reserved fieldnames', async () => {
-    const res = await app.request('/api/doctype', {
+    const res = await areq('/api/doctype', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -97,7 +97,7 @@ describe('META-002: DocType save validates fieldtypes', () => {
         { fieldname: 'status', fieldtype: 'Select', options: 'Open\nClosed' },
       ],
     }
-    const res = await app.request('/api/doctype', {
+    const res = await areq('/api/doctype', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(def),
@@ -106,7 +106,7 @@ describe('META-002: DocType save validates fieldtypes', () => {
     const meta = await res.json()
     expect(meta.fields).toHaveLength(2)
 
-    const dup = await app.request('/api/doctype', {
+    const dup = await areq('/api/doctype', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(def),

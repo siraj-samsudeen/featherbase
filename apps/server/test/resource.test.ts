@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
-import { app } from '../src/index'
+import { areq } from './helpers'
 
 const DT = 'Rest Project'
 const TABLE = 'tab_rest_project'
 
 const req = (path: string, init?: RequestInit) =>
-  app.request(path, {
+  areq(path, {
     ...init,
     headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) },
   })

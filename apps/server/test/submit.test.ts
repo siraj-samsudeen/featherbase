@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
-import { app } from '../src/index'
 import { clearControllers, registerController } from '../src/controllers'
+import { areq } from './helpers'
 
 const DT = 'Sbm Expense'
 const PLAIN = 'Sbm Plain'
 
 async function post(path: string, body: unknown) {
-  return app.request(path, {
+  return areq(path, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
@@ -69,7 +69,7 @@ describe('DOC-007: submittable documents', () => {
     expect((await edit.json()).error.message).toMatch(/submitted/)
 
     // Cannot delete while submitted
-    const delRes = await app.request(
+    const delRes = await areq(
       `/api/doc/${encodeURIComponent(DT)}/${doc.name}`,
       { method: 'DELETE' },
     )

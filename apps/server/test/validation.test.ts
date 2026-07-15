@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
-import { app } from '../src/index'
+import { areq } from './helpers'
 
 const DT = 'Val Test Ticket'
 const TABLE = 'tab_val_test_ticket'
 
 async function save(doc: Record<string, unknown>) {
-  return app.request('/api/save_doc', {
+  return areq('/api/save_doc', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ doctype: DT, doc }),
@@ -16,7 +16,7 @@ async function save(doc: Record<string, unknown>) {
 beforeAll(async () => {
   await sql`delete from tab_doctype where name = ${DT}`
   await sql.unsafe(`drop table if exists ${TABLE}`)
-  await app.request('/api/doctype', {
+  await areq('/api/doctype', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({

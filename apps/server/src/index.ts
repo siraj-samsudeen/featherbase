@@ -2,19 +2,46 @@ import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { config } from './config'
 import { sql } from './db'
-import { errorResponse } from './errors'
+import { AppError, errorResponse } from './errors'
 import { getMeta } from './meta'
 import { createDocType } from './doctype-engine'
 import { cancelDoc, deleteDoc, getDoc, saveDoc, submitDoc } from './document'
 import { getList } from './query'
 import { loadControllers } from './controllers'
+import { login, resolveToken, type SessionUser } from './auth'
 
 await loadControllers()
-import { AppError } from './errors'
 
-export const app = new Hono()
+type Env = { Variables: { user: SessionUser } }
+
+export const app = new Hono<Env>()
 
 app.onError((err, c) => errorResponse(c, err))
+
+// ---- Public routes (no session required) -----------------------------------
+
+app.get('/api/ping', async (c) => {
+  const [row] = await sql`select 1 as ok`
+  return c.json({ message: 'pong', db: row.ok === 1 })
+})
+
+app.post('/api/login', async (c) => {
+  const { usr, pwd } = (await c.req.json()) as { usr?: string; pwd?: string }
+  if (!usr || !pwd) throw new AppError('ValidationError', 'Expected { usr, pwd }')
+  return c.json(await login(usr, pwd))
+})
+
+// ---- API-004: everything below requires a valid session --------------------
+
+app.use('/api/*', async (c, next) => {
+  const user = await resolveToken(c.req.header('authorization'))
+  c.set('user', user)
+  await next()
+})
+
+const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').name
+
+app.get('/api/whoami', async (c) => c.json(c.get('user')))
 
 app.get('/api/meta/:doctype', async (c) => {
   return c.json(await getMeta(c.req.param('doctype')))
@@ -29,7 +56,7 @@ app.post('/api/save_doc', async (c) => {
   const body = (await c.req.json()) as { doctype?: string; doc?: Record<string, unknown> }
   if (!body.doctype || typeof body.doc !== 'object' || body.doc === null)
     throw new AppError('ValidationError', 'Expected { doctype, doc }')
-  const saved = await saveDoc(body.doctype, body.doc)
+  const saved = await saveDoc(body.doctype, body.doc, who(c))
   return c.json(saved, 201)
 })
 
@@ -40,17 +67,17 @@ app.get('/api/doc/:doctype/:name', async (c) => {
 app.post('/api/submit_doc', async (c) => {
   const { doctype, name } = (await c.req.json()) as { doctype?: string; name?: string }
   if (!doctype || !name) throw new AppError('ValidationError', 'Expected { doctype, name }')
-  return c.json(await submitDoc(doctype, name))
+  return c.json(await submitDoc(doctype, name, who(c)))
 })
 
 app.post('/api/cancel_doc', async (c) => {
   const { doctype, name } = (await c.req.json()) as { doctype?: string; name?: string }
   if (!doctype || !name) throw new AppError('ValidationError', 'Expected { doctype, name }')
-  return c.json(await cancelDoc(doctype, name))
+  return c.json(await cancelDoc(doctype, name, who(c)))
 })
 
 app.delete('/api/doc/:doctype/:name', async (c) => {
-  await deleteDoc(c.req.param('doctype'), c.req.param('name'))
+  await deleteDoc(c.req.param('doctype'), c.req.param('name'), who(c))
   return c.json({ ok: true })
 })
 
@@ -85,7 +112,7 @@ app.get('/api/resource/:doctype', async (c) => {
 app.post('/api/resource/:doctype', async (c) => {
   const doc = (await c.req.json()) as Record<string, unknown>
   delete doc.name
-  return c.json(await saveDoc(c.req.param('doctype'), doc), 201)
+  return c.json(await saveDoc(c.req.param('doctype'), doc, who(c)), 201)
 })
 
 app.get('/api/resource/:doctype/:name', async (c) => {
@@ -95,17 +122,12 @@ app.get('/api/resource/:doctype/:name', async (c) => {
 app.put('/api/resource/:doctype/:name', async (c) => {
   const doc = (await c.req.json()) as Record<string, unknown>
   doc.name = c.req.param('name')
-  return c.json(await saveDoc(c.req.param('doctype'), doc))
+  return c.json(await saveDoc(c.req.param('doctype'), doc, who(c)))
 })
 
 app.delete('/api/resource/:doctype/:name', async (c) => {
-  await deleteDoc(c.req.param('doctype'), c.req.param('name'))
+  await deleteDoc(c.req.param('doctype'), c.req.param('name'), who(c))
   return c.json({ ok: true })
-})
-
-app.get('/api/ping', async (c) => {
-  const [row] = await sql`select 1 as ok`
-  return c.json({ message: 'pong', db: row.ok === 1 })
 })
 
 if (process.env.NODE_ENV !== 'test') {
