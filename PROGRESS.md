@@ -13,6 +13,33 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — RPT-004 passing: query reports (admin SQL, bound filters, gated)
+
+- Report DocType gains `report_type` (Report Builder | Query Report) and
+  `query` (migration 0026 — adds both docfields AND the tab_report columns,
+  since Report is a normal doctype; idempotent + repairs a missing column).
+- `src/query-report.ts`: `runQueryReport(name, filters, user)` loads the Report
+  (read-permission enforced), requires report_type='Query Report', validates
+  the SQL is a single SELECT/WITH, replaces `{name}` placeholders with `$n`
+  BOUND params (never interpolated), and runs inside a `set transaction read
+  only` block so a report can never write. Column names come from the result
+  metadata so headers render even for 0 rows. Any DB/type error (e.g. a bad
+  date filter value) is wrapped as a clean 417, never a 500.
+- Authoring gate (`controllers/report.ts`): a non-System-Manager — even one
+  with full write on Report — is rejected (PermissionError) when creating a
+  Query Report or changing an existing one's query. Report Builder reports are
+  unaffected.
+- Endpoints: `POST /api/run_query_report` (run with filters) and
+  `GET /api/query_report/:name` (returns filter names parsed from the SQL — the
+  raw SQL is never sent to the client).
+- Web: `QueryReportView` + route `/desk/query-report/$name` — fetches filter
+  names, renders an input per filter (date input for *date* names), runs on
+  load and on Run, shows a results table.
+- Verified: server test (bound date filter, future-date→0 rows, injection
+  inert, read-only rejects UPDATE, authoring gate for create+edit) + e2e
+  (date filter runs and renders in the browser; non-System-Manager blocked
+  from authoring SQL). 223 server + 40 web e2e green. 95/126.
+
 ## 2026-07-16 — PLAT-004 passing: developer CLI over the document API
 
 - `src/cli.ts` (`pnpm --filter server cli <cmd>`) with subcommands:

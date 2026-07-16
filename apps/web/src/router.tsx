@@ -11,6 +11,7 @@ import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
 import { useMeta } from './lib/meta'
 import { ReportView } from './components/ReportView'
+import { QueryReportView } from './components/QueryReportView'
 import { KanbanView } from './components/KanbanView'
 import { CalendarView } from './components/CalendarView'
 import { PrintView } from './pages/PrintView'
@@ -205,6 +206,23 @@ function CalendarPage() {
   )
 }
 
+// RPT-004: a Query Report renders its own SQL-driven results (static first
+// segment, so it wins over $doctype/$name).
+const queryReportRoute = createRoute({
+  getParentRoute: () => deskRoute,
+  path: 'query-report/$name',
+  component: QueryReportPage,
+})
+
+function QueryReportPage() {
+  const { name } = queryReportRoute.useParams()
+  return (
+    <div data-testid="doctype-page">
+      <QueryReportView key={name} name={name} />
+    </div>
+  )
+}
+
 // UI-004/UI-005: the generic FormView renders and saves every DocType.
 const docRoute = createRoute({
   getParentRoute: () => deskRoute,
@@ -225,5 +243,5 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   printRoute,
-  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, doctypeRoute, docRoute]),
+  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, queryReportRoute, doctypeRoute, docRoute]),
 ])

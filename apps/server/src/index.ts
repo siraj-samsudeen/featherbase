@@ -22,6 +22,7 @@ import { enqueue, loadJobs, startWorker } from './jobs'
 import { attachRealtime, publishDocEvent, publishUserEvent } from './realtime'
 import { queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
+import { parseFilters, runQueryReport } from './query-report'
 import { randomBytes } from 'node:crypto'
 
 await loadControllers()
@@ -266,6 +267,30 @@ app.get('/api/signed_url', async (c) => {
     return c.json({ signed_url: signFileUrl(fileUrl) })
   }
   return c.json({ signed_url: fileUrl })
+})
+
+// RPT-004: Query Report metadata (filter names parsed from its SQL) — the raw
+// query is intentionally NOT returned here, so running a report never exposes
+// its SQL to the client. Read permission on the Report is enforced by getDoc.
+app.get('/api/query_report/:name', async (c) => {
+  const report = await getDoc('Report', c.req.param('name'), who(c))
+  if (report.report_type !== 'Query Report')
+    throw new AppError('ValidationError', `${report.name} is not a Query Report`)
+  return c.json({
+    name: report.name,
+    ref_doctype: report.ref_doctype ?? null,
+    filters: parseFilters(typeof report.query === 'string' ? report.query : ''),
+  })
+})
+
+// RPT-004: run a query report with bound filter params (read-only execution).
+app.post('/api/run_query_report', async (c) => {
+  const { report, filters } = (await c.req.json().catch(() => ({}))) as {
+    report?: string
+    filters?: Record<string, unknown>
+  }
+  if (!report) throw new AppError('ValidationError', 'Expected { report }')
+  return c.json(await runQueryReport(report, filters ?? {}, who(c)))
 })
 
 app.post('/api/submit_doc', async (c) => {
