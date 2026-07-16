@@ -13,6 +13,7 @@ import { useMeta } from './lib/meta'
 import { ReportView } from './components/ReportView'
 import { QueryReportView } from './components/QueryReportView'
 import { PermissionManager } from './components/PermissionManager'
+import { DashboardView } from './components/DashboardView'
 import { KanbanView } from './components/KanbanView'
 import { CalendarView } from './components/CalendarView'
 import { PrintView } from './pages/PrintView'
@@ -224,6 +225,22 @@ function QueryReportPage() {
   )
 }
 
+// UI-026: a saved Dashboard renders number cards + charts (static segment).
+const dashboardRoute = createRoute({
+  getParentRoute: () => deskRoute,
+  path: 'dashboard/$name',
+  component: DashboardPage,
+})
+
+function DashboardPage() {
+  const { name } = dashboardRoute.useParams()
+  return (
+    <div data-testid="doctype-page">
+      <DashboardView key={name} name={name} />
+    </div>
+  )
+}
+
 // SET-003: role & permission manager for a DocType (static first segment).
 const permissionsRoute = createRoute({
   getParentRoute: () => deskRoute,
@@ -260,5 +277,5 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   printRoute,
-  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, queryReportRoute, permissionsRoute, doctypeRoute, docRoute]),
+  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, queryReportRoute, permissionsRoute, dashboardRoute, doctypeRoute, docRoute]),
 ])

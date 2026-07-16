@@ -13,6 +13,24 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — UI-026 passing: dashboards (number cards + bar charts)
+
+- Refactored `query.ts` to extract `scopedWhere()` (the permission scope +
+  owner/user-permission narrowing + filter building shared by list/count/
+  group). New `countDocs()` and `groupCount()` reuse it, so a dashboard widget
+  can never show data the user couldn't list. groupCount returns
+  {label, value} ordered by count desc.
+- Migration 0027: `Dashboard` DocType (label + JSON `config`:
+  `{ cards:[{label,doctype,filters}], charts:[{label,doctype,group_by,filters}] }`).
+- Endpoints `POST /api/dashboard/count` and `/api/dashboard/chart`.
+- Web `DashboardView` + route `/desk/dashboard/$name`: number cards (big count)
+  and CSS bar charts (width ∝ value/max), each fetched live per widget.
+- Verified: e2e (a board with All=6 / Open=3 cards and an Open3/Closed2/
+  Pending1 bar chart, all matching the seeded data) + server test (count,
+  filtered count, grouped counts ordered, filter in groups, Guest→403). The
+  getList refactor left all 230 server + 42 web e2e green. 97/126.
+- Unblocks RPT-006 (report charts pinned to dashboards) and UI-027 (workspaces).
+
 ## 2026-07-16 — SET-003 passing: role & permission manager UI
 
 - Endpoints (System-Manager-gated): `GET /api/permissions/:doctype` returns all

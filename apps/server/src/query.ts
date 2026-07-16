@@ -36,14 +36,19 @@ function assertColumn(cols: Set<string>, field: string, what: string) {
     })
 }
 
-export async function getList(doctype: string, args: ListArgs = {}, user = 'Administrator') {
+// Builds the permission-scoped WHERE fragment shared by list, count, and
+// group-count: read permission + owner narrowing + user-permission narrowing +
+// caller filters. Throws PermissionError (none) or ValidationError (single /
+// bad filter). Returns the resolved meta, table name, and column set too.
+async function scopedWhere(
+  doctype: string,
+  user: string,
+  callerFilters: Filter[],
+) {
   const meta = await getMeta(doctype)
   const scope = await permissionScope(user, doctype, 'read')
   if (scope === 'none')
     throw new AppError('PermissionError', `No read permission on ${doctype} for ${user}`)
-  // A Single DocType stores its one instance in the EAV `single_value` store
-  // and has no generated table, so it can never be listed. Fail cleanly
-  // instead of querying a nonexistent relation (which surfaced as a 500).
   if (meta.issingle)
     throw new AppError(
       'ValidationError',
@@ -52,13 +57,10 @@ export async function getList(doctype: string, args: ListArgs = {}, user = 'Admi
   const cols = columnSet(meta)
   const table = tableName(doctype)
 
-  const fields = args.fields?.length ? args.fields : ['name']
-  for (const f of fields) assertColumn(cols, f, 'selected')
-
-  const filters = [...(args.filters ?? [])]
+  const filters = [...callerFilters]
   if (scope === 'owner') filters.push(['owner', '=', user])
-  // PERM-005: user permissions narrow lists by the doctype itself and by
-  // any Link field pointing at a restricted doctype.
+  // PERM-005: user permissions narrow by the doctype itself and by any Link
+  // field pointing at a restricted doctype.
   if (!(await isBypassUser(user))) {
     const upMap = await getUserPermissionMap(user)
     if (upMap.size) {
@@ -91,9 +93,46 @@ export async function getList(doctype: string, args: ListArgs = {}, user = 'Admi
       default: return sql`${sql(field)} not in ${sql((value as string[]).length ? (value as string[]) : [null as never])}`
     }
   })
-  const where = conds.length
-    ? conds.reduce((acc, c) => sql`${acc} and ${c}`)
-    : sql`true`
+  const where = conds.length ? conds.reduce((acc, c) => sql`${acc} and ${c}`) : sql`true`
+  return { meta, table, cols, where }
+}
+
+// DASH: count of matching documents (number card). Same permission scoping as
+// getList; returns a single integer.
+export async function countDocs(
+  doctype: string,
+  filters: Filter[] = [],
+  user = 'Administrator',
+): Promise<number> {
+  const { table, where } = await scopedWhere(doctype, user, filters)
+  const [{ count }] = await sql`select count(*)::int as count from ${sql(table)} where ${where}`
+  return count as number
+}
+
+// UI-026: grouped counts for a bar chart — one { label, value } per distinct
+// value of `field`, honoring permissions and filters. Ordered by descending
+// count then label for a stable chart.
+export async function groupCount(
+  doctype: string,
+  field: string,
+  filters: Filter[] = [],
+  user = 'Administrator',
+): Promise<{ label: string; value: number }[]> {
+  const { cols, table, where } = await scopedWhere(doctype, user, filters)
+  assertColumn(cols, field, 'group_by')
+  const rows = await sql`
+    select ${sql(field)}::text as label, count(*)::int as value
+    from ${sql(table)} where ${where}
+    group by ${sql(field)}
+    order by value desc, label asc`
+  return rows.map((r) => ({ label: (r.label as string) ?? '', value: r.value as number }))
+}
+
+export async function getList(doctype: string, args: ListArgs = {}, user = 'Administrator') {
+  const { meta, table, cols, where } = await scopedWhere(doctype, user, args.filters ?? [])
+
+  const fields = args.fields?.length ? args.fields : ['name']
+  for (const f of fields) assertColumn(cols, f, 'selected')
 
   let orderField = meta.sort_field || 'modified'
   let orderDir = (meta.sort_order || 'desc').toLowerCase()

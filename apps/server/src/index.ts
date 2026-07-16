@@ -8,7 +8,7 @@ import { AppError, errorResponse } from './errors'
 import { getMeta } from './meta'
 import { createDocType, updateDocType } from './doctype-engine'
 import { amendDoc, cancelDoc, deleteDoc, getDoc, renameDoc, saveDoc, submitDoc } from './document'
-import { getList } from './query'
+import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { generateApiKeys, login, resolveToken, revokeApiKeys, setUserPassword, type SessionUser } from './auth'
 import { assertPermission, assertSystemManager, getRoles } from './permissions'
@@ -267,6 +267,28 @@ app.get('/api/signed_url', async (c) => {
     return c.json({ signed_url: signFileUrl(fileUrl) })
   }
   return c.json({ signed_url: fileUrl })
+})
+
+// UI-026: dashboard widgets. A number card is a permission-scoped count; a
+// chart is permission-scoped grouped counts. Both reuse the list query's
+// scoping so a dashboard can never show data the user couldn't list.
+app.post('/api/dashboard/count', async (c) => {
+  const { doctype, filters } = (await c.req.json().catch(() => ({}))) as {
+    doctype?: string
+    filters?: [string, string, unknown][]
+  }
+  if (!doctype) throw new AppError('ValidationError', 'Expected { doctype }')
+  return c.json({ count: await countDocs(doctype, filters ?? [], who(c)) })
+})
+
+app.post('/api/dashboard/chart', async (c) => {
+  const { doctype, group_by, filters } = (await c.req.json().catch(() => ({}))) as {
+    doctype?: string
+    group_by?: string
+    filters?: [string, string, unknown][]
+  }
+  if (!doctype || !group_by) throw new AppError('ValidationError', 'Expected { doctype, group_by }')
+  return c.json({ data: await groupCount(doctype, group_by, filters ?? [], who(c)) })
 })
 
 // SET-003: role & permission manager. Reads/writes the DocPerm matrix for a
