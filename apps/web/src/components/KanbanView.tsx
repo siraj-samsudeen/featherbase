@@ -153,7 +153,7 @@ export function KanbanView({
                   data-testid="kanban-card"
                   data-card={String(row.name)}
                   onPointerDown={() => setDragging({ name: String(row.name), from: col })}
-                  className={`cursor-grab rounded-md border border-[var(--color-border)] bg-white p-2 text-sm shadow-sm ${
+                  className={`cursor-grab rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-sm shadow-sm ${
                     dragging?.name === row.name ? 'opacity-50' : ''
                   }`}
                 >

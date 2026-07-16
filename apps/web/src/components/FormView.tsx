@@ -682,7 +682,7 @@ function LinkControl({
       />
       {open && (
         <div
-          className="absolute z-10 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg"
+          className="absolute z-10 mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg"
           data-testid={`link-options-${field.fieldname}`}
         >
           {options.map((o) => (

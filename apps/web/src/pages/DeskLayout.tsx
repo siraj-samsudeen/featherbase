@@ -102,7 +102,7 @@ export function DeskLayout() {
   return (
     <div className="flex h-full flex-col">
       {/* Navbar */}
-      <header className="flex h-12 shrink-0 items-center gap-4 border-b border-[var(--color-border)] bg-white px-4">
+      <header className="flex h-12 shrink-0 items-center gap-4 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4">
         <Link to="/desk" className="flex items-center gap-2">
           <span className="flex h-6 w-6 items-center justify-center rounded bg-[var(--color-brand)] text-xs font-bold text-white">
             F
@@ -115,7 +115,7 @@ export function DeskLayout() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search or go to…"
-            className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-canvas)] px-3 py-1.5 text-sm outline-none focus:border-[var(--color-brand)] focus:bg-white focus:ring-2 focus:ring-[var(--color-brand)]/15"
+            className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-canvas)] px-3 py-1.5 text-sm outline-none focus:border-[var(--color-brand)] focus:bg-[var(--color-surface)] focus:ring-2 focus:ring-[var(--color-brand)]/15"
           />
           {(suggestions.length > 0 || (docHits.data?.results.length ?? 0) > 0) && (
             <div className="fc-card absolute z-20 mt-1 w-full overflow-hidden py-1" data-testid="awesomebar-results">
@@ -202,7 +202,7 @@ export function DeskLayout() {
 
       <div className="flex min-h-0 flex-1">
         {/* Sidebar */}
-        <aside className="flex w-60 shrink-0 flex-col border-r border-[var(--color-border)] bg-white">
+        <aside className="flex w-60 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)]">
           <div className="px-3 pt-4">
             <Link
               to="/desk/new-doctype"

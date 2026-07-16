@@ -129,7 +129,7 @@ export function CalendarView({ doctype }: { doctype: string }) {
               key={key}
               data-date={key}
               data-testid={`cal-cell-${key}`}
-              className={`min-h-24 bg-white p-1 ${inMonth ? '' : 'opacity-50'}`}
+              className={`min-h-24 bg-[var(--color-surface)] p-1 ${inMonth ? '' : 'opacity-50'}`}
             >
               <div className="mb-1 text-right text-xs text-[var(--color-ink-faint)]">{d.getDate()}</div>
               <div className="flex flex-col gap-1">
