@@ -13,6 +13,7 @@ import { loadControllers } from './controllers'
 import { generateApiKeys, login, resolveToken, revokeApiKeys, setUserPassword, type SessionUser } from './auth'
 import { assertPermission, assertSystemManager, getRoles } from './permissions'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
+import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
 import { callMethod, loadMethods, methodAllowsGuest } from './methods'
 import { renderPdf, renderPrintHtml } from './print'
@@ -330,13 +331,21 @@ app.post('/api/upload_file', async (c) => {
   if (!(file instanceof File))
     throw new AppError('ValidationError', 'Expected multipart form data with a "file" part')
   const isPrivate = body.is_private === '1' || body.is_private === 'true'
-  const stored = await saveUpload(Buffer.from(await file.arrayBuffer()), file.name, isPrivate)
+  const content = Buffer.from(await file.arrayBuffer())
+  const stored = await saveUpload(content, file.name, isPrivate)
+  const mimeType = file.type || 'application/octet-stream'
+  // FILE-004: for raster images, generate a small inline thumbnail the UI can
+  // show without fetching the full-size original. Best-effort — a failure to
+  // decode never blocks the upload.
+  const thumbnail_url = isThumbnable(mimeType)
+    ? await makeThumbnailDataUrl(content, mimeType).catch(() => null)
+    : null
   const doc = await saveDoc(
     'File',
     {
       file_name: file.name,
       file_url: stored.file_url,
-      mime_type: file.type || 'application/octet-stream',
+      mime_type: mimeType,
       file_size: file.size,
       is_private: isPrivate,
       ...(typeof body.ref_doctype === 'string' && body.ref_doctype
@@ -346,6 +355,13 @@ app.post('/api/upload_file', async (c) => {
     },
     who(c),
   )
+  // thumbnail_url is a read_only, system-managed field, so it's set with a
+  // direct write (the save lifecycle ignores client values for read_only
+  // fields) and reflected on the returned doc.
+  if (thumbnail_url) {
+    await sql`update tab_file set thumbnail_url = ${thumbnail_url} where name = ${String(doc.name)}`
+    doc.thumbnail_url = thumbnail_url
+  }
   return c.json(doc, 201)
 })
 

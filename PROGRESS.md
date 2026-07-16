@@ -13,6 +13,36 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — FILE-004 passing: image thumbnails
+
+- **`thumbnails.ts`**: `makeThumbnailDataUrl(content, mime, maxDim=128)` decodes
+  a raster image and canvas-downscales it **in Chromium** (reusing the exported
+  `getBrowser()` singleton already used for PDFs — no new dependency; `sharp`
+  isn't installed), returning a self-contained `data:image/jpeg;base64,…`
+  thumbnail. `isThumbnable` gates to png/jpeg/webp/gif (svg excluded).
+- **File DocType** gains a read-only `thumbnail_url` (Long Text) via
+  `0042_file_thumbnail.ts`. On upload (`/api/upload_file`), images get a
+  thumbnail generated best-effort (a decode failure never blocks the upload).
+- **Persistence gotcha**: `thumbnail_url` is `read_only`, and the save
+  lifecycle deliberately ignores client values for read_only fields
+  (`pickFieldValues`) — so the server sets it with a **direct `update tab_file`
+  after `saveDoc`** (the same pattern naming/workflow use) and reflects it on
+  the returned doc. Storing it as a data URI avoids any extra storage object or
+  signed-URL handling (works for private images too).
+- **Attachments UI** shows the thumbnail (`<img src={thumbnail_url}>`) beside
+  image rows; non-images render as before.
+- **Verified**: `test/thumbnails.test.ts` (4 — recognizes raster types;
+  300×200→128×85 aspect-preserved; no upscaling of small images; null for
+  non-image, all measured back in Chromium) + `e2e/thumbnail.spec.ts` (attach a
+  real 240×160 PNG → an `attachment-thumb` with a JPEG data URI ≤128px renders;
+  a .txt gets none). Live HTTP confirmed an 87KB PNG → 1.3KB thumbnail, private
+  images included. Full server suite 297/297; attachments e2e unaffected.
+- Two infra notes: (1) the Chromium instance is a process-wide singleton — tests
+  must NOT close it (it's shared with the PDF tests); (2) a stale dev server can
+  keep port 8000 (EADDRINUSE on restart silently routes requests to old code) —
+  verify `server listening` after a restart.
+- Next: 5 P3 remain (WEB-003, PLAT-001/002/006/008).
+
 ## 2026-07-16 — UI-025 passing: responsive Desk
 
 - **DeskLayout** shell is now responsive. On `md+` the workspace sidebar is a

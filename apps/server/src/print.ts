@@ -159,7 +159,7 @@ function resolveChromium(): string | undefined {
 
 // Chromium is launched lazily and reused across requests.
 let browserPromise: Promise<import('playwright').Browser> | null = null
-async function getBrowser() {
+export async function getBrowser() {
   if (!browserPromise) {
     const { chromium } = await import('playwright')
     const bin = resolveChromium()

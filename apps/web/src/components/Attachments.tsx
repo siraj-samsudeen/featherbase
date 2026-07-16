@@ -7,6 +7,8 @@ interface FileRow {
   file_name: string
   file_url: string
   is_private: boolean
+  // FILE-004: an inline data-URI thumbnail for image uploads (else null).
+  thumbnail_url?: string | null
 }
 
 // FILE-002: attachments panel — File docs linked to this document via
@@ -26,7 +28,7 @@ export function Attachments({ doctype, name }: { doctype: string; name: string }
           ['ref_doctype', '=', doctype],
           ['ref_name', '=', name],
         ],
-        fields: ['name', 'file_name', 'file_url', 'is_private'],
+        fields: ['name', 'file_name', 'file_url', 'is_private', 'thumbnail_url'],
         order_by: 'creation asc',
         limit_page_length: 100,
       }),
@@ -117,9 +119,17 @@ export function Attachments({ doctype, name }: { doctype: string; name: string }
               href={href(f)}
               target="_blank"
               rel="noreferrer"
-              className="truncate text-[var(--color-brand)] hover:underline"
+              className="flex min-w-0 items-center gap-2 text-[var(--color-brand)] hover:underline"
             >
-              {f.file_name}
+              {f.thumbnail_url ? (
+                <img
+                  src={f.thumbnail_url}
+                  alt=""
+                  data-testid="attachment-thumb"
+                  className="h-8 w-8 shrink-0 rounded border border-[var(--color-border)] object-cover"
+                />
+              ) : null}
+              <span className="truncate">{f.file_name}</span>
             </a>
             <button
               aria-label={`Remove ${f.file_name}`}
