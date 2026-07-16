@@ -50,6 +50,17 @@ export function clearControllers(doctype: string) {
   registry.delete(doctype)
 }
 
+// PLAT-001/002: remove a single controller by reference (an app's doc_events on
+// uninstall) without disturbing other controllers registered for the same
+// DocType — e.g. the core controller must survive.
+export function unregisterController(controller: DocTypeController) {
+  const list = registry.get(controller.doctype)
+  if (!list) return
+  const next = list.filter((c) => c !== controller)
+  if (next.length) registry.set(controller.doctype, next)
+  else registry.delete(controller.doctype)
+}
+
 export async function runHooks(event: HookEvent, ctx: HookContext) {
   for (const controller of registry.get(ctx.meta.name) ?? []) {
     const hook = controller.hooks[event]

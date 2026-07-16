@@ -34,6 +34,8 @@ import { rateLimit } from './rate-limit'
 import { parseFilters, runQueryReport } from './query-report'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
+import { registerApp, loadInstalledApps, installApp, uninstallApp, listInstalledApps, getAvailableApps } from './apps'
+import helloCrm from './sample-apps/hello-crm'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
 import { randomBytes } from 'node:crypto'
 
@@ -43,6 +45,10 @@ await loadJobs()
 await loadScriptReports()
 // CUST-001: re-apply custom fields so they survive a core re-seed.
 await reapplyCustomFields()
+// PLAT-001: register the apps this build ships, then re-wire the doc_events of
+// any that are already installed (their DocTypes persist in the DB).
+registerApp(helloCrm)
+await loadInstalledApps()
 
 type Env = { Variables: { user: SessionUser } }
 
@@ -489,6 +495,25 @@ app.post('/api/run_query_report', async (c) => {
   }
   if (!report) throw new AppError('ValidationError', 'Expected { report }')
   return c.json(await runQueryReport(report, filters ?? {}, who(c)))
+})
+
+// PLAT-001: app management (System Manager only). Apps are code-defined; these
+// install/uninstall their DocTypes + doc_events and report installed state.
+app.get('/api/apps', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json({ available: getAvailableApps(), installed: await listInstalledApps() })
+})
+app.post('/api/install_app', async (c) => {
+  await assertSystemManager(who(c))
+  const { name } = (await c.req.json().catch(() => ({}))) as { name?: string }
+  if (!name) throw new AppError('ValidationError', 'Expected { name }')
+  return c.json(await installApp(name), 201)
+})
+app.post('/api/uninstall_app', async (c) => {
+  await assertSystemManager(who(c))
+  const { name } = (await c.req.json().catch(() => ({}))) as { name?: string }
+  if (!name) throw new AppError('ValidationError', 'Expected { name }')
+  return c.json(await uninstallApp(name))
 })
 
 // EML-007: trigger an Auto Email Report immediately (the "run now" a scheduler

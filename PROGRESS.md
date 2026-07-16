@@ -13,6 +13,37 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — PLAT-001 + PLAT-002 passing: app system + doc_events
+
+- **`apps.ts`**: an app is a code-defined `AppManifest { name, doctypes?,
+  doc_events? }`. `registerApp` adds it to the in-process registry; `installApp`
+  creates its DocTypes (via the engine → real tables) and **wires its
+  doc_events** as controllers, recording owned DocTypes in `tab_installed_app`
+  (`0043_installed_app.ts`); `uninstallApp` unwires the hooks and drops the
+  owned DocTypes + record; `loadInstalledApps` re-wires installed apps' hooks at
+  boot (their tables persist). App code lives in the process; the DB only holds
+  installed-state.
+- **PLAT-002 mechanism**: `doc_events` register as normal controllers, and the
+  controller registry is a **list per DocType**, so an app hook on a DocType it
+  doesn't own (e.g. Task) runs *alongside* the core controller. Added
+  `unregisterController(ref)` so uninstall removes exactly the app's hooks
+  without disturbing the core one.
+- Endpoints (System-Manager only): `GET /api/apps`, `POST /api/install_app`,
+  `POST /api/uninstall_app`. Ships a sample app **hello-crm** (a `CRM Lead`
+  DocType + a `before_save` hook that normalizes the lead email).
+- **Verified**: `test/apps.test.ts` (3 — install creates the DocType + fires its
+  hook + records state; uninstall drops the DocType/table/record; **an app hook
+  on a foreign DocType fires alongside the core controller → `['core','app']`,
+  and after uninstall only `['core']`**). Live HTTP: install hello-crm → create
+  a `CRM Lead` (email normalized `  Bob@ACME.COM ` → `bob@acme.com` by the app
+  hook) → uninstall → the DocType 404s. Full server suite 300/300.
+- Gotchas: (1) hooks run **after** schema validation, so a `before_save` hook
+  can't fix a value the field's own constraints already rejected (the sample
+  hook normalizes a free-text field, not the Select). (2) jsonb columns:
+  passing a JSON *string* double-encodes — use `sql.json(value)` and parse
+  defensively on read.
+- Next: 2 P3 remain (PLAT-006 Google OAuth [mocked], PLAT-008 multi-tenancy).
+
 ## 2026-07-16 — WEB-003 passing: customer portal
 
 - **`Portal.tsx`** with two routes outside the Desk shell:
