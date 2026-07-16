@@ -13,6 +13,33 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — Evaluation pass #7 (adversarial): all held, 1 robustness fix
+
+Checked the 3 newest (DOC-012, API-003, API-005) + regressions (PERM
+scope, credential leak sweep, link search) as Administrator AND a
+read-only non-admin ('Ev7 Role', read-only on Ev7 Cust). Verdicts:
+
+- **DOC-012 HOLDS**: read-only user rename → 403 and NO cascade (Acme
+  intact); empty/whitespace new_name → 417; rename-to-same-name → 200
+  no-op; cascade updates MULTIPLE linking docs (O1+O2) and child-table
+  links; save after rename works (version logic intact).
+- **API-005 HOLDS**: non-admin generates own key; token auth scoped to
+  their perms (Ev7 Cust 200, Role 403); all malformed token headers →
+  401; Bearer-with-key-pair → 401 (won't accept a key as a JWT).
+- **API-003 HOLDS**: count_docs on missing doctype → 404, on unpermitted
+  doctype (non-admin) → 403, path traversal → 404, non-whitelisted → 403.
+- **Regressions HOLD**: list scope correct for restricted user; NO
+  credential leak (User doc has no hashes; selecting api_key → 417); link
+  search permission-filtered.
+- **Robustness gap (not a failure)**: a whitelisted method that throws a
+  plain Error (count_docs with no doctype arg / a POST with a non-JSON
+  body → {} → missing arg) surfaces as 500 InternalError instead of a
+  clean 4xx. The RPC layer is correct; the sample method should throw
+  AppError. Fixing next in coder mode — API-003 stays passing (its verify
+  criteria all pass).
+
+63/126 unchanged. Next (coder): harden count_docs to ValidationError.
+
 ## 2026-07-16 — DOC-012 passing: rename document + cascade Link refs
 
 - `renameDoc(doctype, old, new, user)` in document.ts: one transaction —
