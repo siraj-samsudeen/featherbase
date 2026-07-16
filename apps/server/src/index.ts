@@ -7,7 +7,7 @@ import { sql } from './db'
 import { AppError, errorResponse } from './errors'
 import { getMeta } from './meta'
 import { createDocType, updateDocType } from './doctype-engine'
-import { amendDoc, cancelDoc, deleteDoc, getDoc, saveDoc, submitDoc } from './document'
+import { amendDoc, cancelDoc, deleteDoc, getDoc, renameDoc, saveDoc, submitDoc } from './document'
 import { getList } from './query'
 import { loadControllers } from './controllers'
 import { generateApiKeys, login, resolveToken, revokeApiKeys, type SessionUser } from './auth'
@@ -206,6 +206,18 @@ app.post('/api/amend_doc', async (c) => {
 app.delete('/api/doc/:doctype/:name', async (c) => {
   await deleteDoc(c.req.param('doctype'), c.req.param('name'), who(c))
   return c.json({ ok: true })
+})
+
+// DOC-012: rename a document and cascade the new name to all Link references.
+app.post('/api/rename_doc', async (c) => {
+  const { doctype, name, new_name } = (await c.req.json()) as {
+    doctype?: string
+    name?: string
+    new_name?: string
+  }
+  if (!doctype || !name || !new_name)
+    throw new AppError('ValidationError', 'Expected { doctype, name, new_name }')
+  return c.json(await renameDoc(doctype, name, new_name, who(c)))
 })
 
 function listArgsFromQuery(q: Record<string, string>) {

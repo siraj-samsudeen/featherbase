@@ -13,6 +13,22 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — DOC-012 passing: rename document + cascade Link refs
+
+- `renameDoc(doctype, old, new, user)` in document.ts: one transaction —
+  update the PK, re-point this doc's own child rows (parent col), then
+  UPDATE every Link field in every DocType whose options = this doctype
+  (child-table links included). Write-permission checked; collision →
+  409, missing → 404; single/child/engine-managed refused.
+  POST /api/rename_doc. FormView gained a Rename control (button →
+  inline input → confirm → navigate to new name).
+- Verified: vitest (parent + child-table Link cascade, collision 409,
+  missing 404) + live curl (cascade confirmed) + e2e/rename.spec.ts
+  (rename from the form; linking doc's Link now shows the new name).
+- Fixed a rules-of-hooks slip: the rename useState were placed after the
+  early returns first (Vite error overlay); moved them up.
+- 157 server + 21 web e2e green. 63/126 — HALFWAY.
+
 ## 2026-07-16 — API-003 passing: RPC for whitelisted methods
 
 - `src/methods.ts`: whitelist(path, fn, {allowGuest}) registry +

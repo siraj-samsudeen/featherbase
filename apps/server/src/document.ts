@@ -694,6 +694,60 @@ export async function deleteDoc(
   })
 }
 
+// DOC-012: rename a document's primary key and update every Link that
+// referenced the old name — across all DocTypes and child tables — in one
+// transaction. The document keeps all its other data and children.
+export async function renameDoc(
+  doctype: string,
+  oldName: string,
+  newName: string,
+  user = 'Administrator',
+): Promise<DocValues> {
+  const meta = await getMeta(doctype)
+  if (meta.issingle || meta.istable || ENGINE_MANAGED.has(doctype))
+    throw new AppError('ValidationError', `${doctype} documents cannot be renamed`)
+  const target = newName.trim()
+  if (!target) throw new AppError('ValidationError', 'New name is required', { name: 'Required' })
+  if (target === oldName) return getDoc(doctype, oldName, user)
+
+  await sql.begin(async (tx) => {
+    const table = tableName(doctype)
+    const [existing] = await tx`
+      select * from ${tx(table)} where name = ${oldName} for update`
+    if (!existing) throw new AppError('NotFoundError', `${doctype} ${oldName} not found`)
+    await assertDocPermission(user, doctype, 'write', String(existing.owner))
+    await assertUserPermissions(user, meta, existing as DocValues)
+    const [clash] = await tx`select 1 from ${tx(table)} where name = ${target}`
+    if (clash) throw new AppError('ConflictError', `${doctype} ${target} already exists`)
+
+    // Rename the row itself.
+    await tx`update ${tx(table)} set name = ${target}, modified = now() where name = ${oldName}`
+
+    // Re-point this document's own child rows to the new parent name.
+    for (const f of meta.fields) {
+      if (f.fieldtype !== 'Table') continue
+      await tx`
+        update ${tx(tableName(f.options!))} set parent = ${target}
+        where parent = ${oldName} and parenttype = ${doctype}`
+    }
+
+    // Update every Link field, in any DocType, that points at this doctype.
+    const linkFields = await tx`
+      select parent, fieldname from tab_docfield
+      where fieldtype = 'Link' and options = ${doctype}`
+    for (const lf of linkFields) {
+      const parentDt = lf.parent as string
+      const [pm] = await tx`select issingle from tab_doctype where name = ${parentDt}`
+      if (!pm || pm.issingle) continue
+      const col = lf.fieldname as string
+      await tx`
+        update ${tx(tableName(parentDt))} set ${tx(col)} = ${target}
+        where ${tx(col)} = ${oldName}`
+    }
+  })
+  return getDoc(doctype, target, user)
+}
+
 export async function getDoc(
   doctype: string,
   name: string,

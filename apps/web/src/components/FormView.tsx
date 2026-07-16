@@ -28,6 +28,8 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [banner, setBanner] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
 
   const baseline = useMemo(() => {
     if (isNew) return {}
@@ -71,6 +73,20 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
       }
     } catch (err) {
       setBanner(err instanceof ApiError ? err.message : 'Action failed')
+    }
+  }
+
+  // DOC-012: rename this document and cascade to all Link references, then
+  // navigate to the new name.
+  async function doRename() {
+    setBanner(null)
+    try {
+      const res = await api.post<Doc>('/api/rename_doc', { doctype, name, new_name: renameValue })
+      await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
+      setRenaming(false)
+      navigate({ to: '/desk/$doctype/$name', params: { doctype, name: String(res.name) } })
+    } catch (err) {
+      setBanner(err instanceof ApiError ? err.message : 'Rename failed')
     }
   }
 
@@ -163,6 +179,34 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
               }`}
             >
               {docstatus === 1 ? 'Submitted' : docstatus === 2 ? 'Cancelled' : 'Draft'}
+            </span>
+          )}
+          {!isNew && !renaming && (
+            <button
+              onClick={() => {
+                setRenameValue(name)
+                setRenaming(true)
+              }}
+              data-testid="form-rename"
+              className="fc-btn"
+            >
+              Rename
+            </button>
+          )}
+          {renaming && (
+            <span className="flex items-center gap-1">
+              <input
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                data-testid="rename-input"
+                className="fc-input w-40"
+              />
+              <button onClick={doRename} data-testid="rename-confirm" className="fc-btn-primary">
+                Rename
+              </button>
+              <button onClick={() => setRenaming(false)} className="fc-btn">
+                Cancel
+              </button>
             </span>
           )}
           <button
