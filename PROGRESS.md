@@ -13,6 +13,37 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — PLAT-006 passing: Google OAuth (mocked in dev)
+
+- **`oauth.ts`**: a provider abstraction. With no `GOOGLE_CLIENT_ID`, a **mock
+  provider** stands in for Google: `googleAuthorizeUrl` points at a local
+  consent page, and `exchangeCode` decodes a signed authorization code. Real
+  Google's authorize URL + token/userinfo exchange live behind the same
+  interface (used only when credentials are set). State + mock code are
+  stateless **HMAC-signed** tokens with a 10-min expiry.
+- **Flow** (all public, before the auth middleware):
+  `GET /api/oauth/google/login` → `GET /api/oauth/mock/consent` (a small consent
+  page) → `GET /api/oauth/mock/approve` (verifies state, issues a signed code) →
+  `GET /api/oauth/google/callback` (verifies state, exchanges the code,
+  find-or-creates the User, issues a session) → 302 to the SPA
+  `/oauth-callback?token=…`, which stores the token, hydrates via whoami, and
+  lands in the Desk.
+- **Mapped to the User DocType**: `findOrCreateGoogleUser` links an existing
+  account by email (case-insensitive) or creates one, re-enables it, and stamps
+  the new read-only `User.social_login = 'google'` (`0044_user_social_login.ts`,
+  set with a direct write since read-only fields are ignored by save). The
+  Login page gained a "Sign in with Google" link.
+- **Same-origin in dev**: the mock flow uses **relative** redirect URLs so the
+  Vite `/api` proxy keeps the browser on the SPA origin end to end (real Google
+  needs an absolute redirect_uri, so that path stays absolute).
+- **Verified**: `e2e/oauth.spec.ts` (3 — mock sign-in creates the User, stamps
+  `social_login=google`, lands in the Desk; a second sign-in links the same User
+  (no duplicate); a **tampered state → 401**) + a full HTTP walk of the redirect
+  chain. Full server suite 300; login/user-mgmt e2e unaffected.
+- Gotcha: an HTML GET form **discards its action URL's query string** — carry
+  `state`/`redirect_uri` as hidden inputs, not in the action.
+- Next: 1 P3 remains (PLAT-008 multi-tenancy).
+
 ## 2026-07-16 — PLAT-001 + PLAT-002 passing: app system + doc_events
 
 - **`apps.ts`**: an app is a code-defined `AppManifest { name, doctypes?,

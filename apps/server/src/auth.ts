@@ -62,6 +62,25 @@ export async function login(usr: string, pwd: string): Promise<{ token: string; 
   }
 }
 
+// PLAT-006: issue a session for an already-authenticated user (e.g. after a
+// successful OAuth exchange) — the password-less counterpart to login().
+export async function issueSession(userName: string): Promise<{ token: string; user: SessionUser }> {
+  const [user] = await sql`
+    select name, email, full_name, enabled from tab_user where name = ${userName}`
+  if (!user || !user.enabled) throw new AppError('AuthenticationError', 'User cannot sign in')
+  const { session_hours } = await getSystemSettings()
+  const hours = Math.min(Math.max(session_hours || 8, 1), 720)
+  const token = await sign(
+    { sub: user.name as string, exp: Math.floor(Date.now() / 1000) + hours * 3600 },
+    JWT_SECRET,
+  )
+  await logActivity(user.name as string, 'login', { full_name: user.full_name as string | null })
+  return {
+    token,
+    user: { name: user.name as string, email: user.email as string, full_name: user.full_name as string | null },
+  }
+}
+
 // API-005: integration keys. The secret is scrypt-hashed at rest and only
 // ever shown once, at generation time.
 export async function generateApiKeys(

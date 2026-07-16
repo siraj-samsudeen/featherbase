@@ -72,6 +72,15 @@ export function LoginPage() {
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
+          {/* PLAT-006: social login. A full-page navigation (not fetch) so the
+              server's OAuth redirects drive the browser. */}
+          <a
+            href="/api/oauth/google/login"
+            data-testid="google-login"
+            className="fc-btn mt-3 flex w-full justify-center py-2"
+          >
+            Sign in with Google
+          </a>
           <div className="mt-4 border-t border-[var(--color-border)] pt-4">
             {!forgot ? (
               <button

@@ -8,6 +8,7 @@ import { LoginPage } from './pages/Login'
 import { ResetPasswordPage } from './pages/ResetPassword'
 import { WebFormPage } from './pages/WebForm'
 import { PortalListPage, PortalDocPage } from './pages/Portal'
+import { OAuthCallbackPage } from './pages/OAuthCallback'
 import { DeskLayout } from './pages/DeskLayout'
 import { getToken } from './lib/api'
 import { ListView } from './components/ListView'
@@ -48,6 +49,21 @@ const webFormRoute = createRoute({
   path: '/form/$route',
   component: WebFormPage,
 })
+
+// PLAT-006: OAuth callback landing (public) — stores the token from the query
+// and enters the Desk.
+const oauthCallbackRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/oauth-callback',
+  validateSearch: (search: Record<string, unknown>) => ({
+    token: typeof search.token === 'string' ? search.token : undefined,
+  }),
+  component: OAuthCallbackRouteComponent,
+})
+function OAuthCallbackRouteComponent() {
+  const { token } = oauthCallbackRoute.useSearch()
+  return <OAuthCallbackPage token={token} />
+}
 
 // WEB-003: customer portal — a logged-in website user sees only their own
 // documents (if_owner-scoped by the API). Lives outside the Desk shell.
@@ -385,6 +401,7 @@ export const routeTree = rootRoute.addChildren([
   loginRoute,
   resetPasswordRoute,
   webFormRoute,
+  oauthCallbackRoute,
   portalListRoute,
   portalDocRoute,
   printRoute,

@@ -10,7 +10,8 @@ import { createDocType, updateDocType } from './doctype-engine'
 import { amendDoc, cancelDoc, deleteDoc, getDoc, renameDoc, saveDoc, submitDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
-import { generateApiKeys, login, resolveToken, revokeApiKeys, setUserPassword, type SessionUser } from './auth'
+import { generateApiKeys, login, resolveToken, revokeApiKeys, setUserPassword, issueSession, type SessionUser } from './auth'
+import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newState, verifyState, isMockProvider } from './oauth'
 import { assertPermission, assertSystemManager, getRoles } from './permissions'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
@@ -175,6 +176,50 @@ app.on(['GET', 'POST'], '/api/method/:path{.+}', async (c) => {
       ? ((await c.req.json().catch(() => ({}))) as Record<string, unknown>)
       : c.req.query()
   return c.json({ message: await callMethod(path, args, user) })
+})
+
+// PLAT-006: Google OAuth (public — the caller is logging in). In dev a mock
+// provider stands in for Google. Flow: login → provider consent → callback →
+// find/create User → issue session → bounce back into the SPA with the token.
+app.get('/api/oauth/google/login', (c) => {
+  const url = new URL(c.req.url)
+  // Mock flow stays same-origin (relative) so the dev proxy keeps the browser
+  // on the SPA origin end to end; real Google needs an absolute redirect_uri.
+  const redirectUri = isMockProvider()
+    ? '/api/oauth/google/callback'
+    : `${url.origin}/api/oauth/google/callback`
+  const state = newState()
+  const hint = { email: c.req.query('email'), name: c.req.query('name') }
+  return c.redirect(googleAuthorizeUrl(state, redirectUri, hint))
+})
+
+app.get('/api/oauth/mock/consent', (c) => {
+  if (!isMockProvider()) throw new AppError('ValidationError', 'Mock provider is not active')
+  const state = c.req.query('state') ?? ''
+  const redirectUri = c.req.query('redirect_uri') ?? ''
+  const email = c.req.query('email') ?? 'demo.user@gmail.com'
+  const name = c.req.query('name') ?? 'Demo User'
+  return c.html(mockConsentHtml(state, redirectUri, email, name))
+})
+
+app.get('/api/oauth/mock/approve', (c) => {
+  if (!isMockProvider()) throw new AppError('ValidationError', 'Mock provider is not active')
+  const state = c.req.query('state') ?? ''
+  const redirectUri = c.req.query('redirect_uri') ?? ''
+  verifyState(state)
+  const email = c.req.query('email') ?? ''
+  const name = c.req.query('name') ?? ''
+  return c.redirect(mockApproveRedirect(state, redirectUri, email, name))
+})
+
+app.get('/api/oauth/google/callback', async (c) => {
+  verifyState(c.req.query('state'))
+  const { email, name } = await exchangeCode(c.req.query('code'))
+  const userName = await findOrCreateGoogleUser(email, name)
+  const { token } = await issueSession(userName)
+  // Bounce back into the SPA (same origin via the dev proxy), which stores the
+  // token and lands in the Desk.
+  return c.redirect(`/oauth-callback?token=${encodeURIComponent(token)}`)
 })
 
 // ---- API-004: everything below requires a valid session --------------------

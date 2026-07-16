@@ -23,6 +23,13 @@ export function clearSession() {
   localStorage.removeItem(USER_KEY)
 }
 
+// PLAT-006: store a session token obtained out-of-band (the OAuth callback
+// redirect carries it). The user profile is filled in on the next whoami.
+export function setToken(token: string) {
+  localStorage.setItem(TOKEN_KEY, token)
+  localStorage.removeItem(USER_KEY)
+}
+
 export class ApiError extends Error {
   status: number
   type: string
