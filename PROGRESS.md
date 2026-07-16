@@ -13,6 +13,24 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — JOB-005 passing: long-job progress over realtime
+
+- Job handlers now receive a `JobContext` with `setProgress(percent, message)`;
+  the worker wires it to `publishUserEvent(<job owner>, 'job_progress', {job,
+  method, percent, message})` (percent clamped 0–100, rounded). Existing
+  handlers ignore the new arg (backward-compatible). Demo job
+  `src/jobs/demo-progress.ts` reports 5 steps → 20/40/60/80/100%.
+- Web JobMonitor: a "Run demo job" button enqueues demo_progress and subscribes
+  to the user channel; a live progress bar (`demo-progress`) climbs to 100% as
+  `job_progress` events arrive.
+- Verified: e2e (click Run demo job → progress bar reaches 100% with the final
+  step message, driven purely by realtime) + server test (setProgress calls
+  arrive as job_progress events on user:Administrator with the right percents;
+  values clamped/rounded). 275 server + 57 web e2e green. 111/126.
+- Gotcha: after adding a new src/jobs/*.ts file, tsx-watch didn't always reload
+  it cleanly — a stale server kept "No handler registered". A hard restart
+  (kill :8000, `pnpm dev`) fixed it; init.sh's clean boot handles this normally.
+
 ## 2026-07-16 — JOB-004 passing: job monitoring UI + retry
 
 - `retryJob(name)` in jobs.ts re-queues a FAILED job (status→queued, attempts→0,

@@ -3,6 +3,7 @@ import { readdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { sql } from './db'
+import { publishUserEvent } from './realtime'
 
 // JOB-001/002/003: durable job queue with an in-process worker.
 //
@@ -11,7 +12,14 @@ import { sql } from './db'
 // runs the handler with at-least-once semantics, retries up to max_attempts,
 // logs every attempt as a Job Execution, and re-enqueues recurring jobs.
 
-export type JobHandler = (payload: Record<string, unknown>) => unknown | Promise<unknown>
+// JOB-005: handlers receive a context that can report progress to the client.
+export interface JobContext {
+  setProgress: (percent: number, message?: string) => void
+}
+export type JobHandler = (
+  payload: Record<string, unknown>,
+  ctx: JobContext,
+) => unknown | Promise<unknown>
 
 const registry = new Map<string, JobHandler>()
 
@@ -92,9 +100,20 @@ export async function runOneJob(): Promise<boolean> {
   const handler = registry.get(method)
   const payload = (claimed.payload as Record<string, unknown>) ?? {}
 
+  // JOB-005: progress reports go to the job owner's realtime channel.
+  const ctx: JobContext = {
+    setProgress: (percent, message) =>
+      publishUserEvent(claimed.owner as string, 'job_progress', {
+        job: claimed.name,
+        method,
+        percent: Math.max(0, Math.min(100, Math.round(percent))),
+        message: message ?? null,
+      }),
+  }
+
   try {
     if (!handler) throw new Error(`No job handler registered for "${method}"`)
-    await handler(payload)
+    await handler(payload, ctx)
     await sql`
       update tab_background_job set status = 'done', attempts = ${attempt}, error = null, modified = now()
       where name = ${claimed.name as string}`

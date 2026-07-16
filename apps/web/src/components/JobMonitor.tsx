@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api, listResource } from '../lib/api'
+import { api, getSessionUser, listResource } from '../lib/api'
+import { useRealtime } from '../lib/realtime'
 
 // JOB-004: monitor background jobs and retry failed ones from the Desk.
 
@@ -22,6 +23,22 @@ const STATUS_STYLE: Record<string, string> = {
 
 export function JobMonitor() {
   const [busy, setBusy] = useState<string | null>(null)
+  // JOB-005: live progress for a demo long-running job, over realtime.
+  const user = getSessionUser()
+  const [progress, setProgress] = useState<{ job: string; percent: number; message: string | null } | null>(null)
+  useRealtime(user ? [`user:${user.name}`] : [], (e) => {
+    if (e.event === 'job_progress') {
+      const p = e.payload as { job: string; percent: number; message: string | null }
+      setProgress(p)
+    }
+  })
+
+  async function runDemo() {
+    setProgress({ job: 'pending', percent: 0, message: 'Starting…' })
+    const res = await api.post<{ name: string }>('/api/enqueue_job', { method: 'demo_progress' })
+    setProgress({ job: res.name, percent: 0, message: 'Queued' })
+  }
+
   const jobs = useQuery({
     queryKey: ['jobs'],
     queryFn: () =>
@@ -47,7 +64,29 @@ export function JobMonitor() {
 
   return (
     <div data-testid="job-monitor" className="space-y-4">
-      <h1 className="text-lg font-semibold text-[var(--color-ink)]">Background Jobs</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold text-[var(--color-ink)]">Background Jobs</h1>
+        <button className="fc-btn" data-testid="run-demo-job" onClick={() => void runDemo()}>
+          Run demo job
+        </button>
+      </div>
+
+      {progress && (
+        <div className="fc-card p-4" data-testid="demo-progress">
+          <div className="mb-1 flex justify-between text-xs text-[var(--color-ink-muted)]">
+            <span>{progress.message ?? 'Working…'}</span>
+            <span data-testid="demo-progress-percent">{progress.percent}%</span>
+          </div>
+          <div className="h-2 w-full rounded bg-[var(--color-subtle)]">
+            <div
+              className="h-2 rounded bg-[var(--color-brand)] transition-all"
+              style={{ width: `${progress.percent}%` }}
+              data-testid="demo-progress-bar"
+            />
+          </div>
+        </div>
+      )}
+
       <div className="fc-card overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
