@@ -5,6 +5,7 @@ import {
   redirect,
 } from '@tanstack/react-router'
 import { LoginPage } from './pages/Login'
+import { ResetPasswordPage } from './pages/ResetPassword'
 import { DeskLayout } from './pages/DeskLayout'
 import { getToken } from './lib/api'
 import { ListView } from './components/ListView'
@@ -33,6 +34,16 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   component: LoginPage,
+})
+
+// SET-002: public password-reset page (target of the emailed link).
+const resetPasswordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reset-password',
+  validateSearch: (search: Record<string, unknown>) => ({
+    key: typeof search.key === 'string' ? search.key : undefined,
+  }),
+  component: ResetPasswordPage,
 })
 
 const deskRoute = createRoute({
@@ -276,6 +287,7 @@ function DocFormPage() {
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
+  resetPasswordRoute,
   printRoute,
   deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, queryReportRoute, permissionsRoute, dashboardRoute, doctypeRoute, docRoute]),
 ])

@@ -13,6 +13,33 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — SET-002 passing: user management + password reset
+
+- Migration 0028: `password_reset` table (token pk, user, expires_at) + a
+  `user_image` (Attach Image) avatar field on User.
+- `password-reset.ts`: `requestPasswordReset(usr)` mints a single-use,
+  1-hour token, stores it, and mails a `/reset-password?key=…` link to the
+  dev sink — but ONLY for a real, enabled account (returns null otherwise, so
+  it can't enumerate users or mail disabled accounts). `resetPassword(key,pw)`
+  validates + expiry-checks the token, sets the password, and consumes all of
+  the user's tokens (single-use).
+- Public endpoints (before the auth middleware): `POST /api/reset_password_request`
+  (always returns ok) and `POST /api/reset_password`.
+- Disabled login was already enforced (login + resolveToken both check
+  `enabled`), so a disabled user cannot log in and an active session is cut
+  off on its next request.
+- Web: `/reset-password` page (the emailed-link target — new password + confirm)
+  and a "Forgot password?" flow on the login page. User profile/avatar edit
+  through the generic FormView (user_image field).
+- Verified: e2e (forgot-password from the login UI → open the emailed link →
+  set new password → log in with it; disabled user's login shows an error and
+  stays on /login) + server test (token issue/reset, single-use, expiry,
+  no token/mail for disabled or unknown accounts). 234 server + web e2e green.
+  98/126. All P2 features now complete.
+- Gotcha: e2e beforeAll must delete-then-create the test user — save_doc won't
+  re-enable an existing (disabled) user without a modified stamp, which left
+  the account disabled and the reset mail unsent.
+
 ## 2026-07-16 — Evaluation pass #11 (adversarial, focused on the P2 batch)
 
 - Probed the security-sensitive features shipped this session. All held; no

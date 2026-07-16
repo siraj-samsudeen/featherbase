@@ -1,11 +1,20 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { ApiError, login } from '../lib/api'
+import { ApiError, api, login } from '../lib/api'
 
 export function LoginPage() {
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [forgot, setForgot] = useState(false)
+  const [resetSent, setResetSent] = useState(false)
+
+  async function onForgot(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const form = new FormData(e.currentTarget)
+    await api.post('/api/reset_password_request', { usr: String(form.get('usr')) })
+    setResetSent(true)
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -63,6 +72,30 @@ export function LoginPage() {
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
+          <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+            {!forgot ? (
+              <button
+                type="button"
+                className="text-sm text-[var(--color-brand)] hover:underline"
+                data-testid="forgot-password"
+                onClick={() => setForgot(true)}
+              >
+                Forgot password?
+              </button>
+            ) : resetSent ? (
+              <p className="text-sm text-[var(--color-ink-muted)]" data-testid="reset-sent">
+                If that account exists, a reset link has been emailed.
+              </p>
+            ) : (
+              <form className="space-y-3" data-testid="forgot-form" onSubmit={onForgot}>
+                <label className="fc-label">Email or username</label>
+                <input type="text" name="usr" className="fc-input" data-testid="forgot-usr" />
+                <button type="submit" className="fc-btn w-full justify-center py-2" data-testid="forgot-submit">
+                  Send reset link
+                </button>
+              </form>
+            )}
+          </div>
         </div>
       </div>
     </div>

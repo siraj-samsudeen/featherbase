@@ -22,6 +22,7 @@ import { enqueue, loadJobs, startWorker } from './jobs'
 import { attachRealtime, publishDocEvent, publishUserEvent } from './realtime'
 import { queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
+import { requestPasswordReset, resetPassword } from './password-reset'
 import { parseFilters, runQueryReport } from './query-report'
 import { randomBytes } from 'node:crypto'
 
@@ -67,6 +68,24 @@ app.post('/api/login', async (c) => {
   const { usr, pwd } = (await c.req.json()) as { usr?: string; pwd?: string }
   if (!usr || !pwd) throw new AppError('ValidationError', 'Expected { usr, pwd }')
   return c.json(await login(usr, pwd))
+})
+
+// SET-002: password reset (public — the caller is logged out). The request
+// always returns ok so it can't be used to probe which accounts exist.
+app.post('/api/reset_password_request', async (c) => {
+  const { usr } = (await c.req.json().catch(() => ({}))) as { usr?: string }
+  if (!usr) throw new AppError('ValidationError', 'Expected { usr }')
+  await requestPasswordReset(usr)
+  return c.json({ ok: true })
+})
+
+app.post('/api/reset_password', async (c) => {
+  const { key, new_password } = (await c.req.json().catch(() => ({}))) as {
+    key?: string
+    new_password?: string
+  }
+  await resetPassword(key ?? '', new_password ?? '')
+  return c.json({ ok: true })
 })
 
 // FILE-001: serve stored files. Only files registered as a File doc are
