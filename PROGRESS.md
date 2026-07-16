@@ -13,6 +13,28 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — PERM-004 passing: generated RLS (native PG, Supabase-equivalent)
+
+- Migration `0010_rls.sql`: `desk_client` login role stands in for
+  supabase-js/PostgREST direct access; session user rides in the `app.user`
+  GUC (analogue of PostgREST's jwt claims — set by the trusted connection
+  layer). Security-definer `fc_has_read(dt)` checks DocPerm × tab_has_role
+  (permlevel 0, can_read; Administrator bypass). Every DocType table gets
+  RLS + a generated SELECT-only policy; child tables gate per row on
+  `fc_has_read(parenttype)`. No write policies/grants → all direct writes
+  denied; server (postgres, table owner) bypasses RLS and stays the only
+  write path. `applyRls()` in doctype-engine covers tables created after
+  the migration (guarded on fc_has_read existing, for bootstrap ordering).
+- Verified live via psql as desk_client: granted DT visible (child rows
+  too), non-granted DT + tab_user 0 rows, Guest 0 rows, Administrator all,
+  INSERT/UPDATE/DELETE all "permission denied", `migration` table not
+  exposed. Fresh-DB migration run confirmed all 11 bootstrap tables get
+  rowsecurity=t. Permanent coverage: test/rls.test.ts (6 tests, real
+  second PG connection as desk_client).
+- 134 server tests + 13 web e2e green. 51/126.
+- Gotcha: a plpgsql `for r in select … from tab_doctype` cursor blocks
+  `alter table tab_doctype` (55006) — snapshot into a temp table first.
+
 ## 2026-07-16 — API-006 passing: consistent error envelope
 
 - Probed every error class against the live server. Two gaps found and

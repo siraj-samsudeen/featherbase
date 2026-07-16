@@ -129,6 +129,29 @@ function createTableDDL(def: DocTypeDef): string | null {
   return `create table "${tableName(def.name)}" (\n  ${[...cols, ...constraints].join(',\n  ')}\n)`
 }
 
+// PERM-004: new tables get RLS with a generated SELECT-only policy for the
+// direct-client role (desk_client). Skipped while bootstrap migrations run
+// before 0010_rls.sql has created the role and fc_has_read(); that migration
+// sweeps every table that already exists.
+async function applyRls(
+  tx: { unsafe: (q: string) => Promise<unknown> },
+  def: DocTypeDef,
+): Promise<void> {
+  const [ready] = (await tx.unsafe(
+    `select 1 from pg_proc where proname = 'fc_has_read'`,
+  )) as unknown as unknown[]
+  if (!ready) return
+  const table = tableName(def.name)
+  await tx.unsafe(`alter table "${table}" enable row level security`)
+  const predicate = def.istable
+    ? 'fc_has_read(parenttype)'
+    : `fc_has_read('${def.name.replace(/'/g, "''")}')`
+  await tx.unsafe(
+    `create policy fc_select on "${table}" for select to desk_client using (${predicate})`,
+  )
+  await tx.unsafe(`grant select on "${table}" to desk_client`)
+}
+
 // META-004: sync an existing DocType's fields to a new definition.
 // Additions create columns; property edits update docfield rows; removals
 // delete the docfield but KEEP the column (data is never dropped without
@@ -312,6 +335,7 @@ export async function createDocType(input: unknown): Promise<DocTypeMeta> {
         await tx.unsafe(
           `create index "${tableName(def.name)}_parent_idx" on "${tableName(def.name)}" ("parent", "idx")`,
         )
+      await applyRls(tx, def)
     }
   })
   invalidateMeta(def.name)
