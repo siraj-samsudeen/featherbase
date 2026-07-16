@@ -100,14 +100,24 @@ function DocTypeListPage() {
 const reportRoute = createRoute({
   getParentRoute: () => deskRoute,
   path: '$doctype/view/report',
+  validateSearch: (search: Record<string, unknown>) => ({
+    report: typeof search.report === 'string' ? search.report : undefined,
+  }),
   component: ReportPage,
 })
 
 function ReportPage() {
   const { doctype } = reportRoute.useParams()
+  const { report } = reportRoute.useSearch()
+  const navigate = reportRoute.useNavigate()
   return (
     <div data-testid="doctype-page">
-      <ReportView key={doctype} doctype={doctype} />
+      <ReportView
+        key={doctype}
+        doctype={doctype}
+        report={report}
+        onReportChange={(name) => navigate({ search: { report: name }, replace: true })}
+      />
     </div>
   )
 }

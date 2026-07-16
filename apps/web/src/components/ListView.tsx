@@ -80,6 +80,7 @@ export function ListView({
         <Link
           to="/desk/$doctype/view/report"
           params={{ doctype }}
+          search={{ report: undefined }}
           className="fc-btn"
           data-testid="open-report"
         >
@@ -163,7 +164,7 @@ export function ListView({
 }
 
 
-function FilterBar({
+export function FilterBar({
   meta,
   filters,
   onChange,

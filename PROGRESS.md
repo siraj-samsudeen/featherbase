@@ -13,6 +13,20 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — RPT-002 passing: saved reports
+
+- Migration 0011: 'Report' DocType (autoname prompt; ref_doctype Link,
+  config JSON). ReportView gained filters (reuses the exported FilterBar
+  from ListView — filters now count into RPT-001's view too), a saved-
+  report picker, and Save-report popover (name → save_doc). Config
+  {columns, group_by, filters} restores from ?report=<name> (URL state via
+  reportRoute validateSearch) or the picker.
+- Verified by e2e/saved-report.spec.ts: configure (drop qty column, filter
+  status=Open, group by status) → save → fresh navigation to the URL
+  restores all three (column gone, groupby=status, 2 rows, Open (2));
+  picker from a clean view restores too.
+- 143 server + 17 web e2e green. 56/126.
+
 ## 2026-07-16 — Eval #6 findings fixed: API-006 + META-004 back to passing
 
 - META-004: `prepare: false` in db.ts — a system that ALTERs its own

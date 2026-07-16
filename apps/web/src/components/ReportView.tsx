@@ -1,18 +1,37 @@
-import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
-import { listResource } from '../lib/api'
+import { ApiError, api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, useMeta } from '../lib/meta'
+import { FilterBar, type Filter } from './ListView'
 
 type Row = Record<string, unknown>
 
 const NUMERIC = new Set(['Int', 'Float', 'Currency'])
 const GROUPABLE = new Set(['Select', 'Link', 'Data', 'Check'])
 
+// RPT-002: the persisted shape of a report configuration.
+interface ReportConfig {
+  columns?: string[]
+  group_by?: string
+  filters?: Filter[]
+}
+
 // RPT-001: report view — column picker and group-by with counts and sums,
 // generic over every DocType (metadata-driven like the rest of the Desk).
-export function ReportView({ doctype }: { doctype: string }) {
+// RPT-002: the configuration can be saved as a named Report document and
+// restored via ?report=<name>.
+export function ReportView({
+  doctype,
+  report,
+  onReportChange,
+}: {
+  doctype: string
+  report?: string
+  onReportChange?: (name: string | undefined) => void
+}) {
   const meta = useMeta(doctype)
+  const queryClient = useQueryClient()
 
   const available = useMemo(
     () =>
@@ -24,7 +43,37 @@ export function ReportView({ doctype }: { doctype: string }) {
 
   const [selected, setSelected] = useState<string[] | null>(null)
   const [groupBy, setGroupBy] = useState('')
+  const [filters, setFilters] = useState<Filter[]>([])
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [saveOpen, setSaveOpen] = useState(false)
+  const [saveName, setSaveName] = useState('')
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  // RPT-002: saved reports for this DocType.
+  const savedReports = useQuery({
+    queryKey: ['saved-reports', doctype],
+    queryFn: () =>
+      listResource<{ name: string }>('Report', {
+        filters: [['ref_doctype', '=', doctype]],
+        fields: ['name'],
+        order_by: 'name asc',
+        limit_page_length: 100,
+      }),
+  })
+
+  // RPT-002: opening ?report=<name> loads and applies the saved config.
+  const savedDoc = useQuery({
+    queryKey: ['report-doc', report],
+    enabled: Boolean(report),
+    queryFn: () => api.get<{ config?: ReportConfig }>(`/api/resource/Report/${encodeURIComponent(report!)}`),
+  })
+  useEffect(() => {
+    const cfg = savedDoc.data?.config
+    if (!cfg) return
+    if (Array.isArray(cfg.columns)) setSelected(cfg.columns)
+    setGroupBy(typeof cfg.group_by === 'string' ? cfg.group_by : '')
+    setFilters(Array.isArray(cfg.filters) ? cfg.filters : [])
+  }, [savedDoc.data])
 
   // Default columns: list-view fields (or the first three).
   const columns = useMemo(() => {
@@ -40,15 +89,33 @@ export function ReportView({ doctype }: { doctype: string }) {
   }, [columns, groupBy])
 
   const rows = useQuery({
-    queryKey: ['report', doctype, fetchFields, groupBy],
+    queryKey: ['report', doctype, fetchFields, groupBy, filters],
     enabled: Boolean(meta.data),
     queryFn: () =>
       listResource<Row>(doctype, {
         fields: fetchFields,
+        filters: filters.length ? filters : undefined,
         order_by: groupBy ? `${groupBy} asc` : 'modified desc',
         limit_page_length: 500,
       }),
   })
+
+  async function saveReport() {
+    setSaveError(null)
+    try {
+      const config: ReportConfig = { columns, group_by: groupBy, filters }
+      await api.post('/api/save_doc', {
+        doctype: 'Report',
+        doc: { name: saveName, ref_doctype: doctype, config },
+      })
+      await queryClient.invalidateQueries({ queryKey: ['saved-reports', doctype] })
+      setSaveOpen(false)
+      onReportChange?.(saveName)
+      setSaveName('')
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : 'Save failed')
+    }
+  }
 
   if (meta.isLoading) return <p className="text-sm text-gray-400">Loading…</p>
   if (meta.isError) return <p className="text-sm text-red-600">Cannot load {doctype}</p>
@@ -173,7 +240,58 @@ export function ReportView({ doctype }: { doctype: string }) {
               ))}
           </select>
         </label>
+
+        {/* RPT-002: saved report picker + save */}
+        <select
+          value={report ?? ''}
+          onChange={(e) => onReportChange?.(e.target.value || undefined)}
+          className="fc-input w-48"
+          data-testid="saved-report-picker"
+        >
+          <option value="">Saved reports…</option>
+          {savedReports.data?.data.map((r) => (
+            <option key={r.name} value={r.name}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+        <div className="relative">
+          <button
+            onClick={() => setSaveOpen((o) => !o)}
+            className="fc-btn"
+            data-testid="report-save"
+          >
+            Save report
+          </button>
+          {saveOpen && (
+            <div className="fc-card absolute right-0 z-10 mt-1 w-64 p-3">
+              <label className="fc-label">Report name</label>
+              <input
+                value={saveName}
+                onChange={(e) => setSaveName(e.target.value)}
+                className="fc-input mb-2"
+                data-testid="report-save-name"
+                placeholder="e.g. Open tickets by status"
+              />
+              {saveError && (
+                <p className="mb-2 text-xs text-[var(--color-danger)]" data-testid="report-save-error">
+                  {saveError}
+                </p>
+              )}
+              <button
+                onClick={saveReport}
+                disabled={!saveName.trim()}
+                className="fc-btn-primary w-full justify-center"
+                data-testid="report-save-confirm"
+              >
+                Save
+              </button>
+            </div>
+          )}
+        </div>
       </div>
+
+      {meta.data && <FilterBar meta={meta.data} filters={filters} onChange={setFilters} />}
 
       <div className="fc-card overflow-x-auto">
         <table className="w-full text-sm" data-testid="report-table">
