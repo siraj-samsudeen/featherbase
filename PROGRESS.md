@@ -13,6 +13,20 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — RT channel authorization fixed: RT-001/002/003 passing again
+
+- `canSubscribe(user, channel)` in realtime.ts gates every subscribe frame:
+  user:<name> only for the connecting user; list:<DocType> / doc:<DocType>:*
+  only if the user has READ permission on that DocType; anything else
+  rejected. The socket message handler now awaits authorization and silently
+  drops unpermitted channels. Connection auth (no/bad token → close 4001)
+  was already fine.
+- Verified: two-user WS repro now leaks NOTHING (attacker subscribing to
+  user:Administrator / list:User / doc:User:Administrator receives zero
+  events); a permitted user (admin) still receives list:User + own
+  notification. test/realtime.test.ts +4 authz cases. RT e2e green 3×.
+- 186 server + 32 web e2e green. 80/126 restored.
+
 ## 2026-07-16 — Evaluation pass #9 (adversarial): RT block FAILED (channel auth leak)
 
 Re-drove the 6 newest (JOB-001/002/003, UI-013, RT-001/002/003) on a second

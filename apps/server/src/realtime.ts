@@ -1,6 +1,7 @@
 import type { Server } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { resolveToken, type SessionUser } from './auth'
+import { hasPermission } from './permissions'
 
 // RT-001/002/003: server-side realtime over WebSockets (the local equivalent
 // of Supabase Realtime per the architecture invariants).
@@ -37,6 +38,25 @@ interface Client {
 }
 
 const clients = new Set<Client>()
+
+// A user may only subscribe to:
+//   user:<their own name>            — personal events
+//   list:<DocType> / doc:<DocType>:* — only DocTypes they can READ
+// Any other channel request is rejected, preventing cross-user/cross-
+// permission eavesdropping over the socket.
+export async function canSubscribe(user: SessionUser, channel: string): Promise<boolean> {
+  if (channel.startsWith('user:')) return channel === `user:${user.name}`
+  if (channel.startsWith('list:')) return hasPermission(user.name, channel.slice(5), 'read')
+  if (channel.startsWith('doc:')) {
+    // doc:<DocType>:<name> — DocType may itself contain ':' only in theory;
+    // split on the first ':' after the prefix.
+    const rest = channel.slice(4)
+    const doctype = rest.slice(0, rest.lastIndexOf(':'))
+    if (!doctype) return false
+    return hasPermission(user.name, doctype, 'read')
+  }
+  return false
+}
 
 export function publish(channel: string, event: string, payload?: unknown): void {
   const msg: RealtimeEvent = { channel, event, payload }
@@ -83,16 +103,21 @@ export function attachRealtime(server: Server): void {
       socket.send(JSON.stringify({ channel: 'system', event: 'ready', payload: { user: user.name } }))
 
       socket.on('message', (raw) => {
-        try {
-          const msg = JSON.parse(String(raw)) as {
-            subscribe?: string[]
-            unsubscribe?: string[]
+        void (async () => {
+          try {
+            const msg = JSON.parse(String(raw)) as {
+              subscribe?: string[]
+              unsubscribe?: string[]
+            }
+            for (const ch of msg.subscribe ?? []) {
+              // Authorize each subscription; silently drop unpermitted ones.
+              if (await canSubscribe(client.user, ch)) client.channels.add(ch)
+            }
+            for (const ch of msg.unsubscribe ?? []) client.channels.delete(ch)
+          } catch {
+            // ignore malformed frames
           }
-          for (const ch of msg.subscribe ?? []) client.channels.add(ch)
-          for (const ch of msg.unsubscribe ?? []) client.channels.delete(ch)
-        } catch {
-          // ignore malformed frames
-        }
+        })()
       })
       socket.on('close', () => clients.delete(client))
       socket.on('error', () => clients.delete(client))
