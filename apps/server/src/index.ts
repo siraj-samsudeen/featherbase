@@ -19,8 +19,9 @@ import { renderPdf, renderPrintHtml } from './print'
 import { applyWorkflowAction, availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
 import { enqueue, loadJobs, startWorker } from './jobs'
-import { attachRealtime, publishDocEvent } from './realtime'
+import { attachRealtime, publishDocEvent, publishUserEvent } from './realtime'
 import { queueEmail, sendTestEmail } from './email'
+import { randomBytes } from 'node:crypto'
 
 await loadControllers()
 await loadMethods()
@@ -286,6 +287,49 @@ app.put('/api/user_settings/:doctype', async (c) => {
     values (${who(c)}, ${c.req.param('doctype')}, ${settings as unknown as string}, now())
     on conflict ("user", doctype) do update set settings = excluded.settings, modified = now()`
   return c.json({ ok: true })
+})
+
+// EML-006 / UI-017: assign a document to a user. Creates a ToDo in their
+// task list and notifies them (Notification Log + realtime user event).
+app.post('/api/assign', async (c) => {
+  const { doctype, name, assign_to, description } = (await c.req.json()) as {
+    doctype?: string
+    name?: string
+    assign_to?: string
+    description?: string
+  }
+  if (!doctype || !name || !assign_to)
+    throw new AppError('ValidationError', 'Expected { doctype, name, assign_to }')
+  // The assigner must be able to read the document.
+  await getDoc(doctype, name, who(c))
+  const [target] = await sql`select name from tab_user where name = ${assign_to}`
+  if (!target) throw new AppError('NotFoundError', `User ${assign_to} not found`)
+
+  const todo = await saveDoc(
+    'ToDo',
+    {
+      allocated_to: assign_to,
+      reference_doctype: doctype,
+      reference_name: name,
+      description: description ?? `Assigned ${doctype} ${name}`,
+      status: 'Open',
+    },
+    who(c),
+  )
+  const subject = `${who(c)} assigned you ${doctype} ${name}`
+  await sql`
+    insert into tab_notification_log ${sql({
+      name: randomBytes(5).toString('hex'),
+      owner: who(c),
+      modified_by: who(c),
+      for_user: assign_to,
+      subject,
+      ref_doctype: doctype,
+      ref_name: name,
+      read: false,
+    })}`
+  publishUserEvent(assign_to, 'notification', { subject })
+  return c.json({ todo: todo.name }, 201)
 })
 
 // EML-001: send a test email from the configured account (delivered to the

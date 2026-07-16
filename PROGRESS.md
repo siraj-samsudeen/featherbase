@@ -13,6 +13,22 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — EML-006 passing: assignments (ToDo + notification)
+
+- Migration 0022: ToDo DocType (allocated_to, reference_doctype/name,
+  description, status, priority). POST /api/assign creates a ToDo for the
+  assignee (through the normal save lifecycle), writes a Notification Log
+  row, and publishes a realtime user event so the assignee's unread badge
+  pops live (RT-003). Assigner must be able to read the doc; unknown
+  assignee → 404. FormView sidebar gained an Assignments panel
+  (assigned-to list + assign input).
+- Verified: e2e/assign.spec.ts (two contexts — admin assigns to user B; B's
+  unread badge pops live and the ToDo appears in B's ToDo list) +
+  test/assign.test.ts (ToDo+notification created, 404 unknown user, 417
+  missing args, 401 unauth).
+- 199 server + 33 web e2e green. 86/126. Email block COMPLETE
+  (EML-001..006).
+
 ## 2026-07-16 — EML-004 passing: email rules on lifecycle events
 
 - Migration 0021: Email Rule DocType (document_type, event
