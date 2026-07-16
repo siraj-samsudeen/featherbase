@@ -44,6 +44,13 @@ describe('API-003: RPC for whitelisted server methods', () => {
     expect(res.status).toBe(401)
   })
 
+  it('a method that validates its args returns a clean 4xx, not 500', async () => {
+    // Missing required arg (also covers a POST with a non-JSON body → {}).
+    const res = await areq('/api/method/count_docs', { method: 'POST', body: 'not json' })
+    expect(res.status).toBe(417)
+    expect(((await res.json()) as { error: { type: string } }).error.type).toBe('ValidationError')
+  })
+
   it('allows a guest-whitelisted method without a session', async () => {
     const res = await app.request('/api/method/public_info')
     expect(res.status).toBe(200)
