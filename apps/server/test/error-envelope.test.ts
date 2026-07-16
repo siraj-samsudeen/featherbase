@@ -45,6 +45,14 @@ describe('API-006: consistent error envelope', () => {
     }
   })
 
+  it('400 BadRequestError for non-numeric pagination params (evaluator pass #6)', async () => {
+    for (const qs of ['limit_start=abc', 'limit_page_length=xyz', 'limit_start=Infinity']) {
+      const res = await areq(`/api/list/User?${qs}`)
+      expect(res.status).toBe(400)
+      expect((await envelope(res)).type).toBe('BadRequestError')
+    }
+  })
+
   it('400 BadRequestError for a malformed JSON body', async () => {
     const res = await app.request('/api/login', {
       method: 'POST',

@@ -166,12 +166,21 @@ function listArgsFromQuery(q: Record<string, string>) {
       throw new AppError('ValidationError', `${key} must be valid JSON`)
     }
   }
+  // API-006: malformed pagination is a client error, not a 500 — NaN must
+  // never reach the SQL layer.
+  const num = (key: string) => {
+    if (q[key] == null || q[key] === '') return undefined
+    const n = Number(q[key])
+    if (!Number.isFinite(n))
+      throw new AppError('BadRequestError', `${key} must be a number`)
+    return n
+  }
   return {
     filters: parse('filters'),
     fields: parse('fields'),
     order_by: q.order_by,
-    limit_start: q.limit_start ? Number(q.limit_start) : undefined,
-    limit_page_length: q.limit_page_length ? Number(q.limit_page_length) : undefined,
+    limit_start: num('limit_start'),
+    limit_page_length: num('limit_page_length'),
   }
 }
 

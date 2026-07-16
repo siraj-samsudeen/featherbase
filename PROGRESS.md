@@ -13,6 +13,18 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — Eval #6 findings fixed: API-006 + META-004 back to passing
+
+- META-004: `prepare: false` in db.ts — a system that ALTERs its own
+  tables at runtime cannot use per-connection statement caches (PG 0A000).
+  Regression test hammers a doc with reads/updates across 3 sync cycles
+  (test/schema-sync-stale-plan.test.ts); live re-drive of the evaluator
+  repro: 30 requests across 2 syncs, zero non-200s.
+- API-006: listArgsFromQuery validates pagination with Number.isFinite →
+  400 BadRequestError envelope ("limit_start must be a number"); NaN and
+  Infinity never reach SQL. Covered in error-envelope.test.ts.
+- 143 server + 16 web e2e green. 55/126 again — now with both bugs dead.
+
 ## 2026-07-16 — Evaluation pass #6 (adversarial): 2 real bugs found
 
 Checked the 6 newest passing features as a NON-admin user ('Eval Role'
