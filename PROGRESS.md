@@ -13,6 +13,42 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — Evaluation pass #6 (adversarial): 2 real bugs found
+
+Checked the 6 newest passing features as a NON-admin user ('Eval Role'
+granted CRUD on a fresh 'Eval Ticket' DT + CRUD on File) plus 2 older
+regressions. Verdicts:
+
+- **RPT-001 HOLDS**: report math correct for restricted user (Open (2)
+  sum 3 / Closed (1) sum 5, grand total 8); /desk/Role/view/report leaks
+  zero rows to a non-permitted user; a DocType with no numeric columns
+  renders (no grand-total row) and groups by Check fine.
+- **UI-023 / FILE-001 / FILE-002 HOLD** for non-admin with proper grants:
+  upload 201 (403 with clean envelope when File create not granted),
+  attachments list via ref filters, delete removes the storage object
+  (404 after), Attach value persists via PUT.
+- **PERM-004 HOLDS**: desk_client as eval-user sees granted tables only,
+  all writes denied, post-migration tables carry the generated policy.
+- **DOC-009 / PERM-006 HOLD** (regressions): version diffs recorded;
+  permlevel-1 field invisible to level-0 user and hostile write dropped.
+- **API-006 → FAILING**: `GET /api/list/X?limit_start=abc` (or
+  limit_page_length=xyz) → 500 InternalError. Number('abc') = NaN reaches
+  the SQL layer. Malformed client input must be a 4xx envelope
+  (BadRequestError). Repro: any list endpoint with non-numeric pagination.
+- **META-004 → FAILING**: after `PUT /api/doctype/:name` adds a column,
+  postgres.js per-connection prepared statements go stale: the next
+  request served by each warm pooled connection 500s with PG 0A000
+  "cached plan must not change result type" (document.ts:424 seen; any
+  `select *`/`returning *` on the altered table). Repro: create DT → save
+  doc → PUT doc (warms conn) → PUT /api/doctype adding a field → repeat
+  PUT doc a few times → one returns 500, then heals. Fix direction for
+  coder: disable prepared statements (`prepare: false` in db.ts) or
+  catch 0A000 and retry once.
+- Also cleaned leftover probe fixtures (RLS Widget/Secret DTs,
+  rls-probe/eval users, eval DocTypes) from the DB.
+
+55→53 passing (two honest regressions beat two false positives).
+
 ## 2026-07-16 — RPT-001 passing: report view (columns + group-by totals)
 
 - `ReportView.tsx` at /desk/:doctype/view/report (3-segment route, no
