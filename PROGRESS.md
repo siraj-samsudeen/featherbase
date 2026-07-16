@@ -13,6 +13,26 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — FILE-002 passing: attachments panel + delete cleanup
+
+- `controllers/file.ts`: `on_trash` hook deletes the storage object when a
+  File doc is deleted — no orphaned files.
+- `Attachments.tsx` panel in a new FormView right sidebar (existing docs
+  only): lists File docs filtered by ref_doctype/ref_name, + Attach uses a
+  hidden input → multipart /api/upload_file with the ref fields, × deletes
+  the File doc. Private links carry ?token=. FormView widened to max-w-5xl
+  with a flex main+aside; all existing testids untouched.
+- Verified: Playwright attaches two files to /desk/User/Guest, both listed,
+  deletes one → row gone AND storage 404s, survivor still serves
+  (e2e/attachments.spec.ts); server-side flow in files.test.ts FILE-002.
+- **Flake fixed**: link-autocomplete.spec grabbed the NEWEST 'UI Form A'
+  doc (order_by creation desc), racing with parallel-worker specs editing
+  their own docs → "modified after you loaded it". It now creates its own
+  fixture doc. Full web suite ran 3× green (14 passed).
+- 141 server tests + 14 web e2e green. 53/126.
+- Gotcha: REST list returns only `name` by default — pass fields=[...]
+  explicitly in tests.
+
 ## 2026-07-16 — FILE-001 passing: disk-backed file storage + File docs
 
 - `src/storage.ts`: uploads land in `apps/server/storage/{public,private}`

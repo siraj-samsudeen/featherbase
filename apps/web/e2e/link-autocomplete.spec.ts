@@ -20,11 +20,14 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     })
     if (![201, 409].includes(res.status())) throw new Error(`cust: ${res.status()}`)
   }
-  const list = await request.get(
-    `/api/resource/${encodeURIComponent(DT)}?limit_page_length=1&order_by=creation desc`,
-    { headers: auth },
-  )
-  docName = ((await list.json()) as { data: { name: string }[] }).data[0].name
+  // Own doc, not "latest": grabbing the newest row races with other specs
+  // editing their docs in parallel workers (modified-timestamp conflicts).
+  const created = await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+    headers: auth,
+    data: { title: 'link autocomplete fixture', qty: 1 },
+  })
+  if (created.status() !== 201) throw new Error(`fixture doc: ${created.status()}`)
+  docName = ((await created.json()) as { name: string }).name
 })
 
 test('UI-006: link autocomplete filters, selects, persists, and offers create-new', async ({ page }) => {

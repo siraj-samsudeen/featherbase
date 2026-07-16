@@ -5,6 +5,7 @@ import { metaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { NO_COLUMN_TYPES, useMeta, type DocField, type DocTypeMeta } from '../lib/meta'
+import { Attachments } from './Attachments'
 
 type Doc = Record<string, unknown>
 
@@ -125,7 +126,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   }
 
   return (
-    <div data-testid="form-view" className="max-w-3xl">
+    <div data-testid="form-view" className="max-w-5xl">
       <nav className="mb-2 text-xs text-gray-500" data-testid="breadcrumbs">
         <RouterLink to="/desk" className="hover:underline">Desk</RouterLink>
         <span className="mx-1">/</span>
@@ -209,30 +210,39 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
           {banner}
         </p>
       )}
-      {sections.map((fields, si) => (
-        <div
-          key={si}
-          data-testid={`form-section-${si}`}
-          className="fc-card mb-4 grid grid-cols-1 gap-4 p-5 md:grid-cols-2"
-        >
-          {fields.map((f) =>
-            f.fieldtype === 'Column Break' ? (
-              <div key={f.fieldname} className="hidden md:block" />
-            ) : (
-              <FieldControl
-                key={f.fieldname}
-                field={submittable && docstatus !== 0 ? { ...f, read_only: true } : f}
-                value={values[f.fieldname]}
-                error={errors[f.fieldname]}
-                onChange={(v) => setField(f.fieldname, v)}
-                meta={m}
-                values={values}
-                setField={setField}
-              />
-            ),
-          )}
+      <div className="flex flex-col gap-6 lg:flex-row">
+        <div className="min-w-0 max-w-3xl flex-1">
+          {sections.map((fields, si) => (
+            <div
+              key={si}
+              data-testid={`form-section-${si}`}
+              className="fc-card mb-4 grid grid-cols-1 gap-4 p-5 md:grid-cols-2"
+            >
+              {fields.map((f) =>
+                f.fieldtype === 'Column Break' ? (
+                  <div key={f.fieldname} className="hidden md:block" />
+                ) : (
+                  <FieldControl
+                    key={f.fieldname}
+                    field={submittable && docstatus !== 0 ? { ...f, read_only: true } : f}
+                    value={values[f.fieldname]}
+                    error={errors[f.fieldname]}
+                    onChange={(v) => setField(f.fieldname, v)}
+                    meta={m}
+                    values={values}
+                    setField={setField}
+                  />
+                ),
+              )}
+            </div>
+          ))}
         </div>
-      ))}
+        {!isNew && (
+          <aside className="w-full shrink-0 lg:w-64">
+            <Attachments doctype={doctype} name={name} />
+          </aside>
+        )}
+      </div>
     </div>
   )
 }
