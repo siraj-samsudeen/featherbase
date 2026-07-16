@@ -18,10 +18,14 @@ const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in'
 
 const NO_COLUMN_TYPES = new Set(['Table', 'Section Break', 'Column Break'])
 
+// Credential columns are never selectable or filterable (API-005/API-008).
+const SENSITIVE_COLUMNS = new Set(['password_hash', 'api_secret_hash', 'api_key', 'new_password'])
+
 function columnSet(meta: DocTypeMeta): Set<string> {
   const cols = new Set<string>(STANDARD_COLUMNS)
   for (const f of meta.fields)
-    if (!NO_COLUMN_TYPES.has(f.fieldtype)) cols.add(f.fieldname)
+    if (!NO_COLUMN_TYPES.has(f.fieldtype) && !SENSITIVE_COLUMNS.has(f.fieldname))
+      cols.add(f.fieldname)
   return cols
 }
 

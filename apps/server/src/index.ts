@@ -10,7 +10,7 @@ import { createDocType, updateDocType } from './doctype-engine'
 import { amendDoc, cancelDoc, deleteDoc, getDoc, saveDoc, submitDoc } from './document'
 import { getList } from './query'
 import { loadControllers } from './controllers'
-import { login, resolveToken, type SessionUser } from './auth'
+import { generateApiKeys, login, resolveToken, revokeApiKeys, type SessionUser } from './auth'
 import { assertPermission, assertSystemManager, getRoles } from './permissions'
 import { readStored, saveUpload } from './storage'
 import { globalSearch } from './search'
@@ -91,6 +91,23 @@ const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').name
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
   return c.json({ ...user, roles: await getRoles(user.name) })
+})
+
+// API-005: generate/revoke integration keys. Users manage their own;
+// System Managers can target any user via {user}.
+app.post('/api/generate_api_key', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { user?: string }
+  const target = body.user ?? who(c)
+  if (target !== who(c)) await assertSystemManager(who(c))
+  return c.json(await generateApiKeys(target), 201)
+})
+
+app.post('/api/revoke_api_key', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { user?: string }
+  const target = body.user ?? who(c)
+  if (target !== who(c)) await assertSystemManager(who(c))
+  await revokeApiKeys(target)
+  return c.json({ ok: true })
 })
 
 app.get('/api/meta/:doctype', async (c) => {

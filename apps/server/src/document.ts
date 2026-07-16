@@ -293,17 +293,34 @@ async function saveChildren(
     await tx`delete from ${tx(table)} where name in ${tx(remove)}`
 }
 
+// Credential columns that must NEVER be serialized, even though some are
+// declared as (hidden) DocFields for storage. Everything not listed here
+// and not a standard column or DocField is dropped too.
+const SENSITIVE_COLUMNS = new Set(['password_hash', 'api_secret_hash', 'api_key', 'new_password'])
+
+// Raw table columns carry server-internal state. Only standard columns and
+// declared (non-sensitive) DocFields leave through the API, regardless of
+// the caller's permission level.
+function stripInternalColumns(meta: DocTypeMeta, doc: DocValues): DocValues {
+  const known = new Set<string>(['doctype', ...STANDARD_COLUMNS, ...meta.fields.map((f) => f.fieldname)])
+  const out: DocValues = {}
+  for (const [k, v] of Object.entries(doc))
+    if (known.has(k) && !SENSITIVE_COLUMNS.has(k)) out[k] = v
+  return out
+}
+
 async function loadChildren(meta: DocTypeMeta, doc: DocValues): Promise<DocValues> {
   for (const f of meta.fields) {
     if (f.fieldtype !== 'Table') continue
+    const childMeta = await getMeta(f.options!)
     const rows = await sql`
       select * from ${sql(tableName(f.options!))}
       where parent = ${String(doc.name)} and parenttype = ${meta.name}
         and parentfield = ${f.fieldname}
       order by idx`
-    doc[f.fieldname] = rows
+    doc[f.fieldname] = rows.map((r) => stripInternalColumns(childMeta, r as DocValues))
   }
-  return doc
+  return stripInternalColumns(meta, doc)
 }
 
 // DocType/DocField writes must go through the doctype engine (runs DDL);

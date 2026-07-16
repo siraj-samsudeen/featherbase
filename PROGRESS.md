@@ -13,6 +13,26 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — API-005 passing: API key/secret auth (+ credential hardening)
+
+- Migration 0012: api_key + api_secret_hash raw columns on tab_user
+  (unique partial index on api_key). auth.ts: generateApiKeys (returns the
+  secret ONCE, scrypt-hashed at rest), revokeApiKeys, and resolveToken now
+  accepts `Authorization: token key:secret` alongside Bearer JWTs.
+  Endpoints POST /api/generate_api_key + /api/revoke_api_key (self, or any
+  user for a System Manager).
+- Security hardening surfaced while building this: the generic doc API was
+  serializing password_hash (a hidden DocField). Added a SENSITIVE_COLUMNS
+  denylist — stripInternalColumns in document.ts drops password_hash/
+  api_secret_hash/api_key/new_password from every read (parent + child
+  rows), and query.ts removes them from the selectable/filterable column
+  set (selecting one now 417s). getDoc/save/submit/cancel/amend all funnel
+  through loadChildren so one strip point covers them.
+- Verified: vitest (generate→auth→wrong-secret 401→revoke→401; non-SM
+  can't target another user; no credential leaks) + live curl (token auth
+  lists users, password_hash absent, revoke kills it).
+- 149 server + 20 web e2e green. 61/126.
+
 ## 2026-07-16 — API-008 passing: CORS + security headers
 
 - hono/cors on /api/* limited to config.allowedOrigins (WEB_ORIGINS env,
