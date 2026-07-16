@@ -6,6 +6,7 @@ import { ApiError, api, getToken, listResource } from '../lib/api'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { NO_COLUMN_TYPES, useMeta, type DocField, type DocTypeMeta } from '../lib/meta'
 import { Attachments } from './Attachments'
+import { Comments } from './Comments'
 
 type Doc = Record<string, unknown>
 
@@ -282,8 +283,9 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
           ))}
         </div>
         {!isNew && (
-          <aside className="w-full shrink-0 lg:w-64">
+          <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
             <Attachments doctype={doctype} name={name} />
+            <Comments doctype={doctype} name={name} />
           </aside>
         )}
       </div>

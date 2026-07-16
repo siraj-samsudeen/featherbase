@@ -13,6 +13,28 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — UI-018 passing: comments + @mentions + notifications
+
+- `Comments.tsx` in the FormView sidebar (existing docs): comment stream
+  (author avatar/initials + timestamp + content) filtered by
+  ref_doctype/ref_name, a textarea with @-triggered mention autocomplete
+  from the user list, @mentions rendered highlighted. Posts create Comment
+  docs through save_doc.
+- Migration 0013: 'Notification Log' DocType (for_user, subject,
+  ref_doctype, ref_name, read). controllers/comment.ts after_insert hook
+  parses @handles, resolves them to real users, inserts a Notification Log
+  row per mentioned user (inside the comment's txn). Unknown handles
+  ignored.
+- Verified: e2e/comments.spec.ts (post, @mention autocomplete →
+  "@Administrator ", highlighted render, persist across reload, +
+  Notification Log row created); server test/comments.test.ts (real+Guest
+  notified, ghost ignored, no-mention → no notifications).
+- GOTCHA: tsx watch didn't hot-load the NEW controller file — a stale
+  server on :8000 (EADDRINUSE after a prior crash) served without it.
+  Always `bash init.sh` (kills by port) after adding a controller/method
+  module, not just edit-in-place.
+- 160 server + 22 web e2e green. 64/126.
+
 ## 2026-07-16 — Evaluation pass #7 (adversarial): all held, 1 robustness fix
 
 Checked the 3 newest (DOC-012, API-003, API-005) + regressions (PERM
