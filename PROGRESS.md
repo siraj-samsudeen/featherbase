@@ -13,6 +13,23 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — EML-004 passing: email rules on lifecycle events
+
+- Migration 0021: Email Rule DocType (document_type, event
+  [on_create/save/submit/cancel], optional condition_field+condition_value,
+  recipient, subject, message, enabled). `src/email-rules.ts`
+  evaluateEmailRules(event, doctype, doc) loads enabled rules for the
+  doctype+event, checks the equality condition (blank field = always), and
+  queues a rendered email per match. Wired post-commit into setDocstatus
+  (fires on on_submit/on_cancel) so a rolled-back submit sends nothing.
+  Table-existence guarded for early-migration getMeta safety.
+- Verified: test/email-rules.test.ts (fires for priority=High on submit,
+  NOT for Low, exactly once per matching submit) + live (submit a High
+  Live Task via API → rule → queue → worker delivers to sink).
+- 195 server tests green. 85/126.
+- GOTCHA: document.ts→email-rules→email→document is an import cycle;
+  resolves because all cross-refs are runtime calls, not module-init.
+
 ## 2026-07-16 — EML-003 + EML-005 passing: PDF attachments + templates
 
 - queueEmail gained render/attach_pdf/print_format options, stored on the

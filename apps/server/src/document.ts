@@ -5,6 +5,7 @@ import { AppError } from './errors'
 import { getMeta, type DocTypeMeta } from './meta'
 import { STANDARD_COLUMNS, tableName } from './doctype-engine'
 import { runHooks, type HookContext } from './controllers'
+import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
 import {
   assertDocPermission,
   assertPermission,
@@ -580,7 +581,10 @@ async function setDocstatus(
     await runHooks(event, ctx)
     return [updated]
   })
-  return loadChildren(meta, { doctype, ...(saved as DocValues) })
+  const result = loadChildren(meta, { doctype, ...(saved as DocValues) })
+  // EML-004: fire matching email rules for this lifecycle event (post-commit).
+  await evaluateEmailRules(event as LifecycleEvent, doctype, saved as DocValues)
+  return result
 }
 
 export function submitDoc(doctype: string, name: string, user = 'Administrator') {
