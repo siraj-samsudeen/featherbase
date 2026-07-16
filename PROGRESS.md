@@ -13,6 +13,23 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — SET-003 passing: role & permission manager UI
+
+- Endpoints (System-Manager-gated): `GET /api/permissions/:doctype` returns all
+  roles + the DocPerm rows for the doctype at permlevel 0; `POST` upserts a
+  single row per (doctype, role) — finds the existing row and updates through
+  the save lifecycle (or creates one), so toggling never leaves duplicates.
+- Web `PermissionManager` + route `/desk/permissions/$doctype`: a roles×actions
+  (Read/Write/Create/Delete/Submit/Cancel/Amend) checkbox matrix with a
+  dirty-tracked Save. A "Permissions" link appears on every list header for
+  System Managers (new `useIsSystemManager()` hook off /api/whoami).
+- Because permissionScope reads DocPerm live per request, a revoke takes effect
+  immediately — no cache to bust.
+- Verified: e2e drives the UI to uncheck Write for a role and Save, then the
+  role's user's update returns 403 (was 200), and the revoked state persists on
+  reload; server test covers the SM gate (non-SM → 403 on read+write) and
+  upsert-no-duplicate. 226 server + 41 web e2e green. 96/126.
+
 ## 2026-07-16 — RPT-004 passing: query reports (admin SQL, bound filters, gated)
 
 - Report DocType gains `report_type` (Report Builder | Query Report) and

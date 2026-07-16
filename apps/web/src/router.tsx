@@ -12,6 +12,7 @@ import { FormView } from './components/FormView'
 import { useMeta } from './lib/meta'
 import { ReportView } from './components/ReportView'
 import { QueryReportView } from './components/QueryReportView'
+import { PermissionManager } from './components/PermissionManager'
 import { KanbanView } from './components/KanbanView'
 import { CalendarView } from './components/CalendarView'
 import { PrintView } from './pages/PrintView'
@@ -223,6 +224,22 @@ function QueryReportPage() {
   )
 }
 
+// SET-003: role & permission manager for a DocType (static first segment).
+const permissionsRoute = createRoute({
+  getParentRoute: () => deskRoute,
+  path: 'permissions/$doctype',
+  component: PermissionsPage,
+})
+
+function PermissionsPage() {
+  const { doctype } = permissionsRoute.useParams()
+  return (
+    <div data-testid="doctype-page">
+      <PermissionManager key={doctype} doctype={doctype} />
+    </div>
+  )
+}
+
 // UI-004/UI-005: the generic FormView renders and saves every DocType.
 const docRoute = createRoute({
   getParentRoute: () => deskRoute,
@@ -243,5 +260,5 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   printRoute,
-  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, queryReportRoute, doctypeRoute, docRoute]),
+  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, queryReportRoute, permissionsRoute, doctypeRoute, docRoute]),
 ])

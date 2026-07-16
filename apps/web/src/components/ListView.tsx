@@ -5,6 +5,7 @@ import { ApiError, api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, listColumns, useMeta } from '../lib/meta'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
+import { useIsSystemManager } from '../lib/session'
 
 export type Filter = [string, string, unknown]
 
@@ -32,6 +33,7 @@ export function ListView({
 }) {
   const meta = useMeta(doctype)
   const settings = useSettings()
+  const isSystemManager = useIsSystemManager()
   const queryClient = useQueryClient()
   const [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
   const [start, setStart] = useState(0)
@@ -273,6 +275,16 @@ export function ListView({
               data-testid="open-calendar"
             >
               Calendar
+            </Link>
+          )}
+          {isSystemManager && (
+            <Link
+              to="/desk/permissions/$doctype"
+              params={{ doctype }}
+              className="fc-btn"
+              data-testid="open-permissions"
+            >
+              Permissions
             </Link>
           )}
         </div>

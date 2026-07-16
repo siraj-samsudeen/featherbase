@@ -269,6 +269,42 @@ app.get('/api/signed_url', async (c) => {
   return c.json({ signed_url: fileUrl })
 })
 
+// SET-003: role & permission manager. Reads/writes the DocPerm matrix for a
+// DocType at permlevel 0. Editing permissions is System-Manager-only. Writes
+// go through the normal save lifecycle, and permissionScope reads DocPerm live,
+// so a change takes effect on the very next request.
+const PERM_FLAGS = ['can_read', 'can_write', 'can_create', 'can_delete', 'can_submit', 'can_cancel', 'can_amend'] as const
+
+app.get('/api/permissions/:doctype', async (c) => {
+  await assertSystemManager(who(c))
+  const doctype = c.req.param('doctype')
+  const roles = (await sql`select name from tab_role order by name`).map((r) => r.name as string)
+  const perms = await sql`
+    select name, role, ${sql(PERM_FLAGS as unknown as string[])}
+    from tab_docperm where ref_doctype = ${doctype} and permlevel = 0 order by role`
+  return c.json({ doctype, roles, perms })
+})
+
+app.post('/api/permissions/:doctype', async (c) => {
+  const user = who(c)
+  await assertSystemManager(user)
+  const doctype = c.req.param('doctype')
+  const body = (await c.req.json().catch(() => ({}))) as { role?: string } & Record<string, unknown>
+  if (!body.role) throw new AppError('ValidationError', 'Expected { role }')
+  const flags = Object.fromEntries(PERM_FLAGS.map((f) => [f, Boolean(body[f])]))
+  const [existing] = await sql`
+    select name, modified from tab_docperm
+    where ref_doctype = ${doctype} and role = ${body.role} and permlevel = 0`
+  if (existing)
+    await saveDoc(
+      'DocPerm',
+      { name: existing.name as string, modified: (existing.modified as Date).toISOString(), ...flags },
+      user,
+    )
+  else await saveDoc('DocPerm', { ref_doctype: doctype, role: body.role, permlevel: 0, ...flags }, user)
+  return c.json({ ok: true })
+})
+
 // RPT-004: Query Report metadata (filter names parsed from its SQL) — the raw
 // query is intentionally NOT returned here, so running a report never exposes
 // its SQL to the client. Read permission on the Report is enforced by getDoc.
