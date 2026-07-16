@@ -13,6 +13,17 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — API-008 passing: CORS + security headers
+
+- hono/cors on /api/* limited to config.allowedOrigins (WEB_ORIGINS env,
+  default localhost+127.0.0.1 :5173), registered BEFORE auth so preflight
+  OPTIONS (no Authorization) succeeds. hono/secure-headers globally
+  (nosniff, frame-options, referrer-policy…).
+- Verified: vitest preflight/echo/deny cases; live curl (204 preflight
+  with ACAO for Desk origin; zero ACAO for evil origin); real browser on
+  :5173 fetched :8000/api/ping cross-origin OK (temp spec).
+- 146 server + 20 web e2e green. 60/126.
+
 ## 2026-07-16 — UI-014 passing: awesomebar documents + new-X actions
 
 - Server GET /api/search: global typeahead over every regular DocType the

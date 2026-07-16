@@ -1,5 +1,7 @@
 import { serve } from '@hono/node-server'
 import { Hono, type Context } from 'hono'
+import { cors } from 'hono/cors'
+import { secureHeaders } from 'hono/secure-headers'
 import { config } from './config'
 import { sql } from './db'
 import { AppError, errorResponse } from './errors'
@@ -24,6 +26,20 @@ app.onError((err, c) => errorResponse(c, err))
 // API-006: even unknown routes answer with the error envelope.
 app.notFound((c) =>
   c.json({ error: { type: 'NotFoundError', message: `Route not found: ${c.req.method} ${c.req.path}` } }, 404),
+)
+
+// API-008: CORS restricted to the Desk origin(s) + standard security
+// headers. Runs before auth so preflight OPTIONS (which carries no
+// Authorization header) is answered here.
+app.use('*', secureHeaders())
+app.use(
+  '/api/*',
+  cors({
+    origin: (origin) => (config.allowedOrigins.includes(origin) ? origin : null),
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization'],
+    maxAge: 600,
+  }),
 )
 
 // ---- Public routes (no session required) -----------------------------------
