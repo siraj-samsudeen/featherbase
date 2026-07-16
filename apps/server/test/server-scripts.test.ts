@@ -84,4 +84,20 @@ describe('CUST-004: server scripts', () => {
     await makeScript({ name: 'ss-srv-loop', script_type: 'API', api_method: 'srv_loop', script: 'while(true){}', enabled: true })
     await expect(runApiScript('srv_loop', {})).rejects.toMatchObject({ type: 'ValidationError' })
   })
+
+  it('cannot escape the sandbox via a constructor to reach the host realm', async () => {
+    // Eval #13 regression: injecting host built-ins let Object.constructor
+    // (the host Function) run in the host realm and reach `process`.
+    await makeScript({ name: 'ss-srv-esc', script_type: 'API', api_method: 'srv_esc', script: 'result = Object.constructor("return typeof process")()', enabled: true })
+    // In the sandbox, Object is context-native → process is undefined, not the
+    // host process object.
+    expect(await runApiScript('srv_esc', {})).toBe('undefined')
+
+    // A direct attempt to read the pid errors (process not defined) — it never
+    // returns a number.
+    await sql`delete from tab_server_script where name = 'ss-srv-esc'`
+    await makeScript({ name: 'ss-srv-esc', script_type: 'API', api_method: 'srv_esc2', script: 'result = Object.constructor("return process.pid")()', enabled: true })
+    await expect(runApiScript('srv_esc2', {})).rejects.toMatchObject({ type: 'ValidationError' })
+    await sql`delete from tab_server_script where name = 'ss-srv-esc'`
+  })
 })

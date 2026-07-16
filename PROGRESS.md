@@ -13,6 +13,25 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — CUST-004 re-passing: sandbox escape closed
+
+- Rewrote the `node:vm` sandbox to expose NO host objects. All inputs/outputs
+  cross the boundary as JSON string PRIMITIVES: `doc`/`args` are injected as a
+  JSON string and `JSON.parse`d INSIDE the context (context-native), `frappe`/
+  `console` are defined inside the context, and NO host built-ins are injected
+  (the fresh context has its own). Document-event scripts merge back only the
+  fields they changed (system fields keep native host values). API scripts
+  return their `result` round-tripped through JSON.
+- Now `Object`, `Function`, `[].constructor.constructor`, `this`, `globalThis`
+  all resolve to context-native values, so `process`/`require`/`fetch` are
+  undefined. Verified every escape vector from the eval is closed:
+  `Object.constructor("return process.pid")()` → "process is not defined";
+  `this.constructor…` → no-this (strict mode); `(function(){}).constructor(
+  "return typeof process")()` → "undefined"; `globalThis.process` → undefined.
+  Functionality intact: reject-negative → 417, field-set → 'big', API double(21)
+  → 42, runaway loop → timeout. Server test adds explicit escape assertions.
+- 270 server + CUST e2e green. 109/126 (CUST-004 back to passing).
+
 ## 2026-07-16 — Evaluation pass #13 (adversarial) — CUST-004 sandbox ESCAPE
 
 - **CUST-004 → FAILING.** The node:vm sandbox is escapable, so it does NOT
