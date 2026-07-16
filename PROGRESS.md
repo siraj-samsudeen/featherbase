@@ -13,6 +13,25 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — WEB-003 passing: customer portal
+
+- **`Portal.tsx`** with two routes outside the Desk shell:
+  `/portal/$doctype` (list) and `/portal/$doctype/$name` (read-only detail),
+  each gated on a token (redirect to `/login` otherwise). A minimal portal
+  chrome (brand + user + log out), no Desk sidebar.
+- The list reads `/api/resource/:doctype`, which is already **if_owner-scoped**
+  (PERM-007), so a website user sees only the documents they own. The detail
+  page fetches the doc and, on a **403/404** `ApiError`, renders an access-denied
+  panel (`portal-forbidden`) instead of the fields.
+- No new server code — the whole feature rides the existing
+  permission-scoped resource API. "Website user" = any User holding a role with
+  an if_owner grant on the DocType.
+- **Verified**: `e2e/portal.spec.ts` (3 — Alice sees only her own ticket (1 row,
+  not Bob's); Alice opening Bob's ticket URL shows the forbidden panel; Bob CAN
+  open his own) plus a direct API check (Alice lists 1 own doc; `GET` Bob's doc
+  → **403**). Existing web-form/web-page/desk routing e2e unaffected.
+- Next: 4 P3 remain (PLAT-001/002/006/008).
+
 ## 2026-07-16 — FILE-004 passing: image thumbnails
 
 - **`thumbnails.ts`**: `makeThumbnailDataUrl(content, mime, maxDim=128)` decodes

@@ -7,6 +7,7 @@ import {
 import { LoginPage } from './pages/Login'
 import { ResetPasswordPage } from './pages/ResetPassword'
 import { WebFormPage } from './pages/WebForm'
+import { PortalListPage, PortalDocPage } from './pages/Portal'
 import { DeskLayout } from './pages/DeskLayout'
 import { getToken } from './lib/api'
 import { ListView } from './components/ListView'
@@ -47,6 +48,34 @@ const webFormRoute = createRoute({
   path: '/form/$route',
   component: WebFormPage,
 })
+
+// WEB-003: customer portal — a logged-in website user sees only their own
+// documents (if_owner-scoped by the API). Lives outside the Desk shell.
+const portalListRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/portal/$doctype',
+  beforeLoad: () => {
+    if (!getToken()) throw redirect({ to: '/login' })
+  },
+  component: PortalListRouteComponent,
+})
+function PortalListRouteComponent() {
+  const { doctype } = portalListRoute.useParams()
+  return <PortalListPage key={doctype} doctype={doctype} />
+}
+
+const portalDocRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/portal/$doctype/$name',
+  beforeLoad: () => {
+    if (!getToken()) throw redirect({ to: '/login' })
+  },
+  component: PortalDocRouteComponent,
+})
+function PortalDocRouteComponent() {
+  const { doctype, name } = portalDocRoute.useParams()
+  return <PortalDocPage key={`${doctype}/${name}`} doctype={doctype} name={name} />
+}
 
 // SET-002: public password-reset page (target of the emailed link).
 const resetPasswordRoute = createRoute({
@@ -356,6 +385,8 @@ export const routeTree = rootRoute.addChildren([
   loginRoute,
   resetPasswordRoute,
   webFormRoute,
+  portalListRoute,
+  portalDocRoute,
   printRoute,
   deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, workspaceRoute, jobsRoute, doctypeRoute, docRoute]),
 ])
