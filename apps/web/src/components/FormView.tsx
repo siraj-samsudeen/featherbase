@@ -8,6 +8,7 @@ import { Link as RouterLink } from '@tanstack/react-router'
 import { NO_COLUMN_TYPES, useMeta, type DocField, type DocTypeMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
 import { useClientScripts, type Frm } from '../lib/client-scripts'
+import { useI18n } from '../lib/i18n'
 import { Attachments } from './Attachments'
 import { Assignments } from './Assignments'
 import { Tags } from './Tags'
@@ -24,6 +25,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   const meta = useMeta(doctype)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const { t } = useI18n()
 
   const doc = useQuery({
     queryKey: ['doc', doctype, name],
@@ -305,7 +307,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
             data-testid="form-save"
             className="fc-btn-primary disabled:opacity-40"
           >
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? t('Saving…') : t('Save')}
           </button>
           {submittable && docstatus === 0 && !dirty && (
             <button
@@ -434,10 +436,11 @@ function FieldControl({
   setField: (fieldname: string, value: unknown) => void
 }) {
   const settings = useSettings()
+  const { t } = useI18n()
   const base = 'fc-input'
   const label = (
     <label className="fc-label">
-      {field.label ?? field.fieldname}
+      {t(field.label ?? field.fieldname)}
       {field.reqd && <span className="text-red-500"> *</span>}
     </label>
   )

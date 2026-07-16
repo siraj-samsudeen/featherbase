@@ -13,6 +13,26 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — I18N-001 passing: translation infrastructure
+
+- Migration 0039: `Translation` DocType (language, source_text, translated_text)
+  with a unique (language, source_text) index. `i18n.ts`: `getCatalog(lang)`
+  builds a source→translated map (empty for 'en'); `t(text, catalog)` looks up
+  with source fallback.
+- Endpoints: `GET /api/translations/:lang` (catalog), `POST /api/set_language`
+  (per-user, validated code); whoami now returns `language`.
+- Web `lib/i18n.ts`: `useI18n()` reads the user's language from whoami, fetches
+  the catalog, and returns `t()` + `setLanguage`. Wrapped chrome (form Save
+  button, navbar Log out) and FIELD LABELS (FieldControl) in `t()`. A language
+  switcher (EN/FR/ES) sits in the navbar.
+- Verified: e2e (switch to fr → navbar "Log out"→"Déconnexion", form Save→
+  "Enregistrer", a field labelled "Priority"→"Priorité"; switching back to en
+  reverts) + server test (catalog build, en-empty, t() fallback, HTTP catalog,
+  per-user language persistence + bad-code 417). 280 server + 58 web e2e green.
+  112/126. Unblocks I18N-002.
+- Also hardened the JOB-005 progress test to filter events by the specific job
+  name (the shared job queue can hold other files' jobs).
+
 ## 2026-07-16 — JOB-005 passing: long-job progress over realtime
 
 - Job handlers now receive a `JobContext` with `setProgress(percent, message)`;

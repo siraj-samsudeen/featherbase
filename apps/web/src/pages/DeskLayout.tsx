@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, clearSession, getSessionUser, listResource } from '../lib/api'
 import { useRealtime } from '../lib/realtime'
 import { useTheme } from '../lib/theme'
+import { useI18n } from '../lib/i18n'
 
 interface SearchHit {
   doctype: string
@@ -18,6 +19,7 @@ export function DeskLayout() {
   const queryClient = useQueryClient()
   const user = getSessionUser()
   const { theme, toggle: toggleTheme } = useTheme()
+  const { t, language, setLanguage } = useI18n()
   const [search, setSearch] = useState('')
 
   // RT-003: unread notification count, live-updated when a realtime
@@ -176,6 +178,17 @@ export function DeskLayout() {
         </form>
 
         <div className="flex items-center gap-3">
+          <select
+            data-testid="language-select"
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            title="Language"
+            className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-xs text-[var(--color-ink)]"
+          >
+            <option value="en">EN</option>
+            <option value="fr">FR</option>
+            <option value="es">ES</option>
+          </select>
           <button
             onClick={toggleTheme}
             data-testid="theme-toggle"
@@ -206,7 +219,7 @@ export function DeskLayout() {
             <span className="sr-only">{user?.full_name || user?.name}</span>
           </div>
           <button onClick={logout} data-testid="logout" className="text-xs text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]">
-            Log out
+            {t('Log out')}
           </button>
         </div>
       </header>

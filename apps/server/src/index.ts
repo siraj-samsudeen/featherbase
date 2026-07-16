@@ -28,6 +28,7 @@ import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
 import { runApiScript } from './server-scripts'
 import { exportCustomizations, importCustomizations } from './customizations'
+import { getCatalog } from './i18n'
 import { rateLimit } from './rate-limit'
 import { parseFilters, runQueryReport } from './query-report'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
@@ -183,11 +184,12 @@ const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').name
 
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
-  const [row] = await sql`select theme from tab_user where name = ${user.name}`
+  const [row] = await sql`select theme, language from tab_user where name = ${user.name}`
   return c.json({
     ...user,
     roles: await getRoles(user.name),
     theme: (row?.theme as string) || 'light',
+    language: (row?.language as string) || 'en',
   })
 })
 
@@ -198,6 +200,19 @@ app.post('/api/set_theme', async (c) => {
     throw new AppError('ValidationError', 'theme must be "light" or "dark"')
   await sql`update tab_user set theme = ${theme} where name = ${who(c)}`
   return c.json({ ok: true, theme })
+})
+
+// I18N-001/002: per-user language + the translation catalog for a language.
+app.post('/api/set_language', async (c) => {
+  const { language } = (await c.req.json().catch(() => ({}))) as { language?: string }
+  if (!language || !/^[a-z]{2}(-[a-z]{2})?$/i.test(language))
+    throw new AppError('ValidationError', 'Expected a language code like "en" or "fr"')
+  await sql`update tab_user set language = ${language} where name = ${who(c)}`
+  return c.json({ ok: true, language })
+})
+
+app.get('/api/translations/:lang', async (c) => {
+  return c.json(await getCatalog(c.req.param('lang')))
 })
 
 // SET-004: global display/formatting settings, readable by any signed-in
