@@ -1,19 +1,57 @@
 import { useQuery } from '@tanstack/react-query'
-import { api } from '../lib/api'
+import { api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, useMeta, type DocField } from '../lib/meta'
 
 type Doc = Record<string, unknown>
 
+interface PrintFormat {
+  name: string
+  is_default: boolean
+  template: string
+}
+
+// PRN-002: {{ field }} interpolation over a document. Admin-authored
+// templates are trusted (like Frappe's Jinja print formats).
+function interpolate(template: string, doc: Doc): string {
+  return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => {
+    const v = doc[key]
+    if (v == null) return ''
+    if (typeof v === 'boolean') return v ? 'Yes' : 'No'
+    return String(v)
+  })
+}
+
 // PRN-001: clean, printable rendering of any document from its metadata —
 // no app chrome (navbar/sidebar). Rendered at /print/:doctype/:name so it
-// sits outside the Desk layout.
-export function PrintView({ doctype, name }: { doctype: string; name: string }) {
+// sits outside the Desk layout. PRN-002: an optional named/default Print
+// Format template overrides the auto layout.
+export function PrintView({
+  doctype,
+  name,
+  format,
+  onFormatChange,
+}: {
+  doctype: string
+  name: string
+  format?: string
+  onFormatChange?: (name: string | undefined) => void
+}) {
   const meta = useMeta(doctype)
   const doc = useQuery({
     queryKey: ['doc', doctype, name],
     enabled: Boolean(meta.data),
     queryFn: () =>
       api.get<Doc>(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
+  })
+  const formats = useQuery({
+    queryKey: ['print-formats', doctype],
+    queryFn: () =>
+      listResource<PrintFormat>('Print Format', {
+        filters: [['doc_type', '=', doctype]],
+        fields: ['name', 'is_default', 'template'],
+        order_by: 'name asc',
+        limit_page_length: 100,
+      }),
   })
 
   if (meta.isLoading || doc.isLoading)
@@ -23,6 +61,15 @@ export function PrintView({ doctype, name }: { doctype: string; name: string }) 
 
   const m = meta.data!
   const d = doc.data!
+
+  const formatList = formats.data?.data ?? []
+  // ?format=<name> selects that format; ?format=standard forces the auto
+  // layout; no param falls back to the DocType's default format (if any).
+  const active =
+    format === 'standard'
+      ? undefined
+      : (format && formatList.find((f) => f.name === format)) ||
+        (format === undefined ? formatList.find((f) => f.is_default) : undefined)
   const fmt = (v: unknown) => {
     if (v == null || v === '') return '—'
     if (typeof v === 'boolean') return v ? 'Yes' : 'No'
@@ -46,14 +93,57 @@ export function PrintView({ doctype, name }: { doctype: string; name: string }) 
             {name}
           </p>
         </div>
-        <button
-          onClick={() => window.print()}
-          className="fc-btn print:hidden"
-          data-testid="print-button"
-        >
-          Print
-        </button>
+        <div className="flex items-center gap-2 print:hidden">
+          {formatList.length > 0 && (
+            <select
+              value={active?.name ?? 'standard'}
+              onChange={(e) => onFormatChange?.(e.target.value)}
+              className="fc-input w-44"
+              data-testid="print-format-picker"
+            >
+              <option value="standard">Standard (auto)</option>
+              {formatList.map((f) => (
+                <option key={f.name} value={f.name}>
+                  {f.name}
+                  {f.is_default ? ' (default)' : ''}
+                </option>
+              ))}
+            </select>
+          )}
+          <button onClick={() => window.print()} className="fc-btn" data-testid="print-button">
+            Print
+          </button>
+        </div>
       </div>
+
+      {active ? (
+        <div
+          data-testid="print-format-body"
+          data-format={active.name}
+          dangerouslySetInnerHTML={{ __html: interpolate(active.template ?? '', d) }}
+        />
+      ) : (
+        <AutoLayout m={m} d={d} fmt={fmt} />
+      )}
+    </div>
+  )
+}
+
+function AutoLayout({
+  m,
+  d,
+  fmt,
+}: {
+  m: import('../lib/meta').DocTypeMeta
+  d: Doc
+  fmt: (v: unknown) => string
+}) {
+  const scalarFields = m.fields.filter(
+    (f) => !NO_COLUMN_TYPES.has(f.fieldtype) && f.fieldtype !== 'Table' && !f.hidden,
+  )
+  const tableFields = m.fields.filter((f) => f.fieldtype === 'Table' && !f.hidden)
+  return (
+    <div data-testid="print-auto-layout">
 
       <dl className="grid grid-cols-2 gap-x-8 gap-y-3">
         {scalarFields.map((f: DocField) => (

@@ -13,6 +13,21 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — PRN-002 passing: print formats + interpolation
+
+- Migration 0014: 'Print Format' DocType (doc_type Link, is_default Check,
+  template Text). PrintView loads formats for the doctype; {{ field }}
+  tokens interpolate from the doc (admin-authored templates are trusted →
+  dangerouslySetInnerHTML, like Frappe Jinja). Selection: ?format=<name>
+  wins, ?format=standard forces the auto layout, no param → the DocType's
+  is_default format. Picker in the header; the auto metadata layout
+  extracted to <AutoLayout>.
+- Verified by e2e/print-formats.spec.ts: Invoice(default)+Receipt formats;
+  no param → Invoice interpolated (Bill to: Stark Industries / Total 500),
+  no RECEIPT; switch → Receipt output, no Invoice; ?format= URL restores;
+  Standard(auto) → metadata layout.
+- 160 server + 24 web e2e green. 67/126.
+
 ## 2026-07-16 — PRN-001 passing: print view
 
 - `PrintView.tsx` at /print/:doctype/:name — a ROOT route (outside the

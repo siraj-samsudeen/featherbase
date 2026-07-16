@@ -42,6 +42,9 @@ const deskRoute = createRoute({
 const printRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/print/$doctype/$name',
+  validateSearch: (search: Record<string, unknown>) => ({
+    format: typeof search.format === 'string' ? search.format : undefined,
+  }),
   beforeLoad: () => {
     if (!getToken()) throw redirect({ to: '/login' })
   },
@@ -50,7 +53,17 @@ const printRoute = createRoute({
 
 function PrintPage() {
   const { doctype, name } = printRoute.useParams()
-  return <PrintView key={`${doctype}/${name}`} doctype={doctype} name={name} />
+  const { format } = printRoute.useSearch()
+  const navigate = printRoute.useNavigate()
+  return (
+    <PrintView
+      key={`${doctype}/${name}`}
+      doctype={doctype}
+      name={name}
+      format={format}
+      onFormatChange={(f) => navigate({ search: { format: f }, replace: true })}
+    />
+  )
 }
 
 const deskIndexRoute = createRoute({

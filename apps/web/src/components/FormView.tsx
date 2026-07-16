@@ -188,6 +188,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
             <RouterLink
               to="/print/$doctype/$name"
               params={{ doctype, name }}
+              search={{ format: undefined }}
               data-testid="form-print"
               className="fc-btn"
             >
