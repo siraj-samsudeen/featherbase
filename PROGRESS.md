@@ -13,6 +13,16 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — I18N-002 passing: per-user language on login + configured formats
+
+- Satisfied by composition of I18N-001 (per-user `language` returned by whoami,
+  applied by `useI18n` on load) and SET-004 (dates rendered via System Settings
+  `date_format`). No new product code needed.
+- Verified: e2e — a user whose stored language is `fr` logs in fresh and
+  immediately sees French chrome (Log out→Déconnexion, language switcher shows
+  fr) with no manual switch, and a Date field renders in the configured
+  dd-mm-yyyy format. 113/126.
+
 ## 2026-07-16 — I18N-001 passing: translation infrastructure
 
 - Migration 0039: `Translation` DocType (language, source_text, translated_text)
