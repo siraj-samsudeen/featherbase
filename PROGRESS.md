@@ -13,6 +13,27 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — PRN-003 passing: server-side PDF generation
+
+- `src/print.ts`: renderPrintHtml builds the same HTML the browser print
+  view shows (interpolated Print Format template, or metadata auto-layout,
+  server-side {{ field }} + HTML-escaping) → renderPdf drives headless
+  Chromium (page.setContent + page.pdf A4). Browser launched lazily and
+  reused. GET /api/print/:doctype/:name?format= returns application/pdf.
+- Chromium resolution: PLAYWRIGHT_BROWSERS_PATH isn't exported to the
+  server process, so resolveChromium() globs /opt/pw-browsers/chromium-*/
+  chrome-linux/chrome (newest first). Added playwright to apps/server.
+- Verified: test/print-pdf.test.ts (auto-layout PDF contains Umbrella
+  Corp/9876; a Print Format template interpolates RECEIPT + values;
+  %PDF- header asserted; text via pdf-parse v2 PDFParse) + live curl
+  (200 application/pdf 16KB; 401 unauthenticated).
+- 162 server + web e2e green. 68/126. Printing block (PRN-001/002/003)
+  COMPLETE.
+- GOTCHA: pdf-parse v2 exports a { PDFParse } class (new + getText()), not
+  a default function; pypdf is unusable here (broken cryptography native
+  dep). Chromium PDFs font-subset text, so raw stream grep fails — must
+  use a real extractor.
+
 ## 2026-07-16 — PRN-002 passing: print formats + interpolation
 
 - Migration 0014: 'Print Format' DocType (doc_type Link, is_default Check,

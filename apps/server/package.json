@@ -12,12 +12,14 @@
   "dependencies": {
     "@hono/node-server": "^1.14.0",
     "hono": "^4.7.0",
+    "playwright": "^1.61.1",
     "postgres": "^3.4.5",
     "shared": "workspace:*",
     "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
+    "pdf-parse": "^2.4.5",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"

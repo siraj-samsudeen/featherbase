@@ -15,6 +15,7 @@ import { assertPermission, assertSystemManager, getRoles } from './permissions'
 import { readStored, saveUpload } from './storage'
 import { globalSearch } from './search'
 import { callMethod, loadMethods, methodAllowsGuest } from './methods'
+import { renderPdf, renderPrintHtml } from './print'
 
 await loadControllers()
 await loadMethods()
@@ -156,6 +157,17 @@ app.post('/api/save_doc', async (c) => {
 
 app.get('/api/doc/:doctype/:name', async (c) => {
   return c.json(await getDoc(c.req.param('doctype'), c.req.param('name'), who(c)))
+})
+
+// PRN-003: server-side PDF of any document / print format.
+app.get('/api/print/:doctype/:name', async (c) => {
+  const format = c.req.query('format')
+  const html = await renderPrintHtml(c.req.param('doctype'), c.req.param('name'), who(c), format)
+  const pdf = await renderPdf(html)
+  return c.body(new Uint8Array(pdf), 200, {
+    'content-type': 'application/pdf',
+    'content-disposition': `inline; filename="${c.req.param('name').replace(/[^\w.-]/g, '_')}.pdf"`,
+  })
 })
 
 // FILE-001: multipart upload — writes the storage object, then creates the
