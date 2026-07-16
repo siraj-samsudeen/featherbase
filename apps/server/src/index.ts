@@ -27,6 +27,7 @@ import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
 import { runApiScript } from './server-scripts'
+import { exportCustomizations, importCustomizations } from './customizations'
 import { rateLimit } from './rate-limit'
 import { parseFilters, runQueryReport } from './query-report'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
@@ -444,6 +445,19 @@ app.post('/api/run_script_report', async (c) => {
   }
   if (!report) throw new AppError('ValidationError', 'Expected { report }')
   return c.json(await runScriptReport(report, filters ?? {}, who(c)))
+})
+
+// CUST-005: export/import a DocType's customizations (Custom Fields +
+// Property Setters) as JSON. System-Manager-only.
+app.get('/api/export_customizations/:doctype', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json(await exportCustomizations(c.req.param('doctype')))
+})
+
+app.post('/api/import_customizations', async (c) => {
+  await assertSystemManager(who(c))
+  const bundle = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+  return c.json(await importCustomizations(bundle, who(c)))
 })
 
 // CUST-004: invoke an API-type Server Script by its method name.

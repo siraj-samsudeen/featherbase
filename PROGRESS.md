@@ -13,6 +13,23 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — CUST-005 passing: export/import customizations as JSON
+
+- `customizations.ts`: `exportCustomizations(doctype)` returns a JSON bundle of
+  the DocType's Custom Fields + Property Setters; `importCustomizations(bundle)`
+  recreates each through saveDoc (so the Custom Field controller re-materializes
+  the column and Property Setters re-apply via getMeta), skipping any that
+  already exist (idempotent). Custom Field / Property Setter are prompt-autoname
+  DocTypes, so import supplies deterministic names (`dt-fieldname`,
+  `doctype-field-property`).
+- Endpoints (System-Manager-gated): `GET /api/export_customizations/:doctype`
+  and `POST /api/import_customizations`.
+- Verified: HTTP + server test — export a Select custom field + a reqd property
+  setter, delete both (meta loses them), import (counts 1/1), meta regains the
+  field with its options AND the backing column, title becomes reqd again;
+  re-import is a no-op (0/0); non-System-Manager export → 403. 269 server tests
+  green. 109/126.
+
 ## 2026-07-16 — CUST-003 passing: Client Scripts (form-event hooks)
 
 - Migration 0038: `Client Script` DocType (reference_doctype, script, enabled).
