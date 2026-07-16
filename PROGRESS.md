@@ -13,6 +13,22 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — EML-003 + EML-005 passing: PDF attachments + templates
+
+- queueEmail gained render/attach_pdf/print_format options, stored on the
+  Email Queue row (in the attachments JSON) so the send_email job is
+  self-contained. At send time, if a reference doc is set: EML-005 renders
+  {{ doc.field }} in subject+body against the doc; EML-003 renders the
+  document to PDF (renderPrintHtml+renderPdf, honoring a print format) and
+  attaches it (base64) to the sink message. /api/queue_email exposes the
+  flags.
+- Verified: test/email.test.ts (+2 — templated queued mail lands rendered
+  in the sink; attach_pdf delivers inv-1.pdf whose extracted text contains
+  the doc's field value) + live (subject "Re: Live Report", attachment
+  "e1.pdf").
+- 192 server tests green. 84/126.
+- Remaining email: EML-004 (submit rule), EML-006 (assignment→ToDo).
+
 ## 2026-07-16 — EML-001/002 passing: outbound email + queue + dev sink
 
 - Migration 0020: Email Account (email_id, smtp_*, is_default), Email Queue

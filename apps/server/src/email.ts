@@ -2,6 +2,8 @@ import { randomBytes } from 'node:crypto'
 import { sql } from './db'
 import { AppError } from './errors'
 import { registerJob, enqueue } from './jobs'
+import { getDoc } from './document'
+import { renderPdf, renderPrintHtml } from './print'
 
 // EML-001/002/003/005: outbound email. In dev, delivery lands in the Email
 // Sink (the local mailbox). The same code path would drive a real SMTP
@@ -20,6 +22,13 @@ export interface MailMessage {
   reference_doctype?: string
   reference_name?: string
   attachments?: Attachment[]
+  // EML-005: when set, subject+body are treated as {{ doc.field }} templates
+  // and rendered against the reference document at send time.
+  render?: boolean
+  // EML-003: attach a PDF of the reference document (optionally a named
+  // print format) to the outgoing mail.
+  attach_pdf?: boolean
+  print_format?: string
 }
 
 function id(): string {
@@ -91,7 +100,12 @@ export async function queueEmail(msg: MailMessage): Promise<string> {
       status: 'queued',
       reference_doctype: msg.reference_doctype ?? null,
       reference_name: msg.reference_name ?? null,
-      attachments: (msg.attachments ?? []) as unknown as string,
+      // Delivery options travel with the row so the job is self-contained.
+      attachments: {
+        render: msg.render ?? false,
+        attach_pdf: msg.attach_pdf ?? false,
+        print_format: msg.print_format ?? null,
+      } as unknown as string,
     })}`
   await enqueue('send_email', { queue: name })
   return name
@@ -107,14 +121,36 @@ registerJob('send_email', async (payload) => {
     returning *`
   if (!row) return // already delivered or missing — no double-send
   try {
+    const opts = (row.attachments as { render?: boolean; attach_pdf?: boolean; print_format?: string } | null) ?? {}
+    const refDoctype = (row.reference_doctype as string) ?? undefined
+    const refName = (row.reference_name as string) ?? undefined
+    let subject = (row.subject as string) ?? ''
+    let body = (row.body as string) ?? ''
+    const attachments: Attachment[] = []
+
+    if ((opts.render || opts.attach_pdf) && refDoctype && refName) {
+      const doc = await getDoc(refDoctype, refName)
+      // EML-005: render subject/body templates against the document.
+      if (opts.render) {
+        subject = renderTemplate(subject, doc)
+        body = renderTemplate(body, doc)
+      }
+      // EML-003: attach a PDF of the document.
+      if (opts.attach_pdf) {
+        const html = await renderPrintHtml(refDoctype, refName, 'Administrator', opts.print_format)
+        const pdf = await renderPdf(html)
+        attachments.push({ filename: `${refName}.pdf`, content_b64: pdf.toString('base64') })
+      }
+    }
+
     await deliverToSink({
       to: row.recipient as string,
       from: row.sender as string,
-      subject: (row.subject as string) ?? '',
-      body: (row.body as string) ?? '',
-      reference_doctype: (row.reference_doctype as string) ?? undefined,
-      reference_name: (row.reference_name as string) ?? undefined,
-      attachments: (row.attachments as Attachment[] | null) ?? undefined,
+      subject,
+      body,
+      reference_doctype: refDoctype,
+      reference_name: refName,
+      attachments,
     })
   } catch (err) {
     await sql`

@@ -306,6 +306,9 @@ app.post('/api/queue_email', async (c) => {
     body?: string
     reference_doctype?: string
     reference_name?: string
+    render?: boolean
+    attach_pdf?: boolean
+    print_format?: string
   }
   if (!body.to) throw new AppError('ValidationError', 'Expected { to }')
   const name = await queueEmail({
@@ -314,6 +317,9 @@ app.post('/api/queue_email', async (c) => {
     body: body.body ?? '',
     reference_doctype: body.reference_doctype,
     reference_name: body.reference_name,
+    render: body.render,
+    attach_pdf: body.attach_pdf,
+    print_format: body.print_format,
   })
   return c.json({ name }, 201)
 })
