@@ -13,6 +13,36 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — Evaluation pass #9 (adversarial): RT block FAILED (channel auth leak)
+
+Re-drove the 6 newest (JOB-001/002/003, UI-013, RT-001/002/003) on a second
+DocType + a restricted non-admin, plus 2 regressions. Verdicts:
+
+- **JOB-001/002/003 HOLD**: non-admin enqueue → 403; no-method → 417; queue
+  drains; retries/failed states correct (already covered, re-confirmed
+  enqueue authz).
+- **UI-013 HOLDS**: user_settings is per-user — a non-admin reading
+  /api/user_settings/User sees their own null, NOT the admin's saved
+  {sort,hiddenCols}; admin reads back own.
+- **Regressions HOLD**: REST CRUD round-trip (create/update/delete +
+  404-after-delete) works through the now-event-publishing endpoints;
+  permission denial still 403s a role-less user on list + create.
+- **RT-001/002/003 → FAILING**: the WebSocket layer performs NO
+  authorization on channel subscription. `for (const ch of msg.subscribe)
+  client.channels.add(ch)` accepts any channel. REPRO: attacker logs in as
+  a low-priv user, opens /ws?token=<their jwt>, sends
+  {subscribe:["user:Administrator"]}; when Administrator is @mentioned, the
+  attacker's socket receives {channel:"user:Administrator",
+  event:"notification", payload:{subject:"Administrator mentioned you in a
+  comment"}} — a cross-user confidentiality leak. Same gap lets any user
+  subscribe to list:<AnyDocType> / doc:<AnyDocType>:<name> without read
+  permission and learn doc names/changes. Connection auth itself is fine
+  (no/garbage token → close 4001); only per-channel authz is missing.
+  FIX (next, this session): authorize each subscribe — user:<name> only for
+  the connecting user; list:/doc: only if the user can read that DocType.
+
+80 → 77 passing. Fixing RT channel authz next in coder mode.
+
 ## 2026-07-16 — RT-001/002/003 passing: realtime over WebSockets
 
 - `src/realtime.ts`: a WS server (ws) attached to the shared HTTP server at
