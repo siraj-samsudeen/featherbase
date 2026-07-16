@@ -127,6 +127,6 @@
     {"id": "PLAT-005", "priority": 3, "category": "platform", "title": "Webhooks: DocType configuring HTTP callbacks on document events with signing and retry", "verify": "on_update webhook posts the doc JSON to a test receiver with a valid signature; failures retry.", "status": "passing", "deps": ["DOC-003", "JOB-002"]},
     {"id": "PLAT-006", "priority": 3, "category": "platform", "title": "Social login (Google OAuth) via Supabase Auth mapped to the User DocType", "verify": "OAuth sign-in (mocked provider in dev) creates/links a User and lands in the Desk.", "status": "passing", "deps": ["API-004"]},
     {"id": "PLAT-007", "priority": 3, "category": "platform", "title": "Audit logs: Activity Log for logins and Access Log for exports/prints", "verify": "Login and CSV export each produce a log row with user and timestamp.", "status": "passing", "deps": ["RPT-003"]},
-    {"id": "PLAT-008", "priority": 3, "category": "platform", "title": "Multi-tenancy: schema-per-site with a site resolver (host header) and per-site migrate", "verify": "Two sites on one Postgres hold independent DocTypes and users; requests never leak across sites.", "status": "failing", "deps": ["PLAT-003", "PLAT-004"]}
+    {"id": "PLAT-008", "priority": 3, "category": "platform", "title": "Multi-tenancy: schema-per-site with a site resolver (host header) and per-site migrate", "verify": "Two sites on one Postgres hold independent DocTypes and users; requests never leak across sites.", "status": "passing", "deps": ["PLAT-003", "PLAT-004"]}
   ]
 }

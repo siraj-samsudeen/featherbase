@@ -36,6 +36,7 @@ import { parseFilters, runQueryReport } from './query-report'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, uninstallApp, listInstalledApps, getAvailableApps } from './apps'
+import { createSite, listSites, resolveSite, siteCreateDoctype, siteListDoctypes, siteCreateUser, siteListUsers } from './tenancy'
 import helloCrm from './sample-apps/hello-crm'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
 import { randomBytes } from 'node:crypto'
@@ -540,6 +541,44 @@ app.post('/api/run_query_report', async (c) => {
   }
   if (!report) throw new AppError('ValidationError', 'Expected { report }')
   return c.json(await runQueryReport(report, filters ?? {}, who(c)))
+})
+
+// PLAT-008: multi-tenancy. Provisioning is System-Manager-only; the data
+// endpoints resolve the target site from the request Host header, and every
+// query runs on that site's isolated schema — data never crosses sites.
+app.post('/api/tenancy/sites', async (c) => {
+  await assertSystemManager(who(c))
+  const { site, host } = (await c.req.json().catch(() => ({}))) as { site?: string; host?: string }
+  if (!site) throw new AppError('ValidationError', 'Expected { site }')
+  return c.json(await createSite(site, host), 201)
+})
+app.get('/api/tenancy/sites', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json({ sites: await listSites() })
+})
+app.post('/api/tenancy/doctype', async (c) => {
+  await assertSystemManager(who(c))
+  const site = await resolveSite(c.req.header('host'))
+  const { name, fields } = (await c.req.json().catch(() => ({}))) as { name?: string; fields?: { fieldname: string; fieldtype: string }[] }
+  if (!name) throw new AppError('ValidationError', 'Expected { name }')
+  return c.json(await siteCreateDoctype(site, name, fields ?? []), 201)
+})
+app.get('/api/tenancy/doctypes', async (c) => {
+  await assertSystemManager(who(c))
+  const site = await resolveSite(c.req.header('host'))
+  return c.json({ site, doctypes: await siteListDoctypes(site) })
+})
+app.post('/api/tenancy/user', async (c) => {
+  await assertSystemManager(who(c))
+  const site = await resolveSite(c.req.header('host'))
+  const { email, full_name } = (await c.req.json().catch(() => ({}))) as { email?: string; full_name?: string }
+  if (!email) throw new AppError('ValidationError', 'Expected { email }')
+  return c.json(await siteCreateUser(site, email, full_name), 201)
+})
+app.get('/api/tenancy/users', async (c) => {
+  await assertSystemManager(who(c))
+  const site = await resolveSite(c.req.header('host'))
+  return c.json({ site, users: await siteListUsers(site) })
 })
 
 // PLAT-001: app management (System Manager only). Apps are code-defined; these

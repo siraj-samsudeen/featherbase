@@ -13,6 +13,32 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — PLAT-008 passing: multi-tenancy (schema-per-site) — ALL 126 DONE
+
+- **`tenancy.ts`**: each site is an isolated Postgres **schema** (`site_<name>`)
+  holding its own `tab_*` tables. A per-site pooled client sets `search_path` to
+  **only** that schema, so a query physically cannot reach another site's tables
+  — isolation is enforced by Postgres, not app-level filters (verified directly:
+  two clients each see only their own rows).
+- **Site resolver (Host header)**: a `public.tab_site` registry
+  (`0045_site_registry.ts`) maps host → site/schema. `resolveSite(host)` matches
+  the full host, then the leading subdomain label (`alpha.example.com` →
+  `alpha`), else 404 — no cross-site fallback.
+- **Per-site migrate**: `createSite` creates the schema and runs `siteMigrate`
+  (its own `tab_doctype`/`tab_docfield`/`tab_user`). Site-scoped ops
+  (`siteCreateDoctype` — real per-site `tab_<name>` table + metadata,
+  `siteCreateUser`, and the list counterparts) all run on the site's schema.
+- **Endpoints**: provisioning `POST/GET /api/tenancy/sites` (System Manager);
+  data endpoints `/api/tenancy/{doctype,doctypes,user,users}` resolve the site
+  from the request **Host header**. Kept self-contained — the existing global
+  `public`-schema app is untouched, so nothing regressed.
+- **Verified**: `test/tenancy.test.ts` (4 — two sites with independent
+  DocTypes+users; Host resolves by exact host and by subdomain label; unknown
+  host → 404; each site's `tab_widget` lives only in its own schema) + a live
+  HTTP run with real `Host:` headers (acme sees only Invoice/ceo@acme.test,
+  globex only Shipment/no-users, unknown host → 404). Full server suite 304/304.
+- **This completes all 126 features.**
+
 ## 2026-07-16 — PLAT-006 passing: Google OAuth (mocked in dev)
 
 - **`oauth.ts`**: a provider abstraction. With no `GOOGLE_CLIENT_ID`, a **mock
