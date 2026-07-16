@@ -13,6 +13,19 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — UI-012 passing: list bulk actions
+
+- ListView: leading checkbox column (row-check + select-all over the
+  visible page), a bulk bar when selection non-empty (count, Delete,
+  Edit-field select + value + Apply). Bulk ops run per-doc through the
+  normal endpoints (DELETE resource / GET+PUT with modified) — no
+  side-channel; Check fields coerce 'true/1/yes'. Selection clears on
+  page/filter/doctype change.
+- Verified by e2e/bulk-actions.spec.ts: 5 seeded rows → select 3 →
+  bulk-edit stage='done' (3 rows show it; API confirms 5 docs remain) →
+  select-all → bulk delete → 0 total on screen AND via API.
+- 19 web e2e green (server untouched). 58/126.
+
 ## 2026-07-16 — RPT-003 passing: CSV/XLSX export
 
 - ReportView exports exactly the on-screen grid in display order:

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { listResource } from '../lib/api'
+import { ApiError, api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, listColumns, useMeta } from '../lib/meta'
 
 export type Filter = [string, string, unknown]
@@ -27,10 +27,18 @@ export function ListView({
   onFiltersChange?: (filters: Filter[]) => void
 }) {
   const meta = useMeta(doctype)
+  const queryClient = useQueryClient()
   const [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
   const [start, setStart] = useState(0)
+  // UI-012: bulk selection state.
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkField, setBulkField] = useState('')
+  const [bulkValue, setBulkValue] = useState('')
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkError, setBulkError] = useState<string | null>(null)
   const filterKey = JSON.stringify(filters)
   useEffect(() => setStart(0), [filterKey])
+  useEffect(() => setSelected(new Set()), [filterKey, start, doctype])
 
   const columns = meta.data ? listColumns(meta.data) : []
   const orderBy = sort
@@ -68,6 +76,74 @@ export function ListView({
     )
   }
 
+  // UI-012: bulk actions over the selected rows. Each doc goes through the
+  // normal document lifecycle (delete_doc / save_doc) — no side-channel.
+  const editableFields = (meta.data?.fields ?? []).filter(
+    (f) =>
+      !NO_COLUMN_TYPES.has(f.fieldtype) &&
+      !['Table', 'Attach', 'Attach Image', 'JSON'].includes(f.fieldtype) &&
+      !f.read_only &&
+      !f.hidden,
+  )
+
+  function toggleRow(name: string) {
+    setSelected((s) => {
+      const next = new Set(s)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  async function refresh() {
+    await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
+    setSelected(new Set())
+    setBulkError(null)
+  }
+
+  async function bulkDelete() {
+    setBulkBusy(true)
+    setBulkError(null)
+    try {
+      for (const name of selected)
+        await api.delete(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
+      await refresh()
+    } catch (err) {
+      setBulkError(err instanceof ApiError ? err.message : 'Bulk delete failed')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  async function bulkEdit() {
+    if (!bulkField) return
+    setBulkBusy(true)
+    setBulkError(null)
+    const fieldtype = editableFields.find((f) => f.fieldname === bulkField)?.fieldtype
+    const value: unknown =
+      fieldtype === 'Check'
+        ? ['1', 'true', 'yes'].includes(bulkValue.trim().toLowerCase())
+        : bulkValue === ''
+          ? null
+          : bulkValue
+    try {
+      for (const name of selected) {
+        const doc = await api.get<Record<string, unknown>>(
+          `/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
+        )
+        await api.put(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`, {
+          [bulkField]: value,
+          modified: doc.modified,
+        })
+      }
+      await refresh()
+    } catch (err) {
+      setBulkError(err instanceof ApiError ? err.message : 'Bulk edit failed')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
   return (
     <div data-testid="list-view">
       <div className="mb-4 flex items-center justify-between">
@@ -90,10 +166,79 @@ export function ListView({
       {onFiltersChange && meta.data && (
         <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
       )}
+      {selected.size > 0 && (
+        <div
+          className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-[var(--color-brand)]/30 bg-[var(--color-brand-tint)] px-3 py-2 text-sm"
+          data-testid="bulk-bar"
+        >
+          <span className="font-medium text-[var(--color-ink)]" data-testid="bulk-count">
+            {selected.size} selected
+          </span>
+          <button
+            onClick={bulkDelete}
+            disabled={bulkBusy}
+            className="fc-btn border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)]"
+            data-testid="bulk-delete"
+          >
+            Delete
+          </button>
+          <span className="flex items-center gap-2">
+            <select
+              value={bulkField}
+              onChange={(e) => setBulkField(e.target.value)}
+              className="fc-input w-40"
+              data-testid="bulk-edit-field"
+            >
+              <option value="">Edit field…</option>
+              {editableFields.map((f) => (
+                <option key={f.fieldname} value={f.fieldname}>
+                  {f.label ?? f.fieldname}
+                </option>
+              ))}
+            </select>
+            {bulkField && (
+              <>
+                <input
+                  value={bulkValue}
+                  onChange={(e) => setBulkValue(e.target.value)}
+                  placeholder="New value"
+                  className="fc-input w-40"
+                  data-testid="bulk-edit-value"
+                />
+                <button
+                  onClick={bulkEdit}
+                  disabled={bulkBusy}
+                  className="fc-btn-primary"
+                  data-testid="bulk-edit-apply"
+                >
+                  Apply
+                </button>
+              </>
+            )}
+          </span>
+          {bulkError && (
+            <span className="text-xs text-[var(--color-danger)]" data-testid="bulk-error">
+              {bulkError}
+            </span>
+          )}
+        </div>
+      )}
       <div className="fc-card overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-[var(--color-subtle)] text-left">
             <tr>
+              <th className="w-8 border-b border-[var(--color-border)] px-3 py-2">
+                <input
+                  type="checkbox"
+                  data-testid="select-all"
+                  checked={rows.length > 0 && rows.every((r) => selected.has(String(r.name)))}
+                  onChange={(e) =>
+                    setSelected(
+                      e.target.checked ? new Set(rows.map((r) => String(r.name))) : new Set(),
+                    )
+                  }
+                />
+              </th>
               {columns.map((col) => (
                 <th key={col.fieldname} className="border-b border-[var(--color-border)]">
                   <button
@@ -111,6 +256,14 @@ export function ListView({
           <tbody data-testid="list-rows">
             {rows.map((row) => (
               <tr key={String(row.name)} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]">
+                <td className="px-3 py-2">
+                  <input
+                    type="checkbox"
+                    data-testid="row-check"
+                    checked={selected.has(String(row.name))}
+                    onChange={() => toggleRow(String(row.name))}
+                  />
+                </td>
                 {columns.map((col, i) => (
                   <td key={col.fieldname} className="px-3 py-2">
                     {i === 0 ? (
@@ -130,7 +283,7 @@ export function ListView({
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={columns.length} className="px-3 py-8 text-center text-[var(--color-ink-faint)]">
+                <td colSpan={columns.length + 1} className="px-3 py-8 text-center text-[var(--color-ink-faint)]">
                   No documents
                 </td>
               </tr>
