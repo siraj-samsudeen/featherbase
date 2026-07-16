@@ -20,6 +20,7 @@ import { applyWorkflowAction, availableActions, currentState, getActiveWorkflow 
 import { reapplyCustomFields } from './custom-fields'
 import { enqueue, loadJobs, startWorker } from './jobs'
 import { attachRealtime, publishDocEvent } from './realtime'
+import { queueEmail, sendTestEmail } from './email'
 
 await loadControllers()
 await loadMethods()
@@ -285,6 +286,36 @@ app.put('/api/user_settings/:doctype', async (c) => {
     values (${who(c)}, ${c.req.param('doctype')}, ${settings as unknown as string}, now())
     on conflict ("user", doctype) do update set settings = excluded.settings, modified = now()`
   return c.json({ ok: true })
+})
+
+// EML-001: send a test email from the configured account (delivered to the
+// dev sink). EML-002: queue an email for background delivery.
+app.post('/api/send_test_email', async (c) => {
+  await assertSystemManager(who(c))
+  const { to } = (await c.req.json()) as { to?: string }
+  if (!to) throw new AppError('ValidationError', 'Expected { to }')
+  await sendTestEmail(to)
+  return c.json({ ok: true })
+})
+
+app.post('/api/queue_email', async (c) => {
+  await assertSystemManager(who(c))
+  const body = (await c.req.json()) as {
+    to?: string
+    subject?: string
+    body?: string
+    reference_doctype?: string
+    reference_name?: string
+  }
+  if (!body.to) throw new AppError('ValidationError', 'Expected { to }')
+  const name = await queueEmail({
+    to: body.to,
+    subject: body.subject ?? '',
+    body: body.body ?? '',
+    reference_doctype: body.reference_doctype,
+    reference_name: body.reference_name,
+  })
+  return c.json({ name }, 201)
 })
 
 // JOB-001: enqueue a background job. System Manager only (jobs run server

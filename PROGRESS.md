@@ -13,6 +13,25 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — EML-001/002 passing: outbound email + queue + dev sink
+
+- Migration 0020: Email Account (email_id, smtp_*, is_default), Email Queue
+  (recipient, subject, body, status queued/sent/error, error,
+  reference_*, attachments JSON), Email Sink (the local dev mailbox —
+  mail_from/to, subject, body, attachment_names/b64). `src/email.ts`:
+  deliverToSink (dev transport), sendTestEmail (EML-001), queueEmail →
+  enqueues a `send_email` JOB that atomically claims the row
+  (queued→sent, idempotent so no double-send) and delivers (EML-002).
+  renderTemplate for {{ doc.field }} (EML-005 groundwork). Endpoints
+  /api/send_test_email + /api/queue_email (System Manager).
+- Verified: live (account → test mail lands in sink; queue → worker flips
+  queued→sent, sink gets exactly one copy, job execution logged) +
+  test/email.test.ts (4: test send, queued→sent single delivery, re-drain
+  no double-send, template render).
+- 190 server tests green. 82/126.
+- Next: EML-005 (template in queued mail), EML-003 (PDF attachment),
+  EML-004 (submit rule), EML-006 (assignment→ToDo+notification).
+
 ## 2026-07-16 — RT channel authorization fixed: RT-001/002/003 passing again
 
 - `canSubscribe(user, channel)` in realtime.ts gates every subscribe frame:
