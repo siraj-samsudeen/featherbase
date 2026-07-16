@@ -25,11 +25,13 @@ import { getSystemSettings } from './settings'
 import { requestPasswordReset, resetPassword } from './password-reset'
 import { rateLimit } from './rate-limit'
 import { parseFilters, runQueryReport } from './query-report'
+import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
 import { randomBytes } from 'node:crypto'
 
 await loadControllers()
 await loadMethods()
 await loadJobs()
+await loadScriptReports()
 // CUST-001: re-apply custom fields so they survive a core re-seed.
 await reapplyCustomFields()
 
@@ -373,6 +375,20 @@ app.post('/api/run_query_report', async (c) => {
   }
   if (!report) throw new AppError('ValidationError', 'Expected { report }')
   return c.json(await runQueryReport(report, filters ?? {}, who(c)))
+})
+
+// RPT-005: script report metadata (declared filter controls) + run.
+app.get('/api/script_report/:name', async (c) => {
+  return c.json(await scriptReportMeta(c.req.param('name'), who(c)))
+})
+
+app.post('/api/run_script_report', async (c) => {
+  const { report, filters } = (await c.req.json().catch(() => ({}))) as {
+    report?: string
+    filters?: Record<string, unknown>
+  }
+  if (!report) throw new AppError('ValidationError', 'Expected { report }')
+  return c.json(await runScriptReport(report, filters ?? {}, who(c)))
 })
 
 app.post('/api/submit_doc', async (c) => {

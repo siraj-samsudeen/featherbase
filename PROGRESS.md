@@ -13,6 +13,26 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — RPT-005 passing: script reports (server-side TS + filters UI)
+
+- `script-report.ts`: a registry of server-side report functions
+  (`{ name, filters[], execute(filters,user) → {columns,rows} }`), loaded at
+  boot from `src/reports/*.ts` (mirrors the controller loader). A Report of
+  report_type 'Script Report' names its function in `report_script`
+  (migration 0030 adds the field + the Select option).
+- Sample `reports/user-report.ts`: lists users via `getList` (permission-scoped)
+  with an `enabled` Select filter.
+- Endpoints: `GET /api/script_report/:name` (declared filter defs, read-perm on
+  the Report) and `POST /api/run_script_report`. A Report naming an
+  unregistered script fails cleanly (ValidationError).
+- Web `ScriptReportView` + route `/desk/script-report/$name` renders a typed
+  control per declared filter (Select/Check/Date/Int/Data) and the returned
+  columns+rows; runs on load and on Run.
+- Verified: e2e (filter control + data columns render; filtering to disabled
+  users changes the rows and drops Administrator) + server test (declared
+  filters exposed, execute runs with filters, file-based sample scoped,
+  unregistered script rejected). 240 server + 45 web e2e green. 100/126.
+
 ## 2026-07-16 — API-007 passing: per-user rate limiting
 
 - `rate-limit.ts`: a fixed-window (60s) per-user counter middleware, wired on

@@ -13,6 +13,7 @@ import { FormView } from './components/FormView'
 import { useMeta } from './lib/meta'
 import { ReportView } from './components/ReportView'
 import { QueryReportView } from './components/QueryReportView'
+import { ScriptReportView } from './components/ScriptReportView'
 import { PermissionManager } from './components/PermissionManager'
 import { DashboardView } from './components/DashboardView'
 import { KanbanView } from './components/KanbanView'
@@ -236,6 +237,22 @@ function QueryReportPage() {
   )
 }
 
+// RPT-005: a script report renders its declared filters + data (static segment).
+const scriptReportRoute = createRoute({
+  getParentRoute: () => deskRoute,
+  path: 'script-report/$name',
+  component: ScriptReportPage,
+})
+
+function ScriptReportPage() {
+  const { name } = scriptReportRoute.useParams()
+  return (
+    <div data-testid="doctype-page">
+      <ScriptReportView key={name} name={name} />
+    </div>
+  )
+}
+
 // UI-026: a saved Dashboard renders number cards + charts (static segment).
 const dashboardRoute = createRoute({
   getParentRoute: () => deskRoute,
@@ -289,5 +306,5 @@ export const routeTree = rootRoute.addChildren([
   loginRoute,
   resetPasswordRoute,
   printRoute,
-  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, queryReportRoute, permissionsRoute, dashboardRoute, doctypeRoute, docRoute]),
+  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, doctypeRoute, docRoute]),
 ])
