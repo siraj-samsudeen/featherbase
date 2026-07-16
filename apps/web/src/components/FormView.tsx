@@ -8,6 +8,7 @@ import { Link as RouterLink } from '@tanstack/react-router'
 import { NO_COLUMN_TYPES, useMeta, type DocField, type DocTypeMeta } from '../lib/meta'
 import { Attachments } from './Attachments'
 import { Assignments } from './Assignments'
+import { Tags } from './Tags'
 import { Comments } from './Comments'
 import { ActivityTimeline } from './ActivityTimeline'
 import { WorkflowActions } from './WorkflowActions'
@@ -332,6 +333,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
         {!isNew && (
           <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
             <Assignments doctype={doctype} name={name} />
+            <Tags doctype={doctype} name={name} />
             <Attachments doctype={doctype} name={name} />
             <Comments doctype={doctype} name={name} />
             <ActivityTimeline doctype={doctype} name={name} />

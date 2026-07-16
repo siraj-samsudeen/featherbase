@@ -332,6 +332,40 @@ app.post('/api/assign', async (c) => {
   return c.json({ todo: todo.name }, 201)
 })
 
+// UI-017: free-form document tags. Readable/writable by anyone who can read
+// the document.
+app.get('/api/tags/:doctype/:name', async (c) => {
+  await getDoc(c.req.param('doctype'), c.req.param('name'), who(c))
+  const rows = await sql`
+    select tag from tag_link
+    where ref_doctype = ${c.req.param('doctype')} and ref_name = ${c.req.param('name')}
+    order by tag`
+  return c.json({ tags: rows.map((r) => r.tag as string) })
+})
+
+app.post('/api/tags', async (c) => {
+  const { doctype, name, tag } = (await c.req.json()) as {
+    doctype?: string
+    name?: string
+    tag?: string
+  }
+  if (!doctype || !name || !tag?.trim())
+    throw new AppError('ValidationError', 'Expected { doctype, name, tag }')
+  await getDoc(doctype, name, who(c))
+  await sql`
+    insert into tag_link ${sql({ ref_doctype: doctype, ref_name: name, tag: tag.trim(), owner: who(c) })}
+    on conflict do nothing`
+  return c.json({ ok: true }, 201)
+})
+
+app.delete('/api/tags/:doctype/:name/:tag', async (c) => {
+  await getDoc(c.req.param('doctype'), c.req.param('name'), who(c))
+  await sql`
+    delete from tag_link where ref_doctype = ${c.req.param('doctype')}
+      and ref_name = ${c.req.param('name')} and tag = ${c.req.param('tag')}`
+  return c.json({ ok: true })
+})
+
 // EML-001: send a test email from the configured account (delivered to the
 // dev sink). EML-002: queue an email for background delivery.
 app.post('/api/send_test_email', async (c) => {

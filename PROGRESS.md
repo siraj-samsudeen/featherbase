@@ -13,6 +13,19 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — UI-017 passing: form sidebar (assignments + tags + attachments)
+
+- Migration 0023: `tag_link` table (ref_doctype, ref_name, tag). Endpoints
+  GET/POST/DELETE /api/tags gated by document read permission (dup insert
+  is a no-op, missing doc → 404, blank tag → 417). `Tags.tsx` panel added
+  to the FormView sidebar alongside the existing Assignments and
+  Attachments panels.
+- Verified: e2e/form-sidebar.spec.ts (assign Administrator, add tag
+  'urgent', attach spec.txt → reload → all three persist; remove tag
+  persists) + test/tags.test.ts (add/list[sorted]/remove, dup no-op, 404,
+  417).
+- 202 server + 34 web e2e green. 87/126.
+
 ## 2026-07-16 — EML-006 passing: assignments (ToDo + notification)
 
 - Migration 0022: ToDo DocType (allocated_to, reference_doctype/name,
