@@ -5,6 +5,7 @@ import { getMeta, invalidateMeta } from './meta'
 import { tableName } from './doctype-engine'
 import { getRoles } from './permissions'
 import { getDoc } from './document'
+import { queueEmail } from './email'
 
 // WF-001/002/003: workflow definition, execution, and server-side
 // transition enforcement.
@@ -153,7 +154,60 @@ export async function applyWorkflowAction(
       actor: user,
     })}`
 
+  // WF-004: entering a state that still has outgoing transitions means the
+  // document is now pending someone's action. Email every user who could take
+  // one of those actions (holders of the transitions' allowed roles), with a
+  // link to the document and the actions they can take.
+  await notifyPendingApprovers(wf, doctype, name, transition.next_state, user)
+
   return getDoc(doctype, name, user)
+}
+
+// WF-004: notify the users who can act on a document that has just entered a
+// pending state. Approvers are the holders of the roles named on the outgoing
+// transitions from `state`. The acting user is skipped (no self-notification),
+// as are disabled users. Each email references the document so it threads to
+// the record, and carries a deep link plus the list of available actions.
+async function notifyPendingApprovers(
+  wf: Workflow,
+  doctype: string,
+  name: string,
+  state: string,
+  actingUser: string,
+): Promise<void> {
+  const outgoing = wf.transitions.filter((t) => t.state === state)
+  if (outgoing.length === 0) return // terminal state — nobody left to act
+
+  const roles = [...new Set(outgoing.map((t) => t.allowed))]
+  if (roles.length === 0) return
+
+  const holders = await sql<{ parent: string; email: string | null }[]>`
+    select distinct hr.parent, u.email from tab_has_role hr
+    join tab_user u on u.name = hr.parent
+    where hr.parenttype = 'User' and hr.role in ${sql(roles)}
+      and u.enabled = true`
+  const approvers = holders
+    .filter((h) => h.parent !== actingUser)
+    .map((h) => ({ user: h.parent, email: h.email ?? h.parent }))
+  if (approvers.length === 0) return
+
+  const actions = outgoing.map((t) => t.action).join(', ')
+  const link = `/desk/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`
+  const subject = `Approval required: ${doctype} ${name}`
+  const body =
+    `${doctype} ${name} has entered the "${state}" state and is awaiting your action.\n\n` +
+    `Available actions: ${actions}\n` +
+    `Open the document: ${link}`
+
+  for (const approver of approvers) {
+    await queueEmail({
+      to: approver.email,
+      subject,
+      body,
+      reference_doctype: doctype,
+      reference_name: name,
+    })
+  }
 }
 
 // Ensure any existing document without a state starts at the first state.

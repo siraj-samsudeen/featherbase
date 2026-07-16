@@ -13,6 +13,31 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — WF-004 passing: workflow action notifications
+
+- After a successful transition, `applyWorkflowAction` calls
+  `notifyPendingApprovers` (`workflow.ts`): a document that lands in a state
+  **with outgoing transitions** is now pending someone's action, so the holders
+  of those transitions' `allowed` roles are emailed. Terminal states (no
+  outgoing transitions) notify no one.
+- Approvers = enabled users holding any outgoing-transition role, resolved via
+  `tab_has_role ⋈ tab_user` (uses each user's `email` field, falling back to the
+  user name). The **acting user is excluded** (no self-notification).
+- Each approver gets a queued email (`queueEmail`) referencing the document
+  (`reference_doctype`/`reference_name`), subject `Approval required: <DT>
+  <name>`, body with the **available actions** and a **deep link**
+  (`/desk/<DocType>/<name>`) — the "action links" the feature asks for. Delivery
+  rides the existing EML-002 queue + worker, so it's persisted, retried, and
+  sent exactly once.
+- Verified end-to-end: `test/workflow-notify.test.ts` (2 — email queued to the
+  approver on entering Pending with the right subject/link/action; terminal
+  state queues nothing) plus a live HTTP run where the **worker actually
+  delivered** the mail to the Email Sink (recipient = approver, subject
+  `Approval required: … wf-http-1`, body contains the deep link + `Approve`).
+  Existing `workflow.test.ts` still green; full server suite 286/286.
+- Note: `workflow.ts` now imports `email.ts` — no import cycle (email's graph
+  never re-enters workflow). Only `index.ts` imports workflow.
+
 ## 2026-07-16 — PRN-004 passing: letterheads
 
 - **Letter Head** is a new Core DocType (`0040_letterhead.ts`, prompt-autoname):
