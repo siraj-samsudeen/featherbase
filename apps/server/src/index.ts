@@ -31,6 +31,7 @@ import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
 import { rateLimit } from './rate-limit'
 import { parseFilters, runQueryReport } from './query-report'
+import { deliverAutoEmailReport } from './auto-email-report'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
 import { randomBytes } from 'node:crypto'
 
@@ -449,6 +450,16 @@ app.post('/api/run_query_report', async (c) => {
   return c.json(await runQueryReport(report, filters ?? {}, who(c)))
 })
 
+// EML-007: trigger an Auto Email Report immediately (the "run now" a scheduler
+// would otherwise do on cadence). System Manager only — it emails on behalf of
+// the configured report.
+app.post('/api/run_auto_email_report', async (c) => {
+  await assertSystemManager(who(c))
+  const { name } = (await c.req.json().catch(() => ({}))) as { name?: string }
+  if (!name) throw new AppError('ValidationError', 'Expected { name }')
+  return c.json(await deliverAutoEmailReport(name, who(c)))
+})
+
 // RPT-005: script report metadata (declared filter controls) + run.
 app.get('/api/script_report/:name', async (c) => {
   return c.json(await scriptReportMeta(c.req.param('name'), who(c)))
@@ -799,4 +810,13 @@ if (process.env.NODE_ENV !== 'test') {
   // JOB-001: run the background worker in-process (tests drive the queue
   // directly via runOneJob/drainJobs, so the worker stays off under test).
   startWorker()
+  // EML-007: ensure the daily Auto Email Report scheduler is queued exactly
+  // once (it re-enqueues itself thereafter). Guarded so restarts don't stack
+  // duplicate recurring jobs.
+  {
+    const [pending] = await sql`
+      select 1 from tab_background_job
+      where method = 'auto_email_reports' and status in ('queued', 'running') limit 1`
+    if (!pending) await enqueue('auto_email_reports', {}, { repeatEvery: 24 * 60 * 60 })
+  }
 }

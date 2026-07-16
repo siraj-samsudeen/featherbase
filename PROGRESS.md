@@ -13,6 +13,39 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — EML-007 passing: Auto Email Report
+
+- **Auto Email Report** is a new Core DocType (`0041_auto_email_report.ts`):
+  `report` (Link→Report), `recipients` (Text, comma/space/semicolon list),
+  `file_format` (CSV|HTML), `frequency` (Daily|Weekly|Monthly), `enabled`,
+  `last_sent` (read-only stamp). It's a normal DocType, so the generic Desk
+  ListView/FormView already create + edit it — no bespoke UI.
+- **`auto-email-report.ts`**: `runReportRows(report, user)` runs any saved
+  report server-side — Query Report via `runQueryReport`, Report Builder via a
+  permission-scoped `getList` over `ref_doctype` with the saved
+  columns/filters — returning uniform `{columns, rows}`. `toCsv` (RFC-4180
+  quoting) / `toHtmlTable` render the attachment.
+  `deliverAutoEmailReport(name)` runs the report, builds the attachment, and
+  queues one email per recipient referencing the Report; stamps `last_sent`.
+  `runDueAutoEmailReports(now)` is the scheduler pass — delivers every enabled
+  report whose cadence (Daily/Weekly/Monthly) has elapsed since `last_sent`.
+- **Attachments now survive the email queue**: `queueEmail` persists
+  `msg.attachments` as `attachments.files` in the queue row, and the
+  `send_email` job prepends them to the delivered attachments — so the CSV
+  reaches the Email Sink (EML-002/003 path). Existing email tests unaffected.
+- **Scheduler**: `jobs/auto-email-report.ts` registers the `auto_email_reports`
+  handler → `runDueAutoEmailReports`; boot seeds it once with `repeatEvery`
+  daily (guarded against duplicate recurring jobs across restarts). Manual
+  trigger endpoint `POST /api/run_auto_email_report` (System Manager only).
+- **Verified end-to-end**: `test/auto-email-report.test.ts` (3 — CSV quoting;
+  deliver → queued email with CSV attached → **worker delivers to sink with the
+  CSV intact** → `last_sent` stamped; cadence skip/elapse) plus a live HTTP run:
+  `run_auto_email_report` → `{recipients:1,rows:2}`, the sink received
+  `Aer Http Report.csv` with correctly comma-quoted rows, and a non-SM caller
+  got **403**. Full server suite 289/289.
+- Next: 9 P3 remain (RPT-006, FILE-004, WEB-003, PLAT-001/002/006/008,
+  UI-022/025).
+
 ## 2026-07-16 — WF-004 passing: workflow action notifications
 
 - After a successful transition, `applyWorkflowAction` calls

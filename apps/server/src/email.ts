@@ -101,10 +101,13 @@ export async function queueEmail(msg: MailMessage): Promise<string> {
       reference_doctype: msg.reference_doctype ?? null,
       reference_name: msg.reference_name ?? null,
       // Delivery options travel with the row so the job is self-contained.
+      // `files` carries ready-made attachments (e.g. an Auto Email Report CSV);
+      // render/attach_pdf are computed at send time from the reference doc.
       attachments: {
         render: msg.render ?? false,
         attach_pdf: msg.attach_pdf ?? false,
         print_format: msg.print_format ?? null,
+        files: msg.attachments ?? [],
       } as unknown as string,
     })}`
   await enqueue('send_email', { queue: name })
@@ -121,12 +124,12 @@ registerJob('send_email', async (payload) => {
     returning *`
   if (!row) return // already delivered or missing — no double-send
   try {
-    const opts = (row.attachments as { render?: boolean; attach_pdf?: boolean; print_format?: string } | null) ?? {}
+    const opts = (row.attachments as { render?: boolean; attach_pdf?: boolean; print_format?: string; files?: Attachment[] } | null) ?? {}
     const refDoctype = (row.reference_doctype as string) ?? undefined
     const refName = (row.reference_name as string) ?? undefined
     let subject = (row.subject as string) ?? ''
     let body = (row.body as string) ?? ''
-    const attachments: Attachment[] = []
+    const attachments: Attachment[] = [...(opts.files ?? [])]
 
     if ((opts.render || opts.attach_pdf) && refDoctype && refName) {
       const doc = await getDoc(refDoctype, refName)
