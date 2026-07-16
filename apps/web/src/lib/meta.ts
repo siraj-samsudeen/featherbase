@@ -33,8 +33,8 @@ export const NO_COLUMN_TYPES = new Set(['Table', 'Section Break', 'Column Break'
 
 export const FIELD_TYPES = [
   'Data', 'Int', 'Float', 'Currency', 'Check', 'Select', 'Date', 'Datetime',
-  'Text', 'Long Text', 'Link', 'Table', 'Attach', 'JSON', 'Section Break',
-  'Column Break',
+  'Text', 'Long Text', 'Link', 'Table', 'Attach', 'Attach Image', 'JSON',
+  'Section Break', 'Column Break',
 ] as const
 
 export function useMeta(doctype: string) {

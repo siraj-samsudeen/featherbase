@@ -33,6 +33,7 @@ const COLUMN_TYPES: Record<string, string | null> = {
   Link: 'varchar(140)',
   Table: null,
   Attach: 'text',
+  'Attach Image': 'text',
   JSON: 'jsonb',
   'Section Break': null,
   'Column Break': null,

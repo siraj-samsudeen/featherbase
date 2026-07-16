@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { metaToZod, zodFieldErrors } from 'shared'
-import { ApiError, api, listResource } from '../lib/api'
+import { ApiError, api, getToken, listResource } from '../lib/api'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { NO_COLUMN_TYPES, useMeta, type DocField, type DocTypeMeta } from '../lib/meta'
 import { Attachments } from './Attachments'
@@ -392,6 +392,18 @@ function FieldControl({
           common={common}
         />,
       )
+    case 'Attach':
+    case 'Attach Image':
+      return wrap(
+        <AttachControl
+          field={field}
+          value={value}
+          onChange={onChange}
+          common={common}
+          refDoctype={meta.name}
+          refName={typeof values.name === 'string' ? values.name : undefined}
+        />,
+      )
     default:
       return wrap(
         <input
@@ -591,6 +603,119 @@ function LinkControl({
             + Create new {target}
           </RouterLink>
         </div>
+      )}
+    </div>
+  )
+}
+
+// UI-023: Attach / Attach Image — upload a file, store its URL as the field
+// value, preview images, and allow clearing. The doc still has to be saved
+// for the value to persist, like any other field edit.
+function AttachControl({
+  field,
+  value,
+  onChange,
+  common,
+  refDoctype,
+  refName,
+}: {
+  field: DocField
+  value: unknown
+  onChange: (value: unknown) => void
+  common: Record<string, unknown>
+  refDoctype: string
+  refName?: string
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [busy, setBusy] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const isImage = field.fieldtype === 'Attach Image'
+  const url = typeof value === 'string' && value ? value : null
+  const withToken = (u: string) => (u.startsWith('/private/') ? `${u}?token=${getToken()}` : u)
+
+  async function upload(file: globalThis.File) {
+    setBusy(true)
+    setUploadError(null)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('ref_doctype', refDoctype)
+      if (refName) form.append('ref_name', refName)
+      const res = await fetch('/api/upload_file', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${getToken()}` },
+        body: form,
+      })
+      const body = (await res.json()) as { file_url?: string; error?: { message?: string } }
+      if (!res.ok || !body.file_url)
+        throw new Error(body.error?.message ?? `Upload failed (${res.status})`)
+      onChange(body.file_url)
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setBusy(false)
+      if (inputRef.current) inputRef.current.value = ''
+    }
+  }
+
+  return (
+    <div {...common}>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={isImage ? 'image/*' : undefined}
+        className="hidden"
+        data-attach-input={field.fieldname}
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) upload(f)
+        }}
+      />
+      {url ? (
+        <div>
+          {isImage && (
+            <img
+              src={withToken(url)}
+              alt={field.label ?? field.fieldname}
+              data-testid={`attach-preview-${field.fieldname}`}
+              className="mb-2 max-h-40 rounded-md border border-[var(--color-border)]"
+            />
+          )}
+          <div className="flex items-center gap-2 text-sm">
+            <a
+              href={withToken(url)}
+              target="_blank"
+              rel="noreferrer"
+              className="truncate text-[var(--color-brand)] hover:underline"
+              data-testid={`attach-link-${field.fieldname}`}
+            >
+              {url.split('/').pop()?.replace(/^[0-9a-f]{16}_/, '')}
+            </a>
+            {!field.read_only && (
+              <button
+                type="button"
+                onClick={() => onChange(null)}
+                data-testid={`attach-clear-${field.fieldname}`}
+                className="text-xs text-[var(--color-ink-faint)] hover:text-[var(--color-danger)]"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={Boolean(field.read_only) || busy}
+          data-testid={`attach-btn-${field.fieldname}`}
+          className="fc-btn text-sm"
+        >
+          {busy ? 'Uploading…' : `Attach ${isImage ? 'image' : 'file'}`}
+        </button>
+      )}
+      {uploadError && (
+        <p className="mt-1 text-xs text-[var(--color-danger)]">{uploadError}</p>
       )}
     </div>
   )

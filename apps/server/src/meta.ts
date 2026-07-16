@@ -16,6 +16,7 @@ export const FIELD_TYPES = [
   'Link',
   'Table',
   'Attach',
+  'Attach Image',
   'JSON',
   'Section Break',
   'Column Break',

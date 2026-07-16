@@ -24,6 +24,7 @@ function baseSchema(f: SchemaField): z.ZodTypeAny {
     case 'Text':
     case 'Long Text':
     case 'Attach':
+    case 'Attach Image':
       return z.string()
     case 'Int':
       return z.coerce

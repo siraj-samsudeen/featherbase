@@ -13,6 +13,25 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — UI-023 passing: Attach / Attach Image fields
+
+- New fieldtype 'Attach Image' added to all three layers (server
+  FIELD_TYPES + COLUMN_TYPES text, shared zod string, web FIELD_TYPES so
+  the builder offers it). 'Attach' already existed as a column type but
+  rendered as a bare text input.
+- `AttachControl` in FormView: empty → "Attach file/image" button (hidden
+  input, image/* accept for Attach Image); uploaded → filename link
+  (+ inline <img> preview for Attach Image, ?token= for private) and a
+  Clear button that nulls the value. Value is the file_url string; the doc
+  saves like any field. Uploads tag ref_doctype/ref_name when editing an
+  existing doc.
+- Verified by e2e/attach-field.spec.ts: upload → preview renders (real
+  naturalWidth > 0), URL stored on save, survives reload, Clear + save
+  nulls the field, plain Attach gets link only.
+- 141 server + 15 web e2e green. 54/126.
+- Gotcha: `page.request` carries NO auth — pull fc_token from localStorage
+  for API asserts in browser tests.
+
 ## 2026-07-16 — FILE-002 passing: attachments panel + delete cleanup
 
 - `controllers/file.ts`: `on_trash` hook deletes the storage object when a
