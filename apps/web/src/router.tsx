@@ -9,6 +9,7 @@ import { DeskLayout } from './pages/DeskLayout'
 import { getToken } from './lib/api'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
+import { DocTypeBuilder } from './pages/DocTypeBuilder'
 
 const rootRoute = createRootRoute({ component: Outlet })
 
@@ -40,6 +41,17 @@ const deskIndexRoute = createRoute({
   path: '/',
   component: () => (
     <p className="text-sm text-gray-500">Select a DocType from the sidebar.</p>
+  ),
+})
+
+// UI-011: DocType builder route (before $doctype so 'new-doctype' matches).
+const newDoctypeRoute = createRoute({
+  getParentRoute: () => deskRoute,
+  path: 'new-doctype',
+  component: () => (
+    <div data-testid="doctype-page">
+      <DocTypeBuilder />
+    </div>
   ),
 })
 
@@ -100,5 +112,5 @@ function DocFormPage() {
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
-  deskRoute.addChildren([deskIndexRoute, doctypeRoute, docRoute]),
+  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, doctypeRoute, docRoute]),
 ])

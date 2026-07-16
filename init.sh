@@ -22,9 +22,15 @@ su postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='frappe_clon
 pnpm --filter server migrate
 
 # --- 4. App servers (idempotent: kill stale, start fresh, wait for health) --
+# Kill by listening port — pattern-matching the tsx wrapper misses the actual
+# node child that holds the port (and its in-process meta cache).
+for port in 8000 5173; do
+  pids="$(fuser "${port}/tcp" 2>/dev/null || true)"
+  [ -n "$pids" ] && kill $pids 2>/dev/null || true
+done
 pkill -f "tsx watch src/index.ts" 2>/dev/null || true
 pkill -f "vite" 2>/dev/null || true
-sleep 1
+sleep 2
 (cd apps/server && nohup pnpm dev >/tmp/frappe-clone-server.log 2>&1 &)
 (cd apps/web && nohup pnpm dev >/tmp/frappe-clone-web.log 2>&1 &)
 

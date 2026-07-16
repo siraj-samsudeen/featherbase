@@ -1,5 +1,32 @@
 # Progress Log
 
+## 2026-07-16 — META-004 + UI-011 passing: schema sync + DocType builder
+
+- META-004: `updateDocType()` + PUT /api/doctype/:name. Adds columns for new
+  fields, updates docfield rows for property edits, drops docfields for
+  removed fields but KEEPS the column (data) unless drop_columns:true.
+  Fieldtype changes and istable/issingle changes rejected. Unique
+  constraints added/dropped to match. Verified: 114 vitest + live (column
+  added, 'keepme' row preserved).
+- UI-011: `DocTypeBuilder` page at /desk/new-doctype (+ sidebar link). Field
+  grid (fieldname/label/type/options/reqd/list), create via POST /api/doctype,
+  navigates to the new list. Playwright: built a 5-field DocType from the UI,
+  its list+form worked immediately, doc created and listed, server meta real.
+- **init.sh BUG FIXED (important)**: pkill patterns matched only the tsx
+  WRAPPER, not the node child holding :8000 — stale servers survived
+  restarts and served stale meta caches (this masked deleted DocTypes as
+  200). init.sh now kills by listening port via `fuser`. This was the root
+  cause of intermittent 'deleted DocType still 200' behavior noted in prior
+  sessions — RESOLVED.
+- Gotcha: Select options in the builder grid are entered comma/newline
+  separated and normalized to newlines (single-line input can't hold \n).
+- Note: doctype-builder.spec skips if 'Builder Widget' already exists (no
+  delete-DocType endpoint yet) — runs on fresh DB.
+- 46/126. Next: PERM-006 (permlevel), PERM-008 (DocShare), UI-010 (submit
+  buttons), then the reports/print/workflow blocks.
+
+---
+
 ## 2026-07-15 — Evaluation pass #4 + DOC-008/DOC-009 passing: versions, amend
 
 - **Evaluator pass #4**: child-row server errors surface in the banner and

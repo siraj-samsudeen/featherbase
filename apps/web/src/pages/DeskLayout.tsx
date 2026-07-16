@@ -35,6 +35,13 @@ export function DeskLayout() {
             Log out
           </button>
         </div>
+        <Link
+          to="/desk/new-doctype"
+          data-testid="new-doctype-link"
+          className="mx-2 mt-2 block rounded px-2 py-1 text-sm font-medium text-gray-900 hover:bg-gray-200"
+        >
+          + New DocType
+        </Link>
         <nav className="flex-1 overflow-y-auto p-2" data-testid="doctype-nav">
           {doctypes.isLoading && (
             <p className="px-2 py-1 text-xs text-gray-400">Loading…</p>

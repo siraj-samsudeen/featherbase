@@ -4,7 +4,7 @@ import { config } from './config'
 import { sql } from './db'
 import { AppError, errorResponse } from './errors'
 import { getMeta } from './meta'
-import { createDocType } from './doctype-engine'
+import { createDocType, updateDocType } from './doctype-engine'
 import { amendDoc, cancelDoc, deleteDoc, getDoc, saveDoc, submitDoc } from './document'
 import { getList } from './query'
 import { loadControllers } from './controllers'
@@ -57,6 +57,13 @@ app.post('/api/doctype', async (c) => {
   await assertSystemManager(who(c))
   const meta = await createDocType(await c.req.json())
   return c.json(meta, 201)
+})
+
+app.put('/api/doctype/:name', async (c) => {
+  await assertSystemManager(who(c))
+  const body = (await c.req.json()) as Record<string, unknown> & { drop_columns?: boolean }
+  const { drop_columns, ...def } = body
+  return c.json(await updateDocType(c.req.param('name'), def, { drop_columns }))
 })
 
 app.post('/api/save_doc', async (c) => {

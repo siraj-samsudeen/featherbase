@@ -129,6 +129,116 @@ function createTableDDL(def: DocTypeDef): string | null {
   return `create table "${tableName(def.name)}" (\n  ${[...cols, ...constraints].join(',\n  ')}\n)`
 }
 
+// META-004: sync an existing DocType's fields to a new definition.
+// Additions create columns; property edits update docfield rows; removals
+// delete the docfield but KEEP the column (data is never dropped without
+// the explicit drop_columns flag). Fieldtype changes are rejected.
+export async function updateDocType(
+  name: string,
+  input: unknown,
+  opts: { drop_columns?: boolean } = {},
+): Promise<DocTypeMeta> {
+  const existing = await getMeta(name)
+  const parsed = doctypeDefSchema.safeParse({ ...(input as object), name })
+  if (!parsed.success) {
+    const fields: Record<string, string> = {}
+    for (const issue of parsed.error.issues)
+      fields[issue.path.join('.')] = issue.message
+    throw new AppError('ValidationError', 'Invalid DocType definition', fields)
+  }
+  const def = parsed.data
+  if (def.is_submittable && !def.fields.some((f) => f.fieldname === 'amended_from'))
+    def.fields.push({
+      fieldname: 'amended_from',
+      label: 'Amended From',
+      fieldtype: 'Link',
+      options: name,
+      hidden: true,
+    })
+  validateDef(def)
+  if ((def.istable ?? false) !== existing.istable || (def.issingle ?? false) !== existing.issingle)
+    throw new AppError('ValidationError', 'istable/issingle cannot be changed after creation')
+
+  const before = new Map(existing.fields.map((f) => [f.fieldname, f]))
+  const after = new Map(def.fields.map((f) => [f.fieldname, f]))
+  const errors: Record<string, string> = {}
+  for (const [fieldname, f] of after) {
+    const old = before.get(fieldname)
+    if (old && old.fieldtype !== f.fieldtype)
+      errors[fieldname] = `fieldtype cannot change (${old.fieldtype} -> ${f.fieldtype})`
+  }
+  if (Object.keys(errors).length)
+    throw new AppError('ValidationError', 'Unsupported schema change', errors)
+
+  const table = tableName(name)
+  await sql.begin(async (tx) => {
+    await tx`update tab_doctype set ${tx({
+      module: def.module ?? existing.module,
+      is_submittable: def.is_submittable ?? existing.is_submittable,
+      autoname: def.autoname ?? existing.autoname,
+      title_field: def.title_field ?? null,
+      description: def.description ?? null,
+      modified: new Date(),
+    })} where name = ${name}`
+
+    for (const [i, f] of def.fields.entries()) {
+      const old = before.get(f.fieldname)
+      const row = {
+        idx: i + 1,
+        label: f.label ?? f.fieldname,
+        options: f.options ?? null,
+        reqd: f.reqd ?? false,
+        unique: f.unique ?? false,
+        default_value: f.default_value ?? null,
+        read_only: f.read_only ?? false,
+        hidden: f.hidden ?? false,
+        in_list_view: f.in_list_view ?? false,
+        permlevel: f.permlevel ?? 0,
+      }
+      if (!old) {
+        await tx`insert into tab_docfield ${tx({
+          parent: name,
+          fieldname: f.fieldname,
+          fieldtype: f.fieldtype,
+          ...row,
+        })}`
+        const type = columnType(f.fieldtype)
+        if (type && !existing.issingle)
+          await tx.unsafe(`alter table "${table}" add column if not exists "${f.fieldname}" ${type}`)
+        if (f.unique && type)
+          await tx.unsafe(
+            `alter table "${table}" add constraint "${table}_${f.fieldname}_uq" unique ("${f.fieldname}")`,
+          )
+      } else {
+        await tx`update tab_docfield set ${tx(row)}
+          where parent = ${name} and fieldname = ${f.fieldname}`
+        const type = columnType(f.fieldtype)
+        if (type && !existing.issingle && Boolean(old.unique) !== Boolean(f.unique)) {
+          if (f.unique)
+            await tx.unsafe(
+              `alter table "${table}" add constraint "${table}_${f.fieldname}_uq" unique ("${f.fieldname}")`,
+            )
+          else
+            await tx.unsafe(
+              `alter table "${table}" drop constraint if exists "${table}_${f.fieldname}_uq"`,
+            )
+        }
+      }
+    }
+
+    for (const [fieldname, old] of before) {
+      if (after.has(fieldname)) continue
+      await tx`delete from tab_docfield where parent = ${name} and fieldname = ${fieldname}`
+      const type = columnType(old.fieldtype)
+      if (type && !existing.issingle && opts.drop_columns)
+        await tx.unsafe(`alter table "${table}" drop column if exists "${fieldname}"`)
+      // without drop_columns the column (and its data) is retained
+    }
+  })
+  invalidateMeta(name)
+  return getMeta(name)
+}
+
 export async function createDocType(input: unknown): Promise<DocTypeMeta> {
   const parsed = doctypeDefSchema.safeParse(input)
   if (!parsed.success) {
