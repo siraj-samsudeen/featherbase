@@ -18,9 +18,11 @@ import { callMethod, loadMethods, methodAllowsGuest } from './methods'
 import { renderPdf, renderPrintHtml } from './print'
 import { applyWorkflowAction, availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
+import { enqueue, loadJobs, startWorker } from './jobs'
 
 await loadControllers()
 await loadMethods()
+await loadJobs()
 // CUST-001: re-apply custom fields so they survive a core re-seed.
 await reapplyCustomFields()
 
@@ -253,6 +255,24 @@ app.post('/api/apply_workflow_action', async (c) => {
   return c.json(await applyWorkflowAction(doctype, name, action, who(c)))
 })
 
+// JOB-001: enqueue a background job. System Manager only (jobs run server
+// code). Returns the job id so callers can poll its Background Job doc.
+app.post('/api/enqueue_job', async (c) => {
+  await assertSystemManager(who(c))
+  const { method, payload, max_attempts, repeat_every } = (await c.req.json()) as {
+    method?: string
+    payload?: Record<string, unknown>
+    max_attempts?: number
+    repeat_every?: number
+  }
+  if (!method) throw new AppError('ValidationError', 'Expected { method }')
+  const name = await enqueue(method, payload ?? {}, {
+    maxAttempts: max_attempts,
+    repeatEvery: repeat_every,
+  })
+  return c.json({ name }, 201)
+})
+
 // CUST-001: re-apply all custom fields (used after a core fixture re-seed).
 app.post('/api/reapply_custom_fields', async (c) => {
   await assertSystemManager(who(c))
@@ -341,4 +361,7 @@ if (process.env.NODE_ENV !== 'test') {
   serve({ fetch: app.fetch, port: config.port }, (info) => {
     console.log(`server listening on :${info.port}`)
   })
+  // JOB-001: run the background worker in-process (tests drive the queue
+  // directly via runOneJob/drainJobs, so the worker stays off under test).
+  startWorker()
 }

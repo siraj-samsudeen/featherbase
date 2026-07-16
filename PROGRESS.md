@@ -13,6 +13,33 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — JOB-001/002/003 passing: background job queue + worker
+
+- Migration 0018: Background Job (method, payload JSON, status, attempts,
+  max_attempts, run_at, error, repeat_every) + Job Execution (per-attempt
+  audit) DocTypes — durable, queryable via the API/UI.
+- `src/jobs.ts`: registerJob registry, enqueue, runOneJob (atomic claim via
+  `update … where name = (select … for update skip locked)`), drainJobs,
+  startWorker/stopWorker (in-process setInterval poll, JOB_POLL_MS), loadJobs
+  (src/jobs/*.ts self-register at boot). JOB-002 retries until max_attempts
+  then → failed with the error; JOB-003 recurring jobs re-enqueue at
+  run_at+repeat_every after each success. Worker starts at boot (off under
+  NODE_ENV=test; tests drive runOneJob/drainJobs directly). Endpoint
+  POST /api/enqueue_job (System Manager).
+- Verified: test/jobs.test.ts (enqueue→drain→row written→done, queue
+  drains; flaky job 3 attempts error/error/success; always-fails → failed
+  after 3 with error + 3 error execs; unknown method fails cleanly),
+  test/jobs-recurring.test.ts (1s cadence fires ≥2 with executions logged,
+  a queued job always waiting; future re-enqueue not picked up early) +
+  LIVE: enqueued demo_write_row via HTTP → the real in-process worker
+  processed it (status done), row written, queue drained to 0.
+- Interval note: production cadence is minutely; the recurring test uses a
+  1s interval to exercise the identical re-enqueue path in seconds.
+- GOTCHA: Int columns come back as bigint STRINGS from postgres.js —
+  Number()-coerce attempts/max_attempts/repeat_every before arithmetic
+  (a raw `+1` concatenates).
+- 179 server tests green. 76/126.
+
 ## 2026-07-16 — Evaluation pass #8 (adversarial): all held, no findings
 
 Re-drove the 5 newest (WF-001/002/003, CUST-001/002) on a SECOND DocType
