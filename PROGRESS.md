@@ -13,6 +13,29 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — CUST-003 passing: Client Scripts (form-event hooks)
+
+- Migration 0038: `Client Script` DocType (reference_doctype, script, enabled).
+- Web `lib/client-scripts.ts`: fetches enabled scripts for a DocType and
+  evaluates each (`new Function('frappe', src)`) against a minimal
+  `frappe.ui.form.on(doctype, handlers)` API, collecting handlers keyed by
+  fieldname / `onload` / `before_save`. Compile errors are captured, not thrown.
+- FormView wiring: a `valuesRef` mirrors live values so a handler always sees
+  current data; `setField` fires the field's change handler with the updated
+  doc; `onload` fires once when the form is ready; `before_save` fires before
+  validation. Every handler runs in try/catch — an error shows in a dismissible
+  `client-script-error` banner and never crashes the Desk (the form stays
+  usable). `frm.set_value` cascades through setField.
+- Verified: e2e (a script auto-fills total = qty×10 on qty change, re-running
+  each change; a script that throws surfaces the error while the form/Desk stay
+  interactive). 55 web e2e green.
+- **Test-infra fix:** set `fileParallelism: false` in a new
+  apps/server/vitest.config.ts. All test files share one Postgres DB — hence one
+  `tab_background_job` queue — so parallel files' `drainJobs()` calls stole each
+  other's jobs, flaking email/jobs/webhooks tests non-deterministically (a
+  different one failed each run). Running files sequentially makes the 265-test
+  suite deterministic (~60s). 108/126.
+
 ## 2026-07-16 — CUST-004 passing: sandboxed Server Scripts
 
 - Migration 0037: `Server Script` DocType (script_type Document Event|API,

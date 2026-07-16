@@ -7,6 +7,7 @@ import { useRealtime } from '../lib/realtime'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { NO_COLUMN_TYPES, useMeta, type DocField, type DocTypeMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
+import { useClientScripts, type Frm } from '../lib/client-scripts'
 import { Attachments } from './Attachments'
 import { Assignments } from './Assignments'
 import { Tags } from './Tags'
@@ -38,6 +39,14 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [staleBanner, setStaleBanner] = useState(false)
+  const [scriptError, setScriptError] = useState<string | null>(null)
+
+  // CUST-003: client scripts registered for this DocType. valuesRef mirrors the
+  // live values so a script handler always sees current field values.
+  const clientScripts = useClientScripts(doctype)
+  const valuesRef = useRef<Doc>({})
+  valuesRef.current = values
+  const onloadFired = useRef(false)
 
   // RT-002: another session saving this document shows a refresh banner.
   // The user's own save is suppressed via a short window (their save
@@ -55,7 +64,30 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   useEffect(() => {
     setValues(baseline)
     setErrors({})
+    onloadFired.current = false
   }, [baseline])
+
+  // CUST-003: surface client-script compile errors; fire onload once the form
+  // and its scripts are ready.
+  useEffect(() => {
+    if (clientScripts.errors.length) setScriptError(`Client script error: ${clientScripts.errors[0]}`)
+  }, [clientScripts.errors])
+  useEffect(() => {
+    if (onloadFired.current) return
+    const onload = clientScripts.handlers.onload
+    if (!onload) return
+    onloadFired.current = true
+    try {
+      onload({
+        doc: valuesRef.current,
+        get_value: (f: string) => valuesRef.current[f],
+        set_value: (f: string, v: unknown) => setField(f, v),
+      })
+    } catch (err) {
+      setScriptError(`Client script error (onload): ${err instanceof Error ? err.message : String(err)}`)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientScripts.handlers, values])
 
   if (meta.isLoading || (!isNew && doc.isLoading))
     return <p className="text-sm text-gray-400">Loading…</p>
@@ -65,12 +97,37 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   const m = meta.data!
   const dirty = JSON.stringify(values) !== JSON.stringify(baseline)
 
+  // Build the `frm` a client-script handler receives, over a given doc snapshot.
+  function makeFrm(docSnapshot: Doc): Frm {
+    return {
+      doc: docSnapshot,
+      get_value: (f: string) => docSnapshot[f],
+      set_value: (f: string, v: unknown) => setField(f, v),
+    }
+  }
+
+  // CUST-003: run a client-script handler, catching errors so a broken script
+  // never crashes the Desk — it surfaces in a dismissible banner.
+  function fireHandler(key: string, docSnapshot: Doc) {
+    const handler = clientScripts.handlers[key]
+    if (!handler) return
+    try {
+      handler(makeFrm(docSnapshot))
+    } catch (err) {
+      setScriptError(`Client script error (${key}): ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
   function setField(fieldname: string, value: unknown) {
-    setValues((v) => ({ ...v, [fieldname]: value }))
+    const next = { ...valuesRef.current, [fieldname]: value }
+    valuesRef.current = next
+    setValues(next)
     setErrors((e) => {
       const { [fieldname]: _drop, ...rest } = e
       return rest
     })
+    // CUST-003: fire the field's change handler with the updated doc.
+    fireHandler(fieldname, next)
   }
 
   const docstatus = Number((baseline as Record<string, unknown>).docstatus ?? 0)
@@ -107,10 +164,13 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   }
 
   async function save() {
+    // CUST-003: a before_save client-script handler can adjust fields (or throw
+    // to block) before validation runs.
+    fireHandler('before_save', valuesRef.current)
     // UI-009/META-013: the client validates with the SAME metadata-generated
     // zod schema the server uses — invalid forms never reach the network.
     const schema = metaToZod(m.fields)
-    const result = schema.safeParse(values)
+    const result = schema.safeParse(valuesRef.current)
     if (!result.success) {
       setErrors(zodFieldErrors(result.error))
       setBanner('Please fix the highlighted fields')
@@ -120,7 +180,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
     setBanner(null)
     setErrors({})
     try {
-      const payload: Doc = { ...values }
+      const payload: Doc = { ...valuesRef.current }
       if (!isNew) {
         payload.name = name
         payload.modified = baseline.modified
@@ -283,6 +343,17 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
         >
           {banner}
         </p>
+      )}
+      {scriptError && (
+        <div
+          className="mb-3 flex items-center justify-between rounded-md border border-[var(--color-warn)]/40 bg-[var(--color-warn-tint)] px-3 py-2 text-sm text-[var(--color-warn)]"
+          data-testid="client-script-error"
+        >
+          <span>{scriptError}</span>
+          <button onClick={() => setScriptError(null)} className="ml-2 text-xs underline">
+            dismiss
+          </button>
+        </div>
       )}
       {staleBanner && (
         <div
