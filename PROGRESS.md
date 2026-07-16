@@ -13,6 +13,20 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — UI-021 passing: Calendar view with drag-to-reschedule
+
+- `CalendarView.tsx` at /desk/:doctype/view/calendar — a 6-week month grid
+  (defaults to the current month, prev/next nav) for DocTypes with a Date
+  field. Documents render as events on their date cell; pointer-based DnD
+  (same pattern as Kanban) drops an event on another day and PUTs the date
+  field to that cell's YYYY-MM-DD. "Calendar" link on lists whose DocType
+  has a Date field.
+- Verified: e2e/calendar.spec.ts (event on the 10th of the current month →
+  drag to the 20th → moves on screen AND doc.due updates in the DB). Full
+  web suite 3× green (36).
+- 89/126. View block progressing (Kanban + Calendar done; UI-022 Gantt,
+  UI-026 dashboards remain).
+
 ## 2026-07-16 — UI-020 passing: Kanban board with drag-and-drop
 
 - `KanbanView.tsx` at /desk/:doctype/view/kanban — groups docs by a Select

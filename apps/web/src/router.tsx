@@ -11,6 +11,7 @@ import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
 import { ReportView } from './components/ReportView'
 import { KanbanView } from './components/KanbanView'
+import { CalendarView } from './components/CalendarView'
 import { PrintView } from './pages/PrintView'
 import { DocTypeBuilder } from './pages/DocTypeBuilder'
 
@@ -178,6 +179,22 @@ function KanbanPage() {
   )
 }
 
+// UI-021: Calendar view.
+const calendarRoute = createRoute({
+  getParentRoute: () => deskRoute,
+  path: '$doctype/view/calendar',
+  component: CalendarPage,
+})
+
+function CalendarPage() {
+  const { doctype } = calendarRoute.useParams()
+  return (
+    <div data-testid="doctype-page">
+      <CalendarView key={doctype} doctype={doctype} />
+    </div>
+  )
+}
+
 // UI-004/UI-005: the generic FormView renders and saves every DocType.
 const docRoute = createRoute({
   getParentRoute: () => deskRoute,
@@ -198,5 +215,5 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   printRoute,
-  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, doctypeRoute, docRoute]),
+  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, doctypeRoute, docRoute]),
 ])

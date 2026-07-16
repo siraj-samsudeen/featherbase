@@ -261,6 +261,16 @@ export function ListView({
               Kanban
             </Link>
           )}
+          {(meta.data?.fields ?? []).some((f) => f.fieldtype === 'Date') && (
+            <Link
+              to="/desk/$doctype/view/calendar"
+              params={{ doctype }}
+              className="fc-btn"
+              data-testid="open-calendar"
+            >
+              Calendar
+            </Link>
+          )}
         </div>
       </div>
       {onFiltersChange && meta.data && (
