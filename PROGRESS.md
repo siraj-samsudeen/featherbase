@@ -13,6 +13,30 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — Evaluation pass #12 (adversarial, website + platform batch)
+
+- Re-drove the newest features end-to-end plus regressions. All held; no
+  status flips, no product code changed.
+- **WEB-002 (web forms):** injection is structurally blocked — an anonymous
+  submit with a smuggled `document_type: "User"` and `values` carrying
+  `owner`/`docstatus`/`name`/`roles` created a doc in the CONFIGURED DocType
+  (Ev12 Lead), with owner=Administrator, docstatus=0, a generated name; NO
+  User was created and the non-whitelisted fields were dropped. Works on a
+  second DocType generically. Caveats (hardening, not failures): (a) a form
+  that excludes a REQUIRED field of the target DocType can never submit (every
+  submit 417s) — should be validated at Web Form save time; (b) the public
+  /api/web_form endpoints sit before the auth middleware so API-007 (per-user)
+  doesn't throttle anonymous spam — a future IP-based limit; (c) creates as
+  Administrator, so an admin who whitelists a privileged field on a sensitive
+  DocType could enable escalation (mitigated: only whitelisted fields apply).
+- **PLAT-005 (webhooks):** after_insert fires with a valid signature; a
+  DISABLED webhook does not fire; a webhook pointing at a dead URL does NOT
+  block the save (201 in ~29ms — delivery is async + retried). 
+- **WEB-001:** published page served publicly (200), flips to 404 on unpublish.
+- **RPT-005:** run endpoint returns columns+rows.
+- Regressions: RPT-004 read-only guard blocks a DELETE query (417); UI-026
+  dashboard count works; a bad login → 401.
+
 ## 2026-07-16 — WEB-002 passing: public web forms
 
 - Migration 0033: `Web Form` DocType (title, unique route, document_type,
