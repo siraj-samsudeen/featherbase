@@ -66,6 +66,34 @@ export function invalidateMeta(name?: string) {
   else cache.clear()
 }
 
+// CUST-002: coerce a Property Setter's string value to the property's type.
+const BOOLEAN_PROPS = new Set(['hidden', 'reqd', 'read_only', 'in_list_view', 'unique'])
+function coerceProperty(property: string, value: unknown): unknown {
+  if (BOOLEAN_PROPS.has(property)) return value === true || value === '1' || value === 'true'
+  return value
+}
+
+let propertySetterTableExists: boolean | null = null
+async function applyPropertySetters(name: string, meta: DocTypeMeta): Promise<void> {
+  if (propertySetterTableExists === null) {
+    const [row] = await sql`
+      select 1 as ok from information_schema.tables where table_name = 'tab_property_setter'`
+    propertySetterTableExists = Boolean(row)
+  }
+  if (!propertySetterTableExists) return
+  const setters = await sql<{ field_name: string | null; property: string; value: string }[]>`
+    select field_name, property, value from tab_property_setter where doc_type = ${name}`
+  for (const ps of setters) {
+    const val = coerceProperty(ps.property, ps.value)
+    if (ps.field_name) {
+      const f = meta.fields.find((x) => x.fieldname === ps.field_name)
+      if (f) (f as unknown as Record<string, unknown>)[ps.property] = val
+    } else {
+      ;(meta as unknown as Record<string, unknown>)[ps.property] = val
+    }
+  }
+}
+
 export async function getMeta(name: string): Promise<DocTypeMeta> {
   const cached = cache.get(name)
   if (cached) {
@@ -77,6 +105,12 @@ export async function getMeta(name: string): Promise<DocTypeMeta> {
   const fields = await sql<DocField[]>`
     select * from tab_docfield where parent = ${name} order by idx, fieldname`
   const meta = { ...(dt as unknown as Omit<DocTypeMeta, 'fields'>), fields }
+
+  // CUST-002: overlay Property Setters onto the effective meta. The base
+  // rows are never mutated — the override lives only in the loaded object.
+  // (Guarded: the table doesn't exist yet during early bootstrap migrations.)
+  await applyPropertySetters(name, meta)
+
   metaCacheStats.loads++
   cache.set(name, meta)
   return meta

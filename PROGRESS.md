@@ -13,6 +13,24 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — CUST-002 passing: property setters
+
+- Migration 0017: 'Property Setter' DocType (doc_type, field_name [empty =
+  DocType-level], property, value). getMeta now overlays property setters
+  onto the effective meta after loading base rows — booleans (hidden/reqd/
+  read_only/in_list_view/unique) coerced from '1'/'true'. Base docfield
+  rows are NEVER mutated; the override lives only in the loaded object.
+  controllers/property-setter.ts invalidates the target meta on save/trash.
+- Table-existence guarded (cached flag) so early bootstrap migrations that
+  call getMeta before 0017 don't hit a missing table.
+- Verified: test/property-setter.test.ts (label override in meta / base row
+  unchanged; reqd coercion; removal restores) + e2e/property-setter.spec.ts
+  (form shows 'Headline', reverts to 'Title' when removed) + live curl.
+- 173 server + 28 web e2e green. 73/126.
+- GOTCHA: property setters on CORE doctypes (User) are global — a probe
+  that set User.full_name reqd=true broke 26 tests until deleted. Always
+  clean up property-setter probes on shared doctypes.
+
 ## 2026-07-16 — CUST-001 passing: custom fields
 
 - Migration 0016: `custom` boolean on tab_docfield + 'Custom Field'
