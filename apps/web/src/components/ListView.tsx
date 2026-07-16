@@ -30,6 +30,10 @@ export function ListView({
   const queryClient = useQueryClient()
   const [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
   const [start, setStart] = useState(0)
+  // UI-013: per-user saved settings (sort, hidden columns, filters).
+  const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set())
+  const [colPickerOpen, setColPickerOpen] = useState(false)
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
   // UI-012: bulk selection state.
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [bulkField, setBulkField] = useState('')
@@ -40,7 +44,44 @@ export function ListView({
   useEffect(() => setStart(0), [filterKey])
   useEffect(() => setSelected(new Set()), [filterKey, start, doctype])
 
-  const columns = meta.data ? listColumns(meta.data) : []
+  // UI-013: load this user's saved view settings (sort + hidden columns)
+  // once per DocType. Filters stay URL-driven (UI-003), so they're not
+  // persisted here — this covers the durable "customize a list" bits.
+  useEffect(() => {
+    let cancelled = false
+    setSettingsLoaded(false)
+    api
+      .get<{ settings: { sort?: typeof sort; hiddenCols?: string[] } | null }>(
+        `/api/user_settings/${encodeURIComponent(doctype)}`,
+      )
+      .then((res) => {
+        if (cancelled) return
+        const s = res.settings
+        if (s) {
+          if (s.sort) setSort(s.sort)
+          if (Array.isArray(s.hiddenCols)) setHiddenCols(new Set(s.hiddenCols))
+        }
+        setSettingsLoaded(true)
+      })
+      .catch(() => setSettingsLoaded(true))
+    return () => {
+      cancelled = true
+    }
+    // Only re-run when the DocType changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doctype])
+
+  // Persist settings whenever the user changes them (after the initial load).
+  function persist(next: { sort?: typeof sort; hiddenCols?: Set<string> }) {
+    if (!settingsLoaded) return
+    void api.put(`/api/user_settings/${encodeURIComponent(doctype)}`, {
+      sort: next.sort !== undefined ? next.sort : sort,
+      hiddenCols: [...(next.hiddenCols ?? hiddenCols)],
+    })
+  }
+
+  const allColumns = meta.data ? listColumns(meta.data) : []
+  const columns = allColumns.filter((c) => !hiddenCols.has(c.fieldname))
   const orderBy = sort
     ? `${sort.field} ${sort.dir}`
     : meta.data
@@ -69,11 +110,23 @@ export function ListView({
 
   function toggleSort(field: string) {
     setStart(0)
-    setSort((s) =>
-      s?.field === field
-        ? { field, dir: s.dir === 'asc' ? 'desc' : 'asc' }
-        : { field, dir: 'asc' },
-    )
+    const next: { field: string; dir: 'asc' | 'desc' } =
+      sort?.field === field
+        ? { field, dir: sort.dir === 'asc' ? 'desc' : 'asc' }
+        : { field, dir: 'asc' }
+    setSort(next)
+    persist({ sort: next })
+  }
+
+  // UI-013: hide/show a column (persisted per user).
+  function toggleColumn(fieldname: string) {
+    setHiddenCols((prev) => {
+      const nextSet = new Set(prev)
+      if (nextSet.has(fieldname)) nextSet.delete(fieldname)
+      else nextSet.add(fieldname)
+      persist({ hiddenCols: nextSet })
+      return nextSet
+    })
   }
 
   // UI-012: bulk actions over the selected rows. Each doc goes through the
@@ -153,15 +206,44 @@ export function ListView({
             {total} total
           </span>
         </div>
-        <Link
-          to="/desk/$doctype/view/report"
-          params={{ doctype }}
-          search={{ report: undefined }}
-          className="fc-btn"
-          data-testid="open-report"
-        >
-          Report
-        </Link>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <button
+              onClick={() => setColPickerOpen((o) => !o)}
+              className="fc-btn"
+              data-testid="list-columns"
+            >
+              Columns
+            </button>
+            {colPickerOpen && (
+              <div className="fc-card absolute right-0 z-10 mt-1 max-h-72 w-52 overflow-y-auto p-2">
+                {allColumns.map((col) => (
+                  <label
+                    key={col.fieldname}
+                    className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-[var(--color-subtle)]"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!hiddenCols.has(col.fieldname)}
+                      data-testid={`list-col-toggle-${col.fieldname}`}
+                      onChange={() => toggleColumn(col.fieldname)}
+                    />
+                    {col.label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          <Link
+            to="/desk/$doctype/view/report"
+            params={{ doctype }}
+            search={{ report: undefined }}
+            className="fc-btn"
+            data-testid="open-report"
+          >
+            Report
+          </Link>
+        </div>
       </div>
       {onFiltersChange && meta.data && (
         <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />

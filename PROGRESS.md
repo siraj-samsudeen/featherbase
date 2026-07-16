@@ -13,6 +13,20 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — UI-013 passing: saved list settings per user
+
+- Migration 0019: `user_settings` table (user, doctype, settings jsonb,
+  PK (user,doctype)). Endpoints GET/PUT /api/user_settings/:doctype —
+  per-user, only the caller's own row.
+- ListView: a Columns picker (hide/show any list column) + column sort now
+  persist to the user's settings and restore on next load (per DocType).
+  Filters stay URL-driven (UI-003) and are deliberately NOT persisted here
+  — auto-restoring saved filters double-handled the URL mechanism and made
+  list tests non-idempotent (a filter saved in one run narrowed the next).
+- Verified: e2e/list-settings.spec.ts (hide City + sort asc by Rank →
+  logout → login → both restored). Full web suite 3× green (29).
+- 179 server + 29 web e2e green. 77/126.
+
 ## 2026-07-16 — JOB-001/002/003 passing: background job queue + worker
 
 - Migration 0018: Background Job (method, payload JSON, status, attempts,

@@ -255,6 +255,24 @@ app.post('/api/apply_workflow_action', async (c) => {
   return c.json(await applyWorkflowAction(doctype, name, action, who(c)))
 })
 
+// UI-013: per-user list/view settings. Stored per (user, doctype) and only
+// ever readable/writable by that user.
+app.get('/api/user_settings/:doctype', async (c) => {
+  const [row] = await sql`
+    select settings from user_settings
+    where "user" = ${who(c)} and doctype = ${c.req.param('doctype')}`
+  return c.json({ settings: row?.settings ?? null })
+})
+
+app.put('/api/user_settings/:doctype', async (c) => {
+  const settings = (await c.req.json()) as Record<string, unknown>
+  await sql`
+    insert into user_settings ("user", doctype, settings, modified)
+    values (${who(c)}, ${c.req.param('doctype')}, ${settings as unknown as string}, now())
+    on conflict ("user", doctype) do update set settings = excluded.settings, modified = now()`
+  return c.json({ ok: true })
+})
+
 // JOB-001: enqueue a background job. System Manager only (jobs run server
 // code). Returns the job id so callers can poll its Background Job doc.
 app.post('/api/enqueue_job', async (c) => {
