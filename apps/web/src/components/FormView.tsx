@@ -54,6 +54,25 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
     })
   }
 
+  const docstatus = Number((baseline as Record<string, unknown>).docstatus ?? 0)
+  const submittable = Boolean(m.is_submittable) && !isNew
+
+  async function runAction(path: string) {
+    setBanner(null)
+    try {
+      const res = await api.post<Doc>(path, { doctype, name })
+      await queryClient.invalidateQueries({ queryKey: ['doc', doctype] })
+      await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
+      if (path === '/api/amend_doc') {
+        navigate({ to: '/desk/$doctype/$name', params: { doctype, name: String(res.name) } })
+      } else {
+        setBanner('Done')
+      }
+    } catch (err) {
+      setBanner(err instanceof ApiError ? err.message : 'Action failed')
+    }
+  }
+
   async function save() {
     // UI-009/META-013: the client validates with the SAME metadata-generated
     // zod schema the server uses — invalid forms never reach the network.
@@ -130,18 +149,61 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
             {dirty ? 'Not saved' : isNew ? 'New document' : 'Saved'}
           </span>
         </div>
-        <button
-          onClick={save}
-          disabled={saving || !dirty}
-          data-testid="form-save"
-          className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
-        >
-          {saving ? 'Saving…' : 'Save'}
-        </button>
+        <div className="flex items-center gap-2">
+          {submittable && (
+            <span
+              data-testid="docstatus-badge"
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                docstatus === 1
+                  ? 'bg-green-100 text-green-800'
+                  : docstatus === 2
+                    ? 'bg-red-100 text-red-700'
+                    : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              {docstatus === 1 ? 'Submitted' : docstatus === 2 ? 'Cancelled' : 'Draft'}
+            </span>
+          )}
+          <button
+            onClick={save}
+            disabled={saving || !dirty || (submittable && docstatus !== 0)}
+            data-testid="form-save"
+            className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          {submittable && docstatus === 0 && !dirty && (
+            <button
+              onClick={() => runAction('/api/submit_doc')}
+              data-testid="form-submit"
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white"
+            >
+              Submit
+            </button>
+          )}
+          {submittable && docstatus === 1 && (
+            <button
+              onClick={() => runAction('/api/cancel_doc')}
+              data-testid="form-cancel"
+              className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700"
+            >
+              Cancel
+            </button>
+          )}
+          {submittable && docstatus === 2 && (
+            <button
+              onClick={() => runAction('/api/amend_doc')}
+              data-testid="form-amend"
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700"
+            >
+              Amend
+            </button>
+          )}
+        </div>
       </div>
       {banner && (
         <p
-          className={`mb-3 text-sm ${banner === 'Saved' ? 'text-green-700' : 'text-red-600'}`}
+          className={`mb-3 text-sm ${banner === 'Saved' || banner === 'Done' ? 'text-green-700' : 'text-red-600'}`}
           data-testid="form-banner"
         >
           {banner}
@@ -159,7 +221,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
             ) : (
               <FieldControl
                 key={f.fieldname}
-                field={f}
+                field={submittable && docstatus !== 0 ? { ...f, read_only: true } : f}
                 value={values[f.fieldname]}
                 error={errors[f.fieldname]}
                 onChange={(v) => setField(f.fieldname, v)}

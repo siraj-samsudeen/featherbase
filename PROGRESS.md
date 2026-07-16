@@ -1,5 +1,26 @@
 # Progress Log
 
+## 2026-07-16 — Evaluation pass #5 + UI-010 passing: submit/cancel/amend UI
+
+- **Evaluator pass #5** (all held, no findings): permlevel-1 field injection
+  via save_doc (not just PUT) is stripped (secret NULL in DB); a write-only
+  DocShare does NOT grant read (403); fieldtype change via PUT rejected
+  (417); amending a non-cancelled draft rejected (417).
+- UI-010: FormView gained a docstatus badge (Draft/Submitted/Cancelled) and
+  contextual action buttons for submittable DocTypes — Submit (draft, when
+  clean), Cancel (submitted), Amend (cancelled → navigates to the new
+  draft). Submitted docs render all fields read_only and disable Save.
+  `runAction()` posts to submit/cancel/amend endpoints and invalidates
+  caches. Playwright drove the full draft→submit→cancel→amend lifecycle.
+- 13 web e2e + 120 server tests green. 49/126.
+- Gotcha: inline `npx tsx -e` with top-level await fails (CJS) — use a
+  .mts helper file for one-off password sets in probes.
+- Next: the big remaining blocks — reports (RPT), printing (PRN), workflow
+  (WF), jobs (JOB), realtime (RT), email (EML), files (FILE). FILE-001 and
+  RPT-001 are good next picks (both priority 1-2, deps met).
+
+---
+
 ## 2026-07-16 — PERM-006 + PERM-008 passing: permlevel + DocShare (permissions engine COMPLETE)
 
 - PERM-006: `permittedLevels()`, `filterReadFields()`, `stripUnwritableFields()`.
