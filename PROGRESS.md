@@ -13,6 +13,32 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — Evaluation pass #8 (adversarial): all held, no findings
+
+Re-drove the 5 newest (WF-001/002/003, CUST-001/002) on a SECOND DocType
+(Ev8 Doc, never the demo) as Administrator + a restricted non-admin
+(Ev8 Role), plus 2 regressions on the riskiest recent core changes.
+Verdicts — all HOLD:
+
+- **CUST-001**: custom Select field (with options) added to Ev8 Doc appears
+  in meta + saves; an invalid enum value → 417 with the enum message; a
+  custom field over an existing base field → 409 ConflictError.
+- **CUST-002**: hidden=1 setter hides the field in meta (base row untouched
+  = f); a DocType-level setter (empty field_name) overrode sort_field;
+  removing both reverted cleanly.
+- **WF-001**: workflow created on the second DocType.
+- **WF-002/003**: role-holding user drove New→Review; a non-existent action
+  → 417; a valid action from the wrong state → 417; after stripping the
+  user's role, the SAME user's transition → 403 PermissionError with state
+  unchanged (Review→Review).
+- **Regression — child tables (document.ts hook change)**: save with 2
+  child rows round-trips; update replacing the rows persists correctly.
+- **Regression — PRN-003**: PDF still generates (200, application/pdf,
+  17KB, %PDF- magic) on a doc carrying a custom field.
+
+No status changes. 73/126 unchanged. Cleaned all Ev8 fixtures + any
+property setters (they are global on shared doctypes).
+
 ## 2026-07-16 — CUST-002 passing: property setters
 
 - Migration 0017: 'Property Setter' DocType (doc_type, field_name [empty =
