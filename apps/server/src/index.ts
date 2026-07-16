@@ -17,9 +17,12 @@ import { globalSearch } from './search'
 import { callMethod, loadMethods, methodAllowsGuest } from './methods'
 import { renderPdf, renderPrintHtml } from './print'
 import { applyWorkflowAction, availableActions, currentState, getActiveWorkflow } from './workflow'
+import { reapplyCustomFields } from './custom-fields'
 
 await loadControllers()
 await loadMethods()
+// CUST-001: re-apply custom fields so they survive a core re-seed.
+await reapplyCustomFields()
 
 type Env = { Variables: { user: SessionUser } }
 
@@ -248,6 +251,13 @@ app.post('/api/apply_workflow_action', async (c) => {
   if (!doctype || !name || !action)
     throw new AppError('ValidationError', 'Expected { doctype, name, action }')
   return c.json(await applyWorkflowAction(doctype, name, action, who(c)))
+})
+
+// CUST-001: re-apply all custom fields (used after a core fixture re-seed).
+app.post('/api/reapply_custom_fields', async (c) => {
+  await assertSystemManager(who(c))
+  const count = await reapplyCustomFields()
+  return c.json({ ok: true, count })
 })
 
 // DOC-012: rename a document and cascade the new name to all Link references.

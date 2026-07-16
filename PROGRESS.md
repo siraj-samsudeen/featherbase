@@ -13,6 +13,27 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — CUST-001 passing: custom fields
+
+- Migration 0016: `custom` boolean on tab_docfield + 'Custom Field'
+  DocType (dt, fieldname, label, fieldtype, options, reqd, in_list_view).
+- `src/custom-fields.ts`: applyCustomField (ALTER add column if the
+  fieldtype has one + upsert a docfield row marked custom, guards against
+  clobbering a base field), removeCustomField (drops the docfield, KEEPS
+  the column/data — non-destructive), reapplyCustomFields (re-materializes
+  every Custom Field record). controllers/custom-field.ts wires
+  after_insert/on_trash. reapplyCustomFields() runs at boot + via
+  POST /api/reapply_custom_fields (System Manager).
+- Stored separately from the base definition, so a core re-seed (which
+  rewrites base docfields) doesn't remove them — boot re-applies.
+- Verified: test/custom-field.test.ts (meta+custom flag, API round-trip,
+  docfield-wipe → reapply restores + value preserved, delete keeps column
+  data) + live curl + e2e/custom-field.spec.ts (field in form with value,
+  column in list).
+- 170 server + 27 web e2e green. 72/126.
+- Next: CUST-002 (Property Setters — override label/hidden/reqd) builds on
+  this.
+
 ## 2026-07-16 — WF-001/002/003 passing: workflow engine (definition, execution, enforcement)
 
 - Migration 0015: Workflow (+ child Workflow Document State, Workflow
