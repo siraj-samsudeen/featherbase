@@ -13,6 +13,19 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — UI-019 passing: activity timeline
+
+- `ActivityTimeline.tsx` in the form sidebar merges Comment + Version docs
+  for the document, sorted by creation. Comments show author + text;
+  versions show author + the field diff (field: old → new) from DOC-009's
+  data.changed. Workflow actions will slot in once WF lands (recorded as
+  versions/comments). FormView save() now also invalidates
+  ['versions', doctype, name] so the timeline updates live after an edit.
+- Verified by e2e/timeline.spec.ts: edit title → version entry with diff
+  (title: original → revised title); add comment → entry after it; the two
+  render in chronological order (version then comment).
+- 160 server + 22 web e2e green. 65/126.
+
 ## 2026-07-16 — UI-018 passing: comments + @mentions + notifications
 
 - `Comments.tsx` in the FormView sidebar (existing docs): comment stream
