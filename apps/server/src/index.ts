@@ -24,6 +24,7 @@ import { queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
 import { requestPasswordReset, resetPassword } from './password-reset'
 import { renderWebPage } from './website'
+import { getWebFormConfig, submitWebForm } from './webform'
 import { rateLimit } from './rate-limit'
 import { parseFilters, runQueryReport } from './query-report'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
@@ -128,6 +129,18 @@ app.get('/files/:stored', (c) => serveFile(c, `/files/${c.req.param('stored')}`,
 app.get('/private/files/:stored', (c) =>
   serveFile(c, `/private/files/${c.req.param('stored')}`, true),
 )
+
+// WEB-002: public web-form config + submit (no session — anonymous forms).
+// Registered before the auth middleware. Only whitelisted fields of the
+// configured DocType are accepted; server validation still runs.
+app.get('/api/web_form/:route', async (c) => {
+  return c.json(await getWebFormConfig(c.req.param('route')))
+})
+
+app.post('/api/web_form/:route', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { values?: Record<string, unknown> }
+  return c.json(await submitWebForm(c.req.param('route'), body.values ?? {}), 201)
+})
 
 // WEB-001: public, server-rendered Web Pages. No session required; only
 // published pages render (others 404). Path may contain slashes.

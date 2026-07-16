@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-router'
 import { LoginPage } from './pages/Login'
 import { ResetPasswordPage } from './pages/ResetPassword'
+import { WebFormPage } from './pages/WebForm'
 import { DeskLayout } from './pages/DeskLayout'
 import { getToken } from './lib/api'
 import { ListView } from './components/ListView'
@@ -35,6 +36,13 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   component: LoginPage,
+})
+
+// WEB-002: public web form (no session required).
+const webFormRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/form/$route',
+  component: WebFormPage,
 })
 
 // SET-002: public password-reset page (target of the emailed link).
@@ -305,6 +313,7 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   resetPasswordRoute,
+  webFormRoute,
   printRoute,
   deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, doctypeRoute, docRoute]),
 ])

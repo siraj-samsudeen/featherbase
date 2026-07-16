@@ -13,6 +13,24 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — WEB-002 passing: public web forms
+
+- Migration 0033: `Web Form` DocType (title, unique route, document_type,
+  web_fields [JSON whitelist of fieldnames], published, success_message).
+- `webform.ts`: `getWebFormConfig(route)` returns the whitelisted fields
+  (label/type/reqd from the target DocType meta); `submitWebForm(route, values)`
+  keeps ONLY whitelisted fields and creates the doc via the normal save
+  lifecycle (as Administrator — a trusted server surface — but strictly limited
+  to the configured DocType + fields), so reqd/type validation still applies.
+- Public endpoints (before auth): `GET /api/web_form/:route` (config) and
+  `POST /api/web_form/:route` (submit). Anonymous.
+- Web `/form/$route` public page renders typed controls and submits; server
+  validation errors show inline, success shows the configured message.
+- Verified: e2e (anonymous visitor: blank required field → validation error;
+  full submit → success + the doc exists) + server test (whitelist exposure,
+  non-whitelisted field dropped, required-field validation, unpublished form
+  404, session-less HTTP submit 201). 252 server + 48 web e2e green. 103/126.
+
 ## 2026-07-16 — WEB-001 passing: public server-rendered Web Pages
 
 - Migration 0032: `Web Page` DocType (title, unique route, content [Long Text
