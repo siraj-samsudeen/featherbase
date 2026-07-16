@@ -21,6 +21,7 @@ import { WorkspaceView } from './components/WorkspaceView'
 import { JobMonitor } from './components/JobMonitor'
 import { KanbanView } from './components/KanbanView'
 import { CalendarView } from './components/CalendarView'
+import { GanttView } from './components/GanttView'
 import { PrintView } from './pages/PrintView'
 import { DocTypeBuilder } from './pages/DocTypeBuilder'
 
@@ -230,6 +231,22 @@ function CalendarPage() {
   )
 }
 
+// UI-022: Gantt view.
+const ganttRoute = createRoute({
+  getParentRoute: () => deskRoute,
+  path: '$doctype/view/gantt',
+  component: GanttPage,
+})
+
+function GanttPage() {
+  const { doctype } = ganttRoute.useParams()
+  return (
+    <div data-testid="doctype-page">
+      <GanttView key={doctype} doctype={doctype} />
+    </div>
+  )
+}
+
 // RPT-004: a Query Report renders its own SQL-driven results (static first
 // segment, so it wins over $doctype/$name).
 const queryReportRoute = createRoute({
@@ -340,5 +357,5 @@ export const routeTree = rootRoute.addChildren([
   resetPasswordRoute,
   webFormRoute,
   printRoute,
-  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, workspaceRoute, jobsRoute, doctypeRoute, docRoute]),
+  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, workspaceRoute, jobsRoute, doctypeRoute, docRoute]),
 ])

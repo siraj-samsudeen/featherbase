@@ -13,6 +13,27 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — UI-022 passing: Gantt view
+
+- **`GanttView.tsx`** (route `/desk/$doctype/view/gantt`): for any DocType with
+  ≥2 Date fields, uses the first as start and the second as end. Renders a day
+  grid (40px/day) with one horizontal bar per document spanning [start, end].
+  Bars carry `data-start`/`data-end`/`data-days` for precise assertions.
+- **Resize**: each bar has a right-edge handle; dragging it snaps to whole day
+  columns (`round(Δx / 40)`), previews live, and on release PUTs the new end
+  date back (carrying the loaded `modified` stamp, like the calendar's drag).
+  Only forward/backward of the end date; clamped so end ≥ start.
+- Date math is done in UTC whole-day numbers (`Date.UTC(...) / 86_400_000`) to
+  stay timezone-independent. The timeline range is the data's min-start..max-end
+  padded one day each side.
+- **View switcher**: the ListView shows a **Gantt** link only when the DocType
+  has ≥2 Date fields (Calendar still needs just one).
+- **Verified**: `e2e/gantt.spec.ts` (2) — a task dated Mar 2→5 renders
+  `data-days=4` and a 160px-wide bar; dragging the handle +80px moves the end
+  Mar 5→7 (`data-days=6`) and the new date is persisted server-side. Existing
+  ListView/calendar/desk e2e unaffected.
+- Next: 7 P3 remain (FILE-004, WEB-003, PLAT-001/002/006/008, UI-025).
+
 ## 2026-07-16 — RPT-006 passing: report charts pinned to dashboards
 
 - **`report-chart.ts`**: `runReportChart(spec, user)` derives a

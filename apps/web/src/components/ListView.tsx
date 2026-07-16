@@ -277,6 +277,17 @@ export function ListView({
               Calendar
             </Link>
           )}
+          {/* UI-022: Gantt needs two Date fields (start + end). */}
+          {(meta.data?.fields ?? []).filter((f) => f.fieldtype === 'Date').length >= 2 && (
+            <Link
+              to="/desk/$doctype/view/gantt"
+              params={{ doctype }}
+              className="fc-btn"
+              data-testid="open-gantt"
+            >
+              Gantt
+            </Link>
+          )}
           {isSystemManager && (
             <Link
               to="/desk/permissions/$doctype"
