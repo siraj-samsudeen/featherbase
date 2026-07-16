@@ -3,6 +3,7 @@ import { sign, verify } from 'hono/jwt'
 import { sql } from './db'
 import { AppError } from './errors'
 import { getSystemSettings } from './settings'
+import { logActivity } from './audit'
 
 // API-004: email/password login issuing a JWT; every API call (except
 // /api/ping and /api/login) must carry it. Passwords are scrypt-hashed.
@@ -53,6 +54,8 @@ export async function login(usr: string, pwd: string): Promise<{ token: string; 
     },
     JWT_SECRET,
   )
+  // PLAT-007: record the successful authentication.
+  await logActivity(user.name as string, 'login', { full_name: user.full_name as string | null })
   return {
     token,
     user: { name: user.name as string, email: user.email as string, full_name: user.full_name as string | null },

@@ -13,6 +13,24 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — PLAT-007 passing: audit logs (Activity Log + Access Log)
+
+- Migration 0034: `Activity Log` (user, operation, full_name, ip_address) and
+  `Access Log` (user, operation, reference_doctype/name, method) DocTypes.
+- `audit.ts`: `logActivity` / `logAccess` write directly (not saveDoc) with the
+  user as owner — so a login can be recorded before a session exists and a user
+  can't mutate the record of their own actions. Both stamp `creation`.
+- Hooks: `login()` writes an Activity Log 'login' row; the print endpoint
+  (`/api/print`) writes an Access Log 'print' row; a new authed
+  `POST /api/access_log` writes an 'export' row (requires READ on the exported
+  DocType — you can only log an export of data you could read). ReportView's
+  CSV/XLSX export calls it (fire-and-forget).
+- Verified: e2e (a UI login increments Activity Log 'login' rows; a CSV export
+  from the report view increments Access Log 'export' rows for that DocType) +
+  server test (login row w/ user+timestamp, export via endpoint, 403 for a
+  non-readable DocType, direct writes owned by the user). 256 server + 49 web
+  e2e green. 104/126.
+
 ## 2026-07-16 — Evaluation pass #12 (adversarial, website + platform batch)
 
 - Re-drove the newest features end-to-end plus regressions. All held; no

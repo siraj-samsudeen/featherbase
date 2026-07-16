@@ -190,6 +190,11 @@ export function ReportView({
     URL.revokeObjectURL(url)
   }
 
+  // PLAT-007: record the export in the Access Log (fire-and-forget).
+  function logExport(method: string) {
+    void api.post('/api/access_log', { doctype, method }).catch(() => {})
+  }
+
   function exportCsv() {
     const quote = (v: string | number) => {
       const s = String(v)
@@ -199,6 +204,7 @@ export function ReportView({
       .map((r) => r.map(quote).join(','))
       .join('\n')
     download(new Blob([csv], { type: 'text/csv' }), `${doctype.toLowerCase().replace(/\s+/g, '-')}-report.csv`)
+    logExport('csv')
   }
 
   async function exportXlsx() {
@@ -213,6 +219,7 @@ export function ReportView({
       }),
       `${doctype.toLowerCase().replace(/\s+/g, '-')}-report.xlsx`,
     )
+    logExport('xlsx')
   }
 
   const bodyRow = (row: Row) => (

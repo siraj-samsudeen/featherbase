@@ -25,6 +25,7 @@ import { getSystemSettings } from './settings'
 import { requestPasswordReset, resetPassword } from './password-reset'
 import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
+import { logAccess } from './audit'
 import { rateLimit } from './rate-limit'
 import { parseFilters, runQueryReport } from './query-report'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
@@ -261,12 +262,30 @@ app.get('/api/doc/:doctype/:name', async (c) => {
 // PRN-003: server-side PDF of any document / print format.
 app.get('/api/print/:doctype/:name', async (c) => {
   const format = c.req.query('format')
-  const html = await renderPrintHtml(c.req.param('doctype'), c.req.param('name'), who(c), format)
+  const doctype = c.req.param('doctype')
+  const name = c.req.param('name')
+  const html = await renderPrintHtml(doctype, name, who(c), format)
   const pdf = await renderPdf(html)
+  // PLAT-007: record the print/access.
+  await logAccess(who(c), 'print', { doctype, name, method: 'pdf' })
   return c.body(new Uint8Array(pdf), 200, {
     'content-type': 'application/pdf',
-    'content-disposition': `inline; filename="${c.req.param('name').replace(/[^\w.-]/g, '_')}.pdf"`,
+    'content-disposition': `inline; filename="${name.replace(/[^\w.-]/g, '_')}.pdf"`,
   })
+})
+
+// PLAT-007: the client records a data export here (CSV/XLSX are built in the
+// browser, so the log is client-notified). Read permission is required on the
+// exported DocType — you can only log an export of data you could read.
+app.post('/api/access_log', async (c) => {
+  const { doctype, method } = (await c.req.json().catch(() => ({}))) as {
+    doctype?: string
+    method?: string
+  }
+  if (!doctype) throw new AppError('ValidationError', 'Expected { doctype }')
+  await assertPermission(who(c), doctype, 'read')
+  await logAccess(who(c), 'export', { doctype, method: method ?? 'csv' })
+  return c.json({ ok: true })
 })
 
 // FILE-001: multipart upload — writes the storage object, then creates the
