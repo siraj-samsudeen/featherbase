@@ -13,6 +13,30 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — Evaluation pass #13 (adversarial) — CUST-004 sandbox ESCAPE
+
+- **CUST-004 → FAILING.** The node:vm sandbox is escapable, so it does NOT
+  "block filesystem/network/process access" as the verify requires.
+  Reproduction: create an API Server Script with
+  `result = Object.constructor("return process.pid")()` and call it via
+  `POST /api/server_script/<method>` → returns a real host PID (observed 3149).
+  Root cause: `server-scripts.ts` injects HOST built-ins (Object, Array, String,
+  JSON, Math, …) into the vm context; a host built-in's `.constructor` is the
+  HOST `Function`, and `hostFunction("return process")()` executes in the HOST
+  realm, reaching `process` (and from there require/fs/network). Any host object
+  reachable from the script (including `doc`, `frappe`, `console`) leaks the same
+  way via its constructor chain.
+  Expected: process/require/fetch unreachable. Actual: reachable.
+  Fix direction (next coder step): never expose host objects to the script —
+  pass `doc`/`args` in as JSON string primitives, `JSON.parse` them INSIDE the
+  context (context-native), define `frappe`/`console` inside the context, inject
+  NO host built-ins (the fresh context already has its own), and read results
+  back as a JSON string. Then `Object.constructor` resolves to the CONTEXT's
+  Function, which runs in the context where `process` is undefined.
+- CUST-003 (client scripts) and CUST-005 (export/import) held: CUST-005 empty
+  bundle → 0/0, garbage custom field (unknown DocType) → clean 417 (no 500);
+  CUST-003 endpoints reachable and e2e-verified. No other flips.
+
 ## 2026-07-16 — CUST-005 passing: export/import customizations as JSON
 
 - `customizations.ts`: `exportCustomizations(doctype)` returns a JSON bundle of
