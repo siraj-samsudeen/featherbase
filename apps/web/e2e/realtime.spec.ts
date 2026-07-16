@@ -95,6 +95,9 @@ test('RT-002: saving a doc in one session shows a refresh banner in another', as
   await expect(b.getByTestId('form-view')).toBeVisible()
   // No banner initially.
   await expect(b.getByTestId('stale-banner')).toHaveCount(0)
+  // Give B's realtime socket time to subscribe to the doc channel before A
+  // saves (otherwise, under parallel load, the event can be missed).
+  await b.waitForTimeout(1000)
 
   // A edits + saves; B gets the refresh banner without reloading.
   await a.locator('[data-field=title]').fill('after')

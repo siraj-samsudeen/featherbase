@@ -340,8 +340,7 @@ export async function saveDoc(
       'ValidationError',
       `${doctype} documents are managed via /api/doctype`,
     )
-  if (meta.issingle)
-    throw new AppError('ValidationError', `${doctype} is a single DocType`)
+  if (meta.issingle) return saveSingle(doctype, values, user)
   if (meta.istable)
     throw new AppError(
       'ValidationError',
@@ -763,8 +762,7 @@ export async function getDoc(
   user = 'Administrator',
 ): Promise<DocValues> {
   const meta = await getMeta(doctype)
-  if (meta.issingle)
-    throw new AppError('ValidationError', `${doctype} is a single DocType`)
+  if (meta.issingle) return getSingle(meta, user)
   const [row] = await sql`
     select * from ${sql(tableName(doctype))} where name = ${name}`
   if (!row) throw new AppError('NotFoundError', `${doctype} ${name} not found`)
@@ -779,4 +777,60 @@ export async function getDoc(
   const readLevels = shared ? new Set([-1]) : await permittedLevels(user, doctype, 'read')
   const visible = filterReadFields(meta.fields, readLevels, row as DocValues)
   return loadChildren(meta, { doctype, ...visible })
+}
+
+// SET-001: read a Single DocType's one instance from the EAV store, applying
+// field defaults for any value not yet set. Its name is the DocType name.
+async function getSingle(meta: DocTypeMeta, user: string): Promise<DocValues> {
+  await assertPermission(user, meta.name, 'read')
+  const rows = await sql`select field, value from single_value where doctype = ${meta.name}`
+  const stored = new Map(rows.map((r) => [r.field as string, r.value as string | null]))
+  const doc: DocValues = { doctype: meta.name, name: meta.name, owner: 'Administrator', docstatus: 0 }
+  for (const f of meta.fields) {
+    if (NO_COLUMN_TYPES.has(f.fieldtype)) continue
+    const raw = stored.has(f.fieldname) ? (stored.get(f.fieldname) ?? null) : (f.default_value ?? null)
+    doc[f.fieldname] = coerceSingleValue(f.fieldtype, raw)
+  }
+  const readLevels = await permittedLevels(user, meta.name, 'read')
+  return filterReadFields(meta.fields, readLevels, doc)
+}
+
+// EAV values are stored as text; coerce back to the field's JS type.
+function coerceSingleValue(fieldtype: string, raw: string | null): unknown {
+  if (raw == null) return null
+  switch (fieldtype) {
+    case 'Int':
+      return Number.parseInt(raw, 10)
+    case 'Float':
+    case 'Currency':
+      return Number.parseFloat(raw)
+    case 'Check':
+      return raw === '1' || raw === 'true'
+    default:
+      return raw
+  }
+}
+
+// SET-001: persist a Single DocType's values into the EAV store.
+export async function saveSingle(
+  doctype: string,
+  values: DocValues,
+  user = 'Administrator',
+): Promise<DocValues> {
+  const meta = await getMeta(doctype)
+  if (!meta.issingle) throw new AppError('ValidationError', `${doctype} is not a single DocType`)
+  await assertPermission(user, doctype, 'write')
+  const writeLevels = await permittedLevels(user, doctype, 'write')
+  const clean = validateValues(
+    meta,
+    stripUnwritableFields(meta.fields, writeLevels, pickFieldValues(meta, values)),
+    'update',
+  )
+  for (const [field, value] of Object.entries(clean)) {
+    const text = value == null ? null : typeof value === 'boolean' ? (value ? '1' : '0') : String(value)
+    await sql`
+      insert into single_value ${sql({ doctype, field, value: text })}
+      on conflict (doctype, field) do update set value = excluded.value`
+  }
+  return getDoc(doctype, doctype, user)
 }

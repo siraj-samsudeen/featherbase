@@ -9,6 +9,7 @@ import { DeskLayout } from './pages/DeskLayout'
 import { getToken } from './lib/api'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
+import { useMeta } from './lib/meta'
 import { ReportView } from './components/ReportView'
 import { KanbanView } from './components/KanbanView'
 import { CalendarView } from './components/CalendarView'
@@ -102,6 +103,15 @@ function DocTypeListPage() {
   const { doctype } = doctypeRoute.useParams()
   const { filters } = doctypeRoute.useSearch()
   const navigate = doctypeRoute.useNavigate()
+  const meta = useMeta(doctype)
+  // SET-001: a Single DocType has no list — open its one document directly.
+  if (meta.data?.issingle) {
+    return (
+      <div data-testid="doctype-page">
+        <FormView key={doctype} doctype={doctype} name={doctype} />
+      </div>
+    )
+  }
   let parsed: [string, string, unknown][] = []
   try {
     parsed = filters ? JSON.parse(filters) : []

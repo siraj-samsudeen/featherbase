@@ -13,6 +13,26 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — SET-001 passing: Single DocTypes
+
+- Migration 0024: `single_value` EAV table (doctype, field, value) + a
+  seeded 'System Settings' single (app_name, time_zone, date_format,
+  session_hours, allow_signup). Singles have NO generated table.
+- Engine: getDoc routes issingle → getSingle (loads EAV values, applies
+  field defaults, coerces Int/Float/Check back to JS types, name = the
+  DocType name); saveDoc routes issingle → saveSingle (upserts changed
+  fields into single_value, permission + validation enforced). Router:
+  navigating to a single DocType renders its FormView directly (no list).
+- Verified: e2e/single-doctype.spec.ts (System Settings opens as a form,
+  no list-view; edit+save persists across reload; API confirms one
+  instance named after the doctype) + test/single-doctype.test.ts (no
+  table created; defaults before save; typed round-trip; update-in-place =
+  one instance).
+- 205 server + 37 web e2e green. 90/126.
+- De-flaked: single test uses a unique app_name per run (System Settings is
+  a persistent global — a repeated value left save disabled); RT-002 waits
+  ~1s for B's socket before A saves (parallel-load WS race).
+
 ## 2026-07-16 — UI-021 passing: Calendar view with drag-to-reschedule
 
 - `CalendarView.tsx` at /desk/:doctype/view/calendar — a 6-week month grid
