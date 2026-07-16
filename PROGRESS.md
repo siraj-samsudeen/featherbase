@@ -13,6 +13,26 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — Evaluation pass #11 (adversarial, focused on the P2 batch)
+
+- Probed the security-sensitive features shipped this session. All held; no
+  feature regressed to failing, no product code needed.
+- **RPT-004 (SQL execution):** a Query Report whose SQL is a valid
+  `WITH x AS (INSERT … RETURNING …) SELECT` is blocked by the read-only
+  transaction ("cannot execute SELECT in a read-only transaction") — the guard
+  is the txn, not just the SELECT/WITH regex — and the injected user is never
+  created. Filter values remain bound params (injection inert).
+- **FILE-003 (signed URLs):** a valid signature for file A pasted onto file B's
+  path → 401 (the HMAC binds the exact path); expired → 401; outsider without
+  read on the linked doc → 403.
+- **UI-026 (dashboard aggregates):** an owner-scoped role sees only its own
+  rows in both `countDocs` and `groupCount` (admin count 4, owner-user count 1;
+  the owner-user's chart shows only their single doc) — no cross-owner leak;
+  Guest (no read) → PermissionError.
+- **SET-003:** non-System-Manager → 403 on both read and write of the perm
+  matrix; upsert never duplicates. **SET-004:** /api/settings exposes only the
+  display subset (no session_hours/time_zone).
+
 ## 2026-07-16 — UI-026 passing: dashboards (number cards + bar charts)
 
 - Refactored `query.ts` to extract `scopedWhere()` (the permission scope +
