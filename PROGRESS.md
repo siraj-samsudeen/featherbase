@@ -13,6 +13,30 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — CUST-004 passing: sandboxed Server Scripts
+
+- Migration 0037: `Server Script` DocType (script_type Document Event|API,
+  reference_doctype, event validate|before_save|after_save, api_method,
+  script, enabled).
+- `server-scripts.ts`: runs scripts in a fresh `node:vm` context whose only
+  globals are `doc`, `frappe` (`.throw`), a no-op console, and the standard JS
+  built-ins — require/process/fetch/Buffer/module are simply out of scope, so a
+  script cannot touch the filesystem, network, or process (they resolve to
+  ReferenceError). Execution is time-boxed to 500ms, so a runaway loop errors
+  instead of hanging the server. `doc` is shared by reference, so a script can
+  set fields; a throw / frappe.throw aborts the save.
+- `runDocEventScripts` wired into document.ts at validate/before_save/after_save
+  in both save paths — CRUCIALLY it runs on the caller's TRANSACTION connection
+  (`ctx.tx`), not the global pool: the first version queried the global pool
+  inside the save txn and deadlocked under concurrent saves (naming.test's 50
+  parallel inserts hung). `POST /api/server_script/:method` runs API-type
+  scripts.
+- Verified: HTTP + server test (validate rejects negatives / allows valid;
+  before_save sets a field; sandbox blocks require/process/fetch; disabled
+  script skipped; API script returns a value; runaway loop times out) + e2e
+  (a form save blocked by a server script shows the error and the Desk stays
+  live; a valid save goes through). 265 server + 53 web e2e green. 107/126.
+
 ## 2026-07-16 — UI-027 passing: workspaces (configurable shortcut home pages)
 
 - Migration 0036: `Workspace` DocType (label, icon, shortcuts JSON —

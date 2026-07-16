@@ -7,6 +7,7 @@ import { STANDARD_COLUMNS, tableName } from './doctype-engine'
 import { runHooks, type HookContext } from './controllers'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
 import { evaluateWebhooks } from './webhooks'
+import { runDocEventScripts } from './server-scripts'
 import {
   assertDocPermission,
   assertPermission,
@@ -390,7 +391,9 @@ export async function saveDoc(
       const ctx: HookContext = { doc, meta, user, isNew: true, tx: stx }
       await runHooks('before_insert', ctx)
       await runHooks('validate', ctx)
+      await runDocEventScripts('validate', meta.name, ctx.doc, ctx.tx)
       await runHooks('before_save', ctx)
+      await runDocEventScripts('before_save', meta.name, ctx.doc, ctx.tx)
       const row = {
         ...columnValues(meta, doc),
         name: String(doc.name),
@@ -408,6 +411,7 @@ export async function saveDoc(
       ctx.doc = { ...(inserted[0] as DocValues) }
       await runHooks('after_insert', ctx)
       await runHooks('after_save', ctx)
+      await runDocEventScripts('after_save', meta.name, ctx.doc, ctx.tx)
       return inserted
     })
     .catch((err) => mapDbError(meta, err))
@@ -483,7 +487,9 @@ async function updateDoc(
         tx: stx,
       }
       await runHooks('validate', ctx)
+      await runDocEventScripts('validate', meta.name, ctx.doc, ctx.tx)
       await runHooks('before_save', ctx)
+      await runDocEventScripts('before_save', meta.name, ctx.doc, ctx.tx)
       const row = {
         ...columnValues(meta, doc),
         modified: new Date(),
@@ -497,6 +503,7 @@ async function updateDoc(
       await recordVersion(stx, meta, name, existing as DocValues, updated as DocValues, user)
       ctx.doc = { ...(updated as DocValues) }
       await runHooks('after_save', ctx)
+      await runDocEventScripts('after_save', meta.name, ctx.doc, ctx.tx)
       return updated
     })
     .catch((err) => mapDbError(meta, err))
