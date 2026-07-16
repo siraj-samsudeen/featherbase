@@ -9,6 +9,7 @@ import { DeskLayout } from './pages/DeskLayout'
 import { getToken } from './lib/api'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
+import { ReportView } from './components/ReportView'
 import { DocTypeBuilder } from './pages/DocTypeBuilder'
 
 const rootRoute = createRootRoute({ component: Outlet })
@@ -93,6 +94,24 @@ function DocTypeListPage() {
   )
 }
 
+// RPT-001: report view — column picker + group-by with totals, generic
+// over every DocType. Three segments, so it never collides with
+// $doctype/$name.
+const reportRoute = createRoute({
+  getParentRoute: () => deskRoute,
+  path: '$doctype/view/report',
+  component: ReportPage,
+})
+
+function ReportPage() {
+  const { doctype } = reportRoute.useParams()
+  return (
+    <div data-testid="doctype-page">
+      <ReportView key={doctype} doctype={doctype} />
+    </div>
+  )
+}
+
 // UI-004/UI-005: the generic FormView renders and saves every DocType.
 const docRoute = createRoute({
   getParentRoute: () => deskRoute,
@@ -112,5 +131,5 @@ function DocFormPage() {
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
-  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, doctypeRoute, docRoute]),
+  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, doctypeRoute, docRoute]),
 ])

@@ -13,6 +13,25 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — RPT-001 passing: report view (columns + group-by totals)
+
+- `ReportView.tsx` at /desk/:doctype/view/report (3-segment route, no
+  clash with $doctype/$name); "Report" button on ListView opens it.
+  Metadata-driven like everything else: column picker (checkbox dropdown,
+  defaults to in_list_view fields), group-by select over
+  Select/Link/Data/Check fields, groups render header rows with count +
+  sums of numeric (Int/Float/Currency) columns, collapsible; grand-total
+  row across all rows. Fetches up to 500 rows via the normal list API.
+- Verified by e2e/report-view.spec.ts: seeded Open(1,2)/Closed(5),
+  grand total 8; grouped: Open (2) sum 3, Closed (1) sum 5; collapse
+  hides member rows; unchecking qty removes the column.
+- 141 server + 16 web e2e green. 55/126.
+- Session tally (this wakeup): API-006, PERM-004, FILE-001, FILE-002,
+  UI-023, RPT-001 — 50→55. Next: RPT-002 (saved reports) or RPT-003
+  (CSV/XLSX export) build on this; UI-017 partially exists (attachments
+  panel done, needs assignments/tags/shares). An evaluator pass is due
+  next wakeup (~3 wakeups since pass #5).
+
 ## 2026-07-16 — UI-023 passing: Attach / Attach Image fields
 
 - New fieldtype 'Attach Image' added to all three layers (server

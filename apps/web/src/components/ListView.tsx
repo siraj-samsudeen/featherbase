@@ -77,6 +77,14 @@ export function ListView({
             {total} total
           </span>
         </div>
+        <Link
+          to="/desk/$doctype/view/report"
+          params={{ doctype }}
+          className="fc-btn"
+          data-testid="open-report"
+        >
+          Report
+        </Link>
       </div>
       {onFiltersChange && meta.data && (
         <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
