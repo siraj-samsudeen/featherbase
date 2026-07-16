@@ -1,5 +1,28 @@
 # Progress Log
 
+## 2026-07-16 — PERM-006 + PERM-008 passing: permlevel + DocShare (permissions engine COMPLETE)
+
+- PERM-006: `permittedLevels()`, `filterReadFields()`, `stripUnwritableFields()`.
+  getDoc strips fields above the user's read permlevels; save paths drop
+  writes to fields above write permlevels (silent, no escalation). Admin/
+  System Manager see all levels (sentinel -1). Verified: level-1 'salary'
+  hidden from level-0 user; their write to it ignored (server + live).
+- PERM-008: DocShare DocType (migration 0009); `isSharedWith()` grants
+  read/write on ONE doc bypassing role perms. getDoc/updateDoc consult
+  shares FIRST; a share grants full permlevel access (else a shared reader
+  with no role read-levels would get every field stripped — fixed both read
+  and write paths). Verified: no-role user 403 → read-share → 200 with body
+  → read-only can't write (403) → write-share edits → unshare → 403.
+- **Permissions engine is now feature-complete**: roles, DocPerm CRUD grants,
+  server enforcement, generated intent (RLS deferred), if_owner, user
+  permissions, permlevel field-level, DocShare, admin bypass, link-search
+  filtering. (10 of the 10 PERM features passing.)
+- 48/126. Next: UI-010 (submit/cancel/amend buttons in FormView — engine
+  ready), UI-003-adjacent list views (Kanban/Calendar), then reports/print/
+  workflow/jobs/realtime/email/files blocks.
+
+---
+
 ## 2026-07-16 — META-004 + UI-011 passing: schema sync + DocType builder
 
 - META-004: `updateDocType()` + PUT /api/doctype/:name. Adds columns for new

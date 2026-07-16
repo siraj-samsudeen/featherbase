@@ -64,6 +64,29 @@ export async function hasPermission(
   return (await permissionScope(user, doctype, action)) !== 'none'
 }
 
+// PERM-008: is this specific document shared with the user for this action?
+export async function isSharedWith(
+  user: string,
+  doctype: string,
+  name: string,
+  action: 'read' | 'write' | 'share',
+): Promise<boolean> {
+  const col = action === 'read' ? 'read' : action === 'write' ? 'write' : 'share'
+  const [row] = await sql`
+    select 1 from tab_docshare
+    where share_doctype = ${doctype} and share_name = ${name}
+      and "user" = ${user} and ${sql(col)} = true limit 1`
+  return Boolean(row)
+}
+
+// Names of documents of a doctype shared with the user (for list widening).
+export async function sharedNames(user: string, doctype: string): Promise<string[]> {
+  const rows = await sql`
+    select share_name from tab_docshare
+    where share_doctype = ${doctype} and "user" = ${user} and read = true`
+  return rows.map((r) => r.share_name as string)
+}
+
 // For operations on a specific existing document: owner-scoped grants
 // require ownership.
 export async function assertDocPermission(

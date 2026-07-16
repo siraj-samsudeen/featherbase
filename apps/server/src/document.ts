@@ -12,6 +12,7 @@ import {
   filterReadFields,
   getUserPermissionMap,
   isBypassUser,
+  isSharedWith,
   permittedLevels,
   stripUnwritableFields,
 } from './permissions'
@@ -406,7 +407,11 @@ async function updateDoc(
       'ValidationError',
       'Updates must include the modified timestamp of the loaded document',
     )
-  const writeLevels = await permittedLevels(user, meta.name, 'write')
+  // A write-share grants full field access; otherwise honor permlevels.
+  const sharedWrite = await isSharedWith(user, meta.name, name, 'write')
+  const writeLevels = sharedWrite
+    ? new Set([-1])
+    : await permittedLevels(user, meta.name, 'write')
   const fieldValues = validateValues(
     meta,
     stripUnwritableFields(meta.fields, writeLevels, pickFieldValues(meta, values)),
@@ -420,8 +425,11 @@ async function updateDoc(
         select * from ${tx(table)} where name = ${name} for update`
       if (!existing)
         throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
-      await assertDocPermission(user, meta.name, 'write', String(existing.owner))
-      await assertUserPermissions(user, meta, existing as DocValues)
+      // PERM-008: a share with write grants update even without role write.
+      if (!sharedWrite) {
+        await assertDocPermission(user, meta.name, 'write', String(existing.owner))
+        await assertUserPermissions(user, meta, existing as DocValues)
+      }
       const dbModified = (existing.modified as Date).getTime()
       const sentModified = new Date(String(values.modified)).getTime()
       if (Number.isNaN(sentModified) || dbModified !== sentModified)
@@ -675,15 +683,20 @@ export async function getDoc(
   user = 'Administrator',
 ): Promise<DocValues> {
   const meta = await getMeta(doctype)
-  await assertPermission(user, doctype, 'read')
   if (meta.issingle)
     throw new AppError('ValidationError', `${doctype} is a single DocType`)
   const [row] = await sql`
     select * from ${sql(tableName(doctype))} where name = ${name}`
   if (!row) throw new AppError('NotFoundError', `${doctype} ${name} not found`)
-  await assertDocPermission(user, doctype, 'read', String(row.owner))
-  await assertUserPermissions(user, meta, row as DocValues)
-  const readLevels = await permittedLevels(user, doctype, 'read')
+  // PERM-008: a direct share grants read even without role permission.
+  const shared = await isSharedWith(user, doctype, name, 'read')
+  if (!shared) {
+    await assertPermission(user, doctype, 'read')
+    await assertDocPermission(user, doctype, 'read', String(row.owner))
+    await assertUserPermissions(user, meta, row as DocValues)
+  }
+  // A share grants full field visibility; otherwise honor permlevels.
+  const readLevels = shared ? new Set([-1]) : await permittedLevels(user, doctype, 'read')
   const visible = filterReadFields(meta.fields, readLevels, row as DocValues)
   return loadChildren(meta, { doctype, ...visible })
 }
