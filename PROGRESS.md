@@ -13,6 +13,21 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — API-007 passing: per-user rate limiting
+
+- `rate-limit.ts`: a fixed-window (60s) per-user counter middleware, wired on
+  `/api/*` right after the auth middleware so it keys by the resolved user.
+  Budget = the User's `api_rate_limit` (migration 0029; 0/unset → a high global
+  default from `RATE_LIMIT_MAX`), cached ~5s to avoid a per-request DB hit.
+- Exceeding the budget returns **429** with a **Retry-After** header (seconds
+  until the window resets) and a `RateLimitError` envelope. Other users are
+  unaffected — only the throttled user's window fills.
+- `resetRateLimit(user?)` exported for tests/maintenance.
+- Verified: HTTP probe (budget 3 → reqs 1-3 = 200, 4-5 = 429 w/ Retry-After 11;
+  admin unthrottled) + server test (budget exceed → 429 + Retry-After +
+  RateLimitError; a second user stays 200). Global default (100k/min) keeps the
+  236 server + 44 web e2e suites green. 99/126.
+
 ## 2026-07-16 — SET-002 passing: user management + password reset
 
 - Migration 0028: `password_reset` table (token pk, user, expires_at) + a

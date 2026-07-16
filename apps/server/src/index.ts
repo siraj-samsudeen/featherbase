@@ -23,6 +23,7 @@ import { attachRealtime, publishDocEvent, publishUserEvent } from './realtime'
 import { queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
 import { requestPasswordReset, resetPassword } from './password-reset'
+import { rateLimit } from './rate-limit'
 import { parseFilters, runQueryReport } from './query-report'
 import { randomBytes } from 'node:crypto'
 
@@ -147,6 +148,10 @@ app.use('/api/*', async (c, next) => {
   c.set('user', user)
   await next()
 })
+
+// API-007: throttle authenticated requests per user (runs after auth so it can
+// key by the resolved user and read their budget).
+app.use('/api/*', rateLimit)
 
 const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').name
 
