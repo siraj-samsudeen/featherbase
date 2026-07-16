@@ -1,7 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Outlet, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { clearSession, getSessionUser, listResource } from '../lib/api'
+import { api, clearSession, getSessionUser, listResource } from '../lib/api'
+
+interface SearchHit {
+  doctype: string
+  name: string
+  title: string
+}
 
 // Frappe-style Desk shell: top navbar (brand + awesomebar + avatar) and a
 // workspace sidebar. All DocTypes render inside <Outlet/>.
@@ -26,15 +32,42 @@ export function DeskLayout() {
     navigate({ to: '/login' })
   }
 
+  // UI-014: document hits from the server, debounced.
+  const [debounced, setDebounced] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search.trim()), 150)
+    return () => clearTimeout(t)
+  }, [search])
+  const docHits = useQuery({
+    queryKey: ['awesomebar', debounced],
+    enabled: debounced.length > 0,
+    queryFn: () =>
+      api.get<{ results: SearchHit[] }>(`/api/search?q=${encodeURIComponent(debounced)}`),
+  })
+
+  function openDoc(hit: SearchHit) {
+    setSearch('')
+    navigate({ to: '/desk/$doctype/$name', params: { doctype: hit.doctype, name: hit.name } })
+  }
+
+  // Enter opens the top match: an exactly-named DocType's list first,
+  // otherwise the first document hit.
   function runSearch(e: React.FormEvent) {
     e.preventDefault()
     const q = search.trim()
     if (!q) return
-    const hit = doctypes.data?.data.find(
-      (d) => d.name.toLowerCase() === q.toLowerCase(),
-    )
-    const target = hit?.name ?? q
-    navigate({ to: '/desk/$doctype', params: { doctype: target }, search: { filters: undefined } })
+    const dtHit = doctypes.data?.data.find((d) => d.name.toLowerCase() === q.toLowerCase())
+    if (dtHit) {
+      setSearch('')
+      navigate({ to: '/desk/$doctype', params: { doctype: dtHit.name }, search: { filters: undefined } })
+      return
+    }
+    const doc = docHits.data?.results[0]
+    if (doc) {
+      openDoc(doc)
+      return
+    }
+    navigate({ to: '/desk/$doctype', params: { doctype: q }, search: { filters: undefined } })
   }
 
   const initials = (user?.full_name || user?.name || '?')
@@ -69,7 +102,7 @@ export function DeskLayout() {
             placeholder="Search or go to…"
             className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-canvas)] px-3 py-1.5 text-sm outline-none focus:border-[var(--color-brand)] focus:bg-white focus:ring-2 focus:ring-[var(--color-brand)]/15"
           />
-          {suggestions.length > 0 && (
+          {(suggestions.length > 0 || (docHits.data?.results.length ?? 0) > 0) && (
             <div className="fc-card absolute z-20 mt-1 w-full overflow-hidden py-1" data-testid="awesomebar-results">
               {suggestions.map((d) => (
                 <Link
@@ -83,6 +116,34 @@ export function DeskLayout() {
                   {d.name}
                   <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{d.module}</span>
                 </Link>
+              ))}
+              {/* UI-014: "new X" action for matched DocTypes */}
+              {suggestions.slice(0, 2).map((d) => (
+                <Link
+                  key={`new-${d.name}`}
+                  to="/desk/$doctype/$name"
+                  params={{ doctype: d.name, name: 'new' }}
+                  onClick={() => setSearch('')}
+                  data-testid="awesomebar-new"
+                  className="block px-3 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
+                >
+                  <span className="text-[var(--color-brand)]">+</span> New {d.name}
+                </Link>
+              ))}
+              {/* UI-014: document hits */}
+              {docHits.data?.results.map((h) => (
+                <button
+                  key={`${h.doctype}/${h.name}`}
+                  onClick={() => openDoc(h)}
+                  data-testid="awesomebar-doc"
+                  className="block w-full px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
+                >
+                  {h.title}
+                  {h.title !== h.name && (
+                    <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{h.name}</span>
+                  )}
+                  <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{h.doctype}</span>
+                </button>
               ))}
             </div>
           )}

@@ -11,6 +11,7 @@ import { loadControllers } from './controllers'
 import { login, resolveToken, type SessionUser } from './auth'
 import { assertPermission, assertSystemManager, getRoles } from './permissions'
 import { readStored, saveUpload } from './storage'
+import { globalSearch } from './search'
 
 await loadControllers()
 
@@ -186,6 +187,12 @@ function listArgsFromQuery(q: Record<string, string>) {
 
 app.get('/api/list/:doctype', async (c) => {
   return c.json(await getList(c.req.param('doctype'), listArgsFromQuery(c.req.query()), who(c)))
+})
+
+// UI-014: awesomebar global search across readable DocTypes.
+app.get('/api/search', async (c) => {
+  const q = c.req.query('q') ?? ''
+  return c.json({ results: await globalSearch(q, who(c)) })
 })
 
 // API-001/API-002: Frappe-style REST resource — one generic handler set

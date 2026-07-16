@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import * as XLSX from 'xlsx'
 
 const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
-const DT = 'RPT Task'
+const DT = 'RPT Export Task'
 
 // RPT-003: downloaded CSV (and XLSX) match the on-screen rows including
 // grouping order.

@@ -13,6 +13,21 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — UI-014 passing: awesomebar documents + new-X actions
+
+- Server GET /api/search: global typeahead over every regular DocType the
+  user can READ (hasPermission per doctype) — name ilike + title_field
+  ilike, LIKE-escaped, 3/doctype, 15 total. New `src/search.ts`.
+- DeskLayout awesomebar: 150ms-debounced doc hits under the DocType
+  matches, "+ New X" action rows for matched DocTypes, Enter opens exact
+  DocType list else the first document hit's form.
+- Verified by e2e/awesomebar.spec.ts (doc hit surfaces + click navigates,
+  Enter navigates, New X opens the new-doc form).
+- De-flaked two more cross-worker races: report specs each own their
+  DocType now (RPT Saved/Export Task), and bulk-actions asserts exact-match
+  stage cells. Full suite ran 6× green (20 passed).
+- 143 server + 20 web e2e green. 59/126.
+
 ## 2026-07-16 — UI-012 passing: list bulk actions
 
 - ListView: leading checkbox column (row-check + select-all over the

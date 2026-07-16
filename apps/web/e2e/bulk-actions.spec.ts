@@ -53,8 +53,11 @@ test('UI-012: bulk edit a field then bulk delete selected rows', async ({ page }
   await page.getByTestId('bulk-edit-value').fill('done')
   await page.getByTestId('bulk-edit-apply').click()
   await expect(page.getByTestId('bulk-bar')).toHaveCount(0)
-  // 3 rows now show 'done'.
-  await expect(page.getByTestId('list-rows').getByText('done')).toHaveCount(3)
+  // Exactly 3 stage cells read 'done' (exact match — substring matching
+  // catches transient re-render states and flakes).
+  await expect(
+    page.getByTestId('list-rows').locator('td').filter({ hasText: /^done$/ }),
+  ).toHaveCount(3)
 
   // Token for API verification.
   const token = await page.evaluate(() => localStorage.getItem('fc_token'))

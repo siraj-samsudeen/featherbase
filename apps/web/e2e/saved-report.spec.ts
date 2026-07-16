@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext } from '@playwright/test'
 
 const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
-const DT = 'RPT Task'
+const DT = 'RPT Saved Task'
 const REPORT = 'Open tasks by status'
 
 // RPT-002: save a configured report; reopening it restores columns,
