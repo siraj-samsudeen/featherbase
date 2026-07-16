@@ -1,5 +1,28 @@
 # Progress Log
 
+## Visual identity (standing directive for all UI work)
+
+The Desk is reskinned to look like Frappe. Every new UI feature MUST inherit
+this look — do not introduce ad-hoc colors/spacing:
+- Design tokens live in `apps/web/src/index.css` (`@theme`): canvas
+  `#f4f5f6`, brand `#2490ef` (Frappe blue), ink `#1c2126`, hairline borders
+  `#ebeef0`/`#d1d8dd`, Inter (self-hosted via `@fontsource-variable/inter`,
+  NO network fonts — offline is a hard requirement for the test browser).
+- Reuse the shared component classes: `.fc-card`, `.fc-input`, `.fc-btn`,
+  `.fc-btn-primary`, `.fc-label`, `.fc-pill`. Prefer these over raw Tailwind.
+- Shell (navbar + workspace sidebar + awesomebar + avatar) is in
+  `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
+
+## 2026-07-16 — Frappe reskin (Interleave polish pass)
+
+- Reskinned Login, Desk shell, ListView, FormView, DocTypeBuilder to the
+  Frappe Desk look (tokens + fc-* classes above). Self-hosted Inter to keep
+  the offline test browser fast (a Google Fonts `<link>` had blocked the
+  `load` event → 30s goto timeouts). Kept all data-testids; avatar shows
+  initials with the full name as sr-only text so UI-001 still asserts it.
+- 13 web e2e green in ~11s (was 2.9m with the network font). Verified all
+  four screens by screenshot.
+
 ## 2026-07-16 — Evaluation pass #5 + UI-010 passing: submit/cancel/amend UI
 
 - **Evaluator pass #5** (all held, no findings): permlevel-1 field injection

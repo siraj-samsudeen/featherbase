@@ -142,7 +142,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
       </nav>
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">
+          <h1 className="text-xl font-semibold text-[var(--color-ink)]">
             {doctype}: {isNew ? 'New' : name}
           </h1>
           <span className="text-xs text-gray-500" data-testid="form-status">
@@ -155,10 +155,10 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
               data-testid="docstatus-badge"
               className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                 docstatus === 1
-                  ? 'bg-green-100 text-green-800'
+                  ? 'bg-[var(--color-good-tint)] text-[var(--color-good)]'
                   : docstatus === 2
-                    ? 'bg-red-100 text-red-700'
-                    : 'bg-gray-100 text-gray-600'
+                    ? 'bg-[var(--color-danger-tint)] text-[var(--color-danger)]'
+                    : 'bg-[var(--color-subtle)] text-[var(--color-ink-muted)]'
               }`}
             >
               {docstatus === 1 ? 'Submitted' : docstatus === 2 ? 'Cancelled' : 'Draft'}
@@ -168,7 +168,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
             onClick={save}
             disabled={saving || !dirty || (submittable && docstatus !== 0)}
             data-testid="form-save"
-            className="rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+            className="fc-btn-primary disabled:opacity-40"
           >
             {saving ? 'Saving…' : 'Save'}
           </button>
@@ -176,7 +176,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
             <button
               onClick={() => runAction('/api/submit_doc')}
               data-testid="form-submit"
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white"
+              className="fc-btn-primary"
             >
               Submit
             </button>
@@ -185,7 +185,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
             <button
               onClick={() => runAction('/api/cancel_doc')}
               data-testid="form-cancel"
-              className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700"
+              className="fc-btn border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)]"
             >
               Cancel
             </button>
@@ -194,7 +194,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
             <button
               onClick={() => runAction('/api/amend_doc')}
               data-testid="form-amend"
-              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700"
+              className="fc-btn"
             >
               Amend
             </button>
@@ -203,7 +203,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
       </div>
       {banner && (
         <p
-          className={`mb-3 text-sm ${banner === 'Saved' || banner === 'Done' ? 'text-green-700' : 'text-red-600'}`}
+          className={`mb-3 text-sm ${banner === 'Saved' || banner === 'Done' ? 'text-[var(--color-good)]' : 'text-[var(--color-danger)]'}`}
           data-testid="form-banner"
         >
           {banner}
@@ -213,7 +213,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
         <div
           key={si}
           data-testid={`form-section-${si}`}
-          className="mb-6 grid grid-cols-1 gap-4 border-t border-gray-100 pt-4 first:border-t-0 first:pt-0 md:grid-cols-2"
+          className="fc-card mb-4 grid grid-cols-1 gap-4 p-5 md:grid-cols-2"
         >
           {fields.map((f) =>
             f.fieldtype === 'Column Break' ? (
@@ -254,10 +254,9 @@ function FieldControl({
   values: Doc
   setField: (fieldname: string, value: unknown) => void
 }) {
-  const base =
-    'w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-500'
+  const base = 'fc-input'
   const label = (
-    <label className="mb-1 block text-xs font-medium text-gray-600">
+    <label className="fc-label">
       {field.label ?? field.fieldname}
       {field.reqd && <span className="text-red-500"> *</span>}
     </label>

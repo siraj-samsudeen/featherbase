@@ -74,17 +74,17 @@ export function DocTypeBuilder() {
 
   return (
     <div data-testid="doctype-builder" className="max-w-3xl">
-      <h1 className="mb-4 text-lg font-semibold text-gray-900">New DocType</h1>
-      <label className="mb-1 block text-xs font-medium text-gray-600">DocType name</label>
+      <h1 className="mb-4 text-xl font-semibold text-[var(--color-ink)]">New DocType</h1>
+      <label className="fc-label">DocType name</label>
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
         data-testid="dt-name"
         placeholder="e.g. Project"
-        className="mb-4 w-full max-w-sm rounded-md border border-gray-300 px-3 py-2 text-sm"
+        className="fc-input mb-4 max-w-sm"
       />
 
-      <div className="overflow-x-auto rounded-md border border-gray-200">
+      <div className="fc-card overflow-x-auto">
         <table className="w-full text-sm" data-testid="dt-fields">
           <thead className="bg-gray-50 text-left text-xs text-gray-600">
             <tr>
@@ -186,7 +186,7 @@ export function DocTypeBuilder() {
         onClick={create}
         disabled={saving || !name.trim()}
         data-testid="dt-create"
-        className="mt-4 rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+        className="fc-btn-primary mt-4 disabled:opacity-40"
       >
         {saving ? 'Creating…' : 'Create DocType'}
       </button>

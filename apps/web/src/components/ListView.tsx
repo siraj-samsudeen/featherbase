@@ -71,22 +71,24 @@ export function ListView({
   return (
     <div data-testid="list-view">
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-gray-900">{doctype}</h1>
-        <span className="text-xs text-gray-500" data-testid="list-total">
-          {total} total
-        </span>
+        <div>
+          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{doctype}</h1>
+          <span className="text-xs text-[var(--color-ink-muted)]" data-testid="list-total">
+            {total} total
+          </span>
+        </div>
       </div>
       {onFiltersChange && meta.data && (
         <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
       )}
-      <div className="overflow-x-auto rounded-md border border-gray-200">
+      <div className="fc-card overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left">
+          <thead className="bg-[var(--color-subtle)] text-left">
             <tr>
               {columns.map((col) => (
-                <th key={col.fieldname} className="border-b border-gray-200">
+                <th key={col.fieldname} className="border-b border-[var(--color-border)]">
                   <button
-                    className="w-full px-3 py-2 text-left font-medium text-gray-600 hover:text-gray-900"
+                    className="w-full px-3 py-2 text-left font-medium text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
                     data-testid={`col-${col.fieldname}`}
                     onClick={() => toggleSort(col.fieldname)}
                   >
@@ -99,19 +101,19 @@ export function ListView({
           </thead>
           <tbody data-testid="list-rows">
             {rows.map((row) => (
-              <tr key={String(row.name)} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+              <tr key={String(row.name)} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]">
                 {columns.map((col, i) => (
                   <td key={col.fieldname} className="px-3 py-2">
                     {i === 0 ? (
                       <Link
                         to="/desk/$doctype/$name"
                         params={{ doctype, name: String(row.name) }}
-                        className="text-gray-900 underline-offset-2 hover:underline"
+                        className="font-medium text-[var(--color-brand)] hover:underline"
                       >
                         {cell(row[col.fieldname])}
                       </Link>
                     ) : (
-                      <span className="text-gray-700">{cell(row[col.fieldname])}</span>
+                      <span className="text-[var(--color-ink)]">{cell(row[col.fieldname])}</span>
                     )}
                   </td>
                 ))}
@@ -119,7 +121,7 @@ export function ListView({
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={columns.length} className="px-3 py-6 text-center text-gray-400">
+                <td colSpan={columns.length} className="px-3 py-8 text-center text-[var(--color-ink-faint)]">
                   No documents
                 </td>
               </tr>
@@ -132,18 +134,18 @@ export function ListView({
           disabled={start === 0}
           onClick={() => setStart((s) => Math.max(0, s - PAGE))}
           data-testid="prev-page"
-          className="rounded border border-gray-300 px-2 py-1 disabled:opacity-40"
+          className="fc-btn disabled:opacity-40"
         >
           Prev
         </button>
-        <span className="text-xs text-gray-500" data-testid="page-info">
+        <span className="text-xs text-[var(--color-ink-muted)]" data-testid="page-info">
           {total === 0 ? 0 : start + 1}–{Math.min(start + PAGE, total)} of {total}
         </span>
         <button
           disabled={start + PAGE >= total}
           onClick={() => setStart((s) => s + PAGE)}
           data-testid="next-page"
-          className="rounded border border-gray-300 px-2 py-1 disabled:opacity-40"
+          className="fc-btn disabled:opacity-40"
         >
           Next
         </button>
@@ -186,7 +188,7 @@ function FilterBar({
           value={field}
           onChange={(e) => setField(e.target.value)}
           data-testid="filter-field"
-          className="rounded border border-gray-300 px-2 py-1 text-sm"
+          className="fc-input max-w-[10rem]"
         >
           {fields.map((f) => (
             <option key={f.fieldname} value={f.fieldname}>
@@ -198,7 +200,7 @@ function FilterBar({
           value={op}
           onChange={(e) => setOp(e.target.value)}
           data-testid="filter-op"
-          className="rounded border border-gray-300 px-2 py-1 text-sm"
+          className="fc-input max-w-[10rem]"
         >
           {OPS.map((o) => (
             <option key={o} value={o}>
@@ -212,12 +214,12 @@ function FilterBar({
           onKeyDown={(e) => e.key === 'Enter' && add()}
           placeholder="Value"
           data-testid="filter-value"
-          className="rounded border border-gray-300 px-2 py-1 text-sm"
+          className="fc-input max-w-[10rem]"
         />
         <button
           onClick={add}
           data-testid="filter-add"
-          className="rounded border border-gray-300 px-2 py-1 text-sm hover:bg-gray-50"
+          className="fc-btn"
         >
           Add filter
         </button>
@@ -227,7 +229,7 @@ function FilterBar({
           {filters.map((f, i) => (
             <span
               key={i}
-              className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700"
+              className="fc-pill bg-[var(--color-subtle)] text-[var(--color-ink)] gap-1 border border-[var(--color-border)]"
               data-testid="filter-chip"
             >
               {f[0]} {f[1]} {String(f[2])}

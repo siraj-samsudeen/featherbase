@@ -1,1 +1,82 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/inter';
+
+/* Frappe-faithful design tokens (Desk look): light canvas, white cards,
+   Frappe blue accent, Inter type, subtle borders and shadows. */
+@theme {
+  --font-sans: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  --color-canvas: #f4f5f6; /* desk background */
+  --color-surface: #ffffff; /* cards */
+  --color-subtle: #f7f7f8; /* header rows, hovers */
+  --color-border: #ebeef0; /* hairline borders */
+  --color-border-strong: #d1d8dd; /* control borders */
+
+  --color-ink: #1c2126; /* primary text */
+  --color-ink-muted: #6c7680; /* secondary text */
+  --color-ink-faint: #98a1a9; /* placeholders */
+
+  --color-brand: #2490ef; /* Frappe blue */
+  --color-brand-dark: #1579d0;
+  --color-brand-tint: #eef6fe; /* active/hover tint */
+
+  --color-good: #38a160;
+  --color-good-tint: #e6f4ec;
+  --color-danger: #e24c4c;
+  --color-danger-tint: #fbecec;
+  --color-warn: #cb9a26;
+  --color-warn-tint: #fbf3e0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Slim, unobtrusive scrollbars like the Desk. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cfd6dc transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #cfd6dc;
+  border-radius: 8px;
+}
+
+/* Shared component classes so every generic view inherits the Frappe look. */
+@layer components {
+  .fc-card {
+    @apply rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_1px_2px_rgba(25,39,52,0.04),0_1px_3px_rgba(25,39,52,0.03)];
+  }
+  .fc-input {
+    @apply w-full rounded-md border border-[var(--color-border-strong)] bg-white px-3 py-1.5 text-sm text-[var(--color-ink)] outline-none transition
+      placeholder:text-[var(--color-ink-faint)]
+      focus:border-[var(--color-brand)] focus:ring-2 focus:ring-[var(--color-brand)]/20
+      disabled:bg-[var(--color-subtle)] disabled:text-[var(--color-ink-muted)];
+  }
+  .fc-btn {
+    @apply inline-flex items-center gap-1.5 rounded-md border border-[var(--color-border-strong)] bg-white px-3 py-1.5 text-sm font-medium text-[var(--color-ink)] transition hover:bg-[var(--color-subtle)] disabled:opacity-40;
+  }
+  .fc-btn-primary {
+    @apply inline-flex items-center gap-1.5 rounded-md bg-[var(--color-brand)] px-4 py-1.5 text-sm font-medium text-white transition hover:bg-[var(--color-brand-dark)] disabled:opacity-40;
+  }
+  .fc-label {
+    @apply mb-1 block text-xs font-medium text-[var(--color-ink-muted)];
+  }
+  .fc-pill {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+}

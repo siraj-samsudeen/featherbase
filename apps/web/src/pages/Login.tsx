@@ -23,39 +23,47 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
-        <h1 className="mb-6 text-center text-xl font-semibold text-gray-900">
-          Sign in
-        </h1>
-        <form className="space-y-4" data-testid="login-form" onSubmit={onSubmit}>
-          <input
-            type="text"
-            name="email"
-            placeholder="Email or username"
-            autoComplete="username"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-          />
-          <input
-            type="password"
-            name="password"
-            placeholder="Password"
-            autoComplete="current-password"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-          />
-          {error && (
-            <p className="text-sm text-red-600" data-testid="login-error">
-              {error}
-            </p>
-          )}
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {busy ? 'Signing in…' : 'Sign in'}
-          </button>
-        </form>
+    <div className="flex min-h-screen items-center justify-center bg-[var(--color-canvas)] px-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-6 flex flex-col items-center gap-2">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-brand)] text-lg font-bold text-white shadow-sm">
+            F
+          </span>
+          <h1 className="text-lg font-semibold text-[var(--color-ink)]">Frappe Clone</h1>
+          <p className="text-sm text-[var(--color-ink-muted)]">Sign in to your account</p>
+        </div>
+        <div className="fc-card p-6">
+          <form className="space-y-4" data-testid="login-form" onSubmit={onSubmit}>
+            <div>
+              <label className="fc-label">Email or username</label>
+              <input
+                type="text"
+                name="email"
+                autoComplete="username"
+                placeholder="Administrator"
+                className="fc-input"
+              />
+            </div>
+            <div>
+              <label className="fc-label">Password</label>
+              <input
+                type="password"
+                name="password"
+                autoComplete="current-password"
+                placeholder="••••••••"
+                className="fc-input"
+              />
+            </div>
+            {error && (
+              <p className="text-sm text-[var(--color-danger)]" data-testid="login-error">
+                {error}
+              </p>
+            )}
+            <button type="submit" disabled={busy} className="fc-btn-primary w-full justify-center py-2">
+              {busy ? 'Signing in…' : 'Sign in'}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   )
