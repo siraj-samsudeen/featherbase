@@ -17,6 +17,7 @@ import { QueryReportView } from './components/QueryReportView'
 import { ScriptReportView } from './components/ScriptReportView'
 import { PermissionManager } from './components/PermissionManager'
 import { DashboardView } from './components/DashboardView'
+import { WorkspaceView } from './components/WorkspaceView'
 import { KanbanView } from './components/KanbanView'
 import { CalendarView } from './components/CalendarView'
 import { PrintView } from './pages/PrintView'
@@ -261,6 +262,22 @@ function ScriptReportPage() {
   )
 }
 
+// UI-027: a Workspace renders navigable shortcut cards (static segment).
+const workspaceRoute = createRoute({
+  getParentRoute: () => deskRoute,
+  path: 'workspace/$name',
+  component: WorkspacePage,
+})
+
+function WorkspacePage() {
+  const { name } = workspaceRoute.useParams()
+  return (
+    <div data-testid="doctype-page">
+      <WorkspaceView key={name} name={name} />
+    </div>
+  )
+}
+
 // UI-026: a saved Dashboard renders number cards + charts (static segment).
 const dashboardRoute = createRoute({
   getParentRoute: () => deskRoute,
@@ -315,5 +332,5 @@ export const routeTree = rootRoute.addChildren([
   resetPasswordRoute,
   webFormRoute,
   printRoute,
-  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, doctypeRoute, docRoute]),
+  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, workspaceRoute, doctypeRoute, docRoute]),
 ])

@@ -42,6 +42,17 @@ export function DeskLayout() {
       }),
   })
 
+  // UI-027: workspaces listed in the sidebar for quick navigation.
+  const workspaces = useQuery({
+    queryKey: ['workspaces'],
+    queryFn: () =>
+      listResource<{ name: string; label: string }>('Workspace', {
+        fields: ['name', 'label'],
+        order_by: 'label asc',
+        limit_page_length: 100,
+      }),
+  })
+
   function logout() {
     clearSession()
     navigate({ to: '/login' })
@@ -212,8 +223,29 @@ export function DeskLayout() {
               + New DocType
             </Link>
           </div>
+          {(workspaces.data?.data.length ?? 0) > 0 && (
+            <div data-testid="workspace-nav">
+              <div className="px-4 pt-5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+                Workspaces
+              </div>
+              <nav className="px-2">
+                {workspaces.data?.data.map((w) => (
+                  <Link
+                    key={w.name}
+                    to="/desk/workspace/$name"
+                    params={{ name: w.name }}
+                    data-testid={`workspace-link-${w.name}`}
+                    className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-subtle)]"
+                    activeProps={{ className: 'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]' }}
+                  >
+                    {w.label || w.name}
+                  </Link>
+                ))}
+              </nav>
+            </div>
+          )}
           <div className="px-4 pt-5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
-            Workspace
+            Doctypes
           </div>
           <nav className="flex-1 overflow-y-auto px-2 pb-4" data-testid="doctype-nav">
             {doctypes.isLoading && <p className="px-2 py-1 text-xs text-[var(--color-ink-faint)]">Loading…</p>}

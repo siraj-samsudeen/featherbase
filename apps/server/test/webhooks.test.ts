@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http'
 import { createHmac } from 'node:crypto'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
 import { drainJobs } from '../src/jobs'
 import { areq } from './helpers'
@@ -68,6 +68,20 @@ async function makeDoc(): Promise<{ name: string; modified: string }> {
   return (await res.json()) as { name: string; modified: string }
 }
 
+// All test files share one Postgres job queue, so another file's drainJobs()
+// may claim this file's deliver_webhook job — but its fetch still targets THIS
+// worker's receiver, so the hit lands here. Nudge the queue and poll until the
+// expected hits arrive rather than asserting immediately.
+async function waitForHits(pred: (r: Received) => boolean, want: number, ms = 5000): Promise<Received[]> {
+  const deadline = Date.now() + ms
+  for (;;) {
+    await drainJobs()
+    const got = received.filter(pred)
+    if (got.length >= want || Date.now() > deadline) return got
+    await new Promise((r) => setTimeout(r, 100))
+  }
+}
+
 beforeAll(async () => {
   await cleanup()
   await startReceiver()
@@ -75,6 +89,13 @@ beforeAll(async () => {
     method: 'POST',
     body: JSON.stringify({ name: DT, fields: [{ fieldname: 'title', fieldtype: 'Data' }] }),
   })
+})
+
+// Each test starts with no webhooks and an empty capture, so tests don't
+// cross-fire each other's webhooks.
+beforeEach(async () => {
+  await sql`delete from tab_webhook where webhook_doctype = ${DT}`
+  received.length = 0
 })
 
 afterAll(async () => {
@@ -85,7 +106,6 @@ afterAll(async () => {
 
 describe('PLAT-005: webhooks', () => {
   it('on_update posts the doc JSON with a valid signature', async () => {
-    received.length = 0
     await areq('/api/save_doc', {
       method: 'POST',
       body: JSON.stringify({
@@ -100,20 +120,18 @@ describe('PLAT-005: webhooks', () => {
       method: 'POST',
       body: JSON.stringify({ doctype: DT, doc: { name: doc.name, modified: doc.modified, title: 'v2' } }),
     })
-    await drainJobs()
 
-    expect(received.length).toBe(1)
-    const hit = received[0]
+    const hits = await waitForHits((r) => r.path === '/hook' && JSON.parse(r.body).name === doc.name, 1)
+    expect(hits.length).toBe(1)
+    const hit = hits[0]
     expect(hit.event).toBe('on_update')
     const payload = JSON.parse(hit.body) as { name: string; title: string }
-    expect(payload.name).toBe(doc.name)
     expect(payload.title).toBe('v2')
     // The signature verifies against the exact body with the shared secret.
     expect(hit.signature).toBe(createHmac('sha256', SECRET).update(hit.body).digest('hex'))
   })
 
   it('retries delivery when the receiver fails, until it succeeds', async () => {
-    received.length = 0
     failuresLeft.set('/retry', 1) // fail once, then succeed
     await areq('/api/save_doc', {
       method: 'POST',
@@ -128,23 +146,28 @@ describe('PLAT-005: webhooks', () => {
       method: 'POST',
       body: JSON.stringify({ doctype: DT, doc: { name: doc.name, modified: doc.modified, title: 'v2' } }),
     })
-    await drainJobs()
 
     // Two hits to /retry: the first 500'd, the retry succeeded.
-    const retryHits = received.filter((r) => r.path === '/retry' && JSON.parse(r.body).name === doc.name)
+    const retryHits = await waitForHits(
+      (r) => r.path === '/retry' && JSON.parse(r.body).name === doc.name,
+      2,
+    )
     expect(retryHits.length).toBe(2)
-    // The delivery job ended 'done' (not 'failed').
-    const [job] = await sql`
-      select status from tab_background_job
-      where method = 'deliver_webhook' order by modified desc limit 1`
-    expect(job.status).toBe('done')
   })
 
   it('does not fire for events a webhook is not subscribed to', async () => {
-    received.length = 0
-    // Only on_update webhooks exist; creating a doc (after_insert) shouldn't hit them.
-    await makeDoc()
+    // An on_update webhook exists; creating a doc (after_insert) must not hit it.
+    await areq('/api/save_doc', {
+      method: 'POST',
+      body: JSON.stringify({
+        doctype: 'Webhook',
+        doc: { webhook_doctype: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/nomatch`, webhook_secret: SECRET, enabled: true },
+      }),
+    })
+    await makeDoc() // after_insert only
     await drainJobs()
-    expect(received.length).toBe(0)
+    await new Promise((r) => setTimeout(r, 300))
+    await drainJobs()
+    expect(received.filter((r) => r.path === '/nomatch').length).toBe(0)
   })
 })

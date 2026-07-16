@@ -13,6 +13,25 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — UI-027 passing: workspaces (configurable shortcut home pages)
+
+- Migration 0036: `Workspace` DocType (label, icon, shortcuts JSON —
+  `[{label, type, link_to}]`, type ∈ doctype/report/dashboard/url).
+- Web `WorkspaceView` + route `/desk/workspace/$name` renders each shortcut as
+  a card; clicking navigates to the computed route (doctype→list,
+  dashboard→/desk/dashboard, report→/desk/query-report, url→as-is). A
+  "Workspaces" section in the Desk sidebar lists all Workspaces (only shows
+  when any exist; DocTypes moved under a "Doctypes" heading).
+- Verified: e2e (open a workspace from the sidebar; its shortcuts list; a
+  doctype shortcut opens that list, a dashboard shortcut opens that dashboard).
+  Frontend-only over the generic doc API. 106/126.
+- Also hardened test/webhooks.test.ts against a pre-existing shared-job-queue
+  flake (all test files share one Postgres queue, so another file's drainJobs
+  can claim this file's deliver_webhook job — but its fetch still hits this
+  worker's receiver): tests now clean webhooks per-test and poll for the
+  expected hits instead of asserting right after drainJobs. Full suite now
+  259 server + 52 web e2e green across repeated runs.
+
 ## 2026-07-16 — UI-024 passing: dark mode with per-user preference
 
 - Dark theme is pure token overrides: a `[data-theme='dark']` block in
