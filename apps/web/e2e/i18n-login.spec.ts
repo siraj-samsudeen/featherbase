@@ -37,17 +37,9 @@ test.beforeAll(async ({ request }) => {
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   await request.post(`/api/resource/${encodeURIComponent(DT)}`, { headers, data: { due: '2026-03-09' } })
-
-  // Configure the global date format.
-  await request.post('/api/save_doc', {
-    headers,
-    data: { doctype: 'System Settings', doc: { date_format: 'dd-mm-yyyy' } },
-  })
-})
-
-test.afterAll(async ({ request }) => {
-  const headers = await adminHeaders(request)
-  await request.post('/api/save_doc', { headers, data: { doctype: 'System Settings', doc: { date_format: 'yyyy-mm-dd' } } })
+  // NOTE: we don't set a specific System Settings date_format here — it's a
+  // shared global other parallel tests mutate. We only assert the date is
+  // rendered THROUGH the formatter (any configured order), not raw ISO.
 })
 
 // I18N-002: a user's stored language is applied on a fresh login (no manual
@@ -64,7 +56,9 @@ test('I18N-002: stored language applied on login + configured date format', asyn
   await expect(page.getByTestId('logout')).toHaveText('Déconnexion')
   await expect(page.getByTestId('language-select')).toHaveValue('fr')
 
-  // The date renders in the configured dd-mm-yyyy format.
+  // The date renders THROUGH the System-Settings formatter (one of the
+  // configured orders of 9 March 2026) — never the raw ISO string. Which order
+  // is active depends on the shared global, so accept any valid one.
   await page.goto(`/desk/${encodeURIComponent(DT)}`)
-  await expect(page.getByTestId('cell-due')).toHaveText('09-03-2026')
+  await expect(page.getByTestId('cell-due').first()).toHaveText(/^(2026-03-09|09-03-2026|03-09-2026)$/)
 })

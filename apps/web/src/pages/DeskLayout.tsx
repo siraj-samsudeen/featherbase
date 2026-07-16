@@ -44,6 +44,49 @@ export function DeskLayout() {
       }),
   })
 
+  // UI-015: global keyboard shortcuts.
+  //   Ctrl/Cmd+S  save the current form
+  //   Ctrl/Cmd+B  new document of the current DocType
+  //   g then d    go to the Desk home
+  useEffect(() => {
+    let leader = 0 // timestamp of a recent 'g' press
+    function currentDoctype(): string | null {
+      const m = /^\/desk\/([^/]+)/.exec(window.location.pathname)
+      return m ? decodeURIComponent(m[1]) : null
+    }
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null
+      const typing =
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        document.querySelector<HTMLButtonElement>('[data-testid=form-save]')?.click()
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault()
+        const dt = currentDoctype()
+        if (dt && dt !== 'new-doctype') navigate({ to: '/desk/$doctype/$name', params: { doctype: dt, name: 'new' } })
+        return
+      }
+      // Leader-key navigation only when not typing into a field.
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return
+      const now = Date.now()
+      if (e.key.toLowerCase() === 'g') {
+        leader = now
+      } else if (e.key.toLowerCase() === 'd' && now - leader < 1000) {
+        leader = 0
+        navigate({ to: '/desk' })
+      } else {
+        leader = 0
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [navigate])
+
   // UI-027: workspaces listed in the sidebar for quick navigation.
   const workspaces = useQuery({
     queryKey: ['workspaces'],

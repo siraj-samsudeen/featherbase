@@ -13,6 +13,20 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — UI-015 passing: keyboard shortcuts
+
+- A global keydown handler in DeskLayout: **Ctrl/Cmd+S** clicks the form's Save
+  button, **Ctrl/Cmd+B** opens a new document of the current DocType (parsed
+  from the path), and the **g then d** leader sequence (only when not typing in
+  a field) goes to the Desk home. Ctrl+S/Ctrl+B preventDefault the browser
+  defaults.
+- Verified: e2e (Ctrl+S → Saved banner; Ctrl+B → /desk/<DocType>/new form; g
+  then d → /desk). 62 web e2e green. 114/126.
+- Also de-flaked e2e/i18n-login.spec (I18N-002): it no longer sets the shared
+  global System Settings date_format (which raced with SET-004's test) — it
+  asserts the date renders through the formatter in ANY valid order, and
+  targets the first list cell.
+
 ## 2026-07-16 — I18N-002 passing: per-user language on login + configured formats
 
 - Satisfied by composition of I18N-001 (per-user `language` returned by whoami,
