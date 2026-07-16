@@ -381,7 +381,7 @@ export async function saveDoc(
         idx: doc.idx,
       }
       await validateLinks(stx, meta, row)
-      const inserted = await tx`insert into ${tx(table)} ${tx(row as Record<string, never>)} returning *`
+      const inserted = await tx`insert into ${tx(table)} ${tx(row as unknown as Record<string, never>)} returning *`
       for (const input of childInputs)
         await saveChildren(stx, meta, name, input, user)
       ctx.doc = { ...(inserted[0] as DocValues) }

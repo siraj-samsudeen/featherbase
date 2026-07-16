@@ -1,4 +1,5 @@
 // Asserts the RUNNING server is healthy. Does not boot anything itself.
+export {}
 const base = process.env.SERVER_URL ?? 'http://localhost:8000'
 
 const res = await fetch(`${base}/api/ping`)

@@ -9,6 +9,8 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': 'http://localhost:8000',
+      '/files': 'http://localhost:8000',
+      '/private/files': 'http://localhost:8000',
     },
   },
 })

@@ -1,5 +1,5 @@
 import { serve } from '@hono/node-server'
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { config } from './config'
 import { sql } from './db'
 import { AppError, errorResponse } from './errors'
@@ -10,6 +10,7 @@ import { getList } from './query'
 import { loadControllers } from './controllers'
 import { login, resolveToken, type SessionUser } from './auth'
 import { assertPermission, assertSystemManager, getRoles } from './permissions'
+import { readStored, saveUpload } from './storage'
 
 await loadControllers()
 
@@ -36,6 +37,29 @@ app.post('/api/login', async (c) => {
   if (!usr || !pwd) throw new AppError('ValidationError', 'Expected { usr, pwd }')
   return c.json(await login(usr, pwd))
 })
+
+// FILE-001: serve stored files. Only files registered as a File doc are
+// readable. Public bucket needs no session; the private bucket accepts a
+// bearer header or ?token= (so <img src> and download links work).
+async function serveFile(c: Context<Env>, fileUrl: string, requireAuth: boolean) {
+  if (requireAuth) {
+    const token = c.req.query('token')
+    await resolveToken(c.req.header('authorization') ?? (token ? `Bearer ${token}` : undefined))
+  }
+  const [row] = await sql`
+    select file_name, mime_type from tab_file where file_url = ${fileUrl}`
+  if (!row) throw new AppError('NotFoundError', `File not found: ${fileUrl}`)
+  const content = await readStored(fileUrl)
+  return c.body(new Uint8Array(content), 200, {
+    'content-type': (row.mime_type as string) || 'application/octet-stream',
+    'content-disposition': `inline; filename="${(row.file_name as string).replace(/"/g, '')}"`,
+  })
+}
+
+app.get('/files/:stored', (c) => serveFile(c, `/files/${c.req.param('stored')}`, false))
+app.get('/private/files/:stored', (c) =>
+  serveFile(c, `/private/files/${c.req.param('stored')}`, true),
+)
 
 // ---- API-004: everything below requires a valid session --------------------
 
@@ -81,6 +105,33 @@ app.post('/api/save_doc', async (c) => {
 
 app.get('/api/doc/:doctype/:name', async (c) => {
   return c.json(await getDoc(c.req.param('doctype'), c.req.param('name'), who(c)))
+})
+
+// FILE-001: multipart upload — writes the storage object, then creates the
+// File doc through the normal save lifecycle (permissions included).
+app.post('/api/upload_file', async (c) => {
+  const body = await c.req.parseBody()
+  const file = body.file
+  if (!(file instanceof File))
+    throw new AppError('ValidationError', 'Expected multipart form data with a "file" part')
+  const isPrivate = body.is_private === '1' || body.is_private === 'true'
+  const stored = await saveUpload(Buffer.from(await file.arrayBuffer()), file.name, isPrivate)
+  const doc = await saveDoc(
+    'File',
+    {
+      file_name: file.name,
+      file_url: stored.file_url,
+      mime_type: file.type || 'application/octet-stream',
+      file_size: file.size,
+      is_private: isPrivate,
+      ...(typeof body.ref_doctype === 'string' && body.ref_doctype
+        ? { ref_doctype: body.ref_doctype }
+        : {}),
+      ...(typeof body.ref_name === 'string' && body.ref_name ? { ref_name: body.ref_name } : {}),
+    },
+    who(c),
+  )
+  return c.json(doc, 201)
 })
 
 app.post('/api/submit_doc', async (c) => {

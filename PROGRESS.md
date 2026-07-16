@@ -13,6 +13,27 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — FILE-001 passing: disk-backed file storage + File docs
+
+- `src/storage.ts`: uploads land in `apps/server/storage/{public,private}`
+  (gitignored; FILE_STORAGE_DIR overrides) with a random-prefix sanitized
+  name. POST /api/upload_file (multipart, authed) writes the object then
+  creates the File doc through saveDoc (file_name, file_url, mime_type,
+  file_size, is_private, ref_doctype/ref_name).
+- Serving: GET /files/:stored public; GET /private/files/:stored needs a
+  bearer header or ?token= (for <img src>). Files serve ONLY via a File-row
+  lookup on file_url — unregistered/traversal paths 404. Vite now proxies
+  /files and /private/files.
+- Verified live via curl (upload public+private, 401 unauthed upload and
+  private read, token read OK, traversal 404, through :5173 proxy) and 6
+  tests in test/files.test.ts.
+- Also fixed latent server typecheck: @types/node was missing in
+  apps/server (tsc always failed); document.ts:384 cast + smoke.ts
+  top-level-await module-ness. `npx tsc -p tsconfig.json --noEmit` green.
+- 140 server tests + 13 web e2e green. 52/126.
+- Next: FILE-002 (attachments panel + delete cleanup) or UI-023 (Attach
+  fields) now unblocked; RPT-001 still queued.
+
 ## 2026-07-16 — PERM-004 passing: generated RLS (native PG, Supabase-equivalent)
 
 - Migration `0010_rls.sql`: `desk_client` login role stands in for
