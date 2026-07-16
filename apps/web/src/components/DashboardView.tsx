@@ -12,9 +12,14 @@ interface CardCfg {
 }
 interface ChartCfg {
   label: string
-  doctype: string
-  group_by: string
+  // A chart is driven EITHER by a DocType + group_by (UI-026) OR by a saved
+  // Report (RPT-006). Report-driven charts recompute from live report data.
+  doctype?: string
+  group_by?: string
   filters?: Filter[]
+  report?: string
+  label_field?: string
+  value_field?: string
 }
 interface DashboardConfig {
   cards?: CardCfg[]
@@ -42,13 +47,20 @@ function NumberCard({ card }: { card: CardCfg }) {
 
 function BarChart({ chart }: { chart: ChartCfg }) {
   const q = useQuery({
-    queryKey: ['dash-chart', chart.doctype, chart.group_by, chart.filters, chart.label],
+    queryKey: ['dash-chart', chart.report, chart.doctype, chart.group_by, chart.label_field, chart.value_field, chart.filters, chart.label],
     queryFn: () =>
-      api.post<{ data: { label: string; value: number }[] }>('/api/dashboard/chart', {
-        doctype: chart.doctype,
-        group_by: chart.group_by,
-        filters: chart.filters ?? [],
-      }),
+      chart.report
+        ? api.post<{ data: { label: string; value: number }[] }>('/api/report_chart', {
+            report: chart.report,
+            label_field: chart.label_field,
+            value_field: chart.value_field,
+            group_by: chart.group_by,
+          })
+        : api.post<{ data: { label: string; value: number }[] }>('/api/dashboard/chart', {
+            doctype: chart.doctype,
+            group_by: chart.group_by,
+            filters: chart.filters ?? [],
+          }),
   })
   const rows = q.data?.data ?? []
   const max = rows.reduce((m, r) => Math.max(m, r.value), 0) || 1

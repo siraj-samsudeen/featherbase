@@ -32,6 +32,7 @@ import { getCatalog } from './i18n'
 import { rateLimit } from './rate-limit'
 import { parseFilters, runQueryReport } from './query-report'
 import { deliverAutoEmailReport } from './auto-email-report'
+import { runReportChart, pinChartToDashboard } from './report-chart'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
 import { randomBytes } from 'node:crypto'
 
@@ -388,6 +389,30 @@ app.post('/api/dashboard/chart', async (c) => {
   }
   if (!doctype || !group_by) throw new AppError('ValidationError', 'Expected { doctype, group_by }')
   return c.json({ data: await groupCount(doctype, group_by, filters ?? [], who(c)) })
+})
+
+// RPT-006: a chart series derived from a saved report's rows (permission-scoped
+// through the report). Used for both the report-page preview and the pinned
+// dashboard widget.
+app.post('/api/report_chart', async (c) => {
+  const spec = (await c.req.json().catch(() => ({}))) as {
+    report?: string
+    label_field?: string
+    value_field?: string
+    group_by?: string
+  }
+  return c.json(await runReportChart({ report: spec.report ?? '', label_field: spec.label_field, value_field: spec.value_field, group_by: spec.group_by }, who(c)))
+})
+
+// RPT-006: pin a report chart onto a Dashboard (write permission on Dashboard
+// enforced by the save).
+app.post('/api/pin_chart_to_dashboard', async (c) => {
+  const { dashboard, chart } = (await c.req.json().catch(() => ({}))) as {
+    dashboard?: string
+    chart?: { label: string; report: string; label_field?: string; value_field?: string; group_by?: string }
+  }
+  if (!dashboard || !chart) throw new AppError('ValidationError', 'Expected { dashboard, chart }')
+  return c.json(await pinChartToDashboard(dashboard, chart, who(c)))
 })
 
 // SET-003: role & permission manager. Reads/writes the DocPerm matrix for a

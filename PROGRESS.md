@@ -13,6 +13,35 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — RPT-006 passing: report charts pinned to dashboards
+
+- **`report-chart.ts`**: `runReportChart(spec, user)` derives a
+  `{label,value}[]` series from a saved report's rows (reusing
+  `runReportRows`) — with `group_by` it returns per-group counts, otherwise one
+  bar per row via `label_field`/`value_field` (sensible defaults: first
+  non-`name` column for labels, first numeric column for values).
+  `pinChartToDashboard(dashboard, chart, user)` appends/updates (idempotent on
+  chart label) a report-driven chart in the Dashboard's `config.charts` and
+  saves it. Endpoints: `POST /api/report_chart`, `POST
+  /api/pin_chart_to_dashboard`.
+- **DashboardView** now renders report-driven charts: a chart config with a
+  `report` field queries `/api/report_chart` (recomputed from live report data)
+  instead of `/api/dashboard/chart`. Existing DocType+group_by charts unchanged.
+- **ReportView** gained a Chart panel: bars derived from the on-screen rows
+  (grouped → per-group counts, matching the table; ungrouped → a selectable
+  numeric value field), plus a dashboard picker + **Pin to dashboard** button
+  (enabled once the report is saved). The client derivation mirrors the server
+  so the pinned dashboard chart reproduces the preview.
+- **Verified end-to-end**: `test/report-chart.test.ts` (4 — per-row, grouped,
+  default-field, and idempotent pin) and `e2e/report-chart.spec.ts` (group the
+  report by region → chart shows North 2 / South 1 → pin → the dashboard shows
+  the same chart from live data). Existing dashboard/report e2e + full server
+  suite (293) all green.
+- Gotcha: `saveDoc` updates enforce optimistic concurrency on `modified`; a bare
+  `Date` stringifies without milliseconds and spuriously conflicts — pass the
+  loaded stamp back as a full-precision ISO string.
+- Next: 8 P3 remain (FILE-004, WEB-003, PLAT-001/002/006/008, UI-022/025).
+
 ## 2026-07-16 — EML-007 passing: Auto Email Report
 
 - **Auto Email Report** is a new Core DocType (`0041_auto_email_report.ts`):

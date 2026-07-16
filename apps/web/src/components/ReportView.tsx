@@ -48,6 +48,10 @@ export function ReportView({
   const [saveOpen, setSaveOpen] = useState(false)
   const [saveName, setSaveName] = useState('')
   const [saveError, setSaveError] = useState<string | null>(null)
+  // RPT-006: chart preview + pin-to-dashboard.
+  const [chartValue, setChartValue] = useState('')
+  const [pinDashboard, setPinDashboard] = useState('')
+  const [pinMsg, setPinMsg] = useState<string | null>(null)
 
   // RPT-002: saved reports for this DocType.
   const savedReports = useQuery({
@@ -55,6 +59,17 @@ export function ReportView({
     queryFn: () =>
       listResource<{ name: string }>('Report', {
         filters: [['ref_doctype', '=', doctype]],
+        fields: ['name'],
+        order_by: 'name asc',
+        limit_page_length: 100,
+      }),
+  })
+
+  // RPT-006: dashboards available to pin a chart onto.
+  const dashboards = useQuery({
+    queryKey: ['dashboards-for-pin'],
+    queryFn: () =>
+      listResource<{ name: string }>('Dashboard', {
         fields: ['name'],
         order_by: 'name asc',
         limit_page_length: 100,
@@ -117,12 +132,34 @@ export function ReportView({
     }
   }
 
+  // RPT-006: pin the current report chart onto a dashboard. The pinned chart
+  // references the saved Report by name and carries the same label/value/group
+  // choice, so the dashboard reproduces exactly this chart from live data.
+  async function pinChart() {
+    setPinMsg(null)
+    if (!report || !pinDashboard) return
+    const chart = groupBy
+      ? { label: report, report, group_by: groupBy }
+      : { label: report, report, label_field: chartLabelField, value_field: effectiveChartValue }
+    try {
+      await api.post('/api/pin_chart_to_dashboard', { dashboard: pinDashboard, chart })
+      setPinMsg(`Pinned to ${pinDashboard}`)
+    } catch (err) {
+      setPinMsg(err instanceof ApiError ? err.message : 'Pin failed')
+    }
+  }
+
   if (meta.isLoading) return <p className="text-sm text-gray-400">Loading…</p>
   if (meta.isError) return <p className="text-sm text-red-600">Cannot load {doctype}</p>
 
   const numericCols = columns.filter((c) =>
     NUMERIC.has(available.find((f) => f.fieldname === c)?.fieldtype ?? ''),
   )
+
+  // RPT-006: the value field driving the chart (numeric column). Falls back to
+  // the first numeric column; if there are none, bars use per-group counts.
+  const effectiveChartValue = chartValue || numericCols[0] || ''
+  const chartLabelField = groupBy || columns.find((c) => !numericCols.includes(c)) || columns[0]
 
   const data = rows.data?.data ?? []
   const groups = new Map<string, Row[]>()
@@ -132,6 +169,25 @@ export function ReportView({
       groups.set(key, [...(groups.get(key) ?? []), row])
     }
   }
+
+  // RPT-006: chart points derived from the on-screen rows — grouped → per-group
+  // counts (matches the grouped table); ungrouped → each row's value field. This
+  // mirrors the server's /api/report_chart derivation so the pinned dashboard
+  // chart reproduces this preview.
+  const chartData: { label: string; value: number }[] = groupBy
+    ? [...(() => {
+        const m = new Map<string, number>()
+        for (const r of data) {
+          const k = r[groupBy] == null ? '' : String(r[groupBy])
+          m.set(k, (m.get(k) ?? 0) + 1)
+        }
+        return m.entries()
+      })()].map(([label, value]) => ({ label, value }))
+    : data.map((r) => ({
+        label: r[chartLabelField] == null ? '' : String(r[chartLabelField]),
+        value: effectiveChartValue && r[effectiveChartValue] != null ? Number(r[effectiveChartValue]) || 0 : 0,
+      }))
+  const chartMax = chartData.reduce((m, r) => Math.max(m, r.value), 0) || 1
 
   const sum = (list: Row[], col: string) =>
     list.reduce((acc, r) => acc + (Number(r[col]) || 0), 0)
@@ -420,6 +476,78 @@ export function ReportView({
         {data.length === 0 && (
           <p className="px-3 py-6 text-center text-sm text-[var(--color-ink-faint)]">No rows</p>
         )}
+      </div>
+
+      {/* RPT-006: chart of the report data + pin to a dashboard */}
+      <div className="fc-card mt-4 p-4" data-testid="report-chart">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm font-medium text-[var(--color-ink)]">Chart</div>
+          <div className="flex items-center gap-2">
+            {!groupBy && numericCols.length > 0 && (
+              <label className="flex items-center gap-1 text-xs text-[var(--color-ink-muted)]">
+                Value
+                <select
+                  value={effectiveChartValue}
+                  onChange={(e) => setChartValue(e.target.value)}
+                  className="fc-input w-32"
+                  data-testid="chart-value"
+                >
+                  {numericCols.map((c) => (
+                    <option key={c} value={c}>
+                      {label(c)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <select
+              value={pinDashboard}
+              onChange={(e) => setPinDashboard(e.target.value)}
+              className="fc-input w-40"
+              data-testid="pin-dashboard"
+            >
+              <option value="">Dashboard…</option>
+              {dashboards.data?.data.map((d) => (
+                <option key={d.name} value={d.name}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={pinChart}
+              disabled={!report || !pinDashboard}
+              className="fc-btn"
+              data-testid="pin-chart"
+              title={report ? 'Pin this chart to the selected dashboard' : 'Save the report first'}
+            >
+              Pin to dashboard
+            </button>
+          </div>
+        </div>
+        {pinMsg && (
+          <p className="mb-2 text-xs text-[var(--color-ink-muted)]" data-testid="pin-msg">
+            {pinMsg}
+          </p>
+        )}
+        <div className="space-y-2">
+          {chartData.map((r, i) => (
+            <div key={`${r.label}-${i}`} className="flex items-center gap-2" data-testid={`chart-bar-${r.label}`}>
+              <div className="w-24 shrink-0 truncate text-xs text-[var(--color-ink-muted)]">{r.label || '—'}</div>
+              <div className="h-5 flex-1 rounded bg-[var(--color-subtle)]">
+                <div
+                  className="h-5 rounded bg-[var(--color-brand)]"
+                  style={{ width: `${Math.round((r.value / chartMax) * 100)}%`, minWidth: r.value ? '2px' : 0 }}
+                />
+              </div>
+              <div className="w-10 shrink-0 text-right text-xs tabular-nums text-[var(--color-ink)]" data-testid={`chart-bar-value-${r.label}`}>
+                {r.value}
+              </div>
+            </div>
+          ))}
+          {chartData.length === 0 && (
+            <div className="text-sm text-[var(--color-ink-faint)]">No data</div>
+          )}
+        </div>
       </div>
     </div>
   )
