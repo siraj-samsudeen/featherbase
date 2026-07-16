@@ -37,12 +37,43 @@ function interpolate(template: string, doc: Doc): string {
   })
 }
 
+// PRN-004: resolve the Letter Head applied to a print. Precedence:
+//   1. an explicit choice (`letterHead` arg; the literal 'none' suppresses it);
+//   2. a Letter Head named on the chosen Print Format;
+//   3. the Letter Head marked `is_default`.
+// The header/footer HTML is interpolated with the same {{ field }} syntax as a
+// Print Format template, so a letterhead can echo document fields.
+async function resolveLetterHead(
+  doctype: string,
+  format: string | undefined,
+  letterHead: string | undefined,
+): Promise<{ header: string; footer: string } | null> {
+  if (letterHead === 'none') return null
+  let name = letterHead
+  if (!name && format && format !== 'standard') {
+    const [pf] = await sql`
+      select letter_head from tab_print_format where name = ${format} and doc_type = ${doctype}`
+    if (pf?.letter_head) name = String(pf.letter_head)
+  }
+  if (!name) {
+    const [def] = await sql`
+      select name from tab_letter_head where is_default = true limit 1`
+    if (def?.name) name = String(def.name)
+  }
+  if (!name) return null
+  const [lh] = await sql`
+    select header_html, footer_html from tab_letter_head where name = ${name}`
+  if (!lh) return null
+  return { header: String(lh.header_html ?? ''), footer: String(lh.footer_html ?? '') }
+}
+
 // PRN-003: resolve the document + chosen format and return a full HTML page.
 export async function renderPrintHtml(
   doctype: string,
   name: string,
   user: string,
   format?: string,
+  letterHead?: string,
 ): Promise<string> {
   const meta = await getMeta(doctype)
   const doc = (await getDoc(doctype, name, user)) as Doc
@@ -61,6 +92,14 @@ export async function renderPrintHtml(
     body = autoLayout(meta, doc)
   }
 
+  const lh = await resolveLetterHead(doctype, format, letterHead)
+  const header = lh?.header
+    ? `<header class="letter-head">${interpolate(lh.header, doc)}</header>`
+    : ''
+  const footer = lh?.footer
+    ? `<footer class="letter-foot">${interpolate(lh.footer, doc)}</footer>`
+    : ''
+
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     body{font-family:Inter,system-ui,sans-serif;color:#1c2126;padding:32px;font-size:13px}
     h1{font-size:22px;margin:0 0 2px} .docname{color:#6c7680;font-size:12px;margin:0 0 16px}
@@ -68,7 +107,10 @@ export async function renderPrintHtml(
     dt{font-size:10px;text-transform:uppercase;color:#6c7680} dd{margin:0 0 6px;font-size:13px}
     table{width:100%;border-collapse:collapse;margin-top:16px}
     th,td{border:1px solid #d1d8dd;padding:4px 8px;text-align:left} th{background:#f7f7f8}
-  </style></head><body>${body}</body></html>`
+    .letter-head{border-bottom:2px solid #1c2126;padding-bottom:12px;margin-bottom:20px}
+    .letter-foot{border-top:1px solid #d1d8dd;padding-top:12px;margin-top:24px;
+      color:#6c7680;font-size:11px}
+  </style></head><body>${header}${body}${footer}</body></html>`
 }
 
 function autoLayout(meta: Awaited<ReturnType<typeof getMeta>>, doc: Doc): string {

@@ -293,9 +293,10 @@ app.get('/api/doc/:doctype/:name', async (c) => {
 // PRN-003: server-side PDF of any document / print format.
 app.get('/api/print/:doctype/:name', async (c) => {
   const format = c.req.query('format')
+  const letterHead = c.req.query('letter_head')
   const doctype = c.req.param('doctype')
   const name = c.req.param('name')
-  const html = await renderPrintHtml(doctype, name, who(c), format)
+  const html = await renderPrintHtml(doctype, name, who(c), format, letterHead)
   const pdf = await renderPdf(html)
   // PLAT-007: record the print/access.
   await logAccess(who(c), 'print', { doctype, name, method: 'pdf' })

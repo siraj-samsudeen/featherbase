@@ -13,6 +13,41 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — PRN-004 passing: letterheads
+
+- **Letter Head** is a new Core DocType (`0040_letterhead.ts`, prompt-autoname):
+  `is_default` (Check), `header_html` (Text), `footer_html` (Text). The same
+  migration appends a `letter_head` Link field to **Print Format** via
+  `updateDocType` (in-place column + docfield add).
+- **Server render** (`print.ts`): `renderPrintHtml(..., letterHead?)` resolves a
+  letterhead with precedence **explicit choice > format-named > default**
+  (`is_default`), the literal `'none'` suppresses it. Header/footer are
+  interpolated with the same `{{ field }}` syntax as a Print Format template and
+  wrapped in `<header class="letter-head">` / `<footer class="letter-foot">`, so
+  they flow into the Chromium PDF. Endpoint takes `?letter_head=` query param.
+- **Single default enforced** by a new controller
+  (`controllers/letter-head.ts`, `before_save`): saving a letterhead with
+  `is_default` clears the flag on all others — the resolver uses `limit 1`, so a
+  unique winner is required. Verified over HTTP (save B default → A un-defaulted;
+  exactly 1 default remains).
+- **Desk UI** (`PrintView.tsx`): a "Letterhead" picker (default / none / each
+  Letter Head) next to the format picker; header renders above the body, footer
+  below, both interpolated. Letter Heads are listed generically (no per-DocType
+  code).
+- **Verified end-to-end:** server unit tests (`test/letterhead.test.ts`, 4 —
+  default applied + interpolation, explicit override, `none` suppresses,
+  format-named) produce real PDFs whose text contains the header/footer; a live
+  HTTP call returns a valid `%PDF-` with the interpolated header + footer and
+  `letter_head=none` suppresses; Playwright `e2e/letterhead.spec.ts` drives the
+  picker (default → switch → suppress). Full server suite still 284/284 green.
+- Gotcha: stray `is_default` letterheads from ad-hoc probes made the "default"
+  resolution non-deterministic before the single-default controller existed —
+  the controller both fixes correctness and makes tests deterministic. A new
+  controller file needs a hard server restart (tsx watch doesn't pick up a
+  brand-new, not-yet-imported file).
+- Next: 11 P3 features remain (WF-004, RPT-006, EML-007, FILE-004, WEB-003,
+  PLAT-001/002/006/008, UI-022/025).
+
 ## 2026-07-16 — Evaluation pass #14 (adversarial) — all held
 
 - Probed the newest batch (UI-015, I18N-001/002, JOB-004/005) + regressions.

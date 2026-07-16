@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, useMeta, type DocField } from '../lib/meta'
@@ -8,6 +9,17 @@ interface PrintFormat {
   name: string
   is_default: boolean
   template: string
+  letter_head?: string | null
+}
+
+// PRN-004: a Letter Head is a reusable header/footer block, stored as an
+// ordinary DocType. It is applied to any printed document — the one marked
+// is_default, one named on the Print Format, or one chosen here.
+interface LetterHead {
+  name: string
+  is_default: boolean
+  header_html: string
+  footer_html: string
 }
 
 // PRN-002: {{ field }} interpolation over a document. Admin-authored
@@ -48,11 +60,22 @@ export function PrintView({
     queryFn: () =>
       listResource<PrintFormat>('Print Format', {
         filters: [['doc_type', '=', doctype]],
-        fields: ['name', 'is_default', 'template'],
+        fields: ['name', 'is_default', 'template', 'letter_head'],
         order_by: 'name asc',
         limit_page_length: 100,
       }),
   })
+  const letterHeads = useQuery({
+    queryKey: ['letter-heads'],
+    queryFn: () =>
+      listResource<LetterHead>('Letter Head', {
+        fields: ['name', 'is_default', 'header_html', 'footer_html'],
+        order_by: 'name asc',
+        limit_page_length: 100,
+      }),
+  })
+  // undefined = auto (default / format-named); 'none' = suppressed; else a name.
+  const [letterHeadChoice, setLetterHeadChoice] = useState<string | undefined>(undefined)
 
   if (meta.isLoading || doc.isLoading)
     return <p className="p-8 text-sm text-gray-500">Loading…</p>
@@ -75,6 +98,17 @@ export function PrintView({
     if (typeof v === 'boolean') return v ? 'Yes' : 'No'
     return String(v)
   }
+
+  // Resolve the letterhead with the same precedence as the server: explicit
+  // choice > format-named > default. 'none' suppresses it.
+  const lhList = letterHeads.data?.data ?? []
+  const activeLetterHead =
+    letterHeadChoice === 'none'
+      ? undefined
+      : lhList.find(
+          (l) =>
+            l.name === (letterHeadChoice ?? active?.letter_head ?? undefined),
+        ) ?? (letterHeadChoice === undefined ? lhList.find((l) => l.is_default) : undefined)
 
   const scalarFields = m.fields.filter(
     (f) => !NO_COLUMN_TYPES.has(f.fieldtype) && f.fieldtype !== 'Table' && !f.hidden,
@@ -110,11 +144,38 @@ export function PrintView({
               ))}
             </select>
           )}
+          {lhList.length > 0 && (
+            <select
+              value={letterHeadChoice ?? 'auto'}
+              onChange={(e) =>
+                setLetterHeadChoice(e.target.value === 'auto' ? undefined : e.target.value)
+              }
+              className="fc-input w-44"
+              data-testid="letter-head-picker"
+            >
+              <option value="auto">Letterhead: default</option>
+              <option value="none">No letterhead</option>
+              {lhList.map((l) => (
+                <option key={l.name} value={l.name}>
+                  {l.name}
+                  {l.is_default ? ' (default)' : ''}
+                </option>
+              ))}
+            </select>
+          )}
           <button onClick={() => window.print()} className="fc-btn" data-testid="print-button">
             Print
           </button>
         </div>
       </div>
+
+      {activeLetterHead?.header_html && (
+        <header
+          data-testid="letter-head-header"
+          className="mb-6 border-b-2 border-[var(--color-ink)] pb-3"
+          dangerouslySetInnerHTML={{ __html: interpolate(activeLetterHead.header_html, d) }}
+        />
+      )}
 
       {active ? (
         <div
@@ -124,6 +185,14 @@ export function PrintView({
         />
       ) : (
         <AutoLayout m={m} d={d} fmt={fmt} />
+      )}
+
+      {activeLetterHead?.footer_html && (
+        <footer
+          data-testid="letter-head-footer"
+          className="mt-8 border-t border-[var(--color-border)] pt-3 text-xs text-[var(--color-ink-muted)]"
+          dangerouslySetInnerHTML={{ __html: interpolate(activeLetterHead.footer_html, d) }}
+        />
       )}
     </div>
   )
