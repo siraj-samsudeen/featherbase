@@ -21,6 +21,9 @@ export function DeskLayout() {
   const { theme, toggle: toggleTheme } = useTheme()
   const { t, language, setLanguage } = useI18n()
   const [search, setSearch] = useState('')
+  // UI-025: on narrow (mobile) widths the sidebar collapses into a drawer
+  // toggled from the navbar; on md+ it is always shown.
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // RT-003: unread notification count, live-updated when a realtime
   // 'notification' event arrives for this user.
@@ -158,12 +161,20 @@ export function DeskLayout() {
   return (
     <div className="flex h-full flex-col">
       {/* Navbar */}
-      <header className="flex h-12 shrink-0 items-center gap-4 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 sm:gap-4 sm:px-4">
+        <button
+          onClick={() => setSidebarOpen((o) => !o)}
+          data-testid="sidebar-toggle"
+          aria-label="Toggle menu"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)] md:hidden"
+        >
+          ☰
+        </button>
         <Link to="/desk" className="flex items-center gap-2">
           <span className="flex h-6 w-6 items-center justify-center rounded bg-[var(--color-brand)] text-xs font-bold text-white">
             F
           </span>
-          <span className="text-sm font-semibold text-[var(--color-ink)]">Frappe Clone</span>
+          <span className="hidden text-sm font-semibold text-[var(--color-ink)] sm:inline">Frappe Clone</span>
         </Link>
 
         <form onSubmit={runSearch} className="relative mx-auto w-full max-w-md" data-testid="awesomebar">
@@ -267,9 +278,26 @@ export function DeskLayout() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        {/* Sidebar */}
-        <aside className="flex w-60 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)]">
+      <div className="relative flex min-h-0 flex-1">
+        {/* UI-025: on mobile, a backdrop closes the drawer. */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 top-12 z-20 bg-black/30 md:hidden"
+            data-testid="sidebar-backdrop"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+        {/* Sidebar — static on md+, a slide-in drawer on mobile. Clicking any
+            link inside closes the drawer. */}
+        <aside
+          data-testid="desk-sidebar"
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest('a')) setSidebarOpen(false)
+          }}
+          className={`fixed bottom-0 left-0 top-12 z-30 flex w-64 flex-col overflow-y-auto border-r border-[var(--color-border)] bg-[var(--color-surface)] transition-transform md:static md:top-0 md:w-60 md:shrink-0 md:translate-x-0 ${
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
+        >
           <div className="px-3 pt-4">
             <Link
               to="/desk/new-doctype"
@@ -324,7 +352,7 @@ export function DeskLayout() {
         </aside>
 
         {/* Page canvas */}
-        <main className="min-w-0 flex-1 overflow-auto bg-[var(--color-canvas)] p-6">
+        <main className="min-w-0 flex-1 overflow-auto bg-[var(--color-canvas)] p-4 sm:p-6">
           <div className="mx-auto max-w-5xl">
             <Outlet />
           </div>

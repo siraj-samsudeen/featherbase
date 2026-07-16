@@ -13,6 +13,25 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — UI-025 passing: responsive Desk
+
+- **DeskLayout** shell is now responsive. On `md+` the workspace sidebar is a
+  static `w-60` column as before; below `md` it becomes a slide-in **drawer**
+  (`fixed … -translate-x-full` → `translate-x-0`) toggled by a **hamburger**
+  (`data-testid=sidebar-toggle`, `md:hidden`) with a tap-to-close backdrop.
+  Clicking any link inside the drawer closes it (delegated `closest('a')`).
+- Navbar tightened on small screens (brand text `hidden sm:inline`, smaller
+  gaps/padding); canvas padding `p-4 sm:p-6`. FormView already stacked to one
+  column (`grid-cols-1 md:grid-cols-2`) and ListView tables already scroll in
+  their own `overflow-x-auto` container, so no page-level horizontal scroll.
+- **Verified**: `e2e/responsive.spec.ts` at 375px — sidebar starts off-screen,
+  hamburger opens it (backdrop appears), tapping a DocType navigates + closes
+  the drawer, the list view shows with **no horizontal page overflow**, and the
+  new-form fields **stack** (qty below title) with no overflow; a second test at
+  1280px confirms the sidebar stays static and the hamburger is hidden. Broad
+  DeskLayout e2e (desk/awesomebar/workspace/keyboard/dark-mode) still green.
+- Next: 6 P3 remain (FILE-004, WEB-003, PLAT-001/002/006/008).
+
 ## 2026-07-16 — UI-022 passing: Gantt view
 
 - **`GanttView.tsx`** (route `/desk/$doctype/view/gantt`): for any DocType with
