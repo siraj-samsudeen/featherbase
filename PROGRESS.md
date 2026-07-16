@@ -13,6 +13,26 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — PLAT-003 passing: ordered, recorded patch runner
+
+- New patch system distinct from the doctype-seed migrations: `src/patches.ts`
+  (`runPatches`, `appliedPatches`, `ensurePatchLog`) records applied patches in
+  a `patch_log` table and runs each unapplied patch — in registry order —
+  inside a single transaction that also writes its log row, so a patch's
+  changes and its "applied" record commit together or not at all.
+- A failing patch throws, rolling back its partial work AND its log entry, and
+  aborts the run — prior patches stay applied, the failing one stays
+  un-recorded so the next run retries it (verified: partial insert before a
+  thrown error leaves no row and no log entry; re-run applies it once).
+- Registry: `patches/index.ts` (Frappe's patches.txt equivalent, append-only,
+  names are stable). First real patch `0001_file_ref_index` adds a
+  `tab_file (ref_doctype, ref_name)` index (speeds FILE-002/003 lookups).
+- CLI `pnpm --filter server patches` (`src/run-patches.ts`), wired into
+  init.sh after `migrate`. Verified: first run applies, second run is a
+  no-op, index present; server test covers run-once/idempotency/clean-abort.
+- Unblocks PLAT-004 (CLI) and PLAT-008 (multi-tenancy). 215 server tests
+  green. 93/126.
+
 ## 2026-07-16 — FILE-003 passing: private files gated by linked-doc permission + signed URLs
 
 - Private files (`/private/files/:stored`) now enforce a permission check on

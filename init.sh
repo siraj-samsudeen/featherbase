@@ -18,8 +18,9 @@ su postgres -c "psql -tAc \"ALTER USER postgres PASSWORD 'postgres'\"" >/dev/nul
 su postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='frappe_clone'\"" | grep -q 1 \
   || su postgres -c "createdb frappe_clone"
 
-# --- 3. Migrations ---------------------------------------------------------
+# --- 3. Migrations + patches -----------------------------------------------
 pnpm --filter server migrate
+pnpm --filter server patches
 
 # --- 4. App servers (idempotent: kill stale, start fresh, wait for health) --
 # Kill by listening port — pattern-matching the tsx wrapper misses the actual
