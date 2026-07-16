@@ -13,6 +13,22 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — UI-020 passing: Kanban board with drag-and-drop
+
+- `KanbanView.tsx` at /desk/:doctype/view/kanban — groups docs by a Select
+  field into columns (one per option), cards per doc. Pointer-based DnD
+  (onPointerDown marks the dragged card; root onPointerUp uses
+  document.elementFromPoint → closest [data-column] to find the drop
+  column), then PUTs the grouping field to the target value and refetches.
+  Group-by picker over Select fields; the list shows a "Kanban" link only
+  when the DocType has a Select field. Route via kanbanRoute (?group_by).
+- Pointer events (not HTML5 draggable) so Playwright's mouse API drives it
+  reliably.
+- Verified: e2e/kanban.spec.ts (drag Card A Todo→Done: card moves on
+  screen AND doc.stage='Done' in the DB). Full web suite 2× green (35).
+- 88/126.
+- Next: UI-021 (Calendar) is the sibling view; both depend only on UI-002.
+
 ## 2026-07-16 — UI-017 passing: form sidebar (assignments + tags + attachments)
 
 - Migration 0023: `tag_link` table (ref_doctype, ref_name, tag). Endpoints

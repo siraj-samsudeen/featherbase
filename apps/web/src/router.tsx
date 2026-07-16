@@ -10,6 +10,7 @@ import { getToken } from './lib/api'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
 import { ReportView } from './components/ReportView'
+import { KanbanView } from './components/KanbanView'
 import { PrintView } from './pages/PrintView'
 import { DocTypeBuilder } from './pages/DocTypeBuilder'
 
@@ -151,6 +152,32 @@ function ReportPage() {
   )
 }
 
+// UI-020: Kanban board view.
+const kanbanRoute = createRoute({
+  getParentRoute: () => deskRoute,
+  path: '$doctype/view/kanban',
+  validateSearch: (search: Record<string, unknown>) => ({
+    group_by: typeof search.group_by === 'string' ? search.group_by : undefined,
+  }),
+  component: KanbanPage,
+})
+
+function KanbanPage() {
+  const { doctype } = kanbanRoute.useParams()
+  const { group_by } = kanbanRoute.useSearch()
+  const navigate = kanbanRoute.useNavigate()
+  return (
+    <div data-testid="doctype-page">
+      <KanbanView
+        key={doctype}
+        doctype={doctype}
+        groupBy={group_by}
+        onGroupByChange={(f) => navigate({ search: { group_by: f }, replace: true })}
+      />
+    </div>
+  )
+}
+
 // UI-004/UI-005: the generic FormView renders and saves every DocType.
 const docRoute = createRoute({
   getParentRoute: () => deskRoute,
@@ -171,5 +198,5 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   printRoute,
-  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, doctypeRoute, docRoute]),
+  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, doctypeRoute, docRoute]),
 ])

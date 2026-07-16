@@ -250,6 +250,17 @@ export function ListView({
           >
             Report
           </Link>
+          {(meta.data?.fields ?? []).some((f) => f.fieldtype === 'Select') && (
+            <Link
+              to="/desk/$doctype/view/kanban"
+              params={{ doctype }}
+              search={{ group_by: undefined }}
+              className="fc-btn"
+              data-testid="open-kanban"
+            >
+              Kanban
+            </Link>
+          )}
         </div>
       </div>
       {onFiltersChange && meta.data && (
