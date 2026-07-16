@@ -18,6 +18,7 @@ import { ScriptReportView } from './components/ScriptReportView'
 import { PermissionManager } from './components/PermissionManager'
 import { DashboardView } from './components/DashboardView'
 import { WorkspaceView } from './components/WorkspaceView'
+import { JobMonitor } from './components/JobMonitor'
 import { KanbanView } from './components/KanbanView'
 import { CalendarView } from './components/CalendarView'
 import { PrintView } from './pages/PrintView'
@@ -262,6 +263,13 @@ function ScriptReportPage() {
   )
 }
 
+// JOB-004: background job monitor (static segment).
+const jobsRoute = createRoute({
+  getParentRoute: () => deskRoute,
+  path: 'jobs',
+  component: JobMonitor,
+})
+
 // UI-027: a Workspace renders navigable shortcut cards (static segment).
 const workspaceRoute = createRoute({
   getParentRoute: () => deskRoute,
@@ -332,5 +340,5 @@ export const routeTree = rootRoute.addChildren([
   resetPasswordRoute,
   webFormRoute,
   printRoute,
-  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, workspaceRoute, doctypeRoute, docRoute]),
+  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, workspaceRoute, jobsRoute, doctypeRoute, docRoute]),
 ])

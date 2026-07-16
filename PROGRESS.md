@@ -13,6 +13,21 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — JOB-004 passing: job monitoring UI + retry
+
+- `retryJob(name)` in jobs.ts re-queues a FAILED job (status→queued, attempts→0,
+  error cleared, run_at=now) so the running worker picks it up; returns false
+  for a non-failed/missing job. `POST /api/retry_job` (System-Manager-gated)
+  exposes it (417 for a non-failed job). Added a no-op `ping_job` (src/jobs/
+  ping.ts) as a benign demo/health job.
+- Web `JobMonitor` + route `/desk/jobs`: a live table (3s refetch) of Background
+  Jobs (method/status/attempts/error), with a Retry button only on failed rows;
+  clicking it calls retry and refetches.
+- Verified: e2e (a seeded failed ping_job shows in the monitor with Retry;
+  clicking Retry flips it to done and the button disappears) + server test
+  (retry re-queues and drains to done; non-failed job not retried; HTTP retry
+  200 then 417 on the now-done job). 273 server + 56 web e2e green. 110/126.
+
 ## 2026-07-16 — CUST-004 re-passing: sandbox escape closed
 
 - Rewrote the `node:vm` sandbox to expose NO host objects. All inputs/outputs

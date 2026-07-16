@@ -122,6 +122,17 @@ export async function runOneJob(): Promise<boolean> {
   }
 }
 
+// JOB-004: re-queue a failed job so the worker runs it again (fresh attempt
+// counter, cleared error). Returns false if the job isn't failed / not found.
+export async function retryJob(name: string): Promise<boolean> {
+  const [row] = await sql`
+    update tab_background_job
+    set status = 'queued', attempts = 0, error = null, run_at = now(), modified = now()
+    where name = ${name} and status = 'failed'
+    returning name`
+  return Boolean(row)
+}
+
 // Drain all currently-due jobs (bounded so a recurring job can't loop forever).
 export async function drainJobs(limit = 1000): Promise<number> {
   let processed = 0

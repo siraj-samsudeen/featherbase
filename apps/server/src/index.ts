@@ -18,7 +18,7 @@ import { callMethod, loadMethods, methodAllowsGuest } from './methods'
 import { renderPdf, renderPrintHtml } from './print'
 import { applyWorkflowAction, availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
-import { enqueue, loadJobs, startWorker } from './jobs'
+import { enqueue, loadJobs, retryJob, startWorker } from './jobs'
 import { attachRealtime, publishDocEvent, publishUserEvent } from './realtime'
 import { queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
@@ -665,6 +665,16 @@ app.post('/api/enqueue_job', async (c) => {
     repeatEvery: repeat_every,
   })
   return c.json({ name }, 201)
+})
+
+// JOB-004: retry a failed job from the Desk.
+app.post('/api/retry_job', async (c) => {
+  await assertSystemManager(who(c))
+  const { name } = (await c.req.json().catch(() => ({}))) as { name?: string }
+  if (!name) throw new AppError('ValidationError', 'Expected { name }')
+  const retried = await retryJob(name)
+  if (!retried) throw new AppError('ValidationError', `Job ${name} is not in a failed state`)
+  return c.json({ ok: true })
 })
 
 // CUST-001: re-apply all custom fields (used after a core fixture re-seed).
