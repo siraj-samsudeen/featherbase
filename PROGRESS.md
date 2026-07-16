@@ -13,6 +13,25 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — PLAT-005 passing: webhooks (signed, retried)
+
+- Migration 0031: `Webhook` DocType (webhook_doctype, webhook_event
+  [after_insert/on_update/on_submit/on_cancel], request_url, webhook_secret,
+  enabled).
+- `webhooks.ts`: `evaluateWebhooks(event, doctype, doc)` enqueues a
+  `deliver_webhook` job (with a doc snapshot) per enabled matching webhook. The
+  job POSTs the doc JSON with `X-Webhook-Signature` (HMAC-SHA256 of the body
+  with the secret) + `X-Webhook-Event`; a non-2xx response throws so the job
+  system retries (up to max_attempts) before landing in failed.
+- Wired post-commit into document.ts at all four lifecycle points (create →
+  after_insert, update → on_update, submit/cancel via setDocstatus). Also
+  awaited loadChildren at those return points (was returning the promise).
+  Existing email-rule firing (submit/cancel only) is unchanged.
+- Verified: server test with a local HTTP receiver — on_update delivers the
+  doc JSON with a signature that verifies against the body+secret; a receiver
+  that 500s once is retried and then succeeds (job ends 'done'); a doctype with
+  no matching webhook fires nothing. 243 server + 45 web e2e green. 101/126.
+
 ## 2026-07-16 — RPT-005 passing: script reports (server-side TS + filters UI)
 
 - `script-report.ts`: a registry of server-side report functions

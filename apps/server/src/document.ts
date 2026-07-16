@@ -6,6 +6,7 @@ import { getMeta, type DocTypeMeta } from './meta'
 import { STANDARD_COLUMNS, tableName } from './doctype-engine'
 import { runHooks, type HookContext } from './controllers'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
+import { evaluateWebhooks } from './webhooks'
 import {
   assertDocPermission,
   assertPermission,
@@ -410,7 +411,10 @@ export async function saveDoc(
       return inserted
     })
     .catch((err) => mapDbError(meta, err))
-  return loadChildren(meta, { doctype, ...(saved as DocValues) })
+  const insertResult = await loadChildren(meta, { doctype, ...(saved as DocValues) })
+  // PLAT-005: fire webhooks post-commit for the create event.
+  await evaluateWebhooks('after_insert', meta.name, insertResult)
+  return insertResult
 }
 
 // DOC-002: optimistic concurrency — the client must echo back the
@@ -496,7 +500,10 @@ async function updateDoc(
       return updated
     })
     .catch((err) => mapDbError(meta, err))
-  return loadChildren(meta, { doctype: meta.name, ...(saved as DocValues) })
+  const updateResult = await loadChildren(meta, { doctype: meta.name, ...(saved as DocValues) })
+  // PLAT-005: fire webhooks post-commit for the update event.
+  await evaluateWebhooks('on_update', meta.name, updateResult)
+  return updateResult
 }
 
 // DOC-009: record a field-level diff in the Version doctype on every
@@ -580,9 +587,11 @@ async function setDocstatus(
     await runHooks(event, ctx)
     return [updated]
   })
-  const result = loadChildren(meta, { doctype, ...(saved as DocValues) })
+  const result = await loadChildren(meta, { doctype, ...(saved as DocValues) })
   // EML-004: fire matching email rules for this lifecycle event (post-commit).
   await evaluateEmailRules(event as LifecycleEvent, doctype, saved as DocValues)
+  // PLAT-005: fire webhooks for submit/cancel (post-commit).
+  await evaluateWebhooks(event === 'on_submit' ? 'on_submit' : 'on_cancel', doctype, result)
   return result
 }
 
