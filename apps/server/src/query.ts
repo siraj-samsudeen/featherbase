@@ -41,6 +41,14 @@ export async function getList(doctype: string, args: ListArgs = {}, user = 'Admi
   const scope = await permissionScope(user, doctype, 'read')
   if (scope === 'none')
     throw new AppError('PermissionError', `No read permission on ${doctype} for ${user}`)
+  // A Single DocType stores its one instance in the EAV `single_value` store
+  // and has no generated table, so it can never be listed. Fail cleanly
+  // instead of querying a nonexistent relation (which surfaced as a 500).
+  if (meta.issingle)
+    throw new AppError(
+      'ValidationError',
+      `${doctype} is a Single DocType and has no list — open it directly by its name`,
+    )
   const cols = columnSet(meta)
   const table = tableName(doctype)
 

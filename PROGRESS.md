@@ -13,6 +13,24 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — Evaluation pass #10 (adversarial) + single-list hardening
+
+- Ran the every-~3rd-wakeup adversarial pass over the newest features
+  (EML-001..006, UI-017/020/021, SET-001, plus the eval-#9 realtime channel
+  authorization fix). Probed: permlevel field-stripping on single reads,
+  view-move (Kanban/Calendar) permission enforcement, email-rule condition
+  matching / disabled rules / no-condition rules, tag add/list/remove, and a
+  normal non-single doc lifecycle with child tables. **All held — no feature
+  regressed to failing.**
+- **One robustness gap found and fixed (coder follow-up):** `getList` on a
+  Single DocType returned a 500 (it queried the nonexistent `tab_*` table).
+  Singles have no table, so `getList` now short-circuits with a clean
+  `ValidationError` (417: "… is a Single DocType and has no list …") right
+  after the read-permission check, so auth still takes precedence. Verified
+  live: single list → 417 (was 500), normal-doctype list → 200, direct
+  single open → 200. Added a server test asserting the guard.
+- No status flips. 90/126 unchanged.
+
 ## 2026-07-16 — SET-001 passing: Single DocTypes
 
 - Migration 0024: `single_value` EAV table (doctype, field, value) + a

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
 import { getDoc, saveDoc } from '../src/document'
+import { getList } from '../src/query'
 import { createDocType } from '../src/doctype-engine'
 
 // SET-001: Single DocTypes store one instance in the EAV store, apply
@@ -58,5 +59,11 @@ describe('SET-001: single doctypes', () => {
 
     const [{ n }] = await sql`select count(distinct doctype)::int as n from single_value where doctype = ${DT}`
     expect(n).toBe(1)
+  })
+
+  it('rejects listing a single with a clean validation error (never a 500)', async () => {
+    await expect(getList(DT, {}, 'Administrator')).rejects.toMatchObject({
+      type: 'ValidationError',
+    })
   })
 })
