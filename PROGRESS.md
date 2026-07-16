@@ -13,6 +13,23 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — API-003 passing: RPC for whitelisted methods
+
+- `src/methods.ts`: whitelist(path, fn, {allowGuest}) registry +
+  callMethod; method modules in src/methods/*.ts self-register at import
+  (loadMethods() at boot, mirroring loadControllers). Route
+  /api/method/:path{.+} (GET query args / POST JSON args) sits BEFORE the
+  auth middleware: guest-allowed methods run session-less, all others
+  resolveToken. Result wrapped as {message}. Non-whitelisted → 403
+  PermissionError, so internal helpers stay unreachable.
+- Reference methods: ping (echoes args+user), count_docs (runs through the
+  permission-checked query layer), public_info (allowGuest).
+- Verified: vitest (5 cases incl. guest bypass + 401 for non-guest) + live
+  curl (JSON args, query args, 403 non-whitelisted, 401 unauth).
+- 154 server tests green. 62/126.
+- Session tally (this wakeup): eval #6 + 2 fixes, RPT-002, RPT-003,
+  UI-012, UI-014, API-008, API-005, API-003 → 55→62.
+
 ## 2026-07-16 — API-005 passing: API key/secret auth (+ credential hardening)
 
 - Migration 0012: api_key + api_secret_hash raw columns on tab_user

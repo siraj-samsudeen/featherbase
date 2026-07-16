@@ -14,8 +14,10 @@ import { generateApiKeys, login, resolveToken, revokeApiKeys, type SessionUser }
 import { assertPermission, assertSystemManager, getRoles } from './permissions'
 import { readStored, saveUpload } from './storage'
 import { globalSearch } from './search'
+import { callMethod, loadMethods, methodAllowsGuest } from './methods'
 
 await loadControllers()
+await loadMethods()
 
 type Env = { Variables: { user: SessionUser } }
 
@@ -77,6 +79,21 @@ app.get('/files/:stored', (c) => serveFile(c, `/files/${c.req.param('stored')}`,
 app.get('/private/files/:stored', (c) =>
   serveFile(c, `/private/files/${c.req.param('stored')}`, true),
 )
+
+// API-003: RPC for whitelisted server methods. Registered before the auth
+// middleware so guest-allowed methods work without a session; every other
+// method resolves the caller's token. Path may contain slashes.
+app.on(['GET', 'POST'], '/api/method/:path{.+}', async (c) => {
+  const path = c.req.param('path')
+  const user = methodAllowsGuest(path)
+    ? { name: 'Guest', email: 'guest@example.com', full_name: 'Guest' }
+    : await resolveToken(c.req.header('authorization'))
+  const args =
+    c.req.method === 'POST'
+      ? ((await c.req.json().catch(() => ({}))) as Record<string, unknown>)
+      : c.req.query()
+  return c.json({ message: await callMethod(path, args, user) })
+})
 
 // ---- API-004: everything below requires a valid session --------------------
 
