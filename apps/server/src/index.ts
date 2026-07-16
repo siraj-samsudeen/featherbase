@@ -12,7 +12,7 @@ import { getList } from './query'
 import { loadControllers } from './controllers'
 import { generateApiKeys, login, resolveToken, revokeApiKeys, setUserPassword, type SessionUser } from './auth'
 import { assertPermission, assertSystemManager, getRoles } from './permissions'
-import { readStored, saveUpload } from './storage'
+import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { globalSearch } from './search'
 import { callMethod, loadMethods, methodAllowsGuest } from './methods'
 import { renderPdf, renderPrintHtml } from './print'
@@ -71,14 +71,28 @@ app.post('/api/login', async (c) => {
 // FILE-001: serve stored files. Only files registered as a File doc are
 // readable. Public bucket needs no session; the private bucket accepts a
 // bearer header or ?token= (so <img src> and download links work).
-async function serveFile(c: Context<Env>, fileUrl: string, requireAuth: boolean) {
-  if (requireAuth) {
-    const token = c.req.query('token')
-    await resolveToken(c.req.header('authorization') ?? (token ? `Bearer ${token}` : undefined))
-  }
+async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   const [row] = await sql`
-    select file_name, mime_type from tab_file where file_url = ${fileUrl}`
+    select name, file_name, mime_type, ref_doctype, ref_name
+    from tab_file where file_url = ${fileUrl}`
   if (!row) throw new AppError('NotFoundError', `File not found: ${fileUrl}`)
+
+  // FILE-003: private files require either a valid signed URL (minted after a
+  // permission check) or a session that can read the linked document. A user
+  // without read on that document gets a 403.
+  if (isPrivate) {
+    const signed = verifyFileSignature(fileUrl, c.req.query('expires'), c.req.query('signature'))
+    if (!signed) {
+      const token = c.req.query('token')
+      const user = await resolveToken(
+        c.req.header('authorization') ?? (token ? `Bearer ${token}` : undefined),
+      )
+      if (row.ref_doctype && row.ref_name)
+        await getDoc(row.ref_doctype as string, row.ref_name as string, user.name)
+      else await getDoc('File', row.name as string, user.name)
+    }
+  }
+
   const content = await readStored(fileUrl)
   return c.body(new Uint8Array(content), 200, {
     'content-type': (row.mime_type as string) || 'application/octet-stream',
@@ -232,6 +246,26 @@ app.post('/api/upload_file', async (c) => {
     who(c),
   )
   return c.json(doc, 201)
+})
+
+// FILE-003: mint a short-lived signed URL for a private file, but only after
+// confirming the caller can read the document it is attached to. The returned
+// URL then serves without a session (usable in an <img>/<a>). Public files
+// need no signature and are returned as-is.
+app.get('/api/signed_url', async (c) => {
+  const fileUrl = c.req.query('file_url')
+  if (!fileUrl) throw new AppError('ValidationError', 'Expected file_url')
+  const [row] = await sql`
+    select name, ref_doctype, ref_name from tab_file where file_url = ${fileUrl}`
+  if (!row) throw new AppError('NotFoundError', `File not found: ${fileUrl}`)
+  const user = who(c)
+  if (fileUrl.startsWith('/private/files/')) {
+    if (row.ref_doctype && row.ref_name)
+      await getDoc(row.ref_doctype as string, row.ref_name as string, user)
+    else await getDoc('File', row.name as string, user)
+    return c.json({ signed_url: signFileUrl(fileUrl) })
+  }
+  return c.json({ signed_url: fileUrl })
 })
 
 app.post('/api/submit_doc', async (c) => {

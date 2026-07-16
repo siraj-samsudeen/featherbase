@@ -13,6 +13,28 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — FILE-003 passing: private files gated by linked-doc permission + signed URLs
+
+- Private files (`/private/files/:stored`) now enforce a permission check on
+  the document they are attached to: `serveFile` looks up the File row's
+  `ref_doctype`/`ref_name` and calls `getDoc(...)` as the requesting user, so
+  a user without read on that document gets a 403 (previously any signed-in
+  user could read any private file). Standalone private files (no ref) require
+  read on the File doc itself.
+- Signed URLs (`storage.ts`): `signFileUrl()` mints a short-lived HMAC
+  signature bound to the exact path + expiry (`?expires=..&signature=..`);
+  `verifyFileSignature()` timing-safe-compares and rejects expired/tampered
+  sigs. New `GET /api/signed_url?file_url=..` checks the caller's permission
+  on the linked doc, then returns a signed URL that serves with NO session
+  header (usable in <img>/<a>). Public files return their plain URL.
+- `serveFile` accepts EITHER a valid signature (skips auth — the grant was
+  proven at mint time) OR a session that passes the linked-doc read check.
+- Verified end-to-end (HTTP + test/signed-files.test.ts): outsider → 403 on
+  both serve and mint; permitted non-admin reader → mints a signed URL that
+  serves anonymously with the right bytes; tampered/expired signature → 401.
+  The Desk's attachment links keep working (token-auth now permission-checked).
+- Full suite: 213 server + 38 web e2e green. 92/126.
+
 ## 2026-07-16 — SET-004 passing: System Settings applied globally
 
 - Migration 0025: System Settings single gains `currency` (Select, USD/EUR/
