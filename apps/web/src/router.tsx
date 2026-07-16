@@ -10,6 +10,7 @@ import { getToken } from './lib/api'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
 import { ReportView } from './components/ReportView'
+import { PrintView } from './pages/PrintView'
 import { DocTypeBuilder } from './pages/DocTypeBuilder'
 
 const rootRoute = createRootRoute({ component: Outlet })
@@ -36,6 +37,21 @@ const deskRoute = createRoute({
   },
   component: DeskLayout,
 })
+
+// PRN-001: print view lives OUTSIDE the Desk layout — no navbar/sidebar.
+const printRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/print/$doctype/$name',
+  beforeLoad: () => {
+    if (!getToken()) throw redirect({ to: '/login' })
+  },
+  component: PrintPage,
+})
+
+function PrintPage() {
+  const { doctype, name } = printRoute.useParams()
+  return <PrintView key={`${doctype}/${name}`} doctype={doctype} name={name} />
+}
 
 const deskIndexRoute = createRoute({
   getParentRoute: () => deskRoute,
@@ -141,5 +157,6 @@ function DocFormPage() {
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
+  printRoute,
   deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, doctypeRoute, docRoute]),
 ])

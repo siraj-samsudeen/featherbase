@@ -184,6 +184,16 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
               {docstatus === 1 ? 'Submitted' : docstatus === 2 ? 'Cancelled' : 'Draft'}
             </span>
           )}
+          {!isNew && (
+            <RouterLink
+              to="/print/$doctype/$name"
+              params={{ doctype, name }}
+              data-testid="form-print"
+              className="fc-btn"
+            >
+              Print
+            </RouterLink>
+          )}
           {!isNew && !renaming && (
             <button
               onClick={() => {

@@ -13,6 +13,20 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — PRN-001 passing: print view
+
+- `PrintView.tsx` at /print/:doctype/:name — a ROOT route (outside the
+  Desk layout, so no navbar/sidebar/awesomebar). Metadata-driven: scalar
+  fields as a label/value grid, each Table field as a bordered child-table
+  (framework columns hidden), a print-hidden "Print" button calling
+  window.print(). Form gained a Print link.
+- Verified by e2e/print-view.spec.ts: reach via form Print button; app
+  chrome absent (awesomebar/doctype-nav count 0); labels+values shown;
+  child table renders 2 rows (Widget/Gadget).
+- 160 server + 23 web e2e green. 66/126.
+- Next: PRN-002 (print formats/templates) then PRN-003 (server PDF) build
+  on this.
+
 ## 2026-07-16 — UI-019 passing: activity timeline
 
 - `ActivityTimeline.tsx` in the form sidebar merges Comment + Version docs
