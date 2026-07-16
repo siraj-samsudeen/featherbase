@@ -9,8 +9,11 @@ import {
   assertDocPermission,
   assertPermission,
   checkUserPermissions,
+  filterReadFields,
   getUserPermissionMap,
   isBypassUser,
+  permittedLevels,
+  stripUnwritableFields,
 } from './permissions'
 
 // Hooks may set any writable column; re-filter after they run so a hook
@@ -338,9 +341,10 @@ export async function saveDoc(
   }
   await assertPermission(user, doctype, 'create')
   await assertUserPermissions(user, meta, values)
+  const writeLevels = await permittedLevels(user, doctype, 'write')
   const fieldValues = validateValues(
     meta,
-    applyDefaults(meta, pickFieldValues(meta, values)),
+    applyDefaults(meta, stripUnwritableFields(meta.fields, writeLevels, pickFieldValues(meta, values))),
     'insert',
   )
 
@@ -402,7 +406,12 @@ async function updateDoc(
       'ValidationError',
       'Updates must include the modified timestamp of the loaded document',
     )
-  const fieldValues = validateValues(meta, pickFieldValues(meta, values), 'update')
+  const writeLevels = await permittedLevels(user, meta.name, 'write')
+  const fieldValues = validateValues(
+    meta,
+    stripUnwritableFields(meta.fields, writeLevels, pickFieldValues(meta, values)),
+    'update',
+  )
 
   const saved = await sql
     .begin(async (tx) => {
@@ -674,5 +683,7 @@ export async function getDoc(
   if (!row) throw new AppError('NotFoundError', `${doctype} ${name} not found`)
   await assertDocPermission(user, doctype, 'read', String(row.owner))
   await assertUserPermissions(user, meta, row as DocValues)
-  return loadChildren(meta, { doctype, ...(row as DocValues) })
+  const readLevels = await permittedLevels(user, doctype, 'read')
+  const visible = filterReadFields(meta.fields, readLevels, row as DocValues)
+  return loadChildren(meta, { doctype, ...visible })
 }

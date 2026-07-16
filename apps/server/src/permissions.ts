@@ -142,6 +142,59 @@ export function checkUserPermissions(
   }
 }
 
+// PERM-006: the set of permlevels a user may READ / WRITE on a DocType.
+// Level 0 is the base grant; higher levels need explicit DocPerm rows at
+// that permlevel. Admins/System Managers get every level.
+export async function permittedLevels(
+  user: string,
+  doctype: string,
+  action: 'read' | 'write',
+): Promise<Set<number>> {
+  if (await isBypassUser(user)) return new Set([-1]) // sentinel: all levels
+  const roles = await getRoles(user)
+  const rows = await sql`
+    select distinct permlevel from tab_docperm
+    where ref_doctype = ${doctype}
+      and role in ${sql(roles)}
+      and ${sql(ACTION_COLUMN[action])} = true`
+  return new Set(rows.map((r) => Number(r.permlevel)))
+}
+
+function allowsLevel(levels: Set<number>, level: number): boolean {
+  return levels.has(-1) || levels.has(level)
+}
+
+// Strip fields the user can't read at their permlevels from an outgoing doc.
+export function filterReadFields(
+  fields: { fieldname: string; permlevel: number }[],
+  levels: Set<number>,
+  doc: Record<string, unknown>,
+): Record<string, unknown> {
+  if (levels.has(-1)) return doc
+  const out: Record<string, unknown> = {}
+  const hidden = new Set(
+    fields.filter((f) => !allowsLevel(levels, f.permlevel)).map((f) => f.fieldname),
+  )
+  for (const [k, v] of Object.entries(doc)) if (!hidden.has(k)) out[k] = v
+  return out
+}
+
+// Drop writes to fields above the user's write levels (silently ignored,
+// like read_only) so a client can't escalate via permlevel-1 fields.
+export function stripUnwritableFields(
+  fields: { fieldname: string; permlevel: number }[],
+  levels: Set<number>,
+  values: Record<string, unknown>,
+): Record<string, unknown> {
+  if (levels.has(-1)) return values
+  const writable = new Set(
+    fields.filter((f) => allowsLevel(levels, f.permlevel)).map((f) => f.fieldname),
+  )
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(values)) if (writable.has(k)) out[k] = v
+  return out
+}
+
 export async function assertSystemManager(user: string) {
   if (user === 'Administrator') return
   const roles = await getRoles(user)
