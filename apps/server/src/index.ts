@@ -10,7 +10,7 @@ import { createDocType, updateDocType } from './doctype-engine'
 import { amendDoc, cancelDoc, deleteDoc, getDoc, renameDoc, saveDoc, submitDoc } from './document'
 import { getList } from './query'
 import { loadControllers } from './controllers'
-import { generateApiKeys, login, resolveToken, revokeApiKeys, type SessionUser } from './auth'
+import { generateApiKeys, login, resolveToken, revokeApiKeys, setUserPassword, type SessionUser } from './auth'
 import { assertPermission, assertSystemManager, getRoles } from './permissions'
 import { readStored, saveUpload } from './storage'
 import { globalSearch } from './search'
@@ -19,6 +19,7 @@ import { renderPdf, renderPrintHtml } from './print'
 import { applyWorkflowAction, availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
 import { enqueue, loadJobs, startWorker } from './jobs'
+import { attachRealtime, publishDocEvent } from './realtime'
 
 await loadControllers()
 await loadMethods()
@@ -117,6 +118,17 @@ app.get('/api/whoami', async (c) => {
   return c.json({ ...user, roles: await getRoles(user.name) })
 })
 
+// Set a user's password. A user may set their own; a System Manager may set
+// anyone's. Passwords never travel through the generic document API.
+app.post('/api/set_password', async (c) => {
+  const { user, password } = (await c.req.json()) as { user?: string; password?: string }
+  const target = user ?? who(c)
+  if (!password) throw new AppError('ValidationError', 'Expected { password }')
+  if (target !== who(c)) await assertSystemManager(who(c))
+  await setUserPassword(target, password)
+  return c.json({ ok: true })
+})
+
 // API-005: generate/revoke integration keys. Users manage their own;
 // System Managers can target any user via {user}.
 app.post('/api/generate_api_key', async (c) => {
@@ -157,7 +169,9 @@ app.post('/api/save_doc', async (c) => {
   const body = (await c.req.json()) as { doctype?: string; doc?: Record<string, unknown> }
   if (!body.doctype || typeof body.doc !== 'object' || body.doc === null)
     throw new AppError('ValidationError', 'Expected { doctype, doc }')
+  const hadName = Boolean(body.doc.name)
   const saved = await saveDoc(body.doctype, body.doc, who(c))
+  publishDocEvent(body.doctype, String(saved.name), hadName ? 'updated' : 'created')
   return c.json(saved, 201)
 })
 
@@ -347,6 +361,14 @@ app.get('/api/search', async (c) => {
   return c.json({ results: await globalSearch(q, who(c)) })
 })
 
+// RT-003: the caller's unread notification count.
+app.get('/api/unread_count', async (c) => {
+  const [row] = await sql`
+    select count(*)::int as c from tab_notification_log
+    where for_user = ${who(c)} and read = false`
+  return c.json({ count: (row?.c as number) ?? 0 })
+})
+
 // API-001/API-002: Frappe-style REST resource — one generic handler set
 // serves CRUD for every DocType, driven entirely by metadata.
 app.get('/api/resource/:doctype', async (c) => {
@@ -357,7 +379,9 @@ app.get('/api/resource/:doctype', async (c) => {
 // DocTypes but an existing name conflicts instead of silently updating.
 app.post('/api/resource/:doctype', async (c) => {
   const doc = (await c.req.json()) as Record<string, unknown>
-  return c.json(await saveDoc(c.req.param('doctype'), doc, who(c), 'insert'), 201)
+  const saved = await saveDoc(c.req.param('doctype'), doc, who(c), 'insert')
+  publishDocEvent(c.req.param('doctype'), String(saved.name), 'created')
+  return c.json(saved, 201)
 })
 
 app.get('/api/resource/:doctype/:name', async (c) => {
@@ -367,18 +391,23 @@ app.get('/api/resource/:doctype/:name', async (c) => {
 app.put('/api/resource/:doctype/:name', async (c) => {
   const doc = (await c.req.json()) as Record<string, unknown>
   doc.name = c.req.param('name')
-  return c.json(await saveDoc(c.req.param('doctype'), doc, who(c)))
+  const saved = await saveDoc(c.req.param('doctype'), doc, who(c))
+  publishDocEvent(c.req.param('doctype'), String(saved.name), 'updated')
+  return c.json(saved)
 })
 
 app.delete('/api/resource/:doctype/:name', async (c) => {
   await deleteDoc(c.req.param('doctype'), c.req.param('name'), who(c))
+  publishDocEvent(c.req.param('doctype'), c.req.param('name'), 'deleted')
   return c.json({ ok: true })
 })
 
 if (process.env.NODE_ENV !== 'test') {
-  serve({ fetch: app.fetch, port: config.port }, (info) => {
+  const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
     console.log(`server listening on :${info.port}`)
   })
+  // RT-001/002/003: attach the realtime WebSocket server to the HTTP server.
+  attachRealtime(server as unknown as import('node:http').Server)
   // JOB-001: run the background worker in-process (tests drive the queue
   // directly via runOneJob/drainJobs, so the worker stays off under test).
   startWorker()

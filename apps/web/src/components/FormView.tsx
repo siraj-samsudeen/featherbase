@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { metaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, getToken, listResource } from '../lib/api'
+import { useRealtime } from '../lib/realtime'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { NO_COLUMN_TYPES, useMeta, type DocField, type DocTypeMeta } from '../lib/meta'
 import { Attachments } from './Attachments'
@@ -33,6 +34,15 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   const [saving, setSaving] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
+  const [staleBanner, setStaleBanner] = useState(false)
+
+  // RT-002: another session saving this document shows a refresh banner.
+  // The user's own save is suppressed via a short window (their save
+  // triggers a local refetch already).
+  const suppressStaleUntil = useRef(0)
+  useRealtime(isNew ? [] : [`doc:${doctype}:${name}`], (e) => {
+    if (e.event === 'updated' && Date.now() > suppressStaleUntil.current) setStaleBanner(true)
+  })
 
   const baseline = useMemo(() => {
     if (isNew) return {}
@@ -114,6 +124,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
       } else {
         delete payload.name
       }
+      suppressStaleUntil.current = Date.now() + 2000
       const saved = await api.post<Doc>('/api/save_doc', { doctype, doc: payload })
       await queryClient.invalidateQueries({ queryKey: ['doc', doctype] })
       await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
@@ -269,6 +280,26 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
         >
           {banner}
         </p>
+      )}
+      {staleBanner && (
+        <div
+          className="mb-3 flex items-center justify-between rounded-md border border-[var(--color-warn)]/40 bg-[var(--color-warn-tint)] px-3 py-2 text-sm"
+          data-testid="stale-banner"
+        >
+          <span className="text-[var(--color-ink)]">
+            This document was changed in another session.
+          </span>
+          <button
+            onClick={async () => {
+              await queryClient.invalidateQueries({ queryKey: ['doc', doctype, name] })
+              setStaleBanner(false)
+            }}
+            data-testid="stale-refresh"
+            className="fc-btn"
+          >
+            Refresh
+          </button>
+        </div>
       )}
       <div className="flex flex-col gap-6 lg:flex-row">
         <div className="min-w-0 max-w-3xl flex-1">

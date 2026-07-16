@@ -13,6 +13,33 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — RT-001/002/003 passing: realtime over WebSockets
+
+- `src/realtime.ts`: a WS server (ws) attached to the shared HTTP server at
+  /ws?token=<jwt>. Clients subscribe to channels; the personal user:<name>
+  channel is auto-subscribed. Channels: list:<DocType>, doc:<DocType>:<name>,
+  user:<name>. publish() also feeds an in-process EventBus (onEvent) for
+  tests. Mutation endpoints (save_doc, resource POST/PUT/DELETE) emit
+  publishDocEvent; the Comment controller emits publishUserEvent per
+  @mention (RT-003). New GET /api/unread_count and POST /api/set_password
+  (self, or any user for a System Manager — enables second-user e2e).
+- Web: `lib/realtime.ts` — one shared auto-reconnecting socket + useRealtime
+  hook. ListView invalidates its list query on list: events (RT-001).
+  FormView shows a "changed in another session" refresh banner on doc:
+  events, suppressed for ~2s after the user's own save (RT-002). DeskLayout
+  shows a live unread badge, refetched on user notification events (RT-003).
+  Vite proxies /ws (ws:true).
+- Verified: e2e/realtime.spec.ts — two browser contexts: (1) create in A
+  appears in B's list; (2) A's save pops B's refresh banner (not A's own),
+  refresh loads the new value; (3) A's @mention of user B pops B's unread
+  badge live. Ran 3× green. Server: test/realtime.test.ts (event bus
+  channels) + direct WS probe.
+- GOTCHA: startup race — if the mutation fires before the other context's
+  socket has subscribed, the event is missed; the e2e waits for the list to
+  render + ~1s before mutating. Real users only hit a sub-second window on
+  first open (the list already shows current data; realtime keeps it fresh).
+- 182 server + 32 web e2e green. 80/126.
+
 ## 2026-07-16 — UI-013 passing: saved list settings per user
 
 - Migration 0019: `user_settings` table (user, doctype, settings jsonb,

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 import { Link } from '@tanstack/react-router'
 import { ApiError, api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, listColumns, useMeta } from '../lib/meta'
+import { useRealtime } from '../lib/realtime'
 
 export type Filter = [string, string, unknown]
 
@@ -43,6 +44,12 @@ export function ListView({
   const filterKey = JSON.stringify(filters)
   useEffect(() => setStart(0), [filterKey])
   useEffect(() => setSelected(new Set()), [filterKey, start, doctype])
+
+  // RT-001: another session creating/updating/deleting a doc of this type
+  // refreshes the list without a reload.
+  useRealtime([`list:${doctype}`], () => {
+    void queryClient.invalidateQueries({ queryKey: ['list', doctype] })
+  })
 
   // UI-013: load this user's saved view settings (sort + hidden columns)
   // once per DocType. Filters stay URL-driven (UI-003), so they're not

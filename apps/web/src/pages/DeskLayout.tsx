@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, Outlet, useNavigate } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, clearSession, getSessionUser, listResource } from '../lib/api'
+import { useRealtime } from '../lib/realtime'
 
 interface SearchHit {
   doctype: string
@@ -13,8 +14,20 @@ interface SearchHit {
 // workspace sidebar. All DocTypes render inside <Outlet/>.
 export function DeskLayout() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const user = getSessionUser()
   const [search, setSearch] = useState('')
+
+  // RT-003: unread notification count, live-updated when a realtime
+  // 'notification' event arrives for this user.
+  const unread = useQuery({
+    queryKey: ['unread-count'],
+    queryFn: () => api.get<{ count: number }>('/api/unread_count'),
+  })
+  useRealtime(user ? [`user:${user.name}`] : [], (e) => {
+    if (e.event === 'notification')
+      void queryClient.invalidateQueries({ queryKey: ['unread-count'] })
+  })
 
   const doctypes = useQuery({
     queryKey: ['doctypes'],
@@ -150,6 +163,19 @@ export function DeskLayout() {
         </form>
 
         <div className="flex items-center gap-3">
+          <div className="relative" title="Notifications">
+            <span className="text-[var(--color-ink-muted)]" data-testid="notif-bell">
+              🔔
+            </span>
+            {(unread.data?.count ?? 0) > 0 && (
+              <span
+                className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-danger)] px-1 text-[10px] font-semibold text-white"
+                data-testid="unread-count"
+              >
+                {unread.data?.count}
+              </span>
+            )}
+          </div>
           <div
             className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-brand)] text-xs font-semibold text-white"
             data-testid="session-user"

@@ -11,6 +11,7 @@ export default defineConfig({
       '/api': 'http://localhost:8000',
       '/files': 'http://localhost:8000',
       '/private/files': 'http://localhost:8000',
+      '/ws': { target: 'ws://localhost:8000', ws: true },
     },
   },
 })
