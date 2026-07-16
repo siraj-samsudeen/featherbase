@@ -13,6 +13,34 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — WF-001/002/003 passing: workflow engine (definition, execution, enforcement)
+
+- Migration 0015: Workflow (+ child Workflow Document State, Workflow
+  Transition) and Workflow Action (audit log) DocTypes.
+- `src/workflow.ts`: getActiveWorkflow, validateWorkflow (WF-001: rejects
+  transitions to/from undefined states — no orphans), ensureStateField
+  (adds a read-only `workflow_state` field to the target DocType, on-demand
+  ALTER + docfield insert + invalidateMeta), applyWorkflowAction
+  (WF-002/003: resolves the transition from the doc's current state,
+  enforces the `allowed` role — Administrator/System Manager bypass — then
+  updates workflow_state + docstatus and logs a Workflow Action with
+  who/when), availableActions (privileged users see all).
+- controllers/workflow.ts: validate hook (orphan check) + after_save hook
+  (ensureStateField when active). Endpoints GET /api/workflow/:dt/:name
+  (state + permitted actions) and POST /api/apply_workflow_action.
+- FormView: WorkflowActions in the header — state pill + transition buttons.
+- **Core change**: saveDoc/updateDoc now attach child-table rows to
+  `ctx.doc` under their fieldnames before running validate/before_save
+  hooks (columnValues ignores non-scalar keys), so controllers can validate
+  child grids. All 167 server tests still green — no regression.
+- Verified: test/workflow.test.ts (5: persist+field-added, orphan 417,
+  role-less 403 state-unchanged, admin drives Draft→Pending→Approved with
+  docstatus 0→0→1 + audit trail, invalid-from-state 417) + live curl +
+  e2e/workflow.spec.ts (Approve button flips Draft→Approved, audit row).
+- De-flaked: workflow/timeline specs use per-run doc names (a submitted doc
+  can't be API-deleted; versions accumulate). Web suite 3× green (26).
+- 167 server + 26 web e2e green. 71/126.
+
 ## 2026-07-16 — PRN-003 passing: server-side PDF generation
 
 - `src/print.ts`: renderPrintHtml builds the same HTML the browser print

@@ -8,6 +8,7 @@ import { NO_COLUMN_TYPES, useMeta, type DocField, type DocTypeMeta } from '../li
 import { Attachments } from './Attachments'
 import { Comments } from './Comments'
 import { ActivityTimeline } from './ActivityTimeline'
+import { WorkflowActions } from './WorkflowActions'
 
 type Doc = Record<string, unknown>
 
@@ -170,6 +171,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {!isNew && <WorkflowActions doctype={doctype} name={name} />}
           {submittable && (
             <span
               data-testid="docstatus-badge"

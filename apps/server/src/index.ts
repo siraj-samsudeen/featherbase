@@ -16,6 +16,7 @@ import { readStored, saveUpload } from './storage'
 import { globalSearch } from './search'
 import { callMethod, loadMethods, methodAllowsGuest } from './methods'
 import { renderPdf, renderPrintHtml } from './print'
+import { applyWorkflowAction, availableActions, currentState, getActiveWorkflow } from './workflow'
 
 await loadControllers()
 await loadMethods()
@@ -218,6 +219,35 @@ app.post('/api/amend_doc', async (c) => {
 app.delete('/api/doc/:doctype/:name', async (c) => {
   await deleteDoc(c.req.param('doctype'), c.req.param('name'), who(c))
   return c.json({ ok: true })
+})
+
+// WF-002: the transitions available to the current user for a document,
+// plus its current state — drives the form's action buttons.
+app.get('/api/workflow/:doctype/:name', async (c) => {
+  const doctype = c.req.param('doctype')
+  const wf = await getActiveWorkflow(doctype)
+  if (!wf) return c.json({ workflow: null })
+  const doc = await getDoc(doctype, c.req.param('name'), who(c))
+  const state = currentState(wf, doc)
+  const roles = await getRoles(who(c))
+  return c.json({
+    workflow: wf.name,
+    state,
+    actions: availableActions(wf, state, roles).map((t) => ({ action: t.action, next_state: t.next_state })),
+  })
+})
+
+// WF-002/003: apply a workflow action. Role enforcement is server-side, so
+// a forbidden transition is rejected regardless of the UI.
+app.post('/api/apply_workflow_action', async (c) => {
+  const { doctype, name, action } = (await c.req.json()) as {
+    doctype?: string
+    name?: string
+    action?: string
+  }
+  if (!doctype || !name || !action)
+    throw new AppError('ValidationError', 'Expected { doctype, name, action }')
+  return c.json(await applyWorkflowAction(doctype, name, action, who(c)))
 })
 
 // DOC-012: rename a document and cascade the new name to all Link references.

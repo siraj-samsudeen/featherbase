@@ -20,8 +20,9 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
-  docName = 'tl-doc'
-  await request.delete(`/api/resource/${encodeURIComponent(DT)}/${docName}`, { headers })
+  // Fresh doc name per run so accumulated versions/comments from prior runs
+  // don't skew the exact-count assertions.
+  docName = `tl-doc-${Math.random().toString(36).slice(2, 8)}`
   const doc = await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
     headers,
     data: { name: docName, title: 'original' },

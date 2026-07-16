@@ -383,6 +383,9 @@ export async function saveDoc(
         idx: 0,
         ...fieldValues,
       }
+      // Expose child rows to hooks (validate/before_save) under their
+      // fieldnames; columnValues ignores non-scalar keys when building the row.
+      for (const ci of childInputs) doc[ci.fieldname] = ci.rows
       const ctx: HookContext = { doc, meta, user, isNew: true, tx: stx }
       await runHooks('before_insert', ctx)
       await runHooks('validate', ctx)
@@ -465,6 +468,8 @@ async function updateDoc(
           `${meta.name} ${name} is cancelled and cannot be modified`,
         )
       const doc: DocValues = { ...(existing as DocValues), ...fieldValues }
+      // Expose child rows to hooks under their fieldnames (see insert path).
+      for (const ci of pickChildInputs(meta, values)) doc[ci.fieldname] = ci.rows
       const ctx: HookContext = {
         doc,
         old: existing as DocValues,
