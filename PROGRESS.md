@@ -13,6 +13,25 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — Evaluation pass #14 (adversarial) — all held
+
+- Probed the newest batch (UI-015, I18N-001/002, JOB-004/005) + regressions.
+  All held; no status flips, no product code.
+- **JOB-004:** non-System-Manager retry → 403; retry a non-existent job → 417;
+  retry an already-done job → 417 (only 'failed' jobs re-queue).
+- **I18N-001:** a non-admin sets their OWN language (set_language keys off the
+  caller, not a target) → ok; reads any catalog → 200; unknown language → `{}`.
+  Field-label translation is generic (t() over field.label) — works on any
+  DocType.
+- **UI-015:** typing "g" then "d" INSIDE a text field does NOT trigger the g→d
+  leader navigation (the handler guards on INPUT/TEXTAREA/SELECT/contentEditable
+  targets); the field keeps the typed value. Ctrl+S/Ctrl+B are inert off a form.
+- **JOB-005:** progress publishes to the job OWNER's user channel only, and
+  canSubscribe restricts user:* to self — no cross-user progress leakage.
+- Regressions: CUST-004 sandbox still closed (`Object.constructor("return
+  typeof process")()` → "undefined"); RPT-004 read-only still blocks an UPDATE
+  query (417).
+
 ## 2026-07-16 — UI-015 passing: keyboard shortcuts
 
 - A global keydown handler in DeskLayout: **Ctrl/Cmd+S** clicks the form's Save
