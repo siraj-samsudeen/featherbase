@@ -19,6 +19,11 @@ export const app = new Hono<Env>()
 
 app.onError((err, c) => errorResponse(c, err))
 
+// API-006: even unknown routes answer with the error envelope.
+app.notFound((c) =>
+  c.json({ error: { type: 'NotFoundError', message: `Route not found: ${c.req.method} ${c.req.path}` } }, 404),
+)
+
 // ---- Public routes (no session required) -----------------------------------
 
 app.get('/api/ping', async (c) => {

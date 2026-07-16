@@ -13,6 +13,24 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — API-006 passing: consistent error envelope
+
+- Probed every error class against the live server. Two gaps found and
+  fixed: unknown routes past auth returned Hono's plain-text 404 (now an
+  enveloped NotFoundError via `app.notFound`), and a malformed JSON body
+  surfaced as 500 InternalError (now 400 BadRequestError — SyntaxError from
+  `c.req.json()` is mapped in `errorResponse`). New `BadRequestError` type
+  → 400 added to the envelope.
+- Verified live via curl: 400/401/403/404/409/417 all return
+  `{error:{type,message,fields?}}` with application/json. Permanent
+  coverage in `test/error-envelope.test.ts` (8 tests, incl. a role-less
+  probe user getting an enveloped 403 on /api/doctype).
+- 128 server tests + 13 web e2e green. 50/126.
+- Gotcha: features.json is single-line-per-entry formatted — flip statuses
+  with a string Edit, never a JSON rewrite (reformats the whole file).
+- Next: PERM-004 (p1, generated RLS — satisfy with native PG RLS per
+  CLAUDE.md invariant 2), then RPT-001/FILE-001 (p2).
+
 ## 2026-07-16 — Frappe reskin (Interleave polish pass)
 
 - Reskinned Login, Desk shell, ListView, FormView, DocTypeBuilder to the
