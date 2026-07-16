@@ -13,6 +13,19 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — RPT-003 passing: CSV/XLSX export
+
+- ReportView exports exactly the on-screen grid in display order:
+  header, group header rows (value (n) + numeric sums) interleaved with
+  member rows, grand total. CSV built inline (RFC-quoted); XLSX via
+  dynamically-imported SheetJS (`xlsx` pkg, local, no network).
+- Verified by e2e/report-export.spec.ts: real browser downloads of both
+  formats; CSV line order equals the on-screen titles order, group sums
+  (Open 3 / Closed 5 / Total 8) checked, XLSX parsed back with SheetJS in
+  node and grid compared.
+- 143 server + 18 web e2e green. 57/126.
+- Session tally so far: eval #6 (2 bugs found+fixed), RPT-002, RPT-003.
+
 ## 2026-07-16 — RPT-002 passing: saved reports
 
 - Migration 0011: 'Report' DocType (autoname prompt; ref_doctype Link,

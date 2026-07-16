@@ -148,6 +148,73 @@ export function ReportView({
     return String(v)
   }
 
+  // RPT-003: export exactly what is on screen, in display order — group
+  // header rows (value, count, sums) interleaved with member rows, then the
+  // grand total.
+  const exportCell = (row: Row, col: string) => {
+    const v = row[col]
+    if (v == null) return ''
+    if (typeof v === 'boolean') return v ? 'true' : 'false'
+    return String(v)
+  }
+
+  function exportRows(): (string | number)[][] {
+    const header = ['Name', ...columns.map(label)]
+    const out: (string | number)[][] = [header]
+    const member = (row: Row) => [String(row.name), ...columns.map((c) => exportCell(row, c))]
+    if (groupBy) {
+      for (const [key, list] of groups.entries()) {
+        out.push([
+          `${key} (${list.length})`,
+          ...columns.map((c) => (numericCols.includes(c) ? sum(list, c) : '')),
+        ])
+        for (const row of list) out.push(member(row))
+      }
+    } else {
+      for (const row of data) out.push(member(row))
+    }
+    if (data.length && numericCols.length)
+      out.push([
+        `Total (${data.length})`,
+        ...columns.map((c) => (numericCols.includes(c) ? sum(data, c) : '')),
+      ])
+    return out
+  }
+
+  function download(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function exportCsv() {
+    const quote = (v: string | number) => {
+      const s = String(v)
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+    }
+    const csv = exportRows()
+      .map((r) => r.map(quote).join(','))
+      .join('\n')
+    download(new Blob([csv], { type: 'text/csv' }), `${doctype.toLowerCase().replace(/\s+/g, '-')}-report.csv`)
+  }
+
+  async function exportXlsx() {
+    const XLSX = await import('xlsx')
+    const ws = XLSX.utils.aoa_to_sheet(exportRows())
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Report')
+    const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+    download(
+      new Blob([buf], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      }),
+      `${doctype.toLowerCase().replace(/\s+/g, '-')}-report.xlsx`,
+    )
+  }
+
   const bodyRow = (row: Row) => (
     <tr key={String(row.name)} className="border-t border-[var(--color-border)]" data-testid="report-row">
       <td className="px-3 py-1.5">
@@ -176,15 +243,23 @@ export function ReportView({
             {rows.data?.total ?? 0} rows
           </span>
         </div>
-        <RouterLink
-          to="/desk/$doctype"
-          params={{ doctype }}
-          search={{ filters: undefined }}
-          className="fc-btn"
-          data-testid="report-to-list"
-        >
-          List view
-        </RouterLink>
+        <div className="flex items-center gap-2">
+          <button onClick={exportCsv} className="fc-btn" data-testid="export-csv">
+            CSV
+          </button>
+          <button onClick={exportXlsx} className="fc-btn" data-testid="export-xlsx">
+            XLSX
+          </button>
+          <RouterLink
+            to="/desk/$doctype"
+            params={{ doctype }}
+            search={{ filters: undefined }}
+            className="fc-btn"
+            data-testid="report-to-list"
+          >
+            List view
+          </RouterLink>
+        </div>
       </div>
 
       <div className="mb-3 flex items-center gap-3">
