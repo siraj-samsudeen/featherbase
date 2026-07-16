@@ -6,6 +6,7 @@
     "dev": "tsx watch src/index.ts",
     "migrate": "tsx src/migrate.ts",
     "patches": "tsx src/run-patches.ts",
+    "cli": "tsx src/cli.ts",
     "test": "vitest run",
     "test:smoke": "tsx src/smoke.ts",
     "typecheck": "tsc --noEmit"

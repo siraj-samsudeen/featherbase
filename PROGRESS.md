@@ -13,6 +13,29 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — PLAT-004 passing: developer CLI over the document API
+
+- `src/cli.ts` (`pnpm --filter server cli <cmd>`) with subcommands:
+  `migrate`, `patches`, `seed`, `create-doctype`, `create-user`, `console`.
+  A tiny flag parser handles `--key value` (repeatable → array), bare
+  `--flags`, and positionals.
+  - `create-doctype --name "X" --field title:Data --field status:Select:Open|Closed [--single]`
+    (pipe-separated Select options split to newlines).
+  - `create-user <email> <pwd> [--full-name ..] [--roles "A,B"]` — creates the
+    User through the normal save lifecycle + sets the password; login works.
+  - `seed` re-applies the idempotent core seed migrations (0005/0006).
+  - `console` — interactive REPL with sql/getDoc/saveDoc/getList/getMeta/
+    createDocType in scope; when stdin isn't a TTY it runs the piped script as
+    an async function and AWAITS it (scriptable: `cli console < script.js`).
+- Refactored `migrate.ts` to export `runMigrations()` (no longer closes the
+  connection) with an entry-point guard so importing it (from the CLI) has no
+  side effect; standalone `pnpm migrate` (init.sh) still works.
+- Verified: all six commands run against the dev DB (create-user login
+  confirmed via /api/login; console script prints Administrator); server test
+  spawns the CLI as a subprocess and asserts DB effects for create-doctype,
+  create-user, and console. 218 server tests green. 94/126.
+- Unblocks PLAT-008 (multi-tenancy per-site migrate/CLI).
+
 ## 2026-07-16 — PLAT-003 passing: ordered, recorded patch runner
 
 - New patch system distinct from the doctype-seed migrations: `src/patches.ts`
