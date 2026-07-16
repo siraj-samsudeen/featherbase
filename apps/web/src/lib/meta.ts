@@ -47,14 +47,20 @@ export function useMeta(doctype: string) {
 
 // Columns for a list view: name first, then flagged fields (or the first
 // two data fields when nothing is flagged), matching Frappe's behavior.
-export function listColumns(meta: DocTypeMeta): { fieldname: string; label: string }[] {
+export function listColumns(
+  meta: DocTypeMeta,
+): { fieldname: string; label: string; fieldtype: string }[] {
   const dataFields = meta.fields.filter(
     (f) => !NO_COLUMN_TYPES.has(f.fieldtype) && !f.hidden,
   )
   let flagged = dataFields.filter((f) => f.in_list_view)
   if (!flagged.length) flagged = dataFields.slice(0, 2)
   return [
-    { fieldname: 'name', label: 'Name' },
-    ...flagged.map((f) => ({ fieldname: f.fieldname, label: f.label ?? f.fieldname })),
+    { fieldname: 'name', label: 'Name', fieldtype: 'Data' },
+    ...flagged.map((f) => ({
+      fieldname: f.fieldname,
+      label: f.label ?? f.fieldname,
+      fieldtype: f.fieldtype,
+    })),
   ]
 }

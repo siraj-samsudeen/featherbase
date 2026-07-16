@@ -13,6 +13,29 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — SET-004 passing: System Settings applied globally
+
+- Migration 0025: System Settings single gains `currency` (Select, USD/EUR/
+  GBP/INR/JPY, default USD), `currency_precision` (Int, 2), `float_precision`
+  (Int, 2) — added idempotently as docfields (singles have no table).
+- Server: `settings.ts` `getSystemSettings()` reads the single's EAV values
+  with typed defaults. New `/api/settings` endpoint exposes only the display
+  subset (app_name, date_format, currency, currency_precision, float_precision)
+  to any signed-in user. `login()` now derives JWT lifetime from
+  `session_hours` (clamped 1–720h) instead of a hardcoded constant.
+- Web: `lib/settings.ts` — `useSettings()` (cached fetch) + `formatValue()`
+  (Date→date_format, Currency→symbol+precision, Float→precision). ListView
+  cells format by field type via these; FormView shows a formatted preview
+  under each Date/Currency/Float input (native inputs can't honor a custom
+  format). `listColumns()` now carries `fieldtype` so cells know how to
+  render. Zero per-DocType code — one formatter drives every list and form.
+- Verified end-to-end: e2e/system-settings-global.spec.ts (dd-mm-yyyy date +
+  $1,234.50 currency render in list AND form previews; switching the global
+  format to mm-dd-yyyy re-renders the same list to 03-09-2026; bumping
+  precision to 3 → $1,234.500) + server settings.test.ts (defaults, typed
+  overrides, endpoint subset). Full suite: 209 server + 38 web e2e green.
+- 91/126.
+
 ## 2026-07-16 — Evaluation pass #10 (adversarial) + single-list hardening
 
 - Ran the every-~3rd-wakeup adversarial pass over the newest features

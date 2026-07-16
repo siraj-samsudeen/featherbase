@@ -2,12 +2,12 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { sign, verify } from 'hono/jwt'
 import { sql } from './db'
 import { AppError } from './errors'
+import { getSystemSettings } from './settings'
 
 // API-004: email/password login issuing a JWT; every API call (except
 // /api/ping and /api/login) must carry it. Passwords are scrypt-hashed.
 
 const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-me'
-const SESSION_HOURS = 8
 
 // 32-byte key + 16-byte salt fits the varchar(140) Data column (97 chars).
 export function hashPassword(password: string): string {
@@ -42,10 +42,14 @@ export async function login(usr: string, pwd: string): Promise<{ token: string; 
     where (name = ${usr} or email = ${usr})`
   if (!user || !user.enabled || !user.password_hash || !verifyPassword(pwd, user.password_hash as string))
     throw new AppError('AuthenticationError', 'Invalid login credentials')
+  // SET-004: session lifetime is driven by System Settings (session_hours),
+  // clamped to a sane range so a bad setting can't disable or eternalize logins.
+  const { session_hours } = await getSystemSettings()
+  const hours = Math.min(Math.max(session_hours || 8, 1), 720)
   const token = await sign(
     {
       sub: user.name as string,
-      exp: Math.floor(Date.now() / 1000) + SESSION_HOURS * 3600,
+      exp: Math.floor(Date.now() / 1000) + hours * 3600,
     },
     JWT_SECRET,
   )

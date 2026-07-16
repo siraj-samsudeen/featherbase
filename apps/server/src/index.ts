@@ -21,6 +21,7 @@ import { reapplyCustomFields } from './custom-fields'
 import { enqueue, loadJobs, startWorker } from './jobs'
 import { attachRealtime, publishDocEvent, publishUserEvent } from './realtime'
 import { queueEmail, sendTestEmail } from './email'
+import { getSystemSettings } from './settings'
 import { randomBytes } from 'node:crypto'
 
 await loadControllers()
@@ -118,6 +119,20 @@ const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').name
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
   return c.json({ ...user, roles: await getRoles(user.name) })
+})
+
+// SET-004: global display/formatting settings, readable by any signed-in
+// user (they are not sensitive). The client formats dates and numbers with
+// these. Editing them still goes through the guarded System Settings single.
+app.get('/api/settings', async (c) => {
+  const s = await getSystemSettings()
+  return c.json({
+    app_name: s.app_name,
+    date_format: s.date_format,
+    currency: s.currency,
+    currency_precision: s.currency_precision,
+    float_precision: s.float_precision,
+  })
 })
 
 // Set a user's password. A user may set their own; a System Manager may set

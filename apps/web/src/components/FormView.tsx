@@ -6,6 +6,7 @@ import { ApiError, api, getToken, listResource } from '../lib/api'
 import { useRealtime } from '../lib/realtime'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { NO_COLUMN_TYPES, useMeta, type DocField, type DocTypeMeta } from '../lib/meta'
+import { formatValue, useSettings } from '../lib/settings'
 import { Attachments } from './Attachments'
 import { Assignments } from './Assignments'
 import { Tags } from './Tags'
@@ -361,6 +362,7 @@ function FieldControl({
   values: Doc
   setField: (fieldname: string, value: unknown) => void
 }) {
+  const settings = useSettings()
   const base = 'fc-input'
   const label = (
     <label className="fc-label">
@@ -368,6 +370,15 @@ function FieldControl({
       {field.reqd && <span className="text-red-500"> *</span>}
     </label>
   )
+  // SET-004: below Date/Currency/Float inputs, show the value as it renders
+  // globally (native inputs can't honor a custom format), so the form
+  // reflects System Settings just like lists do.
+  const preview =
+    value != null && value !== '' && ['Date', 'Datetime', 'Currency', 'Float'].includes(field.fieldtype) ? (
+      <p className="mt-1 text-xs text-[var(--color-ink-faint)]" data-testid={`preview-${field.fieldname}`}>
+        {formatValue(field.fieldtype, value, settings)}
+      </p>
+    ) : null
   const err = error && (
     <p className="mt-1 text-xs text-red-600" data-testid={`error-${field.fieldname}`}>
       {error}
@@ -384,6 +395,7 @@ function FieldControl({
     <div className={wide ? 'md:col-span-2' : ''}>
       {label}
       {control}
+      {preview}
       {err}
     </div>
   )

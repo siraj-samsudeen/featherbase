@@ -4,6 +4,7 @@ import { Link } from '@tanstack/react-router'
 import { ApiError, api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, listColumns, useMeta } from '../lib/meta'
 import { useRealtime } from '../lib/realtime'
+import { formatValue, useSettings, type Settings } from '../lib/settings'
 
 export type Filter = [string, string, unknown]
 
@@ -11,10 +12,12 @@ const OPS = ['=', '!=', 'like', '>', '<', '>=', '<='] as const
 
 const PAGE = 20
 
-function cell(value: unknown): string {
+// SET-004: cells render through the global display settings (date format,
+// currency/float precision). Non-typed fields fall back to a plain string.
+function cell(value: unknown, fieldtype: string, settings: Settings): string {
   if (value == null || value === '') return '—'
   if (typeof value === 'boolean') return value ? '✓' : '✗'
-  return String(value)
+  return formatValue(fieldtype, value, settings) || '—'
 }
 
 // UI-002/UI-003: ONE list component renders every DocType from its metadata.
@@ -28,6 +31,7 @@ export function ListView({
   onFiltersChange?: (filters: Filter[]) => void
 }) {
   const meta = useMeta(doctype)
+  const settings = useSettings()
   const queryClient = useQueryClient()
   const [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
   const [start, setStart] = useState(0)
@@ -382,10 +386,12 @@ export function ListView({
                         params={{ doctype, name: String(row.name) }}
                         className="font-medium text-[var(--color-brand)] hover:underline"
                       >
-                        {cell(row[col.fieldname])}
+                        {cell(row[col.fieldname], col.fieldtype, settings)}
                       </Link>
                     ) : (
-                      <span className="text-[var(--color-ink)]">{cell(row[col.fieldname])}</span>
+                      <span className="text-[var(--color-ink)]" data-testid={`cell-${col.fieldname}`}>
+                        {cell(row[col.fieldname], col.fieldtype, settings)}
+                      </span>
                     )}
                   </td>
                 ))}
