@@ -13,6 +13,23 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — UI-024 passing: dark mode with per-user preference
+
+- Dark theme is pure token overrides: a `[data-theme='dark']` block in
+  index.css redefines the `--color-*` variables, so every generic view
+  re-skins with no per-component work. Switched the two hardcoded `bg-white`
+  spots (fc-input/fc-btn) to `bg-[var(--color-surface)]` so controls adapt.
+- Migration 0035: `theme` (Select light/dark) on User. whoami now returns the
+  theme; new `POST /api/set_theme` persists it per user (validated).
+- Web `lib/theme.ts`: applies the saved theme from localStorage at module load
+  (no flash), syncs the authoritative value from whoami, and a navbar toggle
+  (☀️/🌙 in DeskLayout) flips + persists it. localStorage mirrors the server
+  value so a reload stays dark instantly.
+- Verified: e2e (toggle → html[data-theme=dark] + darker body background;
+  server whoami reflects the choice per-user; survives reload) + server test
+  (default light, per-user persistence not affecting Administrator, invalid
+  value 417). 259 server + 51 web e2e green. 105/126.
+
 ## 2026-07-16 — PLAT-007 passing: audit logs (Activity Log + Access Log)
 
 - Migration 0034: `Activity Log` (user, operation, full_name, ip_address) and

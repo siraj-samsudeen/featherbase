@@ -181,7 +181,21 @@ const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').name
 
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
-  return c.json({ ...user, roles: await getRoles(user.name) })
+  const [row] = await sql`select theme from tab_user where name = ${user.name}`
+  return c.json({
+    ...user,
+    roles: await getRoles(user.name),
+    theme: (row?.theme as string) || 'light',
+  })
+})
+
+// UI-024: persist the caller's theme preference (light/dark), per user.
+app.post('/api/set_theme', async (c) => {
+  const { theme } = (await c.req.json().catch(() => ({}))) as { theme?: string }
+  if (theme !== 'light' && theme !== 'dark')
+    throw new AppError('ValidationError', 'theme must be "light" or "dark"')
+  await sql`update tab_user set theme = ${theme} where name = ${who(c)}`
+  return c.json({ ok: true, theme })
 })
 
 // SET-004: global display/formatting settings, readable by any signed-in

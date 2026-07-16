@@ -3,6 +3,7 @@ import { Link, Outlet, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, clearSession, getSessionUser, listResource } from '../lib/api'
 import { useRealtime } from '../lib/realtime'
+import { useTheme } from '../lib/theme'
 
 interface SearchHit {
   doctype: string
@@ -16,6 +17,7 @@ export function DeskLayout() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const user = getSessionUser()
+  const { theme, toggle: toggleTheme } = useTheme()
   const [search, setSearch] = useState('')
 
   // RT-003: unread notification count, live-updated when a realtime
@@ -163,6 +165,14 @@ export function DeskLayout() {
         </form>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={toggleTheme}
+            data-testid="theme-toggle"
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            className="text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
           <div className="relative" title="Notifications">
             <span className="text-[var(--color-ink-muted)]" data-testid="notif-bell">
               🔔

@@ -8,6 +8,7 @@ interface WhoAmI {
   email: string
   full_name: string | null
   roles: string[]
+  theme?: 'light' | 'dark'
 }
 
 export function useWhoAmI() {

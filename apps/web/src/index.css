@@ -28,6 +28,31 @@
   --color-warn-tint: #fbf3e0;
 }
 
+/* UI-024: dark mode. Overriding the design tokens under [data-theme='dark']
+   re-skins every generic view, since they all read these CSS variables. */
+[data-theme='dark'] {
+  --color-canvas: #16191d;
+  --color-surface: #1c2126;
+  --color-subtle: #242a31;
+  --color-border: #2a313a;
+  --color-border-strong: #3a424c;
+
+  --color-ink: #e6e9ec;
+  --color-ink-muted: #9aa4ae;
+  --color-ink-faint: #6c7680;
+
+  --color-brand: #2490ef;
+  --color-brand-dark: #1579d0;
+  --color-brand-tint: #14304a;
+
+  --color-good: #45b06e;
+  --color-good-tint: #133024;
+  --color-danger: #f06a6a;
+  --color-danger-tint: #38201f;
+  --color-warn: #d6a634;
+  --color-warn-tint: #322915;
+}
+
 html,
 body,
 #root {
@@ -62,13 +87,13 @@ body {
     @apply rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_1px_2px_rgba(25,39,52,0.04),0_1px_3px_rgba(25,39,52,0.03)];
   }
   .fc-input {
-    @apply w-full rounded-md border border-[var(--color-border-strong)] bg-white px-3 py-1.5 text-sm text-[var(--color-ink)] outline-none transition
+    @apply w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-ink)] outline-none transition
       placeholder:text-[var(--color-ink-faint)]
       focus:border-[var(--color-brand)] focus:ring-2 focus:ring-[var(--color-brand)]/20
       disabled:bg-[var(--color-subtle)] disabled:text-[var(--color-ink-muted)];
   }
   .fc-btn {
-    @apply inline-flex items-center gap-1.5 rounded-md border border-[var(--color-border-strong)] bg-white px-3 py-1.5 text-sm font-medium text-[var(--color-ink)] transition hover:bg-[var(--color-subtle)] disabled:opacity-40;
+    @apply inline-flex items-center gap-1.5 rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-sm font-medium text-[var(--color-ink)] transition hover:bg-[var(--color-subtle)] disabled:opacity-40;
   }
   .fc-btn-primary {
     @apply inline-flex items-center gap-1.5 rounded-md bg-[var(--color-brand)] px-4 py-1.5 text-sm font-medium text-white transition hover:bg-[var(--color-brand-dark)] disabled:opacity-40;
