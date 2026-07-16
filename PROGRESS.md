@@ -13,6 +13,24 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-16 — WEB-001 passing: public server-rendered Web Pages
+
+- Migration 0032: `Web Page` DocType (title, unique route, content [Long Text
+  HTML], published). Module 'Website'.
+- `website.ts` `renderWebPage(route)` returns server-rendered HTML for a
+  PUBLISHED page (title escaped; authored HTML content rendered in the body);
+  unpublished/missing → a 404 page.
+- Public Hono route `GET /web/:route{.+}` (before the auth middleware) — no
+  session required. Vite proxies `/web` → the server so the page is reachable
+  on the app origin too.
+- Verified: e2e (a published page renders its content in a session-less browser
+  and never redirects to login; an unpublished route is not served) + server
+  test (render published/unpublished, HTTP 200/404 with no session, title
+  escaping vs authored-HTML content). 247 server + 47 web e2e green. 102/126.
+- Opens the website block (WEB-002 web forms, WEB-003 portal).
+- Gotcha: the /web vite-proxy addition needed a web dev-server restart (vite
+  reloads config automatically but the running instance had to pick it up).
+
 ## 2026-07-16 — PLAT-005 passing: webhooks (signed, retried)
 
 - Migration 0031: `Webhook` DocType (webhook_doctype, webhook_event

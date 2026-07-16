@@ -23,6 +23,7 @@ import { attachRealtime, publishDocEvent, publishUserEvent } from './realtime'
 import { queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
 import { requestPasswordReset, resetPassword } from './password-reset'
+import { renderWebPage } from './website'
 import { rateLimit } from './rate-limit'
 import { parseFilters, runQueryReport } from './query-report'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
@@ -127,6 +128,13 @@ app.get('/files/:stored', (c) => serveFile(c, `/files/${c.req.param('stored')}`,
 app.get('/private/files/:stored', (c) =>
   serveFile(c, `/private/files/${c.req.param('stored')}`, true),
 )
+
+// WEB-001: public, server-rendered Web Pages. No session required; only
+// published pages render (others 404). Path may contain slashes.
+app.get('/web/:route{.+}', async (c) => {
+  const page = await renderWebPage(c.req.param('route'))
+  return c.html(page.html, page.found ? 200 : 404)
+})
 
 // API-003: RPC for whitelisted server methods. Registered before the auth
 // middleware so guest-allowed methods work without a session; every other
