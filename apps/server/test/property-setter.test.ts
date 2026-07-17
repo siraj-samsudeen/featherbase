@@ -1,49 +1,43 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
 import { sql } from '../src/db'
-import { getMeta, invalidateMeta } from '../src/meta'
-import { areq } from './helpers'
+import { getMeta } from '../src/meta'
+import type { TestClient } from 'feather-testing-postgres'
 
 // CUST-002: Property Setters override field/DocType properties without
 // touching the base definition.
 
 const DT = 'Ps Target'
 
-async function cleanup() {
-  await sql`delete from tab_property_setter where doc_type = ${DT}`
-  await sql`delete from tab_docfield where parent = ${DT}`
-  await sql`delete from tab_doctype where name = ${DT}`
-  await sql.unsafe('drop table if exists tab_ps_target')
-  invalidateMeta(DT)
+async function makeDT(admin: TestClient) {
+  await admin.post('/api/doctype', {
+    name: DT,
+    fields: [{ fieldname: 'title', fieldtype: 'Data', label: 'Title' }],
+  })
 }
 
-beforeAll(async () => {
-  await cleanup()
-  await areq('/api/doctype', {
+async function addLabelSetter(admin: TestClient) {
+  return admin.fetch('/api/save_doc', {
     method: 'POST',
     body: JSON.stringify({
-      name: DT,
-      fields: [{ fieldname: 'title', fieldtype: 'Data', label: 'Title' }],
+      doctype: 'Property Setter',
+      doc: {
+        name: `${DT}-title-label`,
+        doc_type: DT,
+        field_name: 'title',
+        property: 'label',
+        value: 'Headline',
+      },
     }),
   })
-})
-
-afterAll(cleanup)
+}
 
 describe('CUST-002: property setters', () => {
-  it('overrides a field label in effective meta but leaves the base row unchanged', async () => {
-    const res = await areq('/api/save_doc', {
-      method: 'POST',
-      body: JSON.stringify({
-        doctype: 'Property Setter',
-        doc: {
-          name: `${DT}-title-label`,
-          doc_type: DT,
-          field_name: 'title',
-          property: 'label',
-          value: 'Headline',
-        },
-      }),
-    })
+  test('overrides a field label in effective meta but leaves the base row unchanged', async ({
+    admin,
+  }) => {
+    await makeDT(admin)
+    const res = await addLabelSetter(admin)
     expect(res.status).toBe(201)
 
     const meta = await getMeta(DT)
@@ -54,19 +48,17 @@ describe('CUST-002: property setters', () => {
     expect(row.label).toBe('Title')
   })
 
-  it('coerces boolean properties (hidden/reqd)', async () => {
-    await areq('/api/save_doc', {
-      method: 'POST',
-      body: JSON.stringify({
-        doctype: 'Property Setter',
-        doc: {
-          name: `${DT}-title-reqd`,
-          doc_type: DT,
-          field_name: 'title',
-          property: 'reqd',
-          value: '1',
-        },
-      }),
+  test('coerces boolean properties (hidden/reqd)', async ({ admin }) => {
+    await makeDT(admin)
+    await admin.post('/api/save_doc', {
+      doctype: 'Property Setter',
+      doc: {
+        name: `${DT}-title-reqd`,
+        doc_type: DT,
+        field_name: 'title',
+        property: 'reqd',
+        value: '1',
+      },
     })
     const meta = await getMeta(DT)
     const f = meta.fields.find((x) => x.fieldname === 'title')!
@@ -76,10 +68,12 @@ describe('CUST-002: property setters', () => {
     expect(row.reqd).toBe(false)
   })
 
-  it('removing the setter restores the original property', async () => {
-    await areq(`/api/resource/Property%20Setter/${encodeURIComponent(`${DT}-title-label`)}`, {
-      method: 'DELETE',
-    })
+  test('removing the setter restores the original property', async ({ admin }) => {
+    await makeDT(admin)
+    await addLabelSetter(admin)
+    await admin.delete(
+      `/api/resource/Property%20Setter/${encodeURIComponent(`${DT}-title-label`)}`,
+    )
     const meta = await getMeta(DT)
     expect(meta.fields.find((f) => f.fieldname === 'title')?.label).toBe('Title')
   })

@@ -7,6 +7,11 @@ import { areq } from './helpers'
 // ("cached plan must not change result type"). With prepare:false there is
 // no statement cache to go stale — hammer the doc across sync cycles and
 // every request must succeed.
+//
+// KEPT LEGACY (not migrated to the pg-test sandbox): the scenario depends on
+// MULTIPLE warm pooled connections each holding their own cached plan; the
+// sandbox pins every query to ONE connection inside one transaction, which
+// makes the regression unreproducible and the test a no-op there.
 
 const DT = 'Stale Plan DT'
 
