@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.pgdata/
+*.log
+.env
+test-results/
+playwright-report/
+apps/web/.vite/
+storage/

@@ -1,0 +1,9 @@
+{
+  "name": "frappe-clone",
+  "private": true,
+  "scripts": {
+    "smoke": "pnpm --filter server test:smoke && pnpm --filter web smoke",
+    "test": "pnpm -r test"
+  },
+  "packageManager": "pnpm@10.33.0"
+}

@@ -1,0 +1,12 @@
+{
+  "name": "shared",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "echo 'covered by server tests'"
+  },
+  "dependencies": {
+    "zod": "^3.24.0"
+  }
+}

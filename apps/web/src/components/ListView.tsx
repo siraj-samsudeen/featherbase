@@ -1,0 +1,550 @@
+import { useEffect, useState } from 'react'
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
+import { ApiError, api, listResource } from '../lib/api'
+import { NO_COLUMN_TYPES, listColumns, useMeta } from '../lib/meta'
+import { useRealtime } from '../lib/realtime'
+import { formatValue, useSettings, type Settings } from '../lib/settings'
+import { useIsSystemManager } from '../lib/session'
+
+export type Filter = [string, string, unknown]
+
+const OPS = ['=', '!=', 'like', '>', '<', '>=', '<='] as const
+
+const PAGE = 20
+
+// SET-004: cells render through the global display settings (date format,
+// currency/float precision). Non-typed fields fall back to a plain string.
+function cell(value: unknown, fieldtype: string, settings: Settings): string {
+  if (value == null || value === '') return '—'
+  if (typeof value === 'boolean') return value ? '✓' : '✗'
+  return formatValue(fieldtype, value, settings) || '—'
+}
+
+// UI-002/UI-003: ONE list component renders every DocType from its metadata.
+export function ListView({
+  doctype,
+  filters = [],
+  onFiltersChange,
+}: {
+  doctype: string
+  filters?: Filter[]
+  onFiltersChange?: (filters: Filter[]) => void
+}) {
+  const meta = useMeta(doctype)
+  const settings = useSettings()
+  const isSystemManager = useIsSystemManager()
+  const queryClient = useQueryClient()
+  const [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
+  const [start, setStart] = useState(0)
+  // UI-013: per-user saved settings (sort, hidden columns, filters).
+  const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set())
+  const [colPickerOpen, setColPickerOpen] = useState(false)
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+  // UI-012: bulk selection state.
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkField, setBulkField] = useState('')
+  const [bulkValue, setBulkValue] = useState('')
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkError, setBulkError] = useState<string | null>(null)
+  const filterKey = JSON.stringify(filters)
+  useEffect(() => setStart(0), [filterKey])
+  useEffect(() => setSelected(new Set()), [filterKey, start, doctype])
+
+  // RT-001: another session creating/updating/deleting a doc of this type
+  // refreshes the list without a reload.
+  useRealtime([`list:${doctype}`], () => {
+    void queryClient.invalidateQueries({ queryKey: ['list', doctype] })
+  })
+
+  // UI-013: load this user's saved view settings (sort + hidden columns)
+  // once per DocType. Filters stay URL-driven (UI-003), so they're not
+  // persisted here — this covers the durable "customize a list" bits.
+  useEffect(() => {
+    let cancelled = false
+    setSettingsLoaded(false)
+    api
+      .get<{ settings: { sort?: typeof sort; hiddenCols?: string[] } | null }>(
+        `/api/user_settings/${encodeURIComponent(doctype)}`,
+      )
+      .then((res) => {
+        if (cancelled) return
+        const s = res.settings
+        if (s) {
+          if (s.sort) setSort(s.sort)
+          if (Array.isArray(s.hiddenCols)) setHiddenCols(new Set(s.hiddenCols))
+        }
+        setSettingsLoaded(true)
+      })
+      .catch(() => setSettingsLoaded(true))
+    return () => {
+      cancelled = true
+    }
+    // Only re-run when the DocType changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doctype])
+
+  // Persist settings whenever the user changes them (after the initial load).
+  function persist(next: { sort?: typeof sort; hiddenCols?: Set<string> }) {
+    if (!settingsLoaded) return
+    void api.put(`/api/user_settings/${encodeURIComponent(doctype)}`, {
+      sort: next.sort !== undefined ? next.sort : sort,
+      hiddenCols: [...(next.hiddenCols ?? hiddenCols)],
+    })
+  }
+
+  const allColumns = meta.data ? listColumns(meta.data) : []
+  const columns = allColumns.filter((c) => !hiddenCols.has(c.fieldname))
+  const orderBy = sort
+    ? `${sort.field} ${sort.dir}`
+    : meta.data
+      ? `${meta.data.sort_field || 'modified'} ${meta.data.sort_order || 'desc'}`
+      : undefined
+
+  const list = useQuery({
+    queryKey: ['list', doctype, columns.map((c) => c.fieldname), orderBy, start, filterKey],
+    enabled: Boolean(meta.data),
+    placeholderData: keepPreviousData,
+    queryFn: () =>
+      listResource(doctype, {
+        filters,
+        fields: columns.map((c) => c.fieldname),
+        order_by: orderBy,
+        limit_start: start,
+        limit_page_length: PAGE,
+      }),
+  })
+
+  if (meta.isLoading) return <p className="text-sm text-gray-400">Loading…</p>
+  if (meta.isError) return <p className="text-sm text-red-600">Cannot load {doctype}</p>
+
+  const total = list.data?.total ?? 0
+  const rows = list.data?.data ?? []
+
+  function toggleSort(field: string) {
+    setStart(0)
+    const next: { field: string; dir: 'asc' | 'desc' } =
+      sort?.field === field
+        ? { field, dir: sort.dir === 'asc' ? 'desc' : 'asc' }
+        : { field, dir: 'asc' }
+    setSort(next)
+    persist({ sort: next })
+  }
+
+  // UI-013: hide/show a column (persisted per user).
+  function toggleColumn(fieldname: string) {
+    setHiddenCols((prev) => {
+      const nextSet = new Set(prev)
+      if (nextSet.has(fieldname)) nextSet.delete(fieldname)
+      else nextSet.add(fieldname)
+      persist({ hiddenCols: nextSet })
+      return nextSet
+    })
+  }
+
+  // UI-012: bulk actions over the selected rows. Each doc goes through the
+  // normal document lifecycle (delete_doc / save_doc) — no side-channel.
+  const editableFields = (meta.data?.fields ?? []).filter(
+    (f) =>
+      !NO_COLUMN_TYPES.has(f.fieldtype) &&
+      !['Table', 'Attach', 'Attach Image', 'JSON'].includes(f.fieldtype) &&
+      !f.read_only &&
+      !f.hidden,
+  )
+
+  function toggleRow(name: string) {
+    setSelected((s) => {
+      const next = new Set(s)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  async function refresh() {
+    await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
+    setSelected(new Set())
+    setBulkError(null)
+  }
+
+  async function bulkDelete() {
+    setBulkBusy(true)
+    setBulkError(null)
+    try {
+      for (const name of selected)
+        await api.delete(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
+      await refresh()
+    } catch (err) {
+      setBulkError(err instanceof ApiError ? err.message : 'Bulk delete failed')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  async function bulkEdit() {
+    if (!bulkField) return
+    setBulkBusy(true)
+    setBulkError(null)
+    const fieldtype = editableFields.find((f) => f.fieldname === bulkField)?.fieldtype
+    const value: unknown =
+      fieldtype === 'Check'
+        ? ['1', 'true', 'yes'].includes(bulkValue.trim().toLowerCase())
+        : bulkValue === ''
+          ? null
+          : bulkValue
+    try {
+      for (const name of selected) {
+        const doc = await api.get<Record<string, unknown>>(
+          `/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
+        )
+        await api.put(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`, {
+          [bulkField]: value,
+          modified: doc.modified,
+        })
+      }
+      await refresh()
+    } catch (err) {
+      setBulkError(err instanceof ApiError ? err.message : 'Bulk edit failed')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  return (
+    <div data-testid="list-view">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{doctype}</h1>
+          <span className="text-xs text-[var(--color-ink-muted)]" data-testid="list-total">
+            {total} total
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <button
+              onClick={() => setColPickerOpen((o) => !o)}
+              className="fc-btn"
+              data-testid="list-columns"
+            >
+              Columns
+            </button>
+            {colPickerOpen && (
+              <div className="fc-card absolute right-0 z-10 mt-1 max-h-72 w-52 overflow-y-auto p-2">
+                {allColumns.map((col) => (
+                  <label
+                    key={col.fieldname}
+                    className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-[var(--color-subtle)]"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!hiddenCols.has(col.fieldname)}
+                      data-testid={`list-col-toggle-${col.fieldname}`}
+                      onChange={() => toggleColumn(col.fieldname)}
+                    />
+                    {col.label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          <Link
+            to="/desk/$doctype/view/report"
+            params={{ doctype }}
+            search={{ report: undefined }}
+            className="fc-btn"
+            data-testid="open-report"
+          >
+            Report
+          </Link>
+          {(meta.data?.fields ?? []).some((f) => f.fieldtype === 'Select') && (
+            <Link
+              to="/desk/$doctype/view/kanban"
+              params={{ doctype }}
+              search={{ group_by: undefined }}
+              className="fc-btn"
+              data-testid="open-kanban"
+            >
+              Kanban
+            </Link>
+          )}
+          {(meta.data?.fields ?? []).some((f) => f.fieldtype === 'Date') && (
+            <Link
+              to="/desk/$doctype/view/calendar"
+              params={{ doctype }}
+              className="fc-btn"
+              data-testid="open-calendar"
+            >
+              Calendar
+            </Link>
+          )}
+          {/* UI-022: Gantt needs two Date fields (start + end). */}
+          {(meta.data?.fields ?? []).filter((f) => f.fieldtype === 'Date').length >= 2 && (
+            <Link
+              to="/desk/$doctype/view/gantt"
+              params={{ doctype }}
+              className="fc-btn"
+              data-testid="open-gantt"
+            >
+              Gantt
+            </Link>
+          )}
+          {isSystemManager && (
+            <Link
+              to="/desk/permissions/$doctype"
+              params={{ doctype }}
+              className="fc-btn"
+              data-testid="open-permissions"
+            >
+              Permissions
+            </Link>
+          )}
+        </div>
+      </div>
+      {onFiltersChange && meta.data && (
+        <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
+      )}
+      {selected.size > 0 && (
+        <div
+          className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-[var(--color-brand)]/30 bg-[var(--color-brand-tint)] px-3 py-2 text-sm"
+          data-testid="bulk-bar"
+        >
+          <span className="font-medium text-[var(--color-ink)]" data-testid="bulk-count">
+            {selected.size} selected
+          </span>
+          <button
+            onClick={bulkDelete}
+            disabled={bulkBusy}
+            className="fc-btn border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)]"
+            data-testid="bulk-delete"
+          >
+            Delete
+          </button>
+          <span className="flex items-center gap-2">
+            <select
+              value={bulkField}
+              onChange={(e) => setBulkField(e.target.value)}
+              className="fc-input w-40"
+              data-testid="bulk-edit-field"
+            >
+              <option value="">Edit field…</option>
+              {editableFields.map((f) => (
+                <option key={f.fieldname} value={f.fieldname}>
+                  {f.label ?? f.fieldname}
+                </option>
+              ))}
+            </select>
+            {bulkField && (
+              <>
+                <input
+                  value={bulkValue}
+                  onChange={(e) => setBulkValue(e.target.value)}
+                  placeholder="New value"
+                  className="fc-input w-40"
+                  data-testid="bulk-edit-value"
+                />
+                <button
+                  onClick={bulkEdit}
+                  disabled={bulkBusy}
+                  className="fc-btn-primary"
+                  data-testid="bulk-edit-apply"
+                >
+                  Apply
+                </button>
+              </>
+            )}
+          </span>
+          {bulkError && (
+            <span className="text-xs text-[var(--color-danger)]" data-testid="bulk-error">
+              {bulkError}
+            </span>
+          )}
+        </div>
+      )}
+      <div className="fc-card overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-[var(--color-subtle)] text-left">
+            <tr>
+              <th className="w-8 border-b border-[var(--color-border)] px-3 py-2">
+                <input
+                  type="checkbox"
+                  data-testid="select-all"
+                  checked={rows.length > 0 && rows.every((r) => selected.has(String(r.name)))}
+                  onChange={(e) =>
+                    setSelected(
+                      e.target.checked ? new Set(rows.map((r) => String(r.name))) : new Set(),
+                    )
+                  }
+                />
+              </th>
+              {columns.map((col) => (
+                <th key={col.fieldname} className="border-b border-[var(--color-border)]">
+                  <button
+                    className="w-full px-3 py-2 text-left font-medium text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
+                    data-testid={`col-${col.fieldname}`}
+                    onClick={() => toggleSort(col.fieldname)}
+                  >
+                    {col.label}
+                    {sort?.field === col.fieldname && (sort.dir === 'asc' ? ' ↑' : ' ↓')}
+                  </button>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody data-testid="list-rows">
+            {rows.map((row) => (
+              <tr key={String(row.name)} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]">
+                <td className="px-3 py-2">
+                  <input
+                    type="checkbox"
+                    data-testid="row-check"
+                    checked={selected.has(String(row.name))}
+                    onChange={() => toggleRow(String(row.name))}
+                  />
+                </td>
+                {columns.map((col, i) => (
+                  <td key={col.fieldname} className="px-3 py-2">
+                    {i === 0 ? (
+                      <Link
+                        to="/desk/$doctype/$name"
+                        params={{ doctype, name: String(row.name) }}
+                        className="font-medium text-[var(--color-brand)] hover:underline"
+                      >
+                        {cell(row[col.fieldname], col.fieldtype, settings)}
+                      </Link>
+                    ) : (
+                      <span className="text-[var(--color-ink)]" data-testid={`cell-${col.fieldname}`}>
+                        {cell(row[col.fieldname], col.fieldtype, settings)}
+                      </span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+            {!rows.length && (
+              <tr>
+                <td colSpan={columns.length + 1} className="px-3 py-8 text-center text-[var(--color-ink-faint)]">
+                  No documents
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-3 flex items-center gap-3 text-sm">
+        <button
+          disabled={start === 0}
+          onClick={() => setStart((s) => Math.max(0, s - PAGE))}
+          data-testid="prev-page"
+          className="fc-btn disabled:opacity-40"
+        >
+          Prev
+        </button>
+        <span className="text-xs text-[var(--color-ink-muted)]" data-testid="page-info">
+          {total === 0 ? 0 : start + 1}–{Math.min(start + PAGE, total)} of {total}
+        </span>
+        <button
+          disabled={start + PAGE >= total}
+          onClick={() => setStart((s) => s + PAGE)}
+          data-testid="next-page"
+          className="fc-btn disabled:opacity-40"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  )
+}
+
+
+export function FilterBar({
+  meta,
+  filters,
+  onChange,
+}: {
+  meta: import('../lib/meta').DocTypeMeta
+  filters: Filter[]
+  onChange: (filters: Filter[]) => void
+}) {
+  const fields = [
+    { fieldname: 'name', label: 'Name' },
+    ...meta.fields
+      .filter((f) => !NO_COLUMN_TYPES.has(f.fieldtype) && !f.hidden)
+      .map((f) => ({ fieldname: f.fieldname, label: f.label ?? f.fieldname })),
+  ]
+  const [field, setField] = useState('name')
+  const [op, setOp] = useState<string>('=')
+  const [value, setValue] = useState('')
+
+  function add() {
+    if (!value.trim()) return
+    const v = op === 'like' ? `%${value.trim()}%` : value.trim()
+    onChange([...filters, [field, op, v]])
+    setValue('')
+  }
+
+  return (
+    <div className="mb-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={field}
+          onChange={(e) => setField(e.target.value)}
+          data-testid="filter-field"
+          className="fc-input max-w-[10rem]"
+        >
+          {fields.map((f) => (
+            <option key={f.fieldname} value={f.fieldname}>
+              {f.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={op}
+          onChange={(e) => setOp(e.target.value)}
+          data-testid="filter-op"
+          className="fc-input max-w-[10rem]"
+        >
+          {OPS.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add()}
+          placeholder="Value"
+          data-testid="filter-value"
+          className="fc-input max-w-[10rem]"
+        />
+        <button
+          onClick={add}
+          data-testid="filter-add"
+          className="fc-btn"
+        >
+          Add filter
+        </button>
+      </div>
+      {filters.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2" data-testid="filter-chips">
+          {filters.map((f, i) => (
+            <span
+              key={i}
+              className="fc-pill bg-[var(--color-subtle)] text-[var(--color-ink)] gap-1 border border-[var(--color-border)]"
+              data-testid="filter-chip"
+            >
+              {f[0]} {f[1]} {String(f[2])}
+              <button
+                aria-label="Remove filter"
+                onClick={() => onChange(filters.filter((_, j) => j !== i))}
+                className="text-gray-400 hover:text-gray-900"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
