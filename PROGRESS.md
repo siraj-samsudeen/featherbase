@@ -13,6 +13,52 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-17 — Legacy server suite migrated to the SQL sandbox (74/79 files)
+
+The entire pre-existing server test suite now runs on feather-testing-postgres:
+every migrated test executes inside its own rolled-back transaction — all
+manual DELETE/DROP/`sql.end()` cleanup is gone. Full suite **320/320**, web
+10/10, typechecks clean, browser smoke + ticketing e2e green.
+
+- **Migrated in 7 verified batches** (each independently re-run before
+  commit): document-engine (11 files), meta/DDL (11), permissions (10),
+  misc endpoints (14), features/workflow/reports (11), jobs/email/webhooks
+  (9), special files (realtime, files, signed-files, print-pdf, thumbnails).
+- **5 files stay legacy BY DESIGN**, each annotated in-file:
+  `cli` (subprocess opens its own PG connection), `tenancy` (per-site pools
+  bypass the db.ts seam), `patches` (tests the runner's real commit
+  semantics), `rls` (verifies native RLS via a second desk_client
+  connection that cannot see an uncommitted tx),
+  `schema-sync-stale-plan` (needs multiple warm pooled connections; the
+  sandbox pins one).
+- **Gotchas discovered, for future test authors**:
+  1. `now()` freezes at BEGIN inside the sandbox but `enqueue()` stamps
+     wall-clock `run_at` — drain-based job tests must nudge due jobs onto
+     the tx clock (`run_at <= clock_timestamp()` → `now()`) before
+     `drainJobs()`. Candidate for lifting into pg-test as a helper.
+  2. Process-global state does NOT roll back: controller registrations
+     (`clearControllers` in finally), installed apps (uninstall in
+     finally), `stopWorker()` in finally; job/script-report registries
+     have no unregister — unique names keep leaks benign.
+  3. A failing RAW SQL statement authored in a test body aborts the whole
+     sandbox tx (no savepoint) — only safe as the test's last DB op;
+     errors raised through the API always roll back to a savepoint.
+  4. `SET TRANSACTION READ ONLY` works under a savepoint (PG only forbids
+     read-write after queries) but leaves the OUTER test tx read-only —
+     order writes before `runQueryReport` calls.
+  5. Legacy suites with order-dependent tests need per-test "replay
+     helpers" that re-execute earlier tests' mutations as setup.
+  6. Disk state (file uploads) does not roll back — file tests keep
+     `deleteStored` cleanup in finally blocks.
+- **Infra note**: mid-migration the system Postgres AND both dev servers
+  were killed (no crash log — likely resource pressure from concurrent
+  agent runs); `pg_ctlcluster 16 main start` + `./init.sh` recovered, no
+  data loss. Full suite re-verified afterwards.
+- **Next**: consider lifting the job-clock nudge into the library; evaluate
+  per-file parallelism for the sandboxed majority (needs the 5 legacy
+  files quarantined to a sequential project and shared naming-series row
+  locks assessed).
+
 ## 2026-07-17 — feather-testing-postgres: Phoenix-style testing library + ticketing demo (beyond the 126)
 
 New net-new infrastructure (no features.json changes): a testing library in
