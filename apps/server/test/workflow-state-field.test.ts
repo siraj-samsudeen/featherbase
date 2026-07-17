@@ -14,6 +14,8 @@ const DT = 'Wf Bind Ticket'
 const WF = 'Wf Bind Flow'
 
 async function cleanup() {
+  await sql`delete from tab_email_rule where document_type = ${DT}`
+  await sql`delete from tab_email_queue where subject = 'WfBind closed'`
   await sql`delete from tab_workflow_document_state where parent in (${WF}, ${WF + ' Bad'})`
   await sql`delete from tab_workflow_transition where parent in (${WF}, ${WF + ' Bad'})`
   await sql`delete from tab_workflow where name in (${WF}, ${WF + ' Bad'})`
@@ -56,13 +58,23 @@ describe('Workflow state_field binding', () => {
     expect(fields.some((f) => f.fieldname === 'workflow_state')).toBe(false)
   })
 
-  it('applying an action updates the bound field on the document', async () => {
+  it('applying an action updates the bound field and fires on_save email rules', async () => {
+    await sql`insert into tab_email_rule ${sql({
+      name: 'WfBind Closed Rule', owner: 'Administrator', modified_by: 'Administrator',
+      document_type: DT, event: 'on_save',
+      condition_field: 'status', condition_value: 'Closed',
+      recipient: 'watcher@x.com', subject: 'WfBind closed', message: 'closed',
+      enabled: true,
+    })}`
     const doc = await saveDoc(DT, { title: 'bind me' }, 'Administrator')
     expect(doc.status).toBe('Open')
     const after = await applyWorkflowAction(DT, String(doc.name), 'Close', 'Administrator')
     expect(after.status).toBe('Closed')
     const [row] = await sql`select status from tab_wf_bind_ticket where name = ${String(doc.name)}`
     expect(row.status).toBe('Closed')
+    // The transition counted as a save: the conditional on_save rule fired.
+    const mails = await sql`select 1 from tab_email_queue where subject = 'WfBind closed'`
+    expect(mails.length).toBe(1)
   })
 
   it('a direct save cannot change the workflow-bound field', async () => {

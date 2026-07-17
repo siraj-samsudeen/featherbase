@@ -6,6 +6,8 @@ import { tableName } from './doctype-engine'
 import { getRoles } from './permissions'
 import { getDoc } from './document'
 import { queueEmail } from './email'
+import { evaluateEmailRules } from './email-rules'
+import { publishDocEvent } from './realtime'
 import { evalCondition } from './server-scripts'
 
 // WF-001/002/003: workflow definition, execution, and server-side
@@ -205,7 +207,13 @@ export async function applyWorkflowAction(
   // link to the document and the actions they can take.
   await notifyPendingApprovers(wf, doctype, name, transition.next_state, user)
 
-  return getDoc(doctype, name, user)
+  const result = await getDoc(doctype, name, user)
+  // A transition is a save of the state field: conditional on_save Email
+  // Rules (e.g. "email the requester when status becomes Resolved") fire on
+  // it, and list subscribers get the update over realtime.
+  await evaluateEmailRules('on_save', doctype, result, doc)
+  publishDocEvent(doctype, name, 'updated')
+  return result
 }
 
 // WF-004: notify the users who can act on a document that has just entered a

@@ -13,6 +13,63 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-17 — PR 1 vs PR 2 verdict + Helpdesk built from metadata (beyond the 126)
+
+**Verdict**: both parallel implementations were booted and driven over HTTP
+against a 16-point ticketing checklist. PR 1 (this codebase) wins decisively —
+PR 2 (NestJS/Drizzle/JSONB) has a solid, honestly-reported metadata core but
+no workflow/assignments/email/comments/attachments/web-forms/realtime, plus an
+owner-stamping bug that breaks if_owner. Full write-up: `docs/PR-COMPARISON.md`.
+Features missing in BOTH (now built here): Assignment Rules, SLAs, workflow
+state binding. Still open in both: inbound email → ticket.
+
+**Framework additions** (all beyond the 126 — `features.json` untouched):
+- `state_field` on Workflow (migration 0047): binds the workflow to an
+  existing field (e.g. `status`) instead of the parallel `workflow_state`;
+  validated on save; inserts are forced to the initial state; direct saves
+  cannot change the bound field (transitions only via the workflow endpoint,
+  so role gates can't be bypassed).
+- Email Rules: `on_create`/`on_save` events now fire (they existed in the UI
+  but were never called); conditional on_save rules fire only on the
+  transition into the match (old-doc snapshot); recipients support
+  `{{doc.field}}`; workflow transitions count as saves (rules + realtime
+  `updated` events fire from `applyWorkflowAction`).
+- Assignment Rules (migration 0048): condition + user pool, round-robin ToDo/
+  notification per matching creation, optional `assign_to_field` stamps the
+  document. Shared `createAssignment` helper also backs `/api/assign`.
+- Service Level Agreements (migration 0049): per-priority response/resolution
+  windows stamp `response_by`/`resolution_by`/`sla_status` on insert (fields
+  are declared by the target DocType); recurring `check_sla` job (60s) flips
+  overdue open docs to `Overdue` once and emails the escalation role.
+- Web-form owner attribution: a logged-in submitter owns the created doc
+  (saveDoc `skipPermissions` — web form only), closing the if_owner portal
+  loop. Anonymous submits still create as Administrator.
+- PERM-005 fix: user-permission list narrowing passes NULL links (`IN`
+  excluded them, emptying agents' lists and disagreeing with detail reads).
+
+**Helpdesk app** (pure metadata over HTTP — the concrete proof):
+`pnpm --filter server reset:helpdesk && pnpm --filter server seed:helpdesk`
+seeds roles/users/Ticket DocType/DocPerms/workflow/email rule/server script/
+assignment rule/SLA/web form. `pnpm --filter server verify:helpdesk` exercises
+the whole flow as customer → agent → manager over HTTP: **32/32 checks pass**
+(intake+attribution+round-robin+SLA stamps, if_owner portal, role-gated +
+conditional transitions on the bound `status` field, save-protection,
+resolved email to requester, comments, ToDos, Overdue escalation email).
+Server suite: **324 tests green** (16 new). Desk renders it all with zero
+frontend changes (list/kanban/form screenshots verified via Playwright).
+
+**Gotchas**:
+- Demo logins: agents `agent1|agent2@helpdesk.test`, manager
+  `manager@helpdesk.test`, customers `cust1@acme.test`/`cust2@globex.test`,
+  all `demo1234`; intake at `/form/new-ticket`, portal at `/portal/Ticket`.
+- The bound `status` Select still renders editable in the form; a direct save
+  is refused server-side (417) — making the form render it read-only when a
+  workflow binds it would be a nice follow-up.
+- `workflow.test.ts` updated: docs under a workflow now START at the initial
+  state (was NULL), per WF-003 semantics.
+- Next up: inbound email → ticket (the one ticketing gap still open in both
+  implementations), and PR 2 can be closed (see PR-COMPARISON.md).
+
 ## 2026-07-17 — Enhancement: conditional workflow transitions (beyond the 126)
 
 Closes the workflow gap called out in the Frappe comparison. This ENHANCES

@@ -7,6 +7,9 @@
     "migrate": "tsx src/migrate.ts",
     "patches": "tsx src/run-patches.ts",
     "cli": "tsx src/cli.ts",
+    "reset:helpdesk": "tsx scripts/reset-helpdesk.ts",
+    "seed:helpdesk": "tsx scripts/seed-helpdesk.ts",
+    "verify:helpdesk": "tsx scripts/verify-helpdesk.ts",
     "test": "vitest run",
     "test:smoke": "tsx src/smoke.ts",
     "typecheck": "tsc --noEmit"
