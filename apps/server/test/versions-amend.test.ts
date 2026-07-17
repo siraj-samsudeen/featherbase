@@ -1,29 +1,20 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
+import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
-import { areq } from './helpers'
 
 const DT = 'Va Invoice'
 const ROW = 'Va Line'
 
-async function post(path: string, body: unknown) {
-  return areq(path, { method: 'POST', body: JSON.stringify(body) })
-}
-
-async function cleanup() {
-  await sql`delete from tab_version where ref_doctype = ${DT}`
-  await sql`delete from tab_doctype where name in (${DT}, ${ROW})`
-  await sql.unsafe('drop table if exists tab_va_invoice')
-  await sql.unsafe('drop table if exists tab_va_line')
-}
-
-beforeAll(async () => {
-  await cleanup()
-  await post('/api/doctype', {
+// Each test creates the DocTypes inside its own rolled-back transaction —
+// the naming series increments roll back with it.
+async function setup(admin: TestClient) {
+  await admin.post('/api/doctype', {
     name: ROW,
     istable: true,
     fields: [{ fieldname: 'item', fieldtype: 'Data' }],
   })
-  await post('/api/doctype', {
+  await admin.post('/api/doctype', {
     name: DT,
     is_submittable: true,
     autoname: 'VAINV-.####',
@@ -33,21 +24,19 @@ beforeAll(async () => {
       { fieldname: 'lines', fieldtype: 'Table', options: ROW },
     ],
   })
-})
-
-afterAll(async () => {
-  await cleanup()
-  await sql`delete from series where name = 'VAINV-'`
-  await sql.end()
-})
+}
 
 describe('DOC-009: version history', () => {
-  it('each update records a Version whose diff lists exactly the changed fields', async () => {
-    const doc = (await (
-      await post('/api/save_doc', { doctype: DT, doc: { title: 'v1', amount: 10 } })
-    ).json()) as Record<string, unknown>
+  test('each update records a Version whose diff lists exactly the changed fields', async ({
+    admin,
+  }) => {
+    await setup(admin)
+    const doc = await admin.post<Record<string, unknown>>('/api/save_doc', {
+      doctype: DT,
+      doc: { title: 'v1', amount: 10 },
+    })
 
-    await post('/api/save_doc', {
+    await admin.post('/api/save_doc', {
       doctype: DT,
       doc: { name: doc.name, modified: doc.modified, title: 'v2', amount: 25 },
     })
@@ -63,10 +52,10 @@ describe('DOC-009: version history', () => {
     expect(Number(byField.amount[1])).toBe(25)
 
     // second save -> second version
-    const fresh = (await (
-      await areq(`/api/doc/${encodeURIComponent(DT)}/${doc.name}`)
-    ).json()) as Record<string, unknown>
-    await post('/api/save_doc', {
+    const fresh = await admin.get<Record<string, unknown>>(
+      `/api/doc/${encodeURIComponent(DT)}/${doc.name}`,
+    )
+    await admin.post('/api/save_doc', {
       doctype: DT,
       doc: { name: doc.name, modified: fresh.modified, title: 'v3' },
     })
@@ -75,11 +64,13 @@ describe('DOC-009: version history', () => {
     expect(after).toHaveLength(2)
   })
 
-  it('a no-op save records no version', async () => {
-    const doc = (await (
-      await post('/api/save_doc', { doctype: DT, doc: { title: 'same' } })
-    ).json()) as Record<string, unknown>
-    await post('/api/save_doc', {
+  test('a no-op save records no version', async ({ admin }) => {
+    await setup(admin)
+    const doc = await admin.post<Record<string, unknown>>('/api/save_doc', {
+      doctype: DT,
+      doc: { title: 'same' },
+    })
+    await admin.post('/api/save_doc', {
       doctype: DT,
       doc: { name: doc.name, modified: doc.modified, title: 'same' },
     })
@@ -90,23 +81,27 @@ describe('DOC-009: version history', () => {
 })
 
 describe('DOC-008: amend cancelled documents', () => {
-  it('amend copies fields+children with amended_from and NAME-n naming', async () => {
-    const doc = (await (
-      await post('/api/save_doc', {
-        doctype: DT,
-        doc: { title: 'to amend', amount: 99, lines: [{ item: 'x' }, { item: 'y' }] },
-      })
-    ).json()) as Record<string, any>
+  test('amend copies fields+children with amended_from and NAME-n naming', async ({ admin }) => {
+    await setup(admin)
+    const doc = await admin.post<Record<string, any>>('/api/save_doc', {
+      doctype: DT,
+      doc: { title: 'to amend', amount: 99, lines: [{ item: 'x' }, { item: 'y' }] },
+    })
 
     // must be cancelled first
-    expect((await post('/api/amend_doc', { doctype: DT, name: doc.name })).status).toBe(417)
-    await post('/api/submit_doc', { doctype: DT, name: doc.name })
-    expect((await post('/api/amend_doc', { doctype: DT, name: doc.name })).status).toBe(417)
-    await post('/api/cancel_doc', { doctype: DT, name: doc.name })
+    await expect(
+      admin.post('/api/amend_doc', { doctype: DT, name: doc.name }),
+    ).rejects.toMatchObject({ status: 417 })
+    await admin.post('/api/submit_doc', { doctype: DT, name: doc.name })
+    await expect(
+      admin.post('/api/amend_doc', { doctype: DT, name: doc.name }),
+    ).rejects.toMatchObject({ status: 417 })
+    await admin.post('/api/cancel_doc', { doctype: DT, name: doc.name })
 
-    const amended = (await (
-      await post('/api/amend_doc', { doctype: DT, name: doc.name })
-    ).json()) as Record<string, any>
+    const amended = await admin.post<Record<string, any>>('/api/amend_doc', {
+      doctype: DT,
+      name: doc.name,
+    })
     expect(amended.name).toBe(`${doc.name}-1`)
     expect(amended.amended_from).toBe(doc.name)
     expect(amended.docstatus).toBe(0)
@@ -115,17 +110,25 @@ describe('DOC-008: amend cancelled documents', () => {
     expect(amended.lines[0].name).not.toBe(doc.lines[0].name)
 
     // amended doc is editable and resubmittable
-    const edit = await post('/api/save_doc', {
-      doctype: DT,
-      doc: { name: amended.name, modified: amended.modified, amount: 120 },
+    const edit = await admin.fetch('/api/save_doc', {
+      method: 'POST',
+      body: JSON.stringify({
+        doctype: DT,
+        doc: { name: amended.name, modified: amended.modified, amount: 120 },
+      }),
     })
     expect(edit.status).toBe(201)
-    expect((await post('/api/submit_doc', { doctype: DT, name: amended.name })).status).toBe(200)
+    const resubmit = await admin.fetch('/api/submit_doc', {
+      method: 'POST',
+      body: JSON.stringify({ doctype: DT, name: amended.name }),
+    })
+    expect(resubmit.status).toBe(200)
 
     // amending the same cancelled doc again derives NAME-2
-    const second = (await (
-      await post('/api/amend_doc', { doctype: DT, name: doc.name })
-    ).json()) as Record<string, unknown>
+    const second = await admin.post<Record<string, unknown>>('/api/amend_doc', {
+      doctype: DT,
+      name: doc.name,
+    })
     expect(second.name).toBe(`${doc.name}-2`)
   })
 })

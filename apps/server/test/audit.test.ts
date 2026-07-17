@@ -1,42 +1,31 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { app } from '../src/index'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
+import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { setUserPassword } from '../src/auth'
 import { logActivity, logAccess } from '../src/audit'
-import { areq } from './helpers'
 
 // PLAT-007: Activity Log records logins; Access Log records exports/prints.
 // Both carry the user and a timestamp, and are written even during login.
 
 const USER = 'audit-srv@x.com'
 
-async function cleanup() {
-  await sql`delete from tab_activity_log where "user" = ${USER}`
-  await sql`delete from tab_access_log where "user" = ${USER}`
-  await sql`delete from tab_user where name = ${USER}`
+// Real password + real /api/login — this suite is about the audit trail of
+// authentication itself, so no token-minting shortcut.
+async function setup(admin: TestClient) {
+  await admin.post('/api/save_doc', {
+    doctype: 'User',
+    doc: { name: USER, email: USER, enabled: true, roles: [{ role: 'System Manager' }] },
+  })
+  await setUserPassword(USER, 'auditpw12345')
 }
 
-beforeAll(async () => {
-  await cleanup()
-  const res = await areq('/api/save_doc', {
-    method: 'POST',
-    body: JSON.stringify({ doctype: 'User', doc: { name: USER, email: USER, enabled: true, roles: [{ role: 'System Manager' }] } }),
-  })
-  if (res.status !== 201) throw new Error(`create user: ${res.status}`)
-  await setUserPassword(USER, 'auditpw12345')
-})
-
-afterAll(async () => {
-  await cleanup()
-  await sql.end()
-})
-
 describe('PLAT-007: audit logs', () => {
-  it('records a login in the Activity Log with user + timestamp', async () => {
+  test('records a login in the Activity Log with user + timestamp', async ({ admin, api }) => {
+    await setup(admin)
     const before = new Date()
-    const res = await app.request('/api/login', {
+    const res = await api.fetch('/api/login', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ usr: USER, pwd: 'auditpw12345' }),
     })
     expect(res.status).toBe(200)
@@ -49,8 +38,9 @@ describe('PLAT-007: audit logs', () => {
     expect(new Date(row.creation as string).getTime()).toBeGreaterThanOrEqual(before.getTime() - 1000)
   })
 
-  it('records an export via /api/access_log (read permission required)', async () => {
-    const res = await areq('/api/access_log', {
+  test('records an export via /api/access_log (read permission required)', async ({ admin }) => {
+    await setup(admin)
+    const res = await admin.fetch('/api/access_log', {
       method: 'POST',
       body: JSON.stringify({ doctype: 'User', method: 'csv' }),
     })
@@ -62,36 +52,36 @@ describe('PLAT-007: audit logs', () => {
     expect(row.method).toBe('csv')
   })
 
-  it('rejects logging an export of a DocType the caller cannot read', async () => {
+  test('rejects logging an export of a DocType the caller cannot read', async ({ admin, api }) => {
+    await setup(admin)
     // A fresh doctype with no grants: the audit user (System Manager) CAN read
     // everything, so use a genuinely unreadable target for a plain user.
-    await areq('/api/doctype', {
-      method: 'POST',
-      body: JSON.stringify({ name: 'Audit Sekret', fields: [{ fieldname: 'x', fieldtype: 'Data' }] }),
+    await admin.post('/api/doctype', {
+      name: 'Audit Sekret',
+      fields: [{ fieldname: 'x', fieldtype: 'Data' }],
     })
-    await setUserPassword(USER, 'auditpw12345')
     // Downgrade check: a user with no System Manager role.
     const plain = 'audit-plain@x.com'
-    await sql`delete from tab_user where name = ${plain}`
-    await areq('/api/save_doc', { method: 'POST', body: JSON.stringify({ doctype: 'User', doc: { name: plain, email: plain, enabled: true } }) })
+    await admin.post('/api/save_doc', {
+      doctype: 'User',
+      doc: { name: plain, email: plain, enabled: true },
+    })
     await setUserPassword(plain, 'plainpw12345')
-    const token = ((await (await app.request('/api/login', {
+    const login = await api.fetch('/api/login', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ usr: plain, pwd: 'plainpw12345' }),
-    })).json()) as { token: string }).token
-    const res = await app.request('/api/access_log', {
+    })
+    const token = ((await login.json()) as { token: string }).token
+    const res = await api.fetch('/api/access_log', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      headers: { authorization: `Bearer ${token}` },
       body: JSON.stringify({ doctype: 'Audit Sekret', method: 'csv' }),
     })
     expect(res.status).toBe(403)
-    await sql`delete from tab_user where name = ${plain}`
-    await sql`delete from tab_doctype where name = 'Audit Sekret'`
-    await sql.unsafe('drop table if exists tab_audit_sekret')
   })
 
-  it('logAccess/logActivity write directly with the user as owner', async () => {
+  test('logAccess/logActivity write directly with the user as owner', async ({ admin }) => {
+    await setup(admin)
     await logActivity(USER, 'logout')
     await logAccess(USER, 'print', { doctype: 'User', name: USER, method: 'pdf' })
     const [a] = await sql`select owner from tab_activity_log where "user" = ${USER} and operation = 'logout' limit 1`

@@ -1,57 +1,46 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
+import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { runQueryReport, parseFilters } from '../src/query-report'
-import { areq } from './helpers'
 
 // RPT-004: admin-authored SQL reports run with bound filter params, read-only;
 // authoring is gated to System Managers even for users who can otherwise edit
 // Report documents.
 
 const ROLE = 'Rpt Srv Author'
-const AUTHOR = 'rpt-srv-author@x.com' // has write on Report, NOT System Manager
 const REPORT = 'Rpt Srv Recent'
 
-async function cleanup() {
-  await sql`delete from tab_report where name in (${REPORT}, 'Rpt Srv Builder', 'Rpt Srv Evil')`
-  await sql`delete from tab_docperm where ref_doctype = 'Report' and role = ${ROLE}`
-  await sql`delete from tab_has_role where parent = ${AUTHOR}`
-  await sql`delete from tab_user where name = ${AUTHOR}`
-  await sql`delete from tab_role where name = ${ROLE}`
-}
-
-async function save(doctype: string, doc: Record<string, unknown>) {
-  const res = await areq('/api/save_doc', { method: 'POST', body: JSON.stringify({ doctype, doc }) })
-  if (res.status !== 201) throw new Error(`save ${doctype}: ${res.status} ${await res.text()}`)
-}
-
-beforeAll(async () => {
-  await cleanup()
-  // A role that can fully edit Report docs, and a user holding only that role.
-  await save('Role', { name: ROLE })
-  await save('DocPerm', { ref_doctype: 'Report', role: ROLE, can_read: true, can_write: true, can_create: true })
-  await save('User', { name: AUTHOR, email: AUTHOR, enabled: true, roles: [{ role: ROLE }] })
-
-  // Admin authors a query report using a date filter placeholder.
-  await save('Report', {
-    name: REPORT,
-    ref_doctype: 'User',
-    report_type: 'Query Report',
-    query: 'select name, creation from tab_user where creation >= {from_date} order by name',
+// A role that can fully edit Report docs, a user holding only that role, and
+// the admin-authored query report — rebuilt per test inside the sandbox tx.
+async function setup(admin: TestClient) {
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+  await admin.post('/api/save_doc', {
+    doctype: 'DocPerm',
+    doc: { ref_doctype: 'Report', role: ROLE, can_read: true, can_write: true, can_create: true },
   })
-})
-
-afterAll(async () => {
-  await cleanup()
-  await sql.end()
-})
+  // Admin authors a query report using a date filter placeholder.
+  await admin.post('/api/save_doc', {
+    doctype: 'Report',
+    doc: {
+      name: REPORT,
+      ref_doctype: 'User',
+      report_type: 'Query Report',
+      query: 'select name, creation from tab_user where creation >= {from_date} order by name',
+    },
+  })
+}
 
 describe('RPT-004: query reports', () => {
-  it('parses filter placeholders in first-seen order, deduped', () => {
+  test('parses filter placeholders in first-seen order, deduped', () => {
     expect(parseFilters('select 1 where a={x} and b={y} or c={x}')).toEqual(['x', 'y'])
   })
 
-  it('runs with a bound date filter (and returns nothing for a future date)', async () => {
+  test('runs with a bound date filter (and returns nothing for a future date)', async ({
+    admin,
+  }) => {
+    await setup(admin)
     const past = await runQueryReport(REPORT, { from_date: '2000-01-01' }, 'Administrator')
     expect(past.columns).toEqual(['name', 'creation'])
     expect(past.rows.some((r) => r.name === 'Administrator')).toBe(true)
@@ -60,7 +49,8 @@ describe('RPT-004: query reports', () => {
     expect(future.rows).toHaveLength(0)
   })
 
-  it('binds filters as parameters, so a malicious value is inert', async () => {
+  test('binds filters as parameters, so a malicious value is inert', async ({ admin }) => {
+    await setup(admin)
     const res = await runQueryReport(
       REPORT,
       { from_date: '2000-01-01' }, // a real run…
@@ -76,19 +66,31 @@ describe('RPT-004: query reports', () => {
     expect(still.rows.length).toBe(before)
   })
 
-  it('rejects non-SELECT SQL and blocks writes even if attempted', async () => {
-    await save('Report', {
-      name: 'Rpt Srv Evil',
-      ref_doctype: 'User',
-      report_type: 'Query Report',
-      query: 'update tab_user set full_name = full_name',
+  test('rejects non-SELECT SQL and blocks writes even if attempted', async ({ admin }) => {
+    await setup(admin)
+    await admin.post('/api/save_doc', {
+      doctype: 'Report',
+      doc: {
+        name: 'Rpt Srv Evil',
+        ref_doctype: 'User',
+        report_type: 'Query Report',
+        query: 'update tab_user set full_name = full_name',
+      },
     })
     await expect(runQueryReport('Rpt Srv Evil', {}, 'Administrator')).rejects.toMatchObject({
       type: 'ValidationError',
     })
   })
 
-  it('gates SQL authoring to System Managers, even for Report editors', async () => {
+  test('gates SQL authoring to System Managers, even for Report editors', async ({
+    admin,
+    createUser,
+  }) => {
+    await setup(admin)
+    // The author has write on Report, but is NOT a System Manager.
+    const author = await createUser({ roles: [ROLE] })
+    const AUTHOR = author.user!
+
     // The author role CAN create an ordinary (non-SQL) report…
     await expect(
       saveDoc('Report', { name: 'Rpt Srv Builder', ref_doctype: 'User', report_type: 'Report Builder' }, AUTHOR),
