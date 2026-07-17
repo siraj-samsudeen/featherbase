@@ -1,7 +1,10 @@
 import { createRequire } from 'node:module'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
 import { sql } from '../src/db'
 import { renderPdf, renderPrintHtml } from '../src/print'
+import { createDocType } from '../src/doctype-engine'
+import { saveDoc } from '../src/document'
+import { test } from './pg-test'
 
 const require = createRequire(import.meta.url)
 const { PDFParse } = require('pdf-parse') as {
@@ -11,6 +14,7 @@ const { PDFParse } = require('pdf-parse') as {
 // PRN-004: a Letter Head's header/footer is applied to printed documents —
 // picked up as the default, named on a Print Format, or chosen explicitly, and
 // interpolated with {{ field }} the same way a Print Format template is.
+// (The Chromium instance is a process-wide singleton — never closed here.)
 
 const DT = 'Lh Srv DT'
 
@@ -21,14 +25,9 @@ async function pdfText(html: string): Promise<string> {
   return (await parser.getText()).text
 }
 
-beforeAll(async () => {
-  await sql`delete from tab_print_format where doc_type = ${DT}`
-  await sql`delete from tab_letter_head where name in ('Lh Corp', 'Lh Branch')`
-  await sql`delete from tab_docfield where parent = ${DT}`
-  await sql`delete from tab_doctype where name = ${DT}`
-  await sql.unsafe('drop table if exists tab_lh_srv_dt')
-
-  const { createDocType } = await import('../src/doctype-engine')
+// Each test builds its DocType, document, and letterheads inside its own
+// sandbox transaction.
+async function setup() {
   await createDocType({
     name: DT,
     autoname: 'prompt',
@@ -37,7 +36,6 @@ beforeAll(async () => {
       { fieldname: 'amount', fieldtype: 'Int' },
     ],
   })
-  const { saveDoc } = await import('../src/document')
   await saveDoc(DT, { name: 'lh-1', company: 'Umbrella Corp', amount: 4200 }, 'Administrator')
 
   // Two letterheads; only Lh Corp is the default.
@@ -61,18 +59,11 @@ beforeAll(async () => {
     },
     'Administrator',
   )
-})
-
-afterAll(async () => {
-  await sql`delete from tab_print_format where doc_type = ${DT}`
-  await sql`delete from tab_letter_head where name in ('Lh Corp', 'Lh Branch')`
-  await sql`delete from tab_docfield where parent = ${DT}`
-  await sql`delete from tab_doctype where name = ${DT}`
-  await sql.unsafe('drop table if exists tab_lh_srv_dt')
-})
+}
 
 describe('PRN-004: letterheads', () => {
-  it('the default letterhead is applied when none is named, with field interpolation', async () => {
+  test('the default letterhead is applied when none is named, with field interpolation', async () => {
+    await setup()
     const html = await renderPrintHtml(DT, 'lh-1', 'Administrator', 'standard')
     expect(html).toContain('ACME GLOBAL — invoice for Umbrella Corp')
     expect(html).toContain('Thank you for your business')
@@ -82,20 +73,23 @@ describe('PRN-004: letterheads', () => {
     expect(text).toContain('Thank you for your business')
   }, 30_000)
 
-  it('an explicitly chosen letterhead overrides the default', async () => {
+  test('an explicitly chosen letterhead overrides the default', async () => {
+    await setup()
     const html = await renderPrintHtml(DT, 'lh-1', 'Administrator', 'standard', 'Lh Branch')
     expect(html).toContain('ACME BRANCH OFFICE')
     expect(html).not.toContain('ACME GLOBAL')
   })
 
-  it("'none' suppresses the letterhead entirely", async () => {
+  test("'none' suppresses the letterhead entirely", async () => {
+    await setup()
     const html = await renderPrintHtml(DT, 'lh-1', 'Administrator', 'standard', 'none')
     expect(html).not.toContain('ACME')
     expect(html).not.toContain('<header class="letter-head">')
     expect(html).not.toContain('<footer class="letter-foot">')
   })
 
-  it('a Print Format can name the letterhead it prints with', async () => {
+  test('a Print Format can name the letterhead it prints with', async () => {
+    await setup()
     await sql`
       insert into tab_print_format (name, owner, modified_by, doc_type, is_default, letter_head, template)
       values ('Lh Fmt', 'Administrator', 'Administrator', ${DT}, false, 'Lh Branch',

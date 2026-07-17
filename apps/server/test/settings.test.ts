@@ -1,25 +1,22 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
 import { sql } from '../src/db'
 import { getSystemSettings } from '../src/settings'
-import { areq } from './helpers'
+import { test } from './pg-test'
 
 // SET-004: global System Settings drive rendering and session lifetime.
 // getSystemSettings falls back to defaults and reflects stored overrides;
 // the /api/settings endpoint exposes the display subset to the client.
 
+// Clear any stored overrides inside the sandbox transaction so each test
+// starts from defaults (the delete rolls back with the test).
 async function reset() {
   await sql`delete from single_value where doctype = 'System Settings'
     and field in ('date_format', 'currency', 'currency_precision', 'float_precision', 'session_hours')`
 }
 
-beforeEach(reset)
-afterAll(async () => {
-  await reset()
-  await sql.end()
-})
-
 describe('SET-004: system settings', () => {
-  it('returns sensible defaults when nothing is stored', async () => {
+  test('returns sensible defaults when nothing is stored', async () => {
+    await reset()
     const s = await getSystemSettings()
     expect(s.date_format).toBe('yyyy-mm-dd')
     expect(s.currency).toBe('USD')
@@ -28,7 +25,8 @@ describe('SET-004: system settings', () => {
     expect(s.session_hours).toBe(8)
   })
 
-  it('reflects stored overrides with typed numbers', async () => {
+  test('reflects stored overrides with typed numbers', async () => {
+    await reset()
     for (const [field, value] of [
       ['date_format', 'dd-mm-yyyy'],
       ['currency', 'EUR'],
@@ -45,8 +43,9 @@ describe('SET-004: system settings', () => {
     expect(s.float_precision).toBe(4)
   })
 
-  it('/api/settings exposes only the display subset', async () => {
-    const res = await areq('/api/settings')
+  test('/api/settings exposes only the display subset', async ({ admin }) => {
+    await reset()
+    const res = await admin.fetch('/api/settings')
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
     expect(Object.keys(body).sort()).toEqual(

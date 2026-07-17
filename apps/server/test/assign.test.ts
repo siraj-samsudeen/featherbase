@@ -1,7 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { app } from '../src/index'
+import { describe, expect } from 'vitest'
 import { sql } from '../src/db'
-import { areq } from './helpers'
+import { test } from './pg-test'
+import type { TestClient } from 'feather-testing-postgres'
 
 // EML-006: assigning a document creates a ToDo for the assignee and a
 // notification.
@@ -9,38 +9,32 @@ import { areq } from './helpers'
 const DT = 'Asg Srv DT'
 const ASSIGNEE = 'asg-srv@x.com'
 
-async function cleanup() {
-  await sql`delete from tab_todo where reference_doctype = ${DT}`
-  await sql`delete from tab_notification_log where for_user = ${ASSIGNEE}`
-  await sql`delete from tab_user where name = ${ASSIGNEE}`
-  await sql`delete from tab_docfield where parent = ${DT}`
-  await sql`delete from tab_doctype where name = ${DT}`
-  await sql.unsafe('drop table if exists tab_asg_srv_dt')
+// Each test builds its DocType, assignee user, and document inside its own
+// sandbox transaction.
+async function setup(admin: TestClient) {
+  await admin.post('/api/doctype', {
+    name: DT,
+    autoname: 'prompt',
+    fields: [{ fieldname: 'title', fieldtype: 'Data' }],
+  })
+  await admin.post('/api/save_doc', {
+    doctype: 'User',
+    doc: { name: ASSIGNEE, email: ASSIGNEE },
+  })
+  await admin.post(`/api/resource/${encodeURIComponent(DT)}`, { name: 'asg-1', title: 'x' })
 }
 
-beforeAll(async () => {
-  await cleanup()
-  await areq('/api/doctype', {
-    method: 'POST',
-    body: JSON.stringify({ name: DT, autoname: 'prompt', fields: [{ fieldname: 'title', fieldtype: 'Data' }] }),
-  })
-  await areq('/api/save_doc', {
-    method: 'POST',
-    body: JSON.stringify({ doctype: 'User', doc: { name: ASSIGNEE, email: ASSIGNEE } }),
-  })
-  await areq(`/api/resource/${encodeURIComponent(DT)}`, {
-    method: 'POST',
-    body: JSON.stringify({ name: 'asg-1', title: 'x' }),
-  })
-})
-
-afterAll(cleanup)
-
 describe('EML-006: assignment', () => {
-  it('creates a ToDo for the assignee and a notification', async () => {
-    const res = await areq('/api/assign', {
+  test('creates a ToDo for the assignee and a notification', async ({ admin }) => {
+    await setup(admin)
+    const res = await admin.fetch('/api/assign', {
       method: 'POST',
-      body: JSON.stringify({ doctype: DT, name: 'asg-1', assign_to: ASSIGNEE, description: 'please handle' }),
+      body: JSON.stringify({
+        doctype: DT,
+        name: 'asg-1',
+        assign_to: ASSIGNEE,
+        description: 'please handle',
+      }),
     })
     expect(res.status).toBe(201)
 
@@ -58,21 +52,27 @@ describe('EML-006: assignment', () => {
     expect(notifs[0].subject).toContain('assigned you')
   })
 
-  it('rejects assigning to a non-existent user', async () => {
-    const res = await areq('/api/assign', {
+  test('rejects assigning to a non-existent user', async ({ admin }) => {
+    await setup(admin)
+    const res = await admin.fetch('/api/assign', {
       method: 'POST',
       body: JSON.stringify({ doctype: DT, name: 'asg-1', assign_to: 'ghost@x.com' }),
     })
     expect(res.status).toBe(404)
   })
 
-  it('requires doctype, name, and assign_to', async () => {
-    const res = await areq('/api/assign', { method: 'POST', body: JSON.stringify({ doctype: DT }) })
+  test('requires doctype, name, and assign_to', async ({ admin }) => {
+    await setup(admin)
+    const res = await admin.fetch('/api/assign', {
+      method: 'POST',
+      body: JSON.stringify({ doctype: DT }),
+    })
     expect(res.status).toBe(417)
   })
 
-  it('an unauthenticated request is rejected', async () => {
-    const res = await app.request('/api/assign', {
+  test('an unauthenticated request is rejected', async ({ admin, api }) => {
+    await setup(admin)
+    const res = await api.fetch('/api/assign', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ doctype: DT, name: 'asg-1', assign_to: ASSIGNEE }),
