@@ -1,3 +1,5 @@
+// NOT sandbox-migrated: this tests the patch RUNNER itself — real commit,
+// rollback-on-failure, and patch_log persistence semantics need real commits.
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
 import { appliedPatches, ensurePatchLog, runPatches, type Patch } from '../src/patches'

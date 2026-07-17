@@ -47,10 +47,13 @@ export interface TestClient {
 
 export function makeClient(app: AppLike, token: string | null, user: string | null): TestClient {
   async function doFetch(path: string, init: RequestInit = {}): Promise<Response> {
+    // FormData bodies must keep their runtime-generated multipart boundary —
+    // never force a JSON content-type onto them.
+    const isForm = typeof FormData !== 'undefined' && init.body instanceof FormData
     return app.request(path, {
       ...init,
       headers: {
-        'content-type': 'application/json',
+        ...(isForm ? {} : { 'content-type': 'application/json' }),
         ...(token ? { authorization: `Bearer ${token}` } : {}),
         ...((init.headers as Record<string, string>) ?? {}),
       },
