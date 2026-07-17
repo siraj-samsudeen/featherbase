@@ -209,6 +209,8 @@ export class Session {
           null
         )
       })
+      if (el instanceof HTMLButtonElement && el.disabled)
+        throw new Error(`Button ${j(name)} is disabled — a user could not click it`)
       await this.user.click(el)
     })
   }
