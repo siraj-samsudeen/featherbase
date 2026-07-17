@@ -22,6 +22,7 @@ import { applyWorkflowAction, availableActions, currentState, getActiveWorkflow 
 import { reapplyCustomFields } from './custom-fields'
 import { enqueue, loadJobs, retryJob, startWorker } from './jobs'
 import { attachRealtime, publishDocEvent, publishUserEvent } from './realtime'
+import { createAssignment } from './assign'
 import { queueEmail, sendTestEmail } from './email'
 import { getSystemSettings } from './settings'
 import { requestPasswordReset, resetPassword } from './password-reset'
@@ -154,7 +155,13 @@ app.get('/api/web_form/:route', async (c) => {
 
 app.post('/api/web_form/:route', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { values?: Record<string, unknown> }
-  return c.json(await submitWebForm(c.req.param('route'), body.values ?? {}), 201)
+  // The route is public, but a logged-in submitter (the web client always
+  // sends its token) gets the document created in their name — that's what
+  // makes their if_owner portal show it. An invalid/absent token is anonymous.
+  const sessionUser = await resolveToken(c.req.header('authorization'))
+    .then((u) => u.name)
+    .catch(() => undefined)
+  return c.json(await submitWebForm(c.req.param('route'), body.values ?? {}, sessionUser), 201)
 })
 
 // WEB-001: public, server-rendered Web Pages. No session required; only
@@ -729,31 +736,8 @@ app.post('/api/assign', async (c) => {
   const [target] = await sql`select name from tab_user where name = ${assign_to}`
   if (!target) throw new AppError('NotFoundError', `User ${assign_to} not found`)
 
-  const todo = await saveDoc(
-    'ToDo',
-    {
-      allocated_to: assign_to,
-      reference_doctype: doctype,
-      reference_name: name,
-      description: description ?? `Assigned ${doctype} ${name}`,
-      status: 'Open',
-    },
-    who(c),
-  )
-  const subject = `${who(c)} assigned you ${doctype} ${name}`
-  await sql`
-    insert into tab_notification_log ${sql({
-      name: randomBytes(5).toString('hex'),
-      owner: who(c),
-      modified_by: who(c),
-      for_user: assign_to,
-      subject,
-      ref_doctype: doctype,
-      ref_name: name,
-      read: false,
-    })}`
-  publishUserEvent(assign_to, 'notification', { subject })
-  return c.json({ todo: todo.name }, 201)
+  const todo = await createAssignment(doctype, name, assign_to, who(c), description)
+  return c.json({ todo }, 201)
 })
 
 // UI-017: free-form document tags. Readable/writable by anyone who can read
@@ -968,5 +952,12 @@ if (process.env.NODE_ENV !== 'test') {
       select 1 from tab_background_job
       where method = 'auto_email_reports' and status in ('queued', 'running') limit 1`
     if (!pending) await enqueue('auto_email_reports', {}, { repeatEvery: 24 * 60 * 60 })
+  }
+  // SLA: the recurring escalation sweep (see src/jobs/sla-escalation.ts).
+  {
+    const [pending] = await sql`
+      select 1 from tab_background_job
+      where method = 'check_sla' and status in ('queued', 'running') limit 1`
+    if (!pending) await enqueue('check_sla', {}, { repeatEvery: 60 })
   }
 }

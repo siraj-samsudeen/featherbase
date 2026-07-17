@@ -27,14 +27,22 @@ export interface WorkflowTransition {
 export interface Workflow {
   name: string
   document_type: string
+  // The field on the target DocType that carries the state. Defaults to the
+  // auto-added `workflow_state`; set it to an existing field (e.g. a `status`
+  // Select) to make the workflow drive that field directly, Frappe-style.
+  state_field?: string | null
   states: WorkflowState[]
   transitions: WorkflowTransition[]
+}
+
+export function stateField(wf: Workflow): string {
+  return (wf.state_field ?? '').trim() || 'workflow_state'
 }
 
 // The active workflow for a DocType (at most one), with its child rows.
 export async function getActiveWorkflow(doctype: string): Promise<Workflow | null> {
   const [wf] = await sql`
-    select name, document_type from tab_workflow
+    select name, document_type, state_field from tab_workflow
     where document_type = ${doctype} and is_active = true
     order by modified desc limit 1`
   if (!wf) return null
@@ -44,7 +52,13 @@ export async function getActiveWorkflow(doctype: string): Promise<Workflow | nul
   const transitions = await sql<WorkflowTransition[]>`
     select state, action, next_state, allowed, "condition" from tab_workflow_transition
     where parent = ${wf.name as string} and parenttype = 'Workflow' order by idx`
-  return { name: wf.name as string, document_type: wf.document_type as string, states, transitions }
+  return {
+    name: wf.name as string,
+    document_type: wf.document_type as string,
+    state_field: (wf.state_field as string | null) ?? null,
+    states,
+    transitions,
+  }
 }
 
 // WF-001: reject a definition whose transitions reference undefined states.
@@ -66,11 +80,22 @@ export function validateWorkflow(states: WorkflowState[], transitions: WorkflowT
   }
 }
 
-// WF-002: the target DocType needs a `workflow_state` field so the state
-// lives on each document. Added once, on demand, inside the given txn.
-export async function ensureStateField(doctype: string, tx: typeof sql = sql): Promise<void> {
+// WF-002: the target DocType needs a field to carry the state on each
+// document. When the workflow binds an existing field (state_field), nothing
+// is added; otherwise the default `workflow_state` field is created on
+// demand, inside the given txn.
+export async function ensureStateField(
+  doctype: string,
+  tx: typeof sql = sql,
+  field = 'workflow_state',
+): Promise<void> {
   const meta = await getMeta(doctype)
-  if (meta.fields.some((f) => f.fieldname === 'workflow_state')) return
+  if (meta.fields.some((f) => f.fieldname === field)) return
+  if (field !== 'workflow_state')
+    throw new AppError(
+      'ValidationError',
+      `Workflow state field "${field}" does not exist on ${doctype}`,
+    )
   const table = tableName(doctype)
   await tx.unsafe(`alter table "${table}" add column if not exists "workflow_state" varchar(140)`)
   const idx = meta.fields.length + 1
@@ -89,7 +114,7 @@ export async function ensureStateField(doctype: string, tx: typeof sql = sql): P
 
 // The document's current state, defaulting to the workflow's first state.
 export function currentState(wf: Workflow, doc: Record<string, unknown>): string {
-  const v = doc.workflow_state
+  const v = doc[stateField(wf)]
   if (typeof v === 'string' && v) return v
   return wf.states[0]?.state ?? ''
 }
@@ -125,7 +150,8 @@ export async function applyWorkflowAction(
 ): Promise<Record<string, unknown>> {
   const wf = await getActiveWorkflow(doctype)
   if (!wf) throw new AppError('ValidationError', `No active workflow for ${doctype}`)
-  await ensureStateField(doctype)
+  const field = stateField(wf)
+  await ensureStateField(doctype, sql, field)
 
   const doc = await getDoc(doctype, name, user)
   const from = currentState(wf, doc)
@@ -157,7 +183,7 @@ export async function applyWorkflowAction(
   // workflow legitimately moves a submitted doc between states/statuses).
   await sql`
     update ${sql(tableName(doctype))}
-    set workflow_state = ${transition.next_state}, docstatus = ${docstatus}, modified = now()
+    set ${sql(field)} = ${transition.next_state}, docstatus = ${docstatus}, modified = now()
     where name = ${name}`
 
   await sql`
@@ -233,9 +259,10 @@ async function notifyPendingApprovers(
 export async function initDocState(doctype: string): Promise<void> {
   const wf = await getActiveWorkflow(doctype)
   if (!wf || !wf.states.length) return
-  await ensureStateField(doctype)
+  const field = stateField(wf)
+  await ensureStateField(doctype, sql, field)
   await sql`
     update ${sql(tableName(doctype))}
-    set workflow_state = ${wf.states[0].state}
-    where workflow_state is null`
+    set ${sql(field)} = ${wf.states[0].state}
+    where ${sql(field)} is null`
 }

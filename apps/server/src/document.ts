@@ -6,6 +6,8 @@ import { getMeta, type DocTypeMeta } from './meta'
 import { STANDARD_COLUMNS, tableName } from './doctype-engine'
 import { runHooks, type HookContext } from './controllers'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
+import { evaluateAssignmentRules } from './assignment-rules'
+import { applySla } from './sla'
 import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
 import {
@@ -330,11 +332,21 @@ async function loadChildren(meta: DocTypeMeta, doc: DocValues): Promise<DocValue
 // the generic document path would silently skip table changes.
 const ENGINE_MANAGED = new Set(['DocType', 'DocField'])
 
+export interface SaveOptions {
+  // WEB-002/003: the web-form surface is server-controlled (whitelisted fields
+  // on one configured DocType), so it may insert on behalf of a session user
+  // who holds no create DocPerm — the document still gets that user as owner,
+  // which is what makes if_owner portals work. Never expose this to callers
+  // that pass through arbitrary client input.
+  skipPermissions?: boolean
+}
+
 export async function saveDoc(
   doctype: string,
   values: DocValues,
   user = 'Administrator',
   mode: 'upsert' | 'insert' = 'upsert',
+  opts: SaveOptions = {},
 ): Promise<DocValues> {
   const meta = await getMeta(doctype)
   if (ENGINE_MANAGED.has(doctype))
@@ -359,14 +371,21 @@ export async function saveDoc(
     if (meta.autoname !== 'prompt' && values.amended_from == null)
       throw new AppError('NotFoundError', `${doctype} ${values.name} not found`)
   }
-  await assertPermission(user, doctype, 'create')
-  await assertUserPermissions(user, meta, values)
-  const writeLevels = await permittedLevels(user, doctype, 'write')
+  if (!opts.skipPermissions) {
+    await assertPermission(user, doctype, 'create')
+    await assertUserPermissions(user, meta, values)
+  }
+  const writeLevels = opts.skipPermissions
+    ? new Set([-1])
+    : await permittedLevels(user, doctype, 'write')
   const fieldValues = validateValues(
     meta,
     applyDefaults(meta, stripUnwritableFields(meta.fields, writeLevels, pickFieldValues(meta, values))),
     'insert',
   )
+  // SLA: stamp response/resolution deadlines from the active SLA (if any)
+  // before the row is written, so they are part of the insert itself.
+  await applySla(meta, fieldValues)
 
   const childInputs = pickChildInputs(meta, values)
   const table = tableName(doctype)
@@ -416,6 +435,12 @@ export async function saveDoc(
     })
     .catch((err) => mapDbError(meta, err))
   const insertResult = await loadChildren(meta, { doctype, ...(saved as DocValues) })
+  // EML-004: fire matching email rules post-commit. Frappe's Save event covers
+  // inserts too, so both on_create and on_save rules are evaluated here.
+  await evaluateEmailRules('on_create', meta.name, insertResult)
+  await evaluateEmailRules('on_save', meta.name, insertResult)
+  // Auto-assignment: apply any Assignment Rules for this DocType (post-commit).
+  await evaluateAssignmentRules(meta.name, insertResult)
   // PLAT-005: fire webhooks post-commit for the create event.
   await evaluateWebhooks('after_insert', meta.name, insertResult)
   return insertResult
@@ -446,6 +471,8 @@ async function updateDoc(
     'update',
   )
 
+  // Snapshot of the row before this save, for post-commit transition checks.
+  let previous: DocValues | undefined
   const saved = await sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
@@ -453,6 +480,7 @@ async function updateDoc(
         select * from ${tx(table)} where name = ${name} for update`
       if (!existing)
         throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
+      previous = { ...(existing as DocValues) }
       // PERM-008: a share with write grants update even without role write.
       if (!sharedWrite) {
         await assertDocPermission(user, meta.name, 'write', String(existing.owner))
@@ -508,6 +536,9 @@ async function updateDoc(
     })
     .catch((err) => mapDbError(meta, err))
   const updateResult = await loadChildren(meta, { doctype: meta.name, ...(saved as DocValues) })
+  // EML-004: on_save rules fire post-commit; the pre-save snapshot lets a
+  // conditional rule fire only when the value transitions into the match.
+  await evaluateEmailRules('on_save', meta.name, updateResult, previous)
   // PLAT-005: fire webhooks post-commit for the update event.
   await evaluateWebhooks('on_update', meta.name, updateResult)
   return updateResult
