@@ -1,36 +1,37 @@
-import { describe, expect, it } from 'vitest'
-import { app } from '../src/index'
-import { sql } from '../src/db'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
 import { setUserPassword } from '../src/auth'
-import { areq, token } from './helpers'
+import type { TestClient } from 'feather-testing-postgres'
 
 // API-005: key/secret pairs authenticate as the user; revocation kills them.
 
 const USER = 'api-key-user@x.com'
 
-async function makeUser() {
-  await sql`delete from tab_has_role where parent = ${USER}`
-  await sql`delete from tab_user where name = ${USER}`
-  await areq('/api/save_doc', {
-    method: 'POST',
-    body: JSON.stringify({ doctype: 'User', doc: { name: USER, email: USER } }),
+// The login flow itself is under test here, so the user is created in-test
+// (with a real password) rather than through the createUser fixture.
+async function makeUser(admin: TestClient) {
+  await admin.post('/api/save_doc', {
+    doctype: 'User',
+    doc: { name: USER, email: USER },
   })
   await setUserPassword(USER, 'apikeypw1')
 }
 
 describe('API-005: API key + secret token auth', () => {
-  it('generated pair authenticates as that user; revoked pair stops working', async () => {
-    await makeUser()
+  test('generated pair authenticates as that user; revoked pair stops working', async ({
+    admin,
+    api,
+  }) => {
+    await makeUser(admin)
     // Login as the user, generate own keys.
-    const login = await app.request('/api/login', {
+    const login = await api.fetch('/api/login', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ usr: USER, pwd: 'apikeypw1' }),
     })
     const jwt = ((await login.json()) as { token: string }).token
-    const gen = await app.request('/api/generate_api_key', {
+    const gen = await api.fetch('/api/generate_api_key', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${jwt}` },
+      headers: { authorization: `Bearer ${jwt}` },
       body: '{}',
     })
     expect(gen.status).toBe(201)
@@ -39,7 +40,7 @@ describe('API-005: API key + secret token auth', () => {
     expect(api_secret).toMatch(/^[0-9a-f]{32}$/)
 
     // The pair authenticates as that user.
-    const who = await app.request('/api/whoami', {
+    const who = await api.fetch('/api/whoami', {
       headers: { authorization: `token ${api_key}:${api_secret}` },
     })
     expect(who.status).toBe(200)
@@ -47,62 +48,58 @@ describe('API-005: API key + secret token auth', () => {
 
     // Wrong secret and unknown key fail.
     for (const bad of [`token ${api_key}:wrong`, 'token fc_0000000000000000:x']) {
-      const res = await app.request('/api/whoami', { headers: { authorization: bad } })
+      const res = await api.fetch('/api/whoami', { headers: { authorization: bad } })
       expect(res.status).toBe(401)
     }
 
     // Revocation kills the pair.
-    const rev = await app.request('/api/revoke_api_key', {
+    const rev = await api.fetch('/api/revoke_api_key', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${jwt}` },
+      headers: { authorization: `Bearer ${jwt}` },
       body: '{}',
     })
     expect(rev.status).toBe(200)
-    const after = await app.request('/api/whoami', {
+    const after = await api.fetch('/api/whoami', {
       headers: { authorization: `token ${api_key}:${api_secret}` },
     })
     expect(after.status).toBe(401)
   })
 
-  it('only System Managers can manage another user\'s keys', async () => {
-    await makeUser()
-    const login = await app.request('/api/login', {
+  test("only System Managers can manage another user's keys", async ({ admin, api }) => {
+    await makeUser(admin)
+    const login = await api.fetch('/api/login', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ usr: USER, pwd: 'apikeypw1' }),
     })
     const jwt = ((await login.json()) as { token: string }).token
-    const res = await app.request('/api/generate_api_key', {
+    const res = await api.fetch('/api/generate_api_key', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${jwt}` },
+      headers: { authorization: `Bearer ${jwt}` },
       body: JSON.stringify({ user: 'Administrator' }),
     })
     expect(res.status).toBe(403)
     // Admin can.
-    const admin = await areq('/api/generate_api_key', {
+    const adminRes = await admin.fetch('/api/generate_api_key', {
       method: 'POST',
       body: JSON.stringify({ user: USER }),
     })
-    expect(admin.status).toBe(201)
+    expect(adminRes.status).toBe(201)
   })
 
-  it('internal columns (password_hash, api keys) never leave through the doc API', async () => {
-    await makeUser()
-    await areq('/api/generate_api_key', {
-      method: 'POST',
-      body: JSON.stringify({ user: USER }),
-    })
-    const res = await areq(`/api/resource/User/${encodeURIComponent(USER)}`)
+  test('internal columns (password_hash, api keys) never leave through the doc API', async ({
+    admin,
+  }) => {
+    await makeUser(admin)
+    await admin.post('/api/generate_api_key', { user: USER })
+    const res = await admin.fetch(`/api/resource/User/${encodeURIComponent(USER)}`)
     expect(res.status).toBe(200)
     const doc = (await res.json()) as Record<string, unknown>
     for (const secret of ['password_hash', 'api_key', 'api_secret_hash'])
       expect(doc).not.toHaveProperty(secret)
     // And requesting them as list fields is rejected outright.
-    const list = await areq(
+    const list = await admin.fetch(
       `/api/resource/User?fields=${encodeURIComponent(JSON.stringify(['name', 'password_hash']))}`,
     )
     expect(list.status).toBe(417)
-    // Cleanup.
-    await sql`delete from tab_user where name = ${USER}`
   })
 })

@@ -1,38 +1,31 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { sql } from '../src/db'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
 import { getRoles } from '../src/permissions'
-import { areq } from './helpers'
+import type { TestClient } from 'feather-testing-postgres'
 
 const USER = 'roletest@x.com'
 
-beforeAll(async () => {
-  await sql`delete from tab_has_role where parent = ${USER}`
-  await sql`delete from tab_user where name = ${USER}`
-  await areq('/api/save_doc', {
-    method: 'POST',
-    body: JSON.stringify({
-      doctype: 'User',
-      doc: { name: USER, email: USER, enabled: true },
-    }),
+// Each test creates the user inside its own rolled-back transaction — no
+// shared beforeAll state and no cleanup.
+async function makeUser(admin: TestClient) {
+  await admin.post('/api/save_doc', {
+    doctype: 'User',
+    doc: { name: USER, email: USER, enabled: true },
   })
-})
-
-afterAll(async () => {
-  await sql`delete from tab_has_role where parent = ${USER}`
-  await sql`delete from tab_user where name = ${USER}`
-  await sql.end()
-})
+}
 
 describe('PERM-001: role model', () => {
-  it('a fresh user has only the implicit All role', async () => {
+  test('a fresh user has only the implicit All role', async ({ admin }) => {
+    await makeUser(admin)
     expect(await getRoles(USER)).toEqual(['All'])
   })
 
-  it('assigning roles via the API changes get_roles output; removing reverts it', async () => {
-    const doc = (await (
-      await areq(`/api/doc/User/${encodeURIComponent(USER)}`)
-    ).json()) as Record<string, unknown>
-    const assign = await areq('/api/save_doc', {
+  test('assigning roles via the API changes get_roles output; removing reverts it', async ({
+    admin,
+  }) => {
+    await makeUser(admin)
+    const doc = await admin.get<Record<string, unknown>>(`/api/doc/User/${encodeURIComponent(USER)}`)
+    const assign = await admin.fetch('/api/save_doc', {
       method: 'POST',
       body: JSON.stringify({
         doctype: 'User',
@@ -46,10 +39,10 @@ describe('PERM-001: role model', () => {
     expect(assign.status).toBe(201)
     expect(await getRoles(USER)).toEqual(['All', 'Guest', 'System Manager'])
 
-    const doc2 = (await (
-      await areq(`/api/doc/User/${encodeURIComponent(USER)}`)
-    ).json()) as Record<string, unknown>
-    const remove = await areq('/api/save_doc', {
+    const doc2 = await admin.get<Record<string, unknown>>(
+      `/api/doc/User/${encodeURIComponent(USER)}`,
+    )
+    const remove = await admin.fetch('/api/save_doc', {
       method: 'POST',
       body: JSON.stringify({
         doctype: 'User',
@@ -60,22 +53,19 @@ describe('PERM-001: role model', () => {
     expect(await getRoles(USER)).toEqual(['All', 'Guest'])
   })
 
-  it('assigning a nonexistent role fails link validation', async () => {
-    const doc = (await (
-      await areq(`/api/doc/User/${encodeURIComponent(USER)}`)
-    ).json()) as Record<string, unknown>
-    const res = await areq('/api/save_doc', {
-      method: 'POST',
-      body: JSON.stringify({
+  test('assigning a nonexistent role fails link validation', async ({ admin }) => {
+    await makeUser(admin)
+    const doc = await admin.get<Record<string, unknown>>(`/api/doc/User/${encodeURIComponent(USER)}`)
+    await expect(
+      admin.post('/api/save_doc', {
         doctype: 'User',
         doc: { name: USER, modified: doc.modified, roles: [{ role: 'Fake Role' }] },
       }),
-    })
-    expect(res.status).toBe(417)
+    ).rejects.toMatchObject({ status: 417 })
   })
 
-  it('whoami reports roles', async () => {
-    const me = (await (await areq('/api/whoami')).json()) as { roles: string[] }
+  test('whoami reports roles', async ({ admin }) => {
+    const me = await admin.get<{ roles: string[] }>('/api/whoami')
     expect(me.roles).toContain('System Manager')
     expect(me.roles).toContain('All')
   })
