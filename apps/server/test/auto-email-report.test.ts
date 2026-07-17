@@ -1,6 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
+import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
-import { areq } from './helpers'
 import { deliverAutoEmailReport, runDueAutoEmailReports, toCsv } from '../src/auto-email-report'
 import { drainJobs } from '../src/jobs'
 
@@ -12,7 +13,10 @@ const REPORT = 'Aer Srv Report'
 const AER = 'Aer Srv Schedule'
 const RECIP = 'aer-boss@x.com'
 
-async function cleanup() {
+// Runs at the start of each test, inside its sandbox transaction: clear any
+// committed leftovers (rolled back afterwards), then create the DocType,
+// documents, Report, and schedule that legacy beforeAll used to set up once.
+async function setup(admin: TestClient) {
   await sql`delete from tab_email_sink where subject like ${'Auto Email Report:%'}`
   await sql`delete from tab_email_queue where reference_doctype = 'Report' and reference_name = ${REPORT}`
   await sql`delete from tab_auto_email_report where name = ${AER}`
@@ -20,70 +24,73 @@ async function cleanup() {
   await sql`delete from tab_docfield where parent = ${DT}`
   await sql`delete from tab_doctype where name = ${DT}`
   await sql.unsafe('drop table if exists tab_aer_srv_widget')
-}
 
-beforeAll(async () => {
-  await cleanup()
-  await areq('/api/doctype', {
-    method: 'POST',
-    body: JSON.stringify({
-      name: DT,
-      autoname: 'prompt',
-      fields: [
-        { fieldname: 'title', fieldtype: 'Data', in_list_view: true },
-        { fieldname: 'qty', fieldtype: 'Int', in_list_view: true },
-      ],
-    }),
+  await admin.post('/api/doctype', {
+    name: DT,
+    autoname: 'prompt',
+    fields: [
+      { fieldname: 'title', fieldtype: 'Data', in_list_view: true },
+      { fieldname: 'qty', fieldtype: 'Int', in_list_view: true },
+    ],
   })
   // Two documents to report on. One title has a comma to exercise CSV quoting.
-  await areq(`/api/resource/${encodeURIComponent(DT)}`, {
-    method: 'POST',
-    body: JSON.stringify({ name: 'aer-1', title: 'Bolt, hex', qty: 10 }),
+  await admin.post(`/api/resource/${encodeURIComponent(DT)}`, {
+    name: 'aer-1',
+    title: 'Bolt, hex',
+    qty: 10,
   })
-  await areq(`/api/resource/${encodeURIComponent(DT)}`, {
-    method: 'POST',
-    body: JSON.stringify({ name: 'aer-2', title: 'Washer', qty: 3 }),
+  await admin.post(`/api/resource/${encodeURIComponent(DT)}`, {
+    name: 'aer-2',
+    title: 'Washer',
+    qty: 3,
   })
 
   // A Report Builder report over the DocType.
-  await areq('/api/save_doc', {
-    method: 'POST',
-    body: JSON.stringify({
-      doctype: 'Report',
-      doc: {
-        name: REPORT,
-        ref_doctype: DT,
-        report_type: 'Report Builder',
-        config: { columns: ['title', 'qty'], filters: [] },
-      },
-    }),
+  await admin.post('/api/save_doc', {
+    doctype: 'Report',
+    doc: {
+      name: REPORT,
+      ref_doctype: DT,
+      report_type: 'Report Builder',
+      config: { columns: ['title', 'qty'], filters: [] },
+    },
   })
 
-  await areq('/api/save_doc', {
-    method: 'POST',
-    body: JSON.stringify({
-      doctype: 'Auto Email Report',
-      doc: {
-        name: AER,
-        report: REPORT,
-        recipients: RECIP,
-        file_format: 'CSV',
-        frequency: 'Daily',
-        enabled: true,
-      },
-    }),
+  await admin.post('/api/save_doc', {
+    doctype: 'Auto Email Report',
+    doc: {
+      name: AER,
+      report: REPORT,
+      recipients: RECIP,
+      file_format: 'CSV',
+      frequency: 'Daily',
+      enabled: true,
+    },
   })
-})
+}
 
-afterAll(cleanup)
+// Sandbox clock shim: inside the rolled-back test transaction now() is frozen
+// at BEGIN, while the delivery job's run_at is stamped from the wall clock —
+// so it never counts as "due" for the claim query. Mark any job whose run_at
+// has passed by the wall clock (clock_timestamp) as due by the transaction
+// clock, then drain.
+async function drainDueJobs() {
+  await sql`
+    update tab_background_job set run_at = now()
+    where status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
+  return await drainJobs()
+}
 
 describe('EML-007: Auto Email Report', () => {
-  it('toCsv quotes fields containing commas and renders header+rows', () => {
+  test('toCsv quotes fields containing commas and renders header+rows', () => {
     const csv = toCsv(['title', 'qty'], [{ title: 'Bolt, hex', qty: 10 }])
     expect(csv).toBe('title,qty\n"Bolt, hex",10')
   })
 
-  it('delivering runs the report and queues an email with the CSV attached', async () => {
+  test('delivering runs the report and queues an email with the CSV attached', async ({
+    admin,
+  }) => {
+    await setup(admin)
     const out = await deliverAutoEmailReport(AER)
     expect(out.recipients).toBe(1)
     expect(out.rows).toBe(2)
@@ -103,7 +110,7 @@ describe('EML-007: Auto Email Report', () => {
     expect(csv).toContain('Washer,3')
 
     // The worker delivers it to the sink with the attachment intact (EML-002/003).
-    await drainJobs()
+    await drainDueJobs()
     const [sink] = await sql`
       select mail_to, attachment_names, attachment_b64 from tab_email_sink
       where subject like ${'Auto Email Report:%'} order by creation desc limit 1`
@@ -116,8 +123,13 @@ describe('EML-007: Auto Email Report', () => {
     expect(row.last_sent).not.toBeNull()
   })
 
-  it('the scheduler pass skips a report whose Daily cadence has not elapsed', async () => {
-    // last_sent was just set above → not due now.
+  test('the scheduler pass skips a report whose Daily cadence has not elapsed', async ({
+    admin,
+  }) => {
+    await setup(admin)
+    // Legacy relied on the previous test having just delivered; recreate that
+    // state explicitly: deliver once so last_sent is stamped → not due now.
+    await deliverAutoEmailReport(AER)
     const delivered = await runDueAutoEmailReports(new Date())
     expect(delivered).not.toContain(AER)
 

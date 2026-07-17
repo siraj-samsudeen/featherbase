@@ -1,3 +1,5 @@
+// NOT sandbox-migrated: spawns the CLI as a SUBPROCESS, which opens its own
+// Postgres connection — a per-test transaction in this process cannot cover it.
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'

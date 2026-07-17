@@ -1,26 +1,9 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { app } from '../src/index'
-import { sql } from '../src/db'
-import { setUserPassword } from '../src/auth'
-import { areq } from './helpers'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
+import type { TestClient } from 'feather-testing-postgres'
 
 const TARGET = 'Ls Target'
 const ROLE = 'Ls Role'
-const ALICE = 'ls-alice@x.com'
-const BOB = 'ls-bob@x.com'
-
-const tokens: Record<string, string> = {}
-const as =
-  (user: string) =>
-  (path: string, init: RequestInit = {}) =>
-    app.request(path, {
-      ...init,
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${tokens[user]}`,
-        ...((init.headers as Record<string, string>) ?? {}),
-      },
-    })
 
 // The exact query shape a Link autocomplete issues.
 const searchQs = (q: string) =>
@@ -30,77 +13,51 @@ const searchQs = (q: string) =>
     limit_page_length: '10',
   })}`
 
-async function cleanup() {
-  await sql`delete from tab_user_permission where "user" in (${ALICE}, ${BOB})`
-  await sql`delete from tab_docperm where ref_doctype = ${TARGET}`
-  for (const u of [ALICE, BOB]) {
-    await sql`delete from tab_has_role where parent = ${u}`
-    await sql`delete from tab_user where name = ${u}`
-  }
-  await sql`delete from tab_role where name = ${ROLE}`
-  await sql`delete from tab_doctype where name = ${TARGET}`
-  await sql.unsafe('drop table if exists tab_ls_target')
+// Per-test world: the target DocType, the role, and two users.
+async function setup(
+  admin: TestClient,
+  createUser: (o?: { roles?: string[] }) => Promise<TestClient>,
+) {
+  await admin.post('/api/doctype', {
+    name: TARGET,
+    autoname: 'prompt',
+    fields: [{ fieldname: 'note', fieldtype: 'Data' }],
+  })
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+  const alice = await createUser({ roles: [ROLE] })
+  const bob = await createUser({ roles: [ROLE] })
+  return { alice, bob }
 }
 
-beforeAll(async () => {
-  await cleanup()
-  await areq('/api/doctype', {
-    method: 'POST',
-    body: JSON.stringify({
-      name: TARGET,
-      autoname: 'prompt',
-      fields: [{ fieldname: 'note', fieldtype: 'Data' }],
-    }),
+// The if_owner grant plus one doc owned by each user.
+async function grantIfOwnerAndSeed(admin: TestClient, alice: TestClient, bob: TestClient) {
+  await admin.post('/api/save_doc', {
+    doctype: 'DocPerm',
+    doc: { ref_doctype: TARGET, role: ROLE, if_owner: true, can_read: true, can_create: true },
   })
-  await areq('/api/save_doc', {
+  await alice.fetch(`/api/resource/${encodeURIComponent(TARGET)}`, {
     method: 'POST',
-    body: JSON.stringify({ doctype: 'Role', doc: { name: ROLE } }),
+    body: JSON.stringify({ name: 'doc-alice', note: 'a' }),
   })
-  for (const u of [ALICE, BOB]) {
-    await areq('/api/save_doc', {
-      method: 'POST',
-      body: JSON.stringify({
-        doctype: 'User',
-        doc: { name: u, email: u, enabled: true, roles: [{ role: ROLE }] },
-      }),
-    })
-    await setUserPassword(u, 'lspw123')
-    const login = await app.request('/api/login', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ usr: u, pwd: 'lspw123' }),
-    })
-    tokens[u] = ((await login.json()) as { token: string }).token
-  }
-})
-
-afterAll(async () => {
-  await cleanup()
-  await sql.end()
-})
+  await bob.fetch(`/api/resource/${encodeURIComponent(TARGET)}`, {
+    method: 'POST',
+    body: JSON.stringify({ name: 'doc-bob', note: 'b' }),
+  })
+}
 
 describe('PERM-010: link-field search is permission-filtered', () => {
-  it('no read permission -> search is 403, not an empty leak-free 200 pretending', async () => {
-    expect((await as(ALICE)(searchQs('doc'))).status).toBe(403)
+  test('no read permission -> search is 403, not an empty leak-free 200 pretending', async ({
+    admin,
+    createUser,
+  }) => {
+    const { alice } = await setup(admin, createUser)
+    expect((await alice.fetch(searchQs('doc'))).status).toBe(403)
   })
 
-  it('if_owner read -> search returns only own docs', async () => {
-    await areq('/api/save_doc', {
-      method: 'POST',
-      body: JSON.stringify({
-        doctype: 'DocPerm',
-        doc: { ref_doctype: TARGET, role: ROLE, if_owner: true, can_read: true, can_create: true },
-      }),
-    })
-    await as(ALICE)(`/api/resource/${encodeURIComponent(TARGET)}`, {
-      method: 'POST',
-      body: JSON.stringify({ name: 'doc-alice', note: 'a' }),
-    })
-    await as(BOB)(`/api/resource/${encodeURIComponent(TARGET)}`, {
-      method: 'POST',
-      body: JSON.stringify({ name: 'doc-bob', note: 'b' }),
-    })
-    const res = (await (await as(ALICE)(searchQs('doc'))).json()) as {
+  test('if_owner read -> search returns only own docs', async ({ admin, createUser }) => {
+    const { alice, bob } = await setup(admin, createUser)
+    await grantIfOwnerAndSeed(admin, alice, bob)
+    const res = (await (await alice.fetch(searchQs('doc'))).json()) as {
       data: { name: string }[]
       total: number
     }
@@ -108,23 +65,19 @@ describe('PERM-010: link-field search is permission-filtered', () => {
     expect(res.data[0].name).toBe('doc-alice')
   })
 
-  it('user permissions further restrict search results', async () => {
+  test('user permissions further restrict search results', async ({ admin, createUser }) => {
+    const { alice, bob } = await setup(admin, createUser)
+    await grantIfOwnerAndSeed(admin, alice, bob)
     // lift if_owner: grant unconditional read, then pin BOB to doc-alice only
-    await areq('/api/save_doc', {
-      method: 'POST',
-      body: JSON.stringify({
-        doctype: 'DocPerm',
-        doc: { ref_doctype: TARGET, role: ROLE, can_read: true },
-      }),
+    await admin.post('/api/save_doc', {
+      doctype: 'DocPerm',
+      doc: { ref_doctype: TARGET, role: ROLE, can_read: true },
     })
-    await areq('/api/save_doc', {
-      method: 'POST',
-      body: JSON.stringify({
-        doctype: 'User Permission',
-        doc: { user: BOB, allow: TARGET, for_value: 'doc-alice' },
-      }),
+    await admin.post('/api/save_doc', {
+      doctype: 'User Permission',
+      doc: { user: bob.user, allow: TARGET, for_value: 'doc-alice' },
     })
-    const bobRes = (await (await as(BOB)(searchQs('doc'))).json()) as {
+    const bobRes = (await (await bob.fetch(searchQs('doc'))).json()) as {
       data: { name: string }[]
       total: number
     }
@@ -132,7 +85,7 @@ describe('PERM-010: link-field search is permission-filtered', () => {
     expect(bobRes.data[0].name).toBe('doc-alice')
 
     // alice (no user perms, unconditional read) sees both
-    const aliceRes = (await (await as(ALICE)(searchQs('doc'))).json()) as { total: number }
+    const aliceRes = (await (await alice.fetch(searchQs('doc'))).json()) as { total: number }
     expect(aliceRes.total).toBe(2)
   })
 })

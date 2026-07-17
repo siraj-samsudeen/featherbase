@@ -1,49 +1,30 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
+import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
-import { areq } from './helpers'
 
 const DT = 'Upd Test Note'
 const TABLE = 'tab_upd_test_note'
 
-async function post(body: unknown) {
-  return areq('/api/save_doc', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+async function makeDT(admin: TestClient) {
+  await admin.post('/api/doctype', {
+    name: DT,
+    fields: [{ fieldname: 'title', fieldtype: 'Data' }],
   })
 }
 
-beforeAll(async () => {
-  await sql`delete from tab_doctype where name = ${DT}`
-  await sql.unsafe(`drop table if exists ${TABLE}`)
-  await areq('/api/doctype', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      name: DT,
-      fields: [{ fieldname: 'title', fieldtype: 'Data' }],
-    }),
-  })
-})
-
-afterAll(async () => {
-  await sql`delete from tab_doctype where name = ${DT}`
-  await sql.unsafe(`drop table if exists ${TABLE}`)
-  await sql.end()
-})
-
 describe('DOC-002 + META-005: update with conflict detection, standard fields auto-set', () => {
-  it('updates with a fresh modified value and bumps modified/modified_by', async () => {
-    const created = (await (
-      await post({ doctype: DT, doc: { title: 'v1' } })
-    ).json()) as Record<string, unknown>
+  test('updates with a fresh modified value and bumps modified/modified_by', async ({ admin }) => {
+    await makeDT(admin)
+    const created = await admin.post<Record<string, unknown>>('/api/save_doc', {
+      doctype: DT,
+      doc: { title: 'v1' },
+    })
 
-    const res = await post({
+    const updated = await admin.post<Record<string, unknown>>('/api/save_doc', {
       doctype: DT,
       doc: { name: created.name, modified: created.modified, title: 'v2' },
     })
-    expect(res.status).toBe(201)
-    const updated = (await res.json()) as Record<string, unknown>
     expect(updated.title).toBe('v2')
     expect(new Date(String(updated.modified)).getTime()).toBeGreaterThan(
       new Date(String(created.modified)).getTime(),
@@ -52,48 +33,53 @@ describe('DOC-002 + META-005: update with conflict detection, standard fields au
     expect(updated.creation).toEqual(created.creation)
   })
 
-  it('rejects a stale modified value with 409', async () => {
-    const created = (await (
-      await post({ doctype: DT, doc: { title: 'a' } })
-    ).json()) as Record<string, unknown>
+  test('rejects a stale modified value with 409', async ({ admin }) => {
+    await makeDT(admin)
+    const created = await admin.post<Record<string, unknown>>('/api/save_doc', {
+      doctype: DT,
+      doc: { title: 'a' },
+    })
 
     // First save wins
-    const ok = await post({
+    await admin.post('/api/save_doc', {
       doctype: DT,
       doc: { name: created.name, modified: created.modified, title: 'b' },
     })
-    expect(ok.status).toBe(201)
 
     // Second save with the ORIGINAL (now stale) timestamp loses
-    const stale = await post({
-      doctype: DT,
-      doc: { name: created.name, modified: created.modified, title: 'c' },
-    })
-    expect(stale.status).toBe(409)
-    const body = await stale.json()
-    expect(body.error.type).toBe('ConflictError')
+    await expect(
+      admin.post('/api/save_doc', {
+        doctype: DT,
+        doc: { name: created.name, modified: created.modified, title: 'c' },
+      }),
+    ).rejects.toMatchObject({ status: 409, type: 'ConflictError' })
     const [row] = await sql.unsafe(
       `select title from ${TABLE} where name = '${created.name}'`,
     )
     expect(row.title).toBe('b')
   })
 
-  it('rejects an update without a modified timestamp', async () => {
-    const created = (await (
-      await post({ doctype: DT, doc: { title: 'x' } })
-    ).json()) as Record<string, unknown>
-    const res = await post({
+  test('rejects an update without a modified timestamp', async ({ admin }) => {
+    await makeDT(admin)
+    const created = await admin.post<Record<string, unknown>>('/api/save_doc', {
       doctype: DT,
-      doc: { name: created.name, title: 'y' },
+      doc: { title: 'x' },
     })
-    expect(res.status).toBe(417)
+    await expect(
+      admin.post('/api/save_doc', {
+        doctype: DT,
+        doc: { name: created.name, title: 'y' },
+      }),
+    ).rejects.toMatchObject({ status: 417 })
   })
 
-  it('404s when updating a nonexistent name', async () => {
-    const res = await post({
-      doctype: DT,
-      doc: { name: 'ghost', modified: new Date().toISOString(), title: 'z' },
-    })
-    expect(res.status).toBe(404)
+  test('404s when updating a nonexistent name', async ({ admin }) => {
+    await makeDT(admin)
+    await expect(
+      admin.post('/api/save_doc', {
+        doctype: DT,
+        doc: { name: 'ghost', modified: new Date().toISOString(), title: 'z' },
+      }),
+    ).rejects.toMatchObject({ status: 404 })
   })
 })

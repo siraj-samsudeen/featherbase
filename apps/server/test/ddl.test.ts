@@ -1,6 +1,6 @@
-import { afterAll, describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
 import { sql } from '../src/db'
-import { areq } from './helpers'
 
 const DT = 'Ddl Test Task'
 const CHILD = 'Ddl Test Row'
@@ -12,18 +12,10 @@ async function columns(table: string): Promise<Record<string, string>> {
   return Object.fromEntries(rows.map((r) => [r.column_name, r.data_type]))
 }
 
-afterAll(async () => {
-  await sql`delete from tab_doctype where name in (${DT}, ${CHILD})`
-  await sql.unsafe(`drop table if exists tab_ddl_test_task`)
-  await sql.unsafe(`drop table if exists tab_ddl_test_row`)
-  await sql.end()
-})
-
 describe('META-003: DocType save generates its table', () => {
-  it('creates tab_<name> with standard + field columns of correct types', async () => {
-    const res = await areq('/api/doctype', {
+  test('creates tab_<name> with standard + field columns of correct types', async ({ admin }) => {
+    const res = await admin.fetch('/api/doctype', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         name: DT,
         fields: [
@@ -69,10 +61,9 @@ describe('META-003: DocType save generates its table', () => {
     )
   })
 
-  it('child DocTypes (istable) get parent linkage columns and index', async () => {
-    const res = await areq('/api/doctype', {
+  test('child DocTypes (istable) get parent linkage columns and index', async ({ admin }) => {
+    const res = await admin.fetch('/api/doctype', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         name: CHILD,
         istable: true,
@@ -89,14 +80,13 @@ describe('META-003: DocType save generates its table', () => {
     })
   })
 
-  it('rolls back metadata when DDL fails (transactional)', async () => {
+  test('rolls back metadata when DDL fails (transactional)', async ({ admin }) => {
     // Second create of same name 409s before DDL; simulate DDL failure via
     // a fieldname that collides with a standard column being caught earlier.
     // Real transactional check: table already exists but doctype row absent.
     await sql.unsafe(`create table if not exists tab_ddl_ghost (name text)`)
-    const res = await areq('/api/doctype', {
+    const res = await admin.fetch('/api/doctype', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         name: 'Ddl Ghost',
         fields: [{ fieldname: 'x', fieldtype: 'Data' }],
@@ -105,6 +95,5 @@ describe('META-003: DocType save generates its table', () => {
     expect(res.status).toBe(500)
     const [row] = await sql`select 1 from tab_doctype where name = 'Ddl Ghost'`
     expect(row).toBeUndefined()
-    await sql.unsafe(`drop table tab_ddl_ghost`)
   })
 })

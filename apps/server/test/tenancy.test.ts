@@ -1,3 +1,5 @@
+// NOT sandbox-migrated: tenancy uses its own per-site pooled clients
+// (search_path-scoped), which bypass the db.ts sandbox seam by design.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { app } from '../src/index'
 import { sql } from '../src/db'

@@ -13,6 +13,104 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-17 — Legacy server suite migrated to the SQL sandbox (74/79 files)
+
+The entire pre-existing server test suite now runs on feather-testing-postgres:
+every migrated test executes inside its own rolled-back transaction — all
+manual DELETE/DROP/`sql.end()` cleanup is gone. Full suite **320/320**, web
+10/10, typechecks clean, browser smoke + ticketing e2e green.
+
+- **Migrated in 7 verified batches** (each independently re-run before
+  commit): document-engine (11 files), meta/DDL (11), permissions (10),
+  misc endpoints (14), features/workflow/reports (11), jobs/email/webhooks
+  (9), special files (realtime, files, signed-files, print-pdf, thumbnails).
+- **5 files stay legacy BY DESIGN**, each annotated in-file:
+  `cli` (subprocess opens its own PG connection), `tenancy` (per-site pools
+  bypass the db.ts seam), `patches` (tests the runner's real commit
+  semantics), `rls` (verifies native RLS via a second desk_client
+  connection that cannot see an uncommitted tx),
+  `schema-sync-stale-plan` (needs multiple warm pooled connections; the
+  sandbox pins one).
+- **Gotchas discovered, for future test authors**:
+  1. `now()` freezes at BEGIN inside the sandbox but `enqueue()` stamps
+     wall-clock `run_at` — drain-based job tests must nudge due jobs onto
+     the tx clock (`run_at <= clock_timestamp()` → `now()`) before
+     `drainJobs()`. Candidate for lifting into pg-test as a helper.
+  2. Process-global state does NOT roll back: controller registrations
+     (`clearControllers` in finally), installed apps (uninstall in
+     finally), `stopWorker()` in finally; job/script-report registries
+     have no unregister — unique names keep leaks benign.
+  3. A failing RAW SQL statement authored in a test body aborts the whole
+     sandbox tx (no savepoint) — only safe as the test's last DB op;
+     errors raised through the API always roll back to a savepoint.
+  4. `SET TRANSACTION READ ONLY` works under a savepoint (PG only forbids
+     read-write after queries) but leaves the OUTER test tx read-only —
+     order writes before `runQueryReport` calls.
+  5. Legacy suites with order-dependent tests need per-test "replay
+     helpers" that re-execute earlier tests' mutations as setup.
+  6. Disk state (file uploads) does not roll back — file tests keep
+     `deleteStored` cleanup in finally blocks.
+- **Infra note**: mid-migration the system Postgres AND both dev servers
+  were killed (no crash log — likely resource pressure from concurrent
+  agent runs); `pg_ctlcluster 16 main start` + `./init.sh` recovered, no
+  data loss. Full suite re-verified afterwards.
+- **Next**: consider lifting the job-clock nudge into the library; evaluate
+  per-file parallelism for the sandboxed majority (needs the 5 legacy
+  files quarantined to a sequential project and shared naming-series row
+  locks assessed).
+
+## 2026-07-17 — feather-testing-postgres: Phoenix-style testing library + ticketing demo (beyond the 126)
+
+New net-new infrastructure (no features.json changes): a testing library in
+`packages/feather-testing-postgres` that brings the Ecto SQL Sandbox model to
+this stack, proven end-to-end by a metadata-only ticketing app.
+
+- **SQL sandbox (Ecto pattern)**: `db.ts` now exports `sql` through a
+  delegating Proxy with a test-only seam (`_setSqlDelegate`). `withSandbox`
+  opens a real transaction, swaps the delegate, runs the test, ALWAYS rolls
+  back; while sandboxed, app-level `sql.begin` calls are intercepted into
+  `SAVEPOINT`s (a real BEGIN/COMMIT would commit the outer test txn). The
+  proxy is transparent when unsandboxed — the pre-existing suite is
+  unaffected.
+- **Fixtures**: `createPgTest(bindings)` → vitest `test.extend` with `db`
+  (auto — every test sandboxed), `api`/`admin`/`client` (in-process
+  `app.request` clients with real JWTs), `seed` (real save lifecycle),
+  `createUser` (real User rows + roles, rolled back). Bindings per app:
+  `apps/server/test/pg-test.ts`, `apps/web/test/pg-test.ts`.
+- **Web component testing (NEW - there was none)**: vitest+jsdom+RTL in
+  `apps/web`; `installFetchBridge` routes the app's relative `fetch('/api/…')`
+  to the in-process Hono app; `renderDesk(path, client)` mounts the REAL
+  routeTree on a memory history with a fresh QueryClient. Component → fetch →
+  Hono → sandboxed Postgres in milliseconds. Fluent Session DSL
+  (`fillIn/selectOption/clickButton/assertText/within…`) with chain-trace
+  errors; `clickButton` refuses disabled buttons.
+- **Ticketing demo (migration 0047)**: Ticket + Ticket Comment DocTypes
+  (TICK-.#### series, child comments), Ticket Manager/Reporter roles
+  (if_owner), 4-state workflow (Open→In Progress→Resolved→Closed, Resolve
+  requires a resolution via WF condition), 5 DW-flavored seed tickets. Zero
+  frontend code — the generic Desk renders all of it.
+- **Verified**: server `test/sandbox.test.ts` (4 — incl. root-connection
+  proof the DB is untouched after the file) + `test/ticket.test.ts` (8 —
+  twin tests both get TICK-0006 proving series rollback; child-table
+  round-trip; if_owner scoping; role-gated workflow with condition), full
+  server suite **320/320**; web `test/infra.test.tsx` +
+  `test/ticket.test.tsx` **10/10** (list/empty/create/validation/workflow
+  through the real UI, with cross-test rollback assertions); typechecks
+  clean; live-browser `e2e/ticketing.spec.ts` + smoke green.
+- **Gotchas**: (1) a thenable whose `then` resolves with `this` makes
+  `await` recurse to heap exhaustion — resolve chains with `undefined`;
+  (2) migrations run WITHOUT the controller registry, so a migration that
+  saves a Workflow must call `initDocState` itself for `workflow_state`;
+  (3) FormView's Save is dirty-gated — a pristine form can't be saved, so
+  the validation-error state needs a dirty form with the required field
+  empty; (4) `assertText` reads textContent — input VALUES are not text;
+  (5) web tests keep `fileParallelism: false`: parallel FILES are safe
+  transactionally but contend on the shared naming-series row lock.
+- **Next**: migrate legacy server tests to the sandboxed `test` (drops all
+  manual cleanup + could re-enable file parallelism for converted files);
+  optional `Ticket Reporter` portal flow; extract the package to its own
+  repo/npm once the API settles.
+
 ## 2026-07-17 — Enhancement: conditional workflow transitions (beyond the 126)
 
 Closes the workflow gap called out in the Frappe comparison. This ENHANCES

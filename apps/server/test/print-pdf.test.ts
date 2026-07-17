@@ -1,7 +1,10 @@
 import { createRequire } from 'node:module'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
 import { sql } from '../src/db'
 import { renderPdf, renderPrintHtml } from '../src/print'
+import { createDocType } from '../src/doctype-engine'
+import { saveDoc } from '../src/document'
+import { test } from './pg-test'
 
 const require = createRequire(import.meta.url)
 const { PDFParse } = require('pdf-parse') as {
@@ -10,6 +13,7 @@ const { PDFParse } = require('pdf-parse') as {
 
 // PRN-003: the print pipeline produces a valid PDF whose text includes the
 // document's field values, for both the auto layout and a Print Format.
+// (The Chromium instance is a process-wide singleton — never closed here.)
 
 const DT = 'Pdf Srv DT'
 
@@ -20,12 +24,7 @@ async function pdfText(html: string): Promise<string> {
   return (await parser.getText()).text
 }
 
-beforeAll(async () => {
-  await sql`delete from tab_print_format where doc_type = ${DT}`
-  await sql`delete from tab_docfield where parent = ${DT}`
-  await sql`delete from tab_doctype where name = ${DT}`
-  await sql.unsafe('drop table if exists tab_pdf_srv_dt')
-  const { createDocType } = await import('../src/doctype-engine')
+async function setup() {
   await createDocType({
     name: DT,
     autoname: 'prompt',
@@ -34,26 +33,20 @@ beforeAll(async () => {
       { fieldname: 'amount', fieldtype: 'Int' },
     ],
   })
-  const { saveDoc } = await import('../src/document')
   await saveDoc(DT, { name: 'srv-1', customer: 'Umbrella Corp', amount: 9876 }, 'Administrator')
-})
-
-afterAll(async () => {
-  await sql`delete from tab_print_format where doc_type = ${DT}`
-  await sql`delete from tab_docfield where parent = ${DT}`
-  await sql`delete from tab_doctype where name = ${DT}`
-  await sql.unsafe('drop table if exists tab_pdf_srv_dt')
-})
+}
 
 describe('PRN-003: server-side PDF', () => {
-  it('auto-layout PDF contains the field values', async () => {
+  test('auto-layout PDF contains the field values', async () => {
+    await setup()
     const html = await renderPrintHtml(DT, 'srv-1', 'Administrator', 'standard')
     const text = await pdfText(html)
     expect(text).toContain('Umbrella Corp')
     expect(text).toContain('9876')
   }, 30_000)
 
-  it('a Print Format template is interpolated into the PDF', async () => {
+  test('a Print Format template is interpolated into the PDF', async () => {
+    await setup()
     await sql`
       insert into tab_print_format (name, owner, modified_by, doc_type, is_default, template)
       values ('Pdf Srv Format', 'Administrator', 'Administrator', ${DT}, false,

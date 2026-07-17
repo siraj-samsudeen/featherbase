@@ -1,9 +1,8 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { app } from '../src/index'
-import { sql } from '../src/db'
+import { describe, expect } from 'vitest'
 import { setUserPassword } from '../src/auth'
 import { resetRateLimit } from '../src/rate-limit'
-import { areq } from './helpers'
+import { test } from './pg-test'
+import type { TestClient } from 'feather-testing-postgres'
 
 // API-007: a user with a configured budget is throttled once the window count
 // is exceeded — 429 with a Retry-After header — while other users are not.
@@ -12,38 +11,25 @@ const USER = 'ratelimit-srv@x.com'
 const PWD = 'ratelimitpw123'
 const BUDGET = 3
 
-async function cleanup() {
-  await sql`delete from tab_has_role where parent = ${USER}`
-  await sql`delete from tab_user where name = ${USER}`
-}
-
-beforeAll(async () => {
-  await cleanup()
-  const res = await areq('/api/save_doc', {
-    method: 'POST',
-    body: JSON.stringify({
-      doctype: 'User',
-      doc: {
-        name: USER,
-        email: USER,
-        enabled: true,
-        api_rate_limit: BUDGET,
-        roles: [{ role: 'System Manager' }],
-      },
-    }),
+// Each test creates the budgeted user inside its own sandbox transaction.
+// The harness clears rate-limit windows + budget caches after every test.
+async function setup(admin: TestClient) {
+  await admin.post('/api/save_doc', {
+    doctype: 'User',
+    doc: {
+      name: USER,
+      email: USER,
+      enabled: true,
+      api_rate_limit: BUDGET,
+      roles: [{ role: 'System Manager' }],
+    },
   })
-  if (res.status !== 201) throw new Error(`create user: ${res.status}`)
   await setUserPassword(USER, PWD)
   resetRateLimit(USER)
-})
+}
 
-afterAll(async () => {
-  await cleanup()
-  await sql.end()
-})
-
-async function token(): Promise<string> {
-  const res = await app.request('/api/login', {
+async function token(api: TestClient): Promise<string> {
+  const res = await api.fetch('/api/login', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ usr: USER, pwd: PWD }),
@@ -52,16 +38,17 @@ async function token(): Promise<string> {
 }
 
 describe('API-007: rate limiting', () => {
-  it('allows requests up to the budget, then 429s with Retry-After', async () => {
+  test('allows requests up to the budget, then 429s with Retry-After', async ({ admin, api }) => {
+    await setup(admin)
     resetRateLimit(USER)
-    const auth = { authorization: `Bearer ${await token()}` }
+    const auth = { authorization: `Bearer ${await token(api)}` }
 
     for (let i = 0; i < BUDGET; i++) {
-      const res = await app.request('/api/whoami', { headers: auth })
+      const res = await api.fetch('/api/whoami', { headers: auth })
       expect(res.status).toBe(200)
     }
 
-    const limited = await app.request('/api/whoami', { headers: auth })
+    const limited = await api.fetch('/api/whoami', { headers: auth })
     expect(limited.status).toBe(429)
     const retry = limited.headers.get('retry-after')
     expect(retry).toBeTruthy()
@@ -70,10 +57,13 @@ describe('API-007: rate limiting', () => {
     expect(body.error.type).toBe('RateLimitError')
   })
 
-  it('does not throttle a different user (Administrator) in the same window', async () => {
+  test('does not throttle a different user (Administrator) in the same window', async ({
+    admin,
+  }) => {
+    await setup(admin)
     // Administrator has no configured budget, so it stays under the global cap.
     for (let i = 0; i < BUDGET + 2; i++) {
-      const res = await areq('/api/whoami')
+      const res = await admin.fetch('/api/whoami')
       expect(res.status).toBe(200)
     }
   })

@@ -1,0 +1,24 @@
+{
+  "name": "feather-testing-postgres",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./react": "./src/react.tsx",
+    "./session": "./src/session.ts"
+  },
+  "scripts": {
+    "test": "echo 'covered by server and web tests'"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.66.0",
+    "@tanstack/react-router": "^1.97.0",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.5.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "vitest": "^3.0.0"
+  }
+}
