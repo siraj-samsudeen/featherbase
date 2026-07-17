@@ -13,6 +13,37 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-17 — Enhancement: conditional workflow transitions (beyond the 126)
+
+Closes the workflow gap called out in the Frappe comparison. This ENHANCES
+WF-001/002/003 — it is not a new harness feature, so `features.json` is
+untouched.
+
+- **Schema**: `Workflow Transition` gains a `condition` field
+  (`0046_workflow_condition.ts`) — a boolean expression over `doc`. Because it's
+  a normal child docfield, it renders as an editable **Condition column in the
+  Workflow form's transitions grid** — i.e. the Frappe-style workflow builder
+  (Frappe's Workflow form is also just states/transitions child tables, not a
+  visual graph).
+- **Safe evaluator**: `evalCondition(expr, doc)` in `server-scripts.ts` reuses
+  the **hardened node:vm sandbox** — the context carries only the doc's JSON
+  (parsed inside), no host object is exposed, so a condition can read `doc` but
+  cannot reach `process`/`require`/`fetch`. Blank condition = always true.
+- **Engine**: `WorkflowTransition.condition` is loaded in `getActiveWorkflow`;
+  `availableActions(wf, state, roles, doc?)` filters out transitions whose
+  condition is false; `applyWorkflowAction` **enforces the condition for
+  everyone — Administrator included** (a condition is a property of the
+  document, not the user) and independently of the UI. The status endpoint
+  passes the doc so the form's buttons auto-hide.
+- **Verified**: `test/workflow-condition.test.ts` (4 — sandbox reads doc but
+  process/require are undefined; per-doc availability; apply refused when the
+  condition fails even for admin; the holding branch applies) and
+  `e2e/workflow-condition.spec.ts` (2 — the form offers only the action whose
+  condition holds for that doc; the builder grid exposes the editable Condition
+  column). Live HTTP: a doc with amount 500 is offered only "Auto Approve" and
+  gets 417 on "Approve"; amount 5000 is offered only "Approve". Existing
+  workflow unit + e2e green; full server suite **308/308**.
+
 ## 2026-07-16 — PLAT-008 passing: multi-tenancy (schema-per-site) — ALL 126 DONE
 
 - **`tenancy.ts`**: each site is an isolated Postgres **schema** (`site_<name>`)

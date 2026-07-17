@@ -678,7 +678,7 @@ app.get('/api/workflow/:doctype/:name', async (c) => {
   return c.json({
     workflow: wf.name,
     state,
-    actions: availableActions(wf, state, roles).map((t) => ({ action: t.action, next_state: t.next_state })),
+    actions: availableActions(wf, state, roles, doc).map((t) => ({ action: t.action, next_state: t.next_state })),
   })
 })
 

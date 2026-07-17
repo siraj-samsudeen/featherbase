@@ -76,6 +76,36 @@ function runDocScript(userCode: string, doc: Record<string, unknown>, scriptName
   }
 }
 
+// Conditional workflow transitions: evaluate an admin-authored boolean
+// expression over `doc`, in the SAME hardened sandbox as Server Scripts — the
+// context carries only the doc's JSON (parsed inside), and no host object is
+// ever exposed, so the expression can read `doc` but cannot reach process /
+// require / fetch. A blank condition is treated as always-true.
+export function evalCondition(
+  expr: string | null | undefined,
+  doc: Record<string, unknown>,
+  label = 'condition',
+): boolean {
+  const src = String(expr ?? '').trim()
+  if (!src) return true
+  const context = vm.createContext({ __inputJson: JSON.stringify(doc), __outResultJson: null })
+  const code = `"use strict";
+(function () {
+  var doc = JSON.parse(__inputJson);
+  var __r = (function (doc) { return ( ${src} ); })(doc);
+  __outResultJson = JSON.stringify(!!__r);
+})();`
+  try {
+    vm.runInContext(code, context, { timeout: 500, displayErrors: false })
+  } catch (err) {
+    throw new AppError(
+      'ValidationError',
+      `Workflow condition (${label}): ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+  return (context as { __outResultJson: string | null }).__outResultJson === 'true'
+}
+
 export type DocEvent = 'validate' | 'before_save' | 'after_save'
 
 // Runs every enabled Document-Event script for this doctype+event, inside the

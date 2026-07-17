@@ -6,6 +6,7 @@ import { tableName } from './doctype-engine'
 import { getRoles } from './permissions'
 import { getDoc } from './document'
 import { queueEmail } from './email'
+import { evalCondition } from './server-scripts'
 
 // WF-001/002/003: workflow definition, execution, and server-side
 // transition enforcement.
@@ -19,6 +20,9 @@ export interface WorkflowTransition {
   action: string
   next_state: string
   allowed: string
+  // A boolean expression over `doc` that must hold for the transition to be
+  // available and applied. Empty = always allowed.
+  condition?: string | null
 }
 export interface Workflow {
   name: string
@@ -38,7 +42,7 @@ export async function getActiveWorkflow(doctype: string): Promise<Workflow | nul
     select state, doc_status from tab_workflow_document_state
     where parent = ${wf.name as string} and parenttype = 'Workflow' order by idx`
   const transitions = await sql<WorkflowTransition[]>`
-    select state, action, next_state, allowed from tab_workflow_transition
+    select state, action, next_state, allowed, "condition" from tab_workflow_transition
     where parent = ${wf.name as string} and parenttype = 'Workflow' order by idx`
   return { name: wf.name as string, document_type: wf.document_type as string, states, transitions }
 }
@@ -91,17 +95,23 @@ export function currentState(wf: Workflow, doc: Record<string, unknown>): string
 }
 
 // Transitions available from a state for a user holding the given roles.
-// Administrator / System Manager see every transition from the state.
+// Administrator / System Manager bypass the ROLE gate, but the CONDITION gate
+// still applies to everyone (a condition is a property of the document, not the
+// user). When `doc` is omitted, conditions are not evaluated (role-only view).
 export function availableActions(
   wf: Workflow,
   state: string,
   roles: string[],
+  doc?: Record<string, unknown>,
 ): WorkflowTransition[] {
   const roleSet = new Set(roles)
   const privileged = roleSet.has('Administrator') || roleSet.has('System Manager')
-  return wf.transitions.filter(
-    (t) => t.state === state && (privileged || roleSet.has(t.allowed)),
-  )
+  return wf.transitions.filter((t) => {
+    if (t.state !== state) return false
+    if (!privileged && !roleSet.has(t.allowed)) return false
+    if (doc && !evalCondition(t.condition, doc, `${t.state}→${t.action}`)) return false
+    return true
+  })
 }
 
 // WF-002/003: apply an action. Enforces the transition exists from the
@@ -129,6 +139,15 @@ export async function applyWorkflowAction(
     throw new AppError(
       'PermissionError',
       `Your roles cannot perform "${action}" (requires ${transition.allowed})`,
+    )
+
+  // Conditional transitions: the condition is a property of the DOCUMENT, so it
+  // is enforced for everyone (Administrator included) and independently of the
+  // UI — a transition whose condition is false cannot be applied even by API.
+  if (!evalCondition(transition.condition, doc, `${from}→${action}`))
+    throw new AppError(
+      'ValidationError',
+      `Action "${action}" is not allowed: its condition is not met`,
     )
 
   const target = wf.states.find((s) => s.state === transition.next_state)
