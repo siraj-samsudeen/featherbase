@@ -65,6 +65,22 @@ describe('Workflow state_field binding', () => {
     expect(row.status).toBe('Closed')
   })
 
+  it('a direct save cannot change the workflow-bound field', async () => {
+    const doc = await saveDoc(DT, { title: 'locked' }, 'Administrator')
+    const res = await saveDoc(
+      DT,
+      { name: doc.name, modified: (doc.modified as Date).toISOString(), status: 'Closed' },
+      'Administrator',
+    ).catch((e) => e)
+    expect(res).toBeInstanceOf(Error)
+    expect(String((res as Error).message)).toContain('workflow')
+  })
+
+  it('inserts are forced to the initial state', async () => {
+    const doc = await saveDoc(DT, { title: 'smuggle', status: 'Closed' }, 'Administrator')
+    expect(doc.status).toBe('Open')
+  })
+
   it('rejects a workflow that binds a nonexistent field', async () => {
     const res = await saveDoc(
       'Workflow',

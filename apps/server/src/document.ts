@@ -8,6 +8,7 @@ import { runHooks, type HookContext } from './controllers'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
 import { evaluateAssignmentRules } from './assignment-rules'
 import { applySla } from './sla'
+import { getActiveWorkflow, stateField } from './workflow'
 import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
 import {
@@ -386,6 +387,15 @@ export async function saveDoc(
   // SLA: stamp response/resolution deadlines from the active SLA (if any)
   // before the row is written, so they are part of the insert itself.
   await applySla(meta, fieldValues)
+  // WF-003: when a workflow governs this DocType, every document starts at the
+  // workflow's initial state — a caller can't smuggle in a later state.
+  {
+    const wf = await getActiveWorkflow(meta.name)
+    if (wf?.states.length) {
+      const sf = stateField(wf)
+      if (meta.fields.some((f) => f.fieldname === sf)) fieldValues[sf] = wf.states[0].state
+    }
+  }
 
   const childInputs = pickChildInputs(meta, values)
   const table = tableName(doctype)
@@ -470,6 +480,24 @@ async function updateDoc(
     stripUnwritableFields(meta.fields, writeLevels, pickFieldValues(meta, values)),
     'update',
   )
+  // WF-003: the workflow-bound state field only changes through workflow
+  // actions (apply_workflow_action) — a direct save changing it would bypass
+  // the role-gated transitions.
+  {
+    const wf = await getActiveWorkflow(meta.name)
+    if (wf) {
+      const sf = stateField(wf)
+      if (sf in fieldValues) {
+        const [current] = await sql`
+          select ${sql(sf)} as v from ${sql(table)} where name = ${name}`
+        if (current && String(fieldValues[sf] ?? '') !== String(current.v ?? ''))
+          throw new AppError(
+            'ValidationError',
+            `${sf} is controlled by workflow "${wf.name}" — use a workflow action to change it`,
+          )
+      }
+    }
+  }
 
   // Snapshot of the row before this save, for post-commit transition checks.
   let previous: DocValues | undefined

@@ -131,7 +131,9 @@ describe('WF-002/003: execution + server-side enforcement', () => {
     const doc = (await (
       await areq(`/api/resource/${encodeURIComponent(DT)}/wf-srv-1`)
     ).json()) as { workflow_state: string | null; docstatus: number }
-    expect(doc.workflow_state).toBeNull()
+    // New documents start at the workflow's initial state (WF-003) — the
+    // refused action must leave them there.
+    expect(doc.workflow_state).toBe('Draft')
     expect(doc.docstatus).toBe(0)
   })
 
