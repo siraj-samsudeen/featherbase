@@ -1,6 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
+import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
-import { areq } from './helpers'
 
 // DOC-012: rename a Customer; documents that linked to the old name now
 // point at the new name — parent Link fields and child-table Link fields.
@@ -9,105 +10,87 @@ const CUST = 'Rn Customer'
 const ORDER = 'Rn Order'
 const ITEM = 'Rn Order Item'
 
-async function cleanup() {
-  for (const dt of [CUST, ORDER, ITEM])
-    await sql`delete from tab_docfield where parent = ${dt}`
-  await sql`delete from tab_doctype where name in (${CUST}, ${ORDER}, ${ITEM})`
-  await sql.unsafe('drop table if exists tab_rn_customer, tab_rn_order, tab_rn_order_item')
+async function setup(admin: TestClient) {
+  await admin.post('/api/doctype', {
+    name: CUST,
+    autoname: 'prompt',
+    fields: [{ fieldname: 'city', fieldtype: 'Data' }],
+  })
+  await admin.post('/api/doctype', {
+    name: ITEM,
+    istable: true,
+    fields: [{ fieldname: 'supplier', fieldtype: 'Link', options: CUST }],
+  })
+  await admin.post('/api/doctype', {
+    name: ORDER,
+    autoname: 'prompt',
+    fields: [
+      { fieldname: 'customer', fieldtype: 'Link', options: CUST },
+      { fieldname: 'lines', fieldtype: 'Table', options: ITEM },
+    ],
+  })
 }
 
-beforeAll(async () => {
-  await cleanup()
-  await areq('/api/doctype', {
-    method: 'POST',
-    body: JSON.stringify({
-      name: CUST,
-      autoname: 'prompt',
-      fields: [{ fieldname: 'city', fieldtype: 'Data' }],
-    }),
-  })
-  await areq('/api/doctype', {
-    method: 'POST',
-    body: JSON.stringify({
-      name: ITEM,
-      istable: true,
-      fields: [{ fieldname: 'supplier', fieldtype: 'Link', options: CUST }],
-    }),
-  })
-  await areq('/api/doctype', {
-    method: 'POST',
-    body: JSON.stringify({
-      name: ORDER,
-      autoname: 'prompt',
-      fields: [
-        { fieldname: 'customer', fieldtype: 'Link', options: CUST },
-        { fieldname: 'lines', fieldtype: 'Table', options: ITEM },
-      ],
-    }),
-  })
-})
-
-afterAll(cleanup)
-
 describe('DOC-012: rename document + cascade Link references', () => {
-  it('updates the primary key and every Link that referenced the old name', async () => {
-    await areq('/api/resource/' + encodeURIComponent(CUST), {
-      method: 'POST',
-      body: JSON.stringify({ name: 'Acme', city: 'NYC' }),
+  test('updates the primary key and every Link that referenced the old name', async ({
+    admin,
+  }) => {
+    await setup(admin)
+    await admin.post('/api/resource/' + encodeURIComponent(CUST), {
+      name: 'Acme',
+      city: 'NYC',
     })
-    await areq('/api/save_doc', {
-      method: 'POST',
-      body: JSON.stringify({
-        doctype: ORDER,
-        doc: {
-          name: 'ORD-1',
-          customer: 'Acme',
-          lines: [{ supplier: 'Acme' }],
-        },
-      }),
+    await admin.post('/api/save_doc', {
+      doctype: ORDER,
+      doc: {
+        name: 'ORD-1',
+        customer: 'Acme',
+        lines: [{ supplier: 'Acme' }],
+      },
     })
 
-    const res = await areq('/api/rename_doc', {
-      method: 'POST',
-      body: JSON.stringify({ doctype: CUST, name: 'Acme', new_name: 'Acme Corp' }),
+    const renamed = await admin.post<{ name: string }>('/api/rename_doc', {
+      doctype: CUST,
+      name: 'Acme',
+      new_name: 'Acme Corp',
     })
-    expect(res.status).toBe(200)
-    expect(((await res.json()) as { name: string }).name).toBe('Acme Corp')
+    expect(renamed.name).toBe('Acme Corp')
 
     // Old name is gone, new name exists.
     expect(await sql`select 1 from tab_rn_customer where name = 'Acme'`).toHaveLength(0)
     expect(await sql`select 1 from tab_rn_customer where name = 'Acme Corp'`).toHaveLength(1)
 
     // Parent Link field updated.
-    const order = (await (await areq(`/api/resource/${encodeURIComponent(ORDER)}/ORD-1`)).json()) as {
-      customer: string
-      lines: { supplier: string }[]
-    }
+    const order = await admin.get<{ customer: string; lines: { supplier: string }[] }>(
+      `/api/resource/${encodeURIComponent(ORDER)}/ORD-1`,
+    )
     expect(order.customer).toBe('Acme Corp')
     // Child-table Link field updated.
     expect(order.lines[0].supplier).toBe('Acme Corp')
   })
 
-  it('rejects a rename that collides with an existing name', async () => {
-    await areq('/api/resource/' + encodeURIComponent(CUST), {
-      method: 'POST',
-      body: JSON.stringify({ name: 'Globex', city: 'LA' }),
+  test('rejects a rename that collides with an existing name', async ({ admin }) => {
+    await setup(admin)
+    // The colliding target must exist in THIS test's transaction.
+    await admin.post('/api/resource/' + encodeURIComponent(CUST), {
+      name: 'Acme Corp',
+      city: 'NYC',
     })
-    const res = await areq('/api/rename_doc', {
-      method: 'POST',
-      body: JSON.stringify({ doctype: CUST, name: 'Globex', new_name: 'Acme Corp' }),
+    await admin.post('/api/resource/' + encodeURIComponent(CUST), {
+      name: 'Globex',
+      city: 'LA',
     })
-    expect(res.status).toBe(409)
-    expect(((await res.json()) as { error: { type: string } }).error.type).toBe('ConflictError')
+    await expect(
+      admin.post('/api/rename_doc', { doctype: CUST, name: 'Globex', new_name: 'Acme Corp' }),
+    ).rejects.toMatchObject({ status: 409, type: 'ConflictError' })
     // Globex is untouched.
     expect(await sql`select 1 from tab_rn_customer where name = 'Globex'`).toHaveLength(1)
   })
 
-  it('404s renaming a document that does not exist', async () => {
-    const res = await areq('/api/rename_doc', {
-      method: 'POST',
-      body: JSON.stringify({ doctype: CUST, name: 'Nope', new_name: 'Whatever' }),
-    })
-    expect(res.status).toBe(404)
+  test('404s renaming a document that does not exist', async ({ admin }) => {
+    await setup(admin)
+    await expect(
+      admin.post('/api/rename_doc', { doctype: CUST, name: 'Nope', new_name: 'Whatever' }),
+    ).rejects.toMatchObject({ status: 404 })
   })
 })

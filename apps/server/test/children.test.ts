@@ -1,26 +1,15 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
+import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
-import { areq } from './helpers'
 
 const CHILD = 'Chd Item Row'
 const PARENT = 'Chd Order'
 const CTABLE = 'tab_chd_item_row'
 const PTABLE = 'tab_chd_order'
 
-async function post(path: string, body: unknown) {
-  return areq(path, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-}
-const save = (doc: Record<string, unknown>) => post('/api/save_doc', { doctype: PARENT, doc })
-
-beforeAll(async () => {
-  await sql`delete from tab_doctype where name in (${PARENT}, ${CHILD})`
-  await sql.unsafe(`drop table if exists ${PTABLE}`)
-  await sql.unsafe(`drop table if exists ${CTABLE}`)
-  const c = await post('/api/doctype', {
+async function setup(admin: TestClient) {
+  await admin.post('/api/doctype', {
     name: CHILD,
     istable: true,
     fields: [
@@ -28,40 +17,38 @@ beforeAll(async () => {
       { fieldname: 'qty', fieldtype: 'Int', default_value: '1' },
     ],
   })
-  const p = await post('/api/doctype', {
+  await admin.post('/api/doctype', {
     name: PARENT,
     fields: [
       { fieldname: 'title', fieldtype: 'Data' },
       { fieldname: 'items', fieldtype: 'Table', options: CHILD },
     ],
   })
-  if (c.status !== 201 || p.status !== 201) throw new Error('setup failed')
-})
+}
 
-afterAll(async () => {
-  await sql`delete from tab_doctype where name in (${PARENT}, ${CHILD})`
-  await sql.unsafe(`drop table if exists ${PTABLE}`)
-  await sql.unsafe(`drop table if exists ${CTABLE}`)
-  await sql.end()
-})
+const save = (admin: TestClient, doc: Record<string, unknown>) =>
+  admin.post<Record<string, any>>('/api/save_doc', { doctype: PARENT, doc })
 
 describe('META-007: child table linkage', () => {
-  it('rejects a Table field pointing at a non-child DocType', async () => {
-    const res = await post('/api/doctype', {
-      name: 'Chd Bad Parent',
-      fields: [{ fieldname: 'rows', fieldtype: 'Table', options: PARENT }],
+  test('rejects a Table field pointing at a non-child DocType', async ({ admin }) => {
+    await setup(admin)
+    await expect(
+      admin.post('/api/doctype', {
+        name: 'Chd Bad Parent',
+        fields: [{ fieldname: 'rows', fieldtype: 'Table', options: PARENT }],
+      }),
+    ).rejects.toMatchObject({
+      status: 417,
+      fields: { rows: expect.stringMatching(/not a child DocType/) },
     })
-    expect(res.status).toBe(417)
-    expect((await res.json()).error.fields.rows).toMatch(/not a child DocType/)
   })
 
-  it('saves child rows with parent linkage and idx ordering', async () => {
-    const doc = (await (
-      await save({
-        title: 'order1',
-        items: [{ item: 'apple', qty: 2 }, { item: 'pear' }, { item: 'fig', qty: 7 }],
-      })
-    ).json()) as Record<string, any>
+  test('saves child rows with parent linkage and idx ordering', async ({ admin }) => {
+    await setup(admin)
+    const doc = await save(admin, {
+      title: 'order1',
+      items: [{ item: 'apple', qty: 2 }, { item: 'pear' }, { item: 'fig', qty: 7 }],
+    })
     expect(doc.items).toHaveLength(3)
     const rows = await sql.unsafe(
       `select item, qty, parent, parenttype, parentfield, idx from ${CTABLE}
@@ -76,29 +63,35 @@ describe('META-007: child table linkage', () => {
     expect(rows[0].parentfield).toBe('items')
   })
 
-  it('cannot save a child DocType directly', async () => {
-    const res = await post('/api/save_doc', { doctype: CHILD, doc: { item: 'x' } })
-    expect(res.status).toBe(417)
-    expect((await res.json()).error.message).toMatch(/through its parent/)
+  test('cannot save a child DocType directly', async ({ admin }) => {
+    await setup(admin)
+    await expect(
+      admin.post('/api/save_doc', { doctype: CHILD, doc: { item: 'x' } }),
+    ).rejects.toMatchObject({
+      status: 417,
+      message: expect.stringMatching(/through its parent/),
+    })
   })
 })
 
 describe('DOC-005: child saves are atomic and payload-authoritative', () => {
-  it('resave matches payload exactly: update kept row, drop others, add new', async () => {
-    const doc = (await (
-      await save({ title: 'o2', items: [{ item: 'a' }, { item: 'b' }, { item: 'c' }] })
-    ).json()) as Record<string, any>
+  test('resave matches payload exactly: update kept row, drop others, add new', async ({
+    admin,
+  }) => {
+    await setup(admin)
+    const doc = await save(admin, {
+      title: 'o2',
+      items: [{ item: 'a' }, { item: 'b' }, { item: 'c' }],
+    })
     const [rowA, , rowC] = doc.items
-    const updated = (await (
-      await save({
-        name: doc.name,
-        modified: doc.modified,
-        items: [
-          { name: rowC.name, item: 'c-edited', qty: 9 },
-          { item: 'd' },
-        ],
-      })
-    ).json()) as Record<string, any>
+    const updated = await save(admin, {
+      name: doc.name,
+      modified: doc.modified,
+      items: [
+        { name: rowC.name, item: 'c-edited', qty: 9 },
+        { item: 'd' },
+      ],
+    })
     expect(updated.items.map((r: any) => [r.item, r.idx])).toEqual([
       ['c-edited', 1],
       ['d', 2],
@@ -111,20 +104,23 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
     expect(count).toBe(2)
   })
 
-  it('a child validation error rolls back the parent too', async () => {
-    const doc = (await (
-      await save({ title: 'before', items: [{ item: 'ok' }] })
-    ).json()) as Record<string, any>
-    const res = await save({
-      name: doc.name,
-      modified: doc.modified,
-      title: 'after',
-      items: [{ item: 'ok' }, { qty: 'boom' }],
+  test('a child validation error rolls back the parent too', async ({ admin }) => {
+    await setup(admin)
+    const doc = await save(admin, { title: 'before', items: [{ item: 'ok' }] })
+    await expect(
+      save(admin, {
+        name: doc.name,
+        modified: doc.modified,
+        title: 'after',
+        items: [{ item: 'ok' }, { qty: 'boom' }],
+      }),
+    ).rejects.toMatchObject({
+      status: 417,
+      fields: {
+        'items.1.item': expect.anything(),
+        'items.1.qty': expect.anything(),
+      },
     })
-    expect(res.status).toBe(417)
-    const body = await res.json()
-    expect(body.error.fields['items.1.item']).toBeTruthy()
-    expect(body.error.fields['items.1.qty']).toBeTruthy()
     const [row] = await sql.unsafe(`select title from ${PTABLE} where name='${doc.name}'`)
     expect(row.title).toBe('before')
     const [{ count }] = await sql.unsafe(
@@ -133,13 +129,12 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
     expect(count).toBe(1)
   })
 
-  it('getDoc returns children ordered by idx', async () => {
-    const doc = (await (
-      await save({ title: 'o3', items: [{ item: 'z' }, { item: 'y' }] })
-    ).json()) as Record<string, any>
-    const read = (await (
-      await areq(`/api/doc/${encodeURIComponent(PARENT)}/${doc.name}`)
-    ).json()) as Record<string, any>
+  test('getDoc returns children ordered by idx', async ({ admin }) => {
+    await setup(admin)
+    const doc = await save(admin, { title: 'o3', items: [{ item: 'z' }, { item: 'y' }] })
+    const read = await admin.get<Record<string, any>>(
+      `/api/doc/${encodeURIComponent(PARENT)}/${doc.name}`,
+    )
     expect(read.items.map((r: any) => r.item)).toEqual(['z', 'y'])
   })
 })
