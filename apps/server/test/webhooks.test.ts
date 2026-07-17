@@ -1,9 +1,10 @@
 import { createServer, type Server } from 'node:http'
 import { createHmac } from 'node:crypto'
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect } from 'vitest'
+import { test } from './pg-test'
+import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { drainJobs } from '../src/jobs'
-import { areq } from './helpers'
 
 // PLAT-005: a lifecycle event enqueues a webhook delivery that POSTs the doc
 // JSON with a valid HMAC signature; non-2xx responses are retried.
@@ -54,71 +55,71 @@ function startReceiver(): Promise<void> {
   })
 }
 
-async function cleanup() {
-  await sql`delete from tab_webhook where webhook_doctype = ${DT}`
-  await sql`delete from tab_doctype where name = ${DT}`
-  await sql.unsafe('drop table if exists tab_webhook_target')
-}
+// The receiver is a real network server, not DB state — it alone stays in
+// beforeAll/afterAll. DB setup happens per test inside the sandbox.
+beforeAll(async () => {
+  await startReceiver()
+})
 
-async function makeDoc(): Promise<{ name: string; modified: string }> {
-  const res = await areq('/api/save_doc', {
-    method: 'POST',
-    body: JSON.stringify({ doctype: DT, doc: { title: 'v1' } }),
+afterAll(async () => {
+  await new Promise<void>((r) => server.close(() => r()))
+})
+
+// Each test creates the DocType in its own transaction and starts with an
+// empty capture, so tests don't cross-fire each other's webhooks.
+async function setup(admin: TestClient) {
+  received.length = 0
+  failuresLeft.clear()
+  await admin.post('/api/doctype', {
+    name: DT,
+    fields: [{ fieldname: 'title', fieldtype: 'Data' }],
   })
-  return (await res.json()) as { name: string; modified: string }
 }
 
-// All test files share one Postgres job queue, so another file's drainJobs()
-// may claim this file's deliver_webhook job — but its fetch still targets THIS
-// worker's receiver, so the hit lands here. Nudge the queue and poll until the
-// expected hits arrive rather than asserting immediately.
+async function makeDoc(admin: TestClient): Promise<{ name: string; modified: string }> {
+  return await admin.post<{ name: string; modified: string }>('/api/save_doc', {
+    doctype: DT,
+    doc: { title: 'v1' },
+  })
+}
+
+// Sandbox clock shim: inside the rolled-back test transaction now() is frozen
+// at BEGIN, while the delivery job's run_at is stamped from the wall clock —
+// so it never counts as "due" for the claim query. Mark any job whose run_at
+// has passed by the wall clock (clock_timestamp) as due by the transaction
+// clock, then drain.
+async function drainDueJobs() {
+  await sql`
+    update tab_background_job set run_at = now()
+    where status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
+  return await drainJobs()
+}
+
+// Failed deliveries are re-queued immediately due, but poll a drain loop
+// until the expected hits arrive rather than asserting after one pass.
 async function waitForHits(pred: (r: Received) => boolean, want: number, ms = 5000): Promise<Received[]> {
   const deadline = Date.now() + ms
   for (;;) {
-    await drainJobs()
+    await drainDueJobs()
     const got = received.filter(pred)
     if (got.length >= want || Date.now() > deadline) return got
     await new Promise((r) => setTimeout(r, 100))
   }
 }
 
-beforeAll(async () => {
-  await cleanup()
-  await startReceiver()
-  await areq('/api/doctype', {
-    method: 'POST',
-    body: JSON.stringify({ name: DT, fields: [{ fieldname: 'title', fieldtype: 'Data' }] }),
-  })
-})
-
-// Each test starts with no webhooks and an empty capture, so tests don't
-// cross-fire each other's webhooks.
-beforeEach(async () => {
-  await sql`delete from tab_webhook where webhook_doctype = ${DT}`
-  received.length = 0
-})
-
-afterAll(async () => {
-  await cleanup()
-  await new Promise<void>((r) => server.close(() => r()))
-  await sql.end()
-})
-
 describe('PLAT-005: webhooks', () => {
-  it('on_update posts the doc JSON with a valid signature', async () => {
-    await areq('/api/save_doc', {
-      method: 'POST',
-      body: JSON.stringify({
-        doctype: 'Webhook',
-        doc: { webhook_doctype: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/hook`, webhook_secret: SECRET, enabled: true },
-      }),
+  test('on_update posts the doc JSON with a valid signature', async ({ admin }) => {
+    await setup(admin)
+    await admin.post('/api/save_doc', {
+      doctype: 'Webhook',
+      doc: { webhook_doctype: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/hook`, webhook_secret: SECRET, enabled: true },
     })
 
-    const doc = await makeDoc()
+    const doc = await makeDoc(admin)
     // Updating fires on_update.
-    await areq('/api/save_doc', {
-      method: 'POST',
-      body: JSON.stringify({ doctype: DT, doc: { name: doc.name, modified: doc.modified, title: 'v2' } }),
+    await admin.post('/api/save_doc', {
+      doctype: DT,
+      doc: { name: doc.name, modified: doc.modified, title: 'v2' },
     })
 
     const hits = await waitForHits((r) => r.path === '/hook' && JSON.parse(r.body).name === doc.name, 1)
@@ -131,20 +132,18 @@ describe('PLAT-005: webhooks', () => {
     expect(hit.signature).toBe(createHmac('sha256', SECRET).update(hit.body).digest('hex'))
   })
 
-  it('retries delivery when the receiver fails, until it succeeds', async () => {
+  test('retries delivery when the receiver fails, until it succeeds', async ({ admin }) => {
+    await setup(admin)
     failuresLeft.set('/retry', 1) // fail once, then succeed
-    await areq('/api/save_doc', {
-      method: 'POST',
-      body: JSON.stringify({
-        doctype: 'Webhook',
-        doc: { webhook_doctype: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/retry`, webhook_secret: SECRET, enabled: true },
-      }),
+    await admin.post('/api/save_doc', {
+      doctype: 'Webhook',
+      doc: { webhook_doctype: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/retry`, webhook_secret: SECRET, enabled: true },
     })
 
-    const doc = await makeDoc()
-    await areq('/api/save_doc', {
-      method: 'POST',
-      body: JSON.stringify({ doctype: DT, doc: { name: doc.name, modified: doc.modified, title: 'v2' } }),
+    const doc = await makeDoc(admin)
+    await admin.post('/api/save_doc', {
+      doctype: DT,
+      doc: { name: doc.name, modified: doc.modified, title: 'v2' },
     })
 
     // Two hits to /retry: the first 500'd, the retry succeeded.
@@ -155,19 +154,17 @@ describe('PLAT-005: webhooks', () => {
     expect(retryHits.length).toBe(2)
   })
 
-  it('does not fire for events a webhook is not subscribed to', async () => {
+  test('does not fire for events a webhook is not subscribed to', async ({ admin }) => {
+    await setup(admin)
     // An on_update webhook exists; creating a doc (after_insert) must not hit it.
-    await areq('/api/save_doc', {
-      method: 'POST',
-      body: JSON.stringify({
-        doctype: 'Webhook',
-        doc: { webhook_doctype: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/nomatch`, webhook_secret: SECRET, enabled: true },
-      }),
+    await admin.post('/api/save_doc', {
+      doctype: 'Webhook',
+      doc: { webhook_doctype: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/nomatch`, webhook_secret: SECRET, enabled: true },
     })
-    await makeDoc() // after_insert only
-    await drainJobs()
+    await makeDoc(admin) // after_insert only
+    await drainDueJobs()
     await new Promise((r) => setTimeout(r, 300))
-    await drainJobs()
+    await drainDueJobs()
     expect(received.filter((r) => r.path === '/nomatch').length).toBe(0)
   })
 })
