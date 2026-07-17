@@ -104,14 +104,18 @@ export class Session {
   }
 
   /** Awaiting the session executes the queued steps in order. The queue
-   * resets afterwards so the same session can run further chains. */
-  then<TResult1 = Session, TResult2 = never>(
-    onfulfilled?: ((value: Session) => TResult1 | PromiseLike<TResult1>) | null,
+   * resets afterwards so the same session can run further chains.
+   *
+   * Resolves with `undefined` — NEVER with `this`: a thenable that resolves
+   * to itself makes `await` recurse forever (the promise resolution
+   * procedure keeps re-awaiting the thenable). */
+  then<TResult1 = void, TResult2 = never>(
+    onfulfilled?: ((value: void) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
   ): Promise<TResult1 | TResult2> {
     const steps = this.steps
     this.steps = []
-    const execute = async (): Promise<Session> => {
+    const execute = async (): Promise<void> => {
       for (let i = 0; i < steps.length; i++) {
         const step = steps[i]
         try {
@@ -123,7 +127,6 @@ export class Session {
           throw this.chainError(steps, i, cause)
         }
       }
-      return this
     }
     return execute().then(onfulfilled, onrejected)
   }
