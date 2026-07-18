@@ -13,6 +13,59 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-18 — Adopted PR 2's genuinely-better pieces + merged the testing library (beyond the 126)
+
+A deliberate best-of-both pass after the PR 1 vs PR 2 verdict: PR 2 loses the
+architecture war but four of its ideas were superior and are now adopted here.
+
+- **Frappe wire-format compat (additive)**: sessions ride an HttpOnly `sid`
+  cookie alongside the Bearer token; Frappe-shaped `POST /api/method/login`
+  ('Logged In' + cookie) and `/api/method/logout`; error bodies carry
+  Frappe's `exc_type` (NotFound → DoesNotExistError); and the
+  `frappe.client.*` RPC namespace (get_list/get/get_count/get_value/insert/
+  set_value/delete/get_doctype + frappe.ping) as thin engine adapters. A
+  frappe-js-sdk-style client works unchanged. `test/frappe-compat.test.ts`.
+- **Lifecycle + hooks.py parity**: new controller events in Frappe's exact
+  order — before_validate, on_update (fires on insert, update, submit,
+  cancel), before_submit/before_cancel (pre-write, abortable);
+  `doc_events['*']` wildcard controllers; app manifests gained
+  `scheduler_events` (guarded recurring job, dropped on uninstall) and
+  `override_whitelisted_methods` (restored on uninstall).
+  `test/hook-parity.test.ts`.
+- **Desk affordance pack**: Frappe-style standard filter bar (typed
+  per-column inputs; Selects as dropdowns) feeding the same URL filter list
+  as the advanced builder; colored indicator pills for Select values;
+  module-grouped sidebar (app modules first, Core under System — reordering,
+  not hiding); Cmd/Ctrl+K focuses the awesomebar which now also surfaces
+  command actions; breadcrumbs + monospace names. Playwright e2e: 77 passed.
+- **Harness upgrade (PR 2's best idea)**: `harness/evaluation/` brings the
+  default-FAIL contract (`enhancements.json` + `results.json` — build
+  sessions never self-approve; only the fresh-context evaluator in
+  `.claude/agents/evaluator.md` flips a result after reading evidence) and
+  the differential oracle (`diff-request.sh` + `normalize.jq` — same request
+  to a real Frappe at $FRAPPE_REF and the clone, normalized deep-diff).
+  `features.json` stays frozen; this governs everything after the 126.
+- **Merged the testing agent's main**: feather-testing-postgres (Ecto-style
+  per-test rollback sandbox) + their 74-file suite migration + their
+  migration-seeded `Ticket` demo app. My helpdesk was renamed **HD Ticket**
+  (real Frappe Helpdesk's name) on its own HDT-.##### series so both
+  metadata apps coexist; my migrations renumbered 0048-0050; my new tests
+  rewritten onto the sandbox (incl. the frozen-now() job nudge).
+- **Coverage**: touched modules driven to 99.2% statements / 100% functions
+  (`test/coverage-gaps.test.ts`); remaining lines are defensive guards
+  (early-migration table checks, readdir catch).
+- **Verified**: server suite 358 green ×2 consecutive runs, web component
+  suite 10 green, Playwright 77 green, `verify:helpdesk` 32/32.
+- **Gotchas**: (1) the shared dev DB couples suites — a Playwright i18n run
+  leaves tab_translation rows that collide with the sandboxed i18n unit
+  test; clean tab_translation if it flakes. (2) The 0047 demo Ticket tests
+  assert absolute TICK-000N names — don't seed other apps onto the TICK-
+  prefix (HD Ticket uses HDT-). (3) `/api/method/login` must stay registered
+  BEFORE the generic /api/method dispatcher.
+- **Not adopted, on purpose**: PR 2's JSONB single-table store (generated
+  DDL is the more faithful + indexable clone), the NestJS/Drizzle stack
+  swap, and Supabase (was aspirational in PR 2's docs, never in its code).
+
 ## 2026-07-17 — PR 1 vs PR 2 verdict + Helpdesk built from metadata (beyond the 126)
 
 **Verdict**: both parallel implementations were booted and driven over HTTP

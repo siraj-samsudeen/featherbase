@@ -1,0 +1,15 @@
+{
+  "_comment": "Enhancements beyond the frozen 126 (see PROTOCOL.md). Builders capture evidence under harness/evidence/<id>/; only the evaluator agent flips results.json.",
+  "enhancements": [
+    { "id": "wf-state-binding", "eval": "differential", "title": "Workflow state_field binds an existing field; inserts forced to initial state; direct saves of the bound field rejected" },
+    { "id": "email-rule-save-events", "eval": "criteria", "title": "Email Rules fire on on_create/on_save (incl. workflow transitions), transition-only conditions, templated recipients" },
+    { "id": "assignment-rules", "eval": "criteria", "title": "Assignment Rules: condition + round-robin pool + assign_to_field stamping" },
+    { "id": "sla", "eval": "criteria", "title": "SLAs: per-priority deadline stamping on insert + check_sla Overdue escalation" },
+    { "id": "webform-attribution", "eval": "criteria", "title": "Logged-in web-form submitters own the created document (if_owner portal loop)" },
+    { "id": "user-perm-null-links", "eval": "differential", "title": "User-permission list narrowing passes NULL links (matches Frappe + the detail check)" },
+    { "id": "frappe-api-compat", "eval": "differential", "title": "sid-cookie sessions, /api/method/login|logout, exc_type errors, frappe.client.* RPC namespace" },
+    { "id": "hook-parity", "eval": "differential", "title": "before_validate/on_update/before_submit/before_cancel order, doc_events['*'], scheduler_events, override_whitelisted_methods" },
+    { "id": "desk-affordances", "eval": "criteria", "title": "Standard filter bar, indicator pills, module-grouped sidebar, Cmd-K awesomebar commands" },
+    { "id": "helpdesk-app", "eval": "criteria", "title": "HD Ticket helpdesk built purely from metadata (seed + 32-check verify script)" }
+  ]
+}
