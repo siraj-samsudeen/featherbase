@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, clearSession, getSessionUser, listResource } from '../lib/api'
@@ -47,7 +47,11 @@ export function DeskLayout() {
       }),
   })
 
+  // ⌘K / Ctrl+K focuses the awesomebar (PR-2-style command palette entry).
+  const searchRef = useRef<HTMLInputElement>(null)
+
   // UI-015: global keyboard shortcuts.
+  //   Ctrl/Cmd+K  focus the awesomebar (command palette)
   //   Ctrl/Cmd+S  save the current form
   //   Ctrl/Cmd+B  new document of the current DocType
   //   g then d    go to the Desk home
@@ -63,6 +67,12 @@ export function DeskLayout() {
         target &&
         (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
 
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        searchRef.current?.focus()
+        searchRef.current?.select()
+        return
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault()
         document.querySelector<HTMLButtonElement>('[data-testid=form-save]')?.click()
@@ -158,6 +168,28 @@ export function DeskLayout() {
           .slice(0, 7)
       : []
 
+  // Command actions surfaced through the awesomebar (the ⌘K palette).
+  const commands = [
+    { id: 'new-doctype', label: 'New DocType', run: () => navigate({ to: '/desk/new-doctype' }) },
+    { id: 'toggle-theme', label: 'Toggle dark mode', run: () => toggleTheme() },
+    { id: 'home', label: 'Go to Desk home', run: () => navigate({ to: '/desk' }) },
+  ]
+  const commandHits =
+    search.trim().length > 1
+      ? commands.filter((c) => c.label.toLowerCase().includes(search.trim().toLowerCase()))
+      : []
+
+  // Sidebar curation (from the PR-2 comparison): app doctypes surface first,
+  // grouped by module; the engine's Core doctypes sit below under System.
+  // Everything stays visible — this is ordering, not hiding.
+  const byModule = new Map<string, { name: string; module: string }[]>()
+  for (const dt of doctypes.data?.data ?? []) {
+    const key = dt.module || 'Core'
+    byModule.set(key, [...(byModule.get(key) ?? []), dt])
+  }
+  const appModules = [...byModule.keys()].filter((m) => m !== 'Core').sort()
+  const coreDoctypes = byModule.get('Core') ?? []
+
   return (
     <div className="flex h-full flex-col">
       {/* Navbar */}
@@ -179,13 +211,35 @@ export function DeskLayout() {
 
         <form onSubmit={runSearch} className="relative mx-auto w-full max-w-md" data-testid="awesomebar">
           <input
+            ref={searchRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search or go to…"
-            className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-canvas)] px-3 py-1.5 text-sm outline-none focus:border-[var(--color-brand)] focus:bg-[var(--color-surface)] focus:ring-2 focus:ring-[var(--color-brand)]/15"
+            placeholder="Search or type a command…"
+            className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-canvas)] px-3 py-1.5 pr-10 text-sm outline-none focus:border-[var(--color-brand)] focus:bg-[var(--color-surface)] focus:ring-2 focus:ring-[var(--color-brand)]/15"
           />
-          {(suggestions.length > 0 || (docHits.data?.results.length ?? 0) > 0) && (
+          <kbd
+            className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1 text-[10px] text-[var(--color-ink-faint)]"
+            aria-hidden="true"
+          >
+            ⌘K
+          </kbd>
+          {(suggestions.length > 0 || commandHits.length > 0 || (docHits.data?.results.length ?? 0) > 0) && (
             <div className="fc-card absolute z-20 mt-1 w-full overflow-hidden py-1" data-testid="awesomebar-results">
+              {/* PR-2-style command actions, matched by name. */}
+              {commandHits.map((cmd) => (
+                <button
+                  key={cmd.id}
+                  type="button"
+                  onClick={() => {
+                    setSearch('')
+                    cmd.run()
+                  }}
+                  data-testid={`awesomebar-cmd-${cmd.id}`}
+                  className="block w-full px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
+                >
+                  <span className="text-[var(--color-brand)]">›</span> {cmd.label}
+                </button>
+              ))}
               {suggestions.map((d) => (
                 <Link
                   key={d.name}
@@ -328,12 +382,37 @@ export function DeskLayout() {
               </nav>
             </div>
           )}
-          <div className="px-4 pt-5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
-            Doctypes
-          </div>
           <nav className="flex-1 overflow-y-auto px-2 pb-4" data-testid="doctype-nav">
             {doctypes.isLoading && <p className="px-2 py-1 text-xs text-[var(--color-ink-faint)]">Loading…</p>}
-            {doctypes.data?.data.map((dt) => (
+            {/* App modules first (Ticketing, Helpdesk, …), engine Core last. */}
+            {appModules.map((mod) => (
+              <div key={mod}>
+                <div className="px-2 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+                  {mod}
+                </div>
+                {(byModule.get(mod) ?? []).map((dt) => (
+                  <Link
+                    key={dt.name}
+                    to="/desk/$doctype"
+                    params={{ doctype: dt.name }}
+                    search={{ filters: undefined }}
+                    className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-subtle)]"
+                    activeProps={{
+                      className:
+                        'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]',
+                    }}
+                  >
+                    {dt.name}
+                  </Link>
+                ))}
+              </div>
+            ))}
+            {coreDoctypes.length > 0 && (
+              <div className="px-2 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+                System
+              </div>
+            )}
+            {coreDoctypes.map((dt) => (
               <Link
                 key={dt.name}
                 to="/desk/$doctype"
