@@ -419,6 +419,7 @@ export async function saveDoc(
       for (const ci of childInputs) doc[ci.fieldname] = ci.rows
       const ctx: HookContext = { doc, meta, user, isNew: true, tx: stx }
       await runHooks('before_insert', ctx)
+      await runHooks('before_validate', ctx)
       await runHooks('validate', ctx)
       await runDocEventScripts('validate', meta.name, ctx.doc, ctx.tx)
       await runHooks('before_save', ctx)
@@ -440,6 +441,7 @@ export async function saveDoc(
       ctx.doc = { ...(inserted[0] as DocValues) }
       await runHooks('after_insert', ctx)
       await runHooks('after_save', ctx)
+      await runHooks('on_update', ctx)
       await runDocEventScripts('after_save', meta.name, ctx.doc, ctx.tx)
       return inserted
     })
@@ -542,6 +544,7 @@ async function updateDoc(
         isNew: false,
         tx: stx,
       }
+      await runHooks('before_validate', ctx)
       await runHooks('validate', ctx)
       await runDocEventScripts('validate', meta.name, ctx.doc, ctx.tx)
       await runHooks('before_save', ctx)
@@ -559,6 +562,7 @@ async function updateDoc(
       await recordVersion(stx, meta, name, existing as DocValues, updated as DocValues, user)
       ctx.doc = { ...(updated as DocValues) }
       await runHooks('after_save', ctx)
+      await runHooks('on_update', ctx)
       await runDocEventScripts('after_save', meta.name, ctx.doc, ctx.tx)
       return updated
     })
@@ -638,6 +642,17 @@ async function setDocstatus(
         'ValidationError',
         `${doctype} ${name} has docstatus ${existing.docstatus}; expected ${from}`,
       )
+    // Frappe order: before_submit/before_cancel run BEFORE the write and may
+    // abort it; on_update fires after the write, then on_submit/on_cancel.
+    const preCtx: HookContext = {
+      doc: { ...(existing as DocValues) },
+      old: existing as DocValues,
+      meta,
+      user,
+      isNew: false,
+      tx: stx,
+    }
+    await runHooks(event === 'on_submit' ? 'before_submit' : 'before_cancel', preCtx)
     const [updated] = await tx`
       update ${tx(table)} set docstatus = ${to}, modified = ${new Date()},
         modified_by = ${user}
@@ -650,6 +665,7 @@ async function setDocstatus(
       isNew: false,
       tx: stx,
     }
+    await runHooks('on_update', ctx)
     await runHooks(event, ctx)
     return [updated]
   })

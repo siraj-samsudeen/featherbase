@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server'
 import { Hono, type Context } from 'hono'
 import { cors } from 'hono/cors'
+import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { secureHeaders } from 'hono/secure-headers'
 import { config } from './config'
 import { sql } from './db'
@@ -85,10 +86,55 @@ app.get('/api/ping', async (c) => {
   return c.json({ message: 'pong', db: row.ok === 1 })
 })
 
+// Frappe wire parity: sessions ride an HttpOnly `sid` cookie (as in real
+// Frappe) in addition to the Bearer token the SPA stores. Either credential
+// authenticates a request; the cookie lets Frappe-style clients work
+// unchanged and keeps the token out of reach of page scripts.
+function setSidCookie(c: Context, token: string) {
+  setCookie(c, 'sid', token, {
+    httpOnly: true,
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: 60 * 60 * 24 * 7,
+  })
+}
+
+// The Authorization header wins; an sid cookie is the fallback credential.
+function authCredential(c: Context): string | undefined {
+  const header = c.req.header('authorization')
+  if (header) return header
+  const sid = getCookie(c, 'sid')
+  return sid ? `Bearer ${sid}` : undefined
+}
+
 app.post('/api/login', async (c) => {
   const { usr, pwd } = (await c.req.json()) as { usr?: string; pwd?: string }
   if (!usr || !pwd) throw new AppError('ValidationError', 'Expected { usr, pwd }')
-  return c.json(await login(usr, pwd))
+  const session = await login(usr, pwd)
+  setSidCookie(c, session.token)
+  return c.json(session)
+})
+
+// Frappe-compatible login/logout: POST /api/method/login {usr, pwd} answers
+// with Frappe's shape and sets the sid cookie; logout clears it. Registered
+// as explicit routes so they take precedence over the generic RPC dispatcher.
+app.post('/api/method/login', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { usr?: string; pwd?: string }
+  const usr = body.usr ?? c.req.query('usr')
+  const pwd = body.pwd ?? c.req.query('pwd')
+  if (!usr || !pwd) throw new AppError('ValidationError', 'Expected { usr, pwd }')
+  const session = await login(usr, pwd)
+  setSidCookie(c, session.token)
+  return c.json({
+    message: 'Logged In',
+    home_page: '/desk',
+    full_name: session.user.full_name ?? session.user.name,
+  })
+})
+
+app.post('/api/method/logout', async (c) => {
+  deleteCookie(c, 'sid', { path: '/' })
+  return c.json({ message: '' })
 })
 
 // SET-002: password reset (public — the caller is logged out). The request
@@ -155,10 +201,10 @@ app.get('/api/web_form/:route', async (c) => {
 
 app.post('/api/web_form/:route', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { values?: Record<string, unknown> }
-  // The route is public, but a logged-in submitter (the web client always
-  // sends its token) gets the document created in their name — that's what
-  // makes their if_owner portal show it. An invalid/absent token is anonymous.
-  const sessionUser = await resolveToken(c.req.header('authorization'))
+  // The route is public, but a logged-in submitter (Bearer token or sid
+  // cookie) gets the document created in their name — that's what makes
+  // their if_owner portal show it. An invalid/absent credential is anonymous.
+  const sessionUser = await resolveToken(authCredential(c))
     .then((u) => u.name)
     .catch(() => undefined)
   return c.json(await submitWebForm(c.req.param('route'), body.values ?? {}, sessionUser), 201)
@@ -178,7 +224,7 @@ app.on(['GET', 'POST'], '/api/method/:path{.+}', async (c) => {
   const path = c.req.param('path')
   const user = methodAllowsGuest(path)
     ? { name: 'Guest', email: 'guest@example.com', full_name: 'Guest' }
-    : await resolveToken(c.req.header('authorization'))
+    : await resolveToken(authCredential(c))
   const args =
     c.req.method === 'POST'
       ? ((await c.req.json().catch(() => ({}))) as Record<string, unknown>)
@@ -233,7 +279,7 @@ app.get('/api/oauth/google/callback', async (c) => {
 // ---- API-004: everything below requires a valid session --------------------
 
 app.use('/api/*', async (c, next) => {
-  const user = await resolveToken(c.req.header('authorization'))
+  const user = await resolveToken(authCredential(c))
   c.set('user', user)
   await next()
 })
