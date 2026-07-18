@@ -104,14 +104,14 @@ async function main() {
   }
 
   console.log('Ticket DocType')
-  if (!(await exists('DocType', 'Ticket'))) {
+  if (!(await exists('DocType', 'HD Ticket'))) {
     await must(
       await req('/api/doctype', {
         method: 'POST',
         body: JSON.stringify({
-          name: 'Ticket',
+          name: 'HD Ticket',
           module: 'Helpdesk',
-          autoname: 'TICK-.#####',
+          autoname: 'HDT-.#####',
           title_field: 'subject',
           fields: [
             { fieldname: 'subject', fieldtype: 'Data', reqd: true, in_list_view: true },
@@ -141,11 +141,11 @@ async function main() {
   console.log('Permissions')
   // [doctype, role, perms]
   const grants: [string, string, Record<string, boolean>][] = [
-    ['Ticket', 'Support Agent', { can_read: true, can_write: true, can_create: true }],
-    ['Ticket', 'Support Manager', { can_read: true, can_write: true, can_create: true, can_delete: true }],
+    ['HD Ticket', 'Support Agent', { can_read: true, can_write: true, can_create: true }],
+    ['HD Ticket', 'Support Manager', { can_read: true, can_write: true, can_create: true, can_delete: true }],
     // Customers: portal view of their OWN tickets only. (Creation happens
     // through the web form, which attributes the logged-in submitter.)
-    ['Ticket', 'Customer', { if_owner: true, can_read: true, can_create: true }],
+    ['HD Ticket', 'Customer', { if_owner: true, can_read: true, can_create: true }],
     // Collaboration doctypes the helpdesk roles need (no "All"-role defaults).
     ['ToDo', 'Support Agent', { can_read: true, can_write: true }],
     ['ToDo', 'Support Manager', { can_read: true, can_write: true }],
@@ -184,8 +184,8 @@ async function main() {
 
   console.log('Workflow (bound to the status field)')
   await ensureDoc('Workflow', {
-    name: 'Ticket Flow',
-    document_type: 'Ticket',
+    name: 'HD Ticket Flow',
+    document_type: 'HD Ticket',
     is_active: true,
     state_field: 'status',
     states: [
@@ -213,8 +213,8 @@ async function main() {
     is_default: true,
   })
   await ensureDoc('Email Rule', {
-    name: 'Ticket Resolved Notice',
-    document_type: 'Ticket',
+    name: 'HD Ticket Resolved Notice',
+    document_type: 'HD Ticket',
     event: 'on_save',
     condition_field: 'status',
     condition_value: 'Resolved',
@@ -229,9 +229,9 @@ async function main() {
 
   console.log('Server Script (raised_by default)')
   await ensureDoc('Server Script', {
-    name: 'Ticket Defaults',
+    name: 'HD Ticket Defaults',
     script_type: 'Document Event',
-    reference_doctype: 'Ticket',
+    reference_doctype: 'HD Ticket',
     event: 'validate',
     script: "if (!doc.raised_by) { doc.raised_by = doc.owner }",
     enabled: true,
@@ -239,8 +239,8 @@ async function main() {
 
   console.log('Assignment Rule (round-robin agents)')
   await ensureDoc('Assignment Rule', {
-    name: 'Ticket Round Robin',
-    document_type: 'Ticket',
+    name: 'HD Ticket Round Robin',
+    document_type: 'HD Ticket',
     description: 'New support ticket',
     assign_to_field: 'agent',
     users: [{ user: 'agent1@helpdesk.test' }, { user: 'agent2@helpdesk.test' }],
@@ -248,8 +248,8 @@ async function main() {
 
   console.log('SLA')
   await ensureDoc('Service Level Agreement', {
-    name: 'Ticket SLA',
-    document_type: 'Ticket',
+    name: 'HD Ticket SLA',
+    document_type: 'HD Ticket',
     enabled: true,
     priority_field: 'priority',
     fulfilled_states: 'Resolved\nClosed',
@@ -267,16 +267,16 @@ async function main() {
     name: 'New Ticket',
     title: 'Raise a support ticket',
     route: 'new-ticket',
-    document_type: 'Ticket',
+    document_type: 'HD Ticket',
     published: true,
     success_message: 'Thanks — your ticket has been filed. Track it in your portal.',
     web_fields: JSON.stringify(['subject', 'description', 'priority']),
   })
 
   console.log('\nHelpdesk seeded. Try:')
-  console.log(`  Desk:    ${BASE.replace('8000', '5173')}/desk/Ticket (agent1@helpdesk.test / demo1234)`)
+  console.log(`  Desk:    ${BASE.replace('8000', '5173')}/desk/HD%20Ticket (agent1@helpdesk.test / demo1234)`)
   console.log(`  Intake:  ${BASE.replace('8000', '5173')}/form/new-ticket (log in as cust1@acme.test first)`)
-  console.log(`  Portal:  ${BASE.replace('8000', '5173')}/portal/Ticket`)
+  console.log(`  Portal:  ${BASE.replace('8000', '5173')}/portal/HD%20Ticket`)
 }
 
 main().catch((err) => {

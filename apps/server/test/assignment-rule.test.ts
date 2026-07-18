@@ -1,6 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
+import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
-import { createDocType } from '../src/doctype-engine'
 import { saveDoc } from '../src/document'
 
 // Assignment Rules: creations of the target DocType are auto-assigned
@@ -12,24 +13,12 @@ const RULE = 'Asg Rule RR'
 const A1 = 'asg-agent1@x.com'
 const A2 = 'asg-agent2@x.com'
 
-async function cleanup() {
-  await sql`delete from tab_todo where reference_doctype = ${DT}`
-  await sql`delete from tab_notification_log where ref_doctype = ${DT}`
-  await sql`delete from tab_assignment_rule_user where parent = ${RULE}`
-  await sql`delete from tab_assignment_rule where name = ${RULE}`
-  for (const u of [A1, A2]) await sql`delete from tab_user where name = ${u}`
-  await sql`delete from tab_docfield where parent = ${DT}`
-  await sql`delete from tab_doctype where name = ${DT}`
-  await sql.unsafe('drop table if exists tab_asg_rule_ticket')
-}
-
-beforeAll(async () => {
-  await cleanup()
+async function setup(admin: TestClient) {
   for (const u of [A1, A2])
     await sql`insert into tab_user ${sql({
       name: u, owner: 'Administrator', modified_by: 'Administrator', email: u, enabled: true,
     })}`
-  await createDocType({
+  await admin.post('/api/doctype', {
     name: DT,
     fields: [
       { fieldname: 'title', fieldtype: 'Data' },
@@ -44,9 +33,7 @@ beforeAll(async () => {
     assign_to_field: 'agent',
     users: [{ user: A1 }, { user: A2 }],
   })
-})
-
-afterAll(cleanup)
+}
 
 async function assignee(name: string): Promise<string | undefined> {
   const [todo] = await sql`
@@ -56,7 +43,8 @@ async function assignee(name: string): Promise<string | undefined> {
 }
 
 describe('Assignment Rules: round-robin auto-assignment', () => {
-  it('assigns matching creations round-robin and stamps assign_to_field', async () => {
+  test('assigns matching creations round-robin and stamps assign_to_field', async ({ admin }) => {
+    await setup(admin)
     const d1 = await saveDoc(DT, { title: 'one' }, 'Administrator')
     const d2 = await saveDoc(DT, { title: 'two' }, 'Administrator')
     const d3 = await saveDoc(DT, { title: 'three' }, 'Administrator')
@@ -73,15 +61,16 @@ describe('Assignment Rules: round-robin auto-assignment', () => {
     expect(note.for_user).toBe(A1)
   })
 
-  it('skips documents that fail the condition', async () => {
+  test('skips documents that fail the condition', async ({ admin }) => {
+    await setup(admin)
     const low = await saveDoc(DT, { title: 'low', priority: 'Low' }, 'Administrator')
     expect(await assignee(String(low.name))).toBeUndefined()
   })
 
-  it('a disabled rule never assigns', async () => {
+  test('a disabled rule never assigns', async ({ admin }) => {
+    await setup(admin)
     await sql`update tab_assignment_rule set disabled = true where name = ${RULE}`
     const doc = await saveDoc(DT, { title: 'off' }, 'Administrator')
     expect(await assignee(String(doc.name))).toBeUndefined()
-    await sql`update tab_assignment_rule set disabled = false where name = ${RULE}`
   })
 })

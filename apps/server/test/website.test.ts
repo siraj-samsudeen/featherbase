@@ -1,62 +1,74 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { app } from '../src/index'
+import { describe, expect } from 'vitest'
 import { sql } from '../src/db'
 import { renderWebPage } from '../src/website'
-import { areq } from './helpers'
+import { test } from './pg-test'
+import type { TestClient } from 'feather-testing-postgres'
 
 // WEB-001: published Web Pages render publicly at /web/<route>; unpublished or
 // missing routes 404, and no session is required.
 
-async function cleanup() {
-  await sql`delete from tab_web_page where route in ('srv-pub', 'srv-draft')`
+async function makePage(admin: TestClient, doc: Record<string, unknown>) {
+  await admin.post('/api/save_doc', { doctype: 'Web Page', doc })
 }
 
-async function makePage(doc: Record<string, unknown>) {
-  const res = await areq('/api/save_doc', {
-    method: 'POST',
-    body: JSON.stringify({ doctype: 'Web Page', doc }),
+// Each test creates its pages inside its own sandbox transaction.
+async function setup(admin: TestClient) {
+  await makePage(admin, {
+    name: 'srv-pub-pg',
+    title: 'Public',
+    route: 'srv-pub',
+    content: '<h1>Hello Public</h1>',
+    published: true,
   })
-  if (res.status !== 201) throw new Error(`create web page: ${res.status} ${await res.text()}`)
+  await makePage(admin, {
+    name: 'srv-draft-pg',
+    title: 'Draft',
+    route: 'srv-draft',
+    content: '<h1>Secret</h1>',
+    published: false,
+  })
 }
-
-beforeAll(async () => {
-  await cleanup()
-  await makePage({ name: 'srv-pub-pg', title: 'Public', route: 'srv-pub', content: '<h1>Hello Public</h1>', published: true })
-  await makePage({ name: 'srv-draft-pg', title: 'Draft', route: 'srv-draft', content: '<h1>Secret</h1>', published: false })
-})
-
-afterAll(async () => {
-  await cleanup()
-  await sql.end()
-})
 
 describe('WEB-001: web pages', () => {
-  it('renders a published page with its content and title', async () => {
+  test('renders a published page with its content and title', async ({ admin }) => {
+    await setup(admin)
     const page = await renderWebPage('srv-pub')
     expect(page.found).toBe(true)
     expect(page.html).toContain('<title>Public</title>')
     expect(page.html).toContain('<h1>Hello Public</h1>')
   })
 
-  it('does not render an unpublished page', async () => {
+  test('does not render an unpublished page', async ({ admin }) => {
+    await setup(admin)
     const page = await renderWebPage('srv-draft')
     expect(page.found).toBe(false)
     expect(page.html).not.toContain('Secret')
   })
 
-  it('serves published pages over HTTP with NO session (200) and 404s others', async () => {
-    const pub = await app.request('/web/srv-pub')
+  test('serves published pages over HTTP with NO session (200) and 404s others', async ({
+    admin,
+    api,
+  }) => {
+    await setup(admin)
+    const pub = await api.fetch('/web/srv-pub')
     expect(pub.status).toBe(200)
     expect(pub.headers.get('content-type')).toContain('text/html')
     expect(await pub.text()).toContain('Hello Public')
 
-    expect((await app.request('/web/srv-draft')).status).toBe(404)
-    expect((await app.request('/web/does-not-exist')).status).toBe(404)
+    expect((await api.fetch('/web/srv-draft')).status).toBe(404)
+    expect((await api.fetch('/web/does-not-exist')).status).toBe(404)
   })
 
-  it('escapes the title but renders authored HTML content', async () => {
+  test('escapes the title but renders authored HTML content', async ({ admin }) => {
+    await setup(admin)
     await sql`delete from tab_web_page where route = 'srv-pub'`
-    await makePage({ name: 'srv-pub-pg2', title: 'A & B <x>', route: 'srv-pub', content: '<p class="c">ok</p>', published: true })
+    await makePage(admin, {
+      name: 'srv-pub-pg2',
+      title: 'A & B <x>',
+      route: 'srv-pub',
+      content: '<p class="c">ok</p>',
+      published: true,
+    })
     const page = await renderWebPage('srv-pub')
     expect(page.html).toContain('A &amp; B &lt;x&gt;')
     expect(page.html).toContain('<p class="c">ok</p>')

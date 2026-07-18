@@ -1,3 +1,6 @@
+// NOT sandbox-migrated: verifies NATIVE Postgres RLS through a second
+// connection under the desk_client PG role — that connection can never see
+// the sandbox's uncommitted transaction, so this file needs real commits.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import postgres from 'postgres'
 import { sql } from '../src/db'

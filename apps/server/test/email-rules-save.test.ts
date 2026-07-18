@@ -1,7 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
+import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
-import { loadJobs } from '../src/jobs'
-import { createDocType } from '../src/doctype-engine'
 import { saveDoc } from '../src/document'
 
 // EML-004 (extended): rules on the on_create / on_save events fire from the
@@ -13,18 +13,8 @@ const DT = 'Eml Save Task'
 const SUBJ_CREATE = 'EmlSave created'
 const SUBJ_RESOLVED = 'EmlSave resolved'
 
-async function cleanup() {
-  await sql`delete from tab_email_rule where document_type = ${DT}`
-  await sql`delete from tab_email_queue where subject in (${SUBJ_CREATE}, ${SUBJ_RESOLVED})`
-  await sql`delete from tab_docfield where parent = ${DT}`
-  await sql`delete from tab_doctype where name = ${DT}`
-  await sql.unsafe('drop table if exists tab_eml_save_task')
-}
-
-beforeAll(async () => {
-  await loadJobs()
-  await cleanup()
-  await createDocType({
+async function setup(admin: TestClient) {
+  await admin.post('/api/doctype', {
     name: DT,
     fields: [
       { fieldname: 'title', fieldtype: 'Data' },
@@ -45,21 +35,23 @@ beforeAll(async () => {
     recipient: '{{ doc.raised_by }}', subject: SUBJ_RESOLVED, message: 'done {{ doc.title }}',
     enabled: true,
   })}`
-})
-
-afterAll(cleanup)
+}
 
 async function queued(subject: string) {
   return sql`select recipient from tab_email_queue where subject = ${subject} order by creation`
 }
 
 describe('EML-004 extended: on_create / on_save rules + templated recipient', () => {
-  it('an on_create rule fires from a plain insert', async () => {
+  test('an on_create rule fires from a plain insert', async ({ admin }) => {
+    await setup(admin)
     await saveDoc(DT, { title: 'first', raised_by: 'cust@x.com' }, 'Administrator')
     expect((await queued(SUBJ_CREATE)).length).toBe(1)
   })
 
-  it('a conditional on_save rule fires only on the transition into the match', async () => {
+  test('a conditional on_save rule fires only on the transition into the match', async ({
+    admin,
+  }) => {
+    await setup(admin)
     const doc = await saveDoc(DT, { title: 'ticket', raised_by: 'cust@x.com' }, 'Administrator')
     expect((await queued(SUBJ_RESOLVED)).length).toBe(0) // created as Open
 
@@ -82,7 +74,8 @@ describe('EML-004 extended: on_create / on_save rules + templated recipient', ()
     expect((await queued(SUBJ_RESOLVED)).length).toBe(1)
   })
 
-  it('a rule whose templated recipient renders empty is skipped', async () => {
+  test('a rule whose templated recipient renders empty is skipped', async ({ admin }) => {
+    await setup(admin)
     const doc = await saveDoc(DT, { title: 'no email' }, 'Administrator') // raised_by unset
     await saveDoc(
       DT,
@@ -90,7 +83,6 @@ describe('EML-004 extended: on_create / on_save rules + templated recipient', ()
       'Administrator',
     )
     const rows = await queued(SUBJ_RESOLVED)
-    expect(rows.every((r) => r.recipient !== '')).toBe(true)
-    expect(rows.length).toBe(1) // still only the earlier one
+    expect(rows.length).toBe(0)
   })
 })

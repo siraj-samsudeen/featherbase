@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
 import { getBrowser } from '../src/print'
 import { isThumbnable, makeThumbnailDataUrl } from '../src/thumbnails'
 
@@ -57,7 +58,7 @@ async function measure(dataUrl: string): Promise<{ w: number; h: number }> {
 // exit reaps it.
 
 describe('FILE-004: thumbnails', () => {
-  it('isThumbnable recognizes raster images only', () => {
+  test('isThumbnable recognizes raster images only', () => {
     expect(isThumbnable('image/png')).toBe(true)
     expect(isThumbnable('image/jpeg')).toBe(true)
     expect(isThumbnable('image/svg+xml')).toBe(false)
@@ -65,7 +66,7 @@ describe('FILE-004: thumbnails', () => {
     expect(isThumbnable(undefined)).toBe(false)
   })
 
-  it('downscales a large image, preserving aspect ratio, capped at 128px', async () => {
+  test('downscales a large image, preserving aspect ratio, capped at 128px', async () => {
     const png = await makePng(300, 200) // 3:2, larger than the 128 cap
     const thumb = await makeThumbnailDataUrl(png, 'image/png', 128)
     expect(thumb).toBeTruthy()
@@ -81,7 +82,7 @@ describe('FILE-004: thumbnails', () => {
     expect(thumbBytes).toBeLessThan(png.length)
   }, 30_000)
 
-  it('does not upscale an already-small image', async () => {
+  test('does not upscale an already-small image', async () => {
     const png = await makePng(64, 48)
     const thumb = await makeThumbnailDataUrl(png, 'image/png', 128)
     const { w, h } = await measure(thumb!)
@@ -89,7 +90,7 @@ describe('FILE-004: thumbnails', () => {
     expect(h).toBe(48)
   }, 30_000)
 
-  it('returns null for a non-image', async () => {
+  test('returns null for a non-image', async () => {
     const thumb = await makeThumbnailDataUrl(Buffer.from('hello, not an image'), 'text/plain')
     expect(thumb).toBeNull()
   })

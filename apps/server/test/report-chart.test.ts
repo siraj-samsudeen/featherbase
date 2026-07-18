@@ -1,6 +1,6 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { sql } from '../src/db'
-import { areq } from './helpers'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
+import type { TestClient } from 'feather-testing-postgres'
 import { runReportChart, pinChartToDashboard } from '../src/report-chart'
 import { getDoc } from '../src/document'
 
@@ -11,55 +11,38 @@ const DT = 'Rc Srv Sale'
 const REPORT = 'Rc Srv Report'
 const DASH = 'Rc Srv Dashboard'
 
-async function cleanup() {
-  await sql`delete from tab_dashboard where name = ${DASH}`
-  await sql`delete from tab_report where name = ${REPORT}`
-  await sql`delete from tab_docfield where parent = ${DT}`
-  await sql`delete from tab_doctype where name = ${DT}`
-  await sql.unsafe('drop table if exists tab_rc_srv_sale')
-}
-
-beforeAll(async () => {
-  await cleanup()
-  await areq('/api/doctype', {
-    method: 'POST',
-    body: JSON.stringify({
-      name: DT,
-      autoname: 'prompt',
-      fields: [
-        { fieldname: 'region', fieldtype: 'Select', options: 'North\nSouth', in_list_view: true },
-        { fieldname: 'amount', fieldtype: 'Int', in_list_view: true },
-      ],
-    }),
+// Each test rebuilds the DocType, rows, report, and dashboard inside its own
+// rolled-back transaction.
+async function setup(admin: TestClient) {
+  await admin.post('/api/doctype', {
+    name: DT,
+    autoname: 'prompt',
+    fields: [
+      { fieldname: 'region', fieldtype: 'Select', options: 'North\nSouth', in_list_view: true },
+      { fieldname: 'amount', fieldtype: 'Int', in_list_view: true },
+    ],
   })
   const rows = [
     ['s1', 'North', 100],
     ['s2', 'South', 50],
     ['s3', 'North', 25],
-  ]
+  ] as const
   for (const [name, region, amount] of rows)
-    await areq(`/api/resource/${encodeURIComponent(DT)}`, {
-      method: 'POST',
-      body: JSON.stringify({ name, region, amount }),
-    })
+    await admin.post(`/api/resource/${encodeURIComponent(DT)}`, { name, region, amount })
 
-  await areq('/api/save_doc', {
-    method: 'POST',
-    body: JSON.stringify({
-      doctype: 'Report',
-      doc: { name: REPORT, ref_doctype: DT, report_type: 'Report Builder', config: { columns: ['region', 'amount'], filters: [] } },
-    }),
+  await admin.post('/api/save_doc', {
+    doctype: 'Report',
+    doc: { name: REPORT, ref_doctype: DT, report_type: 'Report Builder', config: { columns: ['region', 'amount'], filters: [] } },
   })
-  await areq('/api/save_doc', {
-    method: 'POST',
-    body: JSON.stringify({ doctype: 'Dashboard', doc: { name: DASH, label: 'RC Dash', config: { cards: [], charts: [] } } }),
+  await admin.post('/api/save_doc', {
+    doctype: 'Dashboard',
+    doc: { name: DASH, label: 'RC Dash', config: { cards: [], charts: [] } },
   })
-})
-
-afterAll(cleanup)
+}
 
 describe('RPT-006: report charts', () => {
-  it('derives a per-row chart using explicit label/value fields', async () => {
+  test('derives a per-row chart using explicit label/value fields', async ({ admin }) => {
+    await setup(admin)
     const { data } = await runReportChart(
       { report: REPORT, label_field: 'region', value_field: 'amount' },
       'Administrator',
@@ -69,20 +52,23 @@ describe('RPT-006: report charts', () => {
     expect(pairs).toEqual(['North:100', 'North:25', 'South:50'])
   })
 
-  it('derives an aggregated chart with group_by (per-group counts)', async () => {
+  test('derives an aggregated chart with group_by (per-group counts)', async ({ admin }) => {
+    await setup(admin)
     const { data } = await runReportChart({ report: REPORT, group_by: 'region' }, 'Administrator')
     const byLabel = Object.fromEntries(data.map((d) => [d.label, d.value]))
     expect(byLabel).toEqual({ North: 2, South: 1 })
   })
 
-  it('picks sensible default fields when none are given', async () => {
+  test('picks sensible default fields when none are given', async ({ admin }) => {
+    await setup(admin)
     const { data } = await runReportChart({ report: REPORT }, 'Administrator')
     // label defaults to first non-name column (region), value to first numeric (amount).
     expect(data.every((d) => ['North', 'South'].includes(d.label))).toBe(true)
     expect(data.reduce((s, d) => s + d.value, 0)).toBe(175)
   })
 
-  it('pins the chart onto the dashboard config (idempotent on label)', async () => {
+  test('pins the chart onto the dashboard config (idempotent on label)', async ({ admin }) => {
+    await setup(admin)
     await pinChartToDashboard(
       DASH,
       { label: REPORT, report: REPORT, group_by: 'region' },

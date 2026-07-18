@@ -1,7 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import { app } from '../src/index'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
 import { setUserPassword } from '../src/auth'
-import { areq } from './helpers'
 
 // API-006: every error answer — validation, auth, permission, not-found,
 // conflict, malformed request, unknown route — uses the envelope
@@ -17,54 +16,55 @@ async function envelope(res: Response) {
 }
 
 describe('API-006: consistent error envelope', () => {
-  it('401 AuthenticationError without a token', async () => {
-    const res = await app.request('/api/whoami')
+  test('401 AuthenticationError without a token', async ({ api }) => {
+    const res = await api.fetch('/api/whoami')
     expect(res.status).toBe(401)
     expect((await envelope(res)).type).toBe('AuthenticationError')
   })
 
-  it('401 AuthenticationError with a garbage token', async () => {
-    const res = await app.request('/api/whoami', {
+  test('401 AuthenticationError with a garbage token', async ({ api }) => {
+    const res = await api.fetch('/api/whoami', {
       headers: { authorization: 'Bearer garbage' },
     })
     expect(res.status).toBe(401)
     expect((await envelope(res)).type).toBe('AuthenticationError')
   })
 
-  it('404 NotFoundError for an unknown route (authed)', async () => {
-    const res = await areq('/api/definitely-not-a-route')
+  test('404 NotFoundError for an unknown route (authed)', async ({ admin }) => {
+    const res = await admin.fetch('/api/definitely-not-a-route')
     expect(res.status).toBe(404)
     expect((await envelope(res)).type).toBe('NotFoundError')
   })
 
-  it('404 NotFoundError for a missing document and DocType', async () => {
+  test('404 NotFoundError for a missing document and DocType', async ({ admin }) => {
     for (const path of ['/api/doc/User/no-such-user', '/api/doc/NoSuchDT/x']) {
-      const res = await areq(path)
+      const res = await admin.fetch(path)
       expect(res.status).toBe(404)
       expect((await envelope(res)).type).toBe('NotFoundError')
     }
   })
 
-  it('400 BadRequestError for non-numeric pagination params (evaluator pass #6)', async () => {
+  test('400 BadRequestError for non-numeric pagination params (evaluator pass #6)', async ({
+    admin,
+  }) => {
     for (const qs of ['limit_start=abc', 'limit_page_length=xyz', 'limit_start=Infinity']) {
-      const res = await areq(`/api/list/User?${qs}`)
+      const res = await admin.fetch(`/api/list/User?${qs}`)
       expect(res.status).toBe(400)
       expect((await envelope(res)).type).toBe('BadRequestError')
     }
   })
 
-  it('400 BadRequestError for a malformed JSON body', async () => {
-    const res = await app.request('/api/login', {
+  test('400 BadRequestError for a malformed JSON body', async ({ api }) => {
+    const res = await api.fetch('/api/login', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: '{not json',
     })
     expect(res.status).toBe(400)
     expect((await envelope(res)).type).toBe('BadRequestError')
   })
 
-  it('417 ValidationError with per-field messages', async () => {
-    const res = await areq('/api/save_doc', {
+  test('417 ValidationError with per-field messages', async ({ admin }) => {
+    const res = await admin.fetch('/api/save_doc', {
       method: 'POST',
       body: JSON.stringify({ doctype: 'User', doc: {} }),
     })
@@ -74,8 +74,8 @@ describe('API-006: consistent error envelope', () => {
     expect(err.fields).toMatchObject({ email: expect.any(String) })
   })
 
-  it('409 ConflictError on duplicate insert', async () => {
-    const res = await areq('/api/resource/User', {
+  test('409 ConflictError on duplicate insert', async ({ admin }) => {
+    const res = await admin.fetch('/api/resource/User', {
       method: 'POST',
       body: JSON.stringify({ name: 'Administrator', email: 'admin@example.com' }),
     })
@@ -83,30 +83,30 @@ describe('API-006: consistent error envelope', () => {
     expect((await envelope(res)).type).toBe('ConflictError')
   })
 
-  it('403 PermissionError for a non-privileged user hitting an admin route', async () => {
+  test('403 PermissionError for a non-privileged user hitting an admin route', async ({
+    admin,
+    api,
+  }) => {
     // A role-less probe user hitting the System-Manager-only DocType route.
     const email = `envelope-probe-${Math.random().toString(36).slice(2, 8)}@x.com`
-    const mk = await areq('/api/save_doc', {
+    const mk = await admin.fetch('/api/save_doc', {
       method: 'POST',
       body: JSON.stringify({ doctype: 'User', doc: { name: email, email } }),
     })
     expect(mk.status).toBe(201)
     await setUserPassword(email, 'probe-pw-12345')
-    const login = await app.request('/api/login', {
+    const login = await api.fetch('/api/login', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ usr: email, pwd: 'probe-pw-12345' }),
     })
     expect(login.status).toBe(200)
     const tok = ((await login.json()) as { token: string }).token
-    const res = await app.request('/api/doctype', {
+    const res = await api.fetch('/api/doctype', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${tok}` },
+      headers: { authorization: `Bearer ${tok}` },
       body: JSON.stringify({ name: 'Envelope Probe DT', fields: [] }),
     })
     expect(res.status).toBe(403)
     expect((await envelope(res)).type).toBe('PermissionError')
-    // cleanup
-    await areq(`/api/resource/User/${encodeURIComponent(email)}`, { method: 'DELETE' })
   })
 })

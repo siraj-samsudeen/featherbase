@@ -1,23 +1,11 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { sql } from '../src/db'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
 import { columnType } from '../src/doctype-engine'
-import { areq } from './helpers'
 
 const DT = 'Engine Test Item'
 
-beforeAll(async () => {
-  await sql`delete from tab_doctype where name = ${DT}`
-  await sql.unsafe('drop table if exists tab_engine_test_item')
-})
-
-afterAll(async () => {
-  await sql`delete from tab_doctype where name = ${DT}`
-  await sql.unsafe('drop table if exists tab_engine_test_item')
-  await sql.end()
-})
-
 describe('META-002: fieldtype -> Postgres column mapping', () => {
-  it.each([
+  test.each([
     ['Data', 'varchar(140)'],
     ['Int', 'bigint'],
     ['Float', 'double precision'],
@@ -35,23 +23,22 @@ describe('META-002: fieldtype -> Postgres column mapping', () => {
     expect(columnType(ft)).toBe(col)
   })
 
-  it.each([['Table'], ['Section Break'], ['Column Break']])(
+  test.each([['Table'], ['Section Break'], ['Column Break']])(
     '%s produces no column',
     (ft) => {
       expect(columnType(ft)).toBeNull()
     },
   )
 
-  it('throws on unknown fieldtype', () => {
+  test('throws on unknown fieldtype', () => {
     expect(() => columnType('Bogus')).toThrow()
   })
 })
 
 describe('META-002: DocType save validates fieldtypes', () => {
-  it('rejects an invalid fieldtype with a field-wise error', async () => {
-    const res = await areq('/api/doctype', {
+  test('rejects an invalid fieldtype with a field-wise error', async ({ admin }) => {
+    const res = await admin.fetch('/api/doctype', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         name: 'Bad Type DT',
         fields: [{ fieldname: 'x', fieldtype: 'Wibble' }],
@@ -63,33 +50,28 @@ describe('META-002: DocType save validates fieldtypes', () => {
     expect(JSON.stringify(body.error.fields)).toContain('fieldtype')
   })
 
-  it('rejects Select/Link/Table fields without options', async () => {
-    const res = await areq('/api/doctype', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
+  test('rejects Select/Link/Table fields without options', async ({ admin }) => {
+    await expect(
+      admin.post('/api/doctype', {
         name: 'Bad Options DT',
         fields: [{ fieldname: 'status', fieldtype: 'Select' }],
       }),
+    ).rejects.toMatchObject({
+      status: 417,
+      fields: { status: expect.stringMatching(/requires options/) },
     })
-    expect(res.status).toBe(417)
-    const body = await res.json()
-    expect(body.error.fields.status).toMatch(/requires options/)
   })
 
-  it('rejects reserved fieldnames', async () => {
-    const res = await areq('/api/doctype', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
+  test('rejects reserved fieldnames', async ({ admin }) => {
+    await expect(
+      admin.post('/api/doctype', {
         name: 'Bad Reserved DT',
         fields: [{ fieldname: 'owner', fieldtype: 'Data' }],
       }),
-    })
-    expect(res.status).toBe(417)
+    ).rejects.toMatchObject({ status: 417 })
   })
 
-  it('accepts a valid definition, persists rows, and 409s on duplicate', async () => {
+  test('accepts a valid definition, persists rows, and 409s on duplicate', async ({ admin }) => {
     const def = {
       name: DT,
       fields: [
@@ -97,18 +79,16 @@ describe('META-002: DocType save validates fieldtypes', () => {
         { fieldname: 'status', fieldtype: 'Select', options: 'Open\nClosed' },
       ],
     }
-    const res = await areq('/api/doctype', {
+    const res = await admin.fetch('/api/doctype', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: JSON.stringify(def),
     })
     expect(res.status).toBe(201)
     const meta = await res.json()
     expect(meta.fields).toHaveLength(2)
 
-    const dup = await areq('/api/doctype', {
+    const dup = await admin.fetch('/api/doctype', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
       body: JSON.stringify(def),
     })
     expect(dup.status).toBe(409)

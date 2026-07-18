@@ -1,21 +1,14 @@
-import { afterAll, describe, expect, it } from 'vitest'
-import { sql } from '../src/db'
-import { app } from '../src/index'
-import { areq } from './helpers'
-
-afterAll(async () => {
-  await sql.end()
-})
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
 
 const json = (body: unknown) => ({
   method: 'POST',
-  headers: { 'content-type': 'application/json' },
   body: JSON.stringify(body),
 })
 
 describe('API-004: authentication', () => {
-  it('login with valid credentials yields a token and user', async () => {
-    const res = await app.request(
+  test('login with valid credentials yields a token and user', async ({ api }) => {
+    const res = await api.fetch(
       '/api/login',
       json({ usr: 'Administrator', pwd: process.env.ADMIN_PASSWORD ?? 'admin' }),
     )
@@ -25,34 +18,34 @@ describe('API-004: authentication', () => {
     expect(body.user.name).toBe('Administrator')
   })
 
-  it('login also works by email; wrong password is 401', async () => {
-    const byEmail = await app.request(
+  test('login also works by email; wrong password is 401', async ({ api }) => {
+    const byEmail = await api.fetch(
       '/api/login',
       json({ usr: 'admin@example.com', pwd: process.env.ADMIN_PASSWORD ?? 'admin' }),
     )
     expect(byEmail.status).toBe(200)
-    const bad = await app.request('/api/login', json({ usr: 'Administrator', pwd: 'nope' }))
+    const bad = await api.fetch('/api/login', json({ usr: 'Administrator', pwd: 'nope' }))
     expect(bad.status).toBe(401)
   })
 
-  it('requests without a token are rejected; garbage tokens too', async () => {
-    expect((await app.request('/api/resource/DocType')).status).toBe(401)
-    expect((await app.request('/api/whoami')).status).toBe(401)
+  test('requests without a token are rejected; garbage tokens too', async ({ api }) => {
+    expect((await api.fetch('/api/resource/DocType')).status).toBe(401)
+    expect((await api.fetch('/api/whoami')).status).toBe(401)
     expect(
       (
-        await app.request('/api/whoami', {
+        await api.fetch('/api/whoami', {
           headers: { authorization: 'Bearer not.a.jwt' },
         })
       ).status,
     ).toBe(401)
   })
 
-  it('a valid token resolves the correct user and stamps ownership', async () => {
-    const me = (await (await areq('/api/whoami')).json()) as { name: string }
+  test('a valid token resolves the correct user and stamps ownership', async ({ admin }) => {
+    const me = await admin.get<{ name: string }>('/api/whoami')
     expect(me.name).toBe('Administrator')
   })
 
-  it('ping stays public', async () => {
-    expect((await app.request('/api/ping')).status).toBe(200)
+  test('ping stays public', async ({ api }) => {
+    expect((await api.fetch('/api/ping')).status).toBe(200)
   })
 })

@@ -60,12 +60,12 @@ async function fileTicket(user: string, subject: string, priority = 'Medium'): P
   })
   if (res.status !== 201) throw new Error(`web form: ${res.status} ${await res.text()}`)
   const { name } = await json<{ name: string }>(res)
-  const doc = await req('admin', `/api/resource/Ticket/${name}`)
+  const doc = await req('admin', `/api/resource/HD%20Ticket/${name}`)
   return json<Doc>(doc)
 }
 
 async function workflowActions(user: string, name: string): Promise<string[]> {
-  const res = await req(user, `/api/workflow/Ticket/${name}`)
+  const res = await req(user, `/api/workflow/HD%20Ticket/${name}`)
   const body = await json<{ actions?: { action: string }[] }>(res)
   return (body.actions ?? []).map((a) => a.action)
 }
@@ -73,7 +73,7 @@ async function workflowActions(user: string, name: string): Promise<string[]> {
 async function apply(user: string, name: string, action: string): Promise<Response> {
   return req(user, '/api/apply_workflow_action', {
     method: 'POST',
-    body: JSON.stringify({ doctype: 'Ticket', name, action }),
+    body: JSON.stringify({ doctype: 'HD Ticket', name, action }),
   })
 }
 
@@ -99,7 +99,7 @@ async function main() {
   console.log('\n1. Intake: web form, attribution, defaults, assignment, SLA stamps')
   const t1 = await fileTicket('cust1@acme.test', 'Cannot log in to portal', 'High')
   const t2 = await fileTicket('cust2@globex.test', 'Invoice PDF is blank', 'Medium')
-  ok(String(t1.name).startsWith('TICK-'), `naming series (${t1.name})`)
+  ok(String(t1.name).startsWith('HDT-'), `naming series (${t1.name})`)
   ok(t1.owner === 'cust1@acme.test', 'web-form submitter owns the ticket')
   ok(t1.raised_by === 'cust1@acme.test', 'server script defaulted raised_by')
   ok(t1.status === 'Open', 'workflow initial state on the status field')
@@ -113,31 +113,31 @@ async function main() {
 
   console.log('\n2. Portal: if_owner scoping')
   const mine = await json<{ data: { name: string }[]; total: number }>(
-    await req('cust1@acme.test', '/api/resource/Ticket'),
+    await req('cust1@acme.test', '/api/resource/HD%20Ticket'),
   )
   ok(mine.total === 1 && mine.data[0].name === t1.name, 'customer list shows only own tickets')
-  ok((await req('cust1@acme.test', `/api/resource/Ticket/${t2.name}`)).status === 403, "another customer's ticket is 403")
+  ok((await req('cust1@acme.test', `/api/resource/HD%20Ticket/${t2.name}`)).status === 403, "another customer's ticket is 403")
 
   console.log('\n3. Workflow on the bound status field')
   const agent = String(t1.agent)
   ok((await workflowActions(agent, String(t1.name))).join() === 'Start', 'agent sees only Start from Open')
   ok((await apply(agent, String(t1.name), 'Start')).status === 200, 'agent starts the ticket')
-  let cur = await json<Doc>(await req('admin', `/api/resource/Ticket/${t1.name}`))
+  let cur = await json<Doc>(await req('admin', `/api/resource/HD%20Ticket/${t1.name}`))
   ok(cur.status === 'In Progress', 'status field moved to In Progress')
 
   const early = await apply(agent, String(t1.name), 'Resolve')
   ok(early.status >= 400, `Resolve without resolution_details refused (${early.status})`)
 
-  const upd = await req(agent, `/api/resource/Ticket/${t1.name}`, {
+  const upd = await req(agent, `/api/resource/HD%20Ticket/${t1.name}`, {
     method: 'PUT',
     body: JSON.stringify({ modified: cur.modified, resolution_details: 'Password reset + MFA re-enrolled.' }),
   })
   ok(upd.status === 200, 'agent records resolution details')
   ok((await apply(agent, String(t1.name), 'Resolve')).status === 200, 'Resolve allowed once details exist')
-  cur = await json<Doc>(await req('admin', `/api/resource/Ticket/${t1.name}`))
+  cur = await json<Doc>(await req('admin', `/api/resource/HD%20Ticket/${t1.name}`))
   ok(cur.status === 'Resolved', 'status = Resolved')
 
-  const smuggle = await req(agent, `/api/resource/Ticket/${t1.name}`, {
+  const smuggle = await req(agent, `/api/resource/HD%20Ticket/${t1.name}`, {
     method: 'PUT',
     body: JSON.stringify({ modified: cur.modified, status: 'Closed' }),
   })
@@ -146,7 +146,7 @@ async function main() {
   ok((await workflowActions('cust1@acme.test', String(t1.name))).join() === 'Reopen', 'customer may only Reopen')
   ok((await apply(agent, String(t1.name), 'Close')).status === 403, 'agent cannot Close (manager-only)')
   ok((await apply('manager@helpdesk.test', String(t1.name), 'Close')).status === 200, 'manager Closes')
-  cur = await json<Doc>(await req('admin', `/api/resource/Ticket/${t1.name}`))
+  cur = await json<Doc>(await req('admin', `/api/resource/HD%20Ticket/${t1.name}`))
   ok(cur.status === 'Closed', 'status = Closed')
 
   console.log('\n4. Resolved notification email (queued by the transition, sent by the worker)')
@@ -165,7 +165,7 @@ async function main() {
   console.log('\n5. Collaboration: comment + assignee ToDo')
   const comment = await req(agent, '/api/resource/Comment', {
     method: 'POST',
-    body: JSON.stringify({ ref_doctype: 'Ticket', ref_name: t2.name, content: 'Looking into the PDF renderer.' }),
+    body: JSON.stringify({ ref_doctype: 'HD Ticket', ref_name: t2.name, content: 'Looking into the PDF renderer.' }),
   })
   ok(comment.status === 201, 'agent comments on a ticket')
   const seen = await json<{ data: { content: string }[] }>(
@@ -189,14 +189,14 @@ async function main() {
 
   console.log('\n6. SLA escalation (time-warp, then the check_sla job)')
   const t3 = await fileTicket('cust1@acme.test', 'Server room is on fire', 'Urgent')
-  await sql`update tab_ticket set resolution_by = now() - interval '1 hour' where name = ${String(t3.name)}`
+  await sql`update tab_hd_ticket set resolution_by = now() - interval '1 hour' where name = ${String(t3.name)}`
   const kick = await req('admin', '/api/enqueue_job', {
     method: 'POST',
     body: JSON.stringify({ method: 'check_sla' }),
   })
   ok(kick.status === 201 || kick.status === 200, 'check_sla enqueued')
   await poll('overdue ticket flipped to Overdue', async () => {
-    const late = await json<Doc>(await req('admin', `/api/resource/Ticket/${t3.name}`))
+    const late = await json<Doc>(await req('admin', `/api/resource/HD%20Ticket/${t3.name}`))
     return late.sla_status === 'Overdue'
   })
   await poll('manager received the escalation email', async () => {
@@ -205,7 +205,7 @@ async function main() {
         'admin',
         `/api/resource/${encodeURIComponent('Email Sink')}?limit_page_length=100&fields=${encodeURIComponent(
           JSON.stringify(['mail_to', 'subject']),
-        )}&filters=${encodeURIComponent(JSON.stringify([['subject', 'like', `%SLA breached: Ticket ${t3.name}%`]]))}`,
+        )}&filters=${encodeURIComponent(JSON.stringify([['subject', 'like', `%SLA breached: HD Ticket ${t3.name}%`]]))}`,
       ),
     )
     return esc.data.some((m) => m.mail_to === 'manager@helpdesk.test')

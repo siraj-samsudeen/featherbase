@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
+import { test } from './pg-test'
 import { sql } from '../src/db'
 import { getDoc, saveDoc } from '../src/document'
 import { getList } from '../src/query'
@@ -9,14 +10,7 @@ import { createDocType } from '../src/doctype-engine'
 
 const DT = 'Set Srv Single'
 
-async function cleanup() {
-  await sql`delete from single_value where doctype = ${DT}`
-  await sql`delete from tab_docfield where parent = ${DT}`
-  await sql`delete from tab_doctype where name = ${DT}`
-}
-
-beforeAll(async () => {
-  await cleanup()
+async function setup() {
   await createDocType({
     name: DT,
     issingle: true,
@@ -26,17 +20,17 @@ beforeAll(async () => {
       { fieldname: 'active', fieldtype: 'Check', default_value: '0' },
     ],
   })
-})
-
-afterAll(cleanup)
+}
 
 describe('SET-001: single doctypes', () => {
-  it('creates no table for a single', async () => {
+  test('creates no table for a single', async () => {
+    await setup()
     const [t] = await sql`select to_regclass('tab_set_srv_single') as t`
     expect(t.t).toBeNull()
   })
 
-  it('reads defaults before anything is saved', async () => {
+  test('reads defaults before anything is saved', async () => {
+    await setup()
     const doc = await getDoc(DT, DT, 'Administrator')
     expect(doc.name).toBe(DT)
     expect(doc.title).toBe('Default Title')
@@ -44,7 +38,8 @@ describe('SET-001: single doctypes', () => {
     expect(doc.active).toBe(false)
   })
 
-  it('persists saved values (typed round-trip) with exactly one instance', async () => {
+  test('persists saved values (typed round-trip) with exactly one instance', async () => {
+    await setup()
     await saveDoc(DT, { title: 'Configured', count: 42, active: true }, 'Administrator')
     const doc = await getDoc(DT, DT, 'Administrator')
     expect(doc.title).toBe('Configured')
@@ -61,7 +56,8 @@ describe('SET-001: single doctypes', () => {
     expect(n).toBe(1)
   })
 
-  it('rejects listing a single with a clean validation error (never a 500)', async () => {
+  test('rejects listing a single with a clean validation error (never a 500)', async () => {
+    await setup()
     await expect(getList(DT, {}, 'Administrator')).rejects.toMatchObject({
       type: 'ValidationError',
     })
