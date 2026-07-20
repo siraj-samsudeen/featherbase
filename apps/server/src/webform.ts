@@ -71,6 +71,9 @@ export async function getWebFormConfig(route: string): Promise<WebFormConfig> {
 export async function submitWebForm(
   route: string,
   values: Record<string, unknown>,
+  // WEB-003: when the submitter is logged in, the document is created in their
+  // name so it belongs to them (owner) and shows up in their if_owner portal.
+  sessionUser?: string,
 ): Promise<{ name: string; message: string }> {
   const form = await loadForm(route)
   const allowed = new Set(fieldnames(form.web_fields))
@@ -79,9 +82,13 @@ export async function submitWebForm(
   for (const [k, v] of Object.entries(values)) if (allowed.has(k)) clean[k] = v
 
   // Create through the normal lifecycle (validation, hooks). The web form is a
-  // trusted server-controlled surface, so it creates as Administrator but is
-  // strictly limited to the configured DocType + whitelisted fields.
-  const doc = await saveDoc(form.document_type as string, clean, 'Administrator')
+  // trusted server-controlled surface strictly limited to the configured
+  // DocType + whitelisted fields, so it inserts with permissions bypassed:
+  // anonymous submits create as Administrator, logged-in submits create as the
+  // session user even when their roles carry no create DocPerm.
+  const doc = await saveDoc(form.document_type as string, clean, sessionUser ?? 'Administrator', 'upsert', {
+    skipPermissions: true,
+  })
   return {
     name: doc.name as string,
     message: (form.success_message as string) ?? 'Submitted.',

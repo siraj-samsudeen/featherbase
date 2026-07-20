@@ -58,9 +58,14 @@ async function scopedWhere(
   const table = tableName(doctype)
 
   const filters = [...callerFilters]
+  // Extra WHERE fragments that can't be expressed as plain [field, op, value]
+  // filters (they need OR with IS NULL).
+  const extraConds: ReturnType<typeof sql>[] = []
   if (scope === 'owner') filters.push(['owner', '=', user])
   // PERM-005: user permissions narrow by the doctype itself and by any Link
-  // field pointing at a restricted doctype.
+  // field pointing at a restricted doctype. An UNSET link does not disqualify
+  // a row — the restriction applies to values, so NULL passes (matches the
+  // detail-read check in permissions.ts, which skips empty values).
   if (!(await isBypassUser(user))) {
     const upMap = await getUserPermissionMap(user)
     if (upMap.size) {
@@ -69,7 +74,10 @@ async function scopedWhere(
       for (const f of meta.fields) {
         if (f.fieldtype !== 'Link' || !f.options) continue
         const allowed = upMap.get(f.options)
-        if (allowed) filters.push([f.fieldname, 'in', [...allowed]])
+        if (allowed)
+          extraConds.push(
+            sql`(${sql(f.fieldname)} is null or ${sql(f.fieldname)} in ${sql([...allowed])})`,
+          )
       }
     }
   }
@@ -93,7 +101,8 @@ async function scopedWhere(
       default: return sql`${sql(field)} not in ${sql((value as string[]).length ? (value as string[]) : [null as never])}`
     }
   })
-  const where = conds.length ? conds.reduce((acc, c) => sql`${acc} and ${c}`) : sql`true`
+  const allConds = [...conds, ...extraConds]
+  const where = allConds.length ? allConds.reduce((acc, c) => sql`${acc} and ${c}`) : sql`true`
   return { meta, table, cols, where }
 }
 

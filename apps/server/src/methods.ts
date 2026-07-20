@@ -15,12 +15,21 @@ export interface MethodContext {
 
 export type ServerMethod = (ctx: MethodContext) => unknown | Promise<unknown>
 
-interface MethodDef {
+export interface MethodDef {
   fn: ServerMethod
   allowGuest: boolean
 }
 
 const registry = new Map<string, MethodDef>()
+
+// PLAT-002: an app's override_whitelisted_methods swaps a method's handler
+// and gets the previous definition back, so uninstall can restore it.
+export function swapMethod(path: string, def?: MethodDef): MethodDef | undefined {
+  const prev = registry.get(path)
+  if (def) registry.set(path, def)
+  else registry.delete(path)
+  return prev
+}
 
 export function whitelist(
   path: string,

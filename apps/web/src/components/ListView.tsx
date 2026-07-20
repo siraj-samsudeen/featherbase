@@ -21,6 +21,39 @@ function cell(value: unknown, fieldtype: string, settings: Settings): string {
   return formatValue(fieldtype, value, settings) || '—'
 }
 
+// Frappe's "indicator" idiom (adopted from the PR-2 Desk): status-like Select
+// values render as a colored dot + label. Known lifecycle words get their
+// conventional color; anything else picks a stable palette color by hash.
+const INDICATOR_GREEN = /\b(closed|resolved|done|complete|completed|active|approved|paid|sent|success|finished|enabled|on track)\b/
+const INDICATOR_ORANGE = /\b(in progress|pending|working|review|reviewing|on hold|partially|queued|medium)\b/
+const INDICATOR_RED = /\b(open|urgent|high|critical|overdue|error|failed|rejected|blocked|disabled|cancelled)\b/
+const INDICATOR_GRAY = /\b(draft|low|inactive|none|not set)\b/
+const INDICATOR_PALETTE = ['#2490ef', '#8b5cf6', '#0d9488', '#db2777', '#ca8a04']
+
+export function indicatorColor(value: string): string {
+  const v = value.toLowerCase()
+  if (INDICATOR_GREEN.test(v)) return '#16a34a'
+  if (INDICATOR_ORANGE.test(v)) return '#ea580c'
+  if (INDICATOR_RED.test(v)) return '#dc2626'
+  if (INDICATOR_GRAY.test(v)) return '#9ca3af'
+  let h = 0
+  for (const ch of value) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return INDICATOR_PALETTE[h % INDICATOR_PALETTE.length]
+}
+
+export function Indicator({ value }: { value: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        aria-hidden="true"
+        className="h-2 w-2 shrink-0 rounded-full"
+        style={{ backgroundColor: indicatorColor(value) }}
+      />
+      {value}
+    </span>
+  )
+}
+
 // UI-002/UI-003: ONE list component renders every DocType from its metadata.
 export function ListView({
   doctype,
@@ -214,6 +247,13 @@ export function ListView({
     <div data-testid="list-view">
       <div className="mb-4 flex items-center justify-between">
         <div>
+          <div className="text-xs text-[var(--color-ink-faint)]">
+            <Link to="/desk" className="hover:text-[var(--color-ink)]">
+              Home
+            </Link>
+            {' / '}
+            {doctype}
+          </div>
           <h1 className="text-xl font-semibold text-[var(--color-ink)]">{doctype}</h1>
           <span className="text-xs text-[var(--color-ink-muted)]" data-testid="list-total">
             {total} total
@@ -301,7 +341,10 @@ export function ListView({
         </div>
       </div>
       {onFiltersChange && meta.data && (
-        <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
+        <>
+          <StandardFilters meta={meta.data} filters={filters} onChange={onFiltersChange} />
+          <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
+        </>
       )}
       {selected.size > 0 && (
         <div
@@ -407,10 +450,18 @@ export function ListView({
                       <Link
                         to="/desk/$doctype/$name"
                         params={{ doctype, name: String(row.name) }}
-                        className="font-medium text-[var(--color-brand)] hover:underline"
+                        className={`font-medium text-[var(--color-brand)] hover:underline ${
+                          col.fieldname === 'name' ? 'font-mono text-[13px]' : ''
+                        }`}
                       >
                         {cell(row[col.fieldname], col.fieldtype, settings)}
                       </Link>
+                    ) : col.fieldtype === 'Select' &&
+                      row[col.fieldname] != null &&
+                      row[col.fieldname] !== '' ? (
+                      <span className="text-[var(--color-ink)]" data-testid={`cell-${col.fieldname}`}>
+                        <Indicator value={String(row[col.fieldname])} />
+                      </span>
                     ) : (
                       <span className="text-[var(--color-ink)]" data-testid={`cell-${col.fieldname}`}>
                         {cell(row[col.fieldname], col.fieldtype, settings)}
@@ -455,6 +506,96 @@ export function ListView({
   )
 }
 
+
+// Frappe's standard filters (adopted from the PR-2 Desk): typed per-column
+// inputs for the list's visible fields — Selects become dropdowns, text-ish
+// fields match with contains. They read and write the same URL-driven filter
+// list the advanced FilterBar manages, so chips stay in sync.
+const STANDARD_TEXT_TYPES = new Set(['Data', 'Link', 'Email', 'Small Text'])
+
+export function StandardFilters({
+  meta,
+  filters,
+  onChange,
+}: {
+  meta: import('../lib/meta').DocTypeMeta
+  filters: Filter[]
+  onChange: (filters: Filter[]) => void
+}) {
+  const fields = meta.fields
+    .filter(
+      (f) =>
+        f.in_list_view &&
+        !f.hidden &&
+        (f.fieldtype === 'Select' || STANDARD_TEXT_TYPES.has(f.fieldtype)),
+    )
+    .slice(0, 4)
+  // Drafts for the text inputs (applied on Enter/blur); selects apply at once.
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  if (!fields.length) return null
+
+  function current(fieldname: string, op: string): string {
+    const hit = filters.find((f) => f[0] === fieldname && f[1] === op)
+    if (!hit) return ''
+    const v = String(hit[2] ?? '')
+    return op === 'like' ? v.replace(/^%|%$/g, '') : v
+  }
+
+  function apply(fieldname: string, op: string, value: string) {
+    const rest = filters.filter((f) => f[0] !== fieldname)
+    onChange(value ? [...rest, [fieldname, op, op === 'like' ? `%${value}%` : value]] : rest)
+  }
+
+  return (
+    <div className="mb-3 flex flex-wrap items-end gap-2" data-testid="standard-filters">
+      {fields.map((f) =>
+        f.fieldtype === 'Select' ? (
+          <label key={f.fieldname} className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+              {f.label ?? f.fieldname}
+            </span>
+            <select
+              value={current(f.fieldname, '=')}
+              onChange={(e) => apply(f.fieldname, '=', e.target.value)}
+              data-testid={`std-filter-${f.fieldname}`}
+              className="fc-input max-w-[10rem]"
+            >
+              <option value="">All</option>
+              {(f.options ?? '')
+                .split('\n')
+                .filter(Boolean)
+                .map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+            </select>
+          </label>
+        ) : (
+          <label key={f.fieldname} className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+              {f.label ?? f.fieldname}
+            </span>
+            <input
+              value={drafts[f.fieldname] ?? current(f.fieldname, 'like')}
+              onChange={(e) => setDrafts((d) => ({ ...d, [f.fieldname]: e.target.value }))}
+              onBlur={(e) => apply(f.fieldname, 'like', e.target.value.trim())}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  apply(f.fieldname, 'like', (e.target as HTMLInputElement).value.trim())
+                }
+              }}
+              placeholder={`Filter ${f.label ?? f.fieldname}…`}
+              data-testid={`std-filter-${f.fieldname}`}
+              className="fc-input max-w-[10rem]"
+            />
+          </label>
+        ),
+      )}
+    </div>
+  )
+}
 
 export function FilterBar({
   meta,

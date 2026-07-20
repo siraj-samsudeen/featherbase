@@ -5,10 +5,14 @@ import type { sql } from './db'
 import type { DocTypeMeta } from './meta'
 
 // DOC-003/DOC-004: per-DocType controllers hook into the document lifecycle.
-// Hook chain (all inside the save transaction):
-//   insert: before_insert -> validate -> before_save -> INSERT -> after_insert -> after_save
-//   update: validate -> before_save -> UPDATE -> after_save
+// Hook chain (all inside the save transaction), matching Frappe's order:
+//   insert: before_insert -> before_validate -> validate -> before_save
+//           -> INSERT -> after_insert -> after_save -> on_update
+//   update: before_validate -> validate -> before_save
+//           -> UPDATE -> after_save -> on_update
 // Hooks may mutate ctx.doc; a thrown error aborts the whole transaction.
+// (after_save is this codebase's historical name; on_update is Frappe's —
+// both fire, so hooks.py-style code ports over unchanged.)
 
 export interface HookContext {
   doc: Record<string, unknown>
@@ -23,15 +27,23 @@ export type Hook = (ctx: HookContext) => void | Promise<void>
 
 export const HOOK_EVENTS = [
   'before_insert',
+  'before_validate',
   'validate',
   'before_save',
   'after_insert',
   'after_save',
+  'on_update',
+  'before_submit',
   'on_submit',
+  'before_cancel',
   'on_cancel',
   'on_trash',
 ] as const
 export type HookEvent = (typeof HOOK_EVENTS)[number]
+
+// Frappe's doc_events["*"]: hooks registered under this DocType key run for
+// EVERY DocType's lifecycle (framework-wide extensions like audit trails).
+export const WILDCARD_DOCTYPE = '*'
 
 export interface DocTypeController {
   doctype: string
@@ -63,6 +75,11 @@ export function unregisterController(controller: DocTypeController) {
 
 export async function runHooks(event: HookEvent, ctx: HookContext) {
   for (const controller of registry.get(ctx.meta.name) ?? []) {
+    const hook = controller.hooks[event]
+    if (hook) await hook(ctx)
+  }
+  // Wildcard controllers run after the specific ones, for every DocType.
+  for (const controller of registry.get(WILDCARD_DOCTYPE) ?? []) {
     const hook = controller.hooks[event]
     if (hook) await hook(ctx)
   }

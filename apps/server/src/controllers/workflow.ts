@@ -14,8 +14,13 @@ const controller: DocTypeController = {
       validateWorkflow(states, transitions)
     },
     after_save: async ({ doc, tx }) => {
-      if (doc.is_active && typeof doc.document_type === 'string')
-        await ensureStateField(doc.document_type, tx)
+      if (doc.is_active && typeof doc.document_type === 'string') {
+        // Binding an existing field (state_field) is validated here — saving a
+        // workflow that names a nonexistent field fails; a blank state_field
+        // auto-adds the default workflow_state field.
+        const field = String(doc.state_field ?? '').trim() || 'workflow_state'
+        await ensureStateField(doc.document_type, tx, field)
+      }
     },
   },
 }

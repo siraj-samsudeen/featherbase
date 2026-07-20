@@ -1,0 +1,13 @@
+{
+  "_comment": "Default-FAIL contract (see PROTOCOL.md). Every enhancement starts false; ONLY the evaluator agent may flip one, after reading evidence. Build sessions never self-approve here.",
+  "wf-state-binding": { "passes": false },
+  "email-rule-save-events": { "passes": false },
+  "assignment-rules": { "passes": false },
+  "sla": { "passes": false },
+  "webform-attribution": { "passes": false },
+  "user-perm-null-links": { "passes": false },
+  "frappe-api-compat": { "passes": false },
+  "hook-parity": { "passes": false },
+  "desk-affordances": { "passes": false },
+  "helpdesk-app": { "passes": false }
+}
