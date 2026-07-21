@@ -1,5 +1,5 @@
 {
-  "name": "frappe-clone",
+  "name": "featherbase",
   "private": true,
   "scripts": {
     "smoke": "pnpm --filter server test:smoke && pnpm --filter web smoke",

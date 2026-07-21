@@ -1,4 +1,4 @@
-// Thin authenticated client for the frappe-clone server API.
+// Thin authenticated client for the Featherbase server API.
 
 const TOKEN_KEY = 'fc_token'
 const USER_KEY = 'fc_user'

@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-echo "==> frappe-clone init"
+echo "==> featherbase init"
 
 # --- 1. Dependencies -------------------------------------------------------
 command -v pnpm >/dev/null || npm install -g pnpm
