@@ -45,9 +45,9 @@ Featherbase in July 2026. You will still see that name in a few places; see
   Tailwind v4. There is **no** shadcn/ui and **no** react-hook-form — UI is
   built from the shared `.fc-*` component classes described in `PROGRESS.md`
 - `packages/shared` — types and contracts used by both sides
-- `packages/feather-testing-postgres` — the SQL Sandbox test harness, also
-  published standalone as
-  [feather-testing-postgres](https://github.com/siraj-samsudeen/feather-testing-postgres)
+- [`feather-testing-postgres`](https://github.com/siraj-samsudeen/feather-testing-postgres)
+  — the SQL Sandbox test harness, consumed as a published npm dependency. It
+  lives in its own repo; fix it there and release, never vendor it back in
 - Monorepo — pnpm workspaces; boot everything with `./init.sh`
 
 **Visual identity is a standing directive.** Every new UI feature must inherit
