@@ -57,10 +57,15 @@ them before writing any UI.
 
 ## Environment
 
-- **Database:** the system Postgres 16 cluster on **port 5432**, database
-  **`frappe_clone`**. `./init.sh` starts the cluster, sets the `postgres`
-  password, and creates the database if missing. There is no `.pgdata`
+- **Database:** whatever `DATABASE_URL` points at — by default the local
+  Postgres on **port 5432**, database **`frappe_clone`**. There is no `.pgdata`
   directory and nothing runs on 5433.
+- **`./init.sh` never manages a Postgres that already answers.** It probes
+  `DATABASE_URL` first; only if that fails does it try to start a cluster
+  (Debian `pg_ctlcluster`, macOS `brew services`) and then create the role and
+  database over whichever superuser connection the host accepts — the current
+  login user on Homebrew, `su postgres` when running as root in the container.
+  So it works on macOS and Linux alike, and is a no-op once things are up.
 - **Connection strings** default in `apps/server/src/config.ts`; override with
   `DATABASE_URL`. The RLS suite connects as the `desk_client` role and
   overrides with `RLS_TEST_URL`.
@@ -124,11 +129,12 @@ once per run, outside any sandbox transaction. It complements
 
 ## Known rough edges
 
-- **Playwright browser path is hardcoded.** `apps/web/playwright.config.ts` sets
-  `executablePath: '/opt/pw-browsers/chromium'`, which exists in the container
-  but not on a typical macOS checkout, so browser tests fail locally until it is
-  overridden. `apps/server/src/print.ts` handles this better — it honours
-  `PLAYWRIGHT_BROWSERS_PATH` and falls back to a default launch.
+- **Chromium resolution is env-driven, not hardcoded.** Both
+  `apps/web/playwright.config.ts` and `apps/server/src/print.ts` let Playwright
+  resolve its own installed browser unless `CHROMIUM_PATH` names one; `print.ts`
+  additionally scans `PLAYWRIGHT_BROWSERS_PATH` (defaulting to the container's
+  `/opt/pw-browsers`) when that directory exists. Set `CHROMIUM_PATH` if you
+  need a specific binary — do not reintroduce a literal path.
 - **Naming leftovers.** The Postgres database is still called `frappe_clone`,
   in `init.sh`, `apps/server/src/config.ts`, and `apps/server/test/rls.test.ts`.
   Renaming it means changing those together plus

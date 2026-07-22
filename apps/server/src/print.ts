@@ -135,9 +135,19 @@ function autoLayout(meta: Awaited<ReturnType<typeof getMeta>>, doc: Doc): string
   return `<h1>${esc(meta.name)}</h1><p class="docname">${esc(String(doc.name))}</p><dl>${rows}</dl>${tableHtml}`
 }
 
-// Resolve the Chromium binary. This environment installs browsers under
-// /opt/pw-browsers but does not always export PLAYWRIGHT_BROWSERS_PATH to
-// the server process, so locate the chrome binary directly.
+// Per-platform layout of a Playwright browser bundle, relative to its
+// `chromium-<rev>` directory.
+const CHROMIUM_BINARIES = [
+  'chrome-linux/chrome',
+  'chrome-mac/Chromium.app/Contents/MacOS/Chromium',
+  'chrome-win/chrome.exe',
+]
+
+// Resolve the Chromium binary, preferring Playwright's own resolution and only
+// searching when the environment points somewhere specific. The container
+// installs browsers under /opt/pw-browsers but does not always export
+// PLAYWRIGHT_BROWSERS_PATH to the server process, so that path is probed too —
+// but only when it actually exists, so other hosts fall through to the default.
 function resolveChromium(): string | undefined {
   if (process.env.CHROMIUM_PATH && existsSync(process.env.CHROMIUM_PATH))
     return process.env.CHROMIUM_PATH
@@ -148,8 +158,10 @@ function resolveChromium(): string | undefined {
       .sort()
       .reverse()
     for (const d of dirs) {
-      const bin = join(root, d, 'chrome-linux', 'chrome')
-      if (existsSync(bin)) return bin
+      for (const rel of CHROMIUM_BINARIES) {
+        const bin = join(root, d, ...rel.split('/'))
+        if (existsSync(bin)) return bin
+      }
     }
   } catch {
     // fall through — let Playwright try its own resolution

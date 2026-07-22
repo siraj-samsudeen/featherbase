@@ -13,6 +13,74 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-22 (follow-up 2) — the repo boots outside the container (issue #33)
+
+`./init.sh` was Debian-only and the Playwright config pointed at a container-only
+binary, so the documented "run `./init.sh` first, every session" protocol was
+impossible on macOS. Both are now environment-driven. Verified on macOS 15 with
+Homebrew `postgresql@17` (login user `siraj`, trust auth, port 5432) — the
+Debian container path is unverified, see the caveat at the end.
+
+- **`init.sh` no longer manages Postgres it does not need to.** `DATABASE_URL`
+  is the single source of truth (default unchanged: `frappe_clone`, matching
+  `apps/server/src/config.ts` — #32 has not landed). The script probes that URL
+  with `psql` and does nothing at all if it answers, so an already-up
+  container is a no-op. Only on failure does it (a) start a cluster, branching
+  `pg_ctlcluster` (Debian) vs `brew services` (macOS), then (b) create the role
+  and database over whichever superuser connection the host accepts — the
+  current login user first, `su postgres` when running as root. `pg_lsclusters`,
+  the hardcoded `16`, and the unconditional `su postgres` are gone.
+- **Port cleanup used `fuser "$port/tcp"`, which silently did nothing on macOS.**
+  BSD `fuser` exists but rejects that syntax (`'5173/tcp' does not exist`), so
+  stale dev servers were never killed and the "idempotent restart" was a no-op.
+  Now prefers `lsof -ti tcp:$port`, falling back to `fuser`.
+- **`( … & )` around the dev servers hung the script on macOS.** The subshell
+  outlives the script holding its stdout, so `./init.sh | tee` never saw EOF and
+  appeared to hang forever after printing nothing. Now `( … exec … ) &`.
+- **Chromium is resolved, not hardcoded.** `playwright.config.ts` sets
+  `executablePath` only when `CHROMIUM_PATH` is set, otherwise letting Playwright
+  find its own install. `print.ts` keeps its `PLAYWRIGHT_BROWSERS_PATH` scan but
+  no longer assumes the Linux-only `chrome-linux/chrome` layout (mac and win
+  layouts added), and still falls through to the default launch.
+- **Playwright now runs `workers: 1`.** It defaults to half the host's cores —
+  1 on the container, 6 here — and the specs share one server and one database,
+  several mutating global state (System Settings, active language, client
+  scripts). Parallel runs failed a *different* 1–5 specs every time. Same
+  rationale as the suites' existing `fileParallelism: false`.
+
+Two pre-existing bugs surfaced, both invisible until a database was built from
+scratch or a suite run twice:
+
+- **`getActiveWorkflow` broke every fresh-database migration.** It queries
+  `tab_workflow` (created in 0015) and its `state_field` column (added in 0048),
+  but bootstrap migrations from 0005 on save documents, and every save asks for
+  the active workflow. So `pnpm --filter server migrate` could never complete on
+  an empty database — it died at 0005, then at 0047. Guarded with the probe idiom
+  `meta.ts` already uses for `tab_property_setter`, checking the newest column so
+  one probe covers both cases; only the positive is cached, so the schema
+  completing mid-process is picked up.
+- **`portal.spec.ts` was not idempotent.** `beforeAll` recreates its users but
+  never deleted their tickets, so Alice accumulated one more per run and the
+  `toHaveCount(1)` assertion failed on every run after the first (6 rows after 6
+  runs). Now clears leftovers first, like `dashboard.spec.ts` and `calendar.spec.ts`
+  already do.
+
+Verified end-to-end on macOS: `./init.sh` from an empty database through all 50
+migrations to `init OK` (exit 0, both smoke suites green); `pnpm test` 358/358
+server + 10/10 web; the full e2e suite 78/78, **twice consecutively** — the
+repeat run is the point, since it is what caught the portal bug. Both typechecks
+clean. `print-pdf.test.ts` passes, which exercises the real Chromium launch
+through the new resolution path.
+
+Caveat: the Debian/container path could not be exercised from this machine. The
+container branch is reached only when `DATABASE_URL` does not answer, and it
+keeps `pg_ctlcluster`/`su postgres`, but it is unverified — worth one run inside
+the container before trusting it.
+
+Next: #32 (rename `frappe_clone` → `featherbase`) now touches a much smaller
+surface — `init.sh` reads the name from `DATABASE_URL`, so only
+`apps/server/src/config.ts` and `apps/server/test/rls.test.ts` hardcode it.
+
 ## 2026-07-22 (follow-up) — an interrupted test run no longer poisons the next one (issue #35)
 
 `tab_background_job` was the one piece of state surviving a run. Test bodies are
