@@ -13,6 +13,14 @@ export default defineConfig({
     // series counters), so files run sequentially like the server suite.
     fileParallelism: false,
     testTimeout: 15000,
+    // Component tests drive the server in-process against the same database,
+    // so they share the same background-job queue and need the same clean
+    // slate. Reuses the server suite's setup rather than duplicating it.
+    // Vite resolves that file's bare imports from THIS root, not from where
+    // the file lives, and pnpm's isolated layout will not hand us `postgres`
+    // transitively through the `server` dependency — hence the direct
+    // devDependency on `postgres` here.
+    globalSetup: ['../server/test/global-setup.ts'],
     server: {
       deps: {
         // feather-testing-postgres ships raw TypeScript (`main: src/index.ts`,
