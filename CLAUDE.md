@@ -6,8 +6,10 @@ Read `docs/ROADMAP.md` for the strategy and `docs/adr/` for the decisions
 already made. This file is your standing protocol — follow it every session.
 
 The project was developed under the working name `frappe-clone` and became
-Featherbase in July 2026. You will still see that name in a few places; see
-**Naming leftovers** at the bottom.
+Featherbase in July 2026. That name survives only in dated `PROGRESS.md`
+entries and in `docs/research/frappe-architecture.md`, where `frappe_clone` is
+a *filesystem path* to an upstream Frappe checkout — unrelated to this project
+and not to be renamed.
 
 ## Architecture invariants (never violate these)
 
@@ -58,7 +60,7 @@ them before writing any UI.
 ## Environment
 
 - **Database:** whatever `DATABASE_URL` points at — by default the local
-  Postgres on **port 5432**, database **`frappe_clone`**. There is no `.pgdata`
+  Postgres on **port 5432**, database **`featherbase`**. There is no `.pgdata`
   directory and nothing runs on 5433.
 - **`./init.sh` never manages a Postgres that already answers.** It probes
   `DATABASE_URL` first; only if that fails does it try to start a cluster
@@ -71,6 +73,12 @@ them before writing any UI.
   overrides with `RLS_TEST_URL`.
 - **Servers:** API on `:8000`, web on `:5173`. `./init.sh` kills stale
   listeners by port and waits for both to answer.
+- **Chromium is resolved from the environment, never hardcoded.** Both
+  `apps/web/playwright.config.ts` and `apps/server/src/print.ts` let Playwright
+  resolve its own installed browser unless `CHROMIUM_PATH` names one; `print.ts`
+  additionally scans `PLAYWRIGHT_BROWSERS_PATH` (defaulting to the container's
+  `/opt/pw-browsers`) when that directory exists. Set `CHROMIUM_PATH` if you
+  need a specific binary — do not reintroduce a literal path.
 
 ## Testing
 
@@ -126,22 +134,6 @@ once per run, outside any sandbox transaction. It complements
 - Commit at every stable point, not just at session end.
 - Keep `./init.sh` working at all times; if setup steps change, update it in the
   same commit.
-
-## Known rough edges
-
-- **Chromium resolution is env-driven, not hardcoded.** Both
-  `apps/web/playwright.config.ts` and `apps/server/src/print.ts` let Playwright
-  resolve its own installed browser unless `CHROMIUM_PATH` names one; `print.ts`
-  additionally scans `PLAYWRIGHT_BROWSERS_PATH` (defaulting to the container's
-  `/opt/pw-browsers`) when that directory exists. Set `CHROMIUM_PATH` if you
-  need a specific binary — do not reintroduce a literal path.
-- **Naming leftovers.** The Postgres database is still called `frappe_clone`,
-  in `init.sh`, `apps/server/src/config.ts`, and `apps/server/test/rls.test.ts`.
-  Renaming it means changing those together plus
-  `ALTER DATABASE frappe_clone RENAME TO featherbase;` — it is deliberately not
-  done yet. Note that `docs/research/frappe-architecture.md` mentions
-  `frappe_clone` as a *filesystem path* to an upstream Frappe checkout; that one
-  is unrelated and must not be changed.
 
 ## Where decisions live
 

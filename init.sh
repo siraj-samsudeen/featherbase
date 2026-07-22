@@ -16,7 +16,7 @@ command -v pnpm >/dev/null || npm install -g pnpm
 # serving that URL — on the container, and on any second run, this whole block
 # is a no-op. Only when the URL does not answer do we try to start a cluster
 # and create the role/database, branching by platform at that point.
-export DATABASE_URL="${DATABASE_URL:-postgres://postgres:postgres@127.0.0.1:5432/frappe_clone}"
+export DATABASE_URL="${DATABASE_URL:-postgres://postgres:postgres@127.0.0.1:5432/featherbase}"
 
 if ! command -v psql >/dev/null; then
   echo "--> psql not found; skipping database bootstrap (migrate will report if"

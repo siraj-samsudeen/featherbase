@@ -13,6 +13,41 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-22 (follow-up 3) — the database is called `featherbase` (issue #32)
+
+The Postgres database kept the project's former working name. Renamed to
+`featherbase` across the three places that name it, plus the existing database.
+
+- `init.sh` — the `DATABASE_URL` default (one site now, since follow-up 2
+  consolidated the two `su postgres` calls into it)
+- `apps/server/src/config.ts` — the `DATABASE_URL` fallback, which must stay in
+  sync with `init.sh`
+- `apps/server/test/rls.test.ts` — the `RLS_TEST_URL` fallback. The
+  `desk_client` **role** name is unchanged; only the database moved.
+- the live database, via `ALTER DATABASE frappe_clone RENAME TO featherbase` —
+  instant, copies no data, so nothing was reseeded
+
+Deliberately not touched: `docs/research/frappe-architecture.md`, where
+`frappe_clone` is a *filesystem path* to an upstream Frappe checkout, and the
+dated entries in this file, which are historical records.
+
+CLAUDE.md's "Known rough edges" section is gone — this was the last real entry
+in it, and the remaining Chromium note describes correct behaviour, so it moved
+to Environment.
+
+**Verified on macOS 15 / Homebrew postgresql@17:** `./init.sh` to `init OK`,
+`pnpm test` 358/358 server + 10/10 web, e2e 78/78.
+
+**Gotcha found while verifying — not caused by this change.** The first
+`pnpm test` failed 4/358 in `i18n.test.ts` with
+`417 ValidationError: Duplicate value for name` from `seedFrench`. The cause is
+that the **e2e suite commits `tab_translation` rows that outlive the run**
+(`fr-e2e-Save`, `fr-e2e-Priority`, `fr2-Log-out`), so any `pnpm test` after an
+e2e run fails. Reproduced deterministically: clear the table, unit suite is
+358/358; run e2e, three rows come back. This is the same "state outlives the
+run" family as the job queue in #35 and the portal tickets fixed in #37 —
+tracked separately.
+
 ## 2026-07-22 (follow-up 2) — the repo boots outside the container (issue #33)
 
 `./init.sh` was Debian-only and the Playwright config pointed at a container-only

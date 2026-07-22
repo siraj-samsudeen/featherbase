@@ -18,7 +18,7 @@ const ROLE = 'RLS Vault Reader'
 const USER = 'rls-vault@x.com'
 
 const direct = postgres(
-  process.env.RLS_TEST_URL ?? 'postgres://desk_client:desk_client@127.0.0.1:5432/frappe_clone',
+  process.env.RLS_TEST_URL ?? 'postgres://desk_client:desk_client@127.0.0.1:5432/featherbase',
   { max: 1, onnotice: () => {} },
 )
 
