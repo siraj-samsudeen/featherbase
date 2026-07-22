@@ -41,8 +41,25 @@ export function stateField(wf: Workflow): string {
   return (wf.state_field ?? '').trim() || 'workflow_state'
 }
 
+// The Workflow tables arrive in migration 0015 and `state_field` only in 0048,
+// but earlier bootstrap migrations already save documents — and every save asks
+// for the active workflow. Probe for the newest column this query needs, which
+// covers both the missing table and the not-yet-added column on a fresh
+// database. Only the positive is cached, so a migration that completes the
+// schema mid-process is picked up.
+let workflowSchemaReady = false
+async function hasWorkflowSchema(): Promise<boolean> {
+  if (workflowSchemaReady) return true
+  const [row] = await sql`
+    select 1 as ok from information_schema.columns
+    where table_name = 'tab_workflow' and column_name = 'state_field'`
+  workflowSchemaReady = Boolean(row)
+  return workflowSchemaReady
+}
+
 // The active workflow for a DocType (at most one), with its child rows.
 export async function getActiveWorkflow(doctype: string): Promise<Workflow | null> {
+  if (!(await hasWorkflowSchema())) return null
   const [wf] = await sql`
     select name, document_type, state_field from tab_workflow
     where document_type = ${doctype} and is_active = true
