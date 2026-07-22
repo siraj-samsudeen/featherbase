@@ -35,6 +35,7 @@
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/dom": "^10.4.0",
     "feather-testing-postgres": "^0.1.0",
+    "postgres": "^3.4.5",
     "server": "workspace:*"
   }
 }

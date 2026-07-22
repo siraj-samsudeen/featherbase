@@ -8,6 +8,9 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     fileParallelism: false,
+    // Empties the shared `tab_background_job` queue before the run, so rows
+    // orphaned by an interrupted run cannot fail the next one. See the file.
+    globalSetup: ['./test/global-setup.ts'],
     server: {
       deps: {
         // feather-testing-postgres ships raw TypeScript (`main: src/index.ts`,

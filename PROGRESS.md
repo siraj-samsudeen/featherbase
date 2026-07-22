@@ -13,6 +13,40 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-22 (follow-up) — an interrupted test run no longer poisons the next one (issue #35)
+
+`tab_background_job` was the one piece of state surviving a run. Test bodies are
+transaction-isolated by the sandbox and roll back on their own, but a run killed
+partway through (Ctrl-C, crash, restart) leaves `queued` rows committed by tests
+that DID finish and never got drained. The next run then failed
+`jobs-recurring.test.ts` with `expected 2 to be 1` — `drainJobs()` counts any job
+it runs, and JOB-003's `setup()` only clears its own `demo_heartbeat` rows, so an
+orphan of any other method inflated the count. Nothing in that failure pointed at
+stale state, so it read as a real bug or as flake.
+
+- **`apps/server/test/global-setup.ts`** empties the queue once per run, wired in
+  as `globalSetup` in both vitest configs. It runs in the main Vitest process,
+  outside any sandbox transaction, so the delete actually commits. Guarded with
+  `to_regclass` so an unmigrated database is a no-op rather than a confusing
+  hard failure.
+- Global rather than per-file on purpose: the queue is shared across files, which
+  is also why both suites set `fileParallelism: false`. This closes the same hole
+  at run scope.
+- **`postgres` added as an `apps/web` devDependency.** The web config reuses the
+  server's setup file, but Vite resolves that file's bare imports from the web
+  root, and pnpm's isolated layout will not supply `postgres` transitively via
+  the `server` dependency.
+
+Verified by reproducing the bug, not just by re-running a green suite: injected
+an orphaned `queued` row, confirmed the old config fails (`expected 4 to be 1`),
+then confirmed the same state passes with the fix. Full suite run from a
+deliberately polluted queue: server 358/358, web 10/10, both typechecks clean,
+`pnpm install --frozen-lockfile` passes.
+
+Next: nothing outstanding from #31/#35. `./init.sh` is still Debian-only and
+cannot boot on macOS — see the gotchas in the entry below for the local
+Postgres 17 setup that replaces it.
+
 ## 2026-07-22 — feather-testing-postgres is now a published npm dependency (issue #31)
 
 The harness existed twice — `packages/feather-testing-postgres` here and its
