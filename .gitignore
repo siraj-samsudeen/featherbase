@@ -7,5 +7,7 @@ dist/
 !.env.example
 test-results/
 playwright-report/
+coverage/
+.DS_Store
 apps/web/.vite/
 storage/

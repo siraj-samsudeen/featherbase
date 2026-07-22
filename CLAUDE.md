@@ -77,6 +77,13 @@ Both suites set `fileParallelism: false` on purpose: all test files share one
 database and one `tab_background_job` queue, so parallel files steal each
 other's jobs and contend on naming-series row locks. Do not turn it back on.
 
+`tab_background_job` is the one piece of state that outlives a run — a run
+killed partway through leaves `queued` rows behind, and the next run then sees
+a higher `drainJobs()` count than the test expected. A Vitest `globalSetup`
+(`apps/server/test/global-setup.ts`, shared by both suites) empties the queue
+once per run, outside any sandbox transaction. It complements
+`fileParallelism: false` rather than replacing it.
+
 - `pnpm test` — every suite
 - `pnpm smoke` — server + web smoke tests
 - `pnpm --filter server typecheck`
