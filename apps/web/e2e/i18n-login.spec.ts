@@ -1,7 +1,10 @@
 import { expect, test, type APIRequestContext } from '@playwright/test'
+import { clearTranslations, seedTranslations } from './translations'
 
 const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'I18n2 E2E Doc'
+
+let seeded: string[] = []
 const USER = 'i18n2-fr@x.com'
 const PWD = 'i18n2pw12345'
 
@@ -21,14 +24,10 @@ test.beforeAll(async ({ request }) => {
   await request.post('/api/set_password', { headers, data: { user: USER, password: PWD } })
 
   // French catalog entries for chrome.
-  for (const [src, tr] of [['Log out', 'Déconnexion'], ['Save', 'Enregistrer']]) {
-    const name = `fr2-${src.replace(/\s+/g, '-')}`
-    await request.delete(`/api/resource/Translation/${name}`, { headers })
-    await request.post('/api/save_doc', {
-      headers,
-      data: { doctype: 'Translation', doc: { name, language: 'fr', source_text: src, translated_text: tr } },
-    })
-  }
+  seeded = await seedTranslations(request, headers, 'fr', [
+    ['Log out', 'Déconnexion'],
+    ['Save', 'Enregistrer'],
+  ])
 
   // A DocType with a Date field, and a doc dated 9 March 2026.
   const dt = await request.post('/api/doctype', {
@@ -40,6 +39,12 @@ test.beforeAll(async ({ request }) => {
   // NOTE: we don't set a specific System Settings date_format here — it's a
   // shared global other parallel tests mutate. We only assert the date is
   // rendered THROUGH the formatter (any configured order), not raw ISO.
+})
+
+// These rows are committed, so leaving them behind would fail the sandboxed
+// server suite on its next run. See ./translations.ts.
+test.afterAll(async ({ request }) => {
+  await clearTranslations(request, await adminHeaders(request), seeded)
 })
 
 // I18N-002: a user's stored language is applied on a fresh login (no manual
