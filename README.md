@@ -13,7 +13,8 @@ Define a DocType once and get storage, a REST/RPC API, and a working UI from the
 | `apps/server` | Hono API — DocType engine, Frappe-compatible REST and `frappe.client.*` RPC, sessions |
 | `apps/web` | React Desk UI — metadata-driven grid, form, and detail views |
 | `packages/shared` | Types and contracts shared across server and web |
-| `packages/feather-testing-postgres` | SQL Sandbox test harness, also published as [feather-testing-postgres](https://github.com/siraj-samsudeen/feather-testing-postgres) |
+
+Tests use [feather-testing-postgres](https://github.com/siraj-samsudeen/feather-testing-postgres), the SQL Sandbox harness, consumed as a published npm dependency rather than vendored here.
 
 Frappe compatibility is deliberate: sessions ride an HttpOnly `sid` cookie alongside a Bearer token, `POST /api/method/login` returns Frappe's shape, and error bodies carry `exc_type`. Existing Frappe clients mostly work unchanged.
 

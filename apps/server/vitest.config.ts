@@ -8,5 +8,13 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     fileParallelism: false,
+    server: {
+      deps: {
+        // feather-testing-postgres ships raw TypeScript (`main: src/index.ts`,
+        // no build step). Vitest does not transform node_modules by default,
+        // so it must be inlined to be compiled like source.
+        inline: ['feather-testing-postgres'],
+      },
+    },
   },
 })

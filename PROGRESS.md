@@ -13,6 +13,50 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-22 — feather-testing-postgres is now a published npm dependency (issue #31)
+
+The harness existed twice — `packages/feather-testing-postgres` here and its
+own public repo — with byte-identical `src/`. Deleted the workspace copy and
+consumed the published package, so the two can no longer drift.
+
+- **Published `feather-testing-postgres@0.1.0` to npm.** The public repo was
+  packaging-ready but had never been published. Added the missing `types`
+  field upstream (commit `620da8c`); the `peerDependencies` fix issue #31
+  called for was already done upstream, so only `types` was outstanding.
+- **Swapped `workspace:*` → `^0.1.0`** in `apps/server` and `apps/web`,
+  deleted `packages/feather-testing-postgres`.
+- **Added `test.server.deps.inline: ['feather-testing-postgres']`** to both
+  vitest configs. Required: the package ships raw TypeScript (`main:
+  src/index.ts`, no build step), and Vitest does not transform `node_modules`
+  by default. It only worked before because pnpm symlinks workspace packages.
+- **Verified the risky part.** A testing library must share the consumer's
+  React instance; a nested copy causes "invalid hook call" or silently broken
+  hooks. `node_modules/.pnpm` holds exactly one `react@19.2.7` and one
+  `react-dom@19.2.7`, and the lockfile resolves every peer to those same
+  instances. `apps/web/vitest.config.ts`'s existing `resolve.dedupe` stays.
+
+Verified: green baseline captured BEFORE the swap, then again after —
+server 358/358 (88 files), web 10/10 (2 files), both typechecks clean. The
+swap was first validated against an `npm pack` tarball, whose shasum
+(`acc3cfe…`) matches what the registry now serves, so the tested bytes and the
+published bytes are identical.
+
+Gotchas:
+- `./init.sh` is Debian-only (`pg_lsclusters`/`pg_ctlcluster`) and cannot boot
+  on macOS. Ran against Homebrew Postgres 17 instead, creating the `postgres`
+  and `desk_client` roles and an empty `frappe_clone` that `pnpm --filter
+  server migrate` filled (50 migrations). Stayed on 17 rather than 18 to avoid
+  changing two variables at once; 17 is also Supabase's current default.
+- **An interrupted test run poisons the next one.** Orphaned `queued` rows
+  survive in the shared `tab_background_job` table and fail
+  `jobs-recurring.test.ts` with `expected 2 to be 1` — nothing in the failure
+  points at stale state. `delete from tab_background_job` clears it. Worth
+  fixing in global test setup; not done here to keep this change single-purpose.
+
+Next: consider the queue-contamination fix above, and note the package is
+source-only — if a non-Vitest consumer ever appears, give it a real `tsc`
+build with declarations instead of relying on `deps.inline`.
+
 ## 2026-07-18 — Adopted PR 2's genuinely-better pieces + merged the testing library (beyond the 126)
 
 A deliberate best-of-both pass after the PR 1 vs PR 2 verdict: PR 2 loses the

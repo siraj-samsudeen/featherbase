@@ -13,6 +13,14 @@ export default defineConfig({
     // series counters), so files run sequentially like the server suite.
     fileParallelism: false,
     testTimeout: 15000,
+    server: {
+      deps: {
+        // feather-testing-postgres ships raw TypeScript (`main: src/index.ts`,
+        // no build step). Vitest does not transform node_modules by default,
+        // so it must be inlined to be compiled like source.
+        inline: ['feather-testing-postgres'],
+      },
+    },
   },
   resolve: {
     // The testing library and the app must share one React instance.
