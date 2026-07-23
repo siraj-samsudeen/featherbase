@@ -13,6 +13,47 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-22 (follow-up 5) — the e2e suite no longer poisons `pnpm test` (issue #42)
+
+`pnpm test` was order-dependent: green on a clean database, four failures in
+`test/i18n.test.ts` after any e2e run. Reproduced before fixing — 5/5, run the
+two i18n specs, 4 failed — and the same cycle is now green.
+
+`tab_translation` carries a unique index on `(language, source_text)`. The two
+i18n e2e specs seed French strings through the running server, so those rows are
+**committed, not sandboxed**, and they were never deleted. The sandboxed server
+test then tried to seed `(fr, 'Save')` under its own `name` and hit the index —
+rollback cannot help, because the row blocking it belongs to a different,
+already-committed transaction.
+
+- **`apps/web/e2e/translations.ts`** (new) owns seeding and cleanup for both
+  specs. It clears whoever currently occupies `(language, source_text)` rather
+  than just the name the spec uses, derives the name from the pair so only one
+  row per pair can exist, and deletes what it created in `afterAll`.
+- **The seeds were also failing silently.** Both specs ignored the `save_doc`
+  status, so a seed rejected by the index looked like successful setup —
+  `i18n.spec.ts` was in fact running with two of its three translations missing
+  and passing only because `i18n-login.spec.ts`'s leftovers happened to carry
+  the same strings. The helper now throws on a bad status.
+- **`mapDbError` blamed the wrong field.** It derived the field from the
+  constraint name, which only works for our generated `tab_x_field_uq` singles;
+  a plain unique index, a composite, or the primary key all fell back to
+  reporting `name`. So this collision surfaced as "Duplicate value for **name**"
+  while `name` was fine — the single biggest reason it was hard to diagnose. It
+  now parses the columns out of Postgres's error `detail`
+  (`Key (language, source_text)=(fr, Save) already exists`) and falls back to the
+  old constraint-name logic only when `detail` is absent.
+
+Verified: both new tests confirmed **red before the fix and green after**, not
+merely green — the mapper test asserts the message names `language, source_text`,
+and `flags.test.ts` still passes, so the single-column `_uq` path is unchanged.
+Full sequence `pnpm test` → e2e → `pnpm test`: 359/359 server and 10/10 web
+**both times**, e2e 78/78, zero `tab_translation` rows left behind, both
+typechecks clean.
+
+Next: nothing outstanding from #42. #38 (verify the container path) is still
+open.
+
 ## 2026-07-22 (follow-up 4) — `init.sh` can no longer report success for someone else's server
 
 Two bugs found while verifying #33, both of which had been quietly producing
@@ -94,7 +135,7 @@ that the **e2e suite commits `tab_translation` rows that outlive the run**
 e2e run fails. Reproduced deterministically: clear the table, unit suite is
 358/358; run e2e, three rows come back. This is the same "state outlives the
 run" family as the job queue in #35 and the portal tickets fixed in #37 —
-tracked separately. **Fixed in follow-up 5 (issue #42).**
+tracked separately. **Fixed in follow-up 5 above (issue #42).**
 
 ## 2026-07-22 (follow-up 2) — the repo boots outside the container (issue #33)
 

@@ -1,7 +1,10 @@
 import { expect, test, type APIRequestContext } from '@playwright/test'
+import { clearTranslations, seedTranslations } from './translations'
 
 const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'I18n E2E Doc'
+
+let seeded: string[] = []
 
 async function adminHeaders(request: APIRequestContext) {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
@@ -21,14 +24,17 @@ test.beforeAll(async ({ request }) => {
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   // Seed a French catalog: two chrome strings + one field label.
-  for (const [src, tr] of [['Save', 'Enregistrer'], ['Log out', 'Déconnexion'], ['Priority', 'Priorité']]) {
-    const name = `fr-e2e-${src.replace(/\s+/g, '-')}`
-    await request.delete(`/api/resource/Translation/${name}`, { headers })
-    await request.post('/api/save_doc', {
-      headers,
-      data: { doctype: 'Translation', doc: { name, language: 'fr', source_text: src, translated_text: tr } },
-    })
-  }
+  seeded = await seedTranslations(request, headers, 'fr', [
+    ['Save', 'Enregistrer'],
+    ['Log out', 'Déconnexion'],
+    ['Priority', 'Priorité'],
+  ])
+})
+
+// These rows are committed, so leaving them behind would fail the sandboxed
+// server suite on its next run. See ./translations.ts.
+test.afterAll(async ({ request }) => {
+  await clearTranslations(request, await adminHeaders(request), seeded)
 })
 
 // Reset Administrator to English before + after so the test is isolated.

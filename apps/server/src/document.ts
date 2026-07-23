@@ -154,15 +154,30 @@ function applyDefaults(meta: DocTypeMeta, values: DocValues): DocValues {
 // META-010: translate Postgres constraint violations into field-wise
 // ValidationErrors instead of opaque 500s.
 function mapDbError(meta: DocTypeMeta, err: unknown): never {
-  const e = err as { code?: string; constraint_name?: string; column_name?: string }
+  const e = err as {
+    code?: string
+    constraint_name?: string
+    column_name?: string
+    detail?: string
+  }
   if (e?.code === '23505') {
+    // Postgres names the offending columns in `detail`:
+    //   Key (language, source_text)=(fr, Save) already exists.
+    // Prefer that over the constraint name. Naming the constraint only works
+    // for our generated `tab_x_field_uq` singles, and everything else — a
+    // plain unique INDEX, a composite, the primary key — used to fall back to
+    // reporting `name`, blaming a field that was not the problem. That cost
+    // real debugging time on `tab_translation_lang_src` (issue #42).
+    const detailCols = /^Key \(([^)]+)\)=/.exec(e.detail ?? '')?.[1]
     const prefix = `${tableName(meta.name)}_`
-    const field =
-      e.constraint_name?.startsWith(prefix) && e.constraint_name.endsWith('_uq')
-        ? e.constraint_name.slice(prefix.length, -'_uq'.length)
-        : 'name'
-    throw new AppError('ValidationError', `Duplicate value for ${field}`, {
-      [field]: `${field} must be unique`,
+    const fields = detailCols
+      ? detailCols.split(', ').map((c) => c.replace(/^"|"$/g, ''))
+      : e.constraint_name?.startsWith(prefix) && e.constraint_name.endsWith('_uq')
+        ? [e.constraint_name.slice(prefix.length, -'_uq'.length)]
+        : ['name']
+    const label = fields.join(', ')
+    throw new AppError('ValidationError', `Duplicate value for ${label}`, {
+      ...Object.fromEntries(fields.map((f) => [f, `${label} must be unique`])),
     })
   }
   if (e?.code === '22003' || e?.code === '22001' || e?.code === '22P02')

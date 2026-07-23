@@ -25,6 +25,21 @@ describe('I18N-001: translations', () => {
     expect(cat).toMatchObject({ Save: 'Enregistrer', Priority: 'Priorité' })
   })
 
+  // META-010 / issue #42: `tab_translation` has a unique index on
+  // (language, source_text) whose name does not match the generated
+  // `tab_x_field_uq` shape, so the mapper used to blame `name` — a field that
+  // was not the problem, and the reason this collision was hard to diagnose.
+  test('a (language, source_text) collision names those fields, not `name`', async ({ admin }) => {
+    await seedFrench(admin)
+    await expect(
+      admin.post('/api/save_doc', {
+        doctype: 'Translation',
+        // A different primary key: only the (language, source_text) pair clashes.
+        doc: { name: 'other-name', language: 'fr', source_text: 'Save', translated_text: 'X' },
+      }),
+    ).rejects.toThrow(/Duplicate value for language, source_text/)
+  })
+
   test('returns an empty catalog for the default language', async ({ admin }) => {
     await seedFrench(admin)
     expect(await getCatalog('en')).toEqual({})
