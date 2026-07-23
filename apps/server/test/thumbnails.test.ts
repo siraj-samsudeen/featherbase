@@ -94,4 +94,21 @@ describe('FILE-004: thumbnails', () => {
     const thumb = await makeThumbnailDataUrl(Buffer.from('hello, not an image'), 'text/plain')
     expect(thumb).toBeNull()
   })
+
+  // The cached Chromium handle used to be memoized unconditionally, so once the
+  // browser died under a long-lived server every later thumbnail came back null
+  // — silently, because makeThumbnailDataUrl swallows the error — and every PDF
+  // 500'd, until the server was restarted. getBrowser() now relaunches when the
+  // cached handle is no longer connected.
+  test('recovers when the cached browser has died', async () => {
+    const png = await makePng(200, 100)
+    const before = await getBrowser()
+    await before.close() // simulate the browser dying under the server
+    expect(before.isConnected()).toBe(false)
+
+    const thumb = await makeThumbnailDataUrl(png, 'image/png', 128)
+    expect(thumb).toBeTruthy()
+    expect(thumb!.startsWith('data:image/jpeg;base64,')).toBe(true)
+    expect((await getBrowser()).isConnected()).toBe(true)
+  }, 30_000)
 })

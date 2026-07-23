@@ -169,15 +169,32 @@ function resolveChromium(): string | undefined {
   return undefined
 }
 
-// Chromium is launched lazily and reused across requests.
+// Chromium is launched lazily and reused across requests — but the cached
+// handle is only reused while it is still connected. A browser can die under a
+// long-lived server (killed with the process group, OOM, a crash), and a
+// memoized promise would keep handing out the dead handle forever: PDFs would
+// 500 and thumbnails would silently come back null for the rest of the server's
+// life. A failed launch is not cached either, so the next request retries.
 let browserPromise: Promise<import('playwright').Browser> | null = null
 export async function getBrowser() {
-  if (!browserPromise) {
-    const { chromium } = await import('playwright')
-    const bin = resolveChromium()
-    browserPromise = chromium.launch(bin ? { executablePath: bin } : {})
+  if (browserPromise) {
+    try {
+      const existing = await browserPromise
+      if (existing.isConnected()) return existing
+    } catch {
+      // Previous launch failed; fall through and try again.
+    }
+    browserPromise = null
   }
-  return browserPromise
+  const { chromium } = await import('playwright')
+  const bin = resolveChromium()
+  browserPromise = chromium.launch(bin ? { executablePath: bin } : {})
+  try {
+    return await browserPromise
+  } catch (err) {
+    browserPromise = null
+    throw err
+  }
 }
 
 export async function renderPdf(html: string): Promise<Buffer> {

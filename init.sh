@@ -104,24 +104,62 @@ pnpm --filter server patches
 # --- 4. App servers (idempotent: kill stale, start fresh, wait for health) --
 # Kill by listening port — pattern-matching the tsx wrapper misses the actual
 # node child that holds the port (and its in-process meta cache).
-# macOS ships a `fuser` that rejects the `PORT/tcp` syntax, so prefer lsof.
-for port in 8000 5173; do
+
+# PIDs *listening* on a port. The -sTCP:LISTEN filter is essential: without it
+# `lsof -ti tcp:8000` also matches processes merely *connected* to 8000, so
+# cleaning the API port would kill the web dev server (its proxy holds a client
+# connection). macOS also ships a `fuser` that rejects `PORT/tcp`, hence lsof
+# first.
+listeners() {
   if command -v lsof >/dev/null; then
-    pids="$(lsof -ti "tcp:${port}" 2>/dev/null || true)"
+    lsof -ti "tcp:$1" -sTCP:LISTEN 2>/dev/null || true
   else
-    pids="$(fuser "${port}/tcp" 2>/dev/null || true)"
+    fuser "$1/tcp" 2>/dev/null || true
   fi
-  # shellcheck disable=SC2086
-  [ -n "$pids" ] && kill $pids 2>/dev/null || true
+}
+
+# True when $1 is $2 or one of its descendants.
+descends_from() {
+  p="$1"
+  while [ -n "$p" ] && [ "$p" != 0 ] && [ "$p" != 1 ]; do
+    [ "$p" = "$2" ] && return 0
+    p="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')"
+  done
+  return 1
+}
+
+for port in 8000 5173; do
+  pids="$(listeners "$port")"
+  if [ -n "$pids" ]; then
+    # shellcheck disable=SC2086
+    kill $pids 2>/dev/null || true
+    for i in $(seq 1 20); do
+      [ -z "$(listeners "$port")" ] && break
+      sleep 0.5
+    done
+    pids="$(listeners "$port")"
+    # shellcheck disable=SC2086
+    [ -n "$pids" ] && { kill -9 $pids 2>/dev/null || true; sleep 1; }
+  fi
+  if [ -n "$(listeners "$port")" ]; then
+    echo "!! port $port is still held by PID(s) $(listeners "$port" | tr '\n' ' ')"
+    echo "   after SIGTERM and SIGKILL. Another checkout is probably running the"
+    echo "   stack — stop it and retry."
+    exit 1
+  fi
 done
-pkill -f "tsx watch src/index.ts" 2>/dev/null || true
-pkill -f "vite" 2>/dev/null || true
+# Scoped to THIS checkout: a bare `pkill -f vite` also kills the dev servers of
+# any other worktree on this machine.
+pkill -f "$PWD/apps/server" 2>/dev/null || true
+pkill -f "$PWD/apps/web" 2>/dev/null || true
 sleep 2
 # `exec` so the subshell becomes the dev server rather than lingering as a
 # parent that still holds this script's stdout — on macOS such a subshell
 # outlives the script and `./init.sh | tee` never sees EOF.
 (cd apps/server && exec nohup pnpm dev >/tmp/frappe-clone-server.log 2>&1) &
+server_pid=$!
 (cd apps/web && exec nohup pnpm dev >/tmp/frappe-clone-web.log 2>&1) &
+web_pid=$!
 
 for i in $(seq 1 30); do
   curl -sf http://localhost:8000/api/ping >/dev/null 2>&1 && break
@@ -132,6 +170,21 @@ for i in $(seq 1 30); do
   curl -sf http://localhost:5173 >/dev/null 2>&1 && break
   [ "$i" = 30 ] && { echo "!! web failed to boot; see /tmp/frappe-clone-web.log"; exit 1; }
   sleep 1
+done
+
+# A port answering is NOT proof that OUR server answered it. If another
+# checkout's stack is up, ours dies with EADDRINUSE while the health checks
+# above still pass against theirs — and the script reports success for a tree
+# whose code is not the one under test. Assert we own both ports.
+for spec in "8000:$server_pid:server" "5173:$web_pid:web"; do
+  port="${spec%%:*}"; rest="${spec#*:}"; pid="${rest%%:*}"; what="${rest#*:}"
+  owner="$(listeners "$port" | head -1)"
+  if [ -z "$owner" ] || ! descends_from "$owner" "$pid"; then
+    echo "!! :$port is answering, but from PID ${owner:-none}, which is not the"
+    echo "   $what this script started (pid $pid). Something else is serving it;"
+    echo "   see /tmp/frappe-clone-$what.log"
+    exit 1
+  fi
 done
 
 # --- 5. Smoke test ----------------------------------------------------------

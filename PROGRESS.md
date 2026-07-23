@@ -13,6 +13,54 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-22 (follow-up 4) — `init.sh` can no longer report success for someone else's server
+
+Two bugs found while verifying #33, both of which had been quietly producing
+wrong results rather than failures.
+
+**`./init.sh` reported `init OK` while its own server was dead.** A dev server
+from a *different checkout* held `:8000`; this run's server died with
+`EADDRINUSE`, but the health check passed because the other process answered.
+The script then ran the smoke suite — and an e2e suite — against a tree whose
+code was not the one under test. Three separate defects fed this:
+
+- **The port kill matched clients, not just listeners.** `lsof -ti tcp:8000`
+  also returns processes merely *connected* to 8000, so cleaning the API port
+  would have killed the web dev server, whose proxy holds a client connection
+  to it. Verified directly: `lsof -ti tcp:8000` returned the vite pid. Now uses
+  `-sTCP:LISTEN`.
+- **A single SIGTERM with a fixed `sleep 2` was assumed to work.** Now waits for
+  the port to actually clear, escalates to SIGKILL, and *fails loudly* if the
+  port is still held rather than starting a server that cannot bind.
+- **A responding port was treated as proof of our own server.** After boot the
+  script now asserts the process listening on each port is a descendant of the
+  one it started, naming the intruder if not.
+
+Also scoped the leftover-process cleanup: `pkill -f vite` killed the dev servers
+of every other worktree on the machine. It now matches `$PWD/apps/*`.
+
+**`getBrowser()` cached a dead Chromium forever.** `browserPromise` was memoized
+unconditionally, so once the browser died under a long-lived server — killed
+with a process group, OOM, crash — every later call got the dead handle. PDFs
+would 500 and thumbnails would come back `null` *silently*, because
+`makeThumbnailDataUrl` swallows the error, until someone restarted the server.
+This is what made `thumbnail.spec.ts` fail reproducibly against a long-running
+server while passing against a fresh one. `getBrowser()` now checks
+`isConnected()` before reuse and does not cache a failed launch.
+
+Verified: the new test in `thumbnails.test.ts` closes the browser and asserts the
+next thumbnail still renders — confirmed failing without the fix and passing with
+it, not just passing after. `descends_from` was exercised both ways against the
+live process tree (accepts the real ancestor, rejects the web server and pid 1).
+`./init.sh` boots clean with no `EADDRINUSE` and both ports owned by this
+worktree. Suites: server 359/359, web 10/10, e2e 78/78, typecheck clean.
+
+Gotcha for the next session — **the e2e suite poisons `pnpm test`**, filed
+separately as issue #42. `tab_translation` carries a unique index on
+`(language, source_text)`; `apps/web/e2e/i18n.spec.ts` and `i18n-login.spec.ts`
+commit rows there and never delete them, so the sandboxed `i18n.test.ts` cannot
+seed `(fr, 'Save')` afterwards and four tests fail.
+
 ## 2026-07-22 (follow-up 3) — the database is called `featherbase` (issue #32)
 
 The Postgres database kept the project's former working name. Renamed to
@@ -46,7 +94,7 @@ that the **e2e suite commits `tab_translation` rows that outlive the run**
 e2e run fails. Reproduced deterministically: clear the table, unit suite is
 358/358; run e2e, three rows come back. This is the same "state outlives the
 run" family as the job queue in #35 and the portal tickets fixed in #37 —
-tracked separately.
+tracked separately. **Fixed in follow-up 5 (issue #42).**
 
 ## 2026-07-22 (follow-up 2) — the repo boots outside the container (issue #33)
 
