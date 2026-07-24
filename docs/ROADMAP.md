@@ -3,6 +3,16 @@
 Goal: replicate the features of [Frappe Framework](https://frappe.io/framework)
 ([source](https://github.com/frappe/frappe)).
 
+> **Status (2026-07): the stack described below is superseded.** The
+> "React + Supabase" choice was never implemented — the project went to
+> Convex ([ADR 0001](adr/0001-stack-convex-react-vite.md)), then to the
+> current **React + Hono + Postgres** stack
+> ([ADR 0006](adr/0006-stack-react-hono-postgres.md)). Read the Supabase
+> mapping table as historical; the phased build plan below remains the
+> sequencing guide, with each Supabase-provided capability satisfied by a
+> local equivalent (native RLS, server-issued JWTs, server websockets,
+> disk-backed storage).
+
 ## Strategic options
 
 Frappe is ~1M lines of code built over 15+ years. Pick the goal before picking
