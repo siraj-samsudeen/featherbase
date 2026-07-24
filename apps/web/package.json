@@ -7,7 +7,8 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "smoke": "playwright test e2e/smoke.spec.ts",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",

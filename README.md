@@ -29,6 +29,7 @@ pnpm install
 ./init.sh        # provision the database
 pnpm test        # run every suite
 pnpm smoke       # server + web smoke tests
+pnpm test:all    # every suite + Playwright e2e — needs both servers up (./init.sh)
 ```
 
 ## Orientation

@@ -1,0 +1,176 @@
+# CI: unit/component suites and the Playwright e2e suite, in parallel jobs.
+#
+# Each job gets its own Postgres 17 service container. The service's
+# POSTGRES_DB/POSTGRES_USER env replaces the role/database bootstrap that
+# init.sh performs on a developer machine (init.sh assumes brew or
+# pg_ctlcluster, neither of which applies here). Everything else the app
+# needs in the database — including the `desk_client` role the RLS suite
+# connects as (migration 0010) and the Ticket demo seeds the e2e suite
+# expects (migration 0047) — is created by `pnpm --filter server migrate`
+# + `patches`, exactly as init.sh runs them.
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Matches the default in apps/server/src/config.ts and init.sh.
+  DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/featherbase
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: featherbase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `version` input: pnpm/action-setup reads the `packageManager`
+      # field from package.json, so the CI pnpm always matches the repo.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The server suite renders real PDFs (test/print-pdf.test.ts →
+      # src/print.ts), which launches Chromium through the server's own
+      # `playwright` dependency. CHROMIUM_PATH stays unset so Playwright
+      # resolves the browser it installed itself (see CLAUDE.md).
+      - name: Install Chromium for server-side PDF tests
+        run: pnpm --filter server exec playwright install --with-deps chromium
+
+      - name: Typecheck server
+        run: pnpm --filter server typecheck
+
+      - name: Typecheck web
+        run: pnpm --filter web typecheck
+
+      - name: Migrate and patch database
+        run: |
+          pnpm --filter server migrate
+          pnpm --filter server patches
+
+      # Both vitest suites (server API tests, web component tests) run the
+      # server in-process against the service database. Their configs pin
+      # fileParallelism: false and a shared globalSetup that empties
+      # tab_background_job — do not parallelize around them here.
+      - name: Run unit and component suites
+        run: pnpm -r test
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: featherbase
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter web exec playwright install --with-deps chromium
+
+      # Creates the schema, the Administrator login (password 'admin' by
+      # default — what the e2e specs use), the desk_client role, and the
+      # Ticket demo data the ticketing specs assert on.
+      - name: Migrate and patch database
+        run: |
+          pnpm --filter server migrate
+          pnpm --filter server patches
+
+      # Mirrors init.sh: both dev servers in the background, then wait for
+      # :8000 (API health) and :5173 (vite, which proxies /api to :8000).
+      # Output goes to files so the step's stdout closes and the processes
+      # survive into the next step.
+      - name: Boot API and web servers
+        run: |
+          pnpm --filter server dev > /tmp/featherbase-server.log 2>&1 &
+          pnpm --filter web dev > /tmp/featherbase-web.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8000/api/ping >/dev/null 2>&1 && break
+            if [ "$i" = 60 ]; then
+              echo "!! server failed to boot"
+              cat /tmp/featherbase-server.log
+              exit 1
+            fi
+            sleep 1
+          done
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:5173 >/dev/null 2>&1 && break
+            if [ "$i" = 60 ]; then
+              echo "!! web failed to boot"
+              cat /tmp/featherbase-web.log
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "server :8000 and web :5173 are up"
+
+      # playwright.config.ts pins workers: 1 (specs share one server and
+      # database) — keep it. The trace flag is CI-only so failures leave
+      # something inspectable in test-results/ for the artifact below.
+      - name: Run e2e suite
+        run: pnpm --filter web e2e --trace retain-on-failure
+
+      - name: Show server logs on failure
+        if: failure()
+        run: |
+          echo "=== server log (last 200 lines) ==="
+          tail -n 200 /tmp/featherbase-server.log || true
+          echo "=== web log (last 200 lines) ==="
+          tail -n 200 /tmp/featherbase-web.log || true
+
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            apps/web/test-results/
+            apps/web/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
