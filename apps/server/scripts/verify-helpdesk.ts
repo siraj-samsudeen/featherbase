@@ -115,7 +115,12 @@ async function main() {
   const mine = await json<{ data: { name: string }[]; total: number }>(
     await req('cust1@acme.test', '/api/resource/HD%20Ticket'),
   )
-  ok(mine.total === 1 && mine.data[0].name === t1.name, 'customer list shows only own tickets')
+  // The demo seed may have filed sample tickets as this customer — assert
+  // scoping (own ticket present, the other customer's absent), not a count.
+  ok(
+    mine.data.some((d) => d.name === t1.name) && !mine.data.some((d) => d.name === t2.name),
+    'customer list shows only own tickets',
+  )
   ok((await req('cust1@acme.test', `/api/resource/HD%20Ticket/${t2.name}`)).status === 403, "another customer's ticket is 403")
 
   console.log('\n3. Workflow on the bound status field')

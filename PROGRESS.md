@@ -13,6 +13,49 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-24 — one ticketing system: HD Ticket promoted to a migration, `Ticket` retired (issue #45)
+
+The repo carried two parallel ticketing demos (audit #44): the migration-seeded
+`Ticket` (TICK-, tested everywhere, basic) and the script-seeded `HD Ticket`
+(HDT-, the richer helpdesk — status-field workflow, SLA, assignment, web form,
+portal — but guarded by nothing). Consolidated onto HD Ticket:
+
+- **`0051_helpdesk.ts`** seeds the helpdesk *structure* (roles, DocType — now
+  with proper field labels — DocPerms, `HD Ticket Flow` on `state_field:
+  'status'`, Email Account/Rule, Server Script, SLA, Web Form). Skips cleanly
+  on databases the old seed script already populated. Demo *content* stays out
+  of the migration chain (audit #49): `seed-helpdesk.ts` now seeds only demo
+  users, the round-robin Assignment Rule (it links those users), and five
+  sample tickets filed through the public web form; `reset-helpdesk.ts`
+  removes exactly that content and leaves the structure.
+- **`0052_drop_ticketing.ts`** removes `Ticket`/`Ticket Comment` (workflow,
+  roles, perms, tables) from existing databases; `0047_ticketing.ts` is
+  deleted so fresh databases never create them.
+- **Tests ported and strengthened:** `test/helpdesk.test.ts` (9 tests: HDT
+  series, SLA stamping, server-script defaults, if_owner scoping, workflow
+  role gates + resolution condition + status save-protection, resolved-email
+  queueing, web-form owner attribution), `web/test/helpdesk.test.tsx` (5 MECE
+  component states), `e2e/ticketing.spec.ts` (self-seeding, cleans up after
+  itself). Tests create their own documents — nothing relies on demo content.
+- **Two framework findings while porting.** (1) A `can_create`-without-
+  `can_write` DocPerm can never populate fields on insert —
+  `stripUnwritableFields` strips to WRITE permlevels — so the Comment/File
+  collab grants now include `can_write` (the old seed's create-only grants
+  were silently broken for agents). (2) `tab_email_queue` stores the raw
+  template; rendering happens at delivery, so queue-level assertions must
+  expect `{{ doc.name }}` unrendered.
+- `verify-helpdesk.ts`'s "customer sees only own tickets" check now asserts
+  scoping membership, not an exact count (sample tickets are owned by the
+  demo customers).
+
+Verified: fresh migrations applied on the dev DB (0051 built the structure,
+0052 dropped the old system); `pnpm test` → e2e (78) → `pnpm test` green both
+times; `seed:helpdesk` then `verify:helpdesk` — **all 32 checks pass**;
+typecheck clean.
+
+Next: merge the CI (#46) and newcomer-docs (#47) branches; then the test
+reorganization (#48) can drop its ticket-file references.
+
 ## 2026-07-22 (follow-up 5) — the e2e suite no longer poisons `pnpm test` (issue #42)
 
 `pnpm test` was order-dependent: green on a clean database, four failures in
