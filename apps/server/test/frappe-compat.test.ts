@@ -153,6 +153,35 @@ describe('Frappe compat: frappe.client.* RPC namespace', () => {
     ).rejects.toMatchObject({ status: 401 })
   })
 
+  test('get_value: numeric-looking docnames and dict filters both resolve', async ({
+    admin,
+  }) => {
+    // Hash names are hex and can come out all-digits; a docname string like
+    // "1234567890" must not be JSON-parsed into a number and misread as a
+    // filter list. Pin it with prompt naming.
+    await admin.post('/api/doctype', {
+      name: DT + ' Prompt',
+      autoname: 'prompt',
+      fields: [{ fieldname: 'title', fieldtype: 'Data' }],
+    })
+    await admin.post('/api/save_doc', {
+      doctype: DT + ' Prompt',
+      doc: { name: '1234567890', title: 'numeric name' },
+    })
+    const byName = await admin.post<{ message: { title: string } }>(
+      '/api/method/frappe.client.get_value',
+      { doctype: DT + ' Prompt', filters: '1234567890', fieldname: 'title' },
+    )
+    expect(byName.message.title).toBe('numeric name')
+
+    // Frappe's dict filter form.
+    const byDict = await admin.post<{ message: { name: string } }>(
+      '/api/method/frappe.client.get_value',
+      { doctype: DT + ' Prompt', filters: { title: 'numeric name' }, fieldname: 'name' },
+    )
+    expect(byDict.message.name).toBe('1234567890')
+  })
+
   test('get_doctype returns the meta bundle with child-table metas', async ({ admin }) => {
     await admin.post('/api/doctype', {
       name: DT + ' Child',

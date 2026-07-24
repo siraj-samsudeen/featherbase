@@ -55,16 +55,26 @@ whitelist('frappe.client.get_count', async ({ args, user }) => {
   return countDocs(str(args, 'doctype'), (asJson(args.filters) as Filter[]) ?? [], user.name)
 })
 
-// Frappe returns { <fieldname>: <value> } for get_value.
+// Frappe returns { <fieldname>: <value> } for get_value. `filters` may be a
+// docname string, a dict { field: value }, or a filter list — and a docname
+// that LOOKS numeric must stay a docname: hash names are 10 hex chars, so
+// "1234567890" (or "12345e6789") JSON-parses to a number, and the old
+// string-check then fed it to getList as a filter list and crashed.
 whitelist('frappe.client.get_value', async ({ args, user }) => {
   const doctype = str(args, 'doctype')
   const fieldname = str(args, 'fieldname')
-  const filters = asJson(args.filters)
-  const name =
-    typeof filters === 'string'
-      ? filters
-      : ((await getList(doctype, { filters: (filters as Filter[]) ?? [], limit_page_length: 1 }, user.name))
-          .data[0]?.name as string | undefined)
+  const parsed = asJson(args.filters)
+  const filterList = Array.isArray(parsed)
+    ? (parsed as Filter[])
+    : parsed && typeof parsed === 'object'
+      ? (Object.entries(parsed).map(([field, value]) => [field, '=', value]) as Filter[])
+      : null
+  const name = filterList
+    ? ((await getList(doctype, { filters: filterList, limit_page_length: 1 }, user.name))
+        .data[0]?.name as string | undefined)
+    : args.filters != null && args.filters !== ''
+      ? String(args.filters)
+      : undefined
   if (!name) return null
   const doc = await getDoc(doctype, name, user.name)
   return { [fieldname]: doc[fieldname] ?? null }
