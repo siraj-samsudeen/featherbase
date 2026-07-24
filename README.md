@@ -33,11 +33,19 @@ pnpm smoke       # server + web smoke tests
 
 ## Orientation
 
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the life of a `save_doc` request, the metadata engine, and a map of the source tree
+- [docs/TUTORIAL.md](docs/TUTORIAL.md) — build your first DocType: a hands-on todo-list exercise
+- [docs/TESTING.md](docs/TESTING.md) — the SQL-sandbox test model and the three test layers
+- [docs/GLOSSARY.md](docs/GLOSSARY.md) — Frappe vocabulary for newcomers
 - [docs/VISION.md](docs/VISION.md) — what this is for and who it serves
 - [docs/ROADMAP.md](docs/ROADMAP.md) — replication strategy and sequencing
 - [docs/adr/](docs/adr/) — architecture decisions, including [ADR 0006](docs/adr/0006-stack-react-hono-postgres.md) on the move to Postgres
 - [docs/research/](docs/research/) — Frappe architecture, Glide, and stack studies
 - [docs/archive/convex-capabilities/](docs/archive/convex-capabilities/) — the retired Convex implementation's specs
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests, and working conventions.
 
 ## History
 
