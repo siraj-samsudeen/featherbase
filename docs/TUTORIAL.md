@@ -1,9 +1,9 @@
 # Your first DocType: build a todo list
 
-> **Note:** the steps below were derived by reading the code (file paths are
-> cited throughout) and will be verified against a live instance shortly. If
-> a step doesn't match what you see, trust the running app and please file an
-> issue.
+> **Note:** every HTTP step below (DocType creation, generated table, naming
+> series, optimistic-lock update, Server Script validation, and the stretch
+> test) has been verified against a live instance. If a step doesn't match
+> what you see, trust the running app and please file an issue.
 
 In this exercise you build a small task tracker from scratch — model, API,
 and UI — without writing a line of application code. That's the point of the
