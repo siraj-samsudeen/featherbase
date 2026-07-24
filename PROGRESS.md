@@ -342,7 +342,7 @@ architecture war but four of its ideas were superior and are now adopted here.
 against a 16-point ticketing checklist. PR 1 (this codebase) wins decisively —
 PR 2 (NestJS/Drizzle/JSONB) has a solid, honestly-reported metadata core but
 no workflow/assignments/email/comments/attachments/web-forms/realtime, plus an
-owner-stamping bug that breaks if_owner. Full write-up: `docs/PR-COMPARISON.md`.
+owner-stamping bug that breaks if_owner. Full write-up: `docs/archive/PR-COMPARISON.md`.
 Features missing in BOTH (now built here): Assignment Rules, SLAs, workflow
 state binding. Still open in both: inbound email → ticket.
 
@@ -391,7 +391,7 @@ frontend changes (list/kanban/form screenshots verified via Playwright).
 - `workflow.test.ts` updated: docs under a workflow now START at the initial
   state (was NULL), per WF-003 semantics.
 - Next up: inbound email → ticket (the one ticketing gap still open in both
-  implementations), and PR 2 can be closed (see PR-COMPARISON.md).
+  implementations), and PR 2 can be closed (see docs/archive/PR-COMPARISON.md).
 
 ## 2026-07-17 — Legacy server suite migrated to the SQL sandbox (74/79 files)
 

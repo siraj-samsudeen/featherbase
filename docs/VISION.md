@@ -29,7 +29,7 @@ We ran production systems on Frappe. What we keep and what we fix:
 
 - **The promotion path.** Users start runtime tables, hit complexity, and need to convert them to code. Frappe offers this exit but it was buggy and unreliable. In Featherbase, promotion is a metadata/codegen change with **zero data movement**, testable as a round-trip property. This is a design invariant, not a feature.
 - The fragmented automation story (five doctypes, five condition syntaxes, five log locations) — replaced by one Flow object with Glide's three-primitive grammar (Action / Loop / Condition) on a durable execution substrate
-- The dated UI stack and Python/bench operational weight — replaced by React + Vite + Convex
+- The dated UI stack and Python/bench operational weight — replaced by a modern TypeScript stack (React + Hono + Postgres; see [ADR 0006](adr/0006-stack-react-hono-postgres.md))
 - Developer-facing-only logs — replaced by builder-facing run history with inspectable per-step payloads
 
 ## What Glide proved (and where we go past it)

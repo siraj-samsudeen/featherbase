@@ -42,6 +42,11 @@ Featherbase is built on **React + Hono + Postgres**, as a pnpm workspace:
 | `packages/shared` | Types and contracts shared across server and web |
 | `packages/feather-testing-postgres` | SQL Sandbox test harness (also published standalone) |
 
+> *Update 2026-07-22:* `packages/feather-testing-postgres` was extracted to
+> [its own repo](https://github.com/siraj-samsudeen/feather-testing-postgres)
+> and is now consumed as a published npm dependency; it is no longer a
+> workspace package.
+
 The Convex implementation is retired. Its history is preserved on the
 `archive/convex-v1` tag, and its capability specs live under
 [docs/archive/convex-capabilities/](../archive/convex-capabilities/).

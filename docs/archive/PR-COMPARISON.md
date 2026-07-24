@@ -1,5 +1,14 @@
 # PR 1 vs PR 2 — comparison verdict (2026-07-17)
 
+> **Historical decision memo, preserved verbatim.** The verdict was executed:
+> PR 1 was merged and PR 2 closed. Two details drifted after this was written:
+> the helpdesk DocType described below was later renamed `Ticket` → `HD Ticket`
+> (naming series `HDT-.#####`, seeded by `apps/server/scripts/seed-helpdesk.ts`)
+> to avoid colliding with the migration-seeded `Ticket` demo app
+> (`TICK-.####`, migration `0047_ticketing.ts`) — so where this memo says
+> "Ticket DocType (TICK-.##### series)" with a `status`-field workflow, read
+> `HD Ticket`/`HDT`. Test counts are also point-in-time snapshots.
+
 Two parallel implementations of the same Frappe-clone prompt were evaluated
 hands-on: each was booted and driven over real HTTP against a 16-point
 "could this host a metadata-only ticketing system?" checklist (runtime

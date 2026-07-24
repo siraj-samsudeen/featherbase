@@ -4,7 +4,7 @@ A free and open-source, metadata-driven app platform in TypeScript — Frappe's 
 
 Define a DocType once and get storage, a REST/RPC API, and a working UI from the same definition — the idea that makes [Frappe](https://frappe.io/framework) productive, on a stack you can host anywhere.
 
-**Status:** active development. The DocType engine, the Frappe-compatible API surface, auth, and the metadata-driven Desk UI are working, exercised by a 320-test server suite and a component suite. See [PROGRESS.md](PROGRESS.md) for the current state and [docs/ROADMAP.md](docs/ROADMAP.md) for where it's going.
+**Status:** active development. The DocType engine, the Frappe-compatible API surface, auth, and the metadata-driven Desk UI are working, exercised by a large server suite run against a real Postgres, plus component and Playwright e2e suites. See [PROGRESS.md](PROGRESS.md) for the current state and [docs/ROADMAP.md](docs/ROADMAP.md) for where it's going.
 
 ## How it works
 
@@ -20,7 +20,7 @@ Frappe compatibility is deliberate: sessions ride an HttpOnly `sid` cookie along
 
 ## Testing
 
-Every test runs inside a real Postgres transaction that is rolled back at the end — Phoenix's Ecto SQL Sandbox model. No mocks, no fixture files, no cleanup code, and the production code path is what gets exercised. The harness is a workspace package and is published standalone for use outside this repo.
+Every test runs inside a real Postgres transaction that is rolled back at the end — Phoenix's Ecto SQL Sandbox model. No mocks, no fixture files, no cleanup code, and the production code path is what gets exercised. The harness lives in [its own repo](https://github.com/siraj-samsudeen/feather-testing-postgres) and is consumed here as a published npm dependency.
 
 ## Getting started
 
