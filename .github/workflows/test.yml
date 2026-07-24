@@ -5,9 +5,9 @@
 # init.sh performs on a developer machine (init.sh assumes brew or
 # pg_ctlcluster, neither of which applies here). Everything else the app
 # needs in the database — including the `desk_client` role the RLS suite
-# connects as (migration 0010) and the Ticket demo seeds the e2e suite
-# expects (migration 0047) — is created by `pnpm --filter server migrate`
-# + `patches`, exactly as init.sh runs them.
+# connects as (migration 0010) — is created by `pnpm --filter server
+# migrate` + `patches`, exactly as init.sh runs them. The e2e specs seed
+# their own documents.
 name: test
 
 on:
@@ -115,8 +115,8 @@ jobs:
         run: pnpm --filter web exec playwright install --with-deps chromium
 
       # Creates the schema, the Administrator login (password 'admin' by
-      # default — what the e2e specs use), the desk_client role, and the
-      # Ticket demo data the ticketing specs assert on.
+      # default — what the e2e specs use), and the desk_client role. The
+      # e2e specs create the documents they assert on.
       - name: Migrate and patch database
         run: |
           pnpm --filter server migrate
