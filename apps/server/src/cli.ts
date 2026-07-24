@@ -119,7 +119,7 @@ async function cmdConsole() {
     return
   }
   const repl = await import('node:repl')
-  console.log('frappe-clone console — document API in scope: sql, getDoc, saveDoc, getList, getMeta, createDocType')
+  console.log('featherbase console — document API in scope: sql, getDoc, saveDoc, getList, getMeta, createDocType')
   const server = repl.start({ prompt: 'fc> ', useGlobal: true })
   Object.assign(server.context, context)
   await new Promise<void>((resolve) => server.on('exit', resolve))

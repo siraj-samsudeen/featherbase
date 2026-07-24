@@ -156,19 +156,19 @@ sleep 2
 # `exec` so the subshell becomes the dev server rather than lingering as a
 # parent that still holds this script's stdout — on macOS such a subshell
 # outlives the script and `./init.sh | tee` never sees EOF.
-(cd apps/server && exec nohup pnpm dev >/tmp/frappe-clone-server.log 2>&1) &
+(cd apps/server && exec nohup pnpm dev >/tmp/featherbase-server.log 2>&1) &
 server_pid=$!
-(cd apps/web && exec nohup pnpm dev >/tmp/frappe-clone-web.log 2>&1) &
+(cd apps/web && exec nohup pnpm dev >/tmp/featherbase-web.log 2>&1) &
 web_pid=$!
 
 for i in $(seq 1 30); do
   curl -sf http://localhost:8000/api/ping >/dev/null 2>&1 && break
-  [ "$i" = 30 ] && { echo "!! server failed to boot; see /tmp/frappe-clone-server.log"; exit 1; }
+  [ "$i" = 30 ] && { echo "!! server failed to boot; see /tmp/featherbase-server.log"; exit 1; }
   sleep 1
 done
 for i in $(seq 1 30); do
   curl -sf http://localhost:5173 >/dev/null 2>&1 && break
-  [ "$i" = 30 ] && { echo "!! web failed to boot; see /tmp/frappe-clone-web.log"; exit 1; }
+  [ "$i" = 30 ] && { echo "!! web failed to boot; see /tmp/featherbase-web.log"; exit 1; }
   sleep 1
 done
 
@@ -182,7 +182,7 @@ for spec in "8000:$server_pid:server" "5173:$web_pid:web"; do
   if [ -z "$owner" ] || ! descends_from "$owner" "$pid"; then
     echo "!! :$port is answering, but from PID ${owner:-none}, which is not the"
     echo "   $what this script started (pid $pid). Something else is serving it;"
-    echo "   see /tmp/frappe-clone-$what.log"
+    echo "   see /tmp/featherbase-$what.log"
     exit 1
   fi
 done
