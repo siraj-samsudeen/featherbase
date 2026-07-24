@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "smoke": "pnpm --filter server test:smoke && pnpm --filter web smoke",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "test:all": "pnpm -r test && pnpm --filter web e2e"
   },
   "packageManager": "pnpm@10.33.0"
 }

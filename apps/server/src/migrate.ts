@@ -5,6 +5,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { sql } from './db'
+import { invalidateMeta } from './meta'
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
 
@@ -36,6 +37,12 @@ export async function runMigrations() {
       await mod.up()
       await sql`insert into migration (name) values (${file})`
     }
+    // Migrations may alter DocType metadata with raw SQL (e.g. 0046 adds
+    // Workflow Transition.condition); drop the per-process meta cache so the
+    // NEXT migration validates against what is actually in the database. A
+    // fresh-database run otherwise crashes at the first save that uses a
+    // field added this way — caught by CI's first-ever run.
+    invalidateMeta()
     console.log(`applied ${file}`)
   }
   console.log(`migrations up to date (${files.length} total)`)
