@@ -13,6 +13,23 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-26 (v10) — execution plan resequenced per owner; harness lineage documented
+
+Owner feedback: start with the concrete slices, refactor later. Plan
+updated: **M1** dbt seeds → native DocTypes + PR-based CSV egress (zero
+framework change), **M2** the external CRUD manager's tables move into
+DocTypes and the tool retires, **M3** MotherDuck warehouse browser —
+which is where the storage seam arrives, but only its **read-only half**
+(getList/getDoc/count/introspect), explicitly citing `tenancy.ts` as the
+bolt-on anti-pattern the browser must not repeat, **M4** full seam +
+D2 table_name migration, now informed by a real second backend, **M5**
+egress config generation (byte-match) + reassess. Added §3b: the
+harness (`harness/` — frozen features.json, coder/evaluator prompts,
+run.sh loop) is the *lineage*, not extended: milestone feather-specs in
+docs/specs/ are the successor artifact (capability IDs = feature IDs,
+EARS criteria = verify fields, DoD = evaluator checklist; CLAUDE.md
+protocol unchanged). Docs only. Rides PR #60.
+
 ## 2026-07-26 (v9) — execution plan; main merged in
 
 - **Merged `origin/main`** (PR #58 app-platform gaps) into the docs

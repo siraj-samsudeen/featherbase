@@ -41,67 +41,100 @@ function.
 5. **A visible NOT-NOW list** (kept below). Scope creep is rejected by
    pointing at it, not by argument.
 
-## 2. The three real use cases, in rising write-risk order
+## 2. The real use cases (all available today)
 
-Available today, each forcing a different slice of the design doc:
+- **A. dbt seeds → MDM** — mapping/seed tables hand-edited in the dbt
+  repo *only because there was no edit UI*. They become plain native
+  DocTypes; a generator emits the seed CSVs (and later the
+  bronze/silver config) back into git. **Needs zero framework change** —
+  native DocTypes and their whole engine already exist.
+- **B. The external CRUD manager retires** — tables currently managed
+  through a separate CRUD tool move into DocTypes (import → edit in
+  Desk → retire the tool). Also native; a second low-risk write case
+  that grows the MDM's real content.
+- **C. Warehouse browser** — the MotherDuck warehouse (bronze/silver/
+  gold), currently SQL-only, becomes browsable read-only in the Desk.
+  First *foreign* source: needs the read-only half of the storage seam.
+- **D. Report-feedback API** — already live: main records a report
+  server POSTing feedback over REST as the first external consumer
+  (it drove #54–#57). The proof pattern — keep feeding it use cases.
 
-- **A. Warehouse browser** — a large MotherDuck warehouse serving
-  clients, currently SQL-only. Read-only: lowest risk, immediate client
-  value. Forces: connection registry, `duckdb` driver, foreign mode,
-  reflection, read-only Desk (spec 0001's read-only slice; §3.3 v7).
-- **B. dbt seeds → MDM** — mapping/seed tables hand-edited in the dbt
-  repo, wanting a governed editing UI. First *writes*, tiny tables.
-  Forces: native/adopted DocTypes with audit columns, D20's generator
-  emitting the seed CSVs back into git.
-- **C. Report-feedback API** — already live: main's app-platform entry
-  records a report server POSTing feedback rows over REST as
-  Featherbase's first external consumer (issues #54–#57 came from it).
-  Forces: nothing new — it is the *proof pattern*: real consumers find
-  real gaps; keep feeding it use cases.
+## 3. Milestones (concrete value first; refactor when informed)
 
-## 3. Milestones
+Sequencing principle, per the owner: start with the two concrete,
+fully-ownable slices that need no framework surgery; meet the seam only
+when the browser forces it; do the *full* refactor last, informed by a
+real second backend instead of speculation.
 
-Each = one feather-spec, ~5–10 features, every feature independently
-verifiable. If a spec exceeds ~10 features, cut the milestone, not the
-verification.
+Each milestone = one feather-spec, ~5–10 features, every feature
+independently verifiable. If a spec exceeds ~10 features, cut the
+milestone, not the verification.
 
-**M0 — the seam refactor (framework, kept minimal).**
-`table_name` moves into DocType metadata with derived default (D2);
-the storage-adapter interface extracted with `postgres` as the only
-driver (D5/D7), dispatched per-DocType. *Verify: the entire existing
-suite passes unchanged; zero behavior change; `tableName()` callers all
-route through metadata.* This is the only permitted "pure framework"
-milestone, and it exists because A and B both need the seam.
-
-**M1 — warehouse browser MVP (use case A).**
-Register a MotherDuck connection (env-var token), `duckdb` driver
-(read + introspect capabilities only), reflect one bronze schema into
-read-only DocTypes grouped as a Desk module, generic list/form with
-filters/sort/pagination pushed down; spec 0001's read-only-source and
-allowlist rules. *Verify: browse a real client bronze table in the
-Desk; a permission-less user gets 403; a dbt-driven table reshape shows
-up in drift re-sync; no DDL was ever issued (schema snapshot before ==
-after).*
-
-**M2 — seeds become master data (use case B).**
+**M1 — seeds become master data (use case A; no framework change).**
 Pick 2–3 real dbt seed tables. Recreate as native DocTypes (audit
-columns on), edit rows in the Desk, and a D20 generator emits the seed
-CSVs (byte-stable format) into the dbt repo via branch + PR. *Verify:
-`dbt build` consumes the generated seeds with zero diff-noise; a Desk
-edit arrives as a reviewable PR authored as the acting user; the old
-hand-edited files are retired.*
+columns on), import current rows, edit in the Desk; a D19/D20 generator
+emits the seed CSVs (byte-stable format) into the dbt repo via
+branch + PR. *Verify: `dbt build` consumes the generated seeds with
+zero diff-noise; a Desk edit arrives as a reviewable PR authored as the
+acting user; the old hand-edited files are retired.*
 
-**M3 — egress config generation (use case B extended).**
-From the same DocTypes, generate the bronze/silver onboarding config
-(current CSV format) and dbt `sources.yml` + staging models. *Verify:
-generated artifacts byte-match the hand-written ones for the migrated
-tables (or the diff is an agreed improvement); regeneration after a
-DocType field-add updates them correctly.*
+**M2 — the CRUD manager's tables come home (use case B).**
+Inventory what the external CRUD tool manages; recreate (or, if the
+tables live outside our Postgres, adopt) as DocTypes; import; permission
+them; retire the tool for those tables. *Verify: every workflow the CRUD
+tool served is demonstrated in the Desk or over the REST API; row counts
+and spot-checked values match post-import; the tool is switched off for
+the migrated tables.*
 
-**M4 — reassess against the design doc.** Only now consider the next
-axis investments (saved views for M1's analysts, module-admin roles,
-SAP push binding, effectivity). Each becomes its own spec through the
-same loop.
+**M3 — warehouse browser MVP (use case C; the seam arrives, half-size).**
+This milestone cannot be built honestly without a seam — and the repo
+already contains the cautionary tale: PLAT-008's `tenancy.ts` bolted on
+a parallel path that reimplements table creation instead of reusing the
+engine. **The browser must not repeat that.** So M3 introduces the
+**read-only adapter seam only** — `getList / getDoc / count /
+introspect` dispatched per-DocType — with the postgres driver as the
+default and a `duckdb`/MotherDuck driver (env-var token) as the second
+implementation; Data Source registry + reflection of one bronze schema
+into read-only DocTypes grouped as a Desk module; spec 0001's read-only
+and allowlist rules. *Verify: browse a real client bronze table in the
+Desk; permission-less user gets 403; a dbt reshape shows in drift
+re-sync; schema snapshot of the warehouse before == after (no DDL
+ever); existing suite still green (the read path of local DocTypes now
+flows through the same seam).*
+
+**M4 — the full storage seam (the refactor, now informed).**
+With two real backends behind the read seam, extend it to writes and
+ownership modes, and migrate `tableName()` into per-DocType metadata
+(D2, D5, D7) — shaped by what M3 actually needed rather than
+speculation. *Verify: entire suite passes; zero behavior change for
+native DocTypes; the M1/M2 DocTypes keep working untouched.*
+
+**M5 — egress config generation + reassess.**
+From the M1/M2 DocTypes, generate the bronze/silver onboarding config
+(current CSV format) and dbt `sources.yml` + staging models; *verify by
+byte-matching the hand-written configs* (or an agreed improvement).
+Then reassess against the design doc before any new axis investment
+(saved views for analysts, module-admin roles, SAP push, effectivity).
+
+## 3b. Relationship to the harness (lineage, not extension)
+
+The original build ran on `harness/` — features.json (126 entries, each
+with its own end-to-end `verify` criterion and deps; agents may only
+flip `status`), the CLAUDE.md session protocol, PROGRESS handoffs,
+`init.sh` boot-proof, a coder prompt (one feature per session) and an
+adversarial evaluator prompt that re-drives recently-passed features
+and flips false claims back to `failing`, looped by `run.sh`.
+
+**features.json is frozen by hard rule and stays frozen** — new work
+does not extend it. The milestone specs in `docs/specs/` are the
+*successor artifact*, replicating the harness mechanics at the next
+level: capability IDs (EDS-1 style) play the role of feature IDs, each
+EARS criterion + example table is the `verify` field, the spec's
+definition-of-done is the evaluator's checklist, and the CLAUDE.md
+session protocol continues unchanged. What the harness proved — an
+immutable spec agents cannot reword, per-item end-to-end verification,
+one item per session, adversarial re-checking — is exactly what §1
+carries forward; only the file moved.
 
 ## 4. The agent workflow per milestone
 
