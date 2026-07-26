@@ -6,7 +6,7 @@ import { secureHeaders } from 'hono/secure-headers'
 import { config } from './config'
 import { sql } from './db'
 import { AppError, errorResponse } from './errors'
-import { getMeta } from './meta'
+import { getMeta, resolveDoctypeName } from './meta'
 import { createDocType, updateDocType } from './doctype-engine'
 import { amendDoc, cancelDoc, deleteDoc, getDoc, renameDoc, saveDoc, submitDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
@@ -37,7 +37,7 @@ import { rateLimit } from './rate-limit'
 import { parseFilters, runQueryReport } from './query-report'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
-import { registerApp, loadInstalledApps, installApp, uninstallApp, listInstalledApps, getAvailableApps } from './apps'
+import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps } from './apps'
 import { createSite, listSites, resolveSite, siteCreateDoctype, siteListDoctypes, siteCreateUser, siteListUsers } from './tenancy'
 import helloCrm from './sample-apps/hello-crm'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
@@ -640,11 +640,16 @@ app.get('/api/apps', async (c) => {
   await assertSystemManager(who(c))
   return c.json({ available: getAvailableApps(), installed: await listInstalledApps() })
 })
+// Accepts { name } for a code-registered app, or { manifest } — a declarative
+// manifest of DocTypes, roles and permissions installed as pure data (#55).
+// System Manager only, and deliberately so: { manifest } lets the caller
+// define schema, so this endpoint is a create-arbitrary-tables surface.
 app.post('/api/install_app', async (c) => {
   await assertSystemManager(who(c))
-  const { name } = (await c.req.json().catch(() => ({}))) as { name?: string }
-  if (!name) throw new AppError('ValidationError', 'Expected { name }')
-  return c.json(await installApp(name), 201)
+  const body = (await c.req.json().catch(() => ({}))) as { name?: string; manifest?: unknown }
+  if (body.manifest !== undefined) return c.json(await installAppFromManifest(body.manifest), 201)
+  if (!body.name) throw new AppError('ValidationError', 'Expected { name } or { manifest }')
+  return c.json(await installApp(body.name), 201)
 })
 app.post('/api/uninstall_app', async (c) => {
   await assertSystemManager(who(c))
@@ -949,35 +954,42 @@ app.get('/api/unread_count', async (c) => {
 })
 
 // API-001/API-002: Frappe-style REST resource — one generic handler set
-// serves CRUD for every DocType, driven entirely by metadata.
+// serves CRUD for every DocType, driven entirely by metadata. The :doctype
+// segment accepts a slug spelling (#56): report-feedback and report_feedback
+// reach "Report Feedback"; the exact (possibly %20-encoded) name always wins.
 app.get('/api/resource/:doctype', async (c) => {
-  return c.json(await getList(c.req.param('doctype'), listArgsFromQuery(c.req.query()), who(c)))
+  const doctype = await resolveDoctypeName(c.req.param('doctype'))
+  return c.json(await getList(doctype, listArgsFromQuery(c.req.query()), who(c)))
 })
 
 // POST is create-only: a client-sent name is honored for prompt-named
 // DocTypes but an existing name conflicts instead of silently updating.
 app.post('/api/resource/:doctype', async (c) => {
+  const doctype = await resolveDoctypeName(c.req.param('doctype'))
   const doc = (await c.req.json()) as Record<string, unknown>
-  const saved = await saveDoc(c.req.param('doctype'), doc, who(c), 'insert')
-  publishDocEvent(c.req.param('doctype'), String(saved.name), 'created')
+  const saved = await saveDoc(doctype, doc, who(c), 'insert')
+  publishDocEvent(doctype, String(saved.name), 'created')
   return c.json(saved, 201)
 })
 
 app.get('/api/resource/:doctype/:name', async (c) => {
-  return c.json(await getDoc(c.req.param('doctype'), c.req.param('name'), who(c)))
+  const doctype = await resolveDoctypeName(c.req.param('doctype'))
+  return c.json(await getDoc(doctype, c.req.param('name'), who(c)))
 })
 
 app.put('/api/resource/:doctype/:name', async (c) => {
+  const doctype = await resolveDoctypeName(c.req.param('doctype'))
   const doc = (await c.req.json()) as Record<string, unknown>
   doc.name = c.req.param('name')
-  const saved = await saveDoc(c.req.param('doctype'), doc, who(c))
-  publishDocEvent(c.req.param('doctype'), String(saved.name), 'updated')
+  const saved = await saveDoc(doctype, doc, who(c))
+  publishDocEvent(doctype, String(saved.name), 'updated')
   return c.json(saved)
 })
 
 app.delete('/api/resource/:doctype/:name', async (c) => {
-  await deleteDoc(c.req.param('doctype'), c.req.param('name'), who(c))
-  publishDocEvent(c.req.param('doctype'), c.req.param('name'), 'deleted')
+  const doctype = await resolveDoctypeName(c.req.param('doctype'))
+  await deleteDoc(doctype, c.req.param('name'), who(c))
+  publishDocEvent(doctype, c.req.param('name'), 'deleted')
   return c.json({ ok: true })
 })
 

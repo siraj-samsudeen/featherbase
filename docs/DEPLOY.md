@@ -1,0 +1,78 @@
+# Deploying Featherbase
+
+How to run the server in production (#57). This is an *additional* path —
+`./init.sh` remains the development boot and is unchanged. This document
+supersedes the deployment half of issue #25: the Convex backend it described
+died with [ADR 0006](adr/0006-stack-react-hono-postgres.md), and the current
+SPA reads no `VITE_*` build variables at all.
+
+## The two-step boot
+
+Every deploy is **release, then serve** — never the reverse, and never both
+in one process:
+
+```sh
+# 1. Release: apply migrations + patches. Run ONCE per deploy, before any
+#    new-code instance serves traffic.
+pnpm --filter server release
+
+# 2. Serve: the API server, no file watcher.
+PORT=8000 pnpm --filter server start
+```
+
+The release step takes a Postgres advisory lock
+(`hashtext('featherbase-release')`) for its whole run, so N instances that
+all execute it on boot serialize instead of racing: the first applies
+everything, the rest wait on the lock and find nothing left to do. It exits
+non-zero on the first failure without recording the failed step, so the next
+release retries it.
+
+## Configuration
+
+Everything comes from the environment; every variable has a dev default in
+`apps/server/src/config.ts` (or at its point of use).
+
+| Variable | Required in production | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | **yes** | Postgres connection string |
+| `PORT` | no (8000) | HTTP + WebSocket port |
+| `WEB_ORIGINS` | yes, if the SPA is served from another origin | comma-separated CORS allowlist |
+| `JWT_SECRET` | **yes** | session/token signing (dev default is `dev-secret-change-me`) |
+| `SITE_URL` | for password-reset emails | absolute URL of the SPA |
+| `FILE_STORAGE_DIR` | recommended | uploaded-file directory (must persist across deploys) |
+| `CHROMIUM_PATH` / `PLAYWRIGHT_BROWSERS_PATH` | for PDF printing | Chromium binary resolution — never hardcoded |
+
+Two settings already in the codebase matter specifically for hosted
+Postgres and must not regress: `db.ts` sets `prepare: false` (required by
+transaction-mode poolers such as Supabase's on port 6543), and `config.ts`
+reads `DATABASE_URL` with a local default.
+
+## Container
+
+`apps/server/Dockerfile` is a minimal, vendor-neutral image. Build from the
+repo root so the pnpm workspace resolves:
+
+```sh
+docker build -f apps/server/Dockerfile -t featherbase-server .
+docker run --rm -e DATABASE_URL=$DATABASE_URL featherbase-server pnpm --filter server release
+docker run -d -e DATABASE_URL=$DATABASE_URL -e JWT_SECRET=$JWT_SECRET -p 8000:8000 featherbase-server
+```
+
+Any platform that runs a container and can execute a pre-deploy command
+(release phase, job, CI step) fits this shape; nothing is welded to one
+vendor.
+
+## The web SPA
+
+`apps/web` is a static Vite build (`pnpm --filter web build` → `dist/`),
+servable by any static host. It reads no build-time environment variables;
+it talks to the API on the same origin or wherever the reverse proxy sends
+`/api`. The Railway `web` service that issue #25 documents still serves it
+today.
+
+## Smoke check
+
+After a deploy: `SERVER_URL=https://... pnpm --filter server test:smoke`
+asserts `GET /api/ping` answers `pong` with a live DB connection. Then
+`POST /api/method/login` with valid credentials should return Frappe's
+login shape (`{"message":"Logged In", ...}`).
