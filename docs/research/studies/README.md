@@ -48,6 +48,9 @@ off-ramp, never round-tripped) full eject of a DocType to owned code.
 | [Directus](directus.md) | interpreter | database-first reflection, snapshot/apply, the extension taxonomy |
 | [Odoo](odoo.md) | interpreter | module composition over shared models; the upgrade-pain cautionary tale |
 | [ServiceNow](servicenow.md) | interpreter | table inheritance, scoped apps, why update sets are the wrong promotion unit |
+| [react-admin](react-admin.md) | code-first frontend | the dataProvider adapter ecosystem; guessers — generation as one-way suggestion |
+| [Avo](avo.md) | interpreter (of code) | the escape-hatch ladder — "designed so you can't get stuck"; fields as tiny packages |
+| [NocoDB](nocodb.md) | interpreter | spreadsheet skin over existing DBs; views as the user-facing unit; virtual columns |
 
 Frappe already has its own deep study:
 `../frappe-architecture.md` (+ the two multi-app/multi-DB notes beside
@@ -66,4 +69,8 @@ demand.
    scheme indirection, update sets, upgrade pain. Mostly lessons in what
    to avoid and why the framework's D-decisions are shaped the way they
    are.
-4. **Directus** — the closest thing to Axis C shipped as a product.
+4. **Directus** and **NocoDB** — Axis C shipped as products, for the
+   developer and spreadsheet audiences respectively.
+5. **react-admin** and **Avo** — the admired admin-framework pair: the
+   adapter/guesser mechanics and the escape-hatch ladder, i.e. how to
+   make "simple where possible, never stuck" a designed property.

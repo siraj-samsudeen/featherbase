@@ -13,6 +13,24 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-26 (v6) — three more studies (react-admin, Avo, NocoDB); PR opened
+
+Added on request to `docs/research/studies/`: **react-admin** (frontend
+dataProvider adapter ecosystem; **guessers** = generation as one-way
+copyable suggestion — the cleanest D19 UX, adopt as the Desk's "eject
+this view"; headless ra-core split; optimistic-with-undo), **Avo** (the
+modern Rails admin — the **escape-hatch ladder** "designed so you can't
+get stuck" as a testable product property for D11/D14; custom fields as
+generatable component packages; actions as scoped first-class objects),
+**NocoDB** (spreadsheet UI over existing DBs — distinct from NocoBase;
+adopt **saved views** as first-class shareable objects, form views as the
+portal intake primitive, and lookup/rollup/formula virtual columns tied
+into drift detection; reject UI-direct writes that bypass the lifecycle).
+Studies README index/reading-order updated. Research-only session series
+ends here — **PR opened** for the whole branch (research notes, ADR 0007
++ specs 0001/0002, design framework v5 with 7 axes / D1–D19, 12 study
+documents). No code, no features.json changes.
+
 ## 2026-07-26 (v5) — system study series + generation-vs-interpretation (docs only)
 
 Requested reading material: one document per inspiration system (four
