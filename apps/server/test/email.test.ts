@@ -14,10 +14,9 @@ const { PDFParse } = require('pdf-parse') as {
 // EML-002: a queued email transitions queued -> sent and the sink receives
 // exactly one copy.
 //
-// NOTE: Email Queue's own delivery status is tracked on the reserved
-// `status` column (src/email.ts writes/reads `status`, not the `send_status`
-// column the migration also defines but src never touches) — see
-// PROGRESS.md for the discovered inconsistency.
+// NOTE: Email Queue's own delivery status is tracked on `send_status` (not
+// the reserved `status` column every Table gets) — src/email.ts writes/reads
+// send_status specifically to avoid colliding with the row lifecycle field.
 
 const ACCOUNT = 'Eml Test Account'
 
@@ -49,7 +48,7 @@ async function setup() {
 async function drainDueJobs() {
   await sql`
     update background_job set run_at = now()
-    where status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
+    where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
   return await drainJobs()
 }
 
@@ -71,14 +70,14 @@ describe('EML-002: queued email delivery', () => {
     const name = await queueEmail({ to: 'q@x.com', subject: 'Queued Subject', body: 'hi' })
 
     // Initially queued, not yet delivered.
-    const [before] = await sql`select status from email_queue where name = ${name}`
-    expect(before.status).toBe('queued')
+    const [before] = await sql`select send_status from email_queue where name = ${name}`
+    expect(before.send_status).toBe('queued')
     expect(await sql`select count(*)::int as c from email_sink`).toEqual([{ c: 0 }])
 
     await drainDueJobs()
 
-    const [after] = await sql`select status from email_queue where name = ${name}`
-    expect(after.status).toBe('sent')
+    const [after] = await sql`select send_status from email_queue where name = ${name}`
+    expect(after.send_status).toBe('sent')
 
     const sink = await sql`select mail_to, subject from email_sink where subject = 'Queued Subject'`
     expect(sink).toHaveLength(1)
@@ -122,7 +121,7 @@ describe('EML-005: template rendering', () => {
         subject: 'Re: {{ doc.subject }}',
         body: 'See {{ doc.subject }} attached.',
         ref_table: 'Eml Ref',
-        ref_name: 'ref-1',
+        reference_name: 'ref-1',
         render: true,
       })
       await drainDueJobs()
@@ -154,7 +153,7 @@ describe('EML-003: PDF attachment', () => {
         subject: 'Invoice',
         body: 'Attached.',
         ref_table: 'Eml Pdf',
-        ref_name: 'inv-1',
+        reference_name: 'inv-1',
         attach_pdf: true,
       })
       await drainDueJobs()

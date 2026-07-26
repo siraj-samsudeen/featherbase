@@ -57,7 +57,7 @@ export const COLUMN_TYPES = [
 export function useMeta(doctype: string) {
   return useQuery({
     queryKey: ['meta', doctype],
-    queryFn: () => api.get<TableMeta>(`/api/meta/${encodeURIComponent(doctype)}`),
+    queryFn: () => api.get<TableMeta>(`/api/table/${encodeURIComponent(doctype)}:meta`),
     staleTime: 60_000,
   })
 }

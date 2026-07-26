@@ -120,8 +120,8 @@ function wireHooks(manifest: AppManifest): void {
   // definition (and its guest setting) for restore on uninstall.
   const swaps: { path: string; prev: MethodDef | undefined }[] = []
   for (const [path, fn] of Object.entries(manifest.override_whitelisted_methods ?? {})) {
-    const prev = swapMethod(path, { fn, allowGuest: false })
-    if (prev) swapMethod(path, { fn, allowGuest: prev.allowGuest })
+    const prev = swapMethod(path, { fn, allowGuest: false, effect: 'write' })
+    if (prev) swapMethod(path, { fn, allowGuest: prev.allowGuest, effect: prev.effect })
     swaps.push({ path, prev })
   }
   overridden.set(manifest.name, swaps)
@@ -140,7 +140,7 @@ async function ensureSchedulerJobs(manifest: AppManifest): Promise<void> {
   for (const ev of manifest.scheduler_events ?? []) {
     const [pending] = await sql`
       select 1 from background_job
-      where method = ${ev.method} and status in ('queued', 'running') limit 1`
+      where method = ${ev.method} and job_status in ('queued', 'running') limit 1`
     if (!pending) await enqueue(ev.method, {}, { repeatEvery: ev.every_seconds })
   }
 }
@@ -148,7 +148,7 @@ async function ensureSchedulerJobs(manifest: AppManifest): Promise<void> {
 // Remove an uninstalled app's pending recurring jobs so they stop firing.
 async function dropSchedulerJobs(manifest: AppManifest): Promise<void> {
   for (const ev of manifest.scheduler_events ?? []) {
-    await sql`delete from background_job where method = ${ev.method} and status = 'queued'`
+    await sql`delete from background_job where method = ${ev.method} and job_status = 'queued'`
   }
 }
 

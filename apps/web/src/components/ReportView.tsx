@@ -58,7 +58,7 @@ export function ReportView({
     queryKey: ['saved-reports', doctype],
     queryFn: () =>
       listResource<{ name: string }>('Report', {
-        filters: [['ref_doctype', '=', doctype]],
+        filters: [['ref_table', '=', doctype]],
         fields: ['name'],
         order_by: 'name asc',
         limit_page_length: 100,
@@ -80,7 +80,7 @@ export function ReportView({
   const savedDoc = useQuery({
     queryKey: ['report-doc', report],
     enabled: Boolean(report),
-    queryFn: () => api.get<{ config?: ReportConfig }>(`/api/resource/Report/${encodeURIComponent(report!)}`),
+    queryFn: () => api.get<{ config?: ReportConfig }>(`/api/table/Report/${encodeURIComponent(report!)}`),
   })
   useEffect(() => {
     const cfg = savedDoc.data?.config
@@ -121,7 +121,7 @@ export function ReportView({
       const config: ReportConfig = { columns, group_by: groupBy, filters }
       await api.post('/api/save_doc', {
         doctype: 'Report',
-        doc: { name: saveName, ref_doctype: doctype, config },
+        doc: { name: saveName, ref_table: doctype, config },
       })
       await queryClient.invalidateQueries({ queryKey: ['saved-reports', doctype] })
       setSaveOpen(false)

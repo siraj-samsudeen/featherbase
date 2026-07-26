@@ -65,7 +65,7 @@ describe('META-004: schema sync', () => {
     expect(res.status).toBe(200)
     const meta = await admin.get<{
       columns: { column_name: string; label: string; reqd: boolean }[]
-    }>(`/api/meta/${encodeURIComponent(DT)}`)
+    }>(`/api/table/${encodeURIComponent(DT)}:meta`)
     const title = meta.columns.find((f) => f.column_name === 'title')!
     expect(title.label).toBe('Headline')
     expect(title.reqd).toBe(true)
@@ -92,7 +92,7 @@ describe('META-004: schema sync', () => {
     })
     expect(res.status).toBe(200)
     const meta = await admin.get<{ columns: { column_name: string }[] }>(
-      `/api/meta/${encodeURIComponent(DT)}`,
+      `/api/table/${encodeURIComponent(DT)}:meta`,
     )
     expect(meta.columns.map((f) => f.column_name)).not.toContain('points')
     expect(await columns()).toContain('points') // data retained

@@ -30,7 +30,7 @@ async function setup(admin: TestClient) {
 }
 
 const docPath = (dt: string, name: string) =>
-  `/api/doc/${encodeURIComponent(dt)}/${encodeURIComponent(name)}`
+  `/api/table/${encodeURIComponent(dt)}/${encodeURIComponent(name)}`
 
 describe('DOC-006: delete with referential integrity', () => {
   test('blocks deleting a doc linked from a parent field, naming the holder', async ({

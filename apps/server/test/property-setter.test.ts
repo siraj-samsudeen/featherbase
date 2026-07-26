@@ -72,7 +72,7 @@ describe('CUST-002: metadata overrides', () => {
     await makeDT(admin)
     await addLabelSetter(admin)
     await admin.delete(
-      `/api/resource/Metadata%20Override/${encodeURIComponent(`${DT}-title-label`)}`,
+      `/api/table/Metadata%20Override/${encodeURIComponent(`${DT}-title-label`)}`,
     )
     const meta = await getMeta(DT)
     expect(meta.columns.find((f) => f.column_name === 'title')?.label).toBe('Title')

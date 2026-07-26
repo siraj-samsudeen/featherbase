@@ -32,16 +32,16 @@ describe('PERM-002/003: Permission grants enforced server-side', () => {
   }) => {
     await setup(admin)
     const user = await createUser({ roles: [ROLE] })
-    expect((await user.fetch(`/api/resource/${encodeURIComponent(DT)}`)).status).toBe(403)
+    expect((await user.fetch(`/api/table/${encodeURIComponent(DT)}`)).status).toBe(403)
     expect(
       (
-        await user.fetch(`/api/resource/${encodeURIComponent(DT)}`, {
+        await user.fetch(`/api/table/${encodeURIComponent(DT)}`, {
           method: 'POST',
           body: JSON.stringify({ title: 'x' }),
         })
       ).status,
     ).toBe(403)
-    expect((await user.fetch(`/api/meta/${encodeURIComponent(DT)}`)).status).toBe(403)
+    expect((await user.fetch(`/api/table/${encodeURIComponent(DT)}:meta`)).status).toBe(403)
   })
 
   test('read-only grant: GET works, POST/PUT/DELETE still 403', async ({ admin, createUser }) => {
@@ -49,7 +49,7 @@ describe('PERM-002/003: Permission grants enforced server-side', () => {
     const user = await createUser({ roles: [ROLE] })
     await grant(admin, { can_read: true })
     const list = await user.fetch(
-      `/api/resource/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","title"]')}`,
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","title"]')}`,
     )
     expect(list.status).toBe(200)
     const { data } = (await list.json()) as { data: { name: string; title: string }[] }
@@ -58,24 +58,24 @@ describe('PERM-002/003: Permission grants enforced server-side', () => {
 
     expect(
       (
-        await user.fetch(`/api/resource/${encodeURIComponent(DT)}`, {
+        await user.fetch(`/api/table/${encodeURIComponent(DT)}`, {
           method: 'POST',
           body: JSON.stringify({ title: 'nope' }),
         })
       ).status,
     ).toBe(403)
-    const doc = (await (await user.fetch(`/api/resource/${encodeURIComponent(DT)}/${name}`)).json()) as
+    const doc = (await (await user.fetch(`/api/table/${encodeURIComponent(DT)}/${name}`)).json()) as
       Record<string, unknown>
     expect(
       (
-        await user.fetch(`/api/resource/${encodeURIComponent(DT)}/${name}`, {
-          method: 'PUT',
+        await user.fetch(`/api/table/${encodeURIComponent(DT)}/${name}`, {
+          method: 'PATCH',
           body: JSON.stringify({ updated_at: doc.updated_at, title: 'edited' }),
         })
       ).status,
     ).toBe(403)
     expect(
-      (await user.fetch(`/api/resource/${encodeURIComponent(DT)}/${name}`, { method: 'DELETE' }))
+      (await user.fetch(`/api/table/${encodeURIComponent(DT)}/${name}`, { method: 'DELETE' }))
         .status,
     ).toBe(403)
   })
@@ -87,21 +87,21 @@ describe('PERM-002/003: Permission grants enforced server-side', () => {
     await setup(admin)
     const user = await createUser({ roles: [ROLE] })
     await grant(admin, { can_read: true, can_write: true, can_create: true })
-    const created = await user.fetch(`/api/resource/${encodeURIComponent(DT)}`, {
+    const created = await user.fetch(`/api/table/${encodeURIComponent(DT)}`, {
       method: 'POST',
       body: JSON.stringify({ title: 'mine' }),
     })
     expect(created.status).toBe(201)
     const doc = (await created.json()) as Record<string, unknown>
     expect(doc.created_by).toBe(user.user)
-    const put = await user.fetch(`/api/resource/${encodeURIComponent(DT)}/${doc.name}`, {
-      method: 'PUT',
+    const put = await user.fetch(`/api/table/${encodeURIComponent(DT)}/${doc.name}`, {
+      method: 'PATCH',
       body: JSON.stringify({ updated_at: doc.updated_at, title: 'mine2' }),
     })
     expect(put.status).toBe(200)
     // still no delete
     expect(
-      (await user.fetch(`/api/resource/${encodeURIComponent(DT)}/${doc.name}`, { method: 'DELETE' }))
+      (await user.fetch(`/api/table/${encodeURIComponent(DT)}/${doc.name}`, { method: 'DELETE' }))
         .status,
     ).toBe(403)
   })
@@ -120,11 +120,11 @@ describe('PERM-002/003: Permission grants enforced server-side', () => {
 describe('PERM-009: Administrator bypass', () => {
   test('admin passes all checks on a Table with zero Permission rows', async ({ admin }) => {
     await setup(admin)
-    const res = await admin.fetch(`/api/resource/${encodeURIComponent(DT)}`, {
+    const res = await admin.fetch(`/api/table/${encodeURIComponent(DT)}`, {
       method: 'POST',
       body: JSON.stringify({ title: 'admin can' }),
     })
     expect(res.status).toBe(201)
-    expect((await admin.fetch(`/api/resource/${encodeURIComponent(DT)}`)).status).toBe(200)
+    expect((await admin.fetch(`/api/table/${encodeURIComponent(DT)}`)).status).toBe(200)
   })
 })

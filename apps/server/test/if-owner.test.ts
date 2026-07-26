@@ -39,13 +39,13 @@ describe('PERM-007: own_rows_only permissions', () => {
     const { alice, bob } = await setup(admin, createUser)
 
     const mine = (await (
-      await alice.fetch(`/api/resource/${encodeURIComponent(DT)}`, {
+      await alice.fetch(`/api/table/${encodeURIComponent(DT)}`, {
         method: 'POST',
         body: JSON.stringify({ t: 'alice doc' }),
       })
     ).json()) as Record<string, unknown>
     expect(mine.created_by).toBe(alice.user)
-    await bob.fetch(`/api/resource/${encodeURIComponent(DT)}`, {
+    await bob.fetch(`/api/table/${encodeURIComponent(DT)}`, {
       method: 'POST',
       body: JSON.stringify({ t: 'bob doc' }),
     })
@@ -53,53 +53,53 @@ describe('PERM-007: own_rows_only permissions', () => {
     // List: alice sees exactly her one doc
     const list = (await (
       await alice.fetch(
-        `/api/resource/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","created_by"]')}`,
+        `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","created_by"]')}`,
       )
     ).json()) as { data: { created_by: string }[]; total: number }
     expect(list.total).toBe(1)
     expect(list.data[0].created_by).toBe(alice.user)
 
     // Detail: own doc 200, other's 403
-    expect((await alice.fetch(`/api/resource/${encodeURIComponent(DT)}/${mine.name}`)).status).toBe(200)
+    expect((await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.name}`)).status).toBe(200)
     const bobList = (await (
-      await bob.fetch(`/api/resource/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name"]')}`)
+      await bob.fetch(`/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name"]')}`)
     ).json()) as { data: { name: string }[] }
     const bobDoc = bobList.data[0].name
-    expect((await alice.fetch(`/api/resource/${encodeURIComponent(DT)}/${bobDoc}`)).status).toBe(403)
+    expect((await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${bobDoc}`)).status).toBe(403)
 
     // Write/delete on other's doc 403; on own doc allowed
     expect(
       (
-        await alice.fetch(`/api/resource/${encodeURIComponent(DT)}/${bobDoc}`, {
-          method: 'PUT',
+        await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${bobDoc}`, {
+          method: 'PATCH',
           body: JSON.stringify({ updated_at: new Date().toISOString(), t: 'hax' }),
         })
       ).status,
     ).toBe(403)
     expect(
-      (await alice.fetch(`/api/resource/${encodeURIComponent(DT)}/${bobDoc}`, { method: 'DELETE' }))
+      (await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${bobDoc}`, { method: 'DELETE' }))
         .status,
     ).toBe(403)
     const own = (await (
-      await alice.fetch(`/api/resource/${encodeURIComponent(DT)}/${mine.name}`)
+      await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.name}`)
     ).json()) as Record<string, unknown>
     expect(
       (
-        await alice.fetch(`/api/resource/${encodeURIComponent(DT)}/${mine.name}`, {
-          method: 'PUT',
+        await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.name}`, {
+          method: 'PATCH',
           body: JSON.stringify({ updated_at: own.updated_at, t: 'mine v2' }),
         })
       ).status,
     ).toBe(200)
     expect(
-      (await alice.fetch(`/api/resource/${encodeURIComponent(DT)}/${mine.name}`, { method: 'DELETE' }))
+      (await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.name}`, { method: 'DELETE' }))
         .status,
     ).toBe(200)
   })
 
   test('an unconditional grant overrides own_rows_only rows', async ({ admin, createUser }) => {
     const { alice, bob } = await setup(admin, createUser)
-    await bob.fetch(`/api/resource/${encodeURIComponent(DT)}`, {
+    await bob.fetch(`/api/table/${encodeURIComponent(DT)}`, {
       method: 'POST',
       body: JSON.stringify({ t: 'bob doc' }),
     })
@@ -109,7 +109,7 @@ describe('PERM-007: own_rows_only permissions', () => {
     })
     const list = (await (
       await alice.fetch(
-        `/api/resource/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","created_by"]')}`,
+        `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","created_by"]')}`,
       )
     ).json()) as { total: number }
     expect(list.total).toBeGreaterThanOrEqual(1) // sees bob's doc now too

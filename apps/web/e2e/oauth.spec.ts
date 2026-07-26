@@ -11,7 +11,7 @@ async function adminHeaders(request: APIRequestContext) {
 test.beforeEach(async ({ request }) => {
   // Start from a clean slate so the flow exercises account CREATION.
   const headers = await adminHeaders(request)
-  await request.delete(`/api/resource/User/${encodeURIComponent(EMAIL)}`, { headers })
+  await request.delete(`/api/table/User/${encodeURIComponent(EMAIL)}`, { headers })
 })
 
 test('PLAT-006: Google OAuth (mock) creates a User and lands in the Desk', async ({ page }) => {
@@ -32,7 +32,7 @@ test('PLAT-006: Google OAuth (mock) creates a User and lands in the Desk', async
   // The User was created and marked as a Google login.
   const headers = await adminHeaders(page.request)
   const doc = (await (
-    await page.request.get(`/api/resource/User/${encodeURIComponent(EMAIL)}`, { headers })
+    await page.request.get(`/api/table/User/${encodeURIComponent(EMAIL)}`, { headers })
   ).json()) as { name: string; social_login: string; enabled: boolean }
   expect(doc.name).toBe(EMAIL)
   expect(doc.social_login).toBe('google')
@@ -56,7 +56,7 @@ test('PLAT-006: a second OAuth sign-in links the same User (no duplicate)', asyn
 
   // Exactly one User with that email.
   const listed = (await (
-    await request.get(`/api/resource/User?filters=${encodeURIComponent(JSON.stringify([['email', '=', EMAIL]]))}`, { headers })
+    await request.get(`/api/table/User?filters=${encodeURIComponent(JSON.stringify([['email', '=', EMAIL]]))}`, { headers })
   ).json()) as { data: { name: string }[] }
   expect(listed.data.length).toBe(1)
 })

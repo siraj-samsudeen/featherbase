@@ -34,7 +34,7 @@ function str(args: Record<string, unknown>, key: string): string {
   return v
 }
 
-whitelist('frappe.ping', () => 'pong', { allowGuest: true })
+whitelist('frappe.ping', () => 'pong', { allowGuest: true, effect: 'read' })
 
 whitelist('frappe.client.get_list', async ({ args, user }) => {
   const table = str(args, 'doctype')
@@ -51,15 +51,15 @@ whitelist('frappe.client.get_list', async ({ args, user }) => {
   )
   // Frappe's get_list message is the row array itself.
   return result.data
-})
+}, { effect: 'read' })
 
 whitelist('frappe.client.get', async ({ args, user }) => {
   return getDoc(str(args, 'doctype'), str(args, 'name'), user.name)
-})
+}, { effect: 'read' })
 
 whitelist('frappe.client.get_count', async ({ args, user }) => {
   return countDocs(str(args, 'doctype'), (asJson(args.filters) as Filter[]) ?? [], user.name)
-})
+}, { effect: 'read' })
 
 // Frappe returns { <fieldname>: <value> } for get_value. `filters` may be a
 // docname string, a dict { field: value }, or a filter list — and a docname
@@ -84,7 +84,7 @@ whitelist('frappe.client.get_value', async ({ args, user }) => {
   if (!name) return null
   const row = await getDoc(table, name, user.name)
   return { [columnName]: row[columnName] ?? null }
-})
+}, { effect: 'read' })
 
 whitelist('frappe.client.insert', async ({ args, user }) => {
   const doc = asJson(args.doc) as Record<string, unknown> | undefined
@@ -92,7 +92,7 @@ whitelist('frappe.client.insert', async ({ args, user }) => {
   if (!doc || !table) throw new AppError('ValidationError', 'Expected doc with a doctype')
   const { doctype: _dt, ...values } = doc
   return saveDoc(table, values, user.name, 'insert')
-})
+}, { effect: 'write' })
 
 // set_value: load-modify-save through the full lifecycle (validation, hooks,
 // versioning) — matching Frappe's frappe.client.set_value semantics.
@@ -104,12 +104,12 @@ whitelist('frappe.client.set_value', async ({ args, user }) => {
   const updatedAt =
     current.updated_at instanceof Date ? current.updated_at.toISOString() : current.updated_at
   return saveDoc(table, { name, updated_at: updatedAt, [columnName]: args.value ?? null }, user.name)
-})
+}, { effect: 'write' })
 
 whitelist('frappe.client.delete', async ({ args, user }) => {
   await deleteDoc(str(args, 'doctype'), str(args, 'name'), user.name)
   return 'ok'
-})
+}, { effect: 'write' })
 
 // The meta bundle (Frappe's get_meta / PR-2's get_doctype): the Table row
 // with its columns, plus metas for its child-table Tables.
@@ -121,4 +121,4 @@ whitelist('frappe.client.get_doctype', async ({ args }) => {
       .map((f) => getMeta(f.row_table as string)),
   )
   return { doctype: meta, child_doctypes: children }
-})
+}, { effect: 'read' })

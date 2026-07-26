@@ -121,7 +121,7 @@ export async function up() {
     script_type: 'Document Event',
     ref_table: 'HD Ticket',
     event: 'validate',
-    script: 'if (!doc.raised_by) { doc.raised_by = doc.owner }',
+    script: 'if (!doc.raised_by) { doc.raised_by = doc.created_by }',
     enabled: true,
   })
 

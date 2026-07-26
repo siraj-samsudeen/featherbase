@@ -23,7 +23,7 @@ async function setup() {
 async function nudgeDueJobs() {
   await sql`
     update background_job set run_at = now()
-    where status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
+    where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
 }
 
 describe('JOB-001: enqueue + worker + drain', () => {
@@ -31,8 +31,8 @@ describe('JOB-001: enqueue + worker + drain', () => {
     await setup()
     const id = await enqueue('demo_write_row', { note: 'hello' })
     // Queued initially.
-    const [before] = await sql`select status from background_job where name = ${id}`
-    expect(before.status).toBe('queued')
+    const [before] = await sql`select job_status from background_job where name = ${id}`
+    expect(before.job_status).toBe('queued')
 
     await nudgeDueJobs()
     const processed = await drainJobs()
@@ -43,8 +43,8 @@ describe('JOB-001: enqueue + worker + drain', () => {
     expect(rows.map((r) => r.note)).toContain('hello')
 
     // The job is done and the queue is drained (no more due jobs).
-    const [after] = await sql`select status, attempts from background_job where name = ${id}`
-    expect(after.status).toBe('done')
+    const [after] = await sql`select job_status, attempts from background_job where name = ${id}`
+    expect(after.job_status).toBe('done')
     expect(Number(after.attempts)).toBe(1)
     expect(await runOneJob()).toBe(false)
 
@@ -63,8 +63,8 @@ describe('JOB-002: retries and failure state', () => {
     // again in the same drain loop, so one drain runs all three attempts.
     await nudgeDueJobs()
     await drainJobs()
-    const [job] = await sql`select status, attempts from background_job where name = ${id}`
-    expect(job.status).toBe('done')
+    const [job] = await sql`select job_status, attempts from background_job where name = ${id}`
+    expect(job.job_status).toBe('done')
     expect(Number(job.attempts)).toBe(3)
     const execs = await sql`select attempt, outcome from job_execution where job = ${id} order by attempt`
     expect(execs.map((e) => e.outcome)).toEqual(['error', 'error', 'success'])
@@ -75,8 +75,8 @@ describe('JOB-002: retries and failure state', () => {
     const id = await enqueue('demo_always_fails', {}, { maxAttempts: 3 })
     await nudgeDueJobs()
     await drainJobs()
-    const [job] = await sql`select status, attempts, error from background_job where name = ${id}`
-    expect(job.status).toBe('failed')
+    const [job] = await sql`select job_status, attempts, error from background_job where name = ${id}`
+    expect(job.job_status).toBe('failed')
     expect(Number(job.attempts)).toBe(3)
     expect(job.error).toContain('always fails')
     const execs = await sql`select outcome from job_execution where job = ${id}`
@@ -89,8 +89,8 @@ describe('JOB-002: retries and failure state', () => {
     const id = await enqueue('no_such_job', {}, { maxAttempts: 1 })
     await nudgeDueJobs()
     await drainJobs()
-    const [job] = await sql`select status, error from background_job where name = ${id}`
-    expect(job.status).toBe('failed')
+    const [job] = await sql`select job_status, error from background_job where name = ${id}`
+    expect(job.job_status).toBe('failed')
     expect(job.error).toContain('No job handler')
   })
 })

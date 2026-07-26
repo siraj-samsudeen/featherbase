@@ -56,21 +56,21 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
 
       // A user holding only the app's role can insert and read its DocType…
       const user = await createUser({ roles: [ROLE] })
-      const ins = await user.fetch(`/api/resource/${encodeURIComponent(DT)}`, {
+      const ins = await user.fetch(`/api/table/${encodeURIComponent(DT)}`, {
         method: 'POST',
         body: JSON.stringify({ title: 'from scoped user' }),
       })
       expect(ins.status).toBe(201)
       const created = (await ins.json()) as { name: string; title: string }
       expect(created.title).toBe('from scoped user')
-      expect((await user.fetch(`/api/resource/${encodeURIComponent(DT)}`)).status).toBe(200)
+      expect((await user.fetch(`/api/table/${encodeURIComponent(DT)}`)).status).toBe(200)
 
       // …but is refused elsewhere: no delete grant, no User read.
       expect(
-        (await user.fetch(`/api/resource/${encodeURIComponent(DT)}/${created.name}`, { method: 'DELETE' }))
+        (await user.fetch(`/api/table/${encodeURIComponent(DT)}/${created.name}`, { method: 'DELETE' }))
           .status,
       ).toBe(403)
-      expect((await user.fetch('/api/resource/User')).status).toBe(403)
+      expect((await user.fetch('/api/table/User')).status).toBe(403)
     } finally {
       await unwire()
     }
@@ -88,7 +88,7 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     try {
       await installApp(APP)
       const user = await createUser({ roles: [ROLE] })
-      expect((await user.fetch('/api/resource/ToDo')).status).toBe(200)
+      expect((await user.fetch('/api/table/ToDo')).status).toBe(200)
     } finally {
       await unwire()
     }
@@ -194,7 +194,7 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
       // The documented behaviour: the insert succeeds but every field is
       // stripped to the role's WRITE tiers — the document arrives empty.
       const user = await createUser({ roles: [ROLE] })
-      const ins = await user.fetch(`/api/resource/${encodeURIComponent(DT)}`, {
+      const ins = await user.fetch(`/api/table/${encodeURIComponent(DT)}`, {
         method: 'POST',
         body: JSON.stringify({ title: 'will be stripped' }),
       })

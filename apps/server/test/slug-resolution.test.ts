@@ -23,14 +23,14 @@ describe('#56: Table slugs in resource URLs', () => {
     await setup(admin)
     for (const spelling of ['slug-test-note', 'slug_test_note', 'Slug-Test-Note']) {
       const res = await admin.fetch(
-        `/api/resource/${spelling}?fields=${encodeURIComponent('["name","title"]')}`,
+        `/api/table/${spelling}?fields=${encodeURIComponent('["name","title"]')}`,
       )
       expect(res.status).toBe(200)
       const { data } = (await res.json()) as { data: { title: string }[] }
       expect(data[0].title).toBe('seeded')
     }
     // Writes resolve the same way.
-    const ins = await admin.fetch('/api/resource/slug-test-note', {
+    const ins = await admin.fetch('/api/table/slug-test-note', {
       method: 'POST',
       body: JSON.stringify({ title: 'via slug' }),
     })
@@ -39,8 +39,8 @@ describe('#56: Table slugs in resource URLs', () => {
 
   test('the exact name and its %20 encoding keep working unchanged', async ({ admin }) => {
     await setup(admin)
-    expect((await admin.fetch(`/api/resource/${encodeURIComponent(DT)}`)).status).toBe(200)
-    expect((await admin.fetch('/api/resource/Slug%20Test%20Note')).status).toBe(200)
+    expect((await admin.fetch(`/api/table/${encodeURIComponent(DT)}`)).status).toBe(200)
+    expect((await admin.fetch('/api/table/Slug%20Test%20Note')).status).toBe(200)
   })
 
   // Two table-backed Tables can never share a slug — tableName() collapses
@@ -60,7 +60,7 @@ describe('#56: Table slugs in resource URLs', () => {
   test('an ambiguous slug is an error, not a silent pick', async ({ admin }) => {
     await admin.post('/api/doctype', { name: 'Twin Case', kind: 'settings', columns: [{ column_name: 'a', column_type: 'Data' }] })
     await admin.post('/api/doctype', { name: 'TWIN CASE', kind: 'settings', columns: [{ column_name: 'b', column_type: 'Data' }] })
-    const res = await admin.fetch('/api/resource/twin-case')
+    const res = await admin.fetch('/api/table/twin-case')
     expect(res.status).toBe(409)
     const body = (await res.json()) as { error: { message: string } }
     expect(body.error.message).toContain('Twin Case')
@@ -68,15 +68,15 @@ describe('#56: Table slugs in resource URLs', () => {
   })
 
   test('an unknown slug falls through to the usual NotFound', async ({ admin }) => {
-    expect((await admin.fetch('/api/resource/no-such-doctype')).status).toBe(404)
+    expect((await admin.fetch('/api/table/no-such-doctype')).status).toBe(404)
   })
 
   test('the slug map is invalidated with the meta cache', async ({ admin }) => {
     // Build the slug map before the Table exists…
-    expect((await admin.fetch('/api/resource/inval-note')).status).toBe(404)
+    expect((await admin.fetch('/api/table/inval-note')).status).toBe(404)
     // …then create it: creation invalidates the meta cache, which must drop
     // the slug map too, or the new name would stay unreachable by slug.
     await admin.post('/api/doctype', { name: 'Inval Note', columns: [{ column_name: 'a', column_type: 'Data' }] })
-    expect((await admin.fetch('/api/resource/inval-note')).status).toBe(200)
+    expect((await admin.fetch('/api/table/inval-note')).status).toBe(200)
   })
 })

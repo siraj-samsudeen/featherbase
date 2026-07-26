@@ -26,7 +26,7 @@ async function setup(admin: TestClient) {
 }
 
 const listPath = (params: Record<string, string>) =>
-  `/api/list/${encodeURIComponent(DT)}?${new URLSearchParams(params).toString()}`
+  `/api/table/${encodeURIComponent(DT)}?${new URLSearchParams(params).toString()}`
 
 describe('DOC-010: get_list with filters, fields, order_by, pagination', () => {
   test('filters by equality', async ({ admin }) => {

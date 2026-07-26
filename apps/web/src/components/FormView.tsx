@@ -31,7 +31,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
     queryKey: ['doc', doctype, name],
     enabled: Boolean(meta.data) && !isNew,
     queryFn: () =>
-      api.get<Row>(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
+      api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
   })
 
   const [values, setValues] = useState<Row>({})
@@ -135,13 +135,15 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   const status = String((baseline as Record<string, unknown>).status ?? 'draft')
   const submittable = Boolean(m.is_submittable) && !isNew
 
-  async function runAction(path: string) {
+  async function runAction(action: 'submit' | 'cancel' | 'amend') {
     setBanner(null)
     try {
-      const res = await api.post<Row>(path, { doctype, name })
+      const res = await api.post<Row>(
+        `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}:${action}`,
+      )
       await queryClient.invalidateQueries({ queryKey: ['doc', doctype] })
       await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
-      if (path === '/api/amend_doc') {
+      if (action === 'amend') {
         navigate({ to: '/desk/$doctype/$name', params: { doctype, name: String(res.name) } })
       } else {
         setBanner('Done')
@@ -156,7 +158,10 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   async function doRename() {
     setBanner(null)
     try {
-      const res = await api.post<Row>('/api/rename_doc', { doctype, name, new_name: renameValue })
+      const res = await api.post<Row>(
+        `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}:rename`,
+        { new_name: renameValue },
+      )
       await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
       setRenaming(false)
       navigate({ to: '/desk/$doctype/$name', params: { doctype, name: String(res.name) } })
@@ -250,7 +255,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
           {!isNew && <WorkflowActions doctype={doctype} name={name} />}
           {submittable && (
             <span
-              data-testid="docstatus-badge"
+              data-testid="status-badge"
               className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                 status === 'submitted'
                   ? 'bg-[var(--color-good-tint)] text-[var(--color-good)]'
@@ -311,7 +316,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
           </button>
           {submittable && status === 'draft' && !dirty && (
             <button
-              onClick={() => runAction('/api/submit_doc')}
+              onClick={() => runAction('submit')}
               data-testid="form-submit"
               className="fc-btn-primary"
             >
@@ -320,7 +325,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
           )}
           {submittable && status === 'submitted' && (
             <button
-              onClick={() => runAction('/api/cancel_doc')}
+              onClick={() => runAction('cancel')}
               data-testid="form-cancel"
               className="fc-btn border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)]"
             >
@@ -329,7 +334,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
           )}
           {submittable && status === 'cancelled' && (
             <button
-              onClick={() => runAction('/api/amend_doc')}
+              onClick={() => runAction('amend')}
               data-testid="form-amend"
               className="fc-btn"
             >

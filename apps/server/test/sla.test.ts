@@ -19,7 +19,7 @@ const FLOW = 'Sla Ticket Flow'
 async function nudgeDueJobs() {
   await sql`
     update background_job set run_at = now()
-    where status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
+    where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
 }
 
 async function setup(admin: TestClient) {
@@ -102,7 +102,7 @@ describe('SLA: deadline stamping + escalation', () => {
     // rejected, see workflow-state-field.test.ts).
     await sql`update sla_ticket set resolution_by = now() - interval '1 hour'
       where name in (${String(doc.name)}, ${String(done.name)})`
-    await admin.post('/api/apply_workflow_action', { doctype: DT, name: String(done.name), action: 'Resolve' })
+    await admin.post(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent(String(done.name))}:apply_workflow_action`, { action: 'Resolve' })
 
     await enqueue('check_sla', {})
     await nudgeDueJobs()

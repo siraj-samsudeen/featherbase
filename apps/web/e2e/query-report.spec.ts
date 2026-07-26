@@ -10,16 +10,16 @@ async function adminHeaders(request: APIRequestContext) {
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
-  await request.delete(`/api/resource/Report/${encodeURIComponent(REPORT)}`, { headers })
+  await request.delete(`/api/table/Report/${encodeURIComponent(REPORT)}`, { headers })
   const res = await request.post('/api/save_doc', {
     headers,
     data: {
       doctype: 'Report',
       doc: {
         name: REPORT,
-        ref_doctype: 'User',
+        ref_table: 'User',
         report_type: 'Query Report',
-        query: 'select name, enabled from tab_user where creation >= {from_date} order by name',
+        query: 'select name, enabled from "user" where created_at >= {from_date} order by name',
       },
     },
   })
@@ -61,7 +61,7 @@ test('RPT-004: a non-System-Manager cannot author Query Report SQL', async ({ re
   await request.post('/api/save_doc', { headers, data: { doctype: 'Role', doc: { name: ROLE } } })
   await request.post('/api/save_doc', {
     headers,
-    data: { doctype: 'DocPerm', doc: { ref_doctype: 'Report', role: ROLE, can_read: true, can_write: true, can_create: true } },
+    data: { doctype: 'Permission', doc: { ref_table: 'Report', role: ROLE, can_read: true, can_write: true, can_create: true } },
   })
   await request.post('/api/save_doc', {
     headers,
@@ -75,7 +75,7 @@ test('RPT-004: a non-System-Manager cannot author Query Report SQL', async ({ re
   // Same role CAN create an ordinary report (proves it has base Report perms)…
   const ok = await request.post('/api/save_doc', {
     headers: userHeaders,
-    data: { doctype: 'Report', doc: { name: 'E2E Editor Builder', ref_doctype: 'User', report_type: 'Report Builder' } },
+    data: { doctype: 'Report', doc: { name: 'E2E Editor Builder', ref_table: 'User', report_type: 'Report Builder' } },
   })
   expect(ok.status()).toBe(201)
 
@@ -84,12 +84,12 @@ test('RPT-004: a non-System-Manager cannot author Query Report SQL', async ({ re
     headers: userHeaders,
     data: {
       doctype: 'Report',
-      doc: { name: 'E2E Editor Evil', ref_doctype: 'User', report_type: 'Query Report', query: 'select name from tab_user' },
+      doc: { name: 'E2E Editor Evil', ref_table: 'User', report_type: 'Query Report', query: 'select name from "user"' },
     },
   })
   expect(denied.status()).toBe(403)
   expect(((await denied.json()) as { error: { type: string } }).error.type).toBe('PermissionError')
 
   // cleanup
-  await request.delete(`/api/resource/Report/${encodeURIComponent('E2E Editor Builder')}`, { headers })
+  await request.delete(`/api/table/Report/${encodeURIComponent('E2E Editor Builder')}`, { headers })
 })

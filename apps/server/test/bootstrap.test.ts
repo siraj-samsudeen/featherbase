@@ -10,9 +10,9 @@ describe('META-012: Table and Column are themselves Tables', () => {
     expect(column).toMatchObject({ column_type: 'Sub-table', row_table: 'Column' })
   })
 
-  test('GET /api/resource/Table lists Tables including Table itself', async ({ admin }) => {
+  test('GET /api/table/Table lists Tables including Table itself', async ({ admin }) => {
     const body = await admin.get<{ data: { name: string; kind: string }[] }>(
-      `/api/resource/Table?${new URLSearchParams({
+      `/api/table/Table?${new URLSearchParams({
         filters: JSON.stringify([['name', 'in', ['Table', 'Column']]]),
         fields: JSON.stringify(['name', 'kind']),
         order_by: 'name asc',
@@ -24,11 +24,11 @@ describe('META-012: Table and Column are themselves Tables', () => {
     ])
   })
 
-  test('GET /api/resource/Table/<name> returns a Table doc with its columns as children', async ({
+  test('GET /api/table/Table/<name> returns a Table doc with its columns as children', async ({
     admin,
   }) => {
     const doc = await admin.get<{ columns: { column_name: string }[] }>(
-      '/api/resource/Table/Column',
+      '/api/table/Table/Column',
     )
     expect(doc.columns.map((f) => f.column_name)).toContain('column_type')
   })
@@ -37,7 +37,7 @@ describe('META-012: Table and Column are themselves Tables', () => {
     await expect(
       admin.post('/api/save_doc', { doctype: 'Table', doc: { module: 'X' } }),
     ).rejects.toMatchObject({ status: 417 })
-    await expect(admin.delete('/api/resource/Table/Column')).rejects.toMatchObject({
+    await expect(admin.delete('/api/table/Table/Column')).rejects.toMatchObject({
       status: 417,
     })
   })

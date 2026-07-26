@@ -71,7 +71,6 @@ export function PermissionManager({ doctype }: { doctype: string }) {
     return (
       <div className="fc-card p-4 text-sm text-red-600" data-testid="perm-error">
         {q.error instanceof ApiError ? q.error.message : 'Cannot load permissions'}
-
       </div>
     )
   if (!q.data) return <div className="p-4 text-[var(--color-ink-faint)]">Loading…</div>

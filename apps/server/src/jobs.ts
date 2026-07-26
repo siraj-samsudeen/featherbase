@@ -50,7 +50,7 @@ export async function enqueue(
       updated_by: 'Administrator',
       method,
       payload: payload as unknown as string,
-      status: 'queued',
+      job_status: 'queued',
       attempts: 0,
       max_attempts: opts.maxAttempts ?? 3,
       run_at: opts.runAt ?? new Date(),
@@ -83,10 +83,10 @@ async function logExecution(
 export async function runOneJob(): Promise<boolean> {
   // Atomic claim: flip exactly one due queued job to running.
   const [claimed] = await sql`
-    update background_job set status = 'running', updated_at = now()
+    update background_job set job_status = 'running', updated_at = now()
     where name = (
       select name from background_job
-      where status = 'queued' and (run_at is null or run_at <= now())
+      where job_status = 'queued' and (run_at is null or run_at <= now())
       order by run_at asc, created_at asc
       limit 1 for update skip locked
     )
@@ -115,7 +115,7 @@ export async function runOneJob(): Promise<boolean> {
     if (!handler) throw new Error(`No job handler registered for "${method}"`)
     await handler(payload, ctx)
     await sql`
-      update background_job set status = 'done', attempts = ${attempt}, error = null, updated_at = now()
+      update background_job set job_status = 'done', attempts = ${attempt}, error = null, updated_at = now()
       where name = ${claimed.name as string}`
     await logExecution(claimed.name as string, method, attempt, 'success')
 
@@ -134,7 +134,7 @@ export async function runOneJob(): Promise<boolean> {
     const nextStatus = attempt >= maxAttempts ? 'failed' : 'queued'
     await sql`
       update background_job
-      set status = ${nextStatus}, attempts = ${attempt}, error = ${message}, updated_at = now()
+      set job_status = ${nextStatus}, attempts = ${attempt}, error = ${message}, updated_at = now()
       where name = ${claimed.name as string}`
     await logExecution(claimed.name as string, method, attempt, 'error', message)
     return true
@@ -146,8 +146,8 @@ export async function runOneJob(): Promise<boolean> {
 export async function retryJob(name: string): Promise<boolean> {
   const [row] = await sql`
     update background_job
-    set status = 'queued', attempts = 0, error = null, run_at = now(), updated_at = now()
-    where name = ${name} and status = 'failed'
+    set job_status = 'queued', attempts = 0, error = null, run_at = now(), updated_at = now()
+    where name = ${name} and job_status = 'failed'
     returning name`
   return Boolean(row)
 }

@@ -48,7 +48,7 @@ describe('PERM-005: Data Scopes', () => {
   test('lists exclude documents linked to non-permitted values', async ({ admin, createUser }) => {
     const user = await setup(admin, createUser)
     const res = await user.get<{ data: { title: string; company: string }[]; total: number }>(
-      `/api/resource/${encodeURIComponent(PROJECT)}?fields=${encodeURIComponent('["title","company"]')}`,
+      `/api/table/${encodeURIComponent(PROJECT)}?fields=${encodeURIComponent('["title","company"]')}`,
     )
     expect(res.total).toBe(1)
     expect(res.data[0]).toMatchObject({ title: 'pa', company: 'Company A' })
@@ -60,7 +60,7 @@ describe('PERM-005: Data Scopes', () => {
   }) => {
     const user = await setup(admin, createUser)
     const res = await user.get<{ data: { name: string }[]; total: number }>(
-      `/api/resource/${encodeURIComponent(COMPANY)}`,
+      `/api/table/${encodeURIComponent(COMPANY)}`,
     )
     expect(res.total).toBe(1)
     expect(res.data[0].name).toBe('Company A')
@@ -72,9 +72,9 @@ describe('PERM-005: Data Scopes', () => {
   }) => {
     const user = await setup(admin, createUser)
     const pb = await sql.unsafe(`select name from up_project where title='pb'`)
-    expect((await user.fetch(`/api/resource/${encodeURIComponent(PROJECT)}/${pb[0].name}`)).status).toBe(403)
-    expect((await user.fetch(`/api/resource/${encodeURIComponent(COMPANY)}/Company%20B`)).status).toBe(403)
-    expect((await user.fetch(`/api/resource/${encodeURIComponent(COMPANY)}/Company%20A`)).status).toBe(200)
+    expect((await user.fetch(`/api/table/${encodeURIComponent(PROJECT)}/${pb[0].name}`)).status).toBe(403)
+    expect((await user.fetch(`/api/table/${encodeURIComponent(COMPANY)}/Company%20B`)).status).toBe(403)
+    expect((await user.fetch(`/api/table/${encodeURIComponent(COMPANY)}/Company%20A`)).status).toBe(200)
   })
 
   test('creating/updating docs pointing at non-permitted values is rejected', async ({
@@ -82,12 +82,12 @@ describe('PERM-005: Data Scopes', () => {
     createUser,
   }) => {
     const user = await setup(admin, createUser)
-    const bad = await user.fetch(`/api/resource/${encodeURIComponent(PROJECT)}`, {
+    const bad = await user.fetch(`/api/table/${encodeURIComponent(PROJECT)}`, {
       method: 'POST',
       body: JSON.stringify({ title: 'nope', company: 'Company B' }),
     })
     expect(bad.status).toBe(403)
-    const ok = await user.fetch(`/api/resource/${encodeURIComponent(PROJECT)}`, {
+    const ok = await user.fetch(`/api/table/${encodeURIComponent(PROJECT)}`, {
       method: 'POST',
       body: JSON.stringify({ title: 'fine', company: 'Company A' }),
     })
@@ -96,7 +96,7 @@ describe('PERM-005: Data Scopes', () => {
 
   test('admins are unaffected', async ({ admin, createUser }) => {
     await setup(admin, createUser)
-    const res = await admin.get<{ total: number }>(`/api/resource/${encodeURIComponent(PROJECT)}`)
+    const res = await admin.get<{ total: number }>(`/api/table/${encodeURIComponent(PROJECT)}`)
     expect(res.total).toBeGreaterThanOrEqual(2)
   })
 })

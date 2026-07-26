@@ -10,7 +10,7 @@ interface WorkflowStatus {
 
 // WF-002: current workflow state + transition buttons for the roles the
 // user holds. Server enforces the transition, so these buttons are just a
-// convenience over /api/apply_workflow_action.
+// convenience over the :apply_workflow_action row action.
 export function WorkflowActions({ doctype, name }: { doctype: string; name: string }) {
   const queryClient = useQueryClient()
   const [busy, setBusy] = useState(false)
@@ -30,7 +30,10 @@ export function WorkflowActions({ doctype, name }: { doctype: string; name: stri
     setBusy(true)
     setError(null)
     try {
-      await api.post('/api/apply_workflow_action', { doctype, name, action })
+      await api.post(
+        `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}:apply_workflow_action`,
+        { action },
+      )
       await queryClient.invalidateQueries({ queryKey: ['workflow', doctype, name] })
       await queryClient.invalidateQueries({ queryKey: ['doc', doctype, name] })
       await queryClient.invalidateQueries({ queryKey: ['list', doctype] })

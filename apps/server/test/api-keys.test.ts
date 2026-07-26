@@ -91,14 +91,14 @@ describe('API-005: API key + secret token auth', () => {
   }) => {
     await makeUser(admin)
     await admin.post('/api/generate_api_key', { user: USER })
-    const res = await admin.fetch(`/api/resource/User/${encodeURIComponent(USER)}`)
+    const res = await admin.fetch(`/api/table/User/${encodeURIComponent(USER)}`)
     expect(res.status).toBe(200)
     const doc = (await res.json()) as Record<string, unknown>
     for (const secret of ['password_hash', 'api_key', 'api_secret_hash'])
       expect(doc).not.toHaveProperty(secret)
     // And requesting them as list fields is rejected outright.
     const list = await admin.fetch(
-      `/api/resource/User?fields=${encodeURIComponent(JSON.stringify(['name', 'password_hash']))}`,
+      `/api/table/User?fields=${encodeURIComponent(JSON.stringify(['name', 'password_hash']))}`,
     )
     expect(list.status).toBe(417)
   })

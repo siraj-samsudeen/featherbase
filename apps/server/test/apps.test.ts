@@ -34,7 +34,7 @@ const noteApp: AppManifest = {
     },
   ],
   doc_events: {
-    [APP1_DT]: { before_save: ({ doc }) => { doc.stamp = 'wired-by-app' } },
+    [APP1_DT]: { before_save: ({ row }) => { row.stamp = 'wired-by-app' } },
   },
 }
 
@@ -67,7 +67,7 @@ describe('PLAT-001: app install/uninstall', () => {
     registerApps()
     try {
       const res = await installApp(APP1)
-      expect(res.doctypes).toEqual([APP1_DT])
+      expect(res.tables).toEqual([APP1_DT])
       expect(await isInstalled(APP1)).toBe(true)
 
       // The Table and its physical table exist.
@@ -121,7 +121,7 @@ describe('PLAT-002: app doc_events fire alongside the core controller', () => {
         id_pattern: 'prompt',
         columns: [{ column_name: 'title', column_type: 'Data' }],
       })
-      registerController({ doctype: CORE_DT, hooks: { after_save: () => { fired.push('core') } } })
+      registerController({ table: CORE_DT, hooks: { after_save: () => { fired.push('core') } } })
 
       // The app hooks the same DocType without owning it.
       await installApp(APP2)

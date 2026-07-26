@@ -84,8 +84,8 @@ export function GanttView({ doctype }: { doctype: string }) {
     if (end === origEnd) return
     setError(null)
     try {
-      const doc = await api.get<Row>(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
-      await api.put(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`, {
+      const doc = await api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
+      await api.patch(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`, {
         [endField!]: fromDayNum(end),
         updated_at: doc.updated_at,
       })

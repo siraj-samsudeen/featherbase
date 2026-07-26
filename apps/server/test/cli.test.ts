@@ -43,15 +43,15 @@ describe('PLAT-004: developer CLI', () => {
       'create-doctype',
       '--name', DT,
       '--field', 'title:Data',
-      '--field', 'status:Choice:Open|Closed',
+      '--field', 'stage:Choice:Open|Closed',
     ])
     expect(stdout).toContain(`created Table ${DT}`)
 
     const [dt] = await sql`select name from table_def where name = ${DT}`
     expect(dt).toBeDefined()
     const columns = await sql`select column_name, column_type, choices from column_def where parent = ${DT} order by position`
-    expect(columns.map((f) => f.column_name)).toEqual(['title', 'status'])
-    const status = columns.find((f) => f.column_name === 'status')
+    expect(columns.map((f) => f.column_name)).toEqual(['title', 'stage'])
+    const status = columns.find((f) => f.column_name === 'stage')
     expect(status?.column_type).toBe('Choice')
     expect(status?.choices).toBe('Open\nClosed') // pipe-separated choices split to newlines
   }, 60_000)

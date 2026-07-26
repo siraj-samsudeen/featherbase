@@ -9,7 +9,7 @@ whitelist('ping', ({ args, user }) => ({
   pong: true,
   echo: args,
   user: user.name,
-}))
+}), { effect: 'read' })
 
 // A method that does real work through the permission-checked query layer:
 // count rows of a Table the caller can read.
@@ -19,4 +19,4 @@ whitelist('count_docs', async ({ args, user }) => {
     throw new AppError('ValidationError', 'table is required', { table: 'Required' })
   const res = await getList(table, { limit_page_length: 1 }, user.name)
   return { table, total: res.total }
-})
+}, { effect: 'read' })

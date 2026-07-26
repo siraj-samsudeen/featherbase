@@ -47,8 +47,8 @@ async function setup(admin: TestClient) {
 }
 
 async function seedDocs(admin: TestClient) {
-  await admin.post(`/api/resource/${encodeURIComponent(DT)}`, { name: 'small', title: 'a', amount: 500 })
-  await admin.post(`/api/resource/${encodeURIComponent(DT)}`, { name: 'big', title: 'b', amount: 5000 })
+  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { name: 'small', title: 'a', amount: 500 })
+  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { name: 'big', title: 'b', amount: 5000 })
 }
 
 describe('conditional workflow transitions', () => {

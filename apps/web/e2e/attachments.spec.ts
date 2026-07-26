@@ -11,15 +11,15 @@ async function cleanup(request: APIRequestContext) {
   const auth = { Authorization: `Bearer ${token}` }
   const filters = encodeURIComponent(
     JSON.stringify([
-      ['ref_doctype', '=', 'User'],
+      ['ref_table', '=', 'User'],
       ['ref_name', '=', 'Guest'],
     ]),
   )
   const listed = (await (
-    await request.get(`/api/resource/File?filters=${filters}`, { headers: auth })
+    await request.get(`/api/table/File?filters=${filters}`, { headers: auth })
   ).json()) as { data: { name: string }[] }
   for (const f of listed.data)
-    await request.delete(`/api/resource/File/${f.name}`, { headers: auth })
+    await request.delete(`/api/table/File/${f.name}`, { headers: auth })
 }
 
 test.beforeEach(async ({ request }) => cleanup(request))

@@ -7,7 +7,7 @@ const ROLE = 'Ls Role'
 
 // The exact query shape a Link autocomplete issues.
 const searchQs = (q: string) =>
-  `/api/resource/${encodeURIComponent(TARGET)}?${new URLSearchParams({
+  `/api/table/${encodeURIComponent(TARGET)}?${new URLSearchParams({
     filters: JSON.stringify([['name', 'like', `%${q}%`]]),
     fields: JSON.stringify(['name']),
     limit_page_length: '10',
@@ -35,11 +35,11 @@ async function grantOwnRowsOnlyAndSeed(admin: TestClient, alice: TestClient, bob
     doctype: 'Permission',
     doc: { ref_table: TARGET, role: ROLE, own_rows_only: true, can_read: true, can_create: true },
   })
-  await alice.fetch(`/api/resource/${encodeURIComponent(TARGET)}`, {
+  await alice.fetch(`/api/table/${encodeURIComponent(TARGET)}`, {
     method: 'POST',
     body: JSON.stringify({ name: 'doc-alice', note: 'a' }),
   })
-  await bob.fetch(`/api/resource/${encodeURIComponent(TARGET)}`, {
+  await bob.fetch(`/api/table/${encodeURIComponent(TARGET)}`, {
     method: 'POST',
     body: JSON.stringify({ name: 'doc-bob', note: 'b' }),
   })

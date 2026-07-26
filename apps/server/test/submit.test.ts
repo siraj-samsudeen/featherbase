@@ -27,7 +27,7 @@ describe('DOC-007: submittable documents', () => {
     // register inside the test and clear again in `finally`.
     const fired: string[] = []
     registerController({
-      doctype: DT,
+      table: DT,
       hooks: {
         on_submit: () => { fired.push('on_submit') },
         on_cancel: () => { fired.push('on_cancel') },
@@ -41,10 +41,9 @@ describe('DOC-007: submittable documents', () => {
       expect(doc.status).toBe('draft')
 
       fired.length = 0
-      const submitted = await admin.post<Record<string, unknown>>('/api/submit_doc', {
-        doctype: DT,
-        name: doc.name,
-      })
+      const submitted = await admin.post<Record<string, unknown>>(
+        `/api/table/${encodeURIComponent(DT)}/${doc.name}:submit`,
+      )
       expect(submitted.status).toBe('submitted')
       expect(fired).toEqual(['on_submit'])
 
@@ -61,18 +60,17 @@ describe('DOC-007: submittable documents', () => {
 
       // Cannot delete while submitted
       await expect(
-        admin.delete(`/api/doc/${encodeURIComponent(DT)}/${doc.name}`),
+        admin.delete(`/api/table/${encodeURIComponent(DT)}/${doc.name}`),
       ).rejects.toMatchObject({ status: 417 })
 
       // Cannot double-submit
       await expect(
-        admin.post('/api/submit_doc', { doctype: DT, name: doc.name }),
+        admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.name}:submit`),
       ).rejects.toMatchObject({ status: 417 })
 
-      const cancelled = await admin.post<Record<string, unknown>>('/api/cancel_doc', {
-        doctype: DT,
-        name: doc.name,
-      })
+      const cancelled = await admin.post<Record<string, unknown>>(
+        `/api/table/${encodeURIComponent(DT)}/${doc.name}:cancel`,
+      )
       expect(cancelled.status).toBe('cancelled')
       expect(fired).toEqual(['on_submit', 'on_cancel'])
 
@@ -95,7 +93,7 @@ describe('DOC-007: submittable documents', () => {
       doc: { amount: 1 },
     })
     await expect(
-      admin.post('/api/cancel_doc', { doctype: DT, name: doc.name }),
+      admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.name}:cancel`),
     ).rejects.toMatchObject({ status: 417 })
 
     const plain = await admin.post<Record<string, unknown>>('/api/save_doc', {
@@ -103,7 +101,7 @@ describe('DOC-007: submittable documents', () => {
       doc: { x: 'a' },
     })
     await expect(
-      admin.post('/api/submit_doc', { doctype: PLAIN, name: plain.name }),
+      admin.post(`/api/table/${encodeURIComponent(PLAIN)}/${plain.name}:submit`),
     ).rejects.toMatchObject({
       status: 417,
       message: expect.stringMatching(/not submittable/),

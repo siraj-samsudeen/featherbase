@@ -125,11 +125,11 @@ describe('Frappe lifecycle + app-contract parity', () => {
     try {
       await installApp(APP)
       const [job] = await sql`
-        select repeat_every from background_job where method = ${METHOD} and status = 'queued'`
+        select repeat_every from background_job where method = ${METHOD} and job_status = 'queued'`
       expect(Number(job.repeat_every)).toBe(3600)
     } finally {
       await uninstallApp(APP).catch(() => {})
-      const rows = await sql`select 1 from background_job where method = ${METHOD} and status = 'queued'`
+      const rows = await sql`select 1 from background_job where method = ${METHOD} and job_status = 'queued'`
       expect(rows.length).toBe(0) // uninstall dropped the pending recurrence
     }
   })

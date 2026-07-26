@@ -51,7 +51,7 @@ describe('PERM-005: NULL links pass Data Scope list narrowing', () => {
       doc: { user: agent.user, allow_table: 'User', for_value: CUST_A },
     })
     const body = await agent.get<{ data: { subject: string }[]; total: number }>(
-      `/api/resource/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
         JSON.stringify(['name', 'subject']),
       )}`,
     )

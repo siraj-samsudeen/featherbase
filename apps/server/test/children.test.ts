@@ -133,7 +133,7 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
     await setup(admin)
     const doc = await save(admin, { title: 'o3', items: [{ item: 'z' }, { item: 'y' }] })
     const read = await admin.get<Record<string, any>>(
-      `/api/doc/${encodeURIComponent(PARENT)}/${doc.name}`,
+      `/api/table/${encodeURIComponent(PARENT)}/${doc.name}`,
     )
     expect(read.items.map((r: any) => r.item)).toEqual(['z', 'y'])
   })

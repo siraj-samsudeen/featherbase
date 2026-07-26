@@ -32,7 +32,7 @@ describe('DOC-001: save_doc inserts through the Document engine', () => {
     expect(doc.qty).toBe('3')
 
     const read = await admin.get<Record<string, unknown>>(
-      `/api/doc/${encodeURIComponent(DT)}/${doc.name}`,
+      `/api/table/${encodeURIComponent(DT)}/${doc.name}`,
     )
     expect(read.title).toBe('hello')
   })
@@ -52,7 +52,7 @@ describe('DOC-001: save_doc inserts through the Document engine', () => {
     await expect(
       admin.post('/api/save_doc', { doctype: 'Missing DT', doc: {} }),
     ).rejects.toMatchObject({ status: 404 })
-    await expect(admin.get(`/api/doc/${encodeURIComponent(DT)}/zzz`)).rejects.toMatchObject({
+    await expect(admin.get(`/api/table/${encodeURIComponent(DT)}/zzz`)).rejects.toMatchObject({
       status: 404,
     })
   })

@@ -14,7 +14,7 @@ import { onEvent } from '../src/realtime'
 async function nudgeDueJobs() {
   await sql`
     update background_job set run_at = now()
-    where status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
+    where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
 }
 
 describe('JOB-005: job progress reporting', () => {

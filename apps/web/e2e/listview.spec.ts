@@ -15,47 +15,47 @@ async function ensureFixtures(request: APIRequestContext) {
   const token = await adminToken(request)
   const auth = { Authorization: `Bearer ${token}` }
 
-  for (const [name, fields] of [
+  for (const [name, columns] of [
     [
       DT_A,
       [
-        { fieldname: 'title', fieldtype: 'Data', label: 'Title', in_list_view: true },
-        { fieldname: 'qty', fieldtype: 'Int', label: 'Qty', in_list_view: true },
+        { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true },
+        { column_name: 'qty', column_type: 'Int', label: 'Qty', in_list_view: true },
       ],
     ],
     [
       DT_B,
       [
-        { fieldname: 'city', fieldtype: 'Data', label: 'City', in_list_view: true },
-        { fieldname: 'active', fieldtype: 'Check', label: 'Active', in_list_view: true },
+        { column_name: 'city', column_type: 'Data', label: 'City', in_list_view: true },
+        { column_name: 'active', column_type: 'Check', label: 'Active', in_list_view: true },
       ],
     ],
   ] as const) {
-    const meta = await request.get(`/api/meta/${encodeURIComponent(name)}`, { headers: auth })
+    const meta = await request.get(`/api/table/${encodeURIComponent(name)}:meta`, { headers: auth })
     if (meta.status() === 404) {
-      await request.post('/api/doctype', { headers: auth, data: { name, fields } })
+      await request.post('/api/doctype', { headers: auth, data: { name, columns } })
     }
   }
 
   const listA = await request.get(
-    `/api/resource/${encodeURIComponent(DT_A)}?limit_page_length=1`,
+    `/api/table/${encodeURIComponent(DT_A)}?limit_page_length=1`,
     { headers: auth },
   )
   const totalA = ((await listA.json()) as { total: number }).total
   for (let i = totalA; i < 30; i++) {
-    await request.post(`/api/resource/${encodeURIComponent(DT_A)}`, {
+    await request.post(`/api/table/${encodeURIComponent(DT_A)}`, {
       headers: auth,
       data: { title: `item-${String(i).padStart(2, '0')}`, qty: i },
     })
   }
 
   const listB = await request.get(
-    `/api/resource/${encodeURIComponent(DT_B)}?limit_page_length=1`,
+    `/api/table/${encodeURIComponent(DT_B)}?limit_page_length=1`,
     { headers: auth },
   )
   const totalB = ((await listB.json()) as { total: number }).total
   for (let i = totalB; i < 3; i++) {
-    await request.post(`/api/resource/${encodeURIComponent(DT_B)}`, {
+    await request.post(`/api/table/${encodeURIComponent(DT_B)}`, {
       headers: auth,
       data: { city: `city-${i}`, active: i % 2 === 0 },
     })

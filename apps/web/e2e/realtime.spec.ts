@@ -22,7 +22,7 @@ test.beforeAll(async ({ request }) => {
   const headers = await adminAuth(request)
   const dt = await request.post('/api/doctype', {
     headers,
-    data: { name: DT, autoname: 'prompt', fields: [{ fieldname: 'title', fieldtype: 'Data', in_list_view: true }] },
+    data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   // A second real user for the mention/notification test.
@@ -35,12 +35,12 @@ test.beforeAll(async ({ request }) => {
   // Clear rt-user's notifications so the unread badge starts empty each run.
   const notifs = (await (
     await request.get(
-      `/api/resource/Notification%20Log?filters=${encodeURIComponent(JSON.stringify([['for_user', '=', OTHER_USER]]))}&limit_page_length=200`,
+      `/api/table/Notification%20Log?filters=${encodeURIComponent(JSON.stringify([['for_user', '=', OTHER_USER]]))}&limit_page_length=200`,
       { headers },
     )
   ).json()) as { data: { name: string }[] }
   for (const n of notifs.data)
-    await request.delete(`/api/resource/Notification%20Log/${n.name}`, { headers })
+    await request.delete(`/api/table/Notification%20Log/${n.name}`, { headers })
 })
 
 test('RT-001: a doc created in one session appears in another session list', async ({ browser }) => {
@@ -63,7 +63,7 @@ test('RT-001: a doc created in one session appears in another session list', asy
   // A creates a doc via the API (its own session); B's list should update
   // with no reload.
   const token = await a.evaluate(() => localStorage.getItem('fc_token'))
-  const res = await a.request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  const res = await a.request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: { Authorization: `Bearer ${token}` },
     data: { name: uniq, title: uniq },
   })
@@ -85,7 +85,7 @@ test('RT-002: saving a doc in one session shows a refresh banner in another', as
   // Seed a doc and open it in both.
   const tokenA = await a.evaluate(() => localStorage.getItem('fc_token'))
   const docName = `rt-doc-${Date.now()}`
-  await a.request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  await a.request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: { Authorization: `Bearer ${tokenA}` },
     data: { name: docName, title: 'before' },
   })
@@ -132,7 +132,7 @@ test('RT-003: an @mention pops the mentioned user unread count live', async ({ b
 
   const tokenA = await a.evaluate(() => localStorage.getItem('fc_token'))
   const docName = `rt-mention-${Date.now()}`
-  await a.request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  await a.request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: { Authorization: `Bearer ${tokenA}` },
     data: { name: docName, title: 'discuss' },
   })

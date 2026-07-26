@@ -47,13 +47,13 @@ async function makeFlow(admin: TestClient) {
 }
 
 async function makeDoc(admin: TestClient) {
-  await admin.post(`/api/resource/${encodeURIComponent(DT)}`, { name: 'wf-srv-1', title: 'x' })
+  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { name: 'wf-srv-1', title: 'x' })
 }
 
 // Replay of the WF-002 drive (Submit → Approve) without its assertions.
 async function drive(admin: TestClient) {
-  await admin.post('/api/apply_workflow_action', { doctype: DT, name: 'wf-srv-1', action: 'Submit' })
-  await admin.post('/api/apply_workflow_action', { doctype: DT, name: 'wf-srv-1', action: 'Approve' })
+  await admin.post(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent('wf-srv-1')}:apply_workflow_action`, { action: 'Submit' })
+  await admin.post(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent('wf-srv-1')}:apply_workflow_action`, { action: 'Approve' })
 }
 
 describe('WF-001: workflow definition', () => {
@@ -65,7 +65,7 @@ describe('WF-001: workflow definition', () => {
     })
     expect(res.status).toBe(201)
     const meta = await admin.get<{ columns: { column_name: string }[] }>(
-      `/api/meta/${encodeURIComponent(DT)}`,
+      `/api/table/${encodeURIComponent(DT)}:meta`,
     )
     expect(meta.columns.some((f) => f.column_name === 'workflow_state')).toBe(true)
   })
@@ -97,10 +97,10 @@ describe('WF-002/003: execution + server-side enforcement', () => {
     await makeDoc(admin)
     const viewer = await createUser({ roles: [VIEWER] })
     await expect(
-      viewer.post('/api/apply_workflow_action', { doctype: DT, name: 'wf-srv-1', action: 'Submit' }),
+      viewer.post(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent('wf-srv-1')}:apply_workflow_action`, { action: 'Submit' }),
     ).rejects.toMatchObject({ status: 403 })
     const doc = await admin.get<{ workflow_state: string | null; status: string }>(
-      `/api/resource/${encodeURIComponent(DT)}/wf-srv-1`,
+      `/api/table/${encodeURIComponent(DT)}/wf-srv-1`,
     )
     // New documents start at the workflow's initial state (WF-003) — the
     // refused action must leave them there.
@@ -115,15 +115,15 @@ describe('WF-002/003: execution + server-side enforcement', () => {
     await makeFlow(admin)
     await makeDoc(admin)
     const submit = await admin.post<{ workflow_state: string; status: string }>(
-      '/api/apply_workflow_action',
-      { doctype: DT, name: 'wf-srv-1', action: 'Submit' },
+      `/api/table/${encodeURIComponent(DT)}/wf-srv-1:apply_workflow_action`,
+      { action: 'Submit' },
     )
     expect(submit.workflow_state).toBe('Pending')
     expect(submit.status).toBe('draft')
 
     const approve = await admin.post<{ workflow_state: string; status: string }>(
-      '/api/apply_workflow_action',
-      { doctype: DT, name: 'wf-srv-1', action: 'Approve' },
+      `/api/table/${encodeURIComponent(DT)}/wf-srv-1:apply_workflow_action`,
+      { action: 'Approve' },
     )
     expect(approve.workflow_state).toBe('Approved')
     expect(approve.status).toBe('submitted')
@@ -143,7 +143,7 @@ describe('WF-002/003: execution + server-side enforcement', () => {
     await drive(admin)
     // wf-srv-1 is now Approved with no outgoing transitions.
     await expect(
-      admin.post('/api/apply_workflow_action', { doctype: DT, name: 'wf-srv-1', action: 'Submit' }),
+      admin.post(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent('wf-srv-1')}:apply_workflow_action`, { action: 'Submit' }),
     ).rejects.toMatchObject({ status: 417 })
   })
 })

@@ -53,7 +53,7 @@ describe('DOC-009: version history', () => {
 
     // second save -> second version
     const fresh = await admin.get<Record<string, unknown>>(
-      `/api/doc/${encodeURIComponent(DT)}/${doc.name}`,
+      `/api/table/${encodeURIComponent(DT)}/${doc.name}`,
     )
     await admin.post('/api/save_doc', {
       doctype: DT,
@@ -90,18 +90,17 @@ describe('DOC-008: amend cancelled documents', () => {
 
     // must be cancelled first
     await expect(
-      admin.post('/api/amend_doc', { doctype: DT, name: doc.name }),
+      admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.name}:amend`),
     ).rejects.toMatchObject({ status: 417 })
-    await admin.post('/api/submit_doc', { doctype: DT, name: doc.name })
+    await admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.name}:submit`)
     await expect(
-      admin.post('/api/amend_doc', { doctype: DT, name: doc.name }),
+      admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.name}:amend`),
     ).rejects.toMatchObject({ status: 417 })
-    await admin.post('/api/cancel_doc', { doctype: DT, name: doc.name })
+    await admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.name}:cancel`)
 
-    const amended = await admin.post<Record<string, any>>('/api/amend_doc', {
-      doctype: DT,
-      name: doc.name,
-    })
+    const amended = await admin.post<Record<string, any>>(
+      `/api/table/${encodeURIComponent(DT)}/${doc.name}:amend`,
+    )
     expect(amended.name).toBe(`${doc.name}-1`)
     expect(amended.amended_from).toBe(doc.name)
     expect(amended.status).toBe('draft')
@@ -118,17 +117,16 @@ describe('DOC-008: amend cancelled documents', () => {
       }),
     })
     expect(edit.status).toBe(201)
-    const resubmit = await admin.fetch('/api/submit_doc', {
-      method: 'POST',
-      body: JSON.stringify({ doctype: DT, name: amended.name }),
-    })
+    const resubmit = await admin.fetch(
+      `/api/table/${encodeURIComponent(DT)}/${amended.name}:submit`,
+      { method: 'POST' },
+    )
     expect(resubmit.status).toBe(200)
 
     // amending the same cancelled doc again derives NAME-2
-    const second = await admin.post<Record<string, unknown>>('/api/amend_doc', {
-      doctype: DT,
-      name: doc.name,
-    })
+    const second = await admin.post<Record<string, unknown>>(
+      `/api/table/${encodeURIComponent(DT)}/${doc.name}:amend`,
+    )
     expect(second.name).toBe(`${doc.name}-2`)
   })
 })

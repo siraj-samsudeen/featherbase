@@ -91,7 +91,7 @@ async function makeDoc(admin: TestClient): Promise<{ name: string; updated_at: s
 async function drainDueJobs() {
   await sql`
     update background_job set run_at = now()
-    where status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
+    where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
   return await drainJobs()
 }
 

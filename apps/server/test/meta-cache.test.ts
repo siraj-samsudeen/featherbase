@@ -50,7 +50,7 @@ describe('META-011: meta cache with invalidation', () => {
     await sql`update column_def set label = 'New Label' where parent = ${DT}`
     invalidateMeta(DT)
     const body = await admin.get<{ columns: { label: string }[] }>(
-      `/api/meta/${encodeURIComponent(DT)}`,
+      `/api/table/${encodeURIComponent(DT)}:meta`,
     )
     expect(body.columns[0].label).toBe('New Label')
   })

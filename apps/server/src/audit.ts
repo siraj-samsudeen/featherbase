@@ -52,7 +52,7 @@ export async function logAccess(
     user,
     operation,
     ref_table: ref.table ?? null,
-    ref_name: ref.name ?? null,
+    reference_name: ref.name ?? null,
     method: ref.method ?? null,
   })}`
 }

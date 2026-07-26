@@ -16,25 +16,25 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 
   const dt = await request.post('/api/doctype', {
     headers,
-    data: { name: DT, autoname: 'prompt', fields: [{ fieldname: 'title', fieldtype: 'Data', in_list_view: true }] },
+    data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
 
   await request.post('/api/save_doc', { headers, data: { doctype: 'Role', doc: { name: 'Wf Ui Approver' } } })
 
   // Fresh workflow each run (delete old first so states/transitions are clean).
-  await request.delete('/api/resource/Workflow/Wf%20Ui%20Flow', { headers })
+  await request.delete('/api/table/Workflow/Wf%20Ui%20Flow', { headers })
   const wf = await request.post('/api/save_doc', {
     headers,
     data: {
       doctype: 'Workflow',
       doc: {
         name: 'Wf Ui Flow',
-        document_type: DT,
+        ref_table: DT,
         is_active: true,
         states: [
-          { state: 'Draft', doc_status: '0' },
-          { state: 'Approved', doc_status: '1' },
+          { state: 'Draft', target_status: 'draft' },
+          { state: 'Approved', target_status: 'submitted' },
         ],
         transitions: [{ state: 'Draft', action: 'Approve', next_state: 'Approved', allowed: 'Wf Ui Approver' }],
       },
@@ -43,7 +43,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   if (![201, 200].includes(wf.status())) throw new Error(`workflow: ${wf.status()}`)
 
   
-  const doc = await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
     data: { name: DOC, title: 'Approve me' },
   })
@@ -74,7 +74,7 @@ test('WF-002: Approve button transitions state and records the audit trail', asy
   const filters = encodeURIComponent(JSON.stringify([['ref_name', '=', DOC]]))
   const fields = encodeURIComponent(JSON.stringify(['action', 'to_state', 'actor']))
   const trail = (await (
-    await page.request.get(`/api/resource/Workflow%20Action?filters=${filters}&fields=${fields}`, {
+    await page.request.get(`/api/table/Workflow%20Action?filters=${filters}&fields=${fields}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
   ).json()) as { data: { action: string; to_state: string; actor: string }[] }

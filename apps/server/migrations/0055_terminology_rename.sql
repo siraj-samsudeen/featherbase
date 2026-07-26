@@ -318,6 +318,13 @@ update column_def set parent = 'Metadata Override' where parent = 'Property Sett
 update table_def set name = 'Metadata Override' where name = 'Property Setter';
 update column_def set reference_table = 'Table' where parent = 'Metadata Override' and reference_table = 'DocType';
 
+-- The two ALTERs above renamed the PHYSICAL columns on metadata_override;
+-- the column_def METADATA rows describing those columns need the same
+-- rename, or getMeta('Metadata Override') keeps validating against the old
+-- names and every save 417s with "Unknown fields".
+update column_def set column_name = 'table_name' where parent = 'Metadata Override' and column_name = 'doc_type';
+update column_def set column_name = 'column_name' where parent = 'Metadata Override' and column_name = 'field_name';
+
 -- Both renames above are done and consistent — safe to reinstate the FK.
 alter table column_def
   add constraint column_def_parent_fkey foreign key (parent) references table_def(name) on delete cascade;

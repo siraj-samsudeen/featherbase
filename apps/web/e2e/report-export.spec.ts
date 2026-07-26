@@ -16,27 +16,27 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     headers: auth,
     data: {
       name: DT,
-      fields: [
-        { fieldname: 'title', fieldtype: 'Data', label: 'Title', in_list_view: true },
-        { fieldname: 'status', fieldtype: 'Select', label: 'Status', options: 'Open\nClosed', in_list_view: true },
-        { fieldname: 'qty', fieldtype: 'Int', label: 'Qty', in_list_view: true },
+      columns: [
+        { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true },
+        { column_name: 'stage', column_type: 'Choice', label: 'Status', choices: 'Open\nClosed', in_list_view: true },
+        { column_name: 'qty', column_type: 'Int', label: 'Qty', in_list_view: true },
       ],
     },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   const listed = (await (
-    await request.get(`/api/resource/${encodeURIComponent(DT)}?limit_page_length=100`, { headers: auth })
+    await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, { headers: auth })
   ).json()) as { data: { name: string }[] }
   for (const row of listed.data)
-    await request.delete(`/api/resource/${encodeURIComponent(DT)}/${row.name}`, { headers: auth })
-  for (const [title, status, qty] of [
+    await request.delete(`/api/table/${encodeURIComponent(DT)}/${row.name}`, { headers: auth })
+  for (const [title, stage, qty] of [
     ['alpha', 'Open', 1],
     ['bravo', 'Open', 2],
     ['charlie', 'Closed', 5],
   ] as [string, string, number][]) {
-    await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+    await request.post(`/api/table/${encodeURIComponent(DT)}`, {
       headers: auth,
-      data: { title, status, qty },
+      data: { title, stage, qty },
     })
   }
 })
@@ -52,7 +52,7 @@ test('RPT-003: CSV and XLSX downloads match on-screen rows and grouping order', 
 
   await page.goto(`/desk/${encodeURIComponent(DT)}/view/report`)
   await expect(page.getByTestId('report-row')).toHaveCount(3)
-  await page.getByTestId('report-groupby').selectOption('status')
+  await page.getByTestId('report-groupby').selectOption('stage')
   await expect(page.getByTestId('group-header')).toHaveCount(2)
 
   // On-screen order: group headers + member titles, top to bottom.

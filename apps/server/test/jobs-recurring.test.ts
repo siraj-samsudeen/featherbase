@@ -23,7 +23,7 @@ async function setup() {
 async function nudgeDueJobs() {
   await sql`
     update background_job set run_at = now()
-    where status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
+    where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
 }
 
 describe('JOB-003: recurring jobs', () => {
@@ -59,7 +59,7 @@ describe('JOB-003: recurring jobs', () => {
       // A fresh recurring job is always waiting (queue never permanently drains).
       const queued = (await sql`
       select count(*)::int as c from background_job
-      where method = 'demo_heartbeat' and status = 'queued'`)[0].c as number
+      where method = 'demo_heartbeat' and job_status = 'queued'`)[0].c as number
       expect(queued).toBeGreaterThanOrEqual(1)
     },
     15_000,

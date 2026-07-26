@@ -73,8 +73,8 @@ export function CalendarView({ doctype }: { doctype: string }) {
     if (from === to) return
     setError(null)
     try {
-      const doc = await api.get<Row>(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
-      await api.put(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`, {
+      const doc = await api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
+      await api.patch(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`, {
         [field!]: to,
         updated_at: doc.updated_at,
       })

@@ -14,15 +14,15 @@ test.beforeAll(async ({ request }) => {
     headers,
     data: {
       name: DT,
-      fields: [
-        { fieldname: 'title', fieldtype: 'Data', in_list_view: true },
-        { fieldname: 'qty', fieldtype: 'Int', in_list_view: true },
-        { fieldname: 'notes', fieldtype: 'Text' },
+      columns: [
+        { column_name: 'title', column_type: 'Data', in_list_view: true },
+        { column_name: 'qty', column_type: 'Int', in_list_view: true },
+        { column_name: 'notes', column_type: 'Text' },
       ],
     },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
-  await request.post(`/api/resource/${encodeURIComponent(DT)}`, { headers, data: { title: 'Widget', qty: 5 } })
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { title: 'Widget', qty: 5 } })
 })
 
 async function login(page: Page) {

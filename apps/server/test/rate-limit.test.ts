@@ -67,4 +67,24 @@ describe('API-007: rate limiting', () => {
       expect(res.status).toBe(200)
     }
   })
+
+  // #62 bug 1: /api/method used to return before the global rateLimit use()
+  // was ever reached, so API-007 was silently unenforced on the entire RPC
+  // surface. The dispatcher now applies rateLimit itself.
+  test('also throttles the RPC dispatcher (/api/method/*), not just REST routes', async ({
+    admin,
+    api,
+  }) => {
+    await setup(admin)
+    resetRateLimit(USER)
+    const auth = { authorization: `Bearer ${await token(api)}` }
+
+    for (let i = 0; i < BUDGET; i++) {
+      const res = await api.fetch('/api/method/ping', { method: 'POST', headers: auth, body: '{}' })
+      expect(res.status).toBe(200)
+    }
+
+    const limited = await api.fetch('/api/method/ping', { method: 'POST', headers: auth, body: '{}' })
+    expect(limited.status).toBe(429)
+  })
 })

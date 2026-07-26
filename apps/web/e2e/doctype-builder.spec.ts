@@ -18,7 +18,7 @@ test('UI-011: create a DocType with 5 fields from the Desk; list+form work immed
   // Clean any prior copy directly (no delete-DocType endpoint yet)
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const token = ((await login.json()) as { token: string }).token
-  const exists = await request.get(`/api/meta/${encodeURIComponent(NEW_DT)}`, {
+  const exists = await request.get(`/api/table/${encodeURIComponent(NEW_DT)}:meta`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   test.skip(exists.status() === 200, 'Builder Widget already exists in this DB; skipping create path')
@@ -38,18 +38,18 @@ test('UI-011: create a DocType with 5 fields from the Desk; list+form work immed
     ['title', 'Title', 'Data', '', true, true],
     ['count', 'Count', 'Int', '', false, true],
     ['active', 'Active', 'Check', '', false, false],
-    ['stage', 'Stage', 'Select', 'New, Done', false, true],
+    ['stage', 'Stage', 'Choice', 'New, Done', false, true],
     ['notes', 'Notes', 'Text', '', false, false],
   ] as const
 
   for (let i = 0; i < fieldDefs.length; i++) {
     if (i > 0) await page.getByTestId('dt-add-field').click()
-    const [fn, label, type, options, reqd, list] = fieldDefs[i]
+    const [fn, label, type, target, reqd, list] = fieldDefs[i]
     const row = page.getByTestId('dt-fields').locator('tbody tr').nth(i)
-    await row.locator('[data-rowfield=fieldname]').fill(fn)
+    await row.locator('[data-rowfield=column_name]').fill(fn)
     await row.locator('[data-rowfield=label]').fill(label)
-    await row.locator('[data-rowfield=fieldtype]').selectOption(type)
-    if (options) await row.locator('[data-rowfield=options]').fill(options)
+    await row.locator('[data-rowfield=column_type]').selectOption(type)
+    if (target) await row.locator('[data-rowfield=target]').fill(target)
     if (reqd) await row.locator('[data-rowfield=reqd]').check()
     if (list) await row.locator('[data-rowfield=in_list_view]').check()
   }
@@ -73,11 +73,11 @@ test('UI-011: create a DocType with 5 fields from the Desk; list+form work immed
   await expect(page.getByTestId('list-rows')).toContainText('first doc')
 
   // And the metadata is real (server side)
-  const meta = await request.get(`/api/meta/${encodeURIComponent(NEW_DT)}`, {
+  const meta = await request.get(`/api/table/${encodeURIComponent(NEW_DT)}:meta`, {
     headers: { Authorization: `Bearer ${token}` },
   })
-  const body = (await meta.json()) as { fields: { fieldname: string }[] }
-  expect(body.fields.map((f) => f.fieldname)).toEqual(
+  const body = (await meta.json()) as { columns: { column_name: string }[] }
+  expect(body.columns.map((f) => f.column_name)).toEqual(
     expect.arrayContaining(['title', 'count', 'active', 'stage', 'notes']),
   )
 })

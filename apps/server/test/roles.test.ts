@@ -24,7 +24,7 @@ describe('PERM-001: role model', () => {
     admin,
   }) => {
     await makeUser(admin)
-    const doc = await admin.get<Record<string, unknown>>(`/api/doc/User/${encodeURIComponent(USER)}`)
+    const doc = await admin.get<Record<string, unknown>>(`/api/table/User/${encodeURIComponent(USER)}`)
     const assign = await admin.fetch('/api/save_doc', {
       method: 'POST',
       body: JSON.stringify({
@@ -40,7 +40,7 @@ describe('PERM-001: role model', () => {
     expect(await getRoles(USER)).toEqual(['All', 'Guest', 'System Manager'])
 
     const doc2 = await admin.get<Record<string, unknown>>(
-      `/api/doc/User/${encodeURIComponent(USER)}`,
+      `/api/table/User/${encodeURIComponent(USER)}`,
     )
     const remove = await admin.fetch('/api/save_doc', {
       method: 'POST',
@@ -55,7 +55,7 @@ describe('PERM-001: role model', () => {
 
   test('assigning a nonexistent role fails link validation', async ({ admin }) => {
     await makeUser(admin)
-    const doc = await admin.get<Record<string, unknown>>(`/api/doc/User/${encodeURIComponent(USER)}`)
+    const doc = await admin.get<Record<string, unknown>>(`/api/table/User/${encodeURIComponent(USER)}`)
     await expect(
       admin.post('/api/save_doc', {
         doctype: 'User',

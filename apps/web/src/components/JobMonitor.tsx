@@ -3,15 +3,15 @@ import { useQuery } from '@tanstack/react-query'
 import { api, getSessionUser, listResource } from '../lib/api'
 import { useRealtime } from '../lib/realtime'
 
-// JOB-004: monitor background jobs and retry failed ones from the Desk.
+// JOB-004: monitor background jobs and retry failed ones from the Admin UI.
 
 interface Job {
   name: string
   method: string
-  status: string
+  job_status: string
   attempts: number | string
   error: string | null
-  creation: string
+  created_at: string
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -43,8 +43,8 @@ export function JobMonitor() {
     queryKey: ['jobs'],
     queryFn: () =>
       listResource<Job>('Background Job', {
-        fields: ['name', 'method', 'status', 'attempts', 'error', 'creation'],
-        order_by: 'creation desc',
+        fields: ['name', 'method', 'job_status', 'attempts', 'error', 'created_at'],
+        order_by: 'created_at desc',
         limit_page_length: 100,
       }),
     refetchInterval: 3000, // live view
@@ -102,15 +102,15 @@ export function JobMonitor() {
             {rows.map((j) => (
               <tr key={j.name} className="border-b border-[var(--color-border)] last:border-0" data-testid={`job-${j.name}`}>
                 <td className="px-3 py-2 font-medium text-[var(--color-ink)]">{j.method}</td>
-                <td className={`px-3 py-2 ${STATUS_STYLE[j.status] ?? ''}`} data-testid={`job-status-${j.name}`}>
-                  {j.status}
+                <td className={`px-3 py-2 ${STATUS_STYLE[j.job_status] ?? ''}`} data-testid={`job-status-${j.name}`}>
+                  {j.job_status}
                 </td>
                 <td className="px-3 py-2 text-[var(--color-ink-muted)]">{String(j.attempts)}</td>
                 <td className="max-w-xs truncate px-3 py-2 text-xs text-[var(--color-ink-faint)]" title={j.error ?? ''}>
                   {j.error ?? '—'}
                 </td>
                 <td className="px-3 py-2 text-right">
-                  {j.status === 'failed' && (
+                  {j.job_status === 'failed' && (
                     <button
                       className="fc-btn"
                       data-testid={`retry-${j.name}`}

@@ -5,12 +5,13 @@ import { drainJobs, loadJobs, retryJob } from '../src/jobs'
 
 // JOB-004: a failed job can be re-queued and re-run.
 //
-// Background Job's own delivery state lives on the reserved `status` column
-// (src/jobs.ts reads/writes `status`, not the `job_status` column the
-// migration also defines but src never touches — see PROGRESS.md). Because
-// `status` is reserved, a plain saveDoc insert can never set it directly
-// (it's always forced to 'draft') — so a pre-failed row has to be built with
-// a raw SQL insert, same as the "will not retry" test below already did.
+// Background Job's own delivery state lives on `job_status` (src/jobs.ts
+// reads/writes it), a dedicated column distinct from the reserved `status`
+// every Table gets for its draft/submitted/cancelled lifecycle — the two
+// used to collide on the same column name, which meant a plain saveDoc
+// insert could never set a job's delivery state directly (it was always
+// forced to 'draft'). A pre-failed row is still built with a raw SQL insert
+// here for setup convenience, same as the "will not retry" test below.
 
 async function failedJob(): Promise<string> {
   await loadJobs() // registers ping_job
@@ -20,7 +21,7 @@ async function failedJob(): Promise<string> {
       created_by: 'Administrator',
       updated_by: 'Administrator',
       method: 'ping_job',
-      status: 'failed',
+      job_status: 'failed',
       attempts: 3,
       max_attempts: 3,
       error: 'boom',
@@ -34,13 +35,13 @@ describe('JOB-004: retry failed jobs', () => {
     const name = await failedJob()
     expect(await retryJob(name)).toBe(true)
 
-    const [queued] = await sql`select status, attempts from background_job where name = ${name}`
-    expect(queued.status).toBe('queued')
+    const [queued] = await sql`select job_status, attempts from background_job where name = ${name}`
+    expect(queued.job_status).toBe('queued')
     expect(Number(queued.attempts)).toBe(0)
 
     await drainJobs()
-    const [done] = await sql`select status from background_job where name = ${name}`
-    expect(done.status).toBe('done')
+    const [done] = await sql`select job_status from background_job where name = ${name}`
+    expect(done.job_status).toBe('done')
   })
 
   test('will not retry a job that is not failed', async () => {
@@ -51,7 +52,7 @@ describe('JOB-004: retry failed jobs', () => {
         created_by: 'Administrator',
         updated_by: 'Administrator',
         method: 'ping_job',
-        status: 'done',
+        job_status: 'done',
         attempts: 1,
         max_attempts: 3,
         payload: '{}',

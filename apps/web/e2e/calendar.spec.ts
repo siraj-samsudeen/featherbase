@@ -19,17 +19,17 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     headers,
     data: {
       name: DT,
-      autoname: 'prompt',
-      fields: [
-        { fieldname: 'title', fieldtype: 'Data', in_list_view: true },
-        { fieldname: 'due', fieldtype: 'Date', in_list_view: true },
+      id_pattern: 'prompt',
+      columns: [
+        { column_name: 'title', column_type: 'Data', in_list_view: true },
+        { column_name: 'due', column_type: 'Date', in_list_view: true },
       ],
     },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
-  const listed = (await (await request.get(`/api/resource/${encodeURIComponent(DT)}?limit_page_length=100`, { headers })).json()) as { data: { name: string }[] }
-  for (const r of listed.data) await request.delete(`/api/resource/${encodeURIComponent(DT)}/${r.name}`, { headers })
-  await request.post(`/api/resource/${encodeURIComponent(DT)}`, { headers, data: { name: 'evt-1', title: 'Deadline', due: DAY_FROM } })
+  const listed = (await (await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, { headers })).json()) as { data: { name: string }[] }
+  for (const r of listed.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${r.name}`, { headers })
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { name: 'evt-1', title: 'Deadline', due: DAY_FROM } })
 })
 
 test('UI-021: events appear on their date and dragging updates the date field', async ({ page }) => {
@@ -64,7 +64,7 @@ test('UI-021: events appear on their date and dragging updates the date field', 
   // The date field changed in the DB.
   const token = await page.evaluate(() => localStorage.getItem('fc_token'))
   const doc = (await (
-    await page.request.get(`/api/resource/${encodeURIComponent(DT)}/evt-1`, {
+    await page.request.get(`/api/table/${encodeURIComponent(DT)}/evt-1`, {
       headers: { Authorization: `Bearer ${token}` },
     })
   ).json()) as { due: string }

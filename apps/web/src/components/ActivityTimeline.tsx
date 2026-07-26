@@ -4,12 +4,12 @@ import { listResource } from '../lib/api'
 
 interface CommentRow {
   content: string
-  owner: string
-  creation: string
+  created_by: string
+  created_at: string
 }
 interface VersionRow {
-  owner: string
-  creation: string
+  created_by: string
+  created_at: string
   data: { changed?: [string, unknown, unknown][] } | null
 }
 
@@ -18,7 +18,7 @@ type Entry =
   | { kind: 'version'; at: string; who: string; changes: [string, unknown, unknown][] }
 
 // UI-019: activity timeline interleaving comments and versions (edits with
-// their field diff) chronologically. Workflow actions join here once WF
+// their column diff) chronologically. Workflow actions join here once WF
 // lands — they are recorded as versions/comments too.
 export function ActivityTimeline({ doctype, name }: { doctype: string; name: string }) {
   const comments = useQuery({
@@ -26,11 +26,11 @@ export function ActivityTimeline({ doctype, name }: { doctype: string; name: str
     queryFn: () =>
       listResource<CommentRow>('Comment', {
         filters: [
-          ['ref_doctype', '=', doctype],
+          ['ref_table', '=', doctype],
           ['ref_name', '=', name],
         ],
-        fields: ['content', 'owner', 'creation'],
-        order_by: 'creation asc',
+        fields: ['content', 'created_by', 'created_at'],
+        order_by: 'created_at asc',
         limit_page_length: 200,
       }),
   })
@@ -39,11 +39,11 @@ export function ActivityTimeline({ doctype, name }: { doctype: string; name: str
     queryFn: () =>
       listResource<VersionRow>('Version', {
         filters: [
-          ['ref_doctype', '=', doctype],
+          ['ref_table', '=', doctype],
           ['ref_name', '=', name],
         ],
-        fields: ['owner', 'creation', 'data'],
-        order_by: 'creation asc',
+        fields: ['created_by', 'created_at', 'data'],
+        order_by: 'created_at asc',
         limit_page_length: 200,
       }),
   })
@@ -51,12 +51,12 @@ export function ActivityTimeline({ doctype, name }: { doctype: string; name: str
   const entries = useMemo<Entry[]>(() => {
     const out: Entry[] = []
     for (const c of comments.data?.data ?? [])
-      out.push({ kind: 'comment', at: c.creation, who: c.owner, content: c.content })
+      out.push({ kind: 'comment', at: c.created_at, who: c.created_by, content: c.content })
     for (const v of versions.data?.data ?? [])
       out.push({
         kind: 'version',
-        at: v.creation,
-        who: v.owner,
+        at: v.created_at,
+        who: v.created_by,
         changes: v.data?.changed ?? [],
       })
     return out.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
@@ -92,10 +92,10 @@ export function ActivityTimeline({ doctype, name }: { doctype: string; name: str
                 </div>
               ) : (
                 <ul className="text-xs text-[var(--color-ink-muted)]" data-testid="activity-diff">
-                  {e.changes.length === 0 && <li>document updated</li>}
-                  {e.changes.map(([field, from, to], j) => (
+                  {e.changes.length === 0 && <li>row updated</li>}
+                  {e.changes.map(([column, from, to], j) => (
                     <li key={j}>
-                      <span className="font-medium text-[var(--color-ink)]">{field}</span>:{' '}
+                      <span className="font-medium text-[var(--color-ink)]">{column}</span>:{' '}
                       {fmt(from)} → {fmt(to)}
                     </li>
                   ))}

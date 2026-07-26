@@ -48,12 +48,12 @@ describe('PLAT-005: declarative app install over the API', () => {
 
       // The declared access model works for a scoped user.
       const user = await createUser({ roles: [ROLE] })
-      const ins = await user.fetch(`/api/resource/${encodeURIComponent(DT)}`, {
+      const ins = await user.fetch(`/api/table/${encodeURIComponent(DT)}`, {
         method: 'POST',
         body: JSON.stringify({ title: 'declared' }),
       })
       expect(ins.status).toBe(201)
-      expect((await user.fetch('/api/resource/User')).status).toBe(403)
+      expect((await user.fetch('/api/table/User')).status).toBe(403)
 
       // Uninstall over the API tears down Tables, roles and grants.
       const un = await admin.fetch('/api/uninstall_app', {
@@ -122,7 +122,7 @@ describe('PLAT-005: declarative app install over the API', () => {
 
       // And uninstall still works with no code present.
       const user = await createUser({ roles: [ROLE] })
-      expect((await user.fetch(`/api/resource/${encodeURIComponent(DT)}`)).status).toBe(200)
+      expect((await user.fetch(`/api/table/${encodeURIComponent(DT)}`)).status).toBe(200)
       await uninstallApp(APP)
       expect(await isInstalled(APP)).toBe(false)
     } finally {

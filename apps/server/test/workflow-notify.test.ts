@@ -56,22 +56,21 @@ describe('WF-004: pending-approval notifications', () => {
     createUser,
   }) => {
     await setup(admin, createUser)
-    await admin.post(`/api/resource/${encodeURIComponent(DT)}`, {
+    await admin.post(`/api/table/${encodeURIComponent(DT)}`, {
       name: 'wf-notify-1',
       title: 'Widget order',
     })
 
     // Administrator submits: Draft -> Pending. Pending's outgoing "Approve" is
     // allowed by APPROVER_ROLE, so the approver should be emailed.
-    const res = await admin.post<{ workflow_state: string }>('/api/apply_workflow_action', {
-      doctype: DT,
-      name: 'wf-notify-1',
-      action: 'Submit',
-    })
+    const res = await admin.post<{ workflow_state: string }>(
+      `/api/table/${encodeURIComponent(DT)}/wf-notify-1:apply_workflow_action`,
+      { action: 'Submit' },
+    )
     expect(res.workflow_state).toBe('Pending')
 
     const emails = await sql`
-      select recipient, subject, body, ref_table, reference_name, status
+      select recipient, subject, body, ref_table, reference_name, send_status
       from email_queue where ref_table = ${DT} and reference_name = 'wf-notify-1'`
     expect(emails.length).toBe(1)
     const mail = emails[0]
@@ -82,7 +81,7 @@ describe('WF-004: pending-approval notifications', () => {
     expect(String(mail.body)).toContain(`/desk/${encodeURIComponent(DT)}/wf-notify-1`)
     expect(String(mail.body)).toContain('Approve')
     expect(mail.ref_table).toBe(DT)
-    expect(mail.status).toBe('queued')
+    expect(mail.send_status).toBe('queued')
   })
 
   test('entering a terminal state notifies no one (no outgoing transitions)', async ({
@@ -92,26 +91,21 @@ describe('WF-004: pending-approval notifications', () => {
     const approver = await setup(admin, createUser)
     // Legacy relied on the previous test's document sitting in Pending;
     // recreate that state explicitly: create the doc and submit it.
-    await admin.post(`/api/resource/${encodeURIComponent(DT)}`, {
+    await admin.post(`/api/table/${encodeURIComponent(DT)}`, {
       name: 'wf-notify-1',
       title: 'Widget order',
     })
-    await admin.post('/api/apply_workflow_action', {
-      doctype: DT,
-      name: 'wf-notify-1',
-      action: 'Submit',
-    })
+    await admin.post(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent('wf-notify-1')}:apply_workflow_action`, { action: 'Submit' })
 
     // The approver approves: Pending -> Approved (terminal). No further email.
     const before = (
       await sql`select count(*)::int as n from email_queue where ref_table = ${DT}`
     )[0].n as number
 
-    const res = await approver.post<{ workflow_state: string }>('/api/apply_workflow_action', {
-      doctype: DT,
-      name: 'wf-notify-1',
-      action: 'Approve',
-    })
+    const res = await approver.post<{ workflow_state: string }>(
+      `/api/table/${encodeURIComponent(DT)}/wf-notify-1:apply_workflow_action`,
+      { action: 'Approve' },
+    )
     expect(res.workflow_state).toBe('Approved')
 
     const after = (

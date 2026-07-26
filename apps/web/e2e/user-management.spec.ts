@@ -11,13 +11,13 @@ async function adminHeaders(request: APIRequestContext) {
 async function resetKeyFromSink(request: APIRequestContext): Promise<string> {
   const headers = await adminHeaders(request)
   const filters = encodeURIComponent(JSON.stringify([['mail_to', '=', USER]]))
-  const fields = encodeURIComponent(JSON.stringify(['name', 'body', 'creation']))
+  const fields = encodeURIComponent(JSON.stringify(['name', 'body', 'created_at']))
   // Poll: the mail is delivered inside the reset-request handler, but allow a
   // few retries so this never races the sink write under load.
   for (let attempt = 0; attempt < 10; attempt++) {
     const res = (await (
       await request.get(
-        `/api/resource/Email%20Sink?filters=${filters}&fields=${fields}&order_by=creation%20desc&limit_page_length=20`,
+        `/api/table/Email%20Sink?filters=${filters}&fields=${fields}&order_by=created_at%20desc&limit_page_length=20`,
         { headers },
       )
     ).json()) as { data: { body: string }[] }
@@ -36,8 +36,8 @@ test.describe.configure({ mode: 'serial' })
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
   // Start clean: a prior run may have left this user disabled, and save_doc
-  // won't re-enable it without a modified stamp. Delete, then create fresh.
-  await request.delete(`/api/resource/User/${encodeURIComponent(USER)}`, { headers })
+  // won't re-enable it without an updated_at stamp. Delete, then create fresh.
+  await request.delete(`/api/table/User/${encodeURIComponent(USER)}`, { headers })
   const created = await request.post('/api/save_doc', {
     headers,
     data: { doctype: 'User', doc: { name: USER, email: USER, full_name: 'Set2 E2E', enabled: true } },
@@ -47,9 +47,9 @@ test.beforeAll(async ({ request }) => {
   // Clean any old reset mails so the key we read is from this run.
   const filters = encodeURIComponent(JSON.stringify([['mail_to', '=', USER]]))
   const old = (await (
-    await request.get(`/api/resource/Email%20Sink?filters=${filters}&limit_page_length=50`, { headers })
+    await request.get(`/api/table/Email%20Sink?filters=${filters}&limit_page_length=50`, { headers })
   ).json()) as { data: { name: string }[] }
-  for (const m of old.data) await request.delete(`/api/resource/Email%20Sink/${m.name}`, { headers })
+  for (const m of old.data) await request.delete(`/api/table/Email%20Sink/${m.name}`, { headers })
 })
 
 // SET-002: a user resets their password via the emailed link, then logs in
@@ -83,11 +83,11 @@ test('SET-002: password reset via emailed link works end to end', async ({ page,
 test('SET-002: a disabled user cannot log in', async ({ page, request }) => {
   const headers = await adminHeaders(request)
   const doc = (await (
-    await request.get(`/api/resource/User/${encodeURIComponent(USER)}`, { headers })
-  ).json()) as { modified: string }
-  const put = await request.put(`/api/resource/User/${encodeURIComponent(USER)}`, {
+    await request.get(`/api/table/User/${encodeURIComponent(USER)}`, { headers })
+  ).json()) as { updated_at: string }
+  const put = await request.patch(`/api/table/User/${encodeURIComponent(USER)}`, {
     headers,
-    data: { enabled: false, modified: doc.modified },
+    data: { enabled: false, updated_at: doc.updated_at },
   })
   expect(put.status()).toBe(200)
 

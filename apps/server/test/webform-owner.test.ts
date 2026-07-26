@@ -59,7 +59,7 @@ describe('WEB-002/003: web-form owner attribution', () => {
 
     // The own_rows_only read grant now surfaces exactly this document.
     const list = await cust.get<{ data: { name: string }[]; total: number }>(
-      `/api/resource/${encodeURIComponent(DT)}`,
+      `/api/table/${encodeURIComponent(DT)}`,
     )
     expect(list.total).toBe(1)
     expect(list.data[0].name).toBe(res.name)

@@ -205,7 +205,7 @@ export function ListView({
     setBulkError(null)
     try {
       for (const name of selected)
-        await api.delete(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
+        await api.delete(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
       await refresh()
     } catch (err) {
       setBulkError(err instanceof ApiError ? err.message : 'Bulk delete failed')
@@ -228,9 +228,9 @@ export function ListView({
     try {
       for (const name of selected) {
         const doc = await api.get<Record<string, unknown>>(
-          `/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
+          `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
         )
-        await api.put(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`, {
+        await api.patch(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`, {
           [bulkField]: value,
           updated_at: doc.updated_at,
         })

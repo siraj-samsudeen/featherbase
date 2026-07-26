@@ -21,7 +21,7 @@ async function setup(admin: TestClient) {
     doctype: 'User',
     doc: { name: ASSIGNEE, email: ASSIGNEE },
   })
-  await admin.post(`/api/resource/${encodeURIComponent(DT)}`, { name: 'asg-1', title: 'x' })
+  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { name: 'asg-1', title: 'x' })
 }
 
 describe('EML-006: assignment', () => {

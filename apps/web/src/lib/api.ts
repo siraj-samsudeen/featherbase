@@ -71,8 +71,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+  post: <T>(path: string, body?: unknown) =>
+    request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) }),
+  // API surface design (#61): PATCH, not PUT, for row updates — Tables gain
+  // columns at runtime via Custom Field, and a PUT from a client that read a
+  // row before a column existed would silently null it on write. `put` stays
+  // for the handful of full-replace endpoints that aren't row data (e.g.
+  // /api/user_settings, a per-user preferences blob).
+  patch: <T>(path: string, body: unknown) =>
+    request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
   put: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
@@ -110,5 +117,5 @@ export function listResource<T = Record<string, unknown>>(
   if (params.limit_page_length != null)
     qs.set('limit_page_length', String(params.limit_page_length))
   const suffix = qs.size ? `?${qs}` : ''
-  return api.get<ListResult<T>>(`/api/resource/${encodeURIComponent(doctype)}${suffix}`)
+  return api.get<ListResult<T>>(`/api/table/${encodeURIComponent(doctype)}${suffix}`)
 }

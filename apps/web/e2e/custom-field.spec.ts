@@ -11,23 +11,23 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const headers = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
   const dt = await request.post('/api/doctype', {
     headers,
-    data: { name: DT, autoname: 'prompt', fields: [{ fieldname: 'title', fieldtype: 'Data', in_list_view: true }] },
+    data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
 
   // Add the custom field (idempotent across runs).
-  await request.delete(`/api/resource/Custom%20Field/${encodeURIComponent(`${DT}-${FIELD}`)}`, { headers })
+  await request.delete(`/api/table/Custom%20Field/${encodeURIComponent(`${DT}-${FIELD}`)}`, { headers })
   const cf = await request.post('/api/save_doc', {
     headers,
     data: {
       doctype: 'Custom Field',
-      doc: { name: `${DT}-${FIELD}`, dt: DT, fieldname: FIELD, label: 'Priority Note', fieldtype: 'Data', in_list_view: true },
+      doc: { name: `${DT}-${FIELD}`, dt: DT, column_name: FIELD, label: 'Priority Note', column_type: 'Data', in_list_view: true },
     },
   })
   if (![201, 200].includes(cf.status())) throw new Error(`custom field: ${cf.status()}`)
 
-  await request.delete(`/api/resource/${encodeURIComponent(DT)}/cf-doc`, { headers })
-  await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  await request.delete(`/api/table/${encodeURIComponent(DT)}/cf-doc`, { headers })
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
     data: { name: 'cf-doc', title: 'has custom', [FIELD]: 'urgent' },
   })

@@ -110,7 +110,7 @@ export function PortalRowPage({ doctype, name }: { doctype: string; name: string
   const doc = useQuery({
     retry: false,
     queryKey: ['portal-doc', doctype, name],
-    queryFn: () => api.get<Row>(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
+    queryFn: () => api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
   })
 
   const forbidden = doc.error instanceof ApiError && (doc.error.status === 403 || doc.error.status === 404)

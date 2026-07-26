@@ -5,10 +5,10 @@ import { ApiError, api, listResource } from '../lib/api'
 interface ToDoRow {
   name: string
   allocated_to: string
-  status: string
+  todo_status: string
 }
 
-// EML-006 / UI-017: assign this document to a user. Creates a ToDo in their
+// EML-006 / UI-017: assign this row to a user. Creates a ToDo in their
 // list and notifies them.
 export function Assignments({ doctype, name }: { doctype: string; name: string }) {
   const queryClient = useQueryClient()
@@ -21,12 +21,12 @@ export function Assignments({ doctype, name }: { doctype: string; name: string }
     queryFn: () =>
       listResource<ToDoRow>('ToDo', {
         filters: [
-          ['reference_doctype', '=', doctype],
+          ['ref_table', '=', doctype],
           ['reference_name', '=', name],
-          ['status', '=', 'Open'],
+          ['todo_status', '=', 'Open'],
         ],
-        fields: ['name', 'allocated_to', 'status'],
-        order_by: 'creation asc',
+        fields: ['name', 'allocated_to', 'todo_status'],
+        order_by: 'created_at asc',
         limit_page_length: 50,
       }),
   })

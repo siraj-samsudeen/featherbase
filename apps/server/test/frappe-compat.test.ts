@@ -47,14 +47,14 @@ describe('Frappe compat: sid-cookie sessions', () => {
     expect(sid).toBeTruthy()
 
     // No Authorization header — only the cookie.
-    const res = await api.fetch('/api/resource/Role', { headers: { cookie: `sid=${sid}` } })
+    const res = await api.fetch('/api/table/Role', { headers: { cookie: `sid=${sid}` } })
     expect(res.status).toBe(200)
 
     const out = await api.fetch('/api/method/logout', { method: 'POST' })
     expect((out.headers.get('set-cookie') ?? '')).toContain('sid=;')
 
     // Without any credential the same call is refused.
-    const anon = await api.fetch('/api/resource/Role')
+    const anon = await api.fetch('/api/table/Role')
     expect(anon.status).toBe(401)
   })
 })
@@ -65,7 +65,7 @@ describe('Frappe compat: exc_type error envelope', () => {
     client,
   }) => {
     await makeDT(admin)
-    const missing = await admin.fetch(`/api/resource/${encodeURIComponent(DT)}/nope`)
+    const missing = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/nope`)
     expect(missing.status).toBe(404)
     expect(((await missing.json()) as { exc_type: string }).exc_type).toBe('DoesNotExistError')
 
@@ -77,7 +77,7 @@ describe('Frappe compat: exc_type error envelope', () => {
     expect(((await invalid.json()) as { exc_type: string }).exc_type).toBe('ValidationError')
 
     // `client` holds no role with read on DT.
-    const forbidden = await client.fetch(`/api/resource/${encodeURIComponent(DT)}`)
+    const forbidden = await client.fetch(`/api/table/${encodeURIComponent(DT)}`)
     expect(forbidden.status).toBe(403)
     expect(((await forbidden.json()) as { exc_type: string }).exc_type).toBe('PermissionError')
   })

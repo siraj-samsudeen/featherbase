@@ -50,9 +50,9 @@ describe('CUST-005: export/import customizations', () => {
     await setup(admin)
     const bundle = await exportCustomizations(DT)
     // Delete the customizations.
-    await admin.delete(`/api/resource/Custom%20Field/${encodeURIComponent(`${DT}-priority`)}`)
+    await admin.delete(`/api/table/Custom%20Field/${encodeURIComponent(`${DT}-priority`)}`)
     await admin.delete(
-      `/api/resource/Metadata%20Override/${encodeURIComponent(`${DT}-title-reqd`)}`,
+      `/api/table/Metadata%20Override/${encodeURIComponent(`${DT}-title-reqd`)}`,
     )
     let meta = await getMeta(DT)
     expect(meta.columns.some((f) => f.column_name === 'priority')).toBe(false)

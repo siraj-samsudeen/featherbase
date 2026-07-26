@@ -8,7 +8,7 @@ import { sql } from './db'
 import { AppError, errorResponse } from './errors'
 import { getMeta, resolveTableName } from './meta'
 import { createTable, updateTable } from './doctype-engine'
-import { amendDoc, cancelDoc, deleteDoc, getDoc, renameDoc, saveDoc, submitDoc } from './document'
+import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { generateApiKeys, login, resolveToken, revokeApiKeys, setUserPassword, issueSession, type SessionUser } from './auth'
@@ -17,9 +17,18 @@ import { assertPermission, assertSystemManager, getRoles } from './permissions'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
-import { callMethod, loadMethods, methodAllowsGuest } from './methods'
+import { callMethod, loadMethods, methodAllowsGuest, methodEffect } from './methods'
+import {
+  getCollectionAction,
+  getRowAction,
+  isKnownCollectionSuffix,
+  isKnownRowSuffix,
+  listActions,
+  splitSuffix,
+} from './actions'
+import './actions/core-row-actions'
 import { renderPdf, renderPrintHtml } from './print'
-import { applyWorkflowAction, availableActions, currentState, getActiveWorkflow } from './workflow'
+import { availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
 import { enqueue, loadJobs, retryJob, startWorker } from './jobs'
 import { attachRealtime, publishDocEvent, publishUserEvent } from './realtime'
@@ -73,7 +82,7 @@ app.use(
   '/api/*',
   cors({
     origin: (origin) => (config.allowedOrigins.includes(origin) ? origin : null),
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowMethods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
     maxAge: 600,
   }),
@@ -217,20 +226,39 @@ app.get('/web/:route{.+}', async (c) => {
   return c.html(page.html, page.found ? 200 : 404)
 })
 
-// API-003: RPC for whitelisted server methods. Registered before the auth
-// middleware so guest-allowed methods work without a session; every other
-// method resolves the caller's token. Path may contain slashes.
-app.on(['GET', 'POST'], '/api/method/:path{.+}', async (c) => {
-  const path = c.req.param('path')
-  const user = methodAllowsGuest(path)
-    ? { name: 'Guest', email: 'guest@example.com', full_name: 'Guest' }
-    : await resolveToken(authCredential(c))
-  const args =
-    c.req.method === 'POST'
-      ? ((await c.req.json().catch(() => ({}))) as Record<string, unknown>)
-      : c.req.query()
-  return c.json({ message: await callMethod(path, args, user) })
-})
+// API-003: RPC for whitelisted server methods. Registered before the global
+// auth middleware so guest-allowed methods work without a session — but that
+// means it must resolve auth AND apply rate limiting itself (#62 bug 1: this
+// route used to return before ever reaching the global `rateLimit` use()
+// registered below, so API-007 was silently unenforced on the whole RPC
+// surface). Each registered method declares effect: 'read' | 'write'
+// (methods.ts); the dispatcher requires POST for 'write' instead of accepting
+// either verb (#62 bug 2: GET on frappe.client.delete/insert/set_value used to
+// execute the mutation straight from the query string — a live CSRF vector
+// given the sid cookie is sameSite: 'Lax'). Path may contain slashes.
+app.on(
+  ['GET', 'POST'],
+  '/api/method/:path{.+}',
+  async (c, next) => {
+    const path = c.req.param('path') as string
+    const user = methodAllowsGuest(path)
+      ? { name: 'Guest', email: 'guest@example.com', full_name: 'Guest' }
+      : await resolveToken(authCredential(c))
+    c.set('user', user)
+    await next()
+  },
+  rateLimit,
+  async (c) => {
+    const path = c.req.param('path') as string
+    if (methodEffect(path) === 'write' && c.req.method !== 'POST')
+      throw new AppError('MethodNotAllowedError', `Method ${path} mutates and requires POST`)
+    const args =
+      c.req.method === 'POST'
+        ? ((await c.req.json().catch(() => ({}))) as Record<string, unknown>)
+        : c.req.query()
+    return c.json({ message: await callMethod(path, args, c.get('user')) })
+  },
+)
 
 // PLAT-006: Google OAuth (public — the caller is logging in). In dev a mock
 // provider stands in for Google. Flow: login → provider consent → callback →
@@ -365,12 +393,6 @@ app.post('/api/revoke_api_key', async (c) => {
   return c.json({ ok: true })
 })
 
-app.get('/api/meta/:doctype', async (c) => {
-  const meta = await getMeta(c.req.param('doctype'))
-  await assertPermission(who(c), meta.name, 'read')
-  return c.json(meta)
-})
-
 app.post('/api/doctype', async (c) => {
   await assertSystemManager(who(c))
   const meta = await createTable(await c.req.json())
@@ -392,10 +414,6 @@ app.post('/api/save_doc', async (c) => {
   const saved = await saveDoc(body.doctype, body.doc, who(c))
   publishDocEvent(body.doctype, String(saved.name), hadName ? 'updated' : 'created')
   return c.json(saved, 201)
-})
-
-app.get('/api/doc/:doctype/:name', async (c) => {
-  return c.json(await getDoc(c.req.param('doctype'), c.req.param('name'), who(c)))
 })
 
 // PRN-003: server-side PDF of any document / print format.
@@ -565,7 +583,7 @@ app.post('/api/permissions/:doctype', async (c) => {
   if (existing)
     await saveDoc(
       'Permission',
-      { name: existing.name as string, modified: (existing.updated_at as Date).toISOString(), ...flags },
+      { name: existing.name as string, updated_at: (existing.updated_at as Date).toISOString(), ...flags },
       user,
     )
   else await saveDoc('Permission', { ref_table: doctype, role: body.role, tier: 'basic', ...flags }, user)
@@ -701,29 +719,6 @@ app.post('/api/server_script/:method', async (c) => {
   return c.json({ result: await runApiScript(c.req.param('method'), args) })
 })
 
-app.post('/api/submit_doc', async (c) => {
-  const { doctype, name } = (await c.req.json()) as { doctype?: string; name?: string }
-  if (!doctype || !name) throw new AppError('ValidationError', 'Expected { doctype, name }')
-  return c.json(await submitDoc(doctype, name, who(c)))
-})
-
-app.post('/api/cancel_doc', async (c) => {
-  const { doctype, name } = (await c.req.json()) as { doctype?: string; name?: string }
-  if (!doctype || !name) throw new AppError('ValidationError', 'Expected { doctype, name }')
-  return c.json(await cancelDoc(doctype, name, who(c)))
-})
-
-app.post('/api/amend_doc', async (c) => {
-  const { doctype, name } = (await c.req.json()) as { doctype?: string; name?: string }
-  if (!doctype || !name) throw new AppError('ValidationError', 'Expected { doctype, name }')
-  return c.json(await amendDoc(doctype, name, who(c)), 201)
-})
-
-app.delete('/api/doc/:doctype/:name', async (c) => {
-  await deleteDoc(c.req.param('doctype'), c.req.param('name'), who(c))
-  return c.json({ ok: true })
-})
-
 // WF-002: the transitions available to the current user for a document,
 // plus its current state — drives the form's action buttons.
 app.get('/api/workflow/:doctype/:name', async (c) => {
@@ -740,34 +735,21 @@ app.get('/api/workflow/:doctype/:name', async (c) => {
   })
 })
 
-// WF-002/003: apply a workflow action. Role enforcement is server-side, so
-// a forbidden transition is rejected regardless of the UI.
-app.post('/api/apply_workflow_action', async (c) => {
-  const { doctype, name, action } = (await c.req.json()) as {
-    doctype?: string
-    name?: string
-    action?: string
-  }
-  if (!doctype || !name || !action)
-    throw new AppError('ValidationError', 'Expected { doctype, name, action }')
-  return c.json(await applyWorkflowAction(doctype, name, action, who(c)))
-})
-
 // UI-013: per-user list/view settings. Stored per (user, doctype) and only
 // ever readable/writable by that user.
 app.get('/api/user_settings/:doctype', async (c) => {
   const [row] = await sql`
     select settings from user_settings
-    where "user" = ${who(c)} and doctype = ${c.req.param('doctype')}`
+    where "user" = ${who(c)} and table_name = ${c.req.param('doctype')}`
   return c.json({ settings: row?.settings ?? null })
 })
 
 app.put('/api/user_settings/:doctype', async (c) => {
   const settings = (await c.req.json()) as Record<string, unknown>
   await sql`
-    insert into user_settings ("user", doctype, settings, modified)
+    insert into user_settings ("user", table_name, settings, updated_at)
     values (${who(c)}, ${c.req.param('doctype')}, ${settings as unknown as string}, now())
-    on conflict ("user", doctype) do update set settings = excluded.settings, modified = now()`
+    on conflict ("user", table_name) do update set settings = excluded.settings, updated_at = now()`
   return c.json({ ok: true })
 })
 
@@ -896,18 +878,6 @@ app.post('/api/reapply_custom_fields', async (c) => {
   return c.json({ ok: true, count })
 })
 
-// DOC-012: rename a document and cascade the new name to all Link references.
-app.post('/api/rename_doc', async (c) => {
-  const { doctype, name, new_name } = (await c.req.json()) as {
-    doctype?: string
-    name?: string
-    new_name?: string
-  }
-  if (!doctype || !name || !new_name)
-    throw new AppError('ValidationError', 'Expected { doctype, name, new_name }')
-  return c.json(await renameDoc(doctype, name, new_name, who(c)))
-})
-
 function listArgsFromQuery(q: Record<string, string>) {
   const parse = (key: string) => {
     if (q[key] == null) return undefined
@@ -935,10 +905,6 @@ function listArgsFromQuery(q: Record<string, string>) {
   }
 }
 
-app.get('/api/list/:doctype', async (c) => {
-  return c.json(await getList(c.req.param('doctype'), listArgsFromQuery(c.req.query()), who(c)))
-})
-
 // UI-014: awesomebar global search across readable DocTypes.
 app.get('/api/search', async (c) => {
   const q = c.req.query('q') ?? ''
@@ -953,43 +919,127 @@ app.get('/api/unread_count', async (c) => {
   return c.json({ count: (row?.c as number) ?? 0 })
 })
 
-// API-001/API-002: Frappe-style REST resource — one generic handler set
-// serves CRUD for every DocType, driven entirely by metadata. The :doctype
-// segment accepts a slug spelling (#56): report-feedback and report_feedback
-// reach "Report Feedback"; the exact (possibly %20-encoded) name always wins.
-app.get('/api/resource/:doctype', async (c) => {
-  const doctype = await resolveTableName(c.req.param('doctype'))
-  return c.json(await getList(doctype, listArgsFromQuery(c.req.query()), who(c)))
+// API surface design (#61): one Table-scoped surface replaces the three
+// routes that used to reach the same getList/getDoc/deleteDoc engine calls
+// by three different URLs (/api/resource, /api/doc, /api/list — the exact
+// "drift" the design set out to ban). :table accepts a slug spelling (#56):
+// report-feedback and report_feedback reach "Report Feedback"; the exact
+// (possibly %20-encoded) name always wins.
+//
+// Generated case: GET/POST /api/table/:table, GET/PATCH/DELETE
+// /api/table/:table/:name — PATCH, not PUT, because Tables gain columns at
+// runtime via Custom Field and a PUT from a client that read a row before a
+// column existed would silently null it on write.
+//
+// The :table and :name segments may carry a colon suffix (:count, :meta,
+// :actions, or a registered collection/row action) — see actions.ts for why
+// colon, not a slash sub-path.
+
+app.get('/api/table/:table', async (c) => {
+  const raw = c.req.param('table')
+  const { base, suffix } = splitSuffix(raw, isKnownCollectionSuffix)
+  const table = await resolveTableName(base)
+  const user = c.get('user')
+
+  if (suffix === 'actions') return c.json(listActions())
+  if (suffix === 'meta') {
+    const meta = await getMeta(table)
+    await assertPermission(user.name, meta.name, 'read')
+    return c.json(meta)
+  }
+  if (suffix === 'count') {
+    const filters = c.req.query('filters')
+    let parsed: unknown[] = []
+    if (filters) {
+      try {
+        parsed = JSON.parse(filters)
+      } catch {
+        throw new AppError('BadRequestError', 'filters must be valid JSON')
+      }
+    }
+    return c.json({ count: await countDocs(table, parsed as never, user.name) })
+  }
+  if (suffix) {
+    const action = getCollectionAction(suffix)
+    if (!action || action.effect !== 'read')
+      throw new AppError('NotFoundError', `No readable collection action ":${suffix}"`)
+    return c.json(await action.handler({ table, args: c.req.query(), user }))
+  }
+  return c.json(await getList(table, listArgsFromQuery(c.req.query()), user.name))
 })
 
-// POST is create-only: a client-sent name is honored for prompt-named
-// DocTypes but an existing name conflicts instead of silently updating.
-app.post('/api/resource/:doctype', async (c) => {
-  const doctype = await resolveTableName(c.req.param('doctype'))
+// POST with no suffix is create-only: a client-sent name is honored for
+// prompt-named Tables but an existing name conflicts instead of silently
+// updating. A suffix must name a registered write-effect collection action.
+app.post('/api/table/:table', async (c) => {
+  const raw = c.req.param('table')
+  const { base, suffix } = splitSuffix(raw, isKnownCollectionSuffix)
+  const table = await resolveTableName(base)
+  const user = c.get('user')
+
+  if (suffix) {
+    const action = getCollectionAction(suffix)
+    if (!action || action.effect !== 'write')
+      throw new AppError('NotFoundError', `No writable collection action ":${suffix}"`)
+    const args = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+    return c.json(await action.handler({ table, args, user }), 201)
+  }
   const doc = (await c.req.json()) as Record<string, unknown>
-  const saved = await saveDoc(doctype, doc, who(c), 'insert')
-  publishDocEvent(doctype, String(saved.name), 'created')
+  const saved = await saveDoc(table, doc, user.name, 'insert')
+  publishDocEvent(table, String(saved.name), 'created')
   return c.json(saved, 201)
 })
 
-app.get('/api/resource/:doctype/:name', async (c) => {
-  const doctype = await resolveTableName(c.req.param('doctype'))
-  return c.json(await getDoc(doctype, c.req.param('name'), who(c)))
+app.get('/api/table/:table/:name', async (c) => {
+  const table = await resolveTableName(c.req.param('table'))
+  const raw = c.req.param('name')
+  const { base: name, suffix } = splitSuffix(raw, isKnownRowSuffix)
+  const user = c.get('user')
+
+  if (suffix) {
+    const action = getRowAction(suffix)
+    if (!action || action.effect !== 'read')
+      throw new AppError('NotFoundError', `No readable row action ":${suffix}"`)
+    return c.json(await action.handler({ table, name, args: c.req.query(), user }))
+  }
+  return c.json(await getDoc(table, name, user.name))
 })
 
-app.put('/api/resource/:doctype/:name', async (c) => {
-  const doctype = await resolveTableName(c.req.param('doctype'))
+// A suffix here must name a registered write-effect row action — plain
+// create-with-explicit-name lives at POST /api/table/:table (name in body).
+app.post('/api/table/:table/:name', async (c) => {
+  const table = await resolveTableName(c.req.param('table'))
+  const raw = c.req.param('name')
+  const { base: name, suffix } = splitSuffix(raw, isKnownRowSuffix)
+  const user = c.get('user')
+  if (!suffix) throw new AppError('NotFoundError', 'Expected a row action, e.g. :submit')
+
+  const action = getRowAction(suffix)
+  if (!action || action.effect !== 'write')
+    throw new AppError('NotFoundError', `No writable row action ":${suffix}"`)
+  const args = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+  const result = await action.handler({ table, name, args, user })
+  publishDocEvent(table, name, 'updated')
+  return c.json(result)
+})
+
+app.patch('/api/table/:table/:name', async (c) => {
+  const table = await resolveTableName(c.req.param('table'))
+  const name = c.req.param('name')
+  const user = c.get('user')
   const doc = (await c.req.json()) as Record<string, unknown>
-  doc.name = c.req.param('name')
-  const saved = await saveDoc(doctype, doc, who(c))
-  publishDocEvent(doctype, String(saved.name), 'updated')
+  doc.name = name
+  const saved = await saveDoc(table, doc, user.name)
+  publishDocEvent(table, String(saved.name), 'updated')
   return c.json(saved)
 })
 
-app.delete('/api/resource/:doctype/:name', async (c) => {
-  const doctype = await resolveTableName(c.req.param('doctype'))
-  await deleteDoc(doctype, c.req.param('name'), who(c))
-  publishDocEvent(doctype, c.req.param('name'), 'deleted')
+app.delete('/api/table/:table/:name', async (c) => {
+  const table = await resolveTableName(c.req.param('table'))
+  const name = c.req.param('name')
+  const user = c.get('user')
+  await deleteDoc(table, name, user.name)
+  publishDocEvent(table, name, 'deleted')
   return c.json({ ok: true })
 })
 
@@ -1008,14 +1058,14 @@ if (process.env.NODE_ENV !== 'test') {
   {
     const [pending] = await sql`
       select 1 from background_job
-      where method = 'auto_email_reports' and status in ('queued', 'running') limit 1`
+      where method = 'auto_email_reports' and job_status in ('queued', 'running') limit 1`
     if (!pending) await enqueue('auto_email_reports', {}, { repeatEvery: 24 * 60 * 60 })
   }
   // SLA: the recurring escalation sweep (see src/jobs/sla-escalation.ts).
   {
     const [pending] = await sql`
       select 1 from background_job
-      where method = 'check_sla' and status in ('queued', 'running') limit 1`
+      where method = 'check_sla' and job_status in ('queued', 'running') limit 1`
     if (!pending) await enqueue('check_sla', {}, { repeatEvery: 60 })
   }
 }

@@ -29,7 +29,7 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
     const doc = await seed(DT, { title: 'first', qty: 3 })
     expect(doc.name).toBeTruthy()
     const listed = await admin.get<{ data: { name: string }[] }>(
-      `/api/list/${encodeURIComponent(DT)}`,
+      `/api/table/${encodeURIComponent(DT)}`,
     )
     expect(listed.data).toHaveLength(1)
   })
@@ -42,7 +42,7 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
     const doc = await seed(DT, { title: 'first', qty: 3 })
     expect(doc.name).toBeTruthy()
     const listed = await admin.get<{ data: { name: string }[] }>(
-      `/api/list/${encodeURIComponent(DT)}`,
+      `/api/table/${encodeURIComponent(DT)}`,
     )
     expect(listed.data).toHaveLength(1)
   })
@@ -66,7 +66,7 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
     expect(who.name).toBe(client.user)
     // Visible inside the sandbox:
     const listed = await admin.get<{ data: { name: string }[] }>(
-      `/api/resource/User?filters=${encodeURIComponent(JSON.stringify([['name', '=', client.user]]))}`,
+      `/api/table/User?filters=${encodeURIComponent(JSON.stringify([['name', '=', client.user]]))}`,
     )
     expect(listed.data).toHaveLength(1)
   })

@@ -85,9 +85,9 @@ describe('PLAT-007: audit logs', () => {
     await logActivity(USER, 'logout')
     await logAccess(USER, 'print', { table: 'User', name: USER, method: 'pdf' })
     const [a] = await sql`select created_by from activity_log where "user" = ${USER} and operation = 'logout' limit 1`
-    const [b] = await sql`select created_by, ref_name from access_log where "user" = ${USER} and operation = 'print' limit 1`
+    const [b] = await sql`select created_by, reference_name from access_log where "user" = ${USER} and operation = 'print' limit 1`
     expect(a.created_by).toBe(USER)
     expect(b.created_by).toBe(USER)
-    expect(b.ref_name).toBe(USER)
+    expect(b.reference_name).toBe(USER)
   })
 })

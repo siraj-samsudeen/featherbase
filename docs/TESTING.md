@@ -38,8 +38,8 @@ describe('naming', () => {
   test('series names are sequential', async ({ admin }) => {
     await admin.post('/api/doctype', {
       name: 'Nm Invoice',
-      autoname: 'NMINV-.####',
-      fields: [{ fieldname: 'title', fieldtype: 'Data' }],
+      id_pattern: 'NMINV-.####',
+      columns: [{ column_name: 'title', column_type: 'Data' }],
     })
     const doc = await admin.post<{ name: string }>('/api/save_doc', {
       doctype: 'Nm Invoice',

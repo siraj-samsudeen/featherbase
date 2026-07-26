@@ -11,9 +11,9 @@ interface FileRow {
   thumbnail_url?: string | null
 }
 
-// FILE-002: attachments panel — File docs linked to this document via
-// ref_doctype/ref_name. Upload goes through /api/upload_file; deleting the
-// File doc also removes the storage object (server on_trash hook).
+// FILE-002: attachments panel — File rows linked to this row via
+// ref_table/ref_name. Upload goes through /api/upload_file; deleting the
+// File row also removes the storage object (server on_trash hook).
 export function Attachments({ doctype, name }: { doctype: string; name: string }) {
   const queryClient = useQueryClient()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -25,11 +25,11 @@ export function Attachments({ doctype, name }: { doctype: string; name: string }
     queryFn: () =>
       listResource<FileRow>('File', {
         filters: [
-          ['ref_doctype', '=', doctype],
+          ['ref_table', '=', doctype],
           ['ref_name', '=', name],
         ],
         fields: ['name', 'file_name', 'file_url', 'is_private', 'thumbnail_url'],
-        order_by: 'creation asc',
+        order_by: 'created_at asc',
         limit_page_length: 100,
       }),
   })
@@ -65,7 +65,7 @@ export function Attachments({ doctype, name }: { doctype: string; name: string }
   async function remove(fileDoc: string) {
     setError(null)
     try {
-      await api.delete(`/api/resource/File/${encodeURIComponent(fileDoc)}`)
+      await api.delete(`/api/table/File/${encodeURIComponent(fileDoc)}`)
       await queryClient.invalidateQueries({ queryKey: ['attachments', doctype, name] })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Delete failed')

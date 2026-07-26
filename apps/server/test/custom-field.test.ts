@@ -1,5 +1,5 @@
 import { describe, expect } from 'vitest'
-import { test } from './pg-test'
+import { test, patchDoc } from './pg-test'
 import { sql } from '../src/db'
 import { reapplyCustomFields } from '../src/custom-fields'
 import { getMeta, invalidateMeta } from '../src/meta'
@@ -27,8 +27,8 @@ async function addCustomField(admin: TestClient) {
 }
 
 async function setVip(admin: TestClient) {
-  const adminDoc = await admin.get<{ updated_at: string }>('/api/resource/User/Administrator')
-  await admin.put('/api/resource/User/Administrator', {
+  const adminDoc = await admin.get<{ updated_at: string }>('/api/table/User/Administrator')
+  await patchDoc(admin, '/api/table/User/Administrator', {
     [FIELD]: 'vip',
     updated_at: adminDoc.updated_at,
   })
@@ -60,14 +60,14 @@ describe('CUST-001: custom fields', () => {
     expect((f as { custom?: boolean }).custom).toBe(true)
 
     // Writable + readable via the generic API.
-    const adminDoc = await admin.get<{ updated_at: string }>('/api/resource/User/Administrator')
-    const upd = await admin.fetch('/api/resource/User/Administrator', {
-      method: 'PUT',
+    const adminDoc = await admin.get<{ updated_at: string }>('/api/table/User/Administrator')
+    const upd = await admin.fetch('/api/table/User/Administrator', {
+      method: 'PATCH',
       body: JSON.stringify({ [FIELD]: 'vip', updated_at: adminDoc.updated_at }),
     })
     expect(upd.status).toBe(200)
     const read = await admin.get<Record<string, unknown>>(
-      `/api/resource/User/Administrator?fields=${encodeURIComponent(JSON.stringify(['name', FIELD]))}`,
+      `/api/table/User/Administrator?fields=${encodeURIComponent(JSON.stringify(['name', FIELD]))}`,
     )
     expect(read[FIELD]).toBe('vip')
   })
@@ -93,7 +93,7 @@ describe('CUST-001: custom fields', () => {
 
     // Value was never lost (column untouched).
     const read = await admin.get<Record<string, unknown>>(
-      `/api/resource/User/Administrator?fields=${encodeURIComponent(JSON.stringify([FIELD]))}`,
+      `/api/table/User/Administrator?fields=${encodeURIComponent(JSON.stringify([FIELD]))}`,
     )
     expect(read[FIELD]).toBe('vip')
   })
@@ -104,7 +104,7 @@ describe('CUST-001: custom fields', () => {
     await addCustomField(admin)
     await setVip(admin)
 
-    await admin.delete(`/api/resource/Custom%20Field/User-${FIELD}`)
+    await admin.delete(`/api/table/Custom%20Field/User-${FIELD}`)
     invalidateMeta('User')
     expect((await getMeta('User')).columns.some((f) => f.column_name === FIELD)).toBe(false)
     // Column still present with data (non-destructive).

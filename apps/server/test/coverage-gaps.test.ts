@@ -87,7 +87,7 @@ describe('controllers: registry edges', () => {
     const DT = 'Cov Clear Note'
     await makeDT(admin, DT)
     const seen: string[] = []
-    registerController({ doctype: DT, hooks: { validate: () => void seen.push('v') } })
+    registerController({ table: DT, hooks: { validate: () => void seen.push('v') } })
     await runHooks('validate', {
       doc: {},
       meta: await getMeta(DT),

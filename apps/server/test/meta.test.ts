@@ -33,14 +33,14 @@ describe('META-001: table/column storage and Meta loader', () => {
   test('serves meta over HTTP', async ({ admin }) => {
     await makeDT()
     const body = await admin.get<{ name: string; columns: unknown[] }>(
-      `/api/meta/${encodeURIComponent(DT)}`,
+      `/api/table/${encodeURIComponent(DT)}:meta`,
     )
     expect(body.name).toBe(DT)
     expect(body.columns).toHaveLength(2)
   })
 
   test('404s for an unknown Table with the error envelope', async ({ admin }) => {
-    await expect(admin.get('/api/meta/Nope')).rejects.toMatchObject({
+    await expect(admin.get('/api/table/Nope:meta')).rejects.toMatchObject({
       status: 404,
       type: 'NotFoundError',
     })

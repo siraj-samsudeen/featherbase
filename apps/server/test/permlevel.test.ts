@@ -26,7 +26,7 @@ async function setup(
   })
   const user = await createUser({ roles: [ROLE] })
   // admin seeds a doc with a salary
-  const seedRes = await admin.fetch('/api/resource/' + encodeURIComponent(DT), {
+  const seedRes = await admin.fetch('/api/table/' + encodeURIComponent(DT), {
     method: 'POST',
     body: JSON.stringify({ employee: 'Alice', salary: 5000 }),
   })
@@ -38,18 +38,18 @@ describe('PERM-006: field-level (tier) permissions', () => {
   test('restricted-tier field is omitted from reads for a basic-tier user', async ({ admin, createUser }) => {
     const user = await setup(admin, createUser)
     const list = await user.get<{ data: { name: string }[] }>(
-      `/api/resource/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name"]')}`,
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name"]')}`,
     )
     const name = list.data[0].name
     const doc = await user.get<Record<string, unknown>>(
-      `/api/resource/${encodeURIComponent(DT)}/${name}`,
+      `/api/table/${encodeURIComponent(DT)}/${name}`,
     )
     expect(doc.employee).toBe('Alice')
     expect('salary' in doc).toBe(false)
 
     // admin still sees it
     const adminDoc = await admin.get<Record<string, unknown>>(
-      `/api/resource/${encodeURIComponent(DT)}/${name}`,
+      `/api/table/${encodeURIComponent(DT)}/${name}`,
     )
     expect(Number(adminDoc.salary)).toBe(5000)
   })
@@ -60,22 +60,22 @@ describe('PERM-006: field-level (tier) permissions', () => {
   }) => {
     const user = await setup(admin, createUser)
     const list = await user.get<{ data: { name: string }[] }>(
-      `/api/resource/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name"]')}`,
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name"]')}`,
     )
     const name = list.data[0].name
     const cur = await admin.get<Record<string, unknown>>(
-      `/api/resource/${encodeURIComponent(DT)}/${name}`,
+      `/api/table/${encodeURIComponent(DT)}/${name}`,
     )
 
     // basic-tier user tries to bump salary
-    const res = await user.fetch(`/api/resource/${encodeURIComponent(DT)}/${name}`, {
-      method: 'PUT',
+    const res = await user.fetch(`/api/table/${encodeURIComponent(DT)}/${name}`, {
+      method: 'PATCH',
       body: JSON.stringify({ updated_at: cur.updated_at, employee: 'Alice B', salary: 99999 }),
     })
     expect(res.status).toBe(200)
     // salary unchanged, employee changed
     const after = await admin.get<Record<string, unknown>>(
-      `/api/resource/${encodeURIComponent(DT)}/${name}`,
+      `/api/table/${encodeURIComponent(DT)}/${name}`,
     )
     expect(Number(after.salary)).toBe(5000)
     expect(after.employee).toBe('Alice B')

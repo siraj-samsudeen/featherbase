@@ -1,5 +1,5 @@
 import { describe, expect } from 'vitest'
-import { test } from './pg-test'
+import { test, patchDoc } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 
 const DT = 'Sh Memo'
@@ -16,7 +16,7 @@ async function setup(
   })
   const user = await createUser({ roles: [] })
   const doc = (await (
-    await admin.fetch(`/api/resource/${encodeURIComponent(DT)}`, {
+    await admin.fetch(`/api/table/${encodeURIComponent(DT)}`, {
       method: 'POST',
       body: JSON.stringify({ body: 'secret memo' }),
     })
@@ -38,7 +38,7 @@ describe('PERM-008: Share', () => {
     createUser,
   }) => {
     const { user, docName } = await setup(admin, createUser)
-    expect((await user.fetch(`/api/resource/${encodeURIComponent(DT)}/${docName}`)).status).toBe(403)
+    expect((await user.fetch(`/api/table/${encodeURIComponent(DT)}/${docName}`)).status).toBe(403)
   })
 
   test('a read-share grants access to that one doc without role changes', async ({
@@ -48,16 +48,16 @@ describe('PERM-008: Share', () => {
     const { user, docName } = await setup(admin, createUser)
     await share(admin, user, docName, { read: true })
 
-    const res = await user.fetch(`/api/resource/${encodeURIComponent(DT)}/${docName}`)
+    const res = await user.fetch(`/api/table/${encodeURIComponent(DT)}/${docName}`)
     expect(res.status).toBe(200)
     expect(((await res.json()) as Record<string, unknown>).body).toBe('secret memo')
 
     // read-only share: cannot write
     const doc = await admin.get<Record<string, unknown>>(
-      `/api/resource/${encodeURIComponent(DT)}/${docName}`,
+      `/api/table/${encodeURIComponent(DT)}/${docName}`,
     )
-    const write = await user.fetch(`/api/resource/${encodeURIComponent(DT)}/${docName}`, {
-      method: 'PUT',
+    const write = await user.fetch(`/api/table/${encodeURIComponent(DT)}/${docName}`, {
+      method: 'PATCH',
       body: JSON.stringify({ updated_at: doc.updated_at, body: 'hacked' }),
     })
     expect(write.status).toBe(403)
@@ -66,22 +66,22 @@ describe('PERM-008: Share', () => {
   test('a write-share allows editing that doc', async ({ admin, createUser }) => {
     const { user, docName } = await setup(admin, createUser)
     const shareName = await share(admin, user, docName, { read: true })
-    await admin.put(`/api/resource/Share/${encodeURIComponent(shareName)}`, {
+    await patchDoc(admin, `/api/table/Share/${encodeURIComponent(shareName)}`, {
       updated_at: (
-        await admin.get<{ updated_at: string }>(`/api/resource/Share/${encodeURIComponent(shareName)}`)
+        await admin.get<{ updated_at: string }>(`/api/table/Share/${encodeURIComponent(shareName)}`)
       ).updated_at,
       write: true,
     })
     const doc = await admin.get<Record<string, unknown>>(
-      `/api/resource/${encodeURIComponent(DT)}/${docName}`,
+      `/api/table/${encodeURIComponent(DT)}/${docName}`,
     )
-    const write = await user.fetch(`/api/resource/${encodeURIComponent(DT)}/${docName}`, {
-      method: 'PUT',
+    const write = await user.fetch(`/api/table/${encodeURIComponent(DT)}/${docName}`, {
+      method: 'PATCH',
       body: JSON.stringify({ updated_at: doc.updated_at, body: 'edited by sharee' }),
     })
     expect(write.status).toBe(200)
     const after = await admin.get<Record<string, unknown>>(
-      `/api/resource/${encodeURIComponent(DT)}/${docName}`,
+      `/api/table/${encodeURIComponent(DT)}/${docName}`,
     )
     expect(after.body).toBe('edited by sharee')
   })
@@ -89,7 +89,7 @@ describe('PERM-008: Share', () => {
   test('unsharing revokes access', async ({ admin, createUser }) => {
     const { user, docName } = await setup(admin, createUser)
     const shareName = await share(admin, user, docName, { read: true, write: true })
-    await admin.delete(`/api/resource/Share/${encodeURIComponent(shareName)}`)
-    expect((await user.fetch(`/api/resource/${encodeURIComponent(DT)}/${docName}`)).status).toBe(403)
+    await admin.delete(`/api/table/Share/${encodeURIComponent(shareName)}`)
+    expect((await user.fetch(`/api/table/${encodeURIComponent(DT)}/${docName}`)).status).toBe(403)
   })
 })

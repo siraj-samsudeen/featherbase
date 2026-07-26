@@ -23,32 +23,32 @@ test.beforeAll(async ({ request }) => {
     headers,
     data: {
       name: DT,
-      fields: [
-        { fieldname: 'region', fieldtype: 'Select', options: 'North\nSouth', in_list_view: true },
-        { fieldname: 'amount', fieldtype: 'Int', in_list_view: true },
+      columns: [
+        { column_name: 'region', column_type: 'Choice', choices: 'North\nSouth', in_list_view: true },
+        { column_name: 'amount', column_type: 'Int', in_list_view: true },
       ],
     },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   const existing = (await (
-    await request.get(`/api/resource/${encodeURIComponent(DT)}?limit_page_length=500`, { headers })
+    await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=500`, { headers })
   ).json()) as { data: { name: string }[] }
-  for (const d of existing.data) await request.delete(`/api/resource/${encodeURIComponent(DT)}/${d.name}`, { headers })
+  for (const d of existing.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.name}`, { headers })
   for (const [region, amount] of ROWS)
-    await request.post(`/api/resource/${encodeURIComponent(DT)}`, { headers, data: { region, amount } })
+    await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { region, amount } })
 
   // A saved Report Builder report over the DocType.
-  await request.delete(`/api/resource/Report/${encodeURIComponent(REPORT)}`, { headers })
+  await request.delete(`/api/table/Report/${encodeURIComponent(REPORT)}`, { headers })
   await request.post('/api/save_doc', {
     headers,
     data: {
       doctype: 'Report',
-      doc: { name: REPORT, ref_doctype: DT, report_type: 'Report Builder', config: { columns: ['region', 'amount'], filters: [] } },
+      doc: { name: REPORT, ref_table: DT, report_type: 'Report Builder', config: { columns: ['region', 'amount'], filters: [] } },
     },
   })
 
   // An empty dashboard to pin onto.
-  await request.delete(`/api/resource/Dashboard/${encodeURIComponent(DASH)}`, { headers })
+  await request.delete(`/api/table/Dashboard/${encodeURIComponent(DASH)}`, { headers })
   await request.post('/api/save_doc', {
     headers,
     data: { doctype: 'Dashboard', doc: { name: DASH, label: 'RC Board', config: { cards: [], charts: [] } } },

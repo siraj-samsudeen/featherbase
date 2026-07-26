@@ -53,13 +53,13 @@ export function PrintView({
     queryKey: ['doc', doctype, name],
     enabled: Boolean(meta.data),
     queryFn: () =>
-      api.get<Row>(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
+      api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
   })
   const formats = useQuery({
     queryKey: ['print-formats', doctype],
     queryFn: () =>
       listResource<PrintFormat>('Print Format', {
-        filters: [['doc_type', '=', doctype]],
+        filters: [['ref_table', '=', doctype]],
         fields: ['name', 'is_default', 'template', 'letter_head'],
         order_by: 'name asc',
         limit_page_length: 100,
