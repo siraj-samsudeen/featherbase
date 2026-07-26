@@ -1,13 +1,16 @@
 # Featherbase Data & Administration Topology — Design Framework
 
-> Status: **design framework, v2, 2026-07-26** — follows the research in
+> Status: **design framework, v3, 2026-07-26** — follows the research in
 > `docs/research/frappe-multi-app-multi-db.md`. v1 organized the
-> requirements into three axes; v2 (same day) reworks Axis B after the
-> backend-flexibility discussion: apps on Convex or InstantDB, legacy-app
-> mirroring (clinical system), and future backends (SQLite, DuckDB, REST,
-> files) — plus an evaluation of the proposed rule "a different database
-> means a different app". §7 lists decisions to ratify and sequencing.
-> Nothing here is implemented; nothing has to land at once.
+> requirements into three axes; v2 (same day) reworked Axis B after the
+> backend-flexibility discussion (Convex/InstantDB apps, legacy-app
+> mirroring, future backends, "a different database means a different
+> app"); v3 (same day) adds **Axis D — extensibility & distribution**: a
+> WordPress/VS Code/Salesforce-grade plugin ecosystem with micro/macro
+> composability, grounded in a survey of NocoBase, Directus, Medusa,
+> Strapi/Payload, and Salesforce 2GP packaging. §8 lists decisions to
+> ratify and sequencing. Nothing here is implemented; nothing has to land
+> at once.
 
 ## 0. The requirements being organized (verbatim intent)
 
@@ -31,6 +34,14 @@
   system). Tomorrow a client may insist on a file system, a REST backend,
   SQLite, DuckDB. Candidate simplification to evaluate: *"if it is a
   different database, it has to be a different app."*
+- Extensibility, third round: **Salesforce's design is admired.** Wanted: a
+  WordPress-style contribution loop (someone contributes a plugin or fixes
+  a bug and it becomes available to everybody) and VS Code-style
+  extensions — contributing tables, workflows, definitions, even UI
+  elements. Plus **micro-apps**: unlike VS Code extensions (all-or-nothing),
+  it should be possible to take *only certain parts* of a larger app —
+  "micro modules or macro modules from which people can pick". Research
+  leading open-source platforms (Strapi-class headless CMS and similar).
 - Naming: no forced `tab` prefix — adopt existing tables under their own
   names via a reflection API; optionally add `created_by` / `created_at`
   columns; refactoring (renames) must stay possible.
@@ -48,8 +59,11 @@
   other systems.
 - **Axis C — Physical naming & augmentation.** Naming policy, reflection,
   opt-in audit columns, refactoring.
+- **Axis D — Extensibility & distribution (v3).** How functionality is
+  packaged, contributed, composed, and upgraded: contribution points,
+  micro/macro granularity, upgrade-safe customization, trust tiers.
 
-Multi-tenancy (PLAT-008 sites) is parked: orthogonal to all three, already
+Multi-tenancy (PLAT-008 sites) is parked: orthogonal to all four, already
 works, not a key requirement.
 
 ---
@@ -379,7 +393,131 @@ deployment.
 
 ---
 
-## 6. What other platforms teach (independent survey)
+## 6. Axis D — Extensibility & distribution (the plugin ecosystem)
+
+The 25-year wish list distilled: Salesforce's *platform* qualities, with
+WordPress's *contribution loop* (a stranger fixes a bug, everyone gets it),
+VS Code's *extension mechanics*, and one thing none of them offer —
+**taking only parts of a bigger app**.
+
+### 6.1 Microkernel stance: everything is a plugin
+
+The systems whose ecosystems actually thrived (VS Code, WordPress, Eclipse
+— and in this product category, **NocoBase**, whose core does only plugin
+lifecycle/dependency management while every feature, including its data
+sources and workflow engine, is a plugin) share one discipline: **the
+platform's own features use the same public extension API that third
+parties use.** The moment core features get private APIs, the public one
+rots.
+
+For Featherbase: the core is the metadata engine, document engine,
+permission engine, storage-adapter seam (D5/D7), and the Desk shell with
+its extension points. Workflow, print, comments, email — and every future
+app (helpdesk, MDM) — are plugins over that API. The existing
+`AppManifest` (PLAT-001: doctypes, doc_events, scheduler_events, method
+overrides) is the seed to grow, not replace.
+
+### 6.2 Typed contribution points
+
+VS Code's key invention is that an extension *declares* what it
+contributes, statically, in its manifest — the platform can render menus,
+marketplaces, and permission prompts without executing the code, and can
+activate lazily. Directus proves the same taxonomy works for a
+metadata-driven admin UI (its nine extension types: interfaces, displays,
+layouts, modules, panels, hooks, endpoints, operations, bundles).
+
+Featherbase contribution points (initial enumeration):
+
+| Contribution | Kind | Precedent |
+|---|---|---|
+| DocTypes, field-sets/types, seeds | metadata | Frappe app doctypes |
+| Fieldtypes: form widget + display + cell renderer | UI | Directus interfaces/displays |
+| List layouts / views (kanban, calendar, map) | UI | Directus layouts |
+| Pages / Desk modules, dashboard panels | UI | Directus modules/panels |
+| Workflow node & trigger types | logic | Directus operations, n8n nodes |
+| Lifecycle hooks, scheduled jobs | logic | existing doc_events |
+| API endpoints / RPC methods | logic | existing overrides |
+| Storage drivers, sync connectors | platform | D7; Hasura NDC |
+| Roles/permission templates, reports, print formats | metadata | Frappe fixtures |
+
+Metadata contributions are declarative JSON — reviewable, diffable,
+installable without running code. Code contributions (widgets, hooks,
+drivers) ride the trust tiers of §6.5. Server + client halves ship in one
+package (the Strapi/NocoBase pattern).
+
+### 6.3 Package ≠ capability: micro/macro composability
+
+The "I can't take just a part of a VS Code extension" complaint is a real
+design gap in every ecosystem above, and the fix is to split two concepts
+those systems fuse:
+
+- **Package** — the distribution unit (an npm package; how code/metadata
+  travels, is versioned, and gets bug fixes).
+- **Capability** — the enableable unit: a named group of contributions
+  *inside* a package, with its own dependency list.
+
+A macro package ("Helpdesk") exposes capabilities — ticket base +
+types, SLA engine, assignment rules, portal — each installable/enableable
+separately, with dependencies declared **capability-to-capability** (SLA
+requires ticket base; it does not require the portal). A micro package may
+be a single widget. Installing a package enables a chosen subset, not
+everything. Precedents: **Medusa's commerce modules** (cart, inventory,
+pricing usable standalone — the closest existing realization), Odoo's
+`depends`/`auto_install` graph at module level; anti-precedent: VS Code's
+all-or-nothing extensions — the user's criticism is correct.
+
+This also resolves terminology across the axes: **"app" and "platform
+extension" are roles of the same package format** (as in Frappe, where
+everything is an app, and NocoBase, where everything is a plugin). Axis A's
+*module* (admin delegation scope) is untouched — a package can *contribute*
+modules, but module ≠ package.
+
+### 6.4 Upgrade-safe customization: the Salesforce lesson
+
+The single best idea in the user's favorite design: in a Salesforce
+subscriber org, **managed-package metadata is not editable — it is
+extendable**, per-component manageability rules decide what the subscriber
+may touch, and package upgrades therefore never collide with
+customizations. Frappe approximates this with Custom Field / Property
+Setter overlays; ADR 0003 already gave Featherbase the two-source model
+(`source: package | site`, drift detection, byte-identical promotion
+round-trip). Axis D generalizes it to a **layer stack**:
+
+```
+package layers (one per installed package, versioned, read-only on site)
+  └─ site overlay (custom fields, property setters, layout/permission
+     overrides — created via UI, owned by the site)
+        └─ effective metadata (deterministic merge, cached)
+```
+
+Rules: a package upgrade replaces only its own layer; the site overlay
+survives by construction; conflicts (package now ships a field the site
+had customized) are detected at upgrade time and resolved explicitly, not
+silently. **This is what makes the WordPress loop safe**: the bug fix
+reaches every site because updating a package cannot stomp what sites
+built on top of it.
+
+### 6.5 Trust & isolation tiers
+
+- **Tier 1 — reviewed packages** (npm, in-process): full API. WordPress's
+  low contribution barrier, but gated by the conformance suites (D7
+  generalized: one suite per contribution type) and, when a marketplace
+  exists, a review step — Salesforce's AppExchange security review is the
+  model.
+- **Tier 2 — site scripts** (already exist: server-scripts.ts): sandboxed,
+  site-authored, no package needed — the escape hatch that keeps tier 1
+  honest.
+- **Tier 3 — out-of-process services**: storage drivers/sync connectors
+  may run as separate services speaking the adapter protocol (Hasura NDC
+  shape) where isolation or another language matters.
+
+UI contributions prefer **declarative schema over arbitrary JS** (render
+from metadata where possible — NocoBase's UI-schema approach); a
+full-code widget is a tier-1 contribution by definition.
+
+---
+
+## 7. What other platforms teach (independent survey)
 
 - **Hasura NDC / DDN** — connectors are services conforming to a spec with
   a **capabilities endpoint**; the engine negotiates and pushes down what
@@ -391,8 +529,30 @@ deployment.
   model for our drivers (npm packages + conformance tests).
 - **Airbyte/Singer** — connector catalogs + discovery; the precedent for
   reflection and for the pull half of sync bindings.
+- **NocoBase** — the closest existing system to this document's target:
+  microkernel where the core does only plugin lifecycle/dependency
+  management; data sources, workflow, and UI blocks are all plugins with
+  server+client halves; UI is schema-rendered. A standing study target.
 - **Directus** — introspection-first over any existing SQL DB, zero naming
-  conventions, metadata beside your tables. Validates Axis C.
+  conventions, metadata beside your tables (validates Axis C) — and a
+  clean nine-type extension taxonomy (interfaces, displays, layouts,
+  modules, panels, hooks, endpoints, operations, bundles) that maps almost
+  one-to-one onto §6.2's contribution points.
+- **Salesforce packaging (2GP)** — managed packages with per-component
+  manageability rules, dependency-aware versioned upgrades, push upgrades,
+  AppExchange security review: the reference for §6.4/§6.5.
+- **Medusa** — commerce capabilities as independently usable modules; the
+  proof that "take only parts of a macro app" (§6.3) is achievable.
+- **Strapi / Payload** — plugin marketplaces for headless CMS; Strapi's
+  server+admin plugin packaging; Payload's plugins-as-config-transformers
+  (a plugin is a function over the site config — an elegantly composable
+  model worth remembering for metadata-layer merging).
+- **WordPress** — the contribution loop itself: trivially low barrier,
+  update channel, bug fix reaches everyone. Its failure (no isolation, no
+  manageability rules, plugin conflicts) is exactly what §6.4/§6.5 guard
+  against.
+- **VS Code** — statically declared contribution points + lazy activation
+  + marketplace + auto-update; anti-precedent for granularity (§6.3).
 - **Hasura metadata-as-code** — declarative, git-diffable metadata; worth
   stealing for Featherbase definition exports regardless of storage.
 - **NocoDB / Baserow** — the reflection UX (propose → adjust → adopt).
@@ -414,7 +574,7 @@ deployment.
 
 ---
 
-## 7. Decisions to ratify (candidate ADRs) and sequencing
+## 8. Decisions to ratify (candidate ADRs) and sequencing
 
 **D1.** One database, one schema for all apps/modules on the core backend;
 multi-DB-per-instance rejected; site machinery retained, dormant. (§3.5)
@@ -451,6 +611,31 @@ permissions, naming series, and hooks always evaluated on core. (§3.1)
 **D9.** One *primary* backend per app as flagged default; per-DocType
 deviation allowed but deliberate. (§5)
 
+**D10.** Microkernel/dogfooding rule: platform features and first-party
+apps are plugins over the same public contribution API — no private core
+APIs for features. (§6.1)
+
+**D11.** Typed contribution points, statically declared in the package
+manifest (metadata contributions as declarative JSON), lazily activated;
+`AppManifest` evolves into this rather than being replaced. (§6.2)
+
+**D12.** Package (distribution unit) ≠ capability (enableable unit):
+capabilities carry their own dependency graph; installing a package
+enables a chosen subset — micro/macro composability. (§6.3)
+
+**D13.** Layered metadata: per-package read-only layers + a site overlay,
+deterministic merge, upgrade replaces only the package's own layer,
+conflicts surfaced at upgrade time. Extends ADR 0003's
+`source: package | site` to N package layers. (§6.4)
+
+**D14.** Trust tiers: reviewed in-process packages / sandboxed site
+scripts / out-of-process driver services; UI contributions prefer
+declarative schema over arbitrary code. (§6.5)
+
+**D15.** Distribution rides npm with semver; each contribution type gets a
+conformance test suite (generalizing D7); marketplace/registry is a later
+layer on top, not a prerequisite. (§6)
+
 ### Sequencing against the current plan
 
 The immediate product is **one app — Master Data Management — with
@@ -470,6 +655,14 @@ modules, module + app admins, over partly pre-existing Postgres tables**:
    control plane; the legacy/clinical strangler engagement (pull binding →
    ownership dial); convex/instantdb drivers when a real app lands on
    them; D4 type machinery with the helpdesk app; bidirectional sync.
+
+Axis D's cheap-now part: D10 and D11 are *disciplines*, not features —
+every feature built from here on (including the MDM app itself) goes
+through the manifest/contribution API, which is how the API becomes real
+before any marketplace exists. D13's layer stack should be designed
+together with D2 (both touch how definitions are stored). D12's
+capability granularity, D14's tier 3, and D15's marketplace are genuinely
+later.
 
 Each numbered item becomes its own feather-spec; this document is the map
 they hang off.

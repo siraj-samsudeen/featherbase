@@ -13,6 +13,31 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-26 (v3) — design framework: Axis D, extensibility & plugin ecosystem (docs only)
+
+More requirements: Salesforce's design admired; WordPress-style
+contribution loop + VS Code-style extensions (tables, workflows, UI
+elements as plugins); micro-apps where you can take *only parts* (unlike
+VS Code's all-or-nothing); survey leading OSS (Strapi-class systems).
+Updated `docs/design/data-and-admin-topology.md` to v3 with a fourth axis:
+
+- **§6 Axis D**: microkernel/dogfooding rule (NocoBase model — platform
+  features use the same public plugin API); typed contribution points
+  (VS Code static declaration + Directus's nine-type extension taxonomy);
+  **package ≠ capability** — capability-level dependency graph so subsets
+  of a macro app are installable (Medusa modules precedent; fixes VS
+  Code's all-or-nothing); upgrade-safe layered metadata (Salesforce 2GP
+  manageability → N package layers + site overlay, extending ADR 0003's
+  package|site sources); trust tiers (reviewed npm packages / sandboxed
+  site scripts / out-of-process driver services).
+- Survey extended: NocoBase, Directus extensions, Salesforce 2GP, Medusa,
+  Strapi/Payload, WordPress, VS Code.
+- New decisions **D10–D15**; sequencing note: D10/D11 are disciplines to
+  adopt immediately (AppManifest evolves into contribution points as
+  features are built); D13 designed together with D2; marketplace later.
+
+No code, no features.json changes.
+
 ## 2026-07-26 (v2) — design framework reworked for pluggable backends (docs only)
 
 Further requirements: apps on Convex or InstantDB, legacy-app mirroring (a
