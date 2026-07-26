@@ -6,6 +6,6 @@ import { hashPassword } from '../src/auth'
 export async function up() {
   const pwd = process.env.ADMIN_PASSWORD ?? 'admin'
   await sql`
-    update tab_user set password_hash = ${hashPassword(pwd)}
+    update "user" set password_hash = ${hashPassword(pwd)}
     where name = 'Administrator' and password_hash is null`
 }

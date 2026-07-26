@@ -5,22 +5,22 @@ import { tableName } from '../src/doctype-engine'
 import { invalidateMeta } from '../src/meta'
 
 export async function up() {
-  const doctypes = await sql`
-    select name from tab_doctype where is_submittable = true and issingle = false`
-  for (const dt of doctypes) {
+  const tables = await sql`
+    select name from table_def where is_submittable = true and kind != 'settings'`
+  for (const dt of tables) {
     const name = dt.name as string
-    const [field] = await sql`
-      select 1 from tab_docfield where parent = ${name} and fieldname = 'amended_from'`
-    if (field) continue
+    const [column] = await sql`
+      select 1 from column_def where parent = ${name} and column_name = 'amended_from'`
+    if (column) continue
     const [{ max }] = await sql`
-      select coalesce(max(idx), 0)::int as max from tab_docfield where parent = ${name}`
-    await sql`insert into tab_docfield ${sql({
+      select coalesce(max(position), 0)::int as max from column_def where parent = ${name}`
+    await sql`insert into column_def ${sql({
       parent: name,
-      idx: (max as number) + 1,
-      fieldname: 'amended_from',
+      position: (max as number) + 1,
+      column_name: 'amended_from',
       label: 'Amended From',
-      fieldtype: 'Link',
-      options: name,
+      column_type: 'Reference',
+      reference_table: name,
       hidden: true,
     })}`
     await sql.unsafe(

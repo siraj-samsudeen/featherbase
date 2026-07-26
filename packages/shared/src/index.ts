@@ -1,1 +1,1 @@
-export { metaToZod, zodFieldErrors, type SchemaField } from './schema'
+export { tableSchemaToZod, zodFieldErrors, type ColumnDef } from './schema'

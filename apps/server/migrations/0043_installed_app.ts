@@ -5,7 +5,7 @@ import { sql } from '../src/db'
 
 export async function up() {
   await sql.unsafe(`
-    create table if not exists tab_installed_app (
+    create table if not exists installed_app (
       name text primary key,
       doctypes jsonb not null default '[]'::jsonb,
       installed_at timestamptz not null default now()

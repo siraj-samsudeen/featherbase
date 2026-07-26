@@ -1,114 +1,114 @@
 // META-014: core DocTypes + bootstrap users/roles, installed through the
 // engine itself so tables, validation, and children behave like any model.
 import { sql } from '../src/db'
-import { createDocType } from '../src/doctype-engine'
+import { createTable } from '../src/doctype-engine'
 import { saveDoc } from '../src/document'
 
-async function ensureDocType(def: Parameters<typeof createDocType>[0] & { name: string }) {
-  const [exists] = await sql`select 1 from tab_doctype where name = ${def.name}`
-  if (!exists) await createDocType(def)
+async function ensureTable(def: Parameters<typeof createTable>[0] & { name: string }) {
+  const [exists] = await sql`select 1 from table_def where name = ${def.name}`
+  if (!exists) await createTable(def)
 }
 
-async function ensureDoc(doctype: string, doc: Record<string, unknown>) {
-  const table = 'tab_' + doctype.toLowerCase().replace(/\s+/g, '_')
+async function ensureRow(table: string, doc: Record<string, unknown>) {
+  const physical = table.toLowerCase().replace(/\s+/g, '_')
   const [exists] = await sql`
-    select 1 from ${sql(table)} where name = ${String(doc.name)}`
-  if (!exists) await saveDoc(doctype, doc)
+    select 1 from ${sql(physical)} where name = ${String(doc.name)}`
+  if (!exists) await saveDoc(table, doc)
 }
 
 export async function up() {
-  await ensureDocType({
+  await ensureTable({
     name: 'Role',
     module: 'Core',
-    autoname: 'prompt',
-    fields: [{ fieldname: 'disabled', fieldtype: 'Check', default_value: '0' }],
+    id_pattern: 'prompt',
+    columns: [{ column_name: 'disabled', column_type: 'Check', default_value: '0' }],
   })
 
-  await ensureDocType({
+  await ensureTable({
     name: 'Has Role',
     module: 'Core',
-    istable: true,
-    fields: [{ fieldname: 'role', fieldtype: 'Link', options: 'Role', reqd: true }],
+    kind: 'sub_table',
+    columns: [{ column_name: 'role', column_type: 'Reference', reference_table: 'Role', reqd: true }],
   })
 
-  await ensureDocType({
+  await ensureTable({
     name: 'User',
     module: 'Core',
-    autoname: 'prompt',
-    title_field: 'full_name',
-    fields: [
-      { fieldname: 'email', fieldtype: 'Data', reqd: true, unique: true, in_list_view: true },
-      { fieldname: 'full_name', fieldtype: 'Data', in_list_view: true },
-      { fieldname: 'enabled', fieldtype: 'Check', default_value: '1', in_list_view: true },
-      { fieldname: 'password_hash', fieldtype: 'Data', hidden: true, read_only: true },
-      { fieldname: 'language', fieldtype: 'Data' },
-      { fieldname: 'roles', fieldtype: 'Table', options: 'Has Role' },
+    id_pattern: 'prompt',
+    title_column: 'full_name',
+    columns: [
+      { column_name: 'email', column_type: 'Data', reqd: true, unique: true, in_list_view: true },
+      { column_name: 'full_name', column_type: 'Data', in_list_view: true },
+      { column_name: 'enabled', column_type: 'Check', default_value: '1', in_list_view: true },
+      { column_name: 'password_hash', column_type: 'Data', hidden: true, read_only: true },
+      { column_name: 'language', column_type: 'Data' },
+      { column_name: 'roles', column_type: 'Sub-table', row_table: 'Has Role' },
     ],
   })
 
-  await ensureDocType({
-    name: 'DocPerm',
+  await ensureTable({
+    name: 'Permission',
     module: 'Core',
-    fields: [
-      { fieldname: 'ref_doctype', fieldtype: 'Link', options: 'DocType', reqd: true, in_list_view: true },
-      { fieldname: 'role', fieldtype: 'Link', options: 'Role', reqd: true, in_list_view: true },
-      { fieldname: 'permlevel', fieldtype: 'Int', default_value: '0' },
-      { fieldname: 'if_owner', fieldtype: 'Check', default_value: '0' },
-      { fieldname: 'can_read', fieldtype: 'Check', default_value: '0' },
-      { fieldname: 'can_write', fieldtype: 'Check', default_value: '0' },
-      { fieldname: 'can_create', fieldtype: 'Check', default_value: '0' },
-      { fieldname: 'can_delete', fieldtype: 'Check', default_value: '0' },
-      { fieldname: 'can_submit', fieldtype: 'Check', default_value: '0' },
-      { fieldname: 'can_cancel', fieldtype: 'Check', default_value: '0' },
-      { fieldname: 'can_amend', fieldtype: 'Check', default_value: '0' },
+    columns: [
+      { column_name: 'ref_doctype', column_type: 'Reference', reference_table: 'Table', reqd: true, in_list_view: true },
+      { column_name: 'role', column_type: 'Reference', reference_table: 'Role', reqd: true, in_list_view: true },
+      { column_name: 'tier', column_type: 'Choice', choices: 'basic\nrestricted', default_value: 'basic' },
+      { column_name: 'own_rows_only', column_type: 'Check', default_value: '0' },
+      { column_name: 'can_read', column_type: 'Check', default_value: '0' },
+      { column_name: 'can_write', column_type: 'Check', default_value: '0' },
+      { column_name: 'can_create', column_type: 'Check', default_value: '0' },
+      { column_name: 'can_delete', column_type: 'Check', default_value: '0' },
+      { column_name: 'can_submit', column_type: 'Check', default_value: '0' },
+      { column_name: 'can_cancel', column_type: 'Check', default_value: '0' },
+      { column_name: 'can_amend', column_type: 'Check', default_value: '0' },
     ],
   })
 
-  await ensureDocType({
+  await ensureTable({
     name: 'Comment',
     module: 'Core',
-    fields: [
-      { fieldname: 'ref_doctype', fieldtype: 'Link', options: 'DocType', reqd: true },
-      { fieldname: 'ref_name', fieldtype: 'Data', reqd: true },
-      { fieldname: 'content', fieldtype: 'Text', reqd: true },
+    columns: [
+      { column_name: 'ref_doctype', column_type: 'Reference', reference_table: 'Table', reqd: true },
+      { column_name: 'ref_name', column_type: 'Data', reqd: true },
+      { column_name: 'content', column_type: 'Text', reqd: true },
     ],
   })
 
-  await ensureDocType({
+  await ensureTable({
     name: 'Version',
     module: 'Core',
-    fields: [
-      { fieldname: 'ref_doctype', fieldtype: 'Link', options: 'DocType', reqd: true },
-      { fieldname: 'ref_name', fieldtype: 'Data', reqd: true },
-      { fieldname: 'data', fieldtype: 'JSON' },
+    columns: [
+      { column_name: 'ref_doctype', column_type: 'Reference', reference_table: 'Table', reqd: true },
+      { column_name: 'ref_name', column_type: 'Data', reqd: true },
+      { column_name: 'data', column_type: 'JSON' },
     ],
   })
 
-  await ensureDocType({
+  await ensureTable({
     name: 'File',
     module: 'Core',
-    fields: [
-      { fieldname: 'file_name', fieldtype: 'Data', reqd: true },
-      { fieldname: 'file_url', fieldtype: 'Data' },
-      { fieldname: 'mime_type', fieldtype: 'Data' },
-      { fieldname: 'file_size', fieldtype: 'Int' },
-      { fieldname: 'is_private', fieldtype: 'Check', default_value: '1' },
-      { fieldname: 'ref_doctype', fieldtype: 'Link', options: 'DocType' },
-      { fieldname: 'ref_name', fieldtype: 'Data' },
+    columns: [
+      { column_name: 'file_name', column_type: 'Data', reqd: true },
+      { column_name: 'file_url', column_type: 'Data' },
+      { column_name: 'mime_type', column_type: 'Data' },
+      { column_name: 'file_size', column_type: 'Int' },
+      { column_name: 'is_private', column_type: 'Check', default_value: '1' },
+      { column_name: 'ref_doctype', column_type: 'Reference', reference_table: 'Table' },
+      { column_name: 'ref_name', column_type: 'Data' },
     ],
   })
 
   for (const role of ['System Manager', 'All', 'Guest'])
-    await ensureDoc('Role', { name: role })
+    await ensureRow('Role', { name: role })
 
-  await ensureDoc('User', {
+  await ensureRow('User', {
     name: 'Administrator',
     email: 'admin@example.com',
     full_name: 'Administrator',
     enabled: true,
     roles: [{ role: 'System Manager' }],
   })
-  await ensureDoc('User', {
+  await ensureRow('User', {
     name: 'Guest',
     email: 'guest@example.com',
     full_name: 'Guest',
