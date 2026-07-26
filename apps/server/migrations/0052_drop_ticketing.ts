@@ -7,25 +7,25 @@
 import { sql } from '../src/db'
 
 export async function up() {
-  const [exists] = await sql`select 1 from tab_doctype where name = 'Ticket'`
+  const [exists] = await sql`select 1 from table_def where name = 'Ticket'`
   if (!exists) return
 
-  await sql`delete from tab_workflow_document_state where parent in (select name from tab_workflow where document_type = 'Ticket')`
-  await sql`delete from tab_workflow_transition where parent in (select name from tab_workflow where document_type = 'Ticket')`
-  await sql`delete from tab_workflow where document_type = 'Ticket'`
-  await sql`delete from tab_workflow_action where ref_doctype = 'Ticket'`
-  await sql`delete from tab_todo where reference_doctype = 'Ticket'`
-  await sql`delete from tab_comment where ref_doctype = 'Ticket'`
-  await sql`delete from tab_notification_log where ref_doctype = 'Ticket'`
-  await sql`delete from tab_version where ref_doctype = 'Ticket'`
-  await sql`delete from tab_email_queue where reference_doctype = 'Ticket'`
+  await sql`delete from workflow_document_state where parent in (select name from workflow where document_type = 'Ticket')`
+  await sql`delete from workflow_transition where parent in (select name from workflow where document_type = 'Ticket')`
+  await sql`delete from workflow where document_type = 'Ticket'`
+  await sql`delete from workflow_action where ref_doctype = 'Ticket'`
+  await sql`delete from todo where reference_doctype = 'Ticket'`
+  await sql`delete from comment where ref_doctype = 'Ticket'`
+  await sql`delete from notification_log where ref_doctype = 'Ticket'`
+  await sql`delete from version where ref_doctype = 'Ticket'`
+  await sql`delete from email_queue where reference_doctype = 'Ticket'`
   await sql`delete from tag_link where ref_doctype = 'Ticket'`
   await sql`delete from user_settings where doctype = 'Ticket'`
-  await sql`delete from tab_docperm where ref_doctype = 'Ticket'`
-  await sql`delete from tab_docfield where parent in ('Ticket', 'Ticket Comment')`
-  await sql`delete from tab_doctype where name in ('Ticket', 'Ticket Comment')`
-  await sql`delete from tab_has_role where role in ('Ticket Manager', 'Ticket Reporter')`
-  await sql`delete from tab_role where name in ('Ticket Manager', 'Ticket Reporter')`
-  await sql.unsafe('drop table if exists tab_ticket_comment')
-  await sql.unsafe('drop table if exists tab_ticket')
+  await sql`delete from permission where ref_doctype = 'Ticket'`
+  await sql`delete from column_def where parent in ('Ticket', 'Ticket Comment')`
+  await sql`delete from table_def where name in ('Ticket', 'Ticket Comment')`
+  await sql`delete from has_role where role in ('Ticket Manager', 'Ticket Reporter')`
+  await sql`delete from role where name in ('Ticket Manager', 'Ticket Reporter')`
+  await sql.unsafe('drop table if exists ticket_comment')
+  await sql.unsafe('drop table if exists ticket')
 }

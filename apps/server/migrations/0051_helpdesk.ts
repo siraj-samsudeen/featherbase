@@ -1,46 +1,46 @@
 // Helpdesk app (HD Ticket): the framework's flagship demo, defined ENTIRELY
-// from metadata — DocType, roles, permissions, a workflow bound to the real
+// from metadata — Table, roles, permissions, a workflow bound to the real
 // `status` field, an SLA, email rules, a server script, and a public web
 // form. Structure only: demo users, the round-robin assignment rule (which
 // links those users), and sample tickets live in scripts/seed-helpdesk.ts —
 // demo content never ships in the migration chain.
 import { sql } from '../src/db'
-import { createDocType } from '../src/doctype-engine'
+import { createTable } from '../src/doctype-engine'
 import { saveDoc } from '../src/document'
 
 export async function up() {
   // Databases seeded by the pre-migration seed-helpdesk.ts already carry the
   // identical structure — skip cleanly.
-  const [exists] = await sql`select 1 from tab_doctype where name = 'HD Ticket'`
+  const [exists] = await sql`select 1 from table_def where name = 'HD Ticket'`
   if (exists) return
 
   for (const name of ['Support Agent', 'Support Manager', 'Customer']) {
-    const [role] = await sql`select 1 from tab_role where name = ${name}`
+    const [role] = await sql`select 1 from role where name = ${name}`
     if (!role) await saveDoc('Role', { name })
   }
 
-  await createDocType({
+  await createTable({
     name: 'HD Ticket',
     module: 'Helpdesk',
-    autoname: 'HDT-.#####',
-    title_field: 'subject',
-    fields: [
-      { fieldname: 'subject', label: 'Subject', fieldtype: 'Data', reqd: true, in_list_view: true },
-      { fieldname: 'description', label: 'Description', fieldtype: 'Text' },
+    id_pattern: 'HDT-.#####',
+    title_column: 'subject',
+    columns: [
+      { column_name: 'subject', label: 'Subject', column_type: 'Data', reqd: true, in_list_view: true },
+      { column_name: 'description', label: 'Description', column_type: 'Text' },
       {
-        fieldname: 'status', label: 'Status', fieldtype: 'Select', in_list_view: true,
-        options: 'Open\nIn Progress\nResolved\nClosed', default_value: 'Open',
+        column_name: 'status', label: 'Status', column_type: 'Choice', in_list_view: true,
+        choices: 'Open\nIn Progress\nResolved\nClosed', default_value: 'Open',
       },
       {
-        fieldname: 'priority', label: 'Priority', fieldtype: 'Select', in_list_view: true,
-        options: 'Low\nMedium\nHigh\nUrgent', default_value: 'Medium',
+        column_name: 'priority', label: 'Priority', column_type: 'Choice', in_list_view: true,
+        choices: 'Low\nMedium\nHigh\nUrgent', default_value: 'Medium',
       },
-      { fieldname: 'raised_by', label: 'Raised By (email)', fieldtype: 'Data' },
-      { fieldname: 'agent', label: 'Agent', fieldtype: 'Link', options: 'User', in_list_view: true },
-      { fieldname: 'resolution_details', label: 'Resolution Details', fieldtype: 'Text' },
-      { fieldname: 'response_by', label: 'Response By', fieldtype: 'Datetime', read_only: true },
-      { fieldname: 'resolution_by', label: 'Resolution By', fieldtype: 'Datetime', read_only: true },
-      { fieldname: 'sla_status', label: 'SLA', fieldtype: 'Data', read_only: true, in_list_view: true },
+      { column_name: 'raised_by', label: 'Raised By (email)', column_type: 'Data' },
+      { column_name: 'agent', label: 'Agent', column_type: 'Reference', reference_table: 'User', in_list_view: true },
+      { column_name: 'resolution_details', label: 'Resolution Details', column_type: 'Text' },
+      { column_name: 'response_by', label: 'Response By', column_type: 'Datetime', read_only: true },
+      { column_name: 'resolution_by', label: 'Resolution By', column_type: 'Datetime', read_only: true },
+      { column_name: 'sla_status', label: 'SLA', column_type: 'Data', read_only: true, in_list_view: true },
     ],
   })
 
@@ -51,11 +51,11 @@ export async function up() {
   const grants: [string, string, Record<string, boolean>][] = [
     ['HD Ticket', 'Support Agent', { can_read: true, can_write: true, can_create: true }],
     ['HD Ticket', 'Support Manager', { can_read: true, can_write: true, can_create: true, can_delete: true }],
-    ['HD Ticket', 'Customer', { if_owner: true, can_read: true, can_create: true }],
+    ['HD Ticket', 'Customer', { own_rows_only: true, can_read: true, can_create: true }],
     ['ToDo', 'Support Agent', { can_read: true, can_write: true }],
     ['ToDo', 'Support Manager', { can_read: true, can_write: true }],
     // Comment/File need can_write: on insert, fields are stripped to the
-    // user's WRITE permlevels (permissions.ts stripUnwritableFields), so a
+    // user's WRITE tiers (permissions.ts stripUnwritableFields), so a
     // create-only grant could never set content.
     ['Comment', 'Support Agent', { can_read: true, can_write: true, can_create: true }],
     ['Comment', 'Support Manager', { can_read: true, can_write: true, can_create: true }],
@@ -68,8 +68,8 @@ export async function up() {
   ]
   for (const [ref_doctype, role, perms] of grants) {
     const [have] = await sql`
-      select 1 from tab_docperm where ref_doctype = ${ref_doctype} and role = ${role}`
-    if (!have) await saveDoc('DocPerm', { ref_doctype, role, ...perms })
+      select 1 from permission where ref_doctype = ${ref_doctype} and role = ${role}`
+    if (!have) await saveDoc('Permission', { ref_doctype, role, ...perms })
   }
 
   // Bound to the real `status` field (state_field) — no synthetic

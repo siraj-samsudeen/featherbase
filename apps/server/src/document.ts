@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto'
-import { metaToZod, zodFieldErrors } from 'shared'
+import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
-import { getMeta, type DocTypeMeta } from './meta'
+import { getMeta, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName } from './doctype-engine'
 import { runHooks, type HookContext } from './controllers'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
@@ -19,30 +19,30 @@ import {
   getUserPermissionMap,
   isBypassUser,
   isSharedWith,
-  permittedLevels,
+  permittedTiers,
   stripUnwritableFields,
 } from './permissions'
 
 // Hooks may set any writable column; re-filter after they run so a hook
 // can't inject unknown keys into SQL.
-function columnValues(meta: DocTypeMeta, doc: DocValues): DocValues {
-  const out: DocValues = {}
-  for (const f of meta.fields) {
-    if (NO_COLUMN_TYPES.has(f.fieldtype)) continue
-    if (f.fieldname in doc) out[f.fieldname] = doc[f.fieldname]
+function columnValues(meta: TableMeta, row: RowValues): RowValues {
+  const out: RowValues = {}
+  for (const f of meta.columns) {
+    if (NO_COLUMN_TYPES.has(f.column_type)) continue
+    if (f.column_name in row) out[f.column_name] = row[f.column_name]
   }
   return out
 }
 
 // DOC-011 + META-009: validate field values against the metadata-generated
-// zod schema. Inserts validate the whole doc (missing reqd fields fail);
-// updates validate only the fields being changed.
+// zod schema. Inserts validate the whole row (missing reqd columns fail);
+// updates validate only the columns being changed.
 function validateValues(
-  meta: DocTypeMeta,
-  values: DocValues,
+  meta: TableMeta,
+  values: RowValues,
   mode: 'insert' | 'update',
-): DocValues {
-  const schema = metaToZod(meta.fields)
+): RowValues {
+  const schema = tableSchemaToZod(meta.columns)
   const result = (mode === 'update' ? schema.partial() : schema).safeParse(values)
   if (!result.success)
     throw new AppError(
@@ -50,7 +50,7 @@ function validateValues(
       `Invalid values for ${meta.name}`,
       zodFieldErrors(result.error),
     )
-  const parsed = result.data as DocValues
+  const parsed = result.data as RowValues
   // zod's empty-preprocess turns provided-but-empty optionals into
   // undefined; write them back as explicit nulls so updates can clear values.
   for (const key of Object.keys(values))
@@ -58,27 +58,27 @@ function validateValues(
   return parsed
 }
 
-export type DocValues = Record<string, unknown>
+export type RowValues = Record<string, unknown>
 
-const NO_COLUMN_TYPES = new Set(['Table', 'Section Break', 'Column Break'])
+const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 
 function hashName(): string {
   return randomBytes(5).toString('hex')
 }
 
-// META-006: resolve a new document's name from the DocType's autoname rule.
+// META-006: resolve a new row's name from the Table's id_pattern rule.
 // Series counters use INSERT ... ON CONFLICT DO UPDATE inside the save
 // transaction: concurrent savers serialize on the counter row, so names are
 // unique and sequential; a rolled-back save also rolls back the increment.
 async function resolveName(
   tx: typeof sql,
-  meta: DocTypeMeta,
-  values: DocValues,
+  meta: TableMeta,
+  values: RowValues,
 ): Promise<string> {
-  // DOC-008: amended documents carry a pre-derived NAME-n.
+  // DOC-008: amended rows carry a pre-derived NAME-n.
   if (values.amended_from != null && values.name)
     return String(values.name)
-  const rule = meta.autoname || 'hash'
+  const rule = meta.id_pattern || 'hash'
   if (rule === 'hash') return hashName()
   if (rule === 'prompt') {
     const name = String(values.name ?? '').trim()
@@ -89,11 +89,11 @@ async function resolveName(
     return name
   }
   if (rule.startsWith('field:')) {
-    const fieldname = rule.slice('field:'.length)
-    const value = String(values[fieldname] ?? '').trim()
+    const columnName = rule.slice('field:'.length)
+    const value = String(values[columnName] ?? '').trim()
     if (!value)
-      throw new AppError('ValidationError', `Naming field ${fieldname} is required`, {
-        [fieldname]: `${fieldname} is required for naming`,
+      throw new AppError('ValidationError', `Naming field ${columnName} is required`, {
+        [columnName]: `${columnName} is required for naming`,
       })
     return value
   }
@@ -107,25 +107,25 @@ async function resolveName(
       returning current`
     return prefix + String(row.current).padStart(digits, '0')
   }
-  throw new AppError('ValidationError', `Unsupported autoname rule ${rule}`)
+  throw new AppError('ValidationError', `Unsupported id_pattern rule ${rule}`)
 }
 
-// Filter incoming values to real data fields; reject unknown keys so typos
-// fail loudly instead of silently dropping data. read_only fields are
+// Filter incoming values to real data columns; reject unknown keys so typos
+// fail loudly instead of silently dropping data. read_only columns are
 // system-managed (META-010): client-sent values for them are ignored.
-function pickFieldValues(meta: DocTypeMeta, values: DocValues): DocValues {
-  const known = new Map(meta.fields.map((f) => [f.fieldname, f]))
-  const out: DocValues = {}
+function pickFieldValues(meta: TableMeta, values: RowValues): RowValues {
+  const known = new Map(meta.columns.map((f) => [f.column_name, f]))
+  const out: RowValues = {}
   const errors: Record<string, string> = {}
   for (const [key, value] of Object.entries(values)) {
-    if (key === 'doctype') continue
+    if (key === 'table') continue
     if ((STANDARD_COLUMNS as readonly string[]).includes(key)) continue
     const field = known.get(key)
     if (!field) {
       errors[key] = `Unknown field ${key} on ${meta.name}`
       continue
     }
-    if (NO_COLUMN_TYPES.has(field.fieldtype)) continue
+    if (NO_COLUMN_TYPES.has(field.column_type)) continue
     if (field.read_only) continue
     out[key] = value ?? null
   }
@@ -134,26 +134,26 @@ function pickFieldValues(meta: DocTypeMeta, values: DocValues): DocValues {
   return out
 }
 
-// META-010: fill defaults for fields absent on insert (read_only included —
-// defaults are how system-managed fields get their values).
-function applyDefaults(meta: DocTypeMeta, values: DocValues): DocValues {
+// META-010: fill defaults for columns absent on insert (read_only included —
+// defaults are how system-managed columns get their values).
+function applyDefaults(meta: TableMeta, values: RowValues): RowValues {
   const out = { ...values }
-  for (const f of meta.fields) {
-    if (NO_COLUMN_TYPES.has(f.fieldtype)) continue
-    if (out[f.fieldname] != null) continue
+  for (const f of meta.columns) {
+    if (NO_COLUMN_TYPES.has(f.column_type)) continue
+    if (out[f.column_name] != null) continue
     if (f.default_value == null) continue
-    if (f.fieldtype === 'Int' || f.fieldtype === 'Float' || f.fieldtype === 'Currency')
-      out[f.fieldname] = Number(f.default_value)
-    else if (f.fieldtype === 'Check')
-      out[f.fieldname] = f.default_value === '1' || f.default_value === 'true'
-    else out[f.fieldname] = f.default_value
+    if (f.column_type === 'Int' || f.column_type === 'Float' || f.column_type === 'Currency')
+      out[f.column_name] = Number(f.default_value)
+    else if (f.column_type === 'Check')
+      out[f.column_name] = f.default_value === '1' || f.default_value === 'true'
+    else out[f.column_name] = f.default_value
   }
   return out
 }
 
 // META-010: translate Postgres constraint violations into field-wise
 // ValidationErrors instead of opaque 500s.
-function mapDbError(meta: DocTypeMeta, err: unknown): never {
+function mapDbError(meta: TableMeta, err: unknown): never {
   const e = err as {
     code?: string
     constraint_name?: string
@@ -164,10 +164,10 @@ function mapDbError(meta: DocTypeMeta, err: unknown): never {
     // Postgres names the offending columns in `detail`:
     //   Key (language, source_text)=(fr, Save) already exists.
     // Prefer that over the constraint name. Naming the constraint only works
-    // for our generated `tab_x_field_uq` singles, and everything else — a
+    // for our generated `x_column_uq` singles, and everything else — a
     // plain unique INDEX, a composite, the primary key — used to fall back to
     // reporting `name`, blaming a field that was not the problem. That cost
-    // real debugging time on `tab_translation_lang_src` (issue #42).
+    // real debugging time on `translation_lang_src` (issue #42).
     const detailCols = /^Key \(([^)]+)\)=/.exec(e.detail ?? '')?.[1]
     const prefix = `${tableName(meta.name)}_`
     const fields = detailCols
@@ -185,87 +185,87 @@ function mapDbError(meta: DocTypeMeta, err: unknown): never {
   throw err as Error
 }
 
-// META-008: every Link value must reference an existing document of the
-// target DocType. Runs inside the save transaction alongside validation.
+// META-008: every Reference value must point at an existing row of the
+// target Table. Runs inside the save transaction alongside validation.
 async function validateLinks(
   tx: typeof sql,
-  meta: DocTypeMeta,
-  fieldValues: DocValues,
+  meta: TableMeta,
+  fieldValues: RowValues,
   prefix = '',
 ) {
   const errors: Record<string, string> = {}
-  for (const f of meta.fields) {
-    if (f.fieldtype !== 'Link') continue
-    const value = fieldValues[f.fieldname]
+  for (const f of meta.columns) {
+    if (f.column_type !== 'Reference') continue
+    const value = fieldValues[f.column_name]
     if (value == null || value === '') continue
-    const target = f.options
+    const target = f.reference_table
     if (!target) continue
-    const [targetMeta] = await tx`select 1 from tab_doctype where name = ${target}`
+    const [targetMeta] = await tx`select 1 from table_def where name = ${target}`
     if (!targetMeta) {
-      errors[prefix + f.fieldname] = `Link target DocType ${target} does not exist`
+      errors[prefix + f.column_name] = `Reference target Table ${target} does not exist`
       continue
     }
     const [row] = await tx`
       select 1 from ${tx(tableName(target))} where name = ${String(value)}`
     if (!row)
-      errors[prefix + f.fieldname] = `${target} ${String(value)} does not exist`
+      errors[prefix + f.column_name] = `${target} ${String(value)} does not exist`
   }
   if (Object.keys(errors).length)
     throw new AppError('ValidationError', `Invalid links for ${meta.name}`, errors)
 }
 
-// PERM-005: gate a concrete document against the user's User Permissions.
+// PERM-005: gate a concrete row against the user's Data Scopes.
 async function assertUserPermissions(
   user: string,
-  meta: DocTypeMeta,
-  doc: DocValues,
+  meta: TableMeta,
+  row: RowValues,
 ) {
   if (await isBypassUser(user)) return
   const map = await getUserPermissionMap(user)
   if (!map.size) return
-  const linkFields = meta.fields
-    .filter((f) => f.fieldtype === 'Link')
-    .map((f) => ({ fieldname: f.fieldname, options: f.options }))
-  checkUserPermissions(user, meta.name, linkFields, doc, map)
+  const linkFields = meta.columns
+    .filter((f) => f.column_type === 'Reference')
+    .map((f) => ({ column_name: f.column_name, reference_table: f.reference_table }))
+  checkUserPermissions(user, meta.name, linkFields, row, map)
 }
 
-// META-007/DOC-005: extract Table-field arrays from the payload; they are
+// META-007/DOC-005: extract Sub-table column arrays from the payload; they are
 // saved as child rows in the same transaction as the parent.
-function pickChildInputs(meta: DocTypeMeta, values: DocValues) {
-  const out: { fieldname: string; childDoctype: string; rows: DocValues[] }[] = []
-  for (const f of meta.fields) {
-    if (f.fieldtype !== 'Table') continue
-    const raw = values[f.fieldname]
+function pickChildInputs(meta: TableMeta, values: RowValues) {
+  const out: { columnName: string; childTable: string; rows: RowValues[] }[] = []
+  for (const f of meta.columns) {
+    if (f.column_type !== 'Sub-table') continue
+    const raw = values[f.column_name]
     if (raw === undefined) continue
     if (!Array.isArray(raw))
       throw new AppError('ValidationError', 'Invalid child table payload', {
-        [f.fieldname]: `${f.fieldname} must be an array of rows`,
+        [f.column_name]: `${f.column_name} must be an array of rows`,
       })
-    out.push({ fieldname: f.fieldname, childDoctype: f.options!, rows: raw as DocValues[] })
+    out.push({ columnName: f.column_name, childTable: f.row_table!, rows: raw as RowValues[] })
   }
   return out
 }
 
 async function saveChildren(
   tx: typeof sql,
-  parentMeta: DocTypeMeta,
+  parentMeta: TableMeta,
   parentName: string,
-  input: { fieldname: string; childDoctype: string; rows: DocValues[] },
+  input: { columnName: string; childTable: string; rows: RowValues[] },
   user: string,
 ) {
-  const childMeta = await getMeta(input.childDoctype)
+  const childMeta = await getMeta(input.childTable)
   const table = tableName(childMeta.name)
   const existing = await tx`
     select name from ${tx(table)}
     where parent = ${parentName} and parenttype = ${parentMeta.name}
-      and parentfield = ${input.fieldname}`
+      and parentfield = ${input.columnName}`
   const existingNames = new Set(existing.map((r) => r.name as string))
   const keep = new Set<string>()
   const errors: Record<string, string> = {}
 
   for (const [i, row] of input.rows.entries()) {
     const isExisting = row.name != null && existingNames.has(String(row.name))
-    let fieldValues: DocValues
+    let fieldValues: RowValues
     try {
       fieldValues = validateValues(
         childMeta,
@@ -275,38 +275,38 @@ async function saveChildren(
     } catch (err) {
       if (err instanceof AppError && err.fields)
         for (const [k, v] of Object.entries(err.fields))
-          errors[`${input.fieldname}.${i}.${k}`] = v
+          errors[`${input.columnName}.${i}.${k}`] = v
       else throw err
       continue
     }
-    await validateLinks(tx, childMeta, fieldValues, `${input.fieldname}.${i}.`)
+    await validateLinks(tx, childMeta, fieldValues, `${input.columnName}.${i}.`)
     const now = new Date()
     if (isExisting) {
       keep.add(String(row.name))
       await tx`update ${tx(table)} set ${tx({
         ...fieldValues,
-        idx: i + 1,
-        modified: now,
-        modified_by: user,
+        position: i + 1,
+        updated_at: now,
+        updated_by: user,
       })} where name = ${String(row.name)}`
     } else {
       await tx`insert into ${tx(table)} ${tx({
         name: hashName(),
-        owner: user,
-        modified_by: user,
-        creation: now,
-        modified: now,
-        docstatus: 0,
-        idx: i + 1,
+        created_by: user,
+        updated_by: user,
+        created_at: now,
+        updated_at: now,
+        status: 'draft',
+        position: i + 1,
         parent: parentName,
         parenttype: parentMeta.name,
-        parentfield: input.fieldname,
+        parentfield: input.columnName,
         ...fieldValues,
       })}`
     }
   }
   if (Object.keys(errors).length)
-    throw new AppError('ValidationError', `Invalid child rows for ${input.fieldname}`, errors)
+    throw new AppError('ValidationError', `Invalid child rows for ${input.columnName}`, errors)
 
   // Rows omitted from the payload are deleted — the payload is authoritative.
   const remove = [...existingNames].filter((n) => !keep.has(n))
@@ -315,158 +315,158 @@ async function saveChildren(
 }
 
 // Credential columns that must NEVER be serialized, even though some are
-// declared as (hidden) DocFields for storage. Everything not listed here
-// and not a standard column or DocField is dropped too.
+// declared as (hidden) Columns for storage. Everything not listed here
+// and not a standard column or Column is dropped too.
 const SENSITIVE_COLUMNS = new Set(['password_hash', 'api_secret_hash', 'api_key', 'new_password'])
 
 // Raw table columns carry server-internal state. Only standard columns and
-// declared (non-sensitive) DocFields leave through the API, regardless of
-// the caller's permission level.
-function stripInternalColumns(meta: DocTypeMeta, doc: DocValues): DocValues {
-  const known = new Set<string>(['doctype', ...STANDARD_COLUMNS, ...meta.fields.map((f) => f.fieldname)])
-  const out: DocValues = {}
-  for (const [k, v] of Object.entries(doc))
+// declared (non-sensitive) Columns leave through the API, regardless of
+// the caller's tier.
+function stripInternalColumns(meta: TableMeta, row: RowValues): RowValues {
+  const known = new Set<string>(['table', ...STANDARD_COLUMNS, ...meta.columns.map((f) => f.column_name)])
+  const out: RowValues = {}
+  for (const [k, v] of Object.entries(row))
     if (known.has(k) && !SENSITIVE_COLUMNS.has(k)) out[k] = v
   return out
 }
 
-async function loadChildren(meta: DocTypeMeta, doc: DocValues): Promise<DocValues> {
-  for (const f of meta.fields) {
-    if (f.fieldtype !== 'Table') continue
-    const childMeta = await getMeta(f.options!)
+async function loadChildren(meta: TableMeta, row: RowValues): Promise<RowValues> {
+  for (const f of meta.columns) {
+    if (f.column_type !== 'Sub-table') continue
+    const childMeta = await getMeta(f.row_table!)
     const rows = await sql`
-      select * from ${sql(tableName(f.options!))}
-      where parent = ${String(doc.name)} and parenttype = ${meta.name}
-        and parentfield = ${f.fieldname}
-      order by idx`
-    doc[f.fieldname] = rows.map((r) => stripInternalColumns(childMeta, r as DocValues))
+      select * from ${sql(tableName(f.row_table!))}
+      where parent = ${String(row.name)} and parenttype = ${meta.name}
+        and parentfield = ${f.column_name}
+      order by position`
+    row[f.column_name] = rows.map((r) => stripInternalColumns(childMeta, r as RowValues))
   }
-  return stripInternalColumns(meta, doc)
+  return stripInternalColumns(meta, row)
 }
 
-// DocType/DocField writes must go through the doctype engine (runs DDL);
-// the generic document path would silently skip table changes.
-const ENGINE_MANAGED = new Set(['DocType', 'DocField'])
+// Table/Column writes must go through the doctype engine (runs DDL);
+// the generic row path would silently skip table changes.
+const ENGINE_MANAGED = new Set(['Table', 'Column'])
 
 export interface SaveOptions {
-  // WEB-002/003: the web-form surface is server-controlled (whitelisted fields
-  // on one configured DocType), so it may insert on behalf of a session user
-  // who holds no create DocPerm — the document still gets that user as owner,
-  // which is what makes if_owner portals work. Never expose this to callers
-  // that pass through arbitrary client input.
+  // WEB-002/003: the web-form surface is server-controlled (whitelisted columns
+  // on one configured Table), so it may insert on behalf of a session user
+  // who holds no create Permission — the row still gets that user as
+  // created_by, which is what makes own_rows_only portals work. Never expose
+  // this to callers that pass through arbitrary client input.
   skipPermissions?: boolean
 }
 
 export async function saveDoc(
-  doctype: string,
-  values: DocValues,
+  table: string,
+  values: RowValues,
   user = 'Administrator',
   mode: 'upsert' | 'insert' = 'upsert',
   opts: SaveOptions = {},
-): Promise<DocValues> {
-  const meta = await getMeta(doctype)
-  if (ENGINE_MANAGED.has(doctype))
+): Promise<RowValues> {
+  const meta = await getMeta(table)
+  if (ENGINE_MANAGED.has(table))
     throw new AppError(
       'ValidationError',
-      `${doctype} documents are managed via /api/doctype`,
+      `${table} rows are managed via /api/table`,
     )
-  if (meta.issingle) return saveSingle(doctype, values, user)
-  if (meta.istable)
+  if (meta.kind === 'settings') return saveSingle(table, values, user)
+  if (meta.kind === 'sub_table')
     throw new AppError(
       'ValidationError',
-      `${doctype} is a child DocType; save it through its parent`,
+      `${table} is a child Table; save it through its parent`,
     )
   if (values.name != null && values.name !== '') {
     const [exists] = await sql`
-      select 1 from ${sql(tableName(doctype))} where name = ${String(values.name)}`
+      select 1 from ${sql(tableName(table))} where name = ${String(values.name)}`
     if (exists) {
       if (mode === 'insert')
-        throw new AppError('ConflictError', `${doctype} ${values.name} already exists`)
+        throw new AppError('ConflictError', `${table} ${values.name} already exists`)
       return updateDoc(meta, String(values.name), values, user)
     }
-    if (meta.autoname !== 'prompt' && values.amended_from == null)
-      throw new AppError('NotFoundError', `${doctype} ${values.name} not found`)
+    if (meta.id_pattern !== 'prompt' && values.amended_from == null)
+      throw new AppError('NotFoundError', `${table} ${values.name} not found`)
   }
   if (!opts.skipPermissions) {
-    await assertPermission(user, doctype, 'create')
+    await assertPermission(user, table, 'create')
     await assertUserPermissions(user, meta, values)
   }
-  const writeLevels = opts.skipPermissions
-    ? new Set([-1])
-    : await permittedLevels(user, doctype, 'write')
+  const writeTiers = opts.skipPermissions
+    ? new Set<'basic' | 'restricted'>(['basic', 'restricted'])
+    : await permittedTiers(user, table, 'write')
   const fieldValues = validateValues(
     meta,
-    applyDefaults(meta, stripUnwritableFields(meta.fields, writeLevels, pickFieldValues(meta, values))),
+    applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))),
     'insert',
   )
   // SLA: stamp response/resolution deadlines from the active SLA (if any)
   // before the row is written, so they are part of the insert itself.
   await applySla(meta, fieldValues)
-  // WF-003: when a workflow governs this DocType, every document starts at the
+  // WF-003: when a workflow governs this Table, every row starts at the
   // workflow's initial state — a caller can't smuggle in a later state.
   {
     const wf = await getActiveWorkflow(meta.name)
     if (wf?.states.length) {
       const sf = stateField(wf)
-      if (meta.fields.some((f) => f.fieldname === sf)) fieldValues[sf] = wf.states[0].state
+      if (meta.columns.some((f) => f.column_name === sf)) fieldValues[sf] = wf.states[0].state
     }
   }
 
   const childInputs = pickChildInputs(meta, values)
-  const table = tableName(doctype)
+  const tbl = tableName(table)
   const [saved] = await sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
       const name = await resolveName(stx, meta, values)
       const now = new Date()
-      const doc: DocValues = {
+      const row: RowValues = {
         name,
-        owner: user,
-        modified_by: user,
-        creation: now,
-        modified: now,
-        docstatus: 0,
-        idx: 0,
+        created_by: user,
+        updated_by: user,
+        created_at: now,
+        updated_at: now,
+        status: 'draft',
+        position: 0,
         ...fieldValues,
       }
       // Expose child rows to hooks (validate/before_save) under their
-      // fieldnames; columnValues ignores non-scalar keys when building the row.
-      for (const ci of childInputs) doc[ci.fieldname] = ci.rows
-      const ctx: HookContext = { doc, meta, user, isNew: true, tx: stx }
+      // column names; columnValues ignores non-scalar keys when building the row.
+      for (const ci of childInputs) row[ci.columnName] = ci.rows
+      const ctx: HookContext = { row, meta, user, isNew: true, tx: stx }
       await runHooks('before_insert', ctx)
       await runHooks('before_validate', ctx)
       await runHooks('validate', ctx)
-      await runDocEventScripts('validate', meta.name, ctx.doc, ctx.tx)
+      await runDocEventScripts('validate', meta.name, ctx.row, ctx.tx)
       await runHooks('before_save', ctx)
-      await runDocEventScripts('before_save', meta.name, ctx.doc, ctx.tx)
-      const row = {
-        ...columnValues(meta, doc),
-        name: String(doc.name),
-        owner: doc.owner,
-        modified_by: doc.modified_by,
-        creation: doc.creation,
-        modified: doc.modified,
-        docstatus: doc.docstatus,
-        idx: doc.idx,
+      await runDocEventScripts('before_save', meta.name, ctx.row, ctx.tx)
+      const dbRow = {
+        ...columnValues(meta, row),
+        name: String(row.name),
+        created_by: row.created_by,
+        updated_by: row.updated_by,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        status: row.status,
+        position: row.position,
       }
-      await validateLinks(stx, meta, row)
-      const inserted = await tx`insert into ${tx(table)} ${tx(row as unknown as Record<string, never>)} returning *`
+      await validateLinks(stx, meta, dbRow)
+      const inserted = await tx`insert into ${tx(tbl)} ${tx(dbRow as unknown as Record<string, never>)} returning *`
       for (const input of childInputs)
         await saveChildren(stx, meta, name, input, user)
-      ctx.doc = { ...(inserted[0] as DocValues) }
+      ctx.row = { ...(inserted[0] as RowValues) }
       await runHooks('after_insert', ctx)
       await runHooks('after_save', ctx)
       await runHooks('on_update', ctx)
-      await runDocEventScripts('after_save', meta.name, ctx.doc, ctx.tx)
+      await runDocEventScripts('after_save', meta.name, ctx.row, ctx.tx)
       return inserted
     })
     .catch((err) => mapDbError(meta, err))
-  const insertResult = await loadChildren(meta, { doctype, ...(saved as DocValues) })
+  const insertResult = await loadChildren(meta, { table, ...(saved as RowValues) })
   // EML-004: fire matching email rules post-commit. Frappe's Save event covers
   // inserts too, so both on_create and on_save rules are evaluated here.
   await evaluateEmailRules('on_create', meta.name, insertResult)
   await evaluateEmailRules('on_save', meta.name, insertResult)
-  // Auto-assignment: apply any Assignment Rules for this DocType (post-commit).
+  // Auto-assignment: apply any Assignment Rules for this Table (post-commit).
   await evaluateAssignmentRules(meta.name, insertResult)
   // PLAT-005: fire webhooks post-commit for the create event.
   await evaluateWebhooks('after_insert', meta.name, insertResult)
@@ -474,27 +474,27 @@ export async function saveDoc(
 }
 
 // DOC-002: optimistic concurrency — the client must echo back the
-// `modified` timestamp it loaded; a mismatch means someone else saved first.
+// `updated_at` timestamp it loaded; a mismatch means someone else saved first.
 async function updateDoc(
-  meta: DocTypeMeta,
+  meta: TableMeta,
   name: string,
-  values: DocValues,
+  values: RowValues,
   user: string,
-): Promise<DocValues> {
+): Promise<RowValues> {
   const table = tableName(meta.name)
-  if (values.modified == null)
+  if (values.updated_at == null)
     throw new AppError(
       'ValidationError',
-      'Updates must include the modified timestamp of the loaded document',
+      'Updates must include the updated_at timestamp of the loaded row',
     )
-  // A write-share grants full field access; otherwise honor permlevels.
+  // A write-share grants full field access; otherwise honor tiers.
   const sharedWrite = await isSharedWith(user, meta.name, name, 'write')
-  const writeLevels = sharedWrite
-    ? new Set([-1])
-    : await permittedLevels(user, meta.name, 'write')
+  const writeTiers = sharedWrite
+    ? new Set<'basic' | 'restricted'>(['basic', 'restricted'])
+    : await permittedTiers(user, meta.name, 'write')
   const fieldValues = validateValues(
     meta,
-    stripUnwritableFields(meta.fields, writeLevels, pickFieldValues(meta, values)),
+    stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values)),
     'update',
   )
   // WF-003: the workflow-bound state field only changes through workflow
@@ -517,7 +517,7 @@ async function updateDoc(
   }
 
   // Snapshot of the row before this save, for post-commit transition checks.
-  let previous: DocValues | undefined
+  let previous: RowValues | undefined
   const saved = await sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
@@ -525,35 +525,35 @@ async function updateDoc(
         select * from ${tx(table)} where name = ${name} for update`
       if (!existing)
         throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
-      previous = { ...(existing as DocValues) }
+      previous = { ...(existing as RowValues) }
       // PERM-008: a share with write grants update even without role write.
       if (!sharedWrite) {
-        await assertDocPermission(user, meta.name, 'write', String(existing.owner))
-        await assertUserPermissions(user, meta, existing as DocValues)
+        await assertDocPermission(user, meta.name, 'write', String(existing.created_by))
+        await assertUserPermissions(user, meta, existing as RowValues)
       }
-      const dbModified = (existing.modified as Date).getTime()
-      const sentModified = new Date(String(values.modified)).getTime()
+      const dbModified = (existing.updated_at as Date).getTime()
+      const sentModified = new Date(String(values.updated_at)).getTime()
       if (Number.isNaN(sentModified) || dbModified !== sentModified)
         throw new AppError(
           'ConflictError',
           `${meta.name} ${name} has been modified after you loaded it`,
         )
-      if ((existing.docstatus as number) === 1)
+      if ((existing.status as string) === 'submitted')
         throw new AppError(
           'ValidationError',
           `${meta.name} ${name} is submitted and cannot be modified (cancel it first)`,
         )
-      if ((existing.docstatus as number) === 2)
+      if ((existing.status as string) === 'cancelled')
         throw new AppError(
           'ValidationError',
           `${meta.name} ${name} is cancelled and cannot be modified`,
         )
-      const doc: DocValues = { ...(existing as DocValues), ...fieldValues }
-      // Expose child rows to hooks under their fieldnames (see insert path).
-      for (const ci of pickChildInputs(meta, values)) doc[ci.fieldname] = ci.rows
+      const row: RowValues = { ...(existing as RowValues), ...fieldValues }
+      // Expose child rows to hooks under their column names (see insert path).
+      for (const ci of pickChildInputs(meta, values)) row[ci.columnName] = ci.rows
       const ctx: HookContext = {
-        doc,
-        old: existing as DocValues,
+        row,
+        old: existing as RowValues,
         meta,
         user,
         isNew: false,
@@ -561,28 +561,28 @@ async function updateDoc(
       }
       await runHooks('before_validate', ctx)
       await runHooks('validate', ctx)
-      await runDocEventScripts('validate', meta.name, ctx.doc, ctx.tx)
+      await runDocEventScripts('validate', meta.name, ctx.row, ctx.tx)
       await runHooks('before_save', ctx)
-      await runDocEventScripts('before_save', meta.name, ctx.doc, ctx.tx)
-      const row = {
-        ...columnValues(meta, doc),
-        modified: new Date(),
-        modified_by: user,
+      await runDocEventScripts('before_save', meta.name, ctx.row, ctx.tx)
+      const dbRow = {
+        ...columnValues(meta, row),
+        updated_at: new Date(),
+        updated_by: user,
       }
-      await validateLinks(stx, meta, row)
+      await validateLinks(stx, meta, dbRow)
       const [updated] = await tx`
-        update ${tx(table)} set ${tx(row)} where name = ${name} returning *`
+        update ${tx(table)} set ${tx(dbRow)} where name = ${name} returning *`
       for (const input of pickChildInputs(meta, values))
         await saveChildren(stx, meta, name, input, user)
-      await recordVersion(stx, meta, name, existing as DocValues, updated as DocValues, user)
-      ctx.doc = { ...(updated as DocValues) }
+      await recordVersion(stx, meta, name, existing as RowValues, updated as RowValues, user)
+      ctx.row = { ...(updated as RowValues) }
       await runHooks('after_save', ctx)
       await runHooks('on_update', ctx)
-      await runDocEventScripts('after_save', meta.name, ctx.doc, ctx.tx)
+      await runDocEventScripts('after_save', meta.name, ctx.row, ctx.tx)
       return updated
     })
     .catch((err) => mapDbError(meta, err))
-  const updateResult = await loadChildren(meta, { doctype: meta.name, ...(saved as DocValues) })
+  const updateResult = await loadChildren(meta, { table: meta.name, ...(saved as RowValues) })
   // EML-004: on_save rules fire post-commit; the pre-save snapshot lets a
   // conditional rule fire only when the value transitions into the match.
   await evaluateEmailRules('on_save', meta.name, updateResult, previous)
@@ -591,77 +591,77 @@ async function updateDoc(
   return updateResult
 }
 
-// DOC-009: record a field-level diff in the Version doctype on every
+// DOC-009: record a field-level diff in the Version Table on every
 // tracked update. Runs inside the save transaction.
-const UNVERSIONED = new Set(['Version', 'DocType', 'DocField'])
+const UNVERSIONED = new Set(['Version', 'Table', 'Column'])
 
 async function recordVersion(
   tx: typeof sql,
-  meta: DocTypeMeta,
+  meta: TableMeta,
   name: string,
-  before: DocValues,
-  after: DocValues,
+  before: RowValues,
+  after: RowValues,
   user: string,
 ) {
   if (!meta.track_changes || UNVERSIONED.has(meta.name)) return
   const norm = (v: unknown) => (v instanceof Date ? v.toISOString() : v ?? null)
   const changed: [string, unknown, unknown][] = []
-  for (const f of meta.fields) {
-    if (NO_COLUMN_TYPES.has(f.fieldtype)) continue
-    const b = norm(before[f.fieldname])
-    const a = norm(after[f.fieldname])
-    if (JSON.stringify(b) !== JSON.stringify(a)) changed.push([f.fieldname, b, a])
+  for (const f of meta.columns) {
+    if (NO_COLUMN_TYPES.has(f.column_type)) continue
+    const b = norm(before[f.column_name])
+    const a = norm(after[f.column_name])
+    if (JSON.stringify(b) !== JSON.stringify(a)) changed.push([f.column_name, b, a])
   }
   if (!changed.length) return
   const now = new Date()
-  await tx`insert into tab_version ${tx({
+  await tx`insert into version ${tx({
     name: hashName(),
-    owner: user,
-    modified_by: user,
-    creation: now,
-    modified: now,
-    docstatus: 0,
-    idx: 0,
-    ref_doctype: meta.name,
+    created_by: user,
+    updated_by: user,
+    created_at: now,
+    updated_at: now,
+    status: 'draft',
+    position: 0,
+    ref_table: meta.name,
     ref_name: name,
     data: { changed } as unknown as string,
   })}`
 }
 
-// DOC-007: docstatus transitions. Draft(0) -> submit -> Submitted(1) ->
-// cancel -> Cancelled(2). Submitted docs are immutable; cancelled docs are
-// terminal (until amend, DOC-008).
-async function setDocstatus(
-  doctype: string,
+// DOC-007: status transitions. draft -> submit -> submitted -> cancel ->
+// cancelled. Submitted rows are immutable; cancelled rows are terminal
+// (until amend, DOC-008).
+async function setStatus(
+  table: string,
   name: string,
-  from: number,
-  to: number,
+  from: 'draft' | 'submitted' | 'cancelled',
+  to: 'draft' | 'submitted' | 'cancelled',
   event: 'on_submit' | 'on_cancel',
   user: string,
-): Promise<DocValues> {
-  const meta = await getMeta(doctype)
+): Promise<RowValues> {
+  const meta = await getMeta(table)
   if (!meta.is_submittable)
-    throw new AppError('ValidationError', `${doctype} is not submittable`)
-  const table = tableName(doctype)
+    throw new AppError('ValidationError', `${table} is not submittable`)
+  const tbl = tableName(table)
   const [saved] = await sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     const [existing] = await tx`
-      select * from ${tx(table)} where name = ${name} for update`
+      select * from ${tx(tbl)} where name = ${name} for update`
     if (!existing)
-      throw new AppError('NotFoundError', `${doctype} ${name} not found`)
+      throw new AppError('NotFoundError', `${table} ${name} not found`)
     await assertDocPermission(
-      user, doctype, event === 'on_submit' ? 'submit' : 'cancel', String(existing.owner))
-    await assertUserPermissions(user, meta, existing as DocValues)
-    if ((existing.docstatus as number) !== from)
+      user, table, event === 'on_submit' ? 'submit' : 'cancel', String(existing.created_by))
+    await assertUserPermissions(user, meta, existing as RowValues)
+    if ((existing.status as string) !== from)
       throw new AppError(
         'ValidationError',
-        `${doctype} ${name} has docstatus ${existing.docstatus}; expected ${from}`,
+        `${table} ${name} has status ${existing.status}; expected ${from}`,
       )
     // Frappe order: before_submit/before_cancel run BEFORE the write and may
     // abort it; on_update fires after the write, then on_submit/on_cancel.
     const preCtx: HookContext = {
-      doc: { ...(existing as DocValues) },
-      old: existing as DocValues,
+      row: { ...(existing as RowValues) },
+      old: existing as RowValues,
       meta,
       user,
       isNew: false,
@@ -669,12 +669,12 @@ async function setDocstatus(
     }
     await runHooks(event === 'on_submit' ? 'before_submit' : 'before_cancel', preCtx)
     const [updated] = await tx`
-      update ${tx(table)} set docstatus = ${to}, modified = ${new Date()},
-        modified_by = ${user}
+      update ${tx(tbl)} set status = ${to}, updated_at = ${new Date()},
+        updated_by = ${user}
       where name = ${name} returning *`
     const ctx: HookContext = {
-      doc: updated as DocValues,
-      old: existing as DocValues,
+      row: updated as RowValues,
+      old: existing as RowValues,
       meta,
       user,
       isNew: false,
@@ -684,112 +684,112 @@ async function setDocstatus(
     await runHooks(event, ctx)
     return [updated]
   })
-  const result = await loadChildren(meta, { doctype, ...(saved as DocValues) })
+  const result = await loadChildren(meta, { table, ...(saved as RowValues) })
   // EML-004: fire matching email rules for this lifecycle event (post-commit).
-  await evaluateEmailRules(event as LifecycleEvent, doctype, saved as DocValues)
+  await evaluateEmailRules(event as LifecycleEvent, table, saved as RowValues)
   // PLAT-005: fire webhooks for submit/cancel (post-commit).
-  await evaluateWebhooks(event === 'on_submit' ? 'on_submit' : 'on_cancel', doctype, result)
+  await evaluateWebhooks(event === 'on_submit' ? 'on_submit' : 'on_cancel', table, result)
   return result
 }
 
-export function submitDoc(doctype: string, name: string, user = 'Administrator') {
-  return setDocstatus(doctype, name, 0, 1, 'on_submit', user)
+export function submitDoc(table: string, name: string, user = 'Administrator') {
+  return setStatus(table, name, 'draft', 'submitted', 'on_submit', user)
 }
 
-export function cancelDoc(doctype: string, name: string, user = 'Administrator') {
-  return setDocstatus(doctype, name, 1, 2, 'on_cancel', user)
+export function cancelDoc(table: string, name: string, user = 'Administrator') {
+  return setStatus(table, name, 'submitted', 'cancelled', 'on_cancel', user)
 }
 
-// DOC-008: create a fresh draft from a cancelled document. The copy carries
+// DOC-008: create a fresh draft from a cancelled row. The copy carries
 // amended_from and a derived NAME-n; children are copied as new rows.
 export async function amendDoc(
-  doctype: string,
+  table: string,
   name: string,
   user = 'Administrator',
-): Promise<DocValues> {
-  const meta = await getMeta(doctype)
+): Promise<RowValues> {
+  const meta = await getMeta(table)
   if (!meta.is_submittable)
-    throw new AppError('ValidationError', `${doctype} is not submittable`)
-  const source = await getDoc(doctype, name, user)
-  if ((source.docstatus as number) !== 2)
-    throw new AppError('ValidationError', `${doctype} ${name} must be cancelled before amending`)
-  await assertDocPermission(user, doctype, 'amend', String(source.owner))
+    throw new AppError('ValidationError', `${table} is not submittable`)
+  const source = await getDoc(table, name, user)
+  if ((source.status as string) !== 'cancelled')
+    throw new AppError('ValidationError', `${table} ${name} must be cancelled before amending`)
+  await assertDocPermission(user, table, 'amend', String(source.created_by))
 
   const [{ count }] = await sql`
-    select count(*)::int as count from ${sql(tableName(doctype))}
+    select count(*)::int as count from ${sql(tableName(table))}
     where amended_from = ${name}`
   const newName = `${name}-${(count as number) + 1}`
 
-  const values: DocValues = { name: newName, amended_from: name }
-  for (const f of meta.fields) {
-    if (f.fieldname === 'amended_from') continue
-    if (f.fieldtype === 'Section Break' || f.fieldtype === 'Column Break') continue
-    if (f.fieldtype === 'Table') {
-      const rows = (source[f.fieldname] as DocValues[] | undefined) ?? []
-      values[f.fieldname] = rows.map((r) => {
-        const copy: DocValues = {}
+  const values: RowValues = { name: newName, amended_from: name }
+  for (const f of meta.columns) {
+    if (f.column_name === 'amended_from') continue
+    if (f.column_type === 'Section Break' || f.column_type === 'Column Break') continue
+    if (f.column_type === 'Sub-table') {
+      const rows = (source[f.column_name] as RowValues[] | undefined) ?? []
+      values[f.column_name] = rows.map((r) => {
+        const copy: RowValues = {}
         for (const [k, v] of Object.entries(r))
           if (!(STANDARD_COLUMNS as readonly string[]).includes(k)) copy[k] = v
         return copy
       })
     } else {
-      values[f.fieldname] = source[f.fieldname]
+      values[f.column_name] = source[f.column_name]
     }
   }
-  return saveDoc(doctype, values, user)
+  return saveDoc(table, values, user)
 }
 
-// DOC-006: a document referenced by Link fields anywhere cannot be deleted.
+// DOC-006: a row referenced by Reference columns anywhere cannot be deleted.
 export async function deleteDoc(
-  doctype: string,
+  table: string,
   name: string,
   user = 'Administrator',
 ): Promise<void> {
-  const meta = await getMeta(doctype)
-  if (meta.issingle || meta.istable || ENGINE_MANAGED.has(doctype))
-    throw new AppError('ValidationError', `${doctype} documents cannot be deleted directly`)
+  const meta = await getMeta(table)
+  if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
+    throw new AppError('ValidationError', `${table} rows cannot be deleted directly`)
   await sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     const [existing] = await tx`
-      select * from ${tx(tableName(doctype))} where name = ${name} for update`
+      select * from ${tx(tableName(table))} where name = ${name} for update`
     if (!existing)
-      throw new AppError('NotFoundError', `${doctype} ${name} not found`)
-    await assertDocPermission(user, doctype, 'delete', String(existing.owner))
-    await assertUserPermissions(user, meta, existing as DocValues)
-    if ((existing.docstatus as number) === 1)
+      throw new AppError('NotFoundError', `${table} ${name} not found`)
+    await assertDocPermission(user, table, 'delete', String(existing.created_by))
+    await assertUserPermissions(user, meta, existing as RowValues)
+    if ((existing.status as string) === 'submitted')
       throw new AppError(
         'ValidationError',
-        `${doctype} ${name} is submitted and cannot be deleted (cancel it first)`,
+        `${table} ${name} is submitted and cannot be deleted (cancel it first)`,
       )
 
-    // Any Link field in any DocType pointing at this doctype blocks deletion.
+    // Any Reference column in any Table pointing at this table blocks deletion.
     const linkFields = await tx`
-      select parent, fieldname from tab_docfield
-      where fieldtype = 'Link' and options = ${doctype}`
+      select parent, column_name from column_def
+      where column_type = 'Reference' and reference_table = ${table}`
     for (const lf of linkFields) {
-      const parentDt = lf.parent as string
+      const parentTable = lf.parent as string
       const [parentMeta] = await tx`
-        select issingle, istable from tab_doctype where name = ${parentDt}`
-      if (!parentMeta || parentMeta.issingle) continue
-      const refCols = parentMeta.istable
+        select kind from table_def where name = ${parentTable}`
+      if (!parentMeta || parentMeta.kind === 'settings') continue
+      const refCols = parentMeta.kind === 'sub_table'
         ? ['name', 'parent', 'parenttype']
         : ['name']
       const [ref] = await tx`
-        select ${tx(refCols)} from ${tx(tableName(parentDt))}
-        where ${tx(lf.fieldname as string)} = ${name} limit 1`
+        select ${tx(refCols)} from ${tx(tableName(parentTable))}
+        where ${tx(lf.column_name as string)} = ${name} limit 1`
       if (ref) {
-        const holder = parentMeta.istable
+        const holder = parentMeta.kind === 'sub_table'
           ? `${ref.parenttype as string} ${ref.parent as string}`
-          : `${parentDt} ${ref.name as string}`
+          : `${parentTable} ${ref.name as string}`
         throw new AppError(
           'ValidationError',
-          `Cannot delete ${doctype} ${name}: it is linked from ${holder}`,
+          `Cannot delete ${table} ${name}: it is linked from ${holder}`,
         )
       }
     }
 
     const ctx: HookContext = {
-      doc: existing as DocValues,
+      row: existing as RowValues,
       meta,
       user,
       isNew: false,
@@ -797,114 +797,116 @@ export async function deleteDoc(
     }
     await runHooks('on_trash', ctx)
 
-    // Remove this document's own child rows, then the document.
-    for (const f of meta.fields) {
-      if (f.fieldtype !== 'Table') continue
+    // Remove this row's own child rows, then the row.
+    for (const f of meta.columns) {
+      if (f.column_type !== 'Sub-table') continue
       await tx`
-        delete from ${tx(tableName(f.options!))}
-        where parent = ${name} and parenttype = ${doctype}`
+        delete from ${tx(tableName(f.row_table!))}
+        where parent = ${name} and parenttype = ${table}`
     }
-    await tx`delete from ${tx(tableName(doctype))} where name = ${name}`
+    await tx`delete from ${tx(tableName(table))} where name = ${name}`
   })
 }
 
-// DOC-012: rename a document's primary key and update every Link that
-// referenced the old name — across all DocTypes and child tables — in one
-// transaction. The document keeps all its other data and children.
+// DOC-012: rename a row's primary key and update every Reference that
+// pointed at the old name — across all Tables and child tables — in one
+// transaction. The row keeps all its other data and children.
 export async function renameDoc(
-  doctype: string,
+  table: string,
   oldName: string,
   newName: string,
   user = 'Administrator',
-): Promise<DocValues> {
-  const meta = await getMeta(doctype)
-  if (meta.issingle || meta.istable || ENGINE_MANAGED.has(doctype))
-    throw new AppError('ValidationError', `${doctype} documents cannot be renamed`)
+): Promise<RowValues> {
+  const meta = await getMeta(table)
+  if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
+    throw new AppError('ValidationError', `${table} rows cannot be renamed`)
   const target = newName.trim()
   if (!target) throw new AppError('ValidationError', 'New name is required', { name: 'Required' })
-  if (target === oldName) return getDoc(doctype, oldName, user)
+  if (target === oldName) return getDoc(table, oldName, user)
 
   await sql.begin(async (tx) => {
-    const table = tableName(doctype)
+    const tbl = tableName(table)
     const [existing] = await tx`
-      select * from ${tx(table)} where name = ${oldName} for update`
-    if (!existing) throw new AppError('NotFoundError', `${doctype} ${oldName} not found`)
-    await assertDocPermission(user, doctype, 'write', String(existing.owner))
-    await assertUserPermissions(user, meta, existing as DocValues)
-    const [clash] = await tx`select 1 from ${tx(table)} where name = ${target}`
-    if (clash) throw new AppError('ConflictError', `${doctype} ${target} already exists`)
+      select * from ${tx(tbl)} where name = ${oldName} for update`
+    if (!existing) throw new AppError('NotFoundError', `${table} ${oldName} not found`)
+    await assertDocPermission(user, table, 'write', String(existing.created_by))
+    await assertUserPermissions(user, meta, existing as RowValues)
+    const [clash] = await tx`select 1 from ${tx(tbl)} where name = ${target}`
+    if (clash) throw new AppError('ConflictError', `${table} ${target} already exists`)
 
     // Rename the row itself.
-    await tx`update ${tx(table)} set name = ${target}, modified = now() where name = ${oldName}`
+    await tx`update ${tx(tbl)} set name = ${target}, updated_at = now() where name = ${oldName}`
 
-    // Re-point this document's own child rows to the new parent name.
-    for (const f of meta.fields) {
-      if (f.fieldtype !== 'Table') continue
+    // Re-point this row's own child rows to the new parent name.
+    for (const f of meta.columns) {
+      if (f.column_type !== 'Sub-table') continue
       await tx`
-        update ${tx(tableName(f.options!))} set parent = ${target}
-        where parent = ${oldName} and parenttype = ${doctype}`
+        update ${tx(tableName(f.row_table!))} set parent = ${target}
+        where parent = ${oldName} and parenttype = ${table}`
     }
 
-    // Update every Link field, in any DocType, that points at this doctype.
+    // Update every Reference column, in any Table, that points at this table.
     const linkFields = await tx`
-      select parent, fieldname from tab_docfield
-      where fieldtype = 'Link' and options = ${doctype}`
+      select parent, column_name from column_def
+      where column_type = 'Reference' and reference_table = ${table}`
     for (const lf of linkFields) {
-      const parentDt = lf.parent as string
-      const [pm] = await tx`select issingle from tab_doctype where name = ${parentDt}`
-      if (!pm || pm.issingle) continue
-      const col = lf.fieldname as string
+      const parentTable = lf.parent as string
+      const [pm] = await tx`select kind from table_def where name = ${parentTable}`
+      if (!pm || pm.kind === 'settings') continue
+      const col = lf.column_name as string
       await tx`
-        update ${tx(tableName(parentDt))} set ${tx(col)} = ${target}
+        update ${tx(tableName(parentTable))} set ${tx(col)} = ${target}
         where ${tx(col)} = ${oldName}`
     }
   })
-  return getDoc(doctype, target, user)
+  return getDoc(table, target, user)
 }
 
 export async function getDoc(
-  doctype: string,
+  table: string,
   name: string,
   user = 'Administrator',
-): Promise<DocValues> {
-  const meta = await getMeta(doctype)
-  if (meta.issingle) return getSingle(meta, user)
+): Promise<RowValues> {
+  const meta = await getMeta(table)
+  if (meta.kind === 'settings') return getSingle(meta, user)
   const [row] = await sql`
-    select * from ${sql(tableName(doctype))} where name = ${name}`
-  if (!row) throw new AppError('NotFoundError', `${doctype} ${name} not found`)
+    select * from ${sql(tableName(table))} where name = ${name}`
+  if (!row) throw new AppError('NotFoundError', `${table} ${name} not found`)
   // PERM-008: a direct share grants read even without role permission.
-  const shared = await isSharedWith(user, doctype, name, 'read')
+  const shared = await isSharedWith(user, table, name, 'read')
   if (!shared) {
-    await assertPermission(user, doctype, 'read')
-    await assertDocPermission(user, doctype, 'read', String(row.owner))
-    await assertUserPermissions(user, meta, row as DocValues)
+    await assertPermission(user, table, 'read')
+    await assertDocPermission(user, table, 'read', String(row.created_by))
+    await assertUserPermissions(user, meta, row as RowValues)
   }
-  // A share grants full field visibility; otherwise honor permlevels.
-  const readLevels = shared ? new Set([-1]) : await permittedLevels(user, doctype, 'read')
-  const visible = filterReadFields(meta.fields, readLevels, row as DocValues)
-  return loadChildren(meta, { doctype, ...visible })
+  // A share grants full field visibility; otherwise honor tiers.
+  const readTiers = shared
+    ? new Set<'basic' | 'restricted'>(['basic', 'restricted'])
+    : await permittedTiers(user, table, 'read')
+  const visible = filterReadFields(meta.columns, readTiers, row as RowValues)
+  return loadChildren(meta, { table, ...visible })
 }
 
-// SET-001: read a Single DocType's one instance from the EAV store, applying
-// field defaults for any value not yet set. Its name is the DocType name.
-async function getSingle(meta: DocTypeMeta, user: string): Promise<DocValues> {
+// SET-001: read a Settings Table's one instance from the EAV store, applying
+// column defaults for any value not yet set. Its name is the Table name.
+async function getSingle(meta: TableMeta, user: string): Promise<RowValues> {
   await assertPermission(user, meta.name, 'read')
-  const rows = await sql`select field, value from single_value where doctype = ${meta.name}`
+  const rows = await sql`select field, value from single_value where table_name = ${meta.name}`
   const stored = new Map(rows.map((r) => [r.field as string, r.value as string | null]))
-  const doc: DocValues = { doctype: meta.name, name: meta.name, owner: 'Administrator', docstatus: 0 }
-  for (const f of meta.fields) {
-    if (NO_COLUMN_TYPES.has(f.fieldtype)) continue
-    const raw = stored.has(f.fieldname) ? (stored.get(f.fieldname) ?? null) : (f.default_value ?? null)
-    doc[f.fieldname] = coerceSingleValue(f.fieldtype, raw)
+  const row: RowValues = { table: meta.name, name: meta.name, created_by: 'Administrator', status: 'draft' }
+  for (const f of meta.columns) {
+    if (NO_COLUMN_TYPES.has(f.column_type)) continue
+    const raw = stored.has(f.column_name) ? (stored.get(f.column_name) ?? null) : (f.default_value ?? null)
+    row[f.column_name] = coerceSingleValue(f.column_type, raw)
   }
-  const readLevels = await permittedLevels(user, meta.name, 'read')
-  return filterReadFields(meta.fields, readLevels, doc)
+  const readTiers = await permittedTiers(user, meta.name, 'read')
+  return filterReadFields(meta.columns, readTiers, row)
 }
 
-// EAV values are stored as text; coerce back to the field's JS type.
-function coerceSingleValue(fieldtype: string, raw: string | null): unknown {
+// EAV values are stored as text; coerce back to the column's JS type.
+function coerceSingleValue(columnType: string, raw: string | null): unknown {
   if (raw == null) return null
-  switch (fieldtype) {
+  switch (columnType) {
     case 'Int':
       return Number.parseInt(raw, 10)
     case 'Float':
@@ -917,26 +919,26 @@ function coerceSingleValue(fieldtype: string, raw: string | null): unknown {
   }
 }
 
-// SET-001: persist a Single DocType's values into the EAV store.
+// SET-001: persist a Settings Table's values into the EAV store.
 export async function saveSingle(
-  doctype: string,
-  values: DocValues,
+  table: string,
+  values: RowValues,
   user = 'Administrator',
-): Promise<DocValues> {
-  const meta = await getMeta(doctype)
-  if (!meta.issingle) throw new AppError('ValidationError', `${doctype} is not a single DocType`)
-  await assertPermission(user, doctype, 'write')
-  const writeLevels = await permittedLevels(user, doctype, 'write')
+): Promise<RowValues> {
+  const meta = await getMeta(table)
+  if (meta.kind !== 'settings') throw new AppError('ValidationError', `${table} is not a Settings Table`)
+  await assertPermission(user, table, 'write')
+  const writeTiers = await permittedTiers(user, table, 'write')
   const clean = validateValues(
     meta,
-    stripUnwritableFields(meta.fields, writeLevels, pickFieldValues(meta, values)),
+    stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values)),
     'update',
   )
   for (const [field, value] of Object.entries(clean)) {
     const text = value == null ? null : typeof value === 'boolean' ? (value ? '1' : '0') : String(value)
     await sql`
-      insert into single_value ${sql({ doctype, field, value: text })}
-      on conflict (doctype, field) do update set value = excluded.value`
+      insert into single_value ${sql({ table_name: table, field, value: text })}
+      on conflict (table_name, field) do update set value = excluded.value`
   }
-  return getDoc(doctype, doctype, user)
+  return getDoc(table, table, user)
 }

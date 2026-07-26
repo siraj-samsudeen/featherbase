@@ -2,33 +2,33 @@
 // Access Log records data-access events (exports, prints). Both carry the user
 // and a timestamp (creation).
 import { sql } from '../src/db'
-import { createDocType } from '../src/doctype-engine'
+import { createTable } from '../src/doctype-engine'
 
 export async function up() {
-  const [a] = await sql`select 1 from tab_doctype where name = 'Activity Log'`
+  const [a] = await sql`select 1 from table_def where name = 'Activity Log'`
   if (!a)
-    await createDocType({
+    await createTable({
       name: 'Activity Log',
       module: 'Core',
-      fields: [
-        { fieldname: 'user', fieldtype: 'Data', in_list_view: true },
-        { fieldname: 'operation', fieldtype: 'Data', in_list_view: true }, // login | logout
-        { fieldname: 'full_name', fieldtype: 'Data' },
-        { fieldname: 'ip_address', fieldtype: 'Data' },
+      columns: [
+        { column_name: 'user', column_type: 'Data', in_list_view: true },
+        { column_name: 'operation', column_type: 'Data', in_list_view: true }, // login | logout
+        { column_name: 'full_name', column_type: 'Data' },
+        { column_name: 'ip_address', column_type: 'Data' },
       ],
     })
 
-  const [b] = await sql`select 1 from tab_doctype where name = 'Access Log'`
+  const [b] = await sql`select 1 from table_def where name = 'Access Log'`
   if (!b)
-    await createDocType({
+    await createTable({
       name: 'Access Log',
       module: 'Core',
-      fields: [
-        { fieldname: 'user', fieldtype: 'Data', in_list_view: true },
-        { fieldname: 'operation', fieldtype: 'Data', in_list_view: true }, // export | print
-        { fieldname: 'reference_doctype', fieldtype: 'Data', in_list_view: true },
-        { fieldname: 'reference_name', fieldtype: 'Data' },
-        { fieldname: 'method', fieldtype: 'Data' }, // csv | xlsx | pdf
+      columns: [
+        { column_name: 'user', column_type: 'Data', in_list_view: true },
+        { column_name: 'operation', column_type: 'Data', in_list_view: true }, // export | print
+        { column_name: 'reference_doctype', column_type: 'Data', in_list_view: true },
+        { column_name: 'reference_name', column_type: 'Data' },
+        { column_name: 'method', column_type: 'Data' }, // csv | xlsx | pdf
       ],
     })
 }

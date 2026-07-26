@@ -1,20 +1,20 @@
 // UI-027: Workspaces — configurable module home pages with shortcuts (links to
-// DocType lists, reports, dashboards) stored as JSON.
+// Table lists, reports, dashboards) stored as JSON.
 import { sql } from '../src/db'
-import { createDocType } from '../src/doctype-engine'
+import { createTable } from '../src/doctype-engine'
 
 export async function up() {
-  const [exists] = await sql`select 1 from tab_doctype where name = 'Workspace'`
+  const [exists] = await sql`select 1 from table_def where name = 'Workspace'`
   if (exists) return
-  await createDocType({
+  await createTable({
     name: 'Workspace',
     module: 'Core',
-    autoname: 'prompt',
-    fields: [
-      { fieldname: 'label', fieldtype: 'Data', reqd: true, in_list_view: true },
-      { fieldname: 'icon', fieldtype: 'Data' },
+    id_pattern: 'prompt',
+    columns: [
+      { column_name: 'label', column_type: 'Data', reqd: true, in_list_view: true },
+      { column_name: 'icon', column_type: 'Data' },
       // [{ label, type: 'doctype'|'report'|'dashboard'|'url', link_to }]
-      { fieldname: 'shortcuts', fieldtype: 'JSON' },
+      { column_name: 'shortcuts', column_type: 'JSON' },
     ],
   })
 }

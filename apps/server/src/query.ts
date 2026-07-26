@@ -1,6 +1,6 @@
 import { sql } from './db'
 import { AppError } from './errors'
-import { getMeta, type DocTypeMeta } from './meta'
+import { getMeta, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName } from './doctype-engine'
 import { getUserPermissionMap, isBypassUser, permissionScope } from './permissions'
 
@@ -16,16 +16,16 @@ export interface ListArgs {
 
 const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in'] as const
 
-const NO_COLUMN_TYPES = new Set(['Table', 'Section Break', 'Column Break'])
+const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 
 // Credential columns are never selectable or filterable (API-005/API-008).
 const SENSITIVE_COLUMNS = new Set(['password_hash', 'api_secret_hash', 'api_key', 'new_password'])
 
-function columnSet(meta: DocTypeMeta): Set<string> {
+function columnSet(meta: TableMeta): Set<string> {
   const cols = new Set<string>(STANDARD_COLUMNS)
-  for (const f of meta.fields)
-    if (!NO_COLUMN_TYPES.has(f.fieldtype) && !SENSITIVE_COLUMNS.has(f.fieldname))
-      cols.add(f.fieldname)
+  for (const f of meta.columns)
+    if (!NO_COLUMN_TYPES.has(f.column_type) && !SENSITIVE_COLUMNS.has(f.column_name))
+      cols.add(f.column_name)
   return cols
 }
 
@@ -37,46 +37,48 @@ function assertColumn(cols: Set<string>, field: string, what: string) {
 }
 
 // Builds the permission-scoped WHERE fragment shared by list, count, and
-// group-count: read permission + owner narrowing + user-permission narrowing +
-// caller filters. Throws PermissionError (none) or ValidationError (single /
-// bad filter). Returns the resolved meta, table name, and column set too.
+// group-count: read permission + created_by narrowing + user-permission
+// narrowing + caller filters. Throws PermissionError (none) or
+// ValidationError (single / bad filter). Returns the resolved meta, table
+// name, and column set too.
 async function scopedWhere(
-  doctype: string,
+  table: string,
   user: string,
   callerFilters: Filter[],
 ) {
-  const meta = await getMeta(doctype)
-  const scope = await permissionScope(user, doctype, 'read')
+  const meta = await getMeta(table)
+  const scope = await permissionScope(user, table, 'read')
   if (scope === 'none')
-    throw new AppError('PermissionError', `No read permission on ${doctype} for ${user}`)
-  if (meta.issingle)
+    throw new AppError('PermissionError', `No read permission on ${table} for ${user}`)
+  if (meta.kind === 'settings')
     throw new AppError(
       'ValidationError',
-      `${doctype} is a Single DocType and has no list — open it directly by its name`,
+      `${table} is a Settings Table and has no list — open it directly by its name`,
     )
   const cols = columnSet(meta)
-  const table = tableName(doctype)
+  const tbl = tableName(table)
 
   const filters = [...callerFilters]
   // Extra WHERE fragments that can't be expressed as plain [field, op, value]
   // filters (they need OR with IS NULL).
   const extraConds: ReturnType<typeof sql>[] = []
-  if (scope === 'owner') filters.push(['owner', '=', user])
-  // PERM-005: user permissions narrow by the doctype itself and by any Link
-  // field pointing at a restricted doctype. An UNSET link does not disqualify
-  // a row — the restriction applies to values, so NULL passes (matches the
-  // detail-read check in permissions.ts, which skips empty values).
+  if (scope === 'own_rows') filters.push(['created_by', '=', user])
+  // PERM-005: user permissions narrow by the table itself and by any
+  // Reference column pointing at a restricted table. An UNSET reference does
+  // not disqualify a row — the restriction applies to values, so NULL passes
+  // (matches the detail-read check in permissions.ts, which skips empty
+  // values).
   if (!(await isBypassUser(user))) {
     const upMap = await getUserPermissionMap(user)
     if (upMap.size) {
-      const own = upMap.get(doctype)
+      const own = upMap.get(table)
       if (own) filters.push(['name', 'in', [...own]])
-      for (const f of meta.fields) {
-        if (f.fieldtype !== 'Link' || !f.options) continue
-        const allowed = upMap.get(f.options)
+      for (const f of meta.columns) {
+        if (f.column_type !== 'Reference' || !f.reference_table) continue
+        const allowed = upMap.get(f.reference_table)
         if (allowed)
           extraConds.push(
-            sql`(${sql(f.fieldname)} is null or ${sql(f.fieldname)} in ${sql([...allowed])})`,
+            sql`(${sql(f.column_name)} is null or ${sql(f.column_name)} in ${sql([...allowed])})`,
           )
       }
     }
@@ -103,18 +105,18 @@ async function scopedWhere(
   })
   const allConds = [...conds, ...extraConds]
   const where = allConds.length ? allConds.reduce((acc, c) => sql`${acc} and ${c}`) : sql`true`
-  return { meta, table, cols, where }
+  return { meta, table: tbl, cols, where }
 }
 
-// DASH: count of matching documents (number card). Same permission scoping as
+// DASH: count of matching rows (number card). Same permission scoping as
 // getList; returns a single integer.
 export async function countDocs(
-  doctype: string,
+  table: string,
   filters: Filter[] = [],
   user = 'Administrator',
 ): Promise<number> {
-  const { table, where } = await scopedWhere(doctype, user, filters)
-  const [{ count }] = await sql`select count(*)::int as count from ${sql(table)} where ${where}`
+  const { table: tbl, where } = await scopedWhere(table, user, filters)
+  const [{ count }] = await sql`select count(*)::int as count from ${sql(tbl)} where ${where}`
   return count as number
 }
 
@@ -122,28 +124,28 @@ export async function countDocs(
 // value of `field`, honoring permissions and filters. Ordered by descending
 // count then label for a stable chart.
 export async function groupCount(
-  doctype: string,
+  table: string,
   field: string,
   filters: Filter[] = [],
   user = 'Administrator',
 ): Promise<{ label: string; value: number }[]> {
-  const { cols, table, where } = await scopedWhere(doctype, user, filters)
+  const { cols, table: tbl, where } = await scopedWhere(table, user, filters)
   assertColumn(cols, field, 'group_by')
   const rows = await sql`
     select ${sql(field)}::text as label, count(*)::int as value
-    from ${sql(table)} where ${where}
+    from ${sql(tbl)} where ${where}
     group by ${sql(field)}
     order by value desc, label asc`
   return rows.map((r) => ({ label: (r.label as string) ?? '', value: r.value as number }))
 }
 
-export async function getList(doctype: string, args: ListArgs = {}, user = 'Administrator') {
-  const { meta, table, cols, where } = await scopedWhere(doctype, user, args.filters ?? [])
+export async function getList(table: string, args: ListArgs = {}, user = 'Administrator') {
+  const { meta, table: tbl, cols, where } = await scopedWhere(table, user, args.filters ?? [])
 
   const fields = args.fields?.length ? args.fields : ['name']
   for (const f of fields) assertColumn(cols, f, 'selected')
 
-  let orderField = meta.sort_field || 'modified'
+  let orderField = meta.sort_column || 'updated_at'
   let orderDir = (meta.sort_order || 'desc').toLowerCase()
   if (args.order_by) {
     const m = args.order_by.trim().match(/^([a-z][a-z0-9_]*)\s*(asc|desc)?$/i)
@@ -157,11 +159,11 @@ export async function getList(doctype: string, args: ListArgs = {}, user = 'Admi
   const offset = Math.max(args.limit_start ?? 0, 0)
 
   const rows = await sql`
-    select ${sql(fields)} from ${sql(table)}
+    select ${sql(fields)} from ${sql(tbl)}
     where ${where}
     order by ${sql(orderField)} ${orderDir === 'desc' ? sql`desc` : sql`asc`}
     limit ${limit} offset ${offset}`
   const [{ count }] = await sql`
-    select count(*)::int as count from ${sql(table)} where ${where}`
+    select count(*)::int as count from ${sql(tbl)} where ${where}`
   return { data: rows, total: count as number, limit_start: offset, limit_page_length: limit }
 }

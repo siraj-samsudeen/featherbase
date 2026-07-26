@@ -3,51 +3,51 @@
 // local dev "mailbox" that captures everything actually delivered (the local
 // equivalent of a MailHog-style sink).
 import { sql } from '../src/db'
-import { createDocType } from '../src/doctype-engine'
+import { createTable } from '../src/doctype-engine'
 
 export async function up() {
-  const [exists] = await sql`select 1 from tab_doctype where name = 'Email Account'`
+  const [exists] = await sql`select 1 from table_def where name = 'Email Account'`
   if (exists) return
 
-  await createDocType({
+  await createTable({
     name: 'Email Account',
     module: 'Core',
-    autoname: 'prompt',
-    fields: [
-      { fieldname: 'email_id', fieldtype: 'Data', reqd: true, in_list_view: true },
-      { fieldname: 'smtp_host', fieldtype: 'Data', default_value: 'localhost' },
-      { fieldname: 'smtp_port', fieldtype: 'Int', default_value: '1025' },
-      { fieldname: 'is_default', fieldtype: 'Check', default_value: '0', in_list_view: true },
+    id_pattern: 'prompt',
+    columns: [
+      { column_name: 'email_id', column_type: 'Data', reqd: true, in_list_view: true },
+      { column_name: 'smtp_host', column_type: 'Data', default_value: 'localhost' },
+      { column_name: 'smtp_port', column_type: 'Int', default_value: '1025' },
+      { column_name: 'is_default', column_type: 'Check', default_value: '0', in_list_view: true },
     ],
   })
 
-  await createDocType({
+  await createTable({
     name: 'Email Queue',
     module: 'Core',
-    fields: [
-      { fieldname: 'sender', fieldtype: 'Data', in_list_view: true },
-      { fieldname: 'recipient', fieldtype: 'Data', reqd: true, in_list_view: true },
-      { fieldname: 'subject', fieldtype: 'Data', in_list_view: true },
-      { fieldname: 'body', fieldtype: 'Text' },
-      { fieldname: 'status', fieldtype: 'Select', options: 'queued\nsent\nerror', default_value: 'queued', in_list_view: true },
-      { fieldname: 'error', fieldtype: 'Text' },
-      { fieldname: 'reference_doctype', fieldtype: 'Link', options: 'DocType' },
-      { fieldname: 'reference_name', fieldtype: 'Data' },
-      { fieldname: 'attachments', fieldtype: 'JSON' },
+    columns: [
+      { column_name: 'sender', column_type: 'Data', in_list_view: true },
+      { column_name: 'recipient', column_type: 'Data', reqd: true, in_list_view: true },
+      { column_name: 'subject', column_type: 'Data', in_list_view: true },
+      { column_name: 'body', column_type: 'Text' },
+      { column_name: 'status', column_type: 'Choice', choices: 'queued\nsent\nerror', default_value: 'queued', in_list_view: true },
+      { column_name: 'error', column_type: 'Text' },
+      { column_name: 'reference_doctype', column_type: 'Reference', reference_table: 'Table' },
+      { column_name: 'reference_name', column_type: 'Data' },
+      { column_name: 'attachments', column_type: 'JSON' },
     ],
   })
 
   // The dev sink: every delivered message lands here, queryable via the API.
-  await createDocType({
+  await createTable({
     name: 'Email Sink',
     module: 'Core',
-    fields: [
-      { fieldname: 'mail_from', fieldtype: 'Data', in_list_view: true },
-      { fieldname: 'mail_to', fieldtype: 'Data', in_list_view: true },
-      { fieldname: 'subject', fieldtype: 'Data', in_list_view: true },
-      { fieldname: 'body', fieldtype: 'Text' },
-      { fieldname: 'attachment_names', fieldtype: 'Data' },
-      { fieldname: 'attachment_b64', fieldtype: 'Text' },
+    columns: [
+      { column_name: 'mail_from', column_type: 'Data', in_list_view: true },
+      { column_name: 'mail_to', column_type: 'Data', in_list_view: true },
+      { column_name: 'subject', column_type: 'Data', in_list_view: true },
+      { column_name: 'body', column_type: 'Text' },
+      { column_name: 'attachment_names', column_type: 'Data' },
+      { column_name: 'attachment_b64', column_type: 'Text' },
     ],
   })
 }

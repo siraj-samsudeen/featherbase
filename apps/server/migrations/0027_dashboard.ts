@@ -2,19 +2,19 @@
 // by a DocType + optional filters (and a group-by for charts). The layout is a
 // JSON config; cards/charts are computed on demand from live data.
 import { sql } from '../src/db'
-import { createDocType } from '../src/doctype-engine'
+import { createTable } from '../src/doctype-engine'
 
 export async function up() {
-  const [exists] = await sql`select 1 from tab_doctype where name = 'Dashboard'`
+  const [exists] = await sql`select 1 from table_def where name = 'Dashboard'`
   if (exists) return
-  await createDocType({
+  await createTable({
     name: 'Dashboard',
     module: 'Core',
-    autoname: 'prompt',
-    fields: [
-      { fieldname: 'label', fieldtype: 'Data', in_list_view: true },
+    id_pattern: 'prompt',
+    columns: [
+      { column_name: 'label', column_type: 'Data', in_list_view: true },
       // { cards: [{label, doctype, filters}], charts: [{label, doctype, group_by, filters}] }
-      { fieldname: 'config', fieldtype: 'JSON' },
+      { column_name: 'config', column_type: 'JSON' },
     ],
   })
 }
