@@ -51,6 +51,7 @@ off-ramp, never round-tripped) full eject of a DocType to owned code.
 | [react-admin](react-admin.md) | code-first frontend | the dataProvider adapter ecosystem; guessers — generation as one-way suggestion |
 | [Avo](avo.md) | interpreter (of code) | the escape-hatch ladder — "designed so you can't get stuck"; fields as tiny packages |
 | [NocoDB](nocodb.md) | interpreter | spreadsheet skin over existing DBs; views as the user-facing unit; virtual columns |
+| [Hudi & the lakehouse stack](hudi-lakehouse.md) | lakehouse ingestion | keyed upserts + incremental queries downstream; DLT-META's metadata-driven pipelines; the D20 egress story |
 
 Frappe already has its own deep study:
 `../frappe-architecture.md` (+ the two multi-app/multi-DB notes beside
@@ -74,3 +75,6 @@ demand.
 5. **react-admin** and **Avo** — the admired admin-framework pair: the
    adapter/guesser mechanics and the escape-hatch ladder, i.e. how to
    make "simple where possible, never stuck" a designed property.
+6. **Hudi & the lakehouse stack** — the downstream: how master data
+   reaches bronze/silver, and why the ingestion config should be
+   generated from DocType metadata rather than modeled by hand (D20).

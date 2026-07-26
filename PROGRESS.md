@@ -13,6 +13,24 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-26 (v7) — analytics egress / ETL story (D20) + Hudi-lakehouse study
+
+The forgotten dimension: how master data flows OUT into the bronze/silver
+medallion layers — the MDM app's whole strategic purpose. Added
+`docs/research/studies/hudi-lakehouse.md` (Apache Hudi: record keys +
+precombine + timeline + incremental queries; Debezium CDC; dbt; and
+Databricks **DLT-META** — the direct precedent for metadata-driven
+bronze/silver pipelines driven by an onboarding spec). Design doc → v6
+with **D20**: analytics egress is a declared push binding (transport by
+capability: logical replication > outbox > snapshot), and the warehouse
+artifacts — the existing bronze/silver CSV config, dbt sources/staging
+models with tests, HoodieStreamer/Dataflowspec configs — are **generated
+from DocType metadata** as one-way D19 artifacts, regenerated on
+metadata promotion; D16 history/effectivity maps to SCD2; Featherbase
+emits configs and streams, never runs lake infrastructure. Sequencing:
+the CSV-config generator joins the MDM now/next bucket (cheap, replaces
+hand-maintained config immediately). Commits ride open PR #60.
+
 ## 2026-07-26 (v6) — three more studies (react-admin, Avo, NocoDB); PR opened
 
 Added on request to `docs/research/studies/`: **react-admin** (frontend

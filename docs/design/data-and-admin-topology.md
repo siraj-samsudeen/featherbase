@@ -17,8 +17,10 @@
 > (D19) and the per-system study series at `docs/research/studies/`
 > (JHipster, NocoBase, Salesforce, Jira, Directus, Odoo, ServiceNow, and
 > the generator family incl. ScaffoldHub and the Rails admin panels).
-> §9 lists decisions to ratify and sequencing. Nothing here is
-> implemented; nothing has to land at once.
+> v6 (same day) adds §3.3's **analytics egress** (D20): the medallion
+> lakehouse as an auto-generated push target, with the Hudi/DLT-META
+> study grounding it. §9 lists decisions to ratify and sequencing.
+> Nothing here is implemented; nothing has to land at once.
 >
 > Related: [ADR 0007](../adr/0007-app-and-database-topology.md) and specs
 > `0001-external-data-sources.md` / `0002-virtual-doctypes.md` (merged from
@@ -300,6 +302,35 @@ One engine, three directional modes:
 - **Reconciliation** (all modes): periodic compare producing a drift report
   (missing here/there, field mismatches), because every sync eventually
   lies.
+
+#### Analytics egress: the lakehouse as a push target (v6, D20)
+
+The MDM app's strategic purpose is that master data flows *into* the
+bronze/silver (medallion) layers — and today that flow's config is
+hand-written CSV. Egress to analytics is a **push-mode sync binding**
+with one special property: the target wants *changes*, not state.
+
+- **Transport by capability:** Postgres logical replication / Debezium
+  for local tables (zero app work — the DB emits row-level changes);
+  the outbox for adopted/external sources without replication; periodic
+  snapshot for small dimensions.
+- **Auto-generation (the point):** a DocType already contains everything
+  a medallion onboarding config holds — table, fields, types, PK,
+  `modified` (the incremental/precombine key), soft-delete, and (D16)
+  effectivity columns. So the engine emits, as one-way D19 artifacts:
+  the existing bronze/silver CSV config (same format, now derived), dbt
+  `sources.yml` + staging models with tests from field metadata, and
+  HoodieStreamer / DLT-META Dataflowspec configs where that stack runs.
+  Regenerated on DocType change, so warehouse schema drift follows
+  metadata promotion (Axis F) instead of surprising the pipeline.
+- **Axis E → SCD2 free:** version history + effectivity dating map
+  directly onto slowly-changing-dimension handling; replay ("changes
+  since T") is the handshake with lakehouse incremental queries (Hudi's
+  timeline model — see `docs/research/studies/hudi-lakehouse.md`).
+- **The loop that justifies MDM:** govern customer/vendor/item upstream,
+  *generate* the warehouse's conformed dimensions from the same
+  DocTypes downstream. One metadata source; data modeling stops being a
+  separate discipline.
 
 #### The legacy-coexistence pattern (the doctor's clinical system)
 
@@ -807,6 +838,14 @@ is one-way and derived only (types, clients, stubs, test skeletons,
 seeds — regenerable because never edited); DocType eject to owned code
 is a deliberate one-way off-ramp with re-entry only via adoption. (§6.6)
 
+**D20.** Analytics egress is a declared push binding: transport by
+capability (logical replication > outbox > snapshot), and the warehouse
+artifacts — medallion onboarding config (the current CSVs' format), dbt
+sources/staging models, lakehouse ingestion specs — are generated from
+DocType metadata as D19 artifacts; D16's history/effectivity maps to
+SCD2. Featherbase emits configs and streams; it never runs lake
+infrastructure itself. (§3.3)
+
 ### Sequencing against the current plan
 
 The immediate product is **one app — Master Data Management — with
@@ -819,6 +858,10 @@ modules, module + app admins, over partly pre-existing Postgres tables**:
 2. **Now/next (MDM distribution):** D6 push mode — outbox, crosswalk,
    on-approve distribution to SAP/SaaS, sync-status UI, reconciliation.
    Defer bidirectional/survivorship until a real two-way target exists.
+   **D20's generator belongs here too, and it's cheap:** emitting the
+   existing bronze/silver CSV config from DocType metadata is a pure
+   D19 artifact — it replaces hand-maintained config with derived config
+   the first week the MDM's DocTypes exist.
 3. **Next:** git-files driver for the medallion config CSVs (§3.4) —
    self-contained, high client value, and the first proof that the D7 seam
    holds for a non-SQL backend.
