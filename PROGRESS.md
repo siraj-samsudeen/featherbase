@@ -13,6 +13,34 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-26 (v4) — parallel branch merged; three missed axes added (docs only)
+
+- **Merged** `claude/frappe-multi-app-db-866jdv` (a parallel session's take
+  on the same research task): ADR 0007 (foreign data bound per DocType,
+  never per app; no DDL against sources; no 2PC — with rejected
+  alternatives incl. postgres_fdw), spec 0001 External Data Sources
+  (EDS-1…13 — far more rigorous than this branch's one-pager: standard-
+  column map-or-synthesize contract, permission-before-query, constraint→
+  field error mapping, optimistic locking with whole-row fallback, drift
+  detection, definition-of-done), spec 0002 Virtual DocTypes (VDT-1…5),
+  specs README + CLAUDE.md pointer, and its research note (deeper Frappe
+  code-level mechanics). **Retired** this branch's thinner
+  `docs/specs/external-database-doctypes.md` in favour of 0001/0002;
+  updated all XDB references in the design doc and research note. The two
+  research notes now cross-link. Its PR was closed after the merge.
+- **Design doc → v4**, answering "any axis missed?": **Axis E — time**
+  (audit trail, append-only versions, effectivity dating for MDM, as-of
+  reads; git driver gets history free, sync needs replay), **Axis F —
+  change lifecycle** (environments, promote-with-plan-preview, layer
+  rollback — the Salesforce sandbox lesson, Frappe's known weak spot),
+  **Axis G — actors & identity** (internal/portal/machine/AI-agent
+  principals, on-behalf-of chains, identity propagation declared per
+  driver/sync binding). Cross-cutting non-axes named (observability,
+  compliance, surfaces, i18n, offline, perf). New decisions **D16–D18**;
+  MDM "now" bucket gains audit+versions+effectivity from day one.
+
+No code, no features.json changes.
+
 ## 2026-07-26 (v3) — design framework: Axis D, extensibility & plugin ecosystem (docs only)
 
 More requirements: Salesforce's design admired; WordPress-style

@@ -8,9 +8,18 @@
 > app"); v3 (same day) adds **Axis D — extensibility & distribution**: a
 > WordPress/VS Code/Salesforce-grade plugin ecosystem with micro/macro
 > composability, grounded in a survey of NocoBase, Directus, Medusa,
-> Strapi/Payload, and Salesforce 2GP packaging. §8 lists decisions to
-> ratify and sequencing. Nothing here is implemented; nothing has to land
-> at once.
+> Strapi/Payload, and Salesforce 2GP packaging. v4 (same day) answers "is
+> there any other axis?" with three: **E — time** (versioning, audit,
+> effectivity), **F — change lifecycle** (environments & metadata
+> promotion), **G — actors & identity** (humans, portals, machines, AI
+> agents) — and names the cross-cutting concerns that are deliberately
+> *not* axes. §9 lists decisions to ratify and sequencing. Nothing here is
+> implemented; nothing has to land at once.
+>
+> Related: [ADR 0007](../adr/0007-app-and-database-topology.md) and specs
+> `0001-external-data-sources.md` / `0002-virtual-doctypes.md` (merged from
+> a parallel session) implement the `postgres/foreign` slice of Axis B and
+> the custom-controller fallback.
 
 ## 0. The requirements being organized (verbatim intent)
 
@@ -24,7 +33,8 @@
   DBs in one instance) — or the data lives elsewhere: SAP master data
   (author here, sync there, periodically or on every write), SaaS products
   (bidirectional master-data sync), a control plane in Railway Postgres
-  (overlay UI, spec: `docs/specs/external-database-doctypes.md`), config
+  (overlay UI — now specced as `docs/specs/0001-external-data-sources.md`
+  under [ADR 0007](../adr/0007-app-and-database-topology.md)), config
   CSVs in a GitHub repo edited by agents (clients need a UI **without
   losing git diffability**).
 - Storage flexibility, second round: some apps on **Convex**, some on
@@ -62,8 +72,21 @@
 - **Axis D — Extensibility & distribution (v3).** How functionality is
   packaged, contributed, composed, and upgraded: contribution points,
   micro/macro granularity, upgrade-safe customization, trust tiers.
+- **Axis E — Time (v4).** How *data* changes over time and how the past is
+  seen: versioning, audit trail, effectivity dating, as-of reads.
+- **Axis F — Change lifecycle (v4).** How *metadata/config* change moves
+  safely: environments, promotion, preview/diff, rollback.
+- **Axis G — Actors & identity (v4).** Who or what is acting — internal
+  humans, portal users, machines, AI agents — and how identity propagates
+  across storage backends and sync boundaries.
 
-Multi-tenancy (PLAT-008 sites) is parked: orthogonal to all four, already
+Each axis answers one question: A *who administers what*; B *where data
+lives and who owns it*; C *what we impose on physical stores*; D *how
+functionality arrives and evolves*; E *how data moves through time*; F
+*how metadata moves through environments*; G *who is acting*. E and F are
+deliberate mirrors: E is time for data, F is time for definitions.
+
+Multi-tenancy (PLAT-008 sites) is parked: orthogonal to all seven, already
 works, not a key requirement.
 
 ---
@@ -165,11 +188,15 @@ sync bindings (per DocType, zero or more — a separate object, NOT a mode)
 ```
 
 v1's classes map onto this cleanly: native = `postgres/owned`; adopted =
-`postgres/adopted`; external-live (the Railway XDB spec) = `postgres/
-foreign`; git-backed = `git-files/owned-or-adopted`; mirrored = a local
-owned/adopted DocType **plus a sync binding** — mirroring stops being a
-storage location and becomes a relationship between two stores, which is
-what it really is.
+`postgres/adopted`; external-live (the Railway case) = `postgres/foreign`
+— specced in detail as `docs/specs/0001-external-data-sources.md` under
+[ADR 0007](../adr/0007-app-and-database-topology.md); git-backed =
+`git-files/owned-or-adopted`; mirrored = a local owned/adopted DocType
+**plus a sync binding** — mirroring stops being a storage location and
+becomes a relationship between two stores, which is what it really is.
+Spec 0002 (Virtual DocTypes) slots in as the app-supplied custom driver:
+a controller implementing the adapter protocol for a one-off source, the
+escape hatch until (or instead of) a first-class driver exists.
 
 **The unifying invariant (unchanged, now sharper):** everything above the
 storage layer — ListView, FormView, REST API, permissions, hooks, jobs — is
@@ -233,8 +260,8 @@ Notes for the named backends:
   (Postgres) side regardless of the target backend — counters and
   authorization never delegate to a foreign store.
 - Postgres RLS applies only to local tables; for every other driver the
-  server-side permission gate is the sole enforcement (same rule as the
-  XDB spec's P2).
+  server-side permission gate is the sole enforcement (stated as a
+  consequence in ADR 0007).
 
 ### 3.2 Ownership modes
 
@@ -335,7 +362,8 @@ adoption. To ratify:
 `introspect(connection, target)` → proposed DocType: columns→fields with
 type mapping, PK detection, nullability→reqd, FKs→Link candidates.
 Adoption is a *review* step (accept/adjust), and the same diff machinery
-serves later drift re-sync (shared with XDB-2). Each driver implements
+serves later drift re-sync (shared with spec 0001's introspection and
+drift-detection groups). Each driver implements
 `introspect` per its catalog: `information_schema`, Convex/Instant schema
 exports, OpenAPI for REST (best-effort), header/sample inference for
 files — Airbyte's "catalog discovery" is the precedent for
@@ -358,8 +386,8 @@ breaks:
 
 **What it gets right.** An app is the natural unit of packaging and
 operations: one backend per app means one connection to configure, one
-failure domain (backend down → one app degraded, Desk fine — XDB S1
-generalized), one backup story, full-featured Links *within* the app, and
+failure domain (backend down → one app degraded, Desk fine — spec 0001's
+failure semantics generalized), one backup story, full-featured Links *within* the app, and
 an install manifest that can declare its driver dependency. It also matches
 reality: a Convex app's DocTypes will practically all live in that Convex
 deployment.
@@ -517,7 +545,96 @@ full-code widget is a tier-1 contribution by definition.
 
 ---
 
-## 7. What other platforms teach (independent survey)
+## 7. The axes v1–v3 missed (v4)
+
+### 7.1 Axis E — Time: versioning, audit, effectivity
+
+Every requirement in this document quietly assumes it: the MDM product,
+the clinical data, the git CSVs, bidirectional sync. Made explicit:
+
+- **Audit trail** — who changed what, when, through which surface. The
+  clinical case makes this regulatory, not optional; Axis G decides *who*
+  gets recorded.
+- **Version history** — per-document diffs (Frappe's Version doctype is
+  the floor), restore, and the rule that history is append-only.
+- **Effectivity dating** — the MDM requirement hiding in plain sight:
+  master data changes *take effect on a date* (a price, a payment term, an
+  org assignment — SAP master data is effective-dated everywhere).
+  `valid_from`/`valid_to` as a first-class field pattern with overlap
+  validation, not something every app reinvents.
+- **As-of reads** — "the vendor record as it stood on March 1", for
+  reports and for sync reconciliation. Bitemporal (valid time vs recorded
+  time — SQL:2011 temporal tables, XTDB) is the full model; v1 can ship
+  effectivity + version history and leave true bitemporal queries later.
+- Storage-class interactions: the git-files driver gets history *free*
+  (the log is the history); DB drivers need version rows; sync bindings
+  need replay ("re-send everything since T") — one time model serves all
+  three.
+
+### 7.2 Axis F — Change lifecycle: environments & metadata promotion
+
+Axis E's mirror, for definitions instead of data. The Salesforce quality
+that isn't packaging: **sandboxes and staged deployment**. Frappe's known
+weakness (ADR 0003 records its export machinery as "buggy and
+unreliable") is exactly here.
+
+- **Environments** — a metadata change (new field, new type, new SLA) is
+  authored somewhere safe, then *promoted* dev → test → prod; ADR 0003's
+  `package | site` sources and byte-identical promotion round-trip are the
+  foundation; D13's layer stack is the unit that moves.
+- **Plan before apply** — every promotion shows its diff (metadata *and*
+  the DDL it implies) before touching prod — terraform-plan for DocTypes;
+  the same diff UI Axis C's reflection re-sync already needs.
+- **Rollback** — a promoted layer version can be stepped back; data
+  migrations that can't roll back must say so at plan time.
+- Scope note: module admins creating types in prod (Axis A) is *allowed*
+  by design — governed, low-risk metadata; Axis F is for changes that
+  carry code, DDL, or cross-module impact. The boundary between
+  "config change, safe live" and "release, goes through promotion" must
+  be explicit per contribution type.
+
+### 7.3 Axis G — Actors & identity
+
+Four kinds of principal act on the system, and v1–v3 only modeled the
+first:
+
+1. **Internal humans** — Desk users; roles/scopes (Axis A).
+2. **External humans** — portal users: the UN requester filing a ticket,
+   a client reviewing a config PR. Same permission engine, narrower
+   surface; never counted against internal seats.
+3. **Machines** — the CLIs writing the control schema, SAP, SaaS webhooks:
+   service accounts with API keys, so external writes are *attributed*,
+   rate-limited, and permission-checked like everyone else.
+4. **AI agents** — already real here (the medallion CSVs are agent-edited;
+   ADR 0003's authoring loop is agent-first). Agents are principals with
+   their own identity **plus an on-behalf-of chain** ("agent X acting for
+   the doctor"), so audit (Axis E) never collapses the two.
+
+The hard requirement is **identity propagation across boundaries**: a Desk
+edit that becomes a git commit carries the acting user as author; a sync
+push to SAP carries a mapped SAP user; an agent's write is recorded as
+agent-for-user. Every storage driver and sync binding declares how it
+represents identity — part of the adapter contract (D5), not an
+afterthought.
+
+### 7.4 Cross-cutting concerns that are deliberately *not* axes
+
+- **Observability** (sync health, job monitoring, drift reports) — a
+  quality bar inside each engine, not a dimension of the design space.
+- **Compliance/governance** (retention, PII handling, residency) —
+  policies *expressed with* E (history), G (actors), and B (where data
+  lives); adding an axis would duplicate those three.
+- **Presentation surfaces** (Desk / portal / embed) — follows from Axis G
+  personas plus app UI; not independent.
+- **i18n** — exists (`i18n.ts`); a feature, not a dimension.
+- **Offline** — a driver capability (InstantDB has it natively), already
+  expressible in the D5 capability matrix.
+- **Performance/scale** — engineering discipline everywhere, dimension
+  nowhere.
+
+---
+
+## 8. What other platforms teach (independent survey)
 
 - **Hasura NDC / DDN** — connectors are services conforming to a spec with
   a **capabilities endpoint**; the engine negotiates and pushes down what
@@ -574,7 +691,7 @@ full-code widget is a tier-1 contribution by definition.
 
 ---
 
-## 8. Decisions to ratify (candidate ADRs) and sequencing
+## 9. Decisions to ratify (candidate ADRs) and sequencing
 
 **D1.** One database, one schema for all apps/modules on the core backend;
 multi-DB-per-instance rejected; site machinery retained, dormant. (§3.5)
@@ -636,6 +753,22 @@ declarative schema over arbitrary code. (§6.5)
 conformance test suite (generalizing D7); marketplace/registry is a later
 layer on top, not a prerequisite. (§6)
 
+**D16.** Time is first-class: append-only version history + audit trail on
+every mutation, and effectivity dating (`valid_from`/`valid_to` with
+overlap validation) as a standard field pattern; full bitemporal queries
+deferred. (§7.1)
+
+**D17.** Metadata changes promote through environments with plan-preview
+(metadata + implied DDL) and layer-version rollback, building on ADR
+0003's promotion round-trip and D13's layers; per contribution type, the
+"safe live in prod" vs "goes through promotion" boundary is declared
+explicitly. (§7.2)
+
+**D18.** Four principal kinds (internal, portal, machine, agent) share one
+permission engine; agents carry an on-behalf-of chain; every driver and
+sync binding declares its identity-propagation mapping as part of the
+adapter contract. (§7.3)
+
 ### Sequencing against the current plan
 
 The immediate product is **one app — Master Data Management — with
@@ -651,10 +784,16 @@ modules, module + app admins, over partly pre-existing Postgres tables**:
 3. **Next:** git-files driver for the medallion config CSVs (§3.4) —
    self-contained, high client value, and the first proof that the D7 seam
    holds for a non-SQL backend.
-4. **Later:** foreign-mode passthrough hardening (the XDB spec) for the
-   control plane; the legacy/clinical strangler engagement (pull binding →
+4. **Later:** foreign-mode passthrough (ADR 0007 + specs 0001/0002) for
+   the control plane; the legacy/clinical strangler engagement (pull binding →
    ownership dial); convex/instantdb drivers when a real app lands on
    them; D4 type machinery with the helpdesk app; bidirectional sync.
+
+v4 additions to the "now" bucket: the MDM app needs **D16's audit +
+version history from day one** (master data without an audit trail is not
+master data) and should model effectivity dating in its first entities;
+D17 and D18 (beyond the existing user/role model + attributing CLI writes
+via service-account convention) can follow.
 
 Axis D's cheap-now part: D10 and D11 are *disciplines*, not features —
 every feature built from here on (including the MDM app itself) goes

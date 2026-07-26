@@ -5,8 +5,18 @@
 > (`docs/research/frappe-architecture.md`, from a v17.0.0-dev clone), Frappe
 > documentation and forum threads (linked at the end), and a full sweep of the
 > Featherbase codebase on the same date. Written to answer four concrete
-> questions and to ground the requirements spec at
-> `docs/specs/external-database-doctypes.md`. Research only — no code changed.
+> questions and to ground the external-database requirements. Research only —
+> no code changed.
+>
+> **Companion note:** `frappe-multi-app-and-multi-db.md` — independent
+> parallel research from another session (merged 2026-07-26), deeper on
+> Frappe's code-level mechanics (`frappe.database.get_db` signature,
+> `validate_controller()`'s staticmethod protocol, `Module Def.app_name`
+> ownership, the `Installed Application` ledger). This note adds the
+> Featherbase codebase audit (§5) and the source links. The requirements
+> both notes ground now live in
+> [ADR 0007](../adr/0007-app-and-database-topology.md) and
+> `docs/specs/0001-external-data-sources.md` / `0002-virtual-doctypes.md`.
 
 The four questions this answers:
 
@@ -182,8 +192,10 @@ Featherbase today, and in Frappe it is supported only via hand-coded Virtual
 DocTypes. Featherbase can do one better than Frappe here precisely because it
 is metadata-driven end-to-end: make the external mapping *declarative*
 (connection registry + table adoption by reflection) instead of per-DocType
-controller code. That is what the spec proposes:
-**`docs/specs/external-database-doctypes.md`**.
+controller code. That is what [ADR 0007](../adr/0007-app-and-database-topology.md)
+decides and **`docs/specs/0001-external-data-sources.md`** (declarative
+Postgres binding) plus **`0002-virtual-doctypes.md`** (controller protocol
+for everything else) specify.
 
 ---
 
