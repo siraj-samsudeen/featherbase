@@ -13,6 +13,37 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-26 — research: multi-app / external-DB support (docs only, no code)
+
+Question from the user: how does Frappe run multiple apps in one instance, do
+they share one DB, can one app use a remote Postgres (Railway control schema,
+live CLI writers) while others stay local — and can Featherbase do it?
+
+- **Findings** (full write-up: `docs/research/frappe-multi-app-multi-db.md`):
+  Frappe apps on a site share ONE database and one flat namespace — no
+  per-app schema, no per-app connection; the isolation unit is the *site*.
+  Remote/external data is only reachable via hand-coded Virtual DocTypes
+  (`is_virtual` + db_insert/load_from_db/db_update/delete/get_list protocol),
+  which need zero changes to the external schema but are not code-free.
+- **Featherbase audit**: not supported today. Single scalar `DATABASE_URL`
+  through the `sql` singleton (`db.ts`), no `is_virtual`/external-table
+  concept in `doctypeDefSchema`, `createTableDDL` assumes it owns every
+  table (no `IF NOT EXISTS`), `updateDocType` never reads
+  `information_schema`. `tenancy.ts` (PLAT-008) is same-DB schema-per-site,
+  not a multi-connection abstraction.
+- **Spec written** (feather-spec): `docs/specs/external-database-doctypes.md`
+  — XDB-1 connection registry (env-var creds, never DDL), XDB-2 table
+  adoption by reflection (read-only when no PK), XDB-3 live Desk/API reads,
+  XDB-4 hooked writes + conflict detection, XDB-5 app↔connection binding.
+- Verified: docs-only session; no code, no `harness/features.json` changes,
+  app untouched.
+- **Next session**: review/approve the XDB spec, then implement XDB-1+XDB-2
+  first (registry + reflection) — they unlock read-only value before the
+  write path.
+- Gotchas: docs.frappe.io and discuss.frappe.io block the container's fetch
+  proxy (HTTP 403); research had to lean on web-search summaries plus the
+  in-repo Frappe study.
+
 ## 2026-07-24 — one ticketing system: HD Ticket promoted to a migration, `Ticket` retired (issue #45)
 
 The repo carried two parallel ticketing demos (audit #44): the migration-seeded
