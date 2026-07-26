@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
 
 // SET-004: global display settings drive how Date and Currency/Float values
-// render across every list and form. Fetched once and cached; the Desk reads
+// render across every list and form. Fetched once and cached; the Admin reads
 // it through useSettings().
 
 export interface Settings {
@@ -66,11 +66,11 @@ export function formatCurrency(value: unknown, s: Settings): string {
   return `${symbol}${num}`
 }
 
-// Field-type-aware display formatting used by list cells and read-only
+// Column-type-aware display formatting used by list cells and read-only
 // previews. Anything without special handling falls back to a plain string.
-export function formatValue(fieldtype: string, value: unknown, s: Settings): string {
+export function formatValue(columnType: string, value: unknown, s: Settings): string {
   if (value == null || value === '') return ''
-  switch (fieldtype) {
+  switch (columnType) {
     case 'Date':
     case 'Datetime':
       return formatDate(value, s.date_format)

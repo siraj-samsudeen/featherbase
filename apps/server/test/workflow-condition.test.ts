@@ -14,14 +14,14 @@ const DT = 'Cond Wf Task'
 const ROLE = 'Cond Wf Approver'
 const FLOW = 'Cond Wf Flow'
 
-// Each test rebuilds the DocType + workflow inside its own rolled-back tx.
+// Each test rebuilds the Table + workflow inside its own rolled-back tx.
 async function setup(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: DT,
-    autoname: 'prompt',
-    fields: [
-      { fieldname: 'title', fieldtype: 'Data' },
-      { fieldname: 'amount', fieldtype: 'Int' },
+    id_pattern: 'prompt',
+    columns: [
+      { column_name: 'title', column_type: 'Data' },
+      { column_name: 'amount', column_type: 'Int' },
     ],
   })
   await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
@@ -31,12 +31,12 @@ async function setup(admin: TestClient) {
     doctype: 'Workflow',
     doc: {
       name: FLOW,
-      document_type: DT,
+      ref_table: DT,
       is_active: true,
       states: [
-        { state: 'Draft', doc_status: '0' },
-        { state: 'Approved', doc_status: '1' },
-        { state: 'Auto Approved', doc_status: '1' },
+        { state: 'Draft', target_status: 'draft' },
+        { state: 'Approved', target_status: 'submitted' },
+        { state: 'Auto Approved', target_status: 'submitted' },
       ],
       transitions: [
         { state: 'Draft', action: 'Approve', next_state: 'Approved', allowed: ROLE, condition: 'doc.amount > 1000' },
@@ -89,7 +89,7 @@ describe('conditional workflow transitions', () => {
     // But it CAN auto-approve.
     const out = await applyWorkflowAction(DT, 'small', 'Auto Approve', 'Administrator')
     expect(out.workflow_state).toBe('Auto Approved')
-    expect(out.docstatus).toBe(1)
+    expect(out.status).toBe('submitted')
   })
 
   test('applies the transition whose condition holds', async ({ admin }) => {

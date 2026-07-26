@@ -18,8 +18,8 @@ export interface CustomFieldExport {
   reqd: boolean
   in_list_view: boolean
 }
-export interface PropertySetterExport {
-  ref_table: string
+export interface MetadataOverrideExport {
+  table_name: string
   column_name: string | null
   property: string
   value: string | null
@@ -27,7 +27,7 @@ export interface PropertySetterExport {
 export interface CustomizationBundle {
   table: string
   custom_fields: CustomFieldExport[]
-  property_setters: PropertySetterExport[]
+  property_setters: MetadataOverrideExport[]
 }
 
 export async function exportCustomizations(table: string): Promise<CustomizationBundle> {
@@ -35,12 +35,12 @@ export async function exportCustomizations(table: string): Promise<Customization
     select dt, column_name, label, column_type, reference_table, choices, row_table, reqd, in_list_view
     from custom_field where dt = ${table} order by column_name`
   const ps = await sql`
-    select ref_table, column_name, property, value
-    from property_setter where ref_table = ${table} order by column_name, property`
+    select table_name, column_name, property, value
+    from metadata_override where table_name = ${table} order by column_name, property`
   return {
     table,
     custom_fields: cf as unknown as CustomFieldExport[],
-    property_setters: ps as unknown as PropertySetterExport[],
+    property_setters: ps as unknown as MetadataOverrideExport[],
   }
 }
 
@@ -78,22 +78,22 @@ export async function importCustomizations(
 
   for (const p of bundle.property_setters ?? []) {
     const [existing] = await sql`
-      select name from property_setter
-      where ref_table = ${p.ref_table} and coalesce(column_name, '') = ${p.column_name ?? ''}
+      select name from metadata_override
+      where table_name = ${p.table_name} and coalesce(column_name, '') = ${p.column_name ?? ''}
         and property = ${p.property}`
     if (existing) continue
     await saveDoc(
-      'Property Setter',
+      'Metadata Override',
       {
-        name: `${p.ref_table}-${p.column_name ?? ''}-${p.property}`,
-        ref_table: p.ref_table,
+        name: `${p.table_name}-${p.column_name ?? ''}-${p.property}`,
+        table_name: p.table_name,
         column_name: p.column_name ?? null,
         property: p.property,
         value: p.value ?? null,
       },
       user,
     )
-    touched.add(p.ref_table)
+    touched.add(p.table_name)
     psCount++
   }
 

@@ -31,11 +31,11 @@ describe('PLAT-007: audit logs', () => {
     expect(res.status).toBe(200)
 
     const [row] = await sql`
-      select "user", operation, creation from tab_activity_log
-      where "user" = ${USER} and operation = 'login' order by creation desc limit 1`
+      select "user", operation, created_at from activity_log
+      where "user" = ${USER} and operation = 'login' order by created_at desc limit 1`
     expect(row).toBeDefined()
     expect(row.user).toBe(USER)
-    expect(new Date(row.creation as string).getTime()).toBeGreaterThanOrEqual(before.getTime() - 1000)
+    expect(new Date(row.created_at as string).getTime()).toBeGreaterThanOrEqual(before.getTime() - 1000)
   })
 
   test('records an export via /api/access_log (read permission required)', async ({ admin }) => {
@@ -46,8 +46,8 @@ describe('PLAT-007: audit logs', () => {
     })
     expect(res.status).toBe(200)
     const [row] = await sql`
-      select operation, reference_doctype, method from tab_access_log
-      where operation = 'export' and reference_doctype = 'User' order by creation desc limit 1`
+      select operation, ref_table, method from access_log
+      where operation = 'export' and ref_table = 'User' order by created_at desc limit 1`
     expect(row.operation).toBe('export')
     expect(row.method).toBe('csv')
   })
@@ -58,7 +58,7 @@ describe('PLAT-007: audit logs', () => {
     // everything, so use a genuinely unreadable target for a plain user.
     await admin.post('/api/doctype', {
       name: 'Audit Sekret',
-      fields: [{ fieldname: 'x', fieldtype: 'Data' }],
+      columns: [{ column_name: 'x', column_type: 'Data' }],
     })
     // Downgrade check: a user with no System Manager role.
     const plain = 'audit-plain@x.com'
@@ -83,11 +83,11 @@ describe('PLAT-007: audit logs', () => {
   test('logAccess/logActivity write directly with the user as owner', async ({ admin }) => {
     await setup(admin)
     await logActivity(USER, 'logout')
-    await logAccess(USER, 'print', { doctype: 'User', name: USER, method: 'pdf' })
-    const [a] = await sql`select owner from tab_activity_log where "user" = ${USER} and operation = 'logout' limit 1`
-    const [b] = await sql`select owner, reference_name from tab_access_log where "user" = ${USER} and operation = 'print' limit 1`
-    expect(a.owner).toBe(USER)
-    expect(b.owner).toBe(USER)
-    expect(b.reference_name).toBe(USER)
+    await logAccess(USER, 'print', { table: 'User', name: USER, method: 'pdf' })
+    const [a] = await sql`select created_by from activity_log where "user" = ${USER} and operation = 'logout' limit 1`
+    const [b] = await sql`select created_by, ref_name from access_log where "user" = ${USER} and operation = 'print' limit 1`
+    expect(a.created_by).toBe(USER)
+    expect(b.created_by).toBe(USER)
+    expect(b.ref_name).toBe(USER)
   })
 })

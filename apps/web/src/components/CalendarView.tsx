@@ -12,8 +12,8 @@ function ymd(d: Date): string {
   return `${d.getFullYear()}-${m}-${day}`
 }
 
-// UI-021: month calendar for DocTypes with a Date field. Documents appear on
-// their date; dragging an event to another day writes the date field back.
+// UI-021: month calendar for Tables with a Date column. Rows appear on
+// their date; dragging an event to another day writes the date column back.
 export function CalendarView({ doctype }: { doctype: string }) {
   const meta = useMeta(doctype)
   const queryClient = useQueryClient()
@@ -25,19 +25,19 @@ export function CalendarView({ doctype }: { doctype: string }) {
     return new Date(now.getFullYear(), now.getMonth(), 1)
   })
 
-  const dateFields = useMemo(
-    () => (meta.data?.fields ?? []).filter((f) => f.fieldtype === 'Date'),
+  const dateColumns = useMemo(
+    () => (meta.data?.columns ?? []).filter((f) => f.column_type === 'Date'),
     [meta.data],
   )
-  const field = dateFields[0]?.fieldname
-  const titleField = meta.data?.title_field || 'name'
+  const field = dateColumns[0]?.column_name
+  const titleColumn = meta.data?.title_column || 'name'
 
   const rows = useQuery({
     queryKey: ['calendar', doctype, field],
     enabled: Boolean(meta.data && field),
     queryFn: () =>
       listResource<Row>(doctype, {
-        fields: [...new Set(['name', field!, titleField])],
+        fields: [...new Set(['name', field!, titleColumn])],
         order_by: field!,
         limit_page_length: 1000,
       }),
@@ -47,7 +47,7 @@ export function CalendarView({ doctype }: { doctype: string }) {
   if (!field)
     return (
       <p className="text-sm text-[var(--color-ink-muted)]" data-testid="calendar-no-date">
-        This DocType has no Date field.
+        This Table has no Date column.
       </p>
     )
 
@@ -76,7 +76,7 @@ export function CalendarView({ doctype }: { doctype: string }) {
       const doc = await api.get<Row>(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
       await api.put(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`, {
         [field!]: to,
-        modified: doc.modified,
+        updated_at: doc.updated_at,
       })
       await queryClient.invalidateQueries({ queryKey: ['calendar', doctype, field] })
     } catch (err) {
@@ -149,7 +149,7 @@ export function CalendarView({ doctype }: { doctype: string }) {
                       className="hover:underline"
                       onPointerDown={(e) => e.stopPropagation()}
                     >
-                      {String(row[titleField] ?? row.name)}
+                      {String(row[titleColumn] ?? row.name)}
                     </RouterLink>
                   </div>
                 ))}

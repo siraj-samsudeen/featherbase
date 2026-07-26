@@ -10,11 +10,11 @@ async function setup(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: DT,
     is_submittable: true,
-    fields: [{ fieldname: 'amount', fieldtype: 'Currency' }],
+    columns: [{ column_name: 'amount', column_type: 'Currency' }],
   })
   await admin.post('/api/doctype', {
     name: PLAIN,
-    fields: [{ fieldname: 'x', fieldtype: 'Data' }],
+    columns: [{ column_name: 'x', column_type: 'Data' }],
   })
 }
 
@@ -38,21 +38,21 @@ describe('DOC-007: submittable documents', () => {
         doctype: DT,
         doc: { amount: 100 },
       })
-      expect(doc.docstatus).toBe(0)
+      expect(doc.status).toBe('draft')
 
       fired.length = 0
       const submitted = await admin.post<Record<string, unknown>>('/api/submit_doc', {
         doctype: DT,
         name: doc.name,
       })
-      expect(submitted.docstatus).toBe(1)
+      expect(submitted.status).toBe('submitted')
       expect(fired).toEqual(['on_submit'])
 
       // Immutable while submitted
       await expect(
         admin.post('/api/save_doc', {
           doctype: DT,
-          doc: { name: doc.name, modified: submitted.modified, amount: 999 },
+          doc: { name: doc.name, updated_at: submitted.updated_at, amount: 999 },
         }),
       ).rejects.toMatchObject({
         status: 417,
@@ -73,14 +73,14 @@ describe('DOC-007: submittable documents', () => {
         doctype: DT,
         name: doc.name,
       })
-      expect(cancelled.docstatus).toBe(2)
+      expect(cancelled.status).toBe('cancelled')
       expect(fired).toEqual(['on_submit', 'on_cancel'])
 
       // Cancelled is terminal for edits
       await expect(
         admin.post('/api/save_doc', {
           doctype: DT,
-          doc: { name: doc.name, modified: cancelled.modified, amount: 5 },
+          doc: { name: doc.name, updated_at: cancelled.updated_at, amount: 5 },
         }),
       ).rejects.toMatchObject({ status: 417 })
     } finally {
@@ -88,7 +88,7 @@ describe('DOC-007: submittable documents', () => {
     }
   })
 
-  test('cannot cancel a draft; cannot submit a non-submittable DocType', async ({ admin }) => {
+  test('cannot cancel a draft; cannot submit a non-submittable Table', async ({ admin }) => {
     await setup(admin)
     const doc = await admin.post<Record<string, unknown>>('/api/save_doc', {
       doctype: DT,

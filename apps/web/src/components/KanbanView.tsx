@@ -6,9 +6,9 @@ import { useMeta } from '../lib/meta'
 
 type Row = Record<string, unknown>
 
-// UI-020: Kanban board grouped by a Select field, with pointer-based
+// UI-020: Kanban board grouped by a Choice column, with pointer-based
 // drag-and-drop between columns. Dropping a card in a new column writes the
-// grouping field back to the document.
+// grouping column back to the row.
 export function KanbanView({
   doctype,
   groupBy,
@@ -23,32 +23,32 @@ export function KanbanView({
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState<{ name: string; from: string } | null>(null)
 
-  const selectFields = useMemo(
-    () => (meta.data?.fields ?? []).filter((f) => f.fieldtype === 'Select'),
+  const choiceColumns = useMemo(
+    () => (meta.data?.columns ?? []).filter((f) => f.column_type === 'Choice'),
     [meta.data],
   )
-  const field = groupBy && selectFields.some((f) => f.fieldname === groupBy)
+  const field = groupBy && choiceColumns.some((f) => f.column_name === groupBy)
     ? groupBy
-    : selectFields[0]?.fieldname
+    : choiceColumns[0]?.column_name
 
-  const titleField = meta.data?.title_field || 'name'
+  const titleColumn = meta.data?.title_column || 'name'
 
   const rows = useQuery({
     queryKey: ['kanban', doctype, field],
     enabled: Boolean(meta.data && field),
     queryFn: () =>
       listResource<Row>(doctype, {
-        fields: [...new Set(['name', field!, titleField])],
-        order_by: 'modified desc',
+        fields: [...new Set(['name', field!, titleColumn])],
+        order_by: 'updated_at desc',
         limit_page_length: 500,
       }),
   })
 
   if (meta.isLoading) return <p className="text-sm text-gray-400">Loading…</p>
   if (!field)
-    return <p className="text-sm text-[var(--color-ink-muted)]" data-testid="kanban-no-select">This DocType has no Select field to group by.</p>
+    return <p className="text-sm text-[var(--color-ink-muted)]" data-testid="kanban-no-select">This Table has no Choice column to group by.</p>
 
-  const options = (selectFields.find((f) => f.fieldname === field)?.options ?? '')
+  const options = (choiceColumns.find((f) => f.column_name === field)?.choices ?? '')
     .split('\n')
     .map((o) => o.trim())
     .filter(Boolean)
@@ -71,7 +71,7 @@ export function KanbanView({
       const doc = await api.get<Row>(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
       await api.put(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`, {
         [field!]: to,
-        modified: doc.modified,
+        updated_at: doc.updated_at,
       })
       await queryClient.invalidateQueries({ queryKey: ['kanban', doctype, field] })
     } catch (err) {
@@ -107,9 +107,9 @@ export function KanbanView({
               className="fc-input w-44"
               data-testid="kanban-groupby"
             >
-              {selectFields.map((f) => (
-                <option key={f.fieldname} value={f.fieldname}>
-                  {f.label ?? f.fieldname}
+              {choiceColumns.map((f) => (
+                <option key={f.column_name} value={f.column_name}>
+                  {f.label ?? f.column_name}
                 </option>
               ))}
             </select>
@@ -163,7 +163,7 @@ export function KanbanView({
                     className="font-medium text-[var(--color-brand)] hover:underline"
                     onPointerDown={(e) => e.stopPropagation()}
                   >
-                    {String(row[titleField] ?? row.name)}
+                    {String(row[titleColumn] ?? row.name)}
                   </RouterLink>
                 </div>
               ))}

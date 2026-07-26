@@ -11,15 +11,18 @@ function save(admin: TestClient, doc: Record<string, unknown>) {
   })
 }
 
+// The Table's own two-value field is named `stage` (not `status`) — `status`
+// is now the reserved draft/submitted/cancelled lifecycle column and a
+// custom column may not shadow it.
 async function makeDT(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: DT,
-    fields: [
-      { fieldname: 'title', fieldtype: 'Data', reqd: true },
-      { fieldname: 'code', fieldtype: 'Data', unique: true },
-      { fieldname: 'status', fieldtype: 'Select', options: 'Open\nClosed', default_value: 'Open' },
-      { fieldname: 'grade', fieldtype: 'Data', read_only: true, default_value: 'system' },
-      { fieldname: 'count_val', fieldtype: 'Int' },
+    columns: [
+      { column_name: 'title', column_type: 'Data', reqd: true },
+      { column_name: 'code', column_type: 'Data', unique: true },
+      { column_name: 'stage', column_type: 'Choice', choices: 'Open\nClosed', default_value: 'Open' },
+      { column_name: 'grade', column_type: 'Data', read_only: true, default_value: 'system' },
+      { column_name: 'count_val', column_type: 'Int' },
     ],
   })
 }
@@ -28,7 +31,7 @@ describe('META-010: field flags', () => {
   test('applies defaults on insert (including read_only defaults)', async ({ admin }) => {
     await makeDT(admin)
     const doc = (await (await save(admin, { title: 'a' })).json()) as Record<string, unknown>
-    expect(doc.status).toBe('Open')
+    expect(doc.stage).toBe('Open')
     expect(doc.grade).toBe('system')
   })
 
@@ -42,7 +45,7 @@ describe('META-010: field flags', () => {
     expect(doc.grade).toBe('system')
 
     const upd = (await (
-      await save(admin, { name: doc.name, modified: doc.modified, grade: 'hacked again', title: 'b2' })
+      await save(admin, { name: doc.name, updated_at: doc.updated_at, grade: 'hacked again', title: 'b2' })
     ).json()) as Record<string, unknown>
     expect(upd.title).toBe('b2')
     expect(upd.grade).toBe('system')
@@ -61,9 +64,9 @@ describe('META-010: field flags', () => {
     await makeDT(admin)
     expect((await save(admin, { code: 'x' })).status).toBe(417)
     const doc = (await (
-      await save(admin, { title: 'd', status: 'Closed' })
+      await save(admin, { title: 'd', stage: 'Closed' })
     ).json()) as Record<string, unknown>
-    expect(doc.status).toBe('Closed')
+    expect(doc.stage).toBe('Closed')
   })
 
   test('evaluator regression: out-of-range Int returns 417, not 500', async ({ admin }) => {

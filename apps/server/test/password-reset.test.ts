@@ -30,7 +30,7 @@ describe('SET-002: password reset', () => {
 
     // The link landed in the sink and contains the key.
     const [mail] =
-      await sql`select body from tab_email_sink where mail_to = ${USER} order by creation desc limit 1`
+      await sql`select body from email_sink where mail_to = ${USER} order by created_at desc limit 1`
     expect(mail).toBeDefined()
     expect(String(mail.body)).toContain(`key=${token}`)
 
@@ -62,7 +62,7 @@ describe('SET-002: password reset', () => {
     await setup(admin)
     expect(await requestPasswordReset(DISABLED)).toBeNull()
     expect(await requestPasswordReset('ghost-nobody@x.com')).toBeNull()
-    const [{ n }] = await sql`select count(*)::int as n from tab_email_sink where mail_to = ${DISABLED}`
+    const [{ n }] = await sql`select count(*)::int as n from email_sink where mail_to = ${DISABLED}`
     expect(n).toBe(0)
   })
 })

@@ -10,7 +10,7 @@ import { test } from './pg-test'
 // Clear any stored overrides inside the sandbox transaction so each test
 // starts from defaults (the delete rolls back with the test).
 async function reset() {
-  await sql`delete from single_value where doctype = 'System Settings'
+  await sql`delete from single_value where table_name = 'System Settings'
     and field in ('date_format', 'currency', 'currency_precision', 'float_precision', 'session_hours')`
 }
 
@@ -33,8 +33,8 @@ describe('SET-004: system settings', () => {
       ['currency_precision', '3'],
       ['float_precision', '4'],
     ]) {
-      await sql`insert into single_value ${sql({ doctype: 'System Settings', field, value })}
-        on conflict (doctype, field) do update set value = excluded.value`
+      await sql`insert into single_value ${sql({ table_name: 'System Settings', field, value })}
+        on conflict (table_name, field) do update set value = excluded.value`
     }
     const s = await getSystemSettings()
     expect(s.date_format).toBe('dd-mm-yyyy')

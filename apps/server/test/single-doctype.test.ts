@@ -3,29 +3,29 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { getDoc, saveDoc } from '../src/document'
 import { getList } from '../src/query'
-import { createDocType } from '../src/doctype-engine'
+import { createTable } from '../src/doctype-engine'
 
-// SET-001: Single DocTypes store one instance in the EAV store, apply
-// defaults, and never create a table.
+// SET-001: Settings Tables (kind: 'settings') store one instance in the EAV
+// store, apply defaults, and never create a table.
 
 const DT = 'Set Srv Single'
 
 async function setup() {
-  await createDocType({
+  await createTable({
     name: DT,
-    issingle: true,
-    fields: [
-      { fieldname: 'title', fieldtype: 'Data', default_value: 'Default Title' },
-      { fieldname: 'count', fieldtype: 'Int', default_value: '5' },
-      { fieldname: 'active', fieldtype: 'Check', default_value: '0' },
+    kind: 'settings',
+    columns: [
+      { column_name: 'title', column_type: 'Data', default_value: 'Default Title' },
+      { column_name: 'count', column_type: 'Int', default_value: '5' },
+      { column_name: 'active', column_type: 'Check', default_value: '0' },
     ],
   })
 }
 
-describe('SET-001: single doctypes', () => {
-  test('creates no table for a single', async () => {
+describe('SET-001: settings tables', () => {
+  test('creates no table for a settings Table', async () => {
     await setup()
-    const [t] = await sql`select to_regclass('tab_set_srv_single') as t`
+    const [t] = await sql`select to_regclass('set_srv_single') as t`
     expect(t.t).toBeNull()
   })
 
@@ -52,11 +52,11 @@ describe('SET-001: single doctypes', () => {
     expect(doc2.title).toBe('Reconfigured')
     expect(doc2.count).toBe(42) // untouched field retained
 
-    const [{ n }] = await sql`select count(distinct doctype)::int as n from single_value where doctype = ${DT}`
+    const [{ n }] = await sql`select count(distinct table_name)::int as n from single_value where table_name = ${DT}`
     expect(n).toBe(1)
   })
 
-  test('rejects listing a single with a clean validation error (never a 500)', async () => {
+  test('rejects listing a settings Table with a clean validation error (never a 500)', async () => {
     await setup()
     await expect(getList(DT, {}, 'Administrator')).rejects.toMatchObject({
       type: 'ValidationError',

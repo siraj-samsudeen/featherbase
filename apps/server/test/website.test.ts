@@ -61,7 +61,7 @@ describe('WEB-001: web pages', () => {
 
   test('escapes the title but renders authored HTML content', async ({ admin }) => {
     await setup(admin)
-    await sql`delete from tab_web_page where route = 'srv-pub'`
+    await sql`delete from web_page where route = 'srv-pub'`
     await makePage(admin, {
       name: 'srv-pub-pg2',
       title: 'A & B <x>',

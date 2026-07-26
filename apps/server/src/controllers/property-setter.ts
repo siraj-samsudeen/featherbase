@@ -1,16 +1,16 @@
 import type { TableController } from '../controllers'
 import { invalidateMeta } from '../meta'
 
-// CUST-002: any change to a Property Setter must refresh the target's
+// CUST-002: any change to a Metadata Override must refresh the target's
 // effective metadata (overlays are applied at meta load time).
 const controller: TableController = {
-  table: 'Property Setter',
+  table: 'Metadata Override',
   hooks: {
     after_save: ({ row }) => {
-      if (typeof row.ref_table === 'string') invalidateMeta(row.ref_table)
+      if (typeof row.table_name === 'string') invalidateMeta(row.table_name)
     },
     on_trash: ({ row }) => {
-      if (typeof row.ref_table === 'string') invalidateMeta(row.ref_table)
+      if (typeof row.table_name === 'string') invalidateMeta(row.table_name)
     },
   },
 }

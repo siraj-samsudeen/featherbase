@@ -31,7 +31,7 @@ describe('PERM-001: role model', () => {
         doctype: 'User',
         doc: {
           name: USER,
-          modified: doc.modified,
+          updated_at: doc.updated_at,
           roles: [{ role: 'System Manager' }, { role: 'Guest' }],
         },
       }),
@@ -46,7 +46,7 @@ describe('PERM-001: role model', () => {
       method: 'POST',
       body: JSON.stringify({
         doctype: 'User',
-        doc: { name: USER, modified: doc2.modified, roles: [{ role: 'Guest' }] },
+        doc: { name: USER, updated_at: doc2.updated_at, roles: [{ role: 'Guest' }] },
       }),
     })
     expect(remove.status).toBe(201)
@@ -59,7 +59,7 @@ describe('PERM-001: role model', () => {
     await expect(
       admin.post('/api/save_doc', {
         doctype: 'User',
-        doc: { name: USER, modified: doc.modified, roles: [{ role: 'Fake Role' }] },
+        doc: { name: USER, updated_at: doc.updated_at, roles: [{ role: 'Fake Role' }] },
       }),
     ).rejects.toMatchObject({ status: 417 })
   })

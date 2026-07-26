@@ -9,12 +9,14 @@ import type { TestClient } from 'feather-testing-postgres'
 
 const DT = 'Compat Note'
 
+// The Table's own two-value field is named `stage` (not `status`) — `status`
+// is now the reserved draft/submitted/cancelled lifecycle column.
 async function makeDT(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: DT,
-    fields: [
-      { fieldname: 'title', fieldtype: 'Data', reqd: true },
-      { fieldname: 'status', fieldtype: 'Select', options: 'Open\nDone', default_value: 'Open' },
+    columns: [
+      { column_name: 'title', column_type: 'Data', reqd: true },
+      { column_name: 'stage', column_type: 'Choice', choices: 'Open\nDone', default_value: 'Open' },
     ],
   })
 }
@@ -110,17 +112,17 @@ describe('Frappe compat: frappe.client.* RPC namespace', () => {
     })
     expect(count.message).toBe(1)
 
-    const value = await admin.post<{ message: { status: string } }>(
+    const value = await admin.post<{ message: { stage: string } }>(
       '/api/method/frappe.client.get_value',
-      { doctype: DT, filters: name, fieldname: 'status' },
+      { doctype: DT, filters: name, fieldname: 'stage' },
     )
-    expect(value.message.status).toBe('Open')
+    expect(value.message.stage).toBe('Open')
 
-    const set = await admin.post<{ message: { status: string } }>(
+    const set = await admin.post<{ message: { stage: string } }>(
       '/api/method/frappe.client.set_value',
-      { doctype: DT, name, fieldname: 'status', value: 'Done' },
+      { doctype: DT, name, fieldname: 'stage', value: 'Done' },
     )
-    expect(set.message.status).toBe('Done')
+    expect(set.message.stage).toBe('Done')
 
     const del = await admin.post<{ message: string }>('/api/method/frappe.client.delete', {
       doctype: DT,
@@ -161,8 +163,8 @@ describe('Frappe compat: frappe.client.* RPC namespace', () => {
     // filter list. Pin it with prompt naming.
     await admin.post('/api/doctype', {
       name: DT + ' Prompt',
-      autoname: 'prompt',
-      fields: [{ fieldname: 'title', fieldtype: 'Data' }],
+      id_pattern: 'prompt',
+      columns: [{ column_name: 'title', column_type: 'Data' }],
     })
     await admin.post('/api/save_doc', {
       doctype: DT + ' Prompt',
@@ -185,14 +187,14 @@ describe('Frappe compat: frappe.client.* RPC namespace', () => {
   test('get_doctype returns the meta bundle with child-table metas', async ({ admin }) => {
     await admin.post('/api/doctype', {
       name: DT + ' Child',
-      istable: true,
-      fields: [{ fieldname: 'note', fieldtype: 'Data' }],
+      kind: 'sub_table',
+      columns: [{ column_name: 'note', column_type: 'Data' }],
     })
     await admin.post('/api/doctype', {
       name: DT,
-      fields: [
-        { fieldname: 'title', fieldtype: 'Data' },
-        { fieldname: 'rows', fieldtype: 'Table', options: DT + ' Child' },
+      columns: [
+        { column_name: 'title', column_type: 'Data' },
+        { column_name: 'rows', column_type: 'Sub-table', row_table: DT + ' Child' },
       ],
     })
     const bundle = await admin.post<{

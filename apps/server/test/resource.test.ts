@@ -7,15 +7,15 @@ const DT = 'Rest Project'
 async function setup(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: DT,
-    fields: [
-      { fieldname: 'title', fieldtype: 'Data', reqd: true },
-      { fieldname: 'stars', fieldtype: 'Int' },
+    columns: [
+      { column_name: 'title', column_type: 'Data', reqd: true },
+      { column_name: 'stars', column_type: 'Int' },
     ],
   })
 }
 
 describe('API-001/API-002: generic REST resource', () => {
-  test('runs the full CRUD cycle through /api/resource with zero per-DocType code', async ({
+  test('runs the full CRUD cycle through /api/resource with zero per-Table code', async ({
     admin,
   }) => {
     await setup(admin)
@@ -35,7 +35,7 @@ describe('API-001/API-002: generic REST resource', () => {
     const put = await admin.fetch(`/api/resource/${encodeURIComponent(DT)}/${created.name}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ modified: created.modified, title: 'proj-b' }),
+      body: JSON.stringify({ updated_at: created.updated_at, title: 'proj-b' }),
     })
     expect(put.status).toBe(200)
     expect(((await put.json()) as Record<string, unknown>).title).toBe('proj-b')

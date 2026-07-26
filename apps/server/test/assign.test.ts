@@ -14,8 +14,8 @@ const ASSIGNEE = 'asg-srv@x.com'
 async function setup(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: DT,
-    autoname: 'prompt',
-    fields: [{ fieldname: 'title', fieldtype: 'Data' }],
+    id_pattern: 'prompt',
+    columns: [{ column_name: 'title', column_type: 'Data' }],
   })
   await admin.post('/api/save_doc', {
     doctype: 'User',
@@ -39,15 +39,15 @@ describe('EML-006: assignment', () => {
     expect(res.status).toBe(201)
 
     const todos = await sql`
-      select allocated_to, reference_name, status, description from tab_todo
-      where reference_doctype = ${DT} and reference_name = 'asg-1'`
+      select allocated_to, reference_name, todo_status, description from todo
+      where ref_table = ${DT} and reference_name = 'asg-1'`
     expect(todos).toHaveLength(1)
     expect(todos[0].allocated_to).toBe(ASSIGNEE)
-    expect(todos[0].status).toBe('Open')
+    expect(todos[0].todo_status).toBe('Open')
     expect(todos[0].description).toBe('please handle')
 
     const notifs = await sql`
-      select subject from tab_notification_log where for_user = ${ASSIGNEE}`
+      select subject from notification_log where for_user = ${ASSIGNEE}`
     expect(notifs.length).toBeGreaterThanOrEqual(1)
     expect(notifs[0].subject).toContain('assigned you')
   })

@@ -9,8 +9,8 @@ import { drainJobs, enqueue, loadJobs, startWorker, stopWorker } from '../src/jo
 
 async function setup() {
   await loadJobs()
-  await sql`delete from tab_background_job where method = 'demo_heartbeat'`
-  await sql`delete from tab_job_execution where method = 'demo_heartbeat'`
+  await sql`delete from background_job where method = 'demo_heartbeat'`
+  await sql`delete from job_execution where method = 'demo_heartbeat'`
   await sql.unsafe('drop table if exists job_heartbeat')
 }
 
@@ -22,7 +22,7 @@ async function setup() {
 // real run_at has passed.
 async function nudgeDueJobs() {
   await sql`
-    update tab_background_job set run_at = now()
+    update background_job set run_at = now()
     where status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
 }
 
@@ -52,13 +52,13 @@ describe('JOB-003: recurring jobs', () => {
       expect(beats).toBeGreaterThanOrEqual(2)
 
       const execs = (await sql`
-      select count(*)::int as c from tab_job_execution
+      select count(*)::int as c from job_execution
       where method = 'demo_heartbeat' and outcome = 'success'`)[0].c as number
       expect(execs).toBeGreaterThanOrEqual(2)
 
       // A fresh recurring job is always waiting (queue never permanently drains).
       const queued = (await sql`
-      select count(*)::int as c from tab_background_job
+      select count(*)::int as c from background_job
       where method = 'demo_heartbeat' and status = 'queued'`)[0].c as number
       expect(queued).toBeGreaterThanOrEqual(1)
     },

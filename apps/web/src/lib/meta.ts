@@ -1,66 +1,83 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
 
-export interface DocField {
-  fieldname: string
+export interface ColumnDef {
+  name: string
+  parent: string
+  position: number
+  column_name: string
   label: string | null
-  fieldtype: string
-  options: string | null
+  column_type: string
+  reference_table: string | null
+  choices: string | null
+  row_table: string | null
   reqd: boolean
   unique: boolean
   default_value: string | null
   read_only: boolean
   hidden: boolean
   in_list_view: boolean
-  permlevel: number
-  idx: number
+  tier: 'basic' | 'restricted'
+  created_by: string
+  updated_by: string
+  created_at: string
+  updated_at: string
+  status: string
 }
 
-export interface DocTypeMeta {
+export interface TableMeta {
   name: string
   module: string
-  issingle: boolean
-  istable: boolean
+  kind: 'table' | 'sub_table' | 'settings'
   is_submittable: boolean
-  autoname: string
-  title_field: string | null
-  sort_field: string
+  id_pattern: string
+  title_column: string | null
+  sort_column: string
   sort_order: string
-  fields: DocField[]
+  track_changes: boolean
+  description: string | null
+  custom: boolean
+  created_by: string
+  updated_by: string
+  created_at: string
+  updated_at: string
+  status: string
+  position: number
+  columns: ColumnDef[]
 }
 
-export const NO_COLUMN_TYPES = new Set(['Table', 'Section Break', 'Column Break'])
+export const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 
-export const FIELD_TYPES = [
-  'Data', 'Int', 'Float', 'Currency', 'Check', 'Select', 'Date', 'Datetime',
-  'Text', 'Long Text', 'Link', 'Table', 'Attach', 'Attach Image', 'JSON',
+export const COLUMN_TYPES = [
+  'Data', 'Int', 'Float', 'Currency', 'Check', 'Choice', 'Date', 'Datetime',
+  'Text', 'Long Text', 'Reference', 'Sub-table', 'Attach', 'Attach Image', 'JSON',
   'Section Break', 'Column Break',
 ] as const
 
 export function useMeta(doctype: string) {
   return useQuery({
     queryKey: ['meta', doctype],
-    queryFn: () => api.get<DocTypeMeta>(`/api/meta/${encodeURIComponent(doctype)}`),
+    queryFn: () => api.get<TableMeta>(`/api/meta/${encodeURIComponent(doctype)}`),
     staleTime: 60_000,
   })
 }
 
-// Columns for a list view: name first, then flagged fields (or the first
-// two data fields when nothing is flagged), matching Frappe's behavior.
+// Columns for a list view: name first, then flagged columns (or the first
+// two data columns when nothing is flagged), matching Frappe's behavior.
 export function listColumns(
-  meta: DocTypeMeta,
-): { fieldname: string; label: string; fieldtype: string }[] {
-  const dataFields = meta.fields.filter(
-    (f) => !NO_COLUMN_TYPES.has(f.fieldtype) && !f.hidden,
+  meta: TableMeta,
+): { column_name: string; label: string; column_type: string }[] {
+  const dataColumns = meta.columns.filter(
+    (c) => !NO_COLUMN_TYPES.has(c.column_type) && !c.hidden,
   )
-  let flagged = dataFields.filter((f) => f.in_list_view)
-  if (!flagged.length) flagged = dataFields.slice(0, 2)
+  let flagged = dataColumns.filter((c) => c.in_list_view)
+  if (!flagged.length) flagged = dataColumns.slice(0, 2)
   return [
-    { fieldname: 'name', label: 'Name', fieldtype: 'Data' },
-    ...flagged.map((f) => ({
-      fieldname: f.fieldname,
-      label: f.label ?? f.fieldname,
-      fieldtype: f.fieldtype,
+    { column_name: 'name', label: 'Name', column_type: 'Data' },
+    ...flagged.map((c) => ({
+      column_name: c.column_name,
+      label: c.label ?? c.column_name,
+      column_type: c.column_type,
     })),
   ]
 }

@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, listResource } from '../lib/api'
-import { NO_COLUMN_TYPES, useMeta, type DocField } from '../lib/meta'
+import { NO_COLUMN_TYPES, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 
-type Doc = Record<string, unknown>
+type Row = Record<string, unknown>
 
 interface PrintFormat {
   name: string
@@ -13,7 +13,7 @@ interface PrintFormat {
 }
 
 // PRN-004: a Letter Head is a reusable header/footer block, stored as an
-// ordinary DocType. It is applied to any printed document — the one marked
+// ordinary Table. It is applied to any printed row — the one marked
 // is_default, one named on the Print Format, or one chosen here.
 interface LetterHead {
   name: string
@@ -22,9 +22,9 @@ interface LetterHead {
   footer_html: string
 }
 
-// PRN-002: {{ field }} interpolation over a document. Admin-authored
+// PRN-002: {{ field }} interpolation over a row. Admin-authored
 // templates are trusted (like Frappe's Jinja print formats).
-function interpolate(template: string, doc: Doc): string {
+function interpolate(template: string, doc: Row): string {
   return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => {
     const v = doc[key]
     if (v == null) return ''
@@ -33,9 +33,9 @@ function interpolate(template: string, doc: Doc): string {
   })
 }
 
-// PRN-001: clean, printable rendering of any document from its metadata —
+// PRN-001: clean, printable rendering of any row from its metadata —
 // no app chrome (navbar/sidebar). Rendered at /print/:doctype/:name so it
-// sits outside the Desk layout. PRN-002: an optional named/default Print
+// sits outside the Admin layout. PRN-002: an optional named/default Print
 // Format template overrides the auto layout.
 export function PrintView({
   doctype,
@@ -53,7 +53,7 @@ export function PrintView({
     queryKey: ['doc', doctype, name],
     enabled: Boolean(meta.data),
     queryFn: () =>
-      api.get<Doc>(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
+      api.get<Row>(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
   })
   const formats = useQuery({
     queryKey: ['print-formats', doctype],
@@ -87,7 +87,7 @@ export function PrintView({
 
   const formatList = formats.data?.data ?? []
   // ?format=<name> selects that format; ?format=standard forces the auto
-  // layout; no param falls back to the DocType's default format (if any).
+  // layout; no param falls back to the Table's default format (if any).
   const active =
     format === 'standard'
       ? undefined
@@ -109,11 +109,6 @@ export function PrintView({
           (l) =>
             l.name === (letterHeadChoice ?? active?.letter_head ?? undefined),
         ) ?? (letterHeadChoice === undefined ? lhList.find((l) => l.is_default) : undefined)
-
-  const scalarFields = m.fields.filter(
-    (f) => !NO_COLUMN_TYPES.has(f.fieldtype) && f.fieldtype !== 'Table' && !f.hidden,
-  )
-  const tableFields = m.fields.filter((f) => f.fieldtype === 'Table' && !f.hidden)
 
   return (
     <div
@@ -203,38 +198,36 @@ function AutoLayout({
   d,
   fmt,
 }: {
-  m: import('../lib/meta').DocTypeMeta
-  d: Doc
+  m: TableMeta
+  d: Row
   fmt: (v: unknown) => string
 }) {
-  const scalarFields = m.fields.filter(
-    (f) => !NO_COLUMN_TYPES.has(f.fieldtype) && f.fieldtype !== 'Table' && !f.hidden,
+  const scalarColumns = m.columns.filter(
+    (c) => !NO_COLUMN_TYPES.has(c.column_type) && c.column_type !== 'Sub-table' && !c.hidden,
   )
-  const tableFields = m.fields.filter((f) => f.fieldtype === 'Table' && !f.hidden)
+  const subTableColumns = m.columns.filter((c) => c.column_type === 'Sub-table' && !c.hidden)
   return (
     <div data-testid="print-auto-layout">
 
       <dl className="grid grid-cols-2 gap-x-8 gap-y-3">
-        {scalarFields.map((f: DocField) => (
-          <div key={f.fieldname} className="break-inside-avoid" data-testid={`print-field-${f.fieldname}`}>
+        {scalarColumns.map((c: ColumnDef) => (
+          <div key={c.column_name} className="break-inside-avoid" data-testid={`print-field-${c.column_name}`}>
             <dt className="text-xs font-medium uppercase tracking-wide text-[var(--color-ink-muted)]">
-              {f.label ?? f.fieldname}
+              {c.label ?? c.column_name}
             </dt>
-            <dd className="text-sm" data-print-value={f.fieldname}>
-              {fmt(d[f.fieldname])}
+            <dd className="text-sm" data-print-value={c.column_name}>
+              {fmt(d[c.column_name])}
             </dd>
           </div>
         ))}
       </dl>
 
-      {tableFields.map((tf) => {
-        const rows = (d[tf.fieldname] as Doc[] | undefined) ?? []
-        const childMeta = m // child columns come from the row keys
-        void childMeta
+      {subTableColumns.map((tc) => {
+        const rows = (d[tc.column_name] as Row[] | undefined) ?? []
         const cols = rows.length ? Object.keys(rows[0]).filter((k) => visibleChildCol(k)) : []
         return (
-          <div key={tf.fieldname} className="mt-8" data-testid={`print-table-${tf.fieldname}`}>
-            <h2 className="mb-2 text-sm font-semibold">{tf.label ?? tf.fieldname}</h2>
+          <div key={tc.column_name} className="mt-8" data-testid={`print-table-${tc.column_name}`}>
+            <h2 className="mb-2 text-sm font-semibold">{tc.label ?? tc.column_name}</h2>
             <table className="w-full border border-[var(--color-border-strong)] text-sm">
               <thead className="bg-[var(--color-subtle)] text-left">
                 <tr>
@@ -269,15 +262,15 @@ function AutoLayout({
   )
 }
 
-// Child rows carry framework columns; only show meaningful ones in print.
+// Sub-table rows carry framework columns; only show meaningful ones in print.
 const HIDDEN_CHILD_COLS = new Set([
   'name',
-  'owner',
-  'creation',
-  'modified',
-  'modified_by',
-  'docstatus',
-  'idx',
+  'created_by',
+  'created_at',
+  'updated_at',
+  'updated_by',
+  'status',
+  'position',
   'parent',
   'parenttype',
   'parentfield',

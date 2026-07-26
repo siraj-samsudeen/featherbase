@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { metaToZod, zodFieldErrors } from 'shared'
+import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, getToken, listResource } from '../lib/api'
 import { useRealtime } from '../lib/realtime'
 import { Link as RouterLink } from '@tanstack/react-router'
-import { NO_COLUMN_TYPES, useMeta, type DocField, type DocTypeMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
 import { useClientScripts, type Frm } from '../lib/client-scripts'
 import { useI18n } from '../lib/i18n'
@@ -16,10 +16,10 @@ import { Comments } from './Comments'
 import { ActivityTimeline } from './ActivityTimeline'
 import { WorkflowActions } from './WorkflowActions'
 
-type Doc = Record<string, unknown>
+type Row = Record<string, unknown>
 
-// UI-004/UI-005: ONE form component renders and saves every DocType from
-// its metadata. Layout fields group into sections/columns (UI-008 refines).
+// UI-004/UI-005: ONE form component renders and saves every Table from
+// its metadata. Layout columns group into sections/columns (UI-008 refines).
 export function FormView({ doctype, name }: { doctype: string; name: string }) {
   const isNew = name === 'new'
   const meta = useMeta(doctype)
@@ -31,10 +31,10 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
     queryKey: ['doc', doctype, name],
     enabled: Boolean(meta.data) && !isNew,
     queryFn: () =>
-      api.get<Doc>(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
+      api.get<Row>(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
   })
 
-  const [values, setValues] = useState<Doc>({})
+  const [values, setValues] = useState<Row>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [banner, setBanner] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -43,10 +43,10 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   const [staleBanner, setStaleBanner] = useState(false)
   const [scriptError, setScriptError] = useState<string | null>(null)
 
-  // CUST-003: client scripts registered for this DocType. valuesRef mirrors the
-  // live values so a script handler always sees current field values.
+  // CUST-003: client scripts registered for this Table. valuesRef mirrors the
+  // live values so a script handler always sees current column values.
   const clientScripts = useClientScripts(doctype)
-  const valuesRef = useRef<Doc>({})
+  const valuesRef = useRef<Row>({})
   valuesRef.current = values
   const onloadFired = useRef(false)
 
@@ -100,7 +100,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   const dirty = JSON.stringify(values) !== JSON.stringify(baseline)
 
   // Build the `frm` a client-script handler receives, over a given doc snapshot.
-  function makeFrm(docSnapshot: Doc): Frm {
+  function makeFrm(docSnapshot: Row): Frm {
     return {
       doc: docSnapshot,
       get_value: (f: string) => docSnapshot[f],
@@ -110,7 +110,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
 
   // CUST-003: run a client-script handler, catching errors so a broken script
   // never crashes the Desk — it surfaces in a dismissible banner.
-  function fireHandler(key: string, docSnapshot: Doc) {
+  function fireHandler(key: string, docSnapshot: Row) {
     const handler = clientScripts.handlers[key]
     if (!handler) return
     try {
@@ -132,13 +132,13 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
     fireHandler(fieldname, next)
   }
 
-  const docstatus = Number((baseline as Record<string, unknown>).docstatus ?? 0)
+  const status = String((baseline as Record<string, unknown>).status ?? 'draft')
   const submittable = Boolean(m.is_submittable) && !isNew
 
   async function runAction(path: string) {
     setBanner(null)
     try {
-      const res = await api.post<Doc>(path, { doctype, name })
+      const res = await api.post<Row>(path, { doctype, name })
       await queryClient.invalidateQueries({ queryKey: ['doc', doctype] })
       await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
       if (path === '/api/amend_doc') {
@@ -156,7 +156,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   async function doRename() {
     setBanner(null)
     try {
-      const res = await api.post<Doc>('/api/rename_doc', { doctype, name, new_name: renameValue })
+      const res = await api.post<Row>('/api/rename_doc', { doctype, name, new_name: renameValue })
       await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
       setRenaming(false)
       navigate({ to: '/desk/$doctype/$name', params: { doctype, name: String(res.name) } })
@@ -171,7 +171,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
     fireHandler('before_save', valuesRef.current)
     // UI-009/META-013: the client validates with the SAME metadata-generated
     // zod schema the server uses — invalid forms never reach the network.
-    const schema = metaToZod(m.fields)
+    const schema = tableSchemaToZod(m.columns)
     const result = schema.safeParse(valuesRef.current)
     if (!result.success) {
       setErrors(zodFieldErrors(result.error))
@@ -182,15 +182,15 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
     setBanner(null)
     setErrors({})
     try {
-      const payload: Doc = { ...valuesRef.current }
+      const payload: Row = { ...valuesRef.current }
       if (!isNew) {
         payload.name = name
-        payload.modified = baseline.modified
+        payload.updated_at = baseline.updated_at
       } else {
         delete payload.name
       }
       suppressStaleUntil.current = Date.now() + 2000
-      const saved = await api.post<Doc>('/api/save_doc', { doctype, doc: payload })
+      const saved = await api.post<Row>('/api/save_doc', { doctype, doc: payload })
       await queryClient.invalidateQueries({ queryKey: ['doc', doctype] })
       await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
       await queryClient.invalidateQueries({ queryKey: ['versions', doctype, name] })
@@ -214,10 +214,10 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
     }
   }
 
-  // Group fields into sections split by Section Break.
-  const sections: DocField[][] = [[]]
-  for (const f of m.fields) {
-    if (f.fieldtype === 'Section Break') sections.push([])
+  // Group columns into sections split by Section Break.
+  const sections: ColumnDef[][] = [[]]
+  for (const f of m.columns) {
+    if (f.column_type === 'Section Break') sections.push([])
     else if (!f.hidden) sections[sections.length - 1].push(f)
   }
 
@@ -252,14 +252,14 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
             <span
               data-testid="docstatus-badge"
               className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                docstatus === 1
+                status === 'submitted'
                   ? 'bg-[var(--color-good-tint)] text-[var(--color-good)]'
-                  : docstatus === 2
+                  : status === 'cancelled'
                     ? 'bg-[var(--color-danger-tint)] text-[var(--color-danger)]'
                     : 'bg-[var(--color-subtle)] text-[var(--color-ink-muted)]'
               }`}
             >
-              {docstatus === 1 ? 'Submitted' : docstatus === 2 ? 'Cancelled' : 'Draft'}
+              {status === 'submitted' ? 'Submitted' : status === 'cancelled' ? 'Cancelled' : 'Draft'}
             </span>
           )}
           {!isNew && (
@@ -303,13 +303,13 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
           )}
           <button
             onClick={save}
-            disabled={saving || !dirty || (submittable && docstatus !== 0)}
+            disabled={saving || !dirty || (submittable && status !== 'draft')}
             data-testid="form-save"
             className="fc-btn-primary disabled:opacity-40"
           >
             {saving ? t('Saving…') : t('Save')}
           </button>
-          {submittable && docstatus === 0 && !dirty && (
+          {submittable && status === 'draft' && !dirty && (
             <button
               onClick={() => runAction('/api/submit_doc')}
               data-testid="form-submit"
@@ -318,7 +318,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
               Submit
             </button>
           )}
-          {submittable && docstatus === 1 && (
+          {submittable && status === 'submitted' && (
             <button
               onClick={() => runAction('/api/cancel_doc')}
               data-testid="form-cancel"
@@ -327,7 +327,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
               Cancel
             </button>
           )}
-          {submittable && docstatus === 2 && (
+          {submittable && status === 'cancelled' && (
             <button
               onClick={() => runAction('/api/amend_doc')}
               data-testid="form-amend"
@@ -386,15 +386,15 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
               className="fc-card mb-4 grid grid-cols-1 gap-4 p-5 md:grid-cols-2"
             >
               {fields.map((f) =>
-                f.fieldtype === 'Column Break' ? (
-                  <div key={f.fieldname} className="hidden md:block" />
+                f.column_type === 'Column Break' ? (
+                  <div key={f.column_name} className="hidden md:block" />
                 ) : (
                   <FieldControl
-                    key={f.fieldname}
-                    field={submittable && docstatus !== 0 ? { ...f, read_only: true } : f}
-                    value={values[f.fieldname]}
-                    error={errors[f.fieldname]}
-                    onChange={(v) => setField(f.fieldname, v)}
+                    key={f.column_name}
+                    field={submittable && status !== 'draft' ? { ...f, read_only: true } : f}
+                    value={values[f.column_name]}
+                    error={errors[f.column_name]}
+                    onChange={(v) => setField(f.column_name, v)}
                     meta={m}
                     values={values}
                     setField={setField}
@@ -427,20 +427,20 @@ function FieldControl({
   values,
   setField,
 }: {
-  field: DocField
+  field: ColumnDef
   value: unknown
   error?: string
   onChange: (value: unknown) => void
-  meta: DocTypeMeta
-  values: Doc
-  setField: (fieldname: string, value: unknown) => void
+  meta: TableMeta
+  values: Row
+  setField: (columnName: string, value: unknown) => void
 }) {
   const settings = useSettings()
   const { t } = useI18n()
   const base = 'fc-input'
   const label = (
     <label className="fc-label">
-      {t(field.label ?? field.fieldname)}
+      {t(field.label ?? field.column_name)}
       {field.reqd && <span className="text-red-500"> *</span>}
     </label>
   )
@@ -448,23 +448,23 @@ function FieldControl({
   // globally (native inputs can't honor a custom format), so the form
   // reflects System Settings just like lists do.
   const preview =
-    value != null && value !== '' && ['Date', 'Datetime', 'Currency', 'Float'].includes(field.fieldtype) ? (
-      <p className="mt-1 text-xs text-[var(--color-ink-faint)]" data-testid={`preview-${field.fieldname}`}>
-        {formatValue(field.fieldtype, value, settings)}
+    value != null && value !== '' && ['Date', 'Datetime', 'Currency', 'Float'].includes(field.column_type) ? (
+      <p className="mt-1 text-xs text-[var(--color-ink-faint)]" data-testid={`preview-${field.column_name}`}>
+        {formatValue(field.column_type, value, settings)}
       </p>
     ) : null
   const err = error && (
-    <p className="mt-1 text-xs text-red-600" data-testid={`error-${field.fieldname}`}>
+    <p className="mt-1 text-xs text-red-600" data-testid={`error-${field.column_name}`}>
       {error}
     </p>
   )
   const common = {
     disabled: field.read_only,
-    'data-field': field.fieldname,
-    'data-fieldtype': field.fieldtype,
+    'data-field': field.column_name,
+    'data-fieldtype': field.column_type,
   }
 
-  const wide = ['Text', 'Long Text', 'JSON', 'Table'].includes(field.fieldtype)
+  const wide = ['Text', 'Long Text', 'JSON', 'Sub-table'].includes(field.column_type)
   const wrap = (control: React.ReactNode) => (
     <div className={wide ? 'md:col-span-2' : ''}>
       {label}
@@ -474,7 +474,7 @@ function FieldControl({
     </div>
   )
 
-  switch (field.fieldtype) {
+  switch (field.column_type) {
     case 'Check':
       return wrap(
         <input
@@ -485,7 +485,7 @@ function FieldControl({
           {...common}
         />,
       )
-    case 'Select':
+    case 'Choice':
       return wrap(
         <select
           value={String(value ?? '')}
@@ -494,7 +494,7 @@ function FieldControl({
           {...common}
         >
           <option value="" />
-          {(field.options ?? '')
+          {(field.choices ?? '')
             .split('\n')
             .filter(Boolean)
             .map((o) => (
@@ -557,15 +557,15 @@ function FieldControl({
           {...common}
         />,
       )
-    case 'Table':
+    case 'Sub-table':
       return wrap(
         <ChildGrid
           field={field}
-          rows={(values[field.fieldname] as Doc[] | undefined) ?? []}
-          onChange={(rows) => setField(field.fieldname, rows)}
+          rows={(values[field.column_name] as Row[] | undefined) ?? []}
+          onChange={(rows) => setField(field.column_name, rows)}
         />,
       )
-    case 'Link':
+    case 'Reference':
       return wrap(
         <LinkControl
           field={field}
@@ -614,17 +614,17 @@ function ChildGrid({
   rows,
   onChange,
 }: {
-  field: DocField
-  rows: Doc[]
-  onChange: (rows: Doc[]) => void
+  field: ColumnDef
+  rows: Row[]
+  onChange: (rows: Row[]) => void
 }) {
-  const childMeta = useMeta(field.options ?? '')
+  const childMeta = useMeta(field.row_table ?? '')
   if (!childMeta.data) return <p className="text-xs text-gray-400">Loading rows…</p>
-  const cols = childMeta.data.fields.filter(
-    (f) => !NO_COLUMN_TYPES.has(f.fieldtype) && !f.hidden,
+  const cols = childMeta.data.columns.filter(
+    (f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden,
   )
-  function setCell(i: number, fieldname: string, value: unknown) {
-    onChange(rows.map((r, j) => (j === i ? { ...r, [fieldname]: value } : r)))
+  function setCell(i: number, columnName: string, value: unknown) {
+    onChange(rows.map((r, j) => (j === i ? { ...r, [columnName]: value } : r)))
   }
   function move(i: number, dir: -1 | 1) {
     const j = i + dir
@@ -634,13 +634,13 @@ function ChildGrid({
     onChange(next)
   }
   return (
-    <div className="overflow-x-auto rounded-md border border-gray-200" data-testid={`table-${field.fieldname}`}>
+    <div className="overflow-x-auto rounded-md border border-gray-200" data-testid={`table-${field.column_name}`}>
       <table className="w-full text-sm">
         <thead className="bg-gray-50 text-left">
           <tr>
             {cols.map((c) => (
-              <th key={c.fieldname} className="border-b border-gray-200 px-2 py-1 text-xs font-medium text-gray-600">
-                {c.label ?? c.fieldname}
+              <th key={c.column_name} className="border-b border-gray-200 px-2 py-1 text-xs font-medium text-gray-600">
+                {c.label ?? c.column_name}
               </th>
             ))}
             <th className="w-20 border-b border-gray-200" />
@@ -650,12 +650,12 @@ function ChildGrid({
           {rows.map((row, i) => (
             <tr key={String(row.name ?? i)} className="border-b border-gray-100 last:border-0">
               {cols.map((c) => (
-                <td key={c.fieldname} className="px-1 py-1">
+                <td key={c.column_name} className="px-1 py-1">
                   <input
-                    value={String(row[c.fieldname] ?? '')}
-                    onChange={(e) => setCell(i, c.fieldname, e.target.value)}
+                    value={String(row[c.column_name] ?? '')}
+                    onChange={(e) => setCell(i, c.column_name, e.target.value)}
                     className="w-full rounded border border-transparent px-1 py-0.5 hover:border-gray-200 focus:border-gray-400"
-                    data-childfield={c.fieldname}
+                    data-childfield={c.column_name}
                   />
                 </td>
               ))}
@@ -688,7 +688,7 @@ function ChildGrid({
       </table>
       <button
         onClick={() => onChange([...rows, {}])}
-        data-testid={`add-row-${field.fieldname}`}
+        data-testid={`add-row-${field.column_name}`}
         className="w-full border-t border-gray-100 px-2 py-1 text-left text-xs text-gray-500 hover:bg-gray-50"
       >
         + Add row
@@ -706,13 +706,13 @@ function LinkControl({
   className,
   common,
 }: {
-  field: DocField
+  field: ColumnDef
   value: unknown
   onChange: (value: unknown) => void
   className: string
   common: Record<string, unknown>
 }) {
-  const target = field.options ?? ''
+  const target = field.reference_table ?? ''
   const [query, setQuery] = useState<string | null>(null) // null = not searching
   const [open, setOpen] = useState(false)
   const [options, setOptions] = useState<string[]>([])
@@ -743,7 +743,7 @@ function LinkControl({
         type="text"
         role="combobox"
         aria-expanded={open}
-        placeholder={`Link: ${target}`}
+        placeholder={`Reference: ${target}`}
         value={shown}
         onFocus={() => search(shown)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
@@ -757,7 +757,7 @@ function LinkControl({
       {open && (
         <div
           className="absolute z-10 mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg"
-          data-testid={`link-options-${field.fieldname}`}
+          data-testid={`link-options-${field.column_name}`}
         >
           {options.map((o) => (
             <button
@@ -802,7 +802,7 @@ function AttachControl({
   refDoctype,
   refName,
 }: {
-  field: DocField
+  field: ColumnDef
   value: unknown
   onChange: (value: unknown) => void
   common: Record<string, unknown>
@@ -812,7 +812,7 @@ function AttachControl({
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const isImage = field.fieldtype === 'Attach Image'
+  const isImage = field.column_type === 'Attach Image'
   const url = typeof value === 'string' && value ? value : null
   const withToken = (u: string) => (u.startsWith('/private/') ? `${u}?token=${getToken()}` : u)
 
@@ -848,7 +848,7 @@ function AttachControl({
         type="file"
         accept={isImage ? 'image/*' : undefined}
         className="hidden"
-        data-attach-input={field.fieldname}
+        data-attach-input={field.column_name}
         onChange={(e) => {
           const f = e.target.files?.[0]
           if (f) upload(f)
@@ -859,8 +859,8 @@ function AttachControl({
           {isImage && (
             <img
               src={withToken(url)}
-              alt={field.label ?? field.fieldname}
-              data-testid={`attach-preview-${field.fieldname}`}
+              alt={field.label ?? field.column_name}
+              data-testid={`attach-preview-${field.column_name}`}
               className="mb-2 max-h-40 rounded-md border border-[var(--color-border)]"
             />
           )}
@@ -870,7 +870,7 @@ function AttachControl({
               target="_blank"
               rel="noreferrer"
               className="truncate text-[var(--color-brand)] hover:underline"
-              data-testid={`attach-link-${field.fieldname}`}
+              data-testid={`attach-link-${field.column_name}`}
             >
               {url.split('/').pop()?.replace(/^[0-9a-f]{16}_/, '')}
             </a>
@@ -878,7 +878,7 @@ function AttachControl({
               <button
                 type="button"
                 onClick={() => onChange(null)}
-                data-testid={`attach-clear-${field.fieldname}`}
+                data-testid={`attach-clear-${field.column_name}`}
                 className="text-xs text-[var(--color-ink-faint)] hover:text-[var(--color-danger)]"
               >
                 Clear
@@ -891,7 +891,7 @@ function AttachControl({
           type="button"
           onClick={() => inputRef.current?.click()}
           disabled={Boolean(field.read_only) || busy}
-          data-testid={`attach-btn-${field.fieldname}`}
+          data-testid={`attach-btn-${field.column_name}`}
           className="fc-btn text-sm"
         >
           {busy ? 'Uploading…' : `Attach ${isImage ? 'image' : 'file'}`}

@@ -5,21 +5,21 @@ import type { TestClient } from 'feather-testing-postgres'
 const DT = 'Own Note'
 const ROLE = 'Own Role'
 
-// Per-test world: DocType, role, the if_owner grant (read/write/create/delete
-// only on own docs), and two users — all rolled back with the test.
+// Per-test world: Table, role, the own_rows_only grant (read/write/create/
+// delete only on own docs), and two users — all rolled back with the test.
 async function setup(admin: TestClient, createUser: (o?: { roles?: string[] }) => Promise<TestClient>) {
   await admin.post('/api/doctype', {
     name: DT,
-    fields: [{ fieldname: 't', fieldtype: 'Data' }],
+    columns: [{ column_name: 't', column_type: 'Data' }],
   })
   await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
-  // if_owner grant: read/write/create/delete only on own docs
+  // own_rows_only grant: read/write/create/delete only on own docs
   await admin.post('/api/save_doc', {
-    doctype: 'DocPerm',
+    doctype: 'Permission',
     doc: {
-      ref_doctype: DT,
+      ref_table: DT,
       role: ROLE,
-      if_owner: true,
+      own_rows_only: true,
       can_read: true,
       can_write: true,
       can_create: true,
@@ -31,7 +31,7 @@ async function setup(admin: TestClient, createUser: (o?: { roles?: string[] }) =
   return { alice, bob }
 }
 
-describe('PERM-007: if_owner permissions', () => {
+describe('PERM-007: own_rows_only permissions', () => {
   test('users see only their own docs in lists and detail; cannot touch others', async ({
     admin,
     createUser,
@@ -44,7 +44,7 @@ describe('PERM-007: if_owner permissions', () => {
         body: JSON.stringify({ t: 'alice doc' }),
       })
     ).json()) as Record<string, unknown>
-    expect(mine.owner).toBe(alice.user)
+    expect(mine.created_by).toBe(alice.user)
     await bob.fetch(`/api/resource/${encodeURIComponent(DT)}`, {
       method: 'POST',
       body: JSON.stringify({ t: 'bob doc' }),
@@ -53,11 +53,11 @@ describe('PERM-007: if_owner permissions', () => {
     // List: alice sees exactly her one doc
     const list = (await (
       await alice.fetch(
-        `/api/resource/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","owner"]')}`,
+        `/api/resource/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","created_by"]')}`,
       )
-    ).json()) as { data: { owner: string }[]; total: number }
+    ).json()) as { data: { created_by: string }[]; total: number }
     expect(list.total).toBe(1)
-    expect(list.data[0].owner).toBe(alice.user)
+    expect(list.data[0].created_by).toBe(alice.user)
 
     // Detail: own doc 200, other's 403
     expect((await alice.fetch(`/api/resource/${encodeURIComponent(DT)}/${mine.name}`)).status).toBe(200)
@@ -72,7 +72,7 @@ describe('PERM-007: if_owner permissions', () => {
       (
         await alice.fetch(`/api/resource/${encodeURIComponent(DT)}/${bobDoc}`, {
           method: 'PUT',
-          body: JSON.stringify({ modified: new Date().toISOString(), t: 'hax' }),
+          body: JSON.stringify({ updated_at: new Date().toISOString(), t: 'hax' }),
         })
       ).status,
     ).toBe(403)
@@ -87,7 +87,7 @@ describe('PERM-007: if_owner permissions', () => {
       (
         await alice.fetch(`/api/resource/${encodeURIComponent(DT)}/${mine.name}`, {
           method: 'PUT',
-          body: JSON.stringify({ modified: own.modified, t: 'mine v2' }),
+          body: JSON.stringify({ updated_at: own.updated_at, t: 'mine v2' }),
         })
       ).status,
     ).toBe(200)
@@ -97,19 +97,19 @@ describe('PERM-007: if_owner permissions', () => {
     ).toBe(200)
   })
 
-  test('an unconditional grant overrides if_owner rows', async ({ admin, createUser }) => {
+  test('an unconditional grant overrides own_rows_only rows', async ({ admin, createUser }) => {
     const { alice, bob } = await setup(admin, createUser)
     await bob.fetch(`/api/resource/${encodeURIComponent(DT)}`, {
       method: 'POST',
       body: JSON.stringify({ t: 'bob doc' }),
     })
     await admin.post('/api/save_doc', {
-      doctype: 'DocPerm',
-      doc: { ref_doctype: DT, role: ROLE, can_read: true },
+      doctype: 'Permission',
+      doc: { ref_table: DT, role: ROLE, can_read: true },
     })
     const list = (await (
       await alice.fetch(
-        `/api/resource/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","owner"]')}`,
+        `/api/resource/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","created_by"]')}`,
       )
     ).json()) as { total: number }
     expect(list.total).toBeGreaterThanOrEqual(1) // sees bob's doc now too

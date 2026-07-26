@@ -25,10 +25,10 @@ function cli(args: string[], input = ''): string {
 }
 
 async function cleanup() {
-  await sql`delete from tab_has_role where parent = ${USER}`
-  await sql`delete from tab_user where name = ${USER}`
-  await sql`delete from tab_doctype where name = ${DT}`
-  await sql.unsafe('drop table if exists tab_cli_test_widget')
+  await sql`delete from has_role where parent = ${USER}`
+  await sql`delete from "user" where name = ${USER}`
+  await sql`delete from table_def where name = ${DT}`
+  await sql.unsafe('drop table if exists cli_test_widget')
 }
 
 beforeAll(cleanup)
@@ -38,22 +38,22 @@ afterAll(async () => {
 })
 
 describe('PLAT-004: developer CLI', () => {
-  it('create-doctype builds a DocType with parsed fields', async () => {
+  it('create-doctype builds a Table with parsed columns', async () => {
     const stdout = cli([
       'create-doctype',
       '--name', DT,
       '--field', 'title:Data',
-      '--field', 'status:Select:Open|Closed',
+      '--field', 'status:Choice:Open|Closed',
     ])
-    expect(stdout).toContain(`created DocType ${DT}`)
+    expect(stdout).toContain(`created Table ${DT}`)
 
-    const [dt] = await sql`select name from tab_doctype where name = ${DT}`
+    const [dt] = await sql`select name from table_def where name = ${DT}`
     expect(dt).toBeDefined()
-    const fields = await sql`select fieldname, fieldtype, options from tab_docfield where parent = ${DT} order by idx`
-    expect(fields.map((f) => f.fieldname)).toEqual(['title', 'status'])
-    const status = fields.find((f) => f.fieldname === 'status')
-    expect(status?.fieldtype).toBe('Select')
-    expect(status?.options).toBe('Open\nClosed') // pipe-separated options split to newlines
+    const columns = await sql`select column_name, column_type, choices from column_def where parent = ${DT} order by position`
+    expect(columns.map((f) => f.column_name)).toEqual(['title', 'status'])
+    const status = columns.find((f) => f.column_name === 'status')
+    expect(status?.column_type).toBe('Choice')
+    expect(status?.choices).toBe('Open\nClosed') // pipe-separated choices split to newlines
   }, 60_000)
 
   it('create-user creates a working login with roles', async () => {
@@ -62,10 +62,10 @@ describe('PLAT-004: developer CLI', () => {
     ])
     expect(stdout).toContain(`created user ${USER}`)
 
-    const [u] = await sql`select full_name, enabled from tab_user where name = ${USER}`
+    const [u] = await sql`select full_name, enabled from "user" where name = ${USER}`
     expect(u.full_name).toBe('CLI Test')
     expect(u.enabled).toBe(true)
-    const roles = await sql`select role from tab_has_role where parent = ${USER}`
+    const roles = await sql`select role from has_role where parent = ${USER}`
     expect(roles.map((r) => r.role)).toContain('System Manager')
   }, 60_000)
 

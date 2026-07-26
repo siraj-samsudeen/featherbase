@@ -19,7 +19,7 @@ export async function createAssignment(
     {
       allocated_to: assignTo,
       ref_table: table,
-      ref_name: name,
+      reference_name: name,
       description: description ?? `Assigned ${table} ${name}`,
       // NOTE: ToDo's own open/closed state — renamed from `status` because the
       // generic `status` (draft/submitted/cancelled) is now a reserved

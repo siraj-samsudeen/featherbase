@@ -13,19 +13,19 @@ const APPROVER_ROLE = 'Wf Notify Approver'
 const APPROVER = 'wf-notify-approver@x.com'
 const FLOW = 'Wf Notify Flow'
 
-// Per-test setup inside the sandbox transaction: the DocType, role, perms,
+// Per-test setup inside the sandbox transaction: the Table, role, perms,
 // approver user (via the createUser fixture — its minted token replaces the
 // legacy password login), and workflow. Returns the approver's client.
 async function setup(admin: TestClient, createUser: CreateUserFn): Promise<TestClient> {
   await admin.post('/api/doctype', {
     name: DT,
-    autoname: 'prompt',
-    fields: [{ fieldname: 'title', fieldtype: 'Data' }],
+    id_pattern: 'prompt',
+    columns: [{ column_name: 'title', column_type: 'Data' }],
   })
   await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: APPROVER_ROLE } })
   await admin.post('/api/save_doc', {
-    doctype: 'DocPerm',
-    doc: { ref_doctype: DT, role: APPROVER_ROLE, permlevel: 0, can_read: true, can_write: true },
+    doctype: 'Permission',
+    doc: { ref_table: DT, role: APPROVER_ROLE, tier: 'basic', can_read: true, can_write: true },
   })
   const approver = await createUser({ email: APPROVER, roles: [APPROVER_ROLE] })
 
@@ -34,12 +34,12 @@ async function setup(admin: TestClient, createUser: CreateUserFn): Promise<TestC
     doctype: 'Workflow',
     doc: {
       name: FLOW,
-      document_type: DT,
+      ref_table: DT,
       is_active: true,
       states: [
-        { state: 'Draft', doc_status: '0' },
-        { state: 'Pending', doc_status: '0' },
-        { state: 'Approved', doc_status: '1' },
+        { state: 'Draft', target_status: 'draft' },
+        { state: 'Pending', target_status: 'draft' },
+        { state: 'Approved', target_status: 'submitted' },
       ],
       transitions: [
         { state: 'Draft', action: 'Submit', next_state: 'Pending', allowed: 'All' },
@@ -71,8 +71,8 @@ describe('WF-004: pending-approval notifications', () => {
     expect(res.workflow_state).toBe('Pending')
 
     const emails = await sql`
-      select recipient, subject, body, reference_doctype, reference_name, status
-      from tab_email_queue where reference_doctype = ${DT} and reference_name = 'wf-notify-1'`
+      select recipient, subject, body, ref_table, reference_name, status
+      from email_queue where ref_table = ${DT} and reference_name = 'wf-notify-1'`
     expect(emails.length).toBe(1)
     const mail = emails[0]
     expect(mail.recipient).toBe(APPROVER)
@@ -81,7 +81,7 @@ describe('WF-004: pending-approval notifications', () => {
     // The body links to the document and lists the actions the approver can take.
     expect(String(mail.body)).toContain(`/desk/${encodeURIComponent(DT)}/wf-notify-1`)
     expect(String(mail.body)).toContain('Approve')
-    expect(mail.reference_doctype).toBe(DT)
+    expect(mail.ref_table).toBe(DT)
     expect(mail.status).toBe('queued')
   })
 
@@ -104,7 +104,7 @@ describe('WF-004: pending-approval notifications', () => {
 
     // The approver approves: Pending -> Approved (terminal). No further email.
     const before = (
-      await sql`select count(*)::int as n from tab_email_queue where reference_doctype = ${DT}`
+      await sql`select count(*)::int as n from email_queue where ref_table = ${DT}`
     )[0].n as number
 
     const res = await approver.post<{ workflow_state: string }>('/api/apply_workflow_action', {
@@ -115,7 +115,7 @@ describe('WF-004: pending-approval notifications', () => {
     expect(res.workflow_state).toBe('Approved')
 
     const after = (
-      await sql`select count(*)::int as n from tab_email_queue where reference_doctype = ${DT}`
+      await sql`select count(*)::int as n from email_queue where ref_table = ${DT}`
     )[0].n as number
     expect(after).toBe(before) // no new email on entering a terminal state
   })

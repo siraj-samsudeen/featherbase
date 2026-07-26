@@ -4,22 +4,24 @@ import type { TestClient } from 'feather-testing-postgres'
 
 const DT = 'List Test Item'
 
+// The Table's own two-value field is named `stage` (not `status`) — `status`
+// is now the reserved draft/submitted/cancelled lifecycle column.
 async function setup(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: DT,
-    fields: [
-      { fieldname: 'title', fieldtype: 'Data' },
-      { fieldname: 'status', fieldtype: 'Select', options: 'Open\nClosed' },
-      { fieldname: 'qty', fieldtype: 'Int' },
+    columns: [
+      { column_name: 'title', column_type: 'Data' },
+      { column_name: 'stage', column_type: 'Choice', choices: 'Open\nClosed' },
+      { column_name: 'qty', column_type: 'Int' },
     ],
   })
-  for (const [title, status, qty] of [
+  for (const [title, stage, qty] of [
     ['alpha', 'Open', 1],
     ['beta', 'Open', 5],
     ['gamma', 'Closed', 3],
     ['delta', 'Closed', 9],
   ]) {
-    await admin.post('/api/save_doc', { doctype: DT, doc: { title, status, qty } })
+    await admin.post('/api/save_doc', { doctype: DT, doc: { title, stage, qty } })
   }
 }
 
@@ -31,7 +33,7 @@ describe('DOC-010: get_list with filters, fields, order_by, pagination', () => {
     await setup(admin)
     const body = await admin.get<{ total: number; data: { title: string }[] }>(
       listPath({
-        filters: JSON.stringify([['status', '=', 'Open']]),
+        filters: JSON.stringify([['stage', '=', 'Open']]),
         fields: JSON.stringify(['name', 'title', 'qty']),
       }),
     )
@@ -44,7 +46,7 @@ describe('DOC-010: get_list with filters, fields, order_by, pagination', () => {
     const body = await admin.get<{ data: { title: string }[] }>(
       listPath({
         filters: JSON.stringify([
-          ['status', 'in', ['Open', 'Closed']],
+          ['stage', 'in', ['Open', 'Closed']],
           ['qty', '>=', 3],
           ['title', 'like', '%a%'],
         ]),

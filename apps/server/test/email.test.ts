@@ -13,6 +13,11 @@ const { PDFParse } = require('pdf-parse') as {
 // EML-001: a configured account sends a test mail captured by the sink.
 // EML-002: a queued email transitions queued -> sent and the sink receives
 // exactly one copy.
+//
+// NOTE: Email Queue's own delivery status is tracked on the reserved
+// `status` column (src/email.ts writes/reads `status`, not the `send_status`
+// column the migration also defines but src never touches) — see
+// PROGRESS.md for the discovered inconsistency.
 
 const ACCOUNT = 'Eml Test Account'
 
@@ -20,17 +25,17 @@ const ACCOUNT = 'Eml Test Account'
 // committed leftovers (rolled back afterwards) and create the account.
 async function setup() {
   await loadJobs()
-  await sql`delete from tab_email_sink`
-  await sql`delete from tab_email_queue`
-  await sql`delete from tab_email_account where name = ${ACCOUNT}`
-  await sql`delete from tab_docfield where parent in ('Eml Ref', 'Eml Pdf')`
-  await sql`delete from tab_doctype where name in ('Eml Ref', 'Eml Pdf')`
-  await sql.unsafe('drop table if exists tab_eml_ref, tab_eml_pdf')
+  await sql`delete from email_sink`
+  await sql`delete from email_queue`
+  await sql`delete from email_account where name = ${ACCOUNT}`
+  await sql`delete from column_def where parent in ('Eml Ref', 'Eml Pdf')`
+  await sql`delete from table_def where name in ('Eml Ref', 'Eml Pdf')`
+  await sql.unsafe('drop table if exists eml_ref, eml_pdf')
   await sql`
-    insert into tab_email_account ${sql({
+    insert into email_account ${sql({
       name: ACCOUNT,
-      owner: 'Administrator',
-      modified_by: 'Administrator',
+      created_by: 'Administrator',
+      updated_by: 'Administrator',
       email_id: 'sender@frappe.test',
       is_default: true,
     })}`
@@ -43,7 +48,7 @@ async function setup() {
 // clock, then drain.
 async function drainDueJobs() {
   await sql`
-    update tab_background_job set run_at = now()
+    update background_job set run_at = now()
     where status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
   return await drainJobs()
 }
@@ -52,7 +57,7 @@ describe('EML-001: send test email', () => {
   test('delivers a test mail to the sink from the default account', async () => {
     await setup()
     await sendTestEmail('target@x.com')
-    const rows = await sql`select mail_from, mail_to, subject from tab_email_sink`
+    const rows = await sql`select mail_from, mail_to, subject from email_sink`
     expect(rows).toHaveLength(1)
     expect(rows[0].mail_from).toBe('sender@frappe.test')
     expect(rows[0].mail_to).toBe('target@x.com')
@@ -66,16 +71,16 @@ describe('EML-002: queued email delivery', () => {
     const name = await queueEmail({ to: 'q@x.com', subject: 'Queued Subject', body: 'hi' })
 
     // Initially queued, not yet delivered.
-    const [before] = await sql`select status from tab_email_queue where name = ${name}`
+    const [before] = await sql`select status from email_queue where name = ${name}`
     expect(before.status).toBe('queued')
-    expect(await sql`select count(*)::int as c from tab_email_sink`).toEqual([{ c: 0 }])
+    expect(await sql`select count(*)::int as c from email_sink`).toEqual([{ c: 0 }])
 
     await drainDueJobs()
 
-    const [after] = await sql`select status from tab_email_queue where name = ${name}`
+    const [after] = await sql`select status from email_queue where name = ${name}`
     expect(after.status).toBe('sent')
 
-    const sink = await sql`select mail_to, subject from tab_email_sink where subject = 'Queued Subject'`
+    const sink = await sql`select mail_to, subject from email_sink where subject = 'Queued Subject'`
     expect(sink).toHaveLength(1)
     expect(sink[0].mail_to).toBe('q@x.com')
   })
@@ -86,9 +91,9 @@ describe('EML-002: queued email delivery', () => {
     // re-drain — the claim already flipped the row to sent, so no second copy.
     await queueEmail({ to: 'q@x.com', subject: 'Queued Subject', body: 'hi' })
     await drainDueJobs()
-    const before = (await sql`select count(*)::int as c from tab_email_sink`)[0].c as number
+    const before = (await sql`select count(*)::int as c from email_sink`)[0].c as number
     await drainDueJobs() // nothing queued now
-    const after = (await sql`select count(*)::int as c from tab_email_sink`)[0].c as number
+    const after = (await sql`select count(*)::int as c from email_sink`)[0].c as number
     expect(after).toBe(before)
   })
 })
@@ -103,11 +108,11 @@ describe('EML-005: template rendering', () => {
     'a queued template email is rendered with the actual field value in the sink',
     async () => {
       await setup()
-      const { createDocType } = await import('../src/doctype-engine')
-      await createDocType({
+      const { createTable } = await import('../src/doctype-engine')
+      await createTable({
         name: 'Eml Ref',
-        autoname: 'prompt',
-        fields: [{ fieldname: 'subject', fieldtype: 'Data' }],
+        id_pattern: 'prompt',
+        columns: [{ column_name: 'subject', column_type: 'Data' }],
       })
       const { saveDoc } = await import('../src/document')
       await saveDoc('Eml Ref', { name: 'ref-1', subject: 'Quarterly Numbers' }, 'Administrator')
@@ -116,13 +121,13 @@ describe('EML-005: template rendering', () => {
         to: 'r@x.com',
         subject: 'Re: {{ doc.subject }}',
         body: 'See {{ doc.subject }} attached.',
-        reference_doctype: 'Eml Ref',
-        reference_name: 'ref-1',
+        ref_table: 'Eml Ref',
+        ref_name: 'ref-1',
         render: true,
       })
       await drainDueJobs()
 
-      const [sink] = await sql`select subject, body from tab_email_sink order by creation desc limit 1`
+      const [sink] = await sql`select subject, body from email_sink order by created_at desc limit 1`
       expect(sink.subject).toBe('Re: Quarterly Numbers')
       expect(sink.body).toContain('See Quarterly Numbers attached')
     },
@@ -135,11 +140,11 @@ describe('EML-003: PDF attachment', () => {
     'a queued email with attach_pdf delivers a PDF whose text matches the document',
     async () => {
       await setup()
-      const { createDocType } = await import('../src/doctype-engine')
-      await createDocType({
+      const { createTable } = await import('../src/doctype-engine')
+      await createTable({
         name: 'Eml Pdf',
-        autoname: 'prompt',
-        fields: [{ fieldname: 'customer', fieldtype: 'Data' }],
+        id_pattern: 'prompt',
+        columns: [{ column_name: 'customer', column_type: 'Data' }],
       })
       const { saveDoc } = await import('../src/document')
       await saveDoc('Eml Pdf', { name: 'inv-1', customer: 'Wonka Industries' }, 'Administrator')
@@ -148,14 +153,14 @@ describe('EML-003: PDF attachment', () => {
         to: 'billing@x.com',
         subject: 'Invoice',
         body: 'Attached.',
-        reference_doctype: 'Eml Pdf',
-        reference_name: 'inv-1',
+        ref_table: 'Eml Pdf',
+        ref_name: 'inv-1',
         attach_pdf: true,
       })
       await drainDueJobs()
 
       const [sink] = await sql`
-      select attachment_names, attachment_b64 from tab_email_sink order by creation desc limit 1`
+      select attachment_names, attachment_b64 from email_sink order by created_at desc limit 1`
       expect(sink.attachment_names).toBe('inv-1.pdf')
       expect(sink.attachment_b64).toBeTruthy()
 

@@ -7,32 +7,32 @@ import { countDocs, groupCount } from '../src/query'
 // data with the same permission scoping as the list query.
 
 const DT = 'Dash Srv Task'
-const STATUSES = ['Open', 'Open', 'Open', 'Closed', 'Closed', 'Pending']
+const STAGES = ['Open', 'Open', 'Open', 'Closed', 'Closed', 'Pending']
 
-// Each test rebuilds the DocType + rows inside its own rolled-back tx.
+// Each test rebuilds the Table + rows inside its own rolled-back tx.
 async function setup(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: DT,
-    fields: [
-      { fieldname: 'title', fieldtype: 'Data' },
-      { fieldname: 'status', fieldtype: 'Select', options: 'Open\nClosed\nPending' },
+    columns: [
+      { column_name: 'title', column_type: 'Data' },
+      { column_name: 'stage', column_type: 'Choice', choices: 'Open\nClosed\nPending' },
     ],
   })
-  for (const status of STATUSES)
-    await admin.post('/api/save_doc', { doctype: DT, doc: { title: 't', status } })
+  for (const stage of STAGES)
+    await admin.post('/api/save_doc', { doctype: DT, doc: { title: 't', stage } })
 }
 
 describe('UI-026: dashboard aggregates', () => {
   test('countDocs counts all and filtered documents', async ({ admin }) => {
     await setup(admin)
     expect(await countDocs(DT, [], 'Administrator')).toBe(6)
-    expect(await countDocs(DT, [['status', '=', 'Open']], 'Administrator')).toBe(3)
-    expect(await countDocs(DT, [['status', '=', 'Closed']], 'Administrator')).toBe(2)
+    expect(await countDocs(DT, [['stage', '=', 'Open']], 'Administrator')).toBe(3)
+    expect(await countDocs(DT, [['stage', '=', 'Closed']], 'Administrator')).toBe(2)
   })
 
   test('groupCount groups by a field, ordered by descending count', async ({ admin }) => {
     await setup(admin)
-    const rows = await groupCount(DT, 'status', [], 'Administrator')
+    const rows = await groupCount(DT, 'stage', [], 'Administrator')
     expect(rows).toEqual([
       { label: 'Open', value: 3 },
       { label: 'Closed', value: 2 },
@@ -42,7 +42,7 @@ describe('UI-026: dashboard aggregates', () => {
 
   test('respects filters in grouped counts', async ({ admin }) => {
     await setup(admin)
-    const rows = await groupCount(DT, 'status', [['status', '!=', 'Pending']], 'Administrator')
+    const rows = await groupCount(DT, 'stage', [['stage', '!=', 'Pending']], 'Administrator')
     expect(rows).toEqual([
       { label: 'Open', value: 3 },
       { label: 'Closed', value: 2 },
@@ -52,7 +52,7 @@ describe('UI-026: dashboard aggregates', () => {
   test('enforces read permission (a user without read cannot count)', async ({ admin }) => {
     await setup(admin)
     await expect(countDocs(DT, [], 'Guest')).rejects.toMatchObject({ type: 'PermissionError' })
-    await expect(groupCount(DT, 'status', [], 'Guest')).rejects.toMatchObject({
+    await expect(groupCount(DT, 'stage', [], 'Guest')).rejects.toMatchObject({
       type: 'PermissionError',
     })
   })

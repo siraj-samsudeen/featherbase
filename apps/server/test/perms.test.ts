@@ -6,11 +6,11 @@ const DT = 'Perm Widget'
 const ROLE = 'Perm Tester Role'
 
 // Each test builds its world inside its own rolled-back transaction: the
-// DocType, the role, and one seeded row (as admin, for read tests).
+// Table, the role, and one seeded row (as admin, for read tests).
 async function setup(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: DT,
-    fields: [{ fieldname: 'title', fieldtype: 'Data' }],
+    columns: [{ column_name: 'title', column_type: 'Data' }],
   })
   await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
   // seed one row as admin for read tests
@@ -19,14 +19,14 @@ async function setup(admin: TestClient) {
 
 async function grant(admin: TestClient, perms: Record<string, boolean>) {
   const doc = await admin.post<{ name: string }>('/api/save_doc', {
-    doctype: 'DocPerm',
-    doc: { ref_doctype: DT, role: ROLE, ...perms },
+    doctype: 'Permission',
+    doc: { ref_table: DT, role: ROLE, ...perms },
   })
   return doc.name
 }
 
-describe('PERM-002/003: DocPerm grants enforced server-side', () => {
-  test('no DocPerm rows -> restricted user gets 403 on read, create, list', async ({
+describe('PERM-002/003: Permission grants enforced server-side', () => {
+  test('no Permission rows -> restricted user gets 403 on read, create, list', async ({
     admin,
     createUser,
   }) => {
@@ -70,7 +70,7 @@ describe('PERM-002/003: DocPerm grants enforced server-side', () => {
       (
         await user.fetch(`/api/resource/${encodeURIComponent(DT)}/${name}`, {
           method: 'PUT',
-          body: JSON.stringify({ modified: doc.modified, title: 'edited' }),
+          body: JSON.stringify({ updated_at: doc.updated_at, title: 'edited' }),
         })
       ).status,
     ).toBe(403)
@@ -93,10 +93,10 @@ describe('PERM-002/003: DocPerm grants enforced server-side', () => {
     })
     expect(created.status).toBe(201)
     const doc = (await created.json()) as Record<string, unknown>
-    expect(doc.owner).toBe(user.user)
+    expect(doc.created_by).toBe(user.user)
     const put = await user.fetch(`/api/resource/${encodeURIComponent(DT)}/${doc.name}`, {
       method: 'PUT',
-      body: JSON.stringify({ modified: doc.modified, title: 'mine2' }),
+      body: JSON.stringify({ updated_at: doc.updated_at, title: 'mine2' }),
     })
     expect(put.status).toBe(200)
     // still no delete
@@ -106,19 +106,19 @@ describe('PERM-002/003: DocPerm grants enforced server-side', () => {
     ).toBe(403)
   })
 
-  test('restricted users cannot create DocTypes', async ({ admin, createUser }) => {
+  test('restricted users cannot create Tables', async ({ admin, createUser }) => {
     await setup(admin)
     const user = await createUser({ roles: [ROLE] })
     const res = await user.fetch('/api/doctype', {
       method: 'POST',
-      body: JSON.stringify({ name: 'Hax DT', fields: [{ fieldname: 'x', fieldtype: 'Data' }] }),
+      body: JSON.stringify({ name: 'Hax DT', columns: [{ column_name: 'x', column_type: 'Data' }] }),
     })
     expect(res.status).toBe(403)
   })
 })
 
 describe('PERM-009: Administrator bypass', () => {
-  test('admin passes all checks on a DocType with zero DocPerm rows', async ({ admin }) => {
+  test('admin passes all checks on a Table with zero Permission rows', async ({ admin }) => {
     await setup(admin)
     const res = await admin.fetch(`/api/resource/${encodeURIComponent(DT)}`, {
       method: 'POST',

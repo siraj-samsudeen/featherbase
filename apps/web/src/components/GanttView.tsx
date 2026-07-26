@@ -21,30 +21,30 @@ function fromDayNum(n: number): string {
   return new Date(n * DAY_MS).toISOString().slice(0, 10)
 }
 
-// UI-022: Gantt view for DocTypes with a start and an end Date field. Each
-// document is a horizontal bar spanning [start, end]; dragging a bar's right
+// UI-022: Gantt view for Tables with a start and an end Date column. Each
+// row is a horizontal bar spanning [start, end]; dragging a bar's right
 // handle rewrites the end date.
 export function GanttView({ doctype }: { doctype: string }) {
   const meta = useMeta(doctype)
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
-  // Live resize state: which doc, and the previewed end day.
+  // Live resize state: which row, and the previewed end day.
   const [resize, setResize] = useState<{ name: string; startX: number; origEnd: number; end: number } | null>(null)
 
-  const dateFields = useMemo(
-    () => (meta.data?.fields ?? []).filter((f) => f.fieldtype === 'Date'),
+  const dateColumns = useMemo(
+    () => (meta.data?.columns ?? []).filter((f) => f.column_type === 'Date'),
     [meta.data],
   )
-  const startField = dateFields[0]?.fieldname
-  const endField = dateFields[1]?.fieldname
-  const titleField = meta.data?.title_field || 'name'
+  const startField = dateColumns[0]?.column_name
+  const endField = dateColumns[1]?.column_name
+  const titleColumn = meta.data?.title_column || 'name'
 
   const rows = useQuery({
     queryKey: ['gantt', doctype, startField, endField],
     enabled: Boolean(meta.data && startField && endField),
     queryFn: () =>
       listResource<Row>(doctype, {
-        fields: [...new Set(['name', startField!, endField!, titleField])],
+        fields: [...new Set(['name', startField!, endField!, titleColumn])],
         order_by: startField!,
         limit_page_length: 1000,
       }),
@@ -54,7 +54,7 @@ export function GanttView({ doctype }: { doctype: string }) {
   if (!startField || !endField)
     return (
       <p className="text-sm text-[var(--color-ink-muted)]" data-testid="gantt-no-dates">
-        This DocType needs two Date fields (start and end) for a Gantt view.
+        This Table needs two Date columns (start and end) for a Gantt view.
       </p>
     )
 
@@ -87,7 +87,7 @@ export function GanttView({ doctype }: { doctype: string }) {
       const doc = await api.get<Row>(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
       await api.put(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`, {
         [endField!]: fromDayNum(end),
-        modified: doc.modified,
+        updated_at: doc.updated_at,
       })
       await queryClient.invalidateQueries({ queryKey: ['gantt', doctype, startField, endField] })
     } catch (err) {
@@ -120,7 +120,7 @@ export function GanttView({ doctype }: { doctype: string }) {
 
       {bars.length === 0 ? (
         <p className="text-sm text-[var(--color-ink-faint)]" data-testid="gantt-empty">
-          No documents with both dates set.
+          No rows with both dates set.
         </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-[var(--color-border)]">
@@ -141,7 +141,7 @@ export function GanttView({ doctype }: { doctype: string }) {
               ))}
             </div>
 
-            {/* One row per document */}
+            {/* One row per bar */}
             {bars.map((b) => {
               const leftDays = b.s - rangeStart
               const spanDays = b.e - b.s + 1
@@ -149,7 +149,7 @@ export function GanttView({ doctype }: { doctype: string }) {
                 <div key={b.name} className="flex items-center border-b border-[var(--color-border)]" data-testid={`gantt-row-${b.name}`}>
                   <div className="shrink-0 truncate px-2 py-1 text-xs text-[var(--color-ink)]" style={{ width: 200 }}>
                     <RouterLink to="/desk/$doctype/$name" params={{ doctype, name: b.name }} className="hover:underline">
-                      {String(b.row[titleField] ?? b.name)}
+                      {String(b.row[titleColumn] ?? b.name)}
                     </RouterLink>
                   </div>
                   <div className="relative py-1.5" style={{ width: totalDays * DAY_W, height: 28 }}>

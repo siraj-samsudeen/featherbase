@@ -4,30 +4,30 @@ import type { TestClient } from 'feather-testing-postgres'
 
 const DT = 'Doc Test Note'
 
-// Each test creates its DocType inside its OWN transaction — the sandbox
+// Each test creates its Table inside its OWN transaction — the sandbox
 // rolls it back, so there is no shared beforeAll state and no cleanup.
 async function makeDT(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: DT,
-    fields: [
-      { fieldname: 'title', fieldtype: 'Data' },
-      { fieldname: 'qty', fieldtype: 'Int' },
+    columns: [
+      { column_name: 'title', column_type: 'Data' },
+      { column_name: 'qty', column_type: 'Int' },
     ],
   })
 }
 
 describe('DOC-001: save_doc inserts through the Document engine', () => {
-  test('inserts, auto-populates standard fields, and is readable back', async ({ admin }) => {
+  test('inserts, auto-populates standard columns, and is readable back', async ({ admin }) => {
     await makeDT(admin)
     const doc = await admin.post<Record<string, unknown>>('/api/save_doc', {
       doctype: DT,
       doc: { title: 'hello', qty: 3 },
     })
     expect(doc.name).toBeTruthy()
-    expect(doc.owner).toBe('Administrator')
-    expect(doc.creation).toBeTruthy()
-    expect(doc.modified).toBeTruthy()
-    expect(doc.docstatus).toBe(0)
+    expect(doc.created_by).toBe('Administrator')
+    expect(doc.created_at).toBeTruthy()
+    expect(doc.updated_at).toBeTruthy()
+    expect(doc.status).toBe('draft')
     expect(doc.title).toBe('hello')
     expect(doc.qty).toBe('3')
 

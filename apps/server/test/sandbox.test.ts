@@ -6,16 +6,16 @@ import { describe, afterAll, expect } from 'vitest'
 import { test } from './pg-test'
 import { _getRootSql } from '../src/db'
 
-// Both tests create the SAME DocType and the SAME document names. Without
+// Both tests create the SAME Table and the SAME document names. Without
 // sandbox isolation the second test would collide with the first's leftovers.
 const DT = 'Sandbox Probe'
 
 async function createProbeDoctype(admin: { post: (p: string, b?: unknown) => Promise<unknown> }) {
   await admin.post('/api/doctype', {
     name: DT,
-    fields: [
-      { fieldname: 'title', label: 'Title', fieldtype: 'Data', reqd: true, in_list_view: true },
-      { fieldname: 'qty', label: 'Qty', fieldtype: 'Int' },
+    columns: [
+      { column_name: 'title', label: 'Title', column_type: 'Data', reqd: true, in_list_view: true },
+      { column_name: 'qty', label: 'Qty', column_type: 'Int' },
     ],
   })
 }
@@ -34,7 +34,7 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
     expect(listed.data).toHaveLength(1)
   })
 
-  test('the same DocType + doc can be created again — the previous test rolled back', async ({
+  test('the same Table + doc can be created again — the previous test rolled back', async ({
     admin,
     seed,
   }) => {
@@ -76,11 +76,11 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
 afterAll(async () => {
   const root = _getRootSql()
   const [{ exists }] = await root<{ exists: boolean }[]>`
-    select exists(select 1 from information_schema.tables where table_name = 'tab_sandbox_probe')
+    select exists(select 1 from information_schema.tables where table_name = 'sandbox_probe')
   `
   expect(exists).toBe(false)
   const leftoverUsers = await root<{ name: string }[]>`
-    select name from tab_user where name like '%@feather.test'
+    select name from "user" where name like '%@feather.test'
   `
   expect(leftoverUsers).toHaveLength(0)
 })

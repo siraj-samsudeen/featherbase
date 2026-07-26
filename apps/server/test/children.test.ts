@@ -5,23 +5,23 @@ import { sql } from '../src/db'
 
 const CHILD = 'Chd Item Row'
 const PARENT = 'Chd Order'
-const CTABLE = 'tab_chd_item_row'
-const PTABLE = 'tab_chd_order'
+const CTABLE = 'chd_item_row'
+const PTABLE = 'chd_order'
 
 async function setup(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: CHILD,
-    istable: true,
-    fields: [
-      { fieldname: 'item', fieldtype: 'Data', reqd: true },
-      { fieldname: 'qty', fieldtype: 'Int', default_value: '1' },
+    kind: 'sub_table',
+    columns: [
+      { column_name: 'item', column_type: 'Data', reqd: true },
+      { column_name: 'qty', column_type: 'Int', default_value: '1' },
     ],
   })
   await admin.post('/api/doctype', {
     name: PARENT,
-    fields: [
-      { fieldname: 'title', fieldtype: 'Data' },
-      { fieldname: 'items', fieldtype: 'Table', options: CHILD },
+    columns: [
+      { column_name: 'title', column_type: 'Data' },
+      { column_name: 'items', column_type: 'Sub-table', row_table: CHILD },
     ],
   })
 }
@@ -30,20 +30,20 @@ const save = (admin: TestClient, doc: Record<string, unknown>) =>
   admin.post<Record<string, any>>('/api/save_doc', { doctype: PARENT, doc })
 
 describe('META-007: child table linkage', () => {
-  test('rejects a Table field pointing at a non-child DocType', async ({ admin }) => {
+  test('rejects a Sub-table column pointing at a non-child Table', async ({ admin }) => {
     await setup(admin)
     await expect(
       admin.post('/api/doctype', {
         name: 'Chd Bad Parent',
-        fields: [{ fieldname: 'rows', fieldtype: 'Table', options: PARENT }],
+        columns: [{ column_name: 'rows', column_type: 'Sub-table', row_table: PARENT }],
       }),
     ).rejects.toMatchObject({
       status: 417,
-      fields: { rows: expect.stringMatching(/not a child DocType/) },
+      fields: { rows: expect.stringMatching(/not a sub_table Table/) },
     })
   })
 
-  test('saves child rows with parent linkage and idx ordering', async ({ admin }) => {
+  test('saves child rows with parent linkage and position ordering', async ({ admin }) => {
     await setup(admin)
     const doc = await save(admin, {
       title: 'order1',
@@ -51,10 +51,10 @@ describe('META-007: child table linkage', () => {
     })
     expect(doc.items).toHaveLength(3)
     const rows = await sql.unsafe(
-      `select item, qty, parent, parenttype, parentfield, idx from ${CTABLE}
-       where parent = '${doc.name}' order by idx`,
+      `select item, qty, parent, parenttype, parentfield, position from ${CTABLE}
+       where parent = '${doc.name}' order by position`,
     )
-    expect(rows.map((r) => [r.item, Number(r.qty), r.idx])).toEqual([
+    expect(rows.map((r) => [r.item, Number(r.qty), r.position])).toEqual([
       ['apple', 2, 1],
       ['pear', 1, 2],
       ['fig', 7, 3],
@@ -63,7 +63,7 @@ describe('META-007: child table linkage', () => {
     expect(rows[0].parentfield).toBe('items')
   })
 
-  test('cannot save a child DocType directly', async ({ admin }) => {
+  test('cannot save a child Table directly', async ({ admin }) => {
     await setup(admin)
     await expect(
       admin.post('/api/save_doc', { doctype: CHILD, doc: { item: 'x' } }),
@@ -86,13 +86,13 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
     const [rowA, , rowC] = doc.items
     const updated = await save(admin, {
       name: doc.name,
-      modified: doc.modified,
+      updated_at: doc.updated_at,
       items: [
         { name: rowC.name, item: 'c-edited', qty: 9 },
         { item: 'd' },
       ],
     })
-    expect(updated.items.map((r: any) => [r.item, r.idx])).toEqual([
+    expect(updated.items.map((r: any) => [r.item, r.position])).toEqual([
       ['c-edited', 1],
       ['d', 2],
     ])
@@ -110,7 +110,7 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
     await expect(
       save(admin, {
         name: doc.name,
-        modified: doc.modified,
+        updated_at: doc.updated_at,
         title: 'after',
         items: [{ item: 'ok' }, { qty: 'boom' }],
       }),
@@ -129,7 +129,7 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
     expect(count).toBe(1)
   })
 
-  test('getDoc returns children ordered by idx', async ({ admin }) => {
+  test('getDoc returns children ordered by position', async ({ admin }) => {
     await setup(admin)
     const doc = await save(admin, { title: 'o3', items: [{ item: 'z' }, { item: 'y' }] })
     const read = await admin.get<Record<string, any>>(

@@ -13,20 +13,20 @@ const ITEM = 'Rn Order Item'
 async function setup(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: CUST,
-    autoname: 'prompt',
-    fields: [{ fieldname: 'city', fieldtype: 'Data' }],
+    id_pattern: 'prompt',
+    columns: [{ column_name: 'city', column_type: 'Data' }],
   })
   await admin.post('/api/doctype', {
     name: ITEM,
-    istable: true,
-    fields: [{ fieldname: 'supplier', fieldtype: 'Link', options: CUST }],
+    kind: 'sub_table',
+    columns: [{ column_name: 'supplier', column_type: 'Reference', reference_table: CUST }],
   })
   await admin.post('/api/doctype', {
     name: ORDER,
-    autoname: 'prompt',
-    fields: [
-      { fieldname: 'customer', fieldtype: 'Link', options: CUST },
-      { fieldname: 'lines', fieldtype: 'Table', options: ITEM },
+    id_pattern: 'prompt',
+    columns: [
+      { column_name: 'customer', column_type: 'Reference', reference_table: CUST },
+      { column_name: 'lines', column_type: 'Sub-table', row_table: ITEM },
     ],
   })
 }
@@ -57,8 +57,8 @@ describe('DOC-012: rename document + cascade Link references', () => {
     expect(renamed.name).toBe('Acme Corp')
 
     // Old name is gone, new name exists.
-    expect(await sql`select 1 from tab_rn_customer where name = 'Acme'`).toHaveLength(0)
-    expect(await sql`select 1 from tab_rn_customer where name = 'Acme Corp'`).toHaveLength(1)
+    expect(await sql`select 1 from rn_customer where name = 'Acme'`).toHaveLength(0)
+    expect(await sql`select 1 from rn_customer where name = 'Acme Corp'`).toHaveLength(1)
 
     // Parent Link field updated.
     const order = await admin.get<{ customer: string; lines: { supplier: string }[] }>(
@@ -84,7 +84,7 @@ describe('DOC-012: rename document + cascade Link references', () => {
       admin.post('/api/rename_doc', { doctype: CUST, name: 'Globex', new_name: 'Acme Corp' }),
     ).rejects.toMatchObject({ status: 409, type: 'ConflictError' })
     // Globex is untouched.
-    expect(await sql`select 1 from tab_rn_customer where name = 'Globex'`).toHaveLength(1)
+    expect(await sql`select 1 from rn_customer where name = 'Globex'`).toHaveLength(1)
   })
 
   test('404s renaming a document that does not exist', async ({ admin }) => {

@@ -4,7 +4,7 @@ import { api, setToken } from '../lib/api'
 
 // PLAT-006: the OAuth callback landing. The server redirects here with a signed
 // session token in the query; we store it, hydrate the user profile via whoami,
-// and land in the Desk.
+// and land in the Admin.
 export function OAuthCallbackPage({ token }: { token?: string }) {
   const navigate = useNavigate()
   useEffect(() => {
@@ -13,7 +13,7 @@ export function OAuthCallbackPage({ token }: { token?: string }) {
       return
     }
     setToken(token)
-    // Hydrate the session user, then enter the Desk.
+    // Hydrate the session user, then enter the Admin.
     api
       .get<{ name: string; email: string; full_name: string | null }>('/api/whoami')
       .then((u) => {

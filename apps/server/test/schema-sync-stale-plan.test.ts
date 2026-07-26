@@ -16,9 +16,9 @@ import { areq } from './helpers'
 const DT = 'Stale Plan DT'
 
 async function cleanup() {
-  await sql`delete from tab_docfield where parent = ${DT}`
-  await sql`delete from tab_doctype where name = ${DT}`
-  await sql.unsafe('drop table if exists tab_stale_plan_dt')
+  await sql`delete from column_def where parent = ${DT}`
+  await sql`delete from table_def where name = ${DT}`
+  await sql.unsafe('drop table if exists stale_plan_dt')
 }
 
 beforeAll(cleanup)
@@ -28,7 +28,7 @@ describe('META-004: schema sync does not leave stale prepared statements', () =>
   it('reads and writes keep working across repeated column additions', async () => {
     const created = await areq('/api/doctype', {
       method: 'POST',
-      body: JSON.stringify({ name: DT, fields: [{ fieldname: 'a', fieldtype: 'Data' }] }),
+      body: JSON.stringify({ name: DT, columns: [{ column_name: 'a', column_type: 'Data' }] }),
     })
     expect(created.status).toBe(201)
     const doc = (await (
@@ -36,28 +36,28 @@ describe('META-004: schema sync does not leave stale prepared statements', () =>
         method: 'POST',
         body: JSON.stringify({ doctype: DT, doc: { a: 'one' } }),
       })
-    ).json()) as { name: string; modified: string }
+    ).json()) as { name: string; updated_at: string }
 
-    const fields = [{ fieldname: 'a', fieldtype: 'Data' }]
+    const columns = [{ column_name: 'a', column_type: 'Data' }]
     for (let round = 1; round <= 3; round++) {
       // Warm every pooled connection with reads/updates on this table.
-      let modified = (await (
+      let updated_at = (await (
         await areq(`/api/resource/${encodeURIComponent(DT)}/${doc.name}`)
-      ).json() as { modified: string }).modified
+      ).json() as { updated_at: string }).updated_at
       for (let i = 0; i < 5; i++) {
         const upd = await areq(`/api/resource/${encodeURIComponent(DT)}/${doc.name}`, {
           method: 'PUT',
-          body: JSON.stringify({ a: `warm-${round}-${i}`, modified }),
+          body: JSON.stringify({ a: `warm-${round}-${i}`, updated_at }),
         })
         expect(upd.status).toBe(200)
-        modified = ((await upd.json()) as { modified: string }).modified
+        updated_at = ((await upd.json()) as { updated_at: string }).updated_at
       }
 
       // ALTER the table via schema sync…
-      fields.push({ fieldname: `extra_${round}`, fieldtype: 'Data' })
+      columns.push({ column_name: `extra_${round}`, column_type: 'Data' })
       const sync = await areq(`/api/doctype/${encodeURIComponent(DT)}`, {
         method: 'PUT',
-        body: JSON.stringify({ fields }),
+        body: JSON.stringify({ columns }),
       })
       expect(sync.status).toBe(200)
 
@@ -67,10 +67,10 @@ describe('META-004: schema sync does not leave stale prepared statements', () =>
         expect(read.status).toBe(200)
         const upd = await areq(`/api/resource/${encodeURIComponent(DT)}/${doc.name}`, {
           method: 'PUT',
-          body: JSON.stringify({ a: `post-${round}-${i}`, modified }),
+          body: JSON.stringify({ a: `post-${round}-${i}`, updated_at }),
         })
         expect(upd.status).toBe(200)
-        modified = ((await upd.json()) as { modified: string }).modified
+        updated_at = ((await upd.json()) as { updated_at: string }).updated_at
       }
     }
   })

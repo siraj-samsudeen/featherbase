@@ -3,9 +3,9 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 
-// WEB-002/003: a logged-in web-form submitter becomes the document's owner —
-// closing the portal loop (their if_owner portal now shows what they filed).
-// Anonymous submissions still create as Administrator.
+// WEB-002/003: a logged-in web-form submitter becomes the document's
+// created_by — closing the portal loop (their own_rows_only portal now shows
+// what they filed). Anonymous submissions still create as Administrator.
 
 const DT = 'Wf Owner Req'
 const ROLE = 'Wf Owner Customer'
@@ -14,13 +14,13 @@ const ROUTE = 'wfown-request'
 async function setup(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: DT,
-    fields: [{ fieldname: 'subject', fieldtype: 'Data', reqd: true }],
+    columns: [{ column_name: 'subject', column_type: 'Data', reqd: true }],
   })
   await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
-  // The customer role holds NO create DocPerm — the web form is the only door.
+  // The customer role holds NO create Permission — the web form is the only door.
   await admin.post('/api/save_doc', {
-    doctype: 'DocPerm',
-    doc: { ref_doctype: DT, role: ROLE, if_owner: true, can_read: true },
+    doctype: 'Permission',
+    doc: { ref_table: DT, role: ROLE, own_rows_only: true, can_read: true },
   })
   await admin.post('/api/save_doc', {
     doctype: 'Web Form',
@@ -28,7 +28,7 @@ async function setup(admin: TestClient) {
       name: 'WfOwn Request Form',
       title: 'Request',
       route: ROUTE,
-      document_type: DT,
+      ref_table: DT,
       published: true,
       web_fields: JSON.stringify(['subject']),
     },
@@ -41,8 +41,8 @@ describe('WEB-002/003: web-form owner attribution', () => {
     const res = await api.post<{ name: string }>(`/api/web_form/${ROUTE}`, {
       values: { subject: 'anon' },
     })
-    const [row] = await sql`select owner from tab_wf_owner_req where name = ${res.name}`
-    expect(row.owner).toBe('Administrator')
+    const [row] = await sql`select created_by from wf_owner_req where name = ${res.name}`
+    expect(row.created_by).toBe('Administrator')
   })
 
   test('a logged-in submit is owned by the session user and visible in their portal list', async ({
@@ -54,10 +54,10 @@ describe('WEB-002/003: web-form owner attribution', () => {
     const res = await cust.post<{ name: string }>(`/api/web_form/${ROUTE}`, {
       values: { subject: 'mine' },
     })
-    const [row] = await sql`select owner from tab_wf_owner_req where name = ${res.name}`
-    expect(row.owner).toBe(cust.user)
+    const [row] = await sql`select created_by from wf_owner_req where name = ${res.name}`
+    expect(row.created_by).toBe(cust.user)
 
-    // The if_owner read grant now surfaces exactly this document.
+    // The own_rows_only read grant now surfaces exactly this document.
     const list = await cust.get<{ data: { name: string }[]; total: number }>(
       `/api/resource/${encodeURIComponent(DT)}`,
     )

@@ -2,46 +2,42 @@ import { useEffect, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { api, ApiError } from '../lib/api'
 
-// WEB-002: a public, session-less form. Fetches its field config and creates a
-// document on submit; server validation errors surface inline.
+// WEB-002: a public, session-less form. Fetches its column config and creates
+// a row on submit; server validation errors surface inline.
 
-interface WebFormField {
-  fieldname: string
+interface WebFormColumn {
+  column_name: string
   label: string
-  fieldtype: string
-  options: string | null
+  column_type: string
+  reference_table: string | null
   reqd: boolean
 }
 interface WebFormConfig {
   route: string
   title: string
-  fields: WebFormField[]
+  columns: WebFormColumn[]
   success_message: string
 }
 
-function Field({
+function Column({
   def,
   value,
   onChange,
 }: {
-  def: WebFormField
+  def: WebFormColumn
   value: string
   onChange: (v: string) => void
 }) {
-  const testid = `wf-field-${def.fieldname}`
+  const testid = `wf-field-${def.column_name}`
   const common = { 'data-testid': testid, className: 'fc-input', value, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => onChange(e.target.value) }
-  if (def.fieldtype === 'Long Text' || def.fieldtype === 'Text') return <textarea rows={4} {...common} />
-  if (def.fieldtype === 'Select')
+  if (def.column_type === 'Long Text' || def.column_type === 'Text') return <textarea rows={4} {...common} />
+  if (def.column_type === 'Choice')
     return (
       <select {...common}>
-        {(def.options ?? '').split('\n').map((o) => (
-          <option key={o} value={o}>
-            {o || '—'}
-          </option>
-        ))}
+        <option value="">—</option>
       </select>
     )
-  if (def.fieldtype === 'Check')
+  if (def.column_type === 'Check')
     return (
       <input
         type="checkbox"
@@ -50,7 +46,7 @@ function Field({
         onChange={(e) => onChange(e.target.checked ? '1' : '')}
       />
     )
-  const type = def.fieldtype === 'Date' ? 'date' : ['Int', 'Float', 'Currency'].includes(def.fieldtype) ? 'number' : 'text'
+  const type = def.column_type === 'Date' ? 'date' : ['Int', 'Float', 'Currency'].includes(def.column_type) ? 'number' : 'text'
   return <input type={type} {...common} />
 }
 
@@ -105,13 +101,13 @@ export function WebFormPage() {
         </div>
       ) : (
         <form className="fc-card space-y-4 p-6" data-testid="web-form-form" onSubmit={submit}>
-          {config.fields.map((f) => (
-            <div key={f.fieldname}>
+          {config.columns.map((c) => (
+            <div key={c.column_name}>
               <label className="fc-label">
-                {f.label}
-                {f.reqd && <span className="text-red-500"> *</span>}
+                {c.label}
+                {c.reqd && <span className="text-red-500"> *</span>}
               </label>
-              <Field def={f} value={values[f.fieldname] ?? ''} onChange={(v) => setValues((s) => ({ ...s, [f.fieldname]: v }))} />
+              <Column def={c} value={values[c.column_name] ?? ''} onChange={(v) => setValues((s) => ({ ...s, [c.column_name]: v }))} />
             </div>
           ))}
           {error && (

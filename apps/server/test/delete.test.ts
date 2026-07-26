@@ -10,19 +10,19 @@ const ROW = 'Del Line Row'
 async function setup(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: CUSTOMER,
-    autoname: 'prompt',
-    fields: [{ fieldname: 'city', fieldtype: 'Data' }],
+    id_pattern: 'prompt',
+    columns: [{ column_name: 'city', column_type: 'Data' }],
   })
   await admin.post('/api/doctype', {
     name: ROW,
-    istable: true,
-    fields: [{ fieldname: 'supplier', fieldtype: 'Link', options: CUSTOMER }],
+    kind: 'sub_table',
+    columns: [{ column_name: 'supplier', column_type: 'Reference', reference_table: CUSTOMER }],
   })
   await admin.post('/api/doctype', {
     name: INVOICE,
-    fields: [
-      { fieldname: 'customer', fieldtype: 'Link', options: CUSTOMER },
-      { fieldname: 'lines', fieldtype: 'Table', options: ROW },
+    columns: [
+      { column_name: 'customer', column_type: 'Reference', reference_table: CUSTOMER },
+      { column_name: 'lines', column_type: 'Sub-table', row_table: ROW },
     ],
   })
   for (const n of ['Acme', 'Globex', 'Initech', 'Umbrella'])
@@ -68,7 +68,7 @@ describe('DOC-006: delete with referential integrity', () => {
     // Unlink first by deleting the invoice, then the customer is deletable.
     await admin.delete(docPath(INVOICE, String(inv.name)))
     const [{ count }] = await sql.unsafe(
-      `select count(*)::int as count from tab_del_line_row where parent='${inv.name}'`,
+      `select count(*)::int as count from del_line_row where parent='${inv.name}'`,
     )
     expect(count).toBe(0)
     await admin.delete(docPath(CUSTOMER, 'Umbrella'))

@@ -4,15 +4,15 @@ import type { TestClient } from 'feather-testing-postgres'
 
 const DT = 'Sh Memo'
 
-// Per-test world. NOTE: no DocPerm rows for DT at all -> user has zero role
-// access; only DocShare rows can grant anything.
+// Per-test world. NOTE: no Permission rows for DT at all -> user has zero role
+// access; only Share rows can grant anything.
 async function setup(
   admin: TestClient,
   createUser: (o?: { roles?: string[] }) => Promise<TestClient>,
 ) {
   await admin.post('/api/doctype', {
     name: DT,
-    fields: [{ fieldname: 'body', fieldtype: 'Data' }],
+    columns: [{ column_name: 'body', column_type: 'Data' }],
   })
   const user = await createUser({ roles: [] })
   const doc = (await (
@@ -26,13 +26,13 @@ async function setup(
 
 async function share(admin: TestClient, user: TestClient, docName: string, perms: Record<string, boolean>) {
   const doc = await admin.post<{ name: string }>('/api/save_doc', {
-    doctype: 'DocShare',
-    doc: { share_doctype: DT, share_name: docName, user: user.user, ...perms },
+    doctype: 'Share',
+    doc: { share_table: DT, share_name: docName, user: user.user, ...perms },
   })
   return String(doc.name)
 }
 
-describe('PERM-008: DocShare', () => {
+describe('PERM-008: Share', () => {
   test('without a share, the user cannot read the doc (no role perms)', async ({
     admin,
     createUser,
@@ -58,7 +58,7 @@ describe('PERM-008: DocShare', () => {
     )
     const write = await user.fetch(`/api/resource/${encodeURIComponent(DT)}/${docName}`, {
       method: 'PUT',
-      body: JSON.stringify({ modified: doc.modified, body: 'hacked' }),
+      body: JSON.stringify({ updated_at: doc.updated_at, body: 'hacked' }),
     })
     expect(write.status).toBe(403)
   })
@@ -66,10 +66,10 @@ describe('PERM-008: DocShare', () => {
   test('a write-share allows editing that doc', async ({ admin, createUser }) => {
     const { user, docName } = await setup(admin, createUser)
     const shareName = await share(admin, user, docName, { read: true })
-    await admin.put(`/api/resource/DocShare/${encodeURIComponent(shareName)}`, {
-      modified: (
-        await admin.get<{ modified: string }>(`/api/resource/DocShare/${encodeURIComponent(shareName)}`)
-      ).modified,
+    await admin.put(`/api/resource/Share/${encodeURIComponent(shareName)}`, {
+      updated_at: (
+        await admin.get<{ updated_at: string }>(`/api/resource/Share/${encodeURIComponent(shareName)}`)
+      ).updated_at,
       write: true,
     })
     const doc = await admin.get<Record<string, unknown>>(
@@ -77,7 +77,7 @@ describe('PERM-008: DocShare', () => {
     )
     const write = await user.fetch(`/api/resource/${encodeURIComponent(DT)}/${docName}`, {
       method: 'PUT',
-      body: JSON.stringify({ modified: doc.modified, body: 'edited by sharee' }),
+      body: JSON.stringify({ updated_at: doc.updated_at, body: 'edited by sharee' }),
     })
     expect(write.status).toBe(200)
     const after = await admin.get<Record<string, unknown>>(
@@ -89,7 +89,7 @@ describe('PERM-008: DocShare', () => {
   test('unsharing revokes access', async ({ admin, createUser }) => {
     const { user, docName } = await setup(admin, createUser)
     const shareName = await share(admin, user, docName, { read: true, write: true })
-    await admin.delete(`/api/resource/DocShare/${encodeURIComponent(shareName)}`)
+    await admin.delete(`/api/resource/Share/${encodeURIComponent(shareName)}`)
     expect((await user.fetch(`/api/resource/${encodeURIComponent(DT)}/${docName}`)).status).toBe(403)
   })
 })
