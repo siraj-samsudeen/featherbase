@@ -121,6 +121,68 @@ live CLI writers) while others stay local — and can Featherbase do it?
 - Gotchas: docs.frappe.io and discuss.frappe.io block the container's fetch
   proxy (HTTP 403); research had to lean on web-search summaries plus the
   in-repo Frappe study.
+## 2026-07-26 — multi-app / multi-database topology researched and specced (parallel session, merged into this branch)
+
+Question raised: how does Frappe run many apps in one instance, do they share a
+database or a schema, can one app sit on a *remote* Postgres while others stay
+local — and specifically, can a management app be put on top of an existing
+control schema in a Railway-hosted Postgres that CLIs keep writing to, without
+changing that schema?
+
+Answered from the upstream source, then written up as requirements. **No code
+changed this session** — everything here is documentation.
+
+- **`docs/research/frappe-multi-app-and-multi-db.md`** — the corollary research.
+  Frappe: bench/app/site; one database *per site*, shared by every installed
+  app, in one schema, with a flat `tab<DocType>` namespace (hence `HD Ticket`,
+  `CRM Lead` prefixes); app ownership is metadata only (`Module Def.app_name`).
+  A *site* can point at a remote host via `db_host` in `site_config.json`, but
+  an *app* cannot — the connection is per site, per request. Foreign data is
+  reached only through `frappe.database.get_db(host=…)` (a raw handle) or the
+  **Virtual DocType** protocol (`load_from_db`/`db_insert`/`db_update`/`delete`
+  + static `get_list`/`get_count`/`get_stats`, enforced by
+  `frappe/model/virtual_doctype.py`). Frappe has *no* way to bind a normal
+  DocType to a pre-existing table. Featherbase already matches Frappe on apps
+  and app ownership; the gaps are the second connection, the virtual protocol,
+  and table binding.
+- **`docs/adr/0007-app-and-database-topology.md`** (Proposed) — decision: apps
+  keep sharing one control DB; foreign data is bound **per DocType**, not per
+  app; Featherbase never issues DDL against a source; cross-source saves are
+  explicitly not atomic. Records why per-app DB routing, `postgres_fdw` as the
+  primary transport, and ETL were all rejected.
+- **`docs/specs/0001-external-data-sources.md`** (EDS-1…13) — the answer to the
+  Railway case. A `Data Source` registry (credentials by env-var *name*, never
+  stored), introspection, DocTypes bound to `{source, schema, table}` with a
+  column map, SQL-pushdown reads, guarded writes, read-only sources, conflict
+  detection with a whole-row fallback when there is no `modified` column, drift
+  detection, control-side comments/attachments/versions, failure semantics, and
+  the transaction boundary. Carries a **"what this requires of the foreign
+  schema"** table: a single-column primary key is the only hard requirement;
+  audit line, optimistic locking, `if_owner` scoping and submit/cancel each need
+  one column and degrade loudly without it.
+- **`docs/specs/0002-virtual-doctypes.md`** (VDT-1…5) — the escape hatch for
+  non-Postgres sources, mirroring Frappe's protocol but validating it at
+  registration and *rejecting* what it cannot honour (child tables, unique
+  constraints) instead of silently dropping rows the way Frappe does.
+- `docs/specs/README.md` indexes both; `CLAUDE.md` gained a pointer under "Where
+  decisions live". `harness/features.json` untouched — capability IDs live in
+  the specs.
+
+Verification: documentation only, so no runtime verification applies and nothing
+was marked passing. Each spec carries its own "definition of done" section
+listing the end-to-end checks the implementation must pass (second Postgres
+seeded by a fixture that mimics a CLI, HTTP CRUD against it, an out-of-band
+concurrent write, a dropped column, Playwright on the generic list/form, and a
+before/after schema comparison proving no DDL was issued).
+
+Next: implement spec 0001, smallest slice first — `Data Source` + introspection
++ **read-only** bound DocTypes (EDS-1, 2, 3, 4, 5, 7, 13). That alone makes the
+Railway control schema browsable in the Desk and needs no write-path or
+conflict-detection machinery. Gotcha for whoever picks it up: `apps/server/src/
+db.ts` exports one `sql` proxy used for both metadata and document data, and the
+sandbox seam swaps its delegate — the per-DocType client resolver has to keep
+metadata on the control pool, or the test harness will try to roll back a
+transaction on the wrong connection.
 
 ## 2026-07-24 — one ticketing system: HD Ticket promoted to a migration, `Ticket` retired (issue #45)
 

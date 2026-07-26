@@ -140,6 +140,10 @@ once per run, outside any sandbox transaction. It complements
 - `docs/adr/` — architecture decisions. [ADR 0006](docs/adr/0006-stack-react-hono-postgres.md)
   records the move to React + Hono + Postgres and supersedes 0001–0004.
 - `docs/VISION.md` — what this is for and who it serves.
+- `docs/specs/` — requirements for work agreed but not yet built, in
+  feather-spec form (EARS criteria + example tables). Capability IDs there
+  (`EDS-1`, `VDT-3`) are traceability handles and are deliberately *not* in
+  `harness/features.json`.
 - `docs/research/` — Frappe architecture, Glide, and stack studies.
 - `docs/archive/convex-capabilities/` — specs from the retired Convex
   implementation, preserved on the `archive/convex-v1` tag.
