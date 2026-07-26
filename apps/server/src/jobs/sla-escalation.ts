@@ -66,7 +66,7 @@ registerJob('check_sla', async () => {
               table,
             )}/${encodeURIComponent(row.name as string)}`,
           ref_table: table,
-          ref_name: row.name as string,
+          reference_name: row.name as string,
         })
       }
     }

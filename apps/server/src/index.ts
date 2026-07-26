@@ -797,7 +797,7 @@ app.get('/api/tags/:doctype/:name', async (c) => {
   await getDoc(c.req.param('doctype'), c.req.param('name'), who(c))
   const rows = await sql`
     select tag from tag_link
-    where ref_doctype = ${c.req.param('doctype')} and ref_name = ${c.req.param('name')}
+    where ref_table = ${c.req.param('doctype')} and ref_name = ${c.req.param('name')}
     order by tag`
   return c.json({ tags: rows.map((r) => r.tag as string) })
 })
@@ -812,7 +812,7 @@ app.post('/api/tags', async (c) => {
     throw new AppError('ValidationError', 'Expected { doctype, name, tag }')
   await getDoc(doctype, name, who(c))
   await sql`
-    insert into tag_link ${sql({ ref_doctype: doctype, ref_name: name, tag: tag.trim(), owner: who(c) })}
+    insert into tag_link ${sql({ ref_table: doctype, ref_name: name, tag: tag.trim(), created_by: who(c) })}
     on conflict do nothing`
   return c.json({ ok: true }, 201)
 })
@@ -820,7 +820,7 @@ app.post('/api/tags', async (c) => {
 app.delete('/api/tags/:doctype/:name/:tag', async (c) => {
   await getDoc(c.req.param('doctype'), c.req.param('name'), who(c))
   await sql`
-    delete from tag_link where ref_doctype = ${c.req.param('doctype')}
+    delete from tag_link where ref_table = ${c.req.param('doctype')}
       and ref_name = ${c.req.param('name')} and tag = ${c.req.param('tag')}`
   return c.json({ ok: true })
 })
@@ -853,7 +853,7 @@ app.post('/api/queue_email', async (c) => {
     subject: body.subject ?? '',
     body: body.body ?? '',
     ref_table: body.reference_doctype,
-    ref_name: body.reference_name,
+    reference_name: body.reference_name,
     render: body.render,
     attach_pdf: body.attach_pdf,
     print_format: body.print_format,

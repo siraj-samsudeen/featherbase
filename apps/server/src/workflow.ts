@@ -278,7 +278,7 @@ async function notifyPendingApprovers(
       subject,
       body,
       ref_table: table,
-      ref_name: name,
+      reference_name: name,
     })
   }
 }

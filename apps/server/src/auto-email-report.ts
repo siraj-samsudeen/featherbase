@@ -99,7 +99,7 @@ export async function deliverAutoEmailReport(
       subject,
       body,
       ref_table: 'Report',
-      ref_name: reportName,
+      reference_name: reportName,
       attachments,
     })
   }

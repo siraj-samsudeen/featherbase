@@ -20,7 +20,7 @@ export interface MailMessage {
   body: string
   from?: string
   ref_table?: string
-  ref_name?: string
+  reference_name?: string
   attachments?: Attachment[]
   // EML-005: when set, subject+body are treated as {{ doc.field }} templates
   // and rendered against the reference row at send time.
@@ -97,9 +97,9 @@ export async function queueEmail(msg: MailMessage): Promise<string> {
       recipient: msg.to,
       subject: msg.subject,
       body: msg.body,
-      status: 'queued',
+      send_status: 'queued',
       ref_table: msg.ref_table ?? null,
-      ref_name: msg.ref_name ?? null,
+      reference_name: msg.reference_name ?? null,
       // Delivery options travel with the row so the job is self-contained.
       // `files` carries ready-made attachments (e.g. an Auto Email Report CSV);
       // render/attach_pdf are computed at send time from the reference row.
@@ -119,14 +119,14 @@ registerJob('send_email', async (payload) => {
   const queueName = String(payload.queue ?? '')
   // Claim the row: only deliver if still queued (idempotent under retries).
   const [row] = await sql`
-    update email_queue set status = 'sent', updated_at = now()
-    where name = ${queueName} and status = 'queued'
+    update email_queue set send_status = 'sent', updated_at = now()
+    where name = ${queueName} and send_status = 'queued'
     returning *`
   if (!row) return // already delivered or missing — no double-send
   try {
     const opts = (row.attachments as { render?: boolean; attach_pdf?: boolean; print_format?: string; files?: Attachment[] } | null) ?? {}
     const refTable = (row.ref_table as string) ?? undefined
-    const refName = (row.ref_name as string) ?? undefined
+    const refName = (row.reference_name as string) ?? undefined
     let subject = (row.subject as string) ?? ''
     let body = (row.body as string) ?? ''
     const attachments: Attachment[] = [...(opts.files ?? [])]
@@ -152,12 +152,12 @@ registerJob('send_email', async (payload) => {
       subject,
       body,
       ref_table: refTable,
-      ref_name: refName,
+      reference_name: refName,
       attachments,
     })
   } catch (err) {
     await sql`
-      update email_queue set status = 'error', error = ${
+      update email_queue set send_status = 'error', error = ${
         err instanceof Error ? err.message : String(err)
       }, updated_at = now() where name = ${queueName}`
     throw err

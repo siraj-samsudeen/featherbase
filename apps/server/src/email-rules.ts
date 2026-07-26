@@ -47,7 +47,7 @@ export async function evaluateEmailRules(
       subject: (rule.subject as string) || `${table} ${String(row.name)} — ${event}`,
       body: (rule.message as string) || '',
       ref_table: table,
-      ref_name: String(row.name),
+      reference_name: String(row.name),
       render: true,
     })
   }

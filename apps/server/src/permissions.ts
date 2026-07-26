@@ -127,9 +127,9 @@ export async function getUserPermissionMap(
 ): Promise<Map<string, Set<string>>> {
   const map = new Map<string, Set<string>>()
   const rows = await sql`
-    select allow, for_value from data_scope where "user" = ${user}`
+    select allow_table, for_value from data_scope where "user" = ${user}`
   for (const r of rows) {
-    const key = r.allow as string
+    const key = r.allow_table as string
     if (!map.has(key)) map.set(key, new Set())
     map.get(key)!.add(r.for_value as string)
   }
