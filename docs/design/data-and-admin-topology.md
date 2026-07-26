@@ -13,7 +13,11 @@
 > effectivity), **F — change lifecycle** (environments & metadata
 > promotion), **G — actors & identity** (humans, portals, machines, AI
 > agents) — and names the cross-cutting concerns that are deliberately
-> *not* axes. §9 lists decisions to ratify and sequencing. Nothing here is
+> *not* axes. v5 (same day) adds §6.6 **generation vs interpretation**
+> (D19) and the per-system study series at `docs/research/studies/`
+> (JHipster, NocoBase, Salesforce, Jira, Directus, Odoo, ServiceNow, and
+> the generator family incl. ScaffoldHub and the Rails admin panels).
+> §9 lists decisions to ratify and sequencing. Nothing here is
 > implemented; nothing has to land at once.
 >
 > Related: [ADR 0007](../adr/0007-app-and-database-topology.md) and specs
@@ -543,6 +547,30 @@ UI contributions prefer **declarative schema over arbitrary JS** (render
 from metadata where possible — NocoBase's UI-schema approach); a
 full-code widget is a tier-1 contribution by definition.
 
+### 6.6 Generation vs interpretation (v5)
+
+Every platform in the study series sits on one spectrum: **interpret the
+model at runtime** (Frappe, Salesforce, ServiceNow, NocoBase, Directus —
+users change the system live, upgrades can't collide with code nobody
+wrote) or **generate code from the model** (JHipster, ScaffoldHub, Rails
+scaffolding, the 2000s XML→EJB MDM generators — readable, refactorable,
+test-pyramid-included code you own, at the price of the **round-trip
+problem**: the moment output is edited, the model lies).
+
+Featherbase's position (**D19**): interpretation is the source of truth —
+that is what makes runtime DocTypes, module admins, and upgrade-safe
+layers possible at all. Generation exists only as **one-way derived
+artifacts**, regenerable precisely because nobody edits them: TypeScript
+types, typed API clients, hook stubs, test skeletons, seed fixtures
+(ADR 0003 already promised this for package mode). The **eject** of a
+DocType to fully owned code is the deliberate off-ramp for a client who
+outgrows metadata — one-way, with re-entry only via Axis C adoption
+(reflect what the table became), never by merging code back into
+metadata. And the generator family sets the deliverable bar regardless:
+an entity isn't done until its tests and seeds exist (the JHipster
+standard), and overriding defaults means writing ordinary code through
+contribution points, never a second DSL (the Administrate principle).
+
 ---
 
 ## 7. The axes v1–v3 missed (v4)
@@ -635,6 +663,11 @@ afterthought.
 ---
 
 ## 8. What other platforms teach (independent survey)
+
+> Deep-dives now live in **`docs/research/studies/`** — one document per
+> system (key dimensions / what it enables / downsides / what to adopt),
+> written as reading material. This section stays as the one-line index
+> of lessons.
 
 - **Hasura NDC / DDN** — connectors are services conforming to a spec with
   a **capabilities endpoint**; the engine negotiates and pushes down what
@@ -768,6 +801,11 @@ explicitly. (§7.2)
 permission engine; agents carry an on-behalf-of chain; every driver and
 sync binding declares its identity-propagation mapping as part of the
 adapter contract. (§7.3)
+
+**D19.** Runtime interpretation is the source of truth; code generation
+is one-way and derived only (types, clients, stubs, test skeletons,
+seeds — regenerable because never edited); DocType eject to owned code
+is a deliberate one-way off-ramp with re-entry only via adoption. (§6.6)
 
 ### Sequencing against the current plan
 

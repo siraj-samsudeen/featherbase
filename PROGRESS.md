@@ -13,6 +13,29 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-26 (v5) — system study series + generation-vs-interpretation (docs only)
+
+Requested reading material: one document per inspiration system (four
+questions each: key dimensions / what it enables / downsides / what to
+adopt). Created **`docs/research/studies/`**: README (rubric + the
+two-families framing), JHipster, generator-family (ScaffoldHub, Rails
+scaffolding/ActiveAdmin/Administrate, the author's ~2006 XML→EJB MDM
+generator — five answers to the round-trip problem tabulated), NocoBase,
+Salesforce, Jira, Directus, Odoo, ServiceNow. Adopt-verdicts reference
+D-decisions; notable new lessons captured: permission sets over
+monolithic roles (Salesforce), schemes-as-named-objects + never fork the
+config paradigm (Jira), snapshot/diff/apply not update-sets for promotion
+(Directus vs ServiceNow), auto-install bridge capabilities + extensions
+must target declared contracts (Odoo), task-table inheritance at scale
+(ServiceNow).
+
+Design doc → v5: new §6.6 **generation vs interpretation** and **D19**
+(runtime interpretation is the source of truth; codegen one-way derived
+only — types/stubs/tests/seeds; DocType eject as one-way off-ramp,
+re-entry via adoption). Survey §8 now indexes into the studies dir.
+
+No code, no features.json changes.
+
 ## 2026-07-26 (v4) — parallel branch merged; three missed axes added (docs only)
 
 - **Merged** `claude/frappe-multi-app-db-866jdv` (a parallel session's take
