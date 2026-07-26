@@ -1,6 +1,6 @@
 # Featherbase Data & Administration Topology — Design Framework
 
-> Status: **design framework, v3, 2026-07-26** — follows the research in
+> Status: **design framework, v7, 2026-07-26** — follows the research in
 > `docs/research/frappe-multi-app-multi-db.md`. v1 organized the
 > requirements into three axes; v2 (same day) reworked Axis B after the
 > backend-flexibility discussion (Convex/InstantDB apps, legacy-app

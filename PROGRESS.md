@@ -13,6 +13,35 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-26 (v11) — Featherbase Explorer site + todo learning path
+
+Built the owner's phone-readable learning/navigation surface:
+
+- **`site/`** — a zero-dependency builder (`node site/build.mjs`) that
+  emits one self-contained `index.html` (769 KB): all 126 harness
+  features (search + category filters; per-feature page with the verify
+  contract, deps/dependents, and *scanned* links to the test and source
+  files that literally name the ID — 124/126 have direct test mentions),
+  a Map page (save-lifecycle in 8 steps, the 7 axes, milestones,
+  category grid with per-category "how it works" explanations + key
+  files), the full 39-document library rendered from markdown with
+  feature IDs auto-linked, the learning path, and a Questions tab —
+  notes saved to localStorage with JSON download/copy for feeding back
+  into agent sessions. Desk visual identity (PROGRESS tokens), light +
+  dark, mobile-first. Also emits `artifact.html` for Claude-artifact
+  publishing; GitHub Pages option documented in `site/README.md`.
+- **`docs/LEARNING-PATH.md`** — the staged todo app: Stage 1 plain CRUD
+  `Todo Item`, then Projects (Link/integrity/rename), Subtasks (child
+  table atomicity), Checklists (Select/flags/first controller hooks),
+  a second user (permissions over raw HTTP), optional live stage
+  (series/jobs/email/web form). Each stage names the feature IDs it
+  exercises, a verify checklist, and questions to answer before moving
+  on.
+- Verified: built and screenshotted at phone viewport (light + dark,
+  home/map/features/feature-detail/doc/questions) via headless Chromium
+  — zero console errors. Fixed the design doc's stale "v3" status label
+  caught in the screenshot. Docs+tooling only; app untouched.
+
 ## 2026-07-26 (v10) — execution plan resequenced per owner; harness lineage documented
 
 Owner feedback: start with the concrete slices, refactor later. Plan
