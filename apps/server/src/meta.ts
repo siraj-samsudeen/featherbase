@@ -61,9 +61,14 @@ export interface DocTypeMeta {
 const cache = new Map<string, DocTypeMeta>()
 export const metaCacheStats = { loads: 0, hits: 0 }
 
+// API-00x (#56): slug → DocType name map, so /api/resource/report-feedback
+// reaches "Report Feedback" without %20. Lives and dies with the meta cache.
+let slugCache: Map<string, string[]> | null = null
+
 export function invalidateMeta(name?: string) {
   if (name) cache.delete(name)
   else cache.clear()
+  slugCache = null
 }
 
 // CUST-002: coerce a Property Setter's string value to the property's type.
@@ -92,6 +97,42 @@ async function applyPropertySetters(name: string, meta: DocTypeMeta): Promise<vo
       ;(meta as unknown as Record<string, unknown>)[ps.property] = val
     }
   }
+}
+
+// The slug normal form: case-insensitive, with runs of spaces, hyphens and
+// underscores collapsed to one space. "Report Feedback", "report-feedback"
+// and "report_feedback" all normalize to "report feedback".
+function slugify(name: string): string {
+  return name.toLowerCase().replace(/[-_\s]+/g, ' ').trim()
+}
+
+// #56: resolve a URL spelling of a DocType name. The exact name always wins —
+// the slug is an additional accepted spelling, never a replacement (Frappe
+// wire compatibility keeps spaces legal in names). An unknown input returns
+// unchanged so the caller raises its usual NotFound; a slug matching two
+// DocTypes is an error, never a silent pick.
+export async function resolveDoctypeName(input: string): Promise<string> {
+  if (cache.has(input)) return input
+  const [exact] = await sql`select 1 from tab_doctype where name = ${input}`
+  if (exact) return input
+  if (!slugCache) {
+    const rows = await sql`select name from tab_doctype`
+    const map = new Map<string, string[]>()
+    for (const r of rows) {
+      const slug = slugify(r.name as string)
+      const names = map.get(slug)
+      if (names) names.push(r.name as string)
+      else map.set(slug, [r.name as string])
+    }
+    slugCache = map
+  }
+  const matches = slugCache.get(slugify(input)) ?? []
+  if (matches.length > 1)
+    throw new AppError(
+      'ConflictError',
+      `Ambiguous DocType slug ${input}: matches ${matches.join(', ')} — use the exact name`,
+    )
+  return matches[0] ?? input
 }
 
 export async function getMeta(name: string): Promise<DocTypeMeta> {

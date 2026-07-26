@@ -296,6 +296,71 @@ db.ts` exports one `sql` proxy used for both metadata and document data, and the
 sandbox seam swaps its delegate — the per-DocType client resolver has to keep
 metadata on the control pool, or the test harness will try to roll back a
 transaction on the wrong connection.
+## 2026-07-26 — the app platform closes its four gaps (#54, #55, #56, #57)
+
+Featherbase's first external consumer (a report server POSTing feedback rows
+over REST) proved the engine sound but exposed four framework gaps. All four
+closed, one commit each, nothing application-specific added to the framework:
+
+- **#54 — manifests declare roles + permissions.** `AppManifest` gains
+  `roles?: string[]` and `permissions?: AppPermission[]` (doctype, role,
+  optional permlevel/if_owner, seven `can_*` flags); a grant may target a
+  DocType the app doesn't own (same latitude as `doc_events`). Install
+  creates roles before perms; an existing role or same-identity DocPerm
+  (doctype, role, permlevel) is **adopted, never redefined**. The install
+  ledger (`tab_installed_app.roles`/`perms`, migration 0053) records only
+  what was genuinely created, so uninstall removes exactly that; a role is
+  dropped only when no DocPerm links to it and no user holds it. A
+  `can_create`-without-`can_write` grant warns at install — inserts strip to
+  WRITE permlevels (the #45 trap) — and a test pins the empty-document
+  behaviour. `test/app-grants.test.ts`, 7 tests.
+- **#55 — declarative apps over the API.** `POST /api/install_app` accepts
+  `{ manifest }` (DocTypes + roles + permissions as pure data) alongside the
+  unchanged `{ name }`. The manifest persists (`manifest` jsonb, migration
+  0054); uninstall tears everything down from stored data; boot has nothing
+  to wire and neither warns nor fails. `doc_events` / `scheduler_events` /
+  `override_whitelisted_methods` in a manifest are rejected with an error
+  pointing at `registerApp()` — functions don't survive JSON. A declarative
+  name owned by a code-registered app is refused (no shadowing). Still
+  System-Manager-only, asserted by test — `{ manifest }` is a define-schema
+  surface. `test/declarative-apps.test.ts`, 7 tests.
+- **#56 — slug URLs.** `/api/resource/report-feedback` and
+  `report_feedback` resolve to `Report Feedback`; the exact name (encoded or
+  not) always wins; ambiguity is a 409, never a silent pick; unknown slugs
+  fall through to the usual 404. The slug map lives in `meta.ts` and dies
+  with every `invalidateMeta()`. Spaces in DocType names stay legal.
+  Gotcha: two *table-backed* DocTypes can never share a slug — `tableName()`
+  collapses the same variants, so the second create collides on its table;
+  genuine ambiguity is only reachable via singles, which is how the test
+  builds it. `test/slug-resolution.test.ts`, 6 tests.
+- **#57 — production boot.** `pnpm --filter server start` (tsx, no watcher;
+  tsx moved to dependencies), `PORT`/`DATABASE_URL` from the environment as
+  before. `pnpm --filter server release` runs migrations + patches inside
+  one `pg_advisory_xact_lock(hashtext('featherbase-release'))` so N booting
+  instances serialize — documented as the once-per-deploy step that runs
+  before new code serves. Vendor-neutral `apps/server/Dockerfile` (no
+  browser downloads; Chromium still resolves from the environment) and
+  `docs/DEPLOY.md` runbook, which supersedes the deployment half of issue
+  #25. `prepare: false` and the `DATABASE_URL` default are untouched.
+  `./init.sh` unchanged — it uses none of the new scripts.
+
+Verified: `pnpm test` (382 server / 9 web) green **before and after** the
+e2e run; `pnpm smoke` 2/2; full e2e 77 passed, 2 skipped (pre-existing
+conditional skips); both typechecks clean. Production path exercised live:
+`release` twice concurrently (serialized cleanly), `start` on `PORT=8010`,
+ping + smoke + Frappe-shape login. Live HTTP transcript against :8000: a
+declarative feedback app installed from a manifest, admin-minted API key for
+a scoped user, slug-URL insert + filtered list, 401/403/417 refusals all
+correct, uninstall dropping doctype + grant + (once unheld) role — and the
+shared-role-survives rule observed live when uninstalling while a user still
+held the role.
+
+Next: QA the four PR-mapped commits from the branch; the owner decides
+issue #25's disposition (docs/DEPLOY.md is written as its replacement).
+Gotcha for future declarative work: `save_doc` updates require the loaded
+`modified` timestamp (optimistic concurrency) — a bare role-strip on User
+417s, which is what turned transcript step 16 into a live demo of the
+shared-role rule.
 
 ## 2026-07-24 — one ticketing system: HD Ticket promoted to a migration, `Ticket` retired (issue #45)
 

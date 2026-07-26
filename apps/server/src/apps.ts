@@ -1,7 +1,9 @@
+import { z } from 'zod'
 import { sql } from './db'
 import { AppError } from './errors'
 import { createDocType, tableName } from './doctype-engine'
 import { invalidateMeta } from './meta'
+import { saveDoc } from './document'
 import { enqueue, registerJob, type JobHandler } from './jobs'
 import { swapMethod, type MethodDef, type ServerMethod } from './methods'
 import {
@@ -19,8 +21,8 @@ import {
 // without disturbing the core controllers or other apps on the same DocType.
 //
 // App CODE (manifests + hook functions) lives in the process; the
-// `tab_installed_app` table only records which apps are installed and which
-// DocTypes each owns, so state survives restarts.
+// `tab_installed_app` table records which apps are installed and what each
+// install created (DocTypes, roles, grants), so state survives restarts.
 
 export interface SchedulerEvent {
   // The job method name (registered in the job registry; must be unique).
@@ -29,10 +31,33 @@ export interface SchedulerEvent {
   every_seconds: number
 }
 
+// PLAT-004 (#54): a role grant an app declares on a DocType. `doctype` may
+// name a DocType the app does not own — the same latitude doc_events has.
+export interface AppPermission {
+  doctype: string
+  role: string
+  permlevel?: number
+  if_owner?: boolean
+  can_read?: boolean
+  can_write?: boolean
+  can_create?: boolean
+  can_delete?: boolean
+  can_submit?: boolean
+  can_cancel?: boolean
+  can_amend?: boolean
+}
+
 export interface AppManifest {
   name: string
   // DocType definitions this app owns (same shape accepted by createDocType).
   doctypes?: unknown[]
+  // Roles this app needs. An existing role of the same name is adopted, not
+  // redefined — roles are shared between apps and users.
+  roles?: string[]
+  // DocPerm grants this app declares. An existing grant of the same identity
+  // (doctype, role, permlevel) is adopted as-is — overwriting a pre-existing
+  // grant's flags would be worse than ignoring a redundant declaration.
+  permissions?: AppPermission[]
   // Lifecycle hooks keyed by target DocType then event. The target need not be
   // owned by this app — that is the whole point of doc_events (PLAT-002). The
   // "*" key hooks EVERY DocType (Frappe's doc_events["*"]).
@@ -60,9 +85,9 @@ export function getAvailableApps(): string[] {
   return [...available.keys()]
 }
 
-// The jsonb `doctypes` column round-trips as an array, but tolerate a stored
-// JSON string too (defensive against any legacy double-encoded row).
-function asDoctypeList(v: unknown): string[] {
+// The jsonb ledger columns (doctypes/roles/perms) round-trip as arrays, but
+// tolerate a stored JSON string too (defensive against double-encoding).
+function asNameList(v: unknown): string[] {
   if (Array.isArray(v)) return v as string[]
   if (typeof v === 'string') {
     try {
@@ -126,6 +151,68 @@ async function dropSchedulerJobs(manifest: AppManifest): Promise<void> {
   }
 }
 
+// PLAT-004 (#54): materialize the manifest's roles and DocPerms. Returns only
+// what this install genuinely CREATED — adopted (pre-existing) roles and
+// grants are not recorded, so uninstall can never remove something that
+// predated the app.
+async function provisionAccess(manifest: AppManifest): Promise<{ roles: string[]; perms: string[] }> {
+  const roles: string[] = []
+  for (const role of manifest.roles ?? []) {
+    const [have] = await sql`select 1 from tab_role where name = ${role}`
+    if (have) continue
+    await saveDoc('Role', { name: role })
+    roles.push(role)
+  }
+  const perms: string[] = []
+  for (const p of manifest.permissions ?? []) {
+    const [role] = await sql`select 1 from tab_role where name = ${p.role}`
+    if (!role)
+      throw new AppError(
+        'ValidationError',
+        `Permission on ${p.doctype} names unknown role ${p.role} — declare it in the manifest's roles`,
+      )
+    if (p.can_create && !p.can_write)
+      console.warn(
+        `[apps] ${manifest.name}: grant for ${p.role} on ${p.doctype} has can_create without can_write — ` +
+          `inserts strip every field the role cannot write, so created documents will be empty (add can_write)`,
+      )
+    const permlevel = p.permlevel ?? 0
+    const [have] = await sql`
+      select 1 from tab_docperm
+      where ref_doctype = ${p.doctype} and role = ${p.role} and permlevel = ${permlevel}`
+    if (have) continue
+    const saved = await saveDoc('DocPerm', {
+      ref_doctype: p.doctype,
+      role: p.role,
+      permlevel,
+      if_owner: p.if_owner ?? false,
+      can_read: p.can_read ?? false,
+      can_write: p.can_write ?? false,
+      can_create: p.can_create ?? false,
+      can_delete: p.can_delete ?? false,
+      can_submit: p.can_submit ?? false,
+      can_cancel: p.can_cancel ?? false,
+      can_amend: p.can_amend ?? false,
+    })
+    perms.push(String(saved.name))
+  }
+  return { roles, perms }
+}
+
+// Remove the grants an install created, then any of its roles that nothing
+// references any more — a role survives while any DocPerm still links to it
+// or any user still holds it (shared roles outlive one app's uninstall).
+async function teardownAccess(roles: string[], perms: string[]): Promise<void> {
+  for (const name of perms) await sql`delete from tab_docperm where name = ${name}`
+  for (const role of roles) {
+    const [inPerm] = await sql`select 1 from tab_docperm where role = ${role} limit 1`
+    if (inPerm) continue
+    const [held] = await sql`select 1 from tab_has_role where role = ${role} limit 1`
+    if (held) continue
+    await sql`delete from tab_role where name = ${role}`
+  }
+}
+
 export async function isInstalled(name: string): Promise<boolean> {
   const [row] = await sql`select 1 from tab_installed_app where name = ${name}`
   return Boolean(row)
@@ -135,37 +222,108 @@ export async function listInstalledApps(): Promise<{ name: string; doctypes: str
   const rows = await sql`select name, doctypes, installed_at from tab_installed_app order by installed_at asc`
   return rows.map((r) => ({
     name: r.name as string,
-    doctypes: asDoctypeList(r.doctypes),
+    doctypes: asNameList(r.doctypes),
     installed_at: r.installed_at as Date,
   }))
 }
 
-export async function installApp(name: string): Promise<{ name: string; doctypes: string[] }> {
-  const manifest = available.get(name)
-  if (!manifest) throw new AppError('ValidationError', `Unknown app: ${name}`, { name: 'Not registered' })
-  if (await isInstalled(name)) throw new AppError('ConflictError', `App ${name} is already installed`)
+type InstallResult = { name: string; doctypes: string[]; roles: string[]; perms: string[] }
 
-  // Create the app's DocTypes (each goes through the normal engine → table).
+// Shared install path: create the app's DocTypes (each goes through the
+// normal engine → table), then its roles and grants — in that order, since a
+// DocPerm links to a Role and may target a DocType the app just created.
+// `stored` is the declarative manifest to persist, or null for a code app.
+async function materialize(manifest: AppManifest, stored: unknown): Promise<InstallResult> {
+  if (await isInstalled(manifest.name))
+    throw new AppError('ConflictError', `App ${manifest.name} is already installed`)
   const created: string[] = []
   for (const def of manifest.doctypes ?? []) {
     const meta = await createDocType(def)
     created.push(meta.name)
   }
-  // Wire its doc_events, scheduler jobs, and method overrides.
+  const access = await provisionAccess(manifest)
+  // Wire its doc_events, scheduler jobs, and method overrides. (A declarative
+  // manifest has none of these — the loop bodies simply never run.)
   wireHooks(manifest)
   await ensureSchedulerJobs(manifest)
   // Cast the JSON text to jsonb explicitly — passing a JS string to a jsonb
   // column would otherwise double-encode it as a JSON string.
   await sql`
-    insert into tab_installed_app (name, doctypes)
-    values (${name}, ${sql.json(created)})`
-  return { name, doctypes: created }
+    insert into tab_installed_app (name, doctypes, roles, perms, manifest)
+    values (${manifest.name}, ${sql.json(created)}, ${sql.json(access.roles)},
+            ${sql.json(access.perms)}, ${stored == null ? null : sql.json(stored as never)})`
+  return { name: manifest.name, doctypes: created, roles: access.roles, perms: access.perms }
+}
+
+export async function installApp(name: string): Promise<InstallResult> {
+  const manifest = available.get(name)
+  if (!manifest) throw new AppError('ValidationError', `Unknown app: ${name}`, { name: 'Not registered' })
+  return materialize(manifest, null)
+}
+
+// PLAT-005 (#55): install an app from a JSON manifest with no code in this
+// process. Only data can survive JSON — DocTypes, roles, permissions.
+const CODE_ONLY_KEYS = ['doc_events', 'scheduler_events', 'override_whitelisted_methods'] as const
+
+const appPermissionSchema = z
+  .object({
+    doctype: z.string().min(1),
+    role: z.string().min(1),
+    permlevel: z.number().int().min(0).optional(),
+    if_owner: z.boolean().optional(),
+    can_read: z.boolean().optional(),
+    can_write: z.boolean().optional(),
+    can_create: z.boolean().optional(),
+    can_delete: z.boolean().optional(),
+    can_submit: z.boolean().optional(),
+    can_cancel: z.boolean().optional(),
+    can_amend: z.boolean().optional(),
+  })
+  .strict()
+
+const declarativeManifestSchema = z
+  .object({
+    name: z.string().min(1),
+    doctypes: z.array(z.unknown()).optional(),
+    roles: z.array(z.string().min(1)).optional(),
+    permissions: z.array(appPermissionSchema).optional(),
+  })
+  .strict()
+
+export async function installAppFromManifest(input: unknown): Promise<InstallResult> {
+  // Functions cannot survive JSON. Silently installing an app with its
+  // behaviour missing would be the worst outcome, so name the key and point
+  // at the code path instead of letting .strict() swallow it generically.
+  if (input && typeof input === 'object') {
+    for (const key of CODE_ONLY_KEYS) {
+      if (key in (input as Record<string, unknown>))
+        throw new AppError(
+          'ValidationError',
+          `A declarative manifest cannot carry ${key} — hooks are code and do not survive JSON. ` +
+            `Ship the app's code and register it with registerApp() instead`,
+        )
+    }
+  }
+  const parsed = declarativeManifestSchema.safeParse(input)
+  if (!parsed.success) {
+    const fields: Record<string, string> = {}
+    for (const issue of parsed.error.issues) fields[issue.path.join('.') || 'manifest'] = issue.message
+    throw new AppError('ValidationError', 'Invalid app manifest', fields)
+  }
+  // A name owned by a code-registered app must be installed by name, so the
+  // declarative row can never shadow (or later tear down) the code app.
+  if (available.has(parsed.data.name))
+    throw new AppError(
+      'ConflictError',
+      `App ${parsed.data.name} is registered in code — install it with { name } instead`,
+    )
+  return materialize(parsed.data as AppManifest, parsed.data)
 }
 
 export async function uninstallApp(name: string): Promise<{ name: string; removed: string[] }> {
-  const [row] = await sql`select doctypes from tab_installed_app where name = ${name}`
+  const [row] = await sql`select doctypes, roles, perms from tab_installed_app where name = ${name}`
   if (!row) throw new AppError('ValidationError', `App ${name} is not installed`)
-  const doctypes = asDoctypeList(row.doctypes)
+  const doctypes = asNameList(row.doctypes)
 
   // Unwire hooks first so no lifecycle event fires against a half-dropped table.
   unwireHooks(name)
@@ -179,13 +337,17 @@ export async function uninstallApp(name: string): Promise<{ name: string; remove
     await sql.unsafe(`drop table if exists ${table} cascade`)
     invalidateMeta(dt)
   }
+  // Access teardown works from the install ledger, so it removes exactly what
+  // this install created — adopted roles/grants were never recorded.
+  await teardownAccess(asNameList(row.roles), asNameList(row.perms))
   await sql`delete from tab_installed_app where name = ${name}`
   return { name, removed: doctypes }
 }
 
 // PLAT-001: on boot, re-wire the doc_events of already-installed apps (their
-// DocTypes already exist in the DB). Unknown installed apps (code removed) are
-// skipped — their tables simply remain until re-registered or uninstalled.
+// DocTypes already exist in the DB). Declarative apps have no code and nothing
+// to wire; unknown installed apps (code removed) are skipped the same way —
+// their tables simply remain until re-registered or uninstalled.
 export async function loadInstalledApps(): Promise<void> {
   const rows = await sql`select name from tab_installed_app`
   for (const r of rows) {
