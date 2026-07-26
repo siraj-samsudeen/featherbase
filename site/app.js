@@ -38,13 +38,27 @@
     clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 1800);
   }
 
+  function ghIssueUrl(ctx, ctxTitle, text) {
+    const where = ctx.startsWith('feature:') ? '#/f/' + ctx.slice(8)
+      : ctx.startsWith('doc:') ? '#/d/' + ctx.slice(4) : '';
+    const page = location.origin.startsWith('http') ? location.href.split('#')[0] + where : '';
+    const title = 'Explorer question: ' + ctxTitle.slice(0, 70);
+    const body = text + '\n\n---\nContext: **' + ctxTitle + '**' +
+      (page ? '\nPage: ' + page : '') + '\n_Asked via Featherbase Explorer_';
+    return D.repo + '/issues/new?labels=question&title=' + encodeURIComponent(title) +
+      '&body=' + encodeURIComponent(body);
+  }
+
   function qboxHTML(ctx, ctxTitle) {
     return `<div class="card qbox" data-ctx="${esc(ctx)}" data-ctxtitle="${esc(ctxTitle)}">
       <div class="eyebrow">Ask / note something here</div>
       <textarea placeholder="A question, a doubt, a thing to dig into later…"></textarea>
       <div class="row">
         <button class="btn primary" data-act="save-note">Save note</button>
-        <span class="qhint">Saved in this browser only — export from the Questions tab.</span>
+        <button class="btn" data-act="save-note-gh">Save + raise on GitHub</button>
+        <span class="qhint">Notes stay in this browser (export from the Questions tab).
+        “Raise on GitHub” also opens a prefilled issue so the maintainer sees it right away
+        — needs a GitHub account.</span>
       </div>
     </div>`;
   }
@@ -262,11 +276,16 @@
           : n.ctx.startsWith('doc:') ? `<a href="#/d/${esc(n.ctx.slice(4))}">${esc(n.ctxTitle)}</a>`
           : esc(n.ctxTitle)}</div>
         <div class="txt">${esc(n.text)}</div>
-        <div class="row"><button class="del" data-act="del-note" data-id="${n.id}">delete</button></div>
+        <div class="row">
+          <a class="qhint" style="cursor:pointer" href="${ghIssueUrl(n.ctx, n.ctxTitle, n.text)}" target="_blank" rel="noopener">raise on GitHub ↗</a>
+          <button class="del" data-act="del-note" data-id="${n.id}">delete</button>
+        </div>
       </div>`).join('');
     return `<h1 class="page-title">Questions & notes</h1>
-      <p class="lede">Captured while reading, stored in this browser. Export the JSON and drop
-      it into a session — “answer these against the codebase” — to turn curiosity into docs.</p>
+      <p class="lede">Captured while reading, stored in this browser. Two ways out:
+      <b>raise on GitHub</b> files a prefilled issue in the repo so the maintainer is
+      notified the moment you ask; or export the JSON and drop it into an agent session —
+      “answer these against the codebase”.</p>
       <div class="row" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
         <button class="btn primary" data-act="export-notes">Download JSON</button>
         <button class="btn" data-act="copy-notes">Copy JSON</button>
@@ -327,13 +346,19 @@
     }
     const act = e.target.closest('[data-act]');
     if (!act) return;
-    if (act.dataset.act === 'save-note') {
+    if (act.dataset.act === 'save-note' || act.dataset.act === 'save-note-gh') {
       const box = act.closest('.qbox');
       const ta = box.querySelector('textarea');
-      if (ta.value.trim()) {
-        addNote(box.dataset.ctx, box.dataset.ctxtitle, ta.value.trim());
+      const text = ta.value.trim();
+      if (text) {
+        addNote(box.dataset.ctx, box.dataset.ctxtitle, text);
+        if (act.dataset.act === 'save-note-gh') {
+          window.open(ghIssueUrl(box.dataset.ctx, box.dataset.ctxtitle, text), '_blank', 'noopener');
+          toast('Saved locally — finish the issue in the GitHub tab');
+        } else {
+          toast('Saved — see the Questions tab');
+        }
         ta.value = '';
-        toast('Saved — see the Questions tab');
       }
     }
     if (act.dataset.act === 'del-note') {
