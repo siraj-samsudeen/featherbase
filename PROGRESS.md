@@ -13,6 +13,33 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-26 (later) — design framework: storage classes & scoped admin (docs only)
+
+Follow-up discussion moved past Frappe's design to Featherbase's own
+requirements (multi-tenancy explicitly NOT key). Wrote
+`docs/design/data-and-admin-topology.md`, organizing the requirement space
+into three orthogonal axes:
+
+- **Axis A — organization/delegation**: module = admin delegation boundary
+  (module admins author *types/field-sets* of shared base entities, never
+  DDL); helpdesk generic→routed ticket case solved as base DocType + scoped
+  Type registry (Salesforce record-types / JSM request-types pattern);
+  generalizes to ERP as subtypes + config + dimensions + row partitions.
+- **Axis B — storage/system-of-record**: five storage classes behind one
+  adapter — native, adopted, external-live (= existing XDB spec), mirrored
+  (push/pull/bidirectional sync engine: outbox, key crosswalk, per-field
+  survivorship, reconciliation), git-backed (UI edits become commits/PRs,
+  diffability preserved — the medallion-config CSV case). Single DB/single
+  schema stays the default; multi-DB-per-instance rejected.
+- **Axis C — naming/reflection/augmentation**: `table_name` moves into
+  DocType metadata (kills derived `tab_` — configurable policy, none for
+  adopted tables), reflection API, opt-in audit-column augmentation ladder.
+
+Six candidate ADRs (D1–D6) + sequencing: MDM app first (reflection +
+adoption + audit columns + module admin), then push-mode sync, then
+git-backed class; type/field-sets and XDB later. No code, no
+features.json changes.
+
 ## 2026-07-26 — research: multi-app / external-DB support (docs only, no code)
 
 Question from the user: how does Frappe run multiple apps in one instance, do
