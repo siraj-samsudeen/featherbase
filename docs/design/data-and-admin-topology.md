@@ -19,7 +19,11 @@
 > the generator family incl. ScaffoldHub and the Rails admin panels).
 > v6 (same day) adds §3.3's **analytics egress** (D20): the medallion
 > lakehouse as an auto-generated push target, with the Hudi/DLT-META
-> study grounding it. §9 lists decisions to ratify and sequencing.
+> study grounding it. v7 (same day) answers "does a clean system of
+> record even need bronze/silver?" (layer economics, D21), gives
+> warehouse mapping/seed tables their home in the MDM, and adds the
+> reverse-direction use case: the Desk as a **warehouse browser** over
+> MotherDuck/DuckDB. §9 lists decisions to ratify and sequencing.
 > Nothing here is implemented; nothing has to land at once.
 >
 > Related: [ADR 0007](../adr/0007-app-and-database-topology.md) and specs
@@ -331,6 +335,59 @@ with one special property: the target wants *changes*, not state.
   *generate* the warehouse's conformed dimensions from the same
   DocTypes downstream. One metadata source; data modeling stops being a
   separate discipline.
+
+#### Layer economics: does a clean system of record need bronze? (v7, D21)
+
+The medallion layers exist for reasons a clean SoR mostly removes —
+so apply them *per source*, not as dogma:
+
+- **What bronze is actually for:** replay without re-extracting; an
+  audit of what the source said at time T; decoupling ingestion from
+  transformation; surviving source downtime; making N heterogeneous
+  sources look uniform. For a **messy foreign source (SAP)** every one
+  of those applies — full medallion justified.
+- **Where Featherbase is the SoR, those jobs are already done** by
+  Axis E: version history *is* the audit, replay ("changes since T")
+  *is* re-extraction, and the egress artifacts are typed. So **bronze
+  collapses to a thin CDC landing zone — or is skipped** — and the D20
+  generator can emit *silver directly*: a typed, keyed, SCD2-handled
+  mirror needs no human modeling because the DocType already is the
+  model. Real modeling work only genuinely exists at **gold**
+  (cross-system business marts), which no generator should pretend to
+  own.
+- **Two reasons to keep a thin landing layer anyway:** compute isolation
+  (analytics never queries the operational database) and pipeline
+  uniformity (when SAP-messy and Featherbase-clean sources feed the same
+  warehouse, one landing convention keeps the orchestration simple).
+  Both argue for *thin and generated*, not absent.
+- **Warehouse mapping/seed tables come home.** The reference and mapping
+  tables that today live as hand-edited seeds *inside* the warehouse
+  (nowhere else to put them) are exactly master data without a master:
+  they become MDM DocTypes — governed, audited, effective-dated — and
+  egress like everything else. This alone repays the MDM app.
+
+#### The warehouse browser: the Desk over MotherDuck (v7)
+
+The reverse direction, discovered from practice: bronze/silver/gold
+tables in MotherDuck currently have **no UI at all** beyond a SQL
+prompt. Featherbase's existing machinery covers this with almost nothing
+new — a *Datasette-for-the-lakehouse*:
+
+- MotherDuck/DuckDB is a **connection** with the `duckdb` driver in
+  **foreign, read-only** mode (spec 0001's read-only sources + table
+  allowlists apply verbatim); reflection adopts each layer's tables as
+  read-only DocTypes.
+- The topology maps directly: each source system's bronze schema
+  (`bronze_sap`, `bronze_salesforce`) and each silver schema adopt as a
+  group — surfaced as **modules** in the Desk sidebar (bronze-sap,
+  silver, gold), giving analysts saved **views** (the NocoDB lesson:
+  fields + filters + sort as shareable objects) instead of SQL-only
+  access.
+- Engine laws hold unchanged: no DDL ever, no writes (read-only mode),
+  permissions server-side, drift re-sync when dbt reshapes a table.
+- Payoff: Featherbase fronts *both ends* of the pipe — master data
+  authored and governed on the way in, every layer browsable on the way
+  out — with the same generic ListView.
 
 #### The legacy-coexistence pattern (the doctor's clinical system)
 
@@ -845,6 +902,13 @@ sources/staging models, lakehouse ingestion specs — are generated from
 DocType metadata as D19 artifacts; D16's history/effectivity maps to
 SCD2. Featherbase emits configs and streams; it never runs lake
 infrastructure itself. (§3.3)
+
+**D21.** Medallion depth is a per-source decision, not dogma: messy
+foreign sources get the full bronze/silver; where Featherbase is the
+system of record, bronze collapses to a thin generated landing (kept
+only for compute isolation and pipeline uniformity) and silver is
+emitted directly from metadata; human modeling begins at gold. Warehouse
+mapping/seed tables are master data and live as MDM DocTypes. (§3.3)
 
 ### Sequencing against the current plan
 

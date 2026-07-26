@@ -56,6 +56,12 @@ pipelines.
   rules, CDC settings per table) drives one generic pipeline that builds
   all bronze/silver flows. The hand-written per-table pipeline is
   replaced by config — and config can be *generated*.
+  *Status caveat (2026-07):* activity is thin (last release 2025-09,
+  sparse commits since) and, like all Databricks Labs projects, it is
+  explicitly unsupported — no SLA, "exploration purposes only". The
+  verdict for Featherbase: **adopt the Dataflowspec idea, never the
+  dependency** — D20 generates *our own* spec format plus whatever the
+  client's runner needs (DLT-META's JSON being just one emit target).
 
 ## What this enables
 

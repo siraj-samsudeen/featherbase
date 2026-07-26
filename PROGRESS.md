@@ -13,6 +13,32 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-26 (v8) — layer economics (D21) + the MotherDuck warehouse browser
+
+Clarifications from the user: "who do" meant **Odoo** (already studied);
+Hudi kept as a welcome accident. DLT-META checked: not abandoned but
+thinly active (last release 2025-09) and a no-SLA Labs project — caveat
+added to the study; verdict: adopt the Dataflowspec *idea*, generate our
+own spec, never depend on the project. Design doc → v7:
+
+- **§3.3 layer economics (D21)** — answering "does a clean SoR need
+  bronze/silver?": bronze's jobs (replay, audit-of-source, decoupling,
+  uniformity) are already done by Axis E when Featherbase is the SoR, so
+  bronze collapses to a thin generated landing (kept only for compute
+  isolation + pipeline uniformity) and silver is emitted directly from
+  DocType metadata; human modeling starts at gold. Full medallion stays
+  justified for messy foreign sources (SAP). Warehouse mapping/seed
+  tables — currently homeless hand-edited seeds in the warehouse — are
+  master data and become MDM DocTypes.
+- **§3.3 warehouse browser** — new reverse-direction use case: Desk over
+  MotherDuck (bronze/silver/gold currently SQL-only). Maps onto existing
+  machinery verbatim: `duckdb` driver + foreign read-only mode + spec
+  0001's read-only sources/allowlists + reflection; schemas-per-system
+  surface as Desk modules; saved views give analysts a
+  Datasette-for-the-lakehouse. Featherbase fronts both ends of the pipe.
+
+Commits ride open PR #60. No code, no features.json changes.
+
 ## 2026-07-26 (v7) — analytics egress / ETL story (D20) + Hudi-lakehouse study
 
 The forgotten dimension: how master data flows OUT into the bronze/silver
