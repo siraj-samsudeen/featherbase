@@ -13,6 +13,28 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-26 (v9) — execution plan; main merged in
+
+- **Merged `origin/main`** (PR #58 app-platform gaps) into the docs
+  branch — notable: main's entry records a report server POSTing
+  feedback over REST as Featherbase's *first external consumer*, i.e.
+  one of the three target use cases is already live and battle-testing
+  the engine.
+- **`docs/design/execution-plan.md`** — the how-to-build-without-
+  disappointment answer (4–5 prior attempts failed on oversized units of
+  promise). Rules: product slices not framework layers; one feature per
+  session with pre-written verify; spec → validate-against-D1–D21 →
+  build; refactor only at the seam under green tests; visible NOT-NOW
+  list. Milestones: **M0** seam refactor (D2 table_name + D5/D7 adapter
+  seam, zero behavior change), **M1** MotherDuck warehouse browser
+  (read-only, spec-0001 slice), **M2** dbt seeds → MDM DocTypes with
+  PR-based CSV egress, **M3** egress config generation (byte-match the
+  hand-written configs), **M4** reassess. Agent workflow per milestone:
+  plan session produces spec+features, validated before build; build
+  sessions are one-feature; owner does an ownership pass per milestone.
+
+Docs only. Rides PR #60.
+
 ## 2026-07-26 (v8) — layer economics (D21) + the MotherDuck warehouse browser
 
 Clarifications from the user: "who do" meant **Odoo** (already studied);
