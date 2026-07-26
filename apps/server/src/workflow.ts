@@ -31,7 +31,7 @@ export interface WorkflowTransition {
 }
 export interface Workflow {
   name: string
-  document_type: string
+  ref_table: string
   // The column on the target Table that carries the state. Defaults to the
   // auto-added `workflow_state`; set it to an existing column (e.g. a
   // Choice column) to make the workflow drive that column directly.
@@ -64,8 +64,8 @@ async function hasWorkflowSchema(): Promise<boolean> {
 export async function getActiveWorkflow(table: string): Promise<Workflow | null> {
   if (!(await hasWorkflowSchema())) return null
   const [wf] = await sql`
-    select name, document_type, state_field from workflow
-    where document_type = ${table} and is_active = true
+    select name, ref_table, state_field from workflow
+    where ref_table = ${table} and is_active = true
     order by updated_at desc limit 1`
   if (!wf) return null
   const states = await sql<WorkflowState[]>`
@@ -76,7 +76,7 @@ export async function getActiveWorkflow(table: string): Promise<Workflow | null>
     where parent = ${wf.name as string} and parenttype = 'Workflow' order by position`
   return {
     name: wf.name as string,
-    document_type: wf.document_type as string,
+    ref_table: wf.ref_table as string,
     state_field: (wf.state_field as string | null) ?? null,
     states,
     transitions,

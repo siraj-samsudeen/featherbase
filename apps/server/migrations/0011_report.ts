@@ -11,7 +11,7 @@ export async function up() {
     module: 'Core',
     id_pattern: 'prompt',
     columns: [
-      { column_name: 'ref_doctype', column_type: 'Reference', reference_table: 'Table', reqd: true, in_list_view: true },
+      { column_name: 'ref_table', column_type: 'Reference', reference_table: 'Table', reqd: true, in_list_view: true },
       { column_name: 'config', column_type: 'JSON' },
     ],
   })

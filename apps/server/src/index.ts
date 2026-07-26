@@ -6,8 +6,8 @@ import { secureHeaders } from 'hono/secure-headers'
 import { config } from './config'
 import { sql } from './db'
 import { AppError, errorResponse } from './errors'
-import { getMeta, resolveDoctypeName } from './meta'
-import { createDocType, updateDocType } from './doctype-engine'
+import { getMeta, resolveTableName } from './meta'
+import { createTable, updateTable } from './doctype-engine'
 import { amendDoc, cancelDoc, deleteDoc, getDoc, renameDoc, saveDoc, submitDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
@@ -160,13 +160,13 @@ app.post('/api/reset_password', async (c) => {
 // bearer header or ?token= (so <img src> and download links work).
 async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   const [row] = await sql`
-    select name, file_name, mime_type, ref_doctype, ref_name
-    from tab_file where file_url = ${fileUrl}`
+    select name, file_name, mime_type, ref_table, ref_name
+    from file where file_url = ${fileUrl}`
   if (!row) throw new AppError('NotFoundError', `File not found: ${fileUrl}`)
 
   // FILE-003: private files require either a valid signed URL (minted after a
-  // permission check) or a session that can read the linked document. A user
-  // without read on that document gets a 403.
+  // permission check) or a session that can read the linked row. A user
+  // without read on that row gets a 403.
   if (isPrivate) {
     const signed = verifyFileSignature(fileUrl, c.req.query('expires'), c.req.query('signature'))
     if (!signed) {
@@ -174,8 +174,8 @@ async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
       const user = await resolveToken(
         c.req.header('authorization') ?? (token ? `Bearer ${token}` : undefined),
       )
-      if (row.ref_doctype && row.ref_name)
-        await getDoc(row.ref_doctype as string, row.ref_name as string, user.name)
+      if (row.ref_table && row.ref_name)
+        await getDoc(row.ref_table as string, row.ref_name as string, user.name)
       else await getDoc('File', row.name as string, user.name)
     }
   }
@@ -292,7 +292,7 @@ const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').name
 
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
-  const [row] = await sql`select theme, language from tab_user where name = ${user.name}`
+  const [row] = await sql`select theme, language from "user" where name = ${user.name}`
   return c.json({
     ...user,
     roles: await getRoles(user.name),
@@ -306,7 +306,7 @@ app.post('/api/set_theme', async (c) => {
   const { theme } = (await c.req.json().catch(() => ({}))) as { theme?: string }
   if (theme !== 'light' && theme !== 'dark')
     throw new AppError('ValidationError', 'theme must be "light" or "dark"')
-  await sql`update tab_user set theme = ${theme} where name = ${who(c)}`
+  await sql`update "user" set theme = ${theme} where name = ${who(c)}`
   return c.json({ ok: true, theme })
 })
 
@@ -315,7 +315,7 @@ app.post('/api/set_language', async (c) => {
   const { language } = (await c.req.json().catch(() => ({}))) as { language?: string }
   if (!language || !/^[a-z]{2}(-[a-z]{2})?$/i.test(language))
     throw new AppError('ValidationError', 'Expected a language code like "en" or "fr"')
-  await sql`update tab_user set language = ${language} where name = ${who(c)}`
+  await sql`update "user" set language = ${language} where name = ${who(c)}`
   return c.json({ ok: true, language })
 })
 
@@ -373,7 +373,7 @@ app.get('/api/meta/:doctype', async (c) => {
 
 app.post('/api/doctype', async (c) => {
   await assertSystemManager(who(c))
-  const meta = await createDocType(await c.req.json())
+  const meta = await createTable(await c.req.json())
   return c.json(meta, 201)
 })
 
@@ -381,7 +381,7 @@ app.put('/api/doctype/:name', async (c) => {
   await assertSystemManager(who(c))
   const body = (await c.req.json()) as Record<string, unknown> & { drop_columns?: boolean }
   const { drop_columns, ...def } = body
-  return c.json(await updateDocType(c.req.param('name'), def, { drop_columns }))
+  return c.json(await updateTable(c.req.param('name'), def, { drop_columns }))
 })
 
 app.post('/api/save_doc', async (c) => {
@@ -407,7 +407,7 @@ app.get('/api/print/:doctype/:name', async (c) => {
   const html = await renderPrintHtml(doctype, name, who(c), format, letterHead)
   const pdf = await renderPdf(html)
   // PLAT-007: record the print/access.
-  await logAccess(who(c), 'print', { doctype, name, method: 'pdf' })
+  await logAccess(who(c), 'print', { table: doctype, name, method: 'pdf' })
   return c.body(new Uint8Array(pdf), 200, {
     'content-type': 'application/pdf',
     'content-disposition': `inline; filename="${name.replace(/[^\w.-]/g, '_')}.pdf"`,
@@ -424,7 +424,7 @@ app.post('/api/access_log', async (c) => {
   }
   if (!doctype) throw new AppError('ValidationError', 'Expected { doctype }')
   await assertPermission(who(c), doctype, 'read')
-  await logAccess(who(c), 'export', { doctype, method: method ?? 'csv' })
+  await logAccess(who(c), 'export', { table: doctype, method: method ?? 'csv' })
   return c.json({ ok: true })
 })
 
@@ -454,7 +454,7 @@ app.post('/api/upload_file', async (c) => {
       file_size: file.size,
       is_private: isPrivate,
       ...(typeof body.ref_doctype === 'string' && body.ref_doctype
-        ? { ref_doctype: body.ref_doctype }
+        ? { ref_table: body.ref_doctype }
         : {}),
       ...(typeof body.ref_name === 'string' && body.ref_name ? { ref_name: body.ref_name } : {}),
     },
@@ -464,7 +464,7 @@ app.post('/api/upload_file', async (c) => {
   // direct write (the save lifecycle ignores client values for read_only
   // fields) and reflected on the returned doc.
   if (thumbnail_url) {
-    await sql`update tab_file set thumbnail_url = ${thumbnail_url} where name = ${String(doc.name)}`
+    await sql`update file set thumbnail_url = ${thumbnail_url} where name = ${String(doc.name)}`
     doc.thumbnail_url = thumbnail_url
   }
   return c.json(doc, 201)
@@ -478,12 +478,12 @@ app.get('/api/signed_url', async (c) => {
   const fileUrl = c.req.query('file_url')
   if (!fileUrl) throw new AppError('ValidationError', 'Expected file_url')
   const [row] = await sql`
-    select name, ref_doctype, ref_name from tab_file where file_url = ${fileUrl}`
+    select name, ref_table, ref_name from file where file_url = ${fileUrl}`
   if (!row) throw new AppError('NotFoundError', `File not found: ${fileUrl}`)
   const user = who(c)
   if (fileUrl.startsWith('/private/files/')) {
-    if (row.ref_doctype && row.ref_name)
-      await getDoc(row.ref_doctype as string, row.ref_name as string, user)
+    if (row.ref_table && row.ref_name)
+      await getDoc(row.ref_table as string, row.ref_name as string, user)
     else await getDoc('File', row.name as string, user)
     return c.json({ signed_url: signFileUrl(fileUrl) })
   }
@@ -536,19 +536,19 @@ app.post('/api/pin_chart_to_dashboard', async (c) => {
   return c.json(await pinChartToDashboard(dashboard, chart, who(c)))
 })
 
-// SET-003: role & permission manager. Reads/writes the DocPerm matrix for a
-// DocType at permlevel 0. Editing permissions is System-Manager-only. Writes
-// go through the normal save lifecycle, and permissionScope reads DocPerm live,
-// so a change takes effect on the very next request.
+// SET-003: role & permission manager. Reads/writes the Permission matrix for
+// a Table at tier 'basic'. Editing permissions is System-Manager-only.
+// Writes go through the normal save lifecycle, and permissionScope reads
+// Permission live, so a change takes effect on the very next request.
 const PERM_FLAGS = ['can_read', 'can_write', 'can_create', 'can_delete', 'can_submit', 'can_cancel', 'can_amend'] as const
 
 app.get('/api/permissions/:doctype', async (c) => {
   await assertSystemManager(who(c))
   const doctype = c.req.param('doctype')
-  const roles = (await sql`select name from tab_role order by name`).map((r) => r.name as string)
+  const roles = (await sql`select name from role order by name`).map((r) => r.name as string)
   const perms = await sql`
     select name, role, ${sql(PERM_FLAGS as unknown as string[])}
-    from tab_docperm where ref_doctype = ${doctype} and permlevel = 0 order by role`
+    from permission where ref_table = ${doctype} and tier = 'basic' order by role`
   return c.json({ doctype, roles, perms })
 })
 
@@ -560,15 +560,15 @@ app.post('/api/permissions/:doctype', async (c) => {
   if (!body.role) throw new AppError('ValidationError', 'Expected { role }')
   const flags = Object.fromEntries(PERM_FLAGS.map((f) => [f, Boolean(body[f])]))
   const [existing] = await sql`
-    select name, modified from tab_docperm
-    where ref_doctype = ${doctype} and role = ${body.role} and permlevel = 0`
+    select name, updated_at from permission
+    where ref_table = ${doctype} and role = ${body.role} and tier = 'basic'`
   if (existing)
     await saveDoc(
-      'DocPerm',
-      { name: existing.name as string, modified: (existing.modified as Date).toISOString(), ...flags },
+      'Permission',
+      { name: existing.name as string, modified: (existing.updated_at as Date).toISOString(), ...flags },
       user,
     )
-  else await saveDoc('DocPerm', { ref_doctype: doctype, role: body.role, permlevel: 0, ...flags }, user)
+  else await saveDoc('Permission', { ref_table: doctype, role: body.role, tier: 'basic', ...flags }, user)
   return c.json({ ok: true })
 })
 
@@ -581,7 +581,7 @@ app.get('/api/query_report/:name', async (c) => {
     throw new AppError('ValidationError', `${report.name} is not a Query Report`)
   return c.json({
     name: report.name,
-    ref_doctype: report.ref_doctype ?? null,
+    ref_doctype: report.ref_table ?? null,
     filters: parseFilters(typeof report.query === 'string' ? report.query : ''),
   })
 })
@@ -612,9 +612,9 @@ app.get('/api/tenancy/sites', async (c) => {
 app.post('/api/tenancy/doctype', async (c) => {
   await assertSystemManager(who(c))
   const site = await resolveSite(c.req.header('host'))
-  const { name, fields } = (await c.req.json().catch(() => ({}))) as { name?: string; fields?: { fieldname: string; fieldtype: string }[] }
+  const { name, columns } = (await c.req.json().catch(() => ({}))) as { name?: string; columns?: { column_name: string; column_type: string }[] }
   if (!name) throw new AppError('ValidationError', 'Expected { name }')
-  return c.json(await siteCreateDoctype(site, name, fields ?? []), 201)
+  return c.json(await siteCreateDoctype(site, name, columns ?? []), 201)
 })
 app.get('/api/tenancy/doctypes', async (c) => {
   await assertSystemManager(who(c))
@@ -784,7 +784,7 @@ app.post('/api/assign', async (c) => {
     throw new AppError('ValidationError', 'Expected { doctype, name, assign_to }')
   // The assigner must be able to read the document.
   await getDoc(doctype, name, who(c))
-  const [target] = await sql`select name from tab_user where name = ${assign_to}`
+  const [target] = await sql`select name from "user" where name = ${assign_to}`
   if (!target) throw new AppError('NotFoundError', `User ${assign_to} not found`)
 
   const todo = await createAssignment(doctype, name, assign_to, who(c), description)
@@ -852,8 +852,8 @@ app.post('/api/queue_email', async (c) => {
     to: body.to,
     subject: body.subject ?? '',
     body: body.body ?? '',
-    reference_doctype: body.reference_doctype,
-    reference_name: body.reference_name,
+    ref_table: body.reference_doctype,
+    ref_name: body.reference_name,
     render: body.render,
     attach_pdf: body.attach_pdf,
     print_format: body.print_format,
@@ -948,7 +948,7 @@ app.get('/api/search', async (c) => {
 // RT-003: the caller's unread notification count.
 app.get('/api/unread_count', async (c) => {
   const [row] = await sql`
-    select count(*)::int as c from tab_notification_log
+    select count(*)::int as c from notification_log
     where for_user = ${who(c)} and read = false`
   return c.json({ count: (row?.c as number) ?? 0 })
 })
@@ -958,14 +958,14 @@ app.get('/api/unread_count', async (c) => {
 // segment accepts a slug spelling (#56): report-feedback and report_feedback
 // reach "Report Feedback"; the exact (possibly %20-encoded) name always wins.
 app.get('/api/resource/:doctype', async (c) => {
-  const doctype = await resolveDoctypeName(c.req.param('doctype'))
+  const doctype = await resolveTableName(c.req.param('doctype'))
   return c.json(await getList(doctype, listArgsFromQuery(c.req.query()), who(c)))
 })
 
 // POST is create-only: a client-sent name is honored for prompt-named
 // DocTypes but an existing name conflicts instead of silently updating.
 app.post('/api/resource/:doctype', async (c) => {
-  const doctype = await resolveDoctypeName(c.req.param('doctype'))
+  const doctype = await resolveTableName(c.req.param('doctype'))
   const doc = (await c.req.json()) as Record<string, unknown>
   const saved = await saveDoc(doctype, doc, who(c), 'insert')
   publishDocEvent(doctype, String(saved.name), 'created')
@@ -973,12 +973,12 @@ app.post('/api/resource/:doctype', async (c) => {
 })
 
 app.get('/api/resource/:doctype/:name', async (c) => {
-  const doctype = await resolveDoctypeName(c.req.param('doctype'))
+  const doctype = await resolveTableName(c.req.param('doctype'))
   return c.json(await getDoc(doctype, c.req.param('name'), who(c)))
 })
 
 app.put('/api/resource/:doctype/:name', async (c) => {
-  const doctype = await resolveDoctypeName(c.req.param('doctype'))
+  const doctype = await resolveTableName(c.req.param('doctype'))
   const doc = (await c.req.json()) as Record<string, unknown>
   doc.name = c.req.param('name')
   const saved = await saveDoc(doctype, doc, who(c))
@@ -987,7 +987,7 @@ app.put('/api/resource/:doctype/:name', async (c) => {
 })
 
 app.delete('/api/resource/:doctype/:name', async (c) => {
-  const doctype = await resolveDoctypeName(c.req.param('doctype'))
+  const doctype = await resolveTableName(c.req.param('doctype'))
   await deleteDoc(doctype, c.req.param('name'), who(c))
   publishDocEvent(doctype, c.req.param('name'), 'deleted')
   return c.json({ ok: true })
@@ -1007,14 +1007,14 @@ if (process.env.NODE_ENV !== 'test') {
   // duplicate recurring jobs.
   {
     const [pending] = await sql`
-      select 1 from tab_background_job
+      select 1 from background_job
       where method = 'auto_email_reports' and status in ('queued', 'running') limit 1`
     if (!pending) await enqueue('auto_email_reports', {}, { repeatEvery: 24 * 60 * 60 })
   }
   // SLA: the recurring escalation sweep (see src/jobs/sla-escalation.ts).
   {
     const [pending] = await sql`
-      select 1 from tab_background_job
+      select 1 from background_job
       where method = 'check_sla' and status in ('queued', 'running') limit 1`
     if (!pending) await enqueue('check_sla', {}, { repeatEvery: 60 })
   }
