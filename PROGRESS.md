@@ -13,6 +13,32 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-26 (v2) — design framework reworked for pluggable backends (docs only)
+
+Further requirements: apps on Convex or InstantDB, legacy-app mirroring (a
+doctor's clinical system — mirror, then adapt on top while part of the team
+stays on legacy), future backends (SQLite, DuckDB, REST, filesystem), and a
+proposed rule "different database ⇒ different app". Rewrote
+`docs/design/data-and-admin-topology.md` (v2):
+
+- Axis B decomposed: five v1 "storage classes" → **driver × ownership mode
+  (owned/adopted/foreign) × sync bindings** (separate first-class objects).
+  Adapter interface with per-driver **declared capabilities** and explicit
+  degradation (Hasura NDC / Trino connector model); capability matrix for
+  postgres/sqlite/duckdb/convex/instantdb/rest/git-files.
+- Engine-level laws: cross-backend links reference-only, transactions never
+  span backends, permissions/series/hooks always on core Postgres.
+- Legacy coexistence = strangler fig with the per-field ownership map as
+  the migration dial (mirror → co-write → extend → retire).
+- "Different DB = different app" resolved as **policy, not constraint**
+  (D9): per-DocType descriptor stays (strangler + sync cases demand it);
+  one *primary* backend per app is a flagged default.
+- New decisions D7 (ship the adapter seam + conformance suite now,
+  postgres-only driver first) through D9; sequencing unchanged — MDM
+  foundation first, git-files driver as first non-SQL proof.
+
+No code, no features.json changes.
+
 ## 2026-07-26 (later) — design framework: storage classes & scoped admin (docs only)
 
 Follow-up discussion moved past Frappe's design to Featherbase's own
