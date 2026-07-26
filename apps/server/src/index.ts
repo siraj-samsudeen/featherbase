@@ -37,7 +37,7 @@ import { rateLimit } from './rate-limit'
 import { parseFilters, runQueryReport } from './query-report'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
-import { registerApp, loadInstalledApps, installApp, uninstallApp, listInstalledApps, getAvailableApps } from './apps'
+import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps } from './apps'
 import { createSite, listSites, resolveSite, siteCreateDoctype, siteListDoctypes, siteCreateUser, siteListUsers } from './tenancy'
 import helloCrm from './sample-apps/hello-crm'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
@@ -640,11 +640,16 @@ app.get('/api/apps', async (c) => {
   await assertSystemManager(who(c))
   return c.json({ available: getAvailableApps(), installed: await listInstalledApps() })
 })
+// Accepts { name } for a code-registered app, or { manifest } — a declarative
+// manifest of DocTypes, roles and permissions installed as pure data (#55).
+// System Manager only, and deliberately so: { manifest } lets the caller
+// define schema, so this endpoint is a create-arbitrary-tables surface.
 app.post('/api/install_app', async (c) => {
   await assertSystemManager(who(c))
-  const { name } = (await c.req.json().catch(() => ({}))) as { name?: string }
-  if (!name) throw new AppError('ValidationError', 'Expected { name }')
-  return c.json(await installApp(name), 201)
+  const body = (await c.req.json().catch(() => ({}))) as { name?: string; manifest?: unknown }
+  if (body.manifest !== undefined) return c.json(await installAppFromManifest(body.manifest), 201)
+  if (!body.name) throw new AppError('ValidationError', 'Expected { name } or { manifest }')
+  return c.json(await installApp(body.name), 201)
 })
 app.post('/api/uninstall_app', async (c) => {
   await assertSystemManager(who(c))

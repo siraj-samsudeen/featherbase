@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { sql } from './db'
 import { AppError } from './errors'
 import { createDocType, tableName } from './doctype-engine'
@@ -226,31 +227,97 @@ export async function listInstalledApps(): Promise<{ name: string; doctypes: str
   }))
 }
 
-export async function installApp(
-  name: string,
-): Promise<{ name: string; doctypes: string[]; roles: string[]; perms: string[] }> {
-  const manifest = available.get(name)
-  if (!manifest) throw new AppError('ValidationError', `Unknown app: ${name}`, { name: 'Not registered' })
-  if (await isInstalled(name)) throw new AppError('ConflictError', `App ${name} is already installed`)
+type InstallResult = { name: string; doctypes: string[]; roles: string[]; perms: string[] }
 
-  // Create the app's DocTypes (each goes through the normal engine → table),
-  // then its roles and grants — in that order, since a DocPerm links to a
-  // Role and may target a DocType the app just created.
+// Shared install path: create the app's DocTypes (each goes through the
+// normal engine → table), then its roles and grants — in that order, since a
+// DocPerm links to a Role and may target a DocType the app just created.
+// `stored` is the declarative manifest to persist, or null for a code app.
+async function materialize(manifest: AppManifest, stored: unknown): Promise<InstallResult> {
+  if (await isInstalled(manifest.name))
+    throw new AppError('ConflictError', `App ${manifest.name} is already installed`)
   const created: string[] = []
   for (const def of manifest.doctypes ?? []) {
     const meta = await createDocType(def)
     created.push(meta.name)
   }
   const access = await provisionAccess(manifest)
-  // Wire its doc_events, scheduler jobs, and method overrides.
+  // Wire its doc_events, scheduler jobs, and method overrides. (A declarative
+  // manifest has none of these — the loop bodies simply never run.)
   wireHooks(manifest)
   await ensureSchedulerJobs(manifest)
   // Cast the JSON text to jsonb explicitly — passing a JS string to a jsonb
   // column would otherwise double-encode it as a JSON string.
   await sql`
-    insert into tab_installed_app (name, doctypes, roles, perms)
-    values (${name}, ${sql.json(created)}, ${sql.json(access.roles)}, ${sql.json(access.perms)})`
-  return { name, doctypes: created, roles: access.roles, perms: access.perms }
+    insert into tab_installed_app (name, doctypes, roles, perms, manifest)
+    values (${manifest.name}, ${sql.json(created)}, ${sql.json(access.roles)},
+            ${sql.json(access.perms)}, ${stored == null ? null : sql.json(stored as never)})`
+  return { name: manifest.name, doctypes: created, roles: access.roles, perms: access.perms }
+}
+
+export async function installApp(name: string): Promise<InstallResult> {
+  const manifest = available.get(name)
+  if (!manifest) throw new AppError('ValidationError', `Unknown app: ${name}`, { name: 'Not registered' })
+  return materialize(manifest, null)
+}
+
+// PLAT-005 (#55): install an app from a JSON manifest with no code in this
+// process. Only data can survive JSON — DocTypes, roles, permissions.
+const CODE_ONLY_KEYS = ['doc_events', 'scheduler_events', 'override_whitelisted_methods'] as const
+
+const appPermissionSchema = z
+  .object({
+    doctype: z.string().min(1),
+    role: z.string().min(1),
+    permlevel: z.number().int().min(0).optional(),
+    if_owner: z.boolean().optional(),
+    can_read: z.boolean().optional(),
+    can_write: z.boolean().optional(),
+    can_create: z.boolean().optional(),
+    can_delete: z.boolean().optional(),
+    can_submit: z.boolean().optional(),
+    can_cancel: z.boolean().optional(),
+    can_amend: z.boolean().optional(),
+  })
+  .strict()
+
+const declarativeManifestSchema = z
+  .object({
+    name: z.string().min(1),
+    doctypes: z.array(z.unknown()).optional(),
+    roles: z.array(z.string().min(1)).optional(),
+    permissions: z.array(appPermissionSchema).optional(),
+  })
+  .strict()
+
+export async function installAppFromManifest(input: unknown): Promise<InstallResult> {
+  // Functions cannot survive JSON. Silently installing an app with its
+  // behaviour missing would be the worst outcome, so name the key and point
+  // at the code path instead of letting .strict() swallow it generically.
+  if (input && typeof input === 'object') {
+    for (const key of CODE_ONLY_KEYS) {
+      if (key in (input as Record<string, unknown>))
+        throw new AppError(
+          'ValidationError',
+          `A declarative manifest cannot carry ${key} — hooks are code and do not survive JSON. ` +
+            `Ship the app's code and register it with registerApp() instead`,
+        )
+    }
+  }
+  const parsed = declarativeManifestSchema.safeParse(input)
+  if (!parsed.success) {
+    const fields: Record<string, string> = {}
+    for (const issue of parsed.error.issues) fields[issue.path.join('.') || 'manifest'] = issue.message
+    throw new AppError('ValidationError', 'Invalid app manifest', fields)
+  }
+  // A name owned by a code-registered app must be installed by name, so the
+  // declarative row can never shadow (or later tear down) the code app.
+  if (available.has(parsed.data.name))
+    throw new AppError(
+      'ConflictError',
+      `App ${parsed.data.name} is registered in code — install it with { name } instead`,
+    )
+  return materialize(parsed.data as AppManifest, parsed.data)
 }
 
 export async function uninstallApp(name: string): Promise<{ name: string; removed: string[] }> {
@@ -278,8 +345,9 @@ export async function uninstallApp(name: string): Promise<{ name: string; remove
 }
 
 // PLAT-001: on boot, re-wire the doc_events of already-installed apps (their
-// DocTypes already exist in the DB). Unknown installed apps (code removed) are
-// skipped — their tables simply remain until re-registered or uninstalled.
+// DocTypes already exist in the DB). Declarative apps have no code and nothing
+// to wire; unknown installed apps (code removed) are skipped the same way —
+// their tables simply remain until re-registered or uninstalled.
 export async function loadInstalledApps(): Promise<void> {
   const rows = await sql`select name from tab_installed_app`
   for (const r of rows) {
