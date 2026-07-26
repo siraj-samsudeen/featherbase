@@ -3,12 +3,12 @@ import { sql } from './db'
 import { saveDoc } from './document'
 import { publishUserEvent } from './realtime'
 
-// EML-006 / UI-017: the write side of assigning a document to a user — a ToDo
+// EML-006 / UI-017: the write side of assigning a row to a user — a ToDo
 // in their task list plus a notification (Notification Log + realtime user
 // event). Shared by the /api/assign endpoint and Assignment Rules.
 
 export async function createAssignment(
-  doctype: string,
+  table: string,
   name: string,
   assignTo: string,
   assignedBy: string,
@@ -18,22 +18,26 @@ export async function createAssignment(
     'ToDo',
     {
       allocated_to: assignTo,
-      reference_doctype: doctype,
-      reference_name: name,
-      description: description ?? `Assigned ${doctype} ${name}`,
-      status: 'Open',
+      ref_table: table,
+      ref_name: name,
+      description: description ?? `Assigned ${table} ${name}`,
+      // NOTE: ToDo's own open/closed state — renamed from `status` because the
+      // generic `status` (draft/submitted/cancelled) is now a reserved
+      // STANDARD_COLUMNS name every Table gets (see workflow.ts's
+      // WorkflowState.target_status for the same collision).
+      todo_status: 'Open',
     },
     assignedBy,
   )
-  const subject = `${assignedBy} assigned you ${doctype} ${name}`
+  const subject = `${assignedBy} assigned you ${table} ${name}`
   await sql`
-    insert into tab_notification_log ${sql({
+    insert into notification_log ${sql({
       name: randomBytes(5).toString('hex'),
-      owner: assignedBy,
-      modified_by: assignedBy,
+      created_by: assignedBy,
+      updated_by: assignedBy,
       for_user: assignTo,
       subject,
-      ref_doctype: doctype,
+      ref_table: table,
       ref_name: name,
       read: false,
     })}`

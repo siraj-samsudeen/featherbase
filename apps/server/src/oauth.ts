@@ -3,7 +3,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { saveDoc, getDoc } from './document'
 
-// PLAT-006: social login (Google OAuth) mapped to the User DocType. In dev
+// PLAT-006: social login (Google OAuth) mapped to the User Table. In dev
 // (no GOOGLE_CLIENT_ID configured) a mock provider stands in for Google: a
 // local consent page returns a signed authorization `code` that the callback
 // exchanges for the user's identity. The same handlers would drive real Google
@@ -113,14 +113,14 @@ export async function exchangeCode(code: string | undefined): Promise<{ email: s
 // create one, mark it as a Google login, and return its name.
 export async function findOrCreateGoogleUser(email: string, name: string): Promise<string> {
   const [existing] = await sql`
-    select name from tab_user where lower(email) = ${email} or lower(name) = ${email} limit 1`
+    select name from "user" where lower(email) = ${email} or lower(name) = ${email} limit 1`
   let userName: string
   if (existing) {
     userName = existing.name as string
     // Ensure it can sign in.
-    const doc = await getDoc('User', userName)
-    if (!doc.enabled)
-      await saveDoc('User', { name: userName, modified: doc.modified, enabled: true }, 'Administrator')
+    const row = await getDoc('User', userName)
+    if (!row.enabled)
+      await saveDoc('User', { name: userName, updated_at: row.updated_at, enabled: true }, 'Administrator')
   } else {
     const created = await saveDoc(
       'User',
@@ -130,6 +130,6 @@ export async function findOrCreateGoogleUser(email: string, name: string): Promi
     userName = String(created.name)
   }
   // social_login is read_only (system-managed) → set it with a direct write.
-  await sql`update tab_user set social_login = 'google' where name = ${userName}`
+  await sql`update "user" set social_login = 'google' where name = ${userName}`
   return userName
 }

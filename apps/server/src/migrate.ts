@@ -31,17 +31,17 @@ export async function runMigrations() {
         await tx`insert into migration (name) values (${file})`
       })
     } else {
-      // .ts migrations export up(); they use the engine itself (createDocType,
-      // saveDoc) so seed DocTypes get real DDL instead of duplicated SQL.
+      // .ts migrations export up(); they use the engine itself (createTable,
+      // saveDoc) so seed Tables get real DDL instead of duplicated SQL.
       const mod = await import(new URL(`../migrations/${file}`, import.meta.url).href)
       await mod.up()
       await sql`insert into migration (name) values (${file})`
     }
-    // Migrations may alter DocType metadata with raw SQL (e.g. 0046 adds
+    // Migrations may alter Table metadata with raw SQL (e.g. 0046 adds
     // Workflow Transition.condition); drop the per-process meta cache so the
     // NEXT migration validates against what is actually in the database. A
     // fresh-database run otherwise crashes at the first save that uses a
-    // field added this way — caught by CI's first-ever run.
+    // column added this way — caught by CI's first-ever run.
     invalidateMeta()
     console.log(`applied ${file}`)
   }

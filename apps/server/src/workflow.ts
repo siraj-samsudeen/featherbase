@@ -15,7 +15,10 @@ import { evalCondition } from './server-scripts'
 
 export interface WorkflowState {
   state: string
-  status: 'draft' | 'submitted' | 'cancelled'
+  // Renamed from Frappe's doc_status: the row's *lifecycle* status while in
+  // this named state (distinct from the sub_table's own reserved `status`
+  // column, which every Table gets and which isn't what this represents).
+  target_status: 'draft' | 'submitted' | 'cancelled'
 }
 export interface WorkflowTransition {
   state: string
@@ -28,11 +31,10 @@ export interface WorkflowTransition {
 }
 export interface Workflow {
   name: string
-  ref_table: string
+  document_type: string
   // The column on the target Table that carries the state. Defaults to the
   // auto-added `workflow_state`; set it to an existing column (e.g. a
-  // `status` Choice) to make the workflow drive that column directly,
-  // Frappe-style.
+  // Choice column) to make the workflow drive that column directly.
   state_field?: string | null
   states: WorkflowState[]
   transitions: WorkflowTransition[]
@@ -62,19 +64,19 @@ async function hasWorkflowSchema(): Promise<boolean> {
 export async function getActiveWorkflow(table: string): Promise<Workflow | null> {
   if (!(await hasWorkflowSchema())) return null
   const [wf] = await sql`
-    select name, ref_table, state_field from workflow
-    where ref_table = ${table} and is_active = true
+    select name, document_type, state_field from workflow
+    where document_type = ${table} and is_active = true
     order by updated_at desc limit 1`
   if (!wf) return null
   const states = await sql<WorkflowState[]>`
-    select state, status from workflow_document_state
+    select state, target_status from workflow_document_state
     where parent = ${wf.name as string} and parenttype = 'Workflow' order by position`
   const transitions = await sql<WorkflowTransition[]>`
     select state, action, next_state, allowed, "condition" from workflow_transition
     where parent = ${wf.name as string} and parenttype = 'Workflow' order by position`
   return {
     name: wf.name as string,
-    ref_table: wf.ref_table as string,
+    document_type: wf.document_type as string,
     state_field: (wf.state_field as string | null) ?? null,
     states,
     transitions,
@@ -197,7 +199,7 @@ export async function applyWorkflowAction(
     )
 
   const target = wf.states.find((s) => s.state === transition.next_state)
-  const status = target ? target.status : ((row.status as 'draft' | 'submitted' | 'cancelled') ?? 'draft')
+  const status = target ? target.target_status : ((row.status as 'draft' | 'submitted' | 'cancelled') ?? 'draft')
 
   // Persist via a direct update (bypasses the submitted-row write lock — a
   // workflow legitimately moves a submitted row between states/statuses).
@@ -275,8 +277,8 @@ async function notifyPendingApprovers(
       to: approver.email,
       subject,
       body,
-      reference_doctype: table,
-      reference_name: name,
+      ref_table: table,
+      ref_name: name,
     })
   }
 }

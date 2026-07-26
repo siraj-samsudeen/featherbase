@@ -28,7 +28,7 @@ export async function up() {
       { column_name: 'subject', label: 'Subject', column_type: 'Data', reqd: true, in_list_view: true },
       { column_name: 'description', label: 'Description', column_type: 'Text' },
       {
-        column_name: 'status', label: 'Status', column_type: 'Choice', in_list_view: true,
+        column_name: 'ticket_status', label: 'Status', column_type: 'Choice', in_list_view: true,
         choices: 'Open\nIn Progress\nResolved\nClosed', default_value: 'Open',
       },
       {
@@ -72,13 +72,13 @@ export async function up() {
     if (!have) await saveDoc('Permission', { ref_doctype, role, ...perms })
   }
 
-  // Bound to the real `status` field (state_field) — no synthetic
+  // Bound to the real `ticket_status` field (state_field) — no synthetic
   // workflow_state column, so no initDocState backfill is needed.
   await saveDoc('Workflow', {
     name: 'HD Ticket Flow',
     document_type: 'HD Ticket',
     is_active: true,
-    state_field: 'status',
+    state_field: 'ticket_status',
     states: [
       { state: 'Open', doc_status: '0' },
       { state: 'In Progress', doc_status: '0' },
@@ -105,7 +105,7 @@ export async function up() {
     name: 'HD Ticket Resolved Notice',
     document_type: 'HD Ticket',
     event: 'on_save',
-    condition_field: 'status',
+    condition_field: 'ticket_status',
     condition_value: 'Resolved',
     recipient: '{{ doc.raised_by }}',
     subject: 'Your ticket {{ doc.name }} has been resolved',

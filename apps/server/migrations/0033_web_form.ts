@@ -13,7 +13,7 @@ export async function up() {
     columns: [
       { column_name: 'title', column_type: 'Data', reqd: true, in_list_view: true },
       { column_name: 'route', column_type: 'Data', reqd: true, unique: true, in_list_view: true },
-      { column_name: 'document_type', column_type: 'Reference', reference_table: 'Table', reqd: true, in_list_view: true },
+      { column_name: 'ref_table', column_type: 'Reference', reference_table: 'Table', reqd: true, in_list_view: true },
       // JSON array of fieldnames from document_type to expose on the form.
       { column_name: 'web_fields', column_type: 'JSON' },
       { column_name: 'published', column_type: 'Check', default_value: '0', in_list_view: true },

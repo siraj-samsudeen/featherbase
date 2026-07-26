@@ -11,7 +11,7 @@ export async function up() {
     module: 'Core',
     id_pattern: 'prompt',
     columns: [
-      { column_name: 'document_type', column_type: 'Reference', reference_table: 'Table', reqd: true, in_list_view: true },
+      { column_name: 'ref_table', column_type: 'Reference', reference_table: 'Table', reqd: true, in_list_view: true },
       { column_name: 'event', column_type: 'Choice', choices: 'on_create\non_save\non_submit\non_cancel', reqd: true, in_list_view: true },
       // Optional single-field equality condition; blank field = always fire.
       { column_name: 'condition_field', column_type: 'Data' },

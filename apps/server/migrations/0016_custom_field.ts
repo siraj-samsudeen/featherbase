@@ -1,28 +1,30 @@
-// CUST-001: Custom Fields — fields added to an existing DocType, stored
-// SEPARATELY from the base definition (in tab_custom_field) so they survive
-// a re-seed of core fixtures. Each custom field also materializes a docfield
+// CUST-001: Custom Fields — fields added to an existing Table, stored
+// SEPARATELY from the base definition (in custom_field) so they survive
+// a re-seed of core fixtures. Each custom field also materializes a column_def
 // row (marked custom) and a real column on the target table.
 import { sql } from '../src/db'
-import { createDocType } from '../src/doctype-engine'
+import { createTable } from '../src/doctype-engine'
 
 export async function up() {
-  // Mark generated docfields as custom so a base re-seed can tell them apart.
-  await sql`alter table tab_docfield add column if not exists custom boolean not null default false`
+  // Mark generated columns as custom so a base re-seed can tell them apart.
+  await sql`alter table column_def add column if not exists custom boolean not null default false`
 
-  const [exists] = await sql`select 1 from tab_doctype where name = 'Custom Field'`
+  const [exists] = await sql`select 1 from table_def where name = 'Custom Field'`
   if (exists) return
-  await createDocType({
+  await createTable({
     name: 'Custom Field',
     module: 'Core',
-    autoname: 'prompt',
-    fields: [
-      { fieldname: 'dt', fieldtype: 'Link', options: 'DocType', reqd: true, in_list_view: true },
-      { fieldname: 'fieldname', fieldtype: 'Data', reqd: true, in_list_view: true },
-      { fieldname: 'label', fieldtype: 'Data', in_list_view: true },
-      { fieldname: 'fieldtype', fieldtype: 'Data', default_value: 'Data', in_list_view: true },
-      { fieldname: 'options', fieldtype: 'Text' },
-      { fieldname: 'reqd', fieldtype: 'Check', default_value: '0' },
-      { fieldname: 'in_list_view', fieldtype: 'Check', default_value: '0' },
+    id_pattern: 'prompt',
+    columns: [
+      { column_name: 'dt', column_type: 'Reference', reference_table: 'Table', reqd: true, in_list_view: true },
+      { column_name: 'column_name', column_type: 'Data', reqd: true, in_list_view: true },
+      { column_name: 'label', column_type: 'Data', in_list_view: true },
+      { column_name: 'column_type', column_type: 'Data', default_value: 'Data', in_list_view: true },
+      { column_name: 'reference_table', column_type: 'Data' },
+      { column_name: 'choices', column_type: 'Text' },
+      { column_name: 'row_table', column_type: 'Data' },
+      { column_name: 'reqd', column_type: 'Check', default_value: '0' },
+      { column_name: 'in_list_view', column_type: 'Check', default_value: '0' },
     ],
   })
 }

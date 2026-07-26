@@ -7,7 +7,7 @@ import { getDoc } from './document'
 // interpolated), and the whole query runs inside a READ ONLY transaction so a
 // report can never mutate data even if its SQL tries. Authoring is gated to
 // System Managers at save time (controllers/report.ts); running is gated by
-// read permission on the Report document.
+// read permission on the Report row.
 
 export interface QueryReportResult {
   columns: string[]

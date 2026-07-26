@@ -1,16 +1,16 @@
-# Your first DocType: build a todo list
+# Your first Table: build a todo list
 
-> **Note:** every HTTP step below (DocType creation, generated table, naming
-> series, optimistic-lock update, Server Script validation, and the stretch
+> **Note:** every HTTP step below (Table creation, generated table, id
+> pattern, optimistic-lock update, Server Script validation, and the stretch
 > test) has been verified against a live instance. If a step doesn't match
 > what you see, trust the running app and please file an issue.
 
 In this exercise you build a small task tracker from scratch — model, API,
 and UI — without writing a line of application code. That's the point of the
-platform: define a DocType, and storage, validation, API, and UI are all
+platform: define a Table, and storage, validation, API, and UI are all
 generated from it.
 
-A `ToDo` DocType already ships with the platform (it backs assignments — see
+A `ToDo` Table already ships with the platform (it backs assignments — see
 `apps/server/migrations/0022_todo.ts`). We'll build our own called **Task**
 so nothing collides, and use the built-in ToDo as the reference solution to
 compare against at the end.
@@ -24,9 +24,9 @@ the API on :8000, and the web app on :5173 (see
 `apps/server/migrations/0006_admin_password.ts`; override with
 `ADMIN_PASSWORD`).
 
-## 1. Meet the DocType Builder
+## 1. Meet the Table Builder
 
-The Desk has a DocType builder at **`/desk/new-doctype`** — reachable from
+The Admin UI has a Table builder at **`/desk/new-doctype`** — reachable from
 the **“+ New DocType”** link in the sidebar
 (`apps/web/src/pages/DeskLayout.tsx`) or via the command palette
 (Ctrl/Cmd+K). The page (`apps/web/src/pages/DocTypeBuilder.tsx`) is a name
@@ -36,15 +36,15 @@ Options for a Select can be typed comma- or newline-separated; the builder
 normalizes them to the newline-separated form the engine expects before
 POSTing to `POST /api/doctype`.
 
-Try it with a throwaway DocType — name it `Note`, give it a `title` (Data,
+Try it with a throwaway Table — name it `Note`, give it a `title` (Data,
 Reqd, List) and a `content` (Text) field, and click **Create DocType**. You
 land on `/desk/Note`, a fully working list view. That's the whole loop.
 
 One caveat before we build the real thing: the builder currently exposes
-only a subset of the definition — notably not `autoname` (naming rules) or
-`default_value` — and a DocType cannot be deleted once created (`deleteDoc`
-in `apps/server/src/document.ts` refuses engine-managed documents). Since
-the rest of this tutorial leans on a naming series and a status default,
+only a subset of the definition — notably not `autoname` (id-pattern rules)
+or `default_value` — and a Table cannot be deleted once created (`deleteDoc`
+in `apps/server/src/document.ts` refuses engine-managed rows). Since
+the rest of this tutorial leans on an id pattern and a status default,
 we'll create `Task` over HTTP.
 
 ## 2. Define `Task` over HTTP
@@ -58,8 +58,8 @@ TOKEN=$(curl -s http://localhost:8000/api/login \
   -H 'content-type: application/json' \
   -d '{"usr":"Administrator","pwd":"admin"}' | jq -r .token)
 
-# Create the DocType (System Manager only). autoname gives us a naming
-# series: TASK-0001, TASK-0002, ... (four # = four digits).
+# Create the Table (System Manager only). autoname gives us an id
+# pattern: TASK-0001, TASK-0002, ... (four # = four digits).
 curl -s http://localhost:8000/api/doctype \
   -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{
@@ -103,10 +103,10 @@ Open **http://localhost:5173/desk/Task**. The generic `ListView`
 (`apps/web/src/components/ListView.tsx`) renders your list-flagged columns —
 no Task-specific frontend code exists anywhere.
 
-Create a task: a new document lives at **`/desk/Task/new`** (the literal
+Create a task: a new row lives at **`/desk/Task/new`** (the literal
 name `new` renders an empty `FormView` —
 `apps/web/src/components/FormView.tsx`). Fill in a title and save; the form
-POSTs to `/api/save_doc` and the naming series assigns `TASK-0001`.
+POSTs to `/api/save_doc` and the id pattern assigns `TASK-0001`.
 
 Create a few more. Then try the HTTP equivalent:
 
@@ -116,7 +116,7 @@ curl -s http://localhost:8000/api/save_doc \
   -d '{"doctype":"Task","doc":{"title":"Read ARCHITECTURE.md","due_date":"2026-08-01"}}'
 ```
 
-The response is the saved document, with `name`, `status: "Open"` (your
+The response is the saved row, with `name`, `status: "Open"` (your
 default), and audit columns filled in.
 
 To **complete** a task over HTTP you must echo the `modified` timestamp you
@@ -133,14 +133,14 @@ curl -s http://localhost:8000/api/save_doc \
   -d "{\"doctype\":\"Task\",\"doc\":{\"name\":\"TASK-0001\",\"modified\":\"$MOD\",\"status\":\"Done\"}}"
 ```
 
-In the Desk the form does this for you. Filter the list to open tasks: the
+In the Admin UI the form does this for you. Filter the list to open tasks: the
 list's filters live in the URL (`/desk/Task?filters=...`), so a filtered
 view is shareable.
 
 ## 5. Add a validation — without redeploying
 
 Let's enforce a rule: a task's title must be at least five characters.
-**Server Scripts** are documents too (defined in
+**Server Scripts** are rows too (defined in
 `apps/server/migrations/0037_server_script.ts`, executed by
 `apps/server/src/server-scripts.ts` in a hardened `node:vm` sandbox inside
 the save transaction).
@@ -161,16 +161,16 @@ Create one at `/desk/Server Script/new` (or via `save_doc`):
 
 - **enabled**: checked
 
-The script sees the document as `doc` and can call `frappe.throw(message)`
+The script sees the row as `doc` and can call `frappe.throw(message)`
 to abort the save (the sandbox exposes nothing else — no `process`, no
 `fetch`). Now try saving a task titled "x": the save fails with a 417
-validation error, in the Desk and over HTTP alike, because the script runs
+validation error, in the Admin UI and over HTTP alike, because the script runs
 inside `saveDoc` itself.
 
 If you'd rather gate status changes by role, look at **Workflow**
 (`apps/server/migrations/0015_workflow.ts`,
-`apps/server/src/workflow.ts`): a Workflow document ties states and
-role-gated transitions to a DocType, and the form grows action buttons via
+`apps/server/src/workflow.ts`): a Workflow row ties states and
+role-gated transitions to a Table, and the form grows action buttons via
 `/api/workflow/:doctype/:name`. That's a good second exercise.
 
 ## 6. Compare with the reference solution
@@ -178,10 +178,10 @@ role-gated transitions to a DocType, and the form grows action buttons via
 Open `/desk/ToDo` — the built-in equivalent. Its definition in
 `apps/server/migrations/0022_todo.ts` is a superset of what you built:
 `allocated_to` is a **Link** field to `User`, and
-`reference_doctype`/`reference_name` let a ToDo point at any document (this
+`reference_doctype`/`reference_name` let a ToDo point at any row (this
 is what `/api/assign` creates). Link fields get you referential integrity
 for free — the save path verifies the target row exists (`validateLinks` in
-`apps/server/src/document.ts`), and deletion of a linked document is
+`apps/server/src/document.ts`), and deletion of a linked row is
 blocked.
 
 ## 7. Stretch: write a sandboxed test
@@ -221,7 +221,7 @@ Run just this file:
 pnpm --filter server test test/task-tutorial.test.ts
 ```
 
-Two things worth noticing. The DocType is named `Tutorial Task`, not `Task`:
+Two things worth noticing. The Table is named `Tutorial Task`, not `Task`:
 the test's transaction rolls back, but it still *sees* committed state, so
 reusing the `Task` you created earlier would make `/api/doctype` answer 409.
 And asserting `TUT-0001` is safe precisely because the series counter row is
@@ -232,6 +232,7 @@ fresh.
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) traces exactly what happened on each of
   your saves.
-- [GLOSSARY.md](GLOSSARY.md) decodes the Frappe vocabulary you just used.
-- Try `permissions/Task` in the Desk to grant a non-admin role access, then
+- [GLOSSARY.md](GLOSSARY.md) explains the vocabulary you just used (and its
+  Frappe-era predecessor terms, if that's where you're coming from).
+- Try `permissions/Task` in the Admin UI to grant a non-admin role access, then
   log in as a second user.

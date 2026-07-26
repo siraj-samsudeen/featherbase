@@ -14,7 +14,7 @@ below, not Frappe's, are the source of truth for this platform.
 **Table** (formerly Frappe's "DocType") — the central concept: a model
 defined as metadata. A Table's definition (columns, flags, id pattern) lives
 as rows in `table_def` and `column_def`; the engine
-(`apps/server/src/table-engine.ts`) generates a real table (a bare
+(`apps/server/src/doctype-engine.ts`) generates a real table (a bare
 `<name>`, with no `tab_` prefix) from it, and the API and UI are derived
 from the same metadata. Created through the table-definition endpoint or the
 Admin's Table Builder (`apps/web/src/pages/TableBuilder.tsx`).

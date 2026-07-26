@@ -19,15 +19,15 @@ export async function logActivity(
   operation: string,
   extra: { full_name?: string | null; ip_address?: string | null } = {},
 ): Promise<void> {
-  if (!(await tableExists('tab_activity_log'))) return
+  if (!(await tableExists('activity_log'))) return
   const now = new Date()
-  await sql`insert into tab_activity_log ${sql({
+  await sql`insert into activity_log ${sql({
     name: id(),
-    owner: user,
-    modified_by: user,
-    creation: now,
-    modified: now,
-    docstatus: 0,
+    created_by: user,
+    updated_by: user,
+    created_at: now,
+    updated_at: now,
+    status: 'draft',
     user,
     operation,
     full_name: extra.full_name ?? null,
@@ -38,21 +38,21 @@ export async function logActivity(
 export async function logAccess(
   user: string,
   operation: string,
-  ref: { doctype?: string; name?: string; method?: string } = {},
+  ref: { table?: string; name?: string; method?: string } = {},
 ): Promise<void> {
-  if (!(await tableExists('tab_access_log'))) return
+  if (!(await tableExists('access_log'))) return
   const now = new Date()
-  await sql`insert into tab_access_log ${sql({
+  await sql`insert into access_log ${sql({
     name: id(),
-    owner: user,
-    modified_by: user,
-    creation: now,
-    modified: now,
-    docstatus: 0,
+    created_by: user,
+    updated_by: user,
+    created_at: now,
+    updated_at: now,
+    status: 'draft',
     user,
     operation,
-    reference_doctype: ref.doctype ?? null,
-    reference_name: ref.name ?? null,
+    ref_table: ref.table ?? null,
+    ref_name: ref.name ?? null,
     method: ref.method ?? null,
   })}`
 }

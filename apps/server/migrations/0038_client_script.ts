@@ -11,7 +11,7 @@ export async function up() {
     module: 'Core',
     id_pattern: 'prompt',
     columns: [
-      { column_name: 'reference_doctype', column_type: 'Reference', reference_table: 'Table', reqd: true, in_list_view: true },
+      { column_name: 'ref_table', column_type: 'Reference', reference_table: 'Table', reqd: true, in_list_view: true },
       { column_name: 'script', column_type: 'Long Text', reqd: true },
       { column_name: 'enabled', column_type: 'Check', default_value: '1', in_list_view: true },
     ],

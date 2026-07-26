@@ -37,8 +37,8 @@ Featherbase is built on **React + Hono + Postgres**, as a pnpm workspace:
 
 | Workspace | Role |
 |---|---|
-| `apps/server` | Hono API — DocType engine, Frappe-compatible REST/RPC, auth |
-| `apps/web` | React Desk UI — metadata-driven grid, form, and detail views |
+| `apps/server` | Hono API — Table engine, REST/RPC API, auth |
+| `apps/web` | React Admin UI — metadata-driven grid, form, and detail views |
 | `packages/shared` | Types and contracts shared across server and web |
 | `packages/feather-testing-postgres` | SQL Sandbox test harness (also published standalone) |
 
@@ -66,3 +66,17 @@ third requirement — is unsolved on this stack and remains open.
 **Retained.** [ADR 0005](0005-naming-featherbase.md) (the name) is unaffected,
 as is the vision in [VISION.md](../VISION.md) and the research in
 [research/](../research/), all of which are stack-independent.
+
+## Addendum (terminology rename, #59/#61)
+
+The decision above — and its reasoning — stands unchanged; this note only
+flags that the vocabulary used to describe it has moved on. Frappe
+wire-format compatibility, which this ADR calls out as a deliberate,
+load-bearing property of the stack, is **no longer a goal**: DocType/Doc/
+Field and the rest of Frappe's naming have been replaced by Featherbase's
+own vocabulary (Table/Row/Column, and more), and the API surface is being
+redesigned around a unified action registry rather than Frappe's REST/RPC
+shape. This ADR is left as the historical record of *why React + Hono +
+Postgres was chosen*, which is unaffected by the rename. For the current
+vocabulary, [GLOSSARY.md](../GLOSSARY.md) is the source of truth, not this
+document.

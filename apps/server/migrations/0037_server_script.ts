@@ -12,7 +12,7 @@ export async function up() {
     id_pattern: 'prompt',
     columns: [
       { column_name: 'script_type', column_type: 'Choice', choices: 'Document Event\nAPI', reqd: true, in_list_view: true },
-      { column_name: 'reference_doctype', column_type: 'Reference', reference_table: 'Table', in_list_view: true },
+      { column_name: 'ref_table', column_type: 'Reference', reference_table: 'Table', in_list_view: true },
       { column_name: 'event', column_type: 'Choice', choices: 'validate\nbefore_save\nafter_save' },
       { column_name: 'api_method', column_type: 'Data' },
       { column_name: 'script', column_type: 'Long Text', reqd: true },

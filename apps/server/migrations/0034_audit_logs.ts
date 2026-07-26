@@ -26,7 +26,7 @@ export async function up() {
       columns: [
         { column_name: 'user', column_type: 'Data', in_list_view: true },
         { column_name: 'operation', column_type: 'Data', in_list_view: true }, // export | print
-        { column_name: 'reference_doctype', column_type: 'Data', in_list_view: true },
+        { column_name: 'ref_table', column_type: 'Data', in_list_view: true },
         { column_name: 'reference_name', column_type: 'Data' },
         { column_name: 'method', column_type: 'Data' }, // csv | xlsx | pdf
       ],

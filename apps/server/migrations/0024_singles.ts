@@ -1,15 +1,15 @@
-// SET-001: Single DocTypes (issingle) — settings documents with exactly one
-// instance and no generated table. Their field values live in an EAV store
-// (single_value), keyed by (doctype, field), like Frappe's `tabSingles`.
+// SET-001: Settings Tables (kind: 'settings') — rows with exactly one
+// instance and no generated table. Their column values live in an EAV store
+// (single_value), keyed by (table_name, field).
 import { sql } from '../src/db'
 import { createTable } from '../src/doctype-engine'
 
 export async function up() {
   await sql`create table if not exists single_value (
-    doctype varchar(140) not null,
-    field   varchar(140) not null,
-    value   text,
-    primary key (doctype, field)
+    table_name varchar(140) not null,
+    field      varchar(140) not null,
+    value      text,
+    primary key (table_name, field)
   )`
 
   const [exists] = await sql`select 1 from table_def where name = 'System Settings'`

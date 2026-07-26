@@ -1,45 +1,31 @@
--- META-012: DocType and DocField become DocTypes themselves. Their storage
--- moves to standard tab_* tables so the generic engine (meta, REST, list)
--- serves them like any other model. DocField is a child table of DocType.
+-- META-012: Table and Column describe themselves — their own rows live in
+-- table_def/column_def, the same generic store every other Table uses.
+-- Column is a sub-table of Table.
 
-alter table doctype rename to tab_doctype;
-alter table docfield rename to tab_docfield;
+insert into table_def (name, module, id_pattern, kind) values
+  ('Table', 'Core', 'prompt', 'table'),
+  ('Column', 'Core', 'hash', 'sub_table');
 
-alter table tab_doctype
-  add column docstatus smallint not null default 0,
-  add column idx integer not null default 0;
-
-alter table tab_docfield
-  add column owner varchar(140) not null default 'Administrator',
-  add column creation timestamptz not null default now(),
-  add column modified timestamptz not null default now(),
-  add column modified_by varchar(140) not null default 'Administrator',
-  add column docstatus smallint not null default 0,
-  add column parenttype varchar(140) not null default 'DocType',
-  add column parentfield varchar(140) not null default 'fields';
-
--- Meta rows describing DocType and DocField themselves (the bootstrap).
-insert into tab_doctype (name, module, autoname, issingle, istable) values
-  ('DocType', 'Core', 'prompt', false, false),
-  ('DocField', 'Core', 'hash', false, true);
-
-insert into tab_docfield (parent, idx, fieldname, label, fieldtype, options, reqd, in_list_view) values
-  ('DocType', 1, 'module', 'Module', 'Data', null, false, true),
-  ('DocType', 2, 'issingle', 'Is Single', 'Check', null, false, false),
-  ('DocType', 3, 'istable', 'Is Child Table', 'Check', null, false, true),
-  ('DocType', 4, 'is_submittable', 'Is Submittable', 'Check', null, false, false),
-  ('DocType', 5, 'autoname', 'Autoname', 'Data', null, false, false),
-  ('DocType', 6, 'title_field', 'Title Field', 'Data', null, false, false),
-  ('DocType', 7, 'description', 'Description', 'Text', null, false, false),
-  ('DocType', 8, 'fields', 'Fields', 'Table', 'DocField', false, false),
-  ('DocField', 1, 'fieldname', 'Fieldname', 'Data', null, true, true),
-  ('DocField', 2, 'label', 'Label', 'Data', null, false, true),
-  ('DocField', 3, 'fieldtype', 'Field Type', 'Select', E'Data\nInt\nFloat\nCurrency\nCheck\nSelect\nDate\nDatetime\nText\nLong Text\nLink\nTable\nAttach\nJSON\nSection Break\nColumn Break', true, true),
-  ('DocField', 4, 'options', 'Options', 'Text', null, false, false),
-  ('DocField', 5, 'reqd', 'Required', 'Check', null, false, false),
-  ('DocField', 6, 'unique', 'Unique', 'Check', null, false, false),
-  ('DocField', 7, 'default_value', 'Default', 'Data', null, false, false),
-  ('DocField', 8, 'read_only', 'Read Only', 'Check', null, false, false),
-  ('DocField', 9, 'hidden', 'Hidden', 'Check', null, false, false),
-  ('DocField', 10, 'in_list_view', 'In List View', 'Check', null, false, false),
-  ('DocField', 11, 'permlevel', 'Perm Level', 'Int', null, false, false);
+insert into column_def (parent, position, column_name, label, column_type, choices, row_table, reqd, in_list_view) values
+  ('Table', 1, 'module', 'Module', 'Data', null, null, false, true),
+  ('Table', 2, 'kind', 'Kind', 'Choice', 'table\nsub_table\nsettings', null, false, false),
+  ('Table', 3, 'is_submittable', 'Is Submittable', 'Check', null, null, false, false),
+  ('Table', 4, 'id_pattern', 'ID Pattern', 'Data', null, null, false, false),
+  ('Table', 5, 'title_column', 'Title Column', 'Data', null, null, false, false),
+  ('Table', 6, 'description', 'Description', 'Text', null, null, false, false),
+  ('Table', 7, 'columns', 'Columns', 'Sub-table', null, 'Column', false, false),
+  ('Column', 1, 'column_name', 'Column Name', 'Data', null, null, true, true),
+  ('Column', 2, 'label', 'Label', 'Data', null, null, false, true),
+  ('Column', 3, 'column_type', 'Column Type', 'Choice',
+    E'Data\nInt\nFloat\nCurrency\nCheck\nChoice\nDate\nDatetime\nText\nLong Text\nReference\nSub-table\nAttach\nAttach Image\nJSON\nSection Break\nColumn Break',
+    null, true, true),
+  ('Column', 4, 'reference_table', 'Reference Table', 'Data', null, null, false, false),
+  ('Column', 5, 'choices', 'Choices', 'Text', null, null, false, false),
+  ('Column', 6, 'row_table', 'Row Table', 'Data', null, null, false, false),
+  ('Column', 7, 'reqd', 'Required', 'Check', null, null, false, false),
+  ('Column', 8, 'unique', 'Unique', 'Check', null, null, false, false),
+  ('Column', 9, 'default_value', 'Default', 'Data', null, null, false, false),
+  ('Column', 10, 'read_only', 'Read Only', 'Check', null, null, false, false),
+  ('Column', 11, 'hidden', 'Hidden', 'Check', null, null, false, false),
+  ('Column', 12, 'in_list_view', 'In List View', 'Check', null, null, false, false),
+  ('Column', 13, 'tier', 'Tier', 'Choice', 'basic\nrestricted', null, false, false);

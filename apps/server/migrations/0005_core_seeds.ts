@@ -50,7 +50,7 @@ export async function up() {
     name: 'Permission',
     module: 'Core',
     columns: [
-      { column_name: 'ref_doctype', column_type: 'Reference', reference_table: 'Table', reqd: true, in_list_view: true },
+      { column_name: 'ref_table', column_type: 'Reference', reference_table: 'Table', reqd: true, in_list_view: true },
       { column_name: 'role', column_type: 'Reference', reference_table: 'Role', reqd: true, in_list_view: true },
       { column_name: 'tier', column_type: 'Choice', choices: 'basic\nrestricted', default_value: 'basic' },
       { column_name: 'own_rows_only', column_type: 'Check', default_value: '0' },
@@ -68,7 +68,7 @@ export async function up() {
     name: 'Comment',
     module: 'Core',
     columns: [
-      { column_name: 'ref_doctype', column_type: 'Reference', reference_table: 'Table', reqd: true },
+      { column_name: 'ref_table', column_type: 'Reference', reference_table: 'Table', reqd: true },
       { column_name: 'ref_name', column_type: 'Data', reqd: true },
       { column_name: 'content', column_type: 'Text', reqd: true },
     ],
@@ -78,7 +78,7 @@ export async function up() {
     name: 'Version',
     module: 'Core',
     columns: [
-      { column_name: 'ref_doctype', column_type: 'Reference', reference_table: 'Table', reqd: true },
+      { column_name: 'ref_table', column_type: 'Reference', reference_table: 'Table', reqd: true },
       { column_name: 'ref_name', column_type: 'Data', reqd: true },
       { column_name: 'data', column_type: 'JSON' },
     ],
@@ -93,7 +93,7 @@ export async function up() {
       { column_name: 'mime_type', column_type: 'Data' },
       { column_name: 'file_size', column_type: 'Int' },
       { column_name: 'is_private', column_type: 'Check', default_value: '1' },
-      { column_name: 'ref_doctype', column_type: 'Reference', reference_table: 'Table' },
+      { column_name: 'ref_table', column_type: 'Reference', reference_table: 'Table' },
       { column_name: 'ref_name', column_type: 'Data' },
     ],
   })

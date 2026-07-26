@@ -10,18 +10,18 @@ export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'Ticket'`
   if (!exists) return
 
-  await sql`delete from workflow_document_state where parent in (select name from workflow where document_type = 'Ticket')`
-  await sql`delete from workflow_transition where parent in (select name from workflow where document_type = 'Ticket')`
-  await sql`delete from workflow where document_type = 'Ticket'`
-  await sql`delete from workflow_action where ref_doctype = 'Ticket'`
-  await sql`delete from todo where reference_doctype = 'Ticket'`
-  await sql`delete from comment where ref_doctype = 'Ticket'`
-  await sql`delete from notification_log where ref_doctype = 'Ticket'`
-  await sql`delete from version where ref_doctype = 'Ticket'`
-  await sql`delete from email_queue where reference_doctype = 'Ticket'`
+  await sql`delete from workflow_document_state where parent in (select name from workflow where ref_table = 'Ticket')`
+  await sql`delete from workflow_transition where parent in (select name from workflow where ref_table = 'Ticket')`
+  await sql`delete from workflow where ref_table = 'Ticket'`
+  await sql`delete from workflow_action where ref_table = 'Ticket'`
+  await sql`delete from todo where ref_table = 'Ticket'`
+  await sql`delete from comment where ref_table = 'Ticket'`
+  await sql`delete from notification_log where ref_table = 'Ticket'`
+  await sql`delete from version where ref_table = 'Ticket'`
+  await sql`delete from email_queue where ref_table = 'Ticket'`
   await sql`delete from tag_link where ref_doctype = 'Ticket'`
   await sql`delete from user_settings where doctype = 'Ticket'`
-  await sql`delete from permission where ref_doctype = 'Ticket'`
+  await sql`delete from permission where ref_table = 'Ticket'`
   await sql`delete from column_def where parent in ('Ticket', 'Ticket Comment')`
   await sql`delete from table_def where name in ('Ticket', 'Ticket Comment')`
   await sql`delete from has_role where role in ('Ticket Manager', 'Ticket Reporter')`
