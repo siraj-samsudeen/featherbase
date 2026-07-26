@@ -16,7 +16,7 @@ export async function up() {
     kind: 'sub_table',
     columns: [
       { column_name: 'state', column_type: 'Data', reqd: true, in_list_view: true },
-      { column_name: 'doc_status', column_type: 'Choice', choices: '0\n1\n2', default_value: '0', in_list_view: true },
+      { column_name: 'target_status', column_type: 'Choice', choices: 'draft\nsubmitted\ncancelled', default_value: 'draft', in_list_view: true },
     ],
   })
 

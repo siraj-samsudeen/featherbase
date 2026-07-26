@@ -13,7 +13,7 @@ export async function up() {
     columns: [
       { column_name: 'for_user', column_type: 'Reference', reference_table: 'User', reqd: true, in_list_view: true },
       { column_name: 'subject', column_type: 'Data', in_list_view: true },
-      { column_name: 'ref_doctype', column_type: 'Reference', reference_table: 'Table' },
+      { column_name: 'ref_table', column_type: 'Reference', reference_table: 'Table' },
       { column_name: 'ref_name', column_type: 'Data' },
       { column_name: 'read', column_type: 'Check', default_value: '0', in_list_view: true },
     ],

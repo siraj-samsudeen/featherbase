@@ -107,8 +107,18 @@ function validateDef(def: TableDef) {
     throw new AppError('ValidationError', 'Invalid Table definition', errs)
 }
 
+// Table and Column describe themselves, but "table"/"column" are reserved
+// SQL keywords — their physical storage is table_def/column_def (chosen at
+// bootstrap specifically to dodge that collision) rather than the naive
+// lowercased name every other Table gets.
+const PHYSICAL_TABLE_OVERRIDES: Record<string, string> = {
+  table: 'table_def',
+  column: 'column_def',
+}
+
 export function tableName(table: string): string {
-  return table.toLowerCase().replace(/\s+/g, '_')
+  const naive = table.toLowerCase().replace(/\s+/g, '_')
+  return PHYSICAL_TABLE_OVERRIDES[naive] ?? naive
 }
 
 // META-003: generate the CREATE TABLE statement for a Table definition.

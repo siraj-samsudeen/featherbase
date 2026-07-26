@@ -10,7 +10,7 @@ export async function up() {
     name: 'Webhook',
     module: 'Core',
     columns: [
-      { column_name: 'webhook_doctype', column_type: 'Reference', reference_table: 'Table', reqd: true, in_list_view: true },
+      { column_name: 'webhook_table', column_type: 'Reference', reference_table: 'Table', reqd: true, in_list_view: true },
       { column_name: 'webhook_event', column_type: 'Choice', choices: 'after_insert\non_update\non_submit\non_cancel', reqd: true, in_list_view: true },
       { column_name: 'request_url', column_type: 'Data', reqd: true },
       { column_name: 'webhook_secret', column_type: 'Data' },

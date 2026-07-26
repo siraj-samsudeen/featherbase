@@ -66,24 +66,24 @@ export async function up() {
     ['Version', 'Support Agent', { can_read: true }],
     ['Version', 'Support Manager', { can_read: true }],
   ]
-  for (const [ref_doctype, role, perms] of grants) {
+  for (const [refTable, role, perms] of grants) {
     const [have] = await sql`
-      select 1 from permission where ref_doctype = ${ref_doctype} and role = ${role}`
-    if (!have) await saveDoc('Permission', { ref_doctype, role, ...perms })
+      select 1 from permission where ref_table = ${refTable} and role = ${role}`
+    if (!have) await saveDoc('Permission', { ref_table: refTable, role, ...perms })
   }
 
   // Bound to the real `ticket_status` field (state_field) — no synthetic
   // workflow_state column, so no initDocState backfill is needed.
   await saveDoc('Workflow', {
     name: 'HD Ticket Flow',
-    document_type: 'HD Ticket',
+    ref_table: 'HD Ticket',
     is_active: true,
     state_field: 'ticket_status',
     states: [
-      { state: 'Open', doc_status: '0' },
-      { state: 'In Progress', doc_status: '0' },
-      { state: 'Resolved', doc_status: '0' },
-      { state: 'Closed', doc_status: '0' },
+      { state: 'Open', target_status: 'draft' },
+      { state: 'In Progress', target_status: 'draft' },
+      { state: 'Resolved', target_status: 'draft' },
+      { state: 'Closed', target_status: 'draft' },
     ],
     transitions: [
       { state: 'Open', action: 'Start', next_state: 'In Progress', allowed: 'Support Agent' },
@@ -103,7 +103,7 @@ export async function up() {
   })
   await saveDoc('Email Rule', {
     name: 'HD Ticket Resolved Notice',
-    document_type: 'HD Ticket',
+    ref_table: 'HD Ticket',
     event: 'on_save',
     condition_field: 'ticket_status',
     condition_value: 'Resolved',
@@ -119,7 +119,7 @@ export async function up() {
   await saveDoc('Server Script', {
     name: 'HD Ticket Defaults',
     script_type: 'Document Event',
-    reference_doctype: 'HD Ticket',
+    ref_table: 'HD Ticket',
     event: 'validate',
     script: 'if (!doc.raised_by) { doc.raised_by = doc.owner }',
     enabled: true,
@@ -127,7 +127,7 @@ export async function up() {
 
   await saveDoc('Service Level Agreement', {
     name: 'HD Ticket SLA',
-    document_type: 'HD Ticket',
+    ref_table: 'HD Ticket',
     enabled: true,
     priority_field: 'priority',
     fulfilled_states: 'Resolved\nClosed',
@@ -144,7 +144,7 @@ export async function up() {
     name: 'New Ticket',
     title: 'Raise a support ticket',
     route: 'new-ticket',
-    document_type: 'HD Ticket',
+    ref_table: 'HD Ticket',
     published: true,
     success_message: 'Thanks — your ticket has been filed. Track it in your portal.',
     web_fields: JSON.stringify(['subject', 'description', 'priority']),

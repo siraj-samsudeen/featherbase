@@ -127,17 +127,24 @@ begin
   if to_regclass('user_permission') is not null then execute 'alter table user_permission rename to data_scope'; end if;
 end $$;
 
-update table_def set name = 'Table' where name = 'DocType';
-update table_def set name = 'Column' where name = 'DocField';
-update table_def set name = 'Permission' where name = 'DocPerm';
-update table_def set name = 'Share' where name = 'DocShare';
-update table_def set name = 'Data Scope' where name = 'User Permission';
+-- table_def.name is referenced by column_def.parent via a non-deferrable
+-- foreign key, so renaming both sides in the same transaction trips it no
+-- matter which order the two UPDATEs run in. Drop it for the renames below
+-- (both here and the Property Setter one further down) and recreate it once
+-- both sides are consistent.
+alter table column_def drop constraint if exists column_def_parent_fkey;
 
 update column_def set parent = 'Table' where parent = 'DocType';
 update column_def set parent = 'Column' where parent = 'DocField';
 update column_def set parent = 'Permission' where parent = 'DocPerm';
 update column_def set parent = 'Share' where parent = 'DocShare';
 update column_def set parent = 'Data Scope' where parent = 'User Permission';
+
+update table_def set name = 'Table' where name = 'DocType';
+update table_def set name = 'Column' where name = 'DocField';
+update table_def set name = 'Permission' where name = 'DocPerm';
+update table_def set name = 'Share' where name = 'DocShare';
+update table_def set name = 'Data Scope' where name = 'User Permission';
 
 update column_def set reference_table = 'Table' where reference_table = 'DocType';
 update column_def set reference_table = 'Column' where reference_table = 'DocField';
@@ -239,7 +246,7 @@ declare
   new_name text;
 begin
   for r in select table_name from information_schema.tables
-           where table_schema = 'public' and table_name like 'tab_%'
+           where table_schema = 'public' and table_name ~ '^tab_'
   loop
     old_name := r.table_name;
     new_name := substring(old_name from 5); -- drop 'tab_' prefix
@@ -307,9 +314,13 @@ begin
     alter table metadata_override rename column field_name to column_name;
   end if;
 end $$;
-update table_def set name = 'Metadata Override' where name = 'Property Setter';
 update column_def set parent = 'Metadata Override' where parent = 'Property Setter';
+update table_def set name = 'Metadata Override' where name = 'Property Setter';
 update column_def set reference_table = 'Table' where parent = 'Metadata Override' and reference_table = 'DocType';
+
+-- Both renames above are done and consistent — safe to reinstate the FK.
+alter table column_def
+  add constraint column_def_parent_fkey foreign key (parent) references table_def(name) on delete cascade;
 
 -- ============================================================
 -- 5. RLS: regenerate fc_has_read() against the renamed permission table,
