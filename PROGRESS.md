@@ -13,6 +13,32 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-26 (v12) — reconciled with PR #63 (Table/Row/Column rename)
+
+Merged #63 into main (owner's call), merged main into this branch
+(PROGRESS conflict resolved keeping both histories; CLAUDE.md
+auto-merged), then updated everything this branch owns to the new
+reality:
+
+- **`docs/LEARNING-PATH.md` rewritten** in Table/Row/Column vocabulary
+  and the new API: POST /api/doctype with `columns`/`column_type`,
+  Reference/Choice/Sub-table types, `PATCH /api/table/:table/:name` with
+  `updated_at` optimistic lock, bare physical names (`todo_item`), the
+  reserved-`status` gotcha as a deliberate exercise, Permission/tier/
+  own-rows-only in Stage 5, id_pattern in Stage 6. Vocabulary-bridge
+  note added (features.json IDs stay Frappe-era; frozen by rule).
+- **Explorer updated**: category explanations (metadata → table_def/
+  column_def + no prefix; REST → the actions.ts registry, PATCH-not-PUT,
+  effect read|write; permissions → tiers/own-rows-only/Data Scope; Desk
+  → Admin UI; DocTypeBuilder → TableBuilder file link; actions.ts added
+  to key files), lifecycle steps, and a vocabulary note atop the
+  Features page linking the Glossary. Rebuilt: docs picked up the
+  rewritten TUTORIAL/TESTING/GLOSSARY/ARCHITECTURE automatically;
+  feature→test scan still lands 124/126 (harness IDs survived the
+  rename); zero render errors; artifact republished (same URL).
+- **Design doc §4.1**: status note — #63 landed the prefix-drop half of
+  D2; the store-the-name-in-metadata half still stands.
+
 ## 2026-07-26 (v11) — Featherbase Explorer site + todo learning path
 
 Built the owner's phone-readable learning/navigation surface:

@@ -435,9 +435,16 @@ the day multi-tenancy matters.
 
 ### 4.1 Physical name belongs in metadata, not in a function
 
-`tableName()` currently derives `tab_<name>` (`doctype-engine.ts:95`) —
-the same design smell as Frappe's prefix, and the direct blocker for
-adoption. To ratify:
+> **Status update (2026-07-26, PR #63):** the `tab_` prefix is gone —
+> generated tables now use their bare name, and the vocabulary moved to
+> Table/Row/Column. That lands the *policy* half of D2. The remaining
+> half below still stands: the physical name is still *derived* by a
+> function rather than stored per-Table metadata, which is what adoption
+> (bare or not) actually needs.
+
+`tableName()` derives the physical name (`doctype-engine.ts`) — the
+derivation-not-data design smell, and the direct blocker for adoption.
+To ratify:
 
 - Every DocType stores an explicit **`table_name`** (or
   collection/path — the mapping half of the storage descriptor).

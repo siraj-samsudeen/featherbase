@@ -164,6 +164,10 @@
     }).join('');
     return `
     <h1 class="page-title">Features</h1>
+    <p class="lede" style="margin-bottom:12px">Feature titles keep the original Frappe-era
+    vocabulary (<code>features.json</code> is frozen by rule); since PR #63 the codebase says
+    <b>Table / Row / Column</b> — the mapping is in the
+    <a href="#/d/glossary">Glossary</a>.</p>
     <div class="toolrow">
       <input class="search" id="fsearch" type="search" placeholder="Search ${D.features.length} features — try 'child table' or PERM" value="${esc(q)}">
       <div class="chiprow" id="fcats">${catChips}</div>
