@@ -130,9 +130,15 @@ once per run, outside any sandbox transaction. It complements
 
 ## Hard rules
 
-- **Never edit, remove, reword, or reorder entries in `harness/features.json`.**
-  The only permitted change is flipping a `status` field. If a feature seems
-  wrong or infeasible, note it in `PROGRESS.md` and move on.
+- **`harness/features.json`: IDs, order, deps, and priorities are immutable;
+  the only agent-permitted change is flipping a `status` field.** Titles and
+  verify wording were renamed to the Table/Row/Column vocabulary on
+  2026-07-26 by explicit owner instruction (post-build, matching PR #63);
+  any future wording change likewise requires the owner's explicit
+  instruction — never an agent's initiative. ID prefixes (META, DOC, UI, …)
+  are historical mnemonics referenced by tests and logs — do not touch them.
+  If a feature seems wrong or infeasible, note it in `PROGRESS.md` and move
+  on.
 - Never mark a feature `"passing"` without having exercised it end-to-end in
   this session.
 - Never leave the app in a non-booting state at the end of a session. If you run

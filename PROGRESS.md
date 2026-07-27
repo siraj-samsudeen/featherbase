@@ -13,6 +13,29 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-26 (v13) — features.json renamed to new vocabulary (owner instruction); rename debt filed as #64
+
+Owner ruled the #63 leftovers unacceptable ("proportionately named") and
+authorized renaming `harness/features.json` now that the build is done:
+
+- **features.json**: all 126 titles/verify strings renamed to
+  Table/Row/Column vocabulary via a scripted, protected replacement pass
+  (code identifiers that genuinely still exist — `save_doc`,
+  `Document class`, `parentfield` — deliberately preserved). Invariants
+  asserted programmatically: IDs, order, deps, priorities, categories,
+  statuses byte-identical. Header `$comment` rewritten with the new
+  governance; **CLAUDE.md hard rule amended** (owner-authorized): IDs/
+  order/deps immutable, status flips remain the only agent-permitted
+  change, wording changes require explicit owner instruction.
+- **Issue #64 filed** — the deferred rename debt inventoried: file
+  renames (doctype-engine → table-engine, document → row-lifecycle,
+  DeskLayout → AdminLayout, test names) as one mechanical PR; behavioral
+  renames (`POST /api/doctype` — owner flagged it — `desk_client` role,
+  `/desk/` routes, `save_doc` wire shape pinned by the published
+  feather-testing-postgres package) as a second, decided-per-row PR.
+- Explorer rebuilt with the renamed titles (test-scan still 124/126,
+  zero render errors); Features-page note updated; artifact republished.
+
 ## 2026-07-26 (v12) — reconciled with PR #63 (Table/Row/Column rename)
 
 Merged #63 into main (owner's call), merged main into this branch
