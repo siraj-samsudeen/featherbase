@@ -33,7 +33,7 @@ test('SET-001: System Settings opens as a form and saves persistently', async ({
   // Verify via the API that it is a single instance keyed by the doctype.
   const token = await page.evaluate(() => localStorage.getItem('fc_token'))
   const doc = (await (
-    await page.request.get('/api/resource/System%20Settings/System%20Settings', {
+    await page.request.get('/api/table/System%20Settings/System%20Settings', {
       headers: { Authorization: `Bearer ${token}` },
     })
   ).json()) as { name: string; app_name: string }

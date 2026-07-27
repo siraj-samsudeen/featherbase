@@ -1,32 +1,31 @@
-// Workflow state binding: a Workflow may name the field on its target DocType
+// Workflow state binding: a Workflow may name the field on its target Table
 // that carries the state (`state_field`, Frappe's workflow_state_field). Blank
 // keeps the auto-added `workflow_state` field. Idempotent: adds the column +
-// docfield only if missing.
+// column_def only if missing.
 import { sql } from '../src/db'
-import { columnType } from '../src/doctype-engine'
+import { pgType } from '../src/doctype-engine'
 
 export async function up() {
-  const [dt] = await sql`select 1 from tab_doctype where name = 'Workflow'`
+  const [dt] = await sql`select 1 from table_def where name = 'Workflow'`
   if (!dt) return
-  const existing = await sql`select fieldname from tab_docfield where parent = 'Workflow'`
-  if (existing.some((r) => r.fieldname === 'state_field')) return
+  const existing = await sql`select column_name from column_def where parent = 'Workflow'`
+  if (existing.some((r) => r.column_name === 'state_field')) return
 
-  const [{ maxidx }] = await sql`select coalesce(max(idx), 0)::int as maxidx from tab_docfield where parent = 'Workflow'`
-  const type = columnType('Data')
-  if (type) await sql.unsafe(`alter table tab_workflow add column if not exists "state_field" ${type}`)
-  await sql`insert into tab_docfield ${sql({
+  const [{ maxidx }] = await sql`select coalesce(max(position), 0)::int as maxidx from column_def where parent = 'Workflow'`
+  const type = pgType('Data')
+  if (type) await sql.unsafe(`alter table workflow add column if not exists "state_field" ${type}`)
+  await sql`insert into column_def ${sql({
     parent: 'Workflow',
-    idx: (maxidx as number) + 1,
-    fieldname: 'state_field',
+    position: (maxidx as number) + 1,
+    column_name: 'state_field',
     label: 'State Field',
-    fieldtype: 'Data',
-    options: null,
+    column_type: 'Data',
     reqd: false,
     unique: false,
     default_value: null,
     read_only: false,
     hidden: false,
     in_list_view: false,
-    permlevel: 0,
+    tier: 'basic',
   })}`
 }

@@ -14,10 +14,10 @@ test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
   const dt = await request.post('/api/doctype', {
     headers,
-    data: { name: DT, fields: [{ fieldname: 'title', fieldtype: 'Data', in_list_view: true }] },
+    data: { name: DT, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
-  const doc = await request.post(`/api/resource/${encodeURIComponent(DT)}`, { headers, data: { title: 'orig' } })
+  const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { title: 'orig' } })
   docName = ((await doc.json()) as { name: string }).name
 })
 

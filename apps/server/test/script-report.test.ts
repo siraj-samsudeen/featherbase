@@ -16,7 +16,7 @@ async function setup(admin: TestClient) {
   // A synthetic report with declared filters, for deterministic assertions.
   registerScriptReport({
     name: 'Srv Echo',
-    filters: [{ fieldname: 'n', label: 'N', fieldtype: 'Int' }],
+    filters: [{ column_name: 'n', label: 'N', column_type: 'Int' }],
     execute: async (filters) => ({
       columns: ['n', 'doubled'],
       rows: [{ n: filters.n ?? 0, doubled: Number(filters.n ?? 0) * 2 }],
@@ -24,7 +24,7 @@ async function setup(admin: TestClient) {
   })
   await admin.post('/api/save_doc', {
     doctype: 'Report',
-    doc: { name: REPORT, ref_doctype: 'User', report_type: 'Script Report', report_script: 'Srv Echo' },
+    doc: { name: REPORT, ref_table: 'User', report_type: 'Script Report', report_script: 'Srv Echo' },
   })
 }
 
@@ -33,7 +33,7 @@ describe('RPT-005: script reports', () => {
     await setup(admin)
     const meta = await scriptReportMeta(REPORT, 'Administrator')
     expect(meta.script).toBe('Srv Echo')
-    expect(meta.filters).toEqual([{ fieldname: 'n', label: 'N', fieldtype: 'Int' }])
+    expect(meta.filters).toEqual([{ column_name: 'n', label: 'N', column_type: 'Int' }])
   })
 
   test('runs the registered execute() with the given filters', async ({ admin }) => {
@@ -49,7 +49,7 @@ describe('RPT-005: script reports', () => {
       method: 'POST',
       body: JSON.stringify({
         doctype: 'Report',
-        doc: { name: 'SR Srv Bad', ref_doctype: 'User', report_type: 'Script Report', report_script: 'User Report' },
+        doc: { name: 'SR Srv Bad', ref_table: 'User', report_type: 'Script Report', report_script: 'User Report' },
       }),
     })
     expect(built.status).toBe(201)
@@ -64,7 +64,7 @@ describe('RPT-005: script reports', () => {
       method: 'POST',
       body: JSON.stringify({
         doctype: 'Report',
-        doc: { name: 'SR Srv Missing', ref_doctype: 'User', report_type: 'Script Report', report_script: 'No Such Report' },
+        doc: { name: 'SR Srv Missing', ref_table: 'User', report_type: 'Script Report', report_script: 'No Such Report' },
       }),
     })
     expect(res.status).toBe(201)

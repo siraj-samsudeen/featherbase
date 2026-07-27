@@ -90,12 +90,15 @@ version is in `CLAUDE.md`; `PROGRESS.md` is the running log):
 
 A few hard rules worth knowing before your first PR:
 
-- Everything derives from DocType metadata — never hand-write a per-model
+- Everything derives from Table metadata — never hand-write a per-model
   table, endpoint, or form component.
-- The Frappe wire shapes (`sid` cookie, `/api/method/login` response,
-  `exc_type` error bodies) are deliberate compatibility surface; don't
-  "clean them up".
-- New UI must inherit the Desk look — the design tokens and `.fc-*`
+- Frappe wire-format compatibility is **not** a goal — the project replicated
+  Frappe faithfully as a first phase (complete) and is now deliberately
+  diverging from it, vocabulary and API shape included (see
+  [ADR 0006](docs/adr/0006-stack-react-hono-postgres.md)'s addendum). Don't
+  reintroduce Frappe-specific wire shapes (`exc_type`, `frappe.client.*`,
+  dotted `/api/method/<path>` RPC naming) for compatibility's sake.
+- New UI must inherit the Admin look — the design tokens and `.fc-*`
   component classes (rules at the top of `PROGRESS.md`).
 - Don't edit entries in `harness/features.json` beyond flipping a `status`.
 - `feather-testing-postgres` lives in its own repo; fix it there and bump
@@ -105,8 +108,8 @@ A few hard rules worth knowing before your first PR:
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the request lifecycle,
   metadata engine, and a map of the source tree
-- [docs/TUTORIAL.md](docs/TUTORIAL.md) — build your first DocType end to end
+- [docs/TUTORIAL.md](docs/TUTORIAL.md) — build your first Table end to end
 - [docs/TESTING.md](docs/TESTING.md) — the SQL-sandbox test model
-- [docs/GLOSSARY.md](docs/GLOSSARY.md) — Frappe vocabulary decoded
+- [docs/GLOSSARY.md](docs/GLOSSARY.md) — Featherbase's own vocabulary decoded
 - [docs/adr/](docs/adr/) — why things are the way they are; start with
   [ADR 0006](docs/adr/0006-stack-react-hono-postgres.md)

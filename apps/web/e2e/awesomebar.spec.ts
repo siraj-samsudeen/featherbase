@@ -15,12 +15,12 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     headers: auth,
     data: {
       name: DT,
-      autoname: 'prompt',
-      fields: [{ fieldname: 'note', fieldtype: 'Data', in_list_view: true }],
+      id_pattern: 'prompt',
+      columns: [{ column_name: 'note', column_type: 'Data', in_list_view: true }],
     },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
-  const doc = await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: auth,
     data: { name: DOC, note: 'searchable' },
   })

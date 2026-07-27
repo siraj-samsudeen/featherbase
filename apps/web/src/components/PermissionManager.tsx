@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../lib/api'
 
-// SET-003: edit the DocPerm matrix (roles × actions) for a DocType at
-// permlevel 0. System-Manager-only; changes take effect immediately because
-// the server reads DocPerm live on every request.
+// SET-003: edit the Permission matrix (roles × actions) for a Table at
+// tier 'basic'. System-Manager-only; changes take effect immediately because
+// the server reads Permission live on every request.
 
 const FLAGS = [
   { key: 'can_read', label: 'Read' },
@@ -17,7 +17,7 @@ const FLAGS = [
 ] as const
 
 type Flags = Record<string, boolean>
-interface PermsResponse {
+interface PermissionsResponse {
   doctype: string
   roles: string[]
   perms: (Flags & { name: string; role: string })[]
@@ -26,7 +26,7 @@ interface PermsResponse {
 export function PermissionManager({ doctype }: { doctype: string }) {
   const q = useQuery({
     queryKey: ['permissions', doctype],
-    queryFn: () => api.get<PermsResponse>(`/api/permissions/${encodeURIComponent(doctype)}`),
+    queryFn: () => api.get<PermissionsResponse>(`/api/permissions/${encodeURIComponent(doctype)}`),
   })
   const [matrix, setMatrix] = useState<Record<string, Flags>>({})
   const [dirty, setDirty] = useState<Set<string>>(new Set())

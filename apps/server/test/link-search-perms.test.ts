@@ -7,21 +7,21 @@ const ROLE = 'Ls Role'
 
 // The exact query shape a Link autocomplete issues.
 const searchQs = (q: string) =>
-  `/api/resource/${encodeURIComponent(TARGET)}?${new URLSearchParams({
+  `/api/table/${encodeURIComponent(TARGET)}?${new URLSearchParams({
     filters: JSON.stringify([['name', 'like', `%${q}%`]]),
     fields: JSON.stringify(['name']),
     limit_page_length: '10',
   })}`
 
-// Per-test world: the target DocType, the role, and two users.
+// Per-test world: the target Table, the role, and two users.
 async function setup(
   admin: TestClient,
   createUser: (o?: { roles?: string[] }) => Promise<TestClient>,
 ) {
   await admin.post('/api/doctype', {
     name: TARGET,
-    autoname: 'prompt',
-    fields: [{ fieldname: 'note', fieldtype: 'Data' }],
+    id_pattern: 'prompt',
+    columns: [{ column_name: 'note', column_type: 'Data' }],
   })
   await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
   const alice = await createUser({ roles: [ROLE] })
@@ -29,17 +29,17 @@ async function setup(
   return { alice, bob }
 }
 
-// The if_owner grant plus one doc owned by each user.
-async function grantIfOwnerAndSeed(admin: TestClient, alice: TestClient, bob: TestClient) {
+// The own_rows_only grant plus one doc owned by each user.
+async function grantOwnRowsOnlyAndSeed(admin: TestClient, alice: TestClient, bob: TestClient) {
   await admin.post('/api/save_doc', {
-    doctype: 'DocPerm',
-    doc: { ref_doctype: TARGET, role: ROLE, if_owner: true, can_read: true, can_create: true },
+    doctype: 'Permission',
+    doc: { ref_table: TARGET, role: ROLE, own_rows_only: true, can_read: true, can_create: true },
   })
-  await alice.fetch(`/api/resource/${encodeURIComponent(TARGET)}`, {
+  await alice.fetch(`/api/table/${encodeURIComponent(TARGET)}`, {
     method: 'POST',
     body: JSON.stringify({ name: 'doc-alice', note: 'a' }),
   })
-  await bob.fetch(`/api/resource/${encodeURIComponent(TARGET)}`, {
+  await bob.fetch(`/api/table/${encodeURIComponent(TARGET)}`, {
     method: 'POST',
     body: JSON.stringify({ name: 'doc-bob', note: 'b' }),
   })
@@ -54,9 +54,9 @@ describe('PERM-010: link-field search is permission-filtered', () => {
     expect((await alice.fetch(searchQs('doc'))).status).toBe(403)
   })
 
-  test('if_owner read -> search returns only own docs', async ({ admin, createUser }) => {
+  test('own_rows_only read -> search returns only own docs', async ({ admin, createUser }) => {
     const { alice, bob } = await setup(admin, createUser)
-    await grantIfOwnerAndSeed(admin, alice, bob)
+    await grantOwnRowsOnlyAndSeed(admin, alice, bob)
     const res = (await (await alice.fetch(searchQs('doc'))).json()) as {
       data: { name: string }[]
       total: number
@@ -65,17 +65,17 @@ describe('PERM-010: link-field search is permission-filtered', () => {
     expect(res.data[0].name).toBe('doc-alice')
   })
 
-  test('user permissions further restrict search results', async ({ admin, createUser }) => {
+  test('data scopes further restrict search results', async ({ admin, createUser }) => {
     const { alice, bob } = await setup(admin, createUser)
-    await grantIfOwnerAndSeed(admin, alice, bob)
-    // lift if_owner: grant unconditional read, then pin BOB to doc-alice only
+    await grantOwnRowsOnlyAndSeed(admin, alice, bob)
+    // lift own_rows_only: grant unconditional read, then pin BOB to doc-alice only
     await admin.post('/api/save_doc', {
-      doctype: 'DocPerm',
-      doc: { ref_doctype: TARGET, role: ROLE, can_read: true },
+      doctype: 'Permission',
+      doc: { ref_table: TARGET, role: ROLE, can_read: true },
     })
     await admin.post('/api/save_doc', {
-      doctype: 'User Permission',
-      doc: { user: bob.user, allow: TARGET, for_value: 'doc-alice' },
+      doctype: 'Data Scope',
+      doc: { user: bob.user, allow_table: TARGET, for_value: 'doc-alice' },
     })
     const bobRes = (await (await bob.fetch(searchQs('doc'))).json()) as {
       data: { name: string }[]
@@ -84,7 +84,7 @@ describe('PERM-010: link-field search is permission-filtered', () => {
     expect(bobRes.total).toBe(1)
     expect(bobRes.data[0].name).toBe('doc-alice')
 
-    // alice (no user perms, unconditional read) sees both
+    // alice (no data scopes, unconditional read) sees both
     const aliceRes = (await (await alice.fetch(searchQs('doc'))).json()) as { total: number }
     expect(aliceRes.total).toBe(2)
   })

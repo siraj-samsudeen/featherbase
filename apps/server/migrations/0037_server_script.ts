@@ -1,22 +1,22 @@
 // CUST-004: Server Scripts — sandboxed user scripts that run on document
 // lifecycle events (and, optionally, as callable API methods).
 import { sql } from '../src/db'
-import { createDocType } from '../src/doctype-engine'
+import { createTable } from '../src/doctype-engine'
 
 export async function up() {
-  const [exists] = await sql`select 1 from tab_doctype where name = 'Server Script'`
+  const [exists] = await sql`select 1 from table_def where name = 'Server Script'`
   if (exists) return
-  await createDocType({
+  await createTable({
     name: 'Server Script',
     module: 'Core',
-    autoname: 'prompt',
-    fields: [
-      { fieldname: 'script_type', fieldtype: 'Select', options: 'Document Event\nAPI', reqd: true, in_list_view: true },
-      { fieldname: 'reference_doctype', fieldtype: 'Link', options: 'DocType', in_list_view: true },
-      { fieldname: 'event', fieldtype: 'Select', options: 'validate\nbefore_save\nafter_save' },
-      { fieldname: 'api_method', fieldtype: 'Data' },
-      { fieldname: 'script', fieldtype: 'Long Text', reqd: true },
-      { fieldname: 'enabled', fieldtype: 'Check', default_value: '1', in_list_view: true },
+    id_pattern: 'prompt',
+    columns: [
+      { column_name: 'script_type', column_type: 'Choice', choices: 'Document Event\nAPI', reqd: true, in_list_view: true },
+      { column_name: 'ref_table', column_type: 'Reference', reference_table: 'Table', in_list_view: true },
+      { column_name: 'event', column_type: 'Choice', choices: 'validate\nbefore_save\nafter_save' },
+      { column_name: 'api_method', column_type: 'Data' },
+      { column_name: 'script', column_type: 'Long Text', reqd: true },
+      { column_name: 'enabled', column_type: 'Check', default_value: '1', in_list_view: true },
     ],
   })
 }

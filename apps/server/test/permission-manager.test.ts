@@ -3,17 +3,17 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import type { TestClient } from 'feather-testing-postgres'
 
-// SET-003: the permission-manager endpoints edit the DocPerm matrix, gated to
-// System Managers, upserting one row per (doctype, role) at permlevel 0.
+// SET-003: the permission-manager endpoints edit the Permission matrix, gated to
+// System Managers, upserting one row per (table, role) at tier 'basic'.
 
 const DT = 'PM Srv Doc'
 const ROLE = 'PM Srv Role'
 
-// Per-test world: the DocType and the role, rolled back with the test.
+// Per-test world: the Table and the role, rolled back with the test.
 async function setup(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: DT,
-    fields: [{ fieldname: 'title', fieldtype: 'Data' }],
+    columns: [{ column_name: 'title', column_type: 'Data' }],
   })
   await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
 }
@@ -28,7 +28,7 @@ describe('SET-003: permission manager endpoints', () => {
     expect(Array.isArray(body.perms)).toBe(true)
   })
 
-  test('POST upserts a single DocPerm row per role (no duplicates)', async ({ admin }) => {
+  test('POST upserts a single Permission row per role (no duplicates)', async ({ admin }) => {
     await setup(admin)
     const post = (flags: Record<string, boolean>) =>
       admin.fetch(`/api/permissions/${encodeURIComponent(DT)}`, {
@@ -40,8 +40,8 @@ describe('SET-003: permission manager endpoints', () => {
     expect((await post({ can_read: true, can_write: false })).status).toBe(200)
 
     const rows = await sql`
-      select can_read, can_write from tab_docperm
-      where ref_doctype = ${DT} and role = ${ROLE} and permlevel = 0`
+      select can_read, can_write from permission
+      where ref_table = ${DT} and role = ${ROLE} and tier = 'basic'`
     expect(rows).toHaveLength(1) // upsert, not insert
     expect(rows[0].can_write).toBe(false)
     expect(rows[0].can_read).toBe(true)

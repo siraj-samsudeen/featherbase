@@ -7,8 +7,8 @@ import { hasPermission } from './permissions'
 // of Supabase Realtime per the architecture invariants).
 //
 // Channels:
-//   list:<DocType>    — a doc of that type was created/updated/deleted
-//   doc:<DocType>:<name> — that specific document changed
+//   list:<Table>    — a row of that Table was created/updated/deleted
+//   doc:<Table>:<name> — that specific row changed
 //   user:<name>       — a personal event (e.g. a new notification)
 //
 // The lifecycle emits events via publish(); connected clients receive the
@@ -41,19 +41,19 @@ const clients = new Set<Client>()
 
 // A user may only subscribe to:
 //   user:<their own name>            — personal events
-//   list:<DocType> / doc:<DocType>:* — only DocTypes they can READ
+//   list:<Table> / doc:<Table>:* — only Tables they can READ
 // Any other channel request is rejected, preventing cross-user/cross-
 // permission eavesdropping over the socket.
 export async function canSubscribe(user: SessionUser, channel: string): Promise<boolean> {
   if (channel.startsWith('user:')) return channel === `user:${user.name}`
   if (channel.startsWith('list:')) return hasPermission(user.name, channel.slice(5), 'read')
   if (channel.startsWith('doc:')) {
-    // doc:<DocType>:<name> — DocType may itself contain ':' only in theory;
+    // doc:<Table>:<name> — Table may itself contain ':' only in theory;
     // split on the first ':' after the prefix.
     const rest = channel.slice(4)
-    const doctype = rest.slice(0, rest.lastIndexOf(':'))
-    if (!doctype) return false
-    return hasPermission(user.name, doctype, 'read')
+    const table = rest.slice(0, rest.lastIndexOf(':'))
+    if (!table) return false
+    return hasPermission(user.name, table, 'read')
   }
   return false
 }
@@ -73,14 +73,14 @@ export function publish(channel: string, event: string, payload?: unknown): void
   }
 }
 
-// Convenience emitters for the document lifecycle.
+// Convenience emitters for the row lifecycle.
 export function publishDocEvent(
-  doctype: string,
+  table: string,
   name: string,
   event: 'created' | 'updated' | 'deleted',
 ): void {
-  publish(`list:${doctype}`, event, { doctype, name })
-  publish(`doc:${doctype}:${name}`, event, { doctype, name })
+  publish(`list:${table}`, event, { table, name })
+  publish(`doc:${table}:${name}`, event, { table, name })
 }
 
 export function publishUserEvent(user: string, event: string, payload?: unknown): void {

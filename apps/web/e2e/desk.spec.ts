@@ -17,16 +17,16 @@ test('UI-001: full login flow into the Desk shell', async ({ page }) => {
   await page.click('button[type=submit]')
   await expect(page).toHaveURL(/\/desk/)
 
-  // Sidebar lists DocTypes from metadata (core seeds present)
+  // Sidebar lists Tables from metadata (core seeds present)
   const nav = page.getByTestId('doctype-nav')
   await expect(nav.getByText('User', { exact: true })).toBeVisible()
   await expect(nav.getByText('Role', { exact: true })).toBeVisible()
-  await expect(nav.getByText('DocType', { exact: true })).toBeVisible()
+  await expect(nav.getByText('Table', { exact: true })).toBeVisible()
 
   // Session user shown
   await expect(page.getByTestId('session-user')).toContainText('Administrator')
 
-  // Navigate to a DocType page
+  // Navigate to a Table page
   await nav.getByText('User', { exact: true }).click()
   await expect(page).toHaveURL(/\/desk\/User/)
   await expect(page.getByTestId('doctype-page')).toContainText('User')

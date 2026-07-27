@@ -6,7 +6,7 @@ import { getList } from '../query'
 const report: ScriptReport = {
   name: 'User Report',
   filters: [
-    { fieldname: 'enabled', label: 'Enabled', fieldtype: 'Select', options: '\nYes\nNo' },
+    { column_name: 'enabled', label: 'Enabled', column_type: 'Choice', choices: '\nYes\nNo' },
   ],
   execute: async (filters, user) => {
     const f: [string, string, unknown][] = []

@@ -14,7 +14,7 @@ export interface RenderedPage {
 
 export async function renderWebPage(route: string): Promise<RenderedPage> {
   const [page] = await sql`
-    select title, content, published from tab_web_page where route = ${route}`
+    select title, content, published from web_page where route = ${route}`
   if (!page || !page.published) {
     return {
       found: false,

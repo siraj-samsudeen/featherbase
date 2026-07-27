@@ -10,7 +10,7 @@ there, never vendor it here).
 ## The sandbox model
 
 Every test body runs inside one Postgres transaction that is **rolled back**
-when the test ends. Whatever the test creates — DocTypes, tables, documents,
+when the test ends. Whatever the test creates — Tables, tables, rows,
 users — vanishes at rollback, so tests need no teardown and can't pollute
 each other. Crucially, the test drives the *real* Hono app in-process, so
 the full production path (routes → auth → permissions → lifecycle → SQL)
@@ -23,8 +23,8 @@ that routes the app's queries through the test's transaction. It also wires:
 
 - `mintToken` / `insertUser` — fixtures like `admin` come pre-authenticated.
 - `onTeardown` — invalidates the per-process metadata cache and resets the
-  rate limiter, because a test may have created DocTypes whose tables no
-  longer exist after rollback.
+  rate limiter, because a test may have created Tables whose physical tables
+  no longer exist after rollback.
 
 ## Writing a test
 
@@ -38,8 +38,8 @@ describe('naming', () => {
   test('series names are sequential', async ({ admin }) => {
     await admin.post('/api/doctype', {
       name: 'Nm Invoice',
-      autoname: 'NMINV-.####',
-      fields: [{ fieldname: 'title', fieldtype: 'Data' }],
+      id_pattern: 'NMINV-.####',
+      columns: [{ column_name: 'title', column_type: 'Data' }],
     })
     const doc = await admin.post<{ name: string }>('/api/save_doc', {
       doctype: 'Nm Invoice',
@@ -59,7 +59,7 @@ the test's own uncommitted state, which is exactly what you want.
 Asserting `NMINV-0001` works every run because the series counter row is
 created inside the transaction and rolled back with it. But remember the
 sandbox *sees committed state*: a name that collides with seeded data (a
-DocType that a migration created, say) will 409 — pick names that don't
+Table that a migration created, say) will 409 — pick names that don't
 exist in the real schema.
 
 ## Running tests
@@ -83,20 +83,20 @@ Both `apps/server/vitest.config.ts` and `apps/web/vitest.config.ts` set
 `fileParallelism: false`, and `apps/web/playwright.config.ts` sets
 `workers: 1`, all for the same reason: every test file shares **one**
 database. Tests within a file are transaction-isolated, but parallel *files*
-contend on cross-cutting state — the single `tab_background_job` queue
+contend on cross-cutting state — the single `background_job` queue
 (`drainJobs()` drains every queued job, so parallel files steal each other's
-jobs) and naming-series row locks. Do not turn parallelism back on; the
+jobs) and id-pattern row locks. Do not turn parallelism back on; the
 flake it causes looks like unrelated bugs.
 
 ## The stale-job-queue story
 
-`tab_background_job` is the one piece of state that outlives a run. A run
+`background_job` is the one piece of state that outlives a run. A run
 killed partway through (Ctrl-C, crash) leaves committed `queued` rows
 behind; the next run's `drainJobs()` then returns a higher count than a test
 expected, and the failure (`expected 2 to be 1`) reads like a real bug in
 job code. The fix is `apps/server/test/global-setup.ts`: a Vitest
 `globalSetup` that runs in the main process, **outside** any sandbox
-transaction, and deletes everything in `tab_background_job` once per run.
+transaction, and deletes everything in `background_job` once per run.
 Both suites use it (the web config points at
 `../server/test/global-setup.ts`), so every run starts from a known-empty
 queue. It complements `fileParallelism: false` rather than replacing it.
@@ -113,7 +113,7 @@ Reach for it first.
 the same in-process server against the same sandboxed database (which is why
 the web vitest config inlines `feather-testing-postgres` and reuses the
 server's global setup). `apps/web/test/setup.ts` stubs `WebSocket` so the
-Desk's realtime client doesn't try to open real connections under jsdom. Use
+Admin UI's realtime client doesn't try to open real connections under jsdom. Use
 this layer when the behavior under test is React-side: rendering from
 metadata, form interaction logic, query invalidation.
 

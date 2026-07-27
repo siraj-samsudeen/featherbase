@@ -1,86 +1,101 @@
 # Architecture
 
 Featherbase is a metadata-driven app platform: you define a model (a
-**DocType**) as JSON, and the platform generates the database table, the API,
+**Table**) as JSON, and the platform generates the database table, the API,
 the validation schema, and the UI from that one definition. Nothing is
 hand-written per model — one save path, one list view, one form view serve
-every DocType.
+every Table.
 
-This document walks one request end to end, then explains the metadata engine
-and the generic Desk UI, and closes with a map of the source tree.
+This document walks one request end to end, then explains the metadata
+engine and the generic Admin UI, and closes with a map of the source tree.
 
-## The life of a `save_doc` request
+> This project began as a faithful replication of [Frappe
+> Framework](https://frappe.io/framework); the vocabulary below (Table, Row,
+> Column, ...) is Featherbase's own, having since diverged from Frappe's
+> naming and wire format on purpose. See [GLOSSARY.md](GLOSSARY.md) and
+> [ADR 0006](adr/0006-stack-react-hono-postgres.md)'s addendum.
 
-Everything below is traceable in two files: the route in
+## The life of a row-save request
+
+Everything below is traceable in two files: the routes in
 `apps/server/src/index.ts` and the lifecycle in `apps/server/src/document.ts`.
+The API surface itself is being redesigned around a unified action registry
+(`GET/POST /api/table/:table`, `GET/PATCH/DELETE /api/table/:table/:name`,
+row actions such as submit/cancel/apply-workflow-action, collection actions
+such as bulk-update, and free-standing methods); the walkthrough below
+describes the insert path — a `POST /api/table/:table` call — since that's
+where the interesting lifecycle work happens.
 
 ### 1. Route and middleware
 
 The server is a single Hono app built in `apps/server/src/index.ts`. Before
 any handler runs, three middlewares apply to `/api/*`:
 
-- `secureHeaders()` and a CORS policy restricted to the Desk origins
+- `secureHeaders()` and a CORS policy restricted to the Admin UI's origins
   (`config.allowedOrigins`, default `http://localhost:5173`).
 - The auth middleware (`app.use('/api/*', ...)` — registered after the public
   routes) resolves the caller and stores it as `c.var.user`. Credentials come
   from `authCredential()`: the `Authorization` header wins; an HttpOnly `sid`
-  cookie is the fallback. That cookie is set by both `POST /api/login` and the
-  Frappe-shaped `POST /api/method/login`, so Frappe-style clients work
-  unchanged.
+  cookie is the fallback. Frappe wire-format compatibility is no longer a
+  goal (see the Frappe-divergence section below); the cookie mechanism itself
+  stays because it's just a normal session cookie, not a Frappe-specific
+  shape.
 - `rateLimit` (`apps/server/src/rate-limit.ts`), keyed by the resolved user.
 
 Token resolution lives in `apps/server/src/auth.ts` (`resolveToken`): a
-`Bearer <jwt>` is verified against `JWT_SECRET` and looked up in `tab_user`;
-an `Authorization: token key:secret` pair authenticates an integration via
-its API key.
+`Bearer <jwt>` is verified against `JWT_SECRET` and looked up in the `user`
+table; an `Authorization: token key:secret` pair authenticates an
+integration via its API key.
 
-The route itself:
+The route itself (illustrative — exact shape tracked in #61):
 
 ```ts
 // apps/server/src/index.ts
-app.post('/api/save_doc', async (c) => {
-  const body = await c.req.json()          // { doctype, doc }
-  const saved = await saveDoc(body.doctype, body.doc, who(c))
-  publishDocEvent(body.doctype, String(saved.name), hadName ? 'updated' : 'created')
+app.post('/api/table/:table', async (c) => {
+  const body = await c.req.json()          // { row }
+  const saved = await saveDoc(c.req.param('table'), body.row, who(c))
+  publishDocEvent(c.req.param('table'), String(saved.name), hadName ? 'updated' : 'created')
   return c.json(saved, 201)
 })
 ```
 
 The handler is deliberately thin: parse, call `saveDoc`, publish a realtime
-event (`apps/server/src/realtime.ts`), return the saved document as JSON with
-status 201.
+event (`apps/server/src/realtime.ts`), return the saved row as JSON with
+status 201. (`saveDoc` and the other row-lifecycle functions —
+`submitDoc`/`cancelDoc`/`deleteDoc`/`getDoc` — keep their current names in
+`apps/server/src/document.ts`; the rename replaced the vocabulary these
+functions operate on, not every function name built from it.)
 
 ### 2. `saveDoc` — before the transaction
 
-`saveDoc` in `apps/server/src/document.ts` starts by loading the DocType's
+`saveDoc` in `apps/server/src/document.ts` starts by loading the Table's
 metadata via `getMeta` (`apps/server/src/meta.ts`, a per-process cache over
-`tab_doctype` + `tab_docfield`). Then it routes special cases:
+`table_def` + `column_def`). Then it routes special cases:
 
-- `DocType` / `DocField` documents are refused — schema changes must go
-  through `/api/doctype` so DDL runs (the `ENGINE_MANAGED` set).
-- A Single DocType (`issingle`) goes to `saveSingle`, which persists values
-  into the `single_value` EAV table instead of a generated table.
-- A child DocType (`istable`) is refused — child rows are only saved through
-  their parent.
-- If `doc.name` is set and the row exists, this is an **update** and control
+- `Table` / `Column` rows are refused — schema changes must go through the
+  table-definition endpoint so DDL runs (the `ENGINE_MANAGED` set).
+- A Settings Table (`kind: 'settings'`) goes to `saveSingle`, which persists
+  values into the `single_value` EAV table instead of a generated table.
+- A Sub-table (`kind: 'sub_table'`) is refused as a top-level save — its rows
+  are only saved through their parent Row.
+- If `row.name` is set and the row exists, this is an **update** and control
   passes to `updateDoc` (see below). Otherwise it is an **insert**.
 
 For an insert, before any SQL write:
 
-- `assertPermission(user, doctype, 'create')` and User Permission checks
+- `assertDocPermission(user, table, 'create')` and Data Scope checks
   (`apps/server/src/permissions.ts`).
-- `pickFieldValues` filters the payload to declared fields — unknown keys are
-  a `ValidationError` (typos fail loudly), `read_only` fields are ignored
-  (they are system-managed).
-- `stripUnwritableFields` drops fields above the caller's writable
-  permlevels.
+- `pickFieldValues` filters the payload to declared columns — unknown keys
+  are a `ValidationError` (typos fail loudly), `read_only` columns are
+  ignored (they are system-managed).
+- `stripUnwritableFields` drops columns above the caller's writable tier.
 - `applyDefaults` fills declared `default_value`s.
 - `validateValues` parses the result against a Zod schema **generated from
-  the metadata** (`metaToZod` in `packages/shared`) — required fields,
-  types, select options.
+  the metadata** (`tableSchemaToZod` in `packages/shared`) — required columns,
+  types, choice lists.
 - `applySla` (`apps/server/src/sla.ts`) stamps response/resolution deadlines
-  if an active SLA covers this DocType.
-- If a Workflow governs the DocType, the workflow state field is forced to
+  if an active SLA covers this Table.
+- If a Workflow governs the Table, the workflow state column is forced to
   the initial state — a caller cannot smuggle in a later state
   (`apps/server/src/workflow.ts`).
 
@@ -88,34 +103,36 @@ For an insert, before any SQL write:
 
 The write happens in a single `sql.begin(...)` transaction:
 
-1. **Naming** — `resolveName` applies the DocType's `autoname` rule: `hash`
-   (random), `prompt` (client supplies the name), `field:<fieldname>`, or a
-   naming series like `TASK-.####`. Series counters use
+1. **Naming** — `resolveName` applies the Table's id pattern: `hash`
+   (random), `prompt` (client supplies the name), `field:<column>`, or a
+   series like `TASK-.####`. Series counters use
    `INSERT ... ON CONFLICT DO UPDATE` on the `series` table *inside* the
    transaction, so concurrent savers serialize on the counter row and a
    rolled-back save rolls the increment back too.
-2. **Pre-write hooks** — `runHooks` (`apps/server/src/controllers.ts`) runs
-   `before_insert → before_validate → validate → before_save`, interleaved
-   with sandboxed Server Scripts for `validate` and `before_save`
-   (`runDocEventScripts` in `apps/server/src/server-scripts.ts`). Hooks may
-   mutate `ctx.doc`; any throw aborts the whole transaction.
-3. **Link validation** — `validateLinks` checks every Link field references
-   an existing row of its target DocType.
-4. **The INSERT** into the generated `tab_*` table.
-5. **Child tables** — `saveChildren` writes each `Table` field's rows into
-   the child DocType's table (with `parent`, `parenttype`, `parentfield`
+2. **Pre-write automation triggers** — `runHooks`
+   (`apps/server/src/controllers.ts`) runs the on-check and before-saving
+   moments (`before_insert → before_validate → validate → before_save`),
+   interleaved with sandboxed Server Scripts for the same moments
+   (`runDocEventScripts` in `apps/server/src/server-scripts.ts`). Triggers
+   may mutate `ctx.row`; any throw aborts the whole transaction.
+3. **Reference validation** — `validateLinks` checks every Reference column
+   references an existing row of its target Table.
+4. **The INSERT** into the generated table.
+5. **Sub-tables** — `saveChildren` writes each Sub-table column's rows into
+   the child Table's table (with `parent`, `parenttype`, `parentfield`
    linkage), in the same transaction. On update, rows omitted from the
    payload are deleted — the payload is authoritative.
-6. **Post-write hooks** — `after_insert → after_save → on_update`, plus
-   `after_save` Server Scripts.
+6. **Post-write automation triggers** — the after-saving moments
+   (`after_insert → after_save → on_update`), plus `after_save` Server
+   Scripts.
 
 The update path (`updateDoc`) differs in a few ways: it takes the row with
 `SELECT ... FOR UPDATE`, enforces **optimistic concurrency** (the client must
-echo the `modified` timestamp it loaded; a mismatch is a 409
-`ConflictError`), refuses writes to submitted/cancelled documents
-(`docstatus` 1/2), blocks direct edits to a workflow-controlled state field,
-and records a field-level diff into `tab_version` (`recordVersion`) when the
-DocType has `track_changes`.
+echo the `updated_at` timestamp it loaded; a mismatch is a 409
+`ConflictError`), refuses writes to submitted/cancelled rows (`status`
+`submitted`/`cancelled`), blocks direct edits to a workflow-controlled state
+column, and records a column-level diff into the `version` table
+(`recordVersion`) when the Table has `track_changes`.
 
 ### 4. After commit — subsystem fan-out
 
@@ -130,129 +147,140 @@ Only after the transaction commits does the save fan out to side effects
 - Back in the route handler, `publishDocEvent` pushes a realtime event over
   the WebSocket server (`apps/server/src/realtime.ts`).
 
-Submit and cancel (`submitDoc` / `cancelDoc` → `setDocstatus`) run their own
-hook order — `before_submit`/`before_cancel` before the write, then
-`on_update` and `on_submit`/`on_cancel` — matching Frappe.
+Submit and cancel (`submitDoc` / `cancelDoc` → `setStatus`) run their own
+automation-trigger order — before-submit/before-cancel before the write, then
+on-update and on-submit/on-cancel.
 
 ### 5. The response
 
-The saved row is re-read with child tables attached (`loadChildren`) and
-passed through `stripInternalColumns`, which drops anything that is not a
-standard column or a declared DocField, and always drops credential columns
+The saved row is re-read with sub-tables attached (`loadChildren`) and passed
+through `stripInternalColumns`, which drops anything that is not a standard
+column or a declared Column, and always drops credential columns
 (`password_hash`, `api_secret_hash`, ...). The client gets plain JSON of the
-document.
+row.
 
 Errors follow one envelope everywhere (`apps/server/src/errors.ts`): an
-`AppError` maps to a status code (Frappe's convention of **417** for
-business validation), a body with `error: { type, message, fields? }`, and a
-top-level `exc_type` carrying the Frappe exception-class name
-(`DoesNotExistError` for 404s) — deliberate wire parity so Frappe clients
-can parse failures.
+`AppError` maps to a status code and a body with
+`error: { type, message, columns? }`. This error envelope, like the rest of
+the API, is Featherbase's own shape — it no longer carries Frappe's
+`exc_type` field or Frappe's status-code conventions; see the Frappe-
+divergence section below.
 
-## The hook chain
+## The automation-trigger chain
 
-`apps/server/src/controllers.ts` keeps a registry of per-DocType controllers.
+`apps/server/src/controllers.ts` keeps a registry of per-Table controllers.
 Each file in `apps/server/src/controllers/` default-exports a
-`DocTypeController` (`{ doctype, hooks }`) and is auto-loaded at boot. The
-events, in Frappe's order:
+`TableController` (`{ table, hooks }`) and is auto-loaded at boot. The
+automation-trigger moments, in order:
 
 ```
-insert: before_insert -> before_validate -> validate -> before_save
-        -> INSERT -> after_insert -> after_save -> on_update
-update: before_validate -> validate -> before_save
-        -> UPDATE -> after_save -> on_update
+insert: on check (before_insert -> before_validate -> validate)
+        -> before saving (before_save) -> INSERT
+        -> after saving (after_insert -> after_save) -> on_update
+update: on check (before_validate -> validate) -> before saving (before_save)
+        -> UPDATE -> after saving (after_save) -> on_update
 ```
 
-plus `before_submit`/`on_submit`, `before_cancel`/`on_cancel`, and
-`on_trash`. A controller registered under the wildcard DocType `'*'` runs for
-every DocType (Frappe's `doc_events["*"]`), after the specific ones. Hooks
-receive a `HookContext` with the doc, the old row (on update), the metadata,
-the acting user, and the open transaction handle.
+plus before/after submit, before/after cancel, and on-trash. A controller
+registered under the wildcard Table `'*'` runs for every Table, after the
+specific ones. Automation triggers receive a `HookContext` with the row, the
+old row (on update), the metadata, the acting user, and the open transaction
+handle.
 
 ## The metadata engine
 
-`apps/server/src/doctype-engine.ts` turns a DocType JSON definition into a
-real Postgres table.
+`apps/server/src/doctype-engine.ts` turns a Table's JSON definition into a
+real Postgres table (the file itself keeps its pre-rename name; only the
+vocabulary and identifiers inside it changed).
 
-A definition is validated by `doctypeDefSchema` (Zod): a name, flags
-(`issingle`, `istable`, `is_submittable`), an `autoname` rule, and a list of
-fields, each with `fieldname` (snake_case), `fieldtype`, `options`, and flags
-like `reqd`, `unique`, `in_list_view`, `permlevel`.
+A definition is validated by a Zod schema: a name, a `kind`
+(`table` / `sub_table` / `settings`), an `is_submittable` flag, an id
+pattern, and a list of columns, each with a `column_name` (snake_case), a
+`column_type`, type-specific fields (`reference_table`, `choices`,
+`row_table`), and flags like `reqd`, `unique`, `in_list_view`, `tier`.
 
-`createDocType`:
+Creating a Table:
 
-1. Inserts one row into `tab_doctype` and one per field into `tab_docfield` —
+1. Inserts one row into `table_def` and one per column into `column_def` —
    the metadata *is* data.
-2. Generates `CREATE TABLE "tab_<name>"` from the fields. Every table gets
-   the standard columns (`name` PK, `owner`, `creation`, `modified`,
-   `modified_by`, `docstatus`, `idx`); child tables additionally get
-   `parent`/`parenttype`/`parentfield`. Field types map to column types in
-   the `COLUMN_TYPES` table (`Data` → `varchar(140)`, `Currency` →
-   `numeric(21,9)`, `JSON` → `jsonb`, ...). Layout fields (`Section Break`,
-   `Column Break`) and `Table` fields produce no column.
+2. Generates `CREATE TABLE "<name>"` from the columns (no `tab_` prefix).
+   Every table gets the standard columns (`name` PK, `created_by`,
+   `created_at`, `updated_at`, `updated_by`, `status`, `position`);
+   sub-tables additionally get `parent`/`parenttype`/`parentfield`. Column
+   types map to Postgres column types (`Data` → `varchar(140)`, `Currency` →
+   `numeric(21,9)`, `JSON` → `jsonb`, ...). Layout columns (section break,
+   column break) and Sub-table columns produce no physical column.
 3. Enables row-level security and generates a SELECT-only policy for the
    `desk_client` role (`applyRls`) — the local stand-in for a direct
    PostgREST-style client. The app server connects as the table owner and
    remains the only write path (see `apps/server/migrations/0010_rls.sql`).
 
-`updateDocType` syncs an edited definition: new fields add columns
-(`ALTER TABLE ... ADD COLUMN`), property edits update `tab_docfield` rows,
-removed fields delete the docfield but **keep** the column unless
-`drop_columns` is passed, and fieldtype changes are rejected outright.
+Updating a Table's definition syncs the edit: new columns add physical
+columns (`ALTER TABLE ... ADD COLUMN`), property edits update `column_def`
+rows, removed columns delete the column-definition row but **keep** the
+physical column unless `drop_columns` is passed, and column-type changes are
+rejected outright.
 
-Singles get no table at all — their values live in the `single_value` EAV
-table, one row per field.
+Settings Tables get no table at all — their values live in the
+`single_value` EAV table, one row per column.
 
-## The generic Desk UI
+## The generic Admin UI
 
-The web app never knows about specific DocTypes. Two facts make that work:
+The web app never knows about specific Tables. Two facts make that work:
 
 **Metadata comes from the server.** `useMeta` in `apps/web/src/lib/meta.ts`
-fetches `GET /api/meta/:doctype` (registered in `apps/server/src/index.ts`)
-and caches it via TanStack Query. Everything the UI renders — labels, field
-types, list columns, required flags — derives from that response.
-`listColumns` picks the list view's columns: `name` first, then fields
-flagged `in_list_view` (or the first two data fields when none are flagged),
-matching Frappe.
+fetches a Table's metadata and caches it via TanStack Query. Everything the
+UI renders — labels, column types, list columns, required flags — derives
+from that response. `listColumns` picks the list view's columns: `name`
+first, then columns flagged `in_list_view` (or the first two data columns
+when none are flagged).
 
 **Routes are generic.** `apps/web/src/router.tsx` defines:
 
-- `/desk/$doctype` → `ListView` (`apps/web/src/components/ListView.tsx`),
-  with filters kept in the URL. A Single DocType renders its one `FormView`
+- A Table's list route → `ListView` (`apps/web/src/components/ListView.tsx`),
+  with filters kept in the URL. A Settings Table renders its one `FormView`
   directly.
-- `/desk/$doctype/$name` → `FormView`
-  (`apps/web/src/components/FormView.tsx`). The literal name `new` means a
-  blank unsaved document (`const isNew = name === 'new'`).
-- `/desk/new-doctype` → the DocType Builder
-  (`apps/web/src/pages/DocTypeBuilder.tsx`), which POSTs to `/api/doctype`.
-- Additional generic views: `$doctype/view/report|kanban|calendar|gantt`,
-  `query-report/$name`, `script-report/$name`, `workspace/$name`,
-  `dashboard/$name`, `permissions/$doctype`, `jobs`.
+- A Row's route → `FormView` (`apps/web/src/components/FormView.tsx`). The
+  literal name `new` means a blank unsaved Row (`const isNew = name ===
+  'new'`).
+- The new-table route → the Table Builder
+  (`apps/web/src/pages/TableBuilder.tsx`), which posts to the
+  table-definition endpoint.
+- Additional generic views: report/kanban/calendar/gantt, SQL Report, Code
+  Report, Home Page, dashboard, permissions, jobs.
 
-`FormView` loads the document with `GET /api/resource/:doctype/:name`,
-renders an input per field from the metadata, and saves with
-`POST /api/save_doc` — the exact endpoint traced above, echoing back
-`modified` for the concurrency check. `DeskLayout`
-(`apps/web/src/pages/DeskLayout.tsx`) builds the sidebar by listing the
-`DocType` DocType itself (`/api/resource/DocType` with
-`istable = false`), and hosts the awesomebar (`GET /api/search`,
-Ctrl/Cmd+K).
+`FormView` loads the row, renders an input per column from the metadata, and
+saves through the row-save operation traced above, echoing back `updated_at`
+for the concurrency check. `AdminLayout`
+(`apps/web/src/pages/AdminLayout.tsx`) builds the sidebar by listing the
+`Table` Table itself (rows where `kind = 'table'`), and hosts the Command Bar
+(Ctrl/Cmd+K).
 
-Adding a DocType therefore requires zero frontend code: define it, and
-`/desk/YourDocType` works.
+Adding a Table therefore requires zero frontend code: define it, and its
+list and form views work immediately.
 
-## Frappe wire compatibility
+## Diverging from Frappe on purpose
 
-Deliberate, load-bearing parity (do not "clean up"):
+Featherbase began as a deliberate, faithful replication of Frappe
+Framework's ideas — that phase is complete. The project is now in a second,
+equally deliberate phase: diverging from Frappe's design where it doesn't
+serve this platform's own users, starting with vocabulary (this document)
+and extending to the wire format. Frappe wire-format compatibility is **not**
+a goal going forward. Concretely, this project no longer:
 
-- `POST /api/method/login` returns Frappe's `{ message, home_page,
-  full_name }` shape and sets the `sid` cookie (`apps/server/src/index.ts`).
-- Error bodies carry `exc_type` (`apps/server/src/errors.ts`).
-- `GET|POST /api/method/:path` dispatches whitelisted RPC methods
-  (`apps/server/src/methods.ts`), including the `frappe.client.*` namespace
-  (`apps/server/src/methods/frappe-client.ts`) that frappe-js-sdk calls.
-- `/api/resource/:doctype[/:name]` is the Frappe-style REST resource: one
-  generic handler set for CRUD on every DocType.
+- Shapes login/session responses to match Frappe's `{ message, home_page,
+  full_name }` convention.
+- Carries `exc_type` in error bodies.
+- Dispatches a `frappe.client.*` RPC namespace or Frappe's dotted
+  `/api/method/:path` method-call convention.
+- Exposes a `/api/resource/:doctype[/:name]` REST shape — the equivalent
+  surface is the `/api/table/:table[/:name]` action registry described
+  above (tracked in #61).
+
+Do not reintroduce any of the above for compatibility's sake; they were
+removed on purpose. See [GLOSSARY.md](GLOSSARY.md) for the full vocabulary
+and [ADR 0006](adr/0006-stack-react-hono-postgres.md)'s addendum for the
+decision record.
 
 ## Project map
 
@@ -263,35 +291,35 @@ Deliberate, load-bearing parity (do not "clean up"):
 | `index.ts` | The Hono app: every route, middleware order, server boot, worker/scheduler startup |
 | `config.ts` | Port, `DATABASE_URL` default, allowed CORS origins |
 | `db.ts` | The `postgres` client (no ORM) and the test-sandbox delegate hook |
-| `meta.ts` | DocType metadata loader + per-process cache (`getMeta`, `invalidateMeta`) |
-| `doctype-engine.ts` | DocType JSON → DDL: create/update tables, standard columns, RLS policies |
-| `document.ts` | The document lifecycle: save/update/submit/cancel/amend/delete/rename, naming, child tables, versioning |
-| `controllers.ts` + `controllers/` | Hook registry and per-DocType controllers (auto-loaded at boot) |
+| `meta.ts` | Table metadata loader + per-process cache (`getMeta`, `invalidateMeta`) |
+| `doctype-engine.ts` | Table JSON → DDL: create/update tables, standard columns, RLS policies |
+| `document.ts` | The row lifecycle: save/update/submit/cancel/amend/delete/rename, naming, sub-tables, versioning |
+| `controllers.ts` + `controllers/` | Automation-trigger registry and per-Table controllers (auto-loaded at boot) |
 | `query.ts` | Permission-scoped list queries (`getList`, `countDocs`, `groupCount`) |
-| `permissions.ts` | DocPerm checks, permlevels, if_owner, User Permissions, shares |
+| `permissions.ts` | Permission checks, tiers, own-rows-only, Data Scopes, shares |
 | `auth.ts` | Login, JWT sessions, scrypt password hashing, API keys |
 | `oauth.ts` | Google OAuth flow with a dev mock provider |
 | `password-reset.ts` | Reset request + token redemption |
 | `rate-limit.ts` | Per-user request throttling |
-| `errors.ts` | `AppError`, status mapping, the `exc_type` error envelope |
-| `methods.ts` + `methods/` | `/api/method` RPC whitelist, incl. `frappe-client.ts` |
+| `errors.ts` | `AppError`, status mapping, the error envelope |
+| `methods.ts` + `methods/` | Free-standing RPC-style methods |
 | `workflow.ts` | Workflow states/transitions, role-gated actions |
 | `server-scripts.ts` | Sandboxed (node:vm) Server Scripts + workflow condition evaluation |
-| `custom-fields.ts` | Apply Custom Field records (column + docfield) |
-| `customizations.ts` | Export/import Custom Fields + Property Setters as JSON |
+| `custom-fields.ts` | Apply Custom Field records (column + column-definition row) |
+| `customizations.ts` | Export/import Custom Fields + Metadata Overrides as JSON |
 | `email.ts`, `email-rules.ts` | Email queue/delivery and notification rules |
 | `assign.ts`, `assignment-rules.ts` | Assignments (ToDo + notify) and auto-assignment rules |
 | `sla.ts` | SLA deadline stamping and escalation support |
 | `webhooks.ts` | Outbound webhooks on lifecycle events |
-| `jobs.ts` + `jobs/` | Background job queue (`tab_background_job`), worker, handlers |
-| `realtime.ts` | WebSocket server, doc/user event publishing |
-| `search.ts` | Awesomebar global search |
-| `print.ts` | Server-side PDF rendering via Playwright |
-| `query-report.ts`, `script-report.ts`, `reports/` | Query Reports (SQL) and Script Reports (code) |
+| `jobs.ts` + `jobs/` | Background job queue (`background_job`), worker, handlers |
+| `realtime.ts` | WebSocket server, row/user event publishing |
+| `search.ts` | Command Bar global search |
+| `print.ts` | Server-side PDF rendering via Playwright (PDF Templates) |
+| `sql-report.ts`, `code-report.ts`, `reports/` | SQL Reports and Code Reports |
 | `report-chart.ts` | Chart series from saved reports, dashboard pinning |
 | `storage.ts`, `thumbnails.ts` | Disk-backed file storage, signed URLs, image thumbnails |
 | `webform.ts`, `website.ts` | Public web forms and server-rendered web pages |
-| `settings.ts` | System Settings (a Single DocType) |
+| `settings.ts` | System Settings (a Settings Table) |
 | `i18n.ts` | Translation catalogs |
 | `audit.ts` | Access/activity logging |
 | `apps.ts`, `sample-apps/` | Installable app registry (e.g. `hello-crm`) |
@@ -306,26 +334,26 @@ Deliberate, load-bearing parity (do not "clean up"):
 | Path | Purpose |
 |---|---|
 | `main.tsx` | App entry, providers |
-| `router.tsx` | Every route; the generic `$doctype` / `$doctype/$name` mapping |
+| `router.tsx` | Every route; the generic table/row-view mapping |
 | `index.css` | Design tokens and the `.fc-*` component classes |
 | `lib/api.ts` | Fetch wrapper, token storage, `ApiError` |
-| `lib/meta.ts` | `useMeta` hook, field-type constants, `listColumns` |
+| `lib/meta.ts` | `useMeta` hook, column-type constants, `listColumns` |
 | `lib/realtime.ts` | WebSocket client hook |
 | `lib/client-scripts.ts` | Loads and runs Client Scripts against forms |
 | `lib/session.ts`, `lib/settings.ts`, `lib/theme.ts`, `lib/i18n.ts` | Session, display settings, theme, translations |
-| `components/ListView.tsx` | The one list view for every DocType |
-| `components/FormView.tsx` | The one form view for every DocType (incl. child-table grids) |
-| `components/ReportView.tsx`, `QueryReportView.tsx`, `ScriptReportView.tsx` | Report surfaces |
+| `components/ListView.tsx` | The one list view for every Table |
+| `components/FormView.tsx` | The one form view for every Table (incl. sub-table grids) |
+| `components/SummaryView.tsx`, `SqlReportView.tsx`, `CodeReportView.tsx` | Report surfaces |
 | `components/KanbanView.tsx`, `CalendarView.tsx`, `GanttView.tsx` | Alternate list renderings |
 | `components/WorkflowActions.tsx` | Workflow action buttons on a form |
-| `components/PermissionManager.tsx` | The DocPerm role/permission matrix editor |
-| `components/DashboardView.tsx`, `WorkspaceView.tsx`, `JobMonitor.tsx` | Dashboards, workspaces, background-job monitor |
+| `components/PermissionManager.tsx` | The Permission role/permission matrix editor |
+| `components/DashboardView.tsx`, `HomePageView.tsx`, `JobMonitor.tsx` | Dashboards, home pages, background-job monitor |
 | `components/Comments.tsx`, `ActivityTimeline.tsx`, `Assignments.tsx`, `Attachments.tsx`, `Tags.tsx` | Form sidebar features |
-| `pages/DeskLayout.tsx` | The Desk shell: sidebar, awesomebar, keyboard shortcuts |
-| `pages/DocTypeBuilder.tsx` | Build a DocType from the Desk (`/desk/new-doctype`) |
+| `pages/AdminLayout.tsx` | The Admin shell: sidebar, Command Bar, keyboard shortcuts |
+| `pages/TableBuilder.tsx` | Build a Table from the Admin UI |
 | `pages/Login.tsx`, `ResetPassword.tsx`, `OAuthCallback.tsx` | Auth pages |
 | `pages/Portal.tsx`, `WebForm.tsx`, `PrintView.tsx` | Customer portal, public forms, print view |
 
 `packages/shared` holds the types and contracts both sides import — notably
-`metaToZod`, the metadata-to-validation-schema generator used by the save
+`tableSchemaToZod`, the metadata-to-validation-schema generator used by the save
 path.

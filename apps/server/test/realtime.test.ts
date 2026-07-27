@@ -20,12 +20,12 @@ describe('realtime event bus', () => {
     expect(events).toContainEqual({
       channel: 'list:Task',
       event: 'created',
-      payload: { doctype: 'Task', name: 'TASK-1' },
+      payload: { table: 'Task', name: 'TASK-1' },
     })
     expect(events).toContainEqual({
       channel: 'doc:Task:TASK-1',
       event: 'created',
-      payload: { doctype: 'Task', name: 'TASK-1' },
+      payload: { table: 'Task', name: 'TASK-1' },
     })
   })
 
@@ -62,8 +62,8 @@ describe('RT channel authorization (eval #9 fix)', () => {
     expect(await canSubscribe(admin, 'doc:User:Administrator')).toBe(true)
   })
 
-  test('a user without read permission cannot subscribe to that DocType channel', async () => {
-    // Guest has no DocPerm on User → cannot watch its list/doc channels.
+  test('a user without read permission cannot subscribe to that Table channel', async () => {
+    // Guest has no Permission on User → cannot watch its list/doc channels.
     expect(await canSubscribe(guest, 'list:User')).toBe(false)
     expect(await canSubscribe(guest, 'doc:User:Administrator')).toBe(false)
   })

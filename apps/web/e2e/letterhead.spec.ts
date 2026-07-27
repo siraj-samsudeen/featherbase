@@ -17,14 +17,14 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     headers,
     data: {
       name: DT,
-      autoname: 'prompt',
-      fields: [{ fieldname: 'customer', fieldtype: 'Data' }],
+      id_pattern: 'prompt',
+      columns: [{ column_name: 'customer', column_type: 'Data' }],
     },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   docName = 'lh-doc'
-  await request.delete(`/api/resource/${encodeURIComponent(DT)}/${docName}`, { headers })
-  await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  await request.delete(`/api/table/${encodeURIComponent(DT)}/${docName}`, { headers })
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
     data: { name: docName, customer: 'Wayne Enterprises' },
   })
@@ -44,7 +44,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     },
   ]) {
     const name = encodeURIComponent(lh.name)
-    await request.delete(`/api/resource/Letter%20Head/${name}`, { headers })
+    await request.delete(`/api/table/Letter%20Head/${name}`, { headers })
     const res = await request.post('/api/save_doc', {
       headers,
       data: { doctype: 'Letter Head', doc: lh },

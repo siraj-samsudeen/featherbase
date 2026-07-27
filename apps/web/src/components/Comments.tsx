@@ -5,12 +5,12 @@ import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 interface CommentRow {
   name: string
   content: string
-  owner: string
-  creation: string
+  created_by: string
+  created_at: string
 }
 
-// UI-018: a comment box on every document. Comments are Comment docs linked
-// by ref_doctype/ref_name; @mentions autocomplete from the user list and
+// UI-018: a comment box on every row. Comments are Comment rows linked
+// by ref_table/ref_name; @mentions autocomplete from the user list and
 // render highlighted.
 export function Comments({ doctype, name }: { doctype: string; name: string }) {
   const queryClient = useQueryClient()
@@ -26,11 +26,11 @@ export function Comments({ doctype, name }: { doctype: string; name: string }) {
     queryFn: () =>
       listResource<CommentRow>('Comment', {
         filters: [
-          ['ref_doctype', '=', doctype],
+          ['ref_table', '=', doctype],
           ['ref_name', '=', name],
         ],
-        fields: ['name', 'content', 'owner', 'creation'],
-        order_by: 'creation asc',
+        fields: ['name', 'content', 'created_by', 'created_at'],
+        order_by: 'created_at asc',
         limit_page_length: 200,
       }),
   })
@@ -83,7 +83,7 @@ export function Comments({ doctype, name }: { doctype: string; name: string }) {
     try {
       await api.post('/api/save_doc', {
         doctype: 'Comment',
-        doc: { ref_doctype: doctype, ref_name: name, content },
+        doc: { ref_table: doctype, ref_name: name, content },
       })
       setDraft('')
       await queryClient.invalidateQueries({ queryKey: ['comments', doctype, name] })
@@ -124,12 +124,12 @@ export function Comments({ doctype, name }: { doctype: string; name: string }) {
         {comments.data?.data.map((c) => (
           <div key={c.name} className="flex gap-2" data-testid="comment-item">
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-brand)] text-[10px] font-semibold text-white">
-              {initials(c.owner)}
+              {initials(c.created_by)}
             </span>
             <div className="min-w-0 flex-1">
               <div className="text-xs text-[var(--color-ink-muted)]">
-                <span className="font-medium text-[var(--color-ink)]">{c.owner}</span>{' '}
-                <span data-testid="comment-time">{new Date(c.creation).toLocaleString()}</span>
+                <span className="font-medium text-[var(--color-ink)]">{c.created_by}</span>{' '}
+                <span data-testid="comment-time">{new Date(c.created_at).toLocaleString()}</span>
               </div>
               <div className="whitespace-pre-wrap break-words text-sm text-[var(--color-ink)]" data-testid="comment-content">
                 {renderContent(c.content)}

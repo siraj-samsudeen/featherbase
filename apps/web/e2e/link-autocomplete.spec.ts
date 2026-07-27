@@ -10,11 +10,11 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const token = ((await login.json()) as { token: string }).token
   const auth = { Authorization: `Bearer ${token}` }
-  const meta = await request.get(`/api/meta/${encodeURIComponent(DT)}`, { headers: auth })
+  const meta = await request.get(`/api/table/${encodeURIComponent(DT)}:meta`, { headers: auth })
   test.skip(meta.status() === 404, 'run formview.spec first to create fixtures')
 
   for (const c of ['Globex Ltd', 'Acme Ltd']) {
-    const res = await request.post(`/api/resource/${encodeURIComponent(CUST)}`, {
+    const res = await request.post(`/api/table/${encodeURIComponent(CUST)}`, {
       headers: auth,
       data: { name: c, city: 'x' },
     })
@@ -22,7 +22,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   }
   // Own doc, not "latest": grabbing the newest row races with other specs
   // editing their docs in parallel workers (modified-timestamp conflicts).
-  const created = await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  const created = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: auth,
     data: { title: 'link autocomplete fixture', qty: 1 },
   })

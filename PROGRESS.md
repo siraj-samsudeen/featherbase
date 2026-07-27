@@ -364,6 +364,91 @@ db.ts` exports one `sql` proxy used for both metadata and document data, and the
 sandbox seam swaps its delegate — the per-DocType client resolver has to keep
 metadata on the control pool, or the test harness will try to roll back a
 transaction on the wrong connection.
+## 2026-07-26 — terminology rename + API surface redesign (#59, #61, #62)
+
+Two rounds landing as one PR, per the decided design in #59/#61: round 1
+strips Frappe's `DocType`/`Doc`/`Field` vocabulary for `Table`/`Row`/`Column`
+(plus ~25 related renames — `Permission`/`Share`/`Data Scope`,
+`ref_table`/`reference_name`, `status`/`position`/`created_by`/`updated_at`,
+`kind`/`tier`, `id_pattern`, `Reference`/`Choice`/`Sub-table`, `Metadata
+Override`, dropped `tab_` prefix); round 2 replaces the ad hoc ~60-route
+REST/RPC surface with one action registry (`src/actions.ts`): Generated
+(`GET/POST /api/table/:table`, `GET/PATCH/DELETE /api/table/:table/:name`,
+plus `:count`/`:meta`/`:actions`), Row action (`:submit`/`:cancel`/`:amend`/
+`:apply_workflow_action`/`:rename`, colon-suffixed — not a slash sub-path,
+since row names can already contain arbitrary characters), Collection
+action (registry exists, none registered yet — no real bulk_update/
+bulk_delete/import existed to migrate), and Method (`methods.ts`'s existing
+whitelist). PATCH replaces PUT for row updates (a Custom Field added at
+runtime would otherwise be silently nulled by a stale PUT). `/api/resource`,
+`/api/doc`, `/api/list`, `/api/meta/:name`, and the five body-based action
+routes (`submit_doc` etc.) are gone — collapsed onto `/api/table/...`.
+`/api/save_doc` is untouched (the `feather-testing-postgres` npm package's
+`seed()` fixture depends on its `{doctype, doc}` shape structurally).
+
+- **#62, both bugs, fixed at the root, not worked around.** Every
+  `whitelist()`/action registration now declares `effect: 'read' | 'write'`
+  (default 'write' — the safe default requires POST, never silently allows a
+  mutating GET). The RPC dispatcher (`/api/method/:path`) runs its own
+  `rateLimit` + auth middleware chain instead of relying on the global
+  `app.use('/api/*', ...)` registered after it (which it never reached,
+  since Hono matches routes in registration order) — API-007 now covers it.
+  `GET /api/method/frappe.client.delete` now 405s instead of executing the
+  delete. Regression tests in `methods.test.ts`/`rate-limit.test.ts` pin
+  both.
+- **A real product bug surfaced by round 1, found via e2e, fixed at the
+  root**: Background Job's own delivery state (queued/running/done/failed,
+  written by `src/jobs.ts`) and the generic per-Table `status` column
+  (draft/submitted/cancelled) collided on one physical column once
+  `docstatus` was renamed to `status` — `saveDoc` protects `status` as a
+  system-managed field, so no client could ever set a job's delivery state
+  through the generic API. Fixed by moving `jobs.ts`/`apps.ts`/`index.ts`'s
+  scheduler-job checks onto the `job_status` column the metadata already
+  declared (migration 0018) but nothing read; `JobMonitor.tsx` follows.
+  `test/global-setup.ts` also still truncated `tab_background_job` (a
+  no-op silently disabling the once-per-run queue-empty safety net) — fixed
+  to `background_job`.
+- **e2e was not actually migrated despite earlier reports.** ~50 of 59
+  Playwright specs under `apps/web/e2e/` still built fixtures in the raw
+  pre-rename Frappe wire shape (`fields`/`fieldname`/`fieldtype`/`options`/
+  `autoname`, `DocPerm`, `ref_doctype`, `document_type`/`doc_type`) — every
+  one would have 417'd at `POST /api/doctype` the moment it ran, since
+  `tableDefSchema` requires `columns`/`column_name`/`column_type`. Fixed via
+  4 parallel agents (each verifying uncertain field names against the live
+  migrations rather than guessing), plus a manual pass for the 5 files that
+  used the now-reserved column name `status` for their own business field
+  (renamed to `stage`) and one more real find (`doc_status`→`target_status`
+  on Workflow, values, not just the key). `docs/TUTORIAL.md`/`TESTING.md`
+  had the same gap — rewritten and the whole HTTP walkthrough re-verified
+  against a live server.
+- **Verified end-to-end, not just typechecked**: `pnpm --filter server
+  test` 385/385, `pnpm --filter web test` 9/9, `pnpm --filter web
+  typecheck`/`server typecheck` clean, and the full Playwright suite
+  (`pnpm --filter web e2e`, real browser + real server + real Postgres) —
+  78/79, the one skip being `doctype-builder.spec.ts`'s own idempotency
+  guard on a second run against the same DB. Manually curled the entire new
+  `/api/table/...` lifecycle (create → list → count → meta → actions
+  discovery → patch → submit → cancel → amend → verb-enforcement 404s) and
+  the full TUTORIAL.md walkthrough against the live dev server.
+- **Deliberately out of scope, left as direct routes**: the ~40 remaining
+  one-off utility endpoints (tenancy, apps, email, jobs, print, tags,
+  permissions, reports, oauth, dashboard widgets, ...) were not forced into
+  the `/api/method/:name` shape. They're already thin adapters over shared
+  engine functions (the actual "ban the drift" requirement), so the
+  remaining work is a URL-taxonomy pass, not a design or correctness one —
+  lower priority than closing the two real security bugs and shipping the
+  Generated + Row-action core. Also residual: `/api/upload_file`'s
+  multipart field is still literally `ref_doctype` (client and server agree
+  on it, so it isn't broken, just inconsistent) — a candidate for the same
+  future pass.
+- Gotcha for the next session: `apps/server/tsconfig.json` only includes
+  `src`, so `pnpm --filter server typecheck` never checks `test/*.ts` —
+  actually running the suites, not just typechecking, is the only real
+  signal for test-file correctness.
+- Next: the collection-action case has no real registrant yet (bulk_update/
+  bulk_delete/import) — add one the first time a feature actually needs it,
+  rather than inventing a speculative example now.
+
 ## 2026-07-26 — the app platform closes its four gaps (#54, #55, #56, #57)
 
 Featherbase's first external consumer (a report server POSTing feedback rows

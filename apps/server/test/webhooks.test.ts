@@ -72,12 +72,12 @@ async function setup(admin: TestClient) {
   failuresLeft.clear()
   await admin.post('/api/doctype', {
     name: DT,
-    fields: [{ fieldname: 'title', fieldtype: 'Data' }],
+    columns: [{ column_name: 'title', column_type: 'Data' }],
   })
 }
 
-async function makeDoc(admin: TestClient): Promise<{ name: string; modified: string }> {
-  return await admin.post<{ name: string; modified: string }>('/api/save_doc', {
+async function makeDoc(admin: TestClient): Promise<{ name: string; updated_at: string }> {
+  return await admin.post<{ name: string; updated_at: string }>('/api/save_doc', {
     doctype: DT,
     doc: { title: 'v1' },
   })
@@ -90,8 +90,8 @@ async function makeDoc(admin: TestClient): Promise<{ name: string; modified: str
 // clock, then drain.
 async function drainDueJobs() {
   await sql`
-    update tab_background_job set run_at = now()
-    where status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
+    update background_job set run_at = now()
+    where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
   return await drainJobs()
 }
 
@@ -112,14 +112,14 @@ describe('PLAT-005: webhooks', () => {
     await setup(admin)
     await admin.post('/api/save_doc', {
       doctype: 'Webhook',
-      doc: { webhook_doctype: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/hook`, webhook_secret: SECRET, enabled: true },
+      doc: { webhook_table: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/hook`, webhook_secret: SECRET, enabled: true },
     })
 
     const doc = await makeDoc(admin)
     // Updating fires on_update.
     await admin.post('/api/save_doc', {
       doctype: DT,
-      doc: { name: doc.name, modified: doc.modified, title: 'v2' },
+      doc: { name: doc.name, updated_at: doc.updated_at, title: 'v2' },
     })
 
     const hits = await waitForHits((r) => r.path === '/hook' && JSON.parse(r.body).name === doc.name, 1)
@@ -137,13 +137,13 @@ describe('PLAT-005: webhooks', () => {
     failuresLeft.set('/retry', 1) // fail once, then succeed
     await admin.post('/api/save_doc', {
       doctype: 'Webhook',
-      doc: { webhook_doctype: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/retry`, webhook_secret: SECRET, enabled: true },
+      doc: { webhook_table: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/retry`, webhook_secret: SECRET, enabled: true },
     })
 
     const doc = await makeDoc(admin)
     await admin.post('/api/save_doc', {
       doctype: DT,
-      doc: { name: doc.name, modified: doc.modified, title: 'v2' },
+      doc: { name: doc.name, updated_at: doc.updated_at, title: 'v2' },
     })
 
     // Two hits to /retry: the first 500'd, the retry succeeded.
@@ -159,7 +159,7 @@ describe('PLAT-005: webhooks', () => {
     // An on_update webhook exists; creating a doc (after_insert) must not hit it.
     await admin.post('/api/save_doc', {
       doctype: 'Webhook',
-      doc: { webhook_doctype: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/nomatch`, webhook_secret: SECRET, enabled: true },
+      doc: { webhook_table: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/nomatch`, webhook_secret: SECRET, enabled: true },
     })
     await makeDoc(admin) // after_insert only
     await drainDueJobs()

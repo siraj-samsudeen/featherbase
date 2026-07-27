@@ -15,10 +15,10 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     headers,
     data: {
       name: ITEM,
-      istable: true,
-      fields: [
-        { fieldname: 'product', fieldtype: 'Data' },
-        { fieldname: 'qty', fieldtype: 'Int' },
+      kind: 'sub_table',
+      columns: [
+        { column_name: 'product', column_type: 'Data' },
+        { column_name: 'qty', column_type: 'Int' },
       ],
     },
   })
@@ -27,16 +27,16 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     headers,
     data: {
       name: DT,
-      autoname: 'prompt',
-      fields: [
-        { fieldname: 'customer', fieldtype: 'Data', label: 'Customer' },
-        { fieldname: 'lines', fieldtype: 'Table', options: ITEM, label: 'Lines' },
+      id_pattern: 'prompt',
+      columns: [
+        { column_name: 'customer', column_type: 'Data', label: 'Customer' },
+        { column_name: 'lines', column_type: 'Sub-table', row_table: ITEM, label: 'Lines' },
       ],
     },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   docName = 'prn-doc'
-  await request.delete(`/api/resource/${encodeURIComponent(DT)}/${docName}`, { headers })
+  await request.delete(`/api/table/${encodeURIComponent(DT)}/${docName}`, { headers })
   const doc = await request.post('/api/save_doc', {
     headers,
     data: {

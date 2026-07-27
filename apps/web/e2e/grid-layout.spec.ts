@@ -12,10 +12,10 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   token = ((await login.json()) as { token: string }).token
   const auth = { Authorization: `Bearer ${token}` }
 
-  const metaA = await request.get(`/api/meta/${encodeURIComponent(DT)}`, { headers: auth })
+  const metaA = await request.get(`/api/table/${encodeURIComponent(DT)}:meta`, { headers: auth })
   test.skip(metaA.status() === 404, 'run formview.spec first')
 
-  const created = await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  const created = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: auth,
     data: {
       title: 'grid fixture',
@@ -24,19 +24,19 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   })
   docName = ((await created.json()) as { name: string }).name
 
-  const metaS = await request.get(`/api/meta/${encodeURIComponent(SEC_DT)}`, { headers: auth })
+  const metaS = await request.get(`/api/table/${encodeURIComponent(SEC_DT)}:meta`, { headers: auth })
   if (metaS.status() === 404) {
     await request.post('/api/doctype', {
       headers: auth,
       data: {
         name: SEC_DT,
-        fields: [
-          { fieldname: 'a1', fieldtype: 'Data', label: 'A One' },
-          { fieldname: 'a2', fieldtype: 'Data', label: 'A Two' },
-          { fieldname: 'sec_b', fieldtype: 'Section Break', label: 'Details' },
-          { fieldname: 'b1', fieldtype: 'Data', label: 'B One' },
-          { fieldname: 'col_b', fieldtype: 'Column Break' },
-          { fieldname: 'b2', fieldtype: 'Data', label: 'B Two' },
+        columns: [
+          { column_name: 'a1', column_type: 'Data', label: 'A One' },
+          { column_name: 'a2', column_type: 'Data', label: 'A Two' },
+          { column_name: 'sec_b', column_type: 'Section Break', label: 'Details' },
+          { column_name: 'b1', column_type: 'Data', label: 'B One' },
+          { column_name: 'col_b', column_type: 'Column Break' },
+          { column_name: 'b2', column_type: 'Data', label: 'B Two' },
         ],
       },
     })
@@ -75,11 +75,11 @@ test('UI-007: child grid add/edit/delete/reorder round-trips through save', asyn
 
   // DB reflects content and order exactly
   const res = await request.get(
-    `/api/resource/${encodeURIComponent(DT)}/${docName}`,
+    `/api/table/${encodeURIComponent(DT)}/${docName}`,
     { headers: { Authorization: `Bearer ${token}` } },
   )
-  const doc = (await res.json()) as { items: { item: string; qty: string; idx: number }[] }
-  expect(doc.items.map((r) => [r.item, Number(r.qty), r.idx])).toEqual([
+  const doc = (await res.json()) as { items: { item: string; qty: string; position: number }[] }
+  expect(doc.items.map((r) => [r.item, Number(r.qty), r.position])).toEqual([
     ['one', 1, 1],
     ['added', 9, 2],
     ['two', 22, 3],

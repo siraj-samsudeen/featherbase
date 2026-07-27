@@ -13,45 +13,45 @@ async function ensureFixtures(request: APIRequestContext) {
   const auth = { Authorization: `Bearer ${token}` }
 
   const defs: [string, Record<string, unknown>][] = [
-    [CUST, { name: CUST, autoname: 'prompt', fields: [{ fieldname: 'city', fieldtype: 'Data' }] }],
+    [CUST, { name: CUST, id_pattern: 'prompt', columns: [{ column_name: 'city', column_type: 'Data' }] }],
     [ROW, {
       name: ROW,
-      istable: true,
-      fields: [
-        { fieldname: 'item', fieldtype: 'Data', label: 'Item' },
-        { fieldname: 'qty', fieldtype: 'Int', label: 'Qty' },
+      kind: 'sub_table',
+      columns: [
+        { column_name: 'item', column_type: 'Data', label: 'Item' },
+        { column_name: 'qty', column_type: 'Int', label: 'Qty' },
       ],
     }],
     [DT, {
       name: DT,
-      fields: [
-        { fieldname: 'title', fieldtype: 'Data', label: 'Title', reqd: true },
-        { fieldname: 'qty', fieldtype: 'Int', label: 'Qty' },
-        { fieldname: 'done', fieldtype: 'Check', label: 'Done' },
-        { fieldname: 'status', fieldtype: 'Select', label: 'Status', options: 'Open\nClosed' },
-        { fieldname: 'due', fieldtype: 'Date', label: 'Due' },
-        { fieldname: 'customer', fieldtype: 'Link', label: 'Customer', options: CUST },
-        { fieldname: 'notes', fieldtype: 'Text', label: 'Notes' },
-        { fieldname: 'items', fieldtype: 'Table', label: 'Items', options: ROW },
+      columns: [
+        { column_name: 'title', column_type: 'Data', label: 'Title', reqd: true },
+        { column_name: 'qty', column_type: 'Int', label: 'Qty' },
+        { column_name: 'done', column_type: 'Check', label: 'Done' },
+        { column_name: 'stage', column_type: 'Choice', label: 'Status', choices: 'Open\nClosed' },
+        { column_name: 'due', column_type: 'Date', label: 'Due' },
+        { column_name: 'customer', column_type: 'Reference', label: 'Customer', reference_table: CUST },
+        { column_name: 'notes', column_type: 'Text', label: 'Notes' },
+        { column_name: 'items', column_type: 'Sub-table', label: 'Items', row_table: ROW },
       ],
     }],
   ]
   for (const [name, def] of defs) {
-    const meta = await request.get(`/api/meta/${encodeURIComponent(name)}`, { headers: auth })
+    const meta = await request.get(`/api/table/${encodeURIComponent(name)}:meta`, { headers: auth })
     if (meta.status() === 404) await request.post('/api/doctype', { headers: auth, data: def })
   }
-  const cust = await request.post(`/api/resource/${encodeURIComponent(CUST)}`, {
+  const cust = await request.post(`/api/table/${encodeURIComponent(CUST)}`, {
     headers: auth,
     data: { name: 'Formco', city: 'Chennai' },
   })
   if (![201, 409].includes(cust.status())) throw new Error(`cust fixture: ${cust.status()}`)
-  const created = await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  const created = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: auth,
     data: {
       title: 'form fixture',
       qty: 4,
       done: true,
-      status: 'Open',
+      stage: 'Open',
       due: '2026-08-01',
       customer: 'Formco',
       notes: 'multi\nline',
@@ -88,7 +88,7 @@ test('UI-004: FormView renders every field type as the correct control', async (
   // Check -> checked checkbox
   await expect(page.locator('[data-field=done]')).toBeChecked()
   // Select -> select with the right option chosen
-  await expect(page.locator('select[data-field=status]')).toHaveValue('Open')
+  await expect(page.locator('select[data-field=stage]')).toHaveValue('Open')
   // Date -> date picker input
   await expect(page.locator('[data-field=due]')).toHaveAttribute('type', 'date')
   await expect(page.locator('[data-field=due]')).toHaveValue('2026-08-01')

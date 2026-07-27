@@ -14,7 +14,7 @@ const DT = 'Cache Probe DT'
 async function makeDT(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: DT,
-    fields: [{ fieldname: 'title', fieldtype: 'Data', label: 'Old Label' }],
+    columns: [{ column_name: 'title', column_type: 'Data', label: 'Old Label' }],
   })
 }
 
@@ -34,24 +34,24 @@ describe('META-011: meta cache with invalidation', () => {
 
   test('sees altered metadata after invalidation', async ({ admin }) => {
     await makeDT(admin)
-    expect((await getMeta(DT)).fields[0].label).toBe('Old Label')
-    await sql`update tab_docfield set label = 'New Label' where parent = ${DT}`
+    expect((await getMeta(DT)).columns[0].label).toBe('Old Label')
+    await sql`update column_def set label = 'New Label' where parent = ${DT}`
     // Still cached:
-    expect((await getMeta(DT)).fields[0].label).toBe('Old Label')
+    expect((await getMeta(DT)).columns[0].label).toBe('Old Label')
     invalidateMeta(DT)
-    expect((await getMeta(DT)).fields[0].label).toBe('New Label')
+    expect((await getMeta(DT)).columns[0].label).toBe('New Label')
   })
 
   test('creating a DocType invalidates and serves fresh meta over HTTP', async ({ admin }) => {
     await makeDT(admin)
     // Warm the cache, mutate the row underneath, invalidate — HTTP must
     // serve the fresh label (replays the previous test's mutation as setup).
-    expect((await getMeta(DT)).fields[0].label).toBe('Old Label')
-    await sql`update tab_docfield set label = 'New Label' where parent = ${DT}`
+    expect((await getMeta(DT)).columns[0].label).toBe('Old Label')
+    await sql`update column_def set label = 'New Label' where parent = ${DT}`
     invalidateMeta(DT)
-    const body = await admin.get<{ fields: { label: string }[] }>(
-      `/api/meta/${encodeURIComponent(DT)}`,
+    const body = await admin.get<{ columns: { label: string }[] }>(
+      `/api/table/${encodeURIComponent(DT)}:meta`,
     )
-    expect(body.fields[0].label).toBe('New Label')
+    expect(body.columns[0].label).toBe('New Label')
   })
 })

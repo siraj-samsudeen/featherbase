@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../lib/api'
 
-// RPT-005: renders a server-side script report — its declared filter controls
+// RPT-005: renders a server-side Code Report — its declared filter controls
 // and the columns+rows its execute() returns.
 
 interface FilterDef {
-  fieldname: string
+  column_name: string
   label: string
-  fieldtype: string
-  options?: string
+  column_type: string
+  choices?: string
 }
 interface ScriptReportMeta {
   name: string
@@ -30,9 +30,9 @@ function FilterControl({
   value: string
   onChange: (v: string) => void
 }) {
-  const testid = `sr-filter-${def.fieldname}`
-  if (def.fieldtype === 'Select') {
-    const opts = (def.options ?? '').split('\n')
+  const testid = `sr-filter-${def.column_name}`
+  if (def.column_type === 'Choice') {
+    const opts = (def.choices ?? '').split('\n')
     return (
       <select className="fc-input" data-testid={testid} value={value} onChange={(e) => onChange(e.target.value)}>
         {opts.map((o) => (
@@ -43,7 +43,7 @@ function FilterControl({
       </select>
     )
   }
-  if (def.fieldtype === 'Check')
+  if (def.column_type === 'Check')
     return (
       <input
         type="checkbox"
@@ -52,7 +52,7 @@ function FilterControl({
         onChange={(e) => onChange(e.target.checked ? '1' : '')}
       />
     )
-  const type = def.fieldtype === 'Date' ? 'date' : def.fieldtype === 'Int' ? 'number' : 'text'
+  const type = def.column_type === 'Date' ? 'date' : def.column_type === 'Int' ? 'number' : 'text'
   return (
     <input
       className="fc-input"
@@ -111,12 +111,12 @@ export function ScriptReportView({ name }: { name: string }) {
       {meta.data.filters.length > 0 && (
         <div className="fc-card flex flex-wrap items-end gap-3 p-3" data-testid="script-report-filters">
           {meta.data.filters.map((f) => (
-            <div key={f.fieldname}>
+            <div key={f.column_name}>
               <label className="fc-label">{f.label}</label>
               <FilterControl
                 def={f}
-                value={values[f.fieldname] ?? ''}
-                onChange={(v) => setValues((s) => ({ ...s, [f.fieldname]: v }))}
+                value={values[f.column_name] ?? ''}
+                onChange={(v) => setValues((s) => ({ ...s, [f.column_name]: v }))}
               />
             </div>
           ))}

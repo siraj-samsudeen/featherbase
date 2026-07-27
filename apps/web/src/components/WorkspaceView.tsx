@@ -2,14 +2,14 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { api, ApiError } from '../lib/api'
 
-// UI-027: a Workspace renders its configured shortcuts as navigable cards.
+// UI-027: a Home Page renders its configured shortcuts as navigable cards.
 
 interface Shortcut {
   label: string
   type?: string // doctype | report | dashboard | url
   link_to: string
 }
-interface WorkspaceDoc {
+interface HomePageDoc {
   name: string
   label?: string
   icon?: string
@@ -46,26 +46,26 @@ function parseShortcuts(raw: Shortcut[] | string | undefined): Shortcut[] {
 
 export function WorkspaceView({ name }: { name: string }) {
   const navigate = useNavigate()
-  const ws = useQuery({
-    queryKey: ['workspace', name],
-    queryFn: () => api.get<WorkspaceDoc>(`/api/resource/Workspace/${encodeURIComponent(name)}`),
+  const homePage = useQuery({
+    queryKey: ['home-page', name],
+    queryFn: () => api.get<HomePageDoc>(`/api/table/Workspace/${encodeURIComponent(name)}`),
   })
 
-  if (ws.isError)
+  if (homePage.isError)
     return (
       <div className="fc-card p-4 text-sm text-red-600" data-testid="workspace-error">
-        {ws.error instanceof ApiError ? ws.error.message : 'Workspace not found'}
+        {homePage.error instanceof ApiError ? homePage.error.message : 'Home Page not found'}
       </div>
     )
-  if (!ws.data) return <div className="p-4 text-[var(--color-ink-faint)]">Loading…</div>
+  if (!homePage.data) return <div className="p-4 text-[var(--color-ink-faint)]">Loading…</div>
 
-  const shortcuts = parseShortcuts(ws.data.shortcuts)
+  const shortcuts = parseShortcuts(homePage.data.shortcuts)
 
   return (
     <div data-testid="workspace" className="space-y-4">
       <h1 className="text-lg font-semibold text-[var(--color-ink)]" data-testid="workspace-title">
-        {ws.data.icon ? `${ws.data.icon} ` : ''}
-        {ws.data.label || ws.data.name}
+        {homePage.data.icon ? `${homePage.data.icon} ` : ''}
+        {homePage.data.label || homePage.data.name}
       </h1>
 
       {shortcuts.length === 0 ? (

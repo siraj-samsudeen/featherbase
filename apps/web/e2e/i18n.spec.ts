@@ -20,7 +20,7 @@ test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
   const dt = await request.post('/api/doctype', {
     headers,
-    data: { name: DT, fields: [{ fieldname: 'priority', label: 'Priority', fieldtype: 'Data', in_list_view: true }] },
+    data: { name: DT, columns: [{ column_name: 'priority', label: 'Priority', column_type: 'Data', in_list_view: true }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   // Seed a French catalog: two chrome strings + one field label.

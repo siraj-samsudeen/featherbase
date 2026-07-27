@@ -1,19 +1,19 @@
 // CUST-003: Client Scripts — user JS that hooks into form events in the Desk
 // (onload, field change, before save). Runs in the browser.
 import { sql } from '../src/db'
-import { createDocType } from '../src/doctype-engine'
+import { createTable } from '../src/doctype-engine'
 
 export async function up() {
-  const [exists] = await sql`select 1 from tab_doctype where name = 'Client Script'`
+  const [exists] = await sql`select 1 from table_def where name = 'Client Script'`
   if (exists) return
-  await createDocType({
+  await createTable({
     name: 'Client Script',
     module: 'Core',
-    autoname: 'prompt',
-    fields: [
-      { fieldname: 'reference_doctype', fieldtype: 'Link', options: 'DocType', reqd: true, in_list_view: true },
-      { fieldname: 'script', fieldtype: 'Long Text', reqd: true },
-      { fieldname: 'enabled', fieldtype: 'Check', default_value: '1', in_list_view: true },
+    id_pattern: 'prompt',
+    columns: [
+      { column_name: 'ref_table', column_type: 'Reference', reference_table: 'Table', reqd: true, in_list_view: true },
+      { column_name: 'script', column_type: 'Long Text', reqd: true },
+      { column_name: 'enabled', column_type: 'Check', default_value: '1', in_list_view: true },
     ],
   })
 }

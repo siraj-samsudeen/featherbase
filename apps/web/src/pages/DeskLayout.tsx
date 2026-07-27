@@ -7,13 +7,13 @@ import { useTheme } from '../lib/theme'
 import { useI18n } from '../lib/i18n'
 
 interface SearchHit {
-  doctype: string
+  table: string
   name: string
   title: string
 }
 
-// Frappe-style Desk shell: top navbar (brand + awesomebar + avatar) and a
-// workspace sidebar. All DocTypes render inside <Outlet/>.
+// Frappe-style Admin shell: top navbar (brand + command bar + avatar) and a
+// home page sidebar. All Tables render inside <Outlet/>.
 export function DeskLayout() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -36,25 +36,25 @@ export function DeskLayout() {
       void queryClient.invalidateQueries({ queryKey: ['unread-count'] })
   })
 
-  const doctypes = useQuery({
-    queryKey: ['doctypes'],
+  const tables = useQuery({
+    queryKey: ['tables'],
     queryFn: () =>
-      listResource<{ name: string; module: string }>('DocType', {
-        filters: [['istable', '=', false]],
+      listResource<{ name: string; module: string }>('Table', {
+        filters: [['kind', '!=', 'sub_table']],
         fields: ['name', 'module'],
         order_by: 'name asc',
         limit_page_length: 200,
       }),
   })
 
-  // ⌘K / Ctrl+K focuses the awesomebar (PR-2-style command palette entry).
+  // ⌘K / Ctrl+K focuses the command bar (PR-2-style command palette entry).
   const searchRef = useRef<HTMLInputElement>(null)
 
   // UI-015: global keyboard shortcuts.
-  //   Ctrl/Cmd+K  focus the awesomebar (command palette)
+  //   Ctrl/Cmd+K  focus the command bar (command palette)
   //   Ctrl/Cmd+S  save the current form
-  //   Ctrl/Cmd+B  new document of the current DocType
-  //   g then d    go to the Desk home
+  //   Ctrl/Cmd+B  new row of the current Table
+  //   g then d    go to the Admin home
   useEffect(() => {
     let leader = 0 // timestamp of a recent 'g' press
     function currentDoctype(): string | null {
@@ -81,7 +81,7 @@ export function DeskLayout() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault()
         const dt = currentDoctype()
-        if (dt && dt !== 'new-doctype') navigate({ to: '/desk/$doctype/$name', params: { doctype: dt, name: 'new' } })
+        if (dt && dt !== 'new-table') navigate({ to: '/desk/$doctype/$name', params: { doctype: dt, name: 'new' } })
         return
       }
       // Leader-key navigation only when not typing into a field.
@@ -100,7 +100,7 @@ export function DeskLayout() {
     return () => document.removeEventListener('keydown', onKey)
   }, [navigate])
 
-  // UI-027: workspaces listed in the sidebar for quick navigation.
+  // UI-027: home pages listed in the sidebar for quick navigation.
   const workspaces = useQuery({
     queryKey: ['workspaces'],
     queryFn: () =>
@@ -116,7 +116,7 @@ export function DeskLayout() {
     navigate({ to: '/login' })
   }
 
-  // UI-014: document hits from the server, debounced.
+  // UI-014: row hits from the server, debounced.
   const [debounced, setDebounced] = useState('')
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search.trim()), 150)
@@ -131,16 +131,16 @@ export function DeskLayout() {
 
   function openDoc(hit: SearchHit) {
     setSearch('')
-    navigate({ to: '/desk/$doctype/$name', params: { doctype: hit.doctype, name: hit.name } })
+    navigate({ to: '/desk/$doctype/$name', params: { doctype: hit.table, name: hit.name } })
   }
 
-  // Enter opens the top match: an exactly-named DocType's list first,
-  // otherwise the first document hit.
+  // Enter opens the top match: an exactly-named Table's list first,
+  // otherwise the first row hit.
   function runSearch(e: React.FormEvent) {
     e.preventDefault()
     const q = search.trim()
     if (!q) return
-    const dtHit = doctypes.data?.data.find((d) => d.name.toLowerCase() === q.toLowerCase())
+    const dtHit = tables.data?.data.find((d) => d.name.toLowerCase() === q.toLowerCase())
     if (dtHit) {
       setSearch('')
       navigate({ to: '/desk/$doctype', params: { doctype: dtHit.name }, search: { filters: undefined } })
@@ -163,32 +163,32 @@ export function DeskLayout() {
 
   const suggestions =
     search.trim().length > 0
-      ? (doctypes.data?.data ?? [])
+      ? (tables.data?.data ?? [])
           .filter((d) => d.name.toLowerCase().includes(search.trim().toLowerCase()))
           .slice(0, 7)
       : []
 
-  // Command actions surfaced through the awesomebar (the ⌘K palette).
+  // Command actions surfaced through the command bar (the ⌘K palette).
   const commands = [
-    { id: 'new-doctype', label: 'New DocType', run: () => navigate({ to: '/desk/new-doctype' }) },
+    { id: 'new-table', label: 'New Table', run: () => navigate({ to: '/desk/new-table' }) },
     { id: 'toggle-theme', label: 'Toggle dark mode', run: () => toggleTheme() },
-    { id: 'home', label: 'Go to Desk home', run: () => navigate({ to: '/desk' }) },
+    { id: 'home', label: 'Go to Admin home', run: () => navigate({ to: '/desk' }) },
   ]
   const commandHits =
     search.trim().length > 1
       ? commands.filter((c) => c.label.toLowerCase().includes(search.trim().toLowerCase()))
       : []
 
-  // Sidebar curation (from the PR-2 comparison): app doctypes surface first,
-  // grouped by module; the engine's Core doctypes sit below under System.
+  // Sidebar curation (from the PR-2 comparison): app tables surface first,
+  // grouped by module; the engine's Core tables sit below under System.
   // Everything stays visible — this is ordering, not hiding.
   const byModule = new Map<string, { name: string; module: string }[]>()
-  for (const dt of doctypes.data?.data ?? []) {
+  for (const dt of tables.data?.data ?? []) {
     const key = dt.module || 'Core'
     byModule.set(key, [...(byModule.get(key) ?? []), dt])
   }
   const appModules = [...byModule.keys()].filter((m) => m !== 'Core').sort()
-  const coreDoctypes = byModule.get('Core') ?? []
+  const coreTables = byModule.get('Core') ?? []
 
   return (
     <div className="flex h-full flex-col">
@@ -253,7 +253,7 @@ export function DeskLayout() {
                   <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{d.module}</span>
                 </Link>
               ))}
-              {/* UI-014: "new X" action for matched DocTypes */}
+              {/* UI-014: "new X" action for matched Tables */}
               {suggestions.slice(0, 2).map((d) => (
                 <Link
                   key={`new-${d.name}`}
@@ -266,10 +266,10 @@ export function DeskLayout() {
                   <span className="text-[var(--color-brand)]">+</span> New {d.name}
                 </Link>
               ))}
-              {/* UI-014: document hits */}
+              {/* UI-014: row hits */}
               {docHits.data?.results.map((h) => (
                 <button
-                  key={`${h.doctype}/${h.name}`}
+                  key={`${h.table}/${h.name}`}
                   onClick={() => openDoc(h)}
                   data-testid="awesomebar-doc"
                   className="block w-full px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
@@ -278,7 +278,7 @@ export function DeskLayout() {
                   {h.title !== h.name && (
                     <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{h.name}</span>
                   )}
-                  <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{h.doctype}</span>
+                  <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{h.table}</span>
                 </button>
               ))}
             </div>
@@ -354,17 +354,17 @@ export function DeskLayout() {
         >
           <div className="px-3 pt-4">
             <Link
-              to="/desk/new-doctype"
+              to="/desk/new-table"
               data-testid="new-doctype-link"
               className="fc-btn-primary w-full justify-center"
             >
-              + New DocType
+              + New Table
             </Link>
           </div>
           {(workspaces.data?.data.length ?? 0) > 0 && (
             <div data-testid="workspace-nav">
               <div className="px-4 pt-5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
-                Workspaces
+                Home Pages
               </div>
               <nav className="px-2">
                 {workspaces.data?.data.map((w) => (
@@ -383,7 +383,7 @@ export function DeskLayout() {
             </div>
           )}
           <nav className="flex-1 overflow-y-auto px-2 pb-4" data-testid="doctype-nav">
-            {doctypes.isLoading && <p className="px-2 py-1 text-xs text-[var(--color-ink-faint)]">Loading…</p>}
+            {tables.isLoading && <p className="px-2 py-1 text-xs text-[var(--color-ink-faint)]">Loading…</p>}
             {/* App modules first (Ticketing, Helpdesk, …), engine Core last. */}
             {appModules.map((mod) => (
               <div key={mod}>
@@ -407,12 +407,12 @@ export function DeskLayout() {
                 ))}
               </div>
             ))}
-            {coreDoctypes.length > 0 && (
+            {coreTables.length > 0 && (
               <div className="px-2 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
                 System
               </div>
             )}
-            {coreDoctypes.map((dt) => (
+            {coreTables.map((dt) => (
               <Link
                 key={dt.name}
                 to="/desk/$doctype"

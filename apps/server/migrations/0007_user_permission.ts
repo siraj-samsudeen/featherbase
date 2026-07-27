@@ -1,18 +1,18 @@
-// PERM-005: User Permission rows restrict a user to documents linked to
+// PERM-005: Data Scope rows restrict a user to documents linked to
 // specific values (e.g. only Company A), including the target docs themselves.
 import { sql } from '../src/db'
-import { createDocType } from '../src/doctype-engine'
+import { createTable } from '../src/doctype-engine'
 
 export async function up() {
-  const [exists] = await sql`select 1 from tab_doctype where name = 'User Permission'`
+  const [exists] = await sql`select 1 from table_def where name = 'Data Scope'`
   if (exists) return
-  await createDocType({
-    name: 'User Permission',
+  await createTable({
+    name: 'Data Scope',
     module: 'Core',
-    fields: [
-      { fieldname: 'user', fieldtype: 'Link', options: 'User', reqd: true, in_list_view: true },
-      { fieldname: 'allow', fieldtype: 'Link', options: 'DocType', reqd: true, in_list_view: true },
-      { fieldname: 'for_value', fieldtype: 'Data', reqd: true, in_list_view: true },
+    columns: [
+      { column_name: 'user', column_type: 'Reference', reference_table: 'User', reqd: true, in_list_view: true },
+      { column_name: 'allow', column_type: 'Reference', reference_table: 'Table', reqd: true, in_list_view: true },
+      { column_name: 'for_value', column_type: 'Data', reqd: true, in_list_view: true },
     ],
   })
 }

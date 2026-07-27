@@ -1,9 +1,14 @@
 # Featherbase — Agent Instructions
 
-You are building a metadata-driven low-code app platform replicating
-[Frappe Framework](https://frappe.io/framework) on a JS/TS stack.
-Read `docs/ROADMAP.md` for the strategy and `docs/adr/` for the decisions
-already made. This file is your standing protocol — follow it every session.
+You are building a metadata-driven low-code app platform on a JS/TS stack.
+The project started by replicating [Frappe Framework](https://frappe.io/framework)
+faithfully — that phase is complete, the stack and architecture inspiration
+remain credited to Frappe, and much of the design below still traces back to
+it. The project is now in a deliberate second phase, diverging from Frappe's
+design (vocabulary and API shape included) where it doesn't serve this
+platform's own users. Read `docs/ROADMAP.md` for the strategy and
+`docs/adr/` for the decisions already made. This file is your standing
+protocol — follow it every session.
 
 The project was developed under the working name `frappe-clone` and became
 Featherbase in July 2026. That name survives only in dated `PROGRESS.md`
@@ -13,23 +18,25 @@ and not to be renamed.
 
 ## Architecture invariants (never violate these)
 
-1. **Everything derives from DocType metadata.** Models are JSON definitions
-   stored in the `doctype` table. Tables, APIs, forms, list views, validation
-   schemas, and RLS policies are all *generated* from that JSON. Never
-   hand-write a per-model table, endpoint, or form component.
+1. **Everything derives from Table metadata.** Models are JSON definitions
+   stored in the `table_def` table. Tables, APIs, forms, list views,
+   validation schemas, and RLS policies are all *generated* from that JSON.
+   Never hand-write a per-model table, endpoint, or form component.
 2. **All reads and writes go through the server** (`apps/server`); clients
    never talk to Postgres directly. Every mutation calls the server's
-   `save_doc` / `submit_doc` / `delete_doc` endpoints, which run the full
-   lifecycle hook chain (`validate` → `before_save` → DB write →
-   `after_save`) in one transaction, including child tables and naming
-   series.
-3. **The Desk UI is generic.** One `ListView` and one `FormView` render every
-   DocType from its metadata. Adding a DocType requires zero frontend code.
-4. **Frappe wire-format compatibility is deliberate.** Sessions ride an
-   HttpOnly `sid` cookie alongside a Bearer token, `POST /api/method/login`
-   returns Frappe's shape, error bodies carry `exc_type`, and the
-   `frappe.client.*` RPC namespace is implemented. Do not "clean up" these
-   shapes — existing Frappe clients depend on them.
+   row-save/submit/cancel/delete operations, which run the full automation-
+   trigger chain (on check → before saving → DB write → after saving) in one
+   transaction, including sub-tables and id patterns.
+3. **The Admin UI is generic.** One `ListView` and one `FormView` render
+   every Table from its metadata. Adding a Table requires zero frontend
+   code.
+4. **Frappe wire-format compatibility is NOT a goal.** This project began as
+   a faithful Frappe replication (an intentional exercise, completed) and
+   has since moved into a deliberate second phase of diverging from Frappe's
+   design — including vocabulary and API shape — where it doesn't serve this
+   platform's own users. Do not reintroduce Frappe-specific wire shapes
+   (`exc_type`, `frappe.client.*`, `/api/method/<dotted.path>` RPC naming,
+   etc.) for compatibility's sake — they were removed on purpose.
 
 > `docs/ROADMAP.md` still describes a React + Supabase stack. That is the
 > original plan, not the implementation. Features it frames in terms of
@@ -53,7 +60,7 @@ and not to be renamed.
 - Monorepo — pnpm workspaces; boot everything with `./init.sh`
 
 **Visual identity is a standing directive.** Every new UI feature must inherit
-the Frappe-like Desk look — design tokens and the `.fc-card` / `.fc-input` /
+the Frappe-inspired Admin look — design tokens and the `.fc-card` / `.fc-input` /
 `.fc-btn` component classes. The rules are at the top of `PROGRESS.md`; read
 them before writing any UI.
 
@@ -87,10 +94,10 @@ end — Phoenix's Ecto SQL Sandbox model, via `feather-testing-postgres`. No
 mocks, no fixture files, no cleanup code.
 
 Both suites set `fileParallelism: false` on purpose: all test files share one
-database and one `tab_background_job` queue, so parallel files steal each
-other's jobs and contend on naming-series row locks. Do not turn it back on.
+database and one `background_job` queue, so parallel files steal each
+other's jobs and contend on id-pattern row locks. Do not turn it back on.
 
-`tab_background_job` is the one piece of state that outlives a run — a run
+`background_job` is the one piece of state that outlives a run — a run
 killed partway through leaves `queued` rows behind, and the next run then sees
 a higher `drainJobs()` count than the test expected. A Vitest `globalSetup`
 (`apps/server/test/global-setup.ts`, shared by both suites) empties the queue
@@ -107,7 +114,7 @@ once per run, outside any sandbox transaction. It complements
    and `harness/features.json`. Do not re-derive decisions already recorded in
    `docs/adr/`.
 2. **Boot & smoke-test.** Run `./init.sh` and verify the app actually starts and
-   the core flow passes (login → open a DocType list → open a form) BEFORE
+   the core flow passes (login → open a Table list → open a form) BEFORE
    writing new code. If the app is broken, fixing it IS the session's task.
 3. **Pick ONE piece of work.** All 126 harness features currently report
    `passing`, so the harness is no longer the backlog — take direction from

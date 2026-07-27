@@ -8,7 +8,7 @@ import { invalidateMeta } from '../src/meta'
 import { resetRateLimit } from '../src/rate-limit'
 import { issueSession } from '../src/auth'
 import { saveDoc } from '../src/document'
-import { createPgTest } from 'feather-testing-postgres'
+import { createPgTest, TestApiError, type TestClient } from 'feather-testing-postgres'
 
 export const test = createPgTest(
   {
@@ -41,3 +41,27 @@ export const test = createPgTest(
 )
 
 export { expect } from 'vitest'
+
+// TestClient (feather-testing-postgres) predates PATCH — round 2 (#61) moved
+// row updates from PUT to PATCH (Tables gain columns at runtime; a PUT from a
+// client that read a row before a column existed would silently null it).
+// Mirrors TestClient's own doJson exactly so existing `.rejects.toMatchObject
+// ({ status, type })` assertions keep working unchanged against PATCH calls.
+export async function patchDoc<T = Record<string, unknown>>(
+  client: TestClient,
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  const res = await client.fetch(path, { method: 'PATCH', body: JSON.stringify(body ?? {}) })
+  const json = (await res.json().catch(() => ({}))) as {
+    error?: { type: string; message: string; fields?: Record<string, string> }
+  }
+  if (!res.ok)
+    throw new TestApiError(
+      res.status,
+      json.error?.type ?? 'InternalError',
+      json.error?.message ?? `request failed (${res.status})`,
+      json.error?.fields,
+    )
+  return json as T
+}

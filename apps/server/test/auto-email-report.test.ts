@@ -17,29 +17,29 @@ const RECIP = 'aer-boss@x.com'
 // committed leftovers (rolled back afterwards), then create the DocType,
 // documents, Report, and schedule that legacy beforeAll used to set up once.
 async function setup(admin: TestClient) {
-  await sql`delete from tab_email_sink where subject like ${'Auto Email Report:%'}`
-  await sql`delete from tab_email_queue where reference_doctype = 'Report' and reference_name = ${REPORT}`
-  await sql`delete from tab_auto_email_report where name = ${AER}`
-  await sql`delete from tab_report where name = ${REPORT}`
-  await sql`delete from tab_docfield where parent = ${DT}`
-  await sql`delete from tab_doctype where name = ${DT}`
-  await sql.unsafe('drop table if exists tab_aer_srv_widget')
+  await sql`delete from email_sink where subject like ${'Auto Email Report:%'}`
+  await sql`delete from email_queue where ref_table = 'Report' and reference_name = ${REPORT}`
+  await sql`delete from auto_email_report where name = ${AER}`
+  await sql`delete from report where name = ${REPORT}`
+  await sql`delete from column_def where parent = ${DT}`
+  await sql`delete from table_def where name = ${DT}`
+  await sql.unsafe('drop table if exists aer_srv_widget')
 
   await admin.post('/api/doctype', {
     name: DT,
-    autoname: 'prompt',
-    fields: [
-      { fieldname: 'title', fieldtype: 'Data', in_list_view: true },
-      { fieldname: 'qty', fieldtype: 'Int', in_list_view: true },
+    id_pattern: 'prompt',
+    columns: [
+      { column_name: 'title', column_type: 'Data', in_list_view: true },
+      { column_name: 'qty', column_type: 'Int', in_list_view: true },
     ],
   })
   // Two documents to report on. One title has a comma to exercise CSV quoting.
-  await admin.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  await admin.post(`/api/table/${encodeURIComponent(DT)}`, {
     name: 'aer-1',
     title: 'Bolt, hex',
     qty: 10,
   })
-  await admin.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  await admin.post(`/api/table/${encodeURIComponent(DT)}`, {
     name: 'aer-2',
     title: 'Washer',
     qty: 3,
@@ -50,7 +50,7 @@ async function setup(admin: TestClient) {
     doctype: 'Report',
     doc: {
       name: REPORT,
-      ref_doctype: DT,
+      ref_table: DT,
       report_type: 'Report Builder',
       config: { columns: ['title', 'qty'], filters: [] },
     },
@@ -76,8 +76,8 @@ async function setup(admin: TestClient) {
 // clock, then drain.
 async function drainDueJobs() {
   await sql`
-    update tab_background_job set run_at = now()
-    where status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
+    update background_job set run_at = now()
+    where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
   return await drainJobs()
 }
 
@@ -97,8 +97,8 @@ describe('EML-007: Auto Email Report', () => {
 
     // The email is queued referencing the report, addressed to the recipient.
     const [q] = await sql`
-      select recipient, subject, attachments from tab_email_queue
-      where reference_doctype = 'Report' and reference_name = ${REPORT} order by creation desc limit 1`
+      select recipient, subject, attachments from email_queue
+      where ref_table = 'Report' and reference_name = ${REPORT} order by created_at desc limit 1`
     expect(q.recipient).toBe(RECIP)
     expect(String(q.subject)).toContain('Auto Email Report')
     const files = (q.attachments as { files?: { filename: string; content_b64: string }[] }).files ?? []
@@ -112,14 +112,14 @@ describe('EML-007: Auto Email Report', () => {
     // The worker delivers it to the sink with the attachment intact (EML-002/003).
     await drainDueJobs()
     const [sink] = await sql`
-      select mail_to, attachment_names, attachment_b64 from tab_email_sink
-      where subject like ${'Auto Email Report:%'} order by creation desc limit 1`
+      select mail_to, attachment_names, attachment_b64 from email_sink
+      where subject like ${'Auto Email Report:%'} order by created_at desc limit 1`
     expect(sink.mail_to).toBe(RECIP)
     expect(String(sink.attachment_names)).toContain(`${REPORT}.csv`)
     expect(Buffer.from(sink.attachment_b64 as string, 'base64').toString('utf8')).toContain('Washer,3')
 
     // last_sent was stamped.
-    const [row] = await sql`select last_sent from tab_auto_email_report where name = ${AER}`
+    const [row] = await sql`select last_sent from auto_email_report where name = ${AER}`
     expect(row.last_sent).not.toBeNull()
   })
 
@@ -134,7 +134,7 @@ describe('EML-007: Auto Email Report', () => {
     expect(delivered).not.toContain(AER)
 
     // Simulate two days passing → due again.
-    await sql`update tab_auto_email_report set last_sent = now() - interval '2 days' where name = ${AER}`
+    await sql`update auto_email_report set last_sent = now() - interval '2 days' where name = ${AER}`
     const later = await runDueAutoEmailReports(new Date())
     expect(later).toContain(AER)
   })

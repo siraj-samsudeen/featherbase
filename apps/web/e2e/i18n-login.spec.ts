@@ -16,7 +16,7 @@ async function adminHeaders(request: APIRequestContext) {
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
   // A user whose stored language is French.
-  await request.delete(`/api/resource/User/${encodeURIComponent(USER)}`, { headers })
+  await request.delete(`/api/table/User/${encodeURIComponent(USER)}`, { headers })
   await request.post('/api/save_doc', {
     headers,
     data: { doctype: 'User', doc: { name: USER, email: USER, full_name: 'FR User', enabled: true, language: 'fr', roles: [{ role: 'System Manager' }] } },
@@ -32,10 +32,10 @@ test.beforeAll(async ({ request }) => {
   // A DocType with a Date field, and a doc dated 9 March 2026.
   const dt = await request.post('/api/doctype', {
     headers,
-    data: { name: DT, fields: [{ fieldname: 'due', fieldtype: 'Date', in_list_view: true }] },
+    data: { name: DT, columns: [{ column_name: 'due', column_type: 'Date', in_list_view: true }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
-  await request.post(`/api/resource/${encodeURIComponent(DT)}`, { headers, data: { due: '2026-03-09' } })
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { due: '2026-03-09' } })
   // NOTE: we don't set a specific System Settings date_format here — it's a
   // shared global other parallel tests mutate. We only assert the date is
   // rendered THROUGH the formatter (any configured order), not raw ISO.

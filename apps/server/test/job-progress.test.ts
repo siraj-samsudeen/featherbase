@@ -13,8 +13,8 @@ import { onEvent } from '../src/realtime'
 // passed by the wall clock (clock_timestamp) as due by the transaction clock.
 async function nudgeDueJobs() {
   await sql`
-    update tab_background_job set run_at = now()
-    where status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
+    update background_job set run_at = now()
+    where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
 }
 
 describe('JOB-005: job progress reporting', () => {

@@ -12,10 +12,10 @@ test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
   const dt = await request.post('/api/doctype', {
     headers,
-    data: { name: DT, fields: [{ fieldname: 'amount', fieldtype: 'Int', in_list_view: true }] },
+    data: { name: DT, columns: [{ column_name: 'amount', column_type: 'Int', in_list_view: true }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
-  await request.delete('/api/resource/Server%20Script/ss-e2e-reject', { headers })
+  await request.delete('/api/table/Server%20Script/ss-e2e-reject', { headers })
   const s = await request.post('/api/save_doc', {
     headers,
     data: {
@@ -23,7 +23,7 @@ test.beforeAll(async ({ request }) => {
       doc: {
         name: 'ss-e2e-reject',
         script_type: 'Document Event',
-        reference_doctype: DT,
+        ref_table: DT,
         event: 'validate',
         script: 'if (doc.amount < 0) frappe.throw("Amount cannot be negative")',
         enabled: true,

@@ -2,43 +2,45 @@ import { sql } from './db'
 import { saveDoc } from './document'
 import { invalidateMeta } from './meta'
 
-// CUST-005: export a DocType's customizations (Custom Fields + Property
+// CUST-005: export a Table's customizations (Custom Fields + Property
 // Setters) as a portable JSON bundle, and import a bundle to recreate them.
 // Import goes through saveDoc so the Custom Field controller materializes the
 // column, exactly as a manual creation would.
 
 export interface CustomFieldExport {
   dt: string
-  fieldname: string
+  column_name: string
   label: string | null
-  fieldtype: string
-  options: string | null
+  column_type: string
+  reference_table: string | null
+  choices: string | null
+  row_table: string | null
   reqd: boolean
   in_list_view: boolean
 }
-export interface PropertySetterExport {
-  doc_type: string
-  field_name: string | null
+export interface MetadataOverrideExport {
+  table_name: string
+  column_name: string | null
   property: string
   value: string | null
 }
 export interface CustomizationBundle {
-  doctype: string
+  table: string
   custom_fields: CustomFieldExport[]
-  property_setters: PropertySetterExport[]
+  property_setters: MetadataOverrideExport[]
 }
 
-export async function exportCustomizations(doctype: string): Promise<CustomizationBundle> {
+export async function exportCustomizations(table: string): Promise<CustomizationBundle> {
   const cf = await sql`
-    select dt, fieldname, label, fieldtype, options, reqd, in_list_view
-    from tab_custom_field where dt = ${doctype} order by fieldname`
+    select dt, column_name, label, column_type, reference_table, choices, row_table, reqd, in_list_view
+    from custom_field where dt = ${table} order by column_name`
   const ps = await sql`
-    select doc_type, field_name, property, value
-    from tab_property_setter where doc_type = ${doctype} order by field_name, property`
+    select table_name, column_name, property, value
+    from metadata_override where table_name = ${table} order by column_name, property`
   return {
-    doctype,
+    table,
     custom_fields: cf as unknown as CustomFieldExport[],
-    property_setters: ps as unknown as PropertySetterExport[],
+    property_setters: ps as unknown as MetadataOverrideExport[],
   }
 }
 
@@ -52,17 +54,19 @@ export async function importCustomizations(
 
   for (const f of bundle.custom_fields ?? []) {
     const [existing] = await sql`
-      select name from tab_custom_field where dt = ${f.dt} and fieldname = ${f.fieldname}`
+      select name from custom_field where dt = ${f.dt} and column_name = ${f.column_name}`
     if (existing) continue // already present — idempotent
     await saveDoc(
       'Custom Field',
       {
-        name: `${f.dt}-${f.fieldname}`,
+        name: `${f.dt}-${f.column_name}`,
         dt: f.dt,
-        fieldname: f.fieldname,
+        column_name: f.column_name,
         label: f.label ?? null,
-        fieldtype: f.fieldtype ?? 'Data',
-        options: f.options ?? null,
+        column_type: f.column_type ?? 'Data',
+        reference_table: f.reference_table ?? null,
+        choices: f.choices ?? null,
+        row_table: f.row_table ?? null,
         reqd: f.reqd ?? false,
         in_list_view: f.in_list_view ?? false,
       },
@@ -74,25 +78,25 @@ export async function importCustomizations(
 
   for (const p of bundle.property_setters ?? []) {
     const [existing] = await sql`
-      select name from tab_property_setter
-      where doc_type = ${p.doc_type} and coalesce(field_name, '') = ${p.field_name ?? ''}
+      select name from metadata_override
+      where table_name = ${p.table_name} and coalesce(column_name, '') = ${p.column_name ?? ''}
         and property = ${p.property}`
     if (existing) continue
     await saveDoc(
-      'Property Setter',
+      'Metadata Override',
       {
-        name: `${p.doc_type}-${p.field_name ?? ''}-${p.property}`,
-        doc_type: p.doc_type,
-        field_name: p.field_name ?? null,
+        name: `${p.table_name}-${p.column_name ?? ''}-${p.property}`,
+        table_name: p.table_name,
+        column_name: p.column_name ?? null,
         property: p.property,
         value: p.value ?? null,
       },
       user,
     )
-    touched.add(p.doc_type)
+    touched.add(p.table_name)
     psCount++
   }
 
-  for (const dt of touched) invalidateMeta(dt)
+  for (const t of touched) invalidateMeta(t)
   return { custom_fields: cfCount, property_setters: psCount }
 }

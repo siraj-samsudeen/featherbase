@@ -12,9 +12,9 @@ let jobName: string
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
   // Seed a failed job (a no-op ping_job that will succeed when retried).
-  const res = await request.post('/api/resource/Background%20Job', {
+  const res = await request.post('/api/table/Background%20Job', {
     headers,
-    data: { method: 'ping_job', status: 'failed', attempts: 3, max_attempts: 3, error: 'simulated failure', payload: '{}' },
+    data: { method: 'ping_job', job_status: 'failed', attempts: 3, max_attempts: 3, error: 'simulated failure', payload: '{}' },
   })
   jobName = ((await res.json()) as { name: string }).name
 })

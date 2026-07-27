@@ -16,13 +16,13 @@ const READER_ROLE = 'Sec Reader'
 async function setup(admin: TestClient, createUser: CreateUserFn) {
   await admin.post('/api/doctype', {
     name: DT,
-    fields: [{ fieldname: 'title', fieldtype: 'Data' }],
+    columns: [{ column_name: 'title', column_type: 'Data' }],
   })
   // A role that can read the doctype, and a document to attach the file to.
   await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: READER_ROLE } })
   await admin.post('/api/save_doc', {
-    doctype: 'DocPerm',
-    doc: { ref_doctype: DT, role: READER_ROLE, can_read: true },
+    doctype: 'Permission',
+    doc: { ref_table: DT, role: READER_ROLE, can_read: true },
   })
   const docName = (
     await admin.post<{ name: string }>('/api/save_doc', {

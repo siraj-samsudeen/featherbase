@@ -7,7 +7,7 @@ import {
 import { LoginPage } from './pages/Login'
 import { ResetPasswordPage } from './pages/ResetPassword'
 import { WebFormPage } from './pages/WebForm'
-import { PortalListPage, PortalDocPage } from './pages/Portal'
+import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
 import { DeskLayout } from './pages/DeskLayout'
 import { getToken } from './lib/api'
@@ -25,7 +25,7 @@ import { KanbanView } from './components/KanbanView'
 import { CalendarView } from './components/CalendarView'
 import { GanttView } from './components/GanttView'
 import { PrintView } from './pages/PrintView'
-import { DocTypeBuilder } from './pages/DocTypeBuilder'
+import { TableBuilder } from './pages/TableBuilder'
 
 const rootRoute = createRootRoute({ component: Outlet })
 
@@ -51,7 +51,7 @@ const webFormRoute = createRoute({
 })
 
 // PLAT-006: OAuth callback landing (public) — stores the token from the query
-// and enters the Desk.
+// and enters the Admin.
 const oauthCallbackRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/oauth-callback',
@@ -66,7 +66,7 @@ function OAuthCallbackRouteComponent() {
 }
 
 // WEB-003: customer portal — a logged-in website user sees only their own
-// documents (if_owner-scoped by the API). Lives outside the Desk shell.
+// rows (own_rows_only-scoped by the API). Lives outside the Admin shell.
 const portalListRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/portal/$doctype',
@@ -90,7 +90,7 @@ const portalDocRoute = createRoute({
 })
 function PortalDocRouteComponent() {
   const { doctype, name } = portalDocRoute.useParams()
-  return <PortalDocPage key={`${doctype}/${name}`} doctype={doctype} name={name} />
+  return <PortalRowPage key={`${doctype}/${name}`} doctype={doctype} name={name} />
 }
 
 // SET-002: public password-reset page (target of the emailed link).
@@ -112,7 +112,7 @@ const deskRoute = createRoute({
   component: DeskLayout,
 })
 
-// PRN-001: print view lives OUTSIDE the Desk layout — no navbar/sidebar.
+// PRN-001: print view lives OUTSIDE the Admin layout — no navbar/sidebar.
 const printRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/print/$doctype/$name',
@@ -144,22 +144,22 @@ const deskIndexRoute = createRoute({
   getParentRoute: () => deskRoute,
   path: '/',
   component: () => (
-    <p className="text-sm text-gray-500">Select a DocType from the sidebar.</p>
+    <p className="text-sm text-gray-500">Select a Table from the sidebar.</p>
   ),
 })
 
-// UI-011: DocType builder route (before $doctype so 'new-doctype' matches).
-const newDoctypeRoute = createRoute({
+// UI-011: Table builder route (before $doctype so 'new-table' matches).
+const newTableRoute = createRoute({
   getParentRoute: () => deskRoute,
-  path: 'new-doctype',
+  path: 'new-table',
   component: () => (
     <div data-testid="doctype-page">
-      <DocTypeBuilder />
+      <TableBuilder />
     </div>
   ),
 })
 
-// UI-002/UI-003: the generic ListView renders every DocType; filters are
+// UI-002/UI-003: the generic ListView renders every Table; filters are
 // URL state so they survive reloads and are shareable.
 const doctypeRoute = createRoute({
   getParentRoute: () => deskRoute,
@@ -167,16 +167,16 @@ const doctypeRoute = createRoute({
   validateSearch: (search: Record<string, unknown>) => ({
     filters: typeof search.filters === 'string' ? search.filters : undefined,
   }),
-  component: DocTypeListPage,
+  component: TableListPage,
 })
 
-function DocTypeListPage() {
+function TableListPage() {
   const { doctype } = doctypeRoute.useParams()
   const { filters } = doctypeRoute.useSearch()
   const navigate = doctypeRoute.useNavigate()
   const meta = useMeta(doctype)
-  // SET-001: a Single DocType has no list — open its one document directly.
-  if (meta.data?.issingle) {
+  // SET-001: a Settings Table has no list — open its one row directly.
+  if (meta.data?.kind === 'settings') {
     return (
       <div data-testid="doctype-page">
         <FormView key={doctype} doctype={doctype} name={doctype} />
@@ -207,7 +207,7 @@ function DocTypeListPage() {
 }
 
 // RPT-001: report view — column picker + group-by with totals, generic
-// over every DocType. Three segments, so it never collides with
+// over every Table. Three segments, so it never collides with
 // $doctype/$name.
 const reportRoute = createRoute({
   getParentRoute: () => deskRoute,
@@ -292,7 +292,7 @@ function GanttPage() {
   )
 }
 
-// RPT-004: a Query Report renders its own SQL-driven results (static first
+// RPT-004: a SQL Report renders its own SQL-driven results (static first
 // segment, so it wins over $doctype/$name).
 const queryReportRoute = createRoute({
   getParentRoute: () => deskRoute,
@@ -332,7 +332,7 @@ const jobsRoute = createRoute({
   component: JobMonitor,
 })
 
-// UI-027: a Workspace renders navigable shortcut cards (static segment).
+// UI-027: a Home Page renders navigable shortcut cards (static segment).
 const workspaceRoute = createRoute({
   getParentRoute: () => deskRoute,
   path: 'workspace/$name',
@@ -364,7 +364,7 @@ function DashboardPage() {
   )
 }
 
-// SET-003: role & permission manager for a DocType (static first segment).
+// SET-003: role & permission manager for a Table (static first segment).
 const permissionsRoute = createRoute({
   getParentRoute: () => deskRoute,
   path: 'permissions/$doctype',
@@ -380,14 +380,14 @@ function PermissionsPage() {
   )
 }
 
-// UI-004/UI-005: the generic FormView renders and saves every DocType.
+// UI-004/UI-005: the generic FormView renders and saves every Table.
 const docRoute = createRoute({
   getParentRoute: () => deskRoute,
   path: '$doctype/$name',
-  component: DocFormPage,
+  component: TableFormPage,
 })
 
-function DocFormPage() {
+function TableFormPage() {
   const { doctype, name } = docRoute.useParams()
   return (
     <div data-testid="doc-page">
@@ -405,5 +405,5 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   printRoute,
-  deskRoute.addChildren([deskIndexRoute, newDoctypeRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, workspaceRoute, jobsRoute, doctypeRoute, docRoute]),
+  deskRoute.addChildren([deskIndexRoute, newTableRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, workspaceRoute, jobsRoute, doctypeRoute, docRoute]),
 ])

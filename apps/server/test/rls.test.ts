@@ -8,7 +8,7 @@ import { areq } from './helpers'
 
 // PERM-004: generated RLS. A direct client (the desk_client PG role — the
 // local stand-in for supabase-js/PostgREST) can SELECT only rows its
-// session user has DocPerm read access to, and can never write. The app
+// session user has Permission read access to, and can never write. The app
 // server (table owner) bypasses RLS and stays the only write path.
 
 const DT = 'RLS Vault'
@@ -27,13 +27,13 @@ async function as(user: string | null) {
 }
 
 async function cleanup() {
-  await sql`delete from tab_docperm where ref_doctype in (${DT}, ${SECRET_DT})`
-  await sql`delete from tab_has_role where parent = ${USER}`
-  await sql`delete from tab_user where name = ${USER}`
-  await sql`delete from tab_role where name = ${ROLE}`
-  await sql`delete from tab_doctype where name in (${DT}, ${CHILD}, ${SECRET_DT})`
-  await sql`delete from tab_docfield where parent in (${DT}, ${CHILD}, ${SECRET_DT})`
-  await sql.unsafe('drop table if exists tab_rls_vault, tab_rls_vault_item, tab_rls_hidden')
+  await sql`delete from permission where ref_table in (${DT}, ${SECRET_DT})`
+  await sql`delete from has_role where parent = ${USER}`
+  await sql`delete from "user" where name = ${USER}`
+  await sql`delete from role where name = ${ROLE}`
+  await sql`delete from table_def where name in (${DT}, ${CHILD}, ${SECRET_DT})`
+  await sql`delete from column_def where parent in (${DT}, ${CHILD}, ${SECRET_DT})`
+  await sql.unsafe('drop table if exists rls_vault, rls_vault_item, rls_hidden')
 }
 
 beforeAll(async () => {
@@ -42,23 +42,23 @@ beforeAll(async () => {
     method: 'POST',
     body: JSON.stringify({
       name: CHILD,
-      istable: true,
-      fields: [{ fieldname: 'part', fieldtype: 'Data' }],
+      kind: 'sub_table',
+      columns: [{ column_name: 'part', column_type: 'Data' }],
     }),
   })
   await areq('/api/doctype', {
     method: 'POST',
     body: JSON.stringify({
       name: DT,
-      fields: [
-        { fieldname: 'title', fieldtype: 'Data' },
-        { fieldname: 'items', fieldtype: 'Table', options: CHILD },
+      columns: [
+        { column_name: 'title', column_type: 'Data' },
+        { column_name: 'items', column_type: 'Sub-table', row_table: CHILD },
       ],
     }),
   })
   await areq('/api/doctype', {
     method: 'POST',
-    body: JSON.stringify({ name: SECRET_DT, fields: [{ fieldname: 'code', fieldtype: 'Data' }] }),
+    body: JSON.stringify({ name: SECRET_DT, columns: [{ column_name: 'code', column_type: 'Data' }] }),
   })
   await areq('/api/save_doc', {
     method: 'POST',
@@ -74,8 +74,8 @@ beforeAll(async () => {
   await areq('/api/save_doc', {
     method: 'POST',
     body: JSON.stringify({
-      doctype: 'DocPerm',
-      doc: { ref_doctype: DT, role: ROLE, permlevel: 0, can_read: true },
+      doctype: 'Permission',
+      doc: { ref_table: DT, role: ROLE, tier: 'basic', can_read: true },
     }),
   })
   await areq('/api/save_doc', {
@@ -97,43 +97,43 @@ afterAll(async () => {
 })
 
 describe('PERM-004: generated RLS for direct clients', () => {
-  it('permitted DocType is selectable; child rows follow the parent perm', async () => {
+  it('permitted Table is selectable; child rows follow the parent perm', async () => {
     await as(USER)
-    const rows = await direct`select title from tab_rls_vault`
+    const rows = await direct`select title from rls_vault`
     expect(rows).toHaveLength(1)
-    const children = await direct`select part from tab_rls_vault_item order by part`
+    const children = await direct`select part from rls_vault_item order by part`
     expect(children.map((r) => r.part)).toEqual(['p1', 'p2'])
   })
 
-  it('non-permitted DocTypes yield zero rows', async () => {
+  it('non-permitted Tables yield zero rows', async () => {
     await as(USER)
-    expect(await direct`select * from tab_rls_hidden`).toHaveLength(0)
-    expect(await direct`select * from tab_user`).toHaveLength(0)
+    expect(await direct`select * from rls_hidden`).toHaveLength(0)
+    expect(await direct`select * from "user"`).toHaveLength(0)
   })
 
   it('an unauthenticated session (Guest) sees nothing', async () => {
     await as(null)
-    expect(await direct`select * from tab_rls_vault`).toHaveLength(0)
+    expect(await direct`select * from rls_vault`).toHaveLength(0)
   })
 
   it('Administrator sees everything', async () => {
     await as('Administrator')
-    expect(await direct`select * from tab_rls_vault`).toHaveLength(1)
-    expect(await direct`select * from tab_rls_hidden`).toHaveLength(1)
+    expect(await direct`select * from rls_vault`).toHaveLength(1)
+    expect(await direct`select * from rls_hidden`).toHaveLength(1)
   })
 
   it('every direct write is denied, even on the permitted table', async () => {
     await as(USER)
     await expect(
-      direct`insert into tab_rls_vault (name, title) values ('hack', 'x')`,
+      direct`insert into rls_vault (name, title) values ('hack', 'x')`,
     ).rejects.toThrow(/permission denied/)
-    await expect(direct`update tab_rls_vault set title = 'x'`).rejects.toThrow(
+    await expect(direct`update rls_vault set title = 'x'`).rejects.toThrow(
       /permission denied/,
     )
-    await expect(direct`delete from tab_rls_vault`).rejects.toThrow(/permission denied/)
+    await expect(direct`delete from rls_vault`).rejects.toThrow(/permission denied/)
   })
 
-  it('non-DocType bookkeeping tables are not exposed at all', async () => {
+  it('non-Table bookkeeping tables are not exposed at all', async () => {
     await as('Administrator')
     await expect(direct`select * from migration`).rejects.toThrow(/permission denied/)
   })

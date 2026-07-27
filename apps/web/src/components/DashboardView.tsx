@@ -12,7 +12,7 @@ interface CardCfg {
 }
 interface ChartCfg {
   label: string
-  // A chart is driven EITHER by a DocType + group_by (UI-026) OR by a saved
+  // A chart is driven EITHER by a Table + group_by (UI-026) OR by a saved
   // Report (RPT-006). Report-driven charts recompute from live report data.
   doctype?: string
   group_by?: string
@@ -94,7 +94,7 @@ function BarChart({ chart }: { chart: ChartCfg }) {
 export function DashboardView({ name }: { name: string }) {
   const dash = useQuery({
     queryKey: ['dashboard', name],
-    queryFn: () => api.get<{ name: string; label?: string; config?: DashboardConfig | string }>(`/api/resource/Dashboard/${encodeURIComponent(name)}`),
+    queryFn: () => api.get<{ name: string; label?: string; config?: DashboardConfig | string }>(`/api/table/Dashboard/${encodeURIComponent(name)}`),
   })
 
   if (dash.isError)

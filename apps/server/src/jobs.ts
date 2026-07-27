@@ -44,13 +44,13 @@ export async function enqueue(
 ): Promise<string> {
   const name = jobName()
   await sql`
-    insert into tab_background_job ${sql({
+    insert into background_job ${sql({
       name,
-      owner: 'Administrator',
-      modified_by: 'Administrator',
+      created_by: 'Administrator',
+      updated_by: 'Administrator',
       method,
       payload: payload as unknown as string,
-      status: 'queued',
+      job_status: 'queued',
       attempts: 0,
       max_attempts: opts.maxAttempts ?? 3,
       run_at: opts.runAt ?? new Date(),
@@ -67,10 +67,10 @@ async function logExecution(
   error?: string,
 ): Promise<void> {
   await sql`
-    insert into tab_job_execution ${sql({
+    insert into job_execution ${sql({
       name: jobName(),
-      owner: 'Administrator',
-      modified_by: 'Administrator',
+      created_by: 'Administrator',
+      updated_by: 'Administrator',
       job,
       method,
       attempt,
@@ -83,11 +83,11 @@ async function logExecution(
 export async function runOneJob(): Promise<boolean> {
   // Atomic claim: flip exactly one due queued job to running.
   const [claimed] = await sql`
-    update tab_background_job set status = 'running', modified = now()
+    update background_job set job_status = 'running', updated_at = now()
     where name = (
-      select name from tab_background_job
-      where status = 'queued' and (run_at is null or run_at <= now())
-      order by run_at asc, creation asc
+      select name from background_job
+      where job_status = 'queued' and (run_at is null or run_at <= now())
+      order by run_at asc, created_at asc
       limit 1 for update skip locked
     )
     returning *`
@@ -103,7 +103,7 @@ export async function runOneJob(): Promise<boolean> {
   // JOB-005: progress reports go to the job owner's realtime channel.
   const ctx: JobContext = {
     setProgress: (percent, message) =>
-      publishUserEvent(claimed.owner as string, 'job_progress', {
+      publishUserEvent(claimed.created_by as string, 'job_progress', {
         job: claimed.name,
         method,
         percent: Math.max(0, Math.min(100, Math.round(percent))),
@@ -115,7 +115,7 @@ export async function runOneJob(): Promise<boolean> {
     if (!handler) throw new Error(`No job handler registered for "${method}"`)
     await handler(payload, ctx)
     await sql`
-      update tab_background_job set status = 'done', attempts = ${attempt}, error = null, modified = now()
+      update background_job set job_status = 'done', attempts = ${attempt}, error = null, updated_at = now()
       where name = ${claimed.name as string}`
     await logExecution(claimed.name as string, method, attempt, 'success')
 
@@ -133,8 +133,8 @@ export async function runOneJob(): Promise<boolean> {
     // JOB-002: retry until max_attempts, then land in failed.
     const nextStatus = attempt >= maxAttempts ? 'failed' : 'queued'
     await sql`
-      update tab_background_job
-      set status = ${nextStatus}, attempts = ${attempt}, error = ${message}, modified = now()
+      update background_job
+      set job_status = ${nextStatus}, attempts = ${attempt}, error = ${message}, updated_at = now()
       where name = ${claimed.name as string}`
     await logExecution(claimed.name as string, method, attempt, 'error', message)
     return true
@@ -145,9 +145,9 @@ export async function runOneJob(): Promise<boolean> {
 // counter, cleared error). Returns false if the job isn't failed / not found.
 export async function retryJob(name: string): Promise<boolean> {
   const [row] = await sql`
-    update tab_background_job
-    set status = 'queued', attempts = 0, error = null, run_at = now(), modified = now()
-    where name = ${name} and status = 'failed'
+    update background_job
+    set job_status = 'queued', attempts = 0, error = null, run_at = now(), updated_at = now()
+    where name = ${name} and job_status = 'failed'
     returning name`
   return Boolean(row)
 }

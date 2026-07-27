@@ -2,38 +2,42 @@ import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
-import { FIELD_TYPES } from '../lib/meta'
+import { COLUMN_TYPES } from '../lib/meta'
 
-interface FieldRow {
-  fieldname: string
+interface ColumnRow {
+  column_name: string
   label: string
-  fieldtype: string
-  options: string
+  column_type: string
+  // Entered comma-/newline-separated; split into reference_table/choices/row_table
+  // on submit depending on column_type.
+  target: string
   reqd: boolean
   in_list_view: boolean
 }
 
-const blank = (): FieldRow => ({
-  fieldname: '',
+const blank = (): ColumnRow => ({
+  column_name: '',
   label: '',
-  fieldtype: 'Data',
-  options: '',
+  column_type: 'Data',
+  target: '',
   reqd: false,
   in_list_view: false,
 })
 
-// UI-011: build and edit DocTypes entirely from the Desk. Uses POST
+const TARGET_REQUIRED_TYPES = ['Choice', 'Reference', 'Sub-table']
+
+// UI-011: build and edit Tables entirely from the Admin. Uses POST
 // /api/doctype (create) and PUT /api/doctype/:name (schema sync).
-export function DocTypeBuilder() {
+export function TableBuilder() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
-  const [fields, setFields] = useState<FieldRow[]>([blank()])
+  const [columns, setColumns] = useState<ColumnRow[]>([blank()])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
-  function setField(i: number, patch: Partial<FieldRow>) {
-    setFields((fs) => fs.map((f, j) => (j === i ? { ...f, ...patch } : f)))
+  function setColumn(i: number, patch: Partial<ColumnRow>) {
+    setColumns((cs) => cs.map((c, j) => (j === i ? { ...c, ...patch } : c)))
   }
 
   async function create() {
@@ -42,28 +46,30 @@ export function DocTypeBuilder() {
     try {
       const payload = {
         name,
-        fields: fields
-          .filter((f) => f.fieldname.trim())
-          .map((f) => ({
-            fieldname: f.fieldname.trim(),
-            label: f.label.trim() || undefined,
-            fieldtype: f.fieldtype,
-            // Options entered comma- or newline-separated; Select/Link/Table
-            // expect newline-separated, so normalize.
-            options:
-              f.options.trim()
-                ? f.options
-                    .split(/[\n,]/)
-                    .map((o) => o.trim())
-                    .filter(Boolean)
-                    .join('\n')
-                : undefined,
-            reqd: f.reqd,
-            in_list_view: f.in_list_view,
-          })),
+        columns: columns
+          .filter((c) => c.column_name.trim())
+          .map((c) => {
+            const target = c.target.trim()
+              ? c.target
+                  .split(/[\n,]/)
+                  .map((o) => o.trim())
+                  .filter(Boolean)
+                  .join('\n')
+              : undefined
+            return {
+              column_name: c.column_name.trim(),
+              label: c.label.trim() || undefined,
+              column_type: c.column_type,
+              reference_table: c.column_type === 'Reference' ? target : undefined,
+              choices: c.column_type === 'Choice' ? target : undefined,
+              row_table: c.column_type === 'Sub-table' ? target : undefined,
+              reqd: c.reqd,
+              in_list_view: c.in_list_view,
+            }
+          }),
       }
       await api.post('/api/doctype', payload)
-      await queryClient.invalidateQueries({ queryKey: ['doctypes'] })
+      await queryClient.invalidateQueries({ queryKey: ['tables'] })
       navigate({ to: '/desk/$doctype', params: { doctype: name }, search: { filters: undefined } })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Create failed')
@@ -74,8 +80,8 @@ export function DocTypeBuilder() {
 
   return (
     <div data-testid="doctype-builder" className="max-w-3xl">
-      <h1 className="mb-4 text-xl font-semibold text-[var(--color-ink)]">New DocType</h1>
-      <label className="fc-label">DocType name</label>
+      <h1 className="mb-4 text-xl font-semibold text-[var(--color-ink)]">New Table</h1>
+      <label className="fc-label">Table name</label>
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
@@ -88,42 +94,42 @@ export function DocTypeBuilder() {
         <table className="w-full text-sm" data-testid="dt-fields">
           <thead className="bg-gray-50 text-left text-xs text-gray-600">
             <tr>
-              <th className="px-2 py-1">Fieldname</th>
+              <th className="px-2 py-1">Column Name</th>
               <th className="px-2 py-1">Label</th>
-              <th className="px-2 py-1">Type</th>
-              <th className="px-2 py-1">Options</th>
+              <th className="px-2 py-1">Column Type</th>
+              <th className="px-2 py-1">Target</th>
               <th className="px-2 py-1">Reqd</th>
               <th className="px-2 py-1">List</th>
               <th />
             </tr>
           </thead>
           <tbody>
-            {fields.map((f, i) => (
+            {columns.map((c, i) => (
               <tr key={i} className="border-t border-gray-100">
                 <td className="px-1 py-1">
                   <input
-                    value={f.fieldname}
-                    onChange={(e) => setField(i, { fieldname: e.target.value })}
-                    data-rowfield="fieldname"
+                    value={c.column_name}
+                    onChange={(e) => setColumn(i, { column_name: e.target.value })}
+                    data-rowfield="column_name"
                     className="w-full rounded border border-gray-200 px-1 py-0.5"
                   />
                 </td>
                 <td className="px-1 py-1">
                   <input
-                    value={f.label}
-                    onChange={(e) => setField(i, { label: e.target.value })}
+                    value={c.label}
+                    onChange={(e) => setColumn(i, { label: e.target.value })}
                     data-rowfield="label"
                     className="w-full rounded border border-gray-200 px-1 py-0.5"
                   />
                 </td>
                 <td className="px-1 py-1">
                   <select
-                    value={f.fieldtype}
-                    onChange={(e) => setField(i, { fieldtype: e.target.value })}
-                    data-rowfield="fieldtype"
+                    value={c.column_type}
+                    onChange={(e) => setColumn(i, { column_type: e.target.value })}
+                    data-rowfield="column_type"
                     className="rounded border border-gray-200 px-1 py-0.5"
                   >
-                    {FIELD_TYPES.map((t) => (
+                    {COLUMN_TYPES.map((t) => (
                       <option key={t} value={t}>
                         {t}
                       </option>
@@ -132,33 +138,33 @@ export function DocTypeBuilder() {
                 </td>
                 <td className="px-1 py-1">
                   <input
-                    value={f.options}
-                    onChange={(e) => setField(i, { options: e.target.value })}
-                    data-rowfield="options"
-                    placeholder={['Select', 'Link', 'Table'].includes(f.fieldtype) ? 'required' : ''}
+                    value={c.target}
+                    onChange={(e) => setColumn(i, { target: e.target.value })}
+                    data-rowfield="target"
+                    placeholder={TARGET_REQUIRED_TYPES.includes(c.column_type) ? 'required' : ''}
                     className="w-full rounded border border-gray-200 px-1 py-0.5"
                   />
                 </td>
                 <td className="px-1 py-1 text-center">
                   <input
                     type="checkbox"
-                    checked={f.reqd}
-                    onChange={(e) => setField(i, { reqd: e.target.checked })}
+                    checked={c.reqd}
+                    onChange={(e) => setColumn(i, { reqd: e.target.checked })}
                     data-rowfield="reqd"
                   />
                 </td>
                 <td className="px-1 py-1 text-center">
                   <input
                     type="checkbox"
-                    checked={f.in_list_view}
-                    onChange={(e) => setField(i, { in_list_view: e.target.checked })}
+                    checked={c.in_list_view}
+                    onChange={(e) => setColumn(i, { in_list_view: e.target.checked })}
                     data-rowfield="in_list_view"
                   />
                 </td>
                 <td className="px-1 text-center">
                   <button
-                    aria-label="Remove field"
-                    onClick={() => setFields((fs) => fs.filter((_, j) => j !== i))}
+                    aria-label="Remove column"
+                    onClick={() => setColumns((cs) => cs.filter((_, j) => j !== i))}
                     className="text-gray-300 hover:text-red-600"
                   >
                     ×
@@ -169,11 +175,11 @@ export function DocTypeBuilder() {
           </tbody>
         </table>
         <button
-          onClick={() => setFields((fs) => [...fs, blank()])}
+          onClick={() => setColumns((cs) => [...cs, blank()])}
           data-testid="dt-add-field"
           className="w-full border-t border-gray-100 px-2 py-1 text-left text-xs text-gray-500 hover:bg-gray-50"
         >
-          + Add field
+          + Add column
         </button>
       </div>
 
@@ -188,7 +194,7 @@ export function DocTypeBuilder() {
         data-testid="dt-create"
         className="fc-btn-primary mt-4 disabled:opacity-40"
       >
-        {saving ? 'Creating…' : 'Create DocType'}
+        {saving ? 'Creating…' : 'Create Table'}
       </button>
     </div>
   )

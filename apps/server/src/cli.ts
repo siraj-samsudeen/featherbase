@@ -1,12 +1,12 @@
-// PLAT-004: developer CLI over the document API. One process = one command.
+// PLAT-004: developer CLI over the row API. One process = one command.
 //   cli migrate                       run pending migrations
 //   cli patches                       run pending patches
 //   cli seed                          (re)apply idempotent core seed data
 //   cli create-doctype --name "X" --field title:Data --field status:Select:Open|Closed [--single]
 //   cli create-user <email> <password> [--full-name "Name"] [--roles "System Manager,All"]
-//   cli console                       REPL with the document API in scope
+//   cli console                       REPL with the row API in scope
 import { sql } from './db'
-import { createDocType } from './doctype-engine'
+import { createTable } from './doctype-engine'
 import { getDoc, saveDoc } from './document'
 import { getList } from './query'
 import { getMeta } from './meta'
@@ -44,21 +44,21 @@ function asArray(v: string | string[] | boolean | undefined): string[] {
   return Array.isArray(v) ? v : [v]
 }
 
-async function cmdCreateDocType(flags: Record<string, string | string[] | boolean>) {
+async function cmdCreateTable(flags: Record<string, string | string[] | boolean>) {
   const name = flags.name
   if (typeof name !== 'string') throw new Error('create-doctype requires --name')
-  const fields = asArray(flags.field).map((spec) => {
-    // fieldname:Fieldtype[:Opt1|Opt2]
-    const [fieldname, fieldtype, options] = spec.split(':')
-    if (!fieldname || !fieldtype) throw new Error(`bad --field "${spec}" (want fieldname:Fieldtype)`)
+  const columns = asArray(flags.field).map((spec) => {
+    // column_name:ColumnType[:Opt1|Opt2]
+    const [columnName, columnType, choices] = spec.split(':')
+    if (!columnName || !columnType) throw new Error(`bad --field "${spec}" (want column_name:ColumnType)`)
     return {
-      fieldname,
-      fieldtype,
-      ...(options ? { options: options.split('|').join('\n') } : {}),
+      column_name: columnName,
+      column_type: columnType,
+      ...(choices ? { choices: choices.split('|').join('\n') } : {}),
     }
   })
-  const meta = await createDocType({ name, issingle: flags.single === true, fields })
-  console.log(`created DocType ${meta.name} with ${meta.fields.length} field(s)`)
+  const meta = await createTable({ name, kind: flags.single === true ? 'settings' : 'table', columns })
+  console.log(`created Table ${meta.name} with ${meta.columns.length} column(s)`)
 }
 
 async function cmdCreateUser(
@@ -85,7 +85,7 @@ async function cmdCreateUser(
 }
 
 async function cmdSeed() {
-  // Core seed migrations are written idempotently (ensureDocType/ensureDoc),
+  // Core seed migrations are written idempotently (ensureTable/ensureDoc),
   // so re-running them is a safe "seed" that repairs missing core data.
   for (const file of ['0005_core_seeds.ts', '0006_admin_password.ts']) {
     const mod = await import(new URL(`../migrations/${file}`, import.meta.url).href)
@@ -106,9 +106,9 @@ async function readStdin(): Promise<string> {
 }
 
 async function cmdConsole() {
-  const context = { sql, getDoc, saveDoc, getList, getMeta, createDocType }
+  const context = { sql, getDoc, saveDoc, getList, getMeta, createTable }
   // Non-interactive (piped/redirected): run the whole stdin script with the
-  // document API in scope and AWAIT it, so async work finishes before the
+  // row API in scope and AWAIT it, so async work finishes before the
   // connection closes. Interactive: a normal REPL.
   if (!process.stdin.isTTY) {
     const code = await readStdin()
@@ -119,7 +119,7 @@ async function cmdConsole() {
     return
   }
   const repl = await import('node:repl')
-  console.log('featherbase console — document API in scope: sql, getDoc, saveDoc, getList, getMeta, createDocType')
+  console.log('featherbase console — row API in scope: sql, getDoc, saveDoc, getList, getMeta, createTable')
   const server = repl.start({ prompt: 'fc> ', useGlobal: true })
   Object.assign(server.context, context)
   await new Promise<void>((resolve) => server.on('exit', resolve))
@@ -143,7 +143,7 @@ async function main() {
       await cmdSeed()
       break
     case 'create-doctype':
-      await cmdCreateDocType(flags)
+      await cmdCreateTable(flags)
       break
     case 'create-user':
       await cmdCreateUser(positional, flags)

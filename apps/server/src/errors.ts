@@ -7,6 +7,7 @@ export type ErrorType =
   | 'PermissionError'
   | 'NotFoundError'
   | 'ConflictError'
+  | 'MethodNotAllowedError'
   | 'InternalError'
 
 const STATUS: Record<ErrorType, number> = {
@@ -16,6 +17,7 @@ const STATUS: Record<ErrorType, number> = {
   PermissionError: 403,
   NotFoundError: 404,
   ConflictError: 409,
+  MethodNotAllowedError: 405,
   InternalError: 500,
 }
 
@@ -39,6 +41,7 @@ const EXC_TYPE: Record<ErrorType, string> = {
   PermissionError: 'PermissionError',
   NotFoundError: 'DoesNotExistError',
   ConflictError: 'ConflictError',
+  MethodNotAllowedError: 'MethodNotAllowedError',
   InternalError: 'InternalError',
 }
 

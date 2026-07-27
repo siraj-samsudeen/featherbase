@@ -15,9 +15,18 @@ export interface MethodContext {
 
 export type ServerMethod = (ctx: MethodContext) => unknown | Promise<unknown>
 
+// API surface design (#61): every registered method declares whether it
+// reads or writes. The dispatcher (index.ts) derives the required HTTP verb
+// from this instead of accepting GET or POST for anything — closing #62
+// bug 2 (GET on frappe.client.delete/insert/set_value executing a mutation).
+// Unlabeled defaults to 'write': the safe default is to REQUIRE POST, not to
+// silently allow a GET to mutate.
+export type MethodEffect = 'read' | 'write'
+
 export interface MethodDef {
   fn: ServerMethod
   allowGuest: boolean
+  effect: MethodEffect
 }
 
 const registry = new Map<string, MethodDef>()
@@ -34,9 +43,9 @@ export function swapMethod(path: string, def?: MethodDef): MethodDef | undefined
 export function whitelist(
   path: string,
   fn: ServerMethod,
-  opts: { allowGuest?: boolean } = {},
+  opts: { allowGuest?: boolean; effect?: MethodEffect } = {},
 ): void {
-  registry.set(path, { fn, allowGuest: opts.allowGuest ?? false })
+  registry.set(path, { fn, allowGuest: opts.allowGuest ?? false, effect: opts.effect ?? 'write' })
 }
 
 export function isWhitelisted(path: string): boolean {
@@ -45,6 +54,10 @@ export function isWhitelisted(path: string): boolean {
 
 export function methodAllowsGuest(path: string): boolean {
   return registry.get(path)?.allowGuest ?? false
+}
+
+export function methodEffect(path: string): MethodEffect {
+  return registry.get(path)?.effect ?? 'write'
 }
 
 export async function callMethod(

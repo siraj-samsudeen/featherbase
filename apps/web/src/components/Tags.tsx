@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 
-// UI-017: free-form tags on a document.
+// UI-017: free-form tags on a row.
 export function Tags({ doctype, name }: { doctype: string; name: string }) {
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState('')

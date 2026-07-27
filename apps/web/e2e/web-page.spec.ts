@@ -10,7 +10,7 @@ async function adminHeaders(request: APIRequestContext) {
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
-  await request.delete('/api/resource/Web%20Page/about-e2e-doc', { headers })
+  await request.delete('/api/table/Web%20Page/about-e2e-doc', { headers })
   const res = await request.post('/api/save_doc', {
     headers,
     data: {
@@ -43,7 +43,7 @@ test('WEB-001: a published Web Page renders publicly without a session', async (
 // WEB-001: an unpublished Web Page is not reachable.
 test('WEB-001: an unpublished Web Page is not served', async ({ page, request }) => {
   const headers = await adminHeaders(request)
-  await request.delete('/api/resource/Web%20Page/draft-e2e-doc', { headers })
+  await request.delete('/api/table/Web%20Page/draft-e2e-doc', { headers })
   await request.post('/api/save_doc', {
     headers,
     data: {

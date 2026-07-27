@@ -4,7 +4,7 @@ import { loadInstalledApps, uninstallApp, isInstalled } from '../src/apps'
 import { sql } from '../src/db'
 
 // PLAT-005 (#55): an app can be installed from a JSON manifest over the API —
-// no code in this repo. The manifest persists in tab_installed_app, uninstall
+// no code in this repo. The manifest persists in installed_app, uninstall
 // tears everything down from stored data, and boot has nothing to wire.
 
 const APP = 'test-declarative-app'
@@ -13,16 +13,16 @@ const ROLE = 'Decl Test Role'
 
 const MANIFEST = {
   name: APP,
-  doctypes: [
+  tables: [
     {
       name: DT,
       module: 'Test',
-      autoname: 'hash',
-      fields: [{ fieldname: 'title', fieldtype: 'Data', in_list_view: true }],
+      id_pattern: 'hash',
+      columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
     },
   ],
   roles: [ROLE],
-  permissions: [{ doctype: DT, role: ROLE, can_read: true, can_write: true, can_create: true }],
+  permissions: [{ table: DT, role: ROLE, can_read: true, can_write: true, can_create: true }],
 }
 
 async function unwire() {
@@ -40,29 +40,29 @@ describe('PLAT-005: declarative app install over the API', () => {
         body: JSON.stringify({ manifest: MANIFEST }),
       })
       expect(res.status).toBe(201)
-      expect((await res.json()) as object).toMatchObject({ name: APP, doctypes: [DT], roles: [ROLE] })
+      expect((await res.json()) as object).toMatchObject({ name: APP, tables: [DT], roles: [ROLE] })
 
       // The manifest is persisted — uninstall and boot work from stored data.
-      const [row] = await sql`select manifest from tab_installed_app where name = ${APP}`
+      const [row] = await sql`select manifest from installed_app where name = ${APP}`
       expect(row.manifest).toMatchObject({ name: APP })
 
       // The declared access model works for a scoped user.
       const user = await createUser({ roles: [ROLE] })
-      const ins = await user.fetch(`/api/resource/${encodeURIComponent(DT)}`, {
+      const ins = await user.fetch(`/api/table/${encodeURIComponent(DT)}`, {
         method: 'POST',
         body: JSON.stringify({ title: 'declared' }),
       })
       expect(ins.status).toBe(201)
-      expect((await user.fetch('/api/resource/User')).status).toBe(403)
+      expect((await user.fetch('/api/table/User')).status).toBe(403)
 
-      // Uninstall over the API tears down DocTypes, roles and grants.
+      // Uninstall over the API tears down Tables, roles and grants.
       const un = await admin.fetch('/api/uninstall_app', {
         method: 'POST',
         body: JSON.stringify({ name: APP }),
       })
       expect(un.status).toBe(200)
-      expect((await sql`select 1 from tab_doctype where name = ${DT}`).length).toBe(0)
-      expect((await sql`select 1 from tab_docperm where role = ${ROLE}`).length).toBe(0)
+      expect((await sql`select 1 from table_def where name = ${DT}`).length).toBe(0)
+      expect((await sql`select 1 from permission where role = ${ROLE}`).length).toBe(0)
     } finally {
       await unwire()
     }
@@ -87,7 +87,7 @@ describe('PLAT-005: declarative app install over the API', () => {
   test('an invalid manifest (no name, unknown keys) is rejected', async ({ admin }) => {
     const res = await admin.fetch('/api/install_app', {
       method: 'POST',
-      body: JSON.stringify({ manifest: { doctypes: [] } }),
+      body: JSON.stringify({ manifest: { tables: [] } }),
     })
     expect(res.status).toBe(417)
   })
@@ -117,12 +117,12 @@ describe('PLAT-005: declarative app install over the API', () => {
       // the declarative app — loadInstalledApps must neither warn nor fail.
       await loadInstalledApps()
       expect(await isInstalled(APP)).toBe(true)
-      const [dt] = await sql`select 1 from tab_doctype where name = ${DT}`
+      const [dt] = await sql`select 1 from table_def where name = ${DT}`
       expect(dt).toBeTruthy()
 
       // And uninstall still works with no code present.
       const user = await createUser({ roles: [ROLE] })
-      expect((await user.fetch(`/api/resource/${encodeURIComponent(DT)}`)).status).toBe(200)
+      expect((await user.fetch(`/api/table/${encodeURIComponent(DT)}`)).status).toBe(200)
       await uninstallApp(APP)
       expect(await isInstalled(APP)).toBe(false)
     } finally {

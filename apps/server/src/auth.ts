@@ -27,7 +27,7 @@ export function verifyPassword(password: string, stored: string): boolean {
 
 export async function setUserPassword(name: string, password: string) {
   await sql`
-    update tab_user set password_hash = ${hashPassword(password)}
+    update "user" set password_hash = ${hashPassword(password)}
     where name = ${name}`
 }
 
@@ -39,7 +39,7 @@ export interface SessionUser {
 
 export async function login(usr: string, pwd: string): Promise<{ token: string; user: SessionUser }> {
   const [user] = await sql`
-    select name, email, full_name, enabled, password_hash from tab_user
+    select name, email, full_name, enabled, password_hash from "user"
     where (name = ${usr} or email = ${usr})`
   if (!user || !user.enabled || !user.password_hash || !verifyPassword(pwd, user.password_hash as string))
     throw new AppError('AuthenticationError', 'Invalid login credentials')
@@ -66,7 +66,7 @@ export async function login(usr: string, pwd: string): Promise<{ token: string; 
 // successful OAuth exchange) — the password-less counterpart to login().
 export async function issueSession(userName: string): Promise<{ token: string; user: SessionUser }> {
   const [user] = await sql`
-    select name, email, full_name, enabled from tab_user where name = ${userName}`
+    select name, email, full_name, enabled from "user" where name = ${userName}`
   if (!user || !user.enabled) throw new AppError('AuthenticationError', 'User cannot sign in')
   const { session_hours } = await getSystemSettings()
   const hours = Math.min(Math.max(session_hours || 8, 1), 720)
@@ -89,14 +89,14 @@ export async function generateApiKeys(
   const api_key = 'fc_' + randomBytes(8).toString('hex')
   const api_secret = randomBytes(16).toString('hex')
   const [row] = await sql`
-    update tab_user set api_key = ${api_key}, api_secret_hash = ${hashPassword(api_secret)}
+    update "user" set api_key = ${api_key}, api_secret_hash = ${hashPassword(api_secret)}
     where name = ${user} returning name`
   if (!row) throw new AppError('NotFoundError', `User ${user} not found`)
   return { api_key, api_secret }
 }
 
 export async function revokeApiKeys(user: string): Promise<void> {
-  await sql`update tab_user set api_key = null, api_secret_hash = null where name = ${user}`
+  await sql`update "user" set api_key = null, api_secret_hash = null where name = ${user}`
 }
 
 async function resolveApiKey(pair: string): Promise<SessionUser> {
@@ -104,7 +104,7 @@ async function resolveApiKey(pair: string): Promise<SessionUser> {
   const key = idx === -1 ? pair : pair.slice(0, idx)
   const secret = idx === -1 ? '' : pair.slice(idx + 1)
   const [user] = await sql`
-    select name, email, full_name, enabled, api_secret_hash from tab_user
+    select name, email, full_name, enabled, api_secret_hash from "user"
     where api_key = ${key}`
   if (
     !user ||
@@ -133,7 +133,7 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
     throw new AppError('AuthenticationError', 'Invalid or expired session')
   }
   const [user] = await sql`
-    select name, email, full_name, enabled from tab_user where name = ${String(payload.sub)}`
+    select name, email, full_name, enabled from "user" where name = ${String(payload.sub)}`
   if (!user || !user.enabled)
     throw new AppError('AuthenticationError', 'Invalid or expired session')
   return { name: user.name as string, email: user.email as string, full_name: user.full_name as string | null }

@@ -14,15 +14,15 @@ test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
   const dt = await request.post('/api/doctype', {
     headers,
-    data: { name: DT, fields: [{ fieldname: 'title', fieldtype: 'Data', in_list_view: true }] },
+    data: { name: DT, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
-  await request.delete(`/api/resource/Dashboard/${DASH}`, { headers })
+  await request.delete(`/api/table/Dashboard/${DASH}`, { headers })
   await request.post('/api/save_doc', {
     headers,
     data: { doctype: 'Dashboard', doc: { name: DASH, label: 'WS Board', config: JSON.stringify({ cards: [{ label: 'All', doctype: DT }] }) } },
   })
-  await request.delete(`/api/resource/Workspace/${WS}`, { headers })
+  await request.delete(`/api/table/Workspace/${WS}`, { headers })
   const ws = await request.post('/api/save_doc', {
     headers,
     data: {

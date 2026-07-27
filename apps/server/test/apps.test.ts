@@ -22,19 +22,19 @@ const fired: string[] = []
 
 const noteApp: AppManifest = {
   name: APP1,
-  doctypes: [
+  tables: [
     {
       name: APP1_DT,
       module: 'Test',
-      autoname: 'prompt',
-      fields: [
-        { fieldname: 'title', fieldtype: 'Data' },
-        { fieldname: 'stamp', fieldtype: 'Data' },
+      id_pattern: 'prompt',
+      columns: [
+        { column_name: 'title', column_type: 'Data' },
+        { column_name: 'stamp', column_type: 'Data' },
       ],
     },
   ],
   doc_events: {
-    [APP1_DT]: { before_save: ({ doc }) => { doc.stamp = 'wired-by-app' } },
+    [APP1_DT]: { before_save: ({ row }) => { row.stamp = 'wired-by-app' } },
   },
 }
 
@@ -67,22 +67,22 @@ describe('PLAT-001: app install/uninstall', () => {
     registerApps()
     try {
       const res = await installApp(APP1)
-      expect(res.doctypes).toEqual([APP1_DT])
+      expect(res.tables).toEqual([APP1_DT])
       expect(await isInstalled(APP1)).toBe(true)
 
-      // The DocType and its table exist.
-      const [dt] = await sql`select 1 from tab_doctype where name = ${APP1_DT}`
+      // The Table and its physical table exist.
+      const [dt] = await sql`select 1 from table_def where name = ${APP1_DT}`
       expect(dt).toBeTruthy()
-      const [tbl] = await sql`select 1 from information_schema.tables where table_name = 'tab_app_test_note'`
+      const [tbl] = await sql`select 1 from information_schema.tables where table_name = 'app_test_note'`
       expect(tbl).toBeTruthy()
 
       // The app's before_save hook fires: the stamp is set on save.
       const doc = await saveDoc(APP1_DT, { name: 'note-1', title: 'hi' }, 'Administrator')
       expect(doc.stamp).toBe('wired-by-app')
 
-      // Installed-state is recorded with the owned DocType.
-      const [rec] = await sql`select doctypes from tab_installed_app where name = ${APP1}`
-      expect(rec.doctypes).toEqual([APP1_DT])
+      // Installed-state is recorded with the owned Table.
+      const [rec] = await sql`select tables from installed_app where name = ${APP1}`
+      expect(rec.tables).toEqual([APP1_DT])
     } finally {
       await unwire(APP1, APP1_DT)
     }
@@ -94,12 +94,12 @@ describe('PLAT-001: app install/uninstall', () => {
       await installApp(APP1)
       await uninstallApp(APP1)
       expect(await isInstalled(APP1)).toBe(false)
-      const [dt] = await sql`select 1 from tab_doctype where name = ${APP1_DT}`
+      const [dt] = await sql`select 1 from table_def where name = ${APP1_DT}`
       expect(dt).toBeUndefined()
-      const [tbl] = await sql`select 1 from information_schema.tables where table_name = 'tab_app_test_note'`
+      const [tbl] = await sql`select 1 from information_schema.tables where table_name = 'app_test_note'`
       expect(tbl).toBeUndefined()
 
-      // The DocType is really gone — saving one now fails.
+      // The Table is really gone — saving one now fails.
       await expect(saveDoc(APP1_DT, { name: 'note-2' }, 'Administrator')).rejects.toBeTruthy()
     } finally {
       await unwire(APP1, APP1_DT)
@@ -118,10 +118,10 @@ describe('PLAT-002: app doc_events fire alongside the core controller', () => {
       // A core controller owns CORE_DT and reacts to after_save.
       await admin.post('/api/doctype', {
         name: CORE_DT,
-        autoname: 'prompt',
-        fields: [{ fieldname: 'title', fieldtype: 'Data' }],
+        id_pattern: 'prompt',
+        columns: [{ column_name: 'title', column_type: 'Data' }],
       })
-      registerController({ doctype: CORE_DT, hooks: { after_save: () => { fired.push('core') } } })
+      registerController({ table: CORE_DT, hooks: { after_save: () => { fired.push('core') } } })
 
       // The app hooks the same DocType without owning it.
       await installApp(APP2)

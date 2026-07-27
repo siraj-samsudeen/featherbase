@@ -6,15 +6,15 @@ import { AppError } from './errors'
 export async function getRoles(user: string): Promise<string[]> {
   if (user === 'Guest') return ['Guest']
   const rows = await sql`
-    select role from tab_has_role
+    select role from has_role
     where parent = ${user} and parenttype = 'User'
     order by role`
   return ['All', ...rows.map((r) => r.role as string)]
 }
 
-// PERM-002/003/009: role-based DocType permissions from DocPerm rows.
+// PERM-002/003/009: role-based Table permissions from Permission rows.
 // Administrator (and System Manager holders) bypass all checks so a fresh
-// DocType with no DocPerm rows is still manageable.
+// Table with no Permission rows is still manageable.
 export type PermAction =
   | 'read'
   | 'write'
@@ -34,85 +34,85 @@ const ACTION_COLUMN: Record<PermAction, string> = {
   amend: 'can_amend',
 }
 
-// PERM-007: an if_owner grant applies only to documents the user owns.
-// 'all' = unconditional grant, 'owner' = owner-scoped only, 'none' = denied.
-export type PermScope = 'all' | 'owner' | 'none'
+// PERM-007: an own_rows_only grant applies only to rows the user created.
+// 'all' = unconditional grant, 'own_rows' = created_by-scoped only, 'none' = denied.
+export type PermScope = 'all' | 'own_rows' | 'none'
 
 export async function permissionScope(
   user: string,
-  doctype: string,
+  table: string,
   action: PermAction,
 ): Promise<PermScope> {
   if (user === 'Administrator') return 'all'
   const roles = await getRoles(user)
   if (roles.includes('System Manager')) return 'all'
   const rows = await sql`
-    select if_owner from tab_docperm
-    where ref_doctype = ${doctype} and permlevel = 0
+    select own_rows_only from permission
+    where ref_table = ${table} and tier = 'basic'
       and role in ${sql(roles)}
       and ${sql(ACTION_COLUMN[action])} = true`
-  if (rows.some((r) => !r.if_owner)) return 'all'
-  if (rows.length) return 'owner'
+  if (rows.some((r) => !r.own_rows_only)) return 'all'
+  if (rows.length) return 'own_rows'
   return 'none'
 }
 
 export async function hasPermission(
   user: string,
-  doctype: string,
+  table: string,
   action: PermAction,
 ): Promise<boolean> {
-  return (await permissionScope(user, doctype, action)) !== 'none'
+  return (await permissionScope(user, table, action)) !== 'none'
 }
 
-// PERM-008: is this specific document shared with the user for this action?
+// PERM-008: is this specific row shared with the user for this action?
 export async function isSharedWith(
   user: string,
-  doctype: string,
+  table: string,
   name: string,
   action: 'read' | 'write' | 'share',
 ): Promise<boolean> {
   const col = action === 'read' ? 'read' : action === 'write' ? 'write' : 'share'
   const [row] = await sql`
-    select 1 from tab_docshare
-    where share_doctype = ${doctype} and share_name = ${name}
+    select 1 from share
+    where share_table = ${table} and share_name = ${name}
       and "user" = ${user} and ${sql(col)} = true limit 1`
   return Boolean(row)
 }
 
-// Names of documents of a doctype shared with the user (for list widening).
-export async function sharedNames(user: string, doctype: string): Promise<string[]> {
+// Names of rows of a table shared with the user (for list widening).
+export async function sharedNames(user: string, table: string): Promise<string[]> {
   const rows = await sql`
-    select share_name from tab_docshare
-    where share_doctype = ${doctype} and "user" = ${user} and read = true`
+    select share_name from share
+    where share_table = ${table} and "user" = ${user} and read = true`
   return rows.map((r) => r.share_name as string)
 }
 
-// For operations on a specific existing document: owner-scoped grants
-// require ownership.
+// For operations on a specific existing row: own-rows-scoped grants
+// require created_by to match.
 export async function assertDocPermission(
   user: string,
-  doctype: string,
+  table: string,
   action: PermAction,
-  owner: string,
+  createdBy: string,
 ) {
-  const scope = await permissionScope(user, doctype, action)
+  const scope = await permissionScope(user, table, action)
   if (scope === 'all') return
-  if (scope === 'owner' && owner === user) return
+  if (scope === 'own_rows' && createdBy === user) return
   throw new AppError(
     'PermissionError',
-    `No ${action} permission on ${doctype} for ${user}`,
+    `No ${action} permission on ${table} for ${user}`,
   )
 }
 
 export async function assertPermission(
   user: string,
-  doctype: string,
+  table: string,
   action: PermAction,
 ) {
-  if (!(await hasPermission(user, doctype, action)))
+  if (!(await hasPermission(user, table, action)))
     throw new AppError(
       'PermissionError',
-      `No ${action} permission on ${doctype} for ${user}`,
+      `No ${action} permission on ${table} for ${user}`,
     )
 }
 
@@ -121,97 +121,106 @@ export async function isBypassUser(user: string): Promise<boolean> {
   return (await getRoles(user)).includes('System Manager')
 }
 
-// PERM-005: map of restricted DocType -> allowed document names for a user.
+// PERM-005: map of restricted Table -> allowed row names for a user.
 export async function getUserPermissionMap(
   user: string,
 ): Promise<Map<string, Set<string>>> {
   const map = new Map<string, Set<string>>()
   const rows = await sql`
-    select allow, for_value from tab_user_permission where "user" = ${user}`
+    select allow_table, for_value from data_scope where "user" = ${user}`
   for (const r of rows) {
-    const key = r.allow as string
+    const key = r.allow_table as string
     if (!map.has(key)) map.set(key, new Set())
     map.get(key)!.add(r.for_value as string)
   }
   return map
 }
 
-// Throws when a document (or its link values) falls outside the user's
+// Throws when a row (or its reference values) falls outside the user's
 // permitted values.
 export function checkUserPermissions(
   user: string,
-  doctype: string,
-  linkFields: { fieldname: string; options: string | null }[],
-  doc: Record<string, unknown>,
+  table: string,
+  linkFields: { column_name: string; reference_table: string | null | undefined }[],
+  row: Record<string, unknown>,
   map: Map<string, Set<string>>,
 ) {
-  const own = map.get(doctype)
-  if (own && doc.name != null && !own.has(String(doc.name)))
+  const own = map.get(table)
+  if (own && row.name != null && !own.has(String(row.name)))
     throw new AppError(
       'PermissionError',
-      `${doctype} ${String(doc.name)} is outside your permitted values`,
+      `${table} ${String(row.name)} is outside your permitted values`,
     )
   for (const f of linkFields) {
-    if (!f.options) continue
-    const allowed = map.get(f.options)
+    if (!f.reference_table) continue
+    const allowed = map.get(f.reference_table)
     if (!allowed) continue
-    const value = doc[f.fieldname]
+    const value = row[f.column_name]
     if (value == null || value === '') continue
     if (!allowed.has(String(value)))
       throw new AppError(
         'PermissionError',
-        `${f.options} ${String(value)} is outside your permitted values`,
+        `${f.reference_table} ${String(value)} is outside your permitted values`,
       )
   }
 }
 
-// PERM-006: the set of permlevels a user may READ / WRITE on a DocType.
-// Level 0 is the base grant; higher levels need explicit DocPerm rows at
-// that permlevel. Admins/System Managers get every level.
-export async function permittedLevels(
+// PERM-006: the set of tiers a user may READ / WRITE on a Table. 'basic' is
+// the base grant; 'restricted' needs an explicit Permission row at that
+// tier. Because 'restricted' access implies 'basic' access (the old
+// "higher permlevel implies lower levels" rule, with two levels instead of
+// ten), a restricted grant is expanded to include 'basic' when the set is
+// built. Admins/System Managers get both tiers.
+export async function permittedTiers(
   user: string,
-  doctype: string,
+  table: string,
   action: 'read' | 'write',
-): Promise<Set<number>> {
-  if (await isBypassUser(user)) return new Set([-1]) // sentinel: all levels
+): Promise<Set<'basic' | 'restricted'>> {
+  if (await isBypassUser(user)) return new Set(['basic', 'restricted'])
   const roles = await getRoles(user)
   const rows = await sql`
-    select distinct permlevel from tab_docperm
-    where ref_doctype = ${doctype}
+    select distinct tier from permission
+    where ref_table = ${table}
       and role in ${sql(roles)}
       and ${sql(ACTION_COLUMN[action])} = true`
-  return new Set(rows.map((r) => Number(r.permlevel)))
+  const tiers = new Set<'basic' | 'restricted'>()
+  for (const r of rows) {
+    const tier = r.tier as 'basic' | 'restricted'
+    tiers.add(tier)
+    if (tier === 'restricted') tiers.add('basic')
+  }
+  return tiers
 }
 
-function allowsLevel(levels: Set<number>, level: number): boolean {
-  return levels.has(-1) || levels.has(level)
+function allowsTier(tiers: Set<'basic' | 'restricted'>, tier: 'basic' | 'restricted'): boolean {
+  return tiers.has(tier)
 }
 
-// Strip fields the user can't read at their permlevels from an outgoing doc.
+// Strip columns the user can't read at their tier from an outgoing row.
 export function filterReadFields(
-  fields: { fieldname: string; permlevel: number }[],
-  levels: Set<number>,
-  doc: Record<string, unknown>,
+  columns: { column_name: string; tier: 'basic' | 'restricted' }[],
+  tiers: Set<'basic' | 'restricted'>,
+  row: Record<string, unknown>,
 ): Record<string, unknown> {
-  if (levels.has(-1)) return doc
+  if (tiers.has('basic') && tiers.has('restricted')) return row
   const out: Record<string, unknown> = {}
   const hidden = new Set(
-    fields.filter((f) => !allowsLevel(levels, f.permlevel)).map((f) => f.fieldname),
+    columns.filter((f) => !allowsTier(tiers, f.tier)).map((f) => f.column_name),
   )
-  for (const [k, v] of Object.entries(doc)) if (!hidden.has(k)) out[k] = v
+  for (const [k, v] of Object.entries(row)) if (!hidden.has(k)) out[k] = v
   return out
 }
 
-// Drop writes to fields above the user's write levels (silently ignored,
-// like read_only) so a client can't escalate via permlevel-1 fields.
+// Drop writes to columns above the user's write tier (silently ignored,
+// like read_only) so a client can't escalate via restricted-tier columns.
 export function stripUnwritableFields(
-  fields: { fieldname: string; permlevel: number }[],
-  levels: Set<number>,
+  columns: { column_name: string; tier: 'basic' | 'restricted' }[],
+  tiers: Set<'basic' | 'restricted'>,
   values: Record<string, unknown>,
 ): Record<string, unknown> {
-  if (levels.has(-1)) return values
+  if (tiers.has('basic') && tiers.has('restricted')) return values
   const writable = new Set(
-    fields.filter((f) => allowsLevel(levels, f.permlevel)).map((f) => f.fieldname),
+    columns.filter((f) => allowsTier(tiers, f.tier)).map((f) => f.column_name),
   )
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(values)) if (writable.has(k)) out[k] = v

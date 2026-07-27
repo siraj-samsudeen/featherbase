@@ -5,36 +5,44 @@ import { getMeta } from '../src/meta'
 import { exportCustomizations, importCustomizations } from '../src/customizations'
 import type { TestClient } from 'feather-testing-postgres'
 
-// CUST-005: customizations (Custom Fields + Property Setters) round-trip
+// CUST-005: customizations (Custom Fields + Metadata Overrides) round-trip
 // through export → import, recreating the column and re-applying the property.
 
 const DT = 'Cust5 Srv'
 
-// Per-test setup (the sandbox rolls everything back): the DocType plus one
-// custom field and one property setter.
+// Per-test setup (the sandbox rolls everything back): the Table plus one
+// custom field and one metadata override.
 async function setup(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: DT,
-    fields: [{ fieldname: 'title', fieldtype: 'Data' }],
+    columns: [{ column_name: 'title', column_type: 'Data' }],
   })
   await admin.post('/api/save_doc', {
     doctype: 'Custom Field',
-    doc: { name: `${DT}-priority`, dt: DT, fieldname: 'priority', label: 'Priority', fieldtype: 'Select', options: 'Low\nHigh', in_list_view: true },
+    doc: {
+      name: `${DT}-priority`,
+      dt: DT,
+      column_name: 'priority',
+      label: 'Priority',
+      column_type: 'Choice',
+      choices: 'Low\nHigh',
+      in_list_view: true,
+    },
   })
   await admin.post('/api/save_doc', {
-    doctype: 'Property Setter',
-    doc: { name: `${DT}-title-reqd`, doc_type: DT, field_name: 'title', property: 'reqd', value: '1' },
+    doctype: 'Metadata Override',
+    doc: { name: `${DT}-title-reqd`, table_name: DT, column_name: 'title', property: 'reqd', value: '1' },
   })
 }
 
 describe('CUST-005: export/import customizations', () => {
-  test('exports the custom fields and property setters for a DocType', async ({ admin }) => {
+  test('exports the custom fields and metadata overrides for a Table', async ({ admin }) => {
     await setup(admin)
     const bundle = await exportCustomizations(DT)
-    expect(bundle.custom_fields.map((f) => f.fieldname)).toEqual(['priority'])
-    expect(bundle.custom_fields[0].options).toBe('Low\nHigh')
+    expect(bundle.custom_fields.map((f) => f.column_name)).toEqual(['priority'])
+    expect(bundle.custom_fields[0].choices).toBe('Low\nHigh')
     expect(bundle.property_setters).toEqual([
-      expect.objectContaining({ field_name: 'title', property: 'reqd', value: '1' }),
+      expect.objectContaining({ column_name: 'title', property: 'reqd', value: '1' }),
     ])
   })
 
@@ -42,24 +50,24 @@ describe('CUST-005: export/import customizations', () => {
     await setup(admin)
     const bundle = await exportCustomizations(DT)
     // Delete the customizations.
-    await admin.delete(`/api/resource/Custom%20Field/${encodeURIComponent(`${DT}-priority`)}`)
+    await admin.delete(`/api/table/Custom%20Field/${encodeURIComponent(`${DT}-priority`)}`)
     await admin.delete(
-      `/api/resource/Property%20Setter/${encodeURIComponent(`${DT}-title-reqd`)}`,
+      `/api/table/Metadata%20Override/${encodeURIComponent(`${DT}-title-reqd`)}`,
     )
     let meta = await getMeta(DT)
-    expect(meta.fields.some((f) => f.fieldname === 'priority')).toBe(false)
-    expect(meta.fields.find((f) => f.fieldname === 'title')?.reqd).toBeFalsy()
+    expect(meta.columns.some((f) => f.column_name === 'priority')).toBe(false)
+    expect(meta.columns.find((f) => f.column_name === 'title')?.reqd).toBeFalsy()
 
     // Import brings them back.
     const counts = await importCustomizations(bundle, 'Administrator')
     expect(counts).toEqual({ custom_fields: 1, property_setters: 1 })
     meta = await getMeta(DT)
-    const priority = meta.fields.find((f) => f.fieldname === 'priority')
+    const priority = meta.columns.find((f) => f.column_name === 'priority')
     expect(priority).toBeTruthy()
-    expect(priority?.options).toBe('Low\nHigh')
-    expect(meta.fields.find((f) => f.fieldname === 'title')?.reqd).toBe(true)
+    expect(priority?.choices).toBe('Low\nHigh')
+    expect(meta.columns.find((f) => f.column_name === 'title')?.reqd).toBe(true)
     // The backing column exists again.
-    const [col] = await sql`select 1 from information_schema.columns where table_name = 'tab_cust5_srv' and column_name = 'priority'`
+    const [col] = await sql`select 1 from information_schema.columns where table_name = 'cust5_srv' and column_name = 'priority'`
     expect(col).toBeDefined()
   })
 

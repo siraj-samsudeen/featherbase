@@ -7,7 +7,7 @@ test('UI-003: filters narrow results, persist in the URL across reload, and are 
   // Ensure fixtures exist (listview.spec setup is idempotent; replicate minimal check)
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const token = ((await login.json()) as { token: string }).token
-  const listA = await request.get(`/api/resource/${encodeURIComponent(DT_A)}?limit_page_length=1`, {
+  const listA = await request.get(`/api/table/${encodeURIComponent(DT_A)}?limit_page_length=1`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   test.skip(listA.status() === 404, 'run listview.spec first to create fixtures')
