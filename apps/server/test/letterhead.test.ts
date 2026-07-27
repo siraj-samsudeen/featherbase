@@ -2,7 +2,7 @@ import { createRequire } from 'node:module'
 import { describe, expect } from 'vitest'
 import { sql } from '../src/db'
 import { renderPdf, renderPrintHtml } from '../src/print'
-import { createDocType } from '../src/doctype-engine'
+import { createTable } from '../src/doctype-engine'
 import { saveDoc } from '../src/document'
 import { test } from './pg-test'
 
@@ -25,15 +25,15 @@ async function pdfText(html: string): Promise<string> {
   return (await parser.getText()).text
 }
 
-// Each test builds its DocType, document, and letterheads inside its own
+// Each test builds its Table, document, and letterheads inside its own
 // sandbox transaction.
 async function setup() {
-  await createDocType({
+  await createTable({
     name: DT,
-    autoname: 'prompt',
-    fields: [
-      { fieldname: 'company', fieldtype: 'Data' },
-      { fieldname: 'amount', fieldtype: 'Int' },
+    id_pattern: 'prompt',
+    columns: [
+      { column_name: 'company', column_type: 'Data' },
+      { column_name: 'amount', column_type: 'Int' },
     ],
   })
   await saveDoc(DT, { name: 'lh-1', company: 'Umbrella Corp', amount: 4200 }, 'Administrator')
@@ -91,7 +91,7 @@ describe('PRN-004: letterheads', () => {
   test('a Print Format can name the letterhead it prints with', async () => {
     await setup()
     await sql`
-      insert into tab_print_format (name, owner, modified_by, doc_type, is_default, letter_head, template)
+      insert into print_format (name, created_by, updated_by, ref_table, is_default, letter_head, template)
       values ('Lh Fmt', 'Administrator', 'Administrator', ${DT}, false, 'Lh Branch',
         '<h1>RECEIPT</h1><p>{{ company }}</p>')`
     const html = await renderPrintHtml(DT, 'lh-1', 'Administrator', 'Lh Fmt')

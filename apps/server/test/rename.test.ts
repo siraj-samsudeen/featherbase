@@ -13,20 +13,20 @@ const ITEM = 'Rn Order Item'
 async function setup(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: CUST,
-    autoname: 'prompt',
-    fields: [{ fieldname: 'city', fieldtype: 'Data' }],
+    id_pattern: 'prompt',
+    columns: [{ column_name: 'city', column_type: 'Data' }],
   })
   await admin.post('/api/doctype', {
     name: ITEM,
-    istable: true,
-    fields: [{ fieldname: 'supplier', fieldtype: 'Link', options: CUST }],
+    kind: 'sub_table',
+    columns: [{ column_name: 'supplier', column_type: 'Reference', reference_table: CUST }],
   })
   await admin.post('/api/doctype', {
     name: ORDER,
-    autoname: 'prompt',
-    fields: [
-      { fieldname: 'customer', fieldtype: 'Link', options: CUST },
-      { fieldname: 'lines', fieldtype: 'Table', options: ITEM },
+    id_pattern: 'prompt',
+    columns: [
+      { column_name: 'customer', column_type: 'Reference', reference_table: CUST },
+      { column_name: 'lines', column_type: 'Sub-table', row_table: ITEM },
     ],
   })
 }
@@ -36,7 +36,7 @@ describe('DOC-012: rename document + cascade Link references', () => {
     admin,
   }) => {
     await setup(admin)
-    await admin.post('/api/resource/' + encodeURIComponent(CUST), {
+    await admin.post('/api/table/' + encodeURIComponent(CUST), {
       name: 'Acme',
       city: 'NYC',
     })
@@ -49,20 +49,19 @@ describe('DOC-012: rename document + cascade Link references', () => {
       },
     })
 
-    const renamed = await admin.post<{ name: string }>('/api/rename_doc', {
-      doctype: CUST,
-      name: 'Acme',
-      new_name: 'Acme Corp',
-    })
+    const renamed = await admin.post<{ name: string }>(
+      `/api/table/${encodeURIComponent(CUST)}/Acme:rename`,
+      { new_name: 'Acme Corp' },
+    )
     expect(renamed.name).toBe('Acme Corp')
 
     // Old name is gone, new name exists.
-    expect(await sql`select 1 from tab_rn_customer where name = 'Acme'`).toHaveLength(0)
-    expect(await sql`select 1 from tab_rn_customer where name = 'Acme Corp'`).toHaveLength(1)
+    expect(await sql`select 1 from rn_customer where name = 'Acme'`).toHaveLength(0)
+    expect(await sql`select 1 from rn_customer where name = 'Acme Corp'`).toHaveLength(1)
 
     // Parent Link field updated.
     const order = await admin.get<{ customer: string; lines: { supplier: string }[] }>(
-      `/api/resource/${encodeURIComponent(ORDER)}/ORD-1`,
+      `/api/table/${encodeURIComponent(ORDER)}/ORD-1`,
     )
     expect(order.customer).toBe('Acme Corp')
     // Child-table Link field updated.
@@ -72,25 +71,25 @@ describe('DOC-012: rename document + cascade Link references', () => {
   test('rejects a rename that collides with an existing name', async ({ admin }) => {
     await setup(admin)
     // The colliding target must exist in THIS test's transaction.
-    await admin.post('/api/resource/' + encodeURIComponent(CUST), {
+    await admin.post('/api/table/' + encodeURIComponent(CUST), {
       name: 'Acme Corp',
       city: 'NYC',
     })
-    await admin.post('/api/resource/' + encodeURIComponent(CUST), {
+    await admin.post('/api/table/' + encodeURIComponent(CUST), {
       name: 'Globex',
       city: 'LA',
     })
     await expect(
-      admin.post('/api/rename_doc', { doctype: CUST, name: 'Globex', new_name: 'Acme Corp' }),
+      admin.post(`/api/table/${encodeURIComponent(CUST)}/Globex:rename`, { new_name: 'Acme Corp' }),
     ).rejects.toMatchObject({ status: 409, type: 'ConflictError' })
     // Globex is untouched.
-    expect(await sql`select 1 from tab_rn_customer where name = 'Globex'`).toHaveLength(1)
+    expect(await sql`select 1 from rn_customer where name = 'Globex'`).toHaveLength(1)
   })
 
   test('404s renaming a document that does not exist', async ({ admin }) => {
     await setup(admin)
     await expect(
-      admin.post('/api/rename_doc', { doctype: CUST, name: 'Nope', new_name: 'Whatever' }),
+      admin.post(`/api/table/${encodeURIComponent(CUST)}/Nope:rename`, { new_name: 'Whatever' }),
     ).rejects.toMatchObject({ status: 404 })
   })
 })

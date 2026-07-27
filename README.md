@@ -1,22 +1,22 @@
 # Featherbase
 
-A free and open-source, metadata-driven app platform in TypeScript — Frappe's core ideas rebuilt on React + Hono + Postgres, with an AI-agent-first authoring loop and tests that run against a real database.
+A free and open-source, metadata-driven app platform in TypeScript — built by replicating [Frappe Framework](https://frappe.io/framework)'s core ideas on React + Hono + Postgres, with an AI-agent-first authoring loop and tests that run against a real database. That replication phase is complete; the project is now deliberately diverging from Frappe's design — including its vocabulary and wire format — where it doesn't serve this platform's own users.
 
-Define a DocType once and get storage, a REST/RPC API, and a working UI from the same definition — the idea that makes [Frappe](https://frappe.io/framework) productive, on a stack you can host anywhere.
+Define a Table once and get storage, a REST/RPC API, and a working UI from the same definition — the idea that makes Frappe productive, on a stack you can host anywhere.
 
-**Status:** active development. The DocType engine, the Frappe-compatible API surface, auth, and the metadata-driven Desk UI are working, exercised by a large server suite run against a real Postgres, plus component and Playwright e2e suites. See [PROGRESS.md](PROGRESS.md) for the current state and [docs/ROADMAP.md](docs/ROADMAP.md) for where it's going.
+**Status:** active development. The Table engine, the API surface, auth, and the metadata-driven Admin UI are working, exercised by a large server suite run against a real Postgres, plus component and Playwright e2e suites. See [PROGRESS.md](PROGRESS.md) for the current state and [docs/ROADMAP.md](docs/ROADMAP.md) for where it's going.
 
 ## How it works
 
 | Workspace | Role |
 |---|---|
-| `apps/server` | Hono API — DocType engine, Frappe-compatible REST and `frappe.client.*` RPC, sessions |
-| `apps/web` | React Desk UI — metadata-driven grid, form, and detail views |
+| `apps/server` | Hono API — Table engine, REST/RPC API, sessions |
+| `apps/web` | React Admin UI — metadata-driven grid, form, and detail views |
 | `packages/shared` | Types and contracts shared across server and web |
 
 Tests use [feather-testing-postgres](https://github.com/siraj-samsudeen/feather-testing-postgres), the SQL Sandbox harness, consumed as a published npm dependency rather than vendored here.
 
-Frappe compatibility is deliberate: sessions ride an HttpOnly `sid` cookie alongside a Bearer token, `POST /api/method/login` returns Frappe's shape, and error bodies carry `exc_type`. Existing Frappe clients mostly work unchanged.
+Frappe wire-format compatibility is **not** a goal — that's a deliberate divergence, not an oversight (see [ADR 0006](docs/adr/0006-stack-react-hono-postgres.md)'s addendum). The vocabulary and API surface here are Featherbase's own.
 
 ## Testing
 
@@ -34,12 +34,12 @@ pnpm test:all    # every suite + Playwright e2e — needs both servers up (./ini
 
 ## Orientation
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the life of a `save_doc` request, the metadata engine, and a map of the source tree
-- [docs/TUTORIAL.md](docs/TUTORIAL.md) — build your first DocType: a hands-on todo-list exercise
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the life of a row-save request, the metadata engine, and a map of the source tree
+- [docs/TUTORIAL.md](docs/TUTORIAL.md) — build your first Table: a hands-on todo-list exercise
 - [docs/TESTING.md](docs/TESTING.md) — the SQL-sandbox test model and the three test layers
-- [docs/GLOSSARY.md](docs/GLOSSARY.md) — Frappe vocabulary for newcomers
+- [docs/GLOSSARY.md](docs/GLOSSARY.md) — Featherbase's own vocabulary
 - [docs/VISION.md](docs/VISION.md) — what this is for and who it serves
-- [docs/ROADMAP.md](docs/ROADMAP.md) — replication strategy and sequencing
+- [docs/ROADMAP.md](docs/ROADMAP.md) — strategy and sequencing, across both the replication and divergence phases
 - [docs/adr/](docs/adr/) — architecture decisions, including [ADR 0006](docs/adr/0006-stack-react-hono-postgres.md) on the move to Postgres
 - [docs/research/](docs/research/) — Frappe architecture, Glide, and stack studies
 - [docs/archive/convex-capabilities/](docs/archive/convex-capabilities/) — the retired Convex implementation's specs

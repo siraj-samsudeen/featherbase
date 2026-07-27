@@ -7,14 +7,14 @@ import { getDoc } from './document'
 // RPT-005: script reports — server-side TypeScript functions that return
 // columns + rows, plus a declared filter UI. Report modules live in
 // src/reports/*.ts (each default-exporting a ScriptReport) and are registered
-// at boot, like controllers. A Report document with report_type='Script Report'
-// names the registered report in its `report_script` field.
+// at boot, like controllers. A Report row with report_type='Script Report'
+// names the registered report in its `report_script` column.
 
 export interface ReportFilterDef {
-  fieldname: string
+  column_name: string
   label: string
-  fieldtype: string // Data | Select | Check | Date | Int
-  options?: string // newline-separated for Select
+  column_type: string // Data | Choice | Check | Date | Int
+  choices?: string // newline-separated for Choice
   default?: unknown
 }
 
@@ -57,7 +57,7 @@ export async function loadScriptReports() {
   }
 }
 
-// Resolve the ScriptReport a Report document points at (via report_script),
+// Resolve the ScriptReport a Report row points at (via report_script),
 // enforcing the caller's read permission on the Report.
 async function resolve(reportName: string, user: string): Promise<ScriptReport> {
   const report = await getDoc('Report', reportName, user)

@@ -24,7 +24,7 @@ test.beforeAll(async ({ request }) => {
   const headers = await adminAuth(request)
   const dt = await request.post('/api/doctype', {
     headers,
-    data: { name: DT, autoname: 'prompt', fields: [{ fieldname: 'title', fieldtype: 'Data', in_list_view: true }] },
+    data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   // Assignee user needs read on ToDo + this DT to see their list; grant via a role.
@@ -32,7 +32,7 @@ test.beforeAll(async ({ request }) => {
   for (const rd of ['ToDo', DT])
     await request.post('/api/save_doc', {
       headers,
-      data: { doctype: 'DocPerm', doc: { ref_doctype: rd, role: 'Asg Role', permlevel: 0, can_read: true } },
+      data: { doctype: 'Permission', doc: { ref_table: rd, role: 'Asg Role', tier: 'basic', can_read: true } },
     })
   await request.post('/api/save_doc', {
     headers,
@@ -41,12 +41,12 @@ test.beforeAll(async ({ request }) => {
   await request.post('/api/set_password', { headers, data: { user: ASSIGNEE, password: ASSIGNEE_PWD } })
   // Clear assignee notifications.
   const notifs = (await (
-    await request.get(`/api/resource/Notification%20Log?filters=${encodeURIComponent(JSON.stringify([['for_user', '=', ASSIGNEE]]))}&limit_page_length=200`, { headers })
+    await request.get(`/api/table/Notification%20Log?filters=${encodeURIComponent(JSON.stringify([['for_user', '=', ASSIGNEE]]))}&limit_page_length=200`, { headers })
   ).json()) as { data: { name: string }[] }
-  for (const n of notifs.data) await request.delete(`/api/resource/Notification%20Log/${n.name}`, { headers })
+  for (const n of notifs.data) await request.delete(`/api/table/Notification%20Log/${n.name}`, { headers })
 
   docName = `asg-${Date.now()}`
-  const doc = await request.post(`/api/resource/${encodeURIComponent(DT)}`, { headers, data: { name: docName, title: 'assign me' } })
+  const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { name: docName, title: 'assign me' } })
   if (doc.status() !== 201) throw new Error(`doc: ${doc.status()}`)
 })
 

@@ -7,11 +7,11 @@ const SERIES_DT = 'Nm Invoice'
 const FIELD_DT = 'Nm Country'
 const PROMPT_DT = 'Nm Category'
 
-async function makeDT(admin: TestClient, name: string, autoname: string) {
+async function makeDT(admin: TestClient, name: string, id_pattern: string) {
   await admin.post('/api/doctype', {
     name,
-    autoname,
-    fields: [{ fieldname: 'title', fieldtype: 'Data' }],
+    id_pattern,
+    columns: [{ column_name: 'title', column_type: 'Data' }],
   })
 }
 
@@ -56,10 +56,10 @@ describe('META-006: naming rules', () => {
     const first = await save(admin, PROMPT_DT, { name: 'Software', title: 'v1' })
     await save(admin, PROMPT_DT, {
       name: 'Software',
-      modified: first.modified,
+      updated_at: first.updated_at,
       title: 'v2',
     })
-    const [row] = await sql.unsafe(`select title from tab_nm_category where name='Software'`)
+    const [row] = await sql.unsafe(`select title from nm_category where name='Software'`)
     expect(row.title).toBe('v2')
   })
 })

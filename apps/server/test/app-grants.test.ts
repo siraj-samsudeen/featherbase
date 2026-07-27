@@ -16,17 +16,17 @@ const ROLE = 'Grant Test Role'
 function manifest(extra: Partial<AppManifest> = {}): AppManifest {
   return {
     name: APP,
-    doctypes: [
+    tables: [
       {
         name: DT,
         module: 'Test',
-        autoname: 'hash',
-        fields: [{ fieldname: 'title', fieldtype: 'Data' }],
+        id_pattern: 'hash',
+        columns: [{ column_name: 'title', column_type: 'Data' }],
       },
     ],
     roles: [ROLE],
     permissions: [
-      { doctype: DT, role: ROLE, can_read: true, can_write: true, can_create: true },
+      { table: DT, role: ROLE, can_read: true, can_write: true, can_create: true },
     ],
     ...extra,
   }
@@ -47,30 +47,30 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
       expect(res.roles).toEqual([ROLE])
       expect(res.perms).toHaveLength(1)
 
-      const [role] = await sql`select 1 from tab_role where name = ${ROLE}`
+      const [role] = await sql`select 1 from role where name = ${ROLE}`
       expect(role).toBeTruthy()
       const [perm] = await sql`
-        select can_read, can_write, can_create, can_delete from tab_docperm
-        where ref_doctype = ${DT} and role = ${ROLE} and permlevel = 0`
+        select can_read, can_write, can_create, can_delete from permission
+        where ref_table = ${DT} and role = ${ROLE} and tier = 'basic'`
       expect(perm).toMatchObject({ can_read: true, can_write: true, can_create: true, can_delete: false })
 
       // A user holding only the app's role can insert and read its DocType…
       const user = await createUser({ roles: [ROLE] })
-      const ins = await user.fetch(`/api/resource/${encodeURIComponent(DT)}`, {
+      const ins = await user.fetch(`/api/table/${encodeURIComponent(DT)}`, {
         method: 'POST',
         body: JSON.stringify({ title: 'from scoped user' }),
       })
       expect(ins.status).toBe(201)
       const created = (await ins.json()) as { name: string; title: string }
       expect(created.title).toBe('from scoped user')
-      expect((await user.fetch(`/api/resource/${encodeURIComponent(DT)}`)).status).toBe(200)
+      expect((await user.fetch(`/api/table/${encodeURIComponent(DT)}`)).status).toBe(200)
 
       // …but is refused elsewhere: no delete grant, no User read.
       expect(
-        (await user.fetch(`/api/resource/${encodeURIComponent(DT)}/${created.name}`, { method: 'DELETE' }))
+        (await user.fetch(`/api/table/${encodeURIComponent(DT)}/${created.name}`, { method: 'DELETE' }))
           .status,
       ).toBe(403)
-      expect((await user.fetch('/api/resource/User')).status).toBe(403)
+      expect((await user.fetch('/api/table/User')).status).toBe(403)
     } finally {
       await unwire()
     }
@@ -80,15 +80,15 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     registerApp(
       manifest({
         permissions: [
-          { doctype: DT, role: ROLE, can_read: true, can_write: true, can_create: true },
-          { doctype: 'ToDo', role: ROLE, can_read: true },
+          { table: DT, role: ROLE, can_read: true, can_write: true, can_create: true },
+          { table: 'ToDo', role: ROLE, can_read: true },
         ],
       }),
     )
     try {
       await installApp(APP)
       const user = await createUser({ roles: [ROLE] })
-      expect((await user.fetch('/api/resource/ToDo')).status).toBe(200)
+      expect((await user.fetch('/api/table/ToDo')).status).toBe(200)
     } finally {
       await unwire()
     }
@@ -101,14 +101,14 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     // with flags the manifest disagrees with.
     await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
     const pre = await admin.post<{ name: string }>('/api/save_doc', {
-      doctype: 'DocPerm',
-      doc: { ref_doctype: 'ToDo', role: ROLE, can_read: true },
+      doctype: 'Permission',
+      doc: { ref_table: 'ToDo', role: ROLE, can_read: true },
     })
     registerApp(
       manifest({
         permissions: [
-          // Same identity (ToDo, ROLE, 0) but broader flags — must NOT overwrite.
-          { doctype: 'ToDo', role: ROLE, can_read: true, can_write: true, can_delete: true },
+          // Same identity (ToDo, ROLE, basic) but broader flags — must NOT overwrite.
+          { table: 'ToDo', role: ROLE, can_read: true, can_write: true, can_delete: true },
         ],
       }),
     )
@@ -117,13 +117,13 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
       // Neither the role nor the grant was created by this install.
       expect(res.roles).toEqual([])
       expect(res.perms).toEqual([])
-      const [perm] = await sql`select can_write, can_delete from tab_docperm where name = ${pre.name}`
+      const [perm] = await sql`select can_write, can_delete from permission where name = ${pre.name}`
       expect(perm).toMatchObject({ can_write: false, can_delete: false })
 
       await uninstallApp(APP)
       // The adopted role and grant predate the app and must survive it.
-      expect((await sql`select 1 from tab_role where name = ${ROLE}`).length).toBe(1)
-      expect((await sql`select 1 from tab_docperm where name = ${pre.name}`).length).toBe(1)
+      expect((await sql`select 1 from role where name = ${ROLE}`).length).toBe(1)
+      expect((await sql`select 1 from permission where name = ${pre.name}`).length).toBe(1)
     } finally {
       await unwire()
     }
@@ -133,17 +133,17 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     registerApp(
       manifest({
         permissions: [
-          { doctype: DT, role: ROLE, can_read: true, can_write: true, can_create: true },
-          { doctype: 'ToDo', role: ROLE, can_read: true },
+          { table: DT, role: ROLE, can_read: true, can_write: true, can_create: true },
+          { table: 'ToDo', role: ROLE, can_read: true },
         ],
       }),
     )
     try {
       await installApp(APP)
       await uninstallApp(APP)
-      expect((await sql`select 1 from tab_docperm where role = ${ROLE}`).length).toBe(0)
+      expect((await sql`select 1 from permission where role = ${ROLE}`).length).toBe(0)
       // Nothing references the role any more, so it is dropped too.
-      expect((await sql`select 1 from tab_role where name = ${ROLE}`).length).toBe(0)
+      expect((await sql`select 1 from role where name = ${ROLE}`).length).toBe(0)
     } finally {
       await unwire()
     }
@@ -156,9 +156,9 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
       await createUser({ roles: [ROLE] })
       await uninstallApp(APP)
       // The app's own grant is gone, but the role is still held via
-      // tab_has_role — dropping it would strand the user.
-      expect((await sql`select 1 from tab_docperm where role = ${ROLE}`).length).toBe(0)
-      expect((await sql`select 1 from tab_role where name = ${ROLE}`).length).toBe(1)
+      // has_role — dropping it would strand the user.
+      expect((await sql`select 1 from permission where role = ${ROLE}`).length).toBe(0)
+      expect((await sql`select 1 from role where name = ${ROLE}`).length).toBe(1)
     } finally {
       await unwire()
     }
@@ -168,7 +168,7 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     registerApp(
       manifest({
         roles: [],
-        permissions: [{ doctype: 'ToDo', role: 'No Such Role', can_read: true }],
+        permissions: [{ table: 'ToDo', role: 'No Such Role', can_read: true }],
       }),
     )
     try {
@@ -184,7 +184,7 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     registerApp(
       manifest({
-        permissions: [{ doctype: DT, role: ROLE, can_read: true, can_create: true }],
+        permissions: [{ table: DT, role: ROLE, can_read: true, can_create: true }],
       }),
     )
     try {
@@ -192,9 +192,9 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('can_create without can_write'))
 
       // The documented behaviour: the insert succeeds but every field is
-      // stripped to the role's WRITE permlevels — the document arrives empty.
+      // stripped to the role's WRITE tiers — the document arrives empty.
       const user = await createUser({ roles: [ROLE] })
-      const ins = await user.fetch(`/api/resource/${encodeURIComponent(DT)}`, {
+      const ins = await user.fetch(`/api/table/${encodeURIComponent(DT)}`, {
         method: 'POST',
         body: JSON.stringify({ title: 'will be stripped' }),
       })

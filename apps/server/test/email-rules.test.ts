@@ -2,10 +2,10 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { loadJobs } from '../src/jobs'
-import { createDocType } from '../src/doctype-engine'
+import { createTable } from '../src/doctype-engine'
 import { saveDoc, submitDoc } from '../src/document'
 
-// EML-004: a rule 'on submit of <DocType> where priority=High' fires exactly
+// EML-004: a rule 'on submit of <Table> where priority=High' fires exactly
 // for matching documents.
 
 const DT = 'Eml Rule Task'
@@ -13,30 +13,30 @@ const ACCOUNT = 'Eml Rule Account'
 
 // Runs at the start of each test, inside its sandbox transaction: clear any
 // committed leftovers (rolled back afterwards), then create the account,
-// DocType, and rule that legacy beforeAll used to set up once.
+// Table, and rule that legacy beforeAll used to set up once.
 async function setup() {
   await loadJobs()
-  await sql`delete from tab_email_rule where document_type = ${DT}`
-  await sql`delete from tab_email_queue`
-  await sql`delete from tab_email_account where name = ${ACCOUNT}`
-  await sql`delete from tab_docfield where parent = ${DT}`
-  await sql`delete from tab_doctype where name = ${DT}`
-  await sql.unsafe('drop table if exists tab_eml_rule_task')
-  await sql`insert into tab_email_account ${sql({
-    name: ACCOUNT, owner: 'Administrator', modified_by: 'Administrator',
+  await sql`delete from email_rule where ref_table = ${DT}`
+  await sql`delete from email_queue`
+  await sql`delete from email_account where name = ${ACCOUNT}`
+  await sql`delete from column_def where parent = ${DT}`
+  await sql`delete from table_def where name = ${DT}`
+  await sql.unsafe('drop table if exists eml_rule_task')
+  await sql`insert into email_account ${sql({
+    name: ACCOUNT, created_by: 'Administrator', updated_by: 'Administrator',
     email_id: 'rules@frappe.test', is_default: true,
   })}`
-  await createDocType({
+  await createTable({
     name: DT,
     is_submittable: true,
-    fields: [
-      { fieldname: 'title', fieldtype: 'Data' },
-      { fieldname: 'priority', fieldtype: 'Select', options: 'Low\nHigh' },
+    columns: [
+      { column_name: 'title', column_type: 'Data' },
+      { column_name: 'priority', column_type: 'Choice', choices: 'Low\nHigh' },
     ],
   })
-  await sql`insert into tab_email_rule ${sql({
-    name: 'High Priority Alert', owner: 'Administrator', modified_by: 'Administrator',
-    document_type: DT, event: 'on_submit',
+  await sql`insert into email_rule ${sql({
+    name: 'High Priority Alert', created_by: 'Administrator', updated_by: 'Administrator',
+    ref_table: DT, event: 'on_submit',
     condition_field: 'priority', condition_value: 'High',
     recipient: 'manager@x.com', subject: 'High priority submitted', message: 'see {{ doc.title }}',
     enabled: true,
@@ -45,7 +45,7 @@ async function setup() {
 
 async function queuedFor(subject: string): Promise<number> {
   const [row] = await sql`
-    select count(*)::int as c from tab_email_queue where subject = ${subject}`
+    select count(*)::int as c from email_queue where subject = ${subject}`
   return row.c as number
 }
 

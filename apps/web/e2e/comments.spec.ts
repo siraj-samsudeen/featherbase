@@ -16,24 +16,24 @@ test.beforeAll(async ({ request }) => {
   const headers = await auth(request)
   const dt = await request.post('/api/doctype', {
     headers,
-    data: { name: DT, autoname: 'prompt', fields: [{ fieldname: 'title', fieldtype: 'Data' }] },
+    data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   docName = 'cmt-doc-1'
-  await request.delete(`/api/resource/${encodeURIComponent(DT)}/${docName}`, { headers })
+  await request.delete(`/api/table/${encodeURIComponent(DT)}/${docName}`, { headers })
   // clear any prior comments
   const filters = encodeURIComponent(
     JSON.stringify([
-      ['ref_doctype', '=', DT],
+      ['ref_table', '=', DT],
       ['ref_name', '=', docName],
     ]),
   )
   const prior = (await (
-    await request.get(`/api/resource/Comment?filters=${filters}`, { headers })
+    await request.get(`/api/table/Comment?filters=${filters}`, { headers })
   ).json()) as { data: { name: string }[] }
   for (const c of prior.data)
-    await request.delete(`/api/resource/Comment/${c.name}`, { headers })
-  const doc = await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+    await request.delete(`/api/table/Comment/${c.name}`, { headers })
+  const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
     data: { name: docName, title: 'discuss me' },
   })
@@ -81,13 +81,13 @@ test('UI-018: post comments with an @mention; they persist and render', async ({
   const token = await page.evaluate(() => localStorage.getItem('fc_token'))
   const filters = encodeURIComponent(
     JSON.stringify([
-      ['ref_doctype', '=', DT],
+      ['ref_table', '=', DT],
       ['ref_name', '=', docName],
     ]),
   )
   const listed = (await (
     await page.request.get(
-      `/api/resource/Comment?filters=${filters}&fields=${encodeURIComponent(
+      `/api/table/Comment?filters=${filters}&fields=${encodeURIComponent(
         JSON.stringify(['name', 'content']),
       )}`,
       { headers: { Authorization: `Bearer ${token}` } },
@@ -100,13 +100,13 @@ test('UI-018: post comments with an @mention; they persist and render', async ({
   const notifFilters = encodeURIComponent(
     JSON.stringify([
       ['for_user', '=', 'Administrator'],
-      ['ref_doctype', '=', DT],
+      ['ref_table', '=', DT],
       ['ref_name', '=', docName],
     ]),
   )
   const notifs = (await (
     await page.request.get(
-      `/api/resource/Notification%20Log?filters=${notifFilters}&fields=${encodeURIComponent(
+      `/api/table/Notification%20Log?filters=${notifFilters}&fields=${encodeURIComponent(
         JSON.stringify(['subject', 'read']),
       )}`,
       { headers: { Authorization: `Bearer ${token}` } },

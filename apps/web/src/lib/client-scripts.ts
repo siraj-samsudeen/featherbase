@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { listResource } from './api'
 
-// CUST-003: Client Scripts. Enabled scripts for a DocType are fetched and
+// CUST-003: Client Scripts. Enabled scripts for a Table are fetched and
 // evaluated in the browser. Each script registers form-event handlers via a
-// minimal `frappe.ui.form.on(doctype, handlers)` API. The FormView calls the
-// matching handler on onload / field change / before_save. A script error is
-// caught and reported — it never crashes the Desk.
+// minimal `frappe.ui.form.on(doctype, handlers)` API — kept Frappe-shaped
+// deliberately, since existing Client Scripts are authored against it. The
+// FormView calls the matching handler on onload / field change / before_save.
+// A script error is caught and reported — it never crashes the Admin.
 
 export interface Frm {
   doc: Record<string, unknown>
@@ -59,7 +60,7 @@ export function useClientScripts(doctype: string): CompiledScripts {
     queryFn: () =>
       listResource<{ name: string; script: string }>('Client Script', {
         filters: [
-          ['reference_doctype', '=', doctype],
+          ['ref_table', '=', doctype],
           ['enabled', '=', true],
         ],
         fields: ['name', 'script'],

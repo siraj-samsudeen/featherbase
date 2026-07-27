@@ -14,11 +14,11 @@ const OPS = ['=', '!=', 'like', '>', '<', '>=', '<='] as const
 const PAGE = 20
 
 // SET-004: cells render through the global display settings (date format,
-// currency/float precision). Non-typed fields fall back to a plain string.
-function cell(value: unknown, fieldtype: string, settings: Settings): string {
+// currency/float precision). Non-typed columns fall back to a plain string.
+function cell(value: unknown, columnType: string, settings: Settings): string {
   if (value == null || value === '') return '—'
   if (typeof value === 'boolean') return value ? '✓' : '✗'
-  return formatValue(fieldtype, value, settings) || '—'
+  return formatValue(columnType, value, settings) || '—'
 }
 
 // Frappe's "indicator" idiom (adopted from the PR-2 Desk): status-like Select
@@ -54,7 +54,7 @@ export function Indicator({ value }: { value: string }) {
   )
 }
 
-// UI-002/UI-003: ONE list component renders every DocType from its metadata.
+// UI-002/UI-003: ONE list component renders every Table from its metadata.
 export function ListView({
   doctype,
   filters = [],
@@ -127,21 +127,21 @@ export function ListView({
   }
 
   const allColumns = meta.data ? listColumns(meta.data) : []
-  const columns = allColumns.filter((c) => !hiddenCols.has(c.fieldname))
+  const columns = allColumns.filter((c) => !hiddenCols.has(c.column_name))
   const orderBy = sort
     ? `${sort.field} ${sort.dir}`
     : meta.data
-      ? `${meta.data.sort_field || 'modified'} ${meta.data.sort_order || 'desc'}`
+      ? `${meta.data.sort_column || 'updated_at'} ${meta.data.sort_order || 'desc'}`
       : undefined
 
   const list = useQuery({
-    queryKey: ['list', doctype, columns.map((c) => c.fieldname), orderBy, start, filterKey],
+    queryKey: ['list', doctype, columns.map((c) => c.column_name), orderBy, start, filterKey],
     enabled: Boolean(meta.data),
     placeholderData: keepPreviousData,
     queryFn: () =>
       listResource(doctype, {
         filters,
-        fields: columns.map((c) => c.fieldname),
+        fields: columns.map((c) => c.column_name),
         order_by: orderBy,
         limit_start: start,
         limit_page_length: PAGE,
@@ -165,22 +165,22 @@ export function ListView({
   }
 
   // UI-013: hide/show a column (persisted per user).
-  function toggleColumn(fieldname: string) {
+  function toggleColumn(columnName: string) {
     setHiddenCols((prev) => {
       const nextSet = new Set(prev)
-      if (nextSet.has(fieldname)) nextSet.delete(fieldname)
-      else nextSet.add(fieldname)
+      if (nextSet.has(columnName)) nextSet.delete(columnName)
+      else nextSet.add(columnName)
       persist({ hiddenCols: nextSet })
       return nextSet
     })
   }
 
-  // UI-012: bulk actions over the selected rows. Each doc goes through the
-  // normal document lifecycle (delete_doc / save_doc) — no side-channel.
-  const editableFields = (meta.data?.fields ?? []).filter(
+  // UI-012: bulk actions over the selected rows. Each row goes through the
+  // normal row lifecycle (delete_doc / save_doc) — no side-channel.
+  const editableColumns = (meta.data?.columns ?? []).filter(
     (f) =>
-      !NO_COLUMN_TYPES.has(f.fieldtype) &&
-      !['Table', 'Attach', 'Attach Image', 'JSON'].includes(f.fieldtype) &&
+      !NO_COLUMN_TYPES.has(f.column_type) &&
+      !['Sub-table', 'Attach', 'Attach Image', 'JSON'].includes(f.column_type) &&
       !f.read_only &&
       !f.hidden,
   )
@@ -205,7 +205,7 @@ export function ListView({
     setBulkError(null)
     try {
       for (const name of selected)
-        await api.delete(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
+        await api.delete(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
       await refresh()
     } catch (err) {
       setBulkError(err instanceof ApiError ? err.message : 'Bulk delete failed')
@@ -218,9 +218,9 @@ export function ListView({
     if (!bulkField) return
     setBulkBusy(true)
     setBulkError(null)
-    const fieldtype = editableFields.find((f) => f.fieldname === bulkField)?.fieldtype
+    const columnType = editableColumns.find((f) => f.column_name === bulkField)?.column_type
     const value: unknown =
-      fieldtype === 'Check'
+      columnType === 'Check'
         ? ['1', 'true', 'yes'].includes(bulkValue.trim().toLowerCase())
         : bulkValue === ''
           ? null
@@ -228,11 +228,11 @@ export function ListView({
     try {
       for (const name of selected) {
         const doc = await api.get<Record<string, unknown>>(
-          `/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
+          `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
         )
-        await api.put(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`, {
+        await api.patch(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`, {
           [bulkField]: value,
-          modified: doc.modified,
+          updated_at: doc.updated_at,
         })
       }
       await refresh()
@@ -272,14 +272,14 @@ export function ListView({
               <div className="fc-card absolute right-0 z-10 mt-1 max-h-72 w-52 overflow-y-auto p-2">
                 {allColumns.map((col) => (
                   <label
-                    key={col.fieldname}
+                    key={col.column_name}
                     className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-[var(--color-subtle)]"
                   >
                     <input
                       type="checkbox"
-                      checked={!hiddenCols.has(col.fieldname)}
-                      data-testid={`list-col-toggle-${col.fieldname}`}
-                      onChange={() => toggleColumn(col.fieldname)}
+                      checked={!hiddenCols.has(col.column_name)}
+                      data-testid={`list-col-toggle-${col.column_name}`}
+                      onChange={() => toggleColumn(col.column_name)}
                     />
                     {col.label}
                   </label>
@@ -296,7 +296,7 @@ export function ListView({
           >
             Report
           </Link>
-          {(meta.data?.fields ?? []).some((f) => f.fieldtype === 'Select') && (
+          {(meta.data?.columns ?? []).some((f) => f.column_type === 'Choice') && (
             <Link
               to="/desk/$doctype/view/kanban"
               params={{ doctype }}
@@ -307,7 +307,7 @@ export function ListView({
               Kanban
             </Link>
           )}
-          {(meta.data?.fields ?? []).some((f) => f.fieldtype === 'Date') && (
+          {(meta.data?.columns ?? []).some((f) => f.column_type === 'Date') && (
             <Link
               to="/desk/$doctype/view/calendar"
               params={{ doctype }}
@@ -317,8 +317,8 @@ export function ListView({
               Calendar
             </Link>
           )}
-          {/* UI-022: Gantt needs two Date fields (start + end). */}
-          {(meta.data?.fields ?? []).filter((f) => f.fieldtype === 'Date').length >= 2 && (
+          {/* UI-022: Gantt needs two Date columns (start + end). */}
+          {(meta.data?.columns ?? []).filter((f) => f.column_type === 'Date').length >= 2 && (
             <Link
               to="/desk/$doctype/view/gantt"
               params={{ doctype }}
@@ -370,9 +370,9 @@ export function ListView({
               data-testid="bulk-edit-field"
             >
               <option value="">Edit field…</option>
-              {editableFields.map((f) => (
-                <option key={f.fieldname} value={f.fieldname}>
-                  {f.label ?? f.fieldname}
+              {editableColumns.map((f) => (
+                <option key={f.column_name} value={f.column_name}>
+                  {f.label ?? f.column_name}
                 </option>
               ))}
             </select>
@@ -420,14 +420,14 @@ export function ListView({
                 />
               </th>
               {columns.map((col) => (
-                <th key={col.fieldname} className="border-b border-[var(--color-border)]">
+                <th key={col.column_name} className="border-b border-[var(--color-border)]">
                   <button
                     className="w-full px-3 py-2 text-left font-medium text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]"
-                    data-testid={`col-${col.fieldname}`}
-                    onClick={() => toggleSort(col.fieldname)}
+                    data-testid={`col-${col.column_name}`}
+                    onClick={() => toggleSort(col.column_name)}
                   >
                     {col.label}
-                    {sort?.field === col.fieldname && (sort.dir === 'asc' ? ' ↑' : ' ↓')}
+                    {sort?.field === col.column_name && (sort.dir === 'asc' ? ' ↑' : ' ↓')}
                   </button>
                 </th>
               ))}
@@ -445,26 +445,26 @@ export function ListView({
                   />
                 </td>
                 {columns.map((col, i) => (
-                  <td key={col.fieldname} className="px-3 py-2">
+                  <td key={col.column_name} className="px-3 py-2">
                     {i === 0 ? (
                       <Link
                         to="/desk/$doctype/$name"
                         params={{ doctype, name: String(row.name) }}
                         className={`font-medium text-[var(--color-brand)] hover:underline ${
-                          col.fieldname === 'name' ? 'font-mono text-[13px]' : ''
+                          col.column_name === 'name' ? 'font-mono text-[13px]' : ''
                         }`}
                       >
-                        {cell(row[col.fieldname], col.fieldtype, settings)}
+                        {cell(row[col.column_name], col.column_type, settings)}
                       </Link>
-                    ) : col.fieldtype === 'Select' &&
-                      row[col.fieldname] != null &&
-                      row[col.fieldname] !== '' ? (
-                      <span className="text-[var(--color-ink)]" data-testid={`cell-${col.fieldname}`}>
-                        <Indicator value={String(row[col.fieldname])} />
+                    ) : col.column_type === 'Choice' &&
+                      row[col.column_name] != null &&
+                      row[col.column_name] !== '' ? (
+                      <span className="text-[var(--color-ink)]" data-testid={`cell-${col.column_name}`}>
+                        <Indicator value={String(row[col.column_name])} />
                       </span>
                     ) : (
-                      <span className="text-[var(--color-ink)]" data-testid={`cell-${col.fieldname}`}>
-                        {cell(row[col.fieldname], col.fieldtype, settings)}
+                      <span className="text-[var(--color-ink)]" data-testid={`cell-${col.column_name}`}>
+                        {cell(row[col.column_name], col.column_type, settings)}
                       </span>
                     )}
                   </td>
@@ -474,7 +474,7 @@ export function ListView({
             {!rows.length && (
               <tr>
                 <td colSpan={columns.length + 1} className="px-3 py-8 text-center text-[var(--color-ink-faint)]">
-                  No documents
+                  No rows
                 </td>
               </tr>
             )}
@@ -508,60 +508,60 @@ export function ListView({
 
 
 // Frappe's standard filters (adopted from the PR-2 Desk): typed per-column
-// inputs for the list's visible fields — Selects become dropdowns, text-ish
-// fields match with contains. They read and write the same URL-driven filter
+// inputs for the list's visible columns — Choices become dropdowns, text-ish
+// columns match with contains. They read and write the same URL-driven filter
 // list the advanced FilterBar manages, so chips stay in sync.
-const STANDARD_TEXT_TYPES = new Set(['Data', 'Link', 'Email', 'Small Text'])
+const STANDARD_TEXT_TYPES = new Set(['Data', 'Reference', 'Email', 'Small Text'])
 
 export function StandardFilters({
   meta,
   filters,
   onChange,
 }: {
-  meta: import('../lib/meta').DocTypeMeta
+  meta: import('../lib/meta').TableMeta
   filters: Filter[]
   onChange: (filters: Filter[]) => void
 }) {
-  const fields = meta.fields
+  const columns = meta.columns
     .filter(
       (f) =>
         f.in_list_view &&
         !f.hidden &&
-        (f.fieldtype === 'Select' || STANDARD_TEXT_TYPES.has(f.fieldtype)),
+        (f.column_type === 'Choice' || STANDARD_TEXT_TYPES.has(f.column_type)),
     )
     .slice(0, 4)
-  // Drafts for the text inputs (applied on Enter/blur); selects apply at once.
+  // Drafts for the text inputs (applied on Enter/blur); choices apply at once.
   const [drafts, setDrafts] = useState<Record<string, string>>({})
-  if (!fields.length) return null
+  if (!columns.length) return null
 
-  function current(fieldname: string, op: string): string {
-    const hit = filters.find((f) => f[0] === fieldname && f[1] === op)
+  function current(columnName: string, op: string): string {
+    const hit = filters.find((f) => f[0] === columnName && f[1] === op)
     if (!hit) return ''
     const v = String(hit[2] ?? '')
     return op === 'like' ? v.replace(/^%|%$/g, '') : v
   }
 
-  function apply(fieldname: string, op: string, value: string) {
-    const rest = filters.filter((f) => f[0] !== fieldname)
-    onChange(value ? [...rest, [fieldname, op, op === 'like' ? `%${value}%` : value]] : rest)
+  function apply(columnName: string, op: string, value: string) {
+    const rest = filters.filter((f) => f[0] !== columnName)
+    onChange(value ? [...rest, [columnName, op, op === 'like' ? `%${value}%` : value]] : rest)
   }
 
   return (
     <div className="mb-3 flex flex-wrap items-end gap-2" data-testid="standard-filters">
-      {fields.map((f) =>
-        f.fieldtype === 'Select' ? (
-          <label key={f.fieldname} className="flex flex-col gap-0.5">
+      {columns.map((f) =>
+        f.column_type === 'Choice' ? (
+          <label key={f.column_name} className="flex flex-col gap-0.5">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
-              {f.label ?? f.fieldname}
+              {f.label ?? f.column_name}
             </span>
             <select
-              value={current(f.fieldname, '=')}
-              onChange={(e) => apply(f.fieldname, '=', e.target.value)}
-              data-testid={`std-filter-${f.fieldname}`}
+              value={current(f.column_name, '=')}
+              onChange={(e) => apply(f.column_name, '=', e.target.value)}
+              data-testid={`std-filter-${f.column_name}`}
               className="fc-input max-w-[10rem]"
             >
               <option value="">All</option>
-              {(f.options ?? '')
+              {(f.choices ?? '')
                 .split('\n')
                 .filter(Boolean)
                 .map((o) => (
@@ -572,22 +572,22 @@ export function StandardFilters({
             </select>
           </label>
         ) : (
-          <label key={f.fieldname} className="flex flex-col gap-0.5">
+          <label key={f.column_name} className="flex flex-col gap-0.5">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
-              {f.label ?? f.fieldname}
+              {f.label ?? f.column_name}
             </span>
             <input
-              value={drafts[f.fieldname] ?? current(f.fieldname, 'like')}
-              onChange={(e) => setDrafts((d) => ({ ...d, [f.fieldname]: e.target.value }))}
-              onBlur={(e) => apply(f.fieldname, 'like', e.target.value.trim())}
+              value={drafts[f.column_name] ?? current(f.column_name, 'like')}
+              onChange={(e) => setDrafts((d) => ({ ...d, [f.column_name]: e.target.value }))}
+              onBlur={(e) => apply(f.column_name, 'like', e.target.value.trim())}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault()
-                  apply(f.fieldname, 'like', (e.target as HTMLInputElement).value.trim())
+                  apply(f.column_name, 'like', (e.target as HTMLInputElement).value.trim())
                 }
               }}
-              placeholder={`Filter ${f.label ?? f.fieldname}…`}
-              data-testid={`std-filter-${f.fieldname}`}
+              placeholder={`Filter ${f.label ?? f.column_name}…`}
+              data-testid={`std-filter-${f.column_name}`}
               className="fc-input max-w-[10rem]"
             />
           </label>
@@ -602,15 +602,15 @@ export function FilterBar({
   filters,
   onChange,
 }: {
-  meta: import('../lib/meta').DocTypeMeta
+  meta: import('../lib/meta').TableMeta
   filters: Filter[]
   onChange: (filters: Filter[]) => void
 }) {
   const fields = [
     { fieldname: 'name', label: 'Name' },
-    ...meta.fields
-      .filter((f) => !NO_COLUMN_TYPES.has(f.fieldtype) && !f.hidden)
-      .map((f) => ({ fieldname: f.fieldname, label: f.label ?? f.fieldname })),
+    ...meta.columns
+      .filter((f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden)
+      .map((f) => ({ fieldname: f.column_name, label: f.label ?? f.column_name })),
   ]
   const [field, setField] = useState('name')
   const [op, setOp] = useState<string>('=')

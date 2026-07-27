@@ -22,7 +22,7 @@ const docName = (language: string, source: string) =>
 
 async function listTranslations(request: APIRequestContext, headers: Headers): Promise<Row[]> {
   const res = await request.get(
-    '/api/resource/Translation?fields=["name","language","source_text"]&limit=500',
+    '/api/table/Translation?fields=["name","language","source_text"]&limit=500',
     { headers },
   )
   if (!res.ok()) throw new Error(`list Translation: ${res.status()}`)
@@ -41,7 +41,7 @@ export async function seedTranslations(
   const names: string[] = []
   for (const [source, translated] of entries) {
     for (const row of existing.filter((r) => r.language === language && r.source_text === source))
-      await request.delete(`/api/resource/Translation/${encodeURIComponent(row.name)}`, { headers })
+      await request.delete(`/api/table/Translation/${encodeURIComponent(row.name)}`, { headers })
 
     const name = docName(language, source)
     const res = await request.post('/api/save_doc', {
@@ -66,5 +66,5 @@ export async function clearTranslations(
   names: string[],
 ): Promise<void> {
   for (const name of names)
-    await request.delete(`/api/resource/Translation/${encodeURIComponent(name)}`, { headers })
+    await request.delete(`/api/table/Translation/${encodeURIComponent(name)}`, { headers })
 }

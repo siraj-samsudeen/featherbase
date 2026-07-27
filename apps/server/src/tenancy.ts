@@ -4,7 +4,7 @@ import { config } from './config'
 import { AppError } from './errors'
 
 // PLAT-008: multi-tenancy, schema-per-site. Each site is an isolated Postgres
-// SCHEMA (site_<name>) holding its own tab_* tables. A site-scoped client sets
+// SCHEMA (site_<name>) holding its own tables. A site-scoped client sets
 // its search_path to ONLY that schema, so a query can never reach another
 // site's tables — isolation is enforced by Postgres, not by app-level filters.
 // A `public.site` registry maps an inbound Host to its schema; the resolver
@@ -42,18 +42,18 @@ export async function closeSiteClients(): Promise<void> {
 }
 
 // The per-site "migrate": create the site's schema and its core tables. Real
-// and idempotent — the same tab_doctype/tab_docfield/tab_user shape every site
+// and idempotent — the same table_def/column_def/user shape every site
 // gets, independent of every other site.
 export async function siteMigrate(site: string): Promise<void> {
   const schema = siteSchema(site)
   await sql.unsafe(`create schema if not exists "${schema}"`)
   const c = siteClient(site)
   await c.unsafe(`
-    create table if not exists tab_doctype (
+    create table if not exists table_def (
       name text primary key, module text, created_at timestamptz not null default now());
-    create table if not exists tab_docfield (
-      id bigserial primary key, parent text not null, fieldname text not null, fieldtype text not null);
-    create table if not exists tab_user (
+    create table if not exists column_def (
+      id bigserial primary key, parent text not null, column_name text not null, column_type text not null);
+    create table if not exists "user" (
       name text primary key, email text unique, full_name text,
       enabled boolean not null default true, created_at timestamptz not null default now());
   `)
@@ -61,16 +61,16 @@ export async function siteMigrate(site: string): Promise<void> {
 
 export async function createSite(site: string, host?: string): Promise<{ site: string; host: string; schema: string }> {
   const name = sanitize(site)
-  const [exists] = await sql`select 1 from tab_site where name = ${name}`
+  const [exists] = await sql`select 1 from site where name = ${name}`
   if (exists) throw new AppError('ConflictError', `Site ${name} already exists`)
   const resolvedHost = (host ?? `${name}.localhost`).toLowerCase()
   await siteMigrate(name)
-  await sql`insert into tab_site ${sql({ name, host: resolvedHost, schema: siteSchema(name) })}`
+  await sql`insert into site ${sql({ name, host: resolvedHost, schema: siteSchema(name) })}`
   return { site: name, host: resolvedHost, schema: siteSchema(name) }
 }
 
 export async function listSites(): Promise<{ name: string; host: string; schema: string }[]> {
-  const rows = await sql`select name, host, schema from tab_site order by name`
+  const rows = await sql`select name, host, schema from site order by name`
   return rows.map((r) => ({ name: r.name as string, host: r.host as string, schema: r.schema as string }))
 }
 
@@ -79,10 +79,10 @@ export async function listSites(): Promise<{ name: string; host: string; schema:
 export async function resolveSite(hostHeader: string | undefined): Promise<string> {
   if (!hostHeader) throw new AppError('ValidationError', 'Missing Host header')
   const host = hostHeader.toLowerCase().split(':')[0]
-  const [byHost] = await sql`select name from tab_site where host = ${host}`
+  const [byHost] = await sql`select name from site where host = ${host}`
   if (byHost) return byHost.name as string
   const label = host.split('.')[0]
-  const [byLabel] = await sql`select name from tab_site where name = ${label}`
+  const [byLabel] = await sql`select name from site where name = ${label}`
   if (byLabel) return byLabel.name as string
   throw new AppError('NotFoundError', `No site for host ${host}`)
 }
@@ -90,21 +90,21 @@ export async function resolveSite(hostHeader: string | undefined): Promise<strin
 // --- site-scoped data operations (all run on the site's own schema) ---------
 
 function tableFor(name: string): string {
-  return `tab_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}`
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
 }
 
 export async function siteCreateDoctype(
   site: string,
   name: string,
-  fields: { fieldname: string; fieldtype: string }[],
+  columns: { column_name: string; column_type: string }[],
 ): Promise<{ name: string }> {
   const c = siteClient(site)
-  const [dup] = await c`select 1 from tab_doctype where name = ${name}`
-  if (dup) throw new AppError('ConflictError', `DocType ${name} already exists on this site`)
+  const [dup] = await c`select 1 from table_def where name = ${name}`
+  if (dup) throw new AppError('ConflictError', `Table ${name} already exists on this site`)
   await c.begin(async (tx) => {
-    await tx`insert into tab_doctype ${tx({ name, module: 'Site' })}`
-    for (const f of fields) await tx`insert into tab_docfield ${tx({ parent: name, fieldname: f.fieldname, fieldtype: f.fieldtype })}`
-    const cols = fields.map((f) => `"${f.fieldname.replace(/[^a-z0-9_]/gi, '_')}" text`).join(', ')
+    await tx`insert into table_def ${tx({ name, module: 'Site' })}`
+    for (const f of columns) await tx`insert into column_def ${tx({ parent: name, column_name: f.column_name, column_type: f.column_type })}`
+    const cols = columns.map((f) => `"${f.column_name.replace(/[^a-z0-9_]/gi, '_')}" text`).join(', ')
     await tx.unsafe(`create table if not exists ${tableFor(name)} (name text primary key${cols ? ', ' + cols : ''})`)
   })
   return { name }
@@ -112,19 +112,19 @@ export async function siteCreateDoctype(
 
 export async function siteListDoctypes(site: string): Promise<string[]> {
   const c = siteClient(site)
-  const rows = await c`select name from tab_doctype order by name`
+  const rows = await c`select name from table_def order by name`
   return rows.map((r) => r.name as string)
 }
 
 export async function siteCreateUser(site: string, email: string, fullName?: string): Promise<{ name: string }> {
   const c = siteClient(site)
-  await c`insert into tab_user ${c({ name: email, email, full_name: fullName ?? email })}
+  await c`insert into "user" ${c({ name: email, email, full_name: fullName ?? email })}
     on conflict (name) do nothing`
   return { name: email }
 }
 
 export async function siteListUsers(site: string): Promise<string[]> {
   const c = siteClient(site)
-  const rows = await c`select name from tab_user order by name`
+  const rows = await c`select name from "user" order by name`
   return rows.map((r) => r.name as string)
 }

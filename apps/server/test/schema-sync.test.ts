@@ -4,7 +4,7 @@ import { sql } from '../src/db'
 import type { TestClient } from 'feather-testing-postgres'
 
 const DT = 'Sync Task'
-const TABLE = 'tab_sync_task'
+const TABLE = 'sync_task'
 
 async function columns(): Promise<string[]> {
   const rows = await sql`
@@ -12,15 +12,15 @@ async function columns(): Promise<string[]> {
   return rows.map((r) => r.column_name as string)
 }
 
-const baseFields = [
-  { fieldname: 'title', fieldtype: 'Data', label: 'Title' },
-  { fieldname: 'points', fieldtype: 'Int' },
+const baseColumns = [
+  { column_name: 'title', column_type: 'Data', label: 'Title' },
+  { column_name: 'points', column_type: 'Int' },
 ]
 
-// The legacy suite mutated ONE DocType across sequential tests; under the
+// The legacy suite mutated ONE Table across sequential tests; under the
 // sandbox each test rebuilds the state it needs, then rolls back.
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', { name: DT, fields: baseFields })
+  await admin.post('/api/doctype', { name: DT, columns: baseColumns })
   for (const t of ['a', 'b'])
     await admin.post('/api/save_doc', { doctype: DT, doc: { title: t, points: 1 } })
 }
@@ -29,7 +29,7 @@ async function addSeverity(admin: TestClient) {
   return admin.fetch(`/api/doctype/${encodeURIComponent(DT)}`, {
     method: 'PUT',
     body: JSON.stringify({
-      fields: [...baseFields, { fieldname: 'severity', fieldtype: 'Select', options: 'Low\nHigh' }],
+      columns: [...baseColumns, { column_name: 'severity', column_type: 'Choice', choices: 'Low\nHigh' }],
     }),
   })
 }
@@ -55,18 +55,18 @@ describe('META-004: schema sync', () => {
     const res = await admin.fetch(`/api/doctype/${encodeURIComponent(DT)}`, {
       method: 'PUT',
       body: JSON.stringify({
-        fields: [
-          { fieldname: 'title', fieldtype: 'Data', label: 'Headline', reqd: true },
-          { fieldname: 'points', fieldtype: 'Int' },
-          { fieldname: 'severity', fieldtype: 'Select', options: 'Low\nHigh' },
+        columns: [
+          { column_name: 'title', column_type: 'Data', label: 'Headline', reqd: true },
+          { column_name: 'points', column_type: 'Int' },
+          { column_name: 'severity', column_type: 'Choice', choices: 'Low\nHigh' },
         ],
       }),
     })
     expect(res.status).toBe(200)
     const meta = await admin.get<{
-      fields: { fieldname: string; label: string; reqd: boolean }[]
-    }>(`/api/meta/${encodeURIComponent(DT)}`)
-    const title = meta.fields.find((f) => f.fieldname === 'title')!
+      columns: { column_name: string; label: string; reqd: boolean }[]
+    }>(`/api/table/${encodeURIComponent(DT)}:meta`)
+    const title = meta.columns.find((f) => f.column_name === 'title')!
     expect(title.label).toBe('Headline')
     expect(title.reqd).toBe(true)
     // reqd now enforced
@@ -77,37 +77,37 @@ describe('META-004: schema sync', () => {
     expect(bad.status).toBe(417)
   })
 
-  test('removing a field drops the docfield but NEVER the column without the flag', async ({
+  test('removing a column drops the column_def but NEVER the physical column without the flag', async ({
     admin,
   }) => {
     await setup(admin)
     const res = await admin.fetch(`/api/doctype/${encodeURIComponent(DT)}`, {
       method: 'PUT',
       body: JSON.stringify({
-        fields: [
-          { fieldname: 'title', fieldtype: 'Data', label: 'Headline', reqd: true },
-          { fieldname: 'severity', fieldtype: 'Select', options: 'Low\nHigh' },
+        columns: [
+          { column_name: 'title', column_type: 'Data', label: 'Headline', reqd: true },
+          { column_name: 'severity', column_type: 'Choice', choices: 'Low\nHigh' },
         ],
       }),
     })
     expect(res.status).toBe(200)
-    const meta = await admin.get<{ fields: { fieldname: string }[] }>(
-      `/api/meta/${encodeURIComponent(DT)}`,
+    const meta = await admin.get<{ columns: { column_name: string }[] }>(
+      `/api/table/${encodeURIComponent(DT)}:meta`,
     )
-    expect(meta.fields.map((f) => f.fieldname)).not.toContain('points')
+    expect(meta.columns.map((f) => f.column_name)).not.toContain('points')
     expect(await columns()).toContain('points') // data retained
     const rows = await sql.unsafe(`select points from ${TABLE} where title='a'`)
     expect(Number(rows[0].points)).toBe(1)
   })
 
-  test('drop_columns flag really drops; fieldtype changes are rejected', async ({ admin }) => {
+  test('drop_columns flag really drops; column_type changes are rejected', async ({ admin }) => {
     await setup(admin)
     expect((await addSeverity(admin)).status).toBe(200)
     const drop = await admin.fetch(`/api/doctype/${encodeURIComponent(DT)}`, {
       method: 'PUT',
       body: JSON.stringify({
         drop_columns: true,
-        fields: [{ fieldname: 'title', fieldtype: 'Data', label: 'Headline', reqd: true }],
+        columns: [{ column_name: 'title', column_type: 'Data', label: 'Headline', reqd: true }],
       }),
     })
     expect(drop.status).toBe(200)
@@ -116,10 +116,10 @@ describe('META-004: schema sync', () => {
     const badType = await admin.fetch(`/api/doctype/${encodeURIComponent(DT)}`, {
       method: 'PUT',
       body: JSON.stringify({
-        fields: [{ fieldname: 'title', fieldtype: 'Int' }],
+        columns: [{ column_name: 'title', column_type: 'Int' }],
       }),
     })
     expect(badType.status).toBe(417)
-    expect((await badType.json()).error.fields.title).toMatch(/fieldtype cannot change/)
+    expect((await badType.json()).error.fields.title).toMatch(/column_type cannot change/)
   })
 })

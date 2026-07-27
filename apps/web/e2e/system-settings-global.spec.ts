@@ -23,16 +23,16 @@ test.beforeAll(async ({ request }) => {
     headers,
     data: {
       name: DT,
-      autoname: 'prompt',
-      fields: [
-        { fieldname: 'due', fieldtype: 'Date', in_list_view: true },
-        { fieldname: 'amount', fieldtype: 'Currency', in_list_view: true },
+      id_pattern: 'prompt',
+      columns: [
+        { column_name: 'due', column_type: 'Date', in_list_view: true },
+        { column_name: 'amount', column_type: 'Currency', in_list_view: true },
       ],
     },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   // A known doc: 9 March 2026, amount 1234.5.
-  await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
     data: { name: 'set4-doc', due: '2026-03-09', amount: 1234.5 },
   })

@@ -8,9 +8,9 @@ A free and open-source GlideOS: describe an app in chat, drop an Excel file, or 
 
 **Developers first.** The goal is that a developer covers ~80% of a business system's requirements using:
 
-1. **Configuration options** — DocTypes defined as JSON, synced on deploy
+1. **Configuration options** — Tables defined as JSON, synced on deploy
 2. **Excel drag-and-drop** — users hand over the spreadsheets they already run the business on; the schema is inferred, previewed, approved, imported
-3. **An AI coding-agent chat** — generating most of the artifacts (DocTypes, flows, layouts, seed data)
+3. **An AI coding-agent chat** — generating most of the artifacts (Tables, flows, layouts, seed data)
 
 The site goes up fast; iteration happens from there. End users get a second mode: creating their own master/lookup tables at runtime in production, without acting like developers.
 
@@ -20,10 +20,10 @@ We ran production systems on Frappe. What we keep and what we fix:
 
 **Keep (Frappe's genius):**
 
-- The DocType metadata system — schema and UI as one artifact, driving everything (tables, forms, lists, API, permissions)
-- Document lifecycle events as a universal automation bus
+- The Table metadata system — schema and UI as one artifact, driving everything (tables, forms, lists, API, permissions)
+- Row lifecycle events (automation triggers) as a universal automation bus
 - Customize-without-forking (layered overrides as data)
-- Real physical table per DocType — developer-defined and user-created tables get identical treatment
+- Real physical table per Table — developer-defined and user-created tables get identical treatment
 
 **Fix (the pain):**
 
@@ -40,7 +40,7 @@ Glide's gaps we deliberately close: no retries/error handling in workflows, no v
 
 ## Non-negotiable invariants
 
-1. **DocType metadata and flow definitions are portable JSON documents** — never backend-specific artifacts. These are the crown jewels.
-2. **All record access goes through one repository layer** keyed on DocType metadata — the only seam that would ever need re-implementing on another backend.
+1. **Table metadata and flow definitions are portable JSON documents** — never backend-specific artifacts. These are the crown jewels.
+2. **All record access goes through one repository layer** keyed on Table metadata — the only seam that would ever need re-implementing on another backend.
 3. **Promotion never moves data.** Any rung of the ladder (runtime → materialized → package) is a metadata/codegen change, independently reversible, round-trip tested.
 4. **100% automated testing** per the feather testing philosophy (MECE states, integration-first, test matrix before code). Coverage is the floor; review is the ceiling.

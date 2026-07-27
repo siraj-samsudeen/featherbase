@@ -9,11 +9,11 @@ import { sql } from './db'
 // metadata auto-layout — then Chromium turns it into a PDF.
 
 const FRAMEWORK_CHILD_COLS = new Set([
-  'name', 'owner', 'creation', 'modified', 'modified_by', 'docstatus', 'idx',
+  'name', 'created_by', 'created_at', 'updated_at', 'updated_by', 'status', 'position',
   'parent', 'parenttype', 'parentfield',
 ])
 
-type Doc = Record<string, unknown>
+type Row = Record<string, unknown>
 
 function esc(v: unknown): string {
   if (v == null) return ''
@@ -28,9 +28,9 @@ function fmt(v: unknown): string {
   return esc(v)
 }
 
-function interpolate(template: string, doc: Doc): string {
+function interpolate(template: string, row: Row): string {
   return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => {
-    const v = doc[key]
+    const v = row[key]
     if (v == null) return ''
     if (typeof v === 'boolean') return v ? 'Yes' : 'No'
     return esc(v)
@@ -42,9 +42,9 @@ function interpolate(template: string, doc: Doc): string {
 //   2. a Letter Head named on the chosen Print Format;
 //   3. the Letter Head marked `is_default`.
 // The header/footer HTML is interpolated with the same {{ field }} syntax as a
-// Print Format template, so a letterhead can echo document fields.
+// Print Format template, so a letterhead can echo row columns.
 async function resolveLetterHead(
-  doctype: string,
+  table: string,
   format: string | undefined,
   letterHead: string | undefined,
 ): Promise<{ header: string; footer: string } | null> {
@@ -52,52 +52,52 @@ async function resolveLetterHead(
   let name = letterHead
   if (!name && format && format !== 'standard') {
     const [pf] = await sql`
-      select letter_head from tab_print_format where name = ${format} and doc_type = ${doctype}`
+      select letter_head from print_format where name = ${format} and ref_table = ${table}`
     if (pf?.letter_head) name = String(pf.letter_head)
   }
   if (!name) {
     const [def] = await sql`
-      select name from tab_letter_head where is_default = true limit 1`
+      select name from letter_head where is_default = true limit 1`
     if (def?.name) name = String(def.name)
   }
   if (!name) return null
   const [lh] = await sql`
-    select header_html, footer_html from tab_letter_head where name = ${name}`
+    select header_html, footer_html from letter_head where name = ${name}`
   if (!lh) return null
   return { header: String(lh.header_html ?? ''), footer: String(lh.footer_html ?? '') }
 }
 
-// PRN-003: resolve the document + chosen format and return a full HTML page.
+// PRN-003: resolve the row + chosen format and return a full HTML page.
 export async function renderPrintHtml(
-  doctype: string,
+  table: string,
   name: string,
   user: string,
   format?: string,
   letterHead?: string,
 ): Promise<string> {
-  const meta = await getMeta(doctype)
-  const doc = (await getDoc(doctype, name, user)) as Doc
+  const meta = await getMeta(table)
+  const row = (await getDoc(table, name, user)) as Row
 
   let body: string
   if (format && format !== 'standard') {
     const [pf] = await sql`
-      select template from tab_print_format where name = ${format} and doc_type = ${doctype}`
-    body = pf ? interpolate(String(pf.template ?? ''), doc) : ''
+      select template from print_format where name = ${format} and ref_table = ${table}`
+    body = pf ? interpolate(String(pf.template ?? ''), row) : ''
   } else if (format === undefined) {
     const [def] = await sql`
-      select template from tab_print_format
-      where doc_type = ${doctype} and is_default = true limit 1`
-    body = def ? interpolate(String(def.template ?? ''), doc) : autoLayout(meta, doc)
+      select template from print_format
+      where ref_table = ${table} and is_default = true limit 1`
+    body = def ? interpolate(String(def.template ?? ''), row) : autoLayout(meta, row)
   } else {
-    body = autoLayout(meta, doc)
+    body = autoLayout(meta, row)
   }
 
-  const lh = await resolveLetterHead(doctype, format, letterHead)
+  const lh = await resolveLetterHead(table, format, letterHead)
   const header = lh?.header
-    ? `<header class="letter-head">${interpolate(lh.header, doc)}</header>`
+    ? `<header class="letter-head">${interpolate(lh.header, row)}</header>`
     : ''
   const footer = lh?.footer
-    ? `<footer class="letter-foot">${interpolate(lh.footer, doc)}</footer>`
+    ? `<footer class="letter-foot">${interpolate(lh.footer, row)}</footer>`
     : ''
 
   return `<!doctype html><html><head><meta charset="utf-8"><style>
@@ -113,26 +113,26 @@ export async function renderPrintHtml(
   </style></head><body>${header}${body}${footer}</body></html>`
 }
 
-function autoLayout(meta: Awaited<ReturnType<typeof getMeta>>, doc: Doc): string {
-  const scalar = meta.fields.filter(
-    (f) => !['Table', 'Section Break', 'Column Break'].includes(f.fieldtype) && !f.hidden,
+function autoLayout(meta: Awaited<ReturnType<typeof getMeta>>, row: Row): string {
+  const scalar = meta.columns.filter(
+    (f) => !['Sub-table', 'Section Break', 'Column Break'].includes(f.column_type) && !f.hidden,
   )
-  const tables = meta.fields.filter((f) => f.fieldtype === 'Table' && !f.hidden)
+  const tables = meta.columns.filter((f) => f.column_type === 'Sub-table' && !f.hidden)
   const rows = scalar
-    .map((f) => `<dt>${esc(f.label ?? f.fieldname)}</dt><dd>${fmt(doc[f.fieldname])}</dd>`)
+    .map((f) => `<dt>${esc(f.label ?? f.column_name)}</dt><dd>${fmt(row[f.column_name])}</dd>`)
     .join('')
   const tableHtml = tables
     .map((tf) => {
-      const list = (doc[tf.fieldname] as Doc[] | undefined) ?? []
+      const list = (row[tf.column_name] as Row[] | undefined) ?? []
       const cols = list.length ? Object.keys(list[0]).filter((k) => !FRAMEWORK_CHILD_COLS.has(k)) : []
       const head = cols.map((c) => `<th>${esc(c)}</th>`).join('')
       const bodyRows = list
         .map((r) => `<tr>${cols.map((c) => `<td>${fmt(r[c])}</td>`).join('')}</tr>`)
         .join('')
-      return `<h2>${esc(tf.label ?? tf.fieldname)}</h2><table><thead><tr>${head}</tr></thead><tbody>${bodyRows}</tbody></table>`
+      return `<h2>${esc(tf.label ?? tf.column_name)}</h2><table><thead><tr>${head}</tr></thead><tbody>${bodyRows}</tbody></table>`
     })
     .join('')
-  return `<h1>${esc(meta.name)}</h1><p class="docname">${esc(String(doc.name))}</p><dl>${rows}</dl>${tableHtml}`
+  return `<h1>${esc(meta.name)}</h1><p class="docname">${esc(String(row.name))}</p><dl>${rows}</dl>${tableHtml}`
 }
 
 // Per-platform layout of a Playwright browser bundle, relative to its

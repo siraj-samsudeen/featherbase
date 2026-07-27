@@ -7,7 +7,7 @@ import { AppError } from './errors'
 
 // FILE-001: disk-backed file storage (the local equivalent of Supabase
 // Storage per the architecture invariants). Uploads land under
-// storage/public or storage/private; every upload also gets a File DocType
+// storage/public or storage/private; every upload also gets a File Table
 // row, and files are only ever served by looking that row up — an
 // unregistered path is never readable.
 

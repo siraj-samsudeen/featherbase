@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../lib/api'
 
-// RPT-004: renders an admin-authored Query Report. The SQL itself never
+// RPT-004: renders an admin-authored SQL Report. The SQL itself never
 // reaches the client — we fetch only the filter names, collect values, and POST
 // them to be bound as parameters server-side.
 
 interface QueryReportMeta {
   name: string
-  ref_doctype: string | null
+  ref_doctype: string | null // wire key unchanged: GET /api/query_report/:name still returns `ref_doctype`
   filters: string[]
 }
 interface RunResult {

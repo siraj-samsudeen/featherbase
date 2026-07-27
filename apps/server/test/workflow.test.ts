@@ -13,12 +13,12 @@ const FLOW = 'Wf Srv Flow'
 
 const FLOW_DOC = {
   name: FLOW,
-  document_type: DT,
+  ref_table: DT,
   is_active: true,
   states: [
-    { state: 'Draft', doc_status: '0' },
-    { state: 'Pending', doc_status: '0' },
-    { state: 'Approved', doc_status: '1' },
+    { state: 'Draft', target_status: 'draft' },
+    { state: 'Pending', target_status: 'draft' },
+    { state: 'Approved', target_status: 'submitted' },
   ],
   transitions: [
     { state: 'Draft', action: 'Submit', next_state: 'Pending', allowed: APPROVER },
@@ -30,15 +30,15 @@ const FLOW_DOC = {
 async function setup(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: DT,
-    autoname: 'prompt',
-    fields: [{ fieldname: 'title', fieldtype: 'Data' }],
+    id_pattern: 'prompt',
+    columns: [{ column_name: 'title', column_type: 'Data' }],
   })
   for (const r of [APPROVER, VIEWER])
     await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: r } })
   // Viewer can read+write the doc but is NOT the approver.
   await admin.post('/api/save_doc', {
-    doctype: 'DocPerm',
-    doc: { ref_doctype: DT, role: VIEWER, permlevel: 0, can_read: true, can_write: true },
+    doctype: 'Permission',
+    doc: { ref_table: DT, role: VIEWER, tier: 'basic', can_read: true, can_write: true },
   })
 }
 
@@ -47,27 +47,27 @@ async function makeFlow(admin: TestClient) {
 }
 
 async function makeDoc(admin: TestClient) {
-  await admin.post(`/api/resource/${encodeURIComponent(DT)}`, { name: 'wf-srv-1', title: 'x' })
+  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { name: 'wf-srv-1', title: 'x' })
 }
 
 // Replay of the WF-002 drive (Submit → Approve) without its assertions.
 async function drive(admin: TestClient) {
-  await admin.post('/api/apply_workflow_action', { doctype: DT, name: 'wf-srv-1', action: 'Submit' })
-  await admin.post('/api/apply_workflow_action', { doctype: DT, name: 'wf-srv-1', action: 'Approve' })
+  await admin.post(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent('wf-srv-1')}:apply_workflow_action`, { action: 'Submit' })
+  await admin.post(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent('wf-srv-1')}:apply_workflow_action`, { action: 'Approve' })
 }
 
 describe('WF-001: workflow definition', () => {
-  test('persists and adds a workflow_state field to the target DocType', async ({ admin }) => {
+  test('persists and adds a workflow_state column to the target Table', async ({ admin }) => {
     await setup(admin)
     const res = await admin.fetch('/api/save_doc', {
       method: 'POST',
       body: JSON.stringify({ doctype: 'Workflow', doc: FLOW_DOC }),
     })
     expect(res.status).toBe(201)
-    const meta = await admin.get<{ fields: { fieldname: string }[] }>(
-      `/api/meta/${encodeURIComponent(DT)}`,
+    const meta = await admin.get<{ columns: { column_name: string }[] }>(
+      `/api/table/${encodeURIComponent(DT)}:meta`,
     )
-    expect(meta.fields.some((f) => f.fieldname === 'workflow_state')).toBe(true)
+    expect(meta.columns.some((f) => f.column_name === 'workflow_state')).toBe(true)
   })
 
   test('rejects transitions that reference undefined states', async ({ admin }) => {
@@ -77,9 +77,9 @@ describe('WF-001: workflow definition', () => {
         doctype: 'Workflow',
         doc: {
           name: 'Wf Srv Orphan',
-          document_type: DT,
+          ref_table: DT,
           is_active: false,
-          states: [{ state: 'A', doc_status: '0' }],
+          states: [{ state: 'A', target_status: 'draft' }],
           transitions: [{ state: 'A', action: 'Go', next_state: 'Ghost', allowed: APPROVER }],
         },
       }),
@@ -97,15 +97,15 @@ describe('WF-002/003: execution + server-side enforcement', () => {
     await makeDoc(admin)
     const viewer = await createUser({ roles: [VIEWER] })
     await expect(
-      viewer.post('/api/apply_workflow_action', { doctype: DT, name: 'wf-srv-1', action: 'Submit' }),
+      viewer.post(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent('wf-srv-1')}:apply_workflow_action`, { action: 'Submit' }),
     ).rejects.toMatchObject({ status: 403 })
-    const doc = await admin.get<{ workflow_state: string | null; docstatus: number }>(
-      `/api/resource/${encodeURIComponent(DT)}/wf-srv-1`,
+    const doc = await admin.get<{ workflow_state: string | null; status: string }>(
+      `/api/table/${encodeURIComponent(DT)}/wf-srv-1`,
     )
     // New documents start at the workflow's initial state (WF-003) — the
     // refused action must leave them there.
     expect(doc.workflow_state).toBe('Draft')
-    expect(doc.docstatus).toBe(0)
+    expect(doc.status).toBe('draft')
   })
 
   test('an authorized user (admin) drives states and the audit trail records who/what', async ({
@@ -114,23 +114,23 @@ describe('WF-002/003: execution + server-side enforcement', () => {
     await setup(admin)
     await makeFlow(admin)
     await makeDoc(admin)
-    const submit = await admin.post<{ workflow_state: string; docstatus: number }>(
-      '/api/apply_workflow_action',
-      { doctype: DT, name: 'wf-srv-1', action: 'Submit' },
+    const submit = await admin.post<{ workflow_state: string; status: string }>(
+      `/api/table/${encodeURIComponent(DT)}/wf-srv-1:apply_workflow_action`,
+      { action: 'Submit' },
     )
     expect(submit.workflow_state).toBe('Pending')
-    expect(submit.docstatus).toBe(0)
+    expect(submit.status).toBe('draft')
 
-    const approve = await admin.post<{ workflow_state: string; docstatus: number }>(
-      '/api/apply_workflow_action',
-      { doctype: DT, name: 'wf-srv-1', action: 'Approve' },
+    const approve = await admin.post<{ workflow_state: string; status: string }>(
+      `/api/table/${encodeURIComponent(DT)}/wf-srv-1:apply_workflow_action`,
+      { action: 'Approve' },
     )
     expect(approve.workflow_state).toBe('Approved')
-    expect(approve.docstatus).toBe(1)
+    expect(approve.status).toBe('submitted')
 
     const trail = await sql`
-      select action, from_state, to_state, actor from tab_workflow_action
-      where ref_doctype = ${DT} and ref_name = 'wf-srv-1' order by creation asc`
+      select action, from_state, to_state, actor from workflow_action
+      where ref_table = ${DT} and ref_name = 'wf-srv-1' order by created_at asc`
     expect(trail.map((t) => t.action)).toEqual(['Submit', 'Approve'])
     expect(trail.map((t) => t.to_state)).toEqual(['Pending', 'Approved'])
     expect(trail.every((t) => t.actor === 'Administrator')).toBe(true)
@@ -143,7 +143,7 @@ describe('WF-002/003: execution + server-side enforcement', () => {
     await drive(admin)
     // wf-srv-1 is now Approved with no outgoing transitions.
     await expect(
-      admin.post('/api/apply_workflow_action', { doctype: DT, name: 'wf-srv-1', action: 'Submit' }),
+      admin.post(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent('wf-srv-1')}:apply_workflow_action`, { action: 'Submit' }),
     ).rejects.toMatchObject({ status: 417 })
   })
 })

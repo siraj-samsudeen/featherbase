@@ -8,18 +8,18 @@ import { FilterBar, type Filter } from './ListView'
 type Row = Record<string, unknown>
 
 const NUMERIC = new Set(['Int', 'Float', 'Currency'])
-const GROUPABLE = new Set(['Select', 'Link', 'Data', 'Check'])
+const GROUPABLE = new Set(['Choice', 'Reference', 'Data', 'Check'])
 
-// RPT-002: the persisted shape of a report configuration.
+// RPT-002: the persisted shape of a summary view configuration.
 interface ReportConfig {
   columns?: string[]
   group_by?: string
   filters?: Filter[]
 }
 
-// RPT-001: report view — column picker and group-by with counts and sums,
-// generic over every DocType (metadata-driven like the rest of the Desk).
-// RPT-002: the configuration can be saved as a named Report document and
+// RPT-001: summary view — column picker and group-by with counts and sums,
+// generic over every Table (metadata-driven like the rest of the Admin UI).
+// RPT-002: the configuration can be saved as a named Report row and
 // restored via ?report=<name>.
 export function ReportView({
   doctype,
@@ -35,8 +35,8 @@ export function ReportView({
 
   const available = useMemo(
     () =>
-      (meta.data?.fields ?? []).filter(
-        (f) => !NO_COLUMN_TYPES.has(f.fieldtype) && f.fieldtype !== 'Table' && !f.hidden,
+      (meta.data?.columns ?? []).filter(
+        (f) => !NO_COLUMN_TYPES.has(f.column_type) && f.column_type !== 'Sub-table' && !f.hidden,
       ),
     [meta.data],
   )
@@ -53,12 +53,12 @@ export function ReportView({
   const [pinDashboard, setPinDashboard] = useState('')
   const [pinMsg, setPinMsg] = useState<string | null>(null)
 
-  // RPT-002: saved reports for this DocType.
+  // RPT-002: saved reports for this Table.
   const savedReports = useQuery({
     queryKey: ['saved-reports', doctype],
     queryFn: () =>
       listResource<{ name: string }>('Report', {
-        filters: [['ref_doctype', '=', doctype]],
+        filters: [['ref_table', '=', doctype]],
         fields: ['name'],
         order_by: 'name asc',
         limit_page_length: 100,
@@ -80,7 +80,7 @@ export function ReportView({
   const savedDoc = useQuery({
     queryKey: ['report-doc', report],
     enabled: Boolean(report),
-    queryFn: () => api.get<{ config?: ReportConfig }>(`/api/resource/Report/${encodeURIComponent(report!)}`),
+    queryFn: () => api.get<{ config?: ReportConfig }>(`/api/table/Report/${encodeURIComponent(report!)}`),
   })
   useEffect(() => {
     const cfg = savedDoc.data?.config
@@ -90,11 +90,11 @@ export function ReportView({
     setFilters(Array.isArray(cfg.filters) ? cfg.filters : [])
   }, [savedDoc.data])
 
-  // Default columns: list-view fields (or the first three).
+  // Default columns: list-view columns (or the first three).
   const columns = useMemo(() => {
     if (selected) return selected
-    const defaults = available.filter((f) => f.in_list_view).map((f) => f.fieldname)
-    return defaults.length ? defaults : available.slice(0, 3).map((f) => f.fieldname)
+    const defaults = available.filter((f) => f.in_list_view).map((f) => f.column_name)
+    return defaults.length ? defaults : available.slice(0, 3).map((f) => f.column_name)
   }, [selected, available])
 
   const fetchFields = useMemo(() => {
@@ -110,7 +110,7 @@ export function ReportView({
       listResource<Row>(doctype, {
         fields: fetchFields,
         filters: filters.length ? filters : undefined,
-        order_by: groupBy ? `${groupBy} asc` : 'modified desc',
+        order_by: groupBy ? `${groupBy} asc` : 'updated_at desc',
         limit_page_length: 500,
       }),
   })
@@ -121,7 +121,7 @@ export function ReportView({
       const config: ReportConfig = { columns, group_by: groupBy, filters }
       await api.post('/api/save_doc', {
         doctype: 'Report',
-        doc: { name: saveName, ref_doctype: doctype, config },
+        doc: { name: saveName, ref_table: doctype, config },
       })
       await queryClient.invalidateQueries({ queryKey: ['saved-reports', doctype] })
       setSaveOpen(false)
@@ -153,7 +153,7 @@ export function ReportView({
   if (meta.isError) return <p className="text-sm text-red-600">Cannot load {doctype}</p>
 
   const numericCols = columns.filter((c) =>
-    NUMERIC.has(available.find((f) => f.fieldname === c)?.fieldtype ?? ''),
+    NUMERIC.has(available.find((f) => f.column_name === c)?.column_type ?? ''),
   )
 
   // RPT-006: the value field driving the chart (numeric column). Falls back to
@@ -194,8 +194,8 @@ export function ReportView({
 
   const fmt = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(2))
 
-  const label = (fieldname: string) =>
-    available.find((f) => f.fieldname === fieldname)?.label ?? fieldname
+  const label = (columnName: string) =>
+    available.find((f) => f.column_name === columnName)?.label ?? columnName
 
   const cell = (row: Row, col: string) => {
     const v = row[col]
@@ -301,7 +301,7 @@ export function ReportView({
     <div data-testid="report-view">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{doctype} — Report</h1>
+          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{doctype} — Summary</h1>
           <span className="text-xs text-[var(--color-ink-muted)]" data-testid="report-total">
             {rows.data?.total ?? 0} rows
           </span>
@@ -338,22 +338,22 @@ export function ReportView({
             <div className="fc-card absolute z-10 mt-1 max-h-72 w-56 overflow-y-auto p-2">
               {available.map((f) => (
                 <label
-                  key={f.fieldname}
+                  key={f.column_name}
                   className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-[var(--color-subtle)]"
                 >
                   <input
                     type="checkbox"
-                    checked={columns.includes(f.fieldname)}
-                    data-testid={`report-col-${f.fieldname}`}
+                    checked={columns.includes(f.column_name)}
+                    data-testid={`report-col-${f.column_name}`}
                     onChange={(e) =>
                       setSelected(
                         e.target.checked
-                          ? [...columns, f.fieldname]
-                          : columns.filter((c) => c !== f.fieldname),
+                          ? [...columns, f.column_name]
+                          : columns.filter((c) => c !== f.column_name),
                       )
                     }
                   />
-                  {f.label ?? f.fieldname}
+                  {f.label ?? f.column_name}
                 </label>
               ))}
             </div>
@@ -370,10 +370,10 @@ export function ReportView({
           >
             <option value="">None</option>
             {available
-              .filter((f) => GROUPABLE.has(f.fieldtype))
+              .filter((f) => GROUPABLE.has(f.column_type))
               .map((f) => (
-                <option key={f.fieldname} value={f.fieldname}>
-                  {f.label ?? f.fieldname}
+                <option key={f.column_name} value={f.column_name}>
+                  {f.label ?? f.column_name}
                 </option>
               ))}
           </select>

@@ -11,25 +11,25 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const token = ((await login.json()) as { token: string }).token
   const auth = { Authorization: `Bearer ${token}` }
-  for (const [name, fields] of [
-    [CUST, [{ fieldname: 'city', fieldtype: 'Data' }]],
-    [ORDER, [{ fieldname: 'customer', fieldtype: 'Link', options: CUST, in_list_view: true }]],
+  for (const [name, columns] of [
+    [CUST, [{ column_name: 'city', column_type: 'Data' }]],
+    [ORDER, [{ column_name: 'customer', column_type: 'Reference', reference_table: CUST, in_list_view: true }]],
   ] as [string, unknown[]][]) {
     const res = await request.post('/api/doctype', {
       headers: auth,
-      data: { name, autoname: 'prompt', fields },
+      data: { name, id_pattern: 'prompt', columns },
     })
     if (![201, 409].includes(res.status())) throw new Error(`${name}: ${res.status()}`)
   }
-  await request.delete(`/api/resource/${encodeURIComponent(ORDER)}/RN-ORD`, { headers: auth })
-  await request.delete(`/api/resource/${encodeURIComponent(CUST)}/OldCo`, { headers: auth })
-  await request.delete(`/api/resource/${encodeURIComponent(CUST)}/NewCo`, { headers: auth })
-  const c = await request.post(`/api/resource/${encodeURIComponent(CUST)}`, {
+  await request.delete(`/api/table/${encodeURIComponent(ORDER)}/RN-ORD`, { headers: auth })
+  await request.delete(`/api/table/${encodeURIComponent(CUST)}/OldCo`, { headers: auth })
+  await request.delete(`/api/table/${encodeURIComponent(CUST)}/NewCo`, { headers: auth })
+  const c = await request.post(`/api/table/${encodeURIComponent(CUST)}`, {
     headers: auth,
     data: { name: 'OldCo', city: 'X' },
   })
   if (c.status() !== 201) throw new Error(`cust: ${c.status()}`)
-  const o = await request.post(`/api/resource/${encodeURIComponent(ORDER)}`, {
+  const o = await request.post(`/api/table/${encodeURIComponent(ORDER)}`, {
     headers: auth,
     data: { name: 'RN-ORD', customer: 'OldCo' },
   })

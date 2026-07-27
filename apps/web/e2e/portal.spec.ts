@@ -20,21 +20,21 @@ test.beforeAll(async ({ request }) => {
 
   const dt = await request.post('/api/doctype', {
     headers: H,
-    data: { name: DT, fields: [{ fieldname: 'subject', fieldtype: 'Data', in_list_view: true }] },
+    data: { name: DT, columns: [{ column_name: 'subject', column_type: 'Data', in_list_view: true }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
 
   await request.post('/api/save_doc', { headers: H, data: { doctype: 'Role', doc: { name: ROLE } } })
-  // if_owner grant: website users only ever see/created their own tickets.
+  // own_rows_only grant: website users only ever see/created their own tickets.
   await request.post('/api/save_doc', {
     headers: H,
     data: {
-      doctype: 'DocPerm',
-      doc: { ref_doctype: DT, role: ROLE, if_owner: true, can_read: true, can_write: true, can_create: true },
+      doctype: 'Permission',
+      doc: { ref_table: DT, role: ROLE, own_rows_only: true, can_read: true, can_write: true, can_create: true },
     },
   })
   for (const u of [ALICE, BOB]) {
-    await request.delete(`/api/resource/User/${encodeURIComponent(u)}`, { headers: H })
+    await request.delete(`/api/table/User/${encodeURIComponent(u)}`, { headers: H })
     await request.post('/api/save_doc', {
       headers: H,
       data: { doctype: 'User', doc: { name: u, email: u, enabled: true, roles: [{ role: ROLE }] } },
@@ -46,19 +46,19 @@ test.beforeAll(async ({ request }) => {
   // holds if Alice owns exactly one. (The users are recreated above, but the
   // documents they own survive.)
   const existing = (await (
-    await request.get(`/api/resource/${encodeURIComponent(DT)}?limit=100`, { headers: H })
+    await request.get(`/api/table/${encodeURIComponent(DT)}?limit=100`, { headers: H })
   ).json()) as { data?: { name: string }[] }
   for (const d of existing.data ?? [])
-    await request.delete(`/api/resource/${encodeURIComponent(DT)}/${d.name}`, { headers: H })
+    await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.name}`, { headers: H })
 
   // Each user creates their own ticket (owner = creator).
   const aTok = await token(request, ALICE, PWD)
-  await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: { Authorization: `Bearer ${aTok}` },
     data: { subject: 'Alice cannot log in' },
   })
   const bTok = await token(request, BOB, PWD)
-  const b = await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  const b = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: { Authorization: `Bearer ${bTok}` },
     data: { subject: 'Bob billing question' },
   })

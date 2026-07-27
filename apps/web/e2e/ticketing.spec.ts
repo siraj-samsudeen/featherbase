@@ -29,7 +29,7 @@ test.beforeAll(async ({ request }) => {
 test.afterAll(async ({ request }) => {
   if (!name) return
   const H = { Authorization: `Bearer ${await token(request)}` }
-  await request.delete(`/api/resource/HD%20Ticket/${name}`, { headers: H })
+  await request.delete(`/api/table/HD%20Ticket/${name}`, { headers: H })
 })
 
 test('helpdesk: a ticket renders in the Desk and opens with workflow actions', async ({

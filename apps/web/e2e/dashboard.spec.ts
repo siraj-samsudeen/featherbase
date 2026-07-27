@@ -18,23 +18,23 @@ test.beforeAll(async ({ request }) => {
     headers,
     data: {
       name: DT,
-      fields: [
-        { fieldname: 'title', fieldtype: 'Data', in_list_view: true },
-        { fieldname: 'status', fieldtype: 'Select', options: 'Open\nClosed\nPending', in_list_view: true },
+      columns: [
+        { column_name: 'title', column_type: 'Data', in_list_view: true },
+        { column_name: 'stage', column_type: 'Choice', choices: 'Open\nClosed\nPending', in_list_view: true },
       ],
     },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   // Clear any docs from a prior run so the counts are exact.
   const existing = (await (
-    await request.get(`/api/resource/${encodeURIComponent(DT)}?limit_page_length=500`, { headers })
+    await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=500`, { headers })
   ).json()) as { data: { name: string }[] }
-  for (const d of existing.data) await request.delete(`/api/resource/${encodeURIComponent(DT)}/${d.name}`, { headers })
+  for (const d of existing.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.name}`, { headers })
 
-  for (const status of STATUSES)
-    await request.post(`/api/resource/${encodeURIComponent(DT)}`, { headers, data: { title: 't', status } })
+  for (const stage of STATUSES)
+    await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { title: 't', stage } })
 
-  await request.delete(`/api/resource/Dashboard/${encodeURIComponent(DASH)}`, { headers })
+  await request.delete(`/api/table/Dashboard/${encodeURIComponent(DASH)}`, { headers })
   const dash = await request.post('/api/save_doc', {
     headers,
     data: {
@@ -45,9 +45,9 @@ test.beforeAll(async ({ request }) => {
         config: JSON.stringify({
           cards: [
             { label: 'All Tasks', doctype: DT },
-            { label: 'Open Tasks', doctype: DT, filters: [['status', '=', 'Open']] },
+            { label: 'Open Tasks', doctype: DT, filters: [['stage', '=', 'Open']] },
           ],
-          charts: [{ label: 'By Status', doctype: DT, group_by: 'status' }],
+          charts: [{ label: 'By Status', doctype: DT, group_by: 'stage' }],
         }),
       },
     },

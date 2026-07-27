@@ -13,18 +13,18 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     headers,
     data: {
       name: DT,
-      autoname: 'prompt',
-      fields: [
-        { fieldname: 'title', fieldtype: 'Data', in_list_view: true },
-        { fieldname: 'stage', fieldtype: 'Select', options: 'Todo\nDoing\nDone', in_list_view: true },
+      id_pattern: 'prompt',
+      columns: [
+        { column_name: 'title', column_type: 'Data', in_list_view: true },
+        { column_name: 'stage', column_type: 'Choice', choices: 'Todo\nDoing\nDone', in_list_view: true },
       ],
     },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   // Fresh dataset.
-  const listed = (await (await request.get(`/api/resource/${encodeURIComponent(DT)}?limit_page_length=100`, { headers })).json()) as { data: { name: string }[] }
-  for (const r of listed.data) await request.delete(`/api/resource/${encodeURIComponent(DT)}/${r.name}`, { headers })
-  await request.post(`/api/resource/${encodeURIComponent(DT)}`, { headers, data: { name: 'card-a', title: 'Card A', stage: 'Todo' } })
+  const listed = (await (await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, { headers })).json()) as { data: { name: string }[] }
+  for (const r of listed.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${r.name}`, { headers })
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { name: 'card-a', title: 'Card A', stage: 'Todo' } })
 })
 
 test('UI-020: dragging a card to another column updates its field in the DB', async ({ page }) => {
@@ -61,7 +61,7 @@ test('UI-020: dragging a card to another column updates its field in the DB', as
   // …and the field changed in the DB.
   const token = await page.evaluate(() => localStorage.getItem('fc_token'))
   const doc = (await (
-    await page.request.get(`/api/resource/${encodeURIComponent(DT)}/card-a`, {
+    await page.request.get(`/api/table/${encodeURIComponent(DT)}/card-a`, {
       headers: { Authorization: `Bearer ${token}` },
     })
   ).json()) as { stage: string }

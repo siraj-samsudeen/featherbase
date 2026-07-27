@@ -17,29 +17,29 @@ test.beforeAll(async ({ request }) => {
     headers: H,
     data: {
       name: DT,
-      autoname: 'prompt',
-      fields: [
-        { fieldname: 'title', fieldtype: 'Data', in_list_view: true },
-        { fieldname: 'amount', fieldtype: 'Int', in_list_view: true },
+      id_pattern: 'prompt',
+      columns: [
+        { column_name: 'title', column_type: 'Data', in_list_view: true },
+        { column_name: 'amount', column_type: 'Int', in_list_view: true },
       ],
     },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   await request.post('/api/save_doc', { headers: H, data: { doctype: 'Role', doc: { name: 'Wf Cond Approver' } } })
 
-  await request.delete(`/api/resource/Workflow/${encodeURIComponent(FLOW)}`, { headers: H })
+  await request.delete(`/api/table/Workflow/${encodeURIComponent(FLOW)}`, { headers: H })
   const wf = await request.post('/api/save_doc', {
     headers: H,
     data: {
       doctype: 'Workflow',
       doc: {
         name: FLOW,
-        document_type: DT,
+        ref_table: DT,
         is_active: true,
         states: [
-          { state: 'Draft', doc_status: '0' },
-          { state: 'Approved', doc_status: '1' },
-          { state: 'Auto Approved', doc_status: '1' },
+          { state: 'Draft', target_status: 'draft' },
+          { state: 'Approved', target_status: 'submitted' },
+          { state: 'Auto Approved', target_status: 'submitted' },
         ],
         transitions: [
           { state: 'Draft', action: 'Approve', next_state: 'Approved', allowed: 'Wf Cond Approver', condition: 'doc.amount > 1000' },
@@ -50,8 +50,8 @@ test.beforeAll(async ({ request }) => {
   })
   if (![200, 201].includes(wf.status())) throw new Error(`workflow: ${wf.status()}`)
 
-  await request.post(`/api/resource/${encodeURIComponent(DT)}`, { headers: H, data: { name: BIG, title: 'big', amount: 5000 } })
-  await request.post(`/api/resource/${encodeURIComponent(DT)}`, { headers: H, data: { name: SMALL, title: 'small', amount: 500 } })
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers: H, data: { name: BIG, title: 'big', amount: 5000 } })
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers: H, data: { name: SMALL, title: 'small', amount: 500 } })
 })
 
 async function login(page: import('@playwright/test').Page) {

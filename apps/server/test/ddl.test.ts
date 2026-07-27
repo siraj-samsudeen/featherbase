@@ -12,35 +12,35 @@ async function columns(table: string): Promise<Record<string, string>> {
   return Object.fromEntries(rows.map((r) => [r.column_name, r.data_type]))
 }
 
-describe('META-003: DocType save generates its table', () => {
-  test('creates tab_<name> with standard + field columns of correct types', async ({ admin }) => {
+describe('META-003: Table save generates its physical table', () => {
+  test('creates <name> with standard + column columns of correct types', async ({ admin }) => {
     const res = await admin.fetch('/api/doctype', {
       method: 'POST',
       body: JSON.stringify({
         name: DT,
-        fields: [
-          { fieldname: 'title', fieldtype: 'Data', reqd: true },
-          { fieldname: 'qty', fieldtype: 'Int' },
-          { fieldname: 'rate', fieldtype: 'Currency' },
-          { fieldname: 'due', fieldtype: 'Date' },
-          { fieldname: 'done', fieldtype: 'Check' },
-          { fieldname: 'meta_info', fieldtype: 'JSON' },
-          { fieldname: 'sec', fieldtype: 'Section Break' },
-          { fieldname: 'code', fieldtype: 'Data', unique: true },
+        columns: [
+          { column_name: 'title', column_type: 'Data', reqd: true },
+          { column_name: 'qty', column_type: 'Int' },
+          { column_name: 'rate', column_type: 'Currency' },
+          { column_name: 'due', column_type: 'Date' },
+          { column_name: 'done', column_type: 'Check' },
+          { column_name: 'meta_info', column_type: 'JSON' },
+          { column_name: 'sec', column_type: 'Section Break' },
+          { column_name: 'code', column_type: 'Data', unique: true },
         ],
       }),
     })
     expect(res.status).toBe(201)
 
-    const cols = await columns('tab_ddl_test_task')
+    const cols = await columns('ddl_test_task')
     expect(cols).toMatchObject({
       name: 'character varying',
-      owner: 'character varying',
-      creation: 'timestamp with time zone',
-      modified: 'timestamp with time zone',
-      modified_by: 'character varying',
-      docstatus: 'smallint',
-      idx: 'integer',
+      created_by: 'character varying',
+      created_at: 'timestamp with time zone',
+      updated_at: 'timestamp with time zone',
+      updated_by: 'character varying',
+      status: 'text',
+      position: 'integer',
       title: 'character varying',
       qty: 'bigint',
       rate: 'numeric',
@@ -52,7 +52,7 @@ describe('META-003: DocType save generates its table', () => {
     expect(cols.sec).toBeUndefined()
 
     await sql.unsafe(
-      `insert into tab_ddl_test_task (name, code) values ('a', 'X'), ('b', 'X')`,
+      `insert into ddl_test_task (name, code) values ('a', 'X'), ('b', 'X')`,
     ).then(
       () => {
         throw new Error('unique constraint not enforced')
@@ -61,17 +61,17 @@ describe('META-003: DocType save generates its table', () => {
     )
   })
 
-  test('child DocTypes (istable) get parent linkage columns and index', async ({ admin }) => {
+  test('child Tables (kind: sub_table) get parent linkage columns and index', async ({ admin }) => {
     const res = await admin.fetch('/api/doctype', {
       method: 'POST',
       body: JSON.stringify({
         name: CHILD,
-        istable: true,
-        fields: [{ fieldname: 'item', fieldtype: 'Data' }],
+        kind: 'sub_table',
+        columns: [{ column_name: 'item', column_type: 'Data' }],
       }),
     })
     expect(res.status).toBe(201)
-    const cols = await columns('tab_ddl_test_row')
+    const cols = await columns('ddl_test_row')
     expect(cols).toMatchObject({
       parent: 'character varying',
       parenttype: 'character varying',
@@ -82,18 +82,18 @@ describe('META-003: DocType save generates its table', () => {
 
   test('rolls back metadata when DDL fails (transactional)', async ({ admin }) => {
     // Second create of same name 409s before DDL; simulate DDL failure via
-    // a fieldname that collides with a standard column being caught earlier.
-    // Real transactional check: table already exists but doctype row absent.
-    await sql.unsafe(`create table if not exists tab_ddl_ghost (name text)`)
+    // a column_name that collides with a standard column being caught earlier.
+    // Real transactional check: table already exists but table_def row absent.
+    await sql.unsafe(`create table if not exists ddl_ghost (name text)`)
     const res = await admin.fetch('/api/doctype', {
       method: 'POST',
       body: JSON.stringify({
         name: 'Ddl Ghost',
-        fields: [{ fieldname: 'x', fieldtype: 'Data' }],
+        columns: [{ column_name: 'x', column_type: 'Data' }],
       }),
     })
     expect(res.status).toBe(500)
-    const [row] = await sql`select 1 from tab_doctype where name = 'Ddl Ghost'`
+    const [row] = await sql`select 1 from table_def where name = 'Ddl Ghost'`
     expect(row).toBeUndefined()
   })
 })

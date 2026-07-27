@@ -15,9 +15,9 @@ async function makeDocType(request: APIRequestContext, name: string) {
     headers,
     data: {
       name,
-      fields: [
-        { fieldname: 'qty', fieldtype: 'Int', in_list_view: true },
-        { fieldname: 'total', fieldtype: 'Int', in_list_view: true },
+      columns: [
+        { column_name: 'qty', column_type: 'Int', in_list_view: true },
+        { column_name: 'total', column_type: 'Int', in_list_view: true },
       ],
     },
   })
@@ -26,10 +26,10 @@ async function makeDocType(request: APIRequestContext, name: string) {
 
 async function makeClientScript(request: APIRequestContext, name: string, dt: string, script: string) {
   const headers = await adminHeaders(request)
-  await request.delete(`/api/resource/Client%20Script/${name}`, { headers })
+  await request.delete(`/api/table/Client%20Script/${name}`, { headers })
   const res = await request.post('/api/save_doc', {
     headers,
-    data: { doctype: 'Client Script', doc: { name, reference_doctype: dt, script, enabled: true } },
+    data: { doctype: 'Client Script', doc: { name, ref_table: dt, script, enabled: true } },
   })
   if (res.status() !== 201) throw new Error(`client script ${name}: ${res.status()} ${await res.text()}`)
 }

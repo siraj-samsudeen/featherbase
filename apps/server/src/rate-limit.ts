@@ -22,7 +22,7 @@ async function budgetFor(user: string): Promise<number> {
   const cached = limitCache.get(user)
   const now = Date.now()
   if (cached && now - cached.at < LIMIT_TTL_MS) return cached.limit
-  const [row] = await sql`select api_rate_limit from tab_user where name = ${user}`
+  const [row] = await sql`select api_rate_limit from "user" where name = ${user}`
   const configured = row ? Number(row.api_rate_limit) : 0
   const limit = configured && configured > 0 ? configured : GLOBAL_MAX
   limitCache.set(user, { limit, at: now })

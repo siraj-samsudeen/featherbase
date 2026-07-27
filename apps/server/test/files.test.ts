@@ -11,6 +11,10 @@ import type { TestClient } from 'feather-testing-postgres'
 // Sandbox note: File ROWS roll back with the test transaction, but storage
 // objects are real disk files — each test deletes what it uploaded in a
 // finally block (deleteStored is defensive about already-removed objects).
+//
+// NOTE: the multipart form field names (`ref_doctype`, `ref_name`) are wire
+// format and unchanged — /api/upload_file reads `body.ref_doctype` off the
+// form and maps it onto the File doc's `ref_table` column.
 
 async function upload(
   as: TestClient,
@@ -46,7 +50,7 @@ describe('FILE-001: file upload + storage', () => {
       expect(doc.file_url).toMatch(/^\/files\/[0-9a-f]{16}_hello\.txt$/)
       expect(doc.is_private).toBe(false)
 
-      const [row] = await sql`select name from tab_file where file_url = ${doc.file_url as string}`
+      const [row] = await sql`select name from file where file_url = ${doc.file_url as string}`
       expect(row).toBeDefined()
 
       const served = await api.fetch(doc.file_url as string)
@@ -99,7 +103,7 @@ describe('FILE-001: file upload + storage', () => {
     expect(res.status).toBe(404)
   })
 
-  test('records ref_doctype/ref_name when attaching to a document', async ({ admin }) => {
+  test('records ref_table/ref_name when attaching to a document', async ({ admin }) => {
     const uploaded: string[] = []
     try {
       const res = await upload(admin, 'attach.txt', 'attached', 'text/plain', {
@@ -109,7 +113,7 @@ describe('FILE-001: file upload + storage', () => {
       expect(res.status).toBe(201)
       const doc = (await res.json()) as Record<string, unknown>
       uploaded.push(doc.file_url as string)
-      expect(doc.ref_doctype).toBe('User')
+      expect(doc.ref_table).toBe('User')
       expect(doc.ref_name).toBe('Administrator')
     } finally {
       await cleanupDisk(uploaded)
@@ -132,17 +136,17 @@ describe('FILE-002: attachments listing + delete cleanup', () => {
       uploaded.push(a.file_url as string, b.file_url as string)
 
       const filters = JSON.stringify([
-        ['ref_doctype', '=', 'User'],
+        ['ref_table', '=', 'User'],
         ['ref_name', '=', 'Guest'],
       ])
       const fields = encodeURIComponent(JSON.stringify(['name', 'file_name', 'file_url']))
       const listed = await admin.get<{ data: { file_name: string }[] }>(
-        `/api/resource/File?filters=${encodeURIComponent(filters)}&fields=${fields}`,
+        `/api/table/File?filters=${encodeURIComponent(filters)}&fields=${fields}`,
       )
       expect(listed.data.map((f) => f.file_name).sort()).toEqual(['att-a.txt', 'att-b.txt'])
 
       // Delete one File doc: the storage object must go with it…
-      await admin.delete(`/api/resource/File/${a.name}`)
+      await admin.delete(`/api/table/File/${a.name}`)
       expect((await api.fetch(a.file_url as string)).status).toBe(404)
 
       // …while the other file is untouched.
@@ -151,7 +155,7 @@ describe('FILE-002: attachments listing + delete cleanup', () => {
       expect(await bServed.text()).toBe('BBB')
 
       const after = await admin.get<{ data: { file_name: string }[] }>(
-        `/api/resource/File?filters=${encodeURIComponent(filters)}&fields=${fields}`,
+        `/api/table/File?filters=${encodeURIComponent(filters)}&fields=${fields}`,
       )
       expect(after.data.map((f) => f.file_name)).toEqual(['att-b.txt'])
     } finally {

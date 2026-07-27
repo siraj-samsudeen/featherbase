@@ -1,6 +1,6 @@
 // SET-004: global System Settings that drive rendering and session lifetime.
 // Values live in the `single_value` EAV store (SET-001); unset fields fall
-// back to these defaults, which mirror the seeded docfield defaults.
+// back to these defaults, which mirror the seeded column_def defaults.
 import { sql } from './db'
 
 export interface SystemSettings {
@@ -24,7 +24,7 @@ const DEFAULTS: SystemSettings = {
 }
 
 export async function getSystemSettings(): Promise<SystemSettings> {
-  const rows = await sql`select field, value from single_value where doctype = 'System Settings'`
+  const rows = await sql`select field, value from single_value where table_name = 'System Settings'`
   const stored = new Map(rows.map((r) => [r.field as string, r.value as string | null]))
   const str = (f: keyof SystemSettings) => {
     const v = stored.get(f)

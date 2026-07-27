@@ -9,19 +9,19 @@ const ROW = 'Lnk Alloc Row'
 async function setup(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: CUSTOMER,
-    autoname: 'prompt',
-    fields: [{ fieldname: 'city', fieldtype: 'Data' }],
+    id_pattern: 'prompt',
+    columns: [{ column_name: 'city', column_type: 'Data' }],
   })
   await admin.post('/api/doctype', {
     name: ROW,
-    istable: true,
-    fields: [{ fieldname: 'customer', fieldtype: 'Link', options: CUSTOMER }],
+    kind: 'sub_table',
+    columns: [{ column_name: 'customer', column_type: 'Reference', reference_table: CUSTOMER }],
   })
   await admin.post('/api/doctype', {
     name: TICKET,
-    fields: [
-      { fieldname: 'customer', fieldtype: 'Link', options: CUSTOMER },
-      { fieldname: 'allocs', fieldtype: 'Table', options: ROW },
+    columns: [
+      { column_name: 'customer', column_type: 'Reference', reference_table: CUSTOMER },
+      { column_name: 'allocs', column_type: 'Sub-table', row_table: ROW },
     ],
   })
   await admin.post('/api/save_doc', { doctype: CUSTOMER, doc: { name: 'Acme', city: 'Pune' } })
@@ -52,7 +52,7 @@ describe('META-008: Link integrity', () => {
     await expect(
       admin.post('/api/save_doc', {
         doctype: TICKET,
-        doc: { name: doc.name, modified: doc.modified, customer: 'Nobody' },
+        doc: { name: doc.name, updated_at: doc.updated_at, customer: 'Nobody' },
       }),
     ).rejects.toMatchObject({ status: 417 })
 
@@ -61,7 +61,7 @@ describe('META-008: Link integrity', () => {
         doctype: TICKET,
         doc: {
           name: doc.name,
-          modified: doc.modified,
+          updated_at: doc.updated_at,
           allocs: [{ customer: 'Acme' }, { customer: 'Ghost' }],
         },
       }),
@@ -72,7 +72,7 @@ describe('META-008: Link integrity', () => {
 
     await admin.post('/api/save_doc', {
       doctype: TICKET,
-      doc: { name: doc.name, modified: doc.modified, allocs: [{ customer: 'Acme' }] },
+      doc: { name: doc.name, updated_at: doc.updated_at, allocs: [{ customer: 'Acme' }] },
     })
   })
 

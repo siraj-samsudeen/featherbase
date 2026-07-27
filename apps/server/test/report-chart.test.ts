@@ -11,15 +11,15 @@ const DT = 'Rc Srv Sale'
 const REPORT = 'Rc Srv Report'
 const DASH = 'Rc Srv Dashboard'
 
-// Each test rebuilds the DocType, rows, report, and dashboard inside its own
+// Each test rebuilds the Table, rows, report, and dashboard inside its own
 // rolled-back transaction.
 async function setup(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: DT,
-    autoname: 'prompt',
-    fields: [
-      { fieldname: 'region', fieldtype: 'Select', options: 'North\nSouth', in_list_view: true },
-      { fieldname: 'amount', fieldtype: 'Int', in_list_view: true },
+    id_pattern: 'prompt',
+    columns: [
+      { column_name: 'region', column_type: 'Choice', choices: 'North\nSouth', in_list_view: true },
+      { column_name: 'amount', column_type: 'Int', in_list_view: true },
     ],
   })
   const rows = [
@@ -28,11 +28,11 @@ async function setup(admin: TestClient) {
     ['s3', 'North', 25],
   ] as const
   for (const [name, region, amount] of rows)
-    await admin.post(`/api/resource/${encodeURIComponent(DT)}`, { name, region, amount })
+    await admin.post(`/api/table/${encodeURIComponent(DT)}`, { name, region, amount })
 
   await admin.post('/api/save_doc', {
     doctype: 'Report',
-    doc: { name: REPORT, ref_doctype: DT, report_type: 'Report Builder', config: { columns: ['region', 'amount'], filters: [] } },
+    doc: { name: REPORT, ref_table: DT, report_type: 'Report Builder', config: { columns: ['region', 'amount'], filters: [] } },
   })
   await admin.post('/api/save_doc', {
     doctype: 'Dashboard',

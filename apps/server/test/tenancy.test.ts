@@ -27,7 +27,7 @@ async function req(path: string, host: string, init: RequestInit = {}) {
 async function cleanup() {
   await closeSiteClients()
   for (const s of ['alpha', 'beta']) await sql.unsafe(`drop schema if exists ${siteSchema(s)} cascade`)
-  await sql`delete from tab_site where name in ('alpha', 'beta')`
+  await sql`delete from site where name in ('alpha', 'beta')`
 }
 
 beforeAll(async () => {
@@ -55,11 +55,11 @@ describe('PLAT-008: multi-tenancy (schema-per-site)', () => {
     }
 
     // Populate alpha via its host.
-    await req('/api/tenancy/doctype', 'alpha.localhost', { method: 'POST', body: JSON.stringify({ name: 'Widget', fields: [{ fieldname: 'sku', fieldtype: 'Data' }] }) })
+    await req('/api/tenancy/doctype', 'alpha.localhost', { method: 'POST', body: JSON.stringify({ name: 'Widget', columns: [{ column_name: 'sku', column_type: 'Data' }] }) })
     await req('/api/tenancy/user', 'alpha.localhost', { method: 'POST', body: JSON.stringify({ email: 'ann@alpha.test' }) })
 
     // Populate beta via its host.
-    await req('/api/tenancy/doctype', 'beta.localhost', { method: 'POST', body: JSON.stringify({ name: 'Gadget', fields: [{ fieldname: 'code', fieldtype: 'Data' }] }) })
+    await req('/api/tenancy/doctype', 'beta.localhost', { method: 'POST', body: JSON.stringify({ name: 'Gadget', columns: [{ column_name: 'code', column_type: 'Data' }] }) })
     await req('/api/tenancy/user', 'beta.localhost', { method: 'POST', body: JSON.stringify({ email: 'bob@beta.test' }) })
 
     // DocTypes are isolated per site.
@@ -91,8 +91,8 @@ describe('PLAT-008: multi-tenancy (schema-per-site)', () => {
   })
 
   it('stores each site’s tables in its own schema', async () => {
-    const inAlpha = await sql.unsafe(`select to_regclass('${siteSchema('alpha')}.tab_widget') as t`)
-    const inBeta = await sql.unsafe(`select to_regclass('${siteSchema('beta')}.tab_widget') as t`)
+    const inAlpha = await sql.unsafe(`select to_regclass('${siteSchema('alpha')}.widget') as t`)
+    const inBeta = await sql.unsafe(`select to_regclass('${siteSchema('beta')}.widget') as t`)
     expect(inAlpha[0].t).not.toBeNull() // alpha has the Widget table
     expect(inBeta[0].t).toBeNull() // beta does not
   })

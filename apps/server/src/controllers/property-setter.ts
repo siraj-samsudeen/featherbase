@@ -1,16 +1,16 @@
-import type { DocTypeController } from '../controllers'
+import type { TableController } from '../controllers'
 import { invalidateMeta } from '../meta'
 
-// CUST-002: any change to a Property Setter must refresh the target's
+// CUST-002: any change to a Metadata Override must refresh the target's
 // effective metadata (overlays are applied at meta load time).
-const controller: DocTypeController = {
-  doctype: 'Property Setter',
+const controller: TableController = {
+  table: 'Metadata Override',
   hooks: {
-    after_save: ({ doc }) => {
-      if (typeof doc.doc_type === 'string') invalidateMeta(doc.doc_type)
+    after_save: ({ row }) => {
+      if (typeof row.table_name === 'string') invalidateMeta(row.table_name)
     },
-    on_trash: ({ doc }) => {
-      if (typeof doc.doc_type === 'string') invalidateMeta(doc.doc_type)
+    on_trash: ({ row }) => {
+      if (typeof row.table_name === 'string') invalidateMeta(row.table_name)
     },
   },
 }

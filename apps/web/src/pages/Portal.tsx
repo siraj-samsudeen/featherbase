@@ -1,14 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ApiError, api, clearSession, getSessionUser, listResource } from '../lib/api'
-import { NO_COLUMN_TYPES, useMeta, type DocField } from '../lib/meta'
+import { NO_COLUMN_TYPES, useMeta, type ColumnDef } from '../lib/meta'
 
-type Doc = Record<string, unknown>
+type Row = Record<string, unknown>
 
 // WEB-003: the customer portal. A logged-in website user sees only the
-// documents they own (enforced server-side by if_owner permissions, PERM-007),
-// listed outside the Desk in a minimal public shell. Opening another user's
-// document returns 403 from the API and is surfaced as an access error.
+// rows they own (enforced server-side by own_rows_only permissions, PERM-007),
+// listed outside the Admin in a minimal public shell. Opening another user's
+// row returns 403 from the API and is surfaced as an access error.
 
 function PortalShell({ children }: { children: React.ReactNode }) {
   const user = getSessionUser()
@@ -40,24 +40,24 @@ function PortalShell({ children }: { children: React.ReactNode }) {
 
 export function PortalListPage({ doctype }: { doctype: string }) {
   const meta = useMeta(doctype)
-  const listFields = (meta.data?.fields ?? []).filter(
-    (f) => f.in_list_view && !NO_COLUMN_TYPES.has(f.fieldtype) && f.fieldtype !== 'Table',
+  const listColumns = (meta.data?.columns ?? []).filter(
+    (c) => c.in_list_view && !NO_COLUMN_TYPES.has(c.column_type) && c.column_type !== 'Sub-table',
   )
-  const columns = listFields.length ? listFields.map((f) => f.fieldname) : []
+  const columns = listColumns.length ? listColumns.map((c) => c.column_name) : []
 
   const rows = useQuery({
     queryKey: ['portal-list', doctype, columns],
     enabled: Boolean(meta.data),
     queryFn: () =>
-      // The API scopes this to the caller's own documents via if_owner.
-      listResource<Doc>(doctype, {
+      // The API scopes this to the caller's own rows via own_rows_only.
+      listResource<Row>(doctype, {
         fields: [...new Set(['name', ...columns])],
-        order_by: 'modified desc',
+        order_by: 'updated_at desc',
         limit_page_length: 200,
       }),
   })
 
-  const label = (fn: string) => meta.data?.fields.find((f) => f.fieldname === fn)?.label ?? fn
+  const label = (fn: string) => meta.data?.columns.find((c) => c.column_name === fn)?.label ?? fn
   const cell = (v: unknown) => (v == null || v === '' ? '—' : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v))
 
   return (
@@ -97,7 +97,7 @@ export function PortalListPage({ doctype }: { doctype: string }) {
         </table>
         {rows.data?.data.length === 0 && (
           <p className="px-3 py-6 text-center text-sm text-[var(--color-ink-faint)]" data-testid="portal-empty">
-            You have no documents yet.
+            You have no rows yet.
           </p>
         )}
       </div>
@@ -105,17 +105,17 @@ export function PortalListPage({ doctype }: { doctype: string }) {
   )
 }
 
-export function PortalDocPage({ doctype, name }: { doctype: string; name: string }) {
+export function PortalRowPage({ doctype, name }: { doctype: string; name: string }) {
   const meta = useMeta(doctype)
   const doc = useQuery({
     retry: false,
     queryKey: ['portal-doc', doctype, name],
-    queryFn: () => api.get<Doc>(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
+    queryFn: () => api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
   })
 
   const forbidden = doc.error instanceof ApiError && (doc.error.status === 403 || doc.error.status === 404)
-  const fields = (meta.data?.fields ?? []).filter(
-    (f: DocField) => !NO_COLUMN_TYPES.has(f.fieldtype) && f.fieldtype !== 'Table' && !f.hidden,
+  const columns = (meta.data?.columns ?? []).filter(
+    (c: ColumnDef) => !NO_COLUMN_TYPES.has(c.column_type) && c.column_type !== 'Sub-table' && !c.hidden,
   )
   const val = (v: unknown) => (v == null || v === '' ? '—' : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v))
 
@@ -126,7 +126,7 @@ export function PortalDocPage({ doctype, name }: { doctype: string; name: string
       </Link>
       {forbidden ? (
         <div className="fc-card p-6 text-center" data-testid="portal-forbidden">
-          <p className="text-sm font-medium text-[var(--color-danger)]">You don't have access to this document.</p>
+          <p className="text-sm font-medium text-[var(--color-danger)]">You don't have access to this row.</p>
         </div>
       ) : doc.isLoading || meta.isLoading ? (
         <p className="text-sm text-[var(--color-ink-faint)]">Loading…</p>
@@ -134,11 +134,11 @@ export function PortalDocPage({ doctype, name }: { doctype: string; name: string
         <div className="fc-card p-6" data-testid="portal-doc">
           <h1 className="mb-4 text-lg font-semibold text-[var(--color-ink)]">{name}</h1>
           <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {fields.map((f) => (
-              <div key={f.fieldname}>
-                <dt className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">{f.label ?? f.fieldname}</dt>
-                <dd className="text-sm text-[var(--color-ink)]" data-testid={`portal-field-${f.fieldname}`}>
-                  {val(doc.data[f.fieldname])}
+            {columns.map((c) => (
+              <div key={c.column_name}>
+                <dt className="text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">{c.label ?? c.column_name}</dt>
+                <dd className="text-sm text-[var(--color-ink)]" data-testid={`portal-field-${c.column_name}`}>
+                  {val(doc.data[c.column_name])}
                 </dd>
               </div>
             ))}

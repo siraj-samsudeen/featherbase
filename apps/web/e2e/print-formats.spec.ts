@@ -15,17 +15,17 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     headers,
     data: {
       name: DT,
-      autoname: 'prompt',
-      fields: [
-        { fieldname: 'customer', fieldtype: 'Data' },
-        { fieldname: 'amount', fieldtype: 'Int' },
+      id_pattern: 'prompt',
+      columns: [
+        { column_name: 'customer', column_type: 'Data' },
+        { column_name: 'amount', column_type: 'Int' },
       ],
     },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   docName = 'pf-doc'
-  await request.delete(`/api/resource/${encodeURIComponent(DT)}/${docName}`, { headers })
-  await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  await request.delete(`/api/table/${encodeURIComponent(DT)}/${docName}`, { headers })
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
     data: { name: docName, customer: 'Stark Industries', amount: 500 },
   })
@@ -34,20 +34,20 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   for (const fmt of [
     {
       name: 'Pf Invoice',
-      doc_type: DT,
+      ref_table: DT,
       is_default: true,
       template:
         '<div data-testid="tpl-invoice"><h2>INVOICE</h2><p>Bill to: {{ customer }}</p><p>Total: {{ amount }}</p></div>',
     },
     {
       name: 'Pf Receipt',
-      doc_type: DT,
+      ref_table: DT,
       is_default: false,
       template: '<div data-testid="tpl-receipt">RECEIPT — {{ customer }} paid {{ amount }}</div>',
     },
   ]) {
-    await request.delete(`/api/resource/Print%20Format/${encodeURIComponent(fmt.name)}`, { headers })
-    const res = await request.post('/api/resource/Print%20Format', { headers, data: fmt })
+    await request.delete(`/api/table/Print%20Format/${encodeURIComponent(fmt.name)}`, { headers })
+    const res = await request.post('/api/table/Print%20Format', { headers, data: fmt })
     if (res.status() !== 201) throw new Error(`format ${fmt.name}: ${res.status()}`)
   }
 })

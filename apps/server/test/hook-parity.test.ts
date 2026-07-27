@@ -7,7 +7,7 @@ import { registerApp, installApp, uninstallApp } from '../src/apps'
 import { callMethod } from '../src/methods'
 
 // Frappe lifecycle parity: before_validate and on_update fire in Frappe's
-// order, doc_events["*"] hooks every DocType, an app's scheduler_events get a
+// order, doc_events["*"] hooks every Table, an app's scheduler_events get a
 // live recurring job, and override_whitelisted_methods swaps an RPC handler
 // (restored on uninstall).
 
@@ -17,7 +17,7 @@ async function makeDT(admin: TestClient, opts: { submittable?: boolean } = {}) {
   await admin.post('/api/doctype', {
     name: DT,
     is_submittable: opts.submittable ?? false,
-    fields: [{ fieldname: 'title', fieldtype: 'Data' }],
+    columns: [{ column_name: 'title', column_type: 'Data' }],
   })
 }
 
@@ -30,10 +30,10 @@ describe('Frappe lifecycle + app-contract parity', () => {
       name: APP,
       doc_events: {
         [DT]: {
-          before_validate: ({ doc }) => {
+          before_validate: ({ row }) => {
             seen.push('before_validate')
             // Frappe's canonical use: normalise before validation runs.
-            if (typeof doc.title === 'string') doc.title = doc.title.trim()
+            if (typeof row.title === 'string') row.title = row.title.trim()
           },
           validate: () => seen.push('validate'),
           on_update: () => seen.push('on_update'),
@@ -49,7 +49,7 @@ describe('Frappe lifecycle + app-contract parity', () => {
       seen.length = 0
       await saveDoc(
         DT,
-        { name: doc.name, modified: (doc.modified as Date).toISOString(), title: 'again' },
+        { name: doc.name, updated_at: (doc.updated_at as Date).toISOString(), title: 'again' },
         'Administrator',
       )
       expect(seen).toEqual(['before_validate', 'validate', 'on_update'])
@@ -66,9 +66,9 @@ describe('Frappe lifecycle + app-contract parity', () => {
       name: APP,
       doc_events: {
         [DT]: {
-          before_submit: ({ doc }) => {
+          before_submit: ({ row }) => {
             seen.push('before_submit')
-            if (doc.title === 'blocked') throw new Error('submission blocked')
+            if (row.title === 'blocked') throw new Error('submission blocked')
           },
           on_update: () => seen.push('on_update'),
           on_submit: () => seen.push('on_submit'),
@@ -87,14 +87,14 @@ describe('Frappe lifecycle + app-contract parity', () => {
         'submission blocked',
       )
       const [row] = await sql`
-        select docstatus from tab_hook_parity_note where name = ${String(bad.name)}`
-      expect(row.docstatus).toBe(0) // the abort rolled the write back
+        select status from hook_parity_note where name = ${String(bad.name)}`
+      expect(row.status).toBe('draft') // the abort rolled the write back
     } finally {
       await uninstallApp(APP).catch(() => {})
     }
   })
 
-  test('doc_events["*"] hooks every DocType', async ({ admin }) => {
+  test('doc_events["*"] hooks every Table', async ({ admin }) => {
     await makeDT(admin)
     const audited: string[] = []
     const APP = `hookp-wild-${Date.now()}`
@@ -125,11 +125,11 @@ describe('Frappe lifecycle + app-contract parity', () => {
     try {
       await installApp(APP)
       const [job] = await sql`
-        select repeat_every from tab_background_job where method = ${METHOD} and status = 'queued'`
+        select repeat_every from background_job where method = ${METHOD} and job_status = 'queued'`
       expect(Number(job.repeat_every)).toBe(3600)
     } finally {
       await uninstallApp(APP).catch(() => {})
-      const rows = await sql`select 1 from tab_background_job where method = ${METHOD} and status = 'queued'`
+      const rows = await sql`select 1 from background_job where method = ${METHOD} and job_status = 'queued'`
       expect(rows.length).toBe(0) // uninstall dropped the pending recurrence
     }
   })

@@ -7,7 +7,7 @@ test('UI-009 + META-013: missing reqd field errors inline via shared zod schema,
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const token = ((await login.json()) as { token: string }).token
   const list = await request.get(
-    `/api/resource/${encodeURIComponent(DT)}?limit_page_length=1&order_by=creation desc`,
+    `/api/table/${encodeURIComponent(DT)}?limit_page_length=1&order_by=created_at desc`,
     { headers: { Authorization: `Bearer ${token}` } },
   )
   test.skip(list.status() === 404, 'run formview.spec first to create fixtures')

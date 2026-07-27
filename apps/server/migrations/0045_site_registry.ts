@@ -5,7 +5,7 @@ import { sql } from '../src/db'
 
 export async function up() {
   await sql.unsafe(`
-    create table if not exists tab_site (
+    create table if not exists site (
       name text primary key,
       host text unique not null,
       schema text not null,

@@ -21,16 +21,16 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     headers: auth,
     data: {
       name: DT,
-      fields: [
-        { fieldname: 'title', fieldtype: 'Data', label: 'Title' },
-        { fieldname: 'photo', fieldtype: 'Attach Image', label: 'Photo' },
-        { fieldname: 'doc_file', fieldtype: 'Attach', label: 'Doc File' },
+      columns: [
+        { column_name: 'title', column_type: 'Data', label: 'Title' },
+        { column_name: 'photo', column_type: 'Attach Image', label: 'Photo' },
+        { column_name: 'doc_file', column_type: 'Attach', label: 'Doc File' },
       ],
     },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
 
-  const created = await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  const created = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: auth,
     data: { title: 'attach fixture' },
   })
@@ -85,7 +85,7 @@ test('UI-023: Attach Image uploads, previews, persists the URL, and clears', asy
   const token = await page.evaluate(() => localStorage.getItem('fc_token'))
   const auth = { Authorization: `Bearer ${token}` }
   const stored = await page.request.get(
-    `/api/resource/${encodeURIComponent(DT)}/${docName}`,
+    `/api/table/${encodeURIComponent(DT)}/${docName}`,
     { headers: auth },
   )
   const doc = (await stored.json()) as { photo: string; doc_file: string }
@@ -98,7 +98,7 @@ test('UI-023: Attach Image uploads, previews, persists the URL, and clears', asy
   await page.getByTestId('form-save').click()
   await expect(page.getByTestId('form-banner')).toContainText('Saved')
   const after = (await (
-    await page.request.get(`/api/resource/${encodeURIComponent(DT)}/${docName}`, {
+    await page.request.get(`/api/table/${encodeURIComponent(DT)}/${docName}`, {
       headers: auth,
     })
   ).json()) as { photo: string | null; doc_file: string }

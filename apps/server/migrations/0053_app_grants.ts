@@ -7,7 +7,7 @@ import { sql } from '../src/db'
 
 export async function up() {
   await sql.unsafe(`
-    alter table tab_installed_app
+    alter table installed_app
       add column if not exists roles jsonb not null default '[]'::jsonb,
       add column if not exists perms jsonb not null default '[]'::jsonb
   `)

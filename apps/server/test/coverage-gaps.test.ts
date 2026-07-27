@@ -28,13 +28,13 @@ import { clearControllers, registerController, runHooks } from '../src/controlle
 async function makeDT(admin: TestClient, name: string) {
   await admin.post('/api/doctype', {
     name,
-    fields: [
-      { fieldname: 'title', fieldtype: 'Data' },
-      { fieldname: 'status', fieldtype: 'Select', options: 'Open\nDone', default_value: 'Open' },
-      { fieldname: 'priority', fieldtype: 'Select', options: 'Low\nHigh', default_value: 'Low' },
-      { fieldname: 'response_by', fieldtype: 'Datetime' },
-      { fieldname: 'resolution_by', fieldtype: 'Datetime' },
-      { fieldname: 'sla_status', fieldtype: 'Data' },
+    columns: [
+      { column_name: 'title', column_type: 'Data' },
+      { column_name: 'note_status', column_type: 'Choice', choices: 'Open\nDone', default_value: 'Open' },
+      { column_name: 'priority', column_type: 'Choice', choices: 'Low\nHigh', default_value: 'Low' },
+      { column_name: 'response_by', column_type: 'Datetime' },
+      { column_name: 'resolution_by', column_type: 'Datetime' },
+      { column_name: 'sla_status', column_type: 'Data' },
     ],
   })
 }
@@ -45,13 +45,13 @@ describe('app registry: install lifecycle', () => {
     const DT = `Cov App Note ${Date.now() % 100000}`
     registerApp({
       name: APP,
-      doctypes: [{ name: DT, fields: [{ fieldname: 'note', fieldtype: 'Data' }] }],
+      tables: [{ name: DT, columns: [{ column_name: 'note', column_type: 'Data' }] }],
     })
     expect(getAvailableApps()).toContain(APP)
     await expect(installApp(`${APP}-nope`)).rejects.toMatchObject({ type: 'ValidationError' })
 
     const installed = await installApp(APP)
-    expect(installed.doctypes).toEqual([DT])
+    expect(installed.tables).toEqual([DT])
     expect(await isInstalled(APP)).toBe(true)
     expect((await listInstalledApps()).map((a) => a.name)).toContain(APP)
     await expect(installApp(APP)).rejects.toMatchObject({ type: 'ConflictError' })
@@ -87,7 +87,7 @@ describe('controllers: registry edges', () => {
     const DT = 'Cov Clear Note'
     await makeDT(admin, DT)
     const seen: string[] = []
-    registerController({ doctype: DT, hooks: { validate: () => void seen.push('v') } })
+    registerController({ table: DT, hooks: { validate: () => void seen.push('v') } })
     await runHooks('validate', {
       doc: {},
       meta: await getMeta(DT),
@@ -109,12 +109,12 @@ describe('controllers: registry edges', () => {
 })
 
 describe('app registry: legacy row tolerance', () => {
-  test('listInstalledApps survives double-encoded and malformed doctypes columns, loadInstalledApps skips unknown apps', async () => {
-    await sql`insert into tab_installed_app (name, doctypes) values ('cov-legacy-str', ${'["Legacy X"]'}::jsonb)`
-    await sql`insert into tab_installed_app (name, doctypes) values ('cov-legacy-bad', ${'"not json['}::jsonb)`
+  test('listInstalledApps survives double-encoded and malformed tables columns, loadInstalledApps skips unknown apps', async () => {
+    await sql`insert into installed_app (name, tables) values ('cov-legacy-str', ${'["Legacy X"]'}::jsonb)`
+    await sql`insert into installed_app (name, tables) values ('cov-legacy-bad', ${'"not json['}::jsonb)`
     const apps = await listInstalledApps()
-    expect(apps.find((a) => a.name === 'cov-legacy-str')?.doctypes).toEqual(['Legacy X'])
-    expect(apps.find((a) => a.name === 'cov-legacy-bad')?.doctypes).toEqual([])
+    expect(apps.find((a) => a.name === 'cov-legacy-str')?.tables).toEqual(['Legacy X'])
+    expect(apps.find((a) => a.name === 'cov-legacy-bad')?.tables).toEqual([])
     // Neither name has a registered manifest — loadInstalledApps must skip them.
     await loadInstalledApps()
   })
@@ -129,7 +129,7 @@ describe('workflow: definition validation edges', () => {
     await expect(
       admin.post('/api/save_doc', {
         doctype: 'Workflow',
-        doc: { name: 'Cov Empty Flow', document_type: DT, is_active: false, states: [], transitions: [] },
+        doc: { name: 'Cov Empty Flow', ref_table: DT, is_active: false, states: [], transitions: [] },
       }),
     ).rejects.toMatchObject({ status: 417 })
     await expect(
@@ -137,9 +137,9 @@ describe('workflow: definition validation edges', () => {
         doctype: 'Workflow',
         doc: {
           name: 'Cov From Ghost Flow',
-          document_type: DT,
+          ref_table: DT,
           is_active: false,
-          states: [{ state: 'A', doc_status: '0' }],
+          states: [{ state: 'A', target_status: 'draft' }],
           transitions: [{ state: 'Ghost', action: 'Go', next_state: 'A', allowed: 'System Manager' }],
         },
       }),
@@ -152,24 +152,24 @@ describe('workflow: initDocState backfill', () => {
     const DT = 'Cov Init Note'
     await makeDT(admin, DT)
     const doc = await saveDoc(DT, { title: 'pre-workflow' }, 'Administrator')
-    await sql`update tab_cov_init_note set status = null where name = ${String(doc.name)}`
+    await sql`update cov_init_note set note_status = null where name = ${String(doc.name)}`
     await admin.post('/api/save_doc', {
       doctype: 'Workflow',
       doc: {
         name: 'Cov Init Flow',
-        document_type: DT,
+        ref_table: DT,
         is_active: true,
-        state_field: 'status',
+        state_field: 'note_status',
         states: [
-          { state: 'Open', doc_status: '0' },
-          { state: 'Done', doc_status: '0' },
+          { state: 'Open', target_status: 'draft' },
+          { state: 'Done', target_status: 'draft' },
         ],
         transitions: [{ state: 'Open', action: 'Finish', next_state: 'Done', allowed: 'System Manager' }],
       },
     })
     await initDocState(DT)
-    const [row] = await sql`select status from tab_cov_init_note where name = ${String(doc.name)}`
-    expect(row.status).toBe('Open')
+    const [row] = await sql`select note_status from cov_init_note where name = ${String(doc.name)}`
+    expect(row.note_status).toBe('Open')
   })
 })
 
@@ -185,12 +185,12 @@ describe('web form: field whitelist parsing', () => {
         name: 'Cov WF Broken',
         title: 'Broken',
         route: 'cov-broken',
-        document_type: DT,
+        ref_table: DT,
         published: true,
         web_fields: '{not json',
       },
     })
-    expect((await getWebFormConfig('cov-broken')).fields).toEqual([])
+    expect((await getWebFormConfig('cov-broken')).columns).toEqual([])
 
     await admin.post('/api/save_doc', {
       doctype: 'Web Form',
@@ -198,13 +198,13 @@ describe('web form: field whitelist parsing', () => {
         name: 'Cov WF Array',
         title: 'Array',
         route: 'cov-array',
-        document_type: DT,
+        ref_table: DT,
         published: true,
         web_fields: ['title'],
       },
     })
     const config = await getWebFormConfig('cov-array')
-    expect(config.fields.map((f) => f.fieldname)).toEqual(['title'])
+    expect(config.columns.map((f) => f.column_name)).toEqual(['title'])
 
     await admin.post('/api/save_doc', {
       doctype: 'Web Form',
@@ -212,11 +212,11 @@ describe('web form: field whitelist parsing', () => {
         name: 'Cov WF Nofields',
         title: 'Nofields',
         route: 'cov-nofields',
-        document_type: DT,
+        ref_table: DT,
         published: true,
       },
     })
-    expect((await getWebFormConfig('cov-nofields')).fields).toEqual([])
+    expect((await getWebFormConfig('cov-nofields')).columns).toEqual([])
   })
 })
 
@@ -230,7 +230,7 @@ describe('SLA: non-matching paths', () => {
 
     await saveDoc('Service Level Agreement', {
       name: 'Cov Sla Off',
-      document_type: DT,
+      ref_table: DT,
       enabled: false,
       priorities: [{ priority: 'High', response_hours: 1, resolution_hours: 2 }],
     })
@@ -238,7 +238,7 @@ describe('SLA: non-matching paths', () => {
     await applySla(await getMeta(DT), values)
     expect(values.response_by).toBeUndefined() // disabled SLA never stamps
 
-    await sql`update tab_service_level_agreement set enabled = true where name = 'Cov Sla Off'`
+    await sql`update service_level_agreement set enabled = true where name = 'Cov Sla Off'`
     const unmatched: Record<string, unknown> = { title: 'y', priority: 'Low' } // no Low row
     await applySla(await getMeta(DT), unmatched)
     expect(unmatched.response_by).toBeUndefined()
@@ -257,23 +257,23 @@ describe('SLA: non-matching paths', () => {
     await makeDT(admin, DT)
     await saveDoc('Service Level Agreement', {
       name: 'Cov Sla NoRole Policy',
-      document_type: DT,
+      ref_table: DT,
       enabled: true,
       fulfilled_states: '',
       priorities: [{ priority: 'High', response_hours: 1, resolution_hours: 1 }],
     })
     const doc = await saveDoc(DT, { title: 'late', priority: 'High' }, 'Administrator')
-    await sql`update tab_cov_sla_norole set resolution_by = now() - interval '1 hour'
+    await sql`update cov_sla_norole set resolution_by = now() - interval '1 hour'
       where name = ${String(doc.name)}`
     await enqueue('check_sla', {})
     await sql`
-      update tab_background_job set run_at = now()
-      where status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
+      update background_job set run_at = now()
+      where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
     await drainJobs()
-    const [row] = await sql`select sla_status from tab_cov_sla_norole where name = ${String(doc.name)}`
+    const [row] = await sql`select sla_status from cov_sla_norole where name = ${String(doc.name)}`
     expect(row.sla_status).toBe('Overdue')
     const mails = await sql`
-      select 1 from tab_email_queue where reference_doctype = ${DT}`
+      select 1 from email_queue where ref_table = ${DT}`
     expect(mails.length).toBe(0)
   })
 })
@@ -286,8 +286,8 @@ describe('assignment + RPC edges', () => {
     const doc = await saveDoc(DT, { title: 'x' }, 'Administrator')
     await createAssignment(DT, String(doc.name), String(user.user), 'Administrator')
     const [todo] = await sql`
-      select description from tab_todo
-      where reference_doctype = ${DT} and reference_name = ${String(doc.name)}`
+      select description from todo
+      where ref_table = ${DT} and reference_name = ${String(doc.name)}`
     expect(todo.description).toBe(`Assigned ${DT} ${String(doc.name)}`)
   })
 
@@ -296,16 +296,16 @@ describe('assignment + RPC edges', () => {
   }) => {
     const DT = 'Cov Value Note'
     await makeDT(admin, DT)
-    await admin.post('/api/save_doc', { doctype: DT, doc: { title: 'target', status: 'Done' } })
-    const hit = await admin.post<{ message: { status: string } }>(
+    await admin.post('/api/save_doc', { doctype: DT, doc: { title: 'target', note_status: 'Done' } })
+    const hit = await admin.post<{ message: { note_status: string } }>(
       '/api/method/frappe.client.get_value',
-      { doctype: DT, filters: [['title', '=', 'target']], fieldname: 'status' },
+      { doctype: DT, filters: [['title', '=', 'target']], fieldname: 'note_status' },
     )
-    expect(hit.message.status).toBe('Done')
+    expect(hit.message.note_status).toBe('Done')
     const miss = await admin.post<{ message: null }>('/api/method/frappe.client.get_value', {
       doctype: DT,
       filters: [['title', '=', 'absent']],
-      fieldname: 'status',
+      fieldname: 'note_status',
     })
     expect(miss.message).toBeNull()
   })

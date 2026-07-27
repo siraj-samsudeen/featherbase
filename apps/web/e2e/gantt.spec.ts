@@ -16,26 +16,26 @@ test.beforeAll(async ({ request }) => {
     headers,
     data: {
       name: DT,
-      fields: [
-        { fieldname: 'title', fieldtype: 'Data', in_list_view: true },
-        { fieldname: 'start_date', fieldtype: 'Date', in_list_view: true },
-        { fieldname: 'end_date', fieldtype: 'Date', in_list_view: true },
+      columns: [
+        { column_name: 'title', column_type: 'Data', in_list_view: true },
+        { column_name: 'start_date', column_type: 'Date', in_list_view: true },
+        { column_name: 'end_date', column_type: 'Date', in_list_view: true },
       ],
     },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   const existing = (await (
-    await request.get(`/api/resource/${encodeURIComponent(DT)}?limit_page_length=500`, { headers })
+    await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=500`, { headers })
   ).json()) as { data: { name: string }[] }
-  for (const d of existing.data) await request.delete(`/api/resource/${encodeURIComponent(DT)}/${d.name}`, { headers })
+  for (const d of existing.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.name}`, { headers })
 
   // Task A: 2026-03-02 → 2026-03-05 (4 days). Task B: 2026-03-04 → 2026-03-06 (3 days).
-  const a = await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  const a = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
     data: { title: 'Design', start_date: '2026-03-02', end_date: '2026-03-05' },
   })
   taskA = ((await a.json()) as { name: string }).name
-  await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
     data: { title: 'Build', start_date: '2026-03-04', end_date: '2026-03-06' },
   })
@@ -84,7 +84,7 @@ test('UI-022: resizing a bar updates the end date', async ({ page }) => {
   await expect(barA).toHaveAttribute('data-days', '6') // Mar 2..7
 
   // And the change is persisted server-side.
-  const check = await page.request.get(`/api/resource/${encodeURIComponent(DT)}/${taskA}`, {
+  const check = await page.request.get(`/api/table/${encodeURIComponent(DT)}/${taskA}`, {
     headers: { Authorization: `Bearer ${await (async () => {
       const l = await page.request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
       return ((await l.json()) as { token: string }).token

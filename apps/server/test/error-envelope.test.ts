@@ -36,8 +36,8 @@ describe('API-006: consistent error envelope', () => {
     expect((await envelope(res)).type).toBe('NotFoundError')
   })
 
-  test('404 NotFoundError for a missing document and DocType', async ({ admin }) => {
-    for (const path of ['/api/doc/User/no-such-user', '/api/doc/NoSuchDT/x']) {
+  test('404 NotFoundError for a missing document and Table', async ({ admin }) => {
+    for (const path of ['/api/table/User/no-such-user', '/api/table/NoSuchDT/x']) {
       const res = await admin.fetch(path)
       expect(res.status).toBe(404)
       expect((await envelope(res)).type).toBe('NotFoundError')
@@ -48,7 +48,7 @@ describe('API-006: consistent error envelope', () => {
     admin,
   }) => {
     for (const qs of ['limit_start=abc', 'limit_page_length=xyz', 'limit_start=Infinity']) {
-      const res = await admin.fetch(`/api/list/User?${qs}`)
+      const res = await admin.fetch(`/api/table/User?${qs}`)
       expect(res.status).toBe(400)
       expect((await envelope(res)).type).toBe('BadRequestError')
     }
@@ -75,7 +75,7 @@ describe('API-006: consistent error envelope', () => {
   })
 
   test('409 ConflictError on duplicate insert', async ({ admin }) => {
-    const res = await admin.fetch('/api/resource/User', {
+    const res = await admin.fetch('/api/table/User', {
       method: 'POST',
       body: JSON.stringify({ name: 'Administrator', email: 'admin@example.com' }),
     })
@@ -87,7 +87,7 @@ describe('API-006: consistent error envelope', () => {
     admin,
     api,
   }) => {
-    // A role-less probe user hitting the System-Manager-only DocType route.
+    // A role-less probe user hitting the System-Manager-only Table route.
     const email = `envelope-probe-${Math.random().toString(36).slice(2, 8)}@x.com`
     const mk = await admin.fetch('/api/save_doc', {
       method: 'POST',
@@ -104,7 +104,7 @@ describe('API-006: consistent error envelope', () => {
     const res = await api.fetch('/api/doctype', {
       method: 'POST',
       headers: { authorization: `Bearer ${tok}` },
-      body: JSON.stringify({ name: 'Envelope Probe DT', fields: [] }),
+      body: JSON.stringify({ name: 'Envelope Probe DT', columns: [] }),
     })
     expect(res.status).toBe(403)
     expect((await envelope(res)).type).toBe('PermissionError')

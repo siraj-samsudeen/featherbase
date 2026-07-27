@@ -1,13 +1,13 @@
-import type { DocTypeController } from '../controllers'
+import type { TableController } from '../controllers'
 import { deleteStored } from '../storage'
 
-// FILE-002: deleting a File doc also removes its storage object, so
+// FILE-002: deleting a File row also removes its storage object, so
 // attachments never leave orphaned files on disk.
-const controller: DocTypeController = {
-  doctype: 'File',
+const controller: TableController = {
+  table: 'File',
   hooks: {
-    on_trash: async ({ doc }) => {
-      if (typeof doc.file_url === 'string' && doc.file_url) await deleteStored(doc.file_url)
+    on_trash: async ({ row }) => {
+      if (typeof row.file_url === 'string' && row.file_url) await deleteStored(row.file_url)
     },
   },
 }

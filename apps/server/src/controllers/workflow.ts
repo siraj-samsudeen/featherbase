@@ -1,25 +1,25 @@
-import type { DocTypeController } from '../controllers'
+import type { TableController } from '../controllers'
 import { ensureStateField, validateWorkflow } from '../workflow'
 import type { WorkflowState, WorkflowTransition } from '../workflow'
 
 // WF-001: validate a workflow definition (no transitions to/from undefined
-// states) and, once active, ensure the target DocType has a workflow_state
-// field so every document carries its state.
-const controller: DocTypeController = {
-  doctype: 'Workflow',
+// states) and, once active, ensure the target Table has a workflow_state
+// column so every row carries its state.
+const controller: TableController = {
+  table: 'Workflow',
   hooks: {
-    validate: ({ doc }) => {
-      const states = (doc.states as WorkflowState[] | undefined) ?? []
-      const transitions = (doc.transitions as WorkflowTransition[] | undefined) ?? []
+    validate: ({ row }) => {
+      const states = (row.states as WorkflowState[] | undefined) ?? []
+      const transitions = (row.transitions as WorkflowTransition[] | undefined) ?? []
       validateWorkflow(states, transitions)
     },
-    after_save: async ({ doc, tx }) => {
-      if (doc.is_active && typeof doc.document_type === 'string') {
-        // Binding an existing field (state_field) is validated here — saving a
-        // workflow that names a nonexistent field fails; a blank state_field
-        // auto-adds the default workflow_state field.
-        const field = String(doc.state_field ?? '').trim() || 'workflow_state'
-        await ensureStateField(doc.document_type, tx, field)
+    after_save: async ({ row, tx }) => {
+      if (row.is_active && typeof row.ref_table === 'string') {
+        // Binding an existing column (state_field) is validated here — saving
+        // a workflow that names a nonexistent column fails; a blank
+        // state_field auto-adds the default workflow_state column.
+        const field = String(row.state_field ?? '').trim() || 'workflow_state'
+        await ensureStateField(row.ref_table, tx, field)
       }
     },
   },

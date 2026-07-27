@@ -11,16 +11,16 @@ const FILE_DT = 'Hook File Demo'
 async function makeDoctypes(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: DT,
-    fields: [
-      { fieldname: 'title', fieldtype: 'Data' },
-      { fieldname: 'computed', fieldtype: 'Data' },
+    columns: [
+      { column_name: 'title', column_type: 'Data' },
+      { column_name: 'computed', column_type: 'Data' },
     ],
   })
   await admin.post('/api/doctype', {
     name: FILE_DT,
-    fields: [
-      { fieldname: 'title', fieldtype: 'Data' },
-      { fieldname: 'slug', fieldtype: 'Data' },
+    columns: [
+      { column_name: 'title', column_type: 'Data' },
+      { column_name: 'slug', column_type: 'Data' },
     ],
   })
 }
@@ -29,18 +29,18 @@ async function makeDoctypes(admin: TestClient) {
 // each test registers the probe controller itself and clears it in `finally`.
 function registerProbe(events: string[]) {
   registerController({
-    doctype: DT,
+    table: DT,
     hooks: {
       before_insert: () => { events.push('before_insert') },
-      validate: ({ doc }) => {
+      validate: ({ row }) => {
         events.push('validate')
-        if (doc.title === 'explode')
+        if (row.title === 'explode')
           throw new AppError('ValidationError', 'no explosions', { title: 'boom' })
-        doc.title = String(doc.title ?? '').toUpperCase()
+        row.title = String(row.title ?? '').toUpperCase()
       },
-      before_save: ({ doc, isNew }) => {
+      before_save: ({ row, isNew }) => {
         events.push('before_save')
-        doc.computed = `${doc.title}:${isNew ? 'new' : 'upd'}`
+        row.computed = `${row.title}:${isNew ? 'new' : 'upd'}`
       },
       after_insert: () => { events.push('after_insert') },
       after_save: () => { events.push('after_save') },
@@ -62,7 +62,7 @@ describe('DOC-003: lifecycle hook chain', () => {
       expect(doc.title).toBe('ABC')
       expect(doc.computed).toBe('ABC:new')
       const [row] = await sql.unsafe(
-        `select title, computed from tab_hook_chain_probe where name='${doc.name}'`,
+        `select title, computed from hook_chain_probe where name='${doc.name}'`,
       )
       expect(row).toMatchObject({ title: 'ABC', computed: 'ABC:new' })
     } finally {
@@ -84,7 +84,7 @@ describe('DOC-003: lifecycle hook chain', () => {
       events.length = 0
       const upd = await admin.post<Record<string, unknown>>('/api/save_doc', {
         doctype: DT,
-        doc: { name: doc.name, modified: doc.modified, title: 'y' },
+        doc: { name: doc.name, updated_at: doc.updated_at, title: 'y' },
       })
       expect(events).toEqual(['validate', 'before_save', 'after_save'])
       expect(upd.computed).toBe('Y:upd')
@@ -102,7 +102,7 @@ describe('DOC-003: lifecycle hook chain', () => {
         admin.post('/api/save_doc', { doctype: DT, doc: { title: 'explode' } }),
       ).rejects.toMatchObject({ status: 417 })
       const [{ count }] = await sql.unsafe(
-        `select count(*)::int as count from tab_hook_chain_probe where title='explode' or title='EXPLODE'`,
+        `select count(*)::int as count from hook_chain_probe where title='explode' or title='EXPLODE'`,
       )
       expect(count).toBe(0)
     } finally {
@@ -110,7 +110,7 @@ describe('DOC-003: lifecycle hook chain', () => {
     }
   })
 
-  test('DocTypes without controllers still save', async ({ admin }) => {
+  test('Tables without controllers still save', async ({ admin }) => {
     await makeDoctypes(admin)
     const res = await admin.fetch('/api/save_doc', {
       method: 'POST',

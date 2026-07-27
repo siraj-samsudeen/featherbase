@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import type { DocTypeController } from '../controllers'
+import type { TableController } from '../controllers'
 import { sql } from '../db'
 import { publishUserEvent } from '../realtime'
 
@@ -8,11 +8,11 @@ import { publishUserEvent } from '../realtime'
 // event so their unread count updates without a reload.
 const MENTION = /@([\w.@-]+)/g
 
-const controller: DocTypeController = {
-  doctype: 'Comment',
+const controller: TableController = {
+  table: 'Comment',
   hooks: {
-    after_insert: async ({ doc, tx, user }) => {
-      const content = String(doc.content ?? '')
+    after_insert: async ({ row, tx, user }) => {
+      const content = String(row.content ?? '')
       const mentioned = new Set<string>()
       for (const m of content.matchAll(MENTION)) mentioned.add(m[1])
       if (!mentioned.size) return
@@ -20,17 +20,17 @@ const controller: DocTypeController = {
 
       // Only notify names that resolve to real users.
       const users = await stx`
-        select name from tab_user where name in ${stx([...mentioned])}`
+        select name from "user" where name in ${stx([...mentioned])}`
       const notified: string[] = []
       for (const u of users) {
         const target = u.name as string
         await stx`
-          insert into tab_notification_log
-            (name, owner, modified_by, for_user, subject, ref_doctype, ref_name, read)
+          insert into notification_log
+            (name, created_by, updated_by, for_user, subject, ref_table, ref_name, read)
           values (
             ${randomBytes(5).toString('hex')}, ${user}, ${user}, ${target},
             ${`${user} mentioned you in a comment`},
-            ${String(doc.ref_doctype ?? '')}, ${String(doc.ref_name ?? '')}, false
+            ${String(row.ref_table ?? '')}, ${String(row.ref_name ?? '')}, false
           )`
         notified.push(target)
       }

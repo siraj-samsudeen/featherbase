@@ -15,16 +15,16 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     headers: auth,
     data: {
       name: DT,
-      fields: [
-        { fieldname: 'title', fieldtype: 'Data', label: 'Title', in_list_view: true },
+      columns: [
+        { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true },
         {
-          fieldname: 'status',
-          fieldtype: 'Select',
+          column_name: 'stage',
+          column_type: 'Choice',
           label: 'Status',
-          options: 'Open\nClosed',
+          choices: 'Open\nClosed',
           in_list_view: true,
         },
-        { fieldname: 'qty', fieldtype: 'Int', label: 'Qty', in_list_view: true },
+        { column_name: 'qty', column_type: 'Int', label: 'Qty', in_list_view: true },
       ],
     },
   })
@@ -32,22 +32,22 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 
   // Deterministic dataset: wipe and reseed.
   const listed = (await (
-    await request.get(`/api/resource/${encodeURIComponent(DT)}?limit_page_length=100`, {
+    await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, {
       headers: auth,
     })
   ).json()) as { data: { name: string }[] }
   for (const row of listed.data)
-    await request.delete(`/api/resource/${encodeURIComponent(DT)}/${row.name}`, { headers: auth })
+    await request.delete(`/api/table/${encodeURIComponent(DT)}/${row.name}`, { headers: auth })
 
   const seed: [string, string, number][] = [
     ['alpha', 'Open', 1],
     ['bravo', 'Open', 2],
     ['charlie', 'Closed', 5],
   ]
-  for (const [title, status, qty] of seed) {
-    const res = await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  for (const [title, stage, qty] of seed) {
+    const res = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
       headers: auth,
-      data: { title, status, qty },
+      data: { title, stage, qty },
     })
     if (res.status() !== 201) throw new Error(`seed: ${res.status()}`)
   }
@@ -73,7 +73,7 @@ test('RPT-001: group by Select shows correct counts and sums; column picker work
   await expect(page.getByTestId('grand-sum-qty')).toContainText('8')
 
   // Group by status: Open (2) sum 3, Closed (1) sum 5.
-  await page.getByTestId('report-groupby').selectOption('status')
+  await page.getByTestId('report-groupby').selectOption('stage')
   const headers = page.getByTestId('group-header')
   await expect(headers).toHaveCount(2)
 

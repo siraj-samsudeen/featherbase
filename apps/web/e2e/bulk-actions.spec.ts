@@ -13,20 +13,20 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     headers: auth,
     data: {
       name: DT,
-      fields: [
-        { fieldname: 'title', fieldtype: 'Data', label: 'Title', in_list_view: true },
-        { fieldname: 'stage', fieldtype: 'Data', label: 'Stage', in_list_view: true },
+      columns: [
+        { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true },
+        { column_name: 'stage', column_type: 'Data', label: 'Stage', in_list_view: true },
       ],
     },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   const listed = (await (
-    await request.get(`/api/resource/${encodeURIComponent(DT)}?limit_page_length=100`, { headers: auth })
+    await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, { headers: auth })
   ).json()) as { data: { name: string }[] }
   for (const row of listed.data)
-    await request.delete(`/api/resource/${encodeURIComponent(DT)}/${row.name}`, { headers: auth })
+    await request.delete(`/api/table/${encodeURIComponent(DT)}/${row.name}`, { headers: auth })
   for (const title of ['one', 'two', 'three', 'four', 'five']) {
-    await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+    await request.post(`/api/table/${encodeURIComponent(DT)}`, {
       headers: auth,
       data: { title, stage: 'draft' },
     })
@@ -62,7 +62,7 @@ test('UI-012: bulk edit a field then bulk delete selected rows', async ({ page }
   // Token for API verification.
   const token = await page.evaluate(() => localStorage.getItem('fc_token'))
   const listed = (await (
-    await page.request.get(`/api/resource/${encodeURIComponent(DT)}?limit_page_length=100`, {
+    await page.request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, {
       headers: { Authorization: `Bearer ${token}` },
     })
   ).json()) as { data: { name: string }[] }
@@ -74,7 +74,7 @@ test('UI-012: bulk edit a field then bulk delete selected rows', async ({ page }
   await page.getByTestId('bulk-delete').click()
   await expect(page.getByTestId('list-total')).toContainText('0 total')
   const after = (await (
-    await page.request.get(`/api/resource/${encodeURIComponent(DT)}?limit_page_length=100`, {
+    await page.request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, {
       headers: { Authorization: `Bearer ${token}` },
     })
   ).json()) as { data: { name: string }[] }

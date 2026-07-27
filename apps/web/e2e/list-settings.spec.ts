@@ -13,10 +13,10 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     headers,
     data: {
       name: DT,
-      fields: [
-        { fieldname: 'title', fieldtype: 'Data', label: 'Title', in_list_view: true },
-        { fieldname: 'city', fieldtype: 'Data', label: 'City', in_list_view: true },
-        { fieldname: 'rank', fieldtype: 'Int', label: 'Rank', in_list_view: true },
+      columns: [
+        { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true },
+        { column_name: 'city', column_type: 'Data', label: 'City', in_list_view: true },
+        { column_name: 'rank', column_type: 'Int', label: 'Rank', in_list_view: true },
       ],
     },
   })
@@ -28,7 +28,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     ['bravo', 'LA', 1],
     ['charlie', 'SF', 2],
   ] as [string, string, number][]) {
-    const r = await request.post(`/api/resource/${encodeURIComponent(DT)}`, { headers, data: { title, city, rank } })
+    const r = await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { title, city, rank } })
     if (![201, 409].includes(r.status())) throw new Error(`seed: ${r.status()}`)
   }
 })

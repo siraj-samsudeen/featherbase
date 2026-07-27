@@ -1,7 +1,7 @@
 // Vitest globalSetup: empty the shared background-job queue once before the
 // run.
 //
-// `tab_background_job` is the one piece of state that survives a test run.
+// `background_job` is the one piece of state that survives a test run.
 // Every test body is transaction-isolated by the feather-testing-postgres
 // sandbox and rolls back on its own, but a run that dies partway through
 // (Ctrl-C, crash, restart) commits nothing and yet leaves `queued` rows behind
@@ -27,8 +27,8 @@ export async function setup() {
     // not exist would fail the whole run with an error that hides the real
     // cause, so treat an absent queue as an already-empty one.
     const [{ exists }] = await sql<{ exists: boolean }[]>`
-      select to_regclass('public.tab_background_job') is not null as exists`
-    if (exists) await sql`delete from tab_background_job`
+      select to_regclass('public.background_job') is not null as exists`
+    if (exists) await sql`delete from background_job`
   } finally {
     await sql.end({ timeout: 5 })
   }

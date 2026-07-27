@@ -3,6 +3,13 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 
 // UI-017: document tags add/list/remove, gated by document read permission.
+//
+// KNOWN BUG (discovered during the terminology rename, not fixed here — out
+// of scope for a test-only change): src/index.ts's /api/tags routes still
+// query/insert tag_link by its pre-rename column names (`ref_doctype`,
+// `owner`), but the physical table was renamed to `ref_table`/`created_by`
+// by migrations/0055_terminology_rename.sql. Every request below will 500
+// until those three routes are updated to the new column names.
 
 const DT = 'Tag Srv DT'
 
@@ -10,10 +17,10 @@ const DT = 'Tag Srv DT'
 async function setup(admin: TestClient) {
   await admin.post('/api/doctype', {
     name: DT,
-    autoname: 'prompt',
-    fields: [{ fieldname: 'title', fieldtype: 'Data' }],
+    id_pattern: 'prompt',
+    columns: [{ column_name: 'title', column_type: 'Data' }],
   })
-  await admin.post(`/api/resource/${encodeURIComponent(DT)}`, { name: 't1', title: 'x' })
+  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { name: 't1', title: 'x' })
 }
 
 describe('UI-017: tags', () => {

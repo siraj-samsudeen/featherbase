@@ -1,12 +1,12 @@
 import { sql } from './db'
-import type { DocTypeMeta } from './meta'
+import type { TableMeta } from './meta'
 
-// Service Level Agreements: a metadata-defined SLA names a DocType, a priority
-// field, and per-priority response/resolution windows (child table). On
-// insert, matching documents get `response_by` / `resolution_by` deadlines
-// stamped (the target DocType simply declares those Datetime fields — no
+// Service Level Agreements: a metadata-defined SLA names a Table, a priority
+// column, and per-priority response/resolution windows (child table). On
+// insert, matching rows get `response_by` / `resolution_by` deadlines
+// stamped (the target Table simply declares those Datetime columns — no
 // code). A scheduled job (`check_sla`, src/jobs/sla-escalation.ts) escalates
-// documents past their resolution deadline.
+// rows past their resolution deadline.
 
 export interface SlaPriorityRow {
   priority: string
@@ -16,32 +16,32 @@ export interface SlaPriorityRow {
 
 export interface ActiveSla {
   name: string
-  document_type: string
+  ref_table: string
   priority_field: string
   fulfilled_states: string[]
   escalation_role: string | null
   priorities: SlaPriorityRow[]
 }
 
-export async function getActiveSla(doctype: string): Promise<ActiveSla | null> {
-  // The SLA DocType may not exist yet during early migrations.
+export async function getActiveSla(table: string): Promise<ActiveSla | null> {
+  // The SLA Table may not exist yet during early migrations.
   const [tableOk] = await sql`
     select 1 from information_schema.tables
-    where table_name = 'tab_service_level_agreement'`
+    where table_name = 'service_level_agreement'`
   if (!tableOk) return null
   const [sla] = await sql`
-    select name, document_type, priority_field, fulfilled_states, escalation_role
-    from tab_service_level_agreement
-    where document_type = ${doctype} and enabled = true
-    order by modified desc limit 1`
+    select name, ref_table, priority_field, fulfilled_states, escalation_role
+    from service_level_agreement
+    where ref_table = ${table} and enabled = true
+    order by updated_at desc limit 1`
   if (!sla) return null
   const rows = await sql<SlaPriorityRow[]>`
-    select priority, response_hours, resolution_hours from tab_sla_priority
+    select priority, response_hours, resolution_hours from sla_priority
     where parent = ${sla.name as string} and parenttype = 'Service Level Agreement'
-    order by idx`
+    order by position`
   return {
     name: sla.name as string,
-    document_type: sla.document_type as string,
+    ref_table: sla.ref_table as string,
     priority_field: ((sla.priority_field as string) || 'priority').trim(),
     fulfilled_states: String(sla.fulfilled_states ?? '')
       .split('\n')
@@ -52,11 +52,11 @@ export async function getActiveSla(doctype: string): Promise<ActiveSla | null> {
   }
 }
 
-// Stamp response_by / resolution_by onto a new document's values from the
-// active SLA for its DocType. Only fields the DocType actually declares are
+// Stamp response_by / resolution_by onto a new row's values from the
+// active SLA for its Table. Only columns the Table actually declares are
 // written; explicit caller-provided deadlines are left alone.
-export async function applySla(meta: DocTypeMeta, values: Record<string, unknown>): Promise<void> {
-  const has = (fieldname: string) => meta.fields.some((f) => f.fieldname === fieldname)
+export async function applySla(meta: TableMeta, values: Record<string, unknown>): Promise<void> {
+  const has = (columnName: string) => meta.columns.some((f) => f.column_name === columnName)
   if (!has('response_by') && !has('resolution_by')) return
   const sla = await getActiveSla(meta.name)
   if (!sla) return

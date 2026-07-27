@@ -11,16 +11,16 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const headers = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
   const dt = await request.post('/api/doctype', {
     headers,
-    data: { name: DT, autoname: 'prompt', fields: [{ fieldname: 'title', fieldtype: 'Data', label: 'Title' }] },
+    data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
-  await request.delete(`/api/resource/${encodeURIComponent(DT)}/ps-doc`, { headers })
-  await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  await request.delete(`/api/table/${encodeURIComponent(DT)}/ps-doc`, { headers })
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
     data: { name: 'ps-doc', title: 'hi' },
   })
   // Clean any prior setter.
-  await request.delete(`/api/resource/Property%20Setter/${encodeURIComponent(`${DT}-title-label`)}`, { headers })
+  await request.delete(`/api/table/Metadata%20Override/${encodeURIComponent(`${DT}-title-label`)}`, { headers })
 })
 
 test('CUST-002: a label override shows in the form and reverts when removed', async ({ page, request }) => {
@@ -42,8 +42,8 @@ test('CUST-002: a label override shows in the form and reverts when removed', as
   const ps = await request.post('/api/save_doc', {
     headers,
     data: {
-      doctype: 'Property Setter',
-      doc: { name: `${DT}-title-label`, doc_type: DT, field_name: 'title', property: 'label', value: 'Headline' },
+      doctype: 'Metadata Override',
+      doc: { name: `${DT}-title-label`, table_name: DT, column_name: 'title', property: 'label', value: 'Headline' },
     },
   })
   expect([200, 201]).toContain(ps.status())
@@ -53,7 +53,7 @@ test('CUST-002: a label override shows in the form and reverts when removed', as
   await expect(page.locator('label', { hasText: 'Headline' }).first()).toBeVisible()
 
   // Base docfield unchanged: removing the setter reverts the label.
-  await request.delete(`/api/resource/Property%20Setter/${encodeURIComponent(`${DT}-title-label`)}`, { headers })
+  await request.delete(`/api/table/Metadata%20Override/${encodeURIComponent(`${DT}-title-label`)}`, { headers })
   await page.reload()
   await expect(page.locator('label', { hasText: 'Title' }).first()).toBeVisible()
   await expect(page.locator('label', { hasText: 'Headline' })).toHaveCount(0)

@@ -22,22 +22,22 @@ test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
   const dt = await request.post('/api/doctype', {
     headers,
-    data: { name: DT, fields: [{ fieldname: 'title', fieldtype: 'Data', in_list_view: true }] },
+    data: { name: DT, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   await request.post('/api/save_doc', { headers, data: { doctype: 'Role', doc: { name: ROLE } } })
-  // Clear any DocPerm rows left by earlier runs so exactly one row exists.
+  // Clear any Permission rows left by earlier runs so exactly one row exists.
   const existing = (await (
     await request.get(
-      `/api/resource/DocPerm?filters=${encodeURIComponent(JSON.stringify([['ref_doctype', '=', DT]]))}&limit_page_length=200`,
+      `/api/table/Permission?filters=${encodeURIComponent(JSON.stringify([['ref_table', '=', DT]]))}&limit_page_length=200`,
       { headers },
     )
   ).json()) as { data: { name: string }[] }
-  for (const p of existing.data) await request.delete(`/api/resource/DocPerm/${p.name}`, { headers })
+  for (const p of existing.data) await request.delete(`/api/table/Permission/${p.name}`, { headers })
   // Start with read + write + create so the role's user can save.
   await request.post('/api/save_doc', {
     headers,
-    data: { doctype: 'DocPerm', doc: { ref_doctype: DT, role: ROLE, can_read: true, can_write: true, can_create: true } },
+    data: { doctype: 'Permission', doc: { ref_table: DT, role: ROLE, can_read: true, can_write: true, can_create: true } },
   })
   await request.post('/api/save_doc', {
     headers,
@@ -45,7 +45,7 @@ test.beforeAll(async ({ request }) => {
   })
   await request.post('/api/set_password', { headers, data: { user: USER, password: PWD } })
   // Seed a document the role's user will try to save (update).
-  const seed = await request.post(`/api/resource/${encodeURIComponent(DT)}`, {
+  const seed = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
     data: { title: 'seed' },
   })
@@ -58,11 +58,11 @@ async function trySave(request: APIRequestContext, title: string) {
   const token = await userToken(request)
   const auth = { Authorization: `Bearer ${token}` }
   const doc = (await (
-    await request.get(`/api/resource/${encodeURIComponent(DT)}/${seedName}`, { headers: auth })
-  ).json()) as { modified: string }
-  return request.put(`/api/resource/${encodeURIComponent(DT)}/${seedName}`, {
+    await request.get(`/api/table/${encodeURIComponent(DT)}/${seedName}`, { headers: auth })
+  ).json()) as { updated_at: string }
+  return request.patch(`/api/table/${encodeURIComponent(DT)}/${seedName}`, {
     headers: auth,
-    data: { title, modified: doc.modified },
+    data: { title, updated_at: doc.updated_at },
   })
 }
 

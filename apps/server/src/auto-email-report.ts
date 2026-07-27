@@ -22,13 +22,13 @@ export async function runReportRows(reportName: string, user: string): Promise<R
     const { columns, rows } = await runQueryReport(reportName, {}, user)
     return { columns, rows: rows as Record<string, unknown>[] }
   }
-  // Report Builder (default): apply the saved view config over the DocType.
+  // Report Builder (default): apply the saved view config over the Table.
   const cfg = (report.config as { columns?: string[]; filters?: [string, string, unknown][]; group_by?: string } | null) ?? {}
-  const refDoctype = String(report.ref_doctype ?? '')
-  if (!refDoctype) throw new AppError('ValidationError', `${reportName} has no ref_doctype`)
+  const refTable = String(report.ref_table ?? '')
+  if (!refTable) throw new AppError('ValidationError', `${reportName} has no ref_table`)
   const columns = [...new Set(['name', ...(cfg.columns ?? [])])]
   const { data } = await getList(
-    refDoctype,
+    refTable,
     { fields: columns, filters: cfg.filters ?? [], limit_page_length: 500 },
     user,
   )
@@ -98,13 +98,13 @@ export async function deliverAutoEmailReport(
       to,
       subject,
       body,
-      reference_doctype: 'Report',
+      ref_table: 'Report',
       reference_name: reportName,
       attachments,
     })
   }
 
-  await sql`update tab_auto_email_report set last_sent = now(), modified = now() where name = ${name}`
+  await sql`update auto_email_report set last_sent = now(), updated_at = now() where name = ${name}`
   return { recipients: recipients.length, rows: rows.length }
 }
 
@@ -121,7 +121,7 @@ const CADENCE_MS: Record<string, number> = {
 // exposed for a manual "run now" trigger.
 export async function runDueAutoEmailReports(now = new Date()): Promise<string[]> {
   const rows = await sql<{ name: string; frequency: string; last_sent: Date | null }[]>`
-    select name, frequency, last_sent from tab_auto_email_report where enabled = true`
+    select name, frequency, last_sent from auto_email_report where enabled = true`
   const delivered: string[] = []
   for (const r of rows) {
     const gap = CADENCE_MS[r.frequency] ?? CADENCE_MS.Daily

@@ -62,18 +62,18 @@ test.beforeAll(async ({ request }) => {
   const headers = await adminAuth(request)
   const dt = await request.post('/api/doctype', {
     headers,
-    data: { name: DT, autoname: 'prompt', fields: [{ fieldname: 'title', fieldtype: 'Data' }] },
+    data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
-  await request.delete(`/api/resource/${encodeURIComponent(DT)}/${DOC}`, { headers })
-  await request.post(`/api/resource/${encodeURIComponent(DT)}`, { headers, data: { name: DOC, title: 'x' } })
+  await request.delete(`/api/table/${encodeURIComponent(DT)}/${DOC}`, { headers })
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { name: DOC, title: 'x' } })
 })
 
 async function cleanupFiles(request: APIRequestContext) {
   const headers = await adminAuth(request)
-  const filters = encodeURIComponent(JSON.stringify([['ref_doctype', '=', DT], ['ref_name', '=', DOC]]))
-  const listed = (await (await request.get(`/api/resource/File?filters=${filters}`, { headers })).json()) as { data: { name: string }[] }
-  for (const f of listed.data) await request.delete(`/api/resource/File/${f.name}`, { headers })
+  const filters = encodeURIComponent(JSON.stringify([['ref_table', '=', DT], ['ref_name', '=', DOC]]))
+  const listed = (await (await request.get(`/api/table/File?filters=${filters}`, { headers })).json()) as { data: { name: string }[] }
+  for (const f of listed.data) await request.delete(`/api/table/File/${f.name}`, { headers })
 }
 
 test.beforeEach(async ({ request }) => cleanupFiles(request))
