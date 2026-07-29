@@ -27,6 +27,7 @@ import {
   splitSuffix,
 } from './actions'
 import './actions/core-row-actions'
+import './actions/collection-import'
 import { renderPdf, renderPrintHtml } from './print'
 import { availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'

@@ -13,6 +13,54 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-29 — drag & drop a CSV/Excel file, get a Table + its data (IMP-001..006)
+
+Drop a `.csv`/`.xlsx` onto the Table builder (`/desk/new-table`) and
+Featherbase infers the whole Table definition — snake_case column names from
+the headers, types sampled from the data (Int/Float/Check/Date/Datetime/
+Data/Text), labels from the original headers — prefills the existing editable
+column grid plus a data preview, and on "Create Table & Import N rows"
+creates the Table and bulk-inserts every row. The generic ListView/FormView
+render it immediately with zero new frontend code (invariant #3).
+
+- **Shared inference layer** (`packages/shared/src/import.ts`, pure):
+  `sanitizeHeaders` (blank → `col_N`, duplicates and reserved standard
+  columns get `_1` suffixes), `inferColumnType` (>140 chars or newlines →
+  Text; `0/1` reads as Int, not Check — user can flip it in the grid;
+  midnight JS Dates from SheetJS `cellDates` → Date, with time → Datetime),
+  `inferTableDef`, `tableNameFromFile` ("customer orders.csv" → "Customer
+  Orders"), `coerceRows` (yes/true → boolean, local-time Date → `YYYY-MM-DD`
+  — `toISOString` would shift the day east of UTC).
+- **Server: the first real collection action** (`:import`), which the #61
+  registry had been waiting for. `POST /api/table/:table:import { rows }`
+  (`apps/server/src/actions/collection-import.ts`) pushes every row through
+  `saveDoc(..., 'insert')` — full permission/validation/id-pattern/trigger
+  chain, duplicate names conflict instead of updating. Best-effort: bad rows
+  come back as `{ index, message, fields }` while good rows land;
+  PermissionError still fails the whole request; 10k-row cap per request
+  (the client chunks at 500). `settings`/`sub_table` kinds refused.
+- **Web**: SheetJS (`xlsx`, already a dependency for report export) parses
+  both formats in the browser via dynamic import (`lib/parse-file.ts`,
+  `cellDates: true`); the builder keeps its manual path untouched (the
+  UI-011 spec still passes unchanged). Grid rows remember their
+  `source_index` into the file so deleting/renaming inferred columns still
+  imports the right cells.
+- **Verified**: 46 new server tests (`import-infer.test.ts`,
+  `import-action.test.ts`) in the full 431-green suite; new
+  `e2e/import-file.spec.ts` (3 specs: real drag-drop via in-page
+  `DataTransfer`+`File`, a real `.xlsx` built with SheetJS through the file
+  picker, and a bad-file refusal) against real browser + server + Postgres;
+  `doctype-builder.spec.ts` + smoke re-run green; both typechecks clean.
+  Full-e2e-suite regression result recorded in the follow-up commit.
+- Gotcha: in this container the pinned Playwright wants a browser build that
+  isn't installed — run e2e with `CHROMIUM_PATH=/opt/pw-browsers/chromium`
+  (the config already honors it). Also: Postgres `bigint` columns serialize
+  back as *strings* through the API — assert with `Number(...)`.
+- Next: the import currently targets only *new* Tables. A natural follow-up
+  is dropping a file onto an existing Table's ListView to append rows
+  (the `:import` action already supports it — it's UI-only work), plus
+  Choice-type inference for low-cardinality columns.
+
 ## 2026-07-26 — terminology rename + API surface redesign (#59, #61, #62)
 
 Two rounds landing as one PR, per the decided design in #59/#61: round 1
