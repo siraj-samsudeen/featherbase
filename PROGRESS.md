@@ -13,6 +13,62 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-29 — 0055 upgrade path fixed: pre-rename databases now migrate (#63 follow-up)
+
+Running this branch against a real pre-rename database (a laptop last
+migrated at 0054, before #63 merged) crashed `./init.sh` inside
+`0055_terminology_rename.sql`. Root cause class: **0055 was only ever
+verified against fresh databases**, where the rewritten 0001–0054 already
+produce the new schema and 0055 is a no-op. Against a genuinely old
+database it had four kinds of bugs, all fixed in place (safe to edit: 0055
+never successfully committed on any upgraded DB — it crashed — and on fresh
+DBs it's recorded and won't re-run):
+
+- **FK dropped by assumed name.** Constraint names survive table renames:
+  a DB that began life with `docfield` carries `docfield_parent_fkey`
+  through both later renames, so `drop constraint if exists
+  column_def_parent_fkey` was a silent no-op and the very next
+  `update ... parent='Table'` tripped the still-armed FK (the exact error
+  reported). Now dropped by pg_constraint lookup.
+- **`create or replace function fc_has_read`** 42P13s when the old function
+  had a different parameter name — now dropped with cascade first (§5
+  recreates every policy anyway).
+- **Domain-column renames missing entirely.** The rewritten migrations seed
+  ~25 per-Table columns under new names that 0055 never renamed on upgrade:
+  `document_type`/`reference_doctype`/`ref_doctype`/`doc_type` → `ref_table`
+  across 16 Tables, `webhook_doctype`→`webhook_table`, Custom Field's
+  `fieldname`/`fieldtype`/`options` (with the Link/Select/Table value map
+  and the options→reference_table/choices/row_table split),
+  `single_value.doctype`→`table_name`, `installed_app.doctypes`→`tables`,
+  Workflow Document State `doc_status`→`target_status` including the
+  0/1/2→draft/submitted/cancelled *value* conversion — plus the matching
+  `column_def` metadata rows (incl. Table's own autoname/issingle/istable→
+  id_pattern/kind and Column's fieldname/fieldtype/options/permlevel).
+  §2 had also renamed Permission's ref column to `reference_table` where
+  the engine reads `ref_table`.
+- **Ordering data-loss trap**: §3's docstatus→status conversion does `add
+  column if not exists status` + overwrite — on Tables with a *domain*
+  `status` column (Email Queue/HD Ticket/ToDo/Background Job) it would have
+  silently destroyed queue/ticket/todo/job state. The domain renames
+  (`send_status`/`ticket_status`/`todo_status`/`job_status`) now run in a
+  new §2c *before* §3.
+
+Verified by construction, not inspection: scratch DB migrated with the real
+pre-rename chain (worktree at ece91fd, 53 migrations), seeded with live
+domain rows (a ToDo, Link+Select Custom Fields, a queued email, a done
+job), then upgraded with the fixed chain — **information_schema column
+diff and column_def metadata diff against a from-scratch database are both
+empty**, every seeded value survived (Link→Reference split included), and
+the real server booted against the upgraded DB: login with the preserved
+password hash, ToDo list, Table create, and `:import` all green. Fresh
+path re-verified byte-identical; full server suite 441 green.
+
+Gotcha for future schema work: constraint names do NOT follow table
+renames — never drop/alter a constraint by its fresh-install name in an
+upgrade migration; look it up in pg_constraint. And any migration verified
+"end-to-end" must be run against a database migrated by the *previous
+release's chain*, not only from scratch.
+
 ## 2026-07-29 — the Import wizard: multi-sheet, existing Tables, dry-run, Choice detection (IMP-007..010)
 
 Round 2 of the import feature (same branch/PR #65), per the agreed sequence:
