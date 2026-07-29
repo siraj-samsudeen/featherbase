@@ -77,8 +77,12 @@ Second follow-up (same feedback session) — matching polish (IMP-012):
 - Verified: 15 new unit tests (prettify cases; the exact Zone/Registration
   District geometry asserted not-auto-matched; junk-name/full-coverage
   still matched; name-token rescue) — server suite 458 green; wizard +
-  import e2e specs re-run green on a reset DB. Full-suite tally in the
-  follow-up commit.
+  import e2e specs re-run green on a reset DB. Full e2e suite: 80 passed,
+  4 skipped, 0 failed. Third follow-up from the same session: the wizard's
+  new-Table grid gained an editable **Label** column beside the machine
+  name (it showed only snake_case column_names, reading as inconsistent
+  next to the mapping panel's Title-Case labels) — asserted in the wizard
+  e2e, re-run green.
 Next: same as before — background import via the job queue for large files.
 
 ## 2026-07-29 — 0055 upgrade path fixed: pre-rename databases now migrate (#63 follow-up)

@@ -262,7 +262,7 @@ export function ImportWizard() {
               .filter((c) => c.column_name.trim())
               .map((c) => ({
                 column_name: c.column_name.trim(),
-                label: c.label,
+                label: c.label.trim() || undefined,
                 column_type: c.column_type,
                 choices: c.column_type === 'Choice' ? c.choices : undefined,
                 in_list_view: c.in_list_view,
@@ -438,6 +438,7 @@ export function ImportWizard() {
                   <thead className="bg-gray-50 text-left text-xs text-gray-600">
                     <tr>
                       <th className="px-2 py-1">File column</th>
+                      <th className="px-2 py-1">Label</th>
                       <th className="px-2 py-1">Column name</th>
                       <th className="px-2 py-1">Type</th>
                       <th className="px-2 py-1">Choices</th>
@@ -447,6 +448,26 @@ export function ImportWizard() {
                     {plan.inferred.columns.map((c, ci) => (
                       <tr key={ci} className="border-t border-gray-100">
                         <td className="px-2 py-1 text-gray-500">{sheet.headers[ci]}</td>
+                        <td className="px-1 py-1">
+                          {/* The display name (normalized from the header);
+                              the machine name in the next cell is what the
+                              database column will be called. */}
+                          <input
+                            value={c.label}
+                            onChange={(e) =>
+                              setPlan(i, {
+                                inferred: {
+                                  ...plan.inferred,
+                                  columns: plan.inferred.columns.map((cc, j) =>
+                                    j === ci ? { ...cc, label: e.target.value } : cc,
+                                  ),
+                                },
+                              })
+                            }
+                            data-rowfield="label"
+                            className="w-full rounded border border-gray-200 px-1 py-0.5"
+                          />
+                        </td>
                         <td className="px-1 py-1">
                           <input
                             value={c.column_name}
