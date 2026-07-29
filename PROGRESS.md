@@ -40,7 +40,8 @@ Verified: `import-action.test.ts` grows to 13 (log row content incl.
 context and error summary; no-context imports log bare counts; dry runs log
 nothing); wizard e2e extended to assert the notice, the history link, and
 both sheets' log rows via the API (2/2 on a reset DB); server suite 443
-green, web unit 9. Full-e2e-suite tally lands in the follow-up commit.
+green, web unit 9. Full e2e suite: 80 passed, 4 skipped, 0 failed (the
+RT-003 flake from the previous round did not recur).
 Next: same as before — background import via the job queue for large files.
 
 ## 2026-07-29 — 0055 upgrade path fixed: pre-rename databases now migrate (#63 follow-up)
