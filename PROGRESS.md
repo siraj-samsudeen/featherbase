@@ -102,8 +102,11 @@ Fourth follow-up (same session) — selective import + the target picker
 - Verified: new `IMP-013` e2e spec (skip a sheet via the picker, uncheck a
   column, search-with-no-hits keeps the pinned actions, import → excluded
   column absent from meta, skipped sheet's Table 404s, row count right) —
-  3/3 wizard specs green on a reset DB; web typecheck clean. Full-suite
-  tally in the follow-up commit.
+  3/3 wizard specs green on a reset DB; web typecheck clean; web unit 9.
+  Full e2e suite: 80 passed, 5 skipped, 0 failed (the 5th skip is the new
+  IMP-013 spec's own idempotency guard on the re-run DB). Issue #68 filed
+  (import dedupe/upsert on a key column — non-binding proposal) for a
+  second PR; #66/#67 remain from earlier feedback.
 Next: same as before — background import via the job queue for large files.
 
 ## 2026-07-29 — 0055 upgrade path fixed: pre-rename databases now migrate (#63 follow-up)
