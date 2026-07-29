@@ -249,7 +249,10 @@ test('IMP-010: the list view Import button preselects that Table as the target',
   await page.getByTestId('open-import').click()
   await expect(page.getByTestId('import-wizard')).toBeVisible()
 
-  const csv = 'Wizard SKU,Bin Count,Restock Level\nCog,4,1'
+  // Unique per run: this spec appends to a persistent Table, so a fixed SKU
+  // would accumulate across runs and break the exactly-one-row assertion.
+  const sku = `Cog-${Date.now()}`
+  const csv = `Wizard SKU,Bin Count,Restock Level\n${sku},4,1`
   await page.getByTestId('iw-file-input').setInputFiles({
     name: 'anything at all.csv',
     mimeType: 'text/csv',
@@ -275,7 +278,7 @@ test('IMP-010: the list view Import button preselects that Table as the target',
   await page.getByTestId('iw-import').click()
   // Single-sheet import navigates to the target Table's list.
   await expect(page).toHaveURL(new RegExp(`/desk/Wizard%20Stock`))
-  await expect(page.getByTestId('list-rows')).toContainText('Cog')
+  await expect(page.getByTestId('list-rows')).toContainText(sku)
 
   const after = (await (
     await request.get(`/api/table/${encodeURIComponent(EXISTING_DT)}:count`, { headers })
@@ -287,7 +290,7 @@ test('IMP-010: the list view Import button preselects that Table as the target',
     await request.get(
       `/api/table/${encodeURIComponent(EXISTING_DT)}?fields=${encodeURIComponent(
         '["wizard_sku","restock_level"]',
-      )}&filters=${encodeURIComponent(JSON.stringify([['wizard_sku', '=', 'Cog']]))}`,
+      )}&filters=${encodeURIComponent(JSON.stringify([['wizard_sku', '=', sku]]))}`,
       { headers },
     )
   ).json()) as { data: { restock_level: unknown }[] }
