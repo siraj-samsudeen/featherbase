@@ -83,6 +83,27 @@ Second follow-up (same feedback session) — matching polish (IMP-012):
   name (it showed only snake_case column_names, reading as inconsistent
   next to the mapping panel's Title-Case labels) — asserted in the wizard
   e2e, re-run green.
+Fourth follow-up (same session) — selective import + the target picker
+(IMP-013):
+- **Per-sheet skip**: every sheet's target can be "Skip this sheet" —
+  all-or-nothing workbooks are gone. Skipped sheets show a gray note,
+  count for nothing, and the import button disables when everything is
+  skipped; single-active-sheet imports still navigate to their Table.
+- **Per-column include**: the new-Table grid gained a "Use" checkbox per
+  column (unchecked rows gray out and are excluded from both the created
+  schema and the imported rows). Existing-Table mode already had this via
+  the mapping's "— skip —".
+- **The target picker replaces the native select** (unusable over hundreds
+  of Tables: "New Table…" needed a full scroll-back, best candidates were
+  buried alphabetically). Now a combobox: pinned "+ New Table…" and
+  "⊘ Skip this sheet" actions always on top, a **Best matches** section
+  (top 3 by tableMatchQuality, shown with "k of its n columns"), and a
+  search box filtering the rest. Enter picks the first hit; Escape closes.
+- Verified: new `IMP-013` e2e spec (skip a sheet via the picker, uncheck a
+  column, search-with-no-hits keeps the pinned actions, import → excluded
+  column absent from meta, skipped sheet's Table 404s, row count right) —
+  3/3 wizard specs green on a reset DB; web typecheck clean. Full-suite
+  tally in the follow-up commit.
 Next: same as before — background import via the job queue for large files.
 
 ## 2026-07-29 — 0055 upgrade path fixed: pre-rename databases now migrate (#63 follow-up)

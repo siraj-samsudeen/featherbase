@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 // (search read non-strictly: the wizard route lives in router.tsx, which
 // imports this file — a strict useSearch would need the route object back)
@@ -31,9 +31,12 @@ interface MappableColumn {
 }
 
 interface SheetPlan {
-  mode: 'new' | 'existing'
+  mode: 'new' | 'existing' | 'skip'
   // mode new: the Table name to create; mode existing: the target Table.
   table: string
+  // Per file column, new-Table mode: import this column at all? (Existing
+  // mode has the same control via the mapping's "— skip —".)
+  include: boolean[]
   // True when the existing target was picked by column-overlap scoring, not
   // by the user — surfaced as a notice so an unnoticed auto-match can't
   // quietly route rows into a lookalike Table.
@@ -66,6 +69,145 @@ async function fetchTargets(): Promise<ImportTarget[]> {
     list.data.map((t) => api.get<TableMeta>(`/api/table/${encodeURIComponent(t.name)}:meta`)),
   )
   return metas.map((m) => ({ name: m.name, columns: mappableColumns(m) }))
+}
+
+// IMP-013: the target picker. A native <select> over hundreds of Tables was
+// unusable — "New Table…" needed a full scroll-back, and the best candidates
+// were buried alphabetically. This combobox pins the two actions on top,
+// ranks the closest column-overlap matches next (with how much of each
+// Table the sheet covers), and filters the full list through a search box.
+function TargetPicker({
+  i,
+  plan,
+  sheet,
+  targets,
+  onPick,
+}: {
+  i: number
+  plan: SheetPlan
+  sheet: ParsedSheet
+  targets: ImportTarget[]
+  onPick: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [filter, setFilter] = useState('')
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+
+  const ranked = useMemo(
+    () =>
+      targets
+        .map((t) => ({ t, q: tableMatchQuality(sheet.headers, t.columns) }))
+        .filter((r) => r.q.score >= 0.3)
+        .sort((a, b) => b.q.score - a.q.score || b.q.coverage - a.q.coverage)
+        .slice(0, 3),
+    [targets, sheet],
+  )
+
+  const f = filter.trim().toLowerCase()
+  const bestMatches = ranked.filter((r) => r.t.name.toLowerCase().includes(f))
+  const bestNames = new Set(ranked.map((r) => r.t.name))
+  const rest = targets.filter((t) => t.name.toLowerCase().includes(f) && !bestNames.has(t.name))
+
+  const display =
+    plan.mode === 'new' ? 'New Table…' : plan.mode === 'skip' ? 'Skip this sheet' : plan.table
+
+  function pick(value: string) {
+    onPick(value)
+    setOpen(false)
+    setFilter('')
+  }
+
+  const optionClass =
+    'block w-full rounded px-2 py-1 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]'
+  const sectionClass =
+    'px-2 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400'
+
+  return (
+    <div ref={rootRef} className="relative">
+      <input
+        readOnly
+        value={display}
+        onClick={() => setOpen((o) => !o)}
+        data-testid={`iw-target-${i}`}
+        className="fc-input w-56 cursor-pointer py-1"
+      />
+      {open && (
+        <div
+          className="fc-card absolute right-0 z-20 mt-1 max-h-80 w-72 overflow-y-auto p-1"
+          data-testid={`iw-target-menu-${i}`}
+        >
+          <input
+            autoFocus
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setOpen(false)
+              if (e.key === 'Enter') {
+                const first = bestMatches[0]?.t.name ?? rest[0]?.name
+                if (first) pick(first)
+              }
+            }}
+            placeholder="Search Tables…"
+            data-testid={`iw-target-search-${i}`}
+            className="fc-input mb-1 w-full py-1"
+          />
+          <button type="button" onClick={() => pick('__new__')} data-testid={`iw-target-new-${i}`} className={optionClass}>
+            <span className="text-[var(--color-brand)]">+</span> New Table…
+          </button>
+          <button type="button" onClick={() => pick('__skip__')} data-testid={`iw-target-skip-${i}`} className={optionClass}>
+            <span className="text-gray-400">⊘</span> Skip this sheet
+          </button>
+          {bestMatches.length > 0 && (
+            <>
+              <div className={sectionClass}>Best matches</div>
+              {bestMatches.map(({ t, q }) => (
+                <button
+                  type="button"
+                  key={t.name}
+                  onClick={() => pick(t.name)}
+                  data-testid={`iw-target-opt-${i}-${t.name}`}
+                  className={optionClass}
+                >
+                  {t.name}
+                  <span className="ml-2 text-xs text-gray-400">
+                    {q.mapped} of its {t.columns.length} columns
+                  </span>
+                </button>
+              ))}
+            </>
+          )}
+          {rest.length > 0 && (
+            <>
+              <div className={sectionClass}>All Tables</div>
+              {rest.map((t) => (
+                <button
+                  type="button"
+                  key={t.name}
+                  onClick={() => pick(t.name)}
+                  data-testid={`iw-target-opt-${i}-${t.name}`}
+                  className={optionClass}
+                >
+                  {t.name}
+                </button>
+              ))}
+            </>
+          )}
+          {bestMatches.length === 0 && rest.length === 0 && (
+            <p className="px-2 py-1 text-xs text-gray-400">No Table matches "{filter}"</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function mappableColumns(meta: TableMeta): MappableColumn[] {
@@ -152,6 +294,7 @@ export function ImportWizard() {
           return {
             mode: target ? 'existing' : 'new',
             table: target ?? newName,
+            include: sheet.headers.map(() => true),
             auto_matched: Boolean(target),
             similar:
               !target && best && best.q.score >= 0.6
@@ -171,6 +314,10 @@ export function ImportWizard() {
 
   function retarget(i: number, value: string) {
     const sheet = sheets[i]
+    if (value === '__skip__') {
+      setPlan(i, { mode: 'skip' })
+      return
+    }
     if (value === '__new__') {
       const fallback =
         (sheets.length === 1 ? tableNameFromFile(fileName ?? '') : tableNameFromFile(sheet.sheetName)) ||
@@ -203,10 +350,10 @@ export function ImportWizard() {
   }
 
   // Rows for a new-Table plan: 1:1 with the inferred (possibly renamed)
-  // columns; blank-named columns are dropped.
+  // columns; blank-named and unchecked columns are dropped.
   function newTableRows(sheet: ParsedSheet, plan: SheetPlan) {
     const picks = plan.inferred.columns
-      .map((c, idx) => (c.column_name.trim() ? { idx, c } : null))
+      .map((c, idx) => (c.column_name.trim() && plan.include[idx] ? { idx, c } : null))
       .filter((p): p is { idx: number; c: (typeof plan.inferred.columns)[number] } => p !== null)
     return coerceRows(
       picks.map((p) => ({ column_name: p.c.column_name.trim(), column_type: p.c.column_type })),
@@ -253,13 +400,14 @@ export function ImportWizard() {
     setBusy('Importing…')
     try {
       for (const [i, plan] of plans.entries()) {
+        if (plan.mode === 'skip') continue
         const sheet = sheets[i]
         let rows: Record<string, unknown>[]
         if (plan.mode === 'new') {
           await api.post('/api/doctype', {
             name: plan.table,
             columns: plan.inferred.columns
-              .filter((c) => c.column_name.trim())
+              .filter((c, idx) => c.column_name.trim() && plan.include[idx])
               .map((c) => ({
                 column_name: c.column_name.trim(),
                 label: c.label.trim() || undefined,
@@ -300,10 +448,11 @@ export function ImportWizard() {
       await queryClient.invalidateQueries({ queryKey: ['tables'] })
       await queryClient.invalidateQueries({ queryKey: ['import-targets'] })
       setDone(true)
-      if (plans.length === 1) {
+      const active = plans.filter((p) => p.mode !== 'skip')
+      if (active.length === 1) {
         navigate({
           to: '/desk/$doctype',
-          params: { doctype: plans[0].table },
+          params: { doctype: active[0].table },
           search: { filters: undefined },
         })
       }
@@ -377,19 +526,13 @@ export function ImportWizard() {
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <span className="fc-label m-0">Import into</span>
-                <select
-                  value={plan.mode === 'new' ? '__new__' : plan.table}
-                  onChange={(e) => retarget(i, e.target.value)}
-                  data-testid={`iw-target-${i}`}
-                  className="fc-input w-auto py-1"
-                >
-                  <option value="__new__">New Table…</option>
-                  {(targets.data ?? []).map((t) => (
-                    <option key={t.name} value={t.name}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
+                <TargetPicker
+                  i={i}
+                  plan={plan}
+                  sheet={sheet}
+                  targets={targets.data ?? []}
+                  onPick={(v) => retarget(i, v)}
+                />
                 {plan.mode === 'existing' && (
                   /* Peek at the target without losing wizard state. */
                   <a
@@ -405,7 +548,11 @@ export function ImportWizard() {
               </div>
             </div>
 
-            {plan.mode === 'new' ? (
+            {plan.mode === 'skip' ? (
+              <p className="text-sm text-gray-400" data-testid={`iw-skipped-${i}`}>
+                This sheet will not be imported.
+              </p>
+            ) : plan.mode === 'new' ? (
               <>
                 {plan.similar && (
                   <div
@@ -437,6 +584,7 @@ export function ImportWizard() {
                 <table className="w-full text-sm" data-testid={`iw-new-grid-${i}`}>
                   <thead className="bg-gray-50 text-left text-xs text-gray-600">
                     <tr>
+                      <th className="px-2 py-1">Use</th>
                       <th className="px-2 py-1">File column</th>
                       <th className="px-2 py-1">Label</th>
                       <th className="px-2 py-1">Column name</th>
@@ -446,7 +594,22 @@ export function ImportWizard() {
                   </thead>
                   <tbody>
                     {plan.inferred.columns.map((c, ci) => (
-                      <tr key={ci} className="border-t border-gray-100">
+                      <tr
+                        key={ci}
+                        className={`border-t border-gray-100 ${plan.include[ci] ? '' : 'opacity-40'}`}
+                      >
+                        <td className="px-2 py-1 text-center">
+                          <input
+                            type="checkbox"
+                            checked={plan.include[ci]}
+                            onChange={(e) =>
+                              setPlan(i, {
+                                include: plan.include.map((v, j) => (j === ci ? e.target.checked : v)),
+                              })
+                            }
+                            data-rowfield="include"
+                          />
+                        </td>
                         <td className="px-2 py-1 text-gray-500">{sheet.headers[ci]}</td>
                         <td className="px-1 py-1">
                           {/* The display name (normalized from the header);
@@ -665,13 +828,16 @@ export function ImportWizard() {
           )}
           <button
             onClick={runImport}
-            disabled={!!busy}
+            disabled={!!busy || plans.every((p) => p.mode === 'skip')}
             data-testid="iw-import"
             className="fc-btn-primary disabled:opacity-40"
           >
             {anyChecked && blockingProblems > 0
               ? `Import anyway (skip ${blockingProblems} bad rows)`
-              : `Import ${sheets.reduce((n, s) => n + s.rows.length, 0)} rows`}
+              : `Import ${sheets.reduce(
+                  (n, s, si) => n + (plans[si]?.mode === 'skip' ? 0 : s.rows.length),
+                  0,
+                )} rows`}
           </button>
         </div>
       )}

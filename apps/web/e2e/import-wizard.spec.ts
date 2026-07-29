@@ -87,7 +87,7 @@ test('IMP-010: multi-sheet workbook — one sheet to a new Table, one mapped ont
   await expect(page.getByTestId('iw-file-name')).toContainText('2 sheets')
 
   // Sheet 1 defaulted to a new Table named from the sheet, Choice detected.
-  await expect(page.getByTestId('iw-target-0')).toHaveValue('__new__')
+  await expect(page.getByTestId('iw-target-0')).toHaveValue('New Table…')
   await expect(page.getByTestId('iw-new-name-0')).toHaveValue('Orders')
   const grid = page.getByTestId('iw-new-grid-0').locator('tbody tr')
   await expect(grid.nth(2).locator('[data-rowfield=column_type]')).toHaveValue('Choice')
@@ -154,6 +154,80 @@ test('IMP-010: multi-sheet workbook — one sheet to a new Table, one mapped ont
   const status = meta.columns.find((c) => c.column_name === 'status_1')
   expect(status?.column_type).toBe('Choice')
   expect(status?.choices).toBe('Closed\nOpen')
+})
+
+test('IMP-013: skip a sheet, drop a column, and drive the target picker', async ({
+  page,
+  request,
+}) => {
+  const token = await adminToken(request)
+  const headers = { Authorization: `Bearer ${token}` }
+  const exists = await request.get(`/api/table/${encodeURIComponent('Wizard Keep')}:meta`, {
+    headers,
+  })
+  test.skip(exists.status() === 200, 'Wizard Keep already exists in this DB; skipping create path')
+
+  const keep = XLSX.utils.aoa_to_sheet([
+    ['Pick A', 'Pick B', 'Pick C'],
+    ['a1', 'b1', 'c1'],
+    ['a2', 'b2', 'c2'],
+  ])
+  const drop = XLSX.utils.aoa_to_sheet([
+    ['Drop Only'],
+    ['never imported'],
+  ])
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, keep, 'Wizard Keep')
+  XLSX.utils.book_append_sheet(wb, drop, 'Wizard Drop')
+  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+
+  await login(page)
+  await page.getByTestId('import-data-link').click()
+  await page.getByTestId('iw-file-input').setInputFiles({
+    name: 'pick and skip.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer,
+  })
+
+  // Skip sheet 2 through the picker.
+  await page.getByTestId('iw-target-1').click()
+  await page.getByTestId('iw-target-skip-1').click()
+  await expect(page.getByTestId('iw-target-1')).toHaveValue('Skip this sheet')
+  await expect(page.getByTestId('iw-skipped-1')).toBeVisible()
+
+  // The picker searches and pins actions: filter to nonsense still shows New/Skip.
+  await page.getByTestId('iw-target-0').click()
+  await page.getByTestId('iw-target-search-0').fill('zzzznope')
+  await expect(page.getByTestId('iw-target-new-0')).toBeVisible()
+  await expect(page.getByTestId('iw-target-skip-0')).toBeVisible()
+  await page.keyboard.press('Escape')
+
+  // Drop the middle column of sheet 1.
+  const grid = page.getByTestId('iw-new-grid-0').locator('tbody tr')
+  await grid.nth(1).locator('[data-rowfield=include]').uncheck()
+
+  // Only sheet 1's 2 rows count now.
+  await expect(page.getByTestId('iw-import')).toContainText('Import 2 rows')
+  await page.getByTestId('iw-import').click()
+
+  // Single active sheet: lands on the new Table's list.
+  await expect(page).toHaveURL(new RegExp('/desk/Wizard%20Keep'))
+
+  // pick_b was excluded; the skipped sheet created nothing.
+  const meta = (await (
+    await request.get(`/api/table/${encodeURIComponent('Wizard Keep')}:meta`, { headers })
+  ).json()) as { columns: { column_name: string }[] }
+  const names = meta.columns.map((c) => c.column_name)
+  expect(names).toEqual(expect.arrayContaining(['pick_a', 'pick_c']))
+  expect(names).not.toContain('pick_b')
+  const count = await request.get(`/api/table/${encodeURIComponent('Wizard Keep')}:count`, {
+    headers,
+  })
+  expect(((await count.json()) as { count: number }).count).toBe(2)
+  const dropped = await request.get(`/api/table/${encodeURIComponent('Wizard Drop')}:meta`, {
+    headers,
+  })
+  expect(dropped.status()).toBe(404)
 })
 
 test('IMP-010: the list view Import button preselects that Table as the target', async ({
