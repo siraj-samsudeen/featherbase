@@ -51,8 +51,11 @@ view gains an "Import" button that preselects that Table).
   `e2e/import-wizard.spec.ts` (2 specs: the junk-named two-sheet workbook —
   new Table with detected Choice + auto-matched existing Table + dry-run
   catching a bad Int row + import skipping it; and the list-view Import
-  button preselecting its Table) — both green on first run. Full-e2e-suite
-  regression result recorded in the follow-up commit.
+  button preselecting its Table) — both green on first run. Full e2e suite:
+  79 passed, 4 skipped (create-path idempotency guards + pre-existing), 1
+  failed — realtime RT-003 (@mention unread count), which passes on an
+  isolated re-run and passed in this session's earlier full run before this
+  round existed: a load-timing flake, not an import regression.
 - Gotchas: a dropped file can beat the targets query — `loadFile` awaits
   `ensureQueryData` for the suggestion corpus rather than reading
   `targets.data`. E2e fixture columns must be unique per spec: two Tables
