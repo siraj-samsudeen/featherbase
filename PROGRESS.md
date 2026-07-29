@@ -121,7 +121,11 @@ Fifth follow-up (same session) — two comprehension fixes from live use:
   One `include` array now drives both modes' column selection.
 - e2e extended: target-count text, uncheck-a-mapped-column → imported row
   has null there, mapped-count honors the checkbox. 3/3 wizard specs
-  green on a reset DB; full-suite tally in the follow-up commit.
+  green on a reset DB. First full-suite run caught the new list-view
+  assertion being non-idempotent (fixed 'Cog' row accumulating in the
+  persistent Table — the product's documented append semantics, see #68);
+  spec now uses a per-run unique SKU, verified twice back-to-back.
+  Final full e2e: 80 passed, 5 skipped, 0 failed.
 Next: same as before — background import via the job queue for large files.
 
 ## 2026-07-29 — 0055 upgrade path fixed: pre-rename databases now migrate (#63 follow-up)
