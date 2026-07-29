@@ -51,7 +51,9 @@ render it immediately with zero new frontend code (invariant #3).
   `DataTransfer`+`File`, a real `.xlsx` built with SheetJS through the file
   picker, and a bad-file refusal) against real browser + server + Postgres;
   `doctype-builder.spec.ts` + smoke re-run green; both typechecks clean.
-  Full-e2e-suite regression result recorded in the follow-up commit.
+  Full e2e suite then re-run: 77 passed, 5 skipped, 0 failed (skips are
+  the create-path idempotency guards — the import/builder specs skip once
+  their Tables exist in the dev DB — plus the two pre-existing skips).
 - Gotcha: in this container the pinned Playwright wants a browser build that
   isn't installed — run e2e with `CHROMIUM_PATH=/opt/pw-browsers/chromium`
   (the config already honors it). Also: Postgres `bigint` columns serialize
