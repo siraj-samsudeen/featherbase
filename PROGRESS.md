@@ -107,6 +107,21 @@ Fourth follow-up (same session) — selective import + the target picker
   IMP-013 spec's own idempotency guard on the re-run DB). Issue #68 filed
   (import dedupe/upsert on a key column — non-binding proposal) for a
   second PR; #66/#67 remain from earlier feedback.
+Fifth follow-up (same session) — two comprehension fixes from live use:
+- **Sheet counts vs Table counts were conflatable.** The card header
+  "Zone — 11 rows, 3 columns" described the FILE's sheet, but read as a
+  statement about the (empty) target Table of the same name. Header now
+  says `Sheet "Zone" — 11 rows, 3 columns in the file`, and an
+  existing-mode target shows its CURRENT count beside the peek link
+  ("holds 0 rows now", live via `:count`).
+- **Skipping a mapped column is a checkbox now** ("Use", same as the
+  new-Table grid; unmapped columns start unchecked; picking a column in
+  the select re-checks the row) — the "— skip —" select option was hard
+  to see and operate. The select's empty state reads "— pick a column —".
+  One `include` array now drives both modes' column selection.
+- e2e extended: target-count text, uncheck-a-mapped-column → imported row
+  has null there, mapped-count honors the checkbox. 3/3 wizard specs
+  green on a reset DB; full-suite tally in the follow-up commit.
 Next: same as before — background import via the job queue for large files.
 
 ## 2026-07-29 — 0055 upgrade path fixed: pre-rename databases now migrate (#63 follow-up)

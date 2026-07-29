@@ -256,12 +256,21 @@ test('IMP-010: the list view Import button preselects that Table as the target',
     buffer: Buffer.from(csv),
   })
   await expect(page.getByTestId('iw-target-0')).toHaveValue(EXISTING_DT)
-  // The peek link opens the target's list in a new tab (no wizard-state loss).
+  // The peek link opens the target's list in a new tab (no wizard-state loss),
+  // and the Table's CURRENT row count sits beside it — distinct from the
+  // sheet's own row count in the card header.
   await expect(page.getByTestId('iw-view-target-0')).toHaveAttribute(
     'href',
     `/desk/${encodeURIComponent(EXISTING_DT)}`,
   )
   await expect(page.getByTestId('iw-view-target-0')).toHaveAttribute('target', '_blank')
+  await expect(page.getByTestId('iw-target-count-0')).toContainText(
+    `holds ${before.count} rows now`,
+  )
+
+  // IMP-013: skipping a mapped column is a checkbox, not a select option.
+  await page.getByTestId('iw-map-use-0-2').uncheck()
+  await expect(page.getByTestId('iw-mapped-count-0')).toContainText('2 of 3')
 
   await page.getByTestId('iw-import').click()
   // Single-sheet import navigates to the target Table's list.
@@ -272,4 +281,16 @@ test('IMP-010: the list view Import button preselects that Table as the target',
     await request.get(`/api/table/${encodeURIComponent(EXISTING_DT)}:count`, { headers })
   ).json()) as { count: number }
   expect(after.count).toBe(before.count + 1)
+
+  // The unchecked column stayed out of the imported row.
+  const rows = (await (
+    await request.get(
+      `/api/table/${encodeURIComponent(EXISTING_DT)}?fields=${encodeURIComponent(
+        '["wizard_sku","restock_level"]',
+      )}&filters=${encodeURIComponent(JSON.stringify([['wizard_sku', '=', 'Cog']]))}`,
+      { headers },
+    )
+  ).json()) as { data: { restock_level: unknown }[] }
+  expect(rows.data).toHaveLength(1)
+  expect(rows.data[0].restock_level).toBeNull()
 })

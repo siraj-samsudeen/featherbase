@@ -210,6 +210,22 @@ function TargetPicker({
   )
 }
 
+// The target Table's CURRENT row count, shown beside the sheet's own counts
+// so "11 rows in the file" vs "0 rows in the Table" can never be conflated.
+function TargetRowCount({ i, table }: { i: number; table: string }) {
+  const count = useQuery({
+    queryKey: ['iw-count', table],
+    queryFn: () => api.get<{ count: number }>(`/api/table/${encodeURIComponent(table)}:count`),
+    staleTime: 30_000,
+  })
+  if (count.data == null) return null
+  return (
+    <span className="text-xs text-gray-500" data-testid={`iw-target-count-${i}`}>
+      holds {count.data.count} rows now
+    </span>
+  )
+}
+
 function mappableColumns(meta: TableMeta): MappableColumn[] {
   return meta.columns
     .filter(
@@ -291,17 +307,18 @@ export function ImportWizard() {
                 ? best.name
                 : null
           const targetCols = tables.find((t) => t.name === target)?.columns ?? []
+          const mapping = target ? autoMapColumns(sheet.headers, targetCols) : []
           return {
             mode: target ? 'existing' : 'new',
             table: target ?? newName,
-            include: sheet.headers.map(() => true),
+            include: target ? mapping.map((m) => m !== null) : sheet.headers.map(() => true),
             auto_matched: Boolean(target),
             similar:
               !target && best && best.q.score >= 0.6
                 ? { name: best.name, mapped: best.q.mapped, total: best.cols }
                 : null,
             inferred,
-            mapping: target ? autoMapColumns(sheet.headers, targetCols) : [],
+            mapping,
             check: null,
             result: null,
           } satisfies SheetPlan
@@ -322,16 +339,24 @@ export function ImportWizard() {
       const fallback =
         (sheets.length === 1 ? tableNameFromFile(fileName ?? '') : tableNameFromFile(sheet.sheetName)) ||
         'Imported Table'
-      setPlan(i, { mode: 'new', table: fallback, auto_matched: false, mapping: [] })
+      setPlan(i, {
+        mode: 'new',
+        table: fallback,
+        auto_matched: false,
+        mapping: [],
+        include: sheet.headers.map(() => true),
+      })
       return
     }
     const cols = targets.data?.find((t) => t.name === value)?.columns ?? []
+    const mapping = autoMapColumns(sheet.headers, cols)
     setPlan(i, {
       mode: 'existing',
       table: value,
       auto_matched: false,
       similar: null,
-      mapping: autoMapColumns(sheet.headers, cols),
+      mapping,
+      include: mapping.map((m) => m !== null),
     })
   }
 
@@ -341,7 +366,7 @@ export function ImportWizard() {
     const cols = targets.data?.find((t) => t.name === plan.table)?.columns ?? []
     const typeOf = new Map(cols.map((c) => [c.column_name, c.column_type]))
     const picks = plan.mapping
-      .map((target, idx) => (target ? { idx, target } : null))
+      .map((target, idx) => (target && plan.include[idx] ? { idx, target } : null))
       .filter((p): p is { idx: number; target: string } => p !== null)
     return coerceRows(
       picks.map((p) => ({ column_name: p.target, column_type: typeOf.get(p.target) ?? 'Data' })),
@@ -514,14 +539,17 @@ export function ImportWizard() {
         const plan = plans[i]
         if (!plan) return null
         const targetCols = targets.data?.find((t) => t.name === plan.table)?.columns ?? []
-        const mappedCount = plan.mapping.filter(Boolean).length
+        const mappedCount = plan.mapping.filter((m, idx) => m && plan.include[idx]).length
         return (
           <div key={sheet.sheetName + i} className="fc-card mb-4 p-3" data-testid={`iw-sheet-${i}`}>
             <div className="mb-2 flex items-center justify-between">
+              {/* The counts describe the FILE's sheet, never the target
+                  Table — say so, since sheet and Table often share a name
+                  and the Table's own count sits beside the picker. */}
               <div className="text-sm font-semibold text-[var(--color-ink)]">
-                {sheet.sheetName}{' '}
+                Sheet "{sheet.sheetName}"{' '}
                 <span className="font-normal text-gray-500">
-                  — {sheet.rows.length} rows, {sheet.headers.length} columns
+                  — {sheet.rows.length} rows, {sheet.headers.length} columns in the file
                 </span>
               </div>
               <div className="flex items-center gap-2 text-sm">
@@ -534,16 +562,19 @@ export function ImportWizard() {
                   onPick={(v) => retarget(i, v)}
                 />
                 {plan.mode === 'existing' && (
-                  /* Peek at the target without losing wizard state. */
-                  <a
-                    href={`/desk/${encodeURIComponent(plan.table)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    data-testid={`iw-view-target-${i}`}
-                    className="text-xs text-[var(--color-brand)] underline"
-                  >
-                    view ↗
-                  </a>
+                  <>
+                    <TargetRowCount i={i} table={plan.table} />
+                    {/* Peek at the target without losing wizard state. */}
+                    <a
+                      href={`/desk/${encodeURIComponent(plan.table)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      data-testid={`iw-view-target-${i}`}
+                      className="text-xs text-[var(--color-brand)] underline"
+                    >
+                      view ↗
+                    </a>
+                  </>
                 )}
               </div>
             </div>
@@ -706,13 +737,32 @@ export function ImportWizard() {
                 <table className="w-full text-sm" data-testid={`iw-mapping-${i}`}>
                   <thead className="bg-gray-50 text-left text-xs text-gray-600">
                     <tr>
+                      <th className="px-2 py-1">Use</th>
                       <th className="px-2 py-1">File column</th>
                       <th className="px-2 py-1">→ {plan.table} column</th>
                     </tr>
                   </thead>
                   <tbody>
                     {sheet.headers.map((h, hi) => (
-                      <tr key={hi} className="border-t border-gray-100">
+                      <tr
+                        key={hi}
+                        className={`border-t border-gray-100 ${plan.include[hi] ? '' : 'opacity-40'}`}
+                      >
+                        {/* Skipping is the checkbox, same as the new-Table
+                            grid — not a buried option inside the select. */}
+                        <td className="px-2 py-1 text-center">
+                          <input
+                            type="checkbox"
+                            checked={plan.include[hi]}
+                            onChange={(e) =>
+                              setPlan(i, {
+                                include: plan.include.map((v, j) => (j === hi ? e.target.checked : v)),
+                              })
+                            }
+                            data-testid={`iw-map-use-${i}-${hi}`}
+                            data-rowfield="include"
+                          />
+                        </td>
                         <td className="px-2 py-1 text-gray-700">{h || <em>(blank)</em>}</td>
                         <td className="px-1 py-1">
                           <select
@@ -722,12 +772,16 @@ export function ImportWizard() {
                                 mapping: plan.mapping.map((m, j) =>
                                   j === hi ? e.target.value || null : m,
                                 ),
+                                // Picking a column is intent — re-check the row.
+                                include: plan.include.map((v, j) =>
+                                  j === hi ? Boolean(e.target.value) : v,
+                                ),
                               })
                             }
                             data-testid={`iw-map-${i}-${hi}`}
                             className="rounded border border-gray-200 px-1 py-0.5"
                           >
-                            <option value="">— skip —</option>
+                            <option value="">— pick a column —</option>
                             {/* Label AND real column name: labels preserve
                                 however the source file spelled its headers,
                                 so the snake_case identity disambiguates. */}
