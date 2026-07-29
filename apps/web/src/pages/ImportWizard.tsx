@@ -8,8 +8,11 @@ import {
   coerceRows,
   inferTableDef,
   scoreTableMatch,
+  shouldAutoMatch,
+  tableMatchQuality,
   tableNameFromFile,
   type InferredTableDef,
+  type TableMatchQuality,
 } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
@@ -35,6 +38,9 @@ interface SheetPlan {
   // by the user — surfaced as a notice so an unnoticed auto-match can't
   // quietly route rows into a lookalike Table.
   auto_matched: boolean
+  // A near-match that didn't clear the auto-select bar (e.g. this sheet fits
+  // inside a wider Table) — shown as a hint on the new-Table panel.
+  similar: { name: string; mapped: number; total: number } | null
   inferred: InferredTableDef
   // per file column: target column_name in the existing Table, or null (skip)
   mapping: (string | null)[]
@@ -121,12 +127,16 @@ export function ImportWizard() {
             (parsed.length === 1 ? tableNameFromFile(file.name) : tableNameFromFile(sheet.sheetName)) ||
             'Imported Table'
           const inferred = inferTableDef(newName, sheet.headers, sheet.rows)
-          // Rename-tolerant suggestion: pick the existing Table whose columns
-          // the sheet's headers cover best; ?table=X wins when it fits at all.
-          let best: { name: string; score: number } | null = null
+          // Rename-tolerant suggestion: best column-overlap match, but
+          // auto-selected only when the evidence is strong in BOTH
+          // directions (shouldAutoMatch) — a small sheet fitting inside a
+          // wider Table becomes a hint, not a silent default. ?table=X (the
+          // list-view Import button) wins when it fits at all.
+          let best: { name: string; q: TableMatchQuality; cols: number } | null = null
           for (const t of tables) {
-            const score = scoreTableMatch(sheet.headers, t.columns)
-            if (!best || score > best.score) best = { name: t.name, score }
+            const q = tableMatchQuality(sheet.headers, t.columns)
+            if (!best || q.score > best.q.score || (q.score === best.q.score && q.coverage > best.q.coverage))
+              best = { name: t.name, q, cols: t.columns.length }
           }
           const pinned = search.table
             ? tables.find((t) => t.name === search.table)
@@ -135,7 +145,7 @@ export function ImportWizard() {
           const target =
             pinned && pinnedScore >= 0.3
               ? pinned.name
-              : best && best.score >= 0.6
+              : best && shouldAutoMatch(newName, best.name, best.q)
                 ? best.name
                 : null
           const targetCols = tables.find((t) => t.name === target)?.columns ?? []
@@ -143,6 +153,10 @@ export function ImportWizard() {
             mode: target ? 'existing' : 'new',
             table: target ?? newName,
             auto_matched: Boolean(target),
+            similar:
+              !target && best && best.q.score >= 0.6
+                ? { name: best.name, mapped: best.q.mapped, total: best.cols }
+                : null,
             inferred,
             mapping: target ? autoMapColumns(sheet.headers, targetCols) : [],
             check: null,
@@ -169,6 +183,7 @@ export function ImportWizard() {
       mode: 'existing',
       table: value,
       auto_matched: false,
+      similar: null,
       mapping: autoMapColumns(sheet.headers, cols),
     })
   }
@@ -392,6 +407,24 @@ export function ImportWizard() {
 
             {plan.mode === 'new' ? (
               <>
+                {plan.similar && (
+                  <div
+                    className="mb-2 rounded bg-blue-50 px-2 py-1 text-xs text-blue-800"
+                    data-testid={`iw-similar-${i}`}
+                  >
+                    A similar existing Table matches this sheet:{' '}
+                    <a
+                      href={`/desk/${encodeURIComponent(plan.similar.name)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold underline"
+                    >
+                      {plan.similar.name} ↗
+                    </a>{' '}
+                    ({plan.similar.mapped} of its {plan.similar.total} columns) — pick it under
+                    "Import into" to append there instead of creating a new Table.
+                  </div>
+                )}
                 <div className="mb-2 flex items-center gap-2">
                   <label className="fc-label m-0">New Table name</label>
                   <input
@@ -511,9 +544,15 @@ export function ImportWizard() {
                             className="rounded border border-gray-200 px-1 py-0.5"
                           >
                             <option value="">— skip —</option>
+                            {/* Label AND real column name: labels preserve
+                                however the source file spelled its headers,
+                                so the snake_case identity disambiguates. */}
                             {targetCols.map((c) => (
                               <option key={c.column_name} value={c.column_name}>
-                                {c.label || c.column_name} ({c.column_type})
+                                {c.label && c.label !== c.column_name
+                                  ? `${c.label} · ${c.column_name}`
+                                  : c.column_name}{' '}
+                                ({c.column_type})
                               </option>
                             ))}
                           </select>

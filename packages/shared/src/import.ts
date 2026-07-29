@@ -60,6 +60,27 @@ export function sanitizeHeaders(headers: string[]): string[] {
   })
 }
 
+// IMP-012: consistent human labels from however messy the file header was —
+// underscores/camelCase become spaces, lone-case words are Title-Cased,
+// short all-caps words (ID, SKU, URL) and mixed tokens like "(kg)" survive
+// untouched. "Reg_District_ID" -> "Reg District ID", "Active_flag" ->
+// "Active Flag", "unitPrice" -> "Unit Price", "Qty (kg)" -> "Qty (kg)".
+export function prettifyLabel(header: string): string {
+  return header
+    .trim()
+    .replace(/_/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .map((w) => {
+      if (/^[A-Z0-9]+$/.test(w) && w.length <= 3) return w
+      if (/^[a-z0-9]+$/.test(w) || /^[A-Z0-9]+$/.test(w))
+        return w[0].toUpperCase() + w.slice(1).toLowerCase()
+      return w
+    })
+    .join(' ')
+}
+
 const INT_RE = /^-?\d{1,15}$/
 const FLOAT_RE = /^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -167,14 +188,52 @@ export function autoMapColumns(
   })
 }
 
-// IMP-009: how well a file's headers cover an existing Table — the fraction
-// of headers that auto-map. Content-based, so a renamed file or sheet still
-// finds its Table; used to suggest an import target.
-export function scoreTableMatch(headers: string[], targets: MappingTarget[]): number {
+// IMP-009/IMP-012: how well a file's headers fit an existing Table, in BOTH
+// directions. `score` = fraction of the sheet's headers that map (does my
+// data fit?); `coverage` = fraction of the Table's columns that get mapped
+// (is this Table actually about the same thing, or merely a superset?). A
+// 3-column Zone sheet maps 3/3 into a 5-column Registration District Table
+// — score 1.0 but coverage 0.6, which is why score alone must not
+// auto-select.
+export interface TableMatchQuality {
+  score: number
+  coverage: number
+  mapped: number
+}
+
+export function tableMatchQuality(
+  headers: string[],
+  targets: MappingTarget[],
+): TableMatchQuality {
   const real = headers.filter((h) => sanitizeColumnName(h))
-  if (!real.length) return 0
+  if (!real.length || !targets.length) return { score: 0, coverage: 0, mapped: 0 }
   const mapped = autoMapColumns(real, targets).filter(Boolean).length
-  return mapped / real.length
+  return { score: mapped / real.length, coverage: mapped / targets.length, mapped }
+}
+
+export function scoreTableMatch(headers: string[], targets: MappingTarget[]): number {
+  return tableMatchQuality(headers, targets).score
+}
+
+// Do a sheet name and a Table name share any meaningful word? ("zone" vs
+// "Zone" yes; "zone" vs "Registration District" no.)
+export function namesShareToken(a: string, b: string): boolean {
+  const tokens = (s: string) =>
+    new Set(sanitizeColumnName(s).split('_').filter((w) => w.length > 1))
+  const ta = tokens(a)
+  return [...tokens(b)].some((w) => ta.has(w))
+}
+
+// IMP-012: auto-select an existing Table only when the evidence is strong —
+// most of the sheet's headers map AND (the sheet accounts for most of the
+// Table's columns OR the names agree). Below this bar the wizard defaults
+// to a new Table and surfaces the near-match as a hint instead.
+export function shouldAutoMatch(
+  sheetName: string,
+  tableName: string,
+  q: TableMatchQuality,
+): boolean {
+  return q.score >= 0.6 && (q.coverage >= 0.8 || namesShareToken(sheetName, tableName))
 }
 
 // "customer orders.csv" -> "Customer Orders", fitting the server's
@@ -214,7 +273,9 @@ export function inferTableDef(
     }
     return {
       column_name,
-      label: String(headers[i] ?? '').trim() || column_name,
+      // IMP-012: labels are normalized, not copied verbatim — a file with
+      // "Zone ID" next to "Reg_District_ID" yields consistent labels.
+      label: prettifyLabel(String(headers[i] ?? '')) || prettifyLabel(column_name),
       column_type,
       ...(choices ? { choices } : {}),
       reqd: false,

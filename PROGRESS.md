@@ -53,6 +53,32 @@ server (or hit invalidateMeta) after out-of-band deletions, or specs
 skip/fail confusingly. Issues #66 (dev-DB fixture cleanup + the missing
 DELETE /api/doctype) and #67 (awesomebar subtitle ambiguity) filed from the
 same feedback session.
+Second follow-up (same feedback session) — matching polish (IMP-012):
+- **Labels are normalized, not copied.** A header row like `Zone ID,
+  Zone Name, Reg_District_ID, Active_flag` used to become labels verbatim
+  (mixed spacing/underscores forever). `prettifyLabel` now derives
+  consistent labels ("Reg District ID", "Active Flag") — underscores/
+  camelCase to spaces, Title Case for lone-case words, short all-caps
+  tokens (ID/SKU) and mixed tokens ("(kg)") preserved. Machine
+  `column_name`s were already consistent; matching is unaffected by
+  construction (it compares sanitized forms, which erase exactly these
+  differences).
+- **Auto-match is bidirectional now.** `tableMatchQuality` returns both
+  the sheet-side score AND target coverage; `shouldAutoMatch` requires
+  score ≥ 0.6 AND (coverage ≥ 0.8 OR a shared name token). The real case
+  that motivated it: a 3-column "Zone" sheet scored 100% into the 5-column
+  "Registration District" Table and silently auto-selected it — now it
+  defaults to New Table and shows a blue **near-match hint** ("a similar
+  existing Table matches: X (3 of its 5 columns) — pick it to append
+  instead"), with the peek link. Full-coverage matches under junk names
+  (the e2e's renamed-export case) still auto-select.
+- Mapping dropdown shows both identities (`Zone ID · zone_id (Int)`) so
+  label-vs-machine-name is visible exactly where the confusion arose.
+- Verified: 15 new unit tests (prettify cases; the exact Zone/Registration
+  District geometry asserted not-auto-matched; junk-name/full-coverage
+  still matched; name-token rescue) — server suite 458 green; wizard +
+  import e2e specs re-run green on a reset DB. Full-suite tally in the
+  follow-up commit.
 Next: same as before — background import via the job queue for large files.
 
 ## 2026-07-29 — 0055 upgrade path fixed: pre-rename databases now migrate (#63 follow-up)

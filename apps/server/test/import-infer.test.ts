@@ -5,9 +5,13 @@ import {
   inferChoices,
   inferColumnType,
   inferTableDef,
+  namesShareToken,
+  prettifyLabel,
   sanitizeColumnName,
   sanitizeHeaders,
   scoreTableMatch,
+  shouldAutoMatch,
+  tableMatchQuality,
   tableNameFromFile,
 } from 'shared'
 
@@ -160,6 +164,87 @@ describe('IMP-008: inferChoices', () => {
     expect(def.columns[0].column_type).toBe('Data') // titles stay Data
     expect(def.columns[1].column_type).toBe('Choice')
     expect(def.columns[1].choices).toBe('Done\nNew')
+  })
+})
+
+describe('IMP-012: prettifyLabel', () => {
+  test.each([
+    ['Reg_District_ID', 'Reg District ID'],
+    ['Active_flag', 'Active Flag'],
+    ['zone name', 'Zone Name'],
+    ['ORDER ID', 'Order ID'],
+    ['unitPrice', 'Unit Price'],
+    ['Qty (kg)', 'Qty (kg)'],
+    ['SKU', 'SKU'],
+    ['Customer Name', 'Customer Name'],
+    ['col_2', 'Col 2'],
+  ])('%j -> %j', (input, expected) => {
+    expect(prettifyLabel(input)).toBe(expected)
+  })
+
+  test('inferTableDef normalizes messy headers into consistent labels', () => {
+    const def = inferTableDef(
+      'Zone',
+      ['Zone ID', 'Zone Name', 'Reg_District_ID', 'Active_flag'],
+      [['1', 'North', '7', '1']],
+    )
+    expect(def.columns.map((c) => c.label)).toEqual([
+      'Zone ID',
+      'Zone Name',
+      'Reg District ID',
+      'Active Flag',
+    ])
+    // The machine names stay snake_case as before.
+    expect(def.columns.map((c) => c.column_name)).toEqual([
+      'zone_id',
+      'zone_name',
+      'reg_district_id',
+      'active_flag',
+    ])
+  })
+})
+
+describe('IMP-012: bidirectional auto-match', () => {
+  const registrationDistrict = [
+    { column_name: 'zone_id', label: 'Zone ID' },
+    { column_name: 'zone_name', label: 'Zone Name' },
+    { column_name: 'reg_district_id', label: 'Reg_District_ID' },
+    { column_name: 'registration_district', label: 'Registration_District' },
+    { column_name: 'active_flag', label: 'Active_flag' },
+  ]
+  const zoneHeaders = ['Zone Id', 'Zone Name', 'Active Flag']
+
+  test('quality reports both directions', () => {
+    const q = tableMatchQuality(zoneHeaders, registrationDistrict)
+    expect(q.score).toBe(1) // all sheet headers fit...
+    expect(q.coverage).toBeCloseTo(3 / 5) // ...but only 3 of 5 target columns
+    expect(q.mapped).toBe(3)
+  })
+
+  test('the real Zone case: perfect score, weak coverage, no name overlap -> NO auto-match', () => {
+    const q = tableMatchQuality(zoneHeaders, registrationDistrict)
+    expect(shouldAutoMatch('Zone', 'Registration District', q)).toBe(false)
+  })
+
+  test('full coverage auto-matches even under a junk sheet name', () => {
+    const stock = [
+      { column_name: 'wizard_sku', label: 'Wizard SKU' },
+      { column_name: 'bin_count', label: 'Bin Count' },
+      { column_name: 'restock_level', label: 'Restock Level' },
+    ]
+    const q = tableMatchQuality(['Wizard SKU', 'Bin Count', 'Restock Level'], stock)
+    expect(shouldAutoMatch('export-final-v2 (3)', 'Wizard Stock', q)).toBe(true)
+  })
+
+  test('matching names rescue a weak-coverage match', () => {
+    const q = tableMatchQuality(zoneHeaders, registrationDistrict)
+    expect(shouldAutoMatch('Zone', 'Zone Registration', q)).toBe(true) // shares "zone"
+  })
+
+  test('namesShareToken ignores single-letter noise and case', () => {
+    expect(namesShareToken('zone', 'Zone')).toBe(true)
+    expect(namesShareToken('zone', 'Registration District')).toBe(false)
+    expect(namesShareToken('a b', 'b c')).toBe(false) // 1-char tokens dropped
   })
 })
 
