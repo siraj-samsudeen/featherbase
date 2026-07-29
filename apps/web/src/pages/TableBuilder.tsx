@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { coerceRows, inferTableDef, tableNameFromFile } from 'shared'
 import { ApiError, api } from '../lib/api'
 import { COLUMN_TYPES } from '../lib/meta'
-import { isImportableFile, parseTabularFile } from '../lib/parse-file'
+import { isImportableFile, parseWorkbook } from '../lib/parse-file'
 
 interface ColumnRow {
   column_name: string
@@ -49,6 +49,7 @@ export function TableBuilder() {
   const [name, setName] = useState('')
   const [columns, setColumns] = useState<ColumnRow[]>([blank()])
   const [imported, setImported] = useState<ImportedFile | null>(null)
+  const [moreSheets, setMoreSheets] = useState(0)
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -65,7 +66,10 @@ export function TableBuilder() {
       return
     }
     try {
-      const { headers, rows } = await parseTabularFile(file)
+      const sheets = await parseWorkbook(file)
+      const { headers, rows } = sheets[0]
+      // The quick builder handles one sheet; the Import wizard handles all.
+      setMoreSheets(sheets.length > 1 ? sheets.length : 0)
       const def = inferTableDef(tableNameFromFile(file.name) || 'Imported Table', headers, rows)
       setImported({ fileName: file.name, headers, rows })
       setName((n) => n.trim() || def.name)
@@ -74,7 +78,9 @@ export function TableBuilder() {
           column_name: c.column_name,
           label: c.label,
           column_type: c.column_type,
-          target: '',
+          // Detected Choice options surface in the grid's target field,
+          // editable like hand-entered ones.
+          target: c.choices ? c.choices.split('\n').join(', ') : '',
           reqd: false,
           in_list_view: c.in_list_view,
           source_index: i,
@@ -87,6 +93,7 @@ export function TableBuilder() {
 
   function clearImport() {
     setImported(null)
+    setMoreSheets(0)
     setColumns([blank()])
     setProgress(null)
     if (fileInput.current) fileInput.current.value = ''
@@ -360,6 +367,15 @@ export function TableBuilder() {
         </div>
       )}
 
+      {moreSheets > 1 && (
+        <p className="mt-3 text-sm text-gray-500" data-testid="dt-more-sheets">
+          This workbook has {moreSheets} sheets — only the first is used here. The{' '}
+          <Link to="/desk/import" search={{ table: undefined }} className="text-[var(--color-brand)] underline">
+            Import wizard
+          </Link>{' '}
+          imports every sheet.
+        </p>
+      )}
       {progress && (
         <p className="mt-3 text-sm text-gray-500" data-testid="dt-progress">
           {progress}

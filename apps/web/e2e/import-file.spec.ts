@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import * as XLSX from 'xlsx'
 
 // IMP-006: drag & drop a CSV/Excel file -> inferred Table + imported rows.
@@ -14,7 +14,7 @@ const CSV = [
   'Chandra,1,3.25,2026-02-10,yes',
 ].join('\n')
 
-async function adminToken(request: Parameters<Parameters<typeof test.beforeAll>[0]>[0]['request']) {
+async function adminToken(request: APIRequestContext) {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   return ((await login.json()) as { token: string }).token
 }

@@ -348,6 +348,25 @@ async function loadChildren(meta: TableMeta, row: RowValues): Promise<RowValues>
 // the generic row path would silently skip table changes.
 const ENGINE_MANAGED = new Set(['Table', 'Column'])
 
+// IMP-007: validation-only pass for dry-run imports — the same field
+// filtering, defaults, and zod validation an insert runs, plus the checks a
+// provided/required name would hit, with no writes. Automation triggers and
+// tier stripping do not run here, so a trigger can still reject at real
+// import time; the dry run catches everything schema-level.
+export async function checkRowForInsert(meta: TableMeta, values: RowValues): Promise<void> {
+  validateValues(meta, applyDefaults(meta, pickFieldValues(meta, values)), 'insert')
+  const name = String(values.name ?? '').trim()
+  if (meta.id_pattern === 'prompt' && !name)
+    throw new AppError('ValidationError', `${meta.name} requires a name`, {
+      name: 'Name is required',
+    })
+  if (name) {
+    const [exists] = await sql`
+      select 1 from ${sql(tableName(meta.name))} where name = ${name}`
+    if (exists) throw new AppError('ConflictError', `${meta.name} ${name} already exists`)
+  }
+}
+
 export interface SaveOptions {
   // WEB-002/003: the web-form surface is server-controlled (whitelisted columns
   // on one configured Table), so it may insert on behalf of a session user

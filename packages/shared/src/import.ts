@@ -6,6 +6,7 @@ export interface InferredColumn {
   column_name: string
   label: string
   column_type: string
+  choices?: string
   reqd: boolean
   in_list_view: boolean
 }
@@ -120,6 +121,62 @@ export function inferColumnType(values: unknown[]): string {
   return longText ? 'Text' : 'Data'
 }
 
+// IMP-008: a low-cardinality text column reads as a Choice column. Applied
+// only where inference would otherwise say Data, and only with enough
+// evidence (each option seen ~3x on average) that the repetition is a
+// category, not coincidence.
+export function inferChoices(values: unknown[]): string[] | null {
+  const sample = values
+    .filter((v) => !isEmpty(v) && !(v instanceof Date) && typeof v !== 'boolean')
+    .map((v) => String(v).trim())
+  if (sample.length < 6) return null
+  const distinct = [...new Set(sample)]
+  if (distinct.length < 2 || distinct.length > 8) return null
+  if (sample.length < distinct.length * 3) return null
+  if (distinct.some((s) => s.length > 60 || s.includes('\n'))) return null
+  return distinct.sort()
+}
+
+export interface MappingTarget {
+  column_name: string
+  label?: string | null
+}
+
+// IMP-009: match file headers onto an existing Table's columns — by
+// sanitized column_name first, then by sanitized label — so a file exported
+// from Featherbase (or hand-labeled like the Table) maps itself. Unmatched
+// headers return null and are left for the user to map or skip.
+export function autoMapColumns(
+  headers: string[],
+  targets: MappingTarget[],
+): (string | null)[] {
+  const byName = new Map<string, string>()
+  const byLabel = new Map<string, string>()
+  for (const t of targets) {
+    byName.set(t.column_name, t.column_name)
+    const label = sanitizeColumnName(t.label ?? '')
+    if (label && !byLabel.has(label)) byLabel.set(label, t.column_name)
+  }
+  const used = new Set<string>()
+  return headers.map((h) => {
+    const key = sanitizeColumnName(h)
+    const hit = byName.get(key) ?? byLabel.get(key) ?? null
+    if (!hit || used.has(hit)) return null
+    used.add(hit)
+    return hit
+  })
+}
+
+// IMP-009: how well a file's headers cover an existing Table — the fraction
+// of headers that auto-map. Content-based, so a renamed file or sheet still
+// finds its Table; used to suggest an import target.
+export function scoreTableMatch(headers: string[], targets: MappingTarget[]): number {
+  const real = headers.filter((h) => sanitizeColumnName(h))
+  if (!real.length) return 0
+  const mapped = autoMapColumns(real, targets).filter(Boolean).length
+  return mapped / real.length
+}
+
 // "customer orders.csv" -> "Customer Orders", fitting the server's
 // /^[A-Za-z][A-Za-z0-9 ]{0,60}$/ Table-name rule.
 export function tableNameFromFile(fileName: string): string {
@@ -144,13 +201,26 @@ export function inferTableDef(
   rows: unknown[][],
 ): InferredTableDef {
   const columnNames = sanitizeHeaders(headers)
-  const columns = columnNames.map((column_name, i) => ({
-    column_name,
-    label: String(headers[i] ?? '').trim() || column_name,
-    column_type: inferColumnType(rows.map((r) => r[i])),
-    reqd: false,
-    in_list_view: i < 4,
-  }))
+  const columns = columnNames.map((column_name, i) => {
+    const values = rows.map((r) => r[i])
+    let column_type = inferColumnType(values)
+    let choices: string | undefined
+    if (column_type === 'Data') {
+      const options = inferChoices(values)
+      if (options) {
+        column_type = 'Choice'
+        choices = options.join('\n')
+      }
+    }
+    return {
+      column_name,
+      label: String(headers[i] ?? '').trim() || column_name,
+      column_type,
+      ...(choices ? { choices } : {}),
+      reqd: false,
+      in_list_view: i < 4,
+    }
+  })
   return { name, columns }
 }
 

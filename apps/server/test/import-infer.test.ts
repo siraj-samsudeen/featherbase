@@ -1,10 +1,13 @@
 import { describe, expect, test } from 'vitest'
 import {
+  autoMapColumns,
   coerceRows,
+  inferChoices,
   inferColumnType,
   inferTableDef,
   sanitizeColumnName,
   sanitizeHeaders,
+  scoreTableMatch,
   tableNameFromFile,
 } from 'shared'
 
@@ -121,6 +124,69 @@ describe('IMP-003: tableNameFromFile', () => {
     ['2026 report.csv', 'Report'],
   ])('%j -> %j', (file, expected) => {
     expect(tableNameFromFile(file)).toBe(expected)
+  })
+})
+
+describe('IMP-008: inferChoices', () => {
+  const repeat = (options: string[], times: number) =>
+    Array.from({ length: times * options.length }, (_, i) => options[i % options.length])
+
+  test('a repeated small set of values reads as choices, sorted', () => {
+    expect(inferChoices(repeat(['Open', 'Closed', 'Pending'], 4))).toEqual([
+      'Closed',
+      'Open',
+      'Pending',
+    ])
+  })
+
+  test('too few samples, too many distinct values, or near-unique values decline', () => {
+    expect(inferChoices(['Open', 'Closed'])).toBeNull() // < 6 samples
+    expect(inferChoices(repeat(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'], 3))).toBeNull() // > 8 distinct
+    expect(inferChoices(['u1', 'u2', 'u3', 'u4', 'u5', 'u6'])).toBeNull() // each value ~unique
+  })
+
+  test('long or multiline values decline', () => {
+    expect(inferChoices(repeat(['x'.repeat(61), 'y'], 4))).toBeNull()
+    expect(inferChoices(repeat(['one\ntwo', 'three'], 4))).toBeNull()
+  })
+
+  test('inferTableDef turns a qualifying Data column into a Choice column', () => {
+    const stages = ['New', 'Done', 'New', 'Done', 'New', 'Done', 'New', 'Done', 'New']
+    const def = inferTableDef(
+      'T',
+      ['Title', 'Stage'],
+      stages.map((s, i) => [`row ${i}`, s]),
+    )
+    expect(def.columns[0].column_type).toBe('Data') // titles stay Data
+    expect(def.columns[1].column_type).toBe('Choice')
+    expect(def.columns[1].choices).toBe('Done\nNew')
+  })
+})
+
+describe('IMP-009: autoMapColumns / scoreTableMatch', () => {
+  const targets = [
+    { column_name: 'customer_name', label: 'Customer Name' },
+    { column_name: 'qty', label: 'Quantity' },
+    { column_name: 'ship_date', label: 'Ship Date' },
+  ]
+
+  test('maps by sanitized column_name, then by sanitized label', () => {
+    expect(autoMapColumns(['Customer Name', 'Quantity', 'shipdate'], targets)).toEqual([
+      'customer_name', // header sanitizes to the column_name
+      'qty', // header matches the label, not the name
+      null, // no match ('shipdate' != 'ship_date')
+    ])
+  })
+
+  test('a target column is never claimed twice', () => {
+    expect(autoMapColumns(['qty', 'Quantity'], targets)).toEqual(['qty', null])
+  })
+
+  test('scoreTableMatch is the mapped fraction, ignoring blank headers', () => {
+    expect(scoreTableMatch(['Customer Name', 'Qty', 'Ship Date'], targets)).toBe(1)
+    expect(scoreTableMatch(['Customer Name', 'Qty', 'Unrelated'], targets)).toBeCloseTo(2 / 3)
+    expect(scoreTableMatch(['', 'Qty'], targets)).toBe(1) // blank ignored
+    expect(scoreTableMatch(['x', 'y'], targets)).toBe(0)
   })
 })
 

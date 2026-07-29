@@ -13,6 +13,56 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-29 — the Import wizard: multi-sheet, existing Tables, dry-run, Choice detection (IMP-007..010)
+
+Round 2 of the import feature (same branch/PR #65), per the agreed sequence:
+"the import you can trust" plus multi-sheet workbooks and rename-tolerant
+targeting. New Desk page `/desk/import` (sidebar "Import Data"; every list
+view gains an "Import" button that preselects that Table).
+
+- **Import into existing Tables.** Every sheet gets a target: create a new
+  Table (inferred grid, editable names/types) or append to an existing one
+  through a **column-mapping step** — file columns auto-matched by sanitized
+  column name, then by label (`autoMapColumns`), unmatched left as "— skip —"
+  for manual mapping. Mapped cells are coerced to the *target* column types.
+- **Rename-tolerant suggestions.** The suggested target is scored by column
+  overlap (`scoreTableMatch` = fraction of headers that auto-map), NOT by
+  file/sheet name — so `export-final-v2 (3).xlsx` still finds its Table.
+  ≥ 0.6 auto-selects; `?table=X` (the list-view button) wins at ≥ 0.3.
+- **Dry-run** (`POST :import { rows, dry_run: true }`): same create-permission
+  gate, every row through the same field-filter/defaults/zod pass an insert
+  runs (`checkRowForInsert` in document.ts), plus prompt-name-required,
+  existing-name conflicts, and duplicate-names-within-the-file — zero writes.
+  Automation triggers do NOT run in the dry pass (documented); real import
+  still reports per-row failures. The wizard's "Check" button surfaces
+  "N ready, M with problems: row 7: …" before anything is written, and the
+  import button becomes "Import anyway (skip M bad rows)".
+- **Multi-sheet workbooks**: `parseWorkbook` yields every non-empty sheet
+  with a header row; each becomes its own import plan. CSV = one sheet. The
+  quick builder (`/desk/new-table`) still uses only the first sheet and now
+  links to the wizard when it sees more.
+- **Choice detection** (`inferChoices`): a would-be-Data column whose values
+  repeat a small set (2–8 distinct, ≥ 6 samples, each option seen ~3x on
+  average, ≤ 60 chars, no newlines) becomes a Choice column with the options
+  pre-filled — surfaced in both the builder grid (target field) and the
+  wizard grid, editable before create.
+- **Verified**: server suite 441 green (10 new: dry-run trio + inference/
+  mapping additions); web typecheck + 9 unit tests; new
+  `e2e/import-wizard.spec.ts` (2 specs: the junk-named two-sheet workbook —
+  new Table with detected Choice + auto-matched existing Table + dry-run
+  catching a bad Int row + import skipping it; and the list-view Import
+  button preselecting its Table) — both green on first run. Full-e2e-suite
+  regression result recorded in the follow-up commit.
+- Gotchas: a dropped file can beat the targets query — `loadFile` awaits
+  `ensureQueryData` for the suggestion corpus rather than reading
+  `targets.data`. E2e fixture columns must be unique per spec: two Tables
+  with identical column sets legitimately tie on `scoreTableMatch`, and the
+  suggestion picks the first alphabetically.
+- Next (per the agreed sequence): background import over the
+  `background_job` queue + realtime progress for large files; then paste-
+  from-clipboard; then reference detection / auto-normalization (split
+  repeated values into a linked Table).
+
 ## 2026-07-29 — drag & drop a CSV/Excel file, get a Table + its data (IMP-001..006)
 
 Drop a `.csv`/`.xlsx` onto the Table builder (`/desk/new-table`) and

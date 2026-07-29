@@ -360,6 +360,14 @@ export function DeskLayout() {
             >
               + New Table
             </Link>
+            <Link
+              to="/desk/import"
+              search={{ table: undefined }}
+              data-testid="import-data-link"
+              className="fc-btn mt-2 w-full justify-center"
+            >
+              Import Data
+            </Link>
           </div>
           {(workspaces.data?.data.length ?? 0) > 0 && (
             <div data-testid="workspace-nav">

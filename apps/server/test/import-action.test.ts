@@ -162,6 +162,62 @@ describe('IMP-005: bulk import', () => {
     expect(c.status).toBe(417)
   })
 
+  test('dry_run validates every row and writes nothing', async ({ admin }) => {
+    await setup(admin)
+    const res = await admin.post<{
+      dry_run: boolean
+      valid: number
+      failed: { index: number; message: string; fields?: Record<string, string> }[]
+    }>(PATH, {
+      dry_run: true,
+      rows: [
+        { title: 'fine', qty: '3', stage: 'New' },
+        { qty: 1 }, // missing reqd title
+        { title: 'bad', stage: 'Nope' }, // invalid choice
+      ],
+    })
+    expect(res.dry_run).toBe(true)
+    expect(res.valid).toBe(1)
+    expect(res.failed.map((f) => f.index)).toEqual([1, 2])
+    expect(res.failed[0].fields).toHaveProperty('title')
+
+    const count = await admin.get<{ count: number }>(
+      `/api/table/${encodeURIComponent(DT)}:count`,
+    )
+    expect(count.count).toBe(0) // nothing written
+  })
+
+  test('dry_run flags existing-name conflicts and duplicates within the file', async ({
+    admin,
+  }) => {
+    await setup(admin, { id_pattern: 'prompt' })
+    await admin.post(PATH, { rows: [{ name: 'ROW-1', title: 'already here' }] })
+    const res = await admin.post<{
+      valid: number
+      failed: { index: number; message: string }[]
+    }>(PATH, {
+      dry_run: true,
+      rows: [
+        { name: 'ROW-1', title: 'conflicts with DB' },
+        { name: 'ROW-2', title: 'ok' },
+        { name: 'ROW-2', title: 'duplicate within file' },
+        { title: 'prompt table needs a name' },
+      ],
+    })
+    expect(res.valid).toBe(1)
+    expect(res.failed.map((f) => f.index)).toEqual([0, 2, 3])
+  })
+
+  test('dry_run still requires create permission', async ({ admin, createUser }) => {
+    await setup(admin)
+    const user = await createUser({})
+    const res = await user.fetch(PATH, {
+      method: 'POST',
+      body: JSON.stringify({ dry_run: true, rows: [{ title: 'x' }] }),
+    })
+    expect(res.status).toBe(403)
+  })
+
   test('is write-effect: GET :import is refused, and discovery lists it', async ({ admin }) => {
     await setup(admin)
     const get = await admin.fetch(PATH)
