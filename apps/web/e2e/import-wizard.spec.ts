@@ -179,6 +179,12 @@ test('IMP-010: the list view Import button preselects that Table as the target',
     buffer: Buffer.from(csv),
   })
   await expect(page.getByTestId('iw-target-0')).toHaveValue(EXISTING_DT)
+  // The peek link opens the target's list in a new tab (no wizard-state loss).
+  await expect(page.getByTestId('iw-view-target-0')).toHaveAttribute(
+    'href',
+    `/desk/${encodeURIComponent(EXISTING_DT)}`,
+  )
+  await expect(page.getByTestId('iw-view-target-0')).toHaveAttribute('target', '_blank')
 
   await page.getByTestId('iw-import').click()
   // Single-sheet import navigates to the target Table's list.

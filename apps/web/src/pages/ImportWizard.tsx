@@ -375,6 +375,18 @@ export function ImportWizard() {
                     </option>
                   ))}
                 </select>
+                {plan.mode === 'existing' && (
+                  /* Peek at the target without losing wizard state. */
+                  <a
+                    href={`/desk/${encodeURIComponent(plan.table)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-testid={`iw-view-target-${i}`}
+                    className="text-xs text-[var(--color-brand)] underline"
+                  >
+                    view ↗
+                  </a>
+                )}
               </div>
             </div>
 
@@ -458,9 +470,17 @@ export function ImportWizard() {
                     className="mb-1 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800"
                     data-testid={`iw-auto-matched-${i}`}
                   >
-                    Auto-matched to the existing Table <strong>{plan.table}</strong> because its
-                    columns fit this sheet — rows will be <em>added to it</em>. Pick "New Table…"
-                    above if you meant to create a separate Table.
+                    Auto-matched to the existing Table{' '}
+                    <a
+                      href={`/desk/${encodeURIComponent(plan.table)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold underline"
+                    >
+                      {plan.table} ↗
+                    </a>{' '}
+                    because its columns fit this sheet — rows will be <em>added to it</em>. Pick
+                    "New Table…" above if you meant to create a separate Table.
                   </div>
                 )}
                 <div className="mb-1 text-xs text-gray-500" data-testid={`iw-mapped-count-${i}`}>

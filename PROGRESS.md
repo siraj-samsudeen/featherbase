@@ -42,6 +42,17 @@ nothing); wizard e2e extended to assert the notice, the history link, and
 both sheets' log rows via the API (2/2 on a reset DB); server suite 443
 green, web unit 9. Full e2e suite: 80 passed, 4 skipped, 0 failed (the
 RT-003 flake from the previous round did not recur).
+
+Follow-up (same day, user feedback): the wizard's existing-Table target and
+the auto-match notice now carry a "view ↗" peek link opening that Table's
+list in a new tab (plain `<a target="_blank">`, so wizard state survives) —
+you can inspect what a matched Table already contains before importing into
+it. Asserted in the wizard e2e. Gotcha from verifying it: deleting fixture
+Tables with raw SQL leaves the dev server's meta cache stale — restart the
+server (or hit invalidateMeta) after out-of-band deletions, or specs
+skip/fail confusingly. Issues #66 (dev-DB fixture cleanup + the missing
+DELETE /api/doctype) and #67 (awesomebar subtitle ambiguity) filed from the
+same feedback session.
 Next: same as before — background import via the job queue for large files.
 
 ## 2026-07-29 — 0055 upgrade path fixed: pre-rename databases now migrate (#63 follow-up)
