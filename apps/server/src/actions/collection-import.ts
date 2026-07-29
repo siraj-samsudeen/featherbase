@@ -83,6 +83,49 @@ registerCollectionAction('import', {
         })
       }
     }
+    await writeImportLog(table, user.name, inserted, failed, args.context)
     return { inserted, failed }
   },
 })
+
+// IMP-011: one Import Log row per :import request, whatever the caller —
+// the wizard passes file/sheet/chunk context, a plain API import logs bare
+// counts. skipPermissions: the log is system-written; the importer needs no
+// grant on Import Log itself. Best-effort — a logging failure (e.g. a
+// database mid-upgrade without 0056) never breaks the import that happened.
+async function writeImportLog(
+  table: string,
+  user: string,
+  inserted: number,
+  failed: FailedRow[],
+  context: unknown,
+): Promise<void> {
+  const ctx = (typeof context === 'object' && context !== null ? context : {}) as Record<
+    string,
+    unknown
+  >
+  const str = (v: unknown) => (typeof v === 'string' && v ? v.slice(0, 140) : undefined)
+  const int = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) ? v : undefined)
+  await saveDoc(
+    'Import Log',
+    {
+      ref_table: table,
+      inserted,
+      failed: failed.length,
+      error_summary: failed.length
+        ? failed
+            .slice(0, 20)
+            .map((f) => `#${f.index}: ${f.message}`)
+            .join('\n') + (failed.length > 20 ? `\n… and ${failed.length - 20} more` : '')
+        : undefined,
+      file_name: str(ctx.file_name),
+      sheet_name: str(ctx.sheet_name),
+      table_created: ctx.table_created === true,
+      part: int(ctx.part),
+      parts: int(ctx.parts),
+    },
+    user,
+    'insert',
+    { skipPermissions: true },
+  ).catch(() => {})
+}

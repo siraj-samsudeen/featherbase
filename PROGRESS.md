@@ -13,6 +13,36 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-29 — Import Log: every import is answerable after the fact (IMP-011)
+
+First real-use feedback on the wizard: an import reported "N rows imported",
+but the user couldn't tell *which* Table the rows landed in (their DB has
+hundreds of Tables, two of them zone-ish) — and there was no record to
+consult. Two fixes:
+
+- **`Import Log` Table** (migration 0056, engine-created): one row per
+  `:import` request — ref_table, file_name, sheet_name, table_created,
+  inserted, failed, error_summary (first 20 row errors), part/parts for
+  chunked sheets. Written **server-side** in the collection action with
+  `skipPermissions` (system log; the importer needs no grant on it),
+  best-effort (`.catch(() => {})` — logging never breaks an import), so
+  plain API imports are recorded too, with the wizard passing
+  file/sheet/chunk context. Dry runs are not logged. Because it's an
+  ordinary Table, the generic ListView *is* the history UI — zero new
+  frontend surface; the wizard's "Import complete" line links to it.
+- **Auto-match is now loud.** When the wizard's column-overlap scoring
+  routes a sheet at an existing Table, the mapping panel shows an amber
+  notice ("rows will be added to <Table> — pick New Table… if you meant to
+  create one") — the silent-misdirection hazard the user hit. Manually
+  retargeting clears it.
+
+Verified: `import-action.test.ts` grows to 13 (log row content incl.
+context and error summary; no-context imports log bare counts; dry runs log
+nothing); wizard e2e extended to assert the notice, the history link, and
+both sheets' log rows via the API (2/2 on a reset DB); server suite 443
+green, web unit 9. Full-e2e-suite tally lands in the follow-up commit.
+Next: same as before — background import via the job queue for large files.
+
 ## 2026-07-29 — 0055 upgrade path fixed: pre-rename databases now migrate (#63 follow-up)
 
 Running this branch against a real pre-rename database (a laptop last

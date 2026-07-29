@@ -95,8 +95,11 @@ test('IMP-010: multi-sheet workbook — one sheet to a new Table, one mapped ont
   // Rename the new Table so re-runs and other specs can't collide.
   await page.getByTestId('iw-new-name-0').fill(NEW_DT)
 
-  // Sheet 2: the junk-named sheet was matched to Wizard Stock by columns.
+  // Sheet 2: the junk-named sheet was matched to Wizard Stock by columns —
+  // and says so out loud (IMP-011: an unnoticed auto-match must not quietly
+  // route rows into a lookalike Table).
   await expect(page.getByTestId('iw-target-1')).toHaveValue(EXISTING_DT)
+  await expect(page.getByTestId('iw-auto-matched-1')).toContainText(EXISTING_DT)
   await expect(page.getByTestId('iw-mapped-count-1')).toContainText('3 of 3')
 
   // Dry-run: the bad Int row is caught before anything is written.
@@ -124,6 +127,22 @@ test('IMP-010: multi-sheet workbook — one sheet to a new Table, one mapped ont
     await request.get(`/api/table/${encodeURIComponent(EXISTING_DT)}:count`, { headers })
   ).json()) as { count: number }
   expect(after.count).toBe(before.count + 2)
+
+  // IMP-011: the import history recorded both sheets, and the wizard links it.
+  await expect(page.getByTestId('iw-history-link')).toBeVisible()
+  const logRes = await request.get(
+    `/api/table/${encodeURIComponent('Import Log')}?fields=${encodeURIComponent(
+      '["ref_table","sheet_name","table_created","inserted","failed"]',
+    )}&filters=${encodeURIComponent(JSON.stringify([['file_name', '=', 'q3 numbers FINAL.xlsx']]))}`,
+    { headers },
+  )
+  const logRows = ((await logRes.json()) as { data: Record<string, unknown>[] }).data
+  const byTable = Object.fromEntries(logRows.map((r) => [r.ref_table as string, r]))
+  expect(byTable[NEW_DT]).toMatchObject({ sheet_name: 'Orders', table_created: true })
+  expect(Number(byTable[NEW_DT].inserted)).toBe(6)
+  expect(byTable[EXISTING_DT]).toMatchObject({ sheet_name: 'export-final-v2 (3)' })
+  expect(Number(byTable[EXISTING_DT].inserted)).toBe(2)
+  expect(Number(byTable[EXISTING_DT].failed)).toBe(1)
 
   // The new Table's Choice column is real server-side metadata.
   const meta = (await (

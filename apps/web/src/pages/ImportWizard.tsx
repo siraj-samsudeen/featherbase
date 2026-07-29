@@ -31,6 +31,10 @@ interface SheetPlan {
   mode: 'new' | 'existing'
   // mode new: the Table name to create; mode existing: the target Table.
   table: string
+  // True when the existing target was picked by column-overlap scoring, not
+  // by the user — surfaced as a notice so an unnoticed auto-match can't
+  // quietly route rows into a lookalike Table.
+  auto_matched: boolean
   inferred: InferredTableDef
   // per file column: target column_name in the existing Table, or null (skip)
   mapping: (string | null)[]
@@ -138,6 +142,7 @@ export function ImportWizard() {
           return {
             mode: target ? 'existing' : 'new',
             table: target ?? newName,
+            auto_matched: Boolean(target),
             inferred,
             mapping: target ? autoMapColumns(sheet.headers, targetCols) : [],
             check: null,
@@ -156,11 +161,16 @@ export function ImportWizard() {
       const fallback =
         (sheets.length === 1 ? tableNameFromFile(fileName ?? '') : tableNameFromFile(sheet.sheetName)) ||
         'Imported Table'
-      setPlan(i, { mode: 'new', table: fallback, mapping: [] })
+      setPlan(i, { mode: 'new', table: fallback, auto_matched: false, mapping: [] })
       return
     }
     const cols = targets.data?.find((t) => t.name === value)?.columns ?? []
-    setPlan(i, { mode: 'existing', table: value, mapping: autoMapColumns(sheet.headers, cols) })
+    setPlan(i, {
+      mode: 'existing',
+      table: value,
+      auto_matched: false,
+      mapping: autoMapColumns(sheet.headers, cols),
+    })
   }
 
   // Rows for an existing-Table plan: project the mapped file columns and
@@ -249,13 +259,24 @@ export function ImportWizard() {
         }
         let inserted = 0
         const failed: { index: number; message: string }[] = []
+        const parts = Math.ceil(rows.length / IMPORT_CHUNK)
         for (let at = 0; at < rows.length; at += IMPORT_CHUNK) {
           const chunk = rows.slice(at, at + IMPORT_CHUNK)
           setBusy(`${plan.table}: importing rows ${at + 1}–${at + chunk.length} of ${rows.length}…`)
           const res = await api.post<{
             inserted: number
             failed: { index: number; message: string }[]
-          }>(`/api/table/${encodeURIComponent(plan.table)}:import`, { rows: chunk })
+          }>(`/api/table/${encodeURIComponent(plan.table)}:import`, {
+            rows: chunk,
+            // IMP-011: recorded in the Import Log alongside the counts.
+            context: {
+              file_name: fileName ?? undefined,
+              sheet_name: sheet.sheetName,
+              table_created: plan.mode === 'new' && at === 0,
+              part: Math.floor(at / IMPORT_CHUNK) + 1,
+              parts,
+            },
+          })
           inserted += res.inserted
           failed.push(...res.failed.map((f) => ({ ...f, index: f.index + at })))
         }
@@ -432,6 +453,16 @@ export function ImportWizard() {
               </>
             ) : (
               <>
+                {plan.auto_matched && (
+                  <div
+                    className="mb-1 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800"
+                    data-testid={`iw-auto-matched-${i}`}
+                  >
+                    Auto-matched to the existing Table <strong>{plan.table}</strong> because its
+                    columns fit this sheet — rows will be <em>added to it</em>. Pick "New Table…"
+                    above if you meant to create a separate Table.
+                  </div>
+                )}
                 <div className="mb-1 text-xs text-gray-500" data-testid={`iw-mapped-count-${i}`}>
                   {mappedCount} of {sheet.headers.length} file columns mapped
                 </div>
@@ -527,7 +558,16 @@ export function ImportWizard() {
       )}
       {done && (
         <p className="mt-2 text-sm text-green-700" data-testid="iw-done">
-          Import complete.
+          Import complete.{' '}
+          <Link
+            to="/desk/$doctype"
+            params={{ doctype: 'Import Log' }}
+            search={{ filters: undefined }}
+            className="underline"
+            data-testid="iw-history-link"
+          >
+            View import history
+          </Link>
         </p>
       )}
 

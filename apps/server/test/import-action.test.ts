@@ -218,6 +218,51 @@ describe('IMP-005: bulk import', () => {
     expect(res.status).toBe(403)
   })
 
+  test('every import writes an Import Log row; dry runs write none', async ({ admin }) => {
+    await setup(admin)
+    await admin.post(PATH, { dry_run: true, rows: [{ title: 'checked only' }] })
+    await admin.post(PATH, {
+      rows: [{ title: 'ok' }, { qty: 1 }],
+      context: {
+        file_name: 'q3.xlsx',
+        sheet_name: 'Zone',
+        table_created: true,
+        part: 1,
+        parts: 1,
+      },
+    })
+    const logs = await admin.get<{ data: Record<string, unknown>[] }>(
+      `/api/table/${encodeURIComponent('Import Log')}?fields=${encodeURIComponent(
+        '["ref_table","file_name","sheet_name","table_created","inserted","failed","error_summary","part","parts"]',
+      )}&filters=${encodeURIComponent(JSON.stringify([['ref_table', '=', DT]]))}`,
+    )
+    expect(logs.data).toHaveLength(1) // the dry run logged nothing
+    const log = logs.data[0]
+    expect(log).toMatchObject({
+      ref_table: DT,
+      file_name: 'q3.xlsx',
+      sheet_name: 'Zone',
+      table_created: true,
+    })
+    expect(Number(log.inserted)).toBe(1)
+    expect(Number(log.failed)).toBe(1)
+    expect(String(log.error_summary)).toContain('#1')
+    expect(Number(log.part)).toBe(1)
+  })
+
+  test('an import without context still logs bare counts', async ({ admin }) => {
+    await setup(admin)
+    await admin.post(PATH, { rows: [{ title: 'a' }, { title: 'b' }] })
+    const logs = await admin.get<{ data: Record<string, unknown>[] }>(
+      `/api/table/${encodeURIComponent('Import Log')}?filters=${encodeURIComponent(
+        JSON.stringify([['ref_table', '=', DT]]),
+      )}&fields=${encodeURIComponent('["inserted","file_name"]')}`,
+    )
+    expect(logs.data).toHaveLength(1)
+    expect(Number(logs.data[0].inserted)).toBe(2)
+    expect(logs.data[0].file_name).toBeNull()
+  })
+
   test('is write-effect: GET :import is refused, and discovery lists it', async ({ admin }) => {
     await setup(admin)
     const get = await admin.fetch(PATH)
