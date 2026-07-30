@@ -51,13 +51,13 @@ from zero: 45 tables, no HD Ticket, zero `system = false` rows; (b) a DB
 migrated on the OLD chain (0051 applied), then migrated with 0057+0058: all
 helpdesk artifacts gone, table set and flags byte-identical to the fresh DB
 (diffed). Helpdesk suites now install the structure per-test inside their
-sandbox transactions (server 464 green incl. 6 new system-flag tests, web
-unit 9); the ticketing e2e seeds the structure slice it needs through the
-public API. Full e2e suite on an alternate-port stack against the fresh
-throwaway DB: 82 passed, 2 skipped, 1 failed — the one failure is
-import-file's IMP-006, a PRE-EXISTING local-timezone inference flake that
-fails identically on an unmodified main checkout (filed as #76; CI runs UTC
-and passes it).
+sandbox transactions; the ticketing e2e seeds the structure slice it needs
+through the public API. After merging main (#71/#72/#75) into the branch,
+everything re-run against the throwaway DBs: server 471 green (incl. 6 new
+system-flag tests), web unit 12, both typechecks clean, full e2e on an
+alternate-port stack (API :8902 / web :8903): 84 passed, 2 skipped, 0
+failed. (An earlier pre-merge run hit IMP-006's local-timezone inference
+flake, filed as #76 — #75 fixed it and the failure no longer reproduces.)
 
 Gotchas for later sessions:
 - A migration that creates a NEW engine table must pass `system: true` to
@@ -75,6 +75,84 @@ Gotchas for later sessions:
 
 Next: consider dropping the dead `custom` boolean on table_def (superseded by
 `system`), and a DELETE /api/doctype (#66) so specs can clean up structure.
+
+## 2026-07-30 — avatar account menu + in-app Change password (#72)
+
+The navbar avatar was a static initials badge and "Log out" a bare text
+button beside it; there was no in-app way to change a password (the email
+reset flow needs an outbound account a fresh deployment doesn't have).
+Now (`DeskLayout.tsx`):
+
+- **The avatar opens an account menu** (fc-card dropdown): the user's full
+  name/email, **Change password**, and **Log out** (moved in here, same
+  `data-testid="logout"`). Closes on Escape and on outside mousedown. Theme
+  toggle and notification bell untouched.
+- **Change password modal**: new password + confirm (`.fc-input`/`.fc-label`/
+  `.fc-btn`, mirroring the ResetPassword page), client-side match check,
+  POST `/api/set_password` with `{ password }` — the endpoint already scopes
+  to the session user, so **zero server changes**. Success state
+  ("Your password has been updated.") with a Done button; Escape and Cancel
+  close.
+- Four e2e specs that reached for the bare logout button now open the menu
+  first (`desk`, `list-settings`, `i18n`, `i18n-login`).
+
+Verified: new component suite `test/account-menu.test.tsx` (3 tests — menu
+open/Escape/outside-click; change password posts and the NEW password then
+logs in through the in-process server while the old one 401s; mismatch
+blocks the submit and sends nothing) — web unit 12 green; new e2e
+`account-menu.spec.ts` (ACCT-001: full loop incl. logout, old password
+rejected, new accepted; `afterEach` restores the Administrator password
+even on failure). Server suite 458 green, both typechecks clean. Full e2e
+suite on a scratch stack (API :8901 / web :5901, throwaway DB): 83 passed,
+2 skipped, 1 failed — the failure is IMP-006 (`import-file.spec.ts`),
+pre-existing on unmodified main: SheetJS `cellDates: true` parses
+`2026-01-15` to UTC midnight and `dateOnly()` in
+`packages/shared/src/import.ts` checks LOCAL hours, so on any non-UTC
+machine (here IST, hours=5) date columns infer as Datetime. Passes in UTC
+CI; needs a timezone-independent `dateOnly`.
+
+Gotchas: Playwright's `selectOption` fires no real mousedown, so the menu's
+outside-click close never triggers around a language switch — `i18n.spec.ts`
+closes the menu with Escape before switching. **Next**: the same modal can
+serve the User form for System Managers setting another user's password
+(#72 notes it); fix the IMP-006 timezone inference flake.
+## 2026-07-30 — Single-origin deployment: the SPA ships inside the server image (#57)
+
+Deploying used to require two services (server container + static SPA host)
+and a reverse proxy wired so `/api` reaches the server — a shape nobody had
+actually stood up correctly. Now one container does the whole job:
+
+- **Dockerfile grows a `web-build` stage** that runs `pnpm --filter web
+  build` and copies `dist/` into the final image. The serving stage is
+  byte-for-byte the old prod-only server image otherwise.
+- **`index.ts` serves the SPA when `apps/web/dist` exists** — static files
+  plus an index-html fallback so client-side routes deep-link. The
+  server-owned prefixes (`/api`, `/files`, `/private/files`, `/web`, `/ws`)
+  pass through untouched, so unknown API routes keep the JSON error
+  envelope (API-006). A dev checkout has no `dist/`, so `./init.sh` and the
+  vite proxy are completely unaffected.
+- **`railway.json`** at the root encodes the deploy contract for Railway
+  (and documents it for everyone else): Dockerfile build, `pnpm --filter
+  server release` as the pre-deploy step, `/api/ping` healthcheck.
+- `docs/DEPLOY.md` gains a "Single-origin deployment" section; the
+  separately-hosted-SPA path is still documented but demoted.
+
+Verified: web build + dist-present boot exercised for real — `GET /` serves
+index.html, hashed assets serve `text/javascript`, `/desk/...` deep-links
+fall back to index.html, `/api/definitely-not-a-route` still answers the
+JSON envelope, `/files/nope.png` still 404s as JSON, and
+`POST /api/method/login` answers `{"message":"Logged In", ...}`. Server
+suite 458 green, web unit 9 green — both run with `dist/` present, pinning
+that the static block coexists with the API surface.
+
+Gotcha for posterity: the web component tests import the server app under
+vitest/jsdom, where `import.meta.url` resolves to a realm-foreign URL —
+`fileURLToPath(new URL(...))` throws `ERR_INVALID_URL_SCHEME` there. The
+static block therefore hands `import.meta.url` to `fileURLToPath` as a
+*string*, guarded on the `file:` scheme.
+
+Next: stand a real deployment up on a container platform and run the
+DEPLOY.md smoke check against it.
 
 ## 2026-07-29 — Import Log: every import is answerable after the fact (IMP-011)
 

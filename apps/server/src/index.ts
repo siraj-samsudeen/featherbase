@@ -1,4 +1,5 @@
 import { serve } from '@hono/node-server'
+import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono, type Context } from 'hono'
 import { cors } from 'hono/cors'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
@@ -52,6 +53,9 @@ import { createSite, listSites, resolveSite, siteCreateDoctype, siteListDoctypes
 import helloCrm from './sample-apps/hello-crm'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
 import { randomBytes } from 'node:crypto'
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 await loadControllers()
 await loadMethods()
@@ -1056,6 +1060,34 @@ app.delete('/api/table/:table/:name', async (c) => {
   publishDocEvent(table, name, 'deleted')
   return c.json({ ok: true })
 })
+
+// Single-origin production serving (#57): when the SPA has been built into
+// the image (apps/web/dist exists — the Dockerfile's web-build stage), this
+// process serves it too, so one container answers both / and /api on one
+// origin. Dev is untouched: a plain checkout has no dist directory, and the
+// vite dev server on :5173 keeps proxying /api here.
+// (import.meta.url is handed to fileURLToPath as a STRING, and only when it
+// carries the file: scheme — the web test environment loads this module with
+// a realm-foreign URL that fileURLToPath rejects as an object, and such
+// environments never serve the SPA anyway.)
+const webDist = import.meta.url.startsWith('file:')
+  ? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist')
+  : ''
+if (webDist && existsSync(webDist)) {
+  // serveStatic resolves `root` against process.cwd() (apps/server under
+  // `pnpm --filter server start`), so the path must be expressed relative
+  // to that, not absolute.
+  const webRoot = path.relative(process.cwd(), webDist)
+  app.use('*', serveStatic({ root: webRoot }))
+  // SPA fallback: any GET the API and asset handlers didn't claim gets
+  // index.html so client-side routes deep-link. Server-owned prefixes pass
+  // through and keep their JSON 404 envelope (API-006).
+  const serverOwned = /^\/(api|files|private\/files|web|ws)(\/|$)/
+  app.get('*', (c, next) => {
+    if (serverOwned.test(c.req.path)) return next()
+    return serveStatic({ root: webRoot, path: 'index.html' })(c, next)
+  })
+}
 
 if (process.env.NODE_ENV !== 'test') {
   const server = serve({ fetch: app.fetch, port: config.port }, (info) => {

@@ -41,7 +41,9 @@ test('UI-001: full login flow into the Desk shell', async ({ page }) => {
   await page.reload()
   await expect(page.getByTestId('doctype-page')).toContainText('User')
 
-  // Logout returns to login and guards /desk
+  // Logout (inside the avatar's account menu, #72) returns to login and
+  // guards /desk
+  await page.getByTestId('session-user').click()
   await page.getByTestId('logout').click()
   await expect(page).toHaveURL(/\/login/)
   await page.goto('/desk')
