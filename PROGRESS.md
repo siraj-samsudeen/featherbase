@@ -74,6 +74,21 @@ Gotchas for later sessions:
 - The Customer grant is create-without-write BY DESIGN (portal files via the
   web form, which whitelists columns) — provisionAccess now warns about that
   shape on every helpdesk install; the warning is expected noise, not a bug.
+- CI-only flake, diagnosed and fixed after the first push: the web workflow
+  test ended the moment it clicked Start — its `assertText('In Progress')`
+  was satisfied by the status select's OPTION list, which contains
+  "In Progress" from the first render — so WorkflowActions.apply()'s POST +
+  refetch tail was still in flight when the test finished. On a slow box
+  that tail ran after the sandbox rollback (stderr 42P01 on hd_ticket) and
+  after jsdom teardown, and its final setState threw "window is not
+  defined" as an unhandled rejection: every test green, run red. Fixed by
+  asserting the workflow-state PILL and then waiting for the status
+  select's VALUE to become In Progress (the doc refetch is the last network
+  call apply() awaits). Reproduced deterministically before fixing by
+  wrapping the fetch bridge with latency on the apply_workflow_action POST.
+  Mid-file strays of the same class (form-create's post-save refetches) are
+  harmless noise — jsdom is still alive between tests of one file; only an
+  end-of-file tail is fatal.
 - `scripts/verify-helpdesk.ts` is bit-rotted on main: it still speaks
   `/api/resource`, PUT + `modified`, `owner`/`creation`/`status`, and the
   removed `/api/apply_workflow_action` RPC. Untouched here (the helpdesk

@@ -9,7 +9,7 @@
 // MECE states: list-with-data, list-empty (permission-scoped), form-create,
 // form-validation-error, workflow-transition — one test per state.
 
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { installApp } from 'server/src/apps'
 import { sql } from 'server/src/db'
 import { test, expect, renderDesk, renderSession } from './pg-test'
@@ -81,5 +81,26 @@ test('workflow: Start from the ticket form moves the bound status field', async 
     doc: { subject: 'Workflow via the UI' },
   })
   const { session } = await renderSession(`/desk/HD%20Ticket/${doc.name}`, admin)
-  await session.assertText(doc.name).clickButton('Start').assertText('In Progress')
+  await session.assertText(doc.name).clickButton('Start')
+  // 'In Progress' sits in the status <select>'s options from the first
+  // render, so a bare assertText would pass before the transition even
+  // lands — assert the workflow-state pill specifically.
+  await waitFor(
+    () => expect(screen.getByTestId('workflow-state')).toHaveTextContent('In Progress'),
+    { timeout: 5000 },
+  )
+  // And wait for the click's async apply() to settle: the status select
+  // showing 'In Progress' as its VALUE (not an option) means the doc
+  // refetch — the last network call apply() awaits — has delivered. Without
+  // this the test ends with the POST's tail still in flight; that tail then
+  // runs after this test's transaction rolled back (42P01 on the vanished
+  // sandbox table) and, on a slow box, after jsdom teardown — the "window
+  // is not defined" unhandled rejection that failed CI while every test
+  // passed. (No follow-up action renders to wait on instead: from
+  // In Progress the only transition, Resolve, is condition-gated on
+  // resolution_details for everyone, Administrator included.)
+  await waitFor(
+    () => expect(screen.getByDisplayValue('In Progress')).toBeInTheDocument(),
+    { timeout: 5000 },
+  )
 })
