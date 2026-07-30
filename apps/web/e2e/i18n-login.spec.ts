@@ -58,7 +58,9 @@ test('I18N-002: stored language applied on login + configured date format', asyn
 
   // The French preference is applied straight after login — chrome is French
   // without touching the language switcher.
+  await page.getByTestId('session-user').click() // Log out lives in the account menu (#72)
   await expect(page.getByTestId('logout')).toHaveText('Déconnexion')
+  await page.keyboard.press('Escape')
   await expect(page.getByTestId('language-select')).toHaveValue('fr')
 
   // The date renders THROUGH the System-Settings formatter (one of the
