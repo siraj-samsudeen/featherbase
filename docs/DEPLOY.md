@@ -62,17 +62,39 @@ Any platform that runs a container and can execute a pre-deploy command
 (release phase, job, CI step) fits this shape; nothing is welded to one
 vendor.
 
-## The web SPA
+## Single-origin deployment (SPA in the image)
 
-`apps/web` is a static Vite build (`pnpm --filter web build` → `dist/`),
-servable by any static host. It reads no build-time environment variables;
-it talks to the API on the same origin or wherever the reverse proxy sends
-`/api`. The Railway `web` service that issue #25 documents still serves it
-today.
+The Dockerfile's `web-build` stage compiles `apps/web` and ships `dist/`
+inside the server image. On boot, `index.ts` checks for that directory —
+present, it serves the SPA statically with an index-html fallback for
+client-side routes, so **one container answers both `/` and `/api` on one
+origin**. The websocket (`/ws`) and file routes ride the same origin, and
+`WEB_ORIGINS` / CORS becomes irrelevant because the browser never makes a
+cross-origin call. A dev checkout has no `dist/`, so `./init.sh` and the
+vite proxy on :5173 are untouched.
+
+The server-owned prefixes (`/api`, `/files`, `/private/files`, `/web`,
+`/ws`) never fall through to `index.html` — an unknown `/api/*` route still
+answers with the JSON error envelope (API-006).
+
+`railway.json` at the repo root encodes this shape for Railway: Dockerfile
+build, `pnpm --filter server release` as the pre-deploy (release) step, and
+`/api/ping` as the healthcheck. Other platforms map the same three settings
+onto their own vocabulary.
+
+## The web SPA, separately hosted
+
+`apps/web` can still be served by any static host (`pnpm --filter web
+build` → `dist/`). It reads no build-time environment variables; it talks
+to the API on the same origin, so a separate host must reverse-proxy `/api`
+(and `/ws`, `/files`) to the server, and the server needs `WEB_ORIGINS` set
+to that host's origin. Prefer the single-origin image above unless you have
+a reason not to.
 
 ## Smoke check
 
 After a deploy: `SERVER_URL=https://... pnpm --filter server test:smoke`
 asserts `GET /api/ping` answers `pong` with a live DB connection. Then
 `POST /api/method/login` with valid credentials should return Frappe's
-login shape (`{"message":"Logged In", ...}`).
+login shape (`{"message":"Logged In", ...}`), and in a single-origin
+deployment `GET /` should answer the SPA's `index.html`.

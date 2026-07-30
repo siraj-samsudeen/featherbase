@@ -53,6 +53,43 @@ outside-click close never triggers around a language switch — `i18n.spec.ts`
 closes the menu with Escape before switching. **Next**: the same modal can
 serve the User form for System Managers setting another user's password
 (#72 notes it); fix the IMP-006 timezone inference flake.
+## 2026-07-30 — Single-origin deployment: the SPA ships inside the server image (#57)
+
+Deploying used to require two services (server container + static SPA host)
+and a reverse proxy wired so `/api` reaches the server — a shape nobody had
+actually stood up correctly. Now one container does the whole job:
+
+- **Dockerfile grows a `web-build` stage** that runs `pnpm --filter web
+  build` and copies `dist/` into the final image. The serving stage is
+  byte-for-byte the old prod-only server image otherwise.
+- **`index.ts` serves the SPA when `apps/web/dist` exists** — static files
+  plus an index-html fallback so client-side routes deep-link. The
+  server-owned prefixes (`/api`, `/files`, `/private/files`, `/web`, `/ws`)
+  pass through untouched, so unknown API routes keep the JSON error
+  envelope (API-006). A dev checkout has no `dist/`, so `./init.sh` and the
+  vite proxy are completely unaffected.
+- **`railway.json`** at the root encodes the deploy contract for Railway
+  (and documents it for everyone else): Dockerfile build, `pnpm --filter
+  server release` as the pre-deploy step, `/api/ping` healthcheck.
+- `docs/DEPLOY.md` gains a "Single-origin deployment" section; the
+  separately-hosted-SPA path is still documented but demoted.
+
+Verified: web build + dist-present boot exercised for real — `GET /` serves
+index.html, hashed assets serve `text/javascript`, `/desk/...` deep-links
+fall back to index.html, `/api/definitely-not-a-route` still answers the
+JSON envelope, `/files/nope.png` still 404s as JSON, and
+`POST /api/method/login` answers `{"message":"Logged In", ...}`. Server
+suite 458 green, web unit 9 green — both run with `dist/` present, pinning
+that the static block coexists with the API surface.
+
+Gotcha for posterity: the web component tests import the server app under
+vitest/jsdom, where `import.meta.url` resolves to a realm-foreign URL —
+`fileURLToPath(new URL(...))` throws `ERR_INVALID_URL_SCHEME` there. The
+static block therefore hands `import.meta.url` to `fileURLToPath` as a
+*string*, guarded on the `file:` scheme.
+
+Next: stand a real deployment up on a container platform and run the
+DEPLOY.md smoke check against it.
 
 ## 2026-07-29 — Import Log: every import is answerable after the fact (IMP-011)
 
