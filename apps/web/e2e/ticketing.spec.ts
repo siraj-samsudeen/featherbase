@@ -10,75 +10,22 @@ async function token(request: APIRequestContext) {
   return ((await r.json()) as { token: string }).token
 }
 
-// The Helpdesk structure is opt-in now (#74 — it no longer ships in the
-// migration chain), so the spec installs the slice it exercises — the three
-// roles, the HD Ticket Table, and the status-field workflow — through the
-// public API, exactly as a user would build an app. Idempotent: a database
-// that already carries the structure (seed-helpdesk.ts, or a previous run —
-// there is no DELETE /api/doctype yet, see #66) is left as-is.
+// The Helpdesk is a registered installable app now (PLAT-006, #78), so the
+// spec installs it through the real endpoint — POST /api/install_app
+// { name: 'helpdesk' } — exactly as a deployment would. Idempotent: a
+// database that already carries the structure (seed-helpdesk.ts, or a
+// previous run) is left as-is; a later `POST /api/uninstall_app` can remove
+// the footprint wholesale.
 async function ensureHelpdeskStructure(request: APIRequestContext) {
   const H = { Authorization: `Bearer ${await token(request)}` }
   const has = await request.get('/api/table/HD%20Ticket:meta', { headers: H })
   if (has.ok()) return
 
-  for (const role of ['Support Agent', 'Support Manager', 'Customer']) {
-    const r = await request.get(`/api/resource/Role/${encodeURIComponent(role)}`, { headers: H })
-    if (r.ok()) continue
-    const made = await request.post('/api/save_doc', {
-      headers: H,
-      data: { doctype: 'Role', doc: { name: role } },
-    })
-    if (made.status() !== 201) throw new Error(`seed role ${role}: ${made.status()} ${await made.text()}`)
-  }
-
-  const dt = await request.post('/api/doctype', {
+  const r = await request.post('/api/install_app', {
     headers: H,
-    data: {
-      name: 'HD Ticket',
-      module: 'Helpdesk',
-      id_pattern: 'HDT-.#####',
-      title_column: 'subject',
-      columns: [
-        { column_name: 'subject', label: 'Subject', column_type: 'Data', reqd: true, in_list_view: true },
-        { column_name: 'description', label: 'Description', column_type: 'Text' },
-        {
-          column_name: 'ticket_status', label: 'Status', column_type: 'Choice', in_list_view: true,
-          choices: 'Open\nIn Progress\nResolved\nClosed', default_value: 'Open',
-        },
-        {
-          column_name: 'priority', label: 'Priority', column_type: 'Choice', in_list_view: true,
-          choices: 'Low\nMedium\nHigh\nUrgent', default_value: 'Medium',
-        },
-        { column_name: 'raised_by', label: 'Raised By (email)', column_type: 'Data' },
-      ],
-    },
+    data: { name: 'helpdesk' },
   })
-  if (dt.status() !== 201) throw new Error(`seed HD Ticket: ${dt.status()} ${await dt.text()}`)
-
-  const wf = await request.post('/api/save_doc', {
-    headers: H,
-    data: {
-      doctype: 'Workflow',
-      doc: {
-        name: 'HD Ticket Flow',
-        ref_table: 'HD Ticket',
-        is_active: true,
-        state_field: 'ticket_status',
-        states: [
-          { state: 'Open', target_status: 'draft' },
-          { state: 'In Progress', target_status: 'draft' },
-          { state: 'Resolved', target_status: 'draft' },
-          { state: 'Closed', target_status: 'draft' },
-        ],
-        transitions: [
-          { state: 'Open', action: 'Start', next_state: 'In Progress', allowed: 'Support Agent' },
-          { state: 'In Progress', action: 'Resolve', next_state: 'Resolved', allowed: 'Support Agent' },
-          { state: 'Resolved', action: 'Close', next_state: 'Closed', allowed: 'Support Manager' },
-        ],
-      },
-    },
-  })
-  if (wf.status() !== 201) throw new Error(`seed workflow: ${wf.status()} ${await wf.text()}`)
+  if (r.status() !== 201) throw new Error(`install helpdesk: ${r.status()} ${await r.text()}`)
 }
 
 let name = ''

@@ -51,6 +51,7 @@ import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps } from './apps'
 import { createSite, listSites, resolveSite, siteCreateDoctype, siteListDoctypes, siteCreateUser, siteListUsers } from './tenancy'
 import helloCrm from './sample-apps/hello-crm'
+import helpdesk from './sample-apps/helpdesk'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
@@ -66,6 +67,9 @@ await reapplyCustomFields()
 // PLAT-001: register the apps this build ships, then re-wire the doc_events of
 // any that are already installed (their DocTypes persist in the DB).
 registerApp(helloCrm)
+// Registered, NOT installed: a fresh deployment has zero helpdesk tables
+// until POST /api/install_app { name: 'helpdesk' } (PLAT-006, #78).
+registerApp(helpdesk)
 await loadInstalledApps()
 
 type Env = { Variables: { user: SessionUser } }
