@@ -13,6 +13,280 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-29 — Import Log: every import is answerable after the fact (IMP-011)
+
+First real-use feedback on the wizard: an import reported "N rows imported",
+but the user couldn't tell *which* Table the rows landed in (their DB has
+hundreds of Tables, two of them zone-ish) — and there was no record to
+consult. Two fixes:
+
+- **`Import Log` Table** (migration 0056, engine-created): one row per
+  `:import` request — ref_table, file_name, sheet_name, table_created,
+  inserted, failed, error_summary (first 20 row errors), part/parts for
+  chunked sheets. Written **server-side** in the collection action with
+  `skipPermissions` (system log; the importer needs no grant on it),
+  best-effort (`.catch(() => {})` — logging never breaks an import), so
+  plain API imports are recorded too, with the wizard passing
+  file/sheet/chunk context. Dry runs are not logged. Because it's an
+  ordinary Table, the generic ListView *is* the history UI — zero new
+  frontend surface; the wizard's "Import complete" line links to it.
+- **Auto-match is now loud.** When the wizard's column-overlap scoring
+  routes a sheet at an existing Table, the mapping panel shows an amber
+  notice ("rows will be added to <Table> — pick New Table… if you meant to
+  create one") — the silent-misdirection hazard the user hit. Manually
+  retargeting clears it.
+
+Verified: `import-action.test.ts` grows to 13 (log row content incl.
+context and error summary; no-context imports log bare counts; dry runs log
+nothing); wizard e2e extended to assert the notice, the history link, and
+both sheets' log rows via the API (2/2 on a reset DB); server suite 443
+green, web unit 9. Full e2e suite: 80 passed, 4 skipped, 0 failed (the
+RT-003 flake from the previous round did not recur).
+
+Follow-up (same day, user feedback): the wizard's existing-Table target and
+the auto-match notice now carry a "view ↗" peek link opening that Table's
+list in a new tab (plain `<a target="_blank">`, so wizard state survives) —
+you can inspect what a matched Table already contains before importing into
+it. Asserted in the wizard e2e. Gotcha from verifying it: deleting fixture
+Tables with raw SQL leaves the dev server's meta cache stale — restart the
+server (or hit invalidateMeta) after out-of-band deletions, or specs
+skip/fail confusingly. Issues #66 (dev-DB fixture cleanup + the missing
+DELETE /api/doctype) and #67 (awesomebar subtitle ambiguity) filed from the
+same feedback session.
+Second follow-up (same feedback session) — matching polish (IMP-012):
+- **Labels are normalized, not copied.** A header row like `Zone ID,
+  Zone Name, Reg_District_ID, Active_flag` used to become labels verbatim
+  (mixed spacing/underscores forever). `prettifyLabel` now derives
+  consistent labels ("Reg District ID", "Active Flag") — underscores/
+  camelCase to spaces, Title Case for lone-case words, short all-caps
+  tokens (ID/SKU) and mixed tokens ("(kg)") preserved. Machine
+  `column_name`s were already consistent; matching is unaffected by
+  construction (it compares sanitized forms, which erase exactly these
+  differences).
+- **Auto-match is bidirectional now.** `tableMatchQuality` returns both
+  the sheet-side score AND target coverage; `shouldAutoMatch` requires
+  score ≥ 0.6 AND (coverage ≥ 0.8 OR a shared name token). The real case
+  that motivated it: a 3-column "Zone" sheet scored 100% into the 5-column
+  "Registration District" Table and silently auto-selected it — now it
+  defaults to New Table and shows a blue **near-match hint** ("a similar
+  existing Table matches: X (3 of its 5 columns) — pick it to append
+  instead"), with the peek link. Full-coverage matches under junk names
+  (the e2e's renamed-export case) still auto-select.
+- Mapping dropdown shows both identities (`Zone ID · zone_id (Int)`) so
+  label-vs-machine-name is visible exactly where the confusion arose.
+- Verified: 15 new unit tests (prettify cases; the exact Zone/Registration
+  District geometry asserted not-auto-matched; junk-name/full-coverage
+  still matched; name-token rescue) — server suite 458 green; wizard +
+  import e2e specs re-run green on a reset DB. Full e2e suite: 80 passed,
+  4 skipped, 0 failed. Third follow-up from the same session: the wizard's
+  new-Table grid gained an editable **Label** column beside the machine
+  name (it showed only snake_case column_names, reading as inconsistent
+  next to the mapping panel's Title-Case labels) — asserted in the wizard
+  e2e, re-run green.
+Fourth follow-up (same session) — selective import + the target picker
+(IMP-013):
+- **Per-sheet skip**: every sheet's target can be "Skip this sheet" —
+  all-or-nothing workbooks are gone. Skipped sheets show a gray note,
+  count for nothing, and the import button disables when everything is
+  skipped; single-active-sheet imports still navigate to their Table.
+- **Per-column include**: the new-Table grid gained a "Use" checkbox per
+  column (unchecked rows gray out and are excluded from both the created
+  schema and the imported rows). Existing-Table mode already had this via
+  the mapping's "— skip —".
+- **The target picker replaces the native select** (unusable over hundreds
+  of Tables: "New Table…" needed a full scroll-back, best candidates were
+  buried alphabetically). Now a combobox: pinned "+ New Table…" and
+  "⊘ Skip this sheet" actions always on top, a **Best matches** section
+  (top 3 by tableMatchQuality, shown with "k of its n columns"), and a
+  search box filtering the rest. Enter picks the first hit; Escape closes.
+- Verified: new `IMP-013` e2e spec (skip a sheet via the picker, uncheck a
+  column, search-with-no-hits keeps the pinned actions, import → excluded
+  column absent from meta, skipped sheet's Table 404s, row count right) —
+  3/3 wizard specs green on a reset DB; web typecheck clean; web unit 9.
+  Full e2e suite: 80 passed, 5 skipped, 0 failed (the 5th skip is the new
+  IMP-013 spec's own idempotency guard on the re-run DB). Issue #68 filed
+  (import dedupe/upsert on a key column — non-binding proposal) for a
+  second PR; #66/#67 remain from earlier feedback.
+Fifth follow-up (same session) — two comprehension fixes from live use:
+- **Sheet counts vs Table counts were conflatable.** The card header
+  "Zone — 11 rows, 3 columns" described the FILE's sheet, but read as a
+  statement about the (empty) target Table of the same name. Header now
+  says `Sheet "Zone" — 11 rows, 3 columns in the file`, and an
+  existing-mode target shows its CURRENT count beside the peek link
+  ("holds 0 rows now", live via `:count`).
+- **Skipping a mapped column is a checkbox now** ("Use", same as the
+  new-Table grid; unmapped columns start unchecked; picking a column in
+  the select re-checks the row) — the "— skip —" select option was hard
+  to see and operate. The select's empty state reads "— pick a column —".
+  One `include` array now drives both modes' column selection.
+- e2e extended: target-count text, uncheck-a-mapped-column → imported row
+  has null there, mapped-count honors the checkbox. 3/3 wizard specs
+  green on a reset DB. First full-suite run caught the new list-view
+  assertion being non-idempotent (fixed 'Cog' row accumulating in the
+  persistent Table — the product's documented append semantics, see #68);
+  spec now uses a per-run unique SKU, verified twice back-to-back.
+  Final full e2e: 80 passed, 5 skipped, 0 failed.
+Next: same as before — background import via the job queue for large files.
+
+## 2026-07-29 — 0055 upgrade path fixed: pre-rename databases now migrate (#63 follow-up)
+
+Running this branch against a real pre-rename database (a laptop last
+migrated at 0054, before #63 merged) crashed `./init.sh` inside
+`0055_terminology_rename.sql`. Root cause class: **0055 was only ever
+verified against fresh databases**, where the rewritten 0001–0054 already
+produce the new schema and 0055 is a no-op. Against a genuinely old
+database it had four kinds of bugs, all fixed in place (safe to edit: 0055
+never successfully committed on any upgraded DB — it crashed — and on fresh
+DBs it's recorded and won't re-run):
+
+- **FK dropped by assumed name.** Constraint names survive table renames:
+  a DB that began life with `docfield` carries `docfield_parent_fkey`
+  through both later renames, so `drop constraint if exists
+  column_def_parent_fkey` was a silent no-op and the very next
+  `update ... parent='Table'` tripped the still-armed FK (the exact error
+  reported). Now dropped by pg_constraint lookup.
+- **`create or replace function fc_has_read`** 42P13s when the old function
+  had a different parameter name — now dropped with cascade first (§5
+  recreates every policy anyway).
+- **Domain-column renames missing entirely.** The rewritten migrations seed
+  ~25 per-Table columns under new names that 0055 never renamed on upgrade:
+  `document_type`/`reference_doctype`/`ref_doctype`/`doc_type` → `ref_table`
+  across 16 Tables, `webhook_doctype`→`webhook_table`, Custom Field's
+  `fieldname`/`fieldtype`/`options` (with the Link/Select/Table value map
+  and the options→reference_table/choices/row_table split),
+  `single_value.doctype`→`table_name`, `installed_app.doctypes`→`tables`,
+  Workflow Document State `doc_status`→`target_status` including the
+  0/1/2→draft/submitted/cancelled *value* conversion — plus the matching
+  `column_def` metadata rows (incl. Table's own autoname/issingle/istable→
+  id_pattern/kind and Column's fieldname/fieldtype/options/permlevel).
+  §2 had also renamed Permission's ref column to `reference_table` where
+  the engine reads `ref_table`.
+- **Ordering data-loss trap**: §3's docstatus→status conversion does `add
+  column if not exists status` + overwrite — on Tables with a *domain*
+  `status` column (Email Queue/HD Ticket/ToDo/Background Job) it would have
+  silently destroyed queue/ticket/todo/job state. The domain renames
+  (`send_status`/`ticket_status`/`todo_status`/`job_status`) now run in a
+  new §2c *before* §3.
+
+Verified by construction, not inspection: scratch DB migrated with the real
+pre-rename chain (worktree at ece91fd, 53 migrations), seeded with live
+domain rows (a ToDo, Link+Select Custom Fields, a queued email, a done
+job), then upgraded with the fixed chain — **information_schema column
+diff and column_def metadata diff against a from-scratch database are both
+empty**, every seeded value survived (Link→Reference split included), and
+the real server booted against the upgraded DB: login with the preserved
+password hash, ToDo list, Table create, and `:import` all green. Fresh
+path re-verified byte-identical; full server suite 441 green.
+
+Gotcha for future schema work: constraint names do NOT follow table
+renames — never drop/alter a constraint by its fresh-install name in an
+upgrade migration; look it up in pg_constraint. And any migration verified
+"end-to-end" must be run against a database migrated by the *previous
+release's chain*, not only from scratch.
+
+## 2026-07-29 — the Import wizard: multi-sheet, existing Tables, dry-run, Choice detection (IMP-007..010)
+
+Round 2 of the import feature (same branch/PR #65), per the agreed sequence:
+"the import you can trust" plus multi-sheet workbooks and rename-tolerant
+targeting. New Desk page `/desk/import` (sidebar "Import Data"; every list
+view gains an "Import" button that preselects that Table).
+
+- **Import into existing Tables.** Every sheet gets a target: create a new
+  Table (inferred grid, editable names/types) or append to an existing one
+  through a **column-mapping step** — file columns auto-matched by sanitized
+  column name, then by label (`autoMapColumns`), unmatched left as "— skip —"
+  for manual mapping. Mapped cells are coerced to the *target* column types.
+- **Rename-tolerant suggestions.** The suggested target is scored by column
+  overlap (`scoreTableMatch` = fraction of headers that auto-map), NOT by
+  file/sheet name — so `export-final-v2 (3).xlsx` still finds its Table.
+  ≥ 0.6 auto-selects; `?table=X` (the list-view button) wins at ≥ 0.3.
+- **Dry-run** (`POST :import { rows, dry_run: true }`): same create-permission
+  gate, every row through the same field-filter/defaults/zod pass an insert
+  runs (`checkRowForInsert` in document.ts), plus prompt-name-required,
+  existing-name conflicts, and duplicate-names-within-the-file — zero writes.
+  Automation triggers do NOT run in the dry pass (documented); real import
+  still reports per-row failures. The wizard's "Check" button surfaces
+  "N ready, M with problems: row 7: …" before anything is written, and the
+  import button becomes "Import anyway (skip M bad rows)".
+- **Multi-sheet workbooks**: `parseWorkbook` yields every non-empty sheet
+  with a header row; each becomes its own import plan. CSV = one sheet. The
+  quick builder (`/desk/new-table`) still uses only the first sheet and now
+  links to the wizard when it sees more.
+- **Choice detection** (`inferChoices`): a would-be-Data column whose values
+  repeat a small set (2–8 distinct, ≥ 6 samples, each option seen ~3x on
+  average, ≤ 60 chars, no newlines) becomes a Choice column with the options
+  pre-filled — surfaced in both the builder grid (target field) and the
+  wizard grid, editable before create.
+- **Verified**: server suite 441 green (10 new: dry-run trio + inference/
+  mapping additions); web typecheck + 9 unit tests; new
+  `e2e/import-wizard.spec.ts` (2 specs: the junk-named two-sheet workbook —
+  new Table with detected Choice + auto-matched existing Table + dry-run
+  catching a bad Int row + import skipping it; and the list-view Import
+  button preselecting its Table) — both green on first run. Full e2e suite:
+  79 passed, 4 skipped (create-path idempotency guards + pre-existing), 1
+  failed — realtime RT-003 (@mention unread count), which passes on an
+  isolated re-run and passed in this session's earlier full run before this
+  round existed: a load-timing flake, not an import regression.
+- Gotchas: a dropped file can beat the targets query — `loadFile` awaits
+  `ensureQueryData` for the suggestion corpus rather than reading
+  `targets.data`. E2e fixture columns must be unique per spec: two Tables
+  with identical column sets legitimately tie on `scoreTableMatch`, and the
+  suggestion picks the first alphabetically.
+- Next (per the agreed sequence): background import over the
+  `background_job` queue + realtime progress for large files; then paste-
+  from-clipboard; then reference detection / auto-normalization (split
+  repeated values into a linked Table).
+
+## 2026-07-29 — drag & drop a CSV/Excel file, get a Table + its data (IMP-001..006)
+
+Drop a `.csv`/`.xlsx` onto the Table builder (`/desk/new-table`) and
+Featherbase infers the whole Table definition — snake_case column names from
+the headers, types sampled from the data (Int/Float/Check/Date/Datetime/
+Data/Text), labels from the original headers — prefills the existing editable
+column grid plus a data preview, and on "Create Table & Import N rows"
+creates the Table and bulk-inserts every row. The generic ListView/FormView
+render it immediately with zero new frontend code (invariant #3).
+
+- **Shared inference layer** (`packages/shared/src/import.ts`, pure):
+  `sanitizeHeaders` (blank → `col_N`, duplicates and reserved standard
+  columns get `_1` suffixes), `inferColumnType` (>140 chars or newlines →
+  Text; `0/1` reads as Int, not Check — user can flip it in the grid;
+  midnight JS Dates from SheetJS `cellDates` → Date, with time → Datetime),
+  `inferTableDef`, `tableNameFromFile` ("customer orders.csv" → "Customer
+  Orders"), `coerceRows` (yes/true → boolean, local-time Date → `YYYY-MM-DD`
+  — `toISOString` would shift the day east of UTC).
+- **Server: the first real collection action** (`:import`), which the #61
+  registry had been waiting for. `POST /api/table/:table:import { rows }`
+  (`apps/server/src/actions/collection-import.ts`) pushes every row through
+  `saveDoc(..., 'insert')` — full permission/validation/id-pattern/trigger
+  chain, duplicate names conflict instead of updating. Best-effort: bad rows
+  come back as `{ index, message, fields }` while good rows land;
+  PermissionError still fails the whole request; 10k-row cap per request
+  (the client chunks at 500). `settings`/`sub_table` kinds refused.
+- **Web**: SheetJS (`xlsx`, already a dependency for report export) parses
+  both formats in the browser via dynamic import (`lib/parse-file.ts`,
+  `cellDates: true`); the builder keeps its manual path untouched (the
+  UI-011 spec still passes unchanged). Grid rows remember their
+  `source_index` into the file so deleting/renaming inferred columns still
+  imports the right cells.
+- **Verified**: 46 new server tests (`import-infer.test.ts`,
+  `import-action.test.ts`) in the full 431-green suite; new
+  `e2e/import-file.spec.ts` (3 specs: real drag-drop via in-page
+  `DataTransfer`+`File`, a real `.xlsx` built with SheetJS through the file
+  picker, and a bad-file refusal) against real browser + server + Postgres;
+  `doctype-builder.spec.ts` + smoke re-run green; both typechecks clean.
+  Full e2e suite then re-run: 77 passed, 5 skipped, 0 failed (skips are
+  the create-path idempotency guards — the import/builder specs skip once
+  their Tables exist in the dev DB — plus the two pre-existing skips).
+- Gotcha: in this container the pinned Playwright wants a browser build that
+  isn't installed — run e2e with `CHROMIUM_PATH=/opt/pw-browsers/chromium`
+  (the config already honors it). Also: Postgres `bigint` columns serialize
+  back as *strings* through the API — assert with `Number(...)`.
+- Next: the import currently targets only *new* Tables. A natural follow-up
+  is dropping a file onto an existing Table's ListView to append rows
+  (the `:import` action already supports it — it's UI-only work), plus
+  Choice-type inference for low-cardinality columns.
+
 ## 2026-07-26 — terminology rename + API surface redesign (#59, #61, #62)
 
 Two rounds landing as one PR, per the decided design in #59/#61: round 1

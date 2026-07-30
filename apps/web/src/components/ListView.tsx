@@ -296,6 +296,15 @@ export function ListView({
           >
             Report
           </Link>
+          {/* IMP-010: append rows to this Table from a CSV/Excel file. */}
+          <Link
+            to="/desk/import"
+            search={{ table: doctype }}
+            className="fc-btn"
+            data-testid="open-import"
+          >
+            Import
+          </Link>
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Choice') && (
             <Link
               to="/desk/$doctype/view/kanban"

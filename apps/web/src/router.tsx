@@ -26,6 +26,7 @@ import { CalendarView } from './components/CalendarView'
 import { GanttView } from './components/GanttView'
 import { PrintView } from './pages/PrintView'
 import { TableBuilder } from './pages/TableBuilder'
+import { ImportWizard } from './pages/ImportWizard'
 
 const rootRoute = createRootRoute({ component: Outlet })
 
@@ -155,6 +156,20 @@ const newTableRoute = createRoute({
   component: () => (
     <div data-testid="doctype-page">
       <TableBuilder />
+    </div>
+  ),
+})
+
+// IMP-010: Import wizard route (before $doctype so 'import' matches).
+const importRoute = createRoute({
+  getParentRoute: () => deskRoute,
+  path: 'import',
+  validateSearch: (search: Record<string, unknown>) => ({
+    table: typeof search.table === 'string' ? search.table : undefined,
+  }),
+  component: () => (
+    <div data-testid="doctype-page">
+      <ImportWizard />
     </div>
   ),
 })
@@ -405,5 +420,5 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   printRoute,
-  deskRoute.addChildren([deskIndexRoute, newTableRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, workspaceRoute, jobsRoute, doctypeRoute, docRoute]),
+  deskRoute.addChildren([deskIndexRoute, newTableRoute, importRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, workspaceRoute, jobsRoute, doctypeRoute, docRoute]),
 ])
