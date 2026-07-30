@@ -50,11 +50,16 @@ test('I18N-001: switching language translates chrome and field labels', async ({
   await page.click('button[type=submit]')
   await page.waitForURL(/\/desk/)
 
-  // English baseline.
+  // English baseline. The Log out item lives in the avatar's account
+  // menu (#72); close it with Escape before switching (selectOption fires no
+  // real mousedown, so the outside-click close never triggers here).
+  await page.getByTestId('session-user').click()
   await expect(page.getByTestId('logout')).toHaveText('Log out')
+  await page.keyboard.press('Escape')
 
   // Switch to French — chrome translates.
   await page.getByTestId('language-select').selectOption('fr')
+  await page.getByTestId('session-user').click()
   await expect(page.getByTestId('logout')).toHaveText('Déconnexion')
 
   // The form's Save button and the field label with a catalog entry translate.

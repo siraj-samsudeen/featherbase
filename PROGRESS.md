@@ -13,6 +13,47 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-30 — avatar account menu + in-app Change password (#72)
+
+The navbar avatar was a static initials badge and "Log out" a bare text
+button beside it; there was no in-app way to change a password (the email
+reset flow needs an outbound account a fresh deployment doesn't have).
+Now (`DeskLayout.tsx`):
+
+- **The avatar opens an account menu** (fc-card dropdown): the user's full
+  name/email, **Change password**, and **Log out** (moved in here, same
+  `data-testid="logout"`). Closes on Escape and on outside mousedown. Theme
+  toggle and notification bell untouched.
+- **Change password modal**: new password + confirm (`.fc-input`/`.fc-label`/
+  `.fc-btn`, mirroring the ResetPassword page), client-side match check,
+  POST `/api/set_password` with `{ password }` — the endpoint already scopes
+  to the session user, so **zero server changes**. Success state
+  ("Your password has been updated.") with a Done button; Escape and Cancel
+  close.
+- Four e2e specs that reached for the bare logout button now open the menu
+  first (`desk`, `list-settings`, `i18n`, `i18n-login`).
+
+Verified: new component suite `test/account-menu.test.tsx` (3 tests — menu
+open/Escape/outside-click; change password posts and the NEW password then
+logs in through the in-process server while the old one 401s; mismatch
+blocks the submit and sends nothing) — web unit 12 green; new e2e
+`account-menu.spec.ts` (ACCT-001: full loop incl. logout, old password
+rejected, new accepted; `afterEach` restores the Administrator password
+even on failure). Server suite 458 green, both typechecks clean. Full e2e
+suite on a scratch stack (API :8901 / web :5901, throwaway DB): 83 passed,
+2 skipped, 1 failed — the failure is IMP-006 (`import-file.spec.ts`),
+pre-existing on unmodified main: SheetJS `cellDates: true` parses
+`2026-01-15` to UTC midnight and `dateOnly()` in
+`packages/shared/src/import.ts` checks LOCAL hours, so on any non-UTC
+machine (here IST, hours=5) date columns infer as Datetime. Passes in UTC
+CI; needs a timezone-independent `dateOnly`.
+
+Gotchas: Playwright's `selectOption` fires no real mousedown, so the menu's
+outside-click close never triggers around a language switch — `i18n.spec.ts`
+closes the menu with Escape before switching. **Next**: the same modal can
+serve the User form for System Managers setting another user's password
+(#72 notes it); fix the IMP-006 timezone inference flake.
+
 ## 2026-07-29 — Import Log: every import is answerable after the fact (IMP-011)
 
 First real-use feedback on the wizard: an import reported "N rows imported",
