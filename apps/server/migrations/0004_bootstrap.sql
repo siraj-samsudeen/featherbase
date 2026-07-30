@@ -14,6 +14,7 @@ insert into column_def (parent, position, column_name, label, column_type, choic
   ('Table', 5, 'title_column', 'Title Column', 'Data', null, null, false, false),
   ('Table', 6, 'description', 'Description', 'Text', null, null, false, false),
   ('Table', 7, 'columns', 'Columns', 'Sub-table', null, 'Column', false, false),
+  ('Table', 8, 'system', 'System', 'Check', null, null, false, false),
   ('Column', 1, 'column_name', 'Column Name', 'Data', null, null, true, true),
   ('Column', 2, 'label', 'Label', 'Data', null, null, false, true),
   ('Column', 3, 'column_type', 'Column Type', 'Choice',

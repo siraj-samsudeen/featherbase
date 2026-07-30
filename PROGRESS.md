@@ -88,6 +88,68 @@ apps/server/migrations/`.
   picker) — unify if it matters.
 
 ---
+## 2026-07-30 — De-ship the Helpdesk demo; `system` flag groups platform tables (#74)
+
+A fresh deployment used to boot with 46 tables, one of them a full demo app:
+0051 shipped the HD Ticket helpdesk (table, 3 roles, 14 grants, workflow,
+SLA, a DEFAULT email account, email rule, server script, published web form)
+into every database. And the sidebar inferred "engine table" from the magic
+module string `'Core'` — which mis-filed every Table-Builder table (the
+builder never sent `module`, so user tables defaulted into Core). Two
+changes:
+
+- **Helpdesk is opt-in now.** 0051 is deleted from the chain; its body moved
+  verbatim to `src/sample-apps/helpdesk.ts` (`installHelpdesk()`, idempotent).
+  New migration 0057 tears down everything 0051 created on upgraded
+  databases — existence-checked, post-0055 names, no-op on databases that
+  never had it; the three roles are removed only if nothing references them,
+  and deleting the default email account deliberately leaves NO default
+  (email.ts defaultSender falls back safely). `seed:helpdesk` installs the
+  structure first (direct engine calls), then seeds demo users/tickets over
+  HTTP as before; `reset:helpdesk` was still using pre-0055 names
+  (tab_-prefixed, reference_doctype) and got fixed in passing.
+- **`system` boolean on table_def** (0058 + rewritten 0002/0004 for fresh
+  installs, same pattern 0055 set): backfilled `true` for the 45
+  chain-created tables, declared in both TableMeta mirrors, accepted by
+  `tableDefSchema` so migrations/seeds can set it — but REJECTED (417) on
+  POST/PUT /api/doctype, so a user table can never claim it (save_doc was
+  already refused for Table/Column via ENGINE_MANAGED). The Desk sidebar now
+  groups on the flag: user tables by module on top, every system table under
+  ONE "System" group, collapsed by default with a count badge, expandable,
+  every entry a normal link, state remembered in localStorage — GROUPING,
+  never hiding; the awesomebar still spans system tables (user tables just
+  sort first in suggestions). Table Builder gained a Module input (default
+  "Custom") so user tables land in a real module.
+
+Verified: migration proven BOTH ways on throwaway DBs — (a) fresh migrate
+from zero: 45 tables, no HD Ticket, zero `system = false` rows; (b) a DB
+migrated on the OLD chain (0051 applied), then migrated with 0057+0058: all
+helpdesk artifacts gone, table set and flags byte-identical to the fresh DB
+(diffed). Helpdesk suites now install the structure per-test inside their
+sandbox transactions; the ticketing e2e seeds the structure slice it needs
+through the public API. After merging main (#71/#72/#75) into the branch,
+everything re-run against the throwaway DBs: server 471 green (incl. 6 new
+system-flag tests), web unit 12, both typechecks clean, full e2e on an
+alternate-port stack (API :8902 / web :8903): 84 passed, 2 skipped, 0
+failed. (An earlier pre-merge run hit IMP-006's local-timezone inference
+flake, filed as #76 — #75 fixed it and the failure no longer reproduces.)
+
+Gotchas for later sessions:
+- A migration that creates a NEW engine table must pass `system: true` to
+  createTable AND extend ENGINE_TABLES in 0058 — the CI-side regression
+  test (system-flag.test.ts: zero `system = false` on a fresh DB) fails
+  otherwise. On dev databases that test skips (user tables are legitimately
+  system = false).
+- POST /api/doctype still defaults `module` to 'Core' server-side; a user
+  table posted without module therefore shows under a user group named
+  "Core" (visible, just oddly named). Deliberate — changing the server
+  default would touch every migration; the Builder now always sends one.
+- The e2e ticketing spec leaves the HD Ticket structure behind on the dev DB
+  (no DELETE /api/doctype yet, #66) — same footprint as seed:helpdesk minus
+  demo content.
+
+Next: consider dropping the dead `custom` boolean on table_def (superseded by
+`system`), and a DELETE /api/doctype (#66) so specs can clean up structure.
 
 ## 2026-07-30 — avatar account menu + in-app Change password (#72)
 

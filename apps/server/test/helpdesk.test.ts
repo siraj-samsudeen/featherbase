@@ -1,14 +1,17 @@
-// The HD Ticket helpdesk (migration 0051), tested through
+// The HD Ticket helpdesk (sample app, src/sample-apps/helpdesk.ts — no
+// longer in the migration chain, see #74), tested through
 // feather-testing-postgres: every test runs in its own rolled-back
 // transaction against the REAL save lifecycle, permission engine, SLA
 // stamping, server-script defaults, email rules, web form, and the workflow
 // bound to the `ticket_status` field (HD Ticket's own status field, renamed
 // because `status` is now the reserved draft/submitted/cancelled lifecycle
-// column). Tests create their own documents — nothing here relies on demo
-// content (scripts/seed-helpdesk.ts), which is opt-in.
+// column). Each test installs the structure itself via installHelpdesk() —
+// inside its sandbox transaction, so nothing outlives the test — and creates
+// its own documents; demo content (scripts/seed-helpdesk.ts) is opt-in.
 
 import { describe, expect } from 'vitest'
 import { test, patchDoc } from './pg-test'
+import { installHelpdesk } from '../src/sample-apps/helpdesk'
 
 const num = (name: unknown) => Number(String(name).slice('HDT-'.length))
 
@@ -16,6 +19,7 @@ describe('HD Ticket: naming series + defaults', () => {
   test('new tickets get sequential HDT- numbers and open on the ticket_status field', async ({
     seed,
   }) => {
+    await installHelpdesk()
     const a = await seed('HD Ticket', { subject: 'Cannot log in to portal' })
     const b = await seed('HD Ticket', { subject: 'Invoice PDF is blank' })
     expect(String(a.name)).toMatch(/^HDT-\d{5}$/)
@@ -24,6 +28,7 @@ describe('HD Ticket: naming series + defaults', () => {
   })
 
   test('missing required subject is a field-wise 417', async ({ seed }) => {
+    await installHelpdesk()
     await expect(seed('HD Ticket', { priority: 'High' })).rejects.toMatchObject({
       status: 417,
       type: 'ValidationError',
@@ -31,6 +36,7 @@ describe('HD Ticket: naming series + defaults', () => {
   })
 
   test('the server script defaults raised_by to the creating user', async ({ createUser }) => {
+    await installHelpdesk()
     const agent = await createUser({ roles: ['Support Agent'] })
     const doc = await agent.post<{ raised_by: string }>('/api/save_doc', {
       doctype: 'HD Ticket',
@@ -42,6 +48,7 @@ describe('HD Ticket: naming series + defaults', () => {
 
 describe('HD Ticket: SLA deadlines stamped on insert', () => {
   test('per-priority resolution window, starting On Track', async ({ seed }) => {
+    await installHelpdesk()
     const doc = await seed('HD Ticket', { subject: 'Server room is on fire', priority: 'Urgent' })
     expect(doc.sla_status).toBe('On Track')
     expect(doc.response_by).not.toBeNull()
@@ -55,6 +62,7 @@ describe('HD Ticket: SLA deadlines stamped on insert', () => {
 
 describe('HD Ticket permissions: customers see only their own', () => {
   test('own_rows_only scoping on list and read', async ({ createUser, admin }) => {
+    await installHelpdesk()
     const carl = await createUser({ roles: ['Customer'] })
     const gina = await createUser({ roles: ['Customer'] })
 
@@ -85,6 +93,7 @@ describe('HD Ticket permissions: customers see only their own', () => {
   })
 
   test('a user with no helpdesk role cannot create', async ({ client }) => {
+    await installHelpdesk()
     await expect(
       client.post('/api/save_doc', { doctype: 'HD Ticket', doc: { subject: 'nope' } }),
     ).rejects.toMatchObject({ status: 403 })
@@ -96,6 +105,7 @@ describe('HD Ticket workflow: Open → In Progress → Resolved → Closed on th
     admin,
     createUser,
   }) => {
+    await installHelpdesk()
     const agent = await createUser({ roles: ['Support Agent'] })
     const manager = await createUser({ roles: ['Support Manager'] })
     const customer = await createUser({ roles: ['Customer'] })
@@ -154,6 +164,7 @@ describe('HD Ticket workflow: Open → In Progress → Resolved → Closed on th
     admin,
     createUser,
   }) => {
+    await installHelpdesk()
     const agent = await createUser({ roles: ['Support Agent'] })
     const customer = await createUser({ roles: ['Customer'] })
     const filed = await customer.post<{ name: string }>('/api/web_form/new-ticket', {
@@ -192,6 +203,7 @@ describe('HD Ticket web form: public intake with owner attribution', () => {
     createUser,
     admin,
   }) => {
+    await installHelpdesk()
     const customer = await createUser({ roles: ['Customer'] })
     const filed = await customer.post<{ name: string }>('/api/web_form/new-ticket', {
       values: {

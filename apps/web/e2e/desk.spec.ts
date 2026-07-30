@@ -17,8 +17,14 @@ test('UI-001: full login flow into the Desk shell', async ({ page }) => {
   await page.click('button[type=submit]')
   await expect(page).toHaveURL(/\/desk/)
 
-  // Sidebar lists Tables from metadata (core seeds present)
+  // Sidebar lists Tables from metadata. Platform tables sit under a System
+  // group that starts collapsed with a count badge (#74) — expanding it
+  // surfaces every engine table as a normal link (grouped, never hidden).
   const nav = page.getByTestId('doctype-nav')
+  await expect(page.getByTestId('system-group-toggle')).toBeVisible()
+  await expect(nav.getByText('User', { exact: true })).toBeHidden()
+  await expect(page.getByTestId('system-group-count')).not.toHaveText('0')
+  await page.getByTestId('system-group-toggle').click()
   await expect(nav.getByText('User', { exact: true })).toBeVisible()
   await expect(nav.getByText('Role', { exact: true })).toBeVisible()
   await expect(nav.getByText('Table', { exact: true })).toBeVisible()

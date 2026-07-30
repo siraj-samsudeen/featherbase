@@ -194,7 +194,7 @@ async function main() {
 
   console.log('\n6. SLA escalation (time-warp, then the check_sla job)')
   const t3 = await fileTicket('cust1@acme.test', 'Server room is on fire', 'Urgent')
-  await sql`update tab_hd_ticket set resolution_by = now() - interval '1 hour' where name = ${String(t3.name)}`
+  await sql`update hd_ticket set resolution_by = now() - interval '1 hour' where name = ${String(t3.name)}`
   const kick = await req('admin', '/api/enqueue_job', {
     method: 'POST',
     body: JSON.stringify({ method: 'check_sla' }),

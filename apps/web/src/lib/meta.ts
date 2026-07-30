@@ -37,6 +37,9 @@ export interface TableMeta {
   track_changes: boolean
   description: string | null
   custom: boolean
+  // #74: platform tables created by the migration chain — grouped under the
+  // sidebar's collapsed System section, never hidden.
+  system: boolean
   created_by: string
   updated_by: string
   created_at: string
