@@ -76,8 +76,16 @@ test('UI-011: create a DocType with 5 fields from the Desk; list+form work immed
   const meta = await request.get(`/api/table/${encodeURIComponent(NEW_DT)}:meta`, {
     headers: { Authorization: `Bearer ${token}` },
   })
-  const body = (await meta.json()) as { columns: { column_name: string }[] }
+  const body = (await meta.json()) as {
+    module: string
+    system: boolean
+    columns: { column_name: string }[]
+  }
   expect(body.columns.map((f) => f.column_name)).toEqual(
     expect.arrayContaining(['title', 'count', 'active', 'stage', 'notes']),
   )
+  // #74: the builder sends a real module (default "Custom") and a user-built
+  // table is never a system table — it files into the sidebar's user section.
+  expect(body.module).toBe('Custom')
+  expect(body.system).toBe(false)
 })

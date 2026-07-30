@@ -6,6 +6,12 @@ import { sql } from '../src/db'
 import { createTable } from '../src/doctype-engine'
 
 export async function up() {
+  // #74: createTable now writes table_def.system on insert. Fresh installs
+  // carry the column from 0002; databases already past 0002 get it in 0058 —
+  // but a database parked BEFORE this migration would run createTable here
+  // without the column and fail. Guard for that window.
+  await sql`alter table table_def add column if not exists system boolean not null default false`
+
   const [exists] = await sql`select 1 from table_def where name = 'Import Log'`
   if (exists) return
   await createTable({

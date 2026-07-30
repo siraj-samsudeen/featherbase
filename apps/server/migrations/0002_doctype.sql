@@ -12,6 +12,7 @@ create table table_def (
   track_changes boolean not null default true,
   description text,
   custom boolean not null default false,
+  system boolean not null default false,
   created_by text not null default 'Administrator',
   updated_by text not null default 'Administrator',
   created_at timestamptz not null default now(),

@@ -79,6 +79,10 @@ export const tableDefSchema = z.object({
   id_pattern: z.string().optional(),
   title_column: z.string().optional(),
   description: z.string().optional(),
+  // #74: platform-table flag. Accepted here so migrations and seeds can set
+  // it through createTable; the public /api/doctype routes REJECT it — a
+  // user-created table can never claim system: true.
+  system: z.boolean().optional(),
   columns: z.array(columnSchema).min(1),
 })
 
@@ -335,6 +339,7 @@ export async function createTable(input: unknown): Promise<TableMeta> {
       id_pattern: def.id_pattern ?? 'hash',
       title_column: def.title_column ?? null,
       description: def.description ?? null,
+      system: def.system ?? false,
     })}`
     for (const [i, f] of def.columns.entries()) {
       await tx`insert into column_def ${tx({

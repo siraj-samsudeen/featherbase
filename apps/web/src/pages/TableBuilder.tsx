@@ -47,6 +47,10 @@ export function TableBuilder() {
   const queryClient = useQueryClient()
   const fileInput = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
+  // #74: user tables get a real module (default "Custom"). Omitting it used
+  // to let the server default the table into 'Core', mis-filing it among the
+  // platform tables in the sidebar.
+  const [module, setModule] = useState('Custom')
   const [columns, setColumns] = useState<ColumnRow[]>([blank()])
   const [imported, setImported] = useState<ImportedFile | null>(null)
   const [moreSheets, setMoreSheets] = useState(0)
@@ -106,6 +110,7 @@ export function TableBuilder() {
       const kept = columns.filter((c) => c.column_name.trim())
       const payload = {
         name,
+        module: module.trim() || 'Custom',
         columns: kept.map((c) => {
           const target = c.target.trim()
             ? c.target
@@ -230,14 +235,28 @@ export function TableBuilder() {
         />
       </div>
 
-      <label className="fc-label">Table name</label>
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        data-testid="dt-name"
-        placeholder="e.g. Project"
-        className="fc-input mb-4 max-w-sm"
-      />
+      <div className="mb-4 flex flex-wrap gap-4">
+        <div>
+          <label className="fc-label">Table name</label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            data-testid="dt-name"
+            placeholder="e.g. Project"
+            className="fc-input max-w-sm"
+          />
+        </div>
+        <div>
+          <label className="fc-label">Module</label>
+          <input
+            value={module}
+            onChange={(e) => setModule(e.target.value)}
+            data-testid="dt-module"
+            placeholder="Custom"
+            className="fc-input max-w-48"
+          />
+        </div>
+      </div>
 
       <div className="fc-card overflow-x-auto">
         <table className="w-full text-sm" data-testid="dt-fields">

@@ -54,6 +54,9 @@ export interface TableMeta {
   track_changes: boolean
   description: string | null
   custom: boolean
+  // #74: true for platform tables created by the migration chain. The Desk
+  // sidebar groups (never hides) these; POST/PUT /api/doctype reject it.
+  system: boolean
   columns: ColumnDef[]
 }
 
