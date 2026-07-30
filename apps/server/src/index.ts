@@ -398,15 +398,28 @@ app.post('/api/revoke_api_key', async (c) => {
   return c.json({ ok: true })
 })
 
+// #74: `system` marks tables created by the migration chain. It is set only
+// by migrations/seeds (through createTable directly) — a table created or
+// updated over the API can never claim it.
+function rejectSystemClaim(body: Record<string, unknown>) {
+  if (body.system)
+    throw new AppError('ValidationError', 'Invalid Table definition', {
+      system: 'system is reserved for platform tables and cannot be set over the API',
+    })
+}
+
 app.post('/api/doctype', async (c) => {
   await assertSystemManager(who(c))
-  const meta = await createTable(await c.req.json())
+  const body = (await c.req.json()) as Record<string, unknown>
+  rejectSystemClaim(body)
+  const meta = await createTable(body)
   return c.json(meta, 201)
 })
 
 app.put('/api/doctype/:name', async (c) => {
   await assertSystemManager(who(c))
   const body = (await c.req.json()) as Record<string, unknown> & { drop_columns?: boolean }
+  rejectSystemClaim(body)
   const { drop_columns, ...def } = body
   return c.json(await updateTable(c.req.param('name'), def, { drop_columns }))
 })

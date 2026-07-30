@@ -59,13 +59,33 @@ export function DeskLayout() {
   const tables = useQuery({
     queryKey: ['tables'],
     queryFn: () =>
-      listResource<{ name: string; module: string }>('Table', {
+      listResource<{ name: string; module: string; system: boolean }>('Table', {
         filters: [['kind', '!=', 'sub_table']],
-        fields: ['name', 'module'],
+        fields: ['name', 'module', 'system'],
         order_by: 'name asc',
         limit_page_length: 200,
       }),
   })
+
+  // #74: the sidebar's System group starts collapsed; the choice sticks per
+  // browser (same localStorage-mirror pattern as lib/theme.ts).
+  const [systemOpen, setSystemOpen] = useState(() => {
+    try {
+      return localStorage.getItem('fc_sidebar_system_open') === '1'
+    } catch {
+      return false
+    }
+  })
+  function toggleSystemGroup() {
+    setSystemOpen((open) => {
+      try {
+        localStorage.setItem('fc_sidebar_system_open', open ? '0' : '1')
+      } catch {
+        /* ignore */
+      }
+      return !open
+    })
+  }
 
   // ⌘K / Ctrl+K focuses the command bar (PR-2-style command palette entry).
   const searchRef = useRef<HTMLInputElement>(null)
@@ -181,10 +201,13 @@ export function DeskLayout() {
     .map((s) => s[0]?.toUpperCase())
     .join('')
 
+  // User tables surface before system tables in suggestions (stable sort
+  // keeps the alphabetical order within each group).
   const suggestions =
     search.trim().length > 0
       ? (tables.data?.data ?? [])
           .filter((d) => d.name.toLowerCase().includes(search.trim().toLowerCase()))
+          .sort((a, b) => Number(a.system) - Number(b.system))
           .slice(0, 7)
       : []
 
@@ -199,16 +222,22 @@ export function DeskLayout() {
       ? commands.filter((c) => c.label.toLowerCase().includes(search.trim().toLowerCase()))
       : []
 
-  // Sidebar curation (from the PR-2 comparison): app tables surface first,
-  // grouped by module; the engine's Core tables sit below under System.
-  // Everything stays visible — this is ordering, not hiding.
-  const byModule = new Map<string, { name: string; module: string }[]>()
+  // Sidebar curation (#74): user tables (system = false) surface first,
+  // grouped by module; every platform table sits under ONE System group,
+  // collapsed by default. The `system` flag is the discriminator — no more
+  // magic 'Core' module string. Everything stays reachable — this is
+  // grouping, not hiding.
+  const byModule = new Map<string, { name: string; module: string; system: boolean }[]>()
+  const systemTables: { name: string; module: string; system: boolean }[] = []
   for (const dt of tables.data?.data ?? []) {
-    const key = dt.module || 'Core'
+    if (dt.system) {
+      systemTables.push(dt)
+      continue
+    }
+    const key = dt.module || 'Custom'
     byModule.set(key, [...(byModule.get(key) ?? []), dt])
   }
-  const appModules = [...byModule.keys()].filter((m) => m !== 'Core').sort()
-  const coreTables = byModule.get('Core') ?? []
+  const appModules = [...byModule.keys()].sort()
 
   return (
     <div className="flex h-full flex-col">
@@ -451,7 +480,7 @@ export function DeskLayout() {
           )}
           <nav className="flex-1 overflow-y-auto px-2 pb-4" data-testid="doctype-nav">
             {tables.isLoading && <p className="px-2 py-1 text-xs text-[var(--color-ink-faint)]">Loading…</p>}
-            {/* App modules first (Ticketing, Helpdesk, …), engine Core last. */}
+            {/* User modules first, platform tables grouped below. */}
             {appModules.map((mod) => (
               <div key={mod}>
                 <div className="px-2 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
@@ -474,26 +503,50 @@ export function DeskLayout() {
                 ))}
               </div>
             ))}
-            {coreTables.length > 0 && (
-              <div className="px-2 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
-                System
-              </div>
+            {/* One System group for every platform table — collapsed by
+                default with a count badge; expanding lists them all as
+                normal links. Grouped, never hidden. */}
+            {systemTables.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={toggleSystemGroup}
+                  aria-expanded={systemOpen}
+                  data-testid="system-group-toggle"
+                  className="flex w-full items-center gap-1.5 rounded-md px-2 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)] hover:text-[var(--color-ink-muted)]"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`inline-block text-[9px] transition-transform ${systemOpen ? 'rotate-90' : ''}`}
+                  >
+                    ▶
+                  </span>
+                  System
+                  <span
+                    data-testid="system-group-count"
+                    className="ml-auto rounded-full bg-[var(--color-subtle)] px-1.5 py-0.5 text-[10px] font-medium normal-case tracking-normal text-[var(--color-ink-muted)]"
+                  >
+                    {systemTables.length}
+                  </span>
+                </button>
+                {systemOpen &&
+                  systemTables.map((dt) => (
+                    <Link
+                      key={dt.name}
+                      to="/desk/$doctype"
+                      params={{ doctype: dt.name }}
+                      search={{ filters: undefined }}
+                      className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-subtle)]"
+                      activeProps={{
+                        className:
+                          'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]',
+                      }}
+                    >
+                      {dt.name}
+                    </Link>
+                  ))}
+              </>
             )}
-            {coreTables.map((dt) => (
-              <Link
-                key={dt.name}
-                to="/desk/$doctype"
-                params={{ doctype: dt.name }}
-                search={{ filters: undefined }}
-                className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-subtle)]"
-                activeProps={{
-                  className:
-                    'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]',
-                }}
-              >
-                {dt.name}
-              </Link>
-            ))}
           </nav>
         </aside>
 

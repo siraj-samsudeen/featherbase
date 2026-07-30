@@ -1,15 +1,19 @@
-// The HD Ticket helpdesk tested at the component layer: real
-// ListView/FormView (generic Desk) rendered in jsdom, talking through the
-// fetch bridge to the in-process server, inside a rolled-back Postgres
-// transaction. Tests create their own tickets — demo content is opt-in.
+// The HD Ticket helpdesk (sample app, server/src/sample-apps/helpdesk.ts —
+// no longer in the migration chain, see #74) tested at the component layer:
+// real ListView/FormView (generic Desk) rendered in jsdom, talking through
+// the fetch bridge to the in-process server, inside a rolled-back Postgres
+// transaction. Each test installs the structure itself (inside its sandbox
+// transaction) and creates its own tickets — demo content is opt-in.
 //
 // MECE states: list-with-data, list-empty (permission-scoped), form-create,
 // form-validation-error, workflow-transition — one test per state.
 
 import { screen } from '@testing-library/react'
+import { installHelpdesk } from 'server/src/sample-apps/helpdesk'
 import { test, expect, renderDesk, renderSession } from './pg-test'
 
 test('list: an admin sees a freshly created ticket', async ({ admin }) => {
+  await installHelpdesk()
   const doc = await admin.post<{ name: string }>('/api/save_doc', {
     doctype: 'HD Ticket',
     doc: { subject: 'Rendered by the generic ListView' },
@@ -23,6 +27,7 @@ test('list: a customer with no tickets sees an empty, permission-scoped list', a
   admin,
   createUser,
 }) => {
+  await installHelpdesk()
   const other = await admin.post<{ name: string }>('/api/save_doc', {
     doctype: 'HD Ticket',
     doc: { subject: 'Someone else’s ticket' },
@@ -37,6 +42,7 @@ test('list: a customer with no tickets sees an empty, permission-scoped list', a
 test('form: create a ticket through the UI (Session DSL) — real save, real series', async ({
   admin,
 }) => {
+  await installHelpdesk()
   const { session } = await renderSession('/desk/HD%20Ticket/new', admin)
   await session
     .fillIn('Subject', 'Filed from a component test')
@@ -48,6 +54,7 @@ test('form: create a ticket through the UI (Session DSL) — real save, real ser
 test('form: a dirty form with an empty required subject shows the field error', async ({
   admin,
 }) => {
+  await installHelpdesk()
   // A pristine form's Save is disabled (dirty-tracking), so make it dirty
   // via another field and leave the required subject empty.
   const { session } = await renderSession('/desk/HD%20Ticket/new', admin)
@@ -59,6 +66,7 @@ test('form: a dirty form with an empty required subject shows the field error', 
 })
 
 test('workflow: Start from the ticket form moves the bound status field', async ({ admin }) => {
+  await installHelpdesk()
   const doc = await admin.post<{ name: string }>('/api/save_doc', {
     doctype: 'HD Ticket',
     doc: { subject: 'Workflow via the UI' },
