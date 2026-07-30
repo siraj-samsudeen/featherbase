@@ -13,6 +13,65 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-30 — Missing `E` prefix corrupted seeded `choices`; 32 tests were failing
+
+63 server tests failed with `417 ValidationError: Invalid values for Permission`
+— `tier: 'basic'` rejected against an enum whose only member was the
+seven-character string `basic\nrestricted`. Two independent defects, both from
+SQL migrations, both invisible on a fresh database in the ways that mattered.
+
+**1. Literal backslash-n in `choices` (5 sites).** Postgres runs with
+`standard_conforming_strings = on`, so a plain `'basic\nrestricted'` literal is
+a backslash followed by `n` — only `E'...'` escapes. `0004_bootstrap.sql:11,32`
+and `0055_terminology_rename.sql:221,240,259` omitted the `E`; their immediate
+neighbours (`E'Data\nInt\n...'`, `E'queued\nsent\nerror'`) had it, which is how
+it slipped through. The `.ts` seeds were never wrong — `'\n'` in TypeScript *is*
+a newline — so `0005_core_seeds.ts:55` was correct all along and made this look
+like local drift. It was not: I rebuilt a scratch database through the whole
+chain and **`Table.kind` and `Column.tier` are corrupt on every fresh database**.
+Only `Permission.tier` was true drift — 0005 seeds it correctly and 0055's
+`where column_name = 'permlevel'` no-ops on a fresh DB, so just pre-0055
+databases got it clobbered. `Table.kind` was a third corrupt row nobody had
+noticed. Fixing the choices alone took the failures 63 → 32.
+
+**2. `0055` renamed `permlevel` → `tier` but left the numeric default.** The old
+column was a level (0 = base) with `default_value = '0'`; the rename swapped in
+the `basic`/`restricted` Choice list and never touched the default. So every
+save that *omitted* `tier` defaulted to `'0'` — outside the Choice list — and
+failed identically. Same blind spot: no-op on fresh databases, so CI never saw
+it. This is what the remaining 32 failures were.
+
+The `exportCustomizations`/`importCustomizations` path was suspected and is
+**cleared** — it passes `choices` through verbatim (`f.choices ?? null`), no
+escaping, no JSON round-trip.
+
+- All 5 SQL sites now carry the `E` prefix, and 0055 migrates `default_value`
+  alongside the rename, so neither can recur.
+- **New `0059_fix_literal_newline_choices.sql`** repairs databases already built
+  from the broken chain — every developer's, not just this laptop. Normalises
+  literal `\n` in `column_def.choices` *and* `custom_field.choices`, and maps a
+  numeric `tier` default back to the vocabulary. Written with `chr(92) || 'n'`
+  and `chr(10)` rather than escaped literals so the repair itself cannot fall
+  into the same quoting trap. Idempotent — matches nothing on a correct DB.
+
+Verified: fresh scratch DB through the fixed chain has **zero** literal-`\n`
+rows; a full `column_def` diff (type/choices/default/reqd, every row) between
+that fresh DB and the repaired dev DB is **empty**. `pnpm --filter server test`
+→ 95 files, 470 passed, 1 skipped, 0 failed; no stale-`background_job` noise.
+Typecheck clean. End-to-end over HTTP against the running server: Permission
+save with `tier` omitted → `'basic'`; with `tier: 'restricted'` → accepted; with
+`tier: 'bogus'` → correctly rejected, and the message now reads
+`Expected 'basic' | 'restricted'`, proving the enum has both members again.
+
+Gotcha: `0059` had already been recorded as applied when I extended it, so
+re-running meant deleting its `migration` row first — safe only because it is
+idempotent. Note the dev database also had 0057/0058 pending; they applied here.
+
+Next: worth a guard so this class of bug can't return — either a test asserting
+no `column_def.choices` contains a literal backslash-n after migration, or a
+lint over `migrations/*.sql` for non-`E` literals containing `\n`. The five
+sites are fixed, but nothing stops a sixth.
+
 ## 2026-07-30 — De-ship the Helpdesk demo; `system` flag groups platform tables (#74)
 
 A fresh deployment used to boot with 46 tables, one of them a full demo app:

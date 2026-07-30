@@ -218,7 +218,7 @@ update column_def set column_name = 'id_pattern', label = 'ID Pattern'
 update column_def set column_name = 'title_column', label = 'Title Column'
   where parent = 'Table' and column_name = 'title_field';
 update column_def set column_name = 'kind', label = 'Kind', column_type = 'Choice',
-    choices = 'table\nsub_table\nsettings'
+    choices = E'table\nsub_table\nsettings'
   where parent = 'Table' and column_name = 'issingle';
 delete from column_def where parent = 'Table' and column_name = 'istable';
 
@@ -237,7 +237,7 @@ insert into column_def (parent, column_name, label, column_type, position)
   select 'Column', 'row_table', 'Row Table', 'Data', 6
   where not exists (select 1 from column_def where parent = 'Column' and column_name = 'row_table');
 update column_def set column_name = 'tier', label = 'Tier', column_type = 'Choice',
-    choices = 'basic\nrestricted'
+    choices = E'basic\nrestricted'
   where parent = 'Column' and column_name = 'permlevel';
 
 -- Custom Field mirrors Column's shape.
@@ -255,8 +255,12 @@ insert into column_def (parent, column_name, label, column_type, position)
   where not exists (select 1 from column_def where parent = 'Custom Field' and column_name = 'row_table');
 
 -- Permission's permlevel -> tier (its ref_doctype -> ref_table is above).
+-- The old permlevel was numeric (0 = base level), so its default_value was '0'.
+-- Carry the default across to the new vocabulary too, or every save that omits
+-- `tier` defaults to a value outside the Choice list and fails validation.
 update column_def set column_name = 'tier', label = 'Tier', column_type = 'Choice',
-    choices = 'basic\nrestricted'
+    choices = E'basic\nrestricted',
+    default_value = case when coalesce(default_value, '0') = '0' then 'basic' else 'restricted' end
   where parent = 'Permission' and column_name = 'permlevel';
 
 -- Domain `status` columns that collided with the new standard row-lifecycle
