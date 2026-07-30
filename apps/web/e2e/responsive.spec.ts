@@ -56,7 +56,10 @@ test.describe('UI-025: responsive Desk (mobile)', () => {
       .poll(async () => (await page.getByTestId('desk-sidebar').boundingBox())!.x)
       .toBeGreaterThanOrEqual(0)
 
-    // Navigating from the drawer closes it and lands on the list view.
+    // Navigating from the drawer closes it (#80: the drawer lists Home
+    // Pages + All tables; the table link is then on the All tables page).
+    await page.getByTestId('all-tables-link').click()
+    await expect(page).toHaveURL(/\/desk\/all-tables/)
     await page.getByTestId(`doctype-nav`).getByText(DT, { exact: true }).click()
     await expect(page).toHaveURL(new RegExp(`/desk/${encodeURIComponent(DT)}`))
     await expect(page.getByTestId('list-view')).toBeVisible()

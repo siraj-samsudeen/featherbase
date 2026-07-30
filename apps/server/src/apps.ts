@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { sql } from './db'
 import { AppError } from './errors'
 import { createTable, tableName } from './doctype-engine'
+import { ensureHomePageForTable } from './home-pages'
 import { invalidateMeta } from './meta'
 import { saveDoc, deleteDoc } from './document'
 import { enqueue, registerJob, type JobHandler } from './jobs'
@@ -329,6 +330,10 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
       )
     const meta = await createTable(def)
     created.push(meta.name)
+    // #80: app tables group under the app's own module in navigation, same
+    // as builder-created tables — the module's home page is created on
+    // demand and the table's link appended.
+    if (meta.kind !== 'sub_table') await ensureHomePageForTable(meta.name, meta.module)
   }
   const access = await provisionAccess(manifest)
   // Wire its doc_events, scheduler jobs, and method overrides BEFORE the

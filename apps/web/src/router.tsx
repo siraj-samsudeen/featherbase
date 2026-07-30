@@ -1,4 +1,6 @@
+import { useEffect } from 'react'
 import {
+  Link,
   Outlet,
   createRootRoute,
   createRoute,
@@ -19,7 +21,8 @@ import { QueryReportView } from './components/QueryReportView'
 import { ScriptReportView } from './components/ScriptReportView'
 import { PermissionManager } from './components/PermissionManager'
 import { DashboardView } from './components/DashboardView'
-import { WorkspaceView } from './components/WorkspaceView'
+import { HomePageView } from './components/HomePageView'
+import { useHomePages } from './lib/home-pages'
 import { JobMonitor } from './components/JobMonitor'
 import { KanbanView } from './components/KanbanView'
 import { CalendarView } from './components/CalendarView'
@@ -27,6 +30,7 @@ import { GanttView } from './components/GanttView'
 import { PrintView } from './pages/PrintView'
 import { TableBuilder } from './pages/TableBuilder'
 import { ImportWizard } from './pages/ImportWizard'
+import { AllTablesPage } from './pages/AllTables'
 
 const rootRoute = createRootRoute({ component: Outlet })
 
@@ -141,13 +145,33 @@ function PrintPage() {
   )
 }
 
+// #80: /desk lands on the caller's first visible Home Page; with none
+// visible it falls back to a pointer at the All tables page.
 const deskIndexRoute = createRoute({
   getParentRoute: () => deskRoute,
   path: '/',
-  component: () => (
-    <p className="text-sm text-gray-500">Select a Table from the sidebar.</p>
-  ),
+  component: DeskIndexPage,
 })
+
+function DeskIndexPage() {
+  const navigate = deskIndexRoute.useNavigate()
+  const pages = useHomePages()
+  const first = pages.data?.pages[0]
+  useEffect(() => {
+    if (first) void navigate({ to: '/desk/home/$name', params: { name: first.name }, replace: true })
+  }, [first, navigate])
+  if (!pages.data) return null
+  if (first) return null
+  return (
+    <p className="text-sm text-gray-500" data-testid="desk-index-empty">
+      No Home Pages are visible to you. Browse{' '}
+      <Link to="/desk/all-tables" className="text-[var(--color-brand)] underline">
+        All tables
+      </Link>{' '}
+      instead.
+    </p>
+  )
+}
 
 // UI-011: Table builder route (before $doctype so 'new-table' matches).
 const newTableRoute = createRoute({
@@ -347,21 +371,30 @@ const jobsRoute = createRoute({
   component: JobMonitor,
 })
 
-// UI-027: a Home Page renders navigable shortcut cards (static segment).
-const workspaceRoute = createRoute({
+// UI-027 / #80: a Home Page renders grouped link cards and its legacy
+// shortcuts (static segment).
+const homePageRoute = createRoute({
   getParentRoute: () => deskRoute,
-  path: 'workspace/$name',
-  component: WorkspacePage,
+  path: 'home/$name',
+  component: HomePagePage,
 })
 
-function WorkspacePage() {
-  const { name } = workspaceRoute.useParams()
+function HomePagePage() {
+  const { name } = homePageRoute.useParams()
   return (
     <div data-testid="doctype-page">
-      <WorkspaceView key={name} name={name} />
+      <HomePageView key={name} name={name} />
     </div>
   )
 }
+
+// #80: every table stays reachable — the sidebar's All tables entry shows
+// the grouped table list (static segment, before $doctype).
+const allTablesRoute = createRoute({
+  getParentRoute: () => deskRoute,
+  path: 'all-tables',
+  component: AllTablesPage,
+})
 
 // UI-026: a saved Dashboard renders number cards + charts (static segment).
 const dashboardRoute = createRoute({
@@ -420,5 +453,5 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   printRoute,
-  deskRoute.addChildren([deskIndexRoute, newTableRoute, importRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, workspaceRoute, jobsRoute, doctypeRoute, docRoute]),
+  deskRoute.addChildren([deskIndexRoute, newTableRoute, importRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, homePageRoute, allTablesRoute, jobsRoute, doctypeRoute, docRoute]),
 ])
