@@ -1,12 +1,13 @@
-/* Helpdesk DEMO CONTENT, seeded through the public HTTP API of a running
- * server. The helpdesk's structure — HD Ticket DocType, roles, permissions,
- * the status-field workflow, SLA, email rule, server script, and web form —
- * ships in migration 0051_helpdesk.ts; this script adds only the pieces a
- * demo needs and a real deployment would not:
+/* Helpdesk sample app + DEMO CONTENT. The structure — HD Ticket Table,
+ * roles, permissions, the status-field workflow, SLA, email rule, server
+ * script, and web form — used to ship in migration 0051 and is now OPT-IN
+ * (#74): it lives in src/sample-apps/helpdesk.ts and this script installs it
+ * (idempotent, direct engine calls) before seeding, over the HTTP API of a
+ * running server, the pieces a demo needs and a real deployment would not:
  *
  * - Demo users (password demo1234): two agents, a manager, two customers
  * - Assignment Rule: new tickets round-robin between the two agents and
- *   stamp the `agent` field (lives here, not in the migration, because it
+ *   stamp the `agent` field (lives here, not in the structure, because it
  *   links the demo users)
  * - Five sample tickets, filed by the customers through the public web form
  *
@@ -14,9 +15,12 @@
  *
  *   pnpm --filter server seed:helpdesk
  *
- * Idempotent: existing users/rules are skipped; sample tickets are only
- * filed when the customers have none. Undo with reset:helpdesk.
+ * Idempotent: existing structure/users/rules are skipped; sample tickets are
+ * only filed when the customers have none. Undo demo content with
+ * reset:helpdesk; migration 0057 removes the structure wholesale.
  */
+import { sql } from '../src/db'
+import { installHelpdesk } from '../src/sample-apps/helpdesk'
 
 const BASE = process.env.SERVER_URL ?? 'http://localhost:8000'
 const ADMIN = process.env.ADMIN_USER ?? 'Administrator'
@@ -74,6 +78,9 @@ async function ensureDoc(doctype: string, doc: Record<string, unknown>, key?: st
 }
 
 async function main() {
+  console.log('Structure (HD Ticket Table, roles, workflow, SLA, web form)')
+  await installHelpdesk()
+
   await login('admin', ADMIN, ADMIN_PWD)
 
   console.log('Users (password: demo1234)')
@@ -150,7 +157,10 @@ async function main() {
   console.log(`  Portal:  ${BASE.replace('8000', '5173')}/portal/HD%20Ticket`)
 }
 
-main().catch((err) => {
-  console.error(err)
-  process.exit(1)
-})
+main()
+  .then(() => sql.end())
+  .catch(async (err) => {
+    console.error(err)
+    await sql.end().catch(() => {})
+    process.exit(1)
+  })

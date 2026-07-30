@@ -1,16 +1,17 @@
-// Helpdesk app (HD Ticket): the framework's flagship demo, defined ENTIRELY
-// from metadata — Table, roles, permissions, a workflow bound to the real
-// `status` field, an SLA, email rules, a server script, and a public web
-// form. Structure only: demo users, the round-robin assignment rule (which
-// links those users), and sample tickets live in scripts/seed-helpdesk.ts —
-// demo content never ships in the migration chain.
-import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
-import { saveDoc } from '../src/document'
+// Helpdesk sample app (HD Ticket): the framework's flagship demo, defined
+// ENTIRELY from metadata — Table, roles, permissions, a workflow bound to the
+// real `status` field, an SLA, email rules, a server script, and a public web
+// form. It used to ship in the migration chain (0051, removed by 0057); now
+// it is OPT-IN: scripts/seed-helpdesk.ts installs it on dev machines, and the
+// helpdesk test suites install it inside their own sandbox transactions.
+// Demo content (users, sample tickets, the round-robin assignment rule) stays
+// in scripts/seed-helpdesk.ts — structure only here.
+import { sql } from '../db'
+import { createTable } from '../doctype-engine'
+import { saveDoc } from '../document'
 
-export async function up() {
-  // Databases seeded by the pre-migration seed-helpdesk.ts already carry the
-  // identical structure — skip cleanly.
+export async function installHelpdesk() {
+  // Idempotent: a database that already carries the structure skips cleanly.
   const [exists] = await sql`select 1 from table_def where name = 'HD Ticket'`
   if (exists) return
 
