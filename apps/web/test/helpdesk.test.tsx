@@ -1,16 +1,25 @@
-// The HD Ticket helpdesk (sample app, server/src/sample-apps/helpdesk.ts —
-// no longer in the migration chain, see #74) tested at the component layer:
-// real ListView/FormView (generic Desk) rendered in jsdom, talking through
-// the fetch bridge to the in-process server, inside a rolled-back Postgres
-// transaction. Each test installs the structure itself (inside its sandbox
-// transaction) and creates its own tickets — demo content is opt-in.
+// The HD Ticket helpdesk (a registered app manifest,
+// server/src/sample-apps/helpdesk.ts — PLAT-006 #78) tested at the component
+// layer: real ListView/FormView (generic Desk) rendered in jsdom, talking
+// through the fetch bridge to the in-process server, inside a rolled-back
+// Postgres transaction. Each test installs the app itself — through the real
+// installApp() manifest path, inside its sandbox transaction — and creates
+// its own tickets; demo content is opt-in.
 //
 // MECE states: list-with-data, list-empty (permission-scoped), form-create,
 // form-validation-error, workflow-transition — one test per state.
 
 import { screen } from '@testing-library/react'
-import { installHelpdesk } from 'server/src/sample-apps/helpdesk'
+import { installApp } from 'server/src/apps'
+import { sql } from 'server/src/db'
 import { test, expect, renderDesk, renderSession } from './pg-test'
+
+// A dev database may already carry the committed structure (seed:helpdesk,
+// or the ticketing e2e ran against it) — adopt it instead of colliding.
+async function installHelpdesk() {
+  const [have] = await sql`select 1 from table_def where name = 'HD Ticket'`
+  if (!have) await installApp('helpdesk')
+}
 
 test('list: an admin sees a freshly created ticket', async ({ admin }) => {
   await installHelpdesk()

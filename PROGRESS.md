@@ -13,6 +13,77 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-30 — Apps ship fixtures; Helpdesk is a real installable app (#78)
+
+An app manifest could declare tables, roles, permissions and code hooks — but
+not DOCUMENTS: no way to ship a Workflow, Email Rule, Server Script, SLA,
+Email Account, or Web Form with an app. That is why the Helpdesk survived
+only as an imperative installer (`installHelpdesk()`) glued to a seed script.
+Two changes (PLAT-006):
+
+- **`fixtures` on AppManifest** — `{ table, rows[] }[]`, materialized through
+  the NORMAL saveDoc lifecycle (validation, automation, id patterns,
+  sub-tables) AFTER tables/roles/permissions, in declaration order (a
+  Workflow before rows that reference it), with the app's own doc_events
+  wired first so fixture saves run under them. New `installed_app.fixtures`
+  jsonb column (migration 0059, the 0053 pattern) records `{ table, name }`
+  for only what the install genuinely CREATED — a declared row whose name
+  already exists is **adopted**: not overwritten, not recorded, exactly the
+  roles/grants discipline. Uninstall deletes recorded fixture rows in
+  reverse order via the real deleteDoc (on_trash + child rows), BEFORE the
+  app's tables drop (fixtures may live on/reference app tables), skipping
+  rows the user already deleted. Declarative manifests accept `fixtures` too
+  (pure data — survives JSON); and an app table claiming `system: true` is
+  now refused at install, same 417 the /api/doctype routes give — app tables
+  are user-space and group under their own module.
+- **Helpdesk is a genuine app now.** `src/sample-apps/helpdesk.ts` is an
+  exported AppManifest (HD Ticket table, 3 roles, 13 grants, and six fixture
+  docs: workflow, default email account, email rule, server script, SLA +
+  4 priorities, published web form), `registerApp`'d in index.ts —
+  REGISTERED, NOT INSTALLED: a fresh deployment has zero helpdesk tables;
+  `POST /api/install_app { name: 'helpdesk' }` brings the whole thing up and
+  uninstall removes exactly what install created. The helpdesk suites
+  (server + web component) install the app per-test through the real
+  installApp() path inside their sandbox transactions; the ticketing e2e now
+  installs over the public endpoint instead of hand-building a slice.
+  `seed:helpdesk` installs the app over HTTP first, then seeds demo content
+  — and got fixed in passing: it still used pre-#61 `/api/resource` URLs
+  (its exists() check always 404'd) and the pre-0055 `document_type` field
+  on Assignment Rule, so it could not run twice.
+
+Verified on throwaway DBs (never the local `featherbase`): migration proven
+both ways — fresh migrate from zero (fixtures column present, zero helpdesk
+tables) and a DB migrated to the previous tip then upgraded (0059 the only
+change). Server suite 479 green (8 new in app-fixtures.test.ts: fixture
+round trip incl. a core-table Email Rule referencing the app table,
+adoption-survives-uninstall, user-deleted-row skip, declarative fixtures
+over the API, failed-fixture abort, system:true refusal, full helpdesk
+install→file-ticket-through-web-form→uninstall round trip with a
+pre-existing look-alike Email Account left standing). Web unit 12 green,
+both typechecks clean. Full e2e against a single-origin stack on :8904
+(built SPA served by the API server): 84 passed, 2 skipped, 0 failed.
+seed:helpdesk run twice against that stack — second run all "= exists",
+round-robin alternates agents, SLA stamps present.
+
+Gotchas for later sessions:
+- The helpdesk Email Account fixture keeps `is_default: true` — install
+  makes notifications deliverable out of the box; uninstall deletes the
+  account (it is a recorded fixture) and deliberately leaves NO default:
+  email.ts defaultSender() falls back to the oldest account, then
+  no-reply@localhost (the exact call 0057 made).
+- The Customer grant is create-without-write BY DESIGN (portal files via the
+  web form, which whitelists columns) — provisionAccess now warns about that
+  shape on every helpdesk install; the warning is expected noise, not a bug.
+- `scripts/verify-helpdesk.ts` is bit-rotted on main: it still speaks
+  `/api/resource`, PUT + `modified`, `owner`/`creation`/`status`, and the
+  removed `/api/apply_workflow_action` RPC. Untouched here (the helpdesk
+  test suites cover the same ground in-sandbox); fix or retire it in its own
+  session.
+
+Next: a Desk surface for /api/apps (list, install, uninstall buttons) so the
+app system is operable without curl; consider fixture UPDATE semantics on
+re-install (today: uninstall + install).
+
 ## 2026-07-30 — De-ship the Helpdesk demo; `system` flag groups platform tables (#74)
 
 A fresh deployment used to boot with 46 tables, one of them a full demo app:
