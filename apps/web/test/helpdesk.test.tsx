@@ -1,16 +1,25 @@
-// The HD Ticket helpdesk (sample app, server/src/sample-apps/helpdesk.ts —
-// no longer in the migration chain, see #74) tested at the component layer:
-// real ListView/FormView (generic Desk) rendered in jsdom, talking through
-// the fetch bridge to the in-process server, inside a rolled-back Postgres
-// transaction. Each test installs the structure itself (inside its sandbox
-// transaction) and creates its own tickets — demo content is opt-in.
+// The HD Ticket helpdesk (a registered app manifest,
+// server/src/sample-apps/helpdesk.ts — PLAT-006 #78) tested at the component
+// layer: real ListView/FormView (generic Desk) rendered in jsdom, talking
+// through the fetch bridge to the in-process server, inside a rolled-back
+// Postgres transaction. Each test installs the app itself — through the real
+// installApp() manifest path, inside its sandbox transaction — and creates
+// its own tickets; demo content is opt-in.
 //
 // MECE states: list-with-data, list-empty (permission-scoped), form-create,
 // form-validation-error, workflow-transition — one test per state.
 
-import { screen } from '@testing-library/react'
-import { installHelpdesk } from 'server/src/sample-apps/helpdesk'
+import { screen, waitFor } from '@testing-library/react'
+import { installApp } from 'server/src/apps'
+import { sql } from 'server/src/db'
 import { test, expect, renderDesk, renderSession } from './pg-test'
+
+// A dev database may already carry the committed structure (seed:helpdesk,
+// or the ticketing e2e ran against it) — adopt it instead of colliding.
+async function installHelpdesk() {
+  const [have] = await sql`select 1 from table_def where name = 'HD Ticket'`
+  if (!have) await installApp('helpdesk')
+}
 
 test('list: an admin sees a freshly created ticket', async ({ admin }) => {
   await installHelpdesk()
@@ -72,5 +81,26 @@ test('workflow: Start from the ticket form moves the bound status field', async 
     doc: { subject: 'Workflow via the UI' },
   })
   const { session } = await renderSession(`/desk/HD%20Ticket/${doc.name}`, admin)
-  await session.assertText(doc.name).clickButton('Start').assertText('In Progress')
+  await session.assertText(doc.name).clickButton('Start')
+  // 'In Progress' sits in the status <select>'s options from the first
+  // render, so a bare assertText would pass before the transition even
+  // lands — assert the workflow-state pill specifically.
+  await waitFor(
+    () => expect(screen.getByTestId('workflow-state')).toHaveTextContent('In Progress'),
+    { timeout: 5000 },
+  )
+  // And wait for the click's async apply() to settle: the status select
+  // showing 'In Progress' as its VALUE (not an option) means the doc
+  // refetch — the last network call apply() awaits — has delivered. Without
+  // this the test ends with the POST's tail still in flight; that tail then
+  // runs after this test's transaction rolled back (42P01 on the vanished
+  // sandbox table) and, on a slow box, after jsdom teardown — the "window
+  // is not defined" unhandled rejection that failed CI while every test
+  // passed. (No follow-up action renders to wait on instead: from
+  // In Progress the only transition, Resolve, is condition-gated on
+  // resolution_details for everyone, Administrator included.)
+  await waitFor(
+    () => expect(screen.getByDisplayValue('In Progress')).toBeInTheDocument(),
+    { timeout: 5000 },
+  )
 })
