@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { coerceRows, inferTableDef, tableNameFromFile } from 'shared'
+import { coerceRows, idPatternFor, inferTableDef, seriesPrefix, tableNameFromFile } from 'shared'
 import { ApiError, api } from '../lib/api'
+import { NamingControl } from '../components/NamingControl'
 import { COLUMN_TYPES } from '../lib/meta'
 import { isImportableFile, parseWorkbook } from '../lib/parse-file'
 
@@ -47,6 +48,8 @@ export function TableBuilder() {
   const queryClient = useQueryClient()
   const fileInput = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
+  // null = follow the Table name (ZONE-.###); a string = the user chose.
+  const [namingOverride, setNamingOverride] = useState<string | null>(null)
   const [columns, setColumns] = useState<ColumnRow[]>([blank()])
   const [imported, setImported] = useState<ImportedFile | null>(null)
   const [moreSheets, setMoreSheets] = useState(0)
@@ -58,6 +61,10 @@ export function TableBuilder() {
   function setColumn(i: number, patch: Partial<ColumnRow>) {
     setColumns((cs) => cs.map((c, j) => (j === i ? { ...c, ...patch } : c)))
   }
+
+  // Before a name is typed there is no prefix to derive, but the control should
+  // still open on "series" — that is the default we want for imports.
+  const idPattern = namingOverride ?? (name.trim() ? idPatternFor(name) : '.###')
 
   async function loadFile(file: File) {
     setError(null)
@@ -106,6 +113,7 @@ export function TableBuilder() {
       const kept = columns.filter((c) => c.column_name.trim())
       const payload = {
         name,
+        id_pattern: idPattern,
         columns: kept.map((c) => {
           const target = c.target.trim()
             ? c.target
@@ -238,6 +246,21 @@ export function TableBuilder() {
         placeholder="e.g. Project"
         className="fc-input mb-4 max-w-sm"
       />
+
+      <label className="fc-label">Naming</label>
+      <div className="mb-4">
+        <NamingControl
+          value={idPattern}
+          onChange={setNamingOverride}
+          defaultPrefix={seriesPrefix(name)}
+          columns={columns
+            .filter((c) => c.column_name.trim())
+            .map((c) => ({
+              column_name: c.column_name.trim(),
+              label: c.label.trim() || c.column_name.trim(),
+            }))}
+        />
+      </div>
 
       <div className="fc-card overflow-x-auto">
         <table className="w-full text-sm" data-testid="dt-fields">

@@ -45,6 +45,9 @@ interface SheetPlan {
   // inside a wider Table) — shown as a hint on the new-Table panel.
   similar: { name: string; mapped: number; total: number } | null
   inferred: InferredTableDef
+  // NAM-001, new-Table mode: series prefix for the new Table's row ids.
+  // null = keep the inferred default; '' = fall back to random ids.
+  naming_prefix: string | null
   // per file column: target column_name in the existing Table, or null (skip)
   mapping: (string | null)[]
   check: { valid: number; failed: { index: number; message: string }[] } | null
@@ -318,6 +321,7 @@ export function ImportWizard() {
                 ? { name: best.name, mapped: best.q.mapped, total: best.cols }
                 : null,
             inferred,
+            naming_prefix: null,
             mapping,
             check: null,
             result: null,
@@ -372,6 +376,16 @@ export function ImportWizard() {
       picks.map((p) => ({ column_name: p.target, column_type: typeOf.get(p.target) ?? 'Data' })),
       sheet.rows.map((r) => picks.map((p) => r[p.idx])),
     )
+  }
+
+  function planIdPattern(plan: SheetPlan): string {
+    if (plan.naming_prefix === null) return plan.inferred.id_pattern
+    return plan.naming_prefix ? `${plan.naming_prefix}.###` : 'hash'
+  }
+
+  function planPrefix(plan: SheetPlan): string {
+    const pattern = planIdPattern(plan)
+    return pattern === 'hash' ? '' : pattern.split('.')[0]
   }
 
   // Rows for a new-Table plan: 1:1 with the inferred (possibly renamed)
@@ -431,6 +445,7 @@ export function ImportWizard() {
         if (plan.mode === 'new') {
           await api.post('/api/doctype', {
             name: plan.table,
+            id_pattern: planIdPattern(plan),
             columns: plan.inferred.columns
               .filter((c, idx) => c.column_name.trim() && plan.include[idx])
               .map((c) => ({
@@ -611,6 +626,21 @@ export function ImportWizard() {
                     data-testid={`iw-new-name-${i}`}
                     className="fc-input w-64 py-1"
                   />
+                </div>
+                <div className="mb-2 flex items-center gap-2">
+                  <label className="fc-label m-0">Row id prefix</label>
+                  <input
+                    value={planPrefix(plan)}
+                    onChange={(e) => setPlan(i, { naming_prefix: e.target.value })}
+                    data-testid={`iw-naming-prefix-${i}`}
+                    placeholder="blank for random ids"
+                    className="fc-input w-40 py-1"
+                  />
+                  <span className="text-xs text-gray-500" data-testid={`iw-naming-preview-${i}`}>
+                    {planPrefix(plan)
+                      ? `Rows will be named ${planPrefix(plan)}001, …002`
+                      : 'Rows get random ids'}
+                  </span>
                 </div>
                 <table className="w-full text-sm" data-testid={`iw-new-grid-${i}`}>
                   <thead className="bg-gray-50 text-left text-xs text-gray-600">
