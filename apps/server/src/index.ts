@@ -330,11 +330,12 @@ const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').name
 
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
-  const [row] = await sql`select theme, language from "user" where name = ${user.name}`
+  const [row] = await sql`select theme, palette, language from "user" where name = ${user.name}`
   return c.json({
     ...user,
     roles: await getRoles(user.name),
     theme: (row?.theme as string) || 'light',
+    palette: (row?.palette as string) || 'classic',
     language: (row?.language as string) || 'en',
   })
 })
@@ -346,6 +347,16 @@ app.post('/api/set_theme', async (c) => {
     throw new AppError('ValidationError', 'theme must be "light" or "dark"')
   await sql`update "user" set theme = ${theme} where name = ${who(c)}`
   return c.json({ ok: true, theme })
+})
+
+// UI-025: persist the caller's palette preference, per user.
+const PALETTES = ['classic', 'ivory', 'graphite', 'indigo'] as const
+app.post('/api/set_palette', async (c) => {
+  const { palette } = (await c.req.json().catch(() => ({}))) as { palette?: string }
+  if (!PALETTES.includes(palette as (typeof PALETTES)[number]))
+    throw new AppError('ValidationError', `palette must be one of ${PALETTES.join(', ')}`)
+  await sql`update "user" set palette = ${palette!} where name = ${who(c)}`
+  return c.json({ ok: true, palette })
 })
 
 // I18N-001/002: per-user language + the translation catalog for a language.

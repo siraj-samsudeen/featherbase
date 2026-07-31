@@ -5,6 +5,7 @@ import { ApiError, api, clearSession, getSessionUser, listResource } from '../li
 import { useHomePages } from '../lib/home-pages'
 import { useRealtime } from '../lib/realtime'
 import { useTheme } from '../lib/theme'
+import { PALETTES, usePalette, type Palette } from '../lib/palette'
 import { useI18n } from '../lib/i18n'
 
 interface SearchHit {
@@ -20,6 +21,7 @@ export function DeskLayout() {
   const queryClient = useQueryClient()
   const user = getSessionUser()
   const { theme, toggle: toggleTheme } = useTheme()
+  const { palette, set: setPalette } = usePalette()
   const { t, language, setLanguage } = useI18n()
   const [search, setSearch] = useState('')
   // UI-025: on narrow (mobile) widths the sidebar collapses into a drawer
@@ -303,6 +305,19 @@ export function DeskLayout() {
             <option value="en">EN</option>
             <option value="fr">FR</option>
             <option value="es">ES</option>
+          </select>
+          <select
+            data-testid="palette-select"
+            value={palette}
+            onChange={(e) => setPalette(e.target.value as Palette)}
+            title="Color palette"
+            className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-xs capitalize text-[var(--color-ink)]"
+          >
+            {PALETTES.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
           </select>
           <button
             onClick={toggleTheme}
