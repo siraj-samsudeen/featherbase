@@ -13,6 +13,70 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `AdminLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-31 — a guard so a sixth missing `E` prefix cannot land (#93 follow-up)
+
+#93 fixed five `.sql` sites that wrote `'basic\nrestricted'` where
+`E'basic\nrestricted'` was meant — with `standard_conforming_strings = on` the
+plain form stores a backslash and an `n`, so `tableSchemaToZod` (which splits
+`choices` on `'\n'`) collapsed the Choice enum to one member and every affected
+save failed `417`. Nothing stopped a sixth site. This session added the guard,
+not more fixes; #93 landed on `main` independently while this was in progress.
+
+- **Two guards, because neither subsumes the other.** Both live in
+  `apps/server/test/choices-newline.test.ts`. *Runtime* asserts no `choices`
+  value in the migrated database contains a literal backslash-n, across all
+  three places one can live — `column_def`, `custom_field`, and
+  `metadata_override` where `property = 'choices'` — so a bad value arriving
+  from a `.ts` migration, a patch or the import wizard is caught too, not just
+  a `.sql` one. Plus a regression pin asserting `Table.kind` / `Column.tier` /
+  `Permission.tier` parse back to their full option sets, which survives a
+  truncation that loses options *without* a backslash. *Static*
+  (`apps/server/scripts/check-sql-escapes.ts`, also
+  `pnpm --filter server lint:sql`) scans the `.sql` sources and fails in the
+  diff that introduces the mistake.
+- **Why both.** The runtime check is closer to the real failure mode but only
+  sees the database it is pointed at: the shared dev database had already had
+  `0063` applied by a sibling worktree, so it stayed green while the sources
+  were still wrong. The static check is database-independent but covers only
+  the one route in. Each caught a situation the other missed during this
+  session — that is the argument for keeping both, not belt-and-braces.
+- **The scanner is quote-aware, not a grep.** It skips `--` and block comments
+  (`0063` explains this very bug in prose, backslash-n and all — a grep flags
+  its own comments), tracks multi-line literals, `''` escapes and `do $$ … $$`
+  bodies, and reports **only** backslash-n so the legitimate
+  `regexp_replace(…, '\s+', …)` literals in `0010`/`0055` stay quiet. An empty
+  `ALLOWED` set is the escape hatch if a deliberate raw backslash-n appears.
+- **Verified red → green, not just green.** On the pre-#93 source the scanner
+  reported exactly the five known sites and nothing else; on the post-#93
+  source, zero. Four synthetic offenders — inside a `$$` block, spanning a
+  multi-line literal, after a `''`, and after a `--` *inside* a string — were
+  caught at the right line numbers. A scratch database migrated from the
+  unfixed source failed both runtime checks and named `Table.kind` and
+  `Column.tier`. Re-verified after rebasing onto post-#93 `main` (`cc8118b`):
+  scanner clean, guard 3/3, full server suite **504 passed, 98 files** on a
+  scratch database.
+- **Gotcha — rebasing across a renumbered migration resurrects the old
+  number.** #93's branch created `0059_fix_literal_newline_choices.sql` and a
+  later merge on that branch renumbered it to `0063`. Rebasing this branch
+  dropped the merge commits and replayed only the original, so `0059` came
+  back — colliding with `main`'s `0059_app_fixtures.ts` while `0063` also sat
+  there. It applied without conflict, so nothing announced it; only
+  `git diff origin/main..HEAD --stat` showed the stray file. After any rebase
+  that crosses a migration rename, diff the migrations directory against
+  `main` rather than trusting a clean rebase.
+- **Gotcha — `RLS_TEST_URL` guidance in `CLAUDE.md` is stale.** #85 renamed the
+  RLS role `desk_client` → `app_client` (`0010_rls.sql` now grants to
+  `app_client`, and `rls.test.ts` defaults to it), but `CLAUDE.md`'s Environment
+  section still says the suite connects as `desk_client`. Overriding with the
+  old name yields four `permission denied for table rls_vault` failures that
+  look like an RLS regression and are not. Not fixed here — out of scope for
+  this branch.
+- **Next:** `harness/features.json` untouched, per instruction. Worth
+  considering whether `apps/server/scripts/` should join the server
+  `tsconfig.json` `include` (today only `src` is typechecked, so none of the
+  four scripts there are); the new scanner typechecks clean standalone under
+  the same flags, but the other three were not audited.
+
 ## 2026-07-31 — Frappe's "Desk" is retired: `/admin` routes, `app_client` role, `renderApp` helper, and typed filter URLs that work (#84, #86, #87)
 
 "Desk" was Frappe's name for the back-office UI, and the URL prefix was the
