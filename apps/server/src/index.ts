@@ -106,6 +106,14 @@ app.get('/api/ping', async (c) => {
   return c.json({ message: 'pong', db: row.ok === 1 })
 })
 
+// SET-004: the instance's display name, public so the login page (pre-auth)
+// can brand itself. app_name only — everything else in System Settings
+// stays behind the session like /api/settings.
+app.get('/api/brand', async (c) => {
+  const s = await getSystemSettings()
+  return c.json({ app_name: s.app_name })
+})
+
 // Frappe wire parity: sessions ride an HttpOnly `sid` cookie (as in real
 // Frappe) in addition to the Bearer token the SPA stores. Either credential
 // authenticates a request; the cookie lets Frappe-style clients work

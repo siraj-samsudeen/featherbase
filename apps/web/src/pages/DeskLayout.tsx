@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, clearSession, getSessionUser, listResource } from '../lib/api'
 import { useHomePages } from '../lib/home-pages'
 import { useRealtime } from '../lib/realtime'
+import { useSettings } from '../lib/settings'
 import { useTheme } from '../lib/theme'
 import { useI18n } from '../lib/i18n'
 
@@ -21,6 +22,12 @@ export function DeskLayout() {
   const user = getSessionUser()
   const { theme, toggle: toggleTheme } = useTheme()
   const { t, language, setLanguage } = useI18n()
+  // SET-004: the instance brand (System Settings → app_name) names the
+  // navbar and the browser tab — "Frappe Clone" is only the default.
+  const { app_name } = useSettings()
+  useEffect(() => {
+    document.title = app_name
+  }, [app_name])
   const [search, setSearch] = useState('')
   // UI-025: on narrow (mobile) widths the sidebar collapses into a drawer
   // toggled from the navbar; on md+ it is always shown.
@@ -211,9 +218,9 @@ export function DeskLayout() {
         </button>
         <Link to="/desk" className="flex items-center gap-2">
           <span className="flex h-6 w-6 items-center justify-center rounded bg-[var(--color-brand)] text-xs font-bold text-white">
-            F
+            {app_name.charAt(0).toUpperCase() || 'F'}
           </span>
-          <span className="hidden text-sm font-semibold text-[var(--color-ink)] sm:inline">Frappe Clone</span>
+          <span className="hidden text-sm font-semibold text-[var(--color-ink)] sm:inline">{app_name}</span>
         </Link>
 
         <form onSubmit={runSearch} className="relative mx-auto w-full max-w-md" data-testid="awesomebar">
