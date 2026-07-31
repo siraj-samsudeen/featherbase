@@ -46,6 +46,32 @@ function searchString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : JSON.stringify(value)
 }
 
+// #87: `filters` is the one search param whose SHAPE matters — ListView indexes
+// each entry as a [field, op, value] triple. A URL is user input, so the parsed
+// value is validated, not asserted: `?filters={}` and `?filters=[null]` both
+// parse as valid JSON and would otherwise reach `filters.find(...)` and throw,
+// blanking the list. Anything that is not a well-formed triple array is
+// discarded the way a malformed value always was.
+function parseFilters(raw: string | undefined): [string, string, unknown][] {
+  if (!raw) return []
+  let value: unknown
+  try {
+    value = JSON.parse(raw)
+  } catch {
+    return []
+  }
+  const ok =
+    Array.isArray(value) &&
+    value.every(
+      (f) =>
+        Array.isArray(f) &&
+        f.length === 3 &&
+        typeof f[0] === 'string' &&
+        typeof f[1] === 'string',
+    )
+  return ok ? (value as [string, string, unknown][]) : []
+}
+
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
@@ -234,12 +260,7 @@ function TableListPage() {
       </div>
     )
   }
-  let parsed: [string, string, unknown][] = []
-  try {
-    parsed = filters ? JSON.parse(filters) : []
-  } catch {
-    parsed = []
-  }
+  const parsed = parseFilters(filters)
   return (
     <div data-testid="doctype-page">
       <ListView

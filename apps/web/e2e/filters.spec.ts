@@ -87,12 +87,17 @@ test('#87: a filters URL applies when opened cold, not just when the app built i
       },
     })
   }
+  // This table belongs to this test alone, so it is emptied and refilled to
+  // exactly ten rows. Seeding "up to ten" instead would depend on what an
+  // earlier run left behind, and the assertions below count rows exactly.
   const existing = await request.get(
-    `/api/table/${encodeURIComponent(DT_COLD)}?limit_page_length=1`,
+    `/api/table/${encodeURIComponent(DT_COLD)}?limit_page_length=500`,
     { headers: auth },
   )
-  const total = ((await existing.json()) as { total: number }).total
-  for (let i = total; i < 10; i++) {
+  for (const row of ((await existing.json()) as { data: { name: string }[] }).data) {
+    await request.delete(`/api/table/${encodeURIComponent(DT_COLD)}/${row.name}`, { headers: auth })
+  }
+  for (let i = 0; i < 10; i++) {
     await request.post(`/api/table/${encodeURIComponent(DT_COLD)}`, {
       headers: auth,
       data: { title: `cold-${i}`, qty: i },
@@ -111,12 +116,21 @@ test('#87: a filters URL applies when opened cold, not just when the app built i
   await page.goto(`/admin/${encodeURIComponent(DT_COLD)}?filters=${filters}`)
 
   await expect(page.getByTestId('filter-chip')).toHaveCount(1)
-  await expect(page.getByTestId('list-total')).toContainText('3 total')
+  await expect(page.getByTestId('list-total')).toHaveText('3 total')
   // The parameter is still in the address bar — not silently stripped.
   expect(page.url()).toContain('filters=')
 
   // And it survives a reload, the same as an app-built one.
   await page.reload()
   await expect(page.getByTestId('filter-chip')).toHaveCount(1)
-  await expect(page.getByTestId('list-total')).toContainText('3 total')
+  await expect(page.getByTestId('list-total')).toHaveText('3 total')
+
+  // A URL is user input. Values that parse as JSON but are the wrong shape are
+  // discarded, not handed to ListView — which indexes each entry as a triple
+  // and would throw, blanking the page.
+  for (const bad of ['{}', '[null]', '["qty",">=",7]', '[["qty"]]', 'not json']) {
+    await page.goto(`/admin/${encodeURIComponent(DT_COLD)}?filters=${encodeURIComponent(bad)}`)
+    await expect(page.getByTestId('list-total')).toHaveText('10 total')
+    await expect(page.getByTestId('filter-chip')).toHaveCount(0)
+  }
 })

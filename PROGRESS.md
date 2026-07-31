@@ -47,18 +47,35 @@ GLOSSARY already called it the Admin — the routes had not caught up.
   carried the same retired term. 0010_rls.sql is rewritten in place so a
   FRESH database only ever knows `app_client` (0055 and 0060, which also
   name the role in generated policies, plus the runtime DDL in
-  `doctype-engine.ts`, follow suit). New **0061_rename_rls_role.sql**
+  `doctype-engine.ts`, follow suit). **0010a_rename_rls_role.sql**
   converges databases that already applied 0010: a plain
   `alter role ... rename to`, because **policies and grants bind by OID,
   not by name** — every `to desk_client` policy follows the rename with
-  nothing recreated. The password is re-set explicitly in the same
-  migration: an MD5-hashed password is derived from the role name and is
-  cleared on rename (SCRAM hashes survive), so setting it unconditionally
-  makes both cases identical. If both roles somehow exist, the migration
-  leaves them alone rather than guessing at a merge.
-  **Heads-up: roles are cluster-wide.** Your existing `featherbase`
-  database gets the rename the next time you migrate; a checkout of an
-  older branch will then look for a role that no longer exists.
+  nothing recreated. The password is re-set explicitly: an MD5-hashed
+  password is derived from the role name and is cleared on rename (SCRAM
+  hashes survive), so setting it unconditionally makes both cases
+  identical.
+  **The `0010a` name is load-bearing, and this was a real bug first.**
+  The migration originally shipped as `0061`, at the end of the chain.
+  `applyRls` grants to `app_client` on every table it creates as soon as
+  `fc_has_read()` exists, so a database that stopped between 0010 and 0011
+  reached 0011's `createTable` with the role still called `desk_client` and
+  died with `42704: role "app_client" does not exist` — never reaching a
+  convergence migration numbered at the end. Reproduced, then fixed by
+  sorting the file between `0010_rls.sql` and `0011_report.ts`. Caught in
+  review; neither suite covers an interrupted migration chain.
+  **Roles are cluster-wide, policies are per-database**, and that asymmetry
+  shapes the branching: "both roles exist" is ordinary on a developer
+  cluster holding one converged database and one legacy one, so the test is
+  not which roles exist but whether THIS database still binds anything to
+  the old one. Four states — converged (no-op), old-only (rename),
+  both-without-local-refs (no-op), and the two genuinely broken ones
+  (neither role; both roles with local refs) — and the broken ones
+  `raise exception` so the transaction rolls back rather than recording a
+  migration over unusable RLS.
+  **Heads-up: your existing `featherbase` database gets the rename the next
+  time you migrate**; a checkout of an older branch will then look for a
+  role that no longer exists.
 - **Typed filter URLs actually filter (#87).** `/admin/<Table>?filters=...`
   used to drop the parameter unless the app itself built the link.
   TanStack's default search parser runs `JSON.parse` over every value, so a
@@ -71,6 +88,13 @@ GLOSSARY already called it the Admin — the routes had not caught up.
   `table`, `format`, `key`, `token`), since the same latent bug bites any
   all-digit value — a reset-password `key` of `12345` parsed to a Number
   and was dropped.
+  **`filters` is then shape-validated, which the first cut got wrong.**
+  Coercing alone turned a silent drop into a crash: `?filters={}` and
+  `?filters=[null]` are valid JSON, so they sailed through to `ListView`,
+  which indexes every entry as a `[field, op, value]` triple and threw,
+  blanking the page. A URL is user input — `parseFilters()` now validates
+  the parsed value and discards anything malformed, as before. Caught in
+  review.
 - **`renderDesk` -> `renderApp`**, the last of the vocabulary. The name was
   never ours to change here: it is feather-testing-postgres' published API
   (that repo's #1, fixed and merged there — a clean rename, no deprecated
@@ -99,16 +123,24 @@ fallback rather than the Vite proxy.
   failed**. Earlier runs of this tree hit RT-002/RT-003 — the realtime
   family already recorded here as flaky, which passes on re-run in
   isolation — so treat a lone realtime failure as noise, not a signal.
-- **#86 both paths:** fresh install creates `app_client` and its generated
-  policies grant to it; an upgrade (role regressed to `desk_client`, 0061
-  un-recorded) renames in place, with policy grantees following by OID and
-  all 44 table grants intact. With `scram-sha-256` forced in `pg_hba.conf`,
-  `app_client` authenticates with its password and the RLS suite passes
-  against the renamed role.
-- **#87 pinned both ways:** the new spec fails without the fix (0 filter
-  chips) and passes with it. It builds its own fixture instead of borrowing
-  `listview.spec`'s — the first draft inherited that dependency and
-  silently *skipped* on a fresh database, which is not a regression test.
+- **#86, all five paths on throwaway clusters:** pristine fresh install ->
+  `app_client`, policies granting to it; **interrupted chain** (stopped
+  after the legacy 0010) -> upgrades to the end, role renamed, every policy
+  on `app_client`, RLS suite green against it — this is the path that
+  failed before the `0010a` rename; **mixed cluster** (a fresh database
+  while another still holds `desk_client`) -> no-op, other role untouched;
+  **both roles with local refs** -> `raise exception`, migration not
+  recorded; **neither role** -> `raise exception`, migration not recorded.
+  With `scram-sha-256` forced in `pg_hba.conf`, `app_client` authenticates
+  by password and all 44 table grants survive the rename.
+- **#87 pinned both ways:** the spec fails without the coercion (0 filter
+  chips) and without the shape validation (malformed URLs blank the list),
+  and passes with both. Two earlier drafts were themselves wrong: the first
+  borrowed `listview.spec`'s fixture and silently *skipped* on a fresh
+  database; the second reconciled its fixture by title but the list API
+  returns only `name` unless `fields` is passed, so every run added ten
+  more rows and the assertions drifted. It now empties and refills the
+  table it owns, and was checked against a dirty database and a re-run.
 
 Next: the Frappe "Desk" vocabulary is gone from routes, roles, components
 and test helpers. One loose end, and it is a release chore rather than
