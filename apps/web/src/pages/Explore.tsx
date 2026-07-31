@@ -373,7 +373,14 @@ function Pane({
 
   const rows = list.data!.data
   const total = list.data!.total
-  const numericCol = columns.find((c) => ['Currency', 'Float', 'Int'].includes(c.column_type))
+  // Headline: hash-named tables (sub-tables, mostly) lead with their first
+  // real column instead of an opaque row id.
+  const displayColumns =
+    meta.data!.id_pattern === 'hash' && columns.length > 1 ? columns.slice(1) : columns
+  // Σ prefers money over measures: Currency, then Float, then Int.
+  const numericCol = ['Currency', 'Float', 'Int']
+    .map((t) => displayColumns.find((c) => c.column_type === t))
+    .find(Boolean)
   const sum = numericCol
     ? rows.reduce((s, r) => s + (Number(r[numericCol.column_name]) || 0), 0)
     : null
@@ -391,7 +398,7 @@ function Pane({
           <PaneRow
             key={String(r.name)}
             row={r}
-            columns={columns}
+            columns={displayColumns}
             settings={settings}
             selected={selected.has(String(r.name))}
             onToggle={() => onToggle(String(r.name))}

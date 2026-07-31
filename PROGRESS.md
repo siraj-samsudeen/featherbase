@@ -17,6 +17,71 @@ this look — do not introduce ad-hoc colors/spacing:
   CSS variables and `.fc-*` classes — never a literal color — so it works
   under every palette × light/dark combination automatically.
 
+## 2026-07-31 — Relational navigation: all six patterns from issue #100
+
+The design exploration in `docs/design/explorations/relational-navigation.*`
+(issue #100) is now implemented — six ways to move between related rows, all
+derived from Table metadata with zero per-table configuration:
+
+- **Server (NAV-001)** — `getBacklinks()` in `meta.ts`: the reverse-reference
+  map (every Reference column targeting a table, with sub-table references
+  resolved to their OWNING tables, Frappe's "internal links" shape), cached
+  whole and invalidated with the meta cache. Two generated-layer actions:
+  `GET /api/table/:t/:name:connections` (per-row, permission-scoped counts +
+  ready-to-use ListView `filters` arrays; via-links get a `name in [...]`
+  filter over owning rows, capped at 500) and `GET /api/table/:t:backlinks`
+  (table-level shape, no counts). `test/connections.test.ts` covers direct,
+  via-sub-table, zero-count, and 404 cases.
+- **Pattern 1, Connections panel** — `ConnectionsPanel.tsx` in the FormView
+  sidebar: each backlink group with a live count, linking to
+  `/admin/$table?filters=…`; ◎ peeks; + opens a pre-filled new row via the
+  new `?prefill=<json>` search param on the form route (FormView seeds
+  `values`, not `baseline`, so a pure-prefill save stays possible).
+  `LinkControl` finally links out: ◎ peek + ↗ open on any set Reference.
+- **Pattern 2, counters + related tabs** — `RelatedTabs` under the form:
+  count tiles double as tabs over an embedded read-only list (8 rows) with
+  "Open as filtered list ↗" and pre-filled "+ New" escapes.
+- **Pattern 3, peek stack** — `Peek.tsx`: `PeekProvider` (mounted in
+  `AdminLayout`) + stacked read-only slide-over panels for any record/list.
+  References and connection rows inside a panel push deeper; ← pops, Esc/✕
+  close all, ↗ commits to real navigation; any route change clears the stack.
+- **Pattern 5, expandable rows** — ListView rows of tables with Sub-table
+  columns get a chevron; expansion renders the child rows inline (read-only,
+  Σ over Currency columns), several rows at once.
+- **Pattern 4, cross-filter Explore** — `/admin/explore` (sidebar entry):
+  chain up to three panes over direct backlinks and child sub-tables;
+  clicking rows IS the filter (in-filters downstream), chips release,
+  footers aggregate (Σ prefers Currency > Float > Int). Via-sub-table
+  backlinks are deliberately not offered as chain steps (their filter is
+  per-row, not per-column).
+- **Pattern 6, relation map** — `/admin/map/$doctype/$name` ("Map" button on
+  every form): SVG neighborhood — forward references left, child tables +
+  backlink collections right (dashed, with counts); collections open their
+  rows below; any record click re-centers with a `?trail=` breadcrumb.
+
+Verified end-to-end: demo dataset (Supplier ← Purchase Order ▸ PO Line →
+Item; Employee ← Attendance/Payroll Slip, `reports_to` self-reference)
+created through the real metadata + save_doc APIs — the seed script is
+committed as `tools/seed-relational-demo.mjs` (idempotent-ish: rerun skips
+existing tables) — then a 13-check Playwright script exercised every
+pattern in the browser (counts, chips, URL filters, peek stack depth 3,
+Esc, two rows expanded at once, Acme → 3 POs cross-filter, map hop with
+trail). `pnpm test` fully green (server 99 files / 507 tests, web 12),
+`pnpm smoke` green, both typechecks clean.
+
+Gotchas for future sessions:
+- Adding a search param to a TanStack route makes `search` REQUIRED at
+  every `<Link>`/`navigate` to it — the `?prefill=` addition touched ~15
+  call sites (`search={{ prefill: undefined }}`). Budget for that when
+  adding params to shared routes.
+- `column_def` names like `status`/`parent` are reserved (STANDARD_COLUMNS)
+  — the demo tables use `att_status`/`slip_state`/`stage` instead.
+- In this container, Playwright needs `CHROMIUM_PATH=/opt/pw-browsers/chromium`.
+
+Next: consider per-table metadata to curate related tabs (order/visibility)
+once real usage shows which hubs need it; an Explore pane for via-sub-table
+backlinks would need a small server join surface (`name in (select parent …)`).
+
 ## 2026-07-31 — UI-025: user-selectable color palettes (second theming axis)
 
 The Desk now ships four palettes — **Classic** (the original Frappe blue),
