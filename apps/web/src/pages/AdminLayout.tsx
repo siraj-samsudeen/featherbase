@@ -149,15 +149,22 @@ export function AdminLayout() {
   // permission-filtering are computed server-side).
   const homePages = useHomePages()
 
-  function logout() {
+  async function logout() {
+    // Invalidate the sid cookie BEFORE dropping local state: while it lives,
+    // any token-less request fired in the logout gap re-authenticates as the
+    // departing user and re-poisons the cache for the next account in this
+    // tab (#101 review).
+    await api.post('/api/logout', {}).catch(() => {})
     clearSession()
-    // Drop all cached per-user data (whoami, lists, …) so the next account
-    // in this tab never sees this user's still-fresh cache (PR #92 review),
-    // and reset the theming attributes to the signed-out defaults.
-    queryClient.clear()
     delete document.documentElement.dataset.palette
     delete document.documentElement.dataset.theme
-    navigate({ to: '/login' })
+    // Leave the admin screen BEFORE dropping the cache: clearing while the
+    // layout's queries are still mounted makes every observer refetch
+    // token-less — 401s that api.ts answers with a hard redirect. Once
+    // /login has rendered there are no observers left, and the clear (PR #92
+    // review) empties the cache for whoever signs in next.
+    await navigate({ to: '/login' })
+    queryClient.clear()
   }
 
   // UI-014: row hits from the server, debounced.

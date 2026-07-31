@@ -156,6 +156,16 @@ app.post('/api/method/logout', async (c) => {
   return c.json({ message: '' })
 })
 
+// The SPA's sign-out. Public — it must clear the sid cookie even when the
+// bearer token is already gone or expired, otherwise the cookie survives as
+// a live credential and any token-less request after logout re-authenticates
+// as the departed user (found via #101: a post-logout whoami refetch answered
+// as the previous user and poisoned the cache for the next account).
+app.post('/api/logout', (c) => {
+  deleteCookie(c, 'sid', { path: '/' })
+  return c.json({ ok: true })
+})
+
 // SET-002: password reset (public — the caller is logged out). The request
 // always returns ok so it can't be used to probe which accounts exist.
 app.post('/api/reset_password_request', async (c) => {
