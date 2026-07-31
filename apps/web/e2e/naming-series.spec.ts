@@ -41,7 +41,7 @@ test('NAM-001: build a Table with a naming series; rows are named from it', asyn
   await page.getByTestId('dt-naming-digits').selectOption('1')
   await expect(page.getByTestId('dt-naming-preview')).toContainText('ND-1, ND-2, ND-3')
 
-  const row = page.getByTestId('dt-fields').locator('tbody tr').first()
+  const row = page.getByTestId('dt-fields').locator('tbody tr[data-columnrow]').first()
   await row.locator('[data-rowfield=column_name]').fill('title')
   await row.locator('[data-rowfield=in_list_view]').check()
   await page.getByTestId('dt-create').click()

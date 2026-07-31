@@ -287,7 +287,7 @@ export function TableBuilder() {
             {/* NAM-001: the row id is column one, matching the Import Wizard.
                 Every record has an id; where it comes from is the same kind of
                 decision as any other column's. Always present, never removed. */}
-            <tr className="border-t border-gray-100 bg-blue-50/60">
+            <tr className="border-t border-gray-100 bg-blue-50/60" data-testid="dt-row-id">
               <td className="px-2 py-1 align-baseline text-gray-500">Row ID</td>
               <td className="px-1 py-1" colSpan={5}>
                 <NamingControl
@@ -307,7 +307,10 @@ export function TableBuilder() {
               </td>
             </tr>
             {columns.map((c, i) => (
-              <tr key={i} className="border-t border-gray-100">
+              /* data-columnrow marks the editable column rows: specs address
+                 these, so a decorative row (Row ID, and anything added later)
+                 can never shift the indices they read. */
+              <tr key={i} className="border-t border-gray-100" data-columnrow="">
                 <td className="px-1 py-1">
                   <input
                     value={c.column_name}

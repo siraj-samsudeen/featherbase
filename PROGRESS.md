@@ -13,6 +13,46 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-31 — fix #94: the e2e specs address column rows by marker, not position
+
+`main` was red: NAM-002 inserted a locked **Row ID** row at the top of the
+column grid (Table Builder and Import Wizard), and six e2e specs still
+assumed row 0 was the first *data* column — two timed out filling
+`[data-rowfield=column_name]` on the locked row, two asserted counts that
+came back +1, and two read/dropped the neighbouring column.
+
+- **Durable fix, not an offset.** The editable column rows now carry
+  `data-columnrow`; specs select `tbody tr[data-columnrow]` instead of
+  `tbody tr`, so *any* future decorative row is invisible to them. The
+  locked rows gained `data-testid` (`dt-row-id`, `iw-row-id-{i}`) and both
+  specs now **assert the contract** — the first `tbody tr` IS the Row ID
+  row — so the next such change fails loudly instead of silently reading
+  the wrong rows. (Offsetting `nth(i+1)` would have re-broken next time.)
+- **Verified red → green on identical state**, not just green: with the
+  marker removed, UI-011 fails exactly as CI did (`waiting for
+  … tr[data-columnrow] …`); restored, it passes. All six originally
+  failing specs pass. Full suite locally: **83 passed, 5 skipped, 1
+  failed** — that one (`naming-series` NAM-001) was *my own* local
+  pollution: I had dropped the `Naming Demo` table but not its `ND-`
+  counter in the `series` table, so the row came back `ND-2`; after
+  clearing the counter it passes. CI provisions a fresh database, so this
+  cannot occur there. Server 500 passed, web unit 12, both typechecks clean.
+- **features.json correction (same PR).** The previous session applied
+  ADR 0007's `name` → `id` record-identity rename to eight entries — but
+  the ADR is **Accepted, not implemented**: `STANDARD_COLUMNS` and every
+  generated table still use `name` (verified against a live table). Those
+  entries now describe what ships, and the file's `$comment` records the
+  pending ADR so the next session doesn't re-apply it prematurely.
+- **Gotchas for whoever runs e2e locally:** (1) the specs self-skip when
+  their Table already exists, so a second run silently skips the create
+  paths — drop the Table *and restart the server* (the meta cache holds
+  it) to re-exercise them; (2) dropping a Table does not drop its `series`
+  counter, which will name later rows off-by-N; (3) this container's
+  Playwright wants a browser build it lacks — run with
+  `CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`;
+  (4) `pkill -f` on a pattern matching your own command string kills the
+  shell (exit 144) — kill the server by listening port instead.
+
 ## 2026-07-31 — features.json catches up with main (126 → 145)
 
 Owner: "main has moved a lot. update features.json now." Merged main (36

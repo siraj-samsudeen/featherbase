@@ -640,7 +640,10 @@ export function ImportWizard() {
                         setting above it — every record has an id, and where it
                         comes from is the same kind of decision as any other
                         column's. Always present, never removable. */}
-                    <tr className="border-t border-gray-100 bg-blue-50/60">
+                    <tr
+                      className="border-t border-gray-100 bg-blue-50/60"
+                      data-testid={`iw-row-id-${i}`}
+                    >
                       <td className="px-2 py-1 text-center text-gray-400" title="always present">
                         🔒
                       </td>
@@ -665,8 +668,13 @@ export function ImportWizard() {
                       </td>
                     </tr>
                     {plan.inferred.columns.map((c, ci) => (
+                      /* data-columnrow marks the editable column rows — see the
+                         same marker in TableBuilder. Specs select on it so the
+                         Row ID row (or any later decorative row) cannot shift
+                         the indices they read. */
                       <tr
                         key={ci}
+                        data-columnrow=""
                         className={`border-t border-gray-100 ${plan.include[ci] ? '' : 'opacity-40'}`}
                       >
                         <td className="px-2 py-1 text-center">
