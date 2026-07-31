@@ -17,6 +17,54 @@ this look — do not introduce ad-hoc colors/spacing:
   CSS variables and `.fc-*` classes — never a literal color — so it works
   under every palette × light/dark combination automatically.
 
+## 2026-07-31 — #101 Phase 1: the command bar remembers recent actions
+
+Issue [#101](https://github.com/siraj-samsudeen/featherbase/issues/101) is the
+owner's "system remembers where I've been" capability; the design reference
+(interactive exploration of six patterns + brainstorm) lives in
+`docs/design/recent-actions/`. This session shipped Phase 1 of six:
+
+- **`apps/web/src/lib/recents.ts`** — per-user localStorage ring buffer
+  (80 entries × 10 visits, dedup by key). Records rows, lists (with their
+  filter sets — the JSON `?filters=` param is part of the identity), list
+  view modes, reports/dashboards, and submitted searches. Home Pages,
+  builders and `/new` forms deliberately excluded. Ranking helpers:
+  recency, Firefox-style bucketed **frecency** (<4d→100 … older→10, 2+
+  visits required), prefix-matched past searches.
+- **AdminLayout**: a `useRouterState` hook records every admin navigation;
+  the awesomebar's *empty focused state* now shows **Recent** and
+  **Frequent** groups (ArrowUp/Down + Enter to replay, Esc closes), and
+  typing offers matching past searches (`↻` rows refill the bar).
+- **Security fix found by this work**: SPA logout dropped the bearer token
+  but never expired the HttpOnly `sid` cookie, so token-less requests after
+  logout re-authenticated as the departed user (observed: a post-logout
+  whoami refetch poisoning the cache with user A's palette for user B —
+  the exact UI-025 leak). Fixed with a public `POST /api/logout` (expires
+  the cookie; SPA awaits it before clearing state), cache clear moved to
+  after `/login` renders, `useWhoAmI` gated on a session existing, and no
+  hard 401-redirect when already on `/login`.
+- **Env fix**: `feather-testing-postgres` pin switched from `github:` (a
+  codeload tarball the remote-exec proxy 403s) to `git+https` — same
+  commit, git transport, works everywhere. Keep this form when moving back
+  to `^0.2.0`.
+
+Verified: 12 vitest cases (`test/recents.test.tsx`), new `recents.spec.ts`
+e2e (trail building, click + keyboard replay, filter round-trip, search
+recall), server auth suite incl. new cookie-expiry case. Full regression:
+web e2e 89 passed / 6 skipped / 0 failed, server 505 tests green, web unit
+24 green, both typechecks clean.
+
+Gotchas: (1) in this container set `CHROMIUM_PATH=/opt/pw-browsers/chromium`
+for Playwright — the project pins a newer bundled build that isn't
+installed. (2) `ticketing.spec.ts` installs the helpdesk app into the dev DB
+and leaves it; the server `app-fixtures` "fresh deployment" test then fails
+until `POST /api/uninstall_app {"name":"helpdesk"}` — did that here. (3) Do
+not run the vitest suites while the Playwright suite runs: the vitest
+globalSetup empties `background_job` mid-e2e.
+
+Next: #101 Phase 2 — sidebar Recent group + per-table recents strip over the
+same local store; then the `user_event` server log (Phase 3).
+
 ## 2026-07-31 — UI-025: user-selectable color palettes (second theming axis)
 
 The Desk now ships four palettes — **Classic** (the original Frappe blue),
