@@ -8,7 +8,7 @@ insert into table_def (name, module, id_pattern, kind) values
 
 insert into column_def (parent, position, column_name, label, column_type, choices, row_table, reqd, in_list_view) values
   ('Table', 1, 'module', 'Module', 'Data', null, null, false, true),
-  ('Table', 2, 'kind', 'Kind', 'Choice', 'table\nsub_table\nsettings', null, false, false),
+  ('Table', 2, 'kind', 'Kind', 'Choice', E'table\nsub_table\nsettings', null, false, false),
   ('Table', 3, 'is_submittable', 'Is Submittable', 'Check', null, null, false, false),
   ('Table', 4, 'id_pattern', 'ID Pattern', 'Data', null, null, false, false),
   ('Table', 5, 'title_column', 'Title Column', 'Data', null, null, false, false),
@@ -29,4 +29,4 @@ insert into column_def (parent, position, column_name, label, column_type, choic
   ('Column', 10, 'read_only', 'Read Only', 'Check', null, null, false, false),
   ('Column', 11, 'hidden', 'Hidden', 'Check', null, null, false, false),
   ('Column', 12, 'in_list_view', 'In List View', 'Check', null, null, false, false),
-  ('Column', 13, 'tier', 'Tier', 'Choice', 'basic\nrestricted', null, false, false);
+  ('Column', 13, 'tier', 'Tier', 'Choice', E'basic\nrestricted', null, false, false);
