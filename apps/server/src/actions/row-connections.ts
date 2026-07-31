@@ -1,10 +1,11 @@
 import { sql } from '../db'
+import { AppError } from '../errors'
 import { getBacklinks } from '../meta'
 import { getDoc } from '../document'
 import { tableName } from '../doctype-engine'
 import { countDocs, type Filter } from '../query'
 import { permissionScope } from '../permissions'
-import { registerRowAction } from '../actions'
+import { registerCollectionAction, registerRowAction } from '../actions'
 
 // Relational navigation (#100, pattern 1): every table that points at this
 // row, with a permission-scoped count and a ready-to-use ListView filter.
@@ -29,6 +30,22 @@ export interface Connection {
   count: number
   filters: Filter[]
 }
+
+// Table-level shape of the same map, no counts — what a pane-chain picker
+// (Explore) or a relationship map needs before any row is chosen. Readable
+// backlink tables only, same posture as :connections.
+registerCollectionAction('backlinks', {
+  effect: 'read',
+  description: 'Tables whose Reference columns point at this table (no per-row counts).',
+  handler: async ({ table, user }) => {
+    if ((await permissionScope(user.name, table, 'read')) === 'none')
+      throw new AppError('PermissionError', `No read permission on ${table} for ${user.name}`)
+    const backlinks = []
+    for (const bl of await getBacklinks(table))
+      if ((await permissionScope(user.name, bl.table, 'read')) !== 'none') backlinks.push(bl)
+    return { backlinks }
+  },
+})
 
 registerRowAction('connections', {
   effect: 'read',

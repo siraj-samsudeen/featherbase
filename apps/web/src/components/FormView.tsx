@@ -15,12 +15,24 @@ import { Tags } from './Tags'
 import { Comments } from './Comments'
 import { ActivityTimeline } from './ActivityTimeline'
 import { WorkflowActions } from './WorkflowActions'
+import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
+import { usePeek } from './Peek'
 
 type Row = Record<string, unknown>
 
 // UI-004/UI-005: ONE form component renders and saves every Table from
 // its metadata. Layout columns group into sections/columns (UI-008 refines).
-export function FormView({ doctype, name }: { doctype: string; name: string }) {
+// `prefill` (#100) seeds a NEW row's initial values — how "+ New Attendance"
+// from an Employee's connections arrives with employee already set.
+export function FormView({
+  doctype,
+  name,
+  prefill,
+}: {
+  doctype: string
+  name: string
+  prefill?: Row
+}) {
   const isNew = name === 'new'
   const meta = useMeta(doctype)
   const queryClient = useQueryClient()
@@ -64,9 +76,12 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   }, [doc.data, isNew])
 
   useEffect(() => {
-    setValues(baseline)
+    // Prefilled values on a new row count as edits (the form starts dirty,
+    // so a pure-prefill save is possible), not as the saved baseline.
+    setValues(isNew && prefill ? { ...prefill } : baseline)
     setErrors({})
     onloadFired.current = false
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseline])
 
   // CUST-003: surface client-script compile errors; fire onload once the form
@@ -144,7 +159,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
       await queryClient.invalidateQueries({ queryKey: ['doc', doctype] })
       await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
       if (action === 'amend') {
-        navigate({ to: '/admin/$doctype/$name', params: { doctype, name: String(res.name) } })
+        navigate({ to: '/admin/$doctype/$name', params: { doctype, name: String(res.name) }, search: { prefill: undefined } })
       } else {
         setBanner('Done')
       }
@@ -164,7 +179,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
       )
       await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
       setRenaming(false)
-      navigate({ to: '/admin/$doctype/$name', params: { doctype, name: String(res.name) } })
+      navigate({ to: '/admin/$doctype/$name', params: { doctype, name: String(res.name) }, search: { prefill: undefined } })
     } catch (err) {
       setBanner(err instanceof ApiError ? err.message : 'Rename failed')
     }
@@ -203,6 +218,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
         navigate({
           to: '/admin/$doctype/$name',
           params: { doctype, name: String(saved.name) },
+          search: { prefill: undefined },
         })
       } else {
         setBanner('Saved')
@@ -276,6 +292,18 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
               className="fc-btn"
             >
               Print
+            </RouterLink>
+          )}
+          {/* #100 pattern 6: walk this row's relational neighborhood. */}
+          {!isNew && m.kind !== 'settings' && (
+            <RouterLink
+              to="/admin/map/$doctype/$name"
+              params={{ doctype, name }}
+              search={{ trail: undefined }}
+              data-testid="form-map"
+              className="fc-btn"
+            >
+              Map
             </RouterLink>
           )}
           {!isNew && !renaming && (
@@ -411,6 +439,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
         </div>
         {!isNew && (
           <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
+            <ConnectionsPanel doctype={doctype} name={name} />
             <Assignments doctype={doctype} name={name} />
             <Tags doctype={doctype} name={name} />
             <Attachments doctype={doctype} name={name} />
@@ -419,6 +448,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
           </aside>
         )}
       </div>
+      {!isNew && m.kind === 'table' && <RelatedTabs doctype={doctype} name={name} />}
     </div>
   )
 }
@@ -722,6 +752,11 @@ function LinkControl({
   const [open, setOpen] = useState(false)
   const [options, setOptions] = useState<string[]>([])
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const peek = usePeek()
+  const navigate = useNavigate()
+  // #100 pattern 1: a set reference is a place you can GO — ◎ peeks at the
+  // row in a slide-over, ↗ navigates to its form. Hidden while searching.
+  const hasValue = Boolean(value) && query === null
 
   function search(q: string) {
     clearTimeout(timer.current)
@@ -756,9 +791,45 @@ function LinkControl({
           setQuery(e.target.value)
           search(e.target.value)
         }}
-        className={className}
+        className={`${className} ${hasValue ? 'pr-14' : ''}`}
         {...common}
       />
+      {hasValue && (
+        <span className="absolute inset-y-0 right-2 flex items-center gap-0.5">
+          {peek.available && (
+            <button
+              type="button"
+              tabIndex={-1}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                peek.push({ kind: 'record', table: target, name: String(value) })
+              }}
+              title={`Peek at ${target} ${String(value)}`}
+              data-testid={`link-peek-${field.column_name}`}
+              className="rounded px-1 text-sm text-[var(--color-ink-faint)] hover:text-[var(--color-brand)]"
+            >
+              ◎
+            </button>
+          )}
+          <button
+            type="button"
+            tabIndex={-1}
+            onMouseDown={(e) => {
+              e.preventDefault()
+              navigate({
+                to: '/admin/$doctype/$name',
+                params: { doctype: target, name: String(value) },
+                search: { prefill: undefined },
+              })
+            }}
+            title={`Open ${target} ${String(value)}`}
+            data-testid={`link-open-${field.column_name}`}
+            className="rounded px-1 text-sm text-[var(--color-ink-faint)] hover:text-[var(--color-brand)]"
+          >
+            ↗
+          </button>
+        </span>
+      )}
       {open && (
         <div
           className="absolute z-10 mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg"
@@ -785,6 +856,7 @@ function LinkControl({
           <RouterLink
             to="/admin/$doctype/$name"
             params={{ doctype: target, name: 'new' }}
+            search={{ prefill: undefined }}
             className="block border-t border-gray-100 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50"
             data-testid="link-create-new"
           >
