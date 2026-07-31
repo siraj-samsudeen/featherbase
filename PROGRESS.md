@@ -2,7 +2,7 @@
 
 ## Visual identity (standing directive for all UI work)
 
-The Desk is reskinned to look like Frappe. Every new UI feature MUST inherit
+The Admin is reskinned to look like Frappe. Every new UI feature MUST inherit
 this look — do not introduce ad-hoc colors/spacing:
 - Design tokens live in `apps/web/src/index.css` (`@theme`): canvas
   `#f4f5f6`, brand `#2490ef` (Frappe blue), ink `#1c2126`, hairline borders
@@ -11,7 +11,58 @@ this look — do not introduce ad-hoc colors/spacing:
 - Reuse the shared component classes: `.fc-card`, `.fc-input`, `.fc-btn`,
   `.fc-btn-primary`, `.fc-label`, `.fc-pill`. Prefer these over raw Tailwind.
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
-  `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
+  `AdminLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
+
+## 2026-07-31 — The admin UI route prefix is `/admin`, not `/desk` (#84)
+
+"Desk" was Frappe's name for the back-office UI, and the URL prefix was the
+last place the term still met users. Frappe itself retired the URL (modern
+Frappe serves `/app`); `/admin` says what the surface is without the lore.
+GLOSSARY already called it the Admin — the routes had not caught up.
+
+- **Every route moved:** `/desk/...` -> `/admin/...`, including the Home
+  Page routes (`/desk/home/$name`), the table list/form routes, the view
+  routes (report/kanban/calendar/gantt), and the static segments
+  (`new-table`, `import`, `jobs`, `all-tables`, `permissions/$doctype`,
+  `dashboard/$name`, `query-report/$name`, `script-report/$name`).
+- **Old links keep working.** Two legacy routes — `/desk` and the splat
+  `/desk/$` — bounce to the `/admin` twin in `beforeLoad`, rebuilt from
+  `location.href` so the query string and hash ride along. The bounce uses
+  `replace`, so the dead prefix never lands in history and Back does not
+  hit it. No server change was needed: the SPA fallback already serves
+  `index.html` for any non-API path, so a `/desk/...` deep link reaches the
+  client and redirects there. **The redirect is client-side only** — a
+  `curl` of `/desk/X` returns the SPA shell with 200, not a 301/302.
+- **Server touchpoints:** the Frappe-parity login response's
+  `home_page` is now `/admin`; the workflow pending-approval mail and the
+  SLA escalation notice link to `/admin/<Table>/<row>`. The server's OAuth
+  bounce needed no change — it targets `/oauth-callback`, and it is that
+  page (plus the login form) that now lands the user on `/admin`.
+- **`DeskLayout.tsx` -> `AdminLayout.tsx`** (symbol too), and its two test
+  ids `desk-sidebar`/`desk-index-empty` -> `admin-*`. `e2e/desk.spec.ts` ->
+  `e2e/admin.spec.ts`. The FormView breadcrumb read **Desk** and now reads
+  **Admin** — the one user-facing string carrying the old term.
+- **Left alone on purpose:** the `desk_client` Postgres role (a DB role, not
+  a URL — renaming it needs a migration plus every developer's
+  `RLS_TEST_URL`), `renderDesk` (feather-testing-postgres' API, which lives
+  in its own repo), and the Frappe design-lineage comments in `index.css`
+  and `ListView.tsx` that credit the Desk *look*.
+
+Verified against a throwaway database on port 8906, with the server serving
+the built SPA (so the real SPA fallback was exercised, not the Vite proxy):
+server 493 passed, web unit 12 passed, both typechecks clean, full e2e 86
+passed / 2 skipped / 0 failed. By hand: `/admin` lands on the first visible
+Home Page; `/desk/Zone` -> `/admin/Zone` renders the list; `/desk/Zone/<row>`
+-> `/admin/Zone/<row>` renders the form with the Admin breadcrumb.
+
+Gotcha found on the way: `/admin/<Table>?filters=...` drops the query string
+when the URL is typed rather than built by the app — TanStack's default
+search parser JSON-parses `filters` into an array and the route's
+`validateSearch` only accepts a string. Pre-existing (`/desk` behaved the
+same), unrelated to this rename, and left as-is.
+
+Next: nothing blocking. The `desk_client` role rename is the remaining
+Frappe-lore name if the vocabulary sweep continues.
 
 ## 2026-07-30 — Home Pages: curated navigation replaces the table-list sidebar (#80)
 

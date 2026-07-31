@@ -53,16 +53,16 @@ test('SET-004: date format and currency precision render globally', async ({ pag
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
   // List: the Date cell honors dd-mm-yyyy and the Currency cell honors
   // precision 2 with the USD symbol.
-  await page.goto(`/desk/${encodeURIComponent(DT)}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}`)
   await expect(page.getByTestId('cell-due')).toHaveText('09-03-2026')
   await expect(page.getByTestId('cell-amount')).toHaveText('$1,234.50')
 
   // Form: the preview under the native inputs reflects the same global format.
-  await page.goto(`/desk/${encodeURIComponent(DT)}/set4-doc`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/set4-doc`)
   await expect(page.getByTestId('form-view')).toBeVisible()
   await expect(page.getByTestId('preview-due')).toHaveText('09-03-2026')
   await expect(page.getByTestId('preview-amount')).toHaveText('$1,234.50')
@@ -70,7 +70,7 @@ test('SET-004: date format and currency precision render globally', async ({ pag
   // Change the global date format; the same list re-renders in the new format
   // with no code change to the DocType.
   await setSettings(page.request, { date_format: 'mm-dd-yyyy' })
-  await page.goto(`/desk/${encodeURIComponent(DT)}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}`)
   await expect(page.getByTestId('cell-due')).toHaveText('03-09-2026')
 
   // And bumping currency precision to 3 flows through too.

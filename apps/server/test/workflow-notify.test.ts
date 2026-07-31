@@ -78,7 +78,7 @@ describe('WF-004: pending-approval notifications', () => {
     expect(String(mail.subject)).toContain('Approval required')
     expect(String(mail.subject)).toContain('wf-notify-1')
     // The body links to the document and lists the actions the approver can take.
-    expect(String(mail.body)).toContain(`/desk/${encodeURIComponent(DT)}/wf-notify-1`)
+    expect(String(mail.body)).toContain(`/admin/${encodeURIComponent(DT)}/wf-notify-1`)
     expect(String(mail.body)).toContain('Approve')
     expect(mail.ref_table).toBe(DT)
     expect(mail.send_status).toBe('queued')

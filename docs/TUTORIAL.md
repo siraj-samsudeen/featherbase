@@ -26,9 +26,9 @@ the API on :8000, and the web app on :5173 (see
 
 ## 1. Meet the Table Builder
 
-The Admin UI has a Table builder at **`/desk/new-table`** — reachable from
+The Admin UI has a Table builder at **`/admin/new-table`** — reachable from
 the **“+ New Table”** link in the sidebar
-(`apps/web/src/pages/DeskLayout.tsx`) or via the command palette
+(`apps/web/src/pages/AdminLayout.tsx`) or via the command palette
 (Ctrl/Cmd+K). The page (`apps/web/src/pages/TableBuilder.tsx`) is a name
 input plus a column grid with **Column Name · Label · Column Type · Target ·
 Reqd · List**, an **+ Add column** row, and a **Create Table** button.
@@ -38,7 +38,7 @@ before POSTing to `POST /api/doctype`.
 
 Try it with a throwaway Table — name it `Note`, give it a `title` (Data,
 Reqd, List) and a `content` (Text) column, and click **Create Table**. You
-land on `/desk/Note`, a fully working list view. That's the whole loop.
+land on `/admin/Note`, a fully working list view. That's the whole loop.
 
 One caveat before we build the real thing: the builder currently exposes
 only a subset of the definition — notably not `id_pattern` (naming-series
@@ -103,11 +103,11 @@ enabled with a generated read policy for the `desk_client` role.
 
 ## 4. Use the generated UI
 
-Open **http://localhost:5173/desk/Task**. The generic `ListView`
+Open **http://localhost:5173/admin/Task**. The generic `ListView`
 (`apps/web/src/components/ListView.tsx`) renders your list-flagged columns —
 no Task-specific frontend code exists anywhere.
 
-Create a task: a new row lives at **`/desk/Task/new`** (the literal
+Create a task: a new row lives at **`/admin/Task/new`** (the literal
 name `new` renders an empty `FormView` —
 `apps/web/src/components/FormView.tsx`). Fill in a title and save; the form
 POSTs to `/api/save_doc` and the id pattern assigns `TASK-0001`.
@@ -141,7 +141,7 @@ curl -s -X PATCH http://localhost:8000/api/table/Task/TASK-0001 \
 ```
 
 In the Admin UI the form does this for you. Filter the list to open tasks: the
-list's filters live in the URL (`/desk/Task?filters=...`), so a filtered
+list's filters live in the URL (`/admin/Task?filters=...`), so a filtered
 view is shareable.
 
 ## 5. Add a validation — without redeploying
@@ -152,7 +152,7 @@ Let's enforce a rule: a task's title must be at least five characters.
 `apps/server/src/server-scripts.ts` in a hardened `node:vm` sandbox inside
 the save transaction).
 
-Create one at `/desk/Server Script/new` (or via `save_doc`):
+Create one at `/admin/Server Script/new` (or via `save_doc`):
 
 - **name**: `task-title-length` (Server Script uses prompt naming)
 - **script_type**: `Document Event`
@@ -182,7 +182,7 @@ role-gated transitions to a Table, and the form grows action buttons via
 
 ## 6. Compare with the reference solution
 
-Open `/desk/ToDo` — the built-in equivalent. Its definition in
+Open `/admin/ToDo` — the built-in equivalent. Its definition in
 `apps/server/migrations/0022_todo.ts` is a superset of what you built:
 `allocated_to` is a **Reference** column pointing at `User`, and
 `ref_table`/`reference_name` let a ToDo point at any row (this

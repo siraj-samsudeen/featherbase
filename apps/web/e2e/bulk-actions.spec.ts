@@ -38,9 +38,9 @@ test('UI-012: bulk edit a field then bulk delete selected rows', async ({ page }
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
-  await page.goto(`/desk/${encodeURIComponent(DT)}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}`)
   await expect(page.getByTestId('list-total')).toContainText('5 total')
 
   // Select 3 rows and bulk-edit the stage field.

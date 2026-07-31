@@ -32,9 +32,9 @@ test('FILE-002: attach two files, both listed, delete one cleans up storage', as
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
-  await page.goto('/desk/User/Guest')
+  await page.goto('/admin/User/Guest')
   await expect(page.getByTestId('attachments-panel')).toBeVisible()
   await expect(page.getByTestId('attachments-panel')).toContainText('No attachments')
 

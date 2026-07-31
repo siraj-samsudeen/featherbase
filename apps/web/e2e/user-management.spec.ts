@@ -75,7 +75,7 @@ test('SET-002: password reset via emailed link works end to end', async ({ page,
   await page.fill('input[name=email]', USER)
   await page.fill('input[name=password]', 'brandnewpw456')
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
   await expect(page.getByTestId('session-user')).toBeVisible()
 })
 

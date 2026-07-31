@@ -35,9 +35,9 @@ test('UI-006: link autocomplete filters, selects, persists, and offers create-ne
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/desk/)
+  await expect(page).toHaveURL(/\/admin/)
 
-  await page.goto(`/desk/${encodeURIComponent(DT)}/${docName}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   const input = page.locator('[data-field=customer]')
   await expect(input).toBeVisible()
 
@@ -66,6 +66,6 @@ test('UI-006: link autocomplete filters, selects, persists, and offers create-ne
   await page.locator('[data-field=customer]').fill('zzz-no-match')
   await expect(page.getByTestId('link-options-customer')).toContainText('No matches')
   await page.getByTestId('link-create-new').click()
-  await expect(page).toHaveURL(new RegExp(`/desk/${encodeURIComponent(CUST).replace(/%/g, '%')}/new`.replace(/[.*+?^${}()|[\]\\]/g, (m) => `\\${m}`)))
+  await expect(page).toHaveURL(new RegExp(`/admin/${encodeURIComponent(CUST).replace(/%/g, '%')}/new`.replace(/[.*+?^${}()|[\]\\]/g, (m) => `\\${m}`)))
   await expect(page.getByTestId('form-status')).toContainText('New document')
 })

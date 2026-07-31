@@ -15,7 +15,7 @@ async function loginAs(page: Page, email: string, pwd: string) {
   await page.fill('input[name=email]', email)
   await page.fill('input[name=password]', pwd)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 }
 
 let docName = ''
@@ -59,14 +59,14 @@ test('EML-006: assigning creates a ToDo in the assignee list and notifies them',
   await loginAs(a, 'Administrator', ADMIN_PWD)
   await loginAs(b, ASSIGNEE, ASSIGNEE_PWD)
 
-  // B sits in the Desk; wait for realtime to connect.
-  await b.goto('/desk')
+  // B sits in the Admin; wait for realtime to connect.
+  await b.goto('/admin')
   await expect(b.getByTestId('session-user')).toBeVisible()
   await b.waitForTimeout(1000)
   await expect(b.getByTestId('unread-count')).toHaveCount(0)
 
   // A opens the doc and assigns it to B.
-  await a.goto(`/desk/${encodeURIComponent(DT)}/${docName}`)
+  await a.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await a.getByTestId('assign-to').fill(ASSIGNEE)
   await a.getByTestId('assign-submit').click()
   await expect(a.getByTestId('assignee')).toContainText(ASSIGNEE)
@@ -75,7 +75,7 @@ test('EML-006: assigning creates a ToDo in the assignee list and notifies them',
   await expect(b.getByTestId('unread-count')).toBeVisible({ timeout: 10_000 })
 
   // The ToDo is visible in B's ToDo list.
-  await b.goto('/desk/ToDo')
+  await b.goto('/admin/ToDo')
   await expect(b.getByTestId('list-rows')).toContainText(ASSIGNEE)
   await expect(b.getByTestId('list-rows')).toContainText(docName)
 

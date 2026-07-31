@@ -30,14 +30,14 @@ async function login(page: Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 }
 
 async function noHorizontalOverflow(page: Page): Promise<boolean> {
   return page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)
 }
 
-test.describe('UI-025: responsive Desk (mobile)', () => {
+test.describe('UI-025: responsive Admin (mobile)', () => {
   test.use({ viewport: { width: 375, height: 720 } })
 
   test('sidebar collapses to a drawer and list/form are usable at mobile width', async ({ page }) => {
@@ -45,7 +45,7 @@ test.describe('UI-025: responsive Desk (mobile)', () => {
 
     // The hamburger is shown; the sidebar starts off-screen (translated left).
     await expect(page.getByTestId('sidebar-toggle')).toBeVisible()
-    const closedBox = await page.getByTestId('desk-sidebar').boundingBox()
+    const closedBox = await page.getByTestId('admin-sidebar').boundingBox()
     expect(closedBox).not.toBeNull()
     expect(closedBox!.x).toBeLessThan(0) // off-screen to the left
 
@@ -53,19 +53,19 @@ test.describe('UI-025: responsive Desk (mobile)', () => {
     await page.getByTestId('sidebar-toggle').click()
     await expect(page.getByTestId('sidebar-backdrop')).toBeVisible()
     await expect
-      .poll(async () => (await page.getByTestId('desk-sidebar').boundingBox())!.x)
+      .poll(async () => (await page.getByTestId('admin-sidebar').boundingBox())!.x)
       .toBeGreaterThanOrEqual(0)
 
     // Navigating from the drawer closes it (#80: the drawer lists Home
     // Pages + All tables; the table link is then on the All tables page).
     await page.getByTestId('all-tables-link').click()
-    await expect(page).toHaveURL(/\/desk\/all-tables/)
+    await expect(page).toHaveURL(/\/admin\/all-tables/)
     await page.getByTestId(`doctype-nav`).getByText(DT, { exact: true }).click()
-    await expect(page).toHaveURL(new RegExp(`/desk/${encodeURIComponent(DT)}`))
+    await expect(page).toHaveURL(new RegExp(`/admin/${encodeURIComponent(DT)}`))
     await expect(page.getByTestId('list-view')).toBeVisible()
     await expect(page.getByTestId('sidebar-backdrop')).toHaveCount(0)
     await expect
-      .poll(async () => (await page.getByTestId('desk-sidebar').boundingBox())!.x)
+      .poll(async () => (await page.getByTestId('admin-sidebar').boundingBox())!.x)
       .toBeLessThan(0)
 
     // The list view does not force the page to scroll horizontally.
@@ -73,7 +73,7 @@ test.describe('UI-025: responsive Desk (mobile)', () => {
 
     // The form view is usable: fields stack in a single column (the second
     // field sits below the first, not beside it) and no horizontal overflow.
-    await page.goto(`/desk/${encodeURIComponent(DT)}/new`)
+    await page.goto(`/admin/${encodeURIComponent(DT)}/new`)
     await expect(page.getByTestId('form-view')).toBeVisible()
     const f1 = await page.locator('[data-field=title]').boundingBox()
     const f2 = await page.locator('[data-field=qty]').boundingBox()
@@ -91,7 +91,7 @@ test.describe('UI-025: desktop keeps a static sidebar', () => {
     await login(page)
     // On desktop the drawer toggle is hidden and the sidebar is on-screen.
     await expect(page.getByTestId('sidebar-toggle')).toBeHidden()
-    const box = await page.getByTestId('desk-sidebar').boundingBox()
+    const box = await page.getByTestId('admin-sidebar').boundingBox()
     expect(box!.x).toBeGreaterThanOrEqual(0)
   })
 })

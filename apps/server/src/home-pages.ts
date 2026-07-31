@@ -1,4 +1,4 @@
-// #80: Home Pages — Frappe-style curated navigation. The Desk sidebar lists
+// #80: Home Pages — Frappe-style curated navigation. The Admin sidebar lists
 // Home Pages (one per user module + a seeded System page); each page renders
 // grouped link cards from its `links` sub-table. This module owns the two
 // server-side halves of that:

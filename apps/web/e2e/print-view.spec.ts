@@ -61,10 +61,10 @@ test('PRN-001: print view shows labels, values, and child tables with no chrome'
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
   // Reach print view via the form's Print button.
-  await page.goto(`/desk/${encodeURIComponent(DT)}/${docName}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await page.getByTestId('form-print').click()
   await expect(page).toHaveURL(new RegExp(`/print/${encodeURIComponent(DT)}/${docName}`))
 

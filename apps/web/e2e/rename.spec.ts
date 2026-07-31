@@ -41,9 +41,9 @@ test('DOC-012: rename from the form cascades to linking documents', async ({ pag
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
-  await page.goto(`/desk/${encodeURIComponent(CUST)}/OldCo`)
+  await page.goto(`/admin/${encodeURIComponent(CUST)}/OldCo`)
   await page.getByTestId('form-rename').click()
   await page.getByTestId('rename-input').fill('NewCo')
   await page.getByTestId('rename-confirm').click()
@@ -53,6 +53,6 @@ test('DOC-012: rename from the form cascades to linking documents', async ({ pag
   await expect(page.getByTestId('form-view')).toContainText('NewCo')
 
   // The order's Link now points at the new name.
-  await page.goto(`/desk/${encodeURIComponent(ORDER)}/RN-ORD`)
+  await page.goto(`/admin/${encodeURIComponent(ORDER)}/RN-ORD`)
   await expect(page.locator('[data-field=customer]')).toHaveValue('NewCo')
 })

@@ -32,9 +32,9 @@ test('RPT-004: a SQL report with a date filter runs and renders', async ({ page 
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
-  await page.goto(`/desk/query-report/${encodeURIComponent(REPORT)}`)
+  await page.goto(`/admin/query-report/${encodeURIComponent(REPORT)}`)
   await expect(page.getByTestId('query-report-title')).toHaveText(REPORT)
   await expect(page.getByTestId('filter-from_date')).toBeVisible()
   await expect(page.getByTestId('qr-col-name')).toBeVisible()

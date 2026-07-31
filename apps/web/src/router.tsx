@@ -11,7 +11,7 @@ import { ResetPasswordPage } from './pages/ResetPassword'
 import { WebFormPage } from './pages/WebForm'
 import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
-import { DeskLayout } from './pages/DeskLayout'
+import { AdminLayout } from './pages/AdminLayout'
 import { getToken } from './lib/api'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
@@ -38,7 +38,7 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   beforeLoad: () => {
-    throw redirect({ to: getToken() ? '/desk' : '/login' })
+    throw redirect({ to: getToken() ? '/admin' : '/login' })
   },
 })
 
@@ -108,13 +108,33 @@ const resetPasswordRoute = createRoute({
   component: ResetPasswordPage,
 })
 
-const deskRoute = createRoute({
+// #84: the Admin used to live under /desk. Old bookmarks, emailed row links
+// and anything else pointing at the former prefix bounce to the /admin twin
+// with the query string and hash intact. `replace` keeps the dead prefix out
+// of history, so Back returns where the user came from.
+function redirectToAdmin(href: string): never {
+  throw redirect({ href: `/admin${href.slice('/desk'.length)}`, replace: true })
+}
+
+const legacyDeskRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/desk',
+  beforeLoad: ({ location }) => redirectToAdmin(location.href),
+})
+
+const legacyDeskSplatRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/desk/$',
+  beforeLoad: ({ location }) => redirectToAdmin(location.href),
+})
+
+const adminRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin',
   beforeLoad: () => {
     if (!getToken()) throw redirect({ to: '/login' })
   },
-  component: DeskLayout,
+  component: AdminLayout,
 })
 
 // PRN-001: print view lives OUTSIDE the Admin layout — no navbar/sidebar.
@@ -145,27 +165,27 @@ function PrintPage() {
   )
 }
 
-// #80: /desk lands on the caller's first visible Home Page; with none
+// #80: /admin lands on the caller's first visible Home Page; with none
 // visible it falls back to a pointer at the All tables page.
-const deskIndexRoute = createRoute({
-  getParentRoute: () => deskRoute,
+const adminIndexRoute = createRoute({
+  getParentRoute: () => adminRoute,
   path: '/',
-  component: DeskIndexPage,
+  component: AdminIndexPage,
 })
 
-function DeskIndexPage() {
-  const navigate = deskIndexRoute.useNavigate()
+function AdminIndexPage() {
+  const navigate = adminIndexRoute.useNavigate()
   const pages = useHomePages()
   const first = pages.data?.pages[0]
   useEffect(() => {
-    if (first) void navigate({ to: '/desk/home/$name', params: { name: first.name }, replace: true })
+    if (first) void navigate({ to: '/admin/home/$name', params: { name: first.name }, replace: true })
   }, [first, navigate])
   if (!pages.data) return null
   if (first) return null
   return (
-    <p className="text-sm text-gray-500" data-testid="desk-index-empty">
+    <p className="text-sm text-gray-500" data-testid="admin-index-empty">
       No Home Pages are visible to you. Browse{' '}
-      <Link to="/desk/all-tables" className="text-[var(--color-brand)] underline">
+      <Link to="/admin/all-tables" className="text-[var(--color-brand)] underline">
         All tables
       </Link>{' '}
       instead.
@@ -175,7 +195,7 @@ function DeskIndexPage() {
 
 // UI-011: Table builder route (before $doctype so 'new-table' matches).
 const newTableRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'new-table',
   component: () => (
     <div data-testid="doctype-page">
@@ -186,7 +206,7 @@ const newTableRoute = createRoute({
 
 // IMP-010: Import wizard route (before $doctype so 'import' matches).
 const importRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'import',
   validateSearch: (search: Record<string, unknown>) => ({
     table: typeof search.table === 'string' ? search.table : undefined,
@@ -201,7 +221,7 @@ const importRoute = createRoute({
 // UI-002/UI-003: the generic ListView renders every Table; filters are
 // URL state so they survive reloads and are shareable.
 const doctypeRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: '$doctype',
   validateSearch: (search: Record<string, unknown>) => ({
     filters: typeof search.filters === 'string' ? search.filters : undefined,
@@ -249,7 +269,7 @@ function TableListPage() {
 // over every Table. Three segments, so it never collides with
 // $doctype/$name.
 const reportRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: '$doctype/view/report',
   validateSearch: (search: Record<string, unknown>) => ({
     report: typeof search.report === 'string' ? search.report : undefined,
@@ -275,7 +295,7 @@ function ReportPage() {
 
 // UI-020: Kanban board view.
 const kanbanRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: '$doctype/view/kanban',
   validateSearch: (search: Record<string, unknown>) => ({
     group_by: typeof search.group_by === 'string' ? search.group_by : undefined,
@@ -301,7 +321,7 @@ function KanbanPage() {
 
 // UI-021: Calendar view.
 const calendarRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: '$doctype/view/calendar',
   component: CalendarPage,
 })
@@ -317,7 +337,7 @@ function CalendarPage() {
 
 // UI-022: Gantt view.
 const ganttRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: '$doctype/view/gantt',
   component: GanttPage,
 })
@@ -334,7 +354,7 @@ function GanttPage() {
 // RPT-004: a SQL Report renders its own SQL-driven results (static first
 // segment, so it wins over $doctype/$name).
 const queryReportRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'query-report/$name',
   component: QueryReportPage,
 })
@@ -350,7 +370,7 @@ function QueryReportPage() {
 
 // RPT-005: a script report renders its declared filters + data (static segment).
 const scriptReportRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'script-report/$name',
   component: ScriptReportPage,
 })
@@ -366,7 +386,7 @@ function ScriptReportPage() {
 
 // JOB-004: background job monitor (static segment).
 const jobsRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'jobs',
   component: JobMonitor,
 })
@@ -374,7 +394,7 @@ const jobsRoute = createRoute({
 // UI-027 / #80: a Home Page renders grouped link cards and its legacy
 // shortcuts (static segment).
 const homePageRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'home/$name',
   component: HomePagePage,
 })
@@ -391,14 +411,14 @@ function HomePagePage() {
 // #80: every table stays reachable — the sidebar's All tables entry shows
 // the grouped table list (static segment, before $doctype).
 const allTablesRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'all-tables',
   component: AllTablesPage,
 })
 
 // UI-026: a saved Dashboard renders number cards + charts (static segment).
 const dashboardRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'dashboard/$name',
   component: DashboardPage,
 })
@@ -414,7 +434,7 @@ function DashboardPage() {
 
 // SET-003: role & permission manager for a Table (static first segment).
 const permissionsRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'permissions/$doctype',
   component: PermissionsPage,
 })
@@ -430,7 +450,7 @@ function PermissionsPage() {
 
 // UI-004/UI-005: the generic FormView renders and saves every Table.
 const docRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: '$doctype/$name',
   component: TableFormPage,
 })
@@ -453,5 +473,7 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   printRoute,
-  deskRoute.addChildren([deskIndexRoute, newTableRoute, importRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, homePageRoute, allTablesRoute, jobsRoute, doctypeRoute, docRoute]),
+  legacyDeskRoute,
+  legacyDeskSplatRoute,
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, homePageRoute, allTablesRoute, jobsRoute, doctypeRoute, docRoute]),
 ])

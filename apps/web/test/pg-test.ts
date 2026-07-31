@@ -53,7 +53,7 @@ beforeAll(() => {
 
 type Opts = Omit<RenderDeskOptions, 'routeTree' | 'token'>
 
-/** Render the real Desk at `path`, logged in as `as`. */
+/** Render the real Admin at `path`, logged in as `as`. */
 export function renderDesk(path: string, as: TestClient, opts: Opts = {}) {
   return baseRenderDesk(path, {
     routeTree,

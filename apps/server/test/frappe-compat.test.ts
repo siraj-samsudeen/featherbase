@@ -32,7 +32,7 @@ describe('Frappe compat: sid-cookie sessions', () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as { message: string; full_name: string; home_page: string }
     expect(body.message).toBe('Logged In')
-    expect(body.home_page).toBe('/desk')
+    expect(body.home_page).toBe('/admin')
     const cookie = res.headers.get('set-cookie') ?? ''
     expect(cookie).toContain('sid=')
     expect(cookie).toContain('HttpOnly')

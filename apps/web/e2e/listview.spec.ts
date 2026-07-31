@@ -71,14 +71,14 @@ async function login(page: import('@playwright/test').Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/desk/)
+  await expect(page).toHaveURL(/\/admin/)
 }
 
 test('UI-002: one generic ListView renders two different DocTypes with sort + pagination', async ({ page }) => {
   await login(page)
 
   // --- DocType A: metadata columns, pagination
-  await page.goto(`/desk/${encodeURIComponent(DT_A)}`)
+  await page.goto(`/admin/${encodeURIComponent(DT_A)}`)
   await expect(page.getByTestId('col-title')).toContainText('Title')
   await expect(page.getByTestId('col-qty')).toContainText('Qty')
   await expect(page.getByTestId('list-total')).toContainText('30 total')
@@ -99,7 +99,7 @@ test('UI-002: one generic ListView renders two different DocTypes with sort + pa
   await expect(page.getByTestId('list-rows').locator('tr').first()).toContainText('item-29')
 
   // --- DocType B: same component, entirely different columns
-  await page.goto(`/desk/${encodeURIComponent(DT_B)}`)
+  await page.goto(`/admin/${encodeURIComponent(DT_B)}`)
   await expect(page.getByTestId('col-city')).toContainText('City')
   await expect(page.getByTestId('col-active')).toContainText('Active')
   await expect(page.getByTestId('list-total')).toContainText('3 total')

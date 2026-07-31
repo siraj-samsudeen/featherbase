@@ -18,7 +18,7 @@ async function login(page: Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/desk/)
+  await expect(page).toHaveURL(/\/admin/)
 }
 
 function workbook() {
@@ -211,7 +211,7 @@ test('IMP-013: skip a sheet, drop a column, and drive the target picker', async 
   await page.getByTestId('iw-import').click()
 
   // Single active sheet: lands on the new Table's list.
-  await expect(page).toHaveURL(new RegExp('/desk/Wizard%20Keep'))
+  await expect(page).toHaveURL(new RegExp('/admin/Wizard%20Keep'))
 
   // pick_b was excluded; the skipped sheet created nothing.
   const meta = (await (
@@ -245,7 +245,7 @@ test('IMP-010: the list view Import button preselects that Table as the target',
   ).json()) as { count: number }
 
   await login(page)
-  await page.goto(`/desk/${encodeURIComponent(EXISTING_DT)}`)
+  await page.goto(`/admin/${encodeURIComponent(EXISTING_DT)}`)
   await page.getByTestId('open-import').click()
   await expect(page.getByTestId('import-wizard')).toBeVisible()
 
@@ -264,7 +264,7 @@ test('IMP-010: the list view Import button preselects that Table as the target',
   // sheet's own row count in the card header.
   await expect(page.getByTestId('iw-view-target-0')).toHaveAttribute(
     'href',
-    `/desk/${encodeURIComponent(EXISTING_DT)}`,
+    `/admin/${encodeURIComponent(EXISTING_DT)}`,
   )
   await expect(page.getByTestId('iw-view-target-0')).toHaveAttribute('target', '_blank')
   await expect(page.getByTestId('iw-target-count-0')).toContainText(
@@ -277,7 +277,7 @@ test('IMP-010: the list view Import button preselects that Table as the target',
 
   await page.getByTestId('iw-import').click()
   // Single-sheet import navigates to the target Table's list.
-  await expect(page).toHaveURL(new RegExp(`/desk/Wizard%20Stock`))
+  await expect(page).toHaveURL(new RegExp(`/admin/Wizard%20Stock`))
   await expect(page.getByTestId('list-rows')).toContainText(sku)
 
   const after = (await (

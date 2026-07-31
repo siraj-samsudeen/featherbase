@@ -16,9 +16,9 @@ test('UI-003: filters narrow results, persist in the URL across reload, and are 
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/desk/)
+  await expect(page).toHaveURL(/\/admin/)
 
-  await page.goto(`/desk/${encodeURIComponent(DT_A)}`)
+  await page.goto(`/admin/${encodeURIComponent(DT_A)}`)
   await expect(page.getByTestId('list-total')).toContainText('30 total')
 
   // qty >= 25 -> 5 rows

@@ -48,7 +48,7 @@ test('I18N-001: switching language translates chrome and field labels', async ({
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
   // English baseline. The Log out item lives in the avatar's account
   // menu (#72); close it with Escape before switching (selectOption fires no
@@ -63,7 +63,7 @@ test('I18N-001: switching language translates chrome and field labels', async ({
   await expect(page.getByTestId('logout')).toHaveText('Déconnexion')
 
   // The form's Save button and the field label with a catalog entry translate.
-  await page.goto(`/desk/${encodeURIComponent(DT)}/new`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/new`)
   await expect(page.getByTestId('form-save')).toHaveText('Enregistrer')
   await expect(page.locator('[data-field=priority]')).toBeVisible()
   await expect(page.locator('label.fc-label', { hasText: 'Priorité' })).toBeVisible()

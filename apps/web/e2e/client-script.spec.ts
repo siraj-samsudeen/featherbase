@@ -53,13 +53,13 @@ async function login(page: import('@playwright/test').Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 }
 
 // CUST-003: a client script auto-fills a field on change.
 test('CUST-003: a client script auto-fills a field on change', async ({ page }) => {
   await login(page)
-  await page.goto(`/desk/${encodeURIComponent(DT)}/new`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/new`)
   await expect(page.getByTestId('form-view')).toBeVisible()
 
   await page.locator('[data-field=qty]').fill('7')
@@ -73,16 +73,16 @@ test('CUST-003: a client script auto-fills a field on change', async ({ page }) 
   await expect(page.locator('[data-field=total]')).toHaveValue('30')
 })
 
-// CUST-003: a broken client script surfaces an error but does not crash the Desk.
+// CUST-003: a broken client script surfaces an error but does not crash the Admin.
 test('CUST-003: a broken client script surfaces an error without crashing', async ({ page }) => {
   await login(page)
-  await page.goto(`/desk/${encodeURIComponent(DT_BAD)}/new`)
+  await page.goto(`/admin/${encodeURIComponent(DT_BAD)}/new`)
 
   // The form still renders and the error is shown.
   await expect(page.getByTestId('form-view')).toBeVisible()
   await expect(page.getByTestId('client-script-error')).toContainText('boom in client script')
 
-  // The Desk is still interactive: the field edits and the form is usable.
+  // The Admin is still interactive: the field edits and the form is usable.
   await page.locator('[data-field=qty]').fill('5')
   await expect(page.locator('[data-field=qty]')).toHaveValue('5')
   await expect(page.getByTestId('session-user')).toBeVisible()

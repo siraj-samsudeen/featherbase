@@ -109,7 +109,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   }
 
   // CUST-003: run a client-script handler, catching errors so a broken script
-  // never crashes the Desk — it surfaces in a dismissible banner.
+  // never crashes the Admin — it surfaces in a dismissible banner.
   function fireHandler(key: string, docSnapshot: Row) {
     const handler = clientScripts.handlers[key]
     if (!handler) return
@@ -144,7 +144,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
       await queryClient.invalidateQueries({ queryKey: ['doc', doctype] })
       await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
       if (action === 'amend') {
-        navigate({ to: '/desk/$doctype/$name', params: { doctype, name: String(res.name) } })
+        navigate({ to: '/admin/$doctype/$name', params: { doctype, name: String(res.name) } })
       } else {
         setBanner('Done')
       }
@@ -164,7 +164,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
       )
       await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
       setRenaming(false)
-      navigate({ to: '/desk/$doctype/$name', params: { doctype, name: String(res.name) } })
+      navigate({ to: '/admin/$doctype/$name', params: { doctype, name: String(res.name) } })
     } catch (err) {
       setBanner(err instanceof ApiError ? err.message : 'Rename failed')
     }
@@ -201,7 +201,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
       await queryClient.invalidateQueries({ queryKey: ['versions', doctype, name] })
       if (isNew) {
         navigate({
-          to: '/desk/$doctype/$name',
+          to: '/admin/$doctype/$name',
           params: { doctype, name: String(saved.name) },
         })
       } else {
@@ -229,10 +229,10 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   return (
     <div data-testid="form-view" className="max-w-5xl">
       <nav className="mb-2 text-xs text-gray-500" data-testid="breadcrumbs">
-        <RouterLink to="/desk" className="hover:underline">Desk</RouterLink>
+        <RouterLink to="/admin" className="hover:underline">Admin</RouterLink>
         <span className="mx-1">/</span>
         <RouterLink
-          to="/desk/$doctype"
+          to="/admin/$doctype"
           params={{ doctype }}
           search={{ filters: undefined }}
           className="hover:underline"
@@ -783,7 +783,7 @@ function LinkControl({
             <p className="px-3 py-1.5 text-sm text-gray-400">No matches</p>
           )}
           <RouterLink
-            to="/desk/$doctype/$name"
+            to="/admin/$doctype/$name"
             params={{ doctype: target, name: 'new' }}
             className="block border-t border-gray-100 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50"
             data-testid="link-create-new"

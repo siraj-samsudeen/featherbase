@@ -476,7 +476,7 @@ export function ImportWizard() {
       const active = plans.filter((p) => p.mode !== 'skip')
       if (active.length === 1) {
         navigate({
-          to: '/desk/$doctype',
+          to: '/admin/$doctype',
           params: { doctype: active[0].table },
           search: { filters: undefined },
         })
@@ -566,7 +566,7 @@ export function ImportWizard() {
                     <TargetRowCount i={i} table={plan.table} />
                     {/* Peek at the target without losing wizard state. */}
                     <a
-                      href={`/desk/${encodeURIComponent(plan.table)}`}
+                      href={`/admin/${encodeURIComponent(plan.table)}`}
                       target="_blank"
                       rel="noreferrer"
                       data-testid={`iw-view-target-${i}`}
@@ -592,7 +592,7 @@ export function ImportWizard() {
                   >
                     A similar existing Table matches this sheet:{' '}
                     <a
-                      href={`/desk/${encodeURIComponent(plan.similar.name)}`}
+                      href={`/admin/${encodeURIComponent(plan.similar.name)}`}
                       target="_blank"
                       rel="noreferrer"
                       className="font-semibold underline"
@@ -720,7 +720,7 @@ export function ImportWizard() {
                   >
                     Auto-matched to the existing Table{' '}
                     <a
-                      href={`/desk/${encodeURIComponent(plan.table)}`}
+                      href={`/admin/${encodeURIComponent(plan.table)}`}
                       target="_blank"
                       rel="noreferrer"
                       className="font-semibold underline"
@@ -825,7 +825,7 @@ export function ImportWizard() {
                 <span className={plan.result.failed.length ? 'text-red-600' : 'text-green-700'}>
                   Imported {plan.result.inserted} rows into{' '}
                   <Link
-                    to="/desk/$doctype"
+                    to="/admin/$doctype"
                     params={{ doctype: plan.table }}
                     search={{ filters: undefined }}
                     className="underline"
@@ -857,7 +857,7 @@ export function ImportWizard() {
         <p className="mt-2 text-sm text-green-700" data-testid="iw-done">
           Import complete.{' '}
           <Link
-            to="/desk/$doctype"
+            to="/admin/$doctype"
             params={{ doctype: 'Import Log' }}
             search={{ filters: undefined }}
             className="underline"

@@ -10,10 +10,10 @@ test('SET-001: System Settings opens as a form and saves persistently', async ({
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
   // Navigating to the Single DocType shows its form (no list view).
-  await page.goto('/desk/System%20Settings')
+  await page.goto('/admin/System%20Settings')
   await expect(page.getByTestId('form-view')).toBeVisible()
   await expect(page.getByTestId('list-view')).toHaveCount(0)
 

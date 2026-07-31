@@ -18,7 +18,7 @@ export function OAuthCallbackPage({ token }: { token?: string }) {
       .get<{ name: string; email: string; full_name: string | null }>('/api/whoami')
       .then((u) => {
         localStorage.setItem('fc_user', JSON.stringify({ name: u.name, email: u.email, full_name: u.full_name }))
-        navigate({ to: '/desk' })
+        navigate({ to: '/admin' })
       })
       .catch(() => navigate({ to: '/login' }))
   }, [token, navigate])

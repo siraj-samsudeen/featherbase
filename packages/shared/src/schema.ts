@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 // META-013: one zod schema generated from Table metadata, used by the
-// server's row engine and the Desk form views.
+// server's row engine and the Admin form views.
 
 export interface ColumnDef {
   column_name: string

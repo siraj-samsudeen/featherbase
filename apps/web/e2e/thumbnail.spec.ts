@@ -84,9 +84,9 @@ test('FILE-004: image attachment gets a thumbnail; text does not', async ({ page
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
-  await page.goto(`/desk/${encodeURIComponent(DT)}/${DOC}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${DOC}`)
   await expect(page.getByTestId('attachments-panel')).toBeVisible()
 
   // Attach a real (decodable) image.

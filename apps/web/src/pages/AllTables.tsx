@@ -72,7 +72,7 @@ export function AllTablesPage() {
             {(byModule.get(mod) ?? []).map((dt) => (
               <Link
                 key={dt.name}
-                to="/desk/$doctype"
+                to="/admin/$doctype"
                 params={{ doctype: dt.name }}
                 search={{ filters: undefined }}
                 className={linkClass}
@@ -110,7 +110,7 @@ export function AllTablesPage() {
               systemTables.map((dt) => (
                 <Link
                   key={dt.name}
-                  to="/desk/$doctype"
+                  to="/admin/$doctype"
                   params={{ doctype: dt.name }}
                   search={{ filters: undefined }}
                   className={linkClass}

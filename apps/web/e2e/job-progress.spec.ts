@@ -3,14 +3,14 @@ import { expect, test } from '@playwright/test'
 const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 
 // JOB-005: a long-running job reports progress to the client over realtime.
-test('JOB-005: a long job reports live progress to the Desk', async ({ page }) => {
+test('JOB-005: a long job reports live progress to the Admin', async ({ page }) => {
   await page.goto('/login')
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
-  await page.goto('/desk/jobs')
+  await page.goto('/admin/jobs')
   await expect(page.getByTestId('job-monitor')).toBeVisible()
   // Give the realtime socket a moment to connect + subscribe before enqueuing.
   await page.waitForTimeout(1000)

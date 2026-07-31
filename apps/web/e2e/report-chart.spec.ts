@@ -60,14 +60,14 @@ async function login(page: import('@playwright/test').Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 }
 
 test('RPT-006: chart reflects report data and pinning shows it on the dashboard', async ({ page }) => {
   await login(page)
 
   // Open the saved report; group by region so the chart shows per-region counts.
-  await page.goto(`/desk/${encodeURIComponent(DT)}/view/report?report=${encodeURIComponent(REPORT)}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/view/report?report=${encodeURIComponent(REPORT)}`)
   await expect(page.getByTestId('report-view')).toBeVisible()
   await page.getByTestId('report-groupby').selectOption('region')
 
@@ -82,7 +82,7 @@ test('RPT-006: chart reflects report data and pinning shows it on the dashboard'
   await expect(page.getByTestId('pin-msg')).toContainText(`Pinned to ${DASH}`)
 
   // The dashboard now shows the pinned report chart, recomputed from live data.
-  await page.goto(`/desk/dashboard/${encodeURIComponent(DASH)}`)
+  await page.goto(`/admin/dashboard/${encodeURIComponent(DASH)}`)
   await expect(page.getByTestId(`chart-${REPORT}`)).toBeVisible()
   await expect(page.getByTestId('bar-value-North')).toHaveText('2')
   await expect(page.getByTestId('bar-value-South')).toHaveText('1')
