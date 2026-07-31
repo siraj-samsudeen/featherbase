@@ -41,12 +41,23 @@ method, and the feature board all still said "Frappe Clone".
 - **The mark.** `apps/web/src/components/Logo.tsx` replaces the "F" letter tile
   on the navbar and login header; `apps/web/public/favicon.svg` is the same
   art, linked from `index.html` (first use of `apps/web/public/`). It is a
-  tilted quill whose vane is split by the shaft and cut into stacked barb
-  bands — a feather that also reads as rows of data. Drawn as a solid brand
-  tile with the cuts painted in the tile colour rather than punched out, so it
-  needs no transparency and survives any background. Four silhouettes were
-  rendered at 16/20/24/44/96px before picking this one; the earlier symmetric
-  leaf read as a pill and an open-stroke version read as a fishbone.
+  tilted feather with a single wedge cut out of its vane — the notch is the
+  only detail, which is why it survives 16px where barb-by-barb designs mush.
+  Drawn as a solid brand tile with the notch and shaft in the tile colour
+  rather than punched out, so it needs no transparency and holds on any
+  background. Shaft weight is 2.1 deliberately: thinner hairlines vanish at
+  16px.
+- **How it was chosen** (owner picked from rendered sheets, every candidate
+  shown at 16/24/64 plus light and dark wordmark lockups). Ruled out along the
+  way: a symmetric leaf that read as a pill; open-stroke and herringbone
+  versions that read as a fishbone; a "dissolve" that read as a paintbrush; a
+  fanned version that read as a crown. Double-F monograms in calligraphic
+  faces were explored and dropped — mirroring two F's back-to-back makes a
+  face, not a vane, and "FF" reads as a type-foundry monogram rather than
+  Featherbase. Single calligraphic F's (Snell, Zapfino, Chancery, Savoye) were
+  also dropped: they are macOS-only system fonts, so shipping one would have
+  meant outlining the glyph to paths anyway, and the swashiest faces clipped
+  their own tile at 64px.
 
 Verified: `pnpm --filter server migrate` applied 0064; `./init.sh` boots and
 both smoke suites pass; web suite 12/12 and both typechecks clean; Playwright

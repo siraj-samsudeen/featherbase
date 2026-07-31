@@ -1,21 +1,21 @@
-// The Featherbase mark: a quill feather, tilted, its vane split by the shaft
-// and cut into stacked barb bands — a feather that also reads as rows of data.
-// Painted as a solid brand tile with the cuts in the tile colour rather than
-// punched out, so the mark stays legible on any background and needs no
-// transparency. Sized by `className`; holds its silhouette down to 16px.
+// The Featherbase mark: a tilted feather with a single wedge cut out of its
+// vane. The notch is what keeps it from reading as a plain leaf, and it is the
+// only detail — everything else is one silhouette, which is why the mark
+// survives down to the 16px favicon where barb-by-barb designs turn to mush.
+//
+// Painted as a solid brand tile with the notch and shaft in the tile colour
+// rather than punched out, so the mark needs no transparency and stays legible
+// on any background. Shaft weight is 2.1 deliberately: thinner hairlines
+// disappear at 16px. Sized by `className`.
 export function Logo({ className = 'h-6 w-6' }: { className?: string }) {
   return (
     <svg viewBox="0 0 32 32" className={className} aria-hidden="true" focusable="false">
       <rect width="32" height="32" rx="8" fill="var(--color-brand)" />
-      <g transform="rotate(-32 16 16) translate(16 16) scale(1.14) translate(-16 -16)">
-        <path d="M16 3.5C20.5 9 21.5 15 19 20.5L16 23.5L13 20.5C10.5 15 11.5 9 16 3.5Z" fill="#fff" />
-        <path d="M16 22.5V29" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" />
-        <g stroke="var(--color-brand)" strokeWidth="2.5">
-          <path d="M16 9L23.4 11.6" />
-          <path d="M16 14L22.9 16.45" />
-          <path d="M16 19L22.4 21.3" />
-          <path d="M16 3.5V23.5" strokeWidth="2.3" />
-        </g>
+      <g transform="rotate(-32 16 16) translate(16 16) scale(1.08) translate(-16 -16)">
+        <path d="M16 3.5C21 9.5 22 16.5 19 22.5L16 25.5L13 22.5C10 16.5 11 9.5 16 3.5Z" fill="#fff" />
+        <path d="M16 24.5V29.5" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" />
+        <path d="M19.9 12.5L23 15.5L18.6 17.2Z" fill="var(--color-brand)" />
+        <path d="M16 3.5V25.5" stroke="var(--color-brand)" strokeWidth="2.1" />
       </g>
     </svg>
   )
