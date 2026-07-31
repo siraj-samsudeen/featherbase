@@ -60,6 +60,16 @@ test('UI-011: create a DocType with 5 fields from the Desk; list+form work immed
   await expect(page.getByTestId('list-view')).toBeVisible()
   await expect(page.getByTestId('col-title')).toContainText('Title')
 
+  // #80: the table auto-appears on its module's home page WITHOUT a reload —
+  // the Custom page shows up in the sidebar and carries the table's link.
+  await expect(page.getByTestId('home-page-link-custom')).toBeVisible()
+  await page.getByTestId('home-page-link-custom').click()
+  await expect(page.getByTestId('home-page-title')).toHaveText('Custom')
+  await expect(page.getByTestId(`home-link-${NEW_DT}`)).toBeVisible()
+  await page.getByTestId(`home-link-${NEW_DT}`).click()
+  await expect(page).toHaveURL(new RegExp(`/desk/Builder%20Widget`))
+  await expect(page.getByTestId('list-view')).toBeVisible()
+
   // Form view works immediately: create a document
   await page.goto(`/desk/${encodeURIComponent(NEW_DT)}/new`)
   await expect(page.getByTestId('form-view')).toBeVisible()
@@ -76,8 +86,16 @@ test('UI-011: create a DocType with 5 fields from the Desk; list+form work immed
   const meta = await request.get(`/api/table/${encodeURIComponent(NEW_DT)}:meta`, {
     headers: { Authorization: `Bearer ${token}` },
   })
-  const body = (await meta.json()) as { columns: { column_name: string }[] }
+  const body = (await meta.json()) as {
+    module: string
+    system: boolean
+    columns: { column_name: string }[]
+  }
   expect(body.columns.map((f) => f.column_name)).toEqual(
     expect.arrayContaining(['title', 'count', 'active', 'stage', 'notes']),
   )
+  // #74: the builder sends a real module (default "Custom") and a user-built
+  // table is never a system table — it files into the sidebar's user section.
+  expect(body.module).toBe('Custom')
+  expect(body.system).toBe(false)
 })

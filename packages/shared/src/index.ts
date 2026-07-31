@@ -1,1 +1,22 @@
 export { tableSchemaToZod, zodFieldErrors, type ColumnDef } from './schema'
+export {
+  autoMapColumns,
+  coerceRows,
+  inferChoices,
+  inferColumnType,
+  inferTableDef,
+  idPatternFor,
+  namesShareToken,
+  seriesPrefix,
+  prettifyLabel,
+  sanitizeColumnName,
+  sanitizeHeaders,
+  scoreTableMatch,
+  shouldAutoMatch,
+  tableMatchQuality,
+  tableNameFromFile,
+  type InferredColumn,
+  type InferredTableDef,
+  type MappingTarget,
+  type TableMatchQuality,
+} from './import'

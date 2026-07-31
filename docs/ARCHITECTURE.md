@@ -252,9 +252,11 @@ when none are flagged).
 `FormView` loads the row, renders an input per column from the metadata, and
 saves through the row-save operation traced above, echoing back `updated_at`
 for the concurrency check. `AdminLayout`
-(`apps/web/src/pages/AdminLayout.tsx`) builds the sidebar by listing the
-`Table` Table itself (rows where `kind = 'table'`), and hosts the Command Bar
-(Ctrl/Cmd+K).
+(`apps/web/src/pages/AdminLayout.tsx`) builds the sidebar from
+`GET /api/home_pages` — the caller's visible Home Pages, role-scoped and
+permission-filtered server-side — plus an "All tables" page that lists the
+`Table` Table itself (rows where `kind != 'sub_table'`), and hosts the
+Command Bar (Ctrl/Cmd+K).
 
 Adding a Table therefore requires zero frontend code: define it, and its
 list and form views work immediately.

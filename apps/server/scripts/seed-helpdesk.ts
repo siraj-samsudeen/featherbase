@@ -1,12 +1,14 @@
-/* Helpdesk DEMO CONTENT, seeded through the public HTTP API of a running
- * server. The helpdesk's structure — HD Ticket DocType, roles, permissions,
- * the status-field workflow, SLA, email rule, server script, and web form —
- * ships in migration 0051_helpdesk.ts; this script adds only the pieces a
- * demo needs and a real deployment would not:
+/* Helpdesk sample app + DEMO CONTENT. The structure — HD Ticket Table,
+ * roles, permissions, and the fixture documents (status-field workflow, SLA,
+ * email account + rule, server script, web form) — is a registered app
+ * manifest now (src/sample-apps/helpdesk.ts, PLAT-006 #78): this script
+ * installs it over POST /api/install_app exactly as a user would (skipped if
+ * the structure is already present), then seeds, over the HTTP API of a
+ * running server, the pieces a demo needs and a real deployment would not:
  *
  * - Demo users (password demo1234): two agents, a manager, two customers
  * - Assignment Rule: new tickets round-robin between the two agents and
- *   stamp the `agent` field (lives here, not in the migration, because it
+ *   stamp the `agent` field (lives here, not in the structure, because it
  *   links the demo users)
  * - Five sample tickets, filed by the customers through the public web form
  *
@@ -14,9 +16,11 @@
  *
  *   pnpm --filter server seed:helpdesk
  *
- * Idempotent: existing users/rules are skipped; sample tickets are only
- * filed when the customers have none. Undo with reset:helpdesk.
+ * Idempotent: existing structure/users/rules are skipped; sample tickets are
+ * only filed when the customers have none. Undo demo content with
+ * reset:helpdesk; migration 0057 removes the structure wholesale.
  */
+import { sql } from '../src/db'
 
 const BASE = process.env.SERVER_URL ?? 'http://localhost:8000'
 const ADMIN = process.env.ADMIN_USER ?? 'Administrator'
@@ -50,9 +54,10 @@ async function login(key: string, usr: string, pwd: string) {
 }
 
 async function exists(doctype: string, name: string): Promise<boolean> {
+  // /api/table is the one Table-scoped surface (#61) — /api/resource is gone.
   const res = await req(
     'admin',
-    `/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
+    `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
   )
   return res.ok
 }
@@ -75,6 +80,24 @@ async function ensureDoc(doctype: string, doc: Record<string, unknown>, key?: st
 
 async function main() {
   await login('admin', ADMIN, ADMIN_PWD)
+
+  console.log('Structure (the helpdesk app: HD Ticket Table, roles, workflow, SLA, web form)')
+  // Install the registered app over the API — the same call any deployment
+  // makes. Skipped when the structure already exists (a previous seed, or a
+  // database that predates the app packaging).
+  const has = await req('admin', '/api/table/HD%20Ticket:meta')
+  if (has.ok) {
+    console.log('  = helpdesk structure (exists)')
+  } else {
+    await must(
+      await req('admin', '/api/install_app', {
+        method: 'POST',
+        body: JSON.stringify({ name: 'helpdesk' }),
+      }),
+      'install helpdesk app',
+    )
+    console.log('  + helpdesk app installed')
+  }
 
   console.log('Users (password: demo1234)')
   const users: [string, string, string[]][] = [
@@ -104,7 +127,8 @@ async function main() {
   console.log('Assignment Rule (round-robin agents)')
   await ensureDoc('Assignment Rule', {
     name: 'HD Ticket Round Robin',
-    document_type: 'HD Ticket',
+    // Post-0055 name (was document_type before the terminology rename).
+    ref_table: 'HD Ticket',
     description: 'New support ticket',
     assign_to_field: 'agent',
     users: [{ user: 'agent1@helpdesk.test' }, { user: 'agent2@helpdesk.test' }],
@@ -126,7 +150,7 @@ async function main() {
   ]
   for (const [customer] of samples) await login(customer, customer, 'demo1234')
   const existing = (await must(
-    await req('admin', '/api/resource/HD%20Ticket?limit_page_length=1'),
+    await req('admin', '/api/table/HD%20Ticket?limit_page_length=1'),
     'list HD Ticket',
   )) as { total?: number }
   if (Number(existing.total ?? 0) > 0) {
@@ -150,7 +174,10 @@ async function main() {
   console.log(`  Portal:  ${BASE.replace('8000', '5173')}/portal/HD%20Ticket`)
 }
 
-main().catch((err) => {
-  console.error(err)
-  process.exit(1)
-})
+main()
+  .then(() => sql.end())
+  .catch(async (err) => {
+    console.error(err)
+    await sql.end().catch(() => {})
+    process.exit(1)
+  })

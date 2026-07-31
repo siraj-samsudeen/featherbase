@@ -57,5 +57,6 @@ test('UI-015: g then d navigates to the Desk home', async ({ page }) => {
   await page.locator('body').click() // ensure focus is not in an input
   await page.keyboard.press('g')
   await page.keyboard.press('d')
-  await expect(page).toHaveURL(/\/desk$/)
+  // #80: the Desk home now lands on the first visible Home Page.
+  await expect(page).toHaveURL(/\/desk(\/home\/|$)/)
 })

@@ -296,6 +296,15 @@ export function ListView({
           >
             Report
           </Link>
+          {/* IMP-010: append rows to this Table from a CSV/Excel file. */}
+          <Link
+            to="/desk/import"
+            search={{ table: doctype }}
+            className="fc-btn"
+            data-testid="open-import"
+          >
+            Import
+          </Link>
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Choice') && (
             <Link
               to="/desk/$doctype/view/kanban"
@@ -329,14 +338,25 @@ export function ListView({
             </Link>
           )}
           {isSystemManager && (
-            <Link
-              to="/desk/permissions/$doctype"
-              params={{ doctype }}
-              className="fc-btn"
-              data-testid="open-permissions"
-            >
-              Permissions
-            </Link>
+            <>
+              {/* NAM-001: change how new rows in this Table are named. */}
+              <Link
+                to="/desk/naming/$doctype"
+                params={{ doctype }}
+                className="fc-btn"
+                data-testid="open-naming"
+              >
+                Naming
+              </Link>
+              <Link
+                to="/desk/permissions/$doctype"
+                params={{ doctype }}
+                className="fc-btn"
+                data-testid="open-permissions"
+              >
+                Permissions
+              </Link>
+            </>
           )}
         </div>
       </div>

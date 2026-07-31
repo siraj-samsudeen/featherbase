@@ -60,6 +60,7 @@ test('UI-013: list customizations persist across logout/login', async ({ page })
 
   // Give the debounced PUT a moment, then log out and back in.
   await page.waitForTimeout(300)
+  await page.getByTestId('session-user').click() // logout lives in the account menu (#72)
   await page.getByTestId('logout').click()
   await expect(page).toHaveURL(/\/login/)
   await login(page)

@@ -1,4 +1,5 @@
 import { serve } from '@hono/node-server'
+import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono, type Context } from 'hono'
 import { cors } from 'hono/cors'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
@@ -7,13 +8,14 @@ import { config } from './config'
 import { sql } from './db'
 import { AppError, errorResponse } from './errors'
 import { getMeta, resolveTableName } from './meta'
-import { createTable, updateTable } from './doctype-engine'
+import { createTable, setIdPattern, updateTable } from './doctype-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { generateApiKeys, login, resolveToken, revokeApiKeys, setUserPassword, issueSession, type SessionUser } from './auth'
 import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newState, verifyState, isMockProvider } from './oauth'
 import { assertPermission, assertSystemManager, getRoles } from './permissions'
+import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
@@ -27,6 +29,7 @@ import {
   splitSuffix,
 } from './actions'
 import './actions/core-row-actions'
+import './actions/collection-import'
 import { renderPdf, renderPrintHtml } from './print'
 import { availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
@@ -49,8 +52,12 @@ import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps } from './apps'
 import { createSite, listSites, resolveSite, siteCreateDoctype, siteListDoctypes, siteCreateUser, siteListUsers } from './tenancy'
 import helloCrm from './sample-apps/hello-crm'
+import helpdesk from './sample-apps/helpdesk'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
 import { randomBytes } from 'node:crypto'
+import { existsSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 await loadControllers()
 await loadMethods()
@@ -61,6 +68,9 @@ await reapplyCustomFields()
 // PLAT-001: register the apps this build ships, then re-wire the doc_events of
 // any that are already installed (their DocTypes persist in the DB).
 registerApp(helloCrm)
+// Registered, NOT installed: a fresh deployment has zero helpdesk tables
+// until POST /api/install_app { name: 'helpdesk' } (PLAT-006, #78).
+registerApp(helpdesk)
 await loadInstalledApps()
 
 type Env = { Variables: { user: SessionUser } }
@@ -393,15 +403,40 @@ app.post('/api/revoke_api_key', async (c) => {
   return c.json({ ok: true })
 })
 
+// #74: `system` marks tables created by the migration chain. It is set only
+// by migrations/seeds (through createTable directly) — a table created or
+// updated over the API can never claim it.
+function rejectSystemClaim(body: Record<string, unknown>) {
+  if (body.system)
+    throw new AppError('ValidationError', 'Invalid Table definition', {
+      system: 'system is reserved for platform tables and cannot be set over the API',
+    })
+}
+
 app.post('/api/doctype', async (c) => {
   await assertSystemManager(who(c))
-  const meta = await createTable(await c.req.json())
+  const body = (await c.req.json()) as Record<string, unknown>
+  rejectSystemClaim(body)
+  const meta = await createTable(body)
+  // #80: a table you build never vanishes from navigation — its module's
+  // home page is created on demand and the table's link appended.
+  if (meta.kind !== 'sub_table') await ensureHomePageForTable(meta.name, meta.module)
   return c.json(meta, 201)
+})
+
+// NAM-001: change how a Table names new rows, without resending its schema.
+app.put('/api/doctype/:name/id_pattern', async (c) => {
+  await assertSystemManager(who(c))
+  const body = (await c.req.json()) as { id_pattern?: unknown }
+  if (typeof body.id_pattern !== 'string')
+    throw new AppError('ValidationError', 'Expected { id_pattern }')
+  return c.json(await setIdPattern(c.req.param('name'), body.id_pattern))
 })
 
 app.put('/api/doctype/:name', async (c) => {
   await assertSystemManager(who(c))
   const body = (await c.req.json()) as Record<string, unknown> & { drop_columns?: boolean }
+  rejectSystemClaim(body)
   const { drop_columns, ...def } = body
   return c.json(await updateTable(c.req.param('name'), def, { drop_columns }))
 })
@@ -911,6 +946,14 @@ app.get('/api/search', async (c) => {
   return c.json({ results: await globalSearch(q, who(c)) })
 })
 
+// #80: the caller's visible Home Pages with their permission-filtered card
+// links — the ONLY source the Desk sidebar consumes. Role visibility is
+// presentation scoping (computed server-side), not a security boundary;
+// table access is still enforced by Permission rows on every read.
+app.get('/api/home_pages', async (c) => {
+  return c.json({ pages: await getVisibleHomePages(who(c)) })
+})
+
 // RT-003: the caller's unread notification count.
 app.get('/api/unread_count', async (c) => {
   const [row] = await sql`
@@ -1042,6 +1085,34 @@ app.delete('/api/table/:table/:name', async (c) => {
   publishDocEvent(table, name, 'deleted')
   return c.json({ ok: true })
 })
+
+// Single-origin production serving (#57): when the SPA has been built into
+// the image (apps/web/dist exists — the Dockerfile's web-build stage), this
+// process serves it too, so one container answers both / and /api on one
+// origin. Dev is untouched: a plain checkout has no dist directory, and the
+// vite dev server on :5173 keeps proxying /api here.
+// (import.meta.url is handed to fileURLToPath as a STRING, and only when it
+// carries the file: scheme — the web test environment loads this module with
+// a realm-foreign URL that fileURLToPath rejects as an object, and such
+// environments never serve the SPA anyway.)
+const webDist = import.meta.url.startsWith('file:')
+  ? path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist')
+  : ''
+if (webDist && existsSync(webDist)) {
+  // serveStatic resolves `root` against process.cwd() (apps/server under
+  // `pnpm --filter server start`), so the path must be expressed relative
+  // to that, not absolute.
+  const webRoot = path.relative(process.cwd(), webDist)
+  app.use('*', serveStatic({ root: webRoot }))
+  // SPA fallback: any GET the API and asset handlers didn't claim gets
+  // index.html so client-side routes deep-link. Server-owned prefixes pass
+  // through and keep their JSON 404 envelope (API-006).
+  const serverOwned = /^\/(api|files|private\/files|web|ws)(\/|$)/
+  app.get('*', (c, next) => {
+    if (serverOwned.test(c.req.path)) return next()
+    return serveStatic({ root: webRoot, path: 'index.html' })(c, next)
+  })
+}
 
 if (process.env.NODE_ENV !== 'test') {
   const server = serve({ fetch: app.fetch, port: config.port }, (info) => {

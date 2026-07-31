@@ -2,8 +2,9 @@ import { z } from 'zod'
 import { sql } from './db'
 import { AppError } from './errors'
 import { createTable, tableName } from './doctype-engine'
+import { ensureHomePageForTable } from './home-pages'
 import { invalidateMeta } from './meta'
-import { saveDoc } from './document'
+import { saveDoc, deleteDoc } from './document'
 import { enqueue, registerJob, type JobHandler } from './jobs'
 import { swapMethod, type MethodDef, type ServerMethod } from './methods'
 import {
@@ -47,6 +48,13 @@ export interface AppPermission {
   can_amend?: boolean
 }
 
+// PLAT-006 (#78): fixture documents an app ships — workflows, email rules,
+// server scripts, SLAs, web forms, sample rows. Anything saveDoc can save.
+export interface AppFixture {
+  table: string
+  rows: Record<string, unknown>[]
+}
+
 export interface AppManifest {
   name: string
   // Table definitions this app owns (same shape accepted by createTable).
@@ -59,6 +67,13 @@ export interface AppManifest {
   // pre-existing grant's flags would be worse than ignoring a redundant
   // declaration.
   permissions?: AppPermission[]
+  // Fixture documents (PLAT-006, #78), materialized through the normal
+  // saveDoc lifecycle AFTER tables/roles/permissions, in declaration order —
+  // declare a Workflow before rows that reference it. A named row that
+  // already exists is adopted, not recreated and not recorded (same
+  // discipline as roles), so uninstall can never remove a row that predated
+  // the app.
+  fixtures?: AppFixture[]
   // Lifecycle hooks keyed by target Table then event. The target need not be
   // owned by this app — that is the whole point of doc_events (PLAT-002). The
   // "*" key hooks EVERY Table (Frappe's doc_events["*"]).
@@ -99,6 +114,23 @@ function asNameList(v: unknown): string[] {
     }
   }
   return []
+}
+
+// A fixture row's identity in the install ledger: enough to delete exactly
+// that row on uninstall, nothing more.
+interface FixtureRef {
+  table: string
+  name: string
+}
+
+function asFixtureRefs(v: unknown): FixtureRef[] {
+  const raw = typeof v === 'string' ? (() => { try { return JSON.parse(v) } catch { return [] } })() : v
+  if (!Array.isArray(raw)) return []
+  return raw.filter(
+    (r): r is FixtureRef =>
+      r != null && typeof r === 'object' &&
+      typeof (r as FixtureRef).table === 'string' && typeof (r as FixtureRef).name === 'string',
+  )
 }
 
 // Wire an app's doc_events into the controller registry, tracking the created
@@ -214,6 +246,47 @@ async function teardownAccess(roles: string[], perms: string[]): Promise<void> {
   }
 }
 
+// PLAT-006 (#78): materialize the manifest's fixture documents through the
+// NORMAL saveDoc lifecycle — validation, automation triggers, id patterns and
+// sub-tables all run, exactly as if an admin had saved each row. Declaration
+// order is the dependency order (a Workflow before rows that reference it).
+// Returns only the rows this install genuinely CREATED: a declared row whose
+// name already exists is adopted as-is, not overwritten and not recorded, so
+// uninstall can never remove (or an install redefine) a row that predated
+// the app — the same discipline provisionAccess applies to roles and grants.
+async function provisionFixtures(manifest: AppManifest): Promise<FixtureRef[]> {
+  const created: FixtureRef[] = []
+  for (const fixture of manifest.fixtures ?? []) {
+    for (const row of fixture.rows) {
+      const name = row.name == null ? '' : String(row.name).trim()
+      if (name) {
+        const [have] = await sql`
+          select 1 from ${sql(tableName(fixture.table))} where name = ${name}`
+        if (have) continue
+      }
+      const saved = await saveDoc(fixture.table, { ...row }, 'Administrator', 'insert')
+      created.push({ table: fixture.table, name: String(saved.name) })
+    }
+  }
+  return created
+}
+
+// Remove the fixture rows an install created, newest-first (reverse of
+// declaration order, so dependents go before what they reference) and BEFORE
+// the app's tables drop — a fixture may live on an app-owned table. Runs the
+// real delete lifecycle (on_trash hooks, child-row cleanup). A row the user
+// already deleted is skipped quietly — the goal state is "gone" either way.
+async function teardownFixtures(fixtures: FixtureRef[]): Promise<void> {
+  for (const ref of [...fixtures].reverse()) {
+    try {
+      await deleteDoc(ref.table, ref.name)
+    } catch (err) {
+      if (err instanceof AppError && err.type === 'NotFoundError') continue
+      throw err
+    }
+  }
+}
+
 export async function isInstalled(name: string): Promise<boolean> {
   const [row] = await sql`select 1 from installed_app where name = ${name}`
   return Boolean(row)
@@ -228,32 +301,65 @@ export async function listInstalledApps(): Promise<{ name: string; tables: strin
   }))
 }
 
-type InstallResult = { name: string; tables: string[]; roles: string[]; perms: string[] }
+type InstallResult = {
+  name: string
+  tables: string[]
+  roles: string[]
+  perms: string[]
+  fixtures: FixtureRef[]
+}
 
 // Shared install path: create the app's Tables (each goes through the
 // normal engine → table), then its roles and grants — in that order, since a
-// Permission links to a Role and may target a Table the app just created.
+// Permission links to a Role and may target a Table the app just created —
+// then its fixture documents, which may depend on all of the above.
 // `stored` is the declarative manifest to persist, or null for a code app.
 async function materialize(manifest: AppManifest, stored: unknown): Promise<InstallResult> {
   if (await isInstalled(manifest.name))
     throw new AppError('ConflictError', `App ${manifest.name} is already installed`)
   const created: string[] = []
   for (const def of manifest.tables ?? []) {
+    // App tables are user-space: they group under the app's own module in the
+    // sidebar. `system` marks tables created by the migration chain and is
+    // rejected on POST /api/doctype — an app manifest gets the same refusal,
+    // not a silent bypass.
+    if ((def as { system?: unknown })?.system === true)
+      throw new AppError(
+        'ValidationError',
+        `App table declares system: true — the system flag belongs to the migration chain, app tables are user-space`,
+      )
     const meta = await createTable(def)
     created.push(meta.name)
+    // #80: app tables group under the app's own module in navigation, same
+    // as builder-created tables — the module's home page is created on
+    // demand and the table's link appended.
+    if (meta.kind !== 'sub_table') await ensureHomePageForTable(meta.name, meta.module)
   }
   const access = await provisionAccess(manifest)
-  // Wire its doc_events, scheduler jobs, and method overrides. (A declarative
-  // manifest has none of these — the loop bodies simply never run.)
+  // Wire its doc_events, scheduler jobs, and method overrides BEFORE the
+  // fixtures materialize, so fixture saves run under the app's own hooks the
+  // same way any later save would. (A declarative manifest has none of these
+  // — the loop bodies simply never run.)
   wireHooks(manifest)
   await ensureSchedulerJobs(manifest)
+  let fixtures: FixtureRef[]
+  try {
+    fixtures = await provisionFixtures(manifest)
+  } catch (err) {
+    // A fixture that fails validation aborts the install; unwire the hooks so
+    // a half-installed app leaves no live code behind. (Created tables/roles
+    // remain, as with any mid-install failure — there is no ledger row yet.)
+    unwireHooks(manifest.name)
+    throw err
+  }
   // Cast the JSON text to jsonb explicitly — passing a JS string to a jsonb
   // column would otherwise double-encode it as a JSON string.
   await sql`
-    insert into installed_app (name, tables, roles, perms, manifest)
+    insert into installed_app (name, tables, roles, perms, fixtures, manifest)
     values (${manifest.name}, ${sql.json(created)}, ${sql.json(access.roles)},
-            ${sql.json(access.perms)}, ${stored == null ? null : sql.json(stored as never)})`
-  return { name: manifest.name, tables: created, roles: access.roles, perms: access.perms }
+            ${sql.json(access.perms)}, ${sql.json(fixtures as never)},
+            ${stored == null ? null : sql.json(stored as never)})`
+  return { name: manifest.name, tables: created, roles: access.roles, perms: access.perms, fixtures }
 }
 
 export async function installApp(name: string): Promise<InstallResult> {
@@ -282,12 +388,22 @@ const appPermissionSchema = z
   })
   .strict()
 
+// Fixtures are pure data — they survive JSON, so a declarative manifest may
+// carry them (PLAT-006, #78).
+const appFixtureSchema = z
+  .object({
+    table: z.string().min(1),
+    rows: z.array(z.record(z.unknown())),
+  })
+  .strict()
+
 const declarativeManifestSchema = z
   .object({
     name: z.string().min(1),
     tables: z.array(z.unknown()).optional(),
     roles: z.array(z.string().min(1)).optional(),
     permissions: z.array(appPermissionSchema).optional(),
+    fixtures: z.array(appFixtureSchema).optional(),
   })
   .strict()
 
@@ -322,7 +438,7 @@ export async function installAppFromManifest(input: unknown): Promise<InstallRes
 }
 
 export async function uninstallApp(name: string): Promise<{ name: string; removed: string[] }> {
-  const [row] = await sql`select tables, roles, perms from installed_app where name = ${name}`
+  const [row] = await sql`select tables, roles, perms, fixtures from installed_app where name = ${name}`
   if (!row) throw new AppError('ValidationError', `App ${name} is not installed`)
   const tables = asNameList(row.tables)
 
@@ -330,6 +446,10 @@ export async function uninstallApp(name: string): Promise<{ name: string; remove
   unwireHooks(name)
   const manifest = available.get(name)
   if (manifest) await dropSchedulerJobs(manifest)
+
+  // Fixture rows go first — reverse declaration order, and before the app's
+  // tables drop, since a fixture may live on (or reference) an app table.
+  await teardownFixtures(asFixtureRefs(row.fixtures))
 
   for (const t of tables) {
     const tbl = tableName(t)

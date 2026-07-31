@@ -10,13 +10,32 @@ async function token(request: APIRequestContext) {
   return ((await r.json()) as { token: string }).token
 }
 
+// The Helpdesk is a registered installable app now (PLAT-006, #78), so the
+// spec installs it through the real endpoint — POST /api/install_app
+// { name: 'helpdesk' } — exactly as a deployment would. Idempotent: a
+// database that already carries the structure (seed-helpdesk.ts, or a
+// previous run) is left as-is; a later `POST /api/uninstall_app` can remove
+// the footprint wholesale.
+async function ensureHelpdeskStructure(request: APIRequestContext) {
+  const H = { Authorization: `Bearer ${await token(request)}` }
+  const has = await request.get('/api/table/HD%20Ticket:meta', { headers: H })
+  if (has.ok()) return
+
+  const r = await request.post('/api/install_app', {
+    headers: H,
+    data: { name: 'helpdesk' },
+  })
+  if (r.status() !== 201) throw new Error(`install helpdesk: ${r.status()} ${await r.text()}`)
+}
+
 let name = ''
 
-// Helpdesk demo app (migration 0051): the generic Desk renders the HD Ticket
-// DocType — list, form, and workflow actions on the bound status field —
-// with zero bespoke frontend. The spec seeds its own ticket (demo content is
-// opt-in) and removes it afterwards so nothing outlives the run.
+// Helpdesk sample app: the generic Desk renders the HD Ticket Table — list,
+// form, and workflow actions on the bound status field — with zero bespoke
+// frontend. The spec seeds its own ticket (demo content is opt-in) and
+// removes it afterwards so no ticket outlives the run.
 test.beforeAll(async ({ request }) => {
+  await ensureHelpdeskStructure(request)
   const H = { Authorization: `Bearer ${await token(request)}` }
   const r = await request.post('/api/save_doc', {
     headers: H,

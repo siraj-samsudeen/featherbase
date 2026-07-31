@@ -413,6 +413,717 @@ db.ts` exports one `sql` proxy used for both metadata and document data, and the
 sandbox seam swaps its delegate — the per-DocType client resolver has to keep
 metadata on the control pool, or the test harness will try to roll back a
 transaction on the wrong connection.
+## 2026-07-30 — NAM-001: naming series in the UI (imports no longer get hash ids)
+
+Imported Tables named their rows with random hashes (`a0373bac75`) and there
+was **no way to ask for a series** anywhere in the Admin. The engine had
+supported it all along — `resolveName` (`document.ts:81`) implements `hash`,
+`prompt`, `field:<column>`, and `PREFIX-.###` series, and `tableDefSchema`
+accepts `id_pattern` — but **no client ever sent the field**, so
+`createTable` fell through to its `?? 'hash'` default. `docs/TUTORIAL.md:44`
+already noted the builder "exposes only a subset of the definition — notably
+not `id_pattern`". This wires it up.
+
+- **`packages/shared`**: `seriesPrefix('Sub Registrar Office')` ->
+  `'SUB-REGISTRAR-OFFICE-'` (words uppercased, `-` joined, capped at 20
+  chars, non-alphanumerics dropped so a `.` can never reach the prefix —
+  `resolveName` splits the pattern at the first dot). `idPatternFor(name,
+  digits=3)` composes `PREFIX-.###`. `inferTableDef` now returns
+  `id_pattern`, so **an imported Table defaults to a readable series**
+  instead of hashes — the actual bug the user hit.
+- **`NamingControl.tsx`** (new, shared): kind picker (Series / Random / Set
+  by user / From a column) + prefix + digit count, with a live preview
+  ("First rows: ZONE-001, ZONE-002, ZONE-003…"). Digits go down to 1, so a
+  bare `ZONE-1, ZONE-2, ZONE-3` is reachable. `parseIdPattern` /
+  `composeIdPattern` round-trip the stored string; an empty prefix always
+  composes back to `hash`, so it can never reach the server.
+- **Table Builder**: Naming row under Table name; the prefix follows the
+  Table name until the user edits it (`namingOverride ?? idPatternFor(name)`).
+- **Import Wizard**: per-sheet "Row id prefix" for new-Table plans.
+- **Existing Tables**: the builder only *creates*, so it could not fix the
+  already-imported Zone. New `PUT /api/doctype/:name/id_pattern` +
+  `setIdPattern()` and a **Naming** button on the list view (System Manager
+  only) -> `/desk/naming/$doctype`. Deliberately narrow: the full
+  `PUT /api/doctype` round-trip makes the client resend every column, and an
+  omission there silently rewrites the schema. `validateIdPattern` now also
+  guards the create/update paths.
+
+**Also fixed (found while verifying, one line, same code path):** migration
+`0055_terminology_rename` renamed `sort_field` -> `sort_column` and rewrote
+existing rows, but left the column DEFAULT at the pre-rename `'modified'`.
+Every Table created *since* — i.e. every Table built or imported through the
+Admin: Zone, SRO, Registration District, Import Log — got
+`sort_column='modified'`, a column that no longer exists, so `getList()`
+rejected its own default `order_by` and **the Table's list view rendered
+empty**. Zone showed "0 total" with 11 rows in the table.
+`0061_fix_sort_column_default.sql` sets the default and repairs the rows.
+
+Verified end-to-end in the browser (Playwright MCP, real CSV through the real
+UI): dropping `sub registrar office.csv` derived prefix
+`SUB-REGISTRAR-OFFICE-`, shortened to `SRO-`, created + imported 3 rows named
+**SRO-001/002/003**; Zone's list view came back to 11 rows; Zone's Naming
+page round-trips `ZONE-.###`. Plus `naming-series.spec.ts` (2 tests: build
+with a series incl. 1-digit `ND-1`, and switch an existing Table to a series
+with a 417 on a bad pattern) and 4 new shared unit tests. 68 pass in
+`import-infer.test.ts`; `e2e` builder/import/listview/smoke all green.
+
+**Gotcha — the dev database is shared across worktrees.** The `migration`
+table here lists `0057_drop_helpdesk.ts`, `0058_system_flag.ts`, and
+`0059_fix_literal_newline_choices.sql` — applied, but absent from this
+worktree's `migrations/` directory. Parallel sessions on other branches are
+migrating the same `featherbase` database. Consequences seen this session:
+(1) 54 test failures ("Invalid values for Permission", literal `\n` in
+`column_def.choices`) appeared and then fixed themselves when another
+branch's `0059` landed; (2) `test/helpdesk.test.ts` fails 9 tests with
+"Table HD Ticket not found" because another branch's `0057_drop_helpdesk`
+dropped it while this branch still has the test file. **Neither is caused by
+this change** — both are cross-worktree contamination. This migration was
+renumbered 0057 -> 0060 to dodge the collision. Treat a red suite here as
+suspect until you check `select name from migration` against `ls
+apps/server/migrations/`.
+
+- Next: the derived prefix for a long Table name is verbose
+  (`SUB-REGISTRAR-OFFICE-001`); consider an acronym form for 3+ word names.
+
+---
+
+## 2026-07-31 — NAM-002: the row id is column one, not a setting above the grid
+
+Follow-up to NAM-001, same branch. Two complaints, one root cause: naming was
+modelled as a *setting* rather than as the identity *column* it is.
+
+- The two screens disagreed. The Table Builder got the full `NamingControl`;
+  the Import Wizard got a lone "Row id prefix" textbox hardwired to 3 digits
+  (`planIdPattern` composed `${prefix}.###`), so a bare `ZONE-1, ZONE-2,
+  ZONE-3` was reachable when building a Table but not when importing one —
+  for the same file.
+- The row id didn't look like a column. Users think of a record as having an
+  ID and a name; when a sheet is mapped column-by-column, the id belongs in
+  that grid.
+
+**Both screens now open the grid with a locked, tinted "Row ID" row** carrying
+the shared `NamingControl` — the same component, not a lookalike, so they
+cannot drift again. `SheetPlan.naming_prefix: string | null` became
+`id_pattern: string | null`, so the wizard can express every kind rather than
+just a prefix.
+
+**One dropdown replaces two.** `NamingControl` used to render a kind picker
+plus, for the `field` kind, a second column picker. The columns now live in an
+optgroup inside the kind select, because naming a row after a column *is*
+picking that column. Selecting one encodes `field:<column>` directly, which is
+what `resolveName` already implements — so "generate an id" and "take the id
+from the sheet" stop being two mental models. The unreachable "field kind with
+no column chosen" state disappears with it.
+
+Preview copy is id-centric now ("Each row takes its id from district_id").
+
+Verified in the browser, end to end: `registration_district.csv` imported as
+`Rowid Check` with the row id sourced from `district_id` landed rows named
+**50001 / 50002 / 50003**, not hashes. Series mode previews
+`REGISTRATION-DISTRIC-001…` in the same row.
+
+**Deliberately not built:** an *editable label* for the row id ("Zone Id").
+There is nowhere to store it — `table_def` has `title_column` but no id label,
+and ADR 0007 (#88) argues that field becomes unnecessary once the primary key
+is renamed `name` -> `id` and `name` becomes an ordinary labelled column. The
+row shows a fixed "Row ID" until #89 lands. Tracked in #90.
+
+- Gotcha: the builder/import e2e specs self-skip when their fixture Table
+  already exists (Tables cannot be deleted), so a green local run does not
+  mean those paths ran — verify in the browser.
+- Next: #90 (acronym prefixes for 3+ word names; the duplicate-identity-column
+  question when the id is sourced from a file column), then #89.
+
+---
+## 2026-07-30 — Home Pages: curated navigation replaces the table-list sidebar (#80)
+
+The sidebar listed raw table metadata — every table, grouped, in the user's
+face on every screen. Frappe's answer is the Workspace: a curated landing
+page per module. This session ships that as **Home Pages** — navigation
+ONLY, deliberately: no page builder, no content blocks, no charts or number
+cards, and no fields anticipating them.
+
+- **The Table is renamed: `Workspace` -> `Home Page`** — the user-facing name
+  everywhere (sidebar, headings, GLOSSARY), and the internal Table name too.
+  UI-027's frozen wording ("configurable module home pages… a workspace
+  lists its shortcuts") is satisfied by the renamed reality, so the full
+  rename won over a surface-only one; its spec (now `home-page.spec.ts`)
+  still pins shortcuts rendering + navigation. Mechanics follow the 0055
+  discipline: 0036 is rewritten in place (same FILENAME, so upgraded
+  databases — which recorded it as applied — never re-run it) to create the
+  final shape fresh; new 0060 converges upgrades: copy-rename the table_def
+  row (FK order: copy, re-point children, delete), physical rename, RLS
+  policy recreated with `fc_has_read('Home Page')`, and a ref sweep
+  (every `ref_table` column + share/data_scope/user_settings spellings).
+- **Schema, minimal Frappe Workspace-Link model:** `module`, `sequence`,
+  `links` sub-table (`Home Page Link`: label, type Link|Card Break,
+  link_to -> Table) and `roles` sub-table (`Home Page Role`). The legacy
+  JSON `shortcuts` column is KEPT WORKING, not migrated into links — links
+  are Table references while shortcuts also target dashboards/reports/urls,
+  which links deliberately cannot express (navigation only).
+- **Sidebar flip (Frappe parity):** the sidebar lists Home Pages only, from
+  the new `GET /api/home_pages` — the caller's visible pages with their
+  card links, computed SERVER-SIDE (Admin UI stays generic): a page with
+  empty roles is visible to everyone, otherwise to role-holders,
+  Administrator always; each link is dropped unless the caller can read the
+  target table (Frappe's is_item_allowed), dead links (dropped tables) are
+  filtered, a card with no surviving links disappears. Role visibility is
+  presentation scoping, NOT a security boundary — table access is still
+  Permission rows. An **All tables** entry keeps the #74 grouped list (user
+  modules first, collapsed System group) as a page — nothing unreachable.
+  /desk now lands on the first visible page.
+- **Seeds + auto-membership:** 0060 seeds one 'System' page grouping all 45
+  engine tables into six cards (Users & Access / Automation / Email /
+  Reports & Dashboards / Website / Platform catch-all — enumerated from
+  table_def, so future engine tables land in Platform), and sweeps existing
+  user tables onto per-module pages. A system=false table with module
+  'Core' (production's pre-#74 'Zone') lands on a plain 'Home' page.
+  `ensureHomePageForTable` runs on POST /api/doctype and app installs — a
+  table you build NEVER vanishes from navigation. Deliberately NOT inside
+  createTable: migrations 0037–0057 create engine tables before the system
+  flag exists and must not seed spurious pages. Home pages stay ordinary
+  documents — the generic FormView curates them; no dedicated editor.
+
+Verified on throwaway DBs (never the local `featherbase`, ports 8905 only):
+migration proven BOTH ways — fresh-from-zero (1 System page, 45 links,
+idempotent under a double `up()`), and an upgrade from the previous tip
+shaped like production (user table 'Zone' module 'Core' + a legacy Workspace
+row with shortcuts): Workspace renamed with rows carried, shortcuts intact,
+Zone linked on the seeded Home page, RLS predicate updated, column positions
+identical to fresh. Server suite 493 green (14 new in home-pages.test.ts:
+role scoping empty/held/Administrator, ordering, link + shortcut permission
+filtering, card pruning, dead-link filtering, module page on demand, append
+not duplicate, Core->Home, sub_table exclusion, seed idempotency + reseed).
+Web unit 12 green, both typechecks clean. Full e2e against a fresh
+single-origin stack on :8905 (built SPA served by the API): 85 passed,
+2 skipped, 0 failed — including the flip exercised as a user (login ->
+sidebar lists System -> cards -> open a table -> All tables shows everything
+incl. collapsed System group -> builder-created table appears on its
+module's page WITHOUT a reload).
+
+Gotchas for later sessions:
+- 0036 keeps its filename (`0036_workspace.ts`) although it now creates
+  'Home Page' — the migration table records filenames; renaming the file
+  would re-run it on production. Same trap as 0051/0057.
+- ENGINE_TABLES (0058) now lists Home Page (+ Link/Role) and not Workspace:
+  any DB reaching 0058 with this code created 'Home Page' at 0036; DBs that
+  had Workspace recorded 0058 long ago and converge via 0060's rename.
+- The FormView can curate pages but saving one does not invalidate the
+  sidebar's ['home-pages'] query — the next mount/refetch picks it up.
+  Realtime invalidation is a follow-up nicety.
+- App uninstall leaves the module page and its (now dead) links behind;
+  GET /api/home_pages filters them, so nothing breaks. Cleanup on uninstall
+  is a follow-up.
+
+Next: a Desk surface for /api/apps (list, install, uninstall buttons) so the
+app system is operable without curl; realtime invalidation of the sidebar's
+home-pages query on Home Page saves.
+
+---
+
+## 2026-07-30 — Apps ship fixtures; Helpdesk is a real installable app (#78)
+
+An app manifest could declare tables, roles, permissions and code hooks — but
+not DOCUMENTS: no way to ship a Workflow, Email Rule, Server Script, SLA,
+Email Account, or Web Form with an app. That is why the Helpdesk survived
+only as an imperative installer (`installHelpdesk()`) glued to a seed script.
+Two changes (PLAT-006):
+
+- **`fixtures` on AppManifest** — `{ table, rows[] }[]`, materialized through
+  the NORMAL saveDoc lifecycle (validation, automation, id patterns,
+  sub-tables) AFTER tables/roles/permissions, in declaration order (a
+  Workflow before rows that reference it), with the app's own doc_events
+  wired first so fixture saves run under them. New `installed_app.fixtures`
+  jsonb column (migration 0059, the 0053 pattern) records `{ table, name }`
+  for only what the install genuinely CREATED — a declared row whose name
+  already exists is **adopted**: not overwritten, not recorded, exactly the
+  roles/grants discipline. Uninstall deletes recorded fixture rows in
+  reverse order via the real deleteDoc (on_trash + child rows), BEFORE the
+  app's tables drop (fixtures may live on/reference app tables), skipping
+  rows the user already deleted. Declarative manifests accept `fixtures` too
+  (pure data — survives JSON); and an app table claiming `system: true` is
+  now refused at install, same 417 the /api/doctype routes give — app tables
+  are user-space and group under their own module.
+- **Helpdesk is a genuine app now.** `src/sample-apps/helpdesk.ts` is an
+  exported AppManifest (HD Ticket table, 3 roles, 13 grants, and six fixture
+  docs: workflow, default email account, email rule, server script, SLA +
+  4 priorities, published web form), `registerApp`'d in index.ts —
+  REGISTERED, NOT INSTALLED: a fresh deployment has zero helpdesk tables;
+  `POST /api/install_app { name: 'helpdesk' }` brings the whole thing up and
+  uninstall removes exactly what install created. The helpdesk suites
+  (server + web component) install the app per-test through the real
+  installApp() path inside their sandbox transactions; the ticketing e2e now
+  installs over the public endpoint instead of hand-building a slice.
+  `seed:helpdesk` installs the app over HTTP first, then seeds demo content
+  — and got fixed in passing: it still used pre-#61 `/api/resource` URLs
+  (its exists() check always 404'd) and the pre-0055 `document_type` field
+  on Assignment Rule, so it could not run twice.
+
+Verified on throwaway DBs (never the local `featherbase`): migration proven
+both ways — fresh migrate from zero (fixtures column present, zero helpdesk
+tables) and a DB migrated to the previous tip then upgraded (0059 the only
+change). Server suite 479 green (8 new in app-fixtures.test.ts: fixture
+round trip incl. a core-table Email Rule referencing the app table,
+adoption-survives-uninstall, user-deleted-row skip, declarative fixtures
+over the API, failed-fixture abort, system:true refusal, full helpdesk
+install→file-ticket-through-web-form→uninstall round trip with a
+pre-existing look-alike Email Account left standing). Web unit 12 green,
+both typechecks clean. Full e2e against a single-origin stack on :8904
+(built SPA served by the API server): 84 passed, 2 skipped, 0 failed.
+seed:helpdesk run twice against that stack — second run all "= exists",
+round-robin alternates agents, SLA stamps present.
+
+Gotchas for later sessions:
+- The helpdesk Email Account fixture keeps `is_default: true` — install
+  makes notifications deliverable out of the box; uninstall deletes the
+  account (it is a recorded fixture) and deliberately leaves NO default:
+  email.ts defaultSender() falls back to the oldest account, then
+  no-reply@localhost (the exact call 0057 made).
+- The Customer grant is create-without-write BY DESIGN (portal files via the
+  web form, which whitelists columns) — provisionAccess now warns about that
+  shape on every helpdesk install; the warning is expected noise, not a bug.
+- CI-only flake, diagnosed and fixed after the first push: the web workflow
+  test ended the moment it clicked Start — its `assertText('In Progress')`
+  was satisfied by the status select's OPTION list, which contains
+  "In Progress" from the first render — so WorkflowActions.apply()'s POST +
+  refetch tail was still in flight when the test finished. On a slow box
+  that tail ran after the sandbox rollback (stderr 42P01 on hd_ticket) and
+  after jsdom teardown, and its final setState threw "window is not
+  defined" as an unhandled rejection: every test green, run red. Fixed by
+  asserting the workflow-state PILL and then waiting for the status
+  select's VALUE to become In Progress (the doc refetch is the last network
+  call apply() awaits). Reproduced deterministically before fixing by
+  wrapping the fetch bridge with latency on the apply_workflow_action POST.
+  Mid-file strays of the same class (form-create's post-save refetches) are
+  harmless noise — jsdom is still alive between tests of one file; only an
+  end-of-file tail is fatal.
+- `scripts/verify-helpdesk.ts` is bit-rotted on main: it still speaks
+  `/api/resource`, PUT + `modified`, `owner`/`creation`/`status`, and the
+  removed `/api/apply_workflow_action` RPC. Untouched here (the helpdesk
+  test suites cover the same ground in-sandbox); fix or retire it in its own
+  session.
+
+Next: a Desk surface for /api/apps (list, install, uninstall buttons) so the
+app system is operable without curl; consider fixture UPDATE semantics on
+re-install (today: uninstall + install).
+
+---
+
+## 2026-07-30 — De-ship the Helpdesk demo; `system` flag groups platform tables (#74)
+
+A fresh deployment used to boot with 46 tables, one of them a full demo app:
+0051 shipped the HD Ticket helpdesk (table, 3 roles, 14 grants, workflow,
+SLA, a DEFAULT email account, email rule, server script, published web form)
+into every database. And the sidebar inferred "engine table" from the magic
+module string `'Core'` — which mis-filed every Table-Builder table (the
+builder never sent `module`, so user tables defaulted into Core). Two
+changes:
+
+- **Helpdesk is opt-in now.** 0051 is deleted from the chain; its body moved
+  verbatim to `src/sample-apps/helpdesk.ts` (`installHelpdesk()`, idempotent).
+  New migration 0057 tears down everything 0051 created on upgraded
+  databases — existence-checked, post-0055 names, no-op on databases that
+  never had it; the three roles are removed only if nothing references them,
+  and deleting the default email account deliberately leaves NO default
+  (email.ts defaultSender falls back safely). `seed:helpdesk` installs the
+  structure first (direct engine calls), then seeds demo users/tickets over
+  HTTP as before; `reset:helpdesk` was still using pre-0055 names
+  (tab_-prefixed, reference_doctype) and got fixed in passing.
+- **`system` boolean on table_def** (0058 + rewritten 0002/0004 for fresh
+  installs, same pattern 0055 set): backfilled `true` for the 45
+  chain-created tables, declared in both TableMeta mirrors, accepted by
+  `tableDefSchema` so migrations/seeds can set it — but REJECTED (417) on
+  POST/PUT /api/doctype, so a user table can never claim it (save_doc was
+  already refused for Table/Column via ENGINE_MANAGED). The Desk sidebar now
+  groups on the flag: user tables by module on top, every system table under
+  ONE "System" group, collapsed by default with a count badge, expandable,
+  every entry a normal link, state remembered in localStorage — GROUPING,
+  never hiding; the awesomebar still spans system tables (user tables just
+  sort first in suggestions). Table Builder gained a Module input (default
+  "Custom") so user tables land in a real module.
+
+Verified: migration proven BOTH ways on throwaway DBs — (a) fresh migrate
+from zero: 45 tables, no HD Ticket, zero `system = false` rows; (b) a DB
+migrated on the OLD chain (0051 applied), then migrated with 0057+0058: all
+helpdesk artifacts gone, table set and flags byte-identical to the fresh DB
+(diffed). Helpdesk suites now install the structure per-test inside their
+sandbox transactions; the ticketing e2e seeds the structure slice it needs
+through the public API. After merging main (#71/#72/#75) into the branch,
+everything re-run against the throwaway DBs: server 471 green (incl. 6 new
+system-flag tests), web unit 12, both typechecks clean, full e2e on an
+alternate-port stack (API :8902 / web :8903): 84 passed, 2 skipped, 0
+failed. (An earlier pre-merge run hit IMP-006's local-timezone inference
+flake, filed as #76 — #75 fixed it and the failure no longer reproduces.)
+
+Gotchas for later sessions:
+- A migration that creates a NEW engine table must pass `system: true` to
+  createTable AND extend ENGINE_TABLES in 0058 — the CI-side regression
+  test (system-flag.test.ts: zero `system = false` on a fresh DB) fails
+  otherwise. On dev databases that test skips (user tables are legitimately
+  system = false).
+- POST /api/doctype still defaults `module` to 'Core' server-side; a user
+  table posted without module therefore shows under a user group named
+  "Core" (visible, just oddly named). Deliberate — changing the server
+  default would touch every migration; the Builder now always sends one.
+- The e2e ticketing spec leaves the HD Ticket structure behind on the dev DB
+  (no DELETE /api/doctype yet, #66) — same footprint as seed:helpdesk minus
+  demo content.
+
+Next: consider dropping the dead `custom` boolean on table_def (superseded by
+`system`), and a DELETE /api/doctype (#66) so specs can clean up structure.
+
+## 2026-07-30 — avatar account menu + in-app Change password (#72)
+
+The navbar avatar was a static initials badge and "Log out" a bare text
+button beside it; there was no in-app way to change a password (the email
+reset flow needs an outbound account a fresh deployment doesn't have).
+Now (`DeskLayout.tsx`):
+
+- **The avatar opens an account menu** (fc-card dropdown): the user's full
+  name/email, **Change password**, and **Log out** (moved in here, same
+  `data-testid="logout"`). Closes on Escape and on outside mousedown. Theme
+  toggle and notification bell untouched.
+- **Change password modal**: new password + confirm (`.fc-input`/`.fc-label`/
+  `.fc-btn`, mirroring the ResetPassword page), client-side match check,
+  POST `/api/set_password` with `{ password }` — the endpoint already scopes
+  to the session user, so **zero server changes**. Success state
+  ("Your password has been updated.") with a Done button; Escape and Cancel
+  close.
+- Four e2e specs that reached for the bare logout button now open the menu
+  first (`desk`, `list-settings`, `i18n`, `i18n-login`).
+
+Verified: new component suite `test/account-menu.test.tsx` (3 tests — menu
+open/Escape/outside-click; change password posts and the NEW password then
+logs in through the in-process server while the old one 401s; mismatch
+blocks the submit and sends nothing) — web unit 12 green; new e2e
+`account-menu.spec.ts` (ACCT-001: full loop incl. logout, old password
+rejected, new accepted; `afterEach` restores the Administrator password
+even on failure). Server suite 458 green, both typechecks clean. Full e2e
+suite on a scratch stack (API :8901 / web :5901, throwaway DB): 83 passed,
+2 skipped, 1 failed — the failure is IMP-006 (`import-file.spec.ts`),
+pre-existing on unmodified main: SheetJS `cellDates: true` parses
+`2026-01-15` to UTC midnight and `dateOnly()` in
+`packages/shared/src/import.ts` checks LOCAL hours, so on any non-UTC
+machine (here IST, hours=5) date columns infer as Datetime. Passes in UTC
+CI; needs a timezone-independent `dateOnly`.
+
+Gotchas: Playwright's `selectOption` fires no real mousedown, so the menu's
+outside-click close never triggers around a language switch — `i18n.spec.ts`
+closes the menu with Escape before switching. **Next**: the same modal can
+serve the User form for System Managers setting another user's password
+(#72 notes it); fix the IMP-006 timezone inference flake.
+## 2026-07-30 — Single-origin deployment: the SPA ships inside the server image (#57)
+
+Deploying used to require two services (server container + static SPA host)
+and a reverse proxy wired so `/api` reaches the server — a shape nobody had
+actually stood up correctly. Now one container does the whole job:
+
+- **Dockerfile grows a `web-build` stage** that runs `pnpm --filter web
+  build` and copies `dist/` into the final image. The serving stage is
+  byte-for-byte the old prod-only server image otherwise.
+- **`index.ts` serves the SPA when `apps/web/dist` exists** — static files
+  plus an index-html fallback so client-side routes deep-link. The
+  server-owned prefixes (`/api`, `/files`, `/private/files`, `/web`, `/ws`)
+  pass through untouched, so unknown API routes keep the JSON error
+  envelope (API-006). A dev checkout has no `dist/`, so `./init.sh` and the
+  vite proxy are completely unaffected.
+- **`railway.json`** at the root encodes the deploy contract for Railway
+  (and documents it for everyone else): Dockerfile build, `pnpm --filter
+  server release` as the pre-deploy step, `/api/ping` healthcheck.
+- `docs/DEPLOY.md` gains a "Single-origin deployment" section; the
+  separately-hosted-SPA path is still documented but demoted.
+
+Verified: web build + dist-present boot exercised for real — `GET /` serves
+index.html, hashed assets serve `text/javascript`, `/desk/...` deep-links
+fall back to index.html, `/api/definitely-not-a-route` still answers the
+JSON envelope, `/files/nope.png` still 404s as JSON, and
+`POST /api/method/login` answers `{"message":"Logged In", ...}`. Server
+suite 458 green, web unit 9 green — both run with `dist/` present, pinning
+that the static block coexists with the API surface.
+
+Gotcha for posterity: the web component tests import the server app under
+vitest/jsdom, where `import.meta.url` resolves to a realm-foreign URL —
+`fileURLToPath(new URL(...))` throws `ERR_INVALID_URL_SCHEME` there. The
+static block therefore hands `import.meta.url` to `fileURLToPath` as a
+*string*, guarded on the `file:` scheme.
+
+Next: stand a real deployment up on a container platform and run the
+DEPLOY.md smoke check against it.
+
+## 2026-07-29 — Import Log: every import is answerable after the fact (IMP-011)
+
+First real-use feedback on the wizard: an import reported "N rows imported",
+but the user couldn't tell *which* Table the rows landed in (their DB has
+hundreds of Tables, two of them zone-ish) — and there was no record to
+consult. Two fixes:
+
+- **`Import Log` Table** (migration 0056, engine-created): one row per
+  `:import` request — ref_table, file_name, sheet_name, table_created,
+  inserted, failed, error_summary (first 20 row errors), part/parts for
+  chunked sheets. Written **server-side** in the collection action with
+  `skipPermissions` (system log; the importer needs no grant on it),
+  best-effort (`.catch(() => {})` — logging never breaks an import), so
+  plain API imports are recorded too, with the wizard passing
+  file/sheet/chunk context. Dry runs are not logged. Because it's an
+  ordinary Table, the generic ListView *is* the history UI — zero new
+  frontend surface; the wizard's "Import complete" line links to it.
+- **Auto-match is now loud.** When the wizard's column-overlap scoring
+  routes a sheet at an existing Table, the mapping panel shows an amber
+  notice ("rows will be added to <Table> — pick New Table… if you meant to
+  create one") — the silent-misdirection hazard the user hit. Manually
+  retargeting clears it.
+
+Verified: `import-action.test.ts` grows to 13 (log row content incl.
+context and error summary; no-context imports log bare counts; dry runs log
+nothing); wizard e2e extended to assert the notice, the history link, and
+both sheets' log rows via the API (2/2 on a reset DB); server suite 443
+green, web unit 9. Full e2e suite: 80 passed, 4 skipped, 0 failed (the
+RT-003 flake from the previous round did not recur).
+
+Follow-up (same day, user feedback): the wizard's existing-Table target and
+the auto-match notice now carry a "view ↗" peek link opening that Table's
+list in a new tab (plain `<a target="_blank">`, so wizard state survives) —
+you can inspect what a matched Table already contains before importing into
+it. Asserted in the wizard e2e. Gotcha from verifying it: deleting fixture
+Tables with raw SQL leaves the dev server's meta cache stale — restart the
+server (or hit invalidateMeta) after out-of-band deletions, or specs
+skip/fail confusingly. Issues #66 (dev-DB fixture cleanup + the missing
+DELETE /api/doctype) and #67 (awesomebar subtitle ambiguity) filed from the
+same feedback session.
+Second follow-up (same feedback session) — matching polish (IMP-012):
+- **Labels are normalized, not copied.** A header row like `Zone ID,
+  Zone Name, Reg_District_ID, Active_flag` used to become labels verbatim
+  (mixed spacing/underscores forever). `prettifyLabel` now derives
+  consistent labels ("Reg District ID", "Active Flag") — underscores/
+  camelCase to spaces, Title Case for lone-case words, short all-caps
+  tokens (ID/SKU) and mixed tokens ("(kg)") preserved. Machine
+  `column_name`s were already consistent; matching is unaffected by
+  construction (it compares sanitized forms, which erase exactly these
+  differences).
+- **Auto-match is bidirectional now.** `tableMatchQuality` returns both
+  the sheet-side score AND target coverage; `shouldAutoMatch` requires
+  score ≥ 0.6 AND (coverage ≥ 0.8 OR a shared name token). The real case
+  that motivated it: a 3-column "Zone" sheet scored 100% into the 5-column
+  "Registration District" Table and silently auto-selected it — now it
+  defaults to New Table and shows a blue **near-match hint** ("a similar
+  existing Table matches: X (3 of its 5 columns) — pick it to append
+  instead"), with the peek link. Full-coverage matches under junk names
+  (the e2e's renamed-export case) still auto-select.
+- Mapping dropdown shows both identities (`Zone ID · zone_id (Int)`) so
+  label-vs-machine-name is visible exactly where the confusion arose.
+- Verified: 15 new unit tests (prettify cases; the exact Zone/Registration
+  District geometry asserted not-auto-matched; junk-name/full-coverage
+  still matched; name-token rescue) — server suite 458 green; wizard +
+  import e2e specs re-run green on a reset DB. Full e2e suite: 80 passed,
+  4 skipped, 0 failed. Third follow-up from the same session: the wizard's
+  new-Table grid gained an editable **Label** column beside the machine
+  name (it showed only snake_case column_names, reading as inconsistent
+  next to the mapping panel's Title-Case labels) — asserted in the wizard
+  e2e, re-run green.
+Fourth follow-up (same session) — selective import + the target picker
+(IMP-013):
+- **Per-sheet skip**: every sheet's target can be "Skip this sheet" —
+  all-or-nothing workbooks are gone. Skipped sheets show a gray note,
+  count for nothing, and the import button disables when everything is
+  skipped; single-active-sheet imports still navigate to their Table.
+- **Per-column include**: the new-Table grid gained a "Use" checkbox per
+  column (unchecked rows gray out and are excluded from both the created
+  schema and the imported rows). Existing-Table mode already had this via
+  the mapping's "— skip —".
+- **The target picker replaces the native select** (unusable over hundreds
+  of Tables: "New Table…" needed a full scroll-back, best candidates were
+  buried alphabetically). Now a combobox: pinned "+ New Table…" and
+  "⊘ Skip this sheet" actions always on top, a **Best matches** section
+  (top 3 by tableMatchQuality, shown with "k of its n columns"), and a
+  search box filtering the rest. Enter picks the first hit; Escape closes.
+- Verified: new `IMP-013` e2e spec (skip a sheet via the picker, uncheck a
+  column, search-with-no-hits keeps the pinned actions, import → excluded
+  column absent from meta, skipped sheet's Table 404s, row count right) —
+  3/3 wizard specs green on a reset DB; web typecheck clean; web unit 9.
+  Full e2e suite: 80 passed, 5 skipped, 0 failed (the 5th skip is the new
+  IMP-013 spec's own idempotency guard on the re-run DB). Issue #68 filed
+  (import dedupe/upsert on a key column — non-binding proposal) for a
+  second PR; #66/#67 remain from earlier feedback.
+Fifth follow-up (same session) — two comprehension fixes from live use:
+- **Sheet counts vs Table counts were conflatable.** The card header
+  "Zone — 11 rows, 3 columns" described the FILE's sheet, but read as a
+  statement about the (empty) target Table of the same name. Header now
+  says `Sheet "Zone" — 11 rows, 3 columns in the file`, and an
+  existing-mode target shows its CURRENT count beside the peek link
+  ("holds 0 rows now", live via `:count`).
+- **Skipping a mapped column is a checkbox now** ("Use", same as the
+  new-Table grid; unmapped columns start unchecked; picking a column in
+  the select re-checks the row) — the "— skip —" select option was hard
+  to see and operate. The select's empty state reads "— pick a column —".
+  One `include` array now drives both modes' column selection.
+- e2e extended: target-count text, uncheck-a-mapped-column → imported row
+  has null there, mapped-count honors the checkbox. 3/3 wizard specs
+  green on a reset DB. First full-suite run caught the new list-view
+  assertion being non-idempotent (fixed 'Cog' row accumulating in the
+  persistent Table — the product's documented append semantics, see #68);
+  spec now uses a per-run unique SKU, verified twice back-to-back.
+  Final full e2e: 80 passed, 5 skipped, 0 failed.
+Next: same as before — background import via the job queue for large files.
+
+## 2026-07-29 — 0055 upgrade path fixed: pre-rename databases now migrate (#63 follow-up)
+
+Running this branch against a real pre-rename database (a laptop last
+migrated at 0054, before #63 merged) crashed `./init.sh` inside
+`0055_terminology_rename.sql`. Root cause class: **0055 was only ever
+verified against fresh databases**, where the rewritten 0001–0054 already
+produce the new schema and 0055 is a no-op. Against a genuinely old
+database it had four kinds of bugs, all fixed in place (safe to edit: 0055
+never successfully committed on any upgraded DB — it crashed — and on fresh
+DBs it's recorded and won't re-run):
+
+- **FK dropped by assumed name.** Constraint names survive table renames:
+  a DB that began life with `docfield` carries `docfield_parent_fkey`
+  through both later renames, so `drop constraint if exists
+  column_def_parent_fkey` was a silent no-op and the very next
+  `update ... parent='Table'` tripped the still-armed FK (the exact error
+  reported). Now dropped by pg_constraint lookup.
+- **`create or replace function fc_has_read`** 42P13s when the old function
+  had a different parameter name — now dropped with cascade first (§5
+  recreates every policy anyway).
+- **Domain-column renames missing entirely.** The rewritten migrations seed
+  ~25 per-Table columns under new names that 0055 never renamed on upgrade:
+  `document_type`/`reference_doctype`/`ref_doctype`/`doc_type` → `ref_table`
+  across 16 Tables, `webhook_doctype`→`webhook_table`, Custom Field's
+  `fieldname`/`fieldtype`/`options` (with the Link/Select/Table value map
+  and the options→reference_table/choices/row_table split),
+  `single_value.doctype`→`table_name`, `installed_app.doctypes`→`tables`,
+  Workflow Document State `doc_status`→`target_status` including the
+  0/1/2→draft/submitted/cancelled *value* conversion — plus the matching
+  `column_def` metadata rows (incl. Table's own autoname/issingle/istable→
+  id_pattern/kind and Column's fieldname/fieldtype/options/permlevel).
+  §2 had also renamed Permission's ref column to `reference_table` where
+  the engine reads `ref_table`.
+- **Ordering data-loss trap**: §3's docstatus→status conversion does `add
+  column if not exists status` + overwrite — on Tables with a *domain*
+  `status` column (Email Queue/HD Ticket/ToDo/Background Job) it would have
+  silently destroyed queue/ticket/todo/job state. The domain renames
+  (`send_status`/`ticket_status`/`todo_status`/`job_status`) now run in a
+  new §2c *before* §3.
+
+Verified by construction, not inspection: scratch DB migrated with the real
+pre-rename chain (worktree at ece91fd, 53 migrations), seeded with live
+domain rows (a ToDo, Link+Select Custom Fields, a queued email, a done
+job), then upgraded with the fixed chain — **information_schema column
+diff and column_def metadata diff against a from-scratch database are both
+empty**, every seeded value survived (Link→Reference split included), and
+the real server booted against the upgraded DB: login with the preserved
+password hash, ToDo list, Table create, and `:import` all green. Fresh
+path re-verified byte-identical; full server suite 441 green.
+
+Gotcha for future schema work: constraint names do NOT follow table
+renames — never drop/alter a constraint by its fresh-install name in an
+upgrade migration; look it up in pg_constraint. And any migration verified
+"end-to-end" must be run against a database migrated by the *previous
+release's chain*, not only from scratch.
+
+## 2026-07-29 — the Import wizard: multi-sheet, existing Tables, dry-run, Choice detection (IMP-007..010)
+
+Round 2 of the import feature (same branch/PR #65), per the agreed sequence:
+"the import you can trust" plus multi-sheet workbooks and rename-tolerant
+targeting. New Desk page `/desk/import` (sidebar "Import Data"; every list
+view gains an "Import" button that preselects that Table).
+
+- **Import into existing Tables.** Every sheet gets a target: create a new
+  Table (inferred grid, editable names/types) or append to an existing one
+  through a **column-mapping step** — file columns auto-matched by sanitized
+  column name, then by label (`autoMapColumns`), unmatched left as "— skip —"
+  for manual mapping. Mapped cells are coerced to the *target* column types.
+- **Rename-tolerant suggestions.** The suggested target is scored by column
+  overlap (`scoreTableMatch` = fraction of headers that auto-map), NOT by
+  file/sheet name — so `export-final-v2 (3).xlsx` still finds its Table.
+  ≥ 0.6 auto-selects; `?table=X` (the list-view button) wins at ≥ 0.3.
+- **Dry-run** (`POST :import { rows, dry_run: true }`): same create-permission
+  gate, every row through the same field-filter/defaults/zod pass an insert
+  runs (`checkRowForInsert` in document.ts), plus prompt-name-required,
+  existing-name conflicts, and duplicate-names-within-the-file — zero writes.
+  Automation triggers do NOT run in the dry pass (documented); real import
+  still reports per-row failures. The wizard's "Check" button surfaces
+  "N ready, M with problems: row 7: …" before anything is written, and the
+  import button becomes "Import anyway (skip M bad rows)".
+- **Multi-sheet workbooks**: `parseWorkbook` yields every non-empty sheet
+  with a header row; each becomes its own import plan. CSV = one sheet. The
+  quick builder (`/desk/new-table`) still uses only the first sheet and now
+  links to the wizard when it sees more.
+- **Choice detection** (`inferChoices`): a would-be-Data column whose values
+  repeat a small set (2–8 distinct, ≥ 6 samples, each option seen ~3x on
+  average, ≤ 60 chars, no newlines) becomes a Choice column with the options
+  pre-filled — surfaced in both the builder grid (target field) and the
+  wizard grid, editable before create.
+- **Verified**: server suite 441 green (10 new: dry-run trio + inference/
+  mapping additions); web typecheck + 9 unit tests; new
+  `e2e/import-wizard.spec.ts` (2 specs: the junk-named two-sheet workbook —
+  new Table with detected Choice + auto-matched existing Table + dry-run
+  catching a bad Int row + import skipping it; and the list-view Import
+  button preselecting its Table) — both green on first run. Full e2e suite:
+  79 passed, 4 skipped (create-path idempotency guards + pre-existing), 1
+  failed — realtime RT-003 (@mention unread count), which passes on an
+  isolated re-run and passed in this session's earlier full run before this
+  round existed: a load-timing flake, not an import regression.
+- Gotchas: a dropped file can beat the targets query — `loadFile` awaits
+  `ensureQueryData` for the suggestion corpus rather than reading
+  `targets.data`. E2e fixture columns must be unique per spec: two Tables
+  with identical column sets legitimately tie on `scoreTableMatch`, and the
+  suggestion picks the first alphabetically.
+- Next (per the agreed sequence): background import over the
+  `background_job` queue + realtime progress for large files; then paste-
+  from-clipboard; then reference detection / auto-normalization (split
+  repeated values into a linked Table).
+
+## 2026-07-29 — drag & drop a CSV/Excel file, get a Table + its data (IMP-001..006)
+
+Drop a `.csv`/`.xlsx` onto the Table builder (`/desk/new-table`) and
+Featherbase infers the whole Table definition — snake_case column names from
+the headers, types sampled from the data (Int/Float/Check/Date/Datetime/
+Data/Text), labels from the original headers — prefills the existing editable
+column grid plus a data preview, and on "Create Table & Import N rows"
+creates the Table and bulk-inserts every row. The generic ListView/FormView
+render it immediately with zero new frontend code (invariant #3).
+
+- **Shared inference layer** (`packages/shared/src/import.ts`, pure):
+  `sanitizeHeaders` (blank → `col_N`, duplicates and reserved standard
+  columns get `_1` suffixes), `inferColumnType` (>140 chars or newlines →
+  Text; `0/1` reads as Int, not Check — user can flip it in the grid;
+  midnight JS Dates from SheetJS `cellDates` → Date, with time → Datetime),
+  `inferTableDef`, `tableNameFromFile` ("customer orders.csv" → "Customer
+  Orders"), `coerceRows` (yes/true → boolean, local-time Date → `YYYY-MM-DD`
+  — `toISOString` would shift the day east of UTC).
+- **Server: the first real collection action** (`:import`), which the #61
+  registry had been waiting for. `POST /api/table/:table:import { rows }`
+  (`apps/server/src/actions/collection-import.ts`) pushes every row through
+  `saveDoc(..., 'insert')` — full permission/validation/id-pattern/trigger
+  chain, duplicate names conflict instead of updating. Best-effort: bad rows
+  come back as `{ index, message, fields }` while good rows land;
+  PermissionError still fails the whole request; 10k-row cap per request
+  (the client chunks at 500). `settings`/`sub_table` kinds refused.
+- **Web**: SheetJS (`xlsx`, already a dependency for report export) parses
+  both formats in the browser via dynamic import (`lib/parse-file.ts`,
+  `cellDates: true`); the builder keeps its manual path untouched (the
+  UI-011 spec still passes unchanged). Grid rows remember their
+  `source_index` into the file so deleting/renaming inferred columns still
+  imports the right cells.
+- **Verified**: 46 new server tests (`import-infer.test.ts`,
+  `import-action.test.ts`) in the full 431-green suite; new
+  `e2e/import-file.spec.ts` (3 specs: real drag-drop via in-page
+  `DataTransfer`+`File`, a real `.xlsx` built with SheetJS through the file
+  picker, and a bad-file refusal) against real browser + server + Postgres;
+  `doctype-builder.spec.ts` + smoke re-run green; both typechecks clean.
+  Full e2e suite then re-run: 77 passed, 5 skipped, 0 failed (skips are
+  the create-path idempotency guards — the import/builder specs skip once
+  their Tables exist in the dev DB — plus the two pre-existing skips).
+- Gotcha: in this container the pinned Playwright wants a browser build that
+  isn't installed — run e2e with `CHROMIUM_PATH=/opt/pw-browsers/chromium`
+  (the config already honors it). Also: Postgres `bigint` columns serialize
+  back as *strings* through the API — assert with `Number(...)`.
+- Next: the import currently targets only *new* Tables. A natural follow-up
+  is dropping a file onto an existing Table's ListView to append rows
+  (the `:import` action already supports it — it's UI-only work), plus
+  Choice-type inference for low-cardinality columns.
+
 ## 2026-07-26 — terminology rename + API surface redesign (#59, #61, #62)
 
 Two rounds landing as one PR, per the decided design in #59/#61: round 1

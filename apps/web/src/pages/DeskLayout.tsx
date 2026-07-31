@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, clearSession, getSessionUser, listResource } from '../lib/api'
+import { ApiError, api, clearSession, getSessionUser, listResource } from '../lib/api'
+import { useHomePages } from '../lib/home-pages'
 import { useRealtime } from '../lib/realtime'
 import { useTheme } from '../lib/theme'
 import { useI18n } from '../lib/i18n'
@@ -25,6 +26,26 @@ export function DeskLayout() {
   // toggled from the navbar; on md+ it is always shown.
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
+  // #72: the avatar opens an account menu (Change password, Log out).
+  const [accountOpen, setAccountOpen] = useState(false)
+  const [pwModalOpen, setPwModalOpen] = useState(false)
+  const accountRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!accountOpen) return
+    function onDown(e: MouseEvent) {
+      if (accountRef.current && !accountRef.current.contains(e.target as Node)) setAccountOpen(false)
+    }
+    function onEsc(e: KeyboardEvent) {
+      if (e.key === 'Escape') setAccountOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onEsc)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onEsc)
+    }
+  }, [accountOpen])
+
   // RT-003: unread notification count, live-updated when a realtime
   // 'notification' event arrives for this user.
   const unread = useQuery({
@@ -39,9 +60,9 @@ export function DeskLayout() {
   const tables = useQuery({
     queryKey: ['tables'],
     queryFn: () =>
-      listResource<{ name: string; module: string }>('Table', {
+      listResource<{ name: string; module: string; system: boolean }>('Table', {
         filters: [['kind', '!=', 'sub_table']],
-        fields: ['name', 'module'],
+        fields: ['name', 'module', 'system'],
         order_by: 'name asc',
         limit_page_length: 200,
       }),
@@ -100,16 +121,10 @@ export function DeskLayout() {
     return () => document.removeEventListener('keydown', onKey)
   }, [navigate])
 
-  // UI-027: home pages listed in the sidebar for quick navigation.
-  const workspaces = useQuery({
-    queryKey: ['workspaces'],
-    queryFn: () =>
-      listResource<{ name: string; label: string }>('Workspace', {
-        fields: ['name', 'label'],
-        order_by: 'label asc',
-        limit_page_length: 100,
-      }),
-  })
+  // UI-027 / #80: the sidebar lists the caller's visible Home Pages — the
+  // dedicated endpoint is its only source (role visibility and link
+  // permission-filtering are computed server-side).
+  const homePages = useHomePages()
 
   function logout() {
     clearSession()
@@ -161,10 +176,13 @@ export function DeskLayout() {
     .map((s) => s[0]?.toUpperCase())
     .join('')
 
+  // User tables surface before system tables in suggestions (stable sort
+  // keeps the alphabetical order within each group).
   const suggestions =
     search.trim().length > 0
       ? (tables.data?.data ?? [])
           .filter((d) => d.name.toLowerCase().includes(search.trim().toLowerCase()))
+          .sort((a, b) => Number(a.system) - Number(b.system))
           .slice(0, 7)
       : []
 
@@ -178,17 +196,6 @@ export function DeskLayout() {
     search.trim().length > 1
       ? commands.filter((c) => c.label.toLowerCase().includes(search.trim().toLowerCase()))
       : []
-
-  // Sidebar curation (from the PR-2 comparison): app tables surface first,
-  // grouped by module; the engine's Core tables sit below under System.
-  // Everything stays visible — this is ordering, not hiding.
-  const byModule = new Map<string, { name: string; module: string }[]>()
-  for (const dt of tables.data?.data ?? []) {
-    const key = dt.module || 'Core'
-    byModule.set(key, [...(byModule.get(key) ?? []), dt])
-  }
-  const appModules = [...byModule.keys()].filter((m) => m !== 'Core').sort()
-  const coreTables = byModule.get('Core') ?? []
 
   return (
     <div className="flex h-full flex-col">
@@ -318,18 +325,57 @@ export function DeskLayout() {
               </span>
             )}
           </div>
-          <div
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-brand)] text-xs font-semibold text-white"
-            data-testid="session-user"
-            title={user?.full_name || user?.name}
-          >
-            <span aria-hidden="true">{initials}</span>
-            <span className="sr-only">{user?.full_name || user?.name}</span>
+          {/* #72: the avatar is the account menu — Change password + Log out. */}
+          <div className="relative" ref={accountRef}>
+            <button
+              onClick={() => setAccountOpen((o) => !o)}
+              data-testid="session-user"
+              title={user?.full_name || user?.name}
+              aria-haspopup="menu"
+              aria-expanded={accountOpen}
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-brand)] text-xs font-semibold text-white"
+            >
+              <span aria-hidden="true">{initials}</span>
+              <span className="sr-only">{user?.full_name || user?.name}</span>
+            </button>
+            {accountOpen && (
+              <div
+                className="fc-card absolute right-0 top-9 z-30 w-56 overflow-hidden py-1"
+                data-testid="account-menu"
+                role="menu"
+              >
+                <div className="border-b border-[var(--color-border)] px-3 py-2">
+                  <p className="truncate text-sm font-medium text-[var(--color-ink)]">
+                    {user?.full_name || user?.name}
+                  </p>
+                  {user?.email && (
+                    <p className="truncate text-xs text-[var(--color-ink-faint)]">{user.email}</p>
+                  )}
+                </div>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setAccountOpen(false)
+                    setPwModalOpen(true)
+                  }}
+                  data-testid="account-change-password"
+                  className="block w-full px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
+                >
+                  {t('Change password')}
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={logout}
+                  data-testid="logout"
+                  className="block w-full px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
+                >
+                  {t('Log out')}
+                </button>
+              </div>
+            )}
           </div>
-          <button onClick={logout} data-testid="logout" className="text-xs text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]">
-            {t('Log out')}
-          </button>
         </div>
+        {pwModalOpen && <ChangePasswordModal onClose={() => setPwModalOpen(false)} />}
       </header>
 
       <div className="relative flex min-h-0 flex-1">
@@ -360,74 +406,52 @@ export function DeskLayout() {
             >
               + New Table
             </Link>
+            <Link
+              to="/desk/import"
+              search={{ table: undefined }}
+              data-testid="import-data-link"
+              className="fc-btn mt-2 w-full justify-center"
+            >
+              Import Data
+            </Link>
           </div>
-          {(workspaces.data?.data.length ?? 0) > 0 && (
-            <div data-testid="workspace-nav">
-              <div className="px-4 pt-5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
-                Home Pages
-              </div>
-              <nav className="px-2">
-                {workspaces.data?.data.map((w) => (
-                  <Link
-                    key={w.name}
-                    to="/desk/workspace/$name"
-                    params={{ name: w.name }}
-                    data-testid={`workspace-link-${w.name}`}
-                    className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-subtle)]"
-                    activeProps={{ className: 'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]' }}
-                  >
-                    {w.label || w.name}
-                  </Link>
-                ))}
-              </nav>
-            </div>
-          )}
-          <nav className="flex-1 overflow-y-auto px-2 pb-4" data-testid="doctype-nav">
-            {tables.isLoading && <p className="px-2 py-1 text-xs text-[var(--color-ink-faint)]">Loading…</p>}
-            {/* App modules first (Ticketing, Helpdesk, …), engine Core last. */}
-            {appModules.map((mod) => (
-              <div key={mod}>
-                <div className="px-2 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
-                  {mod}
-                </div>
-                {(byModule.get(mod) ?? []).map((dt) => (
-                  <Link
-                    key={dt.name}
-                    to="/desk/$doctype"
-                    params={{ doctype: dt.name }}
-                    search={{ filters: undefined }}
-                    className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-subtle)]"
-                    activeProps={{
-                      className:
-                        'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]',
-                    }}
-                  >
-                    {dt.name}
-                  </Link>
-                ))}
-              </div>
-            ))}
-            {coreTables.length > 0 && (
-              <div className="px-2 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
-                System
-              </div>
+          {/* #80: the sidebar is Home Pages only (Frappe parity). Every
+              table stays reachable through the All tables entry below —
+              grouping and curation moved there, nothing is hidden. */}
+          <nav className="flex-1 overflow-y-auto px-2 pb-4 pt-3" data-testid="home-page-nav">
+            {homePages.isLoading && (
+              <p className="px-2 py-1 text-xs text-[var(--color-ink-faint)]">Loading…</p>
             )}
-            {coreTables.map((dt) => (
+            {(homePages.data?.pages ?? []).map((p) => (
               <Link
-                key={dt.name}
-                to="/desk/$doctype"
-                params={{ doctype: dt.name }}
-                search={{ filters: undefined }}
+                key={p.name}
+                to="/desk/home/$name"
+                params={{ name: p.name }}
+                data-testid={`home-page-link-${p.name}`}
                 className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-subtle)]"
                 activeProps={{
                   className:
                     'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]',
                 }}
               >
-                {dt.name}
+                {p.icon ? `${p.icon} ` : ''}
+                {p.label || p.name}
               </Link>
             ))}
           </nav>
+          <div className="border-t border-[var(--color-border)] px-2 py-2">
+            <Link
+              to="/desk/all-tables"
+              data-testid="all-tables-link"
+              className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)] hover:text-[var(--color-ink)]"
+              activeProps={{
+                className:
+                  'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]',
+              }}
+            >
+              All tables
+            </Link>
+          </div>
         </aside>
 
         {/* Page canvas */}
@@ -436,6 +460,119 @@ export function DeskLayout() {
             <Outlet />
           </div>
         </main>
+      </div>
+    </div>
+  )
+}
+
+// #72: change the session user's own password. Posts { password } to
+// /api/set_password (the endpoint scopes to the caller when no user is given).
+// Mirrors the ResetPassword page's form: fc-card / fc-label / fc-input, a
+// client-side confirm check, then a success state.
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState(false)
+
+  useEffect(() => {
+    function onEsc(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onEsc)
+    return () => document.removeEventListener('keydown', onEsc)
+  }, [onClose])
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setError(null)
+    const form = new FormData(e.currentTarget)
+    const pw = String(form.get('password') ?? '')
+    const confirm = String(form.get('confirm') ?? '')
+    if (!pw) {
+      setError('Password is required')
+      return
+    }
+    if (pw !== confirm) {
+      setError('Passwords do not match')
+      return
+    }
+    setBusy(true)
+    try {
+      await api.post('/api/set_password', { password: pw })
+      setDone(true)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not change password')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 px-4"
+      data-testid="change-password-modal"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div className="fc-card w-full max-w-sm p-6" role="dialog" aria-modal="true" aria-label="Change password">
+        <h2 className="mb-4 text-base font-semibold text-[var(--color-ink)]">Change password</h2>
+        {done ? (
+          <div className="space-y-4" data-testid="change-password-done">
+            <p className="text-sm text-[var(--color-ink)]">Your password has been updated.</p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="fc-btn-primary w-full justify-center py-2"
+              data-testid="change-password-close"
+            >
+              Done
+            </button>
+          </div>
+        ) : (
+          <form className="space-y-4" data-testid="change-password-form" onSubmit={onSubmit}>
+            <div>
+              <label className="fc-label" htmlFor="account-new-password">
+                New password
+              </label>
+              <input
+                id="account-new-password"
+                type="password"
+                name="password"
+                autoComplete="new-password"
+                autoFocus
+                className="fc-input"
+                data-testid="change-password-new"
+              />
+            </div>
+            <div>
+              <label className="fc-label" htmlFor="account-confirm-password">
+                Confirm password
+              </label>
+              <input
+                id="account-confirm-password"
+                type="password"
+                name="confirm"
+                autoComplete="new-password"
+                className="fc-input"
+                data-testid="change-password-confirm"
+              />
+            </div>
+            {error && (
+              <p className="text-sm text-[var(--color-danger)]" data-testid="change-password-error">
+                {error}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={onClose} className="fc-btn" data-testid="change-password-cancel">
+                Cancel
+              </button>
+              <button type="submit" disabled={busy} className="fc-btn-primary" data-testid="change-password-submit">
+                {busy ? 'Saving…' : 'Change password'}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   )
