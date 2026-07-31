@@ -1,17 +1,27 @@
-// The HD Ticket helpdesk (sample app, src/sample-apps/helpdesk.ts — no
-// longer in the migration chain, see #74), tested through
+// The HD Ticket helpdesk (a registered app manifest,
+// src/sample-apps/helpdesk.ts — PLAT-006 #78), tested through
 // feather-testing-postgres: every test runs in its own rolled-back
 // transaction against the REAL save lifecycle, permission engine, SLA
 // stamping, server-script defaults, email rules, web form, and the workflow
 // bound to the `ticket_status` field (HD Ticket's own status field, renamed
 // because `status` is now the reserved draft/submitted/cancelled lifecycle
-// column). Each test installs the structure itself via installHelpdesk() —
-// inside its sandbox transaction, so nothing outlives the test — and creates
-// its own documents; demo content (scripts/seed-helpdesk.ts) is opt-in.
+// column). Each test installs the app itself — through the real
+// installApp() manifest path, inside its sandbox transaction, so nothing
+// outlives the test — and creates its own documents; demo content
+// (scripts/seed-helpdesk.ts) is opt-in.
 
 import { describe, expect } from 'vitest'
 import { test, patchDoc } from './pg-test'
-import { installHelpdesk } from '../src/sample-apps/helpdesk'
+import { installApp } from '../src/apps'
+import { sql } from '../src/db'
+
+// A dev database may already carry the committed structure (seed:helpdesk,
+// or the ticketing e2e ran against it) — adopt it instead of colliding, the
+// same skip the old imperative installer performed.
+async function installHelpdesk() {
+  const [have] = await sql`select 1 from table_def where name = 'HD Ticket'`
+  if (!have) await installApp('helpdesk')
+}
 
 const num = (name: unknown) => Number(String(name).slice('HDT-'.length))
 

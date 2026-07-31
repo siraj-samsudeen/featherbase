@@ -8,6 +8,7 @@ import {
   coerceRows,
   inferTableDef,
   scoreTableMatch,
+  seriesPrefix,
   shouldAutoMatch,
   tableMatchQuality,
   tableNameFromFile,
@@ -15,6 +16,7 @@ import {
   type TableMatchQuality,
 } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
+import { NamingControl } from '../components/NamingControl'
 import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import { isImportableFile, parseWorkbook, type ParsedSheet } from '../lib/parse-file'
 
@@ -45,6 +47,10 @@ interface SheetPlan {
   // inside a wider Table) — shown as a hint on the new-Table panel.
   similar: { name: string; mapped: number; total: number } | null
   inferred: InferredTableDef
+  // NAM-001, new-Table mode: the new Table's id_pattern, edited through the
+  // same NamingControl the Table Builder uses. null = keep the inferred
+  // default (a series derived from the Table name).
+  id_pattern: string | null
   // per file column: target column_name in the existing Table, or null (skip)
   mapping: (string | null)[]
   check: { valid: number; failed: { index: number; message: string }[] } | null
@@ -318,6 +324,7 @@ export function ImportWizard() {
                 ? { name: best.name, mapped: best.q.mapped, total: best.cols }
                 : null,
             inferred,
+            id_pattern: null,
             mapping,
             check: null,
             result: null,
@@ -372,6 +379,10 @@ export function ImportWizard() {
       picks.map((p) => ({ column_name: p.target, column_type: typeOf.get(p.target) ?? 'Data' })),
       sheet.rows.map((r) => picks.map((p) => r[p.idx])),
     )
+  }
+
+  function planIdPattern(plan: SheetPlan): string {
+    return plan.id_pattern ?? plan.inferred.id_pattern
   }
 
   // Rows for a new-Table plan: 1:1 with the inferred (possibly renamed)
@@ -431,6 +442,7 @@ export function ImportWizard() {
         if (plan.mode === 'new') {
           await api.post('/api/doctype', {
             name: plan.table,
+            id_pattern: planIdPattern(plan),
             columns: plan.inferred.columns
               .filter((c, idx) => c.column_name.trim() && plan.include[idx])
               .map((c) => ({
@@ -624,6 +636,34 @@ export function ImportWizard() {
                     </tr>
                   </thead>
                   <tbody>
+                    {/* NAM-001: the row id is column one of the grid, not a
+                        setting above it — every record has an id, and where it
+                        comes from is the same kind of decision as any other
+                        column's. Always present, never removable. */}
+                    <tr className="border-t border-gray-100 bg-blue-50/60">
+                      <td className="px-2 py-1 text-center text-gray-400" title="always present">
+                        🔒
+                      </td>
+                      <td className="px-2 py-1" colSpan={5}>
+                        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                          <span className="fc-label m-0 shrink-0">Row ID</span>
+                          <div className="min-w-0">
+                            <NamingControl
+                              value={planIdPattern(plan)}
+                              onChange={(pattern) => setPlan(i, { id_pattern: pattern })}
+                              columns={plan.inferred.columns
+                                .filter((c) => c.column_name.trim())
+                                .map((c) => ({
+                                  column_name: c.column_name,
+                                  label: c.label || c.column_name,
+                                }))}
+                              defaultPrefix={seriesPrefix(plan.table)}
+                              idPrefix={`iw-${i}`}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
                     {plan.inferred.columns.map((c, ci) => (
                       <tr
                         key={ci}

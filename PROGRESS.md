@@ -47,7 +47,7 @@ escaping, no JSON round-trip.
 
 - All 5 SQL sites now carry the `E` prefix, and 0055 migrates `default_value`
   alongside the rename, so neither can recur.
-- **New `0059_fix_literal_newline_choices.sql`** repairs databases already built
+- **New `0063_fix_literal_newline_choices.sql`** repairs databases already built
   from the broken chain — every developer's, not just this laptop. Normalises
   literal `\n` in `column_def.choices` *and* `custom_field.choices`, and maps a
   numeric `tier` default back to the vocabulary. Written with `chr(92) || 'n'`
@@ -63,14 +63,325 @@ save with `tier` omitted → `'basic'`; with `tier: 'restricted'` → accepted; 
 `tier: 'bogus'` → correctly rejected, and the message now reads
 `Expected 'basic' | 'restricted'`, proving the enum has both members again.
 
-Gotcha: `0059` had already been recorded as applied when I extended it, so
+Gotcha: `0063` had already been recorded as applied under its original number when I extended it, so
 re-running meant deleting its `migration` row first — safe only because it is
 idempotent. Note the dev database also had 0057/0058 pending; they applied here.
+
+Gotcha — **the shared dev database, from the other side.** This repair was
+authored as `0059`, and the NAM-001 entry below documents seeing exactly that
+filename applied in a `migration` table whose worktree had no such file: "54
+test failures … appeared and then fixed themselves when another branch's 0059
+landed" was this fix reaching the shared `featherbase` DB from this worktree
+mid-session. Merging main then made the number a real collision (main landed
+`0059_app_fixtures`, `0060_home_pages`, `0061_fix_sort_column_default`), and the
+shared DB also carries `0062_user_palette.ts` from a third, still-unmerged
+branch — so this settled at **0063**, past everything currently in flight. The
+orphaned `0059_fix_literal_newline_choices.sql` row was deleted from `migration`
+so nobody else hits the phantom-file confusion; other branches' orphans were
+left alone. The runner keys on full filename, so a duplicate *number* never
+fails loudly — it just misleads. Check `select name from migration` against
+`ls apps/server/migrations/` before trusting a red suite.
 
 Next: worth a guard so this class of bug can't return — either a test asserting
 no `column_def.choices` contains a literal backslash-n after migration, or a
 lint over `migrations/*.sql` for non-`E` literals containing `\n`. The five
 sites are fixed, but nothing stops a sixth.
+
+## 2026-07-30 — NAM-001: naming series in the UI (imports no longer get hash ids)
+
+Imported Tables named their rows with random hashes (`a0373bac75`) and there
+was **no way to ask for a series** anywhere in the Admin. The engine had
+supported it all along — `resolveName` (`document.ts:81`) implements `hash`,
+`prompt`, `field:<column>`, and `PREFIX-.###` series, and `tableDefSchema`
+accepts `id_pattern` — but **no client ever sent the field**, so
+`createTable` fell through to its `?? 'hash'` default. `docs/TUTORIAL.md:44`
+already noted the builder "exposes only a subset of the definition — notably
+not `id_pattern`". This wires it up.
+
+- **`packages/shared`**: `seriesPrefix('Sub Registrar Office')` ->
+  `'SUB-REGISTRAR-OFFICE-'` (words uppercased, `-` joined, capped at 20
+  chars, non-alphanumerics dropped so a `.` can never reach the prefix —
+  `resolveName` splits the pattern at the first dot). `idPatternFor(name,
+  digits=3)` composes `PREFIX-.###`. `inferTableDef` now returns
+  `id_pattern`, so **an imported Table defaults to a readable series**
+  instead of hashes — the actual bug the user hit.
+- **`NamingControl.tsx`** (new, shared): kind picker (Series / Random / Set
+  by user / From a column) + prefix + digit count, with a live preview
+  ("First rows: ZONE-001, ZONE-002, ZONE-003…"). Digits go down to 1, so a
+  bare `ZONE-1, ZONE-2, ZONE-3` is reachable. `parseIdPattern` /
+  `composeIdPattern` round-trip the stored string; an empty prefix always
+  composes back to `hash`, so it can never reach the server.
+- **Table Builder**: Naming row under Table name; the prefix follows the
+  Table name until the user edits it (`namingOverride ?? idPatternFor(name)`).
+- **Import Wizard**: per-sheet "Row id prefix" for new-Table plans.
+- **Existing Tables**: the builder only *creates*, so it could not fix the
+  already-imported Zone. New `PUT /api/doctype/:name/id_pattern` +
+  `setIdPattern()` and a **Naming** button on the list view (System Manager
+  only) -> `/desk/naming/$doctype`. Deliberately narrow: the full
+  `PUT /api/doctype` round-trip makes the client resend every column, and an
+  omission there silently rewrites the schema. `validateIdPattern` now also
+  guards the create/update paths.
+
+**Also fixed (found while verifying, one line, same code path):** migration
+`0055_terminology_rename` renamed `sort_field` -> `sort_column` and rewrote
+existing rows, but left the column DEFAULT at the pre-rename `'modified'`.
+Every Table created *since* — i.e. every Table built or imported through the
+Admin: Zone, SRO, Registration District, Import Log — got
+`sort_column='modified'`, a column that no longer exists, so `getList()`
+rejected its own default `order_by` and **the Table's list view rendered
+empty**. Zone showed "0 total" with 11 rows in the table.
+`0061_fix_sort_column_default.sql` sets the default and repairs the rows.
+
+Verified end-to-end in the browser (Playwright MCP, real CSV through the real
+UI): dropping `sub registrar office.csv` derived prefix
+`SUB-REGISTRAR-OFFICE-`, shortened to `SRO-`, created + imported 3 rows named
+**SRO-001/002/003**; Zone's list view came back to 11 rows; Zone's Naming
+page round-trips `ZONE-.###`. Plus `naming-series.spec.ts` (2 tests: build
+with a series incl. 1-digit `ND-1`, and switch an existing Table to a series
+with a 417 on a bad pattern) and 4 new shared unit tests. 68 pass in
+`import-infer.test.ts`; `e2e` builder/import/listview/smoke all green.
+
+**Gotcha — the dev database is shared across worktrees.** The `migration`
+table here lists `0057_drop_helpdesk.ts`, `0058_system_flag.ts`, and
+`0059_fix_literal_newline_choices.sql` — applied, but absent from this
+worktree's `migrations/` directory. Parallel sessions on other branches are
+migrating the same `featherbase` database. Consequences seen this session:
+(1) 54 test failures ("Invalid values for Permission", literal `\n` in
+`column_def.choices`) appeared and then fixed themselves when another
+branch's `0059` landed; (2) `test/helpdesk.test.ts` fails 9 tests with
+"Table HD Ticket not found" because another branch's `0057_drop_helpdesk`
+dropped it while this branch still has the test file. **Neither is caused by
+this change** — both are cross-worktree contamination. This migration was
+renumbered 0057 -> 0060 to dodge the collision. Treat a red suite here as
+suspect until you check `select name from migration` against `ls
+apps/server/migrations/`.
+
+- Next: the derived prefix for a long Table name is verbose
+  (`SUB-REGISTRAR-OFFICE-001`); consider an acronym form for 3+ word names.
+
+---
+
+## 2026-07-31 — NAM-002: the row id is column one, not a setting above the grid
+
+Follow-up to NAM-001, same branch. Two complaints, one root cause: naming was
+modelled as a *setting* rather than as the identity *column* it is.
+
+- The two screens disagreed. The Table Builder got the full `NamingControl`;
+  the Import Wizard got a lone "Row id prefix" textbox hardwired to 3 digits
+  (`planIdPattern` composed `${prefix}.###`), so a bare `ZONE-1, ZONE-2,
+  ZONE-3` was reachable when building a Table but not when importing one —
+  for the same file.
+- The row id didn't look like a column. Users think of a record as having an
+  ID and a name; when a sheet is mapped column-by-column, the id belongs in
+  that grid.
+
+**Both screens now open the grid with a locked, tinted "Row ID" row** carrying
+the shared `NamingControl` — the same component, not a lookalike, so they
+cannot drift again. `SheetPlan.naming_prefix: string | null` became
+`id_pattern: string | null`, so the wizard can express every kind rather than
+just a prefix.
+
+**One dropdown replaces two.** `NamingControl` used to render a kind picker
+plus, for the `field` kind, a second column picker. The columns now live in an
+optgroup inside the kind select, because naming a row after a column *is*
+picking that column. Selecting one encodes `field:<column>` directly, which is
+what `resolveName` already implements — so "generate an id" and "take the id
+from the sheet" stop being two mental models. The unreachable "field kind with
+no column chosen" state disappears with it.
+
+Preview copy is id-centric now ("Each row takes its id from district_id").
+
+Verified in the browser, end to end: `registration_district.csv` imported as
+`Rowid Check` with the row id sourced from `district_id` landed rows named
+**50001 / 50002 / 50003**, not hashes. Series mode previews
+`REGISTRATION-DISTRIC-001…` in the same row.
+
+**Deliberately not built:** an *editable label* for the row id ("Zone Id").
+There is nowhere to store it — `table_def` has `title_column` but no id label,
+and ADR 0007 (#88) argues that field becomes unnecessary once the primary key
+is renamed `name` -> `id` and `name` becomes an ordinary labelled column. The
+row shows a fixed "Row ID" until #89 lands. Tracked in #90.
+
+- Gotcha: the builder/import e2e specs self-skip when their fixture Table
+  already exists (Tables cannot be deleted), so a green local run does not
+  mean those paths ran — verify in the browser.
+- Next: #90 (acronym prefixes for 3+ word names; the duplicate-identity-column
+  question when the id is sourced from a file column), then #89.
+
+---
+## 2026-07-30 — Home Pages: curated navigation replaces the table-list sidebar (#80)
+
+The sidebar listed raw table metadata — every table, grouped, in the user's
+face on every screen. Frappe's answer is the Workspace: a curated landing
+page per module. This session ships that as **Home Pages** — navigation
+ONLY, deliberately: no page builder, no content blocks, no charts or number
+cards, and no fields anticipating them.
+
+- **The Table is renamed: `Workspace` -> `Home Page`** — the user-facing name
+  everywhere (sidebar, headings, GLOSSARY), and the internal Table name too.
+  UI-027's frozen wording ("configurable module home pages… a workspace
+  lists its shortcuts") is satisfied by the renamed reality, so the full
+  rename won over a surface-only one; its spec (now `home-page.spec.ts`)
+  still pins shortcuts rendering + navigation. Mechanics follow the 0055
+  discipline: 0036 is rewritten in place (same FILENAME, so upgraded
+  databases — which recorded it as applied — never re-run it) to create the
+  final shape fresh; new 0060 converges upgrades: copy-rename the table_def
+  row (FK order: copy, re-point children, delete), physical rename, RLS
+  policy recreated with `fc_has_read('Home Page')`, and a ref sweep
+  (every `ref_table` column + share/data_scope/user_settings spellings).
+- **Schema, minimal Frappe Workspace-Link model:** `module`, `sequence`,
+  `links` sub-table (`Home Page Link`: label, type Link|Card Break,
+  link_to -> Table) and `roles` sub-table (`Home Page Role`). The legacy
+  JSON `shortcuts` column is KEPT WORKING, not migrated into links — links
+  are Table references while shortcuts also target dashboards/reports/urls,
+  which links deliberately cannot express (navigation only).
+- **Sidebar flip (Frappe parity):** the sidebar lists Home Pages only, from
+  the new `GET /api/home_pages` — the caller's visible pages with their
+  card links, computed SERVER-SIDE (Admin UI stays generic): a page with
+  empty roles is visible to everyone, otherwise to role-holders,
+  Administrator always; each link is dropped unless the caller can read the
+  target table (Frappe's is_item_allowed), dead links (dropped tables) are
+  filtered, a card with no surviving links disappears. Role visibility is
+  presentation scoping, NOT a security boundary — table access is still
+  Permission rows. An **All tables** entry keeps the #74 grouped list (user
+  modules first, collapsed System group) as a page — nothing unreachable.
+  /desk now lands on the first visible page.
+- **Seeds + auto-membership:** 0060 seeds one 'System' page grouping all 45
+  engine tables into six cards (Users & Access / Automation / Email /
+  Reports & Dashboards / Website / Platform catch-all — enumerated from
+  table_def, so future engine tables land in Platform), and sweeps existing
+  user tables onto per-module pages. A system=false table with module
+  'Core' (production's pre-#74 'Zone') lands on a plain 'Home' page.
+  `ensureHomePageForTable` runs on POST /api/doctype and app installs — a
+  table you build NEVER vanishes from navigation. Deliberately NOT inside
+  createTable: migrations 0037–0057 create engine tables before the system
+  flag exists and must not seed spurious pages. Home pages stay ordinary
+  documents — the generic FormView curates them; no dedicated editor.
+
+Verified on throwaway DBs (never the local `featherbase`, ports 8905 only):
+migration proven BOTH ways — fresh-from-zero (1 System page, 45 links,
+idempotent under a double `up()`), and an upgrade from the previous tip
+shaped like production (user table 'Zone' module 'Core' + a legacy Workspace
+row with shortcuts): Workspace renamed with rows carried, shortcuts intact,
+Zone linked on the seeded Home page, RLS predicate updated, column positions
+identical to fresh. Server suite 493 green (14 new in home-pages.test.ts:
+role scoping empty/held/Administrator, ordering, link + shortcut permission
+filtering, card pruning, dead-link filtering, module page on demand, append
+not duplicate, Core->Home, sub_table exclusion, seed idempotency + reseed).
+Web unit 12 green, both typechecks clean. Full e2e against a fresh
+single-origin stack on :8905 (built SPA served by the API): 85 passed,
+2 skipped, 0 failed — including the flip exercised as a user (login ->
+sidebar lists System -> cards -> open a table -> All tables shows everything
+incl. collapsed System group -> builder-created table appears on its
+module's page WITHOUT a reload).
+
+Gotchas for later sessions:
+- 0036 keeps its filename (`0036_workspace.ts`) although it now creates
+  'Home Page' — the migration table records filenames; renaming the file
+  would re-run it on production. Same trap as 0051/0057.
+- ENGINE_TABLES (0058) now lists Home Page (+ Link/Role) and not Workspace:
+  any DB reaching 0058 with this code created 'Home Page' at 0036; DBs that
+  had Workspace recorded 0058 long ago and converge via 0060's rename.
+- The FormView can curate pages but saving one does not invalidate the
+  sidebar's ['home-pages'] query — the next mount/refetch picks it up.
+  Realtime invalidation is a follow-up nicety.
+- App uninstall leaves the module page and its (now dead) links behind;
+  GET /api/home_pages filters them, so nothing breaks. Cleanup on uninstall
+  is a follow-up.
+
+Next: a Desk surface for /api/apps (list, install, uninstall buttons) so the
+app system is operable without curl; realtime invalidation of the sidebar's
+home-pages query on Home Page saves.
+
+---
+
+## 2026-07-30 — Apps ship fixtures; Helpdesk is a real installable app (#78)
+
+An app manifest could declare tables, roles, permissions and code hooks — but
+not DOCUMENTS: no way to ship a Workflow, Email Rule, Server Script, SLA,
+Email Account, or Web Form with an app. That is why the Helpdesk survived
+only as an imperative installer (`installHelpdesk()`) glued to a seed script.
+Two changes (PLAT-006):
+
+- **`fixtures` on AppManifest** — `{ table, rows[] }[]`, materialized through
+  the NORMAL saveDoc lifecycle (validation, automation, id patterns,
+  sub-tables) AFTER tables/roles/permissions, in declaration order (a
+  Workflow before rows that reference it), with the app's own doc_events
+  wired first so fixture saves run under them. New `installed_app.fixtures`
+  jsonb column (migration 0059, the 0053 pattern) records `{ table, name }`
+  for only what the install genuinely CREATED — a declared row whose name
+  already exists is **adopted**: not overwritten, not recorded, exactly the
+  roles/grants discipline. Uninstall deletes recorded fixture rows in
+  reverse order via the real deleteDoc (on_trash + child rows), BEFORE the
+  app's tables drop (fixtures may live on/reference app tables), skipping
+  rows the user already deleted. Declarative manifests accept `fixtures` too
+  (pure data — survives JSON); and an app table claiming `system: true` is
+  now refused at install, same 417 the /api/doctype routes give — app tables
+  are user-space and group under their own module.
+- **Helpdesk is a genuine app now.** `src/sample-apps/helpdesk.ts` is an
+  exported AppManifest (HD Ticket table, 3 roles, 13 grants, and six fixture
+  docs: workflow, default email account, email rule, server script, SLA +
+  4 priorities, published web form), `registerApp`'d in index.ts —
+  REGISTERED, NOT INSTALLED: a fresh deployment has zero helpdesk tables;
+  `POST /api/install_app { name: 'helpdesk' }` brings the whole thing up and
+  uninstall removes exactly what install created. The helpdesk suites
+  (server + web component) install the app per-test through the real
+  installApp() path inside their sandbox transactions; the ticketing e2e now
+  installs over the public endpoint instead of hand-building a slice.
+  `seed:helpdesk` installs the app over HTTP first, then seeds demo content
+  — and got fixed in passing: it still used pre-#61 `/api/resource` URLs
+  (its exists() check always 404'd) and the pre-0055 `document_type` field
+  on Assignment Rule, so it could not run twice.
+
+Verified on throwaway DBs (never the local `featherbase`): migration proven
+both ways — fresh migrate from zero (fixtures column present, zero helpdesk
+tables) and a DB migrated to the previous tip then upgraded (0059 the only
+change). Server suite 479 green (8 new in app-fixtures.test.ts: fixture
+round trip incl. a core-table Email Rule referencing the app table,
+adoption-survives-uninstall, user-deleted-row skip, declarative fixtures
+over the API, failed-fixture abort, system:true refusal, full helpdesk
+install→file-ticket-through-web-form→uninstall round trip with a
+pre-existing look-alike Email Account left standing). Web unit 12 green,
+both typechecks clean. Full e2e against a single-origin stack on :8904
+(built SPA served by the API server): 84 passed, 2 skipped, 0 failed.
+seed:helpdesk run twice against that stack — second run all "= exists",
+round-robin alternates agents, SLA stamps present.
+
+Gotchas for later sessions:
+- The helpdesk Email Account fixture keeps `is_default: true` — install
+  makes notifications deliverable out of the box; uninstall deletes the
+  account (it is a recorded fixture) and deliberately leaves NO default:
+  email.ts defaultSender() falls back to the oldest account, then
+  no-reply@localhost (the exact call 0057 made).
+- The Customer grant is create-without-write BY DESIGN (portal files via the
+  web form, which whitelists columns) — provisionAccess now warns about that
+  shape on every helpdesk install; the warning is expected noise, not a bug.
+- CI-only flake, diagnosed and fixed after the first push: the web workflow
+  test ended the moment it clicked Start — its `assertText('In Progress')`
+  was satisfied by the status select's OPTION list, which contains
+  "In Progress" from the first render — so WorkflowActions.apply()'s POST +
+  refetch tail was still in flight when the test finished. On a slow box
+  that tail ran after the sandbox rollback (stderr 42P01 on hd_ticket) and
+  after jsdom teardown, and its final setState threw "window is not
+  defined" as an unhandled rejection: every test green, run red. Fixed by
+  asserting the workflow-state PILL and then waiting for the status
+  select's VALUE to become In Progress (the doc refetch is the last network
+  call apply() awaits). Reproduced deterministically before fixing by
+  wrapping the fetch bridge with latency on the apply_workflow_action POST.
+  Mid-file strays of the same class (form-create's post-save refetches) are
+  harmless noise — jsdom is still alive between tests of one file; only an
+  end-of-file tail is fatal.
+- `scripts/verify-helpdesk.ts` is bit-rotted on main: it still speaks
+  `/api/resource`, PUT + `modified`, `owner`/`creation`/`status`, and the
+  removed `/api/apply_workflow_action` RPC. Untouched here (the helpdesk
+  test suites cover the same ground in-sandbox); fix or retire it in its own
+  session.
+
+Next: a Desk surface for /api/apps (list, install, uninstall buttons) so the
+app system is operable without curl; consider fixture UPDATE semantics on
+re-install (today: uninstall + install).
+
+---
 
 ## 2026-07-30 — De-ship the Helpdesk demo; `system` flag groups platform tables (#74)
 

@@ -60,6 +60,16 @@ test('UI-011: create a DocType with 5 fields from the Desk; list+form work immed
   await expect(page.getByTestId('list-view')).toBeVisible()
   await expect(page.getByTestId('col-title')).toContainText('Title')
 
+  // #80: the table auto-appears on its module's home page WITHOUT a reload —
+  // the Custom page shows up in the sidebar and carries the table's link.
+  await expect(page.getByTestId('home-page-link-custom')).toBeVisible()
+  await page.getByTestId('home-page-link-custom').click()
+  await expect(page.getByTestId('home-page-title')).toHaveText('Custom')
+  await expect(page.getByTestId(`home-link-${NEW_DT}`)).toBeVisible()
+  await page.getByTestId(`home-link-${NEW_DT}`).click()
+  await expect(page).toHaveURL(new RegExp(`/desk/Builder%20Widget`))
+  await expect(page.getByTestId('list-view')).toBeVisible()
+
   // Form view works immediately: create a document
   await page.goto(`/desk/${encodeURIComponent(NEW_DT)}/new`)
   await expect(page.getByTestId('form-view')).toBeVisible()

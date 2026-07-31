@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { coerceRows, inferTableDef, tableNameFromFile } from 'shared'
+import { coerceRows, idPatternFor, inferTableDef, seriesPrefix, tableNameFromFile } from 'shared'
 import { ApiError, api } from '../lib/api'
+import { NamingControl } from '../components/NamingControl'
 import { COLUMN_TYPES } from '../lib/meta'
 import { isImportableFile, parseWorkbook } from '../lib/parse-file'
 
@@ -47,6 +48,8 @@ export function TableBuilder() {
   const queryClient = useQueryClient()
   const fileInput = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
+  // null = follow the Table name (ZONE-.###); a string = the user chose.
+  const [namingOverride, setNamingOverride] = useState<string | null>(null)
   // #74: user tables get a real module (default "Custom"). Omitting it used
   // to let the server default the table into 'Core', mis-filing it among the
   // platform tables in the sidebar.
@@ -62,6 +65,10 @@ export function TableBuilder() {
   function setColumn(i: number, patch: Partial<ColumnRow>) {
     setColumns((cs) => cs.map((c, j) => (j === i ? { ...c, ...patch } : c)))
   }
+
+  // Before a name is typed there is no prefix to derive, but the control should
+  // still open on "series" — that is the default we want for imports.
+  const idPattern = namingOverride ?? (name.trim() ? idPatternFor(name) : '.###')
 
   async function loadFile(file: File) {
     setError(null)
@@ -110,6 +117,7 @@ export function TableBuilder() {
       const kept = columns.filter((c) => c.column_name.trim())
       const payload = {
         name,
+        id_pattern: idPattern,
         module: module.trim() || 'Custom',
         columns: kept.map((c) => {
           const target = c.target.trim()
@@ -161,12 +169,16 @@ export function TableBuilder() {
                 .join('; ')}${failed.length > 3 ? ` and ${failed.length - 3} more` : ''}`,
           )
           await queryClient.invalidateQueries({ queryKey: ['tables'] })
+          await queryClient.invalidateQueries({ queryKey: ['home-pages'] })
           setSaving(false)
           return
         }
       }
 
       await queryClient.invalidateQueries({ queryKey: ['tables'] })
+      // #80: the new table auto-appears on its module's home page — refresh
+      // the sidebar so that happens without a reload.
+      await queryClient.invalidateQueries({ queryKey: ['home-pages'] })
       navigate({ to: '/desk/$doctype', params: { doctype: name }, search: { filters: undefined } })
     } catch (err) {
       setProgress(null)
@@ -272,6 +284,28 @@ export function TableBuilder() {
             </tr>
           </thead>
           <tbody>
+            {/* NAM-001: the row id is column one, matching the Import Wizard.
+                Every record has an id; where it comes from is the same kind of
+                decision as any other column's. Always present, never removed. */}
+            <tr className="border-t border-gray-100 bg-blue-50/60">
+              <td className="px-2 py-1 align-baseline text-gray-500">Row ID</td>
+              <td className="px-1 py-1" colSpan={5}>
+                <NamingControl
+                  value={idPattern}
+                  onChange={setNamingOverride}
+                  defaultPrefix={seriesPrefix(name)}
+                  columns={columns
+                    .filter((c) => c.column_name.trim())
+                    .map((c) => ({
+                      column_name: c.column_name.trim(),
+                      label: c.label.trim() || c.column_name.trim(),
+                    }))}
+                />
+              </td>
+              <td className="px-1 text-center text-gray-300" title="always present">
+                🔒
+              </td>
+            </tr>
             {columns.map((c, i) => (
               <tr key={i} className="border-t border-gray-100">
                 <td className="px-1 py-1">

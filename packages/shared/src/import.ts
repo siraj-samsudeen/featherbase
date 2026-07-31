@@ -13,6 +13,7 @@ export interface InferredColumn {
 
 export interface InferredTableDef {
   name: string
+  id_pattern: string
   columns: InferredColumn[]
 }
 
@@ -264,6 +265,26 @@ export function tableNameFromFile(fileName: string): string {
   return name.slice(0, 61).trim()
 }
 
+// A Table name -> the series prefix for its id pattern: "Zone" -> "ZONE-",
+// "Sales Invoice" -> "SALES-INVOICE-". Only [A-Za-z0-9 ] survive a valid Table
+// name, but the builder derives this from a half-typed name too, so anything
+// else (a '.' above all — resolveName splits the pattern at the first dot)
+// is dropped rather than trusted.
+export function seriesPrefix(tableName: string): string {
+  const words = tableName
+    .replace(/[^A-Za-z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (!words.length) return ''
+  return words.join('-').toUpperCase().slice(0, 20) + '-'
+}
+
+export function idPatternFor(tableName: string, digits = 3): string {
+  const prefix = seriesPrefix(tableName)
+  return prefix ? `${prefix}.${'#'.repeat(digits)}` : 'hash'
+}
+
 // IMP-003: headers + parsed rows -> a ready POST /api/doctype payload.
 // Original headers survive as labels; the first columns are flagged for the
 // list view so the imported Table is immediately browsable.
@@ -295,7 +316,9 @@ export function inferTableDef(
       in_list_view: i < 4,
     }
   })
-  return { name, columns }
+  // Imported Tables get a readable series (ZONE-001) rather than the engine's
+  // random-hash fallback; the builder and wizard both let the user change it.
+  return { name, id_pattern: idPatternFor(name), columns }
 }
 
 // IMP-004: normalize parsed cells to what each (possibly user-edited) column

@@ -4,8 +4,10 @@ import {
   coerceRows,
   inferChoices,
   inferColumnType,
+  idPatternFor,
   inferTableDef,
   namesShareToken,
+  seriesPrefix,
   prettifyLabel,
   sanitizeColumnName,
   sanitizeHeaders,
@@ -117,6 +119,33 @@ describe('IMP-003: inferTableDef', () => {
       { column_name: 'ship_date', label: 'Ship Date', column_type: 'Date', reqd: false, in_list_view: true },
       { column_name: 'notes', label: 'Notes', column_type: 'Data', reqd: false, in_list_view: false },
     ])
+  })
+})
+
+describe('NAM-001: id pattern inferred for imported Tables', () => {
+  test.each([
+    ['Zone', 'ZONE-'],
+    ['Sales Invoice', 'SALES-INVOICE-'],
+    ['zone master', 'ZONE-MASTER-'],
+    ['Sales 2026', 'SALES-2026-'],
+    ['', ''],
+  ])('seriesPrefix(%j) -> %j', (name, expected) => {
+    expect(seriesPrefix(name)).toBe(expected)
+  })
+
+  test('a dot never survives into a prefix — resolveName splits the pattern there', () => {
+    expect(seriesPrefix('Zone.Master')).toBe('ZONE-MASTER-')
+  })
+
+  test('idPatternFor composes prefix and digits, and falls back to hash', () => {
+    expect(idPatternFor('Zone')).toBe('ZONE-.###')
+    expect(idPatternFor('Zone', 1)).toBe('ZONE-.#')
+    expect(idPatternFor('')).toBe('hash')
+  })
+
+  test('inferTableDef defaults an imported Table to a readable series', () => {
+    const def = inferTableDef('Zone', ['Zone Name'], [['Chennai'], ['Salem']])
+    expect(def.id_pattern).toBe('ZONE-.###')
   })
 })
 

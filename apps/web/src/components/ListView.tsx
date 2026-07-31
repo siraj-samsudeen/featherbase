@@ -338,14 +338,25 @@ export function ListView({
             </Link>
           )}
           {isSystemManager && (
-            <Link
-              to="/desk/permissions/$doctype"
-              params={{ doctype }}
-              className="fc-btn"
-              data-testid="open-permissions"
-            >
-              Permissions
-            </Link>
+            <>
+              {/* NAM-001: change how new rows in this Table are named. */}
+              <Link
+                to="/desk/naming/$doctype"
+                params={{ doctype }}
+                className="fc-btn"
+                data-testid="open-naming"
+              >
+                Naming
+              </Link>
+              <Link
+                to="/desk/permissions/$doctype"
+                params={{ doctype }}
+                className="fc-btn"
+                data-testid="open-permissions"
+              >
+                Permissions
+              </Link>
+            </>
           )}
         </div>
       </div>
