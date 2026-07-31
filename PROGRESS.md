@@ -13,6 +13,128 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-30 — NAM-001: naming series in the UI (imports no longer get hash ids)
+
+Imported Tables named their rows with random hashes (`a0373bac75`) and there
+was **no way to ask for a series** anywhere in the Admin. The engine had
+supported it all along — `resolveName` (`document.ts:81`) implements `hash`,
+`prompt`, `field:<column>`, and `PREFIX-.###` series, and `tableDefSchema`
+accepts `id_pattern` — but **no client ever sent the field**, so
+`createTable` fell through to its `?? 'hash'` default. `docs/TUTORIAL.md:44`
+already noted the builder "exposes only a subset of the definition — notably
+not `id_pattern`". This wires it up.
+
+- **`packages/shared`**: `seriesPrefix('Sub Registrar Office')` ->
+  `'SUB-REGISTRAR-OFFICE-'` (words uppercased, `-` joined, capped at 20
+  chars, non-alphanumerics dropped so a `.` can never reach the prefix —
+  `resolveName` splits the pattern at the first dot). `idPatternFor(name,
+  digits=3)` composes `PREFIX-.###`. `inferTableDef` now returns
+  `id_pattern`, so **an imported Table defaults to a readable series**
+  instead of hashes — the actual bug the user hit.
+- **`NamingControl.tsx`** (new, shared): kind picker (Series / Random / Set
+  by user / From a column) + prefix + digit count, with a live preview
+  ("First rows: ZONE-001, ZONE-002, ZONE-003…"). Digits go down to 1, so a
+  bare `ZONE-1, ZONE-2, ZONE-3` is reachable. `parseIdPattern` /
+  `composeIdPattern` round-trip the stored string; an empty prefix always
+  composes back to `hash`, so it can never reach the server.
+- **Table Builder**: Naming row under Table name; the prefix follows the
+  Table name until the user edits it (`namingOverride ?? idPatternFor(name)`).
+- **Import Wizard**: per-sheet "Row id prefix" for new-Table plans.
+- **Existing Tables**: the builder only *creates*, so it could not fix the
+  already-imported Zone. New `PUT /api/doctype/:name/id_pattern` +
+  `setIdPattern()` and a **Naming** button on the list view (System Manager
+  only) -> `/desk/naming/$doctype`. Deliberately narrow: the full
+  `PUT /api/doctype` round-trip makes the client resend every column, and an
+  omission there silently rewrites the schema. `validateIdPattern` now also
+  guards the create/update paths.
+
+**Also fixed (found while verifying, one line, same code path):** migration
+`0055_terminology_rename` renamed `sort_field` -> `sort_column` and rewrote
+existing rows, but left the column DEFAULT at the pre-rename `'modified'`.
+Every Table created *since* — i.e. every Table built or imported through the
+Admin: Zone, SRO, Registration District, Import Log — got
+`sort_column='modified'`, a column that no longer exists, so `getList()`
+rejected its own default `order_by` and **the Table's list view rendered
+empty**. Zone showed "0 total" with 11 rows in the table.
+`0061_fix_sort_column_default.sql` sets the default and repairs the rows.
+
+Verified end-to-end in the browser (Playwright MCP, real CSV through the real
+UI): dropping `sub registrar office.csv` derived prefix
+`SUB-REGISTRAR-OFFICE-`, shortened to `SRO-`, created + imported 3 rows named
+**SRO-001/002/003**; Zone's list view came back to 11 rows; Zone's Naming
+page round-trips `ZONE-.###`. Plus `naming-series.spec.ts` (2 tests: build
+with a series incl. 1-digit `ND-1`, and switch an existing Table to a series
+with a 417 on a bad pattern) and 4 new shared unit tests. 68 pass in
+`import-infer.test.ts`; `e2e` builder/import/listview/smoke all green.
+
+**Gotcha — the dev database is shared across worktrees.** The `migration`
+table here lists `0057_drop_helpdesk.ts`, `0058_system_flag.ts`, and
+`0059_fix_literal_newline_choices.sql` — applied, but absent from this
+worktree's `migrations/` directory. Parallel sessions on other branches are
+migrating the same `featherbase` database. Consequences seen this session:
+(1) 54 test failures ("Invalid values for Permission", literal `\n` in
+`column_def.choices`) appeared and then fixed themselves when another
+branch's `0059` landed; (2) `test/helpdesk.test.ts` fails 9 tests with
+"Table HD Ticket not found" because another branch's `0057_drop_helpdesk`
+dropped it while this branch still has the test file. **Neither is caused by
+this change** — both are cross-worktree contamination. This migration was
+renumbered 0057 -> 0060 to dodge the collision. Treat a red suite here as
+suspect until you check `select name from migration` against `ls
+apps/server/migrations/`.
+
+- Next: the derived prefix for a long Table name is verbose
+  (`SUB-REGISTRAR-OFFICE-001`); consider an acronym form for 3+ word names.
+
+---
+
+## 2026-07-31 — NAM-002: the row id is column one, not a setting above the grid
+
+Follow-up to NAM-001, same branch. Two complaints, one root cause: naming was
+modelled as a *setting* rather than as the identity *column* it is.
+
+- The two screens disagreed. The Table Builder got the full `NamingControl`;
+  the Import Wizard got a lone "Row id prefix" textbox hardwired to 3 digits
+  (`planIdPattern` composed `${prefix}.###`), so a bare `ZONE-1, ZONE-2,
+  ZONE-3` was reachable when building a Table but not when importing one —
+  for the same file.
+- The row id didn't look like a column. Users think of a record as having an
+  ID and a name; when a sheet is mapped column-by-column, the id belongs in
+  that grid.
+
+**Both screens now open the grid with a locked, tinted "Row ID" row** carrying
+the shared `NamingControl` — the same component, not a lookalike, so they
+cannot drift again. `SheetPlan.naming_prefix: string | null` became
+`id_pattern: string | null`, so the wizard can express every kind rather than
+just a prefix.
+
+**One dropdown replaces two.** `NamingControl` used to render a kind picker
+plus, for the `field` kind, a second column picker. The columns now live in an
+optgroup inside the kind select, because naming a row after a column *is*
+picking that column. Selecting one encodes `field:<column>` directly, which is
+what `resolveName` already implements — so "generate an id" and "take the id
+from the sheet" stop being two mental models. The unreachable "field kind with
+no column chosen" state disappears with it.
+
+Preview copy is id-centric now ("Each row takes its id from district_id").
+
+Verified in the browser, end to end: `registration_district.csv` imported as
+`Rowid Check` with the row id sourced from `district_id` landed rows named
+**50001 / 50002 / 50003**, not hashes. Series mode previews
+`REGISTRATION-DISTRIC-001…` in the same row.
+
+**Deliberately not built:** an *editable label* for the row id ("Zone Id").
+There is nowhere to store it — `table_def` has `title_column` but no id label,
+and ADR 0007 (#88) argues that field becomes unnecessary once the primary key
+is renamed `name` -> `id` and `name` becomes an ordinary labelled column. The
+row shows a fixed "Row ID" until #89 lands. Tracked in #90.
+
+- Gotcha: the builder/import e2e specs self-skip when their fixture Table
+  already exists (Tables cannot be deleted), so a green local run does not
+  mean those paths ran — verify in the browser.
+- Next: #90 (acronym prefixes for 3+ word names; the duplicate-identity-column
+  question when the id is sourced from a file column), then #89.
+
+---
 ## 2026-07-30 — Home Pages: curated navigation replaces the table-list sidebar (#80)
 
 The sidebar listed raw table metadata — every table, grouped, in the user's
@@ -96,6 +218,8 @@ Gotchas for later sessions:
 Next: a Desk surface for /api/apps (list, install, uninstall buttons) so the
 app system is operable without curl; realtime invalidation of the sidebar's
 home-pages query on Home Page saves.
+
+---
 
 ## 2026-07-30 — Apps ship fixtures; Helpdesk is a real installable app (#78)
 
@@ -182,6 +306,8 @@ Gotchas for later sessions:
 Next: a Desk surface for /api/apps (list, install, uninstall buttons) so the
 app system is operable without curl; consider fixture UPDATE semantics on
 re-install (today: uninstall + install).
+
+---
 
 ## 2026-07-30 — De-ship the Helpdesk demo; `system` flag groups platform tables (#74)
 

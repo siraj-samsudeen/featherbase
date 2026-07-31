@@ -88,6 +88,40 @@ export const tableDefSchema = z.object({
 
 export type TableDef = z.infer<typeof tableDefSchema>
 
+// NAM-001: the id_pattern kinds resolveName() (document.ts) understands. A
+// series prefix may not itself contain the '.' that separates it from the
+// digit mask, or resolveName would cut the prefix short.
+export function validateIdPattern(pattern: string, columnNames: string[]): void {
+  const bad = (message: string) =>
+    new AppError('ValidationError', message, { id_pattern: message })
+  if (pattern === 'hash' || pattern === 'prompt') return
+  if (pattern.startsWith('field:')) {
+    const column = pattern.slice('field:'.length)
+    if (!columnNames.includes(column))
+      throw bad(`Naming column ${column} is not a column of this Table`)
+    return
+  }
+  if (!pattern.includes('.')) throw bad(`Unsupported id pattern ${pattern}`)
+  const [prefix, mask] = [
+    pattern.slice(0, pattern.indexOf('.')),
+    pattern.slice(pattern.indexOf('.') + 1),
+  ]
+  if (!prefix) throw bad('A series needs a prefix before the digits')
+  if (!/^#+$/.test(mask)) throw bad('A series ends in # digit placeholders, e.g. ZONE-.###')
+}
+
+// NAM-001: change only how new rows are named. Deliberately narrow — the full
+// PUT /api/doctype round-trip would have the client resend every column, and
+// an omission there silently rewrites the schema.
+export async function setIdPattern(name: string, pattern: string): Promise<TableMeta> {
+  const meta = await getMeta(name)
+  validateIdPattern(pattern, meta.columns.map((c) => c.column_name))
+  await sql`update table_def set id_pattern = ${pattern}, updated_at = ${new Date()}
+            where name = ${name}`
+  invalidateMeta(name)
+  return getMeta(name)
+}
+
 function targetOf(f: TableDef['columns'][number]): string | undefined {
   if (f.column_type === 'Reference') return f.reference_table
   if (f.column_type === 'Sub-table') return f.row_table
@@ -208,6 +242,8 @@ export async function updateTable(
       hidden: true,
     })
   validateDef(def)
+  if (def.id_pattern)
+    validateIdPattern(def.id_pattern, def.columns.map((f) => f.column_name))
   if ((def.kind ?? 'table') !== existing.kind)
     throw new AppError('ValidationError', 'kind cannot be changed after creation')
 
@@ -311,6 +347,8 @@ export async function createTable(input: unknown): Promise<TableMeta> {
       hidden: true,
     })
   validateDef(def)
+  if (def.id_pattern)
+    validateIdPattern(def.id_pattern, def.columns.map((f) => f.column_name))
 
   const [existing] = await sql`select 1 from table_def where name = ${def.name}`
   if (existing)

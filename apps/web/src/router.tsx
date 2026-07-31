@@ -20,6 +20,7 @@ import { ReportView } from './components/ReportView'
 import { QueryReportView } from './components/QueryReportView'
 import { ScriptReportView } from './components/ScriptReportView'
 import { PermissionManager } from './components/PermissionManager'
+import { TableNaming } from './components/TableNaming'
 import { DashboardView } from './components/DashboardView'
 import { HomePageView } from './components/HomePageView'
 import { useHomePages } from './lib/home-pages'
@@ -428,6 +429,22 @@ function PermissionsPage() {
   )
 }
 
+// NAM-001: id-pattern editor for an existing Table (static first segment).
+const namingRoute = createRoute({
+  getParentRoute: () => deskRoute,
+  path: 'naming/$doctype',
+  component: NamingPage,
+})
+
+function NamingPage() {
+  const { doctype } = namingRoute.useParams()
+  return (
+    <div data-testid="doctype-page">
+      <TableNaming key={doctype} doctype={doctype} />
+    </div>
+  )
+}
+
 // UI-004/UI-005: the generic FormView renders and saves every Table.
 const docRoute = createRoute({
   getParentRoute: () => deskRoute,
@@ -453,5 +470,5 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   printRoute,
-  deskRoute.addChildren([deskIndexRoute, newTableRoute, importRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, homePageRoute, allTablesRoute, jobsRoute, doctypeRoute, docRoute]),
+  deskRoute.addChildren([deskIndexRoute, newTableRoute, importRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, jobsRoute, doctypeRoute, docRoute]),
 ])

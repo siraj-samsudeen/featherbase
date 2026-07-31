@@ -8,7 +8,7 @@ import { config } from './config'
 import { sql } from './db'
 import { AppError, errorResponse } from './errors'
 import { getMeta, resolveTableName } from './meta'
-import { createTable, updateTable } from './doctype-engine'
+import { createTable, setIdPattern, updateTable } from './doctype-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
@@ -422,6 +422,15 @@ app.post('/api/doctype', async (c) => {
   // home page is created on demand and the table's link appended.
   if (meta.kind !== 'sub_table') await ensureHomePageForTable(meta.name, meta.module)
   return c.json(meta, 201)
+})
+
+// NAM-001: change how a Table names new rows, without resending its schema.
+app.put('/api/doctype/:name/id_pattern', async (c) => {
+  await assertSystemManager(who(c))
+  const body = (await c.req.json()) as { id_pattern?: unknown }
+  if (typeof body.id_pattern !== 'string')
+    throw new AppError('ValidationError', 'Expected { id_pattern }')
+  return c.json(await setIdPattern(c.req.param('name'), body.id_pattern))
 })
 
 app.put('/api/doctype/:name', async (c) => {
