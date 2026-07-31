@@ -14,7 +14,7 @@ discussion log, an interactive exploration, and this index.
 |---|---|
 | [design-exploration.html](design-exploration.html) | **Interactive exploration** — six clickable pattern demos (⌘K recents, activity feed, sidebar Recent, per-table strip, saved views + nudge, continue-where-you-left-off), prior art, capture-architecture comparison, frecency explainer, phased recommendation. Live rendered copy: [Claude artifact](https://claude.ai/code/artifact/46f01e47-fa05-413c-a12e-2dee5c16ae26). |
 | [brainstorm.md](brainstorm.md) | Discussion log — the owner's framing in his own words, codebase leverage inventory, options considered, open questions. |
-| Tracking issue | GitHub issue with the full requirements and the chosen implementation order (link added once the issue exists). |
+| [Issue #101](https://github.com/siraj-samsudeen/featherbase/issues/101) | Tracking issue — full requirements with hyperlinks and the phased implementation order. |
 
 ## The one-paragraph design
 
