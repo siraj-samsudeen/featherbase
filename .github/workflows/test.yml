@@ -4,7 +4,7 @@
 # POSTGRES_DB/POSTGRES_USER env replaces the role/database bootstrap that
 # init.sh performs on a developer machine (init.sh assumes brew or
 # pg_ctlcluster, neither of which applies here). Everything else the app
-# needs in the database — including the `desk_client` role the RLS suite
+# needs in the database — including the `app_client` role the RLS suite
 # connects as (migration 0010) — is created by `pnpm --filter server
 # migrate` + `patches`, exactly as init.sh runs them. The e2e specs seed
 # their own documents.
@@ -115,7 +115,7 @@ jobs:
         run: pnpm --filter web exec playwright install --with-deps chromium
 
       # Creates the schema, the Administrator login (password 'admin' by
-      # default — what the e2e specs use), and the desk_client role. The
+      # default — what the e2e specs use), and the app_client role. The
       # e2e specs create the documents they assert on.
       - name: Migrate and patch database
         run: |

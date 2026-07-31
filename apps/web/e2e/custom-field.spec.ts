@@ -38,14 +38,14 @@ test('CUST-001: the custom field renders in the form and the list', async ({ pag
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
   // Form shows the custom field with its saved value.
-  await page.goto(`/desk/${encodeURIComponent(DT)}/cf-doc`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/cf-doc`)
   await expect(page.locator(`[data-field=${FIELD}]`)).toHaveValue('urgent')
 
   // List shows a column for the in_list_view custom field.
-  await page.goto(`/desk/${encodeURIComponent(DT)}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}`)
   await expect(page.getByTestId(`col-${FIELD}`)).toBeVisible()
   await expect(page.getByTestId('list-rows')).toContainText('urgent')
 })

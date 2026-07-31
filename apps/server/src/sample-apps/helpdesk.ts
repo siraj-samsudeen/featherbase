@@ -17,7 +17,7 @@ const helpdesk: AppManifest = {
     {
       name: 'HD Ticket',
       // User-space on purpose: app tables carry the app's own module (never
-      // system: true), so the Desk sidebar groups HD Ticket under
+      // system: true), so the Admin sidebar groups HD Ticket under
       // "Helpdesk", not under the collapsed System group.
       module: 'Helpdesk',
       id_pattern: 'HDT-.#####',

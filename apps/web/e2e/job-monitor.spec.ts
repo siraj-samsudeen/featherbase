@@ -20,14 +20,14 @@ test.beforeAll(async ({ request }) => {
 })
 
 // JOB-004: a failed job appears in the monitor; clicking Retry re-runs it.
-test('JOB-004: a failed job can be retried from the Desk', async ({ page }) => {
+test('JOB-004: a failed job can be retried from the Admin', async ({ page }) => {
   await page.goto('/login')
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
-  await page.goto('/desk/jobs')
+  await page.goto('/admin/jobs')
   await expect(page.getByTestId('job-monitor')).toBeVisible()
 
   // The failed job appears with a Retry button.

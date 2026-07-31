@@ -8,7 +8,7 @@ async function login(page: import('@playwright/test').Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/desk/)
+  await expect(page).toHaveURL(/\/admin/)
 }
 
 async function token(request: import('@playwright/test').APIRequestContext) {
@@ -27,7 +27,7 @@ test('NAM-001: build a Table with a naming series; rows are named from it', asyn
   test.skip(exists.status() === 200, `${DT} already exists in this DB; skipping the create path`)
 
   await login(page)
-  await page.goto('/desk/new-table')
+  await page.goto('/admin/new-table')
   await expect(page.getByTestId('doctype-builder')).toBeVisible()
 
   // Series is the default, and its prefix follows the Table name.
@@ -41,7 +41,7 @@ test('NAM-001: build a Table with a naming series; rows are named from it', asyn
   await page.getByTestId('dt-naming-digits').selectOption('1')
   await expect(page.getByTestId('dt-naming-preview')).toContainText('ND-1, ND-2, ND-3')
 
-  const row = page.getByTestId('dt-fields').locator('tbody tr').first()
+  const row = page.getByTestId('dt-fields').locator('tbody tr[data-columnrow]').first()
   await row.locator('[data-rowfield=column_name]').fill('title')
   await row.locator('[data-rowfield=in_list_view]').check()
   await page.getByTestId('dt-create').click()
@@ -52,11 +52,11 @@ test('NAM-001: build a Table with a naming series; rows are named from it', asyn
   expect(((await meta.json()) as { id_pattern: string }).id_pattern).toBe('ND-.#')
 
   // And a row saved through the form is named from the series, not a hash.
-  await page.goto(`/desk/${encodeURIComponent(DT)}/new`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/new`)
   await page.locator('[data-field=title]').fill('first')
   await page.getByTestId('form-save').click()
   await expect(page.getByTestId('form-status')).toContainText('Saved')
-  await expect(page).toHaveURL(/\/desk\/Naming%20Demo\/ND-1$/)
+  await expect(page).toHaveURL(/\/admin\/Naming%20Demo\/ND-1$/)
 })
 
 // NAM-001: an already-created Table can be switched to a series afterwards —
@@ -80,7 +80,7 @@ test('NAM-001: change an existing Table to a series from the list view', async (
   })
 
   await login(page)
-  await page.goto(`/desk/${encodeURIComponent(DT)}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}`)
   await page.getByTestId('open-naming').click()
   await expect(page.getByTestId('table-naming')).toBeVisible()
   await expect(page.getByTestId('naming-naming')).toHaveValue('hash')

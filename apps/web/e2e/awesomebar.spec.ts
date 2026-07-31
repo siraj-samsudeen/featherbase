@@ -32,7 +32,7 @@ test('UI-014: typing a doc name surfaces it and Enter opens its form', async ({ 
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
   const bar = page.getByTestId('awesomebar').locator('input')
 
@@ -46,7 +46,7 @@ test('UI-014: typing a doc name surfaces it and Enter opens its form', async ({ 
   await expect(page.getByTestId('form-view')).toBeVisible()
 
   // Enter on a typed doc name goes straight to the form.
-  await page.goto('/desk')
+  await page.goto('/admin')
   await bar.fill('zephyr-unique-doc')
   await expect(page.getByTestId('awesomebar-doc').first()).toBeVisible()
   await bar.press('Enter')
@@ -54,7 +54,7 @@ test('UI-014: typing a doc name surfaces it and Enter opens its form', async ({ 
   await expect(page.getByTestId('form-view')).toBeVisible()
 
   // "New X" action for a matched DocType.
-  await page.goto('/desk')
+  await page.goto('/admin')
   await bar.fill('Awesome')
   const newAction = page.getByTestId('awesomebar-new').first()
   await expect(newAction).toContainText(`New ${DT}`)

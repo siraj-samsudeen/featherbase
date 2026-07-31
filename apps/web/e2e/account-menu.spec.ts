@@ -33,7 +33,7 @@ test('ACCT-001: avatar menu changes the password end-to-end', async ({ page }) =
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
   // The avatar opens the account menu; Escape closes it.
   await page.getByTestId('session-user').click()
@@ -78,6 +78,6 @@ test('ACCT-001: avatar menu changes the password end-to-end', async ({ page }) =
   // …and the new one signs in.
   await page.fill('input[name=password]', TEMP_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
   await expect(page.getByTestId('session-user')).toBeVisible()
 })

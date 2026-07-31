@@ -30,7 +30,7 @@
     "@types/node": "^26.1.1",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^3.2.7",
-    "feather-testing-postgres": "^0.1.0",
+    "feather-testing-postgres": "github:siraj-samsudeen/feather-testing-postgres#310ad8ef0e4a5bd655e2d330df24812cc1d5bcef",
     "pdf-parse": "^2.4.5",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"

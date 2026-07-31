@@ -55,9 +55,9 @@ test('WF-002: Approve button transitions state and records the audit trail', asy
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
-  await page.goto(`/desk/${encodeURIComponent(DT)}/${DOC}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${DOC}`)
 
   // Current state shown, Approve action available (admin sees all).
   await expect(page.getByTestId('workflow-state')).toHaveText('Draft')

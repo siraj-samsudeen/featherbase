@@ -59,7 +59,7 @@ test('PRN-002: default format respected; a second format renders differently', a
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
   // No format named → the default (Invoice) is used, interpolated.
   await page.goto(`/print/${encodeURIComponent(DT)}/${docName}`)

@@ -1,6 +1,6 @@
 -- PERM-004: generated row-level security.
 --
--- Local equivalent of Supabase's PostgREST + RLS setup: a `desk_client`
+-- Local equivalent of Supabase's PostgREST + RLS setup: a `app_client`
 -- login role models a direct (non-server) client connection. The session
 -- user travels in the `app.user` GUC — the analogue of PostgREST setting
 -- request.jwt.claims from a verified JWT; the trusted connection layer is
@@ -11,12 +11,12 @@
 -- full row lifecycle.
 
 do $$ begin
-  if not exists (select from pg_roles where rolname = 'desk_client') then
-    create role desk_client login password 'desk_client';
+  if not exists (select from pg_roles where rolname = 'app_client') then
+    create role app_client login password 'app_client';
   end if;
 end $$;
 
-grant usage on schema public to desk_client;
+grant usage on schema public to app_client;
 
 create or replace function fc_session_user() returns text
 language sql stable
@@ -63,13 +63,13 @@ begin
     execute format('drop policy if exists fc_select on %I', tbl);
     if r.kind = 'sub_table' then
       execute format(
-        'create policy fc_select on %I for select to desk_client using (fc_has_read(parenttype))',
+        'create policy fc_select on %I for select to app_client using (fc_has_read(parenttype))',
         tbl);
     else
       execute format(
-        'create policy fc_select on %I for select to desk_client using (fc_has_read(%L))',
+        'create policy fc_select on %I for select to app_client using (fc_has_read(%L))',
         tbl, r.name);
     end if;
-    execute format('grant select on %I to desk_client', tbl);
+    execute format('grant select on %I to app_client', tbl);
   end loop;
 end $$;

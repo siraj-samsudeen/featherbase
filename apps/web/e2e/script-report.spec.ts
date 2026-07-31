@@ -34,9 +34,9 @@ test('RPT-005: script report renders filter controls and data', async ({ page })
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
-  await page.goto(`/desk/script-report/${encodeURIComponent(REPORT)}`)
+  await page.goto(`/admin/script-report/${encodeURIComponent(REPORT)}`)
   await expect(page.getByTestId('script-report-title')).toHaveText(REPORT)
 
   // Declared filter control renders, and data columns render.

@@ -26,13 +26,13 @@ async function login(page: import('@playwright/test').Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 }
 
 // UI-015: Ctrl/Cmd+S saves the current form.
 test('UI-015: Ctrl+S saves the form', async ({ page }) => {
   await login(page)
-  await page.goto(`/desk/${encodeURIComponent(DT)}/${docName}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await expect(page.getByTestId('form-view')).toBeVisible()
   await page.locator('[data-field=title]').fill(`kb-${Date.now()}`)
   await page.keyboard.press('Control+s')
@@ -42,21 +42,21 @@ test('UI-015: Ctrl+S saves the form', async ({ page }) => {
 // UI-015: Ctrl/Cmd+B opens a new document of the current DocType.
 test('UI-015: Ctrl+B opens a new document', async ({ page }) => {
   await login(page)
-  await page.goto(`/desk/${encodeURIComponent(DT)}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}`)
   await expect(page.getByTestId('list-view')).toBeVisible()
   await page.keyboard.press('Control+b')
-  await expect(page).toHaveURL(new RegExp(`/desk/${encodeURIComponent(DT)}/new`))
+  await expect(page).toHaveURL(new RegExp(`/admin/${encodeURIComponent(DT)}/new`))
   await expect(page.getByTestId('form-view')).toBeVisible()
 })
 
-// UI-015: the "g then d" leader sequence navigates to the Desk home.
-test('UI-015: g then d navigates to the Desk home', async ({ page }) => {
+// UI-015: the "g then d" leader sequence navigates to the Admin home.
+test('UI-015: g then d navigates to the Admin home', async ({ page }) => {
   await login(page)
-  await page.goto(`/desk/${encodeURIComponent(DT)}/${docName}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await expect(page.getByTestId('form-view')).toBeVisible()
   await page.locator('body').click() // ensure focus is not in an input
   await page.keyboard.press('g')
   await page.keyboard.press('d')
-  // #80: the Desk home now lands on the first visible Home Page.
-  await expect(page).toHaveURL(/\/desk(\/home\/|$)/)
+  // #80: the Admin home now lands on the first visible Home Page.
+  await expect(page).toHaveURL(/\/admin(\/home\/|$)/)
 })

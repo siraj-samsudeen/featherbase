@@ -14,7 +14,7 @@ test.beforeAll(async ({ request }) => {
   }).catch(() => {})
 })
 
-test('UI-011: create a DocType with 5 fields from the Desk; list+form work immediately', async ({ page, request }) => {
+test('UI-011: create a DocType with 5 fields from the Admin; list+form work immediately', async ({ page, request }) => {
   // Clean any prior copy directly (no delete-DocType endpoint yet)
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const token = ((await login.json()) as { token: string }).token
@@ -27,12 +27,20 @@ test('UI-011: create a DocType with 5 fields from the Desk; list+form work immed
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/desk/)
+  await expect(page).toHaveURL(/\/admin/)
 
   // Enter the builder from the sidebar
   await page.getByTestId('new-doctype-link').click()
   await expect(page.getByTestId('doctype-builder')).toBeVisible()
   await page.getByTestId('dt-name').fill(NEW_DT)
+
+  // NAM-002 contract: the row id is column one — a locked row above the
+  // editable column rows. Pinned here because when it was introduced the
+  // specs silently read the wrong rows instead of failing (#94); every
+  // column assertion below selects [data-columnrow], never a bare tbody tr.
+  const grid = page.getByTestId('dt-fields')
+  await expect(grid.locator('tbody tr').first()).toHaveAttribute('data-testid', 'dt-row-id')
+  await expect(grid.getByTestId('dt-row-id')).not.toHaveAttribute('data-columnrow', '')
 
   const fieldDefs = [
     ['title', 'Title', 'Data', '', true, true],
@@ -45,7 +53,7 @@ test('UI-011: create a DocType with 5 fields from the Desk; list+form work immed
   for (let i = 0; i < fieldDefs.length; i++) {
     if (i > 0) await page.getByTestId('dt-add-field').click()
     const [fn, label, type, target, reqd, list] = fieldDefs[i]
-    const row = page.getByTestId('dt-fields').locator('tbody tr').nth(i)
+    const row = page.getByTestId('dt-fields').locator('tbody tr[data-columnrow]').nth(i)
     await row.locator('[data-rowfield=column_name]').fill(fn)
     await row.locator('[data-rowfield=label]').fill(label)
     await row.locator('[data-rowfield=column_type]').selectOption(type)
@@ -56,7 +64,7 @@ test('UI-011: create a DocType with 5 fields from the Desk; list+form work immed
 
   await page.getByTestId('dt-create').click()
   // Lands on the new DocType's (empty) list view
-  await expect(page).toHaveURL(new RegExp(`/desk/Builder%20Widget`))
+  await expect(page).toHaveURL(new RegExp(`/admin/Builder%20Widget`))
   await expect(page.getByTestId('list-view')).toBeVisible()
   await expect(page.getByTestId('col-title')).toContainText('Title')
 
@@ -67,11 +75,11 @@ test('UI-011: create a DocType with 5 fields from the Desk; list+form work immed
   await expect(page.getByTestId('home-page-title')).toHaveText('Custom')
   await expect(page.getByTestId(`home-link-${NEW_DT}`)).toBeVisible()
   await page.getByTestId(`home-link-${NEW_DT}`).click()
-  await expect(page).toHaveURL(new RegExp(`/desk/Builder%20Widget`))
+  await expect(page).toHaveURL(new RegExp(`/admin/Builder%20Widget`))
   await expect(page.getByTestId('list-view')).toBeVisible()
 
   // Form view works immediately: create a document
-  await page.goto(`/desk/${encodeURIComponent(NEW_DT)}/new`)
+  await page.goto(`/admin/${encodeURIComponent(NEW_DT)}/new`)
   await expect(page.getByTestId('form-view')).toBeVisible()
   await page.locator('[data-field=title]').fill('first doc')
   await page.locator('select[data-field=stage]').selectOption('Done')
@@ -79,7 +87,7 @@ test('UI-011: create a DocType with 5 fields from the Desk; list+form work immed
   await expect(page.getByTestId('form-status')).toContainText('Saved')
 
   // It appears in the list
-  await page.goto(`/desk/${encodeURIComponent(NEW_DT)}`)
+  await page.goto(`/admin/${encodeURIComponent(NEW_DT)}`)
   await expect(page.getByTestId('list-rows')).toContainText('first doc')
 
   // And the metadata is real (server side)

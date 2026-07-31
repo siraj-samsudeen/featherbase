@@ -16,6 +16,24 @@ entries and in `docs/research/frappe-architecture.md`, where `frappe_clone` is
 a *filesystem path* to an upstream Frappe checkout — unrelated to this project
 and not to be renamed.
 
+## Project stage — experimental, nothing is deployed
+
+**This product is not deployed anywhere and has no users. Everything is free
+to change.** There is no install base, no production database, no external
+consumer of any URL, API shape, table name, or wire format. Treat every
+interface as provisional.
+
+So: when a name, route, schema, or contract is wrong, **change it outright**.
+Do not add redirects, aliases, deprecation shims, compatibility flags, or
+dual-write paths to preserve the old shape — that is machinery paid for by a
+migration burden this project does not have, and it leaves the retired shape
+in the codebase forever for every future reader to reason about. Migrations
+that converge an existing *local* database are still expected (developer
+checkouts are real); compatibility with anything *outside* the repo is not.
+
+Revisit this section when the first real deployment happens — from that point
+the calculus changes.
+
 ## Architecture invariants (never violate these)
 
 1. **Everything derives from Table metadata.** Models are JSON definitions
@@ -56,7 +74,10 @@ and not to be renamed.
 - `packages/shared` — types and contracts used by both sides
 - [`feather-testing-postgres`](https://github.com/siraj-samsudeen/feather-testing-postgres)
   — the SQL Sandbox test harness, consumed as a published npm dependency. It
-  lives in its own repo; fix it there and release, never vendor it back in
+  lives in its own repo; fix it there and release, never vendor it back in.
+  *Temporarily pinned to a git commit* while the `renderApp` rename sits
+  unreleased on its `main`; move both `package.json`s back to `^0.2.0` once
+  it publishes (see the 2026-07-31 `PROGRESS.md` entry)
 - Monorepo — pnpm workspaces; boot everything with `./init.sh`
 
 **Visual identity is a standing directive.** Every new UI feature must inherit
@@ -76,7 +97,7 @@ them before writing any UI.
   login user on Homebrew, `su postgres` when running as root in the container.
   So it works on macOS and Linux alike, and is a no-op once things are up.
 - **Connection strings** default in `apps/server/src/config.ts`; override with
-  `DATABASE_URL`. The RLS suite connects as the `desk_client` role and
+  `DATABASE_URL`. The RLS suite connects as the `app_client` role and
   overrides with `RLS_TEST_URL`.
 - **Servers:** API on `:8000`, web on `:5173`. `./init.sh` kills stale
   listeners by port and waits for both to answer.
@@ -116,10 +137,13 @@ once per run, outside any sandbox transaction. It complements
 2. **Boot & smoke-test.** Run `./init.sh` and verify the app actually starts and
    the core flow passes (login → open a Table list → open a form) BEFORE
    writing new code. If the app is broken, fixing it IS the session's task.
-3. **Pick ONE piece of work.** All 126 harness features currently report
-   `passing`, so the harness is no longer the backlog — take direction from
-   `docs/ROADMAP.md` and the "next" note at the end of the latest `PROGRESS.md`
-   entry. Do not start a second thread of work in the same session.
+3. **Pick ONE piece of work.** Every entry in `harness/features.json` reports
+   `passing`, so the inventory is a record of what exists, not a backlog —
+   take direction from `docs/design/execution-plan.md` (milestones M1–M5),
+   `docs/ROADMAP.md`, and the "next" note at the end of the latest
+   `PROGRESS.md` entry. Do not start a second thread of work in the same
+   session. When a session ships something genuinely new, ask the owner to
+   add its entry (see the hard rule below) so the inventory keeps up.
 4. **Implement it fully.** Small, complete, working — not broad and half-done.
 5. **Verify end-to-end.** Exercise it the way a user would: HTTP calls against
    the running server, and the browser via Playwright for UI. Unit tests alone
@@ -130,9 +154,15 @@ once per run, outside any sandbox transaction. It complements
 
 ## Hard rules
 
-- **Never edit, remove, reword, or reorder entries in `harness/features.json`.**
-  The only permitted change is flipping a `status` field. If a feature seems
-  wrong or infeasible, note it in `PROGRESS.md` and move on.
+- **`harness/features.json`: IDs, order, deps, and priorities are immutable;
+  the only agent-permitted change is flipping a `status` field.** Titles and
+  verify wording were renamed to the Table/Row/Column vocabulary on
+  2026-07-26 by explicit owner instruction (post-build, matching PR #63);
+  any future wording change likewise requires the owner's explicit
+  instruction — never an agent's initiative. ID prefixes (META, DOC, UI, …)
+  are historical mnemonics referenced by tests and logs — do not touch them.
+  If a feature seems wrong or infeasible, note it in `PROGRESS.md` and move
+  on.
 - Never mark a feature `"passing"` without having exercised it end-to-end in
   this session.
 - Never leave the app in a non-booting state at the end of a session. If you run
@@ -147,6 +177,10 @@ once per run, outside any sandbox transaction. It complements
 - `docs/adr/` — architecture decisions. [ADR 0006](docs/adr/0006-stack-react-hono-postgres.md)
   records the move to React + Hono + Postgres and supersedes 0001–0004.
 - `docs/VISION.md` — what this is for and who it serves.
+- `docs/specs/` — requirements for work agreed but not yet built, in
+  feather-spec form (EARS criteria + example tables). Capability IDs there
+  (`EDS-1`, `VDT-3`) are traceability handles and are deliberately *not* in
+  `harness/features.json`.
 - `docs/research/` — Frappe architecture, Glide, and stack studies.
 - `docs/archive/convex-capabilities/` — specs from the retired Convex
   implementation, preserved on the `archive/convex-v1` tag.

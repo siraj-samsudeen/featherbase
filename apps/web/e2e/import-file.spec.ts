@@ -24,7 +24,7 @@ async function login(page: Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/desk/)
+  await expect(page).toHaveURL(/\/admin/)
 }
 
 test('IMP-006: drop a CSV; inferred schema prefills the builder; create imports the rows', async ({
@@ -53,7 +53,7 @@ test('IMP-006: drop a CSV; inferred schema prefills the builder; create imports 
   await expect(page.getByTestId('dt-file-name')).toContainText('import sales.csv')
   await expect(page.getByTestId('dt-file-name')).toContainText('3 rows')
   await expect(page.getByTestId('dt-name')).toHaveValue(CSV_DT)
-  const grid = page.getByTestId('dt-fields').locator('tbody tr')
+  const grid = page.getByTestId('dt-fields').locator('tbody tr[data-columnrow]')
   await expect(grid).toHaveCount(5)
   const expectType = async (row: number, name: string, type: string) => {
     await expect(grid.nth(row).locator('[data-rowfield=column_name]')).toHaveValue(name)
@@ -69,7 +69,7 @@ test('IMP-006: drop a CSV; inferred schema prefills the builder; create imports 
   await page.getByTestId('dt-create').click()
 
   // Lands on the new Table's list with the imported rows visible.
-  await expect(page).toHaveURL(new RegExp('/desk/Import%20Sales'))
+  await expect(page).toHaveURL(new RegExp('/admin/Import%20Sales'))
   await expect(page.getByTestId('list-rows')).toContainText('Alice')
   await expect(page.getByTestId('list-rows')).toContainText('Chandra')
 
@@ -120,13 +120,13 @@ test('IMP-006: a real .xlsx imports the same way (via the file picker)', async (
   })
 
   await expect(page.getByTestId('dt-name')).toHaveValue(XLSX_DT)
-  const grid = page.getByTestId('dt-fields').locator('tbody tr')
+  const grid = page.getByTestId('dt-fields').locator('tbody tr[data-columnrow]')
   await expect(grid).toHaveCount(3)
   await expect(grid.nth(0).locator('[data-rowfield=column_name]')).toHaveValue('item')
   await expect(grid.nth(1).locator('[data-rowfield=column_type]')).toHaveValue('Int')
 
   await page.getByTestId('dt-create').click()
-  await expect(page).toHaveURL(new RegExp('/desk/Import%20Inventory'))
+  await expect(page).toHaveURL(new RegExp('/admin/Import%20Inventory'))
   await expect(page.getByTestId('list-rows')).toContainText('Widget')
   await expect(page.getByTestId('list-rows')).toContainText('Gadget')
 

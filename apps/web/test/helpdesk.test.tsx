@@ -1,6 +1,6 @@
 // The HD Ticket helpdesk (a registered app manifest,
 // server/src/sample-apps/helpdesk.ts — PLAT-006 #78) tested at the component
-// layer: real ListView/FormView (generic Desk) rendered in jsdom, talking
+// layer: real ListView/FormView (generic Admin) rendered in jsdom, talking
 // through the fetch bridge to the in-process server, inside a rolled-back
 // Postgres transaction. Each test installs the app itself — through the real
 // installApp() manifest path, inside its sandbox transaction — and creates
@@ -12,7 +12,7 @@
 import { screen, waitFor } from '@testing-library/react'
 import { installApp } from 'server/src/apps'
 import { sql } from 'server/src/db'
-import { test, expect, renderDesk, renderSession } from './pg-test'
+import { test, expect, renderApp, renderSession } from './pg-test'
 
 // A dev database may already carry the committed structure (seed:helpdesk,
 // or the ticketing e2e ran against it) — adopt it instead of colliding.
@@ -27,7 +27,7 @@ test('list: an admin sees a freshly created ticket', async ({ admin }) => {
     doctype: 'HD Ticket',
     doc: { subject: 'Rendered by the generic ListView' },
   })
-  await renderDesk('/desk/HD%20Ticket', admin)
+  await renderApp('/admin/HD%20Ticket', admin)
   expect(await screen.findByText(doc.name)).toBeInTheDocument()
   expect(await screen.findByText('Rendered by the generic ListView')).toBeInTheDocument()
 })
@@ -42,7 +42,7 @@ test('list: a customer with no tickets sees an empty, permission-scoped list', a
     doc: { subject: 'Someone else’s ticket' },
   })
   const customer = await createUser({ roles: ['Customer'] })
-  await renderDesk('/desk/HD%20Ticket', customer)
+  await renderApp('/admin/HD%20Ticket', customer)
   await screen.findByTestId('list-view')
   await new Promise((r) => setTimeout(r, 150))
   expect(screen.queryByText(other.name)).not.toBeInTheDocument()
@@ -52,7 +52,7 @@ test('form: create a ticket through the UI (Session DSL) — real save, real ser
   admin,
 }) => {
   await installHelpdesk()
-  const { session } = await renderSession('/desk/HD%20Ticket/new', admin)
+  const { session } = await renderSession('/admin/HD%20Ticket/new', admin)
   await session
     .fillIn('Subject', 'Filed from a component test')
     .selectOption('Priority', 'High')
@@ -66,7 +66,7 @@ test('form: a dirty form with an empty required subject shows the field error', 
   await installHelpdesk()
   // A pristine form's Save is disabled (dirty-tracking), so make it dirty
   // via another field and leave the required subject empty.
-  const { session } = await renderSession('/desk/HD%20Ticket/new', admin)
+  const { session } = await renderSession('/admin/HD%20Ticket/new', admin)
   await session
     .fillIn('Description', 'details without a subject')
     .clickButton('Save')
@@ -80,7 +80,7 @@ test('workflow: Start from the ticket form moves the bound status field', async 
     doctype: 'HD Ticket',
     doc: { subject: 'Workflow via the UI' },
   })
-  const { session } = await renderSession(`/desk/HD%20Ticket/${doc.name}`, admin)
+  const { session } = await renderSession(`/admin/HD%20Ticket/${doc.name}`, admin)
   await session.assertText(doc.name).clickButton('Start')
   // 'In Progress' sits in the status <select>'s options from the first
   // render, so a bare assertText would pass before the transition even

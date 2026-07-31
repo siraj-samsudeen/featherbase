@@ -265,7 +265,7 @@ async function notifyPendingApprovers(
   if (approvers.length === 0) return
 
   const actions = outgoing.map((t) => t.action).join(', ')
-  const link = `/desk/${encodeURIComponent(table)}/${encodeURIComponent(name)}`
+  const link = `/admin/${encodeURIComponent(table)}/${encodeURIComponent(name)}`
   const subject = `Approval required: ${table} ${name}`
   const body =
     `${table} ${name} has entered the "${state}" state and is awaiting your action.\n\n` +

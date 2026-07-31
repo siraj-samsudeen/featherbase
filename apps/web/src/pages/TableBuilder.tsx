@@ -179,7 +179,7 @@ export function TableBuilder() {
       // #80: the new table auto-appears on its module's home page — refresh
       // the sidebar so that happens without a reload.
       await queryClient.invalidateQueries({ queryKey: ['home-pages'] })
-      navigate({ to: '/desk/$doctype', params: { doctype: name }, search: { filters: undefined } })
+      navigate({ to: '/admin/$doctype', params: { doctype: name }, search: { filters: undefined } })
     } catch (err) {
       setProgress(null)
       setError(err instanceof ApiError ? err.message : 'Create failed')
@@ -287,7 +287,7 @@ export function TableBuilder() {
             {/* NAM-001: the row id is column one, matching the Import Wizard.
                 Every record has an id; where it comes from is the same kind of
                 decision as any other column's. Always present, never removed. */}
-            <tr className="border-t border-gray-100 bg-blue-50/60">
+            <tr className="border-t border-gray-100 bg-blue-50/60" data-testid="dt-row-id">
               <td className="px-2 py-1 align-baseline text-gray-500">Row ID</td>
               <td className="px-1 py-1" colSpan={5}>
                 <NamingControl
@@ -307,7 +307,10 @@ export function TableBuilder() {
               </td>
             </tr>
             {columns.map((c, i) => (
-              <tr key={i} className="border-t border-gray-100">
+              /* data-columnrow marks the editable column rows: specs address
+                 these, so a decorative row (Row ID, and anything added later)
+                 can never shift the indices they read. */
+              <tr key={i} className="border-t border-gray-100" data-columnrow="">
                 <td className="px-1 py-1">
                   <input
                     value={c.column_name}
@@ -423,7 +426,7 @@ export function TableBuilder() {
       {moreSheets > 1 && (
         <p className="mt-3 text-sm text-gray-500" data-testid="dt-more-sheets">
           This workbook has {moreSheets} sheets — only the first is used here. The{' '}
-          <Link to="/desk/import" search={{ table: undefined }} className="text-[var(--color-brand)] underline">
+          <Link to="/admin/import" search={{ table: undefined }} className="text-[var(--color-brand)] underline">
             Import wizard
           </Link>{' '}
           imports every sheet.

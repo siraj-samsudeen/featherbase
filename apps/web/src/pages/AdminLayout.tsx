@@ -16,7 +16,7 @@ interface SearchHit {
 
 // Frappe-style Admin shell: top navbar (brand + command bar + avatar) and a
 // home page sidebar. All Tables render inside <Outlet/>.
-export function DeskLayout() {
+export function AdminLayout() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const user = getSessionUser()
@@ -81,7 +81,7 @@ export function DeskLayout() {
   useEffect(() => {
     let leader = 0 // timestamp of a recent 'g' press
     function currentDoctype(): string | null {
-      const m = /^\/desk\/([^/]+)/.exec(window.location.pathname)
+      const m = /^\/admin\/([^/]+)/.exec(window.location.pathname)
       return m ? decodeURIComponent(m[1]) : null
     }
     function onKey(e: KeyboardEvent) {
@@ -104,7 +104,7 @@ export function DeskLayout() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault()
         const dt = currentDoctype()
-        if (dt && dt !== 'new-table') navigate({ to: '/desk/$doctype/$name', params: { doctype: dt, name: 'new' } })
+        if (dt && dt !== 'new-table') navigate({ to: '/admin/$doctype/$name', params: { doctype: dt, name: 'new' } })
         return
       }
       // Leader-key navigation only when not typing into a field.
@@ -114,7 +114,7 @@ export function DeskLayout() {
         leader = now
       } else if (e.key.toLowerCase() === 'd' && now - leader < 1000) {
         leader = 0
-        navigate({ to: '/desk' })
+        navigate({ to: '/admin' })
       } else {
         leader = 0
       }
@@ -154,7 +154,7 @@ export function DeskLayout() {
 
   function openDoc(hit: SearchHit) {
     setSearch('')
-    navigate({ to: '/desk/$doctype/$name', params: { doctype: hit.table, name: hit.name } })
+    navigate({ to: '/admin/$doctype/$name', params: { doctype: hit.table, name: hit.name } })
   }
 
   // Enter opens the top match: an exactly-named Table's list first,
@@ -166,7 +166,7 @@ export function DeskLayout() {
     const dtHit = tables.data?.data.find((d) => d.name.toLowerCase() === q.toLowerCase())
     if (dtHit) {
       setSearch('')
-      navigate({ to: '/desk/$doctype', params: { doctype: dtHit.name }, search: { filters: undefined } })
+      navigate({ to: '/admin/$doctype', params: { doctype: dtHit.name }, search: { filters: undefined } })
       return
     }
     const doc = docHits.data?.results[0]
@@ -174,7 +174,7 @@ export function DeskLayout() {
       openDoc(doc)
       return
     }
-    navigate({ to: '/desk/$doctype', params: { doctype: q }, search: { filters: undefined } })
+    navigate({ to: '/admin/$doctype', params: { doctype: q }, search: { filters: undefined } })
   }
 
   const initials = (user?.full_name || user?.name || '?')
@@ -196,9 +196,9 @@ export function DeskLayout() {
 
   // Command actions surfaced through the command bar (the ⌘K palette).
   const commands = [
-    { id: 'new-table', label: 'New Table', run: () => navigate({ to: '/desk/new-table' }) },
+    { id: 'new-table', label: 'New Table', run: () => navigate({ to: '/admin/new-table' }) },
     { id: 'toggle-theme', label: 'Toggle dark mode', run: () => toggleTheme() },
-    { id: 'home', label: 'Go to Admin home', run: () => navigate({ to: '/desk' }) },
+    { id: 'home', label: 'Go to Admin home', run: () => navigate({ to: '/admin' }) },
   ]
   const commandHits =
     search.trim().length > 1
@@ -217,7 +217,7 @@ export function DeskLayout() {
         >
           ☰
         </button>
-        <Link to="/desk" className="flex items-center gap-2">
+        <Link to="/admin" className="flex items-center gap-2">
           <span className="flex h-6 w-6 items-center justify-center rounded bg-[var(--color-brand)] text-xs font-bold text-white">
             F
           </span>
@@ -258,7 +258,7 @@ export function DeskLayout() {
               {suggestions.map((d) => (
                 <Link
                   key={d.name}
-                  to="/desk/$doctype"
+                  to="/admin/$doctype"
                   params={{ doctype: d.name }}
                   search={{ filters: undefined }}
                   onClick={() => setSearch('')}
@@ -272,7 +272,7 @@ export function DeskLayout() {
               {suggestions.slice(0, 2).map((d) => (
                 <Link
                   key={`new-${d.name}`}
-                  to="/desk/$doctype/$name"
+                  to="/admin/$doctype/$name"
                   params={{ doctype: d.name, name: 'new' }}
                   onClick={() => setSearch('')}
                   data-testid="awesomebar-new"
@@ -447,7 +447,7 @@ export function DeskLayout() {
         {/* Sidebar — static on md+, a slide-in drawer on mobile. Clicking any
             link inside closes the drawer. */}
         <aside
-          data-testid="desk-sidebar"
+          data-testid="admin-sidebar"
           onClick={(e) => {
             if ((e.target as HTMLElement).closest('a')) setSidebarOpen(false)
           }}
@@ -457,14 +457,14 @@ export function DeskLayout() {
         >
           <div className="px-3 pt-4">
             <Link
-              to="/desk/new-table"
+              to="/admin/new-table"
               data-testid="new-doctype-link"
               className="fc-btn-primary w-full justify-center"
             >
               + New Table
             </Link>
             <Link
-              to="/desk/import"
+              to="/admin/import"
               search={{ table: undefined }}
               data-testid="import-data-link"
               className="fc-btn mt-2 w-full justify-center"
@@ -482,7 +482,7 @@ export function DeskLayout() {
             {(homePages.data?.pages ?? []).map((p) => (
               <Link
                 key={p.name}
-                to="/desk/home/$name"
+                to="/admin/home/$name"
                 params={{ name: p.name }}
                 data-testid={`home-page-link-${p.name}`}
                 className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-subtle)]"
@@ -498,7 +498,7 @@ export function DeskLayout() {
           </nav>
           <div className="border-t border-[var(--color-border)] px-2 py-2">
             <Link
-              to="/desk/all-tables"
+              to="/admin/all-tables"
               data-testid="all-tables-link"
               className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)] hover:text-[var(--color-ink)]"
               activeProps={{

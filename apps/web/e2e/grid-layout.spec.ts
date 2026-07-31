@@ -48,12 +48,12 @@ async function login(page: import('@playwright/test').Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/desk/)
+  await expect(page).toHaveURL(/\/admin/)
 }
 
 test('UI-007: child grid add/edit/delete/reorder round-trips through save', async ({ page, request }) => {
   await login(page)
-  await page.goto(`/desk/${encodeURIComponent(DT)}/${docName}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   const grid = page.getByTestId('table-items')
   await expect(grid.locator('tbody tr')).toHaveCount(3)
 
@@ -88,7 +88,7 @@ test('UI-007: child grid add/edit/delete/reorder round-trips through save', asyn
 
 test('UI-008: Section and Column Breaks produce grouped sections in metadata order', async ({ page }) => {
   await login(page)
-  await page.goto(`/desk/${encodeURIComponent(SEC_DT)}/new`)
+  await page.goto(`/admin/${encodeURIComponent(SEC_DT)}/new`)
   await expect(page.getByTestId('form-view')).toBeVisible()
 
   // Two sections: 0 has a1+a2, 1 has b1+b2 (with a column break between)
@@ -103,10 +103,10 @@ test('UI-008: Section and Column Breaks produce grouped sections in metadata ord
 
 test('UI-016: breadcrumbs navigate and the title bar tracks saved state', async ({ page }) => {
   await login(page)
-  await page.goto(`/desk/${encodeURIComponent(DT)}/${docName}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
 
   const crumbs = page.getByTestId('breadcrumbs')
-  await expect(crumbs).toContainText('Desk')
+  await expect(crumbs).toContainText('Admin')
   await expect(crumbs).toContainText(DT)
   await expect(crumbs).toContainText(docName)
 

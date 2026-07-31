@@ -7,7 +7,7 @@ async function login(page: Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 }
 
 async function serverTheme(request: APIRequestContext): Promise<string> {
@@ -52,6 +52,6 @@ test('UI-024: dark mode toggles, persists across reload, and is stored per-user'
 
   // It survives a reload (no flash back to light).
   await page.reload()
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
   await expect(html).toHaveAttribute('data-theme', 'dark')
 })

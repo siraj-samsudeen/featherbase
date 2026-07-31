@@ -211,7 +211,7 @@ Creating a Table:
    `numeric(21,9)`, `JSON` → `jsonb`, ...). Layout columns (section break,
    column break) and Sub-table columns produce no physical column.
 3. Enables row-level security and generates a SELECT-only policy for the
-   `desk_client` role (`applyRls`) — the local stand-in for a direct
+   `app_client` role (`applyRls`) — the local stand-in for a direct
    PostgREST-style client. The app server connects as the table owner and
    remains the only write path (see `apps/server/migrations/0010_rls.sql`).
 

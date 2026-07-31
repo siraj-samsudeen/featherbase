@@ -37,9 +37,9 @@ test('UI-021: events appear on their date and dragging updates the date field', 
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
-  await page.goto(`/desk/${encodeURIComponent(DT)}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}`)
   await page.getByTestId('open-calendar').click()
   await expect(page.getByTestId('calendar-view')).toBeVisible()
 

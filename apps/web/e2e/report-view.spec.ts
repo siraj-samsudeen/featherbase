@@ -60,10 +60,10 @@ test('RPT-001: group by Select shows correct counts and sums; column picker work
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
   // Enter through the list view's Report button.
-  await page.goto(`/desk/${encodeURIComponent(DT)}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}`)
   await page.getByTestId('open-report').click()
   await expect(page.getByTestId('report-view')).toBeVisible()
   await expect(page.getByTestId('report-total')).toContainText('3 rows')

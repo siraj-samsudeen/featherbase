@@ -18,7 +18,7 @@ async function login(page: Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/desk/)
+  await expect(page).toHaveURL(/\/admin/)
 }
 
 function workbook() {
@@ -89,7 +89,13 @@ test('IMP-010: multi-sheet workbook — one sheet to a new Table, one mapped ont
   // Sheet 1 defaulted to a new Table named from the sheet, Choice detected.
   await expect(page.getByTestId('iw-target-0')).toHaveValue('New Table…')
   await expect(page.getByTestId('iw-new-name-0')).toHaveValue('Orders')
-  const grid = page.getByTestId('iw-new-grid-0').locator('tbody tr')
+  // NAM-002 contract, same as the Table Builder: the locked Row ID row heads
+  // the grid, and column assertions select [data-columnrow] so it can never
+  // shift them again (#94).
+  await expect(
+    page.getByTestId('iw-new-grid-0').locator('tbody tr').first(),
+  ).toHaveAttribute('data-testid', 'iw-row-id-0')
+  const grid = page.getByTestId('iw-new-grid-0').locator('tbody tr[data-columnrow]')
   await expect(grid.nth(2).locator('[data-rowfield=column_type]')).toHaveValue('Choice')
   // IMP-012: the editable display label sits beside the machine name.
   await expect(grid.nth(2).locator('[data-rowfield=label]')).toHaveValue('Status')
@@ -203,7 +209,7 @@ test('IMP-013: skip a sheet, drop a column, and drive the target picker', async 
   await page.keyboard.press('Escape')
 
   // Drop the middle column of sheet 1.
-  const grid = page.getByTestId('iw-new-grid-0').locator('tbody tr')
+  const grid = page.getByTestId('iw-new-grid-0').locator('tbody tr[data-columnrow]')
   await grid.nth(1).locator('[data-rowfield=include]').uncheck()
 
   // Only sheet 1's 2 rows count now.
@@ -211,7 +217,7 @@ test('IMP-013: skip a sheet, drop a column, and drive the target picker', async 
   await page.getByTestId('iw-import').click()
 
   // Single active sheet: lands on the new Table's list.
-  await expect(page).toHaveURL(new RegExp('/desk/Wizard%20Keep'))
+  await expect(page).toHaveURL(new RegExp('/admin/Wizard%20Keep'))
 
   // pick_b was excluded; the skipped sheet created nothing.
   const meta = (await (
@@ -245,7 +251,7 @@ test('IMP-010: the list view Import button preselects that Table as the target',
   ).json()) as { count: number }
 
   await login(page)
-  await page.goto(`/desk/${encodeURIComponent(EXISTING_DT)}`)
+  await page.goto(`/admin/${encodeURIComponent(EXISTING_DT)}`)
   await page.getByTestId('open-import').click()
   await expect(page.getByTestId('import-wizard')).toBeVisible()
 
@@ -264,7 +270,7 @@ test('IMP-010: the list view Import button preselects that Table as the target',
   // sheet's own row count in the card header.
   await expect(page.getByTestId('iw-view-target-0')).toHaveAttribute(
     'href',
-    `/desk/${encodeURIComponent(EXISTING_DT)}`,
+    `/admin/${encodeURIComponent(EXISTING_DT)}`,
   )
   await expect(page.getByTestId('iw-view-target-0')).toHaveAttribute('target', '_blank')
   await expect(page.getByTestId('iw-target-count-0')).toContainText(
@@ -277,7 +283,7 @@ test('IMP-010: the list view Import button preselects that Table as the target',
 
   await page.getByTestId('iw-import').click()
   // Single-sheet import navigates to the target Table's list.
-  await expect(page).toHaveURL(new RegExp(`/desk/Wizard%20Stock`))
+  await expect(page).toHaveURL(new RegExp(`/admin/Wizard%20Stock`))
   await expect(page.getByTestId('list-rows')).toContainText(sku)
 
   const after = (await (

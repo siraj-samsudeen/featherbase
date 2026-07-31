@@ -169,7 +169,7 @@ async function main() {
   }
 
   console.log('\nHelpdesk demo ready. Try:')
-  console.log(`  Desk:    ${BASE.replace('8000', '5173')}/desk/HD%20Ticket (agent1@helpdesk.test / demo1234)`)
+  console.log(`  Admin:   ${BASE.replace('8000', '5173')}/admin/HD%20Ticket (agent1@helpdesk.test / demo1234)`)
   console.log(`  Intake:  ${BASE.replace('8000', '5173')}/form/new-ticket (log in as cust1@acme.test first)`)
   console.log(`  Portal:  ${BASE.replace('8000', '5173')}/portal/HD%20Ticket`)
 }

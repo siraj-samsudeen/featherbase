@@ -59,20 +59,20 @@ async function login(page: import('@playwright/test').Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 }
 
 test('conditional transitions: the form shows only the action whose condition holds', async ({ page }) => {
   await login(page)
 
   // Big document (amount 5000): only "Approve" is offered.
-  await page.goto(`/desk/${encodeURIComponent(DT)}/${BIG}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${BIG}`)
   await expect(page.getByTestId('workflow-actions')).toBeVisible()
   await expect(page.getByTestId('workflow-action-Approve')).toBeVisible()
   await expect(page.getByTestId('workflow-action-Auto Approve')).toHaveCount(0)
 
   // Small document (amount 500): only "Auto Approve" is offered.
-  await page.goto(`/desk/${encodeURIComponent(DT)}/${SMALL}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${SMALL}`)
   await expect(page.getByTestId('workflow-action-Auto Approve')).toBeVisible()
   await expect(page.getByTestId('workflow-action-Approve')).toHaveCount(0)
 
@@ -83,7 +83,7 @@ test('conditional transitions: the form shows only the action whose condition ho
 
 test('the workflow builder grid exposes the Condition column', async ({ page }) => {
   await login(page)
-  await page.goto(`/desk/Workflow/${encodeURIComponent(FLOW)}`)
+  await page.goto(`/admin/Workflow/${encodeURIComponent(FLOW)}`)
   await expect(page.getByTestId('form-view')).toBeVisible()
   // The transitions child grid renders an editable Condition column carrying
   // our expressions — this IS the workflow builder (Frappe-style).

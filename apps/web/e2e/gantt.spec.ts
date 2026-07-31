@@ -46,12 +46,12 @@ async function login(page: import('@playwright/test').Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 }
 
 test('UI-022: bars span the correct ranges', async ({ page }) => {
   await login(page)
-  await page.goto(`/desk/${encodeURIComponent(DT)}/view/gantt`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/view/gantt`)
   await expect(page.getByTestId('gantt-view')).toBeVisible()
 
   const barA = page.getByTestId(`gantt-bar-${taskA}`)
@@ -67,7 +67,7 @@ test('UI-022: bars span the correct ranges', async ({ page }) => {
 
 test('UI-022: resizing a bar updates the end date', async ({ page }) => {
   await login(page)
-  await page.goto(`/desk/${encodeURIComponent(DT)}/view/gantt`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/view/gantt`)
   const barA = page.getByTestId(`gantt-bar-${taskA}`)
   await expect(barA).toHaveAttribute('data-end', '2026-03-05')
 

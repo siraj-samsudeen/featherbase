@@ -84,7 +84,7 @@ app.notFound((c) =>
   c.json({ error: { type: 'NotFoundError', message: `Route not found: ${c.req.method} ${c.req.path}` } }, 404),
 )
 
-// API-008: CORS restricted to the Desk origin(s) + standard security
+// API-008: CORS restricted to the Admin origin(s) + standard security
 // headers. Runs before auth so preflight OPTIONS (which carries no
 // Authorization header) is answered here.
 app.use('*', secureHeaders())
@@ -146,7 +146,7 @@ app.post('/api/method/login', async (c) => {
   setSidCookie(c, session.token)
   return c.json({
     message: 'Logged In',
-    home_page: '/desk',
+    home_page: '/admin',
     full_name: session.user.full_name ?? session.user.name,
   })
 })
@@ -310,7 +310,7 @@ app.get('/api/oauth/google/callback', async (c) => {
   const userName = await findOrCreateGoogleUser(email, name)
   const { token } = await issueSession(userName)
   // Bounce back into the SPA (same origin via the dev proxy), which stores the
-  // token and lands in the Desk.
+  // token and lands in the Admin.
   return c.redirect(`/oauth-callback?token=${encodeURIComponent(token)}`)
 })
 
@@ -907,7 +907,7 @@ app.post('/api/enqueue_job', async (c) => {
   return c.json({ name }, 201)
 })
 
-// JOB-004: retry a failed job from the Desk.
+// JOB-004: retry a failed job from the Admin.
 app.post('/api/retry_job', async (c) => {
   await assertSystemManager(who(c))
   const { name } = (await c.req.json().catch(() => ({}))) as { name?: string }
@@ -958,7 +958,7 @@ app.get('/api/search', async (c) => {
 })
 
 // #80: the caller's visible Home Pages with their permission-filtered card
-// links — the ONLY source the Desk sidebar consumes. Role visibility is
+// links — the ONLY source the Admin sidebar consumes. Role visibility is
 // presentation scoping (computed server-side), not a security boundary;
 // table access is still enforced by Permission rows on every read.
 app.get('/api/home_pages', async (c) => {
