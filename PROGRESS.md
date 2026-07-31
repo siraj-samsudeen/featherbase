@@ -56,7 +56,7 @@ Admin: Zone, SRO, Registration District, Import Log — got
 `sort_column='modified'`, a column that no longer exists, so `getList()`
 rejected its own default `order_by` and **the Table's list view rendered
 empty**. Zone showed "0 total" with 11 rows in the table.
-`0060_fix_sort_column_default.sql` sets the default and repairs the rows.
+`0061_fix_sort_column_default.sql` sets the default and repairs the rows.
 
 Verified end-to-end in the browser (Playwright MCP, real CSV through the real
 UI): dropping `sub registrar office.csv` derived prefix
