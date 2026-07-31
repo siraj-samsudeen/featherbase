@@ -20,6 +20,7 @@ import { ReportView } from './components/ReportView'
 import { QueryReportView } from './components/QueryReportView'
 import { ScriptReportView } from './components/ScriptReportView'
 import { PermissionManager } from './components/PermissionManager'
+import { TableNaming } from './components/TableNaming'
 import { DashboardView } from './components/DashboardView'
 import { HomePageView } from './components/HomePageView'
 import { useHomePages } from './lib/home-pages'
@@ -445,6 +446,22 @@ function DashboardPage() {
   )
 }
 
+// NAM-001: id-pattern editor for an existing Table (static first segment).
+const namingRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'naming/$doctype',
+  component: NamingPage,
+})
+
+function NamingPage() {
+  const { doctype } = namingRoute.useParams()
+  return (
+    <div data-testid="doctype-page">
+      <TableNaming key={doctype} doctype={doctype} />
+    </div>
+  )
+}
+
 // SET-003: role & permission manager for a Table (static first segment).
 const permissionsRoute = createRoute({
   getParentRoute: () => adminRoute,
@@ -486,5 +503,5 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, homePageRoute, allTablesRoute, jobsRoute, doctypeRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, jobsRoute, doctypeRoute, docRoute]),
 ])

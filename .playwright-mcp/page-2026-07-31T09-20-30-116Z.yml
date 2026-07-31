@@ -1,0 +1,142 @@
+- generic [ref=e21]:
+  - banner [ref=e22]:
+    - link "F Frappe Clone" [ref=e23] [cursor=pointer]:
+      - /url: /admin
+      - generic [ref=e24]: F
+      - generic [ref=e25]: Frappe Clone
+    - generic [ref=e26]:
+      - textbox "Search or type a command…" [ref=e27]
+      - generic: ⌘K
+    - generic [ref=e28]:
+      - combobox "Language" [ref=e29]:
+        - option "EN" [selected]
+        - option "FR"
+        - option "ES"
+      - button "🌙" [ref=e30]
+      - generic "Notifications" [ref=e31]:
+        - text: 🔔
+        - generic [ref=e32]: "2"
+      - button "Administrator" [ref=e34]:
+        - generic [ref=e35]: A
+  - generic [ref=e37]:
+    - complementary [ref=e38]:
+      - generic [ref=e39]:
+        - link "+ New Table" [ref=e40] [cursor=pointer]:
+          - /url: /admin/new-table
+        - link "Import Data" [ref=e41] [cursor=pointer]:
+          - /url: /admin/import
+      - navigation [ref=e42]:
+        - link "Home" [ref=e43] [cursor=pointer]:
+          - /url: /admin/home/home
+        - link "Helpdesk" [ref=e44] [cursor=pointer]:
+          - /url: /admin/home/helpdesk
+        - link "Sales" [ref=e45] [cursor=pointer]:
+          - /url: /admin/home/ws-e2e
+        - link "System" [ref=e46] [cursor=pointer]:
+          - /url: /admin/home/system
+      - link "All tables" [ref=e48] [cursor=pointer]:
+        - /url: /admin/all-tables
+    - main [ref=e49]:
+      - generic [ref=e52]:
+        - heading "Home" [level=1] [ref=e53]
+        - generic [ref=e56]:
+          - link "Asg DT" [ref=e57] [cursor=pointer]:
+            - /url: /admin/Asg%20DT
+          - link "UI Attach DT" [ref=e58] [cursor=pointer]:
+            - /url: /admin/UI%20Attach%20DT
+          - link "Audit E2E Item" [ref=e59] [cursor=pointer]:
+            - /url: /admin/Audit%20E2E%20Item
+          - link "Awesome DT" [ref=e60] [cursor=pointer]:
+            - /url: /admin/Awesome%20DT
+          - link "Bulk DT" [ref=e61] [cursor=pointer]:
+            - /url: /admin/Bulk%20DT
+          - link "Cal DT" [ref=e62] [cursor=pointer]:
+            - /url: /admin/Cal%20DT
+          - link "CS E2E Order" [ref=e63] [cursor=pointer]:
+            - /url: /admin/CS%20E2E%20Order
+          - link "CS E2E Bad" [ref=e64] [cursor=pointer]:
+            - /url: /admin/CS%20E2E%20Bad
+          - link "Cmt DT" [ref=e65] [cursor=pointer]:
+            - /url: /admin/Cmt%20DT
+          - link "Cf Target" [ref=e66] [cursor=pointer]:
+            - /url: /admin/Cf%20Target
+          - link "Dash E2E Task" [ref=e67] [cursor=pointer]:
+            - /url: /admin/Dash%20E2E%20Task
+          - link "UI Filter Cold" [ref=e68] [cursor=pointer]:
+            - /url: /admin/UI%20Filter%20Cold
+          - link "Sb DT" [ref=e69] [cursor=pointer]:
+            - /url: /admin/Sb%20DT
+          - link "UI Form Cust" [ref=e70] [cursor=pointer]:
+            - /url: /admin/UI%20Form%20Cust
+          - link "UI Form A" [ref=e71] [cursor=pointer]:
+            - /url: /admin/UI%20Form%20A
+          - link "Gantt E2E Project" [ref=e72] [cursor=pointer]:
+            - /url: /admin/Gantt%20E2E%20Project
+          - link "UI Section DT" [ref=e73] [cursor=pointer]:
+            - /url: /admin/UI%20Section%20DT
+          - link "WS E2E Task" [ref=e74] [cursor=pointer]:
+            - /url: /admin/WS%20E2E%20Task
+          - link "I18n2 E2E Doc" [ref=e75] [cursor=pointer]:
+            - /url: /admin/I18n2%20E2E%20Doc
+          - link "I18n E2E Doc" [ref=e76] [cursor=pointer]:
+            - /url: /admin/I18n%20E2E%20Doc
+          - link "Wizard Stock" [ref=e77] [cursor=pointer]:
+            - /url: /admin/Wizard%20Stock
+          - link "Wizard Keep" [ref=e78] [cursor=pointer]:
+            - /url: /admin/Wizard%20Keep
+          - link "Kb DT" [ref=e79] [cursor=pointer]:
+            - /url: /admin/Kb%20DT
+          - link "KB E2E Doc" [ref=e80] [cursor=pointer]:
+            - /url: /admin/KB%20E2E%20Doc
+          - link "Lh DT" [ref=e81] [cursor=pointer]:
+            - /url: /admin/Lh%20DT
+          - link "Ls DT" [ref=e82] [cursor=pointer]:
+            - /url: /admin/Ls%20DT
+          - link "UI List A" [ref=e83] [cursor=pointer]:
+            - /url: /admin/UI%20List%20A
+          - link "UI List B" [ref=e84] [cursor=pointer]:
+            - /url: /admin/UI%20List%20B
+          - link "Naming Demo" [ref=e85] [cursor=pointer]:
+            - /url: /admin/Naming%20Demo
+          - link "PM E2E Doc" [ref=e86] [cursor=pointer]:
+            - /url: /admin/PM%20E2E%20Doc
+          - link "Portal E2E Ticket" [ref=e87] [cursor=pointer]:
+            - /url: /admin/Portal%20E2E%20Ticket
+          - link "Pf DT" [ref=e88] [cursor=pointer]:
+            - /url: /admin/Pf%20DT
+          - link "Prn DT" [ref=e89] [cursor=pointer]:
+            - /url: /admin/Prn%20DT
+          - link "Ps Ui Target" [ref=e90] [cursor=pointer]:
+            - /url: /admin/Ps%20Ui%20Target
+          - link "Rt DT" [ref=e91] [cursor=pointer]:
+            - /url: /admin/Rt%20DT
+          - link "UI Rn Cust" [ref=e92] [cursor=pointer]:
+            - /url: /admin/UI%20Rn%20Cust
+          - link "UI Rn Order" [ref=e93] [cursor=pointer]:
+            - /url: /admin/UI%20Rn%20Order
+          - link "Rc E2E Sale" [ref=e94] [cursor=pointer]:
+            - /url: /admin/Rc%20E2E%20Sale
+          - link "RPT Export Task" [ref=e95] [cursor=pointer]:
+            - /url: /admin/RPT%20Export%20Task
+          - link "RPT Task" [ref=e96] [cursor=pointer]:
+            - /url: /admin/RPT%20Task
+          - link "Resp E2E Item" [ref=e97] [cursor=pointer]:
+            - /url: /admin/Resp%20E2E%20Item
+          - link "RPT Saved Task" [ref=e98] [cursor=pointer]:
+            - /url: /admin/RPT%20Saved%20Task
+          - link "SS E2E Form" [ref=e99] [cursor=pointer]:
+            - /url: /admin/SS%20E2E%20Form
+          - link "UI Sub Order" [ref=e100] [cursor=pointer]:
+            - /url: /admin/UI%20Sub%20Order
+          - link "Set4 Item" [ref=e101] [cursor=pointer]:
+            - /url: /admin/Set4%20Item
+          - link "Thumb E2E Doc" [ref=e102] [cursor=pointer]:
+            - /url: /admin/Thumb%20E2E%20Doc
+          - link "Tl DT" [ref=e103] [cursor=pointer]:
+            - /url: /admin/Tl%20DT
+          - link "WF E2E Msg" [ref=e104] [cursor=pointer]:
+            - /url: /admin/WF%20E2E%20Msg
+          - link "Wf Cond Ui Task" [ref=e105] [cursor=pointer]:
+            - /url: /admin/Wf%20Cond%20Ui%20Task
+          - link "Wf Ui Task" [ref=e106] [cursor=pointer]:
+            - /url: /admin/Wf%20Ui%20Task

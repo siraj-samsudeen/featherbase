@@ -17,7 +17,7 @@ structured state in the repo and a strict per-session protocol.
 
 | Artifact | Role |
 |---|---|
-| `features.json` | The full feature inventory (126 features). Ground truth for "what's done". Agents may ONLY flip `status` between `failing`/`passing` — never edit entries. Each feature carries its own end-to-end verification criteria and dependencies. |
+| `features.json` | The full feature inventory — the original 126 built by this harness, plus features added since (import, naming, app fixtures, …). Ground truth for "what's done". Agents may ONLY flip `status` between `failing`/`passing`; IDs, order, deps and priorities are immutable, and adding entries or rewording them takes an explicit owner instruction. Each feature carries its own end-to-end verification criteria and dependencies. |
 | `../CLAUDE.md` | Standing rules loaded every session: architecture invariants + the session protocol. |
 | `../PROGRESS.md` | Session-to-session handoff notes (the "structured handoff" replacing context compaction). |
 | `../init.sh` | One command to boot database + server + web and smoke-test them. Sessions verify the app works BEFORE coding. |

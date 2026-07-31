@@ -1,0 +1,113 @@
+- generic [ref=f1e3]:
+  - banner [ref=f1e4]:
+    - link "F Frappe Clone" [ref=f1e5] [cursor=pointer]:
+      - /url: /admin
+      - generic [ref=f1e6]: F
+      - generic [ref=f1e7]: Frappe Clone
+    - generic [ref=f1e8]:
+      - textbox "Search or type a command…" [ref=f1e9]
+      - generic: ⌘K
+    - generic [ref=f1e10]:
+      - combobox "Language" [ref=f1e11]:
+        - option "EN" [selected]
+        - option "FR"
+        - option "ES"
+      - button "🌙" [ref=f1e12]
+      - generic "Notifications" [ref=f1e13]:
+        - text: 🔔
+        - generic [ref=f1e14]: "2"
+      - button "Administrator" [ref=f1e16]:
+        - generic [ref=f1e17]: A
+  - generic [ref=f1e19]:
+    - complementary [ref=f1e20]:
+      - generic [ref=f1e21]:
+        - link "+ New Table" [ref=f1e22] [cursor=pointer]:
+          - /url: /admin/new-table
+        - link "Import Data" [ref=f1e23] [cursor=pointer]:
+          - /url: /admin/import
+      - navigation [ref=f1e24]:
+        - link "Home" [ref=f1e25] [cursor=pointer]:
+          - /url: /admin/home/home
+        - link "Helpdesk" [ref=f1e26] [cursor=pointer]:
+          - /url: /admin/home/helpdesk
+        - link "Sales" [ref=f1e27] [cursor=pointer]:
+          - /url: /admin/home/ws-e2e
+        - link "System" [ref=f1e28] [cursor=pointer]:
+          - /url: /admin/home/system
+      - link "All tables" [ref=f1e30] [cursor=pointer]:
+        - /url: /admin/all-tables
+    - main [ref=f1e31]:
+      - generic [ref=f1e34]:
+        - heading "New Table" [level=1] [ref=f1e35]
+        - generic [ref=f1e36] [cursor=pointer]: Drag & drop a CSV or Excel file here to build the Table from it — or click to browse
+        - generic [ref=f1e37]:
+          - generic [ref=f1e38]:
+            - generic [ref=f1e39]: Table name
+            - textbox "e.g. Project" [ref=f1e40]
+          - generic [ref=f1e41]:
+            - generic [ref=f1e42]: Module
+            - textbox "Custom" [ref=f1e43]
+        - generic [ref=f1e44]:
+          - table [ref=f1e45]:
+            - rowgroup [ref=f1e46]:
+              - row [ref=f1e47]:
+                - columnheader "Column Name" [ref=f1e48]
+                - columnheader "Label" [ref=f1e49]
+                - columnheader "Column Type" [ref=f1e50]
+                - columnheader "Target" [ref=f1e51]
+                - columnheader "Reqd" [ref=f1e52]
+                - columnheader "List" [ref=f1e53]
+                - columnheader [ref=f1e54]
+            - rowgroup [ref=f1e55]:
+              - row [ref=f1e56]:
+                - cell "Row ID" [ref=f1e57]
+                - cell [ref=f1e58]:
+                  - generic [ref=f1e59]:
+                    - combobox [ref=f1e60]:
+                      - option "Series with prefix" [selected]
+                      - option "Random id"
+                      - option "Set by user"
+                    - textbox "Prefix, e.g. ZONE-" [ref=f1e61]
+                    - combobox [ref=f1e62]:
+                      - option "1, 2…"
+                      - option "01, 02…"
+                      - option "001, 002…" [selected]
+                      - option "0001, 0002…"
+                      - option "00001, 00002…"
+                      - option "000001, 000002…"
+                  - paragraph [ref=f1e63]: "First rows: 001, 002, 003…"
+                - cell "🔒" [ref=f1e64]
+              - row [ref=f1e65]:
+                - cell [ref=f1e66]:
+                  - textbox [ref=f1e67]
+                - cell [ref=f1e68]:
+                  - textbox [ref=f1e69]
+                - cell "Data" [ref=f1e70]:
+                  - combobox [ref=f1e71]:
+                    - option "Data" [selected]
+                    - option "Int"
+                    - option "Float"
+                    - option "Currency"
+                    - option "Check"
+                    - option "Choice"
+                    - option "Date"
+                    - option "Datetime"
+                    - option "Text"
+                    - option "Long Text"
+                    - option "Reference"
+                    - option "Sub-table"
+                    - option "Attach"
+                    - option "Attach Image"
+                    - option "JSON"
+                    - option "Section Break"
+                    - option "Column Break"
+                - cell [ref=f1e72]:
+                  - textbox [ref=f1e73]
+                - cell [ref=f1e74]:
+                  - checkbox [ref=f1e75]
+                - cell [ref=f1e76]:
+                  - checkbox [ref=f1e77]
+                - cell [ref=f1e78]:
+                  - button "Remove column" [ref=f1e79]: ×
+          - button "+ Add column" [ref=f1e80]
+        - button "Create Table" [disabled] [ref=f1e81]

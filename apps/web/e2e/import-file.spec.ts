@@ -53,7 +53,7 @@ test('IMP-006: drop a CSV; inferred schema prefills the builder; create imports 
   await expect(page.getByTestId('dt-file-name')).toContainText('import sales.csv')
   await expect(page.getByTestId('dt-file-name')).toContainText('3 rows')
   await expect(page.getByTestId('dt-name')).toHaveValue(CSV_DT)
-  const grid = page.getByTestId('dt-fields').locator('tbody tr')
+  const grid = page.getByTestId('dt-fields').locator('tbody tr[data-columnrow]')
   await expect(grid).toHaveCount(5)
   const expectType = async (row: number, name: string, type: string) => {
     await expect(grid.nth(row).locator('[data-rowfield=column_name]')).toHaveValue(name)
@@ -120,7 +120,7 @@ test('IMP-006: a real .xlsx imports the same way (via the file picker)', async (
   })
 
   await expect(page.getByTestId('dt-name')).toHaveValue(XLSX_DT)
-  const grid = page.getByTestId('dt-fields').locator('tbody tr')
+  const grid = page.getByTestId('dt-fields').locator('tbody tr[data-columnrow]')
   await expect(grid).toHaveCount(3)
   await expect(grid.nth(0).locator('[data-rowfield=column_name]')).toHaveValue('item')
   await expect(grid.nth(1).locator('[data-rowfield=column_type]')).toHaveValue('Int')
