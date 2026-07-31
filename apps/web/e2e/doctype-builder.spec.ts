@@ -34,6 +34,14 @@ test('UI-011: create a DocType with 5 fields from the Desk; list+form work immed
   await expect(page.getByTestId('doctype-builder')).toBeVisible()
   await page.getByTestId('dt-name').fill(NEW_DT)
 
+  // NAM-002 contract: the row id is column one — a locked row above the
+  // editable column rows. Pinned here because when it was introduced the
+  // specs silently read the wrong rows instead of failing (#94); every
+  // column assertion below selects [data-columnrow], never a bare tbody tr.
+  const grid = page.getByTestId('dt-fields')
+  await expect(grid.locator('tbody tr').first()).toHaveAttribute('data-testid', 'dt-row-id')
+  await expect(grid.getByTestId('dt-row-id')).not.toHaveAttribute('data-columnrow', '')
+
   const fieldDefs = [
     ['title', 'Title', 'Data', '', true, true],
     ['count', 'Count', 'Int', '', false, true],
@@ -45,7 +53,7 @@ test('UI-011: create a DocType with 5 fields from the Desk; list+form work immed
   for (let i = 0; i < fieldDefs.length; i++) {
     if (i > 0) await page.getByTestId('dt-add-field').click()
     const [fn, label, type, target, reqd, list] = fieldDefs[i]
-    const row = page.getByTestId('dt-fields').locator('tbody tr').nth(i)
+    const row = page.getByTestId('dt-fields').locator('tbody tr[data-columnrow]').nth(i)
     await row.locator('[data-rowfield=column_name]').fill(fn)
     await row.locator('[data-rowfield=label]').fill(label)
     await row.locator('[data-rowfield=column_type]').selectOption(type)
