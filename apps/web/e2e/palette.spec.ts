@@ -95,7 +95,7 @@ test('UI-025: palette switches, persists across reload, and is stored per-user',
 
 // The palette picker stays reachable on mobile via the account menu, where
 // the navbar selects collapse to avoid horizontal overflow (PR #92 review).
-test('UI-025: on mobile the palette moves into the account menu and the navbar does not overflow', async ({ page }) => {
+test('UI-025: on mobile the palette moves into the account menu and the navbar does not overflow', async ({ page, request }) => {
   await page.setViewportSize({ width: 390, height: 720 })
   await login(page)
 
@@ -108,4 +108,52 @@ test('UI-025: on mobile the palette moves into the account menu and the navbar d
   await page.getByTestId('session-user').click()
   await page.getByTestId('palette-select-mobile').selectOption('graphite')
   await expect(page.locator('html')).toHaveAttribute('data-palette', 'graphite')
+  // Wait for the write to land before afterEach resets it, so the reset
+  // cannot race the in-flight set_palette request.
+  await expect.poll(() => serverPalette(request)).toBe('graphite')
+})
+
+// The exact leak from the PR #92 review: A picks a palette and logs out; B
+// logs in in the SAME tab and must get their own look — not A's still-fresh
+// cached whoami or localStorage mirror.
+test('UI-025: a second user in the same tab does not inherit the first user’s palette', async ({ page, request }) => {
+  const USER_B = 'palette-e2e@x.com'
+  const token = await adminToken(request)
+  const headers = { Authorization: `Bearer ${token}` }
+  // Start clean (same pattern as user-management.spec.ts).
+  await request.delete(`/api/table/User/${encodeURIComponent(USER_B)}`, { headers })
+  const created = await request.post('/api/save_doc', {
+    headers,
+    data: { doctype: 'User', doc: { name: USER_B, email: USER_B, full_name: 'Palette E2E', enabled: true } },
+  })
+  if (created.status() !== 201) throw new Error(`create user: ${created.status()} ${await created.text()}`)
+  await request.post('/api/set_password', { headers, data: { user: USER_B, password: 'palettepw123' } })
+
+  // A (Administrator) picks Ivory; wait for it to persist server-side.
+  await login(page)
+  await page.getByTestId('palette-select').selectOption('ivory')
+  await expect(page.locator('html')).toHaveAttribute('data-palette', 'ivory')
+  await expect.poll(() => serverPalette(request)).toBe('ivory')
+
+  // A logs out; B logs in in the same tab.
+  await page.getByTestId('session-user').click()
+  await page.getByTestId('logout').click()
+  await page.waitForURL(/\/login/)
+  await page.fill('input[name=email]', USER_B)
+  await page.fill('input[name=password]', 'palettepw123')
+  await page.click('button[type=submit]')
+  await page.waitForURL(/\/desk/)
+  await expect(page.getByTestId('session-user')).toBeVisible()
+
+  // B sees their own (classic) look immediately — and still does after
+  // whoami has had time to resolve, which is when the leaked cache used to
+  // flip the palette back to A's.
+  await expect(page.locator('html')).not.toHaveAttribute('data-palette', /./)
+  const settled = await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        setTimeout(() => resolve(document.documentElement.dataset.palette ?? null), 800),
+      ),
+  )
+  expect(settled).toBeNull()
 })
