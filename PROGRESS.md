@@ -88,8 +88,11 @@ typechecks clean, web e2e suite green.
   dispatch is an early-return, native path untouched (rule 4: no refactor
   the slice didn't need).
 
-**Next.** When MotherDuck recovers: reflect a gold schema and eyeball it
-in the Desk (5-minute job). Then candidates: read-only browse for
+**Next.** ~~When MotherDuck recovers: reflect a gold schema~~ — done later
+the same day: MD recovered, `gold.main` introspected (94 tables, 33s) and
+4 tables reflected as module "MotherDuck Gold" (prefix Gold); `Gold
+Category` lists 1,514 live rows read-only in the Desk, form fully
+disabled, no Save/Rename. Then candidates: read-only browse for
 composite-PK PG tables; drift re-sync (EDS-9); features.json entries for
 the three capabilities (owner action — agents may not add entries).
 
