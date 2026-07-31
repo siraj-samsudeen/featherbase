@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { ApiError, api, login } from '../lib/api'
+import { Logo } from '../components/Logo'
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -35,10 +36,8 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-[var(--color-canvas)] px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-2">
-          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-brand)] text-lg font-bold text-white shadow-sm">
-            F
-          </span>
-          <h1 className="text-lg font-semibold text-[var(--color-ink)]">Frappe Clone</h1>
+          <Logo className="h-11 w-11 rounded-xl shadow-sm" />
+          <h1 className="text-lg font-semibold text-[var(--color-ink)]">Featherbase</h1>
           <p className="text-sm text-[var(--color-ink-muted)]">Sign in to your account</p>
         </div>
         <div className="fc-card p-6">

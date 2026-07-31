@@ -13,6 +13,53 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `AdminLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-31 — the "Frappe Clone" brand string is gone, and the product has a mark
+
+The July 2026 rename to Featherbase left the *displayed* name behind: the
+navbar, the login header, the browser tab, the System Settings `app_name`
+default (server and web), the test-email subject, the `public_info` guest
+method, and the feature board all still said "Frappe Clone".
+
+- **Every user-visible occurrence is now "Featherbase"** —
+  `apps/web/index.html`, `AdminLayout.tsx`, `Login.tsx`,
+  `apps/web/src/lib/settings.ts`, `apps/server/src/settings.ts`,
+  `apps/server/src/email.ts`, `apps/server/src/methods/_test_guest.ts`,
+  `apps/server/migrations/0024_singles.ts`, `harness/render-features.mjs`,
+  and the `methods.test.ts` assertion that pins `public_info`.
+- **`0064_rename_app_name.sql` converges existing local databases.** Editing
+  the 0024 seed only helps a database built from scratch — 0024 returns early
+  when `System Settings` already exists. The migration rewrites the
+  `column_def` default and any `single_value` row, *only* where the value is
+  still the untouched `'Frappe Clone'`, so an owner-customised `app_name`
+  survives. Verified against the dev database: the seeded default flipped, the
+  locally-customised value was left alone.
+- **What deliberately still says it.** `PROGRESS.md` history, `docs/adr/0006`,
+  `docs/research/frappe-architecture.md` (there `frappe_clone` is a filesystem
+  path to an upstream Frappe checkout), the generated `site/*.html` dumps of
+  those docs, and `.claude/agents/evaluator.md`. These are dated records, per
+  the `CLAUDE.md` note.
+- **The mark.** `apps/web/src/components/Logo.tsx` replaces the "F" letter tile
+  on the navbar and login header; `apps/web/public/favicon.svg` is the same
+  art, linked from `index.html` (first use of `apps/web/public/`). It is a
+  tilted quill whose vane is split by the shaft and cut into stacked barb
+  bands — a feather that also reads as rows of data. Drawn as a solid brand
+  tile with the cuts painted in the tile colour rather than punched out, so it
+  needs no transparency and survives any background. Four silhouettes were
+  rendered at 16/20/24/44/96px before picking this one; the earlier symmetric
+  leaf read as a pill and an open-stroke version read as a fishbone.
+
+Verified: `pnpm --filter server migrate` applied 0064; `./init.sh` boots and
+both smoke suites pass; web suite 12/12 and both typechecks clean; Playwright
+screenshots of `/login` and the `/admin` navbar confirm the mark and wordmark
+render. Server suite is 501/504 with one **pre-existing, unrelated** failure —
+`app-fixtures.test.ts` "a fresh deployment has zero helpdesk tables" fails
+because this dev database has `helpdesk` in `installed_app` from an earlier
+session; its sibling test skips for that same reason.
+
+Next: that app-fixtures test asserts a fresh-deployment fact against a
+long-lived dev database, so it fails for anyone who has ever installed an app
+locally — worth making it state-independent.
+
 ## 2026-07-31 — a guard so a sixth missing `E` prefix cannot land (#93 follow-up)
 
 #93 fixed five `.sql` sites that wrote `'basic\nrestricted'` where

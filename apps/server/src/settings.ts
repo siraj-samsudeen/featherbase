@@ -14,7 +14,7 @@ export interface SystemSettings {
 }
 
 const DEFAULTS: SystemSettings = {
-  app_name: 'Frappe Clone',
+  app_name: 'Featherbase',
   time_zone: 'UTC',
   date_format: 'yyyy-mm-dd',
   session_hours: 8,
