@@ -36,6 +36,11 @@ export const ENGINE_TABLES = [
   'Email Sink',
   'File',
   'Has Role',
+  // #80: Workspace became Home Page (0036 rewritten for fresh installs,
+  // 0060 renames on upgrades) and grew two sub-tables.
+  'Home Page',
+  'Home Page Link',
+  'Home Page Role',
   'Import Log',
   'Job Execution',
   'Letter Head',
@@ -62,7 +67,6 @@ export const ENGINE_TABLES = [
   'Workflow Action',
   'Workflow Document State',
   'Workflow Transition',
-  'Workspace',
 ]
 
 export async function up() {

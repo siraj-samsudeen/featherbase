@@ -151,10 +151,17 @@ the Admin UI's top bar (focus with Ctrl/Cmd+K). It matches row names and
 title columns across every Table the user can read, and doubles as a command
 palette (jump to a Table, new Row, new Table).
 
-**Home Page** (formerly Frappe's "Workspace") — a configurable module
-landing page of shortcut cards (links to Table lists, reports, dashboards).
-Stored as Home Page rows with a JSON `shortcuts` column
-(`apps/server/migrations/0036_workspace.ts`), rendered by
+**Home Page** (formerly Frappe's "Workspace") — a curated module landing
+page and the Admin sidebar's unit of navigation: the sidebar lists the
+caller's visible Home Pages (plus an "All tables" entry that keeps every
+table reachable), and each page renders grouped link cards from its `links`
+sub-table, with legacy JSON `shortcuts` still supported. A `roles` sub-table
+scopes who sees a page — presentation only, table access stays with
+Permission rows. Every user module gets a page automatically and a newly
+built table auto-appears on its module's page. Stored as ordinary Home Page
+rows (`apps/server/migrations/0036_workspace.ts`, curated through the
+generic FormView), served role-scoped and permission-filtered by
+`GET /api/home_pages` (`apps/server/src/home-pages.ts`), rendered by
 `apps/web/src/components/HomePageView.tsx`.
 
 **Summary View / SQL Report / Code Report** (formerly Frappe's "Report

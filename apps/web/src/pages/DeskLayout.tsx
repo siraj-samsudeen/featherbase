@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, clearSession, getSessionUser, listResource } from '../lib/api'
+import { useHomePages } from '../lib/home-pages'
 import { useRealtime } from '../lib/realtime'
 import { useTheme } from '../lib/theme'
 import { useI18n } from '../lib/i18n'
@@ -67,26 +68,6 @@ export function DeskLayout() {
       }),
   })
 
-  // #74: the sidebar's System group starts collapsed; the choice sticks per
-  // browser (same localStorage-mirror pattern as lib/theme.ts).
-  const [systemOpen, setSystemOpen] = useState(() => {
-    try {
-      return localStorage.getItem('fc_sidebar_system_open') === '1'
-    } catch {
-      return false
-    }
-  })
-  function toggleSystemGroup() {
-    setSystemOpen((open) => {
-      try {
-        localStorage.setItem('fc_sidebar_system_open', open ? '0' : '1')
-      } catch {
-        /* ignore */
-      }
-      return !open
-    })
-  }
-
   // ⌘K / Ctrl+K focuses the command bar (PR-2-style command palette entry).
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -140,16 +121,10 @@ export function DeskLayout() {
     return () => document.removeEventListener('keydown', onKey)
   }, [navigate])
 
-  // UI-027: home pages listed in the sidebar for quick navigation.
-  const workspaces = useQuery({
-    queryKey: ['workspaces'],
-    queryFn: () =>
-      listResource<{ name: string; label: string }>('Workspace', {
-        fields: ['name', 'label'],
-        order_by: 'label asc',
-        limit_page_length: 100,
-      }),
-  })
+  // UI-027 / #80: the sidebar lists the caller's visible Home Pages — the
+  // dedicated endpoint is its only source (role visibility and link
+  // permission-filtering are computed server-side).
+  const homePages = useHomePages()
 
   function logout() {
     clearSession()
@@ -221,23 +196,6 @@ export function DeskLayout() {
     search.trim().length > 1
       ? commands.filter((c) => c.label.toLowerCase().includes(search.trim().toLowerCase()))
       : []
-
-  // Sidebar curation (#74): user tables (system = false) surface first,
-  // grouped by module; every platform table sits under ONE System group,
-  // collapsed by default. The `system` flag is the discriminator — no more
-  // magic 'Core' module string. Everything stays reachable — this is
-  // grouping, not hiding.
-  const byModule = new Map<string, { name: string; module: string; system: boolean }[]>()
-  const systemTables: { name: string; module: string; system: boolean }[] = []
-  for (const dt of tables.data?.data ?? []) {
-    if (dt.system) {
-      systemTables.push(dt)
-      continue
-    }
-    const key = dt.module || 'Custom'
-    byModule.set(key, [...(byModule.get(key) ?? []), dt])
-  }
-  const appModules = [...byModule.keys()].sort()
 
   return (
     <div className="flex h-full flex-col">
@@ -457,97 +415,43 @@ export function DeskLayout() {
               Import Data
             </Link>
           </div>
-          {(workspaces.data?.data.length ?? 0) > 0 && (
-            <div data-testid="workspace-nav">
-              <div className="px-4 pt-5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
-                Home Pages
-              </div>
-              <nav className="px-2">
-                {workspaces.data?.data.map((w) => (
-                  <Link
-                    key={w.name}
-                    to="/desk/workspace/$name"
-                    params={{ name: w.name }}
-                    data-testid={`workspace-link-${w.name}`}
-                    className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-subtle)]"
-                    activeProps={{ className: 'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]' }}
-                  >
-                    {w.label || w.name}
-                  </Link>
-                ))}
-              </nav>
-            </div>
-          )}
-          <nav className="flex-1 overflow-y-auto px-2 pb-4" data-testid="doctype-nav">
-            {tables.isLoading && <p className="px-2 py-1 text-xs text-[var(--color-ink-faint)]">Loading…</p>}
-            {/* User modules first, platform tables grouped below. */}
-            {appModules.map((mod) => (
-              <div key={mod}>
-                <div className="px-2 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
-                  {mod}
-                </div>
-                {(byModule.get(mod) ?? []).map((dt) => (
-                  <Link
-                    key={dt.name}
-                    to="/desk/$doctype"
-                    params={{ doctype: dt.name }}
-                    search={{ filters: undefined }}
-                    className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-subtle)]"
-                    activeProps={{
-                      className:
-                        'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]',
-                    }}
-                  >
-                    {dt.name}
-                  </Link>
-                ))}
-              </div>
-            ))}
-            {/* One System group for every platform table — collapsed by
-                default with a count badge; expanding lists them all as
-                normal links. Grouped, never hidden. */}
-            {systemTables.length > 0 && (
-              <>
-                <button
-                  type="button"
-                  onClick={toggleSystemGroup}
-                  aria-expanded={systemOpen}
-                  data-testid="system-group-toggle"
-                  className="flex w-full items-center gap-1.5 rounded-md px-2 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)] hover:text-[var(--color-ink-muted)]"
-                >
-                  <span
-                    aria-hidden="true"
-                    className={`inline-block text-[9px] transition-transform ${systemOpen ? 'rotate-90' : ''}`}
-                  >
-                    ▶
-                  </span>
-                  System
-                  <span
-                    data-testid="system-group-count"
-                    className="ml-auto rounded-full bg-[var(--color-subtle)] px-1.5 py-0.5 text-[10px] font-medium normal-case tracking-normal text-[var(--color-ink-muted)]"
-                  >
-                    {systemTables.length}
-                  </span>
-                </button>
-                {systemOpen &&
-                  systemTables.map((dt) => (
-                    <Link
-                      key={dt.name}
-                      to="/desk/$doctype"
-                      params={{ doctype: dt.name }}
-                      search={{ filters: undefined }}
-                      className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-subtle)]"
-                      activeProps={{
-                        className:
-                          'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]',
-                      }}
-                    >
-                      {dt.name}
-                    </Link>
-                  ))}
-              </>
+          {/* #80: the sidebar is Home Pages only (Frappe parity). Every
+              table stays reachable through the All tables entry below —
+              grouping and curation moved there, nothing is hidden. */}
+          <nav className="flex-1 overflow-y-auto px-2 pb-4 pt-3" data-testid="home-page-nav">
+            {homePages.isLoading && (
+              <p className="px-2 py-1 text-xs text-[var(--color-ink-faint)]">Loading…</p>
             )}
+            {(homePages.data?.pages ?? []).map((p) => (
+              <Link
+                key={p.name}
+                to="/desk/home/$name"
+                params={{ name: p.name }}
+                data-testid={`home-page-link-${p.name}`}
+                className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-subtle)]"
+                activeProps={{
+                  className:
+                    'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]',
+                }}
+              >
+                {p.icon ? `${p.icon} ` : ''}
+                {p.label || p.name}
+              </Link>
+            ))}
           </nav>
+          <div className="border-t border-[var(--color-border)] px-2 py-2">
+            <Link
+              to="/desk/all-tables"
+              data-testid="all-tables-link"
+              className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)] hover:text-[var(--color-ink)]"
+              activeProps={{
+                className:
+                  'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]',
+              }}
+            >
+              All tables
+            </Link>
+          </div>
         </aside>
 
         {/* Page canvas */}
