@@ -116,10 +116,13 @@ once per run, outside any sandbox transaction. It complements
 2. **Boot & smoke-test.** Run `./init.sh` and verify the app actually starts and
    the core flow passes (login → open a Table list → open a form) BEFORE
    writing new code. If the app is broken, fixing it IS the session's task.
-3. **Pick ONE piece of work.** All 126 harness features currently report
-   `passing`, so the harness is no longer the backlog — take direction from
-   `docs/ROADMAP.md` and the "next" note at the end of the latest `PROGRESS.md`
-   entry. Do not start a second thread of work in the same session.
+3. **Pick ONE piece of work.** Every entry in `harness/features.json` reports
+   `passing`, so the inventory is a record of what exists, not a backlog —
+   take direction from `docs/design/execution-plan.md` (milestones M1–M5),
+   `docs/ROADMAP.md`, and the "next" note at the end of the latest
+   `PROGRESS.md` entry. Do not start a second thread of work in the same
+   session. When a session ships something genuinely new, ask the owner to
+   add its entry (see the hard rule below) so the inventory keeps up.
 4. **Implement it fully.** Small, complete, working — not broad and half-done.
 5. **Verify end-to-end.** Exercise it the way a user would: HTTP calls against
    the running server, and the browser via Playwright for UI. Unit tests alone
@@ -130,9 +133,15 @@ once per run, outside any sandbox transaction. It complements
 
 ## Hard rules
 
-- **Never edit, remove, reword, or reorder entries in `harness/features.json`.**
-  The only permitted change is flipping a `status` field. If a feature seems
-  wrong or infeasible, note it in `PROGRESS.md` and move on.
+- **`harness/features.json`: IDs, order, deps, and priorities are immutable;
+  the only agent-permitted change is flipping a `status` field.** Titles and
+  verify wording were renamed to the Table/Row/Column vocabulary on
+  2026-07-26 by explicit owner instruction (post-build, matching PR #63);
+  any future wording change likewise requires the owner's explicit
+  instruction — never an agent's initiative. ID prefixes (META, DOC, UI, …)
+  are historical mnemonics referenced by tests and logs — do not touch them.
+  If a feature seems wrong or infeasible, note it in `PROGRESS.md` and move
+  on.
 - Never mark a feature `"passing"` without having exercised it end-to-end in
   this session.
 - Never leave the app in a non-booting state at the end of a session. If you run
@@ -147,6 +156,10 @@ once per run, outside any sandbox transaction. It complements
 - `docs/adr/` — architecture decisions. [ADR 0006](docs/adr/0006-stack-react-hono-postgres.md)
   records the move to React + Hono + Postgres and supersedes 0001–0004.
 - `docs/VISION.md` — what this is for and who it serves.
+- `docs/specs/` — requirements for work agreed but not yet built, in
+  feather-spec form (EARS criteria + example tables). Capability IDs there
+  (`EDS-1`, `VDT-3`) are traceability handles and are deliberately *not* in
+  `harness/features.json`.
 - `docs/research/` — Frappe architecture, Glide, and stack studies.
 - `docs/archive/convex-capabilities/` — specs from the retired Convex
   implementation, preserved on the `archive/convex-v1` tag.

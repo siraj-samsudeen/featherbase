@@ -13,7 +13,7 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
-## 2026-07-30 — Missing `E` prefix corrupted seeded `choices`; 32 tests were failing
+## 2026-07-31 — Missing `E` prefix corrupted seeded `choices`; 32 tests were failing
 
 63 server tests failed with `417 ValidationError: Invalid values for Permission`
 — `tier: 'basic'` rejected against an enum whose only member was the
@@ -87,6 +87,481 @@ no `column_def.choices` contains a literal backslash-n after migration, or a
 lint over `migrations/*.sql` for non-`E` literals containing `\n`. The five
 sites are fixed, but nothing stops a sixth.
 
+
+## 2026-07-31 — fix #94: the e2e specs address column rows by marker, not position
+
+`main` was red: NAM-002 inserted a locked **Row ID** row at the top of the
+column grid (Table Builder and Import Wizard), and six e2e specs still
+assumed row 0 was the first *data* column — two timed out filling
+`[data-rowfield=column_name]` on the locked row, two asserted counts that
+came back +1, and two read/dropped the neighbouring column.
+
+- **Durable fix, not an offset.** The editable column rows now carry
+  `data-columnrow`; specs select `tbody tr[data-columnrow]` instead of
+  `tbody tr`, so *any* future decorative row is invisible to them. The
+  locked rows gained `data-testid` (`dt-row-id`, `iw-row-id-{i}`) and both
+  specs now **assert the contract** — the first `tbody tr` IS the Row ID
+  row — so the next such change fails loudly instead of silently reading
+  the wrong rows. (Offsetting `nth(i+1)` would have re-broken next time.)
+- **Verified red → green on identical state**, not just green: with the
+  marker removed, UI-011 fails exactly as CI did (`waiting for
+  … tr[data-columnrow] …`); restored, it passes. All six originally
+  failing specs pass. Full suite locally: **83 passed, 5 skipped, 1
+  failed** — that one (`naming-series` NAM-001) was *my own* local
+  pollution: I had dropped the `Naming Demo` table but not its `ND-`
+  counter in the `series` table, so the row came back `ND-2`; after
+  clearing the counter it passes. CI provisions a fresh database, so this
+  cannot occur there. Server 500 passed, web unit 12, both typechecks clean.
+- **features.json correction (same PR).** The previous session applied
+  ADR 0007's `name` → `id` record-identity rename to eight entries — but
+  the ADR is **Accepted, not implemented**: `STANDARD_COLUMNS` and every
+  generated table still use `name` (verified against a live table). Those
+  entries now describe what ships, and the file's `$comment` records the
+  pending ADR so the next session doesn't re-apply it prematurely.
+- **Gotchas for whoever runs e2e locally:** (1) the specs self-skip when
+  their Table already exists, so a second run silently skips the create
+  paths — drop the Table *and restart the server* (the meta cache holds
+  it) to re-exercise them; (2) dropping a Table does not drop its `series`
+  counter, which will name later rows off-by-N; (3) this container's
+  Playwright wants a browser build it lacks — run with
+  `CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`;
+  (4) `pkill -f` on a pattern matching your own command string kills the
+  shell (exit 144) — kill the server by listening port instead.
+
+## 2026-07-31 — features.json catches up with main (126 → 145)
+
+Owner: "main has moved a lot. update features.json now." Merged main (36
+commits: import subsystem, Home Pages, app fixtures, system flag, naming
+series, single-origin deploy, ADR 0007) and brought the inventory current.
+
+- **ADR 0007 applied** (record identity is `id`; `name` is now an ordinary
+  human-readable column): META-005's standard-column list, DOC-001/008/012,
+  API-001's route shape, UI-006/UI-014, META-006. Also fixed a double-word
+  artifact from the 2026-07-26 rename ("Settings Table Tables") and
+  updated UI-027 to the shipped reality (Workspaces → **Home Pages**).
+- **19 entries added** for work built after the harness froze, using the
+  IDs the code and tests *already reference* (so the Explorer's ID scan
+  links them): **IMP-001…013** (new `import` category — inference,
+  TZ-independent dates, header sanitization, coercion, the `:import`
+  collection action, drag & drop, dry run, multi-sheet, Choice detection,
+  wizard mapping, Import Log, overlap-scored targeting, selective import),
+  **NAM-001/002** (id patterns in the UI; row id as column one),
+  **PLAT-009/010/011** (app fixtures, `system` flag, single-origin
+  deploy), **ACCT-001** (account menu + in-app password change).
+  Verify criteria written from each PR's documented verification.
+- **Status honesty**: the new entries are marked `passing` on the strength
+  of the end-to-end verification recorded in their own PROGRESS entries
+  and PRs (e2e suites, browser runs) — *not* re-verified in this session.
+  Anything later found wrong flips back to `failing` per the standing rule.
+- Governance updated in three places: features.json `$comment`,
+  `harness/README.md` (no longer claims a frozen 126), and CLAUDE.md's
+  session protocol (the inventory is a record, not a backlog; new work
+  should be added with owner sign-off rather than left in history).
+- Explorer rebuilt: 145 features, new `import` category card and
+  explanation, **138/145 now resolve to test files** (was 124/126).
+  Verified headlessly — IMP-011 links its real action/wizard/e2e files,
+  zero render errors. Artifact republished (same URL).
+
+## 2026-07-26 (v13) — features.json renamed to new vocabulary (owner instruction); rename debt filed as #64
+
+Owner ruled the #63 leftovers unacceptable ("proportionately named") and
+authorized renaming `harness/features.json` now that the build is done:
+
+- **features.json**: all 126 titles/verify strings renamed to
+  Table/Row/Column vocabulary via a scripted, protected replacement pass
+  (code identifiers that genuinely still exist — `save_doc`,
+  `Document class`, `parentfield` — deliberately preserved). Invariants
+  asserted programmatically: IDs, order, deps, priorities, categories,
+  statuses byte-identical. Header `$comment` rewritten with the new
+  governance; **CLAUDE.md hard rule amended** (owner-authorized): IDs/
+  order/deps immutable, status flips remain the only agent-permitted
+  change, wording changes require explicit owner instruction.
+- **Issue #64 filed** — the deferred rename debt inventoried: file
+  renames (doctype-engine → table-engine, document → row-lifecycle,
+  DeskLayout → AdminLayout, test names) as one mechanical PR; behavioral
+  renames (`POST /api/doctype` — owner flagged it — `desk_client` role,
+  `/desk/` routes, `save_doc` wire shape pinned by the published
+  feather-testing-postgres package) as a second, decided-per-row PR.
+- Explorer rebuilt with the renamed titles (test-scan still 124/126,
+  zero render errors); Features-page note updated; artifact republished.
+
+## 2026-07-26 (v12) — reconciled with PR #63 (Table/Row/Column rename)
+
+Merged #63 into main (owner's call), merged main into this branch
+(PROGRESS conflict resolved keeping both histories; CLAUDE.md
+auto-merged), then updated everything this branch owns to the new
+reality:
+
+- **`docs/LEARNING-PATH.md` rewritten** in Table/Row/Column vocabulary
+  and the new API: POST /api/doctype with `columns`/`column_type`,
+  Reference/Choice/Sub-table types, `PATCH /api/table/:table/:name` with
+  `updated_at` optimistic lock, bare physical names (`todo_item`), the
+  reserved-`status` gotcha as a deliberate exercise, Permission/tier/
+  own-rows-only in Stage 5, id_pattern in Stage 6. Vocabulary-bridge
+  note added (features.json IDs stay Frappe-era; frozen by rule).
+- **Explorer updated**: category explanations (metadata → table_def/
+  column_def + no prefix; REST → the actions.ts registry, PATCH-not-PUT,
+  effect read|write; permissions → tiers/own-rows-only/Data Scope; Desk
+  → Admin UI; DocTypeBuilder → TableBuilder file link; actions.ts added
+  to key files), lifecycle steps, and a vocabulary note atop the
+  Features page linking the Glossary. Rebuilt: docs picked up the
+  rewritten TUTORIAL/TESTING/GLOSSARY/ARCHITECTURE automatically;
+  feature→test scan still lands 124/126 (harness IDs survived the
+  rename); zero render errors; artifact republished (same URL).
+- **Design doc §4.1**: status note — #63 landed the prefix-drop half of
+  D2; the store-the-name-in-metadata half still stands.
+
+## 2026-07-26 (v11) — Featherbase Explorer site + todo learning path
+
+Built the owner's phone-readable learning/navigation surface:
+
+- **`site/`** — a zero-dependency builder (`node site/build.mjs`) that
+  emits one self-contained `index.html` (769 KB): all 126 harness
+  features (search + category filters; per-feature page with the verify
+  contract, deps/dependents, and *scanned* links to the test and source
+  files that literally name the ID — 124/126 have direct test mentions),
+  a Map page (save-lifecycle in 8 steps, the 7 axes, milestones,
+  category grid with per-category "how it works" explanations + key
+  files), the full 39-document library rendered from markdown with
+  feature IDs auto-linked, the learning path, and a Questions tab —
+  notes saved to localStorage with JSON download/copy for feeding back
+  into agent sessions. Desk visual identity (PROGRESS tokens), light +
+  dark, mobile-first. Also emits `artifact.html` for Claude-artifact
+  publishing; GitHub Pages option documented in `site/README.md`.
+- **`docs/LEARNING-PATH.md`** — the staged todo app: Stage 1 plain CRUD
+  `Todo Item`, then Projects (Link/integrity/rename), Subtasks (child
+  table atomicity), Checklists (Select/flags/first controller hooks),
+  a second user (permissions over raw HTTP), optional live stage
+  (series/jobs/email/web form). Each stage names the feature IDs it
+  exercises, a verify checklist, and questions to answer before moving
+  on.
+- Verified: built and screenshotted at phone viewport (light + dark,
+  home/map/features/feature-detail/doc/questions) via headless Chromium
+  — zero console errors. Fixed the design doc's stale "v3" status label
+  caught in the screenshot. Docs+tooling only; app untouched.
+
+## 2026-07-26 (v10) — execution plan resequenced per owner; harness lineage documented
+
+Owner feedback: start with the concrete slices, refactor later. Plan
+updated: **M1** dbt seeds → native DocTypes + PR-based CSV egress (zero
+framework change), **M2** the external CRUD manager's tables move into
+DocTypes and the tool retires, **M3** MotherDuck warehouse browser —
+which is where the storage seam arrives, but only its **read-only half**
+(getList/getDoc/count/introspect), explicitly citing `tenancy.ts` as the
+bolt-on anti-pattern the browser must not repeat, **M4** full seam +
+D2 table_name migration, now informed by a real second backend, **M5**
+egress config generation (byte-match) + reassess. Added §3b: the
+harness (`harness/` — frozen features.json, coder/evaluator prompts,
+run.sh loop) is the *lineage*, not extended: milestone feather-specs in
+docs/specs/ are the successor artifact (capability IDs = feature IDs,
+EARS criteria = verify fields, DoD = evaluator checklist; CLAUDE.md
+protocol unchanged). Docs only. Rides PR #60.
+
+## 2026-07-26 (v9) — execution plan; main merged in
+
+- **Merged `origin/main`** (PR #58 app-platform gaps) into the docs
+  branch — notable: main's entry records a report server POSTing
+  feedback over REST as Featherbase's *first external consumer*, i.e.
+  one of the three target use cases is already live and battle-testing
+  the engine.
+- **`docs/design/execution-plan.md`** — the how-to-build-without-
+  disappointment answer (4–5 prior attempts failed on oversized units of
+  promise). Rules: product slices not framework layers; one feature per
+  session with pre-written verify; spec → validate-against-D1–D21 →
+  build; refactor only at the seam under green tests; visible NOT-NOW
+  list. Milestones: **M0** seam refactor (D2 table_name + D5/D7 adapter
+  seam, zero behavior change), **M1** MotherDuck warehouse browser
+  (read-only, spec-0001 slice), **M2** dbt seeds → MDM DocTypes with
+  PR-based CSV egress, **M3** egress config generation (byte-match the
+  hand-written configs), **M4** reassess. Agent workflow per milestone:
+  plan session produces spec+features, validated before build; build
+  sessions are one-feature; owner does an ownership pass per milestone.
+
+Docs only. Rides PR #60.
+
+## 2026-07-26 (v8) — layer economics (D21) + the MotherDuck warehouse browser
+
+Clarifications from the user: "who do" meant **Odoo** (already studied);
+Hudi kept as a welcome accident. DLT-META checked: not abandoned but
+thinly active (last release 2025-09) and a no-SLA Labs project — caveat
+added to the study; verdict: adopt the Dataflowspec *idea*, generate our
+own spec, never depend on the project. Design doc → v7:
+
+- **§3.3 layer economics (D21)** — answering "does a clean SoR need
+  bronze/silver?": bronze's jobs (replay, audit-of-source, decoupling,
+  uniformity) are already done by Axis E when Featherbase is the SoR, so
+  bronze collapses to a thin generated landing (kept only for compute
+  isolation + pipeline uniformity) and silver is emitted directly from
+  DocType metadata; human modeling starts at gold. Full medallion stays
+  justified for messy foreign sources (SAP). Warehouse mapping/seed
+  tables — currently homeless hand-edited seeds in the warehouse — are
+  master data and become MDM DocTypes.
+- **§3.3 warehouse browser** — new reverse-direction use case: Desk over
+  MotherDuck (bronze/silver/gold currently SQL-only). Maps onto existing
+  machinery verbatim: `duckdb` driver + foreign read-only mode + spec
+  0001's read-only sources/allowlists + reflection; schemas-per-system
+  surface as Desk modules; saved views give analysts a
+  Datasette-for-the-lakehouse. Featherbase fronts both ends of the pipe.
+
+Commits ride open PR #60. No code, no features.json changes.
+
+## 2026-07-26 (v7) — analytics egress / ETL story (D20) + Hudi-lakehouse study
+
+The forgotten dimension: how master data flows OUT into the bronze/silver
+medallion layers — the MDM app's whole strategic purpose. Added
+`docs/research/studies/hudi-lakehouse.md` (Apache Hudi: record keys +
+precombine + timeline + incremental queries; Debezium CDC; dbt; and
+Databricks **DLT-META** — the direct precedent for metadata-driven
+bronze/silver pipelines driven by an onboarding spec). Design doc → v6
+with **D20**: analytics egress is a declared push binding (transport by
+capability: logical replication > outbox > snapshot), and the warehouse
+artifacts — the existing bronze/silver CSV config, dbt sources/staging
+models with tests, HoodieStreamer/Dataflowspec configs — are **generated
+from DocType metadata** as one-way D19 artifacts, regenerated on
+metadata promotion; D16 history/effectivity maps to SCD2; Featherbase
+emits configs and streams, never runs lake infrastructure. Sequencing:
+the CSV-config generator joins the MDM now/next bucket (cheap, replaces
+hand-maintained config immediately). Commits ride open PR #60.
+
+## 2026-07-26 (v6) — three more studies (react-admin, Avo, NocoDB); PR opened
+
+Added on request to `docs/research/studies/`: **react-admin** (frontend
+dataProvider adapter ecosystem; **guessers** = generation as one-way
+copyable suggestion — the cleanest D19 UX, adopt as the Desk's "eject
+this view"; headless ra-core split; optimistic-with-undo), **Avo** (the
+modern Rails admin — the **escape-hatch ladder** "designed so you can't
+get stuck" as a testable product property for D11/D14; custom fields as
+generatable component packages; actions as scoped first-class objects),
+**NocoDB** (spreadsheet UI over existing DBs — distinct from NocoBase;
+adopt **saved views** as first-class shareable objects, form views as the
+portal intake primitive, and lookup/rollup/formula virtual columns tied
+into drift detection; reject UI-direct writes that bypass the lifecycle).
+Studies README index/reading-order updated. Research-only session series
+ends here — **PR opened** for the whole branch (research notes, ADR 0007
++ specs 0001/0002, design framework v5 with 7 axes / D1–D19, 12 study
+documents). No code, no features.json changes.
+
+## 2026-07-26 (v5) — system study series + generation-vs-interpretation (docs only)
+
+Requested reading material: one document per inspiration system (four
+questions each: key dimensions / what it enables / downsides / what to
+adopt). Created **`docs/research/studies/`**: README (rubric + the
+two-families framing), JHipster, generator-family (ScaffoldHub, Rails
+scaffolding/ActiveAdmin/Administrate, the author's ~2006 XML→EJB MDM
+generator — five answers to the round-trip problem tabulated), NocoBase,
+Salesforce, Jira, Directus, Odoo, ServiceNow. Adopt-verdicts reference
+D-decisions; notable new lessons captured: permission sets over
+monolithic roles (Salesforce), schemes-as-named-objects + never fork the
+config paradigm (Jira), snapshot/diff/apply not update-sets for promotion
+(Directus vs ServiceNow), auto-install bridge capabilities + extensions
+must target declared contracts (Odoo), task-table inheritance at scale
+(ServiceNow).
+
+Design doc → v5: new §6.6 **generation vs interpretation** and **D19**
+(runtime interpretation is the source of truth; codegen one-way derived
+only — types/stubs/tests/seeds; DocType eject as one-way off-ramp,
+re-entry via adoption). Survey §8 now indexes into the studies dir.
+
+No code, no features.json changes.
+
+## 2026-07-26 (v4) — parallel branch merged; three missed axes added (docs only)
+
+- **Merged** `claude/frappe-multi-app-db-866jdv` (a parallel session's take
+  on the same research task): ADR 0007 (foreign data bound per DocType,
+  never per app; no DDL against sources; no 2PC — with rejected
+  alternatives incl. postgres_fdw), spec 0001 External Data Sources
+  (EDS-1…13 — far more rigorous than this branch's one-pager: standard-
+  column map-or-synthesize contract, permission-before-query, constraint→
+  field error mapping, optimistic locking with whole-row fallback, drift
+  detection, definition-of-done), spec 0002 Virtual DocTypes (VDT-1…5),
+  specs README + CLAUDE.md pointer, and its research note (deeper Frappe
+  code-level mechanics). **Retired** this branch's thinner
+  `docs/specs/external-database-doctypes.md` in favour of 0001/0002;
+  updated all XDB references in the design doc and research note. The two
+  research notes now cross-link. Its PR was closed after the merge.
+- **Design doc → v4**, answering "any axis missed?": **Axis E — time**
+  (audit trail, append-only versions, effectivity dating for MDM, as-of
+  reads; git driver gets history free, sync needs replay), **Axis F —
+  change lifecycle** (environments, promote-with-plan-preview, layer
+  rollback — the Salesforce sandbox lesson, Frappe's known weak spot),
+  **Axis G — actors & identity** (internal/portal/machine/AI-agent
+  principals, on-behalf-of chains, identity propagation declared per
+  driver/sync binding). Cross-cutting non-axes named (observability,
+  compliance, surfaces, i18n, offline, perf). New decisions **D16–D18**;
+  MDM "now" bucket gains audit+versions+effectivity from day one.
+
+No code, no features.json changes.
+
+## 2026-07-26 (v3) — design framework: Axis D, extensibility & plugin ecosystem (docs only)
+
+More requirements: Salesforce's design admired; WordPress-style
+contribution loop + VS Code-style extensions (tables, workflows, UI
+elements as plugins); micro-apps where you can take *only parts* (unlike
+VS Code's all-or-nothing); survey leading OSS (Strapi-class systems).
+Updated `docs/design/data-and-admin-topology.md` to v3 with a fourth axis:
+
+- **§6 Axis D**: microkernel/dogfooding rule (NocoBase model — platform
+  features use the same public plugin API); typed contribution points
+  (VS Code static declaration + Directus's nine-type extension taxonomy);
+  **package ≠ capability** — capability-level dependency graph so subsets
+  of a macro app are installable (Medusa modules precedent; fixes VS
+  Code's all-or-nothing); upgrade-safe layered metadata (Salesforce 2GP
+  manageability → N package layers + site overlay, extending ADR 0003's
+  package|site sources); trust tiers (reviewed npm packages / sandboxed
+  site scripts / out-of-process driver services).
+- Survey extended: NocoBase, Directus extensions, Salesforce 2GP, Medusa,
+  Strapi/Payload, WordPress, VS Code.
+- New decisions **D10–D15**; sequencing note: D10/D11 are disciplines to
+  adopt immediately (AppManifest evolves into contribution points as
+  features are built); D13 designed together with D2; marketplace later.
+
+No code, no features.json changes.
+
+## 2026-07-26 (v2) — design framework reworked for pluggable backends (docs only)
+
+Further requirements: apps on Convex or InstantDB, legacy-app mirroring (a
+doctor's clinical system — mirror, then adapt on top while part of the team
+stays on legacy), future backends (SQLite, DuckDB, REST, filesystem), and a
+proposed rule "different database ⇒ different app". Rewrote
+`docs/design/data-and-admin-topology.md` (v2):
+
+- Axis B decomposed: five v1 "storage classes" → **driver × ownership mode
+  (owned/adopted/foreign) × sync bindings** (separate first-class objects).
+  Adapter interface with per-driver **declared capabilities** and explicit
+  degradation (Hasura NDC / Trino connector model); capability matrix for
+  postgres/sqlite/duckdb/convex/instantdb/rest/git-files.
+- Engine-level laws: cross-backend links reference-only, transactions never
+  span backends, permissions/series/hooks always on core Postgres.
+- Legacy coexistence = strangler fig with the per-field ownership map as
+  the migration dial (mirror → co-write → extend → retire).
+- "Different DB = different app" resolved as **policy, not constraint**
+  (D9): per-DocType descriptor stays (strangler + sync cases demand it);
+  one *primary* backend per app is a flagged default.
+- New decisions D7 (ship the adapter seam + conformance suite now,
+  postgres-only driver first) through D9; sequencing unchanged — MDM
+  foundation first, git-files driver as first non-SQL proof.
+
+No code, no features.json changes.
+
+## 2026-07-26 (later) — design framework: storage classes & scoped admin (docs only)
+
+Follow-up discussion moved past Frappe's design to Featherbase's own
+requirements (multi-tenancy explicitly NOT key). Wrote
+`docs/design/data-and-admin-topology.md`, organizing the requirement space
+into three orthogonal axes:
+
+- **Axis A — organization/delegation**: module = admin delegation boundary
+  (module admins author *types/field-sets* of shared base entities, never
+  DDL); helpdesk generic→routed ticket case solved as base DocType + scoped
+  Type registry (Salesforce record-types / JSM request-types pattern);
+  generalizes to ERP as subtypes + config + dimensions + row partitions.
+- **Axis B — storage/system-of-record**: five storage classes behind one
+  adapter — native, adopted, external-live (= existing XDB spec), mirrored
+  (push/pull/bidirectional sync engine: outbox, key crosswalk, per-field
+  survivorship, reconciliation), git-backed (UI edits become commits/PRs,
+  diffability preserved — the medallion-config CSV case). Single DB/single
+  schema stays the default; multi-DB-per-instance rejected.
+- **Axis C — naming/reflection/augmentation**: `table_name` moves into
+  DocType metadata (kills derived `tab_` — configurable policy, none for
+  adopted tables), reflection API, opt-in audit-column augmentation ladder.
+
+Six candidate ADRs (D1–D6) + sequencing: MDM app first (reflection +
+adoption + audit columns + module admin), then push-mode sync, then
+git-backed class; type/field-sets and XDB later. No code, no
+features.json changes.
+
+## 2026-07-26 — research: multi-app / external-DB support (docs only, no code)
+
+Question from the user: how does Frappe run multiple apps in one instance, do
+they share one DB, can one app use a remote Postgres (Railway control schema,
+live CLI writers) while others stay local — and can Featherbase do it?
+
+- **Findings** (full write-up: `docs/research/frappe-multi-app-multi-db.md`):
+  Frappe apps on a site share ONE database and one flat namespace — no
+  per-app schema, no per-app connection; the isolation unit is the *site*.
+  Remote/external data is only reachable via hand-coded Virtual DocTypes
+  (`is_virtual` + db_insert/load_from_db/db_update/delete/get_list protocol),
+  which need zero changes to the external schema but are not code-free.
+- **Featherbase audit**: not supported today. Single scalar `DATABASE_URL`
+  through the `sql` singleton (`db.ts`), no `is_virtual`/external-table
+  concept in `doctypeDefSchema`, `createTableDDL` assumes it owns every
+  table (no `IF NOT EXISTS`), `updateDocType` never reads
+  `information_schema`. `tenancy.ts` (PLAT-008) is same-DB schema-per-site,
+  not a multi-connection abstraction.
+- **Spec written** (feather-spec): `docs/specs/external-database-doctypes.md`
+  — XDB-1 connection registry (env-var creds, never DDL), XDB-2 table
+  adoption by reflection (read-only when no PK), XDB-3 live Desk/API reads,
+  XDB-4 hooked writes + conflict detection, XDB-5 app↔connection binding.
+- Verified: docs-only session; no code, no `harness/features.json` changes,
+  app untouched.
+- **Next session**: review/approve the XDB spec, then implement XDB-1+XDB-2
+  first (registry + reflection) — they unlock read-only value before the
+  write path.
+- Gotchas: docs.frappe.io and discuss.frappe.io block the container's fetch
+  proxy (HTTP 403); research had to lean on web-search summaries plus the
+  in-repo Frappe study.
+## 2026-07-26 — multi-app / multi-database topology researched and specced (parallel session, merged into this branch)
+
+Question raised: how does Frappe run many apps in one instance, do they share a
+database or a schema, can one app sit on a *remote* Postgres while others stay
+local — and specifically, can a management app be put on top of an existing
+control schema in a Railway-hosted Postgres that CLIs keep writing to, without
+changing that schema?
+
+Answered from the upstream source, then written up as requirements. **No code
+changed this session** — everything here is documentation.
+
+- **`docs/research/frappe-multi-app-and-multi-db.md`** — the corollary research.
+  Frappe: bench/app/site; one database *per site*, shared by every installed
+  app, in one schema, with a flat `tab<DocType>` namespace (hence `HD Ticket`,
+  `CRM Lead` prefixes); app ownership is metadata only (`Module Def.app_name`).
+  A *site* can point at a remote host via `db_host` in `site_config.json`, but
+  an *app* cannot — the connection is per site, per request. Foreign data is
+  reached only through `frappe.database.get_db(host=…)` (a raw handle) or the
+  **Virtual DocType** protocol (`load_from_db`/`db_insert`/`db_update`/`delete`
+  + static `get_list`/`get_count`/`get_stats`, enforced by
+  `frappe/model/virtual_doctype.py`). Frappe has *no* way to bind a normal
+  DocType to a pre-existing table. Featherbase already matches Frappe on apps
+  and app ownership; the gaps are the second connection, the virtual protocol,
+  and table binding.
+- **`docs/adr/0007-app-and-database-topology.md`** (Proposed) — decision: apps
+  keep sharing one control DB; foreign data is bound **per DocType**, not per
+  app; Featherbase never issues DDL against a source; cross-source saves are
+  explicitly not atomic. Records why per-app DB routing, `postgres_fdw` as the
+  primary transport, and ETL were all rejected.
+- **`docs/specs/0001-external-data-sources.md`** (EDS-1…13) — the answer to the
+  Railway case. A `Data Source` registry (credentials by env-var *name*, never
+  stored), introspection, DocTypes bound to `{source, schema, table}` with a
+  column map, SQL-pushdown reads, guarded writes, read-only sources, conflict
+  detection with a whole-row fallback when there is no `modified` column, drift
+  detection, control-side comments/attachments/versions, failure semantics, and
+  the transaction boundary. Carries a **"what this requires of the foreign
+  schema"** table: a single-column primary key is the only hard requirement;
+  audit line, optimistic locking, `if_owner` scoping and submit/cancel each need
+  one column and degrade loudly without it.
+- **`docs/specs/0002-virtual-doctypes.md`** (VDT-1…5) — the escape hatch for
+  non-Postgres sources, mirroring Frappe's protocol but validating it at
+  registration and *rejecting* what it cannot honour (child tables, unique
+  constraints) instead of silently dropping rows the way Frappe does.
+- `docs/specs/README.md` indexes both; `CLAUDE.md` gained a pointer under "Where
+  decisions live". `harness/features.json` untouched — capability IDs live in
+  the specs.
+
+Verification: documentation only, so no runtime verification applies and nothing
+was marked passing. Each spec carries its own "definition of done" section
+listing the end-to-end checks the implementation must pass (second Postgres
+seeded by a fixture that mimics a CLI, HTTP CRUD against it, an out-of-band
+concurrent write, a dropped column, Playwright on the generic list/form, and a
+before/after schema comparison proving no DDL was issued).
+
+Next: implement spec 0001, smallest slice first — `Data Source` + introspection
++ **read-only** bound DocTypes (EDS-1, 2, 3, 4, 5, 7, 13). That alone makes the
+Railway control schema browsable in the Desk and needs no write-path or
+conflict-detection machinery. Gotcha for whoever picks it up: `apps/server/src/
+db.ts` exports one `sql` proxy used for both metadata and document data, and the
+sandbox seam swaps its delegate — the per-DocType client resolver has to keep
+metadata on the control pool, or the test harness will try to roll back a
+transaction on the wrong connection.
 ## 2026-07-30 — NAM-001: naming series in the UI (imports no longer get hash ids)
 
 Imported Tables named their rows with random hashes (`a0373bac75`) and there
