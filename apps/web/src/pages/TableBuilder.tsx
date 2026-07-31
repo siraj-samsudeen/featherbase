@@ -161,12 +161,16 @@ export function TableBuilder() {
                 .join('; ')}${failed.length > 3 ? ` and ${failed.length - 3} more` : ''}`,
           )
           await queryClient.invalidateQueries({ queryKey: ['tables'] })
+          await queryClient.invalidateQueries({ queryKey: ['home-pages'] })
           setSaving(false)
           return
         }
       }
 
       await queryClient.invalidateQueries({ queryKey: ['tables'] })
+      // #80: the new table auto-appears on its module's home page — refresh
+      // the sidebar so that happens without a reload.
+      await queryClient.invalidateQueries({ queryKey: ['home-pages'] })
       navigate({ to: '/desk/$doctype', params: { doctype: name }, search: { filters: undefined } })
     } catch (err) {
       setProgress(null)

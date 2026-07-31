@@ -13,6 +13,90 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-30 — Home Pages: curated navigation replaces the table-list sidebar (#80)
+
+The sidebar listed raw table metadata — every table, grouped, in the user's
+face on every screen. Frappe's answer is the Workspace: a curated landing
+page per module. This session ships that as **Home Pages** — navigation
+ONLY, deliberately: no page builder, no content blocks, no charts or number
+cards, and no fields anticipating them.
+
+- **The Table is renamed: `Workspace` -> `Home Page`** — the user-facing name
+  everywhere (sidebar, headings, GLOSSARY), and the internal Table name too.
+  UI-027's frozen wording ("configurable module home pages… a workspace
+  lists its shortcuts") is satisfied by the renamed reality, so the full
+  rename won over a surface-only one; its spec (now `home-page.spec.ts`)
+  still pins shortcuts rendering + navigation. Mechanics follow the 0055
+  discipline: 0036 is rewritten in place (same FILENAME, so upgraded
+  databases — which recorded it as applied — never re-run it) to create the
+  final shape fresh; new 0060 converges upgrades: copy-rename the table_def
+  row (FK order: copy, re-point children, delete), physical rename, RLS
+  policy recreated with `fc_has_read('Home Page')`, and a ref sweep
+  (every `ref_table` column + share/data_scope/user_settings spellings).
+- **Schema, minimal Frappe Workspace-Link model:** `module`, `sequence`,
+  `links` sub-table (`Home Page Link`: label, type Link|Card Break,
+  link_to -> Table) and `roles` sub-table (`Home Page Role`). The legacy
+  JSON `shortcuts` column is KEPT WORKING, not migrated into links — links
+  are Table references while shortcuts also target dashboards/reports/urls,
+  which links deliberately cannot express (navigation only).
+- **Sidebar flip (Frappe parity):** the sidebar lists Home Pages only, from
+  the new `GET /api/home_pages` — the caller's visible pages with their
+  card links, computed SERVER-SIDE (Admin UI stays generic): a page with
+  empty roles is visible to everyone, otherwise to role-holders,
+  Administrator always; each link is dropped unless the caller can read the
+  target table (Frappe's is_item_allowed), dead links (dropped tables) are
+  filtered, a card with no surviving links disappears. Role visibility is
+  presentation scoping, NOT a security boundary — table access is still
+  Permission rows. An **All tables** entry keeps the #74 grouped list (user
+  modules first, collapsed System group) as a page — nothing unreachable.
+  /desk now lands on the first visible page.
+- **Seeds + auto-membership:** 0060 seeds one 'System' page grouping all 45
+  engine tables into six cards (Users & Access / Automation / Email /
+  Reports & Dashboards / Website / Platform catch-all — enumerated from
+  table_def, so future engine tables land in Platform), and sweeps existing
+  user tables onto per-module pages. A system=false table with module
+  'Core' (production's pre-#74 'Zone') lands on a plain 'Home' page.
+  `ensureHomePageForTable` runs on POST /api/doctype and app installs — a
+  table you build NEVER vanishes from navigation. Deliberately NOT inside
+  createTable: migrations 0037–0057 create engine tables before the system
+  flag exists and must not seed spurious pages. Home pages stay ordinary
+  documents — the generic FormView curates them; no dedicated editor.
+
+Verified on throwaway DBs (never the local `featherbase`, ports 8905 only):
+migration proven BOTH ways — fresh-from-zero (1 System page, 45 links,
+idempotent under a double `up()`), and an upgrade from the previous tip
+shaped like production (user table 'Zone' module 'Core' + a legacy Workspace
+row with shortcuts): Workspace renamed with rows carried, shortcuts intact,
+Zone linked on the seeded Home page, RLS predicate updated, column positions
+identical to fresh. Server suite 493 green (14 new in home-pages.test.ts:
+role scoping empty/held/Administrator, ordering, link + shortcut permission
+filtering, card pruning, dead-link filtering, module page on demand, append
+not duplicate, Core->Home, sub_table exclusion, seed idempotency + reseed).
+Web unit 12 green, both typechecks clean. Full e2e against a fresh
+single-origin stack on :8905 (built SPA served by the API): 85 passed,
+2 skipped, 0 failed — including the flip exercised as a user (login ->
+sidebar lists System -> cards -> open a table -> All tables shows everything
+incl. collapsed System group -> builder-created table appears on its
+module's page WITHOUT a reload).
+
+Gotchas for later sessions:
+- 0036 keeps its filename (`0036_workspace.ts`) although it now creates
+  'Home Page' — the migration table records filenames; renaming the file
+  would re-run it on production. Same trap as 0051/0057.
+- ENGINE_TABLES (0058) now lists Home Page (+ Link/Role) and not Workspace:
+  any DB reaching 0058 with this code created 'Home Page' at 0036; DBs that
+  had Workspace recorded 0058 long ago and converge via 0060's rename.
+- The FormView can curate pages but saving one does not invalidate the
+  sidebar's ['home-pages'] query — the next mount/refetch picks it up.
+  Realtime invalidation is a follow-up nicety.
+- App uninstall leaves the module page and its (now dead) links behind;
+  GET /api/home_pages filters them, so nothing breaks. Cleanup on uninstall
+  is a follow-up.
+
+Next: a Desk surface for /api/apps (list, install, uninstall buttons) so the
+app system is operable without curl; realtime invalidation of the sidebar's
+home-pages query on Home Page saves.
+
 ## 2026-07-30 — Apps ship fixtures; Helpdesk is a real installable app (#78)
 
 An app manifest could declare tables, roles, permissions and code hooks — but

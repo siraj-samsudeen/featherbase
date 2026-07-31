@@ -15,6 +15,7 @@ import { loadControllers } from './controllers'
 import { generateApiKeys, login, resolveToken, revokeApiKeys, setUserPassword, issueSession, type SessionUser } from './auth'
 import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newState, verifyState, isMockProvider } from './oauth'
 import { assertPermission, assertSystemManager, getRoles } from './permissions'
+import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
@@ -417,6 +418,9 @@ app.post('/api/doctype', async (c) => {
   const body = (await c.req.json()) as Record<string, unknown>
   rejectSystemClaim(body)
   const meta = await createTable(body)
+  // #80: a table you build never vanishes from navigation — its module's
+  // home page is created on demand and the table's link appended.
+  if (meta.kind !== 'sub_table') await ensureHomePageForTable(meta.name, meta.module)
   return c.json(meta, 201)
 })
 
@@ -931,6 +935,14 @@ function listArgsFromQuery(q: Record<string, string>) {
 app.get('/api/search', async (c) => {
   const q = c.req.query('q') ?? ''
   return c.json({ results: await globalSearch(q, who(c)) })
+})
+
+// #80: the caller's visible Home Pages with their permission-filtered card
+// links — the ONLY source the Desk sidebar consumes. Role visibility is
+// presentation scoping (computed server-side), not a security boundary;
+// table access is still enforced by Permission rows on every read.
+app.get('/api/home_pages', async (c) => {
+  return c.json({ pages: await getVisibleHomePages(who(c)) })
 })
 
 // RT-003: the caller's unread notification count.
