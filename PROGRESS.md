@@ -84,8 +84,55 @@ apps/server/migrations/`.
 
 - Next: the derived prefix for a long Table name is verbose
   (`SUB-REGISTRAR-OFFICE-001`); consider an acronym form for 3+ word names.
-  The Import Wizard's prefix is fixed at 3 digits (the builder has the digit
-  picker) — unify if it matters.
+
+---
+
+## 2026-07-31 — NAM-002: the row id is column one, not a setting above the grid
+
+Follow-up to NAM-001, same branch. Two complaints, one root cause: naming was
+modelled as a *setting* rather than as the identity *column* it is.
+
+- The two screens disagreed. The Table Builder got the full `NamingControl`;
+  the Import Wizard got a lone "Row id prefix" textbox hardwired to 3 digits
+  (`planIdPattern` composed `${prefix}.###`), so a bare `ZONE-1, ZONE-2,
+  ZONE-3` was reachable when building a Table but not when importing one —
+  for the same file.
+- The row id didn't look like a column. Users think of a record as having an
+  ID and a name; when a sheet is mapped column-by-column, the id belongs in
+  that grid.
+
+**Both screens now open the grid with a locked, tinted "Row ID" row** carrying
+the shared `NamingControl` — the same component, not a lookalike, so they
+cannot drift again. `SheetPlan.naming_prefix: string | null` became
+`id_pattern: string | null`, so the wizard can express every kind rather than
+just a prefix.
+
+**One dropdown replaces two.** `NamingControl` used to render a kind picker
+plus, for the `field` kind, a second column picker. The columns now live in an
+optgroup inside the kind select, because naming a row after a column *is*
+picking that column. Selecting one encodes `field:<column>` directly, which is
+what `resolveName` already implements — so "generate an id" and "take the id
+from the sheet" stop being two mental models. The unreachable "field kind with
+no column chosen" state disappears with it.
+
+Preview copy is id-centric now ("Each row takes its id from district_id").
+
+Verified in the browser, end to end: `registration_district.csv` imported as
+`Rowid Check` with the row id sourced from `district_id` landed rows named
+**50001 / 50002 / 50003**, not hashes. Series mode previews
+`REGISTRATION-DISTRIC-001…` in the same row.
+
+**Deliberately not built:** an *editable label* for the row id ("Zone Id").
+There is nowhere to store it — `table_def` has `title_column` but no id label,
+and ADR 0007 (#88) argues that field becomes unnecessary once the primary key
+is renamed `name` -> `id` and `name` becomes an ordinary labelled column. The
+row shows a fixed "Row ID" until #89 lands. Tracked in #90.
+
+- Gotcha: the builder/import e2e specs self-skip when their fixture Table
+  already exists (Tables cannot be deleted), so a green local run does not
+  mean those paths ran — verify in the browser.
+- Next: #90 (acronym prefixes for 3+ word names; the duplicate-identity-column
+  question when the id is sourced from a file column), then #89.
 
 ---
 ## 2026-07-30 — Home Pages: curated navigation replaces the table-list sidebar (#80)

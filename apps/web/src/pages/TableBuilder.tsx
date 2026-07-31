@@ -270,21 +270,6 @@ export function TableBuilder() {
         </div>
       </div>
 
-      <label className="fc-label">Naming</label>
-      <div className="mb-4">
-        <NamingControl
-          value={idPattern}
-          onChange={setNamingOverride}
-          defaultPrefix={seriesPrefix(name)}
-          columns={columns
-            .filter((c) => c.column_name.trim())
-            .map((c) => ({
-              column_name: c.column_name.trim(),
-              label: c.label.trim() || c.column_name.trim(),
-            }))}
-        />
-      </div>
-
       <div className="fc-card overflow-x-auto">
         <table className="w-full text-sm" data-testid="dt-fields">
           <thead className="bg-gray-50 text-left text-xs text-gray-600">
@@ -299,6 +284,28 @@ export function TableBuilder() {
             </tr>
           </thead>
           <tbody>
+            {/* NAM-001: the row id is column one, matching the Import Wizard.
+                Every record has an id; where it comes from is the same kind of
+                decision as any other column's. Always present, never removed. */}
+            <tr className="border-t border-gray-100 bg-blue-50/60">
+              <td className="px-2 py-1 align-baseline text-gray-500">Row ID</td>
+              <td className="px-1 py-1" colSpan={5}>
+                <NamingControl
+                  value={idPattern}
+                  onChange={setNamingOverride}
+                  defaultPrefix={seriesPrefix(name)}
+                  columns={columns
+                    .filter((c) => c.column_name.trim())
+                    .map((c) => ({
+                      column_name: c.column_name.trim(),
+                      label: c.label.trim() || c.column_name.trim(),
+                    }))}
+                />
+              </td>
+              <td className="px-1 text-center text-gray-300" title="always present">
+                🔒
+              </td>
+            </tr>
             {columns.map((c, i) => (
               <tr key={i} className="border-t border-gray-100">
                 <td className="px-1 py-1">

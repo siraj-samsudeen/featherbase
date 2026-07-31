@@ -4,11 +4,13 @@
 
 export type NamingKind = 'series' | 'hash' | 'prompt' | 'field'
 
+// The generated kinds. 'field' is deliberately absent: naming a row after a
+// column IS picking that column, so the columns appear as options in this same
+// select rather than behind a second one. One dropdown, one decision.
 const KINDS: { value: NamingKind; label: string }[] = [
   { value: 'series', label: 'Series with prefix' },
-  { value: 'hash', label: 'Random' },
+  { value: 'hash', label: 'Random id' },
   { value: 'prompt', label: 'Set by user' },
-  { value: 'field', label: 'From a column' },
 ]
 
 interface Parsed {
@@ -46,11 +48,11 @@ export function composeIdPattern(p: Parsed): string {
 
 export function namingPreview(pattern: string): string {
   const p = parseIdPattern(pattern)
-  if (p.kind === 'prompt') return 'You type each row’s name yourself'
+  if (p.kind === 'prompt') return 'You type each row’s id yourself'
   if (p.kind === 'field')
     return p.column
-      ? `Each row is named after its ${p.column} value`
-      : 'Pick the column to name rows after'
+      ? `Each row takes its id from ${p.column}`
+      : 'Pick the column to take ids from'
   if (p.kind === 'series')
     return `First rows: ${[1, 2, 3].map((n) => p.prefix + String(n).padStart(p.digits, '0')).join(', ')}…`
   return 'Rows get a random id, e.g. a0373bac75'
@@ -72,24 +74,38 @@ export function NamingControl({
 }) {
   const p = parseIdPattern(value)
   const set = (patch: Partial<Parsed>) => onChange(composeIdPattern({ ...p, ...patch }))
+  // A column pick is encoded in the same select as the kinds.
+  const selected = p.kind === 'field' && p.column ? `field:${p.column}` : p.kind
 
   return (
     <>
       <div className="mb-1 flex flex-wrap items-center gap-2">
         <select
-          value={p.kind}
+          value={selected}
           onChange={(e) => {
-            const kind = e.target.value as NamingKind
+            const v = e.target.value
+            if (v.startsWith('field:'))
+              return set({ kind: 'field', column: v.slice('field:'.length) })
+            const kind = v as NamingKind
             set({ kind, prefix: kind === 'series' && !p.prefix ? defaultPrefix : p.prefix })
           }}
           data-testid={`${idPrefix}-naming`}
-          className="fc-input w-48"
+          className="fc-input w-52"
         >
           {KINDS.map((k) => (
             <option key={k.value} value={k.value}>
               {k.label}
             </option>
           ))}
+          {columns.length > 0 && (
+            <optgroup label="From a column">
+              {columns.map((c) => (
+                <option key={c.column_name} value={`field:${c.column_name}`}>
+                  {c.label || c.column_name}
+                </option>
+              ))}
+            </optgroup>
+          )}
         </select>
         {p.kind === 'series' && (
           <>
@@ -113,21 +129,6 @@ export function NamingControl({
               ))}
             </select>
           </>
-        )}
-        {p.kind === 'field' && (
-          <select
-            value={p.column}
-            onChange={(e) => set({ column: e.target.value })}
-            data-testid={`${idPrefix}-naming-column`}
-            className="fc-input w-48"
-          >
-            <option value="">Choose a column…</option>
-            {columns.map((c) => (
-              <option key={c.column_name} value={c.column_name}>
-                {c.label || c.column_name}
-              </option>
-            ))}
-          </select>
         )}
       </div>
       <p className="text-xs text-gray-500" data-testid={`${idPrefix}-naming-preview`}>
