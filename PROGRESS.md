@@ -117,12 +117,21 @@ was never touched, so its `desk_client` is still intact until you migrate.
 The server served the built SPA on port 8906, exercising the real SPA
 fallback rather than the Vite proxy.
 
-- Server 493 passed / 97 files, web unit 12 passed (the `renderApp`
+- Server 501 passed / 97 files, web unit 12 passed (the `renderApp`
   consumer), both typechecks clean.
-- Full e2e on a freshly migrated database: **86 passed, 2 skipped, 0
-  failed**. Earlier runs of this tree hit RT-002/RT-003 — the realtime
-  family already recorded here as flaky, which passes on re-run in
+- Full e2e on a freshly migrated database, after merging main: **88 passed,
+  2 skipped, 0 failed**. Earlier runs of this tree hit RT-002/RT-003 — the
+  realtime family already recorded here as flaky, which passes on re-run in
   isolation — so treat a lone realtime failure as noise, not a signal.
+- **Merging main is where this nearly went wrong.** Git's auto-merge
+  silently dropped main's content twice in files both sides had touched:
+  the `data-testid="dt-row-id"` / `data-columnrow` markers in TableBuilder
+  and ImportWizard, and the NAM-002 assertions reading them in the builder,
+  import-file and import-wizard specs. Nothing conflicted; six e2e specs
+  simply failed. The fix, and the habit worth keeping: for a sweeping
+  mechanical rename, **re-derive every file the other side also changed
+  from their version and re-apply the transform**, then diff the result
+  against their branch and account for every removed line.
 - **#86, all five paths on throwaway clusters:** pristine fresh install ->
   `app_client`, policies granting to it; **interrupted chain** (stopped
   after the legacy 0010) -> upgrades to the end, role renamed, every policy
