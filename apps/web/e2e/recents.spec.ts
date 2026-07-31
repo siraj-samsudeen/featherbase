@@ -1,0 +1,91 @@
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+
+const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
+const DT = 'Recents DT'
+const DOC = 'quokka-recent-doc'
+
+// #101 Phase 1: the command bar remembers what the operator visited — rows,
+// filtered lists, searches — per user, and its empty focused state replays
+// them (newest first, keyboard included).
+
+test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
+  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
+  const token = ((await login.json()) as { token: string }).token
+  const auth = { Authorization: `Bearer ${token}` }
+  const dt = await request.post('/api/doctype', {
+    headers: auth,
+    data: {
+      name: DT,
+      id_pattern: 'prompt',
+      columns: [{ column_name: 'note', column_type: 'Data', in_list_view: true }],
+    },
+  })
+  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
+    headers: auth,
+    data: { name: DOC, note: 'searchable' },
+  })
+  if (![201, 409].includes(doc.status())) throw new Error(`doc: ${doc.status()}`)
+})
+
+async function login(page: Page) {
+  await page.goto('/login')
+  await page.fill('input[name=email]', 'Administrator')
+  await page.fill('input[name=password]', ADMIN_PWD)
+  await page.click('button[type=submit]')
+  await page.waitForURL(/\/admin/)
+}
+
+test('#101: an empty command bar lists recent visits and replays them', async ({ page }) => {
+  await login(page)
+
+  // Build a trail: a filtered list, then a row.
+  const filters = encodeURIComponent(JSON.stringify([['note', '=', 'searchable']]))
+  await page.goto(`/admin/${encodeURIComponent(DT)}?filters=${filters}`)
+  await expect(page.getByTestId('doctype-page')).toBeVisible()
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${DOC}`)
+  await expect(page.getByTestId('form-view')).toBeVisible()
+  await page.goto('/admin')
+
+  // Focused + empty: the trail is listed newest first.
+  const bar = page.getByTestId('awesomebar').locator('input')
+  await bar.click()
+  const recents = page.getByTestId('awesomebar-recent')
+  await expect(recents.first()).toContainText(DOC)
+  await expect(recents.nth(1)).toContainText(DT)
+  await expect(recents.nth(1)).toContainText('note = searchable')
+
+  // Clicking the list entry replays the URL, filters included.
+  await recents.nth(1).click()
+  await expect(page).toHaveURL(/filters=/)
+  await expect(page.getByTestId('doctype-page')).toBeVisible()
+
+  // Keyboard: ArrowDown moves the selection, Enter replays it. After the
+  // list revisit the order is [list, row], so the second entry is the row.
+  await page.goto('/admin')
+  await bar.click()
+  await expect(recents.first()).toBeVisible()
+  await bar.press('ArrowDown')
+  await bar.press('Enter')
+  await expect(page).toHaveURL(new RegExp(`${encodeURIComponent(DT)}/${DOC}`))
+  await expect(page.getByTestId('form-view')).toBeVisible()
+})
+
+test('#101: searches are remembered and offered back while typing', async ({ page }) => {
+  await login(page)
+
+  // Search and open the top hit via Enter — this records the search text.
+  const bar = page.getByTestId('awesomebar').locator('input')
+  await bar.fill('quokka-rec')
+  await expect(page.getByTestId('awesomebar-doc').first()).toBeVisible()
+  await bar.press('Enter')
+  await expect(page).toHaveURL(new RegExp(`${encodeURIComponent(DT)}/${DOC}`))
+
+  // Typing a prefix later offers the past search; clicking refills the bar.
+  await page.goto('/admin')
+  await bar.fill('quo')
+  const chip = page.getByTestId('awesomebar-recent-search').first()
+  await expect(chip).toContainText('quokka-rec')
+  await chip.click()
+  await expect(bar).toHaveValue('quokka-rec')
+})

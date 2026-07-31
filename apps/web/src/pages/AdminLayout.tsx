@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, Outlet, useNavigate } from '@tanstack/react-router'
+import { Link, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, clearSession, getSessionUser, listResource } from '../lib/api'
+import {
+  actionForLocation,
+  ago,
+  frequentActions,
+  recentActions,
+  recentSearches,
+  recordAction,
+  type RecentEntry,
+} from '../lib/recents'
 import { useHomePages } from '../lib/home-pages'
 import { useRealtime } from '../lib/realtime'
 import { useTheme } from '../lib/theme'
@@ -18,12 +27,24 @@ interface SearchHit {
 // home page sidebar. All Tables render inside <Outlet/>.
 export function AdminLayout() {
   const navigate = useNavigate()
+  const router = useRouter()
   const queryClient = useQueryClient()
   const user = getSessionUser()
   const { theme, toggle: toggleTheme } = useTheme()
   const { palette, set: setPalette } = usePalette()
   const { t, language, setLanguage } = useI18n()
   const [search, setSearch] = useState('')
+
+  // Recent actions (#101 Phase 1): every admin navigation is remembered in a
+  // per-user localStorage buffer; the command bar's empty state replays it.
+  const location = useRouterState({ select: (s) => s.location })
+  useEffect(() => {
+    if (!user) return
+    const action = actionForLocation(location.pathname, location.search as Record<string, unknown>)
+    if (action) recordAction(user.name, action)
+  }, [user?.name, location.href]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [barFocused, setBarFocused] = useState(false)
+  const [recentSel, setRecentSel] = useState(0)
   // UI-025: on narrow (mobile) widths the sidebar collapses into a drawer
   // toggled from the navbar; on md+ it is always shown.
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -152,17 +173,52 @@ export function AdminLayout() {
       api.get<{ results: SearchHit[] }>(`/api/search?q=${encodeURIComponent(debounced)}`),
   })
 
+  // #101: with the bar focused and empty, the dropdown shows Recent (pure
+  // recency) and Frequent (frecency) groups; while typing it offers matching
+  // past searches. All three read the per-user localStorage buffer.
+  const trimmed = search.trim()
+  const showRecents = Boolean(barFocused && trimmed === '' && user)
+  const recentItems = showRecents && user ? recentActions(user.name, 6) : []
+  const frequentItems =
+    showRecents && user
+      ? frequentActions(user.name, 4).filter((f) => !recentItems.some((r) => r.key === f.key))
+      : []
+  const pick = [...recentItems, ...frequentItems]
+  const searchChips = user && trimmed ? recentSearches(user.name, trimmed, 3) : []
+
+  function recordSearch(q: string) {
+    if (user && q) recordAction(user.name, { kind: 'search', key: `search:${q.toLowerCase()}`, label: q, path: '' })
+  }
+
+  function openRecent(entry: RecentEntry) {
+    if (entry.kind === 'search') {
+      setSearch(entry.label)
+      return
+    }
+    setSearch('')
+    setBarFocused(false)
+    searchRef.current?.blur()
+    router.history.push(entry.path)
+  }
+
   function openDoc(hit: SearchHit) {
+    recordSearch(search.trim())
     setSearch('')
     navigate({ to: '/admin/$doctype/$name', params: { doctype: hit.table, name: hit.name } })
   }
 
   // Enter opens the top match: an exactly-named Table's list first,
-  // otherwise the first row hit.
+  // otherwise the first row hit. With an empty bar, Enter replays the
+  // selected recent instead (#101).
   function runSearch(e: React.FormEvent) {
     e.preventDefault()
     const q = search.trim()
-    if (!q) return
+    if (!q) {
+      const entry = pick[Math.min(recentSel, pick.length - 1)]
+      if (entry) openRecent(entry)
+      return
+    }
+    recordSearch(q)
     const dtHit = tables.data?.data.find((d) => d.name.toLowerCase() === q.toLowerCase())
     if (dtHit) {
       setSearch('')
@@ -229,6 +285,25 @@ export function AdminLayout() {
             ref={searchRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onFocus={() => {
+              setBarFocused(true)
+              setRecentSel(0)
+            }}
+            onBlur={() => setBarFocused(false)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.currentTarget.blur()
+                return
+              }
+              if (!showRecents || pick.length === 0) return
+              if (e.key === 'ArrowDown') {
+                e.preventDefault()
+                setRecentSel((s) => (s + 1) % pick.length)
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault()
+                setRecentSel((s) => (s - 1 + pick.length) % pick.length)
+              }
+            }}
             placeholder="Search or type a command…"
             className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-canvas)] px-3 py-1.5 pr-10 text-sm outline-none focus:border-[var(--color-brand)] focus:bg-[var(--color-surface)] focus:ring-2 focus:ring-[var(--color-brand)]/15"
           />
@@ -238,8 +313,51 @@ export function AdminLayout() {
           >
             ⌘K
           </kbd>
-          {(suggestions.length > 0 || commandHits.length > 0 || (docHits.data?.results.length ?? 0) > 0) && (
+          {(suggestions.length > 0 ||
+            commandHits.length > 0 ||
+            (docHits.data?.results.length ?? 0) > 0 ||
+            (showRecents && pick.length > 0) ||
+            searchChips.length > 0) && (
             <div className="fc-card absolute z-20 mt-1 w-full overflow-hidden py-1" data-testid="awesomebar-results">
+              {/* #101: empty-bar recents — mousedown is swallowed so the
+                  input keeps focus until the click lands. */}
+              {showRecents && pick.length > 0 && (
+                <div data-testid="awesomebar-recents" onMouseDown={(e) => e.preventDefault()}>
+                  <div className="px-3 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+                    Recent
+                  </div>
+                  {recentItems.map((r, i) => (
+                    <RecentRow key={r.key} entry={r} selected={i === Math.min(recentSel, pick.length - 1)} onOpen={openRecent} />
+                  ))}
+                  {frequentItems.length > 0 && (
+                    <div className="px-3 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+                      Frequent
+                    </div>
+                  )}
+                  {frequentItems.map((r, i) => (
+                    <RecentRow
+                      key={r.key}
+                      entry={r}
+                      selected={recentItems.length + i === Math.min(recentSel, pick.length - 1)}
+                      onOpen={openRecent}
+                    />
+                  ))}
+                </div>
+              )}
+              {/* #101: matching past searches while typing — click refills the bar. */}
+              {searchChips.map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setSearch(s.label)}
+                  data-testid="awesomebar-recent-search"
+                  className="block w-full px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
+                >
+                  <span className="text-[var(--color-ink-faint)]">↻</span> {s.label}
+                  <span className="ml-2 text-xs text-[var(--color-ink-faint)]">recent search</span>
+                </button>
+              ))}
               {/* PR-2-style command actions, matched by name. */}
               {commandHits.map((cmd) => (
                 <button
@@ -526,6 +644,40 @@ export function AdminLayout() {
 // /api/set_password (the endpoint scopes to the caller when no user is given).
 // Mirrors the ResetPassword page's form: fc-card / fc-label / fc-input, a
 // client-side confirm check, then a success state.
+// #101: one row of the command bar's Recent/Frequent groups.
+const RECENT_KIND_LABEL = { row: 'row', list: 'view', page: 'page', search: 'search' } as const
+
+function RecentRow({
+  entry,
+  selected,
+  onOpen,
+}: {
+  entry: RecentEntry
+  selected: boolean
+  onOpen: (entry: RecentEntry) => void
+}) {
+  const last = entry.visits[entry.visits.length - 1] ?? 0
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(entry)}
+      data-testid="awesomebar-recent"
+      className={`flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)] ${
+        selected ? 'bg-[var(--color-brand-tint)]' : ''
+      }`}
+    >
+      <span className="w-10 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-brand)]">
+        {RECENT_KIND_LABEL[entry.kind]}
+      </span>
+      <span className="min-w-0 flex-1 truncate">
+        {entry.label}
+        {entry.sub && <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{entry.sub}</span>}
+      </span>
+      <span className="shrink-0 text-xs tabular-nums text-[var(--color-ink-faint)]">{ago(last)}</span>
+    </button>
+  )
+}
+
 function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
