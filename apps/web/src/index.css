@@ -26,6 +26,14 @@
   --color-danger-tint: #fbecec;
   --color-warn: #cb9a26;
   --color-warn-tint: #fbf3e0;
+
+  /* UI-025: structural tokens so palettes can reshape controls without any
+     component edits. Defaults reproduce the Classic look exactly. */
+  --radius-card: 0.5rem; /* .fc-card (was rounded-lg) */
+  --radius-control: 0.375rem; /* .fc-input / .fc-btn (was rounded-md) */
+  --color-primary-btn: var(--color-brand); /* .fc-btn-primary bg */
+  --color-primary-btn-hover: var(--color-brand-dark);
+  --color-primary-btn-ink: #ffffff;
 }
 
 /* UI-024: dark mode. Overriding the design tokens under [data-theme='dark']
@@ -51,6 +59,140 @@
   --color-danger-tint: #38201f;
   --color-warn: #d6a634;
   --color-warn-tint: #322915;
+}
+
+/* ============================================================ UI-025
+   Palettes: a second theming axis, orthogonal to light/dark. Each palette
+   overrides the same tokens; its [data-theme='dark'] companion (2 attributes,
+   higher specificity) beats the generic dark block above. `classic` is the
+   absence of an override — the Frappe-blue look defined in @theme. */
+
+/* Ivory — warm paper neutrals, clay accent (Anthropic-inspired). */
+[data-palette='ivory'] {
+  --color-canvas: #f2efe9;
+  --color-surface: #fbfaf7;
+  --color-subtle: #f5f2ec;
+  --color-border: #e5e0d5;
+  --color-border-strong: #d3ccbd;
+  --color-ink: #292520;
+  --color-ink-muted: #6e675c;
+  --color-ink-faint: #a29a8c;
+  --color-brand: #c15f3c;
+  --color-brand-dark: #a04d2f;
+  --color-brand-tint: #f0e2d8;
+  --color-good: #4a7c59;
+  --color-good-tint: #e4ecdf;
+  --color-danger: #c04f3e;
+  --color-danger-tint: #f6e5e1;
+  --color-warn: #9a6b1f;
+  --color-warn-tint: #f2e7cd;
+  --radius-card: 0.75rem;
+  --radius-control: 0.5rem;
+}
+[data-palette='ivory'][data-theme='dark'] {
+  --color-canvas: #1f1c17;
+  --color-surface: #282420;
+  --color-subtle: #2e2a24;
+  --color-border: #38332b;
+  --color-border-strong: #4a4438;
+  --color-ink: #ece7dd;
+  --color-ink-muted: #a39b8d;
+  --color-ink-faint: #736c5f;
+  --color-brand: #d97757;
+  --color-brand-dark: #e08b6e;
+  --color-brand-tint: #3b2c23;
+  --color-good: #7fb08a;
+  --color-good-tint: #25321f;
+  --color-danger: #e0765f;
+  --color-danger-tint: #3b241e;
+  --color-warn: #d0a84f;
+  --color-warn-tint: #37301c;
+}
+
+/* Graphite — pure neutrals, near-black primary buttons; blue survives as
+   link/focus/active color (Frappe v15 Espresso-inspired). */
+[data-palette='graphite'] {
+  --color-canvas: #f8f8f8;
+  --color-surface: #ffffff;
+  --color-subtle: #f3f3f3;
+  --color-border: #ededed;
+  --color-border-strong: #dcdcdc;
+  --color-ink: #171717;
+  --color-ink-muted: #525252;
+  --color-ink-faint: #999999;
+  --color-brand-tint: #eaf3fc;
+  --color-good: #20805f;
+  --color-good-tint: #e4f2ec;
+  --color-warn: #b0730a;
+  --color-warn-tint: #faf0dd;
+  --radius-card: 0.625rem;
+  --radius-control: 0.4375rem;
+  --color-primary-btn: #171717;
+  --color-primary-btn-hover: #000000;
+  --color-primary-btn-ink: #ffffff;
+}
+[data-palette='graphite'][data-theme='dark'] {
+  --color-canvas: #141414;
+  --color-surface: #1d1d1d;
+  --color-subtle: #242424;
+  --color-border: #2c2c2c;
+  --color-border-strong: #3d3d3d;
+  --color-ink: #ededed;
+  --color-ink-muted: #a3a3a3;
+  --color-ink-faint: #6b6b6b;
+  --color-brand: #4aa3f2;
+  --color-brand-dark: #71b7f5;
+  --color-brand-tint: #15293c;
+  --color-good: #4dbd92;
+  --color-good-tint: #122b22;
+  --color-danger: #f06a6a;
+  --color-danger-tint: #38201f;
+  --color-warn: #d9a13f;
+  --color-warn-tint: #312613;
+  --color-primary-btn: #ededed;
+  --color-primary-btn-hover: #ffffff;
+  --color-primary-btn-ink: #141414;
+}
+
+/* Indigo — friendly app-builder look: indigo accent, pill controls, roomier
+   radii (Glide-inspired). */
+[data-palette='indigo'] {
+  --color-canvas: #f5f6fa;
+  --color-surface: #ffffff;
+  --color-subtle: #f2f3f9;
+  --color-border: #e6e8f0;
+  --color-border-strong: #d5d8e4;
+  --color-ink: #20222e;
+  --color-ink-muted: #5d6170;
+  --color-ink-faint: #989fb2;
+  --color-brand: #5b5bd6;
+  --color-brand-dark: #4747b8;
+  --color-brand-tint: #e8e8fb;
+  --color-good: #2f9e6e;
+  --color-good-tint: #e2f5ec;
+  --color-warn: #b57e10;
+  --color-warn-tint: #faf0d8;
+  --radius-card: 0.875rem;
+  --radius-control: 9999px;
+}
+[data-palette='indigo'][data-theme='dark'] {
+  --color-canvas: #171825;
+  --color-surface: #1f2130;
+  --color-subtle: #262838;
+  --color-border: #2d2f42;
+  --color-border-strong: #3d4058;
+  --color-ink: #e8e9f2;
+  --color-ink-muted: #a3a7ba;
+  --color-ink-faint: #696d84;
+  --color-brand: #7c7cf0;
+  --color-brand-dark: #9a9af4;
+  --color-brand-tint: #2a2a52;
+  --color-good: #4cc394;
+  --color-good-tint: #15301f;
+  --color-danger: #f06a6a;
+  --color-danger-tint: #38201f;
+  --color-warn: #d8a544;
+  --color-warn-tint: #33290f;
 }
 
 html,
@@ -84,19 +226,19 @@ body {
 /* Shared component classes so every generic view inherits the Frappe look. */
 @layer components {
   .fc-card {
-    @apply rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_1px_2px_rgba(25,39,52,0.04),0_1px_3px_rgba(25,39,52,0.03)];
+    @apply rounded-[var(--radius-card)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[0_1px_2px_rgba(25,39,52,0.04),0_1px_3px_rgba(25,39,52,0.03)];
   }
   .fc-input {
-    @apply w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-ink)] outline-none transition
+    @apply w-full rounded-[var(--radius-control)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-ink)] outline-none transition
       placeholder:text-[var(--color-ink-faint)]
       focus:border-[var(--color-brand)] focus:ring-2 focus:ring-[var(--color-brand)]/20
       disabled:bg-[var(--color-subtle)] disabled:text-[var(--color-ink-muted)];
   }
   .fc-btn {
-    @apply inline-flex items-center gap-1.5 rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-sm font-medium text-[var(--color-ink)] transition hover:bg-[var(--color-subtle)] disabled:opacity-40;
+    @apply inline-flex items-center gap-1.5 rounded-[var(--radius-control)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-3 py-1.5 text-sm font-medium text-[var(--color-ink)] transition hover:bg-[var(--color-subtle)] disabled:opacity-40;
   }
   .fc-btn-primary {
-    @apply inline-flex items-center gap-1.5 rounded-md bg-[var(--color-brand)] px-4 py-1.5 text-sm font-medium text-white transition hover:bg-[var(--color-brand-dark)] disabled:opacity-40;
+    @apply inline-flex items-center gap-1.5 rounded-[var(--radius-control)] bg-[var(--color-primary-btn)] px-4 py-1.5 text-sm font-medium text-[var(--color-primary-btn-ink)] transition hover:bg-[var(--color-primary-btn-hover)] disabled:opacity-40;
   }
   .fc-label {
     @apply mb-1 block text-xs font-medium text-[var(--color-ink-muted)];

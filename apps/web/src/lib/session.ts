@@ -9,6 +9,7 @@ interface WhoAmI {
   full_name: string | null
   roles: string[]
   theme?: 'light' | 'dark'
+  palette?: 'classic' | 'ivory' | 'graphite' | 'indigo'
   language?: string
 }
 

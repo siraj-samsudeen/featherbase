@@ -12,6 +12,63 @@ this look — do not introduce ad-hoc colors/spacing:
   `.fc-btn-primary`, `.fc-label`, `.fc-pill`. Prefer these over raw Tailwind.
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `AdminLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
+- Since UI-025 the tokens come in four palettes (`classic`/`ivory`/
+  `graphite`/`indigo`), selected per user. New UI must keep reading the
+  CSS variables and `.fc-*` classes — never a literal color — so it works
+  under every palette × light/dark combination automatically.
+
+## 2026-07-31 — UI-025: user-selectable color palettes (second theming axis)
+
+The Desk now ships four palettes — **Classic** (the original Frappe blue),
+**Ivory** (warm paper + clay, Anthropic-inspired), **Graphite** (pure
+neutrals + near-black primary buttons, Frappe-v15-inspired), and **Indigo**
+(indigo + pill controls, Glide-inspired) — chosen from a navbar select,
+orthogonal to light/dark. Every combination (4 × 2) works.
+
+Mechanics mirror UI-024 dark mode exactly, one axis over:
+- **CSS** (`apps/web/src/index.css`): each palette is a `[data-palette=…]`
+  token override block with a `[data-palette=…][data-theme='dark']`
+  companion (2 attributes out-specifies the generic dark block). `classic`
+  is the absence of the attribute. Three structural tokens were promoted so
+  palettes can reshape controls with zero component edits: `--radius-card`,
+  `--radius-control` (Indigo's pills), and a
+  `--color-primary-btn`/`-hover`/`-ink` trio (Graphite's black button,
+  which inverts to white in dark). Defaults reproduce Classic exactly.
+- **Server**: migration `0062_user_palette.ts` (mirror of `0035_user_theme`)
+  adds a `palette` Choice column to User; `whoami` returns it;
+  `POST /api/set_palette` validates against the four names (417 otherwise).
+- **Web**: `lib/palette.ts` is a line-for-line sibling of `lib/theme.ts`
+  (server-authoritative, localStorage mirror applied at module load so
+  there's no flash); `DeskLayout` grows a `palette-select` beside the
+  theme toggle.
+
+Verified end-to-end: HTTP (`set_palette` persists, `whoami` round-trips,
+bad value 417s) and in the real browser via the preview pane — logged in,
+switched all four palettes in both modes on the ToDo list view, confirmed
+computed styles (`--color-primary-btn` resolves per palette), reloaded to
+prove persistence with no flash. `e2e/palette.spec.ts` (new, sibling of
+`dark-mode.spec.ts`) covers switch/persist/reload/compose-with-dark/reject.
+Both typechecks clean, `pnpm smoke` green.
+
+Design references for the three new palettes (mockups the user picked from)
+are archived at the session artifact "Featherbase — three UI directions".
+
+**Review fixes (same day, PR #92):** (1) The navbar's controls don't wrap,
+so the new select overflowed 390px viewports — the language + palette
+selects are now `hidden md:block` and live in the account menu below md
+(`palette-select-mobile`); `responsive.spec.ts` passes again. (2)
+Cross-user leak: logout only removed the token, so the next account in the
+same tab inherited a still-fresh `['whoami']` cache (5-min staleTime) and
+the previous user's global `fc_theme`/`fc_palette` mirrors. `logout()` now
+calls `queryClient.clear()` and un-stamps `data-theme`/`data-palette`, and
+both mirrors are scoped per user (`fc_palette:<name>`). Deferred as issues:
+#96 (serialize preference writes / handle failures), #97 (WCAG AA role
+tokens — `--color-link`, `--color-on-brand`, status text).
+
+**Next:** Ivory was designed with serif page titles (self-hosted Source
+Serif via a `--font-display` token) — deferred to keep this change
+token-only. Also consider: palette-aware record avatars (deterministic
+hash→hue) from the Indigo mockup.
 
 ## 2026-07-31 — a guard so a sixth missing `E` prefix cannot land (#93 follow-up)
 
