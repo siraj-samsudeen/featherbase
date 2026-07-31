@@ -130,6 +130,12 @@ export function DeskLayout() {
 
   function logout() {
     clearSession()
+    // Drop all cached per-user data (whoami, lists, …) so the next account
+    // in this tab never sees this user's still-fresh cache (PR #92 review),
+    // and reset the theming attributes to the signed-out defaults.
+    queryClient.clear()
+    delete document.documentElement.dataset.palette
+    delete document.documentElement.dataset.theme
     navigate({ to: '/login' })
   }
 
@@ -295,12 +301,15 @@ export function DeskLayout() {
         </form>
 
         <div className="flex items-center gap-3">
+          {/* On narrow screens these selects move into the account menu —
+              the navbar's controls don't wrap, so extra always-visible
+              controls overflow at mobile widths (PR #92 review). */}
           <select
             data-testid="language-select"
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
             title="Language"
-            className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-xs text-[var(--color-ink)]"
+            className="hidden rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-xs text-[var(--color-ink)] md:block"
           >
             <option value="en">EN</option>
             <option value="fr">FR</option>
@@ -311,7 +320,7 @@ export function DeskLayout() {
             value={palette}
             onChange={(e) => setPalette(e.target.value as Palette)}
             title="Color palette"
-            className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-xs capitalize text-[var(--color-ink)]"
+            className="hidden rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-xs capitalize text-[var(--color-ink)] md:block"
           >
             {PALETTES.map((p) => (
               <option key={p} value={p}>
@@ -366,6 +375,39 @@ export function DeskLayout() {
                   {user?.email && (
                     <p className="truncate text-xs text-[var(--color-ink-faint)]">{user.email}</p>
                   )}
+                </div>
+                {/* Mobile home of the navbar selects (hidden there below md). */}
+                <div className="border-b border-[var(--color-border)] px-3 py-2 md:hidden">
+                  <label className="fc-label" htmlFor="palette-select-mobile">
+                    {t('Palette')}
+                  </label>
+                  <select
+                    id="palette-select-mobile"
+                    data-testid="palette-select-mobile"
+                    value={palette}
+                    onChange={(e) => setPalette(e.target.value as Palette)}
+                    className="fc-input capitalize"
+                  >
+                    {PALETTES.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="fc-label mt-2" htmlFor="language-select-mobile">
+                    {t('Language')}
+                  </label>
+                  <select
+                    id="language-select-mobile"
+                    data-testid="language-select-mobile"
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value)}
+                    className="fc-input"
+                  >
+                    <option value="en">EN</option>
+                    <option value="fr">FR</option>
+                    <option value="es">ES</option>
+                  </select>
                 </div>
                 <button
                   role="menuitem"

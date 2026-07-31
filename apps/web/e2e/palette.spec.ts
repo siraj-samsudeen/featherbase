@@ -77,4 +77,35 @@ test('UI-025: palette switches, persists across reload, and is stored per-user',
     data: { palette: 'neon' },
   })
   expect(bad.status()).toBe(417)
+
+  // Logging out clears the cached identity and the theming attributes, and
+  // the mirror is scoped per user — the next account in this tab must not
+  // inherit this user's palette (PR #92 review).
+  await page.getByTestId('session-user').click()
+  await page.getByTestId('logout').click()
+  await page.waitForURL(/\/login/)
+  await expect(html).not.toHaveAttribute('data-palette', /./)
+  const mirror = await page.evaluate(() => ({
+    scoped: localStorage.getItem('fc_palette:Administrator'),
+    global: localStorage.getItem('fc_palette'),
+  }))
+  expect(mirror.scoped).toBe('ivory')
+  expect(mirror.global).toBeNull()
+})
+
+// The palette picker stays reachable on mobile via the account menu, where
+// the navbar selects collapse to avoid horizontal overflow (PR #92 review).
+test('UI-025: on mobile the palette moves into the account menu and the navbar does not overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 720 })
+  await login(page)
+
+  await expect(page.getByTestId('palette-select')).toBeHidden()
+  const noOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+  )
+  expect(noOverflow).toBe(true)
+
+  await page.getByTestId('session-user').click()
+  await page.getByTestId('palette-select-mobile').selectOption('graphite')
+  await expect(page.locator('html')).toHaveAttribute('data-palette', 'graphite')
 })

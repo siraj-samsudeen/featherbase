@@ -53,11 +53,22 @@ Both typechecks clean, `pnpm smoke` green.
 Design references for the three new palettes (mockups the user picked from)
 are archived at the session artifact "Featherbase — three UI directions".
 
+**Review fixes (same day, PR #92):** (1) The navbar's controls don't wrap,
+so the new select overflowed 390px viewports — the language + palette
+selects are now `hidden md:block` and live in the account menu below md
+(`palette-select-mobile`); `responsive.spec.ts` passes again. (2)
+Cross-user leak: logout only removed the token, so the next account in the
+same tab inherited a still-fresh `['whoami']` cache (5-min staleTime) and
+the previous user's global `fc_theme`/`fc_palette` mirrors. `logout()` now
+calls `queryClient.clear()` and un-stamps `data-theme`/`data-palette`, and
+both mirrors are scoped per user (`fc_palette:<name>`). Deferred as issues:
+#96 (serialize preference writes / handle failures), #97 (WCAG AA role
+tokens — `--color-link`, `--color-on-brand`, status text).
+
 **Next:** Ivory was designed with serif page titles (self-hosted Source
 Serif via a `--font-display` token) — deferred to keep this change
 token-only. Also consider: palette-aware record avatars (deterministic
-hash→hue) from the Indigo mockup, and moving the palette/theme/language
-controls into the account menu as the navbar gets crowded.
+hash→hue) from the Indigo mockup.
 
 ## 2026-07-30 — NAM-001: naming series in the UI (imports no longer get hash ids)
 
