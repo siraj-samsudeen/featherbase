@@ -308,7 +308,7 @@ export async function updateTable(
 
     for (const [i, f] of def.columns.entries()) {
       const old = before.get(f.column_name)
-      const row = {
+      const row: Record<string, unknown> = {
         position: i + 1,
         label: f.label ?? f.column_name,
         reference_table: f.reference_table ?? null,
@@ -321,8 +321,11 @@ export async function updateTable(
         hidden: f.hidden ?? false,
         in_list_view: f.in_list_view ?? false,
         tier: f.tier ?? 'basic',
-        source_column: f.source_column ?? (old ? old.source_column : null),
       }
+      // Only touch source_column when a value exists — pre-0064 migrations
+      // that call updateTable run before the column does (fresh databases).
+      const sourceColumn = f.source_column ?? (old ? old.source_column : null)
+      if (sourceColumn != null) row.source_column = sourceColumn
       if (!old) {
         await tx`insert into column_def ${tx({
           parent: name,
@@ -407,7 +410,11 @@ export async function createTable(input: unknown): Promise<TableMeta> {
   }
 
   await sql.begin(async (tx) => {
-    await tx`insert into table_def ${tx({
+    // The binding keys exist only from migration 0064 on. Include them only
+    // when actually binding, so the pre-0064 migrations (0005…) that call
+    // createTable still work on a FRESH database mid-chain — omitting the
+    // keys entirely keeps the INSERT valid against the older shape.
+    const tableRow: Record<string, unknown> = {
       name: def.name,
       module: def.module ?? 'Core',
       kind: def.kind ?? 'table',
@@ -416,14 +423,17 @@ export async function createTable(input: unknown): Promise<TableMeta> {
       title_column: def.title_column ?? null,
       description: def.description ?? null,
       system: def.system ?? false,
-      data_source: def.data_source ?? null,
-      external_schema: def.external_schema ?? null,
-      external_table: def.external_table ?? null,
-      external_pk: def.external_pk ?? null,
-      external_modified: def.external_modified ?? null,
-    })}`
+    }
+    if (def.data_source) {
+      tableRow.data_source = def.data_source
+      tableRow.external_schema = def.external_schema ?? null
+      tableRow.external_table = def.external_table ?? null
+      tableRow.external_pk = def.external_pk ?? null
+      tableRow.external_modified = def.external_modified ?? null
+    }
+    await tx`insert into table_def ${tx(tableRow as Record<string, never>)}`
     for (const [i, f] of def.columns.entries()) {
-      await tx`insert into column_def ${tx({
+      const columnRow: Record<string, unknown> = {
         parent: def.name,
         position: i + 1,
         column_name: f.column_name,
@@ -439,8 +449,9 @@ export async function createTable(input: unknown): Promise<TableMeta> {
         hidden: f.hidden ?? false,
         in_list_view: f.in_list_view ?? false,
         tier: f.tier ?? 'basic',
-        source_column: f.source_column ?? null,
-      })}`
+      }
+      if (f.source_column != null) columnRow.source_column = f.source_column
+      await tx`insert into column_def ${tx(columnRow as Record<string, never>)}`
     }
     // BV1!: a bound Table never causes DDL — no CREATE TABLE, no RLS, no
     // index. Its storage belongs to the source.
