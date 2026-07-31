@@ -40,6 +40,14 @@ export interface TableMeta {
   // #74: platform tables created by the migration chain — grouped under the
   // sidebar's collapsed System section, never hidden.
   system: boolean
+  // EDS-13: set when the Table is bound to an external Data Source. The Desk
+  // shows a source badge and, for read-only sources, renders lists/forms
+  // without any write affordance.
+  data_source?: string | null
+  external_pk?: string | null
+  external_modified?: string | null
+  source_access?: 'read_only' | 'read_write' | null
+  source_engine?: string | null
   created_by: string
   updated_by: string
   created_at: string
@@ -56,6 +64,14 @@ export const COLUMN_TYPES = [
   'Text', 'Long Text', 'Reference', 'Sub-table', 'Attach', 'Attach Image', 'JSON',
   'Section Break', 'Column Break',
 ] as const
+
+// EDS-7: a bound Table on a read-only source (or a source whose engine has
+// no write path) accepts no writes; the Desk drops the affordances entirely
+// (EDS-13: "absent, not merely disabled").
+export function isSourceReadOnly(meta: TableMeta | undefined): boolean {
+  if (!meta?.data_source) return false
+  return meta.source_access !== 'read_write'
+}
 
 export function useMeta(doctype: string) {
   return useQuery({

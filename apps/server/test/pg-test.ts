@@ -5,6 +5,7 @@
 import { app } from '../src/index'
 import { sql, _setSqlDelegate } from '../src/db'
 import { invalidateMeta } from '../src/meta'
+import { invalidateSources } from '../src/sources/registry'
 import { resetRateLimit } from '../src/rate-limit'
 import { issueSession } from '../src/auth'
 import { saveDoc } from '../src/document'
@@ -19,6 +20,8 @@ export const test = createPgTest(
     // the per-process meta cache would describe tables that no longer exist.
     onTeardown: () => {
       invalidateMeta()
+      // Data Source rows created in the rolled-back tx may be cached.
+      invalidateSources()
       resetRateLimit()
     },
     mintToken: async (user) => (await issueSession(user)).token,

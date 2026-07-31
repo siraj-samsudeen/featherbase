@@ -3,6 +3,7 @@ import { AppError } from './errors'
 import { getMeta, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName } from './doctype-engine'
 import { getUserPermissionMap, isBypassUser, permissionScope } from './permissions'
+import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
 
 export type Filter = [string, string, unknown]
 
@@ -115,6 +116,9 @@ export async function countDocs(
   filters: Filter[] = [],
   user = 'Administrator',
 ): Promise<number> {
+  // M3 seam: source-bound Tables count on the source (spec EDS-5).
+  const meta = await getMeta(table)
+  if (isBound(meta)) return boundCountDocs(meta, filters, user)
   const { table: tbl, where } = await scopedWhere(table, user, filters)
   const [{ count }] = await sql`select count(*)::int as count from ${sql(tbl)} where ${where}`
   return count as number
@@ -129,6 +133,8 @@ export async function groupCount(
   filters: Filter[] = [],
   user = 'Administrator',
 ): Promise<{ label: string; value: number }[]> {
+  const boundMeta = await getMeta(table)
+  if (isBound(boundMeta)) return boundGroupCount(boundMeta, field, filters, user)
   const { cols, table: tbl, where } = await scopedWhere(table, user, filters)
   assertColumn(cols, field, 'group_by')
   const rows = await sql`
@@ -140,6 +146,10 @@ export async function groupCount(
 }
 
 export async function getList(table: string, args: ListArgs = {}, user = 'Administrator') {
+  // M3 seam: source-bound Tables list from the source — filters, sort and
+  // paging pushed down to the driver (spec EDS-5).
+  const boundMeta = await getMeta(table)
+  if (isBound(boundMeta)) return boundGetList(boundMeta, args, user)
   const { meta, table: tbl, cols, where } = await scopedWhere(table, user, args.filters ?? [])
 
   const fields = args.fields?.length ? args.fields : ['name']

@@ -40,6 +40,9 @@ export interface ColumnDef {
   hidden: boolean
   in_list_view: boolean
   tier: 'basic' | 'restricted'
+  // EDS-3: on a source-bound Table, the true column name on the source when
+  // it differs from column_name (reserved/illegal names). Null = same name.
+  source_column: string | null
 }
 
 export interface TableMeta {
@@ -57,6 +60,20 @@ export interface TableMeta {
   // #74: true for platform tables created by the migration chain. The Desk
   // sidebar groups (never hides) these; POST/PUT /api/doctype reject it.
   system: boolean
+  // EDS-3: set when this Table is bound to an external Data Source. A bound
+  // Table has no local physical table, no DDL, no RLS; reads and writes
+  // dispatch through sources/ (see sources/dispatch.ts).
+  data_source: string | null
+  external_schema: string | null
+  external_table: string | null
+  external_pk: string | null
+  // Source column used for optimistic locking + the synthesized updated_at.
+  external_modified: string | null
+  // Enriched from the Data Source row at load time (not stored on table_def)
+  // so the Desk can gate its UI; invalidated with the meta cache when a
+  // source changes (spec S3).
+  source_access?: 'read_only' | 'read_write' | null
+  source_engine?: string | null
   columns: ColumnDef[]
 }
 
@@ -149,6 +166,16 @@ export async function getMeta(name: string): Promise<TableMeta> {
   const columns = await sql<ColumnDef[]>`
     select * from column_def where parent = ${name} order by position, column_name`
   const meta = { ...(dt as unknown as Omit<TableMeta, 'columns'>), columns }
+
+  // EDS-7/EDS-13: surface the bound source's access mode and engine on the
+  // meta the Desk consumes. Loaded here so it caches (and invalidates) with
+  // the meta itself; the Data Source controller invalidates on save.
+  if (meta.data_source) {
+    const [src] = await sql`
+      select access, engine from data_source where name = ${meta.data_source}`
+    meta.source_access = (src?.access as 'read_only' | 'read_write' | undefined) ?? 'read_only'
+    meta.source_engine = (src?.engine as string | undefined) ?? null
+  }
 
   // CUST-002: overlay Metadata Overrides onto the effective meta. The base
   // rows are never mutated — the override lives only in the loaded object.

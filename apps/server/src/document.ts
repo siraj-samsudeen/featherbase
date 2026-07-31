@@ -22,6 +22,13 @@ import {
   permittedTiers,
   stripUnwritableFields,
 } from './permissions'
+import {
+  boundFetchDoc,
+  isBound,
+  mapRowOut,
+  mapValuesIn,
+  writableContext,
+} from './sources/dispatch'
 
 // Hooks may set any writable column; re-filter after they run so a hook
 // can't inject unknown keys into SQL.
@@ -354,6 +361,11 @@ const ENGINE_MANAGED = new Set(['Table', 'Column'])
 // tier stripping do not run here, so a trigger can still reject at real
 // import time; the dry run catches everything schema-level.
 export async function checkRowForInsert(meta: TableMeta, values: RowValues): Promise<void> {
+  if (isBound(meta))
+    throw new AppError(
+      'ValidationError',
+      `${meta.name} is bound to data source ${meta.data_source}; bulk import is not supported on bound Tables yet`,
+    )
   validateValues(meta, applyDefaults(meta, pickFieldValues(meta, values)), 'insert')
   const name = String(values.name ?? '').trim()
   if (meta.id_pattern === 'prompt' && !name)
@@ -389,6 +401,7 @@ export async function saveDoc(
       'ValidationError',
       `${table} rows are managed via /api/table`,
     )
+  if (isBound(meta)) return saveBoundDoc(meta, values, user, mode)
   if (meta.kind === 'settings') return saveSingle(table, values, user)
   if (meta.kind === 'sub_table')
     throw new AppError(
@@ -490,6 +503,119 @@ export async function saveDoc(
   // PLAT-005: fire webhooks post-commit for the create event.
   await evaluateWebhooks('after_insert', meta.name, insertResult)
   return insertResult
+}
+
+// EDS-6: the write path for source-bound Tables. Hooks run control-side
+// (design doc §3.1: "hooks always run on the core Postgres side"), the write
+// itself is one statement on the source, and only mapped columns present in
+// the payload are ever written (BV2!: CLI-owned columns survive untouched).
+// No versions, no children, no submit lifecycle — those are control-DB
+// concepts a foreign row doesn't have.
+async function saveBoundDoc(
+  meta: TableMeta,
+  values: RowValues,
+  user: string,
+  mode: 'upsert' | 'insert',
+): Promise<RowValues> {
+  const ctx = await writableContext(meta)
+  const providedName =
+    values.name == null || values.name === '' ? null : String(values.name)
+  if (providedName) {
+    const existing = await ctx.driver.getDoc(ctx.bind, providedName)
+    if (existing) {
+      if (mode === 'insert')
+        throw new AppError('ConflictError', `${meta.name} ${providedName} already exists`)
+      return updateBoundDoc(meta, ctx, providedName, mapRowOut(ctx.bind, existing), values, user)
+    }
+    if (mode !== 'insert')
+      throw new AppError('NotFoundError', `${meta.name} ${providedName} not found`)
+  }
+  await assertPermission(user, meta.name, 'create')
+  const writeTiers = await permittedTiers(user, meta.name, 'write')
+  const fieldValues = validateValues(
+    meta,
+    applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))),
+    'insert',
+  )
+  const row: RowValues = { name: providedName, status: 'draft', ...fieldValues }
+  const hctx: HookContext = { row, meta, user, isNew: true, tx: sql }
+  await runHooks('before_insert', hctx)
+  await runHooks('before_validate', hctx)
+  await runHooks('validate', hctx)
+  await runHooks('before_save', hctx)
+  const inserted = await ctx.driver
+    .insert(ctx.bind, mapValuesIn(ctx.bind, columnValues(meta, hctx.row)), providedName)
+    .catch((err) => mapDbError(meta, err))
+  const doc = mapRowOut(ctx.bind, inserted)
+  hctx.row = { ...doc }
+  await runHooks('after_insert', hctx)
+  await runHooks('after_save', hctx)
+  await runHooks('on_update', hctx)
+  const result: RowValues = { table: meta.name, ...doc }
+  await evaluateEmailRules('on_create', meta.name, result)
+  await evaluateEmailRules('on_save', meta.name, result)
+  await evaluateWebhooks('after_insert', meta.name, result)
+  return result
+}
+
+// EDS-8, 'modified' mode: when the source has a mapped modified column the
+// client must echo the updated_at it loaded, exactly like native updates.
+// Without one, updates are last-write-wins (the Desk shows that state).
+async function updateBoundDoc(
+  meta: TableMeta,
+  ctx: Awaited<ReturnType<typeof writableContext>>,
+  name: string,
+  current: RowValues,
+  values: RowValues,
+  user: string,
+): Promise<RowValues> {
+  if (ctx.bind.modified && values.updated_at == null)
+    throw new AppError(
+      'ValidationError',
+      'Updates must include the updated_at timestamp of the loaded row',
+    )
+  await assertPermission(user, meta.name, 'write')
+  const writeTiers = await permittedTiers(user, meta.name, 'write')
+  const fieldValues = validateValues(
+    meta,
+    stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values)),
+    'update',
+  )
+  const row: RowValues = { ...current, ...fieldValues }
+  const hctx: HookContext = { row, old: current, meta, user, isNew: false, tx: sql }
+  await runHooks('before_validate', hctx)
+  await runHooks('validate', hctx)
+  await runHooks('before_save', hctx)
+  // BV2!: write only fields present in the payload — plus any a hook
+  // actually changed — so CLI-owned columns the Desk never touched survive.
+  const toWrite: RowValues = {}
+  const norm = (v: unknown) => JSON.stringify(v instanceof Date ? v.toISOString() : (v ?? null))
+  for (const f of meta.columns) {
+    if (NO_COLUMN_TYPES.has(f.column_type)) continue
+    const k = f.column_name
+    if (k in fieldValues) toWrite[k] = k in hctx.row ? hctx.row[k] : fieldValues[k]
+    else if (k in hctx.row && norm(hctx.row[k]) !== norm(current[k])) toWrite[k] = hctx.row[k]
+  }
+  const sourceValues = mapValuesIn(ctx.bind, toWrite)
+  const expect = ctx.bind.modified ? String(values.updated_at) : null
+  const updated = await ctx.driver
+    .update(ctx.bind, name, sourceValues, expect)
+    .catch((err) => mapDbError(meta, err))
+  if (updated === 'missing')
+    throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
+  if (updated === 'conflict')
+    throw new AppError(
+      'ConflictError',
+      `${meta.name} ${name} has been modified after you loaded it`,
+    )
+  const doc = mapRowOut(ctx.bind, updated)
+  hctx.row = { ...doc }
+  await runHooks('after_save', hctx)
+  await runHooks('on_update', hctx)
+  const result: RowValues = { table: meta.name, ...doc }
+  await evaluateEmailRules('on_save', meta.name, result, current)
+  await evaluateWebhooks('on_update', meta.name, result)
+  return result
 }
 
 // DOC-002: optimistic concurrency — the client must echo back the
@@ -767,6 +893,7 @@ export async function deleteDoc(
   const meta = await getMeta(table)
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be deleted directly`)
+  if (isBound(meta)) return deleteBoundDoc(meta, name, user)
   await sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     const [existing] = await tx`
@@ -827,6 +954,42 @@ export async function deleteDoc(
   })
 }
 
+// EDS-6: delete a bound row on the source. The link-integrity check runs
+// over control-DB Tables only (a Reference from a native Table to this bound
+// row still blocks deletion); the source's own FKs enforce themselves.
+async function deleteBoundDoc(meta: TableMeta, name: string, user: string): Promise<void> {
+  const ctx = await writableContext(meta)
+  const existing = await ctx.driver.getDoc(ctx.bind, name)
+  if (!existing) throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
+  await assertPermission(user, meta.name, 'delete')
+  const linkFields = await sql`
+    select parent, column_name from column_def
+    where column_type = 'Reference' and reference_table = ${meta.name}`
+  for (const lf of linkFields) {
+    const parentTable = lf.parent as string
+    const [pm] = await sql`
+      select kind, data_source from table_def where name = ${parentTable}`
+    if (!pm || pm.kind === 'settings' || pm.data_source) continue
+    const [ref] = await sql`
+      select name from ${sql(tableName(parentTable))}
+      where ${sql(lf.column_name as string)} = ${name} limit 1`
+    if (ref)
+      throw new AppError(
+        'ValidationError',
+        `Cannot delete ${meta.name} ${name}: it is linked from ${parentTable} ${ref.name as string}`,
+      )
+  }
+  const hctx: HookContext = {
+    row: mapRowOut(ctx.bind, existing),
+    meta,
+    user,
+    isNew: false,
+    tx: sql,
+  }
+  await runHooks('on_trash', hctx)
+  await ctx.driver.remove(ctx.bind, name)
+}
+
 // DOC-012: rename a row's primary key and update every Reference that
 // pointed at the old name — across all Tables and child tables — in one
 // transaction. The row keeps all its other data and children.
@@ -839,6 +1002,11 @@ export async function renameDoc(
   const meta = await getMeta(table)
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be renamed`)
+  if (isBound(meta))
+    throw new AppError(
+      'ValidationError',
+      `${table} is bound to data source ${meta.data_source}; its primary keys belong to the source and cannot be renamed here`,
+    )
   const target = newName.trim()
   if (!target) throw new AppError('ValidationError', 'New name is required', { name: 'Required' })
   if (target === oldName) return getDoc(table, oldName, user)
@@ -888,6 +1056,21 @@ export async function getDoc(
 ): Promise<RowValues> {
   const meta = await getMeta(table)
   if (meta.kind === 'settings') return getSingle(meta, user)
+  if (isBound(meta)) {
+    // EDS-5: single row by pk from the source; permission gate control-side.
+    // Bound rows have no created_by, so own-rows scoping denies by design.
+    const doc = await boundFetchDoc(meta, name)
+    if (!doc) throw new AppError('NotFoundError', `${table} ${name} not found`)
+    const boundShared = await isSharedWith(user, table, name, 'read')
+    if (!boundShared) {
+      await assertPermission(user, table, 'read')
+      await assertDocPermission(user, table, 'read', String(doc.created_by ?? ''))
+    }
+    const tiers = boundShared
+      ? new Set<'basic' | 'restricted'>(['basic', 'restricted'])
+      : await permittedTiers(user, table, 'read')
+    return { table, ...filterReadFields(meta.columns, tiers, doc) }
+  }
   const [row] = await sql`
     select * from ${sql(tableName(table))} where name = ${name}`
   if (!row) throw new AppError('NotFoundError', `${table} ${name} not found`)

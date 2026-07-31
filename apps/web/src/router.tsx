@@ -32,6 +32,7 @@ import { PrintView } from './pages/PrintView'
 import { TableBuilder } from './pages/TableBuilder'
 import { ImportWizard } from './pages/ImportWizard'
 import { AllTablesPage } from './pages/AllTables'
+import SourceBrowser from './pages/SourceBrowser'
 
 const rootRoute = createRootRoute({ component: Outlet })
 
@@ -397,6 +398,23 @@ const allTablesRoute = createRoute({
   component: AllTablesPage,
 })
 
+// EDS-2: the Data Source browser — introspect and reflect external tables
+// (static segment, before $doctype).
+const sourceBrowserRoute = createRoute({
+  getParentRoute: () => deskRoute,
+  path: 'source/$name',
+  component: SourceBrowserPage,
+})
+
+function SourceBrowserPage() {
+  const { name } = sourceBrowserRoute.useParams()
+  return (
+    <div data-testid="doctype-page">
+      <SourceBrowser key={name} name={name} />
+    </div>
+  )
+}
+
 // UI-026: a saved Dashboard renders number cards + charts (static segment).
 const dashboardRoute = createRoute({
   getParentRoute: () => deskRoute,
@@ -470,5 +488,5 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   printRoute,
-  deskRoute.addChildren([deskIndexRoute, newTableRoute, importRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, jobsRoute, doctypeRoute, docRoute]),
+  deskRoute.addChildren([deskIndexRoute, newTableRoute, importRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, doctypeRoute, docRoute]),
 ])

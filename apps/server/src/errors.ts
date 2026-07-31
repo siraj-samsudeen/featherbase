@@ -8,6 +8,7 @@ export type ErrorType =
   | 'NotFoundError'
   | 'ConflictError'
   | 'MethodNotAllowedError'
+  | 'DataSourceError'
   | 'InternalError'
 
 const STATUS: Record<ErrorType, number> = {
@@ -18,6 +19,9 @@ const STATUS: Record<ErrorType, number> = {
   NotFoundError: 404,
   ConflictError: 409,
   MethodNotAllowedError: 405,
+  // EDS-11: an external data source is unreachable/failed — an upstream
+  // failure (502), never disguised as an empty result.
+  DataSourceError: 502,
   InternalError: 500,
 }
 
@@ -42,6 +46,7 @@ const EXC_TYPE: Record<ErrorType, string> = {
   NotFoundError: 'DoesNotExistError',
   ConflictError: 'ConflictError',
   MethodNotAllowedError: 'MethodNotAllowedError',
+  DataSourceError: 'DataSourceError',
   InternalError: 'InternalError',
 }
 

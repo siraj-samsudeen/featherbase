@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ApiError, api, listResource } from '../lib/api'
-import { NO_COLUMN_TYPES, listColumns, useMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, isSourceReadOnly, listColumns, useMeta } from '../lib/meta'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { useIsSystemManager } from '../lib/session'
@@ -258,6 +258,15 @@ export function ListView({
           <span className="text-xs text-[var(--color-ink-muted)]" data-testid="list-total">
             {total} total
           </span>
+          {meta.data?.data_source && (
+            <span
+              className="fc-pill ml-2 align-middle text-[10px]"
+              data-testid="source-badge"
+              title={`Rows live on data source ${meta.data.data_source}`}
+            >
+              {meta.data.data_source} · {meta.data.source_access === 'read_write' ? 'read-write' : 'read-only'}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -366,7 +375,7 @@ export function ListView({
           <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
         </>
       )}
-      {selected.size > 0 && (
+      {selected.size > 0 && !isSourceReadOnly(meta.data) && (
         <div
           className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-[var(--color-brand)]/30 bg-[var(--color-brand-tint)] px-3 py-2 text-sm"
           data-testid="bulk-bar"
