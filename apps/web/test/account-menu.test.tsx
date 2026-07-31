@@ -6,7 +6,7 @@
 
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { test, expect, renderDesk } from './pg-test'
+import { test, expect, renderApp } from './pg-test'
 
 async function login(usr: string, pwd: string): Promise<number> {
   const res = await fetch('/api/login', {
@@ -20,7 +20,7 @@ async function login(usr: string, pwd: string): Promise<number> {
 test('clicking the avatar opens the account menu; Escape and outside click close it', async ({
   admin,
 }) => {
-  await renderDesk('/admin', admin)
+  await renderApp('/admin', admin)
   const avatar = await screen.findByTestId('session-user')
   await userEvent.click(avatar)
 
@@ -43,7 +43,7 @@ test('clicking the avatar opens the account menu; Escape and outside click close
 test('Change password submits to /api/set_password and the new password logs in', async ({
   admin,
 }) => {
-  await renderDesk('/admin', admin)
+  await renderApp('/admin', admin)
   await userEvent.click(await screen.findByTestId('session-user'))
   await userEvent.click(await screen.findByTestId('account-change-password'))
   await screen.findByTestId('change-password-modal')
@@ -67,7 +67,7 @@ test('Change password submits to /api/set_password and the new password logs in'
 })
 
 test('a mismatched confirmation blocks the submit', async ({ admin }) => {
-  await renderDesk('/admin', admin)
+  await renderApp('/admin', admin)
   await userEvent.click(await screen.findByTestId('session-user'))
   await userEvent.click(await screen.findByTestId('account-change-password'))
   await screen.findByTestId('change-password-modal')

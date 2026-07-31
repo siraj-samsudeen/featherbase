@@ -13,7 +13,7 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `AdminLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
-## 2026-07-31 — `/admin` replaces `/desk`, `app_client` replaces `desk_client`, and typed filter URLs work (#84, #86, #87)
+## 2026-07-31 — Frappe's "Desk" is retired: `/admin` routes, `app_client` role, `renderApp` helper, and typed filter URLs that work (#84, #86, #87)
 
 "Desk" was Frappe's name for the back-office UI, and the URL prefix was the
 last place the term still met users. Frappe itself retired the URL (modern
@@ -71,10 +71,21 @@ GLOSSARY already called it the Admin — the routes had not caught up.
   `table`, `format`, `key`, `token`), since the same latent bug bites any
   all-digit value — a reset-password `key` of `12345` parsed to a Number
   and was dropped.
-- **Left alone on purpose:** `renderDesk` (feather-testing-postgres' API,
-  which lives in its own repo — filed as that repo's #1), and the Frappe
-  design-lineage comments in `index.css` and `ListView.tsx` that credit the
-  Desk *look*.
+- **`renderDesk` -> `renderApp`**, the last of the vocabulary. The name was
+  never ours to change here: it is feather-testing-postgres' published API
+  (that repo's #1, fixed and merged there — a clean rename, no deprecated
+  aliases, since this is the only consumer). `apps/web/test/pg-test.ts` and
+  its three test files follow.
+  **The dependency now resolves from git, not npm** — the library's rename
+  is on `main` but unreleased (npm still serves 0.1.0, which exports
+  `renderDesk`). The specifier pins the exact commit
+  (`github:siraj-samsudeen/feather-testing-postgres#310ad8e`) rather than
+  the bare branch, so a lockfile refresh cannot silently drift onto a later
+  `main`. **Swap both `package.json`s back to `^0.2.0` once it publishes** —
+  `pnpm install --frozen-lockfile` (what CI runs) is reproducible either
+  way, but the registry is the intended source per the Stack section above.
+- **Left alone on purpose:** the Frappe design-lineage comments in
+  `index.css` and `ListView.tsx` that credit the Desk *look*.
 
 Because a role rename is **cluster-wide**, verification ran on a throwaway
 Postgres cluster built with `initdb` on port 55432 — the local 5432 cluster
@@ -82,11 +93,12 @@ was never touched, so its `desk_client` is still intact until you migrate.
 The server served the built SPA on port 8906, exercising the real SPA
 fallback rather than the Vite proxy.
 
-- Server 493 passed / 97 files, web unit 12 passed, both typechecks clean.
-- Full e2e on a freshly migrated database: **85 passed, 2 skipped, 1
-  failed** — RT-002, which passes on re-run in isolation and belongs to the
-  realtime family already recorded here as flaky. An earlier fresh run of
-  the same tree scored 85/3/0.
+- Server 493 passed / 97 files, web unit 12 passed (the `renderApp`
+  consumer), both typechecks clean.
+- Full e2e on a freshly migrated database: **86 passed, 2 skipped, 0
+  failed**. Earlier runs of this tree hit RT-002/RT-003 — the realtime
+  family already recorded here as flaky, which passes on re-run in
+  isolation — so treat a lone realtime failure as noise, not a signal.
 - **#86 both paths:** fresh install creates `app_client` and its generated
   policies grant to it; an upgrade (role regressed to `desk_client`, 0061
   un-recorded) renames in place, with policy grantees following by OID and
@@ -98,9 +110,10 @@ fallback rather than the Vite proxy.
   `listview.spec`'s — the first draft inherited that dependency and
   silently *skipped* on a fresh database, which is not a regression test.
 
-Next: nothing blocking. The last Frappe-lore name is `renderDesk`, in
-feather-testing-postgres (that repo's #1) — it needs a release there before
-`apps/web/test/pg-test.ts` can follow.
+Next: the Frappe "Desk" vocabulary is gone from routes, roles, components
+and test helpers. One loose end, and it is a release chore rather than
+work: publish feather-testing-postgres 0.2.0, then move both `package.json`
+entries off the pinned git commit back to `^0.2.0`.
 
 ## 2026-07-30 — Home Pages: curated navigation replaces the table-list sidebar (#80)
 

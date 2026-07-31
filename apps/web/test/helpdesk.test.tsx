@@ -12,7 +12,7 @@
 import { screen, waitFor } from '@testing-library/react'
 import { installApp } from 'server/src/apps'
 import { sql } from 'server/src/db'
-import { test, expect, renderDesk, renderSession } from './pg-test'
+import { test, expect, renderApp, renderSession } from './pg-test'
 
 // A dev database may already carry the committed structure (seed:helpdesk,
 // or the ticketing e2e ran against it) — adopt it instead of colliding.
@@ -27,7 +27,7 @@ test('list: an admin sees a freshly created ticket', async ({ admin }) => {
     doctype: 'HD Ticket',
     doc: { subject: 'Rendered by the generic ListView' },
   })
-  await renderDesk('/admin/HD%20Ticket', admin)
+  await renderApp('/admin/HD%20Ticket', admin)
   expect(await screen.findByText(doc.name)).toBeInTheDocument()
   expect(await screen.findByText('Rendered by the generic ListView')).toBeInTheDocument()
 })
@@ -42,7 +42,7 @@ test('list: a customer with no tickets sees an empty, permission-scoped list', a
     doc: { subject: 'Someone else’s ticket' },
   })
   const customer = await createUser({ roles: ['Customer'] })
-  await renderDesk('/admin/HD%20Ticket', customer)
+  await renderApp('/admin/HD%20Ticket', customer)
   await screen.findByTestId('list-view')
   await new Promise((r) => setTimeout(r, 150))
   expect(screen.queryByText(other.name)).not.toBeInTheDocument()

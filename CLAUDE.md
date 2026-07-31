@@ -74,7 +74,10 @@ the calculus changes.
 - `packages/shared` — types and contracts used by both sides
 - [`feather-testing-postgres`](https://github.com/siraj-samsudeen/feather-testing-postgres)
   — the SQL Sandbox test harness, consumed as a published npm dependency. It
-  lives in its own repo; fix it there and release, never vendor it back in
+  lives in its own repo; fix it there and release, never vendor it back in.
+  *Temporarily pinned to a git commit* while the `renderApp` rename sits
+  unreleased on its `main`; move both `package.json`s back to `^0.2.0` once
+  it publishes (see the 2026-07-31 `PROGRESS.md` entry)
 - Monorepo — pnpm workspaces; boot everything with `./init.sh`
 
 **Visual identity is a standing directive.** Every new UI feature must inherit

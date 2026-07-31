@@ -2,12 +2,12 @@
 // fetch bridge → in-process Hono → sandboxed Postgres, and back.
 
 import { screen } from '@testing-library/react'
-import { test, expect, renderDesk, renderSession } from './pg-test'
+import { test, expect, renderApp, renderSession } from './pg-test'
 
 let leakedName = ''
 
 test('the login page renders through the real route tree', async () => {
-  await renderDesk('/login', { user: null, token: null } as never)
+  await renderApp('/login', { user: null, token: null } as never)
   expect(await screen.findByText('Sign in to your account')).toBeInTheDocument()
 })
 
@@ -19,7 +19,7 @@ test('the Admin renders a DocType list with data seeded through the API', async 
     description: 'Review the DW sales mismatch',
     allocated_to: 'Administrator',
   })
-  await renderDesk('/admin/ToDo', admin)
+  await renderApp('/admin/ToDo', admin)
   expect(await screen.findByTestId('doctype-page')).toBeInTheDocument()
   expect(await screen.findByText(doc.name)).toBeInTheDocument()
 })
@@ -36,7 +36,7 @@ test('the Session DSL drives the page', async ({ admin, seed }) => {
 
 test("previous test's seed rolled back — its ToDo is gone from the list", async ({ admin }) => {
   expect(leakedName).toBeTruthy()
-  await renderDesk('/admin/ToDo', admin)
+  await renderApp('/admin/ToDo', admin)
   await expect(screen.findByTestId('doctype-page')).resolves.toBeInTheDocument()
   await new Promise((r) => setTimeout(r, 150))
   expect(screen.queryByText(leakedName)).not.toBeInTheDocument()
