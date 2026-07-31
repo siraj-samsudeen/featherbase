@@ -13,6 +13,51 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-31 — Rama DW OS: first production deployment (Railway)
+
+Featherbase now runs in production as **Rama DW OS** at
+https://rama-dw-os-production.up.railway.app — a new `rama-dw-os` service
+in the Jeyarama-ETL Railway project (beside the pipeline services), with
+its own fresh Postgres (`rama-dw-os-db`), a `/data` volume for file
+storage, and env-var credentials. Built with the existing
+`apps/server/Dockerfile` (single-origin SPA+API); the release step
+(migrations+patches under the advisory lock) runs as Railway's
+`preDeployCommand` via an **untracked** `railway.json` at the repo root —
+untracked on purpose (the repo stays vendor-neutral) but required for any
+future `railway up`, so don't delete it from the deploy checkout.
+
+- **The first deploy caught a real fresh-database bug** the shared dev DB
+  could never show: createTable/updateTable wrote
+  `data_source`/`external_*`/`source_column` unconditionally, which the
+  pre-0064 migrations (0005 core seeds…) hit before those columns exist.
+  Fixed by including the binding keys only when set; verified by running
+  the entire chain + patches against a brand-new local database.
+- Instance branding shipped: System Settings `app_name` now drives the
+  navbar, tab title, and (via new public `GET /api/brand`) the login
+  page. Prod is named "Rama DW OS"; the default stays "Frappe Clone".
+- Prod state after configuration: `railway-control` source connects over
+  Railway **private networking** (`${{Postgres.DATABASE_URL}}` reference —
+  no public proxy) and its 3 tables are reflected (Control Run counted
+  1,493 live rows over the public URL). `motherduck` source is configured
+  but MotherDuck returns UNAVAILABLE (RPC CREATE_SLT) **from the
+  container only** — the same token works from the laptop, value verified
+  byte-identical in Railway; retry "Test connection" in the Source
+  Browser when MotherDuck stabilizes. CSV seeds are deliberately
+  local-only (deferred; M1-proper is the plan).
+- Administrator password was rotated immediately after deploy (default
+  `admin` rejected, verified); it lives in the gitignored
+  `apps/server/.env` as `RAMA_DW_OS_ADMIN_PASSWORD`. JWT_SECRET is a
+  fresh random value in Railway variables.
+- The old `featherbase` Railway project (services `featherbase-server`,
+  `web`) is superseded by this install and can be retired — owner call,
+  not done.
+- Dev-DB hygiene from this session's live testing: the web e2e run leaves
+  the helpdesk app installed (its uninstall spec is among the
+  conditionally-skipped), which fails `app-fixtures.test.ts` afterwards —
+  uninstalled via API; a lost `desk_client` SELECT grant on `"user"`
+  (source unknown; possibly a parallel worktree) failed `rls.test.ts` —
+  re-granted. Both files green again.
+
 ## 2026-07-31 — External data sources land: PG reflection, DuckDB/MotherDuck, CSV folders (spec 0001 / M1+M3 slice)
 
 One coherent slice built to the existing design contract (spec 0001, design
