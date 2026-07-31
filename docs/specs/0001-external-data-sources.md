@@ -1,6 +1,10 @@
 # Feature: External Data Sources — DocTypes bound to existing Postgres tables
 
-Status: **Proposed** — not implemented. Written 2026-07-26.
+Status: **Partially implemented** (2026-07-31) — EDS-1..8, 11 (modified-mode
+concurrency only), 13, plus duckdb and csv-folder drivers beyond this spec's
+scope; see the 2026-07-31 PROGRESS entry for the exact deviations (no
+Reconciliation Log, no EDS-9 drift re-sync, no `conflict_check: row`, no
+EDS-10 cross-source Link validation). Written 2026-07-26.
 Decision record: `docs/adr/0007-app-and-database-topology.md`.
 Background: `docs/research/frappe-multi-app-and-multi-db.md`.
 

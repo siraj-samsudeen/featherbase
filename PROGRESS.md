@@ -13,6 +13,86 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-31 — External data sources land: PG reflection, DuckDB/MotherDuck, CSV folders (spec 0001 / M1+M3 slice)
+
+One coherent slice built to the existing design contract (spec 0001, design
+doc §3, execution plan M3 — with M1's seed-editing need served by a
+`csv-folder` driver instead of native-table import). Three user-facing
+capabilities, one seam:
+
+**What exists now.** A `Data Source` registry Table (EDS-1: engine
+`postgres`/`duckdb`/`csv-folder`, credentials as *env-var names* only,
+`access` read-only/read-write, allowlist, pool/timeout knobs, Test
+Connection); row actions `:test_connection`, `:introspect`, `:reflect`
+(System Manager only, P3); a Source Browser page at `/desk/source/$name`
+(reached via "Browse & Reflect" on the Data Source form). Reflection
+(EDS-2/3) generates *bound* Tables — `table_def` rows carrying
+`data_source`/`external_schema`/`external_table`/`external_pk`/
+`external_modified`, `column_def.source_column` for renamed columns — with
+**no DDL and no RLS ever** (BV1). Reads (`getList`/`getDoc`/`count`/
+`groupCount`) dispatch through `apps/server/src/sources/` with filters,
+sort and paging pushed down (EDS-5); writes (postgres + csv-folder only)
+run control-side hooks, write **only payload columns** (BV2), optimistic-
+lock on the mapped modified column / file mtime (EDS-8), and are refused
+entirely on read-only sources and the duckdb driver (EDS-7). Source
+failures surface as `DataSourceError` 502, never an empty list (EDS-11).
+The generic ListView/FormView show a source badge and drop write
+affordances on read-only sources (EDS-13).
+
+**Live wiring on this machine** (creds in gitignored `apps/server/.env`,
+loaded by a tiny opt-in parser in `config.ts`): `railway-control` →
+the Railway control-plane PG (3 of 11 tables bindable; the rest have
+composite PKs, excluded per BV6 — revisit read-only browse for those);
+`motherduck` → the warehouse via the read-scaling token (read-only);
+`rama-seeds` → `rama_dw/dbt_runner/dbt/seeds` (42 CSVs, read-write).
+
+**Verified.** Live Railway: introspect/reflect, filtered list + getDoc +
+count over 1,483 `control.run` rows, in Desk and over HTTP (no writes
+against production). CSV: in-memory parse→serialize round trip of all 42
+real seed files is byte-identical (16 MB budget file included); a Desk
+edit of `division_labels.csv` produced a one-line git diff in rama_dw and
+the UI revert left `git diff` **empty**. 26 new sandbox tests
+(`sources-postgres/duckdb/csv.test.ts`) cover conflict detection,
+read-only enforcement, path traversal, no-trailing-newline preservation;
+full server suite green (`98 files, 540 passed, 1 skipped`), both
+typechecks clean, web e2e suite green.
+
+**Gotchas.**
+- **MotherDuck was degraded mid-session**: every catalog RPC
+  (`information_schema`, even `SHOW TABLES FROM gold.main`) hit
+  DEADLINE_EXCEEDED for ~1h, on two different tokens and duckdb 1.4.1 and
+  1.5.4, while `show databases` stayed fast — it worked at session start,
+  so transient on their side. The duckdb driver is fully covered by
+  local-file tests (same code path); when MD recovers, reflect `gold`
+  from the Source Browser (schema `gold.main`, e.g. prefix `Gold`).
+- `@duckdb/node-api` is pinned **exactly 1.5.4-r.1** — MotherDuck rejects
+  DuckDB 1.5.5. Do not bump without checking their support matrix.
+- Reflection must call `ensureHomePageForTable` (it does now) — creating
+  Tables without a home-page link breaks 0060's idempotency test on the
+  next migration re-run, which is exactly how it was caught.
+- Source columns whose names collide with standard columns are renamed by
+  `sanitizeHeaders` (`status` → `status_1`) with the true name kept in
+  `source_column`; the source's `updated_at`/`modified` timestamp column
+  and its PK surface as the standard `updated_at`/`name` instead of
+  columns.
+- csv-folder rows are addressed by **row number** (`_row`), so inserting/
+  deleting renumbers later rows; the mtime lock turns concurrent edits
+  into 409s rather than corruption. Byte stability comes from keeping
+  untouched records' raw text verbatim (`sources/csv.ts`) — only edited
+  records are re-serialized.
+- Deviations from spec 0001, deliberate and small: no Reconciliation Log,
+  no drift re-sync UI (EDS-9), no `conflict_check: row` mode (only
+  `modified`/last-write-wins), no cross-source Link validation (EDS-10 is
+  companions-only, which work), import into bound Tables blocked. Local
+  reads do NOT yet flow through the seam (M3's stretch goal) — bound
+  dispatch is an early-return, native path untouched (rule 4: no refactor
+  the slice didn't need).
+
+**Next.** When MotherDuck recovers: reflect a gold schema and eyeball it
+in the Desk (5-minute job). Then candidates: read-only browse for
+composite-PK PG tables; drift re-sync (EDS-9); features.json entries for
+the three capabilities (owner action — agents may not add entries).
+
 ## 2026-07-31 — Missing `E` prefix corrupted seeded `choices`; 32 tests were failing
 
 63 server tests failed with `417 ValidationError: Invalid values for Permission`
