@@ -7,7 +7,7 @@ async function login(page: Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 }
 
 async function adminToken(request: APIRequestContext): Promise<string> {
@@ -61,7 +61,7 @@ test('UI-025: palette switches, persists across reload, and is stored per-user',
 
   // It survives a reload (localStorage mirror applies before whoami).
   await page.reload()
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
   await expect(html).toHaveAttribute('data-palette', 'ivory')
 
   // Palette composes with dark mode: both attributes coexist.
@@ -142,7 +142,7 @@ test('UI-025: a second user in the same tab does not inherit the first user’s 
   await page.fill('input[name=email]', USER_B)
   await page.fill('input[name=password]', 'palettepw123')
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
   await expect(page.getByTestId('session-user')).toBeVisible()
 
   // B sees their own (classic) look immediately — and still does after
