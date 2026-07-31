@@ -9,6 +9,7 @@
     "migrate": "tsx src/migrate.ts",
     "patches": "tsx src/run-patches.ts",
     "cli": "tsx src/cli.ts",
+    "lint:sql": "tsx scripts/check-sql-escapes.ts",
     "reset:helpdesk": "tsx scripts/reset-helpdesk.ts",
     "seed:helpdesk": "tsx scripts/seed-helpdesk.ts",
     "verify:helpdesk": "tsx scripts/verify-helpdesk.ts",
