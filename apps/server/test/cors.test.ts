@@ -1,32 +1,32 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 
-// API-008: the Desk origin can call the API cross-origin; other origins
+// API-008: the Admin origin can call the API cross-origin; other origins
 // get no CORS grant. Security headers are set on every response.
 
-const DESK = 'http://localhost:5173'
+const ADMIN_ORIGIN = 'http://localhost:5173'
 const EVIL = 'https://evil.example.com'
 
 describe('API-008: CORS + security headers', () => {
-  test('grants the Desk origin on preflight and echoes it on responses', async ({ api }) => {
+  test('grants the Admin origin on preflight and echoes it on responses', async ({ api }) => {
     const pre = await api.fetch('/api/login', {
       method: 'OPTIONS',
       headers: {
-        origin: DESK,
+        origin: ADMIN_ORIGIN,
         'access-control-request-method': 'POST',
         'access-control-request-headers': 'content-type,authorization',
       },
     })
     expect(pre.status).toBe(204)
-    expect(pre.headers.get('access-control-allow-origin')).toBe(DESK)
+    expect(pre.headers.get('access-control-allow-origin')).toBe(ADMIN_ORIGIN)
     expect(pre.headers.get('access-control-allow-methods')).toContain('POST')
     expect(pre.headers.get('access-control-allow-headers')?.toLowerCase()).toContain(
       'authorization',
     )
 
-    const res = await api.fetch('/api/ping', { headers: { origin: DESK } })
+    const res = await api.fetch('/api/ping', { headers: { origin: ADMIN_ORIGIN } })
     expect(res.status).toBe(200)
-    expect(res.headers.get('access-control-allow-origin')).toBe(DESK)
+    expect(res.headers.get('access-control-allow-origin')).toBe(ADMIN_ORIGIN)
   })
 
   test('gives a disallowed origin no CORS grant', async ({ api }) => {

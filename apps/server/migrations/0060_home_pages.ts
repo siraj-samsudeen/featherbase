@@ -49,7 +49,7 @@ async function renameWorkspaceTable() {
     // The SELECT policy's predicate still names 'Workspace' — recreate it.
     await tx.unsafe(`drop policy if exists fc_select on home_page`)
     await tx.unsafe(
-      `create policy fc_select on home_page for select to desk_client using (fc_has_read('Home Page'))`,
+      `create policy fc_select on home_page for select to app_client using (fc_has_read('Home Page'))`,
     )
     // Rows elsewhere that point at the Table by name: every table with the
     // canonical ref_table column (permission, tag_link, comment, todo, …)

@@ -70,7 +70,7 @@ async function loginUI(page: import('@playwright/test').Page, usr: string) {
   await page.fill('input[name=email]', usr)
   await page.fill('input[name=password]', PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/(desk|portal)/)
+  await page.waitForURL(/\/(admin|portal)/)
 }
 
 test('WEB-003: portal user sees only their own documents', async ({ page }) => {

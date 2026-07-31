@@ -14,7 +14,7 @@ test.beforeEach(async ({ request }) => {
   await request.delete(`/api/table/User/${encodeURIComponent(EMAIL)}`, { headers })
 })
 
-test('PLAT-006: Google OAuth (mock) creates a User and lands in the Desk', async ({ page }) => {
+test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', async ({ page }) => {
   await page.goto('/login')
   // Kick off the OAuth flow (full-page navigation to the server endpoint).
   await page.getByTestId('google-login').click()
@@ -25,8 +25,8 @@ test('PLAT-006: Google OAuth (mock) creates a User and lands in the Desk', async
   await page.getByTestId('mock-name').fill('OAuth E2E User')
   await page.getByTestId('mock-approve').click()
 
-  // We land in the Desk, signed in as the new user.
-  await page.waitForURL(/\/desk/)
+  // We land in the Admin, signed in as the new user.
+  await page.waitForURL(/\/admin/)
   await expect(page.getByTestId('session-user')).toBeVisible()
 
   // The User was created and marked as a Google login.
@@ -52,7 +52,7 @@ test('PLAT-006: a second OAuth sign-in links the same User (no duplicate)', asyn
   await page.getByTestId('google-login').click()
   await page.getByTestId('mock-email').fill(EMAIL)
   await page.getByTestId('mock-approve').click()
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
   // Exactly one User with that email.
   const listed = (await (

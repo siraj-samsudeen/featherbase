@@ -45,9 +45,9 @@ test('UI-023: Attach Image uploads, previews, persists the URL, and clears', asy
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
-  await page.goto(`/desk/${encodeURIComponent(DT)}/${docName}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await expect(page.getByTestId('attach-btn-photo')).toBeVisible()
 
   // Upload an image: preview renders, field holds the file URL, form dirty.

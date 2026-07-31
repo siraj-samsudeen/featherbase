@@ -2,7 +2,7 @@
 
 ## Visual identity (standing directive for all UI work)
 
-The Desk is reskinned to look like Frappe. Every new UI feature MUST inherit
+The Admin is reskinned to look like Frappe. Every new UI feature MUST inherit
 this look — do not introduce ad-hoc colors/spacing:
 - Design tokens live in `apps/web/src/index.css` (`@theme`): canvas
   `#f4f5f6`, brand `#2490ef` (Frappe blue), ink `#1c2126`, hairline borders
@@ -11,7 +11,150 @@ this look — do not introduce ad-hoc colors/spacing:
 - Reuse the shared component classes: `.fc-card`, `.fc-input`, `.fc-btn`,
   `.fc-btn-primary`, `.fc-label`, `.fc-pill`. Prefer these over raw Tailwind.
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
-  `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
+  `AdminLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
+
+## 2026-07-31 — Frappe's "Desk" is retired: `/admin` routes, `app_client` role, `renderApp` helper, and typed filter URLs that work (#84, #86, #87)
+
+"Desk" was Frappe's name for the back-office UI, and the URL prefix was the
+last place the term still met users. Frappe itself retired the URL (modern
+Frappe serves `/app`); `/admin` says what the surface is without the lore.
+GLOSSARY already called it the Admin — the routes had not caught up.
+
+- **Every route moved:** `/desk/...` -> `/admin/...`, including the Home
+  Page routes (`/desk/home/$name`), the table list/form routes, the view
+  routes (report/kanban/calendar/gantt), and the static segments
+  (`new-table`, `import`, `jobs`, `all-tables`, `permissions/$doctype`,
+  `dashboard/$name`, `query-report/$name`, `script-report/$name`).
+- **No `/desk` redirect, deliberately.** #84 asked for one and it was built
+  and tested first; the owner then cut it, and CLAUDE.md gained a
+  "Project stage" section recording why: nothing is deployed, there are no
+  users, and no URL is consumed outside this repo. A redirect would have
+  been compatibility machinery for a migration burden that does not exist,
+  and would have kept the retired prefix in the route tree forever for
+  every future reader to reason about. `/desk/...` is simply gone — the SPA
+  fallback still serves `index.html`, so the client renders its
+  not-found rather than the server answering 404.
+- **Server touchpoints:** the Frappe-parity login response's
+  `home_page` is now `/admin`; the workflow pending-approval mail and the
+  SLA escalation notice link to `/admin/<Table>/<row>`. The server's OAuth
+  bounce needed no change — it targets `/oauth-callback`, and it is that
+  page (plus the login form) that now lands the user on `/admin`.
+- **`DeskLayout.tsx` -> `AdminLayout.tsx`** (symbol too), and its two test
+  ids `desk-sidebar`/`desk-index-empty` -> `admin-*`. `e2e/desk.spec.ts` ->
+  `e2e/admin.spec.ts`. The FormView breadcrumb read **Desk** and now reads
+  **Admin** — the one user-facing string carrying the old term.
+- **`desk_client` -> `app_client` (#86).** The direct-client login role
+  carried the same retired term. 0010_rls.sql is rewritten in place so a
+  FRESH database only ever knows `app_client` (0055 and 0060, which also
+  name the role in generated policies, plus the runtime DDL in
+  `doctype-engine.ts`, follow suit). **0010a_rename_rls_role.sql**
+  converges databases that already applied 0010: a plain
+  `alter role ... rename to`, because **policies and grants bind by OID,
+  not by name** — every `to desk_client` policy follows the rename with
+  nothing recreated. The password is re-set explicitly: an MD5-hashed
+  password is derived from the role name and is cleared on rename (SCRAM
+  hashes survive), so setting it unconditionally makes both cases
+  identical.
+  **The `0010a` name is load-bearing, and this was a real bug first.**
+  The migration originally shipped as `0061`, at the end of the chain.
+  `applyRls` grants to `app_client` on every table it creates as soon as
+  `fc_has_read()` exists, so a database that stopped between 0010 and 0011
+  reached 0011's `createTable` with the role still called `desk_client` and
+  died with `42704: role "app_client" does not exist` — never reaching a
+  convergence migration numbered at the end. Reproduced, then fixed by
+  sorting the file between `0010_rls.sql` and `0011_report.ts`. Caught in
+  review; neither suite covers an interrupted migration chain.
+  **Roles are cluster-wide, policies are per-database**, and that asymmetry
+  shapes the branching: "both roles exist" is ordinary on a developer
+  cluster holding one converged database and one legacy one, so the test is
+  not which roles exist but whether THIS database still binds anything to
+  the old one. Four states — converged (no-op), old-only (rename),
+  both-without-local-refs (no-op), and the two genuinely broken ones
+  (neither role; both roles with local refs) — and the broken ones
+  `raise exception` so the transaction rolls back rather than recording a
+  migration over unusable RLS.
+  **Heads-up: your existing `featherbase` database gets the rename the next
+  time you migrate**; a checkout of an older branch will then look for a
+  role that no longer exists.
+- **Typed filter URLs actually filter (#87).** `/admin/<Table>?filters=...`
+  used to drop the parameter unless the app itself built the link.
+  TanStack's default search parser runs `JSON.parse` over every value, so a
+  pasted URL delivered `filters` as an Array and `?report=2024` as a
+  Number; the `typeof === 'string'` guard then discarded them and stripped
+  them from the address bar — quietly breaking the "filters are URL state
+  so they are shareable" promise written above that very route. One
+  `searchString()` helper coerces back to the string the app expects, and
+  it is applied to **every** search param (`filters`, `report`, `group_by`,
+  `table`, `format`, `key`, `token`), since the same latent bug bites any
+  all-digit value — a reset-password `key` of `12345` parsed to a Number
+  and was dropped.
+  **`filters` is then shape-validated, which the first cut got wrong.**
+  Coercing alone turned a silent drop into a crash: `?filters={}` and
+  `?filters=[null]` are valid JSON, so they sailed through to `ListView`,
+  which indexes every entry as a `[field, op, value]` triple and threw,
+  blanking the page. A URL is user input — `parseFilters()` now validates
+  the parsed value and discards anything malformed, as before. Caught in
+  review.
+- **`renderDesk` -> `renderApp`**, the last of the vocabulary. The name was
+  never ours to change here: it is feather-testing-postgres' published API
+  (that repo's #1, fixed and merged there — a clean rename, no deprecated
+  aliases, since this is the only consumer). `apps/web/test/pg-test.ts` and
+  its three test files follow.
+  **The dependency now resolves from git, not npm** — the library's rename
+  is on `main` but unreleased (npm still serves 0.1.0, which exports
+  `renderDesk`). The specifier pins the exact commit
+  (`github:siraj-samsudeen/feather-testing-postgres#310ad8e`) rather than
+  the bare branch, so a lockfile refresh cannot silently drift onto a later
+  `main`. **Swap both `package.json`s back to `^0.2.0` once it publishes** —
+  `pnpm install --frozen-lockfile` (what CI runs) is reproducible either
+  way, but the registry is the intended source per the Stack section above.
+- **Left alone on purpose:** the Frappe design-lineage comments in
+  `index.css` and `ListView.tsx` that credit the Desk *look*.
+
+Because a role rename is **cluster-wide**, verification ran on a throwaway
+Postgres cluster built with `initdb` on port 55432 — the local 5432 cluster
+was never touched, so its `desk_client` is still intact until you migrate.
+The server served the built SPA on port 8906, exercising the real SPA
+fallback rather than the Vite proxy.
+
+- Server 501 passed / 97 files, web unit 12 passed (the `renderApp`
+  consumer), both typechecks clean.
+- Full e2e on a freshly migrated database, after merging main: **88 passed,
+  2 skipped, 0 failed**. Earlier runs of this tree hit RT-002/RT-003 — the
+  realtime family already recorded here as flaky, which passes on re-run in
+  isolation — so treat a lone realtime failure as noise, not a signal.
+- **Merging main is where this nearly went wrong.** Git's auto-merge
+  silently dropped main's content twice in files both sides had touched:
+  the `data-testid="dt-row-id"` / `data-columnrow` markers in TableBuilder
+  and ImportWizard, and the NAM-002 assertions reading them in the builder,
+  import-file and import-wizard specs. Nothing conflicted; six e2e specs
+  simply failed. The fix, and the habit worth keeping: for a sweeping
+  mechanical rename, **re-derive every file the other side also changed
+  from their version and re-apply the transform**, then diff the result
+  against their branch and account for every removed line.
+- **#86, all five paths on throwaway clusters:** pristine fresh install ->
+  `app_client`, policies granting to it; **interrupted chain** (stopped
+  after the legacy 0010) -> upgrades to the end, role renamed, every policy
+  on `app_client`, RLS suite green against it — this is the path that
+  failed before the `0010a` rename; **mixed cluster** (a fresh database
+  while another still holds `desk_client`) -> no-op, other role untouched;
+  **both roles with local refs** -> `raise exception`, migration not
+  recorded; **neither role** -> `raise exception`, migration not recorded.
+  With `scram-sha-256` forced in `pg_hba.conf`, `app_client` authenticates
+  by password and all 44 table grants survive the rename.
+- **#87 pinned both ways:** the spec fails without the coercion (0 filter
+  chips) and without the shape validation (malformed URLs blank the list),
+  and passes with both. Two earlier drafts were themselves wrong: the first
+  borrowed `listview.spec`'s fixture and silently *skipped* on a fresh
+  database; the second reconciled its fixture by title but the list API
+  returns only `name` unless `fields` is passed, so every run added ten
+  more rows and the assertions drifted. It now empties and refills the
+  table it owns, and was checked against a dirty database and a re-run.
+
+Next: the Frappe "Desk" vocabulary is gone from routes, roles, components
+and test helpers. One loose end, and it is a release chore rather than
+work: publish feather-testing-postgres 0.2.0, then move both `package.json`
+entries off the pinned git commit back to `^0.2.0`.
 
 ## 2026-07-31 — Missing `E` prefix corrupted seeded `choices`; 32 tests were failing
 

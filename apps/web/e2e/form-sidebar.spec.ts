@@ -26,9 +26,9 @@ test('UI-017: assignments, tags, and attachments persist across reload', async (
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
-  await page.goto(`/desk/${encodeURIComponent(DT)}/${docName}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
 
   // Assign a user.
   await page.getByTestId('assign-to').fill('Administrator')

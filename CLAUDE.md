@@ -16,6 +16,24 @@ entries and in `docs/research/frappe-architecture.md`, where `frappe_clone` is
 a *filesystem path* to an upstream Frappe checkout — unrelated to this project
 and not to be renamed.
 
+## Project stage — experimental, nothing is deployed
+
+**This product is not deployed anywhere and has no users. Everything is free
+to change.** There is no install base, no production database, no external
+consumer of any URL, API shape, table name, or wire format. Treat every
+interface as provisional.
+
+So: when a name, route, schema, or contract is wrong, **change it outright**.
+Do not add redirects, aliases, deprecation shims, compatibility flags, or
+dual-write paths to preserve the old shape — that is machinery paid for by a
+migration burden this project does not have, and it leaves the retired shape
+in the codebase forever for every future reader to reason about. Migrations
+that converge an existing *local* database are still expected (developer
+checkouts are real); compatibility with anything *outside* the repo is not.
+
+Revisit this section when the first real deployment happens — from that point
+the calculus changes.
+
 ## Architecture invariants (never violate these)
 
 1. **Everything derives from Table metadata.** Models are JSON definitions
@@ -56,7 +74,10 @@ and not to be renamed.
 - `packages/shared` — types and contracts used by both sides
 - [`feather-testing-postgres`](https://github.com/siraj-samsudeen/feather-testing-postgres)
   — the SQL Sandbox test harness, consumed as a published npm dependency. It
-  lives in its own repo; fix it there and release, never vendor it back in
+  lives in its own repo; fix it there and release, never vendor it back in.
+  *Temporarily pinned to a git commit* while the `renderApp` rename sits
+  unreleased on its `main`; move both `package.json`s back to `^0.2.0` once
+  it publishes (see the 2026-07-31 `PROGRESS.md` entry)
 - Monorepo — pnpm workspaces; boot everything with `./init.sh`
 
 **Visual identity is a standing directive.** Every new UI feature must inherit
@@ -76,7 +97,7 @@ them before writing any UI.
   login user on Homebrew, `su postgres` when running as root in the container.
   So it works on macOS and Linux alike, and is a no-op once things are up.
 - **Connection strings** default in `apps/server/src/config.ts`; override with
-  `DATABASE_URL`. The RLS suite connects as the `desk_client` role and
+  `DATABASE_URL`. The RLS suite connects as the `app_client` role and
   overrides with `RLS_TEST_URL`.
 - **Servers:** API on `:8000`, web on `:5173`. `./init.sh` kills stale
   listeners by port and waits for both to answer.

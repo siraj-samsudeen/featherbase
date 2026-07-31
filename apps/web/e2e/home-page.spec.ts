@@ -45,7 +45,7 @@ async function login(page: import('@playwright/test').Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 }
 
 // UI-027: a home page (Workspace) lists its shortcuts; clicking navigates
@@ -56,7 +56,7 @@ test('UI-027: home page lists shortcuts and they navigate', async ({ page }) => 
   // Reachable from the sidebar's Home Pages list.
   await expect(page.getByTestId(`home-page-link-${WS}`)).toBeVisible()
   await page.getByTestId(`home-page-link-${WS}`).click()
-  await expect(page).toHaveURL(new RegExp(`/desk/home/${WS}`))
+  await expect(page).toHaveURL(new RegExp(`/admin/home/${WS}`))
 
   await expect(page.getByTestId('home-page-title')).toHaveText('Sales')
   await expect(page.getByTestId('shortcut-Tasks')).toBeVisible()
@@ -64,41 +64,41 @@ test('UI-027: home page lists shortcuts and they navigate', async ({ page }) => 
 
   // Clicking a Table shortcut opens that list.
   await page.getByTestId('shortcut-Tasks').click()
-  await expect(page).toHaveURL(new RegExp(`/desk/${encodeURIComponent(DT)}`))
+  await expect(page).toHaveURL(new RegExp(`/admin/${encodeURIComponent(DT)}`))
   await expect(page.getByTestId('list-view')).toBeVisible()
 
   // Back to the home page, the dashboard shortcut opens the dashboard.
-  await page.goto(`/desk/home/${WS}`)
+  await page.goto(`/admin/home/${WS}`)
   await page.getByTestId('shortcut-Board').click()
-  await expect(page).toHaveURL(new RegExp(`/desk/dashboard/${DASH}`))
+  await expect(page).toHaveURL(new RegExp(`/admin/dashboard/${DASH}`))
   await expect(page.getByTestId('dashboard-title')).toBeVisible()
 })
 
-// #80: the sidebar lists Home Pages only; /desk lands on the first visible
+// #80: the sidebar lists Home Pages only; /admin lands on the first visible
 // page; the System page's cards open Table lists; and the All tables entry
 // keeps every table reachable.
 test('#80: sidebar flip — landing, System page cards, All tables', async ({ page }) => {
   await login(page)
 
-  // /desk redirects to the first visible home page.
-  await expect(page).toHaveURL(/\/desk\/home\//)
+  // /admin redirects to the first visible home page.
+  await expect(page).toHaveURL(/\/admin\/home\//)
 
   // The seeded System page is in the sidebar; its cards are grouped links.
   await expect(page.getByTestId('home-page-link-system')).toBeVisible()
   await page.getByTestId('home-page-link-system').click()
-  await expect(page).toHaveURL(/\/desk\/home\/system/)
+  await expect(page).toHaveURL(/\/admin\/home\/system/)
   await expect(page.getByTestId('home-page-title')).toHaveText('System')
   await expect(page.getByTestId('home-card-Users & Access')).toBeVisible()
 
   // A card link opens the Table list.
   await page.getByTestId('home-link-User').click()
-  await expect(page).toHaveURL(/\/desk\/User/)
+  await expect(page).toHaveURL(/\/admin\/User/)
   await expect(page.getByTestId('list-view')).toBeVisible()
 
   // The sidebar holds NO direct table links — tables live behind All tables.
-  await expect(page.getByTestId('desk-sidebar').getByTestId('doctype-nav')).toHaveCount(0)
+  await expect(page.getByTestId('admin-sidebar').getByTestId('doctype-nav')).toHaveCount(0)
   await page.getByTestId('all-tables-link').click()
-  await expect(page).toHaveURL(/\/desk\/all-tables/)
+  await expect(page).toHaveURL(/\/admin\/all-tables/)
   const nav = page.getByTestId('doctype-nav')
   // User tables grouped by module; the created table is reachable.
   await expect(nav.getByText(DT, { exact: true })).toBeVisible()

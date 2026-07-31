@@ -34,27 +34,27 @@ test.beforeAll(async ({ request }) => {
 })
 
 // CUST-004: a server script rejecting a save surfaces the error in the form
-// (without crashing the Desk), and a valid save goes through.
+// (without crashing the Admin), and a valid save goes through.
 test('CUST-004: a rejecting server script blocks the save in the form UI', async ({ page }) => {
   await page.goto('/login')
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
-  await page.goto(`/desk/${encodeURIComponent(DT)}/new`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/new`)
   await expect(page.getByTestId('form-view')).toBeVisible()
 
   // A negative amount is rejected by the server script — the error shows.
   await page.locator('[data-field=amount]').fill('-5')
   await page.getByTestId('form-save').click()
   await expect(page.getByTestId('form-banner')).toContainText('Amount cannot be negative')
-  // The Desk is still alive and interactive.
+  // The Admin is still alive and interactive.
   await expect(page.getByTestId('session-user')).toBeVisible()
 
   // A valid amount saves fine.
   await page.locator('[data-field=amount]').fill('42')
   await page.getByTestId('form-save').click()
-  await page.waitForURL(new RegExp(`/desk/${encodeURIComponent(DT)}/`))
+  await page.waitForURL(new RegExp(`/admin/${encodeURIComponent(DT)}/`))
   await expect(page.getByTestId('form-status')).toHaveText('Saved')
 })

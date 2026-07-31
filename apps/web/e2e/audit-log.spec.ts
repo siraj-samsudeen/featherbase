@@ -34,7 +34,7 @@ async function login(page: Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 }
 
 // PLAT-007: a login and a CSV export each produce an audit log row.
@@ -51,7 +51,7 @@ test('PLAT-007: a CSV export writes an Access Log row', async ({ page, request }
     ['ref_table', '=', DT],
   ])
 
-  await page.goto(`/desk/${encodeURIComponent(DT)}/view/report`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/view/report`)
   await expect(page.getByTestId('export-csv')).toBeVisible()
   const download = page.waitForEvent('download')
   await page.getByTestId('export-csv').click()

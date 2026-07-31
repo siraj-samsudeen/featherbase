@@ -108,7 +108,7 @@ export function CalendarView({ doctype }: { doctype: string }) {
             <button onClick={() => shiftMonth(1)} className="fc-btn" data-testid="cal-next">›</button>
           </div>
         </div>
-        <RouterLink to="/desk/$doctype" params={{ doctype }} search={{ filters: undefined }} className="fc-btn" data-testid="cal-to-list">
+        <RouterLink to="/admin/$doctype" params={{ doctype }} search={{ filters: undefined }} className="fc-btn" data-testid="cal-to-list">
           List view
         </RouterLink>
       </div>
@@ -144,7 +144,7 @@ export function CalendarView({ doctype }: { doctype: string }) {
                     }`}
                   >
                     <RouterLink
-                      to="/desk/$doctype/$name"
+                      to="/admin/$doctype/$name"
                       params={{ doctype, name: String(row.name) }}
                       className="hover:underline"
                       onPointerDown={(e) => e.stopPropagation()}

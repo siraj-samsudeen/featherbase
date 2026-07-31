@@ -27,7 +27,7 @@ async function login(page: import('@playwright/test').Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/desk/)
+  await expect(page).toHaveURL(/\/admin/)
 }
 
 test('UI-010: draft shows Submit; submitted shows Cancel + locks fields; cancelled shows Amend', async ({ page, request }) => {
@@ -39,7 +39,7 @@ test('UI-010: draft shows Submit; submitted shows Cancel + locks fields; cancell
   const docName = ((await created.json()) as { name: string }).name
 
   await login(page)
-  await page.goto(`/desk/${encodeURIComponent(DT)}/${docName}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await expect(page.getByTestId('form-view')).toBeVisible()
 
   // Draft: badge Draft, Submit button present, field editable
@@ -61,7 +61,7 @@ test('UI-010: draft shows Submit; submitted shows Cancel + locks fields; cancell
 
   // Amend -> navigates to a new draft (name-1) editable
   await page.getByTestId('form-amend').click()
-  await expect(page).toHaveURL(new RegExp(`/desk/${encodeURIComponent(DT)}/${docName}-1`))
+  await expect(page).toHaveURL(new RegExp(`/admin/${encodeURIComponent(DT)}/${docName}-1`))
   await expect(page.getByTestId('status-badge')).toContainText('Draft')
   await expect(page.locator('[data-field=title]')).toBeEnabled()
   await expect(page.locator('[data-field=title]')).toHaveValue('action doc')

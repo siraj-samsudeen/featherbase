@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { afterEach } from 'vitest'
 import { cleanup } from '@testing-library/react'
 
-// The Desk opens a realtime WebSocket on mount. In jsdom that would attempt
+// The Admin opens a realtime WebSocket on mount. In jsdom that would attempt
 // a real TCP connection (refused → close → 1s reconnect loop). This stub
 // stays CONNECTING forever: the client neither errors nor reconnects, and
 // never sends (it only sends when OPEN).

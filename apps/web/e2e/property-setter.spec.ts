@@ -31,10 +31,10 @@ test('CUST-002: a label override shows in the form and reverts when removed', as
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
   // Base label.
-  await page.goto(`/desk/${encodeURIComponent(DT)}/ps-doc`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/ps-doc`)
   const label = page.locator('label', { hasText: 'Title' })
   await expect(label.first()).toBeVisible()
 

@@ -48,9 +48,9 @@ test('RPT-003: CSV and XLSX downloads match on-screen rows and grouping order', 
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
-  await page.goto(`/desk/${encodeURIComponent(DT)}/view/report`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/view/report`)
   await expect(page.getByTestId('report-row')).toHaveCount(3)
   await page.getByTestId('report-groupby').selectOption('stage')
   await expect(page.getByTestId('group-header')).toHaveCount(2)

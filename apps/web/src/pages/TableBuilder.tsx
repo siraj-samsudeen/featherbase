@@ -179,7 +179,7 @@ export function TableBuilder() {
       // #80: the new table auto-appears on its module's home page — refresh
       // the sidebar so that happens without a reload.
       await queryClient.invalidateQueries({ queryKey: ['home-pages'] })
-      navigate({ to: '/desk/$doctype', params: { doctype: name }, search: { filters: undefined } })
+      navigate({ to: '/admin/$doctype', params: { doctype: name }, search: { filters: undefined } })
     } catch (err) {
       setProgress(null)
       setError(err instanceof ApiError ? err.message : 'Create failed')
@@ -426,7 +426,7 @@ export function TableBuilder() {
       {moreSheets > 1 && (
         <p className="mt-3 text-sm text-gray-500" data-testid="dt-more-sheets">
           This workbook has {moreSheets} sheets — only the first is used here. The{' '}
-          <Link to="/desk/import" search={{ table: undefined }} className="text-[var(--color-brand)] underline">
+          <Link to="/admin/import" search={{ table: undefined }} className="text-[var(--color-brand)] underline">
             Import wizard
           </Link>{' '}
           imports every sheet.

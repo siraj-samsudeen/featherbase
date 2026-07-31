@@ -71,12 +71,12 @@ async function login(page: import('@playwright/test').Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/desk/)
+  await expect(page).toHaveURL(/\/admin/)
 }
 
 test('UI-004: FormView renders every field type as the correct control', async ({ page }) => {
   await login(page)
-  await page.goto(`/desk/${encodeURIComponent(DT)}/${docName}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await expect(page.getByTestId('form-view')).toBeVisible()
 
   // Data -> text input with value
@@ -105,7 +105,7 @@ test('UI-004: FormView renders every field type as the correct control', async (
 
 test('UI-005: save persists edits, shows dirty state and field-wise server errors inline', async ({ page }) => {
   await login(page)
-  await page.goto(`/desk/${encodeURIComponent(DT)}/${docName}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await expect(page.getByTestId('form-status')).toContainText('Saved')
   await expect(page.getByTestId('form-save')).toBeDisabled()
 

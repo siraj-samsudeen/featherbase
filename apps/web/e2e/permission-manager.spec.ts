@@ -78,9 +78,9 @@ test('SET-003: revoking write in the manager UI blocks the role user from saving
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
-  await page.goto(`/desk/permissions/${encodeURIComponent(DT)}`)
+  await page.goto(`/admin/permissions/${encodeURIComponent(DT)}`)
   await expect(page.getByTestId('permission-manager')).toBeVisible()
   const writeBox = page.getByTestId(`perm-${ROLE}-can_write`)
   await expect(writeBox).toBeChecked()

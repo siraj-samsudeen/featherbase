@@ -248,7 +248,7 @@ export function ListView({
       <div className="mb-4 flex items-center justify-between">
         <div>
           <div className="text-xs text-[var(--color-ink-faint)]">
-            <Link to="/desk" className="hover:text-[var(--color-ink)]">
+            <Link to="/admin" className="hover:text-[var(--color-ink)]">
               Home
             </Link>
             {' / '}
@@ -288,7 +288,7 @@ export function ListView({
             )}
           </div>
           <Link
-            to="/desk/$doctype/view/report"
+            to="/admin/$doctype/view/report"
             params={{ doctype }}
             search={{ report: undefined }}
             className="fc-btn"
@@ -298,7 +298,7 @@ export function ListView({
           </Link>
           {/* IMP-010: append rows to this Table from a CSV/Excel file. */}
           <Link
-            to="/desk/import"
+            to="/admin/import"
             search={{ table: doctype }}
             className="fc-btn"
             data-testid="open-import"
@@ -307,7 +307,7 @@ export function ListView({
           </Link>
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Choice') && (
             <Link
-              to="/desk/$doctype/view/kanban"
+              to="/admin/$doctype/view/kanban"
               params={{ doctype }}
               search={{ group_by: undefined }}
               className="fc-btn"
@@ -318,7 +318,7 @@ export function ListView({
           )}
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Date') && (
             <Link
-              to="/desk/$doctype/view/calendar"
+              to="/admin/$doctype/view/calendar"
               params={{ doctype }}
               className="fc-btn"
               data-testid="open-calendar"
@@ -329,7 +329,7 @@ export function ListView({
           {/* UI-022: Gantt needs two Date columns (start + end). */}
           {(meta.data?.columns ?? []).filter((f) => f.column_type === 'Date').length >= 2 && (
             <Link
-              to="/desk/$doctype/view/gantt"
+              to="/admin/$doctype/view/gantt"
               params={{ doctype }}
               className="fc-btn"
               data-testid="open-gantt"
@@ -341,7 +341,7 @@ export function ListView({
             <>
               {/* NAM-001: change how new rows in this Table are named. */}
               <Link
-                to="/desk/naming/$doctype"
+                to="/admin/naming/$doctype"
                 params={{ doctype }}
                 className="fc-btn"
                 data-testid="open-naming"
@@ -349,7 +349,7 @@ export function ListView({
                 Naming
               </Link>
               <Link
-                to="/desk/permissions/$doctype"
+                to="/admin/permissions/$doctype"
                 params={{ doctype }}
                 className="fc-btn"
                 data-testid="open-permissions"
@@ -468,7 +468,7 @@ export function ListView({
                   <td key={col.column_name} className="px-3 py-2">
                     {i === 0 ? (
                       <Link
-                        to="/desk/$doctype/$name"
+                        to="/admin/$doctype/$name"
                         params={{ doctype, name: String(row.name) }}
                         className={`font-medium text-[var(--color-brand)] hover:underline ${
                           col.column_name === 'name' ? 'font-mono text-[13px]' : ''

@@ -38,12 +38,12 @@ async function login(page: import('@playwright/test').Page) {
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 }
 
 test('UI-013: list customizations persist across logout/login', async ({ page }) => {
   await login(page)
-  await page.goto(`/desk/${encodeURIComponent(DT)}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}`)
 
   // Baseline: City column visible.
   await expect(page.getByTestId('col-city')).toBeVisible()
@@ -64,7 +64,7 @@ test('UI-013: list customizations persist across logout/login', async ({ page })
   await page.getByTestId('logout').click()
   await expect(page).toHaveURL(/\/login/)
   await login(page)
-  await page.goto(`/desk/${encodeURIComponent(DT)}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}`)
 
   // Restored: City still hidden, sort still ascending by rank (bravo first).
   await expect(page.getByTestId('col-city')).toHaveCount(0)

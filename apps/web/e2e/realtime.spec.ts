@@ -15,7 +15,7 @@ async function loginAs(page: Page, email: string, pwd: string) {
   await page.fill('input[name=email]', email)
   await page.fill('input[name=password]', pwd)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 }
 
 test.beforeAll(async ({ request }) => {
@@ -54,8 +54,8 @@ test('RT-001: a doc created in one session appears in another session list', asy
 
   // Both watch the list; wait for B's list to render and its realtime
   // socket to connect+subscribe before A creates.
-  await a.goto(`/desk/${encodeURIComponent(DT)}`)
-  await b.goto(`/desk/${encodeURIComponent(DT)}`)
+  await a.goto(`/admin/${encodeURIComponent(DT)}`)
+  await b.goto(`/admin/${encodeURIComponent(DT)}`)
   await expect(b.getByTestId('list-total')).toBeVisible()
   await b.waitForTimeout(1000)
   const uniq = `rt-live-${Date.now()}`
@@ -89,8 +89,8 @@ test('RT-002: saving a doc in one session shows a refresh banner in another', as
     headers: { Authorization: `Bearer ${tokenA}` },
     data: { name: docName, title: 'before' },
   })
-  await a.goto(`/desk/${encodeURIComponent(DT)}/${docName}`)
-  await b.goto(`/desk/${encodeURIComponent(DT)}/${docName}`)
+  await a.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
+  await b.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await expect(a.getByTestId('form-view')).toBeVisible()
   await expect(b.getByTestId('form-view')).toBeVisible()
   // No banner initially.
@@ -124,8 +124,8 @@ test('RT-003: an @mention pops the mentioned user unread count live', async ({ b
   await loginAs(a, 'Administrator', ADMIN_PWD)
   await loginAs(b, OTHER_USER, OTHER_PWD)
 
-  // B sits in the Desk; wait for its realtime socket to connect.
-  await b.goto('/desk')
+  // B sits in the Admin; wait for its realtime socket to connect.
+  await b.goto('/admin')
   await expect(b.getByTestId('session-user')).toBeVisible()
   await b.waitForTimeout(1000)
   const startCount = await b.getByTestId('unread-count').count() // 0 badge if none
@@ -136,7 +136,7 @@ test('RT-003: an @mention pops the mentioned user unread count live', async ({ b
     headers: { Authorization: `Bearer ${tokenA}` },
     data: { name: docName, title: 'discuss' },
   })
-  await a.goto(`/desk/${encodeURIComponent(DT)}/${docName}`)
+  await a.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   // Trailing space closes the @mention autocomplete so it doesn't overlay
   // the submit button.
   await a.getByTestId('comment-input').fill(`ping @${OTHER_USER} `)
