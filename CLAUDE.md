@@ -116,10 +116,13 @@ once per run, outside any sandbox transaction. It complements
 2. **Boot & smoke-test.** Run `./init.sh` and verify the app actually starts and
    the core flow passes (login → open a Table list → open a form) BEFORE
    writing new code. If the app is broken, fixing it IS the session's task.
-3. **Pick ONE piece of work.** All 126 harness features currently report
-   `passing`, so the harness is no longer the backlog — take direction from
-   `docs/ROADMAP.md` and the "next" note at the end of the latest `PROGRESS.md`
-   entry. Do not start a second thread of work in the same session.
+3. **Pick ONE piece of work.** Every entry in `harness/features.json` reports
+   `passing`, so the inventory is a record of what exists, not a backlog —
+   take direction from `docs/design/execution-plan.md` (milestones M1–M5),
+   `docs/ROADMAP.md`, and the "next" note at the end of the latest
+   `PROGRESS.md` entry. Do not start a second thread of work in the same
+   session. When a session ships something genuinely new, ask the owner to
+   add its entry (see the hard rule below) so the inventory keeps up.
 4. **Implement it fully.** Small, complete, working — not broad and half-done.
 5. **Verify end-to-end.** Exercise it the way a user would: HTTP calls against
    the running server, and the browser via Playwright for UI. Unit tests alone

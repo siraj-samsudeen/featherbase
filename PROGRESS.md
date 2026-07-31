@@ -13,6 +13,40 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-07-31 — features.json catches up with main (126 → 145)
+
+Owner: "main has moved a lot. update features.json now." Merged main (36
+commits: import subsystem, Home Pages, app fixtures, system flag, naming
+series, single-origin deploy, ADR 0007) and brought the inventory current.
+
+- **ADR 0007 applied** (record identity is `id`; `name` is now an ordinary
+  human-readable column): META-005's standard-column list, DOC-001/008/012,
+  API-001's route shape, UI-006/UI-014, META-006. Also fixed a double-word
+  artifact from the 2026-07-26 rename ("Settings Table Tables") and
+  updated UI-027 to the shipped reality (Workspaces → **Home Pages**).
+- **19 entries added** for work built after the harness froze, using the
+  IDs the code and tests *already reference* (so the Explorer's ID scan
+  links them): **IMP-001…013** (new `import` category — inference,
+  TZ-independent dates, header sanitization, coercion, the `:import`
+  collection action, drag & drop, dry run, multi-sheet, Choice detection,
+  wizard mapping, Import Log, overlap-scored targeting, selective import),
+  **NAM-001/002** (id patterns in the UI; row id as column one),
+  **PLAT-009/010/011** (app fixtures, `system` flag, single-origin
+  deploy), **ACCT-001** (account menu + in-app password change).
+  Verify criteria written from each PR's documented verification.
+- **Status honesty**: the new entries are marked `passing` on the strength
+  of the end-to-end verification recorded in their own PROGRESS entries
+  and PRs (e2e suites, browser runs) — *not* re-verified in this session.
+  Anything later found wrong flips back to `failing` per the standing rule.
+- Governance updated in three places: features.json `$comment`,
+  `harness/README.md` (no longer claims a frozen 126), and CLAUDE.md's
+  session protocol (the inventory is a record, not a backlog; new work
+  should be added with owner sign-off rather than left in history).
+- Explorer rebuilt: 145 features, new `import` category card and
+  explanation, **138/145 now resolve to test files** (was 124/126).
+  Verified headlessly — IMP-011 links its real action/wizard/e2e files,
+  zero render errors. Artifact republished (same URL).
+
 ## 2026-07-26 (v13) — features.json renamed to new vocabulary (owner instruction); rename debt filed as #64
 
 Owner ruled the #63 leftovers unacceptable ("proportionately named") and

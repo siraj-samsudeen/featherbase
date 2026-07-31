@@ -102,7 +102,10 @@ const cats = {
   system: { title: 'System', short: 'Settings, audit trail, global search.',
     files: ['apps/server/src/settings.ts', 'apps/server/src/audit.ts', 'apps/server/src/search.ts'],
     how: 'System/singles settings via the single_value store, an audit/activity trail on document events, and global search across DocTypes power the awesomebar.' },
-  platform: { title: 'Platform', short: 'Installable apps, hooks, patches, CLI, schema-per-site tenancy.',
+  import: { title: 'Import', short: 'CSV/Excel → a Table and its rows: inference, mapping, dry run, log.',
+    files: ['packages/shared/src/import.ts', 'apps/server/src/actions/collection-import.ts', 'apps/web/src/pages/ImportWizard.tsx', 'apps/web/src/lib/parse-file.ts'],
+    how: 'A pure inference layer in packages/shared turns a parsed sheet into a proposed Table (sanitized column names, sampled types, Choice detection, coerced values); the server\'s :import collection action pushes every row through the normal saveDoc lifecycle — permissions, validation, id patterns, automation — so an import is just many ordinary saves, with per-row errors instead of an all-or-nothing failure. The wizard adds multi-sheet plans, mapping onto existing Tables, dry runs, and an Import Log row per request.' },
+  platform: { title: 'Platform', short: 'Installable apps, fixtures, hooks, patches, CLI, schema-per-site tenancy.',
     files: ['apps/server/src/apps.ts', 'apps/server/src/patches.ts', 'apps/server/src/cli.ts', 'apps/server/src/tenancy.ts'],
     how: 'apps.ts is the installable-app registry: a manifest declares DocTypes, roles, permissions, doc_events and scheduler jobs; install runs them through the normal engine and records ownership for clean uninstall. patches.ts runs one-off migrations, cli.ts is the bench-equivalent, tenancy.ts demonstrates schema-per-site isolation.' },
 };
