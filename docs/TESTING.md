@@ -127,10 +127,10 @@ see: routing, focus/keyboard behavior, realtime updates, visual flows.
 One deliberate exception in the server suite:
 `apps/server/test/rls.test.ts` is *not* sandbox-isolated either. It verifies
 native Postgres row-level security through a second connection under the
-`desk_client` role — and that connection could never see an uncommitted
+`app_client` role — and that connection could never see an uncommitted
 sandbox transaction, so the test commits for real and cleans up after
 itself. It connects to
-`postgres://desk_client:desk_client@127.0.0.1:5432/featherbase` by default;
+`postgres://app_client:app_client@127.0.0.1:5432/featherbase` by default;
 override with `RLS_TEST_URL` (the role is created by
 `apps/server/migrations/0010_rls.sql`).
 

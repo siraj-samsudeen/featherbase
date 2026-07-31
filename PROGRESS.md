@@ -13,7 +13,7 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `AdminLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
-## 2026-07-31 — The admin UI route prefix is `/admin`, not `/desk` (#84)
+## 2026-07-31 — `/admin` replaces `/desk`, `app_client` replaces `desk_client`, and typed filter URLs work (#84, #86, #87)
 
 "Desk" was Frappe's name for the back-office UI, and the URL prefix was the
 last place the term still met users. Frappe itself retired the URL (modern
@@ -25,14 +25,15 @@ GLOSSARY already called it the Admin — the routes had not caught up.
   routes (report/kanban/calendar/gantt), and the static segments
   (`new-table`, `import`, `jobs`, `all-tables`, `permissions/$doctype`,
   `dashboard/$name`, `query-report/$name`, `script-report/$name`).
-- **Old links keep working.** Two legacy routes — `/desk` and the splat
-  `/desk/$` — bounce to the `/admin` twin in `beforeLoad`, rebuilt from
-  `location.href` so the query string and hash ride along. The bounce uses
-  `replace`, so the dead prefix never lands in history and Back does not
-  hit it. No server change was needed: the SPA fallback already serves
-  `index.html` for any non-API path, so a `/desk/...` deep link reaches the
-  client and redirects there. **The redirect is client-side only** — a
-  `curl` of `/desk/X` returns the SPA shell with 200, not a 301/302.
+- **No `/desk` redirect, deliberately.** #84 asked for one and it was built
+  and tested first; the owner then cut it, and CLAUDE.md gained a
+  "Project stage" section recording why: nothing is deployed, there are no
+  users, and no URL is consumed outside this repo. A redirect would have
+  been compatibility machinery for a migration burden that does not exist,
+  and would have kept the retired prefix in the route tree forever for
+  every future reader to reason about. `/desk/...` is simply gone — the SPA
+  fallback still serves `index.html`, so the client renders its
+  not-found rather than the server answering 404.
 - **Server touchpoints:** the Frappe-parity login response's
   `home_page` is now `/admin`; the workflow pending-approval mail and the
   SLA escalation notice link to `/admin/<Table>/<row>`. The server's OAuth
@@ -42,27 +43,64 @@ GLOSSARY already called it the Admin — the routes had not caught up.
   ids `desk-sidebar`/`desk-index-empty` -> `admin-*`. `e2e/desk.spec.ts` ->
   `e2e/admin.spec.ts`. The FormView breadcrumb read **Desk** and now reads
   **Admin** — the one user-facing string carrying the old term.
-- **Left alone on purpose:** the `desk_client` Postgres role (a DB role, not
-  a URL — renaming it needs a migration plus every developer's
-  `RLS_TEST_URL`), `renderDesk` (feather-testing-postgres' API, which lives
-  in its own repo), and the Frappe design-lineage comments in `index.css`
-  and `ListView.tsx` that credit the Desk *look*.
+- **`desk_client` -> `app_client` (#86).** The direct-client login role
+  carried the same retired term. 0010_rls.sql is rewritten in place so a
+  FRESH database only ever knows `app_client` (0055 and 0060, which also
+  name the role in generated policies, plus the runtime DDL in
+  `doctype-engine.ts`, follow suit). New **0061_rename_rls_role.sql**
+  converges databases that already applied 0010: a plain
+  `alter role ... rename to`, because **policies and grants bind by OID,
+  not by name** — every `to desk_client` policy follows the rename with
+  nothing recreated. The password is re-set explicitly in the same
+  migration: an MD5-hashed password is derived from the role name and is
+  cleared on rename (SCRAM hashes survive), so setting it unconditionally
+  makes both cases identical. If both roles somehow exist, the migration
+  leaves them alone rather than guessing at a merge.
+  **Heads-up: roles are cluster-wide.** Your existing `featherbase`
+  database gets the rename the next time you migrate; a checkout of an
+  older branch will then look for a role that no longer exists.
+- **Typed filter URLs actually filter (#87).** `/admin/<Table>?filters=...`
+  used to drop the parameter unless the app itself built the link.
+  TanStack's default search parser runs `JSON.parse` over every value, so a
+  pasted URL delivered `filters` as an Array and `?report=2024` as a
+  Number; the `typeof === 'string'` guard then discarded them and stripped
+  them from the address bar — quietly breaking the "filters are URL state
+  so they are shareable" promise written above that very route. One
+  `searchString()` helper coerces back to the string the app expects, and
+  it is applied to **every** search param (`filters`, `report`, `group_by`,
+  `table`, `format`, `key`, `token`), since the same latent bug bites any
+  all-digit value — a reset-password `key` of `12345` parsed to a Number
+  and was dropped.
+- **Left alone on purpose:** `renderDesk` (feather-testing-postgres' API,
+  which lives in its own repo — filed as that repo's #1), and the Frappe
+  design-lineage comments in `index.css` and `ListView.tsx` that credit the
+  Desk *look*.
 
-Verified against a throwaway database on port 8906, with the server serving
-the built SPA (so the real SPA fallback was exercised, not the Vite proxy):
-server 493 passed, web unit 12 passed, both typechecks clean, full e2e 86
-passed / 2 skipped / 0 failed. By hand: `/admin` lands on the first visible
-Home Page; `/desk/Zone` -> `/admin/Zone` renders the list; `/desk/Zone/<row>`
--> `/admin/Zone/<row>` renders the form with the Admin breadcrumb.
+Because a role rename is **cluster-wide**, verification ran on a throwaway
+Postgres cluster built with `initdb` on port 55432 — the local 5432 cluster
+was never touched, so its `desk_client` is still intact until you migrate.
+The server served the built SPA on port 8906, exercising the real SPA
+fallback rather than the Vite proxy.
 
-Gotcha found on the way: `/admin/<Table>?filters=...` drops the query string
-when the URL is typed rather than built by the app — TanStack's default
-search parser JSON-parses `filters` into an array and the route's
-`validateSearch` only accepts a string. Pre-existing (`/desk` behaved the
-same), unrelated to this rename, and left as-is.
+- Server 493 passed / 97 files, web unit 12 passed, both typechecks clean.
+- Full e2e on a freshly migrated database: **85 passed, 2 skipped, 1
+  failed** — RT-002, which passes on re-run in isolation and belongs to the
+  realtime family already recorded here as flaky. An earlier fresh run of
+  the same tree scored 85/3/0.
+- **#86 both paths:** fresh install creates `app_client` and its generated
+  policies grant to it; an upgrade (role regressed to `desk_client`, 0061
+  un-recorded) renames in place, with policy grantees following by OID and
+  all 44 table grants intact. With `scram-sha-256` forced in `pg_hba.conf`,
+  `app_client` authenticates with its password and the RLS suite passes
+  against the renamed role.
+- **#87 pinned both ways:** the new spec fails without the fix (0 filter
+  chips) and passes with it. It builds its own fixture instead of borrowing
+  `listview.spec`'s — the first draft inherited that dependency and
+  silently *skipped* on a fresh database, which is not a regression test.
 
-Next: nothing blocking. The `desk_client` role rename is the remaining
-Frappe-lore name if the vocabulary sweep continues.
+Next: nothing blocking. The last Frappe-lore name is `renderDesk`, in
+feather-testing-postgres (that repo's #1) — it needs a release there before
+`apps/web/test/pg-test.ts` can follow.
 
 ## 2026-07-30 — Home Pages: curated navigation replaces the table-list sidebar (#80)
 

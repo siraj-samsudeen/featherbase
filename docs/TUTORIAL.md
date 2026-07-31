@@ -99,7 +99,7 @@ gets — `name` (primary key), `created_by`, `created_at`, `updated_at`,
 `updated_by`, `status`, `position` (`STANDARD_COLUMNS` and `createTableDDL`
 in `apps/server/src/doctype-engine.ts`). The metadata itself landed as rows
 in `table_def` and `column_def`. The table also has row-level security
-enabled with a generated read policy for the `desk_client` role.
+enabled with a generated read policy for the `app_client` role.
 
 ## 4. Use the generated UI
 

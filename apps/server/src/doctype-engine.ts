@@ -160,7 +160,7 @@ function createTableDDL(def: TableDef): string | null {
 }
 
 // PERM-004: new tables get RLS with a generated SELECT-only policy for the
-// direct-client role (desk_client). Skipped while bootstrap migrations run
+// direct-client role (app_client). Skipped while bootstrap migrations run
 // before 0010_rls.sql has created the role and fc_has_read(); that migration
 // sweeps every table that already exists.
 async function applyRls(
@@ -177,9 +177,9 @@ async function applyRls(
     ? 'fc_has_read(parenttype)'
     : `fc_has_read('${def.name.replace(/'/g, "''")}')`
   await tx.unsafe(
-    `create policy fc_select on "${table}" for select to desk_client using (${predicate})`,
+    `create policy fc_select on "${table}" for select to app_client using (${predicate})`,
   )
-  await tx.unsafe(`grant select on "${table}" to desk_client`)
+  await tx.unsafe(`grant select on "${table}" to app_client`)
 }
 
 // META-004: sync an existing Table's columns to a new definition. Additions

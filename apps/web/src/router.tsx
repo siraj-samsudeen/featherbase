@@ -34,6 +34,18 @@ import { AllTablesPage } from './pages/AllTables'
 
 const rootRoute = createRootRoute({ component: Outlet })
 
+// #87: every search param below is a string to the app, but TanStack's default
+// search parser runs JSON.parse over each value — so a URL that was TYPED or
+// pasted rather than built by an in-app navigation hands us something else:
+// `?filters=[["User","enabled","=",1]]` arrives as an Array, `?report=2024` as
+// a Number. A `typeof === 'string'` check then dropped the param and stripped
+// it from the address bar, which quietly broke the promise that these URLs are
+// shareable. Coerce back to the string the app expects instead.
+function searchString(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined
+  return typeof value === 'string' ? value : JSON.stringify(value)
+}
+
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
@@ -61,7 +73,7 @@ const oauthCallbackRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/oauth-callback',
   validateSearch: (search: Record<string, unknown>) => ({
-    token: typeof search.token === 'string' ? search.token : undefined,
+    token: searchString(search.token),
   }),
   component: OAuthCallbackRouteComponent,
 })
@@ -103,29 +115,9 @@ const resetPasswordRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/reset-password',
   validateSearch: (search: Record<string, unknown>) => ({
-    key: typeof search.key === 'string' ? search.key : undefined,
+    key: searchString(search.key),
   }),
   component: ResetPasswordPage,
-})
-
-// #84: the Admin used to live under /desk. Old bookmarks, emailed row links
-// and anything else pointing at the former prefix bounce to the /admin twin
-// with the query string and hash intact. `replace` keeps the dead prefix out
-// of history, so Back returns where the user came from.
-function redirectToAdmin(href: string): never {
-  throw redirect({ href: `/admin${href.slice('/desk'.length)}`, replace: true })
-}
-
-const legacyDeskRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/desk',
-  beforeLoad: ({ location }) => redirectToAdmin(location.href),
-})
-
-const legacyDeskSplatRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/desk/$',
-  beforeLoad: ({ location }) => redirectToAdmin(location.href),
 })
 
 const adminRoute = createRoute({
@@ -142,7 +134,7 @@ const printRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/print/$doctype/$name',
   validateSearch: (search: Record<string, unknown>) => ({
-    format: typeof search.format === 'string' ? search.format : undefined,
+    format: searchString(search.format),
   }),
   beforeLoad: () => {
     if (!getToken()) throw redirect({ to: '/login' })
@@ -209,7 +201,7 @@ const importRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'import',
   validateSearch: (search: Record<string, unknown>) => ({
-    table: typeof search.table === 'string' ? search.table : undefined,
+    table: searchString(search.table),
   }),
   component: () => (
     <div data-testid="doctype-page">
@@ -224,7 +216,7 @@ const doctypeRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '$doctype',
   validateSearch: (search: Record<string, unknown>) => ({
-    filters: typeof search.filters === 'string' ? search.filters : undefined,
+    filters: searchString(search.filters),
   }),
   component: TableListPage,
 })
@@ -272,7 +264,7 @@ const reportRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '$doctype/view/report',
   validateSearch: (search: Record<string, unknown>) => ({
-    report: typeof search.report === 'string' ? search.report : undefined,
+    report: searchString(search.report),
   }),
   component: ReportPage,
 })
@@ -298,7 +290,7 @@ const kanbanRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '$doctype/view/kanban',
   validateSearch: (search: Record<string, unknown>) => ({
-    group_by: typeof search.group_by === 'string' ? search.group_by : undefined,
+    group_by: searchString(search.group_by),
   }),
   component: KanbanPage,
 })
@@ -473,7 +465,5 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   printRoute,
-  legacyDeskRoute,
-  legacyDeskSplatRoute,
   adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, dashboardRoute, homePageRoute, allTablesRoute, jobsRoute, doctypeRoute, docRoute]),
 ])

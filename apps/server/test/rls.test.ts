@@ -1,12 +1,12 @@
 // NOT sandbox-migrated: verifies NATIVE Postgres RLS through a second
-// connection under the desk_client PG role — that connection can never see
+// connection under the app_client PG role — that connection can never see
 // the sandbox's uncommitted transaction, so this file needs real commits.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import postgres from 'postgres'
 import { sql } from '../src/db'
 import { areq } from './helpers'
 
-// PERM-004: generated RLS. A direct client (the desk_client PG role — the
+// PERM-004: generated RLS. A direct client (the app_client PG role — the
 // local stand-in for supabase-js/PostgREST) can SELECT only rows its
 // session user has Permission read access to, and can never write. The app
 // server (table owner) bypasses RLS and stays the only write path.
@@ -18,7 +18,7 @@ const ROLE = 'RLS Vault Reader'
 const USER = 'rls-vault@x.com'
 
 const direct = postgres(
-  process.env.RLS_TEST_URL ?? 'postgres://desk_client:desk_client@127.0.0.1:5432/featherbase',
+  process.env.RLS_TEST_URL ?? 'postgres://app_client:app_client@127.0.0.1:5432/featherbase',
   { max: 1, onnotice: () => {} },
 )
 
