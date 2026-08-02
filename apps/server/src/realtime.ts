@@ -81,6 +81,11 @@ export function publishDocEvent(
 ): void {
   publish(`list:${table}`, event, { table, name })
   publish(`doc:${table}:${name}`, event, { table, name })
+  // #101 Phase 4: one firehose ping for the homepage activity feed. Carries
+  // the same {table, name} any list:<table> subscriber already receives —
+  // clients use it as an invalidation signal; the feed data itself comes
+  // from the role-gated /api/activity_feed.
+  publish('feed', event, { table, name })
 }
 
 export function publishUserEvent(user: string, event: string, payload?: unknown): void {

@@ -365,6 +365,65 @@ app.get('/api/events/summary', async (c) => {
   return c.json({ entries: await eventSummary(who(c)) })
 })
 
+// #101 Phase 4: the homepage activity feed. 'mine' is the caller's own raw
+// trail (reads included — visible to them alone). 'team' shows CHANGES only
+// — Version rows and logins, never what a colleague merely viewed — and is
+// gated to System Manager.
+app.get('/api/activity_feed', async (c) => {
+  const user = who(c)
+  const scope = c.req.query('scope') === 'team' ? 'team' : 'mine'
+  const limit = Math.min(Math.max(Number(c.req.query('limit')) || 30, 1), 100)
+
+  if (scope === 'mine') {
+    const rows = await sql`
+      select kind, ref_key, label, sub_label, path, occurred_at
+      from user_event where created_by = ${user}
+      order by occurred_at desc limit ${limit}`
+    return c.json({
+      items: rows.map((r) => ({
+        who: user,
+        kind: r.kind as string,
+        label: (r.label as string | null) ?? (r.ref_key as string),
+        sub: (r.sub_label as string | null) ?? undefined,
+        path: (r.path as string | null) ?? '',
+        at: new Date(r.occurred_at as string).toISOString(),
+      })),
+    })
+  }
+
+  const roles = await getRoles(user)
+  if (!roles.includes('System Manager'))
+    throw new AppError('PermissionError', 'The team feed requires the System Manager role')
+  const versions = await sql`
+    select created_by, ref_table, ref_name, created_at
+    from version order by created_at desc limit ${limit}`
+  const logins = await sql`
+    select "user", full_name, created_at
+    from activity_log where operation = 'login'
+    order by created_at desc limit ${limit}`
+  const items = [
+    ...versions.map((v) => ({
+      who: v.created_by as string,
+      kind: 'change',
+      label: (v.ref_name as string | null) ?? '',
+      sub: (v.ref_table as string | null) ?? undefined,
+      path: v.ref_table && v.ref_name ? `/admin/${v.ref_table}/${v.ref_name}` : '',
+      at: new Date(v.created_at as string).toISOString(),
+    })),
+    ...logins.map((l) => ({
+      who: l.user as string,
+      kind: 'login',
+      label: (l.full_name as string | null) || (l.user as string),
+      sub: 'signed in',
+      path: '',
+      at: new Date(l.created_at as string).toISOString(),
+    })),
+  ]
+    .sort((a, b) => (a.at < b.at ? 1 : -1))
+    .slice(0, limit)
+  return c.json({ items })
+})
+
 // UI-024: persist the caller's theme preference (light/dark), per user.
 app.post('/api/set_theme', async (c) => {
   const { theme } = (await c.req.json().catch(() => ({}))) as { theme?: string }
