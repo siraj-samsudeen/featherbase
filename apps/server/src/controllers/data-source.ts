@@ -32,6 +32,12 @@ const controller: TableController = {
           url_env: 'Name the environment variable holding the connection string',
         })
       }
+      // The duckdb driver has no write path; a read_write configuration
+      // would only mislabel the UI (review finding 7).
+      if (engine === 'duckdb' && row.access === 'read_write')
+        throw new AppError('ValidationError', 'DuckDB sources are read-only', {
+          access: 'The duckdb engine cannot write; use read_only',
+        })
       // BV7!: refuse anything that looks like a pasted secret, not a var name.
       const urlEnv = String(row.url_env ?? '')
       if (/[:/@=]/.test(urlEnv))

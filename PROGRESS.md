@@ -13,6 +13,67 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-08-02 — PR #103 review: authorization parity, secret hygiene, real locking
+
+Eight review findings on the sources PR, all legitimate, all fixed. The
+theme is the one a new storage path always invites: **the bound path had
+drifted from the native path's guarantees.**
+
+- **Authorization parity (critical).** Bound list/count/group checked only
+  `permissionScope` and skipped Data Scopes; detail/update/delete called
+  `assertPermission`, which *accepts* an `own_rows` grant — and since bound
+  rows have no owner, such a user could read or mutate any external pk.
+  Now one `assertBoundScope(meta, user, action)` gate rejects `own_rows`
+  for **every** action (a bound Table can never satisfy it), Data Scopes
+  push into source filters as a new internal `in_or_null` operator
+  (matching the native NULL-passes semantics), concrete rows are re-checked
+  with `assertUserPermissions` on detail/write/delete, and **authorization
+  runs before the foreign fetch** rather than after.
+- **Secret hygiene (critical).** `password_hash`/`api_key`/… were stripped
+  natively but sailed straight through reflection and bound reads. The
+  predicate now lives in one module (`sensitive-columns.ts`) used by
+  query.ts, document.ts, reflect.ts (never reflected) and dispatch.ts
+  (dropped from the binding, so they can't be selected, filtered, sorted,
+  read or written even if a column_def is hand-added later).
+- **Optimistic locking was decorative (high).** The mapped `updated_at` was
+  checked in the WHERE but never advanced in the SET — a plain
+  `DEFAULT now()` column only changes on insert, so two Desk editors
+  silently overwrote each other. The old test hid it because its fake CLI
+  set `updated_at = now()` itself. The driver now advances the revision in
+  the same statement, and the empty-payload branch no longer skips the
+  check. Test: two clients load the same revision, A saves, B's stale save
+  must 409.
+- **Positional CSV deletes (high).** Only updates carried a revision, so a
+  delete spliced whatever now sat at that row number. Deletes now carry
+  `?updated_at=` end-to-end (API → engine → driver) and conflict; temp
+  files got unique names (a fixed `.fb-tmp` let two writers clobber each
+  other). The in-process lock is documented as single-replica.
+- **Schema ambiguity (high).** Candidates were keyed by bare table name,
+  server and browser alike, so `public.customer` and `archive.customer`
+  fought over one entry. Both sides now key by `schema.table`; a bare name
+  is accepted only while unambiguous and otherwise skipped with both
+  qualified options named.
+- **PK introspection (medium):** `key_column_usage` is joined on catalog +
+  schema + constraint name **and table name** — Postgres allows two tables
+  in a schema to share an explicit constraint name, which inflated
+  `pk_size` and made single-column PKs look composite.
+- **Write affordances (medium):** meta now exposes server-derived
+  `source_writable` (engine capability AND access); the Desk gates badge,
+  Save, Import and row selection on it, and a `read_write` duckdb source is
+  rejected at configuration time instead of rendering an editable form the
+  server refuses.
+- **Mixed line endings (medium):** the parser picked one global EOL and
+  rewrote every record with it, so mixed `\r\n`/`\n` files (and lone `\r`)
+  were normalized — breaking the byte-stability promise. Each record now
+  keeps its own terminator; authored records use the file's dominant one.
+
+Verified: 9 new regression tests (`sources-security.test.ts` + CSV cases)
+covering non-admin list/get/update/delete, api_key invisibility, the
+two-client conflict, stale-delete conflict, ambiguity rejection, mixed-EOL
+round trips; **server suite 101 files / 537 passed / 1 skipped**; the 45
+real seed files still round-trip byte-identically through the rewritten
+parser.
+
 ## 2026-08-02 — rama-dw-os-dev: the old featherbase Railway project becomes the dev server
 
 The orphaned `featherbase` Railway project (GitHub-connected, both services

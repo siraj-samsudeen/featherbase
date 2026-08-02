@@ -220,7 +220,10 @@ export default function SourceBrowser({ name }: { name: string }) {
             </thead>
             <tbody>
               {tables.map((t) => {
-                const key = t.table
+                // Schema-qualified so same-named tables in two schemas keep
+                // independent selection AND reflect the intended relation
+                // (review finding 4); the server resolves qualified first.
+                const key = t.schema ? `${t.schema}.${t.table}` : t.table
                 const selectable = t.bindable && !t.already_reflected
                 return (
                   <tr

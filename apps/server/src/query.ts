@@ -3,6 +3,7 @@ import { AppError } from './errors'
 import { getMeta, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName } from './doctype-engine'
 import { getUserPermissionMap, isBypassUser, permissionScope } from './permissions'
+import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
 
 export type Filter = [string, string, unknown]
@@ -18,9 +19,6 @@ export interface ListArgs {
 const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in'] as const
 
 const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
-
-// Credential columns are never selectable or filterable (API-005/API-008).
-const SENSITIVE_COLUMNS = new Set(['password_hash', 'api_secret_hash', 'api_key', 'new_password'])
 
 function columnSet(meta: TableMeta): Set<string> {
   const cols = new Set<string>(STANDARD_COLUMNS)

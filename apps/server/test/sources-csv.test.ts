@@ -48,6 +48,17 @@ describe('csv.ts: byte-stable round trip', () => {
     }
   })
 
+  test('mixed and lone-CR terminators survive untouched (review finding 8)', () => {
+    const mixed = 'a,b\r\n1,2\n3,4\r\n5,6'
+    expect(serializeCsv(parseCsv(mixed))).toBe(mixed)
+    const loneCr = 'a,b\r1,2\r3,4'
+    expect(serializeCsv(parseCsv(loneCr))).toBe(loneCr)
+    // Each record remembers its own terminator.
+    const m = parseCsv(mixed)
+    expect(m.headerEol).toBe('\r\n')
+    expect(m.records.map((r) => r.eol)).toEqual(['\n', '\r\n', ''])
+  })
+
   test('quoted fields parse correctly', () => {
     const m = parseCsv(STORES)
     expect(m.headers).toEqual(['store_code', 'store_name', 'city'])
@@ -55,7 +66,9 @@ describe('csv.ts: byte-stable round trip', () => {
     expect(m.records[2].fields[1]).toBe('He said "hi"')
     const n = parseCsv(NOTES_NO_EOF)
     expect(n.records[0].fields[1]).toBe('multi\nline note')
-    expect(n.trailingNewline).toBe(false)
+    // The final record carries no terminator — that is how "file ends
+    // without a newline" is represented now (per-record EOLs).
+    expect(n.records[n.records.length - 1].eol).toBe('')
   })
 })
 
@@ -178,6 +191,38 @@ describe('M1: csv-folder source', () => {
     await patchDoc(admin, `/api/table/${enc}/2`, { note: 'edited', updated_at: doc.updated_at })
     const text = readFileSync(path.join(dir, 'finance', 'notes.csv'), 'utf8')
     expect(text).toBe('id,note\n1,"multi\nline note"\n2,edited')
+  })
+
+  test('a stale delete conflicts instead of removing the shifted row', async ({ admin }) => {
+    const [stores] = await makeCsvSource(admin)
+    const enc = encodeURIComponent(stores)
+    // The user opens row 2 (TVM)...
+    const doc = (await admin.get(`/api/table/${enc}/2`)) as Record<string, unknown>
+    expect(doc.store_code).toBe('TVM')
+    // ...another process inserts a row above it, so position 2 now holds a
+    // different record (review finding 5).
+    const file = path.join(dir, 'store_master.csv')
+    const shifted = STORES.replace(
+      'KKL,"Karaikal, Main",Karaikal\n',
+      'KKL,"Karaikal, Main",Karaikal\nNEW,Inserted,Nowhere\n',
+    )
+    writeFileSync(file, shifted)
+    const res = await admin.fetch(
+      `/api/table/${enc}/2?updated_at=${encodeURIComponent(String(doc.updated_at))}`,
+      { method: 'DELETE' },
+    )
+    expect(res.status).toBe(409)
+    // Nothing removed — the inserted row is still there.
+    expect(readFileSync(file, 'utf8')).toBe(shifted)
+  })
+
+  test('an appended row keeps a no-trailing-newline file unterminated', async ({ admin }) => {
+    const names = await makeCsvSource(admin)
+    const notes = names.find((n) => n.includes('Notes'))!
+    const enc = encodeURIComponent(notes)
+    await admin.post(`/api/table/${enc}`, { id: '3', note: 'appended' })
+    const text = readFileSync(path.join(dir, 'finance', 'notes.csv'), 'utf8')
+    expect(text).toBe('id,note\n1,"multi\nline note"\n2,plain\n3,appended')
   })
 
   test('path traversal in external_table is rejected', async ({ admin }) => {

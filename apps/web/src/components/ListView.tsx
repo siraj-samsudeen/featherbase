@@ -203,9 +203,25 @@ export function ListView({
   async function bulkDelete() {
     setBulkBusy(true)
     setBulkError(null)
+    // Source-bound rows carry a revision (mapped modified column / file
+    // mtime); echo it so a row that changed since it was listed conflicts
+    // instead of deleting whatever now sits at that position (csv rows are
+    // positional).
+    const bound = Boolean(meta.data?.data_source && meta.data?.external_modified)
     try {
-      for (const name of selected)
-        await api.delete(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
+      for (const name of selected) {
+        let query = ''
+        if (bound) {
+          const doc = await api.get<Record<string, unknown>>(
+            `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
+          )
+          if (doc.updated_at != null)
+            query = `?updated_at=${encodeURIComponent(String(doc.updated_at))}`
+        }
+        await api.delete(
+          `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}${query}`,
+        )
+      }
       await refresh()
     } catch (err) {
       setBulkError(err instanceof ApiError ? err.message : 'Bulk delete failed')
@@ -264,7 +280,7 @@ export function ListView({
               data-testid="source-badge"
               title={`Rows live on data source ${meta.data.data_source}`}
             >
-              {meta.data.data_source} · {meta.data.source_access === 'read_write' ? 'read-write' : 'read-only'}
+              {meta.data.data_source} · {meta.data.source_writable ? 'read-write' : 'read-only'}
             </span>
           )}
         </div>
@@ -305,15 +321,18 @@ export function ListView({
           >
             Report
           </Link>
-          {/* IMP-010: append rows to this Table from a CSV/Excel file. */}
-          <Link
-            to="/desk/import"
-            search={{ table: doctype }}
-            className="fc-btn"
-            data-testid="open-import"
-          >
-            Import
-          </Link>
+          {/* IMP-010: append rows to this Table from a CSV/Excel file —
+              absent on read-only sources (EDS-13). */}
+          {!isSourceReadOnly(meta.data) && (
+            <Link
+              to="/desk/import"
+              search={{ table: doctype }}
+              className="fc-btn"
+              data-testid="open-import"
+            >
+              Import
+            </Link>
+          )}
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Choice') && (
             <Link
               to="/desk/$doctype/view/kanban"
@@ -436,18 +455,22 @@ export function ListView({
         <table className="w-full text-sm">
           <thead className="bg-[var(--color-subtle)] text-left">
             <tr>
-              <th className="w-8 border-b border-[var(--color-border)] px-3 py-2">
-                <input
-                  type="checkbox"
-                  data-testid="select-all"
-                  checked={rows.length > 0 && rows.every((r) => selected.has(String(r.name)))}
-                  onChange={(e) =>
-                    setSelected(
-                      e.target.checked ? new Set(rows.map((r) => String(r.name))) : new Set(),
-                    )
-                  }
-                />
-              </th>
+              {/* Selection exists only to feed the bulk bar — a read-only
+                  source has neither (EDS-13: absent, not disabled). */}
+              {!isSourceReadOnly(meta.data) && (
+                <th className="w-8 border-b border-[var(--color-border)] px-3 py-2">
+                  <input
+                    type="checkbox"
+                    data-testid="select-all"
+                    checked={rows.length > 0 && rows.every((r) => selected.has(String(r.name)))}
+                    onChange={(e) =>
+                      setSelected(
+                        e.target.checked ? new Set(rows.map((r) => String(r.name))) : new Set(),
+                      )
+                    }
+                  />
+                </th>
+              )}
               {columns.map((col) => (
                 <th key={col.column_name} className="border-b border-[var(--color-border)]">
                   <button
@@ -465,14 +488,16 @@ export function ListView({
           <tbody data-testid="list-rows">
             {rows.map((row) => (
               <tr key={String(row.name)} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]">
-                <td className="px-3 py-2">
-                  <input
-                    type="checkbox"
-                    data-testid="row-check"
-                    checked={selected.has(String(row.name))}
-                    onChange={() => toggleRow(String(row.name))}
-                  />
-                </td>
+                {!isSourceReadOnly(meta.data) && (
+                  <td className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      data-testid="row-check"
+                      checked={selected.has(String(row.name))}
+                      onChange={() => toggleRow(String(row.name))}
+                    />
+                  </td>
+                )}
                 {columns.map((col, i) => (
                   <td key={col.column_name} className="px-3 py-2">
                     {i === 0 ? (

@@ -11,6 +11,7 @@ import { applySla } from './sla'
 import { getActiveWorkflow, stateField } from './workflow'
 import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
+import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import {
   assertDocPermission,
   assertPermission,
@@ -23,6 +24,7 @@ import {
   stripUnwritableFields,
 } from './permissions'
 import {
+  assertBoundScope,
   boundFetchDoc,
   isBound,
   mapRowOut,
@@ -324,7 +326,6 @@ async function saveChildren(
 // Credential columns that must NEVER be serialized, even though some are
 // declared as (hidden) Columns for storage. Everything not listed here
 // and not a standard column or Column is dropped too.
-const SENSITIVE_COLUMNS = new Set(['password_hash', 'api_secret_hash', 'api_key', 'new_password'])
 
 // Raw table columns carry server-internal state. Only standard columns and
 // declared (non-sensitive) Columns leave through the API, regardless of
@@ -520,6 +521,11 @@ async function saveBoundDoc(
   const ctx = await writableContext(meta)
   const providedName =
     values.name == null || values.name === '' ? null : String(values.name)
+  // Authorization BEFORE any statement reaches the source, and through the
+  // bound gate: an own_rows grant can never authorize a table with no owner
+  // column (review finding 1). insert-mode (or no name) is a create; a
+  // named upsert is a write.
+  await assertBoundScope(meta, user, mode === 'insert' || !providedName ? 'create' : 'write')
   if (providedName) {
     const existing = await ctx.driver.getDoc(ctx.bind, providedName)
     if (existing) {
@@ -530,7 +536,9 @@ async function saveBoundDoc(
     if (mode !== 'insert')
       throw new AppError('NotFoundError', `${meta.name} ${providedName} not found`)
   }
-  await assertPermission(user, meta.name, 'create')
+  // PERM-005: Data Scopes judge the incoming Reference values exactly as on
+  // a native insert.
+  await assertUserPermissions(user, meta, values)
   const writeTiers = await permittedTiers(user, meta.name, 'write')
   const fieldValues = validateValues(
     meta,
@@ -574,7 +582,10 @@ async function updateBoundDoc(
       'ValidationError',
       'Updates must include the updated_at timestamp of the loaded row',
     )
-  await assertPermission(user, meta.name, 'write')
+  // Re-asserted for direct callers; own_rows can never authorize a bound
+  // write (finding 1), and Data Scopes judge the row being changed.
+  await assertBoundScope(meta, user, 'write')
+  await assertUserPermissions(user, meta, current)
   const writeTiers = await permittedTiers(user, meta.name, 'write')
   const fieldValues = validateValues(
     meta,
@@ -889,11 +900,12 @@ export async function deleteDoc(
   table: string,
   name: string,
   user = 'Administrator',
+  opts: { expectUpdatedAt?: string | null } = {},
 ): Promise<void> {
   const meta = await getMeta(table)
   if (meta.kind === 'settings' || meta.kind === 'sub_table' || ENGINE_MANAGED.has(table))
     throw new AppError('ValidationError', `${table} rows cannot be deleted directly`)
-  if (isBound(meta)) return deleteBoundDoc(meta, name, user)
+  if (isBound(meta)) return deleteBoundDoc(meta, name, user, opts.expectUpdatedAt ?? null)
   await sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     const [existing] = await tx`
@@ -957,11 +969,20 @@ export async function deleteDoc(
 // EDS-6: delete a bound row on the source. The link-integrity check runs
 // over control-DB Tables only (a Reference from a native Table to this bound
 // row still blocks deletion); the source's own FKs enforce themselves.
-async function deleteBoundDoc(meta: TableMeta, name: string, user: string): Promise<void> {
+// expectUpdatedAt carries the revision the client loaded (finding 5: a
+// positional csv row may shift under an outside edit — the delete must
+// conflict, not splice whatever now sits at that position).
+async function deleteBoundDoc(
+  meta: TableMeta,
+  name: string,
+  user: string,
+  expectUpdatedAt: string | null,
+): Promise<void> {
   const ctx = await writableContext(meta)
+  await assertBoundScope(meta, user, 'delete')
   const existing = await ctx.driver.getDoc(ctx.bind, name)
   if (!existing) throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
-  await assertPermission(user, meta.name, 'delete')
+  await assertUserPermissions(user, meta, mapRowOut(ctx.bind, existing))
   const linkFields = await sql`
     select parent, column_name from column_def
     where column_type = 'Reference' and reference_table = ${meta.name}`
@@ -987,7 +1008,14 @@ async function deleteBoundDoc(meta: TableMeta, name: string, user: string): Prom
     tx: sql,
   }
   await runHooks('on_trash', hctx)
-  await ctx.driver.remove(ctx.bind, name)
+  const outcome = await ctx.driver.remove(ctx.bind, name, expectUpdatedAt)
+  if (outcome === 'missing')
+    throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
+  if (outcome === 'conflict')
+    throw new AppError(
+      'ConflictError',
+      `${meta.name} ${name} has been modified after you loaded it`,
+    )
 }
 
 // DOC-012: rename a row's primary key and update every Reference that
@@ -1057,14 +1085,17 @@ export async function getDoc(
   const meta = await getMeta(table)
   if (meta.kind === 'settings') return getSingle(meta, user)
   if (isBound(meta)) {
-    // EDS-5: single row by pk from the source; permission gate control-side.
-    // Bound rows have no created_by, so own-rows scoping denies by design.
+    // EDS-5: single row by pk from the source; permission gate control-side
+    // and BEFORE the foreign fetch (review finding 1). Bound rows have no
+    // created_by, so own-rows scoping denies by design; Data Scopes judge
+    // the fetched row exactly as natively.
+    const boundShared = await isSharedWith(user, table, name, 'read')
+    if (!boundShared) await assertPermission(user, table, 'read')
     const doc = await boundFetchDoc(meta, name)
     if (!doc) throw new AppError('NotFoundError', `${table} ${name} not found`)
-    const boundShared = await isSharedWith(user, table, name, 'read')
     if (!boundShared) {
-      await assertPermission(user, table, 'read')
       await assertDocPermission(user, table, 'read', String(doc.created_by ?? ''))
+      await assertUserPermissions(user, meta, doc)
     }
     const tiers = boundShared
       ? new Set<'basic' | 'restricted'>(['basic', 'restricted'])

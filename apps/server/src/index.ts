@@ -1090,7 +1090,12 @@ app.delete('/api/table/:table/:name', async (c) => {
   const table = await resolveTableName(c.req.param('table'))
   const name = c.req.param('name')
   const user = c.get('user')
-  await deleteDoc(table, name, user.name)
+  // Optional optimistic echo (?updated_at=...): on source-bound rows the
+  // delete conflicts when the store changed after the client loaded —
+  // essential for csv-folder rows, whose identity is positional.
+  await deleteDoc(table, name, user.name, {
+    expectUpdatedAt: c.req.query('updated_at') ?? null,
+  })
   publishDocEvent(table, name, 'deleted')
   return c.json({ ok: true })
 })

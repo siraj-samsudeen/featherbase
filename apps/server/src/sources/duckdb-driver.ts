@@ -140,6 +140,17 @@ function buildWhere(filters: SourceFilter[]): { text: string; values: unknown[] 
         values.push(...list)
         break
       }
+      case 'in_or_null': {
+        // Data Scope narrowing (PERM-005): an UNSET reference passes.
+        const list = Array.isArray(f.value) ? (f.value as unknown[]) : []
+        if (!list.length) {
+          parts.push(`${col} is null`)
+          break
+        }
+        parts.push(`(${col} is null or ${col} in (${list.map(() => '?').join(', ')}))`)
+        values.push(...list)
+        break
+      }
     }
   }
   return { text: parts.length ? parts.join(' and ') : 'true', values }

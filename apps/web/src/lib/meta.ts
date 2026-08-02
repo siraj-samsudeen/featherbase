@@ -48,6 +48,9 @@ export interface TableMeta {
   external_modified?: string | null
   source_access?: 'read_only' | 'read_write' | null
   source_engine?: string | null
+  // Server-derived: engine can write AND access is read_write. The Desk
+  // gates every write affordance on this, never on access alone.
+  source_writable?: boolean
   created_by: string
   updated_by: string
   created_at: string
@@ -67,10 +70,12 @@ export const COLUMN_TYPES = [
 
 // EDS-7: a bound Table on a read-only source (or a source whose engine has
 // no write path) accepts no writes; the Desk drops the affordances entirely
-// (EDS-13: "absent, not merely disabled").
+// (EDS-13: "absent, not merely disabled"). Trusts the server-derived
+// source_writable — a duckdb source misconfigured read_write still reads
+// as read-only here (review finding 7).
 export function isSourceReadOnly(meta: TableMeta | undefined): boolean {
   if (!meta?.data_source) return false
-  return meta.source_access !== 'read_write'
+  return meta.source_writable !== true
 }
 
 export function useMeta(doctype: string) {

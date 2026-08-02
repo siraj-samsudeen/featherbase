@@ -1,6 +1,7 @@
 import { AppError } from '../errors'
 import type { TableMeta } from '../meta'
-import { permissionScope } from '../permissions'
+import { getUserPermissionMap, isBypassUser, permissionScope } from '../permissions'
+import { isSensitiveColumn } from '../sensitive-columns'
 import { getDriver, getSource, assertAllowed } from './registry'
 import type { Binding, ListSpec, SourceConfig, SourceDriver, SourceFilter, SourceRow } from './types'
 
@@ -38,6 +39,12 @@ export async function boundContext(meta: TableMeta): Promise<BoundContext> {
     modified: meta.external_modified ?? null,
     columns: meta.columns
       .filter((c) => !NO_COLUMN_TYPES.has(c.column_type))
+      // Credential-named columns are as unreadable on a source as they are
+      // natively — dropped from the binding, so they can never be selected,
+      // filtered, sorted, mapped out, or written (review finding 2).
+      .filter(
+        (c) => !isSensitiveColumn(c.column_name) && !isSensitiveColumn(c.source_column || ''),
+      )
       .map((c) => ({
         column_name: c.column_name,
         source_column: c.source_column || c.column_name,
@@ -107,16 +114,46 @@ function mapFilters(bind: Binding, filters: unknown[]): SourceFilter[] {
 }
 
 // EDS-4: a bound Table has no owner column, so owner-scoped permissions
-// cannot be honored — deny loudly rather than leak every row.
-async function assertReadScope(meta: TableMeta, user: string): Promise<void> {
-  const scope = await permissionScope(user, meta.name, 'read')
+// cannot be honored — deny loudly rather than leak (or mutate) every row.
+// One gate for every action; document.ts uses it for create/write/delete
+// (review finding 1: assertPermission alone accepted own_rows grants).
+export async function assertBoundScope(
+  meta: TableMeta,
+  user: string,
+  action: 'read' | 'create' | 'write' | 'delete',
+): Promise<void> {
+  const scope = await permissionScope(user, meta.name, action)
   if (scope === 'none')
-    throw new AppError('PermissionError', `No read permission on ${meta.name} for ${user}`)
+    throw new AppError('PermissionError', `No ${action} permission on ${meta.name} for ${user}`)
   if (scope === 'own_rows')
     throw new AppError(
       'PermissionError',
       `${meta.name} is bound to data source ${meta.data_source} and has no owner column — own-rows permissions cannot apply`,
     )
+}
+
+// PERM-005 parity for bound lists (review finding 1): Data Scopes narrow by
+// the table itself (pk ∈ allowed) and by Reference columns pointing at
+// restricted tables — with the native NULL-passes semantics.
+async function boundScopeFilters(
+  meta: TableMeta,
+  user: string,
+  bind: Binding,
+): Promise<SourceFilter[]> {
+  if (await isBypassUser(user)) return []
+  const upMap = await getUserPermissionMap(user)
+  if (!upMap.size) return []
+  const filters: SourceFilter[] = []
+  const own = upMap.get(meta.name)
+  if (own) filters.push({ column: bind.pk, op: 'in', value: [...own] })
+  for (const c of meta.columns) {
+    if (c.column_type !== 'Reference' || !c.reference_table) continue
+    const allowed = upMap.get(c.reference_table)
+    if (!allowed) continue
+    const sc = sourceColumnFor(bind, c.column_name)
+    if (sc) filters.push({ column: sc, op: 'in_or_null', value: [...allowed] })
+  }
+  return filters
 }
 
 export interface BoundListArgs {
@@ -128,8 +165,9 @@ export interface BoundListArgs {
 }
 
 export async function boundGetList(meta: TableMeta, args: BoundListArgs, user: string) {
-  await assertReadScope(meta, user)
+  await assertBoundScope(meta, user, 'read')
   const { bind, driver } = await boundContext(meta)
+  const scopeFilters = await boundScopeFilters(meta, user, bind)
 
   const fields = args.fields?.length ? args.fields : ['name']
   const selectCols = fields.map((f) => requireSourceColumn(bind, f, 'selected'))
@@ -147,7 +185,7 @@ export async function boundGetList(meta: TableMeta, args: BoundListArgs, user: s
   const orderColumn = sourceColumnFor(bind, orderField) ?? bind.pk
 
   const spec: ListSpec = {
-    filters: mapFilters(bind, args.filters ?? []),
+    filters: [...mapFilters(bind, args.filters ?? []), ...scopeFilters],
     columns: selectCols,
     order: { column: orderColumn, dir: orderDir === 'desc' ? 'desc' : 'asc' },
     limit: Math.min(Math.max(args.limit_page_length ?? 20, 1), 500),
@@ -167,9 +205,10 @@ export async function boundCountDocs(
   filters: unknown[],
   user: string,
 ): Promise<number> {
-  await assertReadScope(meta, user)
+  await assertBoundScope(meta, user, 'read')
   const { bind, driver } = await boundContext(meta)
-  return driver.count(bind, mapFilters(bind, filters))
+  const scopeFilters = await boundScopeFilters(meta, user, bind)
+  return driver.count(bind, [...mapFilters(bind, filters), ...scopeFilters])
 }
 
 export async function boundGroupCount(
@@ -178,9 +217,14 @@ export async function boundGroupCount(
   filters: unknown[],
   user: string,
 ): Promise<{ label: string; value: number }[]> {
-  await assertReadScope(meta, user)
+  await assertBoundScope(meta, user, 'read')
   const { bind, driver } = await boundContext(meta)
-  return driver.groupCount(bind, requireSourceColumn(bind, field, 'group_by'), mapFilters(bind, filters))
+  const scopeFilters = await boundScopeFilters(meta, user, bind)
+  return driver.groupCount(
+    bind,
+    requireSourceColumn(bind, field, 'group_by'),
+    [...mapFilters(bind, filters), ...scopeFilters],
+  )
 }
 
 // Raw fetch used by document.ts — permission checks and tier filtering stay

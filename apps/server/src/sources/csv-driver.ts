@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { AppError } from '../errors'
@@ -79,10 +80,16 @@ async function loadModel(cfg: SourceConfig, rel: string): Promise<{ file: string
   return { file, model, mtimeMs: stat.mtimeMs }
 }
 
-// Atomic write: temp file in the same directory, then rename over the
-// original. Refreshes the cache from the new stat.
+// Atomic write: uniquely-named temp file in the same directory (a fixed
+// name would let two writers rename each other's partial files — review
+// finding 5), then rename over the original. Refreshes the cache from the
+// new stat. NOTE: the in-memory per-file lock covers ONE process; running
+// multiple server replicas against the same folder is not supported.
 async function writeModel(file: string, model: CsvModel): Promise<number> {
-  const tmp = path.join(path.dirname(file), `.${path.basename(file)}.fb-tmp`)
+  const tmp = path.join(
+    path.dirname(file),
+    `.${path.basename(file)}.fb-tmp-${process.pid}-${randomBytes(4).toString('hex')}`,
+  )
   await fs.writeFile(tmp, serializeCsv(model), 'utf8')
   await fs.rename(tmp, file)
   const stat = await fs.stat(file)
@@ -143,6 +150,14 @@ function matches(row: SourceRow, f: SourceFilter): boolean {
       return Array.isArray(f.value) && (f.value as unknown[]).some((x) => cmp(v, x) === 0)
     case 'not in':
       return !(Array.isArray(f.value) && (f.value as unknown[]).some((x) => cmp(v, x) === 0))
+    case 'in_or_null':
+      // Data Scope narrowing (PERM-005): an unset value passes. CSV cells
+      // are strings; '' is the unset form.
+      return (
+        v == null ||
+        v === '' ||
+        (Array.isArray(f.value) && (f.value as unknown[]).some((x) => cmp(v, x) === 0))
+      )
   }
 }
 
@@ -290,7 +305,20 @@ export const csvFolderDriver: SourceDriver = {
     return withFileLock(resolveFile(bind.source, bind.table), async () => {
       const { file, model } = await loadModel(bind.source, bind.table)
       const fields = applyValues(model, model.headers.map(() => ''), values)
-      model.records.push({ fields, raw: serializeRecord(fields) })
+      // Authored records get the file's dominant EOL; a file that ends
+      // without a newline keeps that style (the new tail is unterminated,
+      // its predecessor gains the terminator it now needs).
+      const last = model.records[model.records.length - 1]
+      const tailUnterminated = last ? last.eol === '' : model.headerEol === ''
+      if (tailUnterminated) {
+        if (last) last.eol = model.defaultEol
+        else model.headerEol = model.defaultEol
+      }
+      model.records.push({
+        fields,
+        raw: serializeRecord(fields),
+        eol: tailUnterminated ? '' : model.defaultEol,
+      })
       const mtimeMs = await writeModel(file, model)
       return toRow(model, model.records.length - 1, mtimeMs)
     })
@@ -303,17 +331,21 @@ export const csvFolderDriver: SourceDriver = {
       if (idx === -1) return 'missing' as const
       if (expectModified != null && expectModified !== mtimeIso(mtimeMs)) return 'conflict' as const
       const fields = applyValues(model, model.records[idx].fields, values)
-      model.records[idx] = { fields, raw: serializeRecord(fields) }
+      model.records[idx] = { fields, raw: serializeRecord(fields), eol: model.records[idx].eol }
       const newMtime = await writeModel(file, model)
       return toRow(model, idx, newMtime)
     })
   },
 
-  async remove(bind, pk) {
-    await withFileLock(resolveFile(bind.source, bind.table), async () => {
-      const { file, model } = await loadModel(bind.source, bind.table)
+  async remove(bind, pk, expectModified) {
+    return withFileLock(resolveFile(bind.source, bind.table), async () => {
+      const { file, model, mtimeMs } = await loadModel(bind.source, bind.table)
       const idx = pkIndex(model, pk)
-      if (idx === -1) throw new AppError('NotFoundError', `Row ${pk} not found in ${bind.table}`)
+      if (idx === -1) return 'missing' as const
+      // Positional identity makes a stale delete land on whatever row now
+      // occupies the position (review finding 5) — the revision echo turns
+      // that into a conflict instead.
+      if (expectModified != null && expectModified !== mtimeIso(mtimeMs)) return 'conflict' as const
       model.records.splice(idx, 1)
       await writeModel(file, model)
     })

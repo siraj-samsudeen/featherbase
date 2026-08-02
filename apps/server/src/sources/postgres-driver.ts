@@ -96,6 +96,18 @@ function buildWhere(filters: SourceFilter[], startAt = 1): { text: string; value
         values.push(...list)
         break
       }
+      case 'in_or_null': {
+        // Data Scope narrowing (PERM-005): an UNSET reference passes.
+        const list = Array.isArray(f.value) ? (f.value as unknown[]) : []
+        if (!list.length) {
+          parts.push(`${col} is null`)
+          break
+        }
+        const ph = list.map(() => `$${n++}`)
+        parts.push(`(${col} is null or ${col} in (${ph.join(', ')}))`)
+        values.push(...list)
+        break
+      }
     }
   }
   return { text: parts.length ? parts.join(' and ') : 'true', values }
@@ -147,8 +159,11 @@ export const postgresDriver: SourceDriver = {
                 count(*) over (partition by kcu.table_schema, kcu.table_name) as pk_size
          from information_schema.table_constraints tc
          join information_schema.key_column_usage kcu
-           on kcu.constraint_name = tc.constraint_name
+           on kcu.constraint_catalog = tc.constraint_catalog
+          and kcu.constraint_schema = tc.constraint_schema
+          and kcu.constraint_name = tc.constraint_name
           and kcu.table_schema = tc.table_schema
+          and kcu.table_name = tc.table_name
          where tc.constraint_type = 'PRIMARY KEY'
        ) pk on pk.table_schema = c.table_schema and pk.table_name = c.table_name
           and pk.column_name = c.column_name
@@ -245,13 +260,19 @@ export const postgresDriver: SourceDriver = {
   },
 
   async update(bind, pk, values, expectModified) {
-    const entries = Object.entries(values)
-    if (!entries.length) {
+    const entries = Object.entries(values).filter(([c]) => c !== bind.modified)
+    const sets = entries.map(([c], i) => `${quoteIdent(c)} = $${i + 1}`)
+    const params: unknown[] = entries.map(([, v]) => v)
+    // The revision must ADVANCE on every Featherbase write — a plain
+    // DEFAULT now() column changes only on insert, so without this two Desk
+    // editors would silently overwrite each other (review finding 3). This
+    // also makes the empty payload go through the same statement, so its
+    // revision check still runs.
+    if (bind.modified) sets.push(`${quoteIdent(bind.modified)} = now()`)
+    if (!sets.length) {
       const row = await this.getDoc(bind, pk)
       return row ?? 'missing'
     }
-    const sets = entries.map(([c], i) => `${quoteIdent(c)} = $${i + 1}`)
-    const params: unknown[] = entries.map(([, v]) => v)
     let where = `${quoteIdent(bind.pk)}::text = $${params.length + 1}`
     params.push(pk)
     if (bind.modified && expectModified != null) {
@@ -271,10 +292,21 @@ export const postgresDriver: SourceDriver = {
     return still ? 'conflict' : 'missing'
   },
 
-  async remove(bind, pk) {
-    await run(bind.source, `delete from ${relation(bind)} where ${quoteIdent(bind.pk)}::text = $1`, [
-      pk,
-    ])
+  async remove(bind, pk, expectModified) {
+    const params: unknown[] = [pk]
+    let where = `${quoteIdent(bind.pk)}::text = $1`
+    if (bind.modified && expectModified != null) {
+      where += ` and date_trunc('milliseconds', ${quoteIdent(bind.modified)}) = date_trunc('milliseconds', $2::timestamptz)`
+      params.push(expectModified)
+    }
+    const rows = await run(
+      bind.source,
+      `delete from ${relation(bind)} where ${where} returning ${quoteIdent(bind.pk)}`,
+      params,
+    )
+    if (rows[0]) return
+    const still = await this.getDoc(bind, pk)
+    return still ? 'conflict' : 'missing'
   },
 
   dispose(sourceName) {

@@ -1,5 +1,6 @@
 import { sql } from './db'
 import { AppError } from './errors'
+import { ENGINE_WRITABLE, type SourceEngine } from './sources/types'
 
 // Column types the engine understands (columns generated in META-002/003).
 export const COLUMN_TYPE_VALUES = [
@@ -74,6 +75,10 @@ export interface TableMeta {
   // source changes (spec S3).
   source_access?: 'read_only' | 'read_write' | null
   source_engine?: string | null
+  // The server-derived truth the Desk gates all write affordances on:
+  // engine capability AND access mode (review finding 7 — access alone
+  // mislabels a read_write-configured duckdb source as editable).
+  source_writable?: boolean
   columns: ColumnDef[]
 }
 
@@ -175,6 +180,9 @@ export async function getMeta(name: string): Promise<TableMeta> {
       select access, engine from data_source where name = ${meta.data_source}`
     meta.source_access = (src?.access as 'read_only' | 'read_write' | undefined) ?? 'read_only'
     meta.source_engine = (src?.engine as string | undefined) ?? null
+    meta.source_writable =
+      meta.source_access === 'read_write' &&
+      (ENGINE_WRITABLE[meta.source_engine as SourceEngine] ?? false)
   }
 
   // CUST-002: overlay Metadata Overrides onto the effective meta. The base

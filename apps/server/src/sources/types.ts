@@ -7,6 +7,16 @@
 export type SourceEngine = 'postgres' | 'duckdb' | 'csv-folder'
 export type SourceAccess = 'read_only' | 'read_write'
 
+// Hard per-engine write capability (mirrors each driver's `writable` flag,
+// kept here dependency-free so meta enrichment can consult it without
+// loading driver modules). A source is effectively writable only when the
+// engine can write AND access is read_write.
+export const ENGINE_WRITABLE: Record<SourceEngine, boolean> = {
+  postgres: true,
+  duckdb: false,
+  'csv-folder': true,
+}
+
 export interface SourceConfig {
   name: string
   engine: SourceEngine
@@ -38,7 +48,10 @@ export interface Binding {
 
 export interface SourceFilter {
   column: string // source column name, already validated against the binding
-  op: '=' | '!=' | '>' | '<' | '>=' | '<=' | 'like' | 'not like' | 'in' | 'not in'
+  // 'in_or_null' is internal-only (never accepted from callers): Data Scope
+  // narrowing on Reference columns, matching the native scopedWhere's
+  // "(col is null or col in ...)" semantics.
+  op: '=' | '!=' | '>' | '<' | '>=' | '<=' | 'like' | 'not like' | 'in' | 'not in' | 'in_or_null'
   value: unknown
 }
 
@@ -94,7 +107,10 @@ export interface SourceDriver {
     values: SourceRow,
     expectModified: string | null,
   ): Promise<SourceRow | 'conflict' | 'missing'>
-  remove(bind: Binding, pk: string): Promise<void>
+  // expectModified: the revision the caller loaded (same semantics as
+  // update); 'conflict' when the store changed since, 'missing' when the pk
+  // no longer resolves. Drivers without a revision notion may ignore it.
+  remove(bind: Binding, pk: string, expectModified: string | null): Promise<void | 'conflict' | 'missing'>
   // Drop any cached pool/instance for this source (config changed).
   dispose(sourceName: string): void
 }

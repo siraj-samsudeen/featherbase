@@ -1,31 +1,39 @@
 // RFC-4180 CSV parsing/serialization for the csv-folder driver, written for
 // BYTE STABILITY: every untouched record keeps its original raw text (slice
-// of the source file), so a read→write round trip with no edits reproduces
-// the file byte for byte — quoting quirks, CRLF, trailing newline and all.
-// Only records actually edited or inserted are re-serialized (minimal
-// RFC-4180 quoting). That property is what keeps dbt seed diffs reviewable.
+// of the source file) AND its original line terminator — including mixed
+// \n / \r\n / lone-\r files — so a read→write round trip with no edits
+// reproduces the file byte for byte. Only records actually edited or
+// inserted are re-serialized (minimal RFC-4180 quoting, terminated with the
+// file's dominant EOL). That property is what keeps dbt seed diffs
+// reviewable.
+
+export interface CsvRecord {
+  fields: string[]
+  raw: string // record text exactly as it appeared (no EOL)
+  eol: string // the terminator that FOLLOWED this record ('' = end of file)
+}
 
 export interface CsvModel {
-  headerRaw: string // header record exactly as it appeared (no EOL)
+  headerRaw: string
   headers: string[]
-  // One entry per data record: parsed fields + the raw record text (no EOL).
-  records: { fields: string[]; raw: string }[]
-  eol: '\n' | '\r\n'
-  trailingNewline: boolean
+  headerEol: string
+  records: CsvRecord[]
+  // Dominant terminator, used only for records WE author.
+  defaultEol: '\n' | '\r\n'
 }
 
 export function parseCsv(text: string): CsvModel {
-  const eol: '\n' | '\r\n' = text.includes('\r\n') ? '\r\n' : '\n'
-  const records: { fields: string[]; raw: string }[] = []
+  const defaultEol: '\n' | '\r\n' = text.includes('\r\n') ? '\r\n' : '\n'
+  const records: CsvRecord[] = []
   let fields: string[] = []
   let field = ''
   let recordStart = 0
   let inQuotes = false
   let i = 0
-  const pushRecord = (end: number) => {
+  const pushRecord = (end: number, eol: string) => {
     fields.push(field)
     field = ''
-    records.push({ fields, raw: text.slice(recordStart, end) })
+    records.push({ fields, raw: text.slice(recordStart, end), eol })
     fields = []
   }
   while (i < text.length) {
@@ -58,25 +66,25 @@ export function parseCsv(text: string): CsvModel {
     }
     if (ch === '\n' || ch === '\r') {
       const end = i
-      if (ch === '\r' && text[i + 1] === '\n') i += 2
-      else i++
-      pushRecord(end)
+      const eol = ch === '\r' && text[i + 1] === '\n' ? '\r\n' : ch
+      i += eol.length
+      pushRecord(end, eol)
       recordStart = i
       continue
     }
     field += ch
     i++
   }
-  const trailingNewline = text.length > 0 && recordStart >= text.length
-  if (!trailingNewline) pushRecord(text.length)
+  // Text remaining after the last terminator = a final record with no EOL.
+  if (recordStart < text.length || text.length === 0) pushRecord(text.length, '')
 
-  const header = records.shift() ?? { fields: [], raw: '' }
+  const header = records.shift() ?? { fields: [], raw: '', eol: '' }
   return {
     headerRaw: header.raw,
     headers: header.fields,
+    headerEol: header.eol,
     records,
-    eol,
-    trailingNewline,
+    defaultEol,
   }
 }
 
@@ -90,6 +98,7 @@ export function serializeRecord(fields: string[]): string {
 }
 
 export function serializeCsv(model: CsvModel): string {
-  const lines = [model.headerRaw, ...model.records.map((r) => r.raw)]
-  return lines.join(model.eol) + (model.trailingNewline ? model.eol : '')
+  let out = model.headerRaw + model.headerEol
+  for (const r of model.records) out += r.raw + r.eol
+  return out
 }
