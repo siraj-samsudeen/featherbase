@@ -1,5 +1,56 @@
 # Progress Log
 
+## 2026-08-02 — NAV-002: server-side relationship joins ('related' filter)
+
+The follow-up noted on #100/#102: the join between Explore panes (and behind
+Connections via-links) moved from browser-side name shuttling into the
+database.
+
+- **`'related'` filter operator** (`query.ts`): the one relationship-shaped
+  filter the list language understands — `[col, 'related', {table, via?,
+  column?, filters?}]` compiles to IN/EXISTS subqueries. Three shapes,
+  exactly the relationships the metadata models: Reference column →
+  target; `'parent'` → owning row (sub-table rows); `'name'` + `via` →
+  rows CONTAINING a sub-table row pointing at the target ("which POs
+  contain this Item"). `filters` recurses (a pane chain is a related filter
+  inside a related filter), capped at 3 levels. **Every hop runs through
+  the target table's own scopedWhere** — read permission, own_rows, Data
+  Scopes — so a related filter can never surface the effect of rows the
+  caller cannot read (tested: Data-Scoped hop, unreadable target 403s).
+  Implementation note: postgres-client fragments are thenables, so the
+  now-async filter compiler passes them boxed in `{frag}` — awaiting a
+  fragment would EXECUTE it.
+- **`GET /api/table/:t:aggregate?filters&sum=col`** — scoped `{count, sum}`
+  over the same filter language, so pane footers show true totals.
+- **`:connections` via-links** now return a compact related filter instead
+  of up to 500 owner names — nothing to disclose, no cap (501-owner test
+  now asserts the filter matches all 501), URLs short and never stale.
+  `relatedOwners()` deleted.
+- **Explore** chains panes with related filters: no name fetching, no
+  100-row ceiling, the "Selection needed" truncation notice is GONE
+  (panes are exact at any scale), Σ/count come from `:aggregate`, and
+  **via-sub-table hops are real steps** ("Purchase Order · via PO Line"
+  from an Item root). ListView filter chips render related specs readably.
+- **Root-cause fix while verifying**: TanStack Router's default search
+  stringifier writes spaces as `+` but its parser does not decode `+`
+  back — any search value with a space round-tripped corrupted (first hit:
+  a via spec naming "PO Line"; latent for text filters too). `main.tsx`
+  now wraps `defaultStringifySearch`, rewriting `+` → `%20` (a literal
+  `+` is emitted as `%2B`, so the rewrite is exact). Verified in-browser
+  with a value containing both a space and a literal `+`.
+
+Verified: `related-filter.test.ts` (8 tests: three shapes, 2-deep nesting,
+per-hop scoping, 403 on unreadable target, malformed specs, depth cap,
+aggregate), connections tests rewritten to EVALUATE returned filters
+per-user through the list API; browser: 123-supplier chain exact with no
+selection, Σ 116,080 true total, Item → PO via-hop narrows to 3 on
+selection, connection click lands a readable related-filter URL. Full
+`pnpm test` green (server 100 files / 519 tests, web 12), smoke green,
+both typechecks clean, prior pattern + review-fix browser runs still pass.
+
+Next: the remaining #100 follow-up is per-table curation of related tabs
+(order/visibility) once real usage shows which hubs need it.
+
 ## Visual identity (standing directive for all UI work)
 
 The Admin is reskinned to look like Frappe. Every new UI feature MUST inherit

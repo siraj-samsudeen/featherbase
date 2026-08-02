@@ -821,6 +821,20 @@ export function StandardFilters({
   )
 }
 
+// Chips must stay readable for non-scalar filter values: a 'related'
+// relationship filter (NAV-002) names its target, long in-lists truncate.
+function filterValueLabel(op: string, value: unknown): string {
+  if (op === 'related' && value && typeof value === 'object' && !Array.isArray(value)) {
+    const spec = value as { table?: string; via?: string }
+    return spec.via ? `${spec.table ?? ''} via ${spec.via}` : String(spec.table ?? '')
+  }
+  if (Array.isArray(value))
+    return value.length > 3
+      ? `${value.slice(0, 3).map(String).join(', ')} +${value.length - 3}`
+      : value.map(String).join(', ')
+  return String(value)
+}
+
 export function FilterBar({
   meta,
   filters,
@@ -898,7 +912,7 @@ export function FilterBar({
               className="fc-pill bg-[var(--color-subtle)] text-[var(--color-ink)] gap-1 border border-[var(--color-border)]"
               data-testid="filter-chip"
             >
-              {f[0]} {f[1]} {String(f[2])}
+              {f[0]} {f[1]} {filterValueLabel(f[1], f[2])}
               <button
                 aria-label="Remove filter"
                 onClick={() => onChange(filters.filter((_, j) => j !== i))}
