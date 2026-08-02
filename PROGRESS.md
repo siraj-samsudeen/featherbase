@@ -13,6 +13,38 @@ this look — do not introduce ad-hoc colors/spacing:
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
 
+## 2026-08-02 — rama-dw-os-dev: the old featherbase Railway project becomes the dev server
+
+The orphaned `featherbase` Railway project (GitHub-connected, both services
+failing on every push) is now **rama-dw-os-dev**, a working dev/staging
+install at https://featherbase-server-production.up.railway.app:
+
+- It had **no database at all** — no Postgres service, no `DATABASE_URL`,
+  so the container fell back to `localhost:5432` and every deploy since
+  creation had failed. It now has its own `rama-dw-os-dev-db` Postgres, a
+  `/data` volume, and the same env-var credential set as prod (control
+  plane over the **public proxy** — Railway private networking does not
+  cross projects). The obsolete `web` service (pre-#57 two-service layout)
+  was deleted on owner confirmation.
+- **Gotcha that cost three failed deploys: Railway's `startCommand` is not
+  a shell** — `pnpm --filter server release && pnpm --filter server start`
+  ran the release (pnpm swallowed the rest as script args) and then the
+  container simply exited; logs show migrations, then silence. And two
+  traps on top: clearing the field via GraphQL `startCommand: null` is
+  ignored (send `""`), and `railway redeploy` reuses the previous
+  deployment's recorded config, so config fixes need a NEW deploy. The
+  working shape is prod's: `preDeployCommand` for the release step, image
+  CMD for serving.
+- The service stays GitHub-connected (`siraj-samsudeen/featherbase`), so
+  pushes auto-deploy it — real staging once the sources branch merges;
+  today it runs the branch via `railway up`.
+- Configured live: brand "Rama DW OS Dev"; `railway-control` source
+  **read_only** (a test server must not write production control tables)
+  with the 3 bindable tables reflected; `motherduck` source registered
+  but MotherDuck again UNAVAILABLE from containers (same as prod — retry
+  in the Source Browser). Administrator password rotated (old `admin`
+  verified dead) and stored in gitignored `apps/server/.env.dev-admin`.
+
 ## 2026-07-31 — Rama DW OS: first production deployment (Railway)
 
 Featherbase now runs in production as **Rama DW OS** at
