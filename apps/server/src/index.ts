@@ -43,6 +43,7 @@ import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
 import { eventSummary, recordEvents, routineSuggestion, validateEventBatch } from './events'
+import { createSavedView, deleteSavedView, listSavedViews, setSavedViewShared } from './saved-views'
 import { runApiScript } from './server-scripts'
 import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
@@ -363,6 +364,31 @@ app.post('/api/events', async (c) => {
 
 app.get('/api/events/summary', async (c) => {
   return c.json({ entries: await eventSummary(who(c)) })
+})
+
+// #101 Phase 6: saved views — list is owner's + shared; create/share/delete
+// are owner-scoped inside the module.
+app.get('/api/saved_views', async (c) => {
+  const table = c.req.query('table')
+  if (!table) throw new AppError('ValidationError', 'Expected ?table=<Table name>')
+  return c.json({ views: await listSavedViews(who(c), table) })
+})
+
+app.post('/api/saved_views', async (c) => {
+  const view = await createSavedView(who(c), await c.req.json().catch(() => null))
+  return c.json(view, 201)
+})
+
+app.post('/api/saved_views/:name/share', async (c) => {
+  const { shared } = (await c.req.json().catch(() => ({}))) as { shared?: boolean }
+  if (typeof shared !== 'boolean') throw new AppError('ValidationError', 'Expected { shared: boolean }')
+  await setSavedViewShared(who(c), c.req.param('name'), shared)
+  return c.json({ ok: true })
+})
+
+app.delete('/api/saved_views/:name', async (c) => {
+  await deleteSavedView(who(c), c.req.param('name'))
+  return c.json({ ok: true })
 })
 
 // #101 Phase 5: destinations this user opens on many distinct days — the
