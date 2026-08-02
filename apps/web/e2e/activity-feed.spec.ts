@@ -24,14 +24,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     headers: auth,
     data: { doctype: DT, doc: { name: DOC, title: 'v1' } },
   })
-  if (created.status() === 201) {
-    const body = (await created.json()) as { updated_at: string }
-    // An edit, so the team feed has a Version row to show.
-    await request.post('/api/save_doc', {
-      headers: auth,
-      data: { doctype: DT, doc: { name: DOC, title: 'v2', updated_at: body.updated_at } },
-    })
-  }
+  if (![201, 409, 417].includes(created.status())) throw new Error(`doc: ${created.status()}`)
 })
 
 async function login(page: Page) {
@@ -42,7 +35,29 @@ async function login(page: Page) {
   await page.waitForURL(/\/admin/)
 }
 
-test('#101 P4: my trail and the team changes surface on the Home Page', async ({ page }) => {
+test('#101 P4: my trail and the team changes surface on the Home Page', async ({
+  page,
+  request,
+}) => {
+  // Make the edit NOW, so it is the newest Version and cannot fall outside
+  // the team feed's window however many specs ran before this one.
+  const auth = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
+  const token = ((await auth.json()) as { token: string }).token
+  const row = await request.get(
+    `/api/table/${encodeURIComponent(DT)}/${encodeURIComponent(DOC)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  const { updated_at, title } = (await row.json()) as { updated_at: string; title: string }
+  const edited = await request.post('/api/save_doc', {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      doctype: DT,
+      doc: { name: DOC, title: title === 'v1' ? 'v2' : 'v1', updated_at },
+    },
+  })
+  if (edited.status() !== 200 && edited.status() !== 201)
+    throw new Error(`edit: ${edited.status()}`)
+
   await login(page)
 
   // Generate a read event, then land on the Home Page.

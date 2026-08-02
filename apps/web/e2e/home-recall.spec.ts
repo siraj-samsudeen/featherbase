@@ -12,11 +12,16 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const token = ((await login.json()) as { token: string }).token
   const auth = { Authorization: `Bearer ${token}` }
-  const created = await request.post('/api/save_doc', {
-    headers: auth,
-    data: { doctype: 'User', doc: { name: USER, email: USER, full_name: 'Routine E2E', enabled: true } },
-  })
-  if (![201, 409].includes(created.status())) throw new Error(`user: ${created.status()}`)
+  // Re-runs find the user already there — save_doc would then demand the
+  // optimistic-concurrency timestamp, so create only when missing.
+  const exists = await request.get(`/api/table/User/${encodeURIComponent(USER)}`, { headers: auth })
+  if (exists.status() === 404) {
+    const created = await request.post('/api/save_doc', {
+      headers: auth,
+      data: { doctype: 'User', doc: { name: USER, email: USER, full_name: 'Routine E2E', enabled: true } },
+    })
+    if (created.status() !== 201) throw new Error(`user: ${created.status()}`)
+  }
   await request.post('/api/set_password', { headers: auth, data: { user: USER, password: PWD } })
 
   // Seed the habit AS that user: two list destinations on 5 distinct days,
