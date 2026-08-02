@@ -1,0 +1,994 @@
+<title>Relational Navigation — Featherbase</title>
+<style>
+  :root {
+    --canvas: #f4f5f6; --surface: #ffffff; --subtle: #f7f7f8;
+    --border: #ebeef0; --border-strong: #d1d8dd;
+    --ink: #1c2126; --ink-muted: #6c7680; --ink-faint: #98a1a9;
+    --brand: #2490ef; --brand-dark: #1579d0; --brand-tint: #eef6fe;
+    --good: #38a160; --good-tint: #e6f4ec;
+    --danger: #e24c4c; --danger-tint: #fbecec;
+    --warn: #cb9a26; --warn-tint: #fbf3e0;
+    --radius-card: 0.5rem; --radius-control: 0.375rem;
+    --shadow-card: 0 1px 2px rgba(25,39,52,0.04), 0 1px 3px rgba(25,39,52,0.03);
+    --shadow-pop: 0 8px 24px rgba(25,39,52,0.16);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --canvas: #16191d; --surface: #1c2126; --subtle: #242a31;
+      --border: #2a313a; --border-strong: #3a424c;
+      --ink: #e6e9ec; --ink-muted: #9aa4ae; --ink-faint: #6c7680;
+      --brand-tint: #14304a;
+      --good-tint: #16301f; --danger-tint: #3a1d1d; --warn-tint: #33290f;
+      --shadow-card: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow-pop: 0 8px 24px rgba(0,0,0,0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --canvas: #16191d; --surface: #1c2126; --subtle: #242a31;
+    --border: #2a313a; --border-strong: #3a424c;
+    --ink: #e6e9ec; --ink-muted: #9aa4ae; --ink-faint: #6c7680;
+    --brand-tint: #14304a;
+    --good-tint: #16301f; --danger-tint: #3a1d1d; --warn-tint: #33290f;
+    --shadow-card: 0 1px 2px rgba(0,0,0,0.3);
+    --shadow-pop: 0 8px 24px rgba(0,0,0,0.5);
+  }
+  :root[data-theme="light"] {
+    --canvas: #f4f5f6; --surface: #ffffff; --subtle: #f7f7f8;
+    --border: #ebeef0; --border-strong: #d1d8dd;
+    --ink: #1c2126; --ink-muted: #6c7680; --ink-faint: #98a1a9;
+    --brand-tint: #eef6fe;
+    --good-tint: #e6f4ec; --danger-tint: #fbecec; --warn-tint: #fbf3e0;
+    --shadow-card: 0 1px 2px rgba(25,39,52,0.04), 0 1px 3px rgba(25,39,52,0.03);
+    --shadow-pop: 0 8px 24px rgba(25,39,52,0.16);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--canvas); color: var(--ink);
+    font-family: 'Inter', 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px; line-height: 1.55; margin: 0;
+  }
+  .page { max-width: 1120px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--brand); }
+  h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; margin: 6px 0 10px; text-wrap: balance; }
+  .lede { color: var(--ink-muted); max-width: 62ch; margin: 0 0 6px; }
+  h2 { font-size: 19px; font-weight: 650; letter-spacing: -0.01em; margin: 48px 0 6px; }
+  h2 .idx { color: var(--ink-faint); font-weight: 500; margin-right: 6px; font-variant-numeric: tabular-nums; }
+  .sub { color: var(--ink-muted); max-width: 68ch; margin: 0 0 16px; }
+  .sub strong { color: var(--ink); font-weight: 600; }
+  a { color: var(--brand); text-decoration: none; }
+
+  .journeys { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0 0; }
+  .journey { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card); padding: 10px 14px; font-size: 13px; color: var(--ink-muted); }
+  .journey b { color: var(--ink); font-weight: 600; }
+  .journey .arr { color: var(--brand); margin: 0 4px; }
+
+  /* prior-art strip */
+  .art-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-top: 14px; }
+  .art { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card); padding: 12px 14px; }
+  .art .who { font-weight: 600; font-size: 13px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .art .who .maps { font-size: 11px; font-weight: 600; color: var(--brand); white-space: nowrap; }
+  .art p { margin: 4px 0 0; font-size: 12.5px; color: var(--ink-muted); }
+
+  /* pattern tabs */
+  .ptabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 20px 0 0; position: sticky; top: 0; z-index: 30;
+    background: var(--canvas); padding: 10px 0; }
+  .ptab { border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink-muted);
+    border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 550; cursor: pointer; font-family: inherit; }
+  .ptab:hover { background: var(--subtle); color: var(--ink); }
+  .ptab.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .ptab .n { opacity: 0.65; margin-right: 5px; font-variant-numeric: tabular-nums; }
+  .ptab:focus-visible, button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+  .pattern { display: none; }
+  .pattern.on { display: block; }
+  .pat-head { margin: 18px 0 12px; }
+  .pat-head h3 { font-size: 17px; font-weight: 650; margin: 0 0 4px; }
+  .pat-head .from { font-size: 12px; color: var(--ink-faint); font-weight: 500; }
+  .pat-head p { margin: 6px 0 0; color: var(--ink-muted); max-width: 74ch; font-size: 13.5px; }
+  .try { margin-top: 8px; font-size: 12.5px; color: var(--ink-muted); background: var(--brand-tint);
+    border-radius: var(--radius-control); padding: 7px 12px; display: inline-block; }
+  .try b { color: var(--brand); font-weight: 650; }
+
+  /* demo chrome */
+  .chrome { border: 1px solid var(--border-strong); border-radius: 10px; overflow: hidden; margin-top: 14px;
+    background: var(--canvas); box-shadow: var(--shadow-card); }
+  .chrome-bar { display: flex; align-items: center; gap: 10px; background: var(--surface);
+    border-bottom: 1px solid var(--border); padding: 8px 12px; }
+  .dots { display: flex; gap: 5px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border-strong); }
+  .urlbox { flex: 1; background: var(--subtle); border: 1px solid var(--border); border-radius: 6px;
+    font: 11.5px/1.6 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; color: var(--ink-muted);
+    padding: 3px 10px; white-space: nowrap; overflow-x: auto; }
+  .urlbox b { color: var(--brand); font-weight: 600; }
+  .chrome-body { padding: 16px; min-height: 430px; max-height: 560px; overflow: auto; position: relative; }
+
+  /* shared app components */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card); }
+  .btn { border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink);
+    border-radius: var(--radius-control); padding: 5px 12px; font-size: 13px; font-weight: 500;
+    cursor: pointer; font-family: inherit; }
+  .btn:hover { background: var(--subtle); }
+  .btn.small { padding: 2px 9px; font-size: 12px; }
+  .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .btn.primary:hover { background: var(--brand-dark); }
+  .btn.on { background: var(--brand-tint); border-color: var(--brand); color: var(--brand); }
+  .pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 1px 9px;
+    font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+  .pill.good { background: var(--good-tint); color: var(--good); }
+  .pill.warn { background: var(--warn-tint); color: var(--warn); }
+  .pill.danger { background: var(--danger-tint); color: var(--danger); }
+  .pill.brand { background: var(--brand-tint); color: var(--brand); }
+  .pill.mute { background: var(--subtle); color: var(--ink-muted); }
+
+  .crumbs { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-muted);
+    margin-bottom: 12px; flex-wrap: wrap; }
+  .crumbs .sep { color: var(--ink-faint); }
+  .crumbs button { background: none; border: 0; padding: 0; font: inherit; color: var(--brand); cursor: pointer; }
+  .crumbs .here { color: var(--ink); font-weight: 600; }
+
+  table.grid { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.grid th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--ink-muted); background: var(--subtle);
+    border-bottom: 1px solid var(--border); padding: 6px 12px; white-space: nowrap; }
+  table.grid td { border-bottom: 1px solid var(--border); padding: 7px 12px; vertical-align: middle; }
+  table.grid tr:last-child td { border-bottom: 0; }
+  table.grid tr.rowlink { cursor: pointer; }
+  table.grid tr.rowlink:hover td { background: var(--subtle); }
+  table.grid td.num, table.grid th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .reflink { color: var(--brand); cursor: pointer; font-weight: 500; background: none; border: 0; padding: 0; font-family: inherit; font-size: inherit; }
+  .reflink:hover { text-decoration: underline; }
+
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--brand-tint);
+    border: 1px solid transparent; color: var(--brand); border-radius: 999px; padding: 3px 6px 3px 11px;
+    font-size: 12px; font-weight: 550; }
+  .chip .x { cursor: pointer; border: 0; background: none; color: inherit; font-size: 13px; line-height: 1;
+    padding: 1px 5px; border-radius: 50%; font-family: inherit; }
+  .chip .x:hover { background: rgba(36,144,239,0.15); }
+
+  .formgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px 22px; padding: 14px 16px; }
+  .fld .lab { font-size: 11px; font-weight: 600; color: var(--ink-muted); margin-bottom: 2px; }
+  .fld .val { font-size: 13.5px; }
+
+  .rec-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .rec-head .title { font-size: 17px; font-weight: 650; }
+  .rec-head .id { color: var(--ink-faint); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .spacer { flex: 1; }
+
+  /* P1 connections */
+  .p1-layout { display: grid; grid-template-columns: 1fr 292px; gap: 14px; align-items: start; }
+  @media (max-width: 820px) { .p1-layout { grid-template-columns: 1fr; } }
+  .conn-head { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 650;
+    letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-muted); }
+  .conn-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--border);
+    width: 100%; background: none; border-left: 0; border-right: 0; border-top: 0; font: inherit; color: inherit;
+    cursor: pointer; text-align: left; }
+  .conn-row:last-child { border-bottom: 0; }
+  .conn-row:hover { background: var(--subtle); }
+  .conn-row .t { flex: 1; font-size: 13px; font-weight: 500; }
+  .conn-row .via { display: block; font-size: 11px; color: var(--ink-faint); font-weight: 400; }
+  .conn-row .cnt { font-variant-numeric: tabular-nums; }
+  .conn-row.zero .t { color: var(--ink-faint); }
+  .conn-plus { border: 1px dashed var(--border-strong); background: none; color: var(--ink-faint); width: 22px; height: 22px;
+    border-radius: 6px; cursor: pointer; font-size: 14px; line-height: 1; flex: none; }
+  .conn-plus:hover { color: var(--brand); border-color: var(--brand); }
+
+  .switcher { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+
+  /* P2 tabs */
+  .counters { display: flex; gap: 8px; flex-wrap: wrap; }
+  .counter { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; border: 1px solid var(--border-strong);
+    background: var(--surface); border-radius: var(--radius-control); padding: 6px 14px; cursor: pointer; font-family: inherit; }
+  .counter:hover { border-color: var(--brand); }
+  .counter .cn { font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .counter .cl { font-size: 11px; color: var(--ink-muted); font-weight: 550; }
+  .counter.on { border-color: var(--brand); background: var(--brand-tint); }
+  .counter.on .cn { color: var(--brand); }
+  .ftabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin: 16px 0 0; }
+  .ftab { border: 0; background: none; font: inherit; font-size: 13px; font-weight: 550; color: var(--ink-muted);
+    padding: 7px 14px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .ftab:hover { color: var(--ink); }
+  .ftab.on { color: var(--brand); border-bottom-color: var(--brand); }
+  .ftab .c { color: var(--ink-faint); font-size: 11.5px; margin-left: 3px; font-variant-numeric: tabular-nums; }
+  .tabfoot { display: flex; align-items: center; gap: 14px; padding: 8px 12px; font-size: 12.5px;
+    color: var(--ink-muted); border-top: 1px solid var(--border); background: var(--subtle);
+    border-radius: 0 0 var(--radius-card) var(--radius-card); }
+
+  /* P3 peek */
+  .peek-scrim { position: absolute; inset: 0; background: rgba(15,23,32,0.28); z-index: 5; }
+  .peek { position: absolute; top: 0; bottom: 0; right: 0; width: min(430px, 92%); background: var(--surface);
+    border-left: 1px solid var(--border-strong); box-shadow: var(--shadow-pop); z-index: 6;
+    display: flex; flex-direction: column; }
+  @media (prefers-reduced-motion: no-preference) {
+    .peek { animation: slidein 0.18s ease-out; }
+    @keyframes slidein { from { transform: translateX(24px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+  }
+  .peek-top { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .peek-top .pt { flex: 1; font-weight: 650; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .peek-top .pk { font-size: 11px; color: var(--ink-faint); }
+  .icobtn { border: 0; background: none; cursor: pointer; color: var(--ink-muted); font-size: 15px; padding: 3px 7px;
+    border-radius: 6px; font-family: inherit; }
+  .icobtn:hover { background: var(--subtle); color: var(--ink); }
+  .peek-body { flex: 1; overflow: auto; }
+  .peek-depth { font-size: 11px; color: var(--ink-faint); padding: 6px 14px 0; }
+
+  /* P4 cross-filter */
+  .xf-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; min-height: 28px; }
+  .xf-cols { display: grid; grid-template-columns: 0.9fr 1.15fr 1.25fr; gap: 12px; align-items: start; }
+  @media (max-width: 860px) { .xf-cols { grid-template-columns: 1fr; } }
+  .xf-col .xf-head { display: flex; align-items: baseline; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+  .xf-col .xf-head .xt { font-weight: 650; font-size: 13px; }
+  .xf-col .xf-head .xc { font-size: 11.5px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+  .xf-list { max-height: 330px; overflow: auto; }
+  .xf-item { display: block; width: 100%; text-align: left; background: none; font: inherit; color: inherit; cursor: pointer;
+    border: 0; border-bottom: 1px solid var(--border); border-left: 3px solid transparent; padding: 8px 11px; }
+  .xf-item:hover { background: var(--subtle); }
+  .xf-item.sel { border-left-color: var(--brand); background: var(--brand-tint); }
+  .xf-item .l1 { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 550; }
+  .xf-item .l2 { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--ink-muted); margin-top: 1px; }
+  .xf-item .amt { font-variant-numeric: tabular-nums; }
+  .xf-foot { padding: 7px 12px; font-size: 12px; color: var(--ink-muted); background: var(--subtle);
+    border-top: 1px solid var(--border); border-radius: 0 0 var(--radius-card) var(--radius-card);
+    display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
+
+  /* P5 expandable */
+  .chev { border: 0; background: none; cursor: pointer; color: var(--ink-faint); font-size: 11px; width: 22px; height: 22px;
+    border-radius: 5px; font-family: inherit; transition: transform 0.12s; }
+  .chev:hover { background: var(--subtle); color: var(--ink); }
+  .chev.open { transform: rotate(90deg); color: var(--brand); }
+  tr.subrow > td { background: var(--subtle); padding: 10px 14px 14px 40px; }
+  .subgrid-wrap { border: 1px solid var(--border); border-radius: var(--radius-control); overflow: hidden; background: var(--surface); }
+  .subfoot { font-size: 12px; padding: 6px 12px; color: var(--ink-muted); background: var(--subtle); border-top: 1px solid var(--border); }
+
+  /* P6 map */
+  .map-wrap { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  svg.map { width: 100%; height: auto; display: block; }
+  .map text { font-family: inherit; }
+  .node { cursor: pointer; }
+  .node rect { fill: var(--surface); stroke: var(--border-strong); rx: 8; }
+  .node:hover rect { stroke: var(--brand); }
+  .node.center rect { fill: var(--brand-tint); stroke: var(--brand); stroke-width: 1.5; }
+  .node.coll rect { stroke-dasharray: 3 3; }
+  .node.sel rect { stroke: var(--brand); stroke-width: 1.5; }
+  .node .nt { font-size: 12.5px; font-weight: 600; fill: var(--ink); }
+  .node .ns { font-size: 10.5px; fill: var(--ink-muted); }
+  .node .nc { font-size: 11px; font-weight: 700; fill: var(--brand); }
+  .edge { stroke: var(--border-strong); stroke-width: 1.2; }
+  .edgelab { font-size: 9.5px; fill: var(--ink-faint); }
+
+  /* comparison table */
+  .cmp-wrap { overflow-x: auto; margin-top: 14px; }
+  table.cmp { border-collapse: collapse; width: 100%; min-width: 860px; font-size: 13px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
+  table.cmp th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--ink-muted); background: var(--subtle); padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  table.cmp td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.cmp tr:last-child td { border-bottom: 0; }
+  table.cmp td:first-child { font-weight: 600; white-space: nowrap; }
+  table.cmp .lo { color: var(--good); font-weight: 600; }
+  table.cmp .mid { color: var(--warn); font-weight: 600; }
+  table.cmp .hi { color: var(--danger); font-weight: 600; }
+
+  .reco { margin-top: 14px; display: grid; gap: 10px; }
+  .reco-step { display: flex; gap: 14px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-card); box-shadow: var(--shadow-card); padding: 14px 16px; }
+  .reco-step .tag { flex: none; width: 74px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+    text-transform: uppercase; padding-top: 2px; }
+  .reco-step .tag.now { color: var(--good); } .reco-step .tag.next { color: var(--brand); }
+  .reco-step .tag.later { color: var(--warn); } .reco-step .tag.maybe { color: var(--ink-faint); }
+  .reco-step h4 { margin: 0 0 3px; font-size: 14px; font-weight: 650; }
+  .reco-step p { margin: 0; font-size: 13px; color: var(--ink-muted); }
+  .reco-step code { font: 11.5px ui-monospace, Menlo, Consolas, monospace; background: var(--subtle);
+    padding: 1px 5px; border-radius: 4px; color: var(--ink); }
+  .footnote { margin-top: 40px; font-size: 12.5px; color: var(--ink-faint); border-top: 1px solid var(--border); padding-top: 14px; }
+</style>
+
+<div class="page">
+  <div class="eyebrow">Featherbase &middot; Design exploration</div>
+  <h1>Navigating a relational world</h1>
+  <p class="lede">Six interactive patterns for moving between related rows — every demo below is clickable and runs on the same hypothetical dataset. The fake URL bar in each demo shows the real Featherbase route the click would produce (the list route already accepts <span style="font-family:ui-monospace,Menlo,monospace;font-size:12px">?filters=…</span> today).</p>
+  <div class="journeys">
+    <div class="journey"><b>Purchase Order</b><span class="arr">→</span>its <b>Lines</b> (child rows)</div>
+    <div class="journey"><b>Employee</b><span class="arr">→</span>their <b>Attendance</b> &amp; <b>Payroll</b> (backlinks)</div>
+    <div class="journey"><b>Payroll Slip</b><span class="arr">→</span>its <b>Employee</b> (a reference, hopped forward)</div>
+  </div>
+
+  <h2>Who has tried this</h2>
+  <p class="sub">Every serious low-code tool has converged on some subset of the same six ideas. None ships all of them — which is the opportunity.</p>
+  <div class="art-grid">
+    <div class="art"><div class="who">Frappe / ERPNext <span class="maps">→ Pattern 1</span></div><p>A "Connections" section on every form: backlinked doctypes grouped with counts, declared per-doctype in a dashboard file. Click → filtered list.</p></div>
+    <div class="art"><div class="who">Odoo <span class="maps">→ Pattern 2</span></div><p>"Smart buttons" — count badges at the top of a form that jump to a filtered list, with a breadcrumb trail that always leads back.</p></div>
+    <div class="art"><div class="who">Salesforce / Airtable Interfaces <span class="maps">→ Pattern 2</span></div><p>Related lists embedded as tabs or sections inside the record page itself; drill-down hierarchies (Project → Task → Subtask).</p></div>
+    <div class="art"><div class="who">Airtable / NocoDB <span class="maps">→ Pattern 3</span></div><p>Linked-record cells expand into a side panel without leaving the grid; NocoDB shows the link <i>count</i> in the cell and opens a child list.</p></div>
+    <div class="art"><div class="who">Tableau / Looker <span class="maps">→ Pattern 4</span></div><p>Cross-filtering: click a mark in one pane and every other pane filters to match. Selection <i>is</i> the filter.</p></div>
+    <div class="art"><div class="who">MS Access <span class="maps">→ Pattern 5</span></div><p>Subdatasheets — the 1999 idea that still works: a chevron on each grid row expands its child rows inline.</p></div>
+    <div class="art"><div class="who">macOS Finder <span class="maps">→ Pattern 4</span></div><p>Miller columns: cascading panes where each selection populates the pane to its right. The same geometry as cross-filtering.</p></div>
+    <div class="art"><div class="who">Glide <span class="maps">→ Patterns 2 &amp; 3</span></div><p>Relation collections on a details screen; tapping an item pushes its own details screen, nested indefinitely — navigation as a stack.</p></div>
+  </div>
+
+  <h2>The playground</h2>
+  <p class="sub">Dataset: <strong>Suppliers → Purchase Orders → PO Lines → Items</strong> (procurement) and <strong>Employees ← Attendance / Payroll / Leave</strong> (HR), with a self-reference (<strong>reports to</strong>) thrown in to keep the patterns honest.</p>
+
+  <div class="ptabs" id="ptabs"></div>
+
+  <!-- ═══════════ Pattern 1 ═══════════ -->
+  <section class="pattern" id="p1">
+    <div class="pat-head">
+      <h3>1 · Connections panel</h3>
+      <div class="from">Borrowed from Frappe — but derived automatically from metadata instead of hand-declared</div>
+      <p>Every form gets a panel listing <i>every table that points here</i>, with live counts. Featherbase can derive this with zero configuration: the reverse-lookup query ("which Reference columns target this table?") already exists in the server for delete-blocking. Child tables stay inline in the form; the panel covers true backlinks — including via sub-tables (Item ← PO Line ← Purchase Order, Frappe's "internal links").</p>
+      <div class="try"><b>Try:</b> click <b>Payroll Slip</b> in the panel → filtered list with a removable chip → breadcrumb back. Switch the root record to see the panel recompute per table. Note the greyed zero-count rows and the "+" (create pre-filled).</div>
+    </div>
+    <div class="chrome">
+      <div class="chrome-bar"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div><div class="urlbox" id="url-p1"></div></div>
+      <div class="chrome-body" id="body-p1"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════ Pattern 2 ═══════════ -->
+  <section class="pattern" id="p2">
+    <div class="pat-head">
+      <h3>2 · Smart counters + related tabs</h3>
+      <div class="from">Borrowed from Odoo's smart buttons and Salesforce's related lists</div>
+      <p>The related rows live <i>inside</i> the record page: count tiles up top double as tab switches, and each tab embeds a real (read-only) list of the related table with an escape hatch to the full filtered list and a pre-filled "+ New". Highest information density of any pattern — and the strongest claim that "the employee page <i>is</i> the employee 360°".</p>
+      <div class="try"><b>Try:</b> click the count tiles, open a payroll row from inside a tab (breadcrumb grows), then switch employee — tabs and counts recompute from metadata.</div>
+    </div>
+    <div class="chrome">
+      <div class="chrome-bar"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div><div class="urlbox" id="url-p2"></div></div>
+      <div class="chrome-body" id="body-p2"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════ Pattern 3 ═══════════ -->
+  <section class="pattern" id="p3">
+    <div class="pat-head">
+      <h3>3 · Peek panels (a navigation stack)</h3>
+      <div class="from">Borrowed from Airtable's expanded records and Glide's pushed detail screens</div>
+      <p>Clicking a reference doesn't navigate away — it slides a panel over the current screen. Panels stack: peek at the employee from a payroll slip, then peek at her attendance from there, and the trail stays visible as layered edges. You never lose the list you started from. Each panel offers "open full ↗" when a glance isn't enough.</p>
+      <div class="try"><b>Try:</b> click any payroll row → in the panel click <b>Priya Raman</b> → then <b>Attendance</b> → then a row. Four panels deep, one Esc (or ✕) back to where you were. The back arrow pops one level.</div>
+    </div>
+    <div class="chrome">
+      <div class="chrome-bar"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div><div class="urlbox" id="url-p3"></div></div>
+      <div class="chrome-body" id="body-p3"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════ Pattern 4 ═══════════ -->
+  <section class="pattern" id="p4">
+    <div class="pat-head">
+      <h3>4 · Cross-filter workspace</h3>
+      <div class="from">Borrowed from Tableau's filter actions, with Miller-column geometry from the Finder</div>
+      <p>Three live panes — Suppliers, their Purchase Orders, and the Lines inside those. Clicking a row in any pane <i>is</i> the filter: everything downstream narrows instantly, aggregates included. Selections accumulate (click two suppliers to compare). This is less "navigate to a record" and more "interrogate the relationship" — a different job than Patterns 1–3, and the strongest candidate for a separate <i>Explore</i> surface next to Dashboards.</p>
+      <div class="try"><b>Try:</b> click <b>Acme Metals</b>, then also <b>Zenith Polymers</b>; then narrow to one PO. Watch the counts, the ₹ totals, and the chips — click a chip's ✕ to release that filter.</div>
+    </div>
+    <div class="chrome">
+      <div class="chrome-bar"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div><div class="urlbox" id="url-p4"></div></div>
+      <div class="chrome-body" id="body-p4"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════ Pattern 5 ═══════════ -->
+  <section class="pattern" id="p5">
+    <div class="pat-head">
+      <h3>5 · Expandable rows in the list</h3>
+      <div class="from">Borrowed from MS Access subdatasheets and AG Grid master-detail</div>
+      <p>The child rows come to <i>you</i>: a chevron on each Purchase Order expands its Lines inline, several at once if you like, without ever leaving the list. Perfect for the "scan ten POs and eyeball their lines" job that Patterns 1–3 make tedious. Costs one indent level per hop, so it's best kept to one level deep.</p>
+      <div class="try"><b>Try:</b> expand two or three POs at once and compare their lines side by side. Each expansion shows its own line count and total; the supplier stays clickable.</div>
+    </div>
+    <div class="chrome">
+      <div class="chrome-bar"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div><div class="urlbox" id="url-p5"></div></div>
+      <div class="chrome-body" id="body-p5"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════ Pattern 6 ═══════════ -->
+  <section class="pattern" id="p6">
+    <div class="pat-head">
+      <h3>6 · Relationship map</h3>
+      <div class="from">Nobody ships this well — the speculative one</div>
+      <p>The current row sits in the middle; what it points <i>at</i> fans left, what points <i>at it</i> fans right (dashed = a collection with a count). Click any collection to open its rows below; click any record node to re-center the whole map on it. Because Featherbase is metadata-driven, this view is <i>free</i> for every table — it's the schema made walkable. Probably not the daily driver, but a superb "where am I?" view and a great schema-comprehension tool for builders.</p>
+      <div class="try"><b>Try:</b> from <b>Priya Raman</b>, click the <b>Payroll Slip</b> collection, pick a slip → the map re-centers on the slip, whose own neighborhood now shows Employee on the left. Follow <b>reports to</b> to walk up the org chart. The trail below the map takes you back.</div>
+    </div>
+    <div class="chrome">
+      <div class="chrome-bar"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div><div class="urlbox" id="url-p6"></div></div>
+      <div class="chrome-body" id="body-p6"></div>
+    </div>
+  </section>
+
+  <h2>Side by side</h2>
+  <div class="cmp-wrap">
+  <table class="cmp">
+    <thead><tr><th>Pattern</th><th>Prior art</th><th>Metadata config</th><th>Screen cost</th><th>Travel depth</th><th>Best at</th></tr></thead>
+    <tbody>
+      <tr><td>1 · Connections panel</td><td>Frappe</td><td class="lo">None — fully derived</td><td>One card</td><td>1 hop, then list</td><td>"What relates to this row?" — universal safety net</td></tr>
+      <tr><td>2 · Counters + tabs</td><td>Odoo, Salesforce</td><td class="mid">Opt-in: which tables, which columns</td><td>Whole lower form</td><td>1 hop, embedded</td><td>360° views of hub records (Employee, Customer)</td></tr>
+      <tr><td>3 · Peek stack</td><td>Airtable, Glide</td><td class="lo">None — reuses FormView</td><td>Overlay only</td><td>Unlimited, reversible</td><td>Glancing without losing your place</td></tr>
+      <tr><td>4 · Cross-filter</td><td>Tableau, Finder</td><td class="mid">Pick the pane chain</td><td>Full screen</td><td>2–3 panes</td><td>Interrogating a relationship across many rows</td></tr>
+      <tr><td>5 · Expandable rows</td><td>Access, AG Grid</td><td class="lo">None for child tables</td><td>Inline, grows tall</td><td>1 level (practically)</td><td>Scanning parents + children in bulk</td></tr>
+      <tr><td>6 · Relationship map</td><td>—</td><td class="lo">None — it <i>is</i> the schema</td><td>Full screen</td><td>Unlimited walk</td><td>Orientation; builders learning a schema</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>How I'd layer them in Featherbase</h2>
+  <p class="sub">These aren't competing options — they're layers with different jobs. The order below is sorted by leverage: what the codebase already makes cheap, first.</p>
+  <div class="reco">
+    <div class="reco-step"><div class="tag now">Ship now</div><div>
+      <h4>Make references clickable + auto Connections panel (Pattern 1)</h4>
+      <p>Today a Reference field renders as a plain autocomplete with no way to visit the referenced row — that's the single biggest gap. Add link-out on every Reference control, and a Connections card on FormView. Both endpoints already exist: the reverse-lookup SQL sits in <code>document.ts</code> (delete-blocking), and ListView already accepts <code>?filters=[["employee","=","EMP-001"]]</code>. Counts come from the existing <code>/api/dashboard/count</code>. Zero new metadata.</p>
+    </div></div>
+    <div class="reco-step"><div class="tag next">Next</div><div>
+      <h4>Peek panel (Pattern 3)</h4>
+      <p>One generic slide-over that renders read-only FormView for any (table, id) — instantly upgrades every reference link and every Connections row from "navigate away" to "glance first, commit later". Stack depth comes free from an array in state.</p>
+    </div></div>
+    <div class="reco-step"><div class="tag next">Next</div><div>
+      <h4>Related tabs (Pattern 2), opt-in per table</h4>
+      <p>A small piece of Table metadata ("show Attendance and Payroll as tabs on Employee") turns hub records into 360° pages — this is Frappe's dashboard-links idea, but declared in <code>table_def</code> instead of Python files. The embedded lists are just ListView with a fixed filter.</p>
+    </div></div>
+    <div class="reco-step"><div class="tag later">Later</div><div>
+      <h4>Cross-filter Explore surface (Pattern 4) &middot; Expandable rows (Pattern 5)</h4>
+      <p>Explore is a new surface (pairs beautifully with the existing Dashboards), not a form feature — worth doing when analysis becomes a real user job. Expandable rows are a ListView option for tables with children; watch interaction with virtualization.</p>
+    </div></div>
+    <div class="reco-step"><div class="tag maybe">Garnish</div><div>
+      <h4>Relationship map (Pattern 6)</h4>
+      <p>Cheap to derive from the same metadata, memorable in demos, genuinely useful on the All Tables / builder side as a schema browser. Not a daily navigation tool.</p>
+    </div></div>
+  </div>
+
+  <p class="footnote">All data on this page is invented for the exploration. Sources reviewed: Frappe docs (actions &amp; links), Airtable community &amp; interface docs, Glide docs (relations, collections), NocoDB docs (links, expanded records), Tableau filter-action docs, Oracle APEX / Alta master-detail patterns.</p>
+</div>
+
+<script>
+/* ───────────────────────── data ───────────────────────── */
+const DB = {
+  'Supplier': [
+    { id: 'SUP-001', name: 'Acme Metals', city: 'Chennai', status: 'Active' },
+    { id: 'SUP-002', name: 'Zenith Polymers', city: 'Coimbatore', status: 'Active' },
+    { id: 'SUP-003', name: 'Kaveri Fasteners', city: 'Madurai', status: 'On Hold' },
+  ],
+  'Item': [
+    { id: 'ITM-001', name: 'M8 Hex Bolt', uom: 'Nos' },
+    { id: 'ITM-002', name: 'Steel Sheet 2mm', uom: 'Kg' },
+    { id: 'ITM-003', name: 'PVC Granules', uom: 'Kg' },
+    { id: 'ITM-004', name: 'Bearing 6204', uom: 'Nos' },
+  ],
+  'Purchase Order': [
+    { id: 'PO-2026-0012', supplier: 'SUP-001', date: '2026-07-04', status: 'To Receive' },
+    { id: 'PO-2026-0013', supplier: 'SUP-002', date: '2026-07-06', status: 'Submitted' },
+    { id: 'PO-2026-0015', supplier: 'SUP-001', date: '2026-07-11', status: 'Draft' },
+    { id: 'PO-2026-0016', supplier: 'SUP-003', date: '2026-07-15', status: 'Submitted' },
+    { id: 'PO-2026-0018', supplier: 'SUP-002', date: '2026-07-21', status: 'To Receive' },
+    { id: 'PO-2026-0019', supplier: 'SUP-001', date: '2026-07-28', status: 'Draft' },
+  ],
+  'PO Line': [
+    { id: 'POL-031', parent: 'PO-2026-0012', item: 'ITM-002', qty: 120, rate: 82 },
+    { id: 'POL-032', parent: 'PO-2026-0012', item: 'ITM-001', qty: 500, rate: 4.5 },
+    { id: 'POL-033', parent: 'PO-2026-0013', item: 'ITM-003', qty: 400, rate: 96 },
+    { id: 'POL-034', parent: 'PO-2026-0013', item: 'ITM-001', qty: 200, rate: 4.6 },
+    { id: 'POL-035', parent: 'PO-2026-0015', item: 'ITM-004', qty: 60, rate: 145 },
+    { id: 'POL-036', parent: 'PO-2026-0015', item: 'ITM-002', qty: 80, rate: 81 },
+    { id: 'POL-037', parent: 'PO-2026-0016', item: 'ITM-001', qty: 1000, rate: 4.4 },
+    { id: 'POL-038', parent: 'PO-2026-0018', item: 'ITM-003', qty: 250, rate: 97 },
+    { id: 'POL-039', parent: 'PO-2026-0018', item: 'ITM-004', qty: 30, rate: 148 },
+    { id: 'POL-040', parent: 'PO-2026-0019', item: 'ITM-002', qty: 200, rate: 82 },
+  ],
+  'Employee': [
+    { id: 'EMP-001', name: 'Priya Raman', dept: 'Production', role: 'Line Supervisor', reports_to: 'EMP-002', joined: '2023-04-10' },
+    { id: 'EMP-002', name: 'Arun Krishnan', dept: 'Production', role: 'Plant Manager', reports_to: null, joined: '2019-08-01' },
+    { id: 'EMP-003', name: 'Fathima Beevi', dept: 'Accounts', role: 'Payroll Officer', reports_to: 'EMP-002', joined: '2021-01-18' },
+  ],
+  'Attendance': [],   // generated below
+  'Payroll Slip': [
+    { id: 'SAL-2026-05-001', employee: 'EMP-001', month: 'May 2026', gross: 38000, net: 34200, status: 'Paid' },
+    { id: 'SAL-2026-06-001', employee: 'EMP-001', month: 'Jun 2026', gross: 38000, net: 34200, status: 'Paid' },
+    { id: 'SAL-2026-07-001', employee: 'EMP-001', month: 'Jul 2026', gross: 38000, net: 34650, status: 'Draft' },
+    { id: 'SAL-2026-05-002', employee: 'EMP-002', month: 'May 2026', gross: 65000, net: 57800, status: 'Paid' },
+    { id: 'SAL-2026-06-002', employee: 'EMP-002', month: 'Jun 2026', gross: 65000, net: 57800, status: 'Paid' },
+    { id: 'SAL-2026-07-002', employee: 'EMP-002', month: 'Jul 2026', gross: 65000, net: 57800, status: 'Draft' },
+    { id: 'SAL-2026-06-003', employee: 'EMP-003', month: 'Jun 2026', gross: 42000, net: 37500, status: 'Paid' },
+    { id: 'SAL-2026-07-003', employee: 'EMP-003', month: 'Jul 2026', gross: 42000, net: 37500, status: 'Draft' },
+  ],
+  'Leave Application': [
+    { id: 'LAV-0007', employee: 'EMP-001', from: '2026-07-14', to: '2026-07-15', type: 'Casual', status: 'Approved' },
+    { id: 'LAV-0009', employee: 'EMP-003', from: '2026-07-21', to: '2026-07-21', type: 'Sick', status: 'Approved' },
+    { id: 'LAV-0011', employee: 'EMP-001', from: '2026-08-03', to: '2026-08-05', type: 'Earned', status: 'Open' },
+  ],
+};
+
+// deterministic July-2026 attendance for the three employees (weekdays only)
+(function genAttendance() {
+  const pat = ['Present','Present','Present','Present','Present','Half Day','Present','Present','Absent','Present','Present','On Leave'];
+  DB['Employee'].forEach((emp, ei) => {
+    for (let d = 1; d <= 31; d++) {
+      const dt = new Date(2026, 6, d);
+      if (dt.getMonth() !== 6) break;
+      const dow = dt.getDay();
+      if (dow === 0 || dow === 6) continue;
+      if (d > 29) continue;
+      DB['Attendance'].push({
+        id: 'ATT-' + emp.id.slice(4) + '-' + String(d).padStart(2, '0'),
+        employee: emp.id,
+        date: '2026-07-' + String(d).padStart(2, '0'),
+        status: pat[(d + ei * 5) % pat.length],
+      });
+    }
+  });
+})();
+
+// PO line amounts + PO totals
+DB['PO Line'].forEach(l => { l.amount = Math.round(l.qty * l.rate); });
+DB['Purchase Order'].forEach(po => {
+  po.total = DB['PO Line'].filter(l => l.parent === po.id).reduce((s, l) => s + l.amount, 0);
+});
+
+/* ─────────────────────── metadata ─────────────────────── */
+const META = {
+  'Supplier':        { title: 'name', cols: [
+    { f: 'name', l: 'Supplier' }, { f: 'city', l: 'City' }, { f: 'status', l: 'Status', t: 'status' }] },
+  'Item':            { title: 'name', cols: [
+    { f: 'name', l: 'Item' }, { f: 'uom', l: 'UOM' }] },
+  'Purchase Order':  { title: 'id', children: ['PO Line'], cols: [
+    { f: 'id', l: 'PO' }, { f: 'supplier', l: 'Supplier', t: 'ref', to: 'Supplier' },
+    { f: 'date', l: 'Date', t: 'date' }, { f: 'total', l: 'Total', t: 'money' },
+    { f: 'status', l: 'Status', t: 'status' }] },
+  'PO Line':         { title: 'id', sub: 'Purchase Order', fk: 'parent', cols: [
+    { f: 'item', l: 'Item', t: 'ref', to: 'Item' }, { f: 'qty', l: 'Qty', t: 'num' },
+    { f: 'rate', l: 'Rate', t: 'money' }, { f: 'amount', l: 'Amount', t: 'money' }] },
+  'Employee':        { title: 'name', cols: [
+    { f: 'name', l: 'Name' }, { f: 'dept', l: 'Department' }, { f: 'role', l: 'Role' },
+    { f: 'reports_to', l: 'Reports To', t: 'ref', to: 'Employee' }] },
+  'Attendance':      { title: 'id', cols: [
+    { f: 'date', l: 'Date', t: 'date' }, { f: 'employee', l: 'Employee', t: 'ref', to: 'Employee' },
+    { f: 'status', l: 'Status', t: 'status' }] },
+  'Payroll Slip':    { title: 'id', cols: [
+    { f: 'id', l: 'Slip' }, { f: 'employee', l: 'Employee', t: 'ref', to: 'Employee' },
+    { f: 'month', l: 'Month' }, { f: 'gross', l: 'Gross', t: 'money' },
+    { f: 'net', l: 'Net', t: 'money' }, { f: 'status', l: 'Status', t: 'status' }] },
+  'Leave Application': { title: 'id', cols: [
+    { f: 'id', l: 'Leave' }, { f: 'employee', l: 'Employee', t: 'ref', to: 'Employee' },
+    { f: 'from', l: 'From', t: 'date' }, { f: 'to', l: 'To', t: 'date' },
+    { f: 'type', l: 'Type' }, { f: 'status', l: 'Status', t: 'status' }] },
+};
+
+// derived: which (table, column) pairs reference `table`?  (= the SQL already in document.ts)
+function backlinksOf(table) {
+  const out = [];
+  for (const [t, m] of Object.entries(META)) {
+    for (const c of m.cols) {
+      if (c.t !== 'ref' || c.to !== table) continue;
+      if (m.sub) out.push({ table: m.sub, via: t, col: c.f, sub: true });   // internal link via sub-table
+      else out.push({ table: t, col: c.f });
+    }
+  }
+  return out;
+}
+function blRows(bl, id) {
+  if (bl.sub) {
+    const parents = new Set(DB[bl.via].filter(r => r[bl.col] === id).map(r => r.parent));
+    return DB[bl.table].filter(r => parents.has(r.id));
+  }
+  return DB[bl.table].filter(r => r[bl.col] === id);
+}
+const rec = (t, id) => DB[t].find(r => r.id === id);
+const title = (t, id) => { const r = rec(t, id); return r ? r[META[t].title] : id; };
+
+/* ─────────────────────── formatting ─────────────────────── */
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const inr = n => '₹' + n.toLocaleString('en-IN');
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const fdate = s => { const [y, m, d] = s.split('-'); return MONTHS[+m - 1] + ' ' + (+d); };
+const PILL = { Present: 'good', Paid: 'good', Approved: 'good', Active: 'good',
+  Absent: 'danger', 'Half Day': 'warn', 'To Receive': 'warn', 'On Hold': 'warn',
+  Submitted: 'brand', Open: 'brand', 'On Leave': 'mute', Draft: 'mute' };
+const pill = v => '<span class="pill ' + (PILL[v] || 'mute') + '">' + esc(v) + '</span>';
+
+function cell(c, r, refAct) {
+  const v = r[c.f];
+  if (v == null || v === '') return '<td class="mute">—</td>';
+  if (c.t === 'status') return '<td>' + pill(v) + '</td>';
+  if (c.t === 'money') return '<td class="num">' + inr(v) + '</td>';
+  if (c.t === 'num') return '<td class="num">' + v.toLocaleString('en-IN') + '</td>';
+  if (c.t === 'date') return '<td>' + fdate(v) + '</td>';
+  if (c.t === 'ref') {
+    const label = esc(title(c.to, v));
+    if (refAct) return '<td><button class="reflink" data-act="' + refAct + '" data-arg=\'' +
+      JSON.stringify({ table: c.to, id: v }) + '\'>' + label + '</button></td>';
+    return '<td><span style="color:var(--brand)">' + label + '</span></td>';
+  }
+  return '<td>' + esc(v) + '</td>';
+}
+function grid(table, rows, opts = {}) {
+  const m = META[table];
+  let h = '<table class="grid"><thead><tr>' + (opts.leadCol || '') +
+    m.cols.map(c => '<th' + (c.t === 'money' || c.t === 'num' ? ' class="num"' : '') + '>' + esc(c.l) + '</th>').join('') +
+    '</tr></thead><tbody>';
+  for (const r of rows) {
+    const rowAttr = opts.rowAct
+      ? ' class="rowlink" tabindex="0" data-act="' + opts.rowAct + '" data-arg=\'' + JSON.stringify({ table, id: r.id }) + '\''
+      : '';
+    h += '<tr' + rowAttr + '>' + (opts.leadCell ? opts.leadCell(r) : '') +
+      m.cols.map(c => cell(c, r, opts.refAct)).join('') + '</tr>';
+  }
+  if (!rows.length) h += '<tr><td colspan="9" style="color:var(--ink-faint);padding:16px">No rows</td></tr>';
+  return h + '</tbody></table>';
+}
+function formFields(t, id, refAct) {
+  const r = rec(t, id);
+  return '<div class="formgrid">' + META[t].cols.map(c => {
+    const v = r[c.f];
+    let val = v == null ? '<span style="color:var(--ink-faint)">—</span>'
+      : c.t === 'status' ? pill(v)
+      : c.t === 'money' ? inr(v)
+      : c.t === 'date' ? fdate(v)
+      : c.t === 'ref' ? '<button class="reflink" data-act="' + refAct + '" data-arg=\'' +
+          JSON.stringify({ table: c.to, id: v }) + '\'>' + esc(title(c.to, v)) + ' ↗</button>'
+      : esc(v);
+    return '<div class="fld"><div class="lab">' + esc(c.l) + '</div><div class="val">' + val + '</div></div>';
+  }).join('') + '</div>';
+}
+const filtersUrl = (t, col, val) => '/admin/' + encodeURIComponent(t) +
+  '?filters=<b>[["' + col + '","=","' + val + '"]]</b>';
+
+/* ─────────────────── pattern tab bar ─────────────────── */
+const PATTERNS = [
+  ['p1', 'Connections'], ['p2', 'Counters + tabs'], ['p3', 'Peek stack'],
+  ['p4', 'Cross-filter'], ['p5', 'Expandable rows'], ['p6', 'Relationship map'],
+];
+document.getElementById('ptabs').innerHTML = PATTERNS.map(([id, l], i) =>
+  '<button class="ptab' + (i === 0 ? ' on' : '') + '" data-act="show" data-arg=\'{"p":"' + id + '"}\'>' +
+  '<span class="n">' + (i + 1) + '</span>' + l + '</button>').join('');
+
+/* ─────────────────── P1 · connections ─────────────────── */
+const p1 = { view: { type: 'form', table: 'Employee', id: 'EMP-001' } };
+const P1_ROOTS = [['Employee', 'EMP-001'], ['Purchase Order', 'PO-2026-0012'], ['Supplier', 'SUP-001'], ['Item', 'ITM-002']];
+
+function renderP1() {
+  const v = p1.view;
+  const url = document.getElementById('url-p1');
+  let h = '<div class="switcher">' + P1_ROOTS.map(([t, id]) =>
+    '<button class="btn small' + (v.type === 'form' && v.table === t ? ' on' : '') + '" data-act="p1.root" data-arg=\'' +
+    JSON.stringify({ table: t, id }) + '\'>' + esc(t) + ': ' + esc(title(t, id)) + '</button>').join('') + '</div>';
+
+  if (v.type === 'form') {
+    url.innerHTML = '/admin/' + encodeURIComponent(v.table) + '/' + v.id;
+    const bls = backlinksOf(v.table);
+    const m = META[v.table];
+    h += '<div class="rec-head"><span class="title">' + esc(title(v.table, v.id)) + '</span>' +
+      '<span class="id">' + esc(v.table) + ' · ' + v.id + '</span></div>';
+    h += '<div class="p1-layout"><div>';
+    h += '<div class="card">' + formFields(v.table, v.id, 'p1.root') + '</div>';
+    for (const ch of (m.children || [])) {
+      const rows = DB[ch].filter(r => r[META[ch].fk] === v.id);
+      h += '<div class="card" style="margin-top:12px"><div class="conn-head">' + esc(ch) +
+        ' (child table — lives in the form)</div>' + grid(ch, rows) +
+        '<div class="tabfoot">Total ' + inr(rows.reduce((s, r) => s + (r.amount || 0), 0)) + '</div></div>';
+    }
+    h += '</div><div class="card"><div class="conn-head">Connections</div>';
+    if (!bls.length) h += '<div style="padding:14px;font-size:12.5px;color:var(--ink-faint)">Nothing references ' + esc(v.table) + ' yet.</div>';
+    for (const bl of bls) {
+      const rows = blRows(bl, v.id);
+      const label = esc(bl.table) + (bl.sub ? '<span class="via">via ' + esc(bl.via) + ' · ' + esc(bl.col) + '</span>'
+        : (bl.col !== 'employee' && bl.col !== 'supplier' ? '<span class="via">' + esc(bl.col) + '</span>' : ''));
+      h += '<div style="display:flex;align-items:center"><button class="conn-row' + (rows.length ? '' : ' zero') +
+        '" data-act="p1.list" data-arg=\'' + JSON.stringify({ bl, id: v.id }) + '\'>' +
+        '<span class="t">' + label + '</span><span class="pill ' + (rows.length ? 'brand' : 'mute') + ' cnt">' +
+        rows.length + '</span></button>' +
+        '<span style="padding-right:10px"><button class="conn-plus" title="New ' + esc(bl.table) +
+        ' pre-filled with ' + esc(bl.col) + ' = ' + esc(title(v.table, v.id)) + '">+</button></span></div>';
+    }
+    h += '<div style="padding:10px 14px;font-size:11.5px;color:var(--ink-faint)">Derived from metadata — every Reference column targeting ' +
+      esc(v.table) + '. No per-table config.</div></div></div>';
+  } else {
+    const { bl, id, filtered } = v;
+    const from = v.fromTable;
+    url.innerHTML = filtered ? filtersUrl(bl.table, bl.col, id) : '/admin/' + encodeURIComponent(bl.table);
+    const rows = filtered ? blRows(bl, id) : DB[bl.table];
+    h += '<div class="crumbs"><button data-act="p1.back">‹ ' + esc(title(from, id)) + '</button>' +
+      '<span class="sep">/</span><span class="here">' + esc(bl.table) + '</span></div>';
+    h += '<div class="xf-chips">' + (filtered
+      ? '<span class="chip">' + esc(bl.col) + ' = ' + esc(title(from, id)) +
+        '<button class="x" data-act="p1.clearfilter" title="Remove filter">✕</button></span>'
+      : '<button class="btn small" data-act="p1.refilter">Re-apply filter</button>') + '</div>';
+    h += '<div class="card">' + grid(bl.table, rows, {}) + '</div>';
+  }
+  document.getElementById('body-p1').innerHTML = h;
+}
+
+/* ─────────────── P2 · counters + tabs ─────────────── */
+const p2 = { emp: 'EMP-001', tab: 'Attendance', open: null };
+const P2_TABS = ['Attendance', 'Payroll Slip', 'Leave Application'];
+
+function renderP2() {
+  const url = document.getElementById('url-p2');
+  let h = '<div class="switcher">' + DB['Employee'].map(e =>
+    '<button class="btn small' + (e.id === p2.emp && !p2.open ? ' on' : '') + '" data-act="p2.emp" data-arg=\'' +
+    JSON.stringify({ id: e.id }) + '\'>' + esc(e.name) + '</button>').join('') + '</div>';
+
+  if (p2.open) {
+    const { table, id } = p2.open;
+    url.innerHTML = '/admin/' + encodeURIComponent(table) + '/' + id;
+    h += '<div class="crumbs"><button data-act="p2.backlist">Employees</button><span class="sep">›</span>' +
+      '<button data-act="p2.back">' + esc(title('Employee', p2.emp)) + '</button><span class="sep">›</span>' +
+      '<span class="here">' + esc(id) + '</span></div>';
+    h += '<div class="card">' + formFields(table, id, 'p2.noop') + '</div>' +
+      '<p style="font-size:12px;color:var(--ink-faint)">The breadcrumb carries the journey — “back” returns to the employee’s ' +
+      esc(table) + ' tab, not to a bare list.</p>';
+  } else {
+    const e = rec('Employee', p2.emp);
+    url.innerHTML = '/admin/Employee/' + e.id + ' <span style="opacity:.6">· tab=' + encodeURIComponent(p2.tab) + '</span>';
+    const counts = Object.fromEntries(P2_TABS.map(t => [t, DB[t].filter(r => r.employee === e.id).length]));
+    h += '<div class="rec-head"><span class="title">' + esc(e.name) + '</span><span class="id">Employee · ' + e.id +
+      '</span><span class="spacer"></span><div class="counters">' +
+      P2_TABS.map(t => '<button class="counter' + (p2.tab === t ? ' on' : '') + '" data-act="p2.tab" data-arg=\'' +
+        JSON.stringify({ t }) + '\'><span class="cn">' + counts[t] + '</span><span class="cl">' + esc(t) + '</span></button>').join('') +
+      '</div></div>';
+    h += '<div class="ftabs">' +
+      '<button class="ftab' + (p2.tab === 'Details' ? ' on' : '') + '" data-act="p2.tab" data-arg=\'{"t":"Details"}\'>Details</button>' +
+      P2_TABS.map(t => '<button class="ftab' + (p2.tab === t ? ' on' : '') + '" data-act="p2.tab" data-arg=\'' +
+        JSON.stringify({ t }) + '\'>' + esc(t) + '<span class="c">' + counts[t] + '</span></button>').join('') + '</div>';
+    if (p2.tab === 'Details') {
+      h += '<div class="card" style="border-top-left-radius:0;margin-top:-1px">' + formFields('Employee', e.id, 'p2.noop') + '</div>';
+    } else {
+      const rows = DB[p2.tab].filter(r => r.employee === e.id);
+      h += '<div class="card" style="border-top-left-radius:0;margin-top:-1px">' +
+        grid(p2.tab, rows.slice(0, 8), { rowAct: 'p2.open' }) +
+        '<div class="tabfoot">' + (rows.length > 8 ? 'Showing 8 of ' + rows.length + ' · ' : '') +
+        '<span class="reflink" title="Would navigate to ' + esc(p2.tab) + ' list filtered to this employee">Open as filtered list ↗</span>' +
+        '<span class="spacer"></span><span class="reflink" title="New ' + esc(p2.tab) + ' with employee pre-filled">+ New ' +
+        esc(p2.tab) + '</span></div></div>';
+    }
+  }
+  document.getElementById('body-p2').innerHTML = h;
+}
+
+/* ─────────────── P3 · peek stack ─────────────── */
+const p3 = { stack: [] };   // entries: {kind:'rec',table,id} | {kind:'list',bl,fromTable,fromId}
+
+function renderP3() {
+  const url = document.getElementById('url-p3');
+  const top = p3.stack[p3.stack.length - 1];
+  url.innerHTML = !top ? '/admin/' + encodeURIComponent('Payroll Slip')
+    : top.kind === 'rec' ? '/admin/' + encodeURIComponent(top.table) + '/' + top.id + ' <span style="opacity:.6">(peek)</span>'
+    : filtersUrl(top.bl.table, top.bl.col, top.fromId) + ' <span style="opacity:.6">(peek)</span>';
+
+  let h = '<div class="rec-head"><span class="title">Payroll Slips</span><span class="id">' +
+    DB['Payroll Slip'].length + ' rows</span></div>' +
+    '<div class="card">' + grid('Payroll Slip', DB['Payroll Slip'], { rowAct: 'p3.push-rec', refAct: 'p3.push-rec' }) + '</div>';
+
+  if (p3.stack.length) {
+    h += '<div class="peek-scrim" data-act="p3.closeall"></div>';
+    p3.stack.forEach((fr, i) => {
+      const isTop = i === p3.stack.length - 1;
+      const offset = (p3.stack.length - 1 - i) * 16;
+      let inner = '', name = '', kind = '';
+      if (fr.kind === 'rec') {
+        name = title(fr.table, fr.id); kind = fr.table + ' · ' + fr.id;
+        inner = formFields(fr.table, fr.id, 'p3.push-rec');
+        const bls = backlinksOf(fr.table);
+        if (bls.length) {
+          inner += '<div class="conn-head" style="border-top:1px solid var(--border)">Connections</div>';
+          for (const bl of bls) {
+            const n = blRows(bl, fr.id).length;
+            inner += '<button class="conn-row' + (n ? '' : ' zero') + '" data-act="p3.push-list" data-arg=\'' +
+              JSON.stringify({ bl, fromTable: fr.table, fromId: fr.id }) + '\'><span class="t">' + esc(bl.table) +
+              (bl.sub ? '<span class="via">via ' + esc(bl.via) + '</span>' : '') +
+              '</span><span class="pill ' + (n ? 'brand' : 'mute') + ' cnt">' + n + '</span></button>';
+          }
+        }
+      } else {
+        name = fr.bl.table; kind = 'filtered: ' + fr.bl.col + ' = ' + title(fr.fromTable, fr.fromId);
+        inner = grid(fr.bl.table, blRows(fr.bl, fr.fromId), { rowAct: 'p3.push-rec' });
+      }
+      h += '<div class="peek" style="right:' + offset + 'px' + (isTop ? '' : ';filter:brightness(0.97)') + '">' +
+        '<div class="peek-top">' +
+        (i > 0 ? '<button class="icobtn" data-act="p3.pop" title="Back one level">←</button>' : '') +
+        '<span class="pt">' + esc(name) + '<br><span class="pk">' + esc(kind) + '</span></span>' +
+        '<button class="icobtn" title="Would open /admin/' + esc(fr.kind === 'rec' ? fr.table + '/' + fr.id : fr.bl.table) +
+        ' as a full page">↗</button>' +
+        '<button class="icobtn" data-act="p3.closeall" title="Close all (Esc)">✕</button></div>' +
+        '<div class="peek-depth">Level ' + (i + 1) + ' of ' + p3.stack.length + '</div>' +
+        '<div class="peek-body">' + inner + '</div></div>';
+    });
+  }
+  document.getElementById('body-p3').innerHTML = h;
+}
+
+/* ─────────────── P4 · cross-filter ─────────────── */
+const p4 = { sup: new Set(), po: new Set() };
+
+function renderP4() {
+  const url = document.getElementById('url-p4');
+  const selSup = p4.sup, selPO = p4.po;
+  const pos = DB['Purchase Order'].filter(po => !selSup.size || selSup.has(po.supplier));
+  const visPO = new Set(pos.map(p => p.id));
+  const lines = DB['PO Line'].filter(l =>
+    (selPO.size ? selPO.has(l.parent) : visPO.has(l.parent)));
+  const poSum = pos.reduce((s, p) => s + p.total, 0);
+  const lnSum = lines.reduce((s, l) => s + l.amount, 0);
+
+  url.innerHTML = '/admin/explore/procurement' +
+    (selSup.size ? ' <span style="opacity:.6">·</span> supplier∈<b>{' + [...selSup].map(s => title('Supplier', s)).join(', ') + '}</b>' : '') +
+    (selPO.size ? ' <span style="opacity:.6">·</span> po∈<b>{' + [...selPO].join(', ') + '}</b>' : '');
+
+  let chips = '';
+  for (const s of selSup) chips += '<span class="chip">Supplier: ' + esc(title('Supplier', s)) +
+    '<button class="x" data-act="p4.sup" data-arg=\'{"id":"' + s + '"}\'>✕</button></span>';
+  for (const p of selPO) chips += '<span class="chip">PO: ' + p +
+    '<button class="x" data-act="p4.po" data-arg=\'{"id":"' + p + '"}\'>✕</button></span>';
+  if (!chips) chips = '<span style="font-size:12px;color:var(--ink-faint)">No selection — click rows to filter downstream panes. Click again to release.</span>';
+
+  const supPane = '<div class="card xf-col"><div class="xf-head"><span class="xt">Suppliers</span>' +
+    '<span class="xc">' + DB['Supplier'].length + '</span></div><div class="xf-list">' +
+    DB['Supplier'].map(s => {
+      const n = DB['Purchase Order'].filter(p => p.supplier === s.id).length;
+      return '<button class="xf-item' + (selSup.has(s.id) ? ' sel' : '') + '" data-act="p4.sup" data-arg=\'{"id":"' + s.id + '"}\'>' +
+        '<span class="l1"><span>' + esc(s.name) + '</span><span class="pill brand">' + n + ' POs</span></span>' +
+        '<span class="l2"><span>' + esc(s.city) + '</span><span>' + esc(s.status) + '</span></span></button>';
+    }).join('') + '</div><div class="xf-foot"><span>' + DB['Supplier'].length + ' suppliers</span></div></div>';
+
+  const poPane = '<div class="card xf-col"><div class="xf-head"><span class="xt">Purchase Orders</span>' +
+    '<span class="xc">' + pos.length + ' of ' + DB['Purchase Order'].length + '</span></div><div class="xf-list">' +
+    pos.map(po => '<button class="xf-item' + (selPO.has(po.id) ? ' sel' : '') + '" data-act="p4.po" data-arg=\'{"id":"' + po.id + '"}\'>' +
+      '<span class="l1"><span>' + po.id + '</span><span class="amt">' + inr(po.total) + '</span></span>' +
+      '<span class="l2"><span>' + esc(title('Supplier', po.supplier)) + ' · ' + fdate(po.date) + '</span>' +
+      pill(po.status) + '</span></button>').join('') +
+    '</div><div class="xf-foot"><span>' + pos.length + ' POs</span><span>' + inr(poSum) + '</span></div></div>';
+
+  const lnPane = '<div class="card xf-col"><div class="xf-head"><span class="xt">PO Lines</span>' +
+    '<span class="xc">' + lines.length + ' of ' + DB['PO Line'].length + '</span></div><div class="xf-list">' +
+    lines.map(l => '<div class="xf-item" style="cursor:default">' +
+      '<span class="l1"><span>' + esc(title('Item', l.item)) + '</span><span class="amt">' + inr(l.amount) + '</span></span>' +
+      '<span class="l2"><span>' + l.parent + '</span><span>' + l.qty.toLocaleString('en-IN') + ' × ' + inr(l.rate) + '</span></span></div>').join('') +
+    '</div><div class="xf-foot"><span>' + lines.length + ' lines</span><span>' + inr(lnSum) + '</span></div></div>';
+
+  document.getElementById('body-p4').innerHTML =
+    '<div class="xf-chips">' + chips + '</div><div class="xf-cols">' + supPane + poPane + lnPane + '</div>';
+}
+
+/* ─────────────── P5 · expandable rows ─────────────── */
+const p5 = { open: new Set(['PO-2026-0012']) };
+
+function renderP5() {
+  document.getElementById('url-p5').innerHTML = '/admin/' + encodeURIComponent('Purchase Order') +
+    ' <span style="opacity:.6">· expanded=' + p5.open.size + '</span>';
+  const m = META['Purchase Order'];
+  let h = '<div class="rec-head"><span class="title">Purchase Orders</span><span class="id">' +
+    DB['Purchase Order'].length + ' rows · chevron expands child rows</span></div><div class="card"><table class="grid"><thead><tr><th style="width:34px"></th>' +
+    m.cols.map(c => '<th' + (c.t === 'money' ? ' class="num"' : '') + '>' + esc(c.l) + '</th>').join('') + '</tr></thead><tbody>';
+  for (const po of DB['Purchase Order']) {
+    const open = p5.open.has(po.id);
+    h += '<tr><td><button class="chev' + (open ? ' open' : '') + '" data-act="p5.toggle" data-arg=\'{"id":"' + po.id +
+      '"}\' title="' + (open ? 'Collapse' : 'Expand') + ' lines">▶</button></td>' +
+      m.cols.map(c => cell(c, po)).join('') + '</tr>';
+    if (open) {
+      const lines = DB['PO Line'].filter(l => l.parent === po.id);
+      h += '<tr class="subrow"><td colspan="' + (m.cols.length + 1) + '"><div class="subgrid-wrap">' +
+        grid('PO Line', lines) +
+        '<div class="subfoot">' + lines.length + ' lines · ' + inr(lines.reduce((s, l) => s + l.amount, 0)) +
+        ' · <span class="reflink" title="Would open the PO form">open ' + po.id + ' ↗</span></div></div></td></tr>';
+    }
+  }
+  h += '</tbody></table></div>';
+  document.getElementById('body-p5').innerHTML = h;
+}
+
+/* ─────────────── P6 · relationship map ─────────────── */
+const p6 = { center: ['Employee', 'EMP-001'], openGroup: null, trail: [] };
+
+function nodeSvg(x, y, w, cls, act, arg, l1, l2, count) {
+  return '<g class="node ' + cls + '" data-act="' + act + '" data-arg=\'' + JSON.stringify(arg) + '\' tabindex="0">' +
+    '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="46" rx="8"></rect>' +
+    '<text class="nt" x="' + (x + 12) + '" y="' + (y + 20) + '">' + esc(l1) + '</text>' +
+    '<text class="ns" x="' + (x + 12) + '" y="' + (y + 35) + '">' + esc(l2) + '</text>' +
+    (count != null ? '<text class="nc" x="' + (x + w - 12) + '" y="' + (y + 21) + '" text-anchor="end">' + count + '</text>' : '') +
+    '</g>';
+}
+
+function renderP6() {
+  const [ct, cid] = p6.center;
+  document.getElementById('url-p6').innerHTML = '/admin/map/' + encodeURIComponent(ct) + '/' + cid;
+  const m = META[ct];
+  const r = rec(ct, cid);
+  const fwd = m.cols.filter(c => c.t === 'ref' && r[c.f]).map(c => ({ col: c, to: c.to, id: r[c.f] }));
+  const parentLink = m.sub ? [{ col: { l: 'parent', f: 'parent' }, to: m.sub, id: r[m.fk] }] : [];
+  const allFwd = parentLink.concat(fwd);
+  const children = (m.children || []).map(ch => ({ child: ch }));
+  const bls = backlinksOf(ct);
+  const right = children.map(ch => ({ kind: 'child', table: ch.child, rows: DB[ch.child].filter(x => x[META[ch.child].fk] === cid) }))
+    .concat(bls.map(bl => ({ kind: 'bl', bl, table: bl.table, rows: blRows(bl, cid) })));
+
+  const H = Math.max(220, Math.max(allFwd.length, right.length) * 62 + 60);
+  const cy = H / 2 - 23;
+  let svg = '<svg class="map" viewBox="0 0 900 ' + H + '" role="img" aria-label="Relationship map">';
+  // edges first
+  allFwd.forEach((f, i) => {
+    const y = 40 + i * 62 + 23;
+    svg += '<line class="edge" x1="215" y1="' + y + '" x2="360" y2="' + (cy + 23) + '"></line>' +
+      '<text class="edgelab" x="288" y="' + (y + (cy + 23 - y) / 2 - 6) + '" text-anchor="middle">' + esc(f.col.l || f.col.f) + ' →</text>';
+  });
+  right.forEach((g, i) => {
+    const y = 40 + i * 62 + 23;
+    svg += '<line class="edge" x1="540" y1="' + (cy + 23) + '" x2="660" y2="' + y + '"></line>' +
+      '<text class="edgelab" x="600" y="' + (y + (cy + 23 - y) / 2 - 6) + '" text-anchor="middle">' +
+      (g.kind === 'child' ? 'contains →' : '← ' + esc(g.bl.col)) + '</text>';
+  });
+  // nodes
+  svg += nodeSvg(360, cy, 180, 'center', 'p6.noop', {}, title(ct, cid), ct + ' · ' + cid, null);
+  allFwd.forEach((f, i) => {
+    svg += nodeSvg(40, 40 + i * 62, 175, '', 'p6.center', { table: f.to, id: f.id }, title(f.to, f.id), f.to, null);
+  });
+  right.forEach((g, i) => {
+    const sel = p6.openGroup === i;
+    svg += nodeSvg(660, 40 + i * 62, 200, 'coll' + (sel ? ' sel' : ''), 'p6.group', { i },
+      g.table + (g.kind === 'bl' && g.bl.sub ? ' (via ' + g.bl.via + ')' : ''),
+      g.kind === 'child' ? 'child rows' : 'backlink', g.rows.length);
+  });
+  svg += '</svg>';
+
+  let below = '';
+  if (p6.openGroup != null && right[p6.openGroup]) {
+    const g = right[p6.openGroup];
+    below = '<div class="card"><div class="conn-head">' + esc(g.table) + ' — click a row to re-center the map</div>' +
+      grid(g.table, g.rows.slice(0, 6), { rowAct: 'p6.center' }) +
+      (g.rows.length > 6 ? '<div class="tabfoot">Showing 6 of ' + g.rows.length + '</div>' : '') + '</div>';
+  }
+  const trail = p6.trail.length
+    ? '<div class="crumbs" style="margin:10px 0 0">Trail: ' + p6.trail.map(([t, id], i) =>
+        '<button data-act="p6.trail" data-arg=\'' + JSON.stringify({ i }) + '\'>' + esc(title(t, id)) + '</button>' +
+        (i < p6.trail.length - 1 ? '<span class="sep">›</span>' : '')).join('') +
+      '<span class="sep">›</span><span class="here">' + esc(title(ct, cid)) + '</span></div>'
+    : '';
+  document.getElementById('body-p6').innerHTML = svg + trail + below;
+}
+
+/* ─────────────── actions ─────────────── */
+const ACTIONS = {
+  'show': a => {
+    document.querySelectorAll('.pattern').forEach(s => s.classList.toggle('on', s.id === a.p));
+    document.querySelectorAll('.ptab').forEach((b, i) => b.classList.toggle('on', PATTERNS[i][0] === a.p));
+  },
+  'p1.root': a => { p1.view = { type: 'form', table: a.table, id: a.id }; renderP1(); },
+  'p1.list': a => { p1.view = { type: 'list', bl: a.bl, id: a.id, fromTable: p1.view.table, filtered: true }; renderP1(); },
+  'p1.back': () => { const v = p1.view; p1.view = { type: 'form', table: v.fromTable, id: v.id }; renderP1(); },
+  'p1.clearfilter': () => { p1.view.filtered = false; renderP1(); },
+  'p1.refilter': () => { p1.view.filtered = true; renderP1(); },
+  'p2.emp': a => { p2.emp = a.id; p2.open = null; renderP2(); },
+  'p2.tab': a => { p2.tab = a.t; p2.open = null; renderP2(); },
+  'p2.open': a => { p2.open = a; renderP2(); },
+  'p2.back': () => { p2.open = null; renderP2(); },
+  'p2.backlist': () => { p2.open = null; p2.tab = 'Details'; renderP2(); },
+  'p2.noop': () => {},
+  'p3.push-rec': a => { p3.stack.push({ kind: 'rec', table: a.table, id: a.id }); renderP3(); },
+  'p3.push-list': a => { p3.stack.push({ kind: 'list', bl: a.bl, fromTable: a.fromTable, fromId: a.fromId }); renderP3(); },
+  'p3.pop': () => { p3.stack.pop(); renderP3(); },
+  'p3.closeall': () => { p3.stack = []; renderP3(); },
+  'p4.sup': a => { p4.sup.has(a.id) ? p4.sup.delete(a.id) : p4.sup.add(a.id); p4.po.clear(); renderP4(); },
+  'p4.po': a => { p4.po.has(a.id) ? p4.po.delete(a.id) : p4.po.add(a.id); renderP4(); },
+  'p5.toggle': a => { p5.open.has(a.id) ? p5.open.delete(a.id) : p5.open.add(a.id); renderP5(); },
+  'p6.group': a => { p6.openGroup = p6.openGroup === a.i ? null : a.i; renderP6(); },
+  'p6.center': a => { p6.trail.push(p6.center); if (p6.trail.length > 6) p6.trail.shift();
+    p6.center = [a.table, a.id]; p6.openGroup = null; renderP6(); },
+  'p6.trail': a => { p6.center = p6.trail[a.i]; p6.trail = p6.trail.slice(0, a.i); p6.openGroup = null; renderP6(); },
+  'p6.noop': () => {},
+};
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  if (e.target.closest('.x') && !el.classList.contains('x')) return; // chip ✕ handled by its own [data-act]
+  const act = ACTIONS[el.dataset.act];
+  if (act) { e.preventDefault(); act(el.dataset.arg ? JSON.parse(el.dataset.arg) : {}, el); }
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && p3.stack.length) { p3.stack = []; renderP3(); }
+  if (e.key === 'Enter' && document.activeElement && document.activeElement.dataset && document.activeElement.dataset.act) {
+    document.activeElement.click();
+  }
+});
+
+renderP1(); renderP2(); renderP3(); renderP4(); renderP5(); renderP6();
+</script>

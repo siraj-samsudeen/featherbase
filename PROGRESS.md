@@ -57,6 +57,14 @@ Verified: affected server suites 23/23, recents unit 15/15, all 12
 #101-related e2e + palette green, both typechecks clean, full web e2e
 re-run green (see below), `pnpm install --frozen-lockfile` passes.
 
+## 2026-08-02 — Relational navigation MERGED (PR #102 → main)
+
+PR #102 merged to `main` as `ec8dd61` with all four review findings fixed
+(see the "Review fixes" block in the entry below). Issue #100 stays open as
+the standing design reference for relational navigation. Noted follow-ups
+remain: per-table curation of related tabs, and a server-side join surface
+so Explore can chain via-sub-table backlinks past the client-side cap.
+
 ## 2026-08-01 — #101 Phases 2–6 complete: recent actions shipped end to end
 
 All six phases of [#101](https://github.com/siraj-samsudeen/featherbase/issues/101)
@@ -155,6 +163,85 @@ globalSetup empties `background_job` mid-e2e.
 
 Next: #101 Phase 2 — sidebar Recent group + per-table recents strip over the
 same local store; then the `user_event` server log (Phase 3).
+## 2026-07-31 — Relational navigation: all six patterns from issue #100
+
+The design exploration in `docs/design/explorations/relational-navigation.*`
+(issue #100) is now implemented — six ways to move between related rows, all
+derived from Table metadata with zero per-table configuration:
+
+- **Server (NAV-001)** — `getBacklinks()` in `meta.ts`: the reverse-reference
+  map (every Reference column targeting a table, with sub-table references
+  resolved to their OWNING tables, Frappe's "internal links" shape), cached
+  whole and invalidated with the meta cache. Two generated-layer actions:
+  `GET /api/table/:t/:name:connections` (per-row, permission-scoped counts +
+  ready-to-use ListView `filters` arrays; via-links get a `name in [...]`
+  filter over owning rows, capped at 500) and `GET /api/table/:t:backlinks`
+  (table-level shape, no counts). `test/connections.test.ts` covers direct,
+  via-sub-table, zero-count, and 404 cases.
+- **Pattern 1, Connections panel** — `ConnectionsPanel.tsx` in the FormView
+  sidebar: each backlink group with a live count, linking to
+  `/admin/$table?filters=…`; ◎ peeks; + opens a pre-filled new row via the
+  new `?prefill=<json>` search param on the form route (FormView seeds
+  `values`, not `baseline`, so a pure-prefill save stays possible).
+  `LinkControl` finally links out: ◎ peek + ↗ open on any set Reference.
+- **Pattern 2, counters + related tabs** — `RelatedTabs` under the form:
+  count tiles double as tabs over an embedded read-only list (8 rows) with
+  "Open as filtered list ↗" and pre-filled "+ New" escapes.
+- **Pattern 3, peek stack** — `Peek.tsx`: `PeekProvider` (mounted in
+  `AdminLayout`) + stacked read-only slide-over panels for any record/list.
+  References and connection rows inside a panel push deeper; ← pops, Esc/✕
+  close all, ↗ commits to real navigation; any route change clears the stack.
+- **Pattern 5, expandable rows** — ListView rows of tables with Sub-table
+  columns get a chevron; expansion renders the child rows inline (read-only,
+  Σ over Currency columns), several rows at once.
+- **Pattern 4, cross-filter Explore** — `/admin/explore` (sidebar entry):
+  chain up to three panes over direct backlinks and child sub-tables;
+  clicking rows IS the filter (in-filters downstream), chips release,
+  footers aggregate (Σ prefers Currency > Float > Int). Via-sub-table
+  backlinks are deliberately not offered as chain steps (their filter is
+  per-row, not per-column).
+- **Pattern 6, relation map** — `/admin/map/$doctype/$name` ("Map" button on
+  every form): SVG neighborhood — forward references left, child tables +
+  backlink collections right (dashed, with counts); collections open their
+  rows below; any record click re-centers with a `?trail=` breadcrumb.
+
+Verified end-to-end: demo dataset (Supplier ← Purchase Order ▸ PO Line →
+Item; Employee ← Attendance/Payroll Slip, `reports_to` self-reference)
+created through the real metadata + save_doc APIs — the seed script is
+committed as `tools/seed-relational-demo.mjs` (idempotent-ish: rerun skips
+existing tables) — then a 13-check Playwright script exercised every
+pattern in the browser (counts, chips, URL filters, peek stack depth 3,
+Esc, two rows expanded at once, Acme → 3 POs cross-filter, map hop with
+trail). `pnpm test` fully green (server 99 files / 507 tests, web 12),
+`pnpm smoke` green, both typechecks clean.
+
+Gotchas for future sessions:
+- Adding a search param to a TanStack route makes `search` REQUIRED at
+  every `<Link>`/`navigate` to it — the `?prefill=` addition touched ~15
+  call sites (`search={{ prefill: undefined }}`). Budget for that when
+  adding params to shared routes.
+- `column_def` names like `status`/`parent` are reserved (STANDARD_COLUMNS)
+  — the demo tables use `att_status`/`slip_state`/`stage` instead.
+- In this container, Playwright needs `CHROMIUM_PATH=/opt/pw-browsers/chromium`.
+
+Next: consider per-table metadata to curate related tabs (order/visibility)
+once real usage shows which hubs need it; an Explore pane for via-sub-table
+backlinks would need a small server join surface (`name in (select parent …)`).
+
+**Review fixes (same PR, #102):** (1) via-sub-table connections now derive
+BOTH owner names and count from one permission-scoped EXISTS query
+(`relatedOwners` in `query.ts`) — a caller can no longer learn names of
+parent rows they cannot read, the count matches their scoped list, and the
+500-name cap is deterministic (ordered by name); covered by own_rows, Data
+Scope, and 501-owner tests. (2) Prefill now seeds the form's INITIAL state
+(no race with client-script `onload`) and the form route keys on the
+prefill string, so switching/clearing `?prefill=` remounts instead of
+retaining stale values. (3) An Explore pane whose upstream name set is
+truncated (>100 rows, no selection) renders a "Selection needed" notice
+instead of a silently-incomplete subset — grandparent truncation propagates
+— and Σ labels say "(shown rows)" when partial. (4) Explore's root picker
+uses new `GET /api/navigable_tables` (kind='table' filtered by each table's
+own read permission), not a read of the metadata `Table` table.
 
 ## 2026-07-31 — UI-025: user-selectable color palettes (second theming axis)
 

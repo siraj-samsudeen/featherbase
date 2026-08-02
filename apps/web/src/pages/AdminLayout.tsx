@@ -20,6 +20,7 @@ import { useRealtime } from '../lib/realtime'
 import { useTheme } from '../lib/theme'
 import { PALETTES, usePalette, type Palette } from '../lib/palette'
 import { useI18n } from '../lib/i18n'
+import { PeekProvider } from '../components/Peek'
 
 interface SearchHit {
   table: string
@@ -163,7 +164,7 @@ export function AdminLayout() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault()
         const dt = currentDoctype()
-        if (dt && dt !== 'new-table') navigate({ to: '/admin/$doctype/$name', params: { doctype: dt, name: 'new' } })
+        if (dt && dt !== 'new-table') navigate({ to: '/admin/$doctype/$name', params: { doctype: dt, name: 'new' }, search: { prefill: undefined } })
         return
       }
       // Leader-key navigation only when not typing into a field.
@@ -279,7 +280,7 @@ export function AdminLayout() {
   function openDoc(hit: SearchHit) {
     recordSearch(search.trim())
     setSearch('')
-    navigate({ to: '/admin/$doctype/$name', params: { doctype: hit.table, name: hit.name } })
+    navigate({ to: '/admin/$doctype/$name', params: { doctype: hit.table, name: hit.name }, search: { prefill: undefined } })
   }
 
   // Enter opens the top match: an exactly-named Table's list first,
@@ -337,6 +338,7 @@ export function AdminLayout() {
       : []
 
   return (
+    <PeekProvider>
     <div className="flex h-full flex-col">
       {/* Navbar */}
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 sm:gap-4 sm:px-4">
@@ -466,6 +468,7 @@ export function AdminLayout() {
                 <Link
                   key={`new-${d.name}`}
                   to="/admin/$doctype/$name"
+                  search={{ prefill: undefined }}
                   params={{ doctype: d.name, name: 'new' }}
                   onClick={() => setSearch('')}
                   data-testid="awesomebar-new"
@@ -710,6 +713,19 @@ export function AdminLayout() {
             </div>
           )}
           <div className="border-t border-[var(--color-border)] px-2 py-2">
+            {/* #100 pattern 4: the cross-filter Explore surface. */}
+            <Link
+              to="/admin/explore"
+              search={{ root: undefined }}
+              data-testid="explore-link"
+              className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)] hover:text-[var(--color-ink)]"
+              activeProps={{
+                className:
+                  'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]',
+              }}
+            >
+              Explore
+            </Link>
             <Link
               to="/admin/all-tables"
               data-testid="all-tables-link"
@@ -732,6 +748,7 @@ export function AdminLayout() {
         </main>
       </div>
     </div>
+    </PeekProvider>
   )
 }
 

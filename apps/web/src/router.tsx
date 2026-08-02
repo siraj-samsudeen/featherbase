@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import {
   Link,
   Outlet,
@@ -32,6 +32,8 @@ import { PrintView } from './pages/PrintView'
 import { TableBuilder } from './pages/TableBuilder'
 import { ImportWizard } from './pages/ImportWizard'
 import { AllTablesPage } from './pages/AllTables'
+import { ExploreView } from './pages/Explore'
+import { RelationMap } from './pages/RelationMap'
 
 const rootRoute = createRootRoute({ component: Outlet })
 
@@ -478,18 +480,93 @@ function PermissionsPage() {
   )
 }
 
+// #100: `prefill` seeds a NEW row's initial values (JSON object of column →
+// value) — the "+ New Attendance from this Employee" affordance. Validated
+// like filters: URLs are user input, so anything that isn't a plain object
+// is discarded rather than crashing the form.
+function parsePrefill(raw: string | undefined): Record<string, unknown> | undefined {
+  if (!raw) return undefined
+  try {
+    const value: unknown = JSON.parse(raw)
+    if (value && typeof value === 'object' && !Array.isArray(value))
+      return value as Record<string, unknown>
+  } catch {
+    /* fall through */
+  }
+  return undefined
+}
+
 // UI-004/UI-005: the generic FormView renders and saves every Table.
 const docRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '$doctype/$name',
+  validateSearch: (search: Record<string, unknown>) => ({
+    prefill: searchString(search.prefill),
+  }),
   component: TableFormPage,
 })
 
 function TableFormPage() {
   const { doctype, name } = docRoute.useParams()
+  const { prefill } = docRoute.useSearch()
+  // #102 review: the raw prefill string is part of the key — navigating
+  // from one ?prefill= URL to another (or clearing it, e.g. Ctrl/Cmd+B)
+  // remounts the form instead of retaining the previous form's values.
+  // Parsing is memoized so the object isn't rebuilt every render.
+  const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
   return (
     <div data-testid="doc-page">
-      <FormView key={`${doctype}/${name}`} doctype={doctype} name={name} />
+      <FormView
+        key={`${doctype}/${name}/${prefill ?? ''}`}
+        doctype={doctype}
+        name={name}
+        prefill={parsedPrefill}
+      />
+    </div>
+  )
+}
+
+// #100 pattern 4: cross-filter Explore — pane chains over reference links,
+// where clicking rows IS the filter (static segment, before $doctype).
+const exploreRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'explore',
+  validateSearch: (search: Record<string, unknown>) => ({
+    root: searchString(search.root),
+  }),
+  component: ExplorePage,
+})
+
+function ExplorePage() {
+  const { root } = exploreRoute.useSearch()
+  const navigate = exploreRoute.useNavigate()
+  return (
+    <div data-testid="doctype-page">
+      <ExploreView
+        root={root}
+        onRootChange={(r) => navigate({ search: { root: r || undefined }, replace: true })}
+      />
+    </div>
+  )
+}
+
+// #100 pattern 6: relationship map — the row's neighborhood as a walkable
+// graph. `trail` carries the hop history (static first segment).
+const mapRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'map/$doctype/$name',
+  validateSearch: (search: Record<string, unknown>) => ({
+    trail: searchString(search.trail),
+  }),
+  component: MapPage,
+})
+
+function MapPage() {
+  const { doctype, name } = mapRoute.useParams()
+  const { trail } = mapRoute.useSearch()
+  return (
+    <div data-testid="doctype-page">
+      <RelationMap key={`${doctype}/${name}`} doctype={doctype} name={name} trail={trail} />
     </div>
   )
 }
@@ -503,5 +580,5 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, jobsRoute, doctypeRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, jobsRoute, doctypeRoute, docRoute]),
 ])

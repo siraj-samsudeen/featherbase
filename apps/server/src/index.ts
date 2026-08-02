@@ -14,7 +14,7 @@ import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { generateApiKeys, login, resolveToken, revokeApiKeys, setUserPassword, issueSession, type SessionUser } from './auth'
 import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newState, verifyState, isMockProvider } from './oauth'
-import { assertPermission, assertSystemManager, getRoles } from './permissions'
+import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
@@ -30,6 +30,7 @@ import {
 } from './actions'
 import './actions/core-row-actions'
 import './actions/collection-import'
+import './actions/row-connections'
 import { renderPdf, renderPrintHtml } from './print'
 import { availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
@@ -1086,6 +1087,21 @@ app.get('/api/search', async (c) => {
 // table access is still enforced by Permission rows on every read.
 app.get('/api/home_pages', async (c) => {
   return c.json({ pages: await getVisibleHomePages(who(c)) })
+})
+
+// NAV-001 (#102 review): the tables the caller may actually read, for
+// navigation pickers like Explore's root select. Reading the metadata
+// `Table` table requires its own permission most users don't have — this
+// filters by each candidate table's read permission instead, the same
+// posture as the Home Pages endpoint.
+app.get('/api/navigable_tables', async (c) => {
+  const user = who(c)
+  const rows = await sql<{ name: string }[]>`
+    select name from table_def where kind = 'table' order by name`
+  const tables: string[] = []
+  for (const r of rows)
+    if ((await permissionScope(user, r.name, 'read')) !== 'none') tables.push(r.name)
+  return c.json({ tables })
 })
 
 // RT-003: the caller's unread notification count.

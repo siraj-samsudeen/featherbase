@@ -84,6 +84,10 @@ export function ListView({
   const filterKey = JSON.stringify(filters)
   useEffect(() => setStart(0), [filterKey])
   useEffect(() => setSelected(new Set()), [filterKey, start, doctype])
+  // #100 pattern 5 (Access subdatasheets): rows of tables with Sub-table
+  // columns expand their child rows inline via a chevron.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  useEffect(() => setExpanded(new Set()), [filterKey, start, doctype])
 
   // RT-001: another session creating/updating/deleting a doc of this type
   // refreshes the list without a reload.
@@ -154,6 +158,10 @@ export function ListView({
 
   const total = list.data?.total ?? 0
   const rows = list.data?.data ?? []
+  const childFields = (meta.data?.columns ?? []).filter(
+    (f) => f.column_type === 'Sub-table' && !f.hidden,
+  )
+  const expandable = childFields.length > 0
 
   function toggleSort(field: string) {
     setStart(0)
@@ -430,6 +438,7 @@ export function ListView({
         <table className="w-full text-sm">
           <thead className="bg-[var(--color-subtle)] text-left">
             <tr>
+              {expandable && <th className="w-7 border-b border-[var(--color-border)]" />}
               <th className="w-8 border-b border-[var(--color-border)] px-3 py-2">
                 <input
                   type="checkbox"
@@ -458,45 +467,33 @@ export function ListView({
           </thead>
           <tbody data-testid="list-rows">
             {rows.map((row) => (
-              <tr key={String(row.name)} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]">
-                <td className="px-3 py-2">
-                  <input
-                    type="checkbox"
-                    data-testid="row-check"
-                    checked={selected.has(String(row.name))}
-                    onChange={() => toggleRow(String(row.name))}
-                  />
-                </td>
-                {columns.map((col, i) => (
-                  <td key={col.column_name} className="px-3 py-2">
-                    {i === 0 ? (
-                      <Link
-                        to="/admin/$doctype/$name"
-                        params={{ doctype, name: String(row.name) }}
-                        className={`font-medium text-[var(--color-brand)] hover:underline ${
-                          col.column_name === 'name' ? 'font-mono text-[13px]' : ''
-                        }`}
-                      >
-                        {cell(row[col.column_name], col.column_type, settings)}
-                      </Link>
-                    ) : col.column_type === 'Choice' &&
-                      row[col.column_name] != null &&
-                      row[col.column_name] !== '' ? (
-                      <span className="text-[var(--color-ink)]" data-testid={`cell-${col.column_name}`}>
-                        <Indicator value={String(row[col.column_name])} />
-                      </span>
-                    ) : (
-                      <span className="text-[var(--color-ink)]" data-testid={`cell-${col.column_name}`}>
-                        {cell(row[col.column_name], col.column_type, settings)}
-                      </span>
-                    )}
-                  </td>
-                ))}
-              </tr>
+              <ListRow
+                key={String(row.name)}
+                row={row}
+                doctype={doctype}
+                columns={columns}
+                settings={settings}
+                selected={selected.has(String(row.name))}
+                onToggleSelect={() => toggleRow(String(row.name))}
+                expandable={expandable}
+                childFields={childFields}
+                expanded={expanded.has(String(row.name))}
+                onToggleExpand={() =>
+                  setExpanded((prev) => {
+                    const next = new Set(prev)
+                    if (next.has(String(row.name))) next.delete(String(row.name))
+                    else next.add(String(row.name))
+                    return next
+                  })
+                }
+              />
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={columns.length + 1} className="px-3 py-8 text-center text-[var(--color-ink-faint)]">
+                <td
+                  colSpan={columns.length + (expandable ? 2 : 1)}
+                  className="px-3 py-8 text-center text-[var(--color-ink-faint)]"
+                >
                   No rows
                 </td>
               </tr>
@@ -525,6 +522,213 @@ export function ListView({
           Next
         </button>
       </div>
+    </div>
+  )
+}
+
+// One list row (+ its optional expanded child-rows row). Extracted so the
+// chevron and the inline subgrid don't clutter the main table loop.
+function ListRow({
+  row,
+  doctype,
+  columns,
+  settings,
+  selected,
+  onToggleSelect,
+  expandable,
+  childFields,
+  expanded,
+  onToggleExpand,
+}: {
+  row: Record<string, unknown>
+  doctype: string
+  columns: { column_name: string; label: string; column_type: string }[]
+  settings: Settings
+  selected: boolean
+  onToggleSelect: () => void
+  expandable: boolean
+  childFields: import('../lib/meta').ColumnDef[]
+  expanded: boolean
+  onToggleExpand: () => void
+}) {
+  return (
+    <>
+      <tr className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]">
+        {expandable && (
+          <td className="pl-2">
+            <button
+              onClick={onToggleExpand}
+              aria-label={expanded ? 'Collapse child rows' : 'Expand child rows'}
+              aria-expanded={expanded}
+              data-testid="row-expand"
+              className={`rounded px-1 text-xs text-[var(--color-ink-faint)] transition-transform hover:text-[var(--color-brand)] ${
+                expanded ? 'rotate-90 text-[var(--color-brand)]' : ''
+              }`}
+            >
+              ▶
+            </button>
+          </td>
+        )}
+        <td className="px-3 py-2">
+          <input
+            type="checkbox"
+            data-testid="row-check"
+            checked={selected}
+            onChange={onToggleSelect}
+          />
+        </td>
+        {columns.map((col, i) => (
+          <td key={col.column_name} className="px-3 py-2">
+            {i === 0 ? (
+              <Link
+                to="/admin/$doctype/$name"
+                search={{ prefill: undefined }}
+                        params={{ doctype, name: String(row.name) }}
+                className={`font-medium text-[var(--color-brand)] hover:underline ${
+                  col.column_name === 'name' ? 'font-mono text-[13px]' : ''
+                }`}
+              >
+                {cell(row[col.column_name], col.column_type, settings)}
+              </Link>
+            ) : col.column_type === 'Choice' &&
+              row[col.column_name] != null &&
+              row[col.column_name] !== '' ? (
+              <span className="text-[var(--color-ink)]" data-testid={`cell-${col.column_name}`}>
+                <Indicator value={String(row[col.column_name])} />
+              </span>
+            ) : (
+              <span className="text-[var(--color-ink)]" data-testid={`cell-${col.column_name}`}>
+                {cell(row[col.column_name], col.column_type, settings)}
+              </span>
+            )}
+          </td>
+        ))}
+      </tr>
+      {expanded && (
+        <tr data-testid="expanded-row">
+          <td
+            colSpan={columns.length + 2}
+            className="border-b border-[var(--color-border)] bg-[var(--color-subtle)] py-3 pl-10 pr-4"
+          >
+            <InlineChildren doctype={doctype} name={String(row.name)} childFields={childFields} />
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
+// The expanded row's content: every Sub-table column's rows, read-only,
+// fetched through the ordinary row GET (children arrive embedded).
+function InlineChildren({
+  doctype,
+  name,
+  childFields,
+}: {
+  doctype: string
+  name: string
+  childFields: import('../lib/meta').ColumnDef[]
+}) {
+  const settings = useSettings()
+  const doc = useQuery({
+    queryKey: ['doc', doctype, name],
+    queryFn: () =>
+      api.get<Record<string, unknown>>(
+        `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
+      ),
+  })
+  if (doc.isLoading) return <p className="text-xs text-[var(--color-ink-faint)]">Loading…</p>
+  if (doc.isError) return <p className="text-xs text-[var(--color-danger)]">Cannot load {name}</p>
+  return (
+    <div className="flex flex-col gap-3">
+      {childFields.map((f) => (
+        <InlineChildGrid
+          key={f.column_name}
+          field={f}
+          rows={(doc.data?.[f.column_name] as Record<string, unknown>[]) ?? []}
+          settings={settings}
+        />
+      ))}
+    </div>
+  )
+}
+
+function InlineChildGrid({
+  field,
+  rows,
+  settings,
+}: {
+  field: import('../lib/meta').ColumnDef
+  rows: Record<string, unknown>[]
+  settings: Settings
+}) {
+  const childMeta = useMeta(field.row_table ?? '')
+  if (!childMeta.data) return null
+  const cols = childMeta.data.columns.filter(
+    (f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden,
+  )
+  const currencyCols = cols.filter((c) => c.column_type === 'Currency')
+  return (
+    <div className="overflow-hidden rounded-[var(--radius-control)] border border-[var(--color-border)] bg-[var(--color-surface)]" data-testid={`inline-children-${field.column_name}`}>
+      <div className="border-b border-[var(--color-border)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+        {field.label ?? field.column_name} ({rows.length})
+      </div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr>
+            {cols.map((c) => (
+              <th key={c.column_name} className="border-b border-[var(--color-border)] px-3 py-1 text-left font-medium text-[var(--color-ink-muted)]">
+                {c.label ?? c.column_name}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={String(r.name ?? i)} className="border-b border-[var(--color-border)] last:border-0">
+              {cols.map((c) => (
+                <td key={c.column_name} className="px-3 py-1 text-[var(--color-ink)]">
+                  {c.column_type === 'Reference' && c.reference_table && r[c.column_name] ? (
+                    <Link
+                      to="/admin/$doctype/$name"
+                      search={{ prefill: undefined }}
+                        params={{ doctype: c.reference_table, name: String(r[c.column_name]) }}
+                      className="text-[var(--color-brand)] hover:underline"
+                    >
+                      {String(r[c.column_name])}
+                    </Link>
+                  ) : (
+                    cell(r[c.column_name], c.column_type, settings)
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+          {!rows.length && (
+            <tr>
+              <td colSpan={cols.length} className="px-3 py-3 text-center text-[var(--color-ink-faint)]">
+                No rows
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      {currencyCols.length > 0 && rows.length > 0 && (
+        <div className="border-t border-[var(--color-border)] bg-[var(--color-subtle)] px-3 py-1 text-[11px] text-[var(--color-ink-muted)]">
+          {currencyCols
+            .map(
+              (c) =>
+                `Σ ${c.label ?? c.column_name}: ${
+                  formatValue(
+                    'Currency',
+                    rows.reduce((s, r) => s + (Number(r[c.column_name]) || 0), 0),
+                    settings,
+                  )
+                }`,
+            )
+            .join(' · ')}
+        </div>
+      )}
     </div>
   )
 }
