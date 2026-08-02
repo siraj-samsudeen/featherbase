@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import {
   Link,
   Outlet,
@@ -509,13 +509,18 @@ const docRoute = createRoute({
 function TableFormPage() {
   const { doctype, name } = docRoute.useParams()
   const { prefill } = docRoute.useSearch()
+  // #102 review: the raw prefill string is part of the key — navigating
+  // from one ?prefill= URL to another (or clearing it, e.g. Ctrl/Cmd+B)
+  // remounts the form instead of retaining the previous form's values.
+  // Parsing is memoized so the object isn't rebuilt every render.
+  const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
   return (
     <div data-testid="doc-page">
       <FormView
-        key={`${doctype}/${name}`}
+        key={`${doctype}/${name}/${prefill ?? ''}`}
         doctype={doctype}
         name={name}
-        prefill={parsePrefill(prefill)}
+        prefill={parsedPrefill}
       />
     </div>
   )

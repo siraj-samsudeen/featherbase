@@ -1,9 +1,7 @@
-import { sql } from '../db'
 import { AppError } from '../errors'
 import { getBacklinks } from '../meta'
 import { getDoc } from '../document'
-import { tableName } from '../doctype-engine'
-import { countDocs, type Filter } from '../query'
+import { countDocs, relatedOwners, type Filter } from '../query'
 import { permissionScope } from '../permissions'
 import { registerCollectionAction, registerRowAction } from '../actions'
 
@@ -59,15 +57,12 @@ registerRowAction('connections', {
     for (const bl of await getBacklinks(table)) {
       if ((await permissionScope(user.name, bl.table, 'read')) === 'none') continue
       if (bl.via) {
-        const rows = await sql`
-          select distinct parent from ${sql(tableName(bl.via))}
-          where ${sql(bl.column)} = ${name} and parenttype = ${bl.table}
-            and parent is not null
-          limit 500`
-        const parents = rows.map((r) => r.parent as string)
-        const filters: Filter[] = [['name', 'in', parents]]
-        const count = parents.length ? await countDocs(bl.table, filters, user.name) : 0
-        connections.push({ table: bl.table, column: bl.column, via: bl.via, count, filters })
+        // #102 review: owner names AND count come from one permission-scoped
+        // query (see relatedOwners) — never from the raw child table, which
+        // would disclose names of parents the caller cannot read.
+        const { names, total } = await relatedOwners(bl.table, bl.via, bl.column, name, user.name)
+        const filters: Filter[] = [['name', 'in', names]]
+        connections.push({ table: bl.table, column: bl.column, via: bl.via, count: total, filters })
       } else {
         const filters: Filter[] = [[bl.column, '=', name]]
         connections.push({

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { listResource } from '../lib/api'
+import { api, listResource } from '../lib/api'
 import { listColumns, useMeta, type TableMeta } from '../lib/meta'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { useBacklinks } from '../lib/connections'
@@ -37,16 +37,12 @@ export function ExploreView({
   root: string | undefined
   onRootChange: (root: string) => void
 }) {
-  // Every non-sub, non-settings table is a candidate root.
+  // Candidate roots come from the permission-filtered navigation endpoint —
+  // NOT from reading the metadata `Table` table, which most roles cannot
+  // read (and which would list tables the caller can't open). #102 review.
   const tables = useQuery({
-    queryKey: ['explore-tables'],
-    queryFn: () =>
-      listResource<{ name: string }>('Table', {
-        filters: [['kind', '=', 'table']],
-        fields: ['name'],
-        order_by: 'name asc',
-        limit_page_length: 500,
-      }),
+    queryKey: ['navigable-tables'],
+    queryFn: () => api.get<{ tables: string[] }>('/api/navigable_tables'),
   })
 
   const [step2, setStep2] = useState<Step | null>(null)
@@ -87,9 +83,9 @@ export function ExploreView({
             className="fc-input w-56"
           >
             <option value="">Pick a table…</option>
-            {(tables.data?.data ?? []).map((t) => (
-              <option key={t.name} value={t.name}>
-                {t.name}
+            {(tables.data?.tables ?? []).map((t) => (
+              <option key={t} value={t}>
+                {t}
               </option>
             ))}
           </select>
@@ -270,13 +266,16 @@ function Chips({
 
 // Builds the filter a chained pane needs from its upstream pane's state.
 // Upstream selection wins; with none, the pane follows the upstream pane's
-// own (possibly filtered) row set, fetched here as names only.
+// own (possibly filtered) row set, fetched here as names only. When that
+// name set is TRUNCATED (more upstream rows exist than PANE_LIMIT), the
+// chain is not the complete relationship — `truncated` tells the pane to
+// refuse to render a silently-wrong subset (#102 review).
 function useChainFilters(
   step: Step,
   upstreamTable: string,
   upstreamSelection: Set<string>,
   upstreamFilters: Filter[],
-): { filters: Filter[]; ready: boolean } {
+): { filters: Filter[]; ready: boolean; truncated: boolean; upstreamTotal: number } {
   const needNames = upstreamSelection.size === 0
   const names = useQuery({
     queryKey: ['explore-names', upstreamTable, JSON.stringify(upstreamFilters)],
@@ -292,6 +291,8 @@ function useChainFilters(
     ? [...upstreamSelection]
     : (names.data?.data ?? []).map((r) => r.name)
   const ready = !needNames || Boolean(names.data)
+  const truncated =
+    needNames && Boolean(names.data) && names.data!.total > names.data!.data.length
   const filters: Filter[] =
     step.mode === 'child'
       ? [
@@ -299,7 +300,7 @@ function useChainFilters(
           ['parent', 'in', upstream],
         ]
       : [[step.column, 'in', upstream]]
-  return { filters, ready }
+  return { filters, ready, truncated, upstreamTotal: names.data?.total ?? upstream.length }
 }
 
 function ChainedPane(props: {
@@ -328,6 +329,27 @@ function ChainedPane(props: {
     upstreamFilters,
   )
   if (!chain.ready) return <div className="fc-card p-4 text-sm text-[var(--color-ink-faint)]">Loading…</div>
+  // An incomplete upstream name set would render a silently-wrong pane —
+  // ask for an explicit selection instead of pretending completeness. A
+  // truncated grandparent poisons this pane the same way unless the pane
+  // in between has an explicit selection.
+  const grandTruncated =
+    Boolean(props.upstreamStep) &&
+    grandParent.truncated &&
+    props.upstreamSelection.size === 0
+  if (chain.truncated || grandTruncated) {
+    const blame = chain.truncated ? props.upstreamTable : props.upstreamUpstreamTable
+    const total = chain.truncated ? chain.upstreamTotal : grandParent.upstreamTotal
+    return (
+      <div className="fc-card p-4 text-sm text-[var(--color-ink-muted)]" data-testid={`${props.testid}-truncated`}>
+        <p className="mb-1 font-medium text-[var(--color-ink)]">Selection needed</p>
+        <p>
+          {blame} has {total} rows but only the first {PANE_LIMIT} can feed this pane, so it
+          would be incomplete. Click rows in the {blame} pane to continue.
+        </p>
+      </div>
+    )
+  }
   return (
     <Pane
       table={props.step.table}
@@ -420,7 +442,9 @@ function Pane({
         </span>
         {sum != null && numericCol && (
           <span data-testid={`${testid}-sum`}>
-            Σ {numericCol.label}: {formatValue(numericCol.column_type, sum, settings)}
+            Σ {numericCol.label}
+            {rows.length < total ? ' (shown rows)' : ''}:{' '}
+            {formatValue(numericCol.column_type, sum, settings)}
           </span>
         )}
       </div>

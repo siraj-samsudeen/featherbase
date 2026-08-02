@@ -46,7 +46,12 @@ export function FormView({
       api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
   })
 
-  const [values, setValues] = useState<Row>({})
+  // #102 review: prefill seeds the INITIAL state synchronously, so the very
+  // first render (and any client-script `onload` in the first effect flush)
+  // already sees the prefilled reference — an onload set_value merges on
+  // top of it instead of racing it. Route-level keying on the prefill
+  // string remounts this component when the prefill changes.
+  const [values, setValues] = useState<Row>(() => (isNew && prefill ? { ...prefill } : {}))
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [banner, setBanner] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)

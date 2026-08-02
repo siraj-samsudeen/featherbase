@@ -82,6 +82,21 @@ Next: consider per-table metadata to curate related tabs (order/visibility)
 once real usage shows which hubs need it; an Explore pane for via-sub-table
 backlinks would need a small server join surface (`name in (select parent …)`).
 
+**Review fixes (same PR, #102):** (1) via-sub-table connections now derive
+BOTH owner names and count from one permission-scoped EXISTS query
+(`relatedOwners` in `query.ts`) — a caller can no longer learn names of
+parent rows they cannot read, the count matches their scoped list, and the
+500-name cap is deterministic (ordered by name); covered by own_rows, Data
+Scope, and 501-owner tests. (2) Prefill now seeds the form's INITIAL state
+(no race with client-script `onload`) and the form route keys on the
+prefill string, so switching/clearing `?prefill=` remounts instead of
+retaining stale values. (3) An Explore pane whose upstream name set is
+truncated (>100 rows, no selection) renders a "Selection needed" notice
+instead of a silently-incomplete subset — grandparent truncation propagates
+— and Σ labels say "(shown rows)" when partial. (4) Explore's root picker
+uses new `GET /api/navigable_tables` (kind='table' filtered by each table's
+own read permission), not a read of the metadata `Table` table.
+
 ## 2026-07-31 — UI-025: user-selectable color palettes (second theming axis)
 
 The Desk now ships four palettes — **Classic** (the original Frappe blue),

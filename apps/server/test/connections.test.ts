@@ -1,6 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { sql } from '../src/db'
 
 // Relational navigation (#100): GET /api/table/:table/:name:connections
 // returns every table pointing at the row via Reference columns, with
@@ -124,5 +125,124 @@ describe('NAV-001: row connections', () => {
     await expect(
       admin.get(`/api/table/${encodeURIComponent(EMP)}/nope:connections`),
     ).rejects.toMatchObject({ status: 404 })
+  })
+})
+
+// #102 review finding 1: via-sub-table owner names and counts must go
+// through the owner table's full read scoping — a caller must never learn
+// the NAME of a parent row they cannot read, and `count` must equal what
+// their filtered list will actually show.
+describe('NAV-001: via-link permission scoping', () => {
+  const ROLE = 'Cnx Role'
+
+  async function grant(admin: TestClient, table: string, extra: Record<string, unknown> = {}) {
+    await admin.post('/api/save_doc', {
+      doctype: 'Permission',
+      doc: { ref_table: table, role: ROLE, can_read: true, ...extra },
+    })
+  }
+
+  test('own_rows_only: other users’ owners are absent from names AND count', async ({
+    admin,
+    createUser,
+  }) => {
+    await setup(admin)
+    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+    await grant(admin, EMP)
+    await grant(admin, LINE, { can_create: true })
+    await grant(admin, ORDER, { can_create: true, own_rows_only: true })
+    const alice = await createUser({ roles: [ROLE] })
+
+    await alice.post('/api/save_doc', {
+      doctype: ORDER,
+      doc: { name: 'ORD-MINE', title: 'mine', lines: [{ employee: 'E-001' }] },
+    })
+    await admin.post('/api/save_doc', {
+      doctype: ORDER,
+      doc: { name: 'ORD-THEIRS', title: 'theirs', lines: [{ employee: 'E-001' }] },
+    })
+
+    const cnx = await getConnections(alice, 'E-001')
+    const ord = cnx.find((c) => c.table === ORDER)
+    expect(ord).toMatchObject({ count: 1 })
+    expect(ord!.filters[0]).toEqual(['name', 'in', ['ORD-MINE']])
+
+    // admin still sees both
+    const all = await getConnections(admin, 'E-001')
+    expect(all.find((c) => c.table === ORDER)!.count).toBe(2)
+  })
+
+  test('Data Scope on the owner table narrows names and count', async ({
+    admin,
+    createUser,
+  }) => {
+    await setup(admin)
+    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+    await grant(admin, EMP)
+    await grant(admin, LINE)
+    await grant(admin, ORDER)
+    const user = await createUser({ roles: [ROLE] })
+    await admin.post('/api/save_doc', {
+      doctype: ORDER,
+      doc: { name: 'ORD-VISIBLE', title: 'v', lines: [{ employee: 'E-001' }] },
+    })
+    await admin.post('/api/save_doc', {
+      doctype: ORDER,
+      doc: { name: 'ORD-HIDDEN', title: 'h', lines: [{ employee: 'E-001' }] },
+    })
+    await admin.post('/api/save_doc', {
+      doctype: 'Data Scope',
+      doc: { user: user.user, allow_table: ORDER, for_value: 'ORD-VISIBLE' },
+    })
+
+    const cnx = await getConnections(user, 'E-001')
+    const ord = cnx.find((c) => c.table === ORDER)
+    expect(ord).toMatchObject({ count: 1 })
+    expect(ord!.filters[0]).toEqual(['name', 'in', ['ORD-VISIBLE']])
+  })
+
+  test('more than 500 owners: true count, deterministic capped names', async ({ admin }) => {
+    await setup(admin)
+    // Bulk-seed 501 owners + one child row each straight through SQL — the
+    // generated tables default every audit column, and the engine round
+    // trip for 1000+ rows is not what this test measures.
+    await sql.unsafe(`
+      insert into cnx_order (name, title)
+      select 'ORD-' || lpad(i::text, 4, '0'), 'bulk' from generate_series(1, 501) i`)
+    await sql.unsafe(`
+      insert into cnx_order_line (name, parent, parenttype, parentfield, employee, qty)
+      select 'L-' || i, 'ORD-' || lpad(i::text, 4, '0'), 'Cnx Order', 'lines', 'E-001', 1
+      from generate_series(1, 501) i`)
+
+    const cnx = await getConnections(admin, 'E-001')
+    const ord = cnx.find((c) => c.table === ORDER)!
+    expect(ord.count).toBe(501)
+    const names = ord.filters[0][2] as string[]
+    expect(names).toHaveLength(500)
+    expect(names[0]).toBe('ORD-0001')
+    expect(names).not.toContain('ORD-0501') // ordered by name, capped
+  })
+})
+
+// #102 review finding 4: navigation pickers list tables by each table's OWN
+// read permission, not by permission on the metadata `Table` table.
+describe('NAV-001: navigable tables', () => {
+  test('filters by per-table read permission', async ({ admin, createUser }) => {
+    await setup(admin)
+    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: 'Cnx Nav Role' } })
+    await admin.post('/api/save_doc', {
+      doctype: 'Permission',
+      doc: { ref_table: EMP, role: 'Cnx Nav Role', can_read: true },
+    })
+    const user = await createUser({ roles: ['Cnx Nav Role'] })
+
+    const mine = await user.get<{ tables: string[] }>('/api/navigable_tables')
+    expect(mine.tables).toContain(EMP)
+    expect(mine.tables).not.toContain(ORDER)
+    // sub-tables are never navigation roots
+    expect(mine.tables).not.toContain(LINE)
+
+    const all = await admin.get<{ tables: string[] }>('/api/navigable_tables')
+    expect(all.tables).toEqual(expect.arrayContaining([EMP, ORDER]))
   })
 })
