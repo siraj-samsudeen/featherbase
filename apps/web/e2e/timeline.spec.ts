@@ -37,9 +37,9 @@ test('UI-019: timeline interleaves an edit (with diff) and a comment in order', 
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
-  await page.goto(`/desk/${encodeURIComponent(DT)}/${docName}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await expect(page.getByTestId('activity-timeline')).toBeVisible()
 
   // Edit the title → produces a version with a diff.

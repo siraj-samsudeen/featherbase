@@ -58,7 +58,7 @@ export interface TableMeta {
   track_changes: boolean
   description: string | null
   custom: boolean
-  // #74: true for platform tables created by the migration chain. The Desk
+  // #74: true for platform tables created by the migration chain. The Admin
   // sidebar groups (never hides) these; POST/PUT /api/doctype reject it.
   system: boolean
   // EDS-3: set when this Table is bound to an external Data Source. A bound
@@ -91,10 +91,71 @@ export const metaCacheStats = { loads: 0, hits: 0 }
 // reaches "Report Feedback" without %20. Lives and dies with the meta cache.
 let slugCache: Map<string, string[]> | null = null
 
+// Relational navigation: reverse-reference map, cached whole (a Reference
+// column added to ANY table can change ANY other table's backlinks, so a
+// targeted invalidate still clears all of it).
+let backlinksCache: Map<string, Backlink[]> | null = null
+
 export function invalidateMeta(name?: string) {
   if (name) cache.delete(name)
   else cache.clear()
   slugCache = null
+  backlinksCache = null
+}
+
+// A table that points at `target` via a Reference column. When the Reference
+// lives in a sub-table, `table` is the OWNING table (the one with a list to
+// navigate to) and `via` names the sub-table holding the column — Frappe's
+// "internal links" shape (Item is reached from Purchase Order via PO Line).
+export interface Backlink {
+  table: string
+  column: string
+  via: string | null
+}
+
+export async function getBacklinks(target: string): Promise<Backlink[]> {
+  if (!backlinksCache) {
+    const targets = await sql<
+      { parent: string; column_name: string; reference_table: string; kind: string }[]
+    >`
+      select cd.parent, cd.column_name, cd.reference_table, td.kind
+      from column_def cd join table_def td on td.name = cd.parent
+      where cd.column_type = 'Reference' and cd.reference_table is not null`
+    // owners of each sub-table: Table rows with a Sub-table column pointing at it
+    const owners = await sql<{ parent: string; row_table: string; kind: string }[]>`
+      select cd.parent, cd.row_table, td.kind
+      from column_def cd join table_def td on td.name = cd.parent
+      where cd.column_type = 'Sub-table' and cd.row_table is not null`
+    const ownersOf = new Map<string, string[]>()
+    for (const o of owners) {
+      if (o.kind !== 'table') continue
+      const list = ownersOf.get(o.row_table) ?? []
+      if (!list.includes(o.parent)) list.push(o.parent)
+      ownersOf.set(o.row_table, list)
+    }
+    const map = new Map<string, Backlink[]>()
+    for (const t of targets) {
+      if (t.kind === 'settings') continue
+      const entries: Backlink[] =
+        t.kind === 'sub_table'
+          ? (ownersOf.get(t.parent) ?? []).map((owner) => ({
+              table: owner,
+              column: t.column_name,
+              via: t.parent,
+            }))
+          : [{ table: t.parent, column: t.column_name, via: null }]
+      for (const e of entries) {
+        const list = map.get(t.reference_table) ?? []
+        if (!list.some((x) => x.table === e.table && x.column === e.column && x.via === e.via))
+          list.push(e)
+        map.set(t.reference_table, list)
+      }
+    }
+    for (const list of map.values())
+      list.sort((a, b) => a.table.localeCompare(b.table) || a.column.localeCompare(b.column))
+    backlinksCache = map
+  }
+  return backlinksCache.get(target) ?? []
 }
 
 // CUST-002: coerce a Metadata Override's string value to the property's type.

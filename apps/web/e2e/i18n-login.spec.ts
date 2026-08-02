@@ -54,7 +54,7 @@ test('I18N-002: stored language applied on login + configured date format', asyn
   await page.fill('input[name=email]', USER)
   await page.fill('input[name=password]', PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
   // The French preference is applied straight after login — chrome is French
   // without touching the language switcher.
@@ -66,6 +66,6 @@ test('I18N-002: stored language applied on login + configured date format', asyn
   // The date renders THROUGH the System-Settings formatter (one of the
   // configured orders of 9 March 2026) — never the raw ISO string. Which order
   // is active depends on the shared global, so accept any valid one.
-  await page.goto(`/desk/${encodeURIComponent(DT)}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}`)
   await expect(page.getByTestId('cell-due').first()).toHaveText(/^(2026-03-09|09-03-2026|03-09-2026)$/)
 })

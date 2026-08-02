@@ -2,7 +2,7 @@
 
 ## Visual identity (standing directive for all UI work)
 
-The Desk is reskinned to look like Frappe. Every new UI feature MUST inherit
+The Admin is reskinned to look like Frappe. Every new UI feature MUST inherit
 this look — do not introduce ad-hoc colors/spacing:
 - Design tokens live in `apps/web/src/index.css` (`@theme`): canvas
   `#f4f5f6`, brand `#2490ef` (Frappe blue), ink `#1c2126`, hairline borders
@@ -11,7 +11,497 @@ this look — do not introduce ad-hoc colors/spacing:
 - Reuse the shared component classes: `.fc-card`, `.fc-input`, `.fc-btn`,
   `.fc-btn-primary`, `.fc-label`, `.fc-pill`. Prefer these over raw Tailwind.
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
-  `DeskLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
+  `AdminLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
+- Since UI-025 the tokens come in four palettes (`classic`/`ivory`/
+  `graphite`/`indigo`), selected per user. New UI must keep reading the
+  CSS variables and `.fc-*` classes — never a literal color — so it works
+  under every palette × light/dark combination automatically.
+
+## 2026-08-02 — PR #104 review round: seven findings fixed
+
+All findings from the owner's review of the recent-actions branch:
+
+- **Queue attribution (P1).** The client's debounced event queue is now
+  owner-tagged and fail-closed: a flush only ships events whose owner IS
+  the session the sink authenticates as; everything else is discarded,
+  never re-attributed. Logout drains the departing user's queue first,
+  while their credentials still exist. 3 new unit tests.
+- **Storage vs contract (P1).** `user_event`'s key/label/sub_label/path
+  were `Data` (varchar 140) while the API accepts 400/1000 chars — one
+  long filtered-list key failed its whole batch. 0064 rewritten to
+  'Long Text' for fresh installs; 0066 converges existing databases
+  (alter to text + column_def update + `occurred_at` index). New test
+  writes at the contract limits.
+- **Saved-view permission bypass (P1).** list/create now
+  `assertPermission(user, table, 'read')`; sharing re-checks it. New
+  test: 403 without read, opens after a Permission row grants it.
+- **Dependency pin (P1).** The earlier `git+https` change never changed
+  the transport — pnpm resolves GitHub git URLs to the codeload tarball
+  either way, and the lockfile said so. package.jsons + lockfile
+  restored to main's `github:` pin; the real remote-exec requirement is
+  attaching the feather-testing-postgres repo to the session proxy
+  (frozen install verified here).
+- **Dead feed channel (P2).** `canSubscribe` never allowed 'feed', so
+  the live ping reached nobody. Now: 'feed' is System Manager-only and
+  payload-free (`changed`); each `POST /api/events` pings the poster's
+  own `user:` channel (`feed_mine`) for the Mine tab. ActivityFeed
+  subscribes accordingly.
+- **OAuth beacons (P2).** The Google OAuth callback now sets the `sid`
+  cookie — without it, an OAuth user's unload-time beacon batch was
+  silently rejected.
+- **Dormant-user retention (P2).** The write-path prune is global (any
+  batch expires ANY user's >90-day rows), backed by the new
+  `occurred_at` index. Test covers a dormant user's rows.
+
+Verified: affected server suites 23/23, recents unit 15/15, all 12
+#101-related e2e + palette green, both typechecks clean, full web e2e
+re-run green (see below), `pnpm install --frozen-lockfile` passes.
+
+## 2026-08-02 — Relational navigation MERGED (PR #102 → main)
+
+PR #102 merged to `main` as `ec8dd61` with all four review findings fixed
+(see the "Review fixes" block in the entry below). Issue #100 stays open as
+the standing design reference for relational navigation. Noted follow-ups
+remain: per-table curation of related tabs, and a server-side join surface
+so Explore can chain via-sub-table backlinks past the client-side cap.
+
+## 2026-08-01 — #101 Phases 2–6 complete: recent actions shipped end to end
+
+All six phases of [#101](https://github.com/siraj-samsudeen/featherbase/issues/101)
+are now built (Phase 1 below). One commit per phase on this branch.
+
+- **Phase 2 — more recall surfaces.** Sidebar gains Recent (5 destinations)
+  + Frequent (frecency top 3) groups; ListView gains a strip of this
+  table's recent rows and filter sets. Same localStorage buffer as ⌘K.
+- **Phase 3 — server truth.** Migration 0064 adds the `User Event` system
+  table (append-only via direct insert like `audit.ts`; no role
+  permissions — reads only flow through caller-scoped endpoints).
+  `POST /api/events` takes client batches (≤50, timestamps clamped to a
+  7-day trust window, 90-day retention pruned on the write path);
+  `GET /api/events/summary` returns per-key aggregates that the client
+  unions into its buffer at sign-in → cross-device recents. Client
+  flushes on a 3s debounce; `sendBeacon` (cookie-auth) carries the final
+  batch through unload.
+- **Phase 4 — homepage feed.** `GET /api/activity_feed`: `mine` = own raw
+  trail; `team` = Version rows + logins ONLY (reads never surface),
+  System Manager-gated. Feed card on every Home Page, live via a new
+  websocket `feed` ping in `publishDocEvent`, 30s refetch fallback.
+- **Phase 5 — resuming.** ResumeStrip (last row / view / search tiles;
+  the search tile refills the command bar via a `fc:prefill-search`
+  event). `GET /api/routine_suggestion` detects destinations opened on
+  ≥5 distinct days in 14 (lists/pages only, ≥2 targets); RoutineCard
+  pins them as a per-user workspace chip row.
+- **Phase 6 — saved views.** Migration 0065 adds `Saved View` (owner +
+  jsonb filters + shared flag; owner-scoped `/api/saved_views` CRUD,
+  sharing opens read-only). ListView Views bar with share/delete on own
+  chips; the nudge fires when one filter set is applied 3× in a week
+  (re-mounts within 500ms deduped — StrictMode double-fires effects).
+
+Verified end-to-end: **web e2e 96 passed / 0 failed / 6 skipped** (skips
+are all "already exists in this dev DB" guards), **server 519 passed**,
+**web unit 24 passed**, both typechecks clean. 15 new server vitest
+cases, 9 new e2e tests across recents/activity-feed/home-recall/
+saved-views specs.
+
+Gotchas (beyond the 07-31 entry's): (1) storing pre-stringified JSON into
+a jsonb column double-encodes — use `sql.json(...)`. (2) The e2e suite
+itself now generates user_event rows (beacons + batches), so specs must
+never assume "newest" without making the data in-test; both feed specs
+were hardened accordingly. (3) `ticketing.spec.ts` re-installs helpdesk
+every run — uninstall via `POST /api/uninstall_app {"name":"helpdesk"}`
+before running the server suite, or its app-fixtures test fails.
+
+Next: owner review of the whole #101 branch. Candidate follow-ups:
+frecency-boosted ranking inside `/api/search` itself, a modal ⌘K overlay
+(the dropdown was kept deliberately — "under the search" was the ask),
+edit-weighted frecency, and Team-feed pagination.
+
+## 2026-07-31 — #101 Phase 1: the command bar remembers recent actions
+
+Issue [#101](https://github.com/siraj-samsudeen/featherbase/issues/101) is the
+owner's "system remembers where I've been" capability; the design reference
+(interactive exploration of six patterns + brainstorm) lives in
+`docs/design/recent-actions/`. This session shipped Phase 1 of six:
+
+- **`apps/web/src/lib/recents.ts`** — per-user localStorage ring buffer
+  (80 entries × 10 visits, dedup by key). Records rows, lists (with their
+  filter sets — the JSON `?filters=` param is part of the identity), list
+  view modes, reports/dashboards, and submitted searches. Home Pages,
+  builders and `/new` forms deliberately excluded. Ranking helpers:
+  recency, Firefox-style bucketed **frecency** (<4d→100 … older→10, 2+
+  visits required), prefix-matched past searches.
+- **AdminLayout**: a `useRouterState` hook records every admin navigation;
+  the awesomebar's *empty focused state* now shows **Recent** and
+  **Frequent** groups (ArrowUp/Down + Enter to replay, Esc closes), and
+  typing offers matching past searches (`↻` rows refill the bar).
+- **Security fix found by this work**: SPA logout dropped the bearer token
+  but never expired the HttpOnly `sid` cookie, so token-less requests after
+  logout re-authenticated as the departed user (observed: a post-logout
+  whoami refetch poisoning the cache with user A's palette for user B —
+  the exact UI-025 leak). Fixed with a public `POST /api/logout` (expires
+  the cookie; SPA awaits it before clearing state), cache clear moved to
+  after `/login` renders, `useWhoAmI` gated on a session existing, and no
+  hard 401-redirect when already on `/login`.
+- **Env fix**: `feather-testing-postgres` pin switched from `github:` (a
+  codeload tarball the remote-exec proxy 403s) to `git+https` — same
+  commit, git transport, works everywhere. Keep this form when moving back
+  to `^0.2.0`.
+
+Verified: 12 vitest cases (`test/recents.test.tsx`), new `recents.spec.ts`
+e2e (trail building, click + keyboard replay, filter round-trip, search
+recall), server auth suite incl. new cookie-expiry case. Full regression:
+web e2e 89 passed / 6 skipped / 0 failed, server 505 tests green, web unit
+24 green, both typechecks clean.
+
+Gotchas: (1) in this container set `CHROMIUM_PATH=/opt/pw-browsers/chromium`
+for Playwright — the project pins a newer bundled build that isn't
+installed. (2) `ticketing.spec.ts` installs the helpdesk app into the dev DB
+and leaves it; the server `app-fixtures` "fresh deployment" test then fails
+until `POST /api/uninstall_app {"name":"helpdesk"}` — did that here. (3) Do
+not run the vitest suites while the Playwright suite runs: the vitest
+globalSetup empties `background_job` mid-e2e.
+
+Next: #101 Phase 2 — sidebar Recent group + per-table recents strip over the
+same local store; then the `user_event` server log (Phase 3).
+## 2026-07-31 — Relational navigation: all six patterns from issue #100
+
+The design exploration in `docs/design/explorations/relational-navigation.*`
+(issue #100) is now implemented — six ways to move between related rows, all
+derived from Table metadata with zero per-table configuration:
+
+- **Server (NAV-001)** — `getBacklinks()` in `meta.ts`: the reverse-reference
+  map (every Reference column targeting a table, with sub-table references
+  resolved to their OWNING tables, Frappe's "internal links" shape), cached
+  whole and invalidated with the meta cache. Two generated-layer actions:
+  `GET /api/table/:t/:name:connections` (per-row, permission-scoped counts +
+  ready-to-use ListView `filters` arrays; via-links get a `name in [...]`
+  filter over owning rows, capped at 500) and `GET /api/table/:t:backlinks`
+  (table-level shape, no counts). `test/connections.test.ts` covers direct,
+  via-sub-table, zero-count, and 404 cases.
+- **Pattern 1, Connections panel** — `ConnectionsPanel.tsx` in the FormView
+  sidebar: each backlink group with a live count, linking to
+  `/admin/$table?filters=…`; ◎ peeks; + opens a pre-filled new row via the
+  new `?prefill=<json>` search param on the form route (FormView seeds
+  `values`, not `baseline`, so a pure-prefill save stays possible).
+  `LinkControl` finally links out: ◎ peek + ↗ open on any set Reference.
+- **Pattern 2, counters + related tabs** — `RelatedTabs` under the form:
+  count tiles double as tabs over an embedded read-only list (8 rows) with
+  "Open as filtered list ↗" and pre-filled "+ New" escapes.
+- **Pattern 3, peek stack** — `Peek.tsx`: `PeekProvider` (mounted in
+  `AdminLayout`) + stacked read-only slide-over panels for any record/list.
+  References and connection rows inside a panel push deeper; ← pops, Esc/✕
+  close all, ↗ commits to real navigation; any route change clears the stack.
+- **Pattern 5, expandable rows** — ListView rows of tables with Sub-table
+  columns get a chevron; expansion renders the child rows inline (read-only,
+  Σ over Currency columns), several rows at once.
+- **Pattern 4, cross-filter Explore** — `/admin/explore` (sidebar entry):
+  chain up to three panes over direct backlinks and child sub-tables;
+  clicking rows IS the filter (in-filters downstream), chips release,
+  footers aggregate (Σ prefers Currency > Float > Int). Via-sub-table
+  backlinks are deliberately not offered as chain steps (their filter is
+  per-row, not per-column).
+- **Pattern 6, relation map** — `/admin/map/$doctype/$name` ("Map" button on
+  every form): SVG neighborhood — forward references left, child tables +
+  backlink collections right (dashed, with counts); collections open their
+  rows below; any record click re-centers with a `?trail=` breadcrumb.
+
+Verified end-to-end: demo dataset (Supplier ← Purchase Order ▸ PO Line →
+Item; Employee ← Attendance/Payroll Slip, `reports_to` self-reference)
+created through the real metadata + save_doc APIs — the seed script is
+committed as `tools/seed-relational-demo.mjs` (idempotent-ish: rerun skips
+existing tables) — then a 13-check Playwright script exercised every
+pattern in the browser (counts, chips, URL filters, peek stack depth 3,
+Esc, two rows expanded at once, Acme → 3 POs cross-filter, map hop with
+trail). `pnpm test` fully green (server 99 files / 507 tests, web 12),
+`pnpm smoke` green, both typechecks clean.
+
+Gotchas for future sessions:
+- Adding a search param to a TanStack route makes `search` REQUIRED at
+  every `<Link>`/`navigate` to it — the `?prefill=` addition touched ~15
+  call sites (`search={{ prefill: undefined }}`). Budget for that when
+  adding params to shared routes.
+- `column_def` names like `status`/`parent` are reserved (STANDARD_COLUMNS)
+  — the demo tables use `att_status`/`slip_state`/`stage` instead.
+- In this container, Playwright needs `CHROMIUM_PATH=/opt/pw-browsers/chromium`.
+
+Next: consider per-table metadata to curate related tabs (order/visibility)
+once real usage shows which hubs need it; an Explore pane for via-sub-table
+backlinks would need a small server join surface (`name in (select parent …)`).
+
+**Review fixes (same PR, #102):** (1) via-sub-table connections now derive
+BOTH owner names and count from one permission-scoped EXISTS query
+(`relatedOwners` in `query.ts`) — a caller can no longer learn names of
+parent rows they cannot read, the count matches their scoped list, and the
+500-name cap is deterministic (ordered by name); covered by own_rows, Data
+Scope, and 501-owner tests. (2) Prefill now seeds the form's INITIAL state
+(no race with client-script `onload`) and the form route keys on the
+prefill string, so switching/clearing `?prefill=` remounts instead of
+retaining stale values. (3) An Explore pane whose upstream name set is
+truncated (>100 rows, no selection) renders a "Selection needed" notice
+instead of a silently-incomplete subset — grandparent truncation propagates
+— and Σ labels say "(shown rows)" when partial. (4) Explore's root picker
+uses new `GET /api/navigable_tables` (kind='table' filtered by each table's
+own read permission), not a read of the metadata `Table` table.
+
+## 2026-07-31 — UI-025: user-selectable color palettes (second theming axis)
+
+The Desk now ships four palettes — **Classic** (the original Frappe blue),
+**Ivory** (warm paper + clay, Anthropic-inspired), **Graphite** (pure
+neutrals + near-black primary buttons, Frappe-v15-inspired), and **Indigo**
+(indigo + pill controls, Glide-inspired) — chosen from a navbar select,
+orthogonal to light/dark. Every combination (4 × 2) works.
+
+Mechanics mirror UI-024 dark mode exactly, one axis over:
+- **CSS** (`apps/web/src/index.css`): each palette is a `[data-palette=…]`
+  token override block with a `[data-palette=…][data-theme='dark']`
+  companion (2 attributes out-specifies the generic dark block). `classic`
+  is the absence of the attribute. Three structural tokens were promoted so
+  palettes can reshape controls with zero component edits: `--radius-card`,
+  `--radius-control` (Indigo's pills), and a
+  `--color-primary-btn`/`-hover`/`-ink` trio (Graphite's black button,
+  which inverts to white in dark). Defaults reproduce Classic exactly.
+- **Server**: migration `0062_user_palette.ts` (mirror of `0035_user_theme`)
+  adds a `palette` Choice column to User; `whoami` returns it;
+  `POST /api/set_palette` validates against the four names (417 otherwise).
+- **Web**: `lib/palette.ts` is a line-for-line sibling of `lib/theme.ts`
+  (server-authoritative, localStorage mirror applied at module load so
+  there's no flash); `DeskLayout` grows a `palette-select` beside the
+  theme toggle.
+
+Verified end-to-end: HTTP (`set_palette` persists, `whoami` round-trips,
+bad value 417s) and in the real browser via the preview pane — logged in,
+switched all four palettes in both modes on the ToDo list view, confirmed
+computed styles (`--color-primary-btn` resolves per palette), reloaded to
+prove persistence with no flash. `e2e/palette.spec.ts` (new, sibling of
+`dark-mode.spec.ts`) covers switch/persist/reload/compose-with-dark/reject.
+Both typechecks clean, `pnpm smoke` green.
+
+Design references for the three new palettes (mockups the user picked from)
+are archived at the session artifact "Featherbase — three UI directions".
+
+**Review fixes (same day, PR #92):** (1) The navbar's controls don't wrap,
+so the new select overflowed 390px viewports — the language + palette
+selects are now `hidden md:block` and live in the account menu below md
+(`palette-select-mobile`); `responsive.spec.ts` passes again. (2)
+Cross-user leak: logout only removed the token, so the next account in the
+same tab inherited a still-fresh `['whoami']` cache (5-min staleTime) and
+the previous user's global `fc_theme`/`fc_palette` mirrors. `logout()` now
+calls `queryClient.clear()` and un-stamps `data-theme`/`data-palette`, and
+both mirrors are scoped per user (`fc_palette:<name>`). Deferred as issues:
+#96 (serialize preference writes / handle failures), #97 (WCAG AA role
+tokens — `--color-link`, `--color-on-brand`, status text).
+
+**Next:** Ivory was designed with serif page titles (self-hosted Source
+Serif via a `--font-display` token) — deferred to keep this change
+token-only. Also consider: palette-aware record avatars (deterministic
+hash→hue) from the Indigo mockup.
+
+## 2026-07-31 — a guard so a sixth missing `E` prefix cannot land (#93 follow-up)
+
+#93 fixed five `.sql` sites that wrote `'basic\nrestricted'` where
+`E'basic\nrestricted'` was meant — with `standard_conforming_strings = on` the
+plain form stores a backslash and an `n`, so `tableSchemaToZod` (which splits
+`choices` on `'\n'`) collapsed the Choice enum to one member and every affected
+save failed `417`. Nothing stopped a sixth site. This session added the guard,
+not more fixes; #93 landed on `main` independently while this was in progress.
+
+- **Two guards, because neither subsumes the other.** Both live in
+  `apps/server/test/choices-newline.test.ts`. *Runtime* asserts no `choices`
+  value in the migrated database contains a literal backslash-n, across all
+  three places one can live — `column_def`, `custom_field`, and
+  `metadata_override` where `property = 'choices'` — so a bad value arriving
+  from a `.ts` migration, a patch or the import wizard is caught too, not just
+  a `.sql` one. Plus a regression pin asserting `Table.kind` / `Column.tier` /
+  `Permission.tier` parse back to their full option sets, which survives a
+  truncation that loses options *without* a backslash. *Static*
+  (`apps/server/scripts/check-sql-escapes.ts`, also
+  `pnpm --filter server lint:sql`) scans the `.sql` sources and fails in the
+  diff that introduces the mistake.
+- **Why both.** The runtime check is closer to the real failure mode but only
+  sees the database it is pointed at: the shared dev database had already had
+  `0063` applied by a sibling worktree, so it stayed green while the sources
+  were still wrong. The static check is database-independent but covers only
+  the one route in. Each caught a situation the other missed during this
+  session — that is the argument for keeping both, not belt-and-braces.
+- **The scanner is quote-aware, not a grep.** It skips `--` and block comments
+  (`0063` explains this very bug in prose, backslash-n and all — a grep flags
+  its own comments), tracks multi-line literals, `''` escapes and `do $$ … $$`
+  bodies, and reports **only** backslash-n so the legitimate
+  `regexp_replace(…, '\s+', …)` literals in `0010`/`0055` stay quiet. An empty
+  `ALLOWED` set is the escape hatch if a deliberate raw backslash-n appears.
+- **Verified red → green, not just green.** On the pre-#93 source the scanner
+  reported exactly the five known sites and nothing else; on the post-#93
+  source, zero. Four synthetic offenders — inside a `$$` block, spanning a
+  multi-line literal, after a `''`, and after a `--` *inside* a string — were
+  caught at the right line numbers. A scratch database migrated from the
+  unfixed source failed both runtime checks and named `Table.kind` and
+  `Column.tier`. Re-verified after rebasing onto post-#93 `main` (`cc8118b`):
+  scanner clean, guard 3/3, full server suite **504 passed, 98 files** on a
+  scratch database.
+- **Gotcha — rebasing across a renumbered migration resurrects the old
+  number.** #93's branch created `0059_fix_literal_newline_choices.sql` and a
+  later merge on that branch renumbered it to `0063`. Rebasing this branch
+  dropped the merge commits and replayed only the original, so `0059` came
+  back — colliding with `main`'s `0059_app_fixtures.ts` while `0063` also sat
+  there. It applied without conflict, so nothing announced it; only
+  `git diff origin/main..HEAD --stat` showed the stray file. After any rebase
+  that crosses a migration rename, diff the migrations directory against
+  `main` rather than trusting a clean rebase.
+- **Gotcha — `RLS_TEST_URL` guidance in `CLAUDE.md` is stale.** #85 renamed the
+  RLS role `desk_client` → `app_client` (`0010_rls.sql` now grants to
+  `app_client`, and `rls.test.ts` defaults to it), but `CLAUDE.md`'s Environment
+  section still says the suite connects as `desk_client`. Overriding with the
+  old name yields four `permission denied for table rls_vault` failures that
+  look like an RLS regression and are not. Not fixed here — out of scope for
+  this branch.
+- **Next:** `harness/features.json` untouched, per instruction. Worth
+  considering whether `apps/server/scripts/` should join the server
+  `tsconfig.json` `include` (today only `src` is typechecked, so none of the
+  four scripts there are); the new scanner typechecks clean standalone under
+  the same flags, but the other three were not audited.
+
+## 2026-07-31 — Frappe's "Desk" is retired: `/admin` routes, `app_client` role, `renderApp` helper, and typed filter URLs that work (#84, #86, #87)
+
+"Desk" was Frappe's name for the back-office UI, and the URL prefix was the
+last place the term still met users. Frappe itself retired the URL (modern
+Frappe serves `/app`); `/admin` says what the surface is without the lore.
+GLOSSARY already called it the Admin — the routes had not caught up.
+
+- **Every route moved:** `/desk/...` -> `/admin/...`, including the Home
+  Page routes (`/desk/home/$name`), the table list/form routes, the view
+  routes (report/kanban/calendar/gantt), and the static segments
+  (`new-table`, `import`, `jobs`, `all-tables`, `permissions/$doctype`,
+  `dashboard/$name`, `query-report/$name`, `script-report/$name`).
+- **No `/desk` redirect, deliberately.** #84 asked for one and it was built
+  and tested first; the owner then cut it, and CLAUDE.md gained a
+  "Project stage" section recording why: nothing is deployed, there are no
+  users, and no URL is consumed outside this repo. A redirect would have
+  been compatibility machinery for a migration burden that does not exist,
+  and would have kept the retired prefix in the route tree forever for
+  every future reader to reason about. `/desk/...` is simply gone — the SPA
+  fallback still serves `index.html`, so the client renders its
+  not-found rather than the server answering 404.
+- **Server touchpoints:** the Frappe-parity login response's
+  `home_page` is now `/admin`; the workflow pending-approval mail and the
+  SLA escalation notice link to `/admin/<Table>/<row>`. The server's OAuth
+  bounce needed no change — it targets `/oauth-callback`, and it is that
+  page (plus the login form) that now lands the user on `/admin`.
+- **`DeskLayout.tsx` -> `AdminLayout.tsx`** (symbol too), and its two test
+  ids `desk-sidebar`/`desk-index-empty` -> `admin-*`. `e2e/desk.spec.ts` ->
+  `e2e/admin.spec.ts`. The FormView breadcrumb read **Desk** and now reads
+  **Admin** — the one user-facing string carrying the old term.
+- **`desk_client` -> `app_client` (#86).** The direct-client login role
+  carried the same retired term. 0010_rls.sql is rewritten in place so a
+  FRESH database only ever knows `app_client` (0055 and 0060, which also
+  name the role in generated policies, plus the runtime DDL in
+  `doctype-engine.ts`, follow suit). **0010a_rename_rls_role.sql**
+  converges databases that already applied 0010: a plain
+  `alter role ... rename to`, because **policies and grants bind by OID,
+  not by name** — every `to desk_client` policy follows the rename with
+  nothing recreated. The password is re-set explicitly: an MD5-hashed
+  password is derived from the role name and is cleared on rename (SCRAM
+  hashes survive), so setting it unconditionally makes both cases
+  identical.
+  **The `0010a` name is load-bearing, and this was a real bug first.**
+  The migration originally shipped as `0061`, at the end of the chain.
+  `applyRls` grants to `app_client` on every table it creates as soon as
+  `fc_has_read()` exists, so a database that stopped between 0010 and 0011
+  reached 0011's `createTable` with the role still called `desk_client` and
+  died with `42704: role "app_client" does not exist` — never reaching a
+  convergence migration numbered at the end. Reproduced, then fixed by
+  sorting the file between `0010_rls.sql` and `0011_report.ts`. Caught in
+  review; neither suite covers an interrupted migration chain.
+  **Roles are cluster-wide, policies are per-database**, and that asymmetry
+  shapes the branching: "both roles exist" is ordinary on a developer
+  cluster holding one converged database and one legacy one, so the test is
+  not which roles exist but whether THIS database still binds anything to
+  the old one. Four states — converged (no-op), old-only (rename),
+  both-without-local-refs (no-op), and the two genuinely broken ones
+  (neither role; both roles with local refs) — and the broken ones
+  `raise exception` so the transaction rolls back rather than recording a
+  migration over unusable RLS.
+  **Heads-up: your existing `featherbase` database gets the rename the next
+  time you migrate**; a checkout of an older branch will then look for a
+  role that no longer exists.
+- **Typed filter URLs actually filter (#87).** `/admin/<Table>?filters=...`
+  used to drop the parameter unless the app itself built the link.
+  TanStack's default search parser runs `JSON.parse` over every value, so a
+  pasted URL delivered `filters` as an Array and `?report=2024` as a
+  Number; the `typeof === 'string'` guard then discarded them and stripped
+  them from the address bar — quietly breaking the "filters are URL state
+  so they are shareable" promise written above that very route. One
+  `searchString()` helper coerces back to the string the app expects, and
+  it is applied to **every** search param (`filters`, `report`, `group_by`,
+  `table`, `format`, `key`, `token`), since the same latent bug bites any
+  all-digit value — a reset-password `key` of `12345` parsed to a Number
+  and was dropped.
+  **`filters` is then shape-validated, which the first cut got wrong.**
+  Coercing alone turned a silent drop into a crash: `?filters={}` and
+  `?filters=[null]` are valid JSON, so they sailed through to `ListView`,
+  which indexes every entry as a `[field, op, value]` triple and threw,
+  blanking the page. A URL is user input — `parseFilters()` now validates
+  the parsed value and discards anything malformed, as before. Caught in
+  review.
+- **`renderDesk` -> `renderApp`**, the last of the vocabulary. The name was
+  never ours to change here: it is feather-testing-postgres' published API
+  (that repo's #1, fixed and merged there — a clean rename, no deprecated
+  aliases, since this is the only consumer). `apps/web/test/pg-test.ts` and
+  its three test files follow.
+  **The dependency now resolves from git, not npm** — the library's rename
+  is on `main` but unreleased (npm still serves 0.1.0, which exports
+  `renderDesk`). The specifier pins the exact commit
+  (`github:siraj-samsudeen/feather-testing-postgres#310ad8e`) rather than
+  the bare branch, so a lockfile refresh cannot silently drift onto a later
+  `main`. **Swap both `package.json`s back to `^0.2.0` once it publishes** —
+  `pnpm install --frozen-lockfile` (what CI runs) is reproducible either
+  way, but the registry is the intended source per the Stack section above.
+- **Left alone on purpose:** the Frappe design-lineage comments in
+  `index.css` and `ListView.tsx` that credit the Desk *look*.
+
+Because a role rename is **cluster-wide**, verification ran on a throwaway
+Postgres cluster built with `initdb` on port 55432 — the local 5432 cluster
+was never touched, so its `desk_client` is still intact until you migrate.
+The server served the built SPA on port 8906, exercising the real SPA
+fallback rather than the Vite proxy.
+
+- Server 501 passed / 97 files, web unit 12 passed (the `renderApp`
+  consumer), both typechecks clean.
+- Full e2e on a freshly migrated database, after merging main: **88 passed,
+  2 skipped, 0 failed**. Earlier runs of this tree hit RT-002/RT-003 — the
+  realtime family already recorded here as flaky, which passes on re-run in
+  isolation — so treat a lone realtime failure as noise, not a signal.
+- **Merging main is where this nearly went wrong.** Git's auto-merge
+  silently dropped main's content twice in files both sides had touched:
+  the `data-testid="dt-row-id"` / `data-columnrow` markers in TableBuilder
+  and ImportWizard, and the NAM-002 assertions reading them in the builder,
+  import-file and import-wizard specs. Nothing conflicted; six e2e specs
+  simply failed. The fix, and the habit worth keeping: for a sweeping
+  mechanical rename, **re-derive every file the other side also changed
+  from their version and re-apply the transform**, then diff the result
+  against their branch and account for every removed line.
+- **#86, all five paths on throwaway clusters:** pristine fresh install ->
+  `app_client`, policies granting to it; **interrupted chain** (stopped
+  after the legacy 0010) -> upgrades to the end, role renamed, every policy
+  on `app_client`, RLS suite green against it — this is the path that
+  failed before the `0010a` rename; **mixed cluster** (a fresh database
+  while another still holds `desk_client`) -> no-op, other role untouched;
+  **both roles with local refs** -> `raise exception`, migration not
+  recorded; **neither role** -> `raise exception`, migration not recorded.
+  With `scram-sha-256` forced in `pg_hba.conf`, `app_client` authenticates
+  by password and all 44 table grants survive the rename.
+- **#87 pinned both ways:** the spec fails without the coercion (0 filter
+  chips) and without the shape validation (malformed URLs blank the list),
+  and passes with both. Two earlier drafts were themselves wrong: the first
+  borrowed `listview.spec`'s fixture and silently *skipped* on a fresh
+  database; the second reconciled its fixture by title but the list API
+  returns only `name` unless `fields` is passed, so every run added ten
+  more rows and the assertions drifted. It now empties and refills the
+  table it owns, and was checked against a dirty database and a re-run.
+
+Next: the Frappe "Desk" vocabulary is gone from routes, roles, components
+and test helpers. One loose end, and it is a release chore rather than
+work: publish feather-testing-postgres 0.2.0, then move both `package.json`
+entries off the pinned git commit back to `^0.2.0`.
 
 ## 2026-08-02 — PR #103 review: authorization parity, secret hygiene, real locking
 

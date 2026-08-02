@@ -17,7 +17,7 @@ test('UI-009 + META-013: missing reqd field errors inline via shared zod schema,
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/desk/)
+  await expect(page).toHaveURL(/\/admin/)
 
   let saveCalls = 0
   await page.route('**/api/save_doc', async (route) => {
@@ -25,7 +25,7 @@ test('UI-009 + META-013: missing reqd field errors inline via shared zod schema,
     await route.continue()
   })
 
-  await page.goto(`/desk/${encodeURIComponent(DT)}/${docName}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await expect(page.getByTestId('form-view')).toBeVisible()
 
   // Clear the required title and try to save: inline error, zero network calls

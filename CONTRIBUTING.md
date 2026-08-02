@@ -65,9 +65,9 @@ pnpm --filter server typecheck
 Two suites have extra environment hooks:
 
 - **RLS suite** (`apps/server/test/rls.test.ts`) opens a second connection
-  as the `desk_client` Postgres role (created by
-  `apps/server/migrations/0010_rls.sql`, password `desk_client`). Default
-  URL `postgres://desk_client:desk_client@127.0.0.1:5432/featherbase`;
+  as the `app_client` Postgres role (created by
+  `apps/server/migrations/0010_rls.sql`, password `app_client`). Default
+  URL `postgres://app_client:app_client@127.0.0.1:5432/featherbase`;
   override with `RLS_TEST_URL`.
 - **e2e** targets `http://localhost:5173` (override with `WEB_URL`), so run
   `./init.sh` first.

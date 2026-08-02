@@ -598,13 +598,13 @@ begin
     execute format('drop policy if exists fc_select on %I', tbl);
     if r.kind = 'sub_table' then
       execute format(
-        'create policy fc_select on %I for select to desk_client using (fc_has_read(parenttype))',
+        'create policy fc_select on %I for select to app_client using (fc_has_read(parenttype))',
         tbl);
     else
       execute format(
-        'create policy fc_select on %I for select to desk_client using (fc_has_read(%L))',
+        'create policy fc_select on %I for select to app_client using (fc_has_read(%L))',
         tbl, r.name);
     end if;
-    execute format('grant select on %I to desk_client', tbl);
+    execute format('grant select on %I to app_client', tbl);
   end loop;
 end $$;

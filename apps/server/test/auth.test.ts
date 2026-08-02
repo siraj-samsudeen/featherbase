@@ -48,4 +48,21 @@ describe('API-004: authentication', () => {
   test('ping stays public', async ({ api }) => {
     expect((await api.fetch('/api/ping')).status).toBe(200)
   })
+
+  // #101: the sid cookie is a live credential; sign-out must expire it even
+  // when no bearer token accompanies the request (the SPA has already
+  // dropped its token by the time a stale tab retries).
+  test('logout is public and expires the sid cookie', async ({ api }) => {
+    const login = await api.fetch(
+      '/api/login',
+      json({ usr: 'Administrator', pwd: process.env.ADMIN_PASSWORD ?? 'admin' }),
+    )
+    expect(login.headers.get('set-cookie')).toContain('sid=')
+
+    const res = await api.fetch('/api/logout', { method: 'POST' })
+    expect(res.status).toBe(200)
+    const cleared = res.headers.get('set-cookie') ?? ''
+    expect(cleared).toContain('sid=')
+    expect(cleared.toLowerCase()).toContain('max-age=0')
+  })
 })

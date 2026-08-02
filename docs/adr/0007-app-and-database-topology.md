@@ -101,7 +101,7 @@ tracks. Virtual DocTypes remain, but as the fallback for non-SQL sources.
 - Postgres RLS (PERM-004) protects control-DB tables only. Bound DocTypes are
   protected by the server's permission layer alone — which is already the only
   path clients have (invariant 2), but it must be stated, because the
-  `desk_client` role guarantee does not extend to a foreign server.
+  `app_client` role guarantee does not extend to a foreign server.
 - The test harness (`feather-testing-postgres`) rolls back one transaction on
   one connection. Tests touching a bound DocType need a second sandbox against
   the source, or a fixture source; the spec pins this down.

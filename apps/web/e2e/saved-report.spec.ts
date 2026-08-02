@@ -47,10 +47,10 @@ test('RPT-002: saved report restores columns, filters, and grouping', async ({ p
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
   // Configure: drop qty column, filter status=Open, group by status.
-  await page.goto(`/desk/${encodeURIComponent(DT)}/view/report`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/view/report`)
   await expect(page.getByTestId('report-row')).toHaveCount(3)
   await page.getByTestId('report-columns').click()
   await page.getByTestId('report-col-qty').uncheck()
@@ -69,7 +69,7 @@ test('RPT-002: saved report restores columns, filters, and grouping', async ({ p
 
   // Fresh navigation to the saved URL restores everything.
   await page.goto(
-    `/desk/${encodeURIComponent(DT)}/view/report?report=${encodeURIComponent(REPORT)}`,
+    `/admin/${encodeURIComponent(DT)}/view/report?report=${encodeURIComponent(REPORT)}`,
   )
   await expect(page.getByTestId('report-head-qty')).toHaveCount(0) // column choice
   await expect(page.getByTestId('report-groupby')).toHaveValue('stage') // grouping
@@ -78,7 +78,7 @@ test('RPT-002: saved report restores columns, filters, and grouping', async ({ p
   await expect(open.getByTestId('group-count')).toContainText('(2)')
 
   // The picker also opens it from scratch.
-  await page.goto(`/desk/${encodeURIComponent(DT)}/view/report`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/view/report`)
   await expect(page.getByTestId('report-row')).toHaveCount(3) // default state first
   await page.getByTestId('saved-report-picker').selectOption(REPORT)
   await expect(page.getByTestId('report-row')).toHaveCount(2)

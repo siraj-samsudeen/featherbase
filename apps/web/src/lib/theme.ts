@@ -1,19 +1,25 @@
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { api } from './api'
+import { api, getSessionUser } from './api'
 import { useWhoAmI } from './session'
 
 // UI-024: per-user dark/light theme. The authoritative value is stored on the
 // User (server); localStorage mirrors it so the theme applies instantly on load
-// with no flash before whoami resolves.
+// with no flash before whoami resolves. The mirror key is scoped by user so
+// two accounts sharing a browser never see each other's theme (PR #92 review).
 
 export type Theme = 'light' | 'dark'
-const KEY = 'fc_theme'
+
+function storageKey(): string | null {
+  const user = getSessionUser()
+  return user ? `fc_theme:${user.name}` : null
+}
 
 export function applyTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme
   try {
-    localStorage.setItem(KEY, theme)
+    const key = storageKey()
+    if (key) localStorage.setItem(key, theme)
   } catch {
     /* ignore */
   }
@@ -21,7 +27,8 @@ export function applyTheme(theme: Theme) {
 
 // Apply the last-known theme immediately at module load (before React renders).
 try {
-  const saved = localStorage.getItem(KEY)
+  const key = storageKey()
+  const saved = key ? localStorage.getItem(key) : null
   if (saved === 'dark' || saved === 'light') document.documentElement.dataset.theme = saved
 } catch {
   /* ignore */

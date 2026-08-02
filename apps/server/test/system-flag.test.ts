@@ -1,5 +1,5 @@
 // #74: the `system` flag on Table metadata. Platform tables (created by the
-// migration chain) carry system = true and the Desk groups them; user tables
+// migration chain) carry system = true and the Admin groups them; user tables
 // can never claim the flag over the API — POST/PUT /api/doctype reject it,
 // and the only other write path into table_def (save_doc) is ENGINE_MANAGED
 // and refused outright (bootstrap.test.ts pins that).

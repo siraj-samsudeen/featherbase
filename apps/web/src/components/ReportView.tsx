@@ -282,7 +282,8 @@ export function ReportView({
     <tr key={String(row.name)} className="border-t border-[var(--color-border)]" data-testid="report-row">
       <td className="px-3 py-1.5">
         <RouterLink
-          to="/desk/$doctype/$name"
+          to="/admin/$doctype/$name"
+          search={{ prefill: undefined }}
           params={{ doctype, name: String(row.name) }}
           className="text-[var(--color-brand)] hover:underline"
         >
@@ -314,7 +315,7 @@ export function ReportView({
             XLSX
           </button>
           <RouterLink
-            to="/desk/$doctype"
+            to="/admin/$doctype"
             params={{ doctype }}
             search={{ filters: undefined }}
             className="fc-btn"

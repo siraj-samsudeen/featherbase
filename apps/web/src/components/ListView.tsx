@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { ApiError, api, listResource } from '../lib/api'
+import { ApiError, api, getSessionUser, listResource } from '../lib/api'
+import { recentActions, type RecentEntry } from '../lib/recents'
 import { NO_COLUMN_TYPES, isSourceReadOnly, listColumns, useMeta } from '../lib/meta'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
@@ -83,6 +84,10 @@ export function ListView({
   const filterKey = JSON.stringify(filters)
   useEffect(() => setStart(0), [filterKey])
   useEffect(() => setSelected(new Set()), [filterKey, start, doctype])
+  // #100 pattern 5 (Access subdatasheets): rows of tables with Sub-table
+  // columns expand their child rows inline via a chevron.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  useEffect(() => setExpanded(new Set()), [filterKey, start, doctype])
 
   // RT-001: another session creating/updating/deleting a doc of this type
   // refreshes the list without a reload.
@@ -153,6 +158,10 @@ export function ListView({
 
   const total = list.data?.total ?? 0
   const rows = list.data?.data ?? []
+  const childFields = (meta.data?.columns ?? []).filter(
+    (f) => f.column_type === 'Sub-table' && !f.hidden,
+  )
+  const expandable = childFields.length > 0
 
   function toggleSort(field: string) {
     setStart(0)
@@ -264,7 +273,7 @@ export function ListView({
       <div className="mb-4 flex items-center justify-between">
         <div>
           <div className="text-xs text-[var(--color-ink-faint)]">
-            <Link to="/desk" className="hover:text-[var(--color-ink)]">
+            <Link to="/admin" className="hover:text-[var(--color-ink)]">
               Home
             </Link>
             {' / '}
@@ -313,7 +322,7 @@ export function ListView({
             )}
           </div>
           <Link
-            to="/desk/$doctype/view/report"
+            to="/admin/$doctype/view/report"
             params={{ doctype }}
             search={{ report: undefined }}
             className="fc-btn"
@@ -325,7 +334,7 @@ export function ListView({
               absent on read-only sources (EDS-13). */}
           {!isSourceReadOnly(meta.data) && (
             <Link
-              to="/desk/import"
+              to="/admin/import"
               search={{ table: doctype }}
               className="fc-btn"
               data-testid="open-import"
@@ -335,7 +344,7 @@ export function ListView({
           )}
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Choice') && (
             <Link
-              to="/desk/$doctype/view/kanban"
+              to="/admin/$doctype/view/kanban"
               params={{ doctype }}
               search={{ group_by: undefined }}
               className="fc-btn"
@@ -346,7 +355,7 @@ export function ListView({
           )}
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Date') && (
             <Link
-              to="/desk/$doctype/view/calendar"
+              to="/admin/$doctype/view/calendar"
               params={{ doctype }}
               className="fc-btn"
               data-testid="open-calendar"
@@ -357,7 +366,7 @@ export function ListView({
           {/* UI-022: Gantt needs two Date columns (start + end). */}
           {(meta.data?.columns ?? []).filter((f) => f.column_type === 'Date').length >= 2 && (
             <Link
-              to="/desk/$doctype/view/gantt"
+              to="/admin/$doctype/view/gantt"
               params={{ doctype }}
               className="fc-btn"
               data-testid="open-gantt"
@@ -369,7 +378,7 @@ export function ListView({
             <>
               {/* NAM-001: change how new rows in this Table are named. */}
               <Link
-                to="/desk/naming/$doctype"
+                to="/admin/naming/$doctype"
                 params={{ doctype }}
                 className="fc-btn"
                 data-testid="open-naming"
@@ -377,7 +386,7 @@ export function ListView({
                 Naming
               </Link>
               <Link
-                to="/desk/permissions/$doctype"
+                to="/admin/permissions/$doctype"
                 params={{ doctype }}
                 className="fc-btn"
                 data-testid="open-permissions"
@@ -388,6 +397,8 @@ export function ListView({
           )}
         </div>
       </div>
+      {onFiltersChange && <SavedViewsBar doctype={doctype} filters={filters} onApply={onFiltersChange} />}
+      {onFiltersChange && <RecentStrip doctype={doctype} onApply={onFiltersChange} />}
       {onFiltersChange && meta.data && (
         <>
           <StandardFilters meta={meta.data} filters={filters} onChange={onFiltersChange} />
@@ -471,6 +482,7 @@ export function ListView({
                   />
                 </th>
               )}
+              {expandable && <th className="w-7 border-b border-[var(--color-border)]" />}
               {columns.map((col) => (
                 <th key={col.column_name} className="border-b border-[var(--color-border)]">
                   <button
@@ -487,47 +499,34 @@ export function ListView({
           </thead>
           <tbody data-testid="list-rows">
             {rows.map((row) => (
-              <tr key={String(row.name)} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]">
-                {!isSourceReadOnly(meta.data) && (
-                  <td className="px-3 py-2">
-                    <input
-                      type="checkbox"
-                      data-testid="row-check"
-                      checked={selected.has(String(row.name))}
-                      onChange={() => toggleRow(String(row.name))}
-                    />
-                  </td>
-                )}
-                {columns.map((col, i) => (
-                  <td key={col.column_name} className="px-3 py-2">
-                    {i === 0 ? (
-                      <Link
-                        to="/desk/$doctype/$name"
-                        params={{ doctype, name: String(row.name) }}
-                        className={`font-medium text-[var(--color-brand)] hover:underline ${
-                          col.column_name === 'name' ? 'font-mono text-[13px]' : ''
-                        }`}
-                      >
-                        {cell(row[col.column_name], col.column_type, settings)}
-                      </Link>
-                    ) : col.column_type === 'Choice' &&
-                      row[col.column_name] != null &&
-                      row[col.column_name] !== '' ? (
-                      <span className="text-[var(--color-ink)]" data-testid={`cell-${col.column_name}`}>
-                        <Indicator value={String(row[col.column_name])} />
-                      </span>
-                    ) : (
-                      <span className="text-[var(--color-ink)]" data-testid={`cell-${col.column_name}`}>
-                        {cell(row[col.column_name], col.column_type, settings)}
-                      </span>
-                    )}
-                  </td>
-                ))}
-              </tr>
+              <ListRow
+                key={String(row.name)}
+                row={row}
+                doctype={doctype}
+                columns={columns}
+                settings={settings}
+                selected={selected.has(String(row.name))}
+                onToggleSelect={() => toggleRow(String(row.name))}
+                selectable={!isSourceReadOnly(meta.data)}
+                expandable={expandable}
+                childFields={childFields}
+                expanded={expanded.has(String(row.name))}
+                onToggleExpand={() =>
+                  setExpanded((prev) => {
+                    const next = new Set(prev)
+                    if (next.has(String(row.name))) next.delete(String(row.name))
+                    else next.add(String(row.name))
+                    return next
+                  })
+                }
+              />
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={columns.length + 1} className="px-3 py-8 text-center text-[var(--color-ink-faint)]">
+                <td
+                  colSpan={columns.length + (expandable ? 2 : 1)}
+                  className="px-3 py-8 text-center text-[var(--color-ink-faint)]"
+                >
                   No rows
                 </td>
               </tr>
@@ -556,6 +555,218 @@ export function ListView({
           Next
         </button>
       </div>
+    </div>
+  )
+}
+
+// One list row (+ its optional expanded child-rows row). Extracted so the
+// chevron and the inline subgrid don't clutter the main table loop.
+function ListRow({
+  row,
+  doctype,
+  columns,
+  settings,
+  selected,
+  onToggleSelect,
+  selectable,
+  expandable,
+  childFields,
+  expanded,
+  onToggleExpand,
+}: {
+  row: Record<string, unknown>
+  doctype: string
+  columns: { column_name: string; label: string; column_type: string }[]
+  settings: Settings
+  selected: boolean
+  onToggleSelect: () => void
+  // Read-only sources have no bulk bar, so no selection either (EDS-13).
+  selectable: boolean
+  expandable: boolean
+  childFields: import('../lib/meta').ColumnDef[]
+  expanded: boolean
+  onToggleExpand: () => void
+}) {
+  return (
+    <>
+      <tr className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]">
+        {expandable && (
+          <td className="pl-2">
+            <button
+              onClick={onToggleExpand}
+              aria-label={expanded ? 'Collapse child rows' : 'Expand child rows'}
+              aria-expanded={expanded}
+              data-testid="row-expand"
+              className={`rounded px-1 text-xs text-[var(--color-ink-faint)] transition-transform hover:text-[var(--color-brand)] ${
+                expanded ? 'rotate-90 text-[var(--color-brand)]' : ''
+              }`}
+            >
+              ▶
+            </button>
+          </td>
+        )}
+        {selectable && (
+          <td className="px-3 py-2">
+            <input
+              type="checkbox"
+              data-testid="row-check"
+              checked={selected}
+              onChange={onToggleSelect}
+            />
+          </td>
+        )}
+        {columns.map((col, i) => (
+          <td key={col.column_name} className="px-3 py-2">
+            {i === 0 ? (
+              <Link
+                to="/admin/$doctype/$name"
+                search={{ prefill: undefined }}
+                params={{ doctype, name: String(row.name) }}
+                className={`font-medium text-[var(--color-brand)] hover:underline ${
+                  col.column_name === 'name' ? 'font-mono text-[13px]' : ''
+                }`}
+              >
+                {cell(row[col.column_name], col.column_type, settings)}
+              </Link>
+            ) : col.column_type === 'Choice' &&
+              row[col.column_name] != null &&
+              row[col.column_name] !== '' ? (
+              <span className="text-[var(--color-ink)]" data-testid={`cell-${col.column_name}`}>
+                <Indicator value={String(row[col.column_name])} />
+              </span>
+            ) : (
+              <span className="text-[var(--color-ink)]" data-testid={`cell-${col.column_name}`}>
+                {cell(row[col.column_name], col.column_type, settings)}
+              </span>
+            )}
+          </td>
+        ))}
+      </tr>
+      {expanded && (
+        <tr data-testid="expanded-row">
+          <td
+            colSpan={columns.length + 2}
+            className="border-b border-[var(--color-border)] bg-[var(--color-subtle)] py-3 pl-10 pr-4"
+          >
+            <InlineChildren doctype={doctype} name={String(row.name)} childFields={childFields} />
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
+// The expanded row's content: every Sub-table column's rows, read-only,
+// fetched through the ordinary row GET (children arrive embedded).
+function InlineChildren({
+  doctype,
+  name,
+  childFields,
+}: {
+  doctype: string
+  name: string
+  childFields: import('../lib/meta').ColumnDef[]
+}) {
+  const settings = useSettings()
+  const doc = useQuery({
+    queryKey: ['doc', doctype, name],
+    queryFn: () =>
+      api.get<Record<string, unknown>>(
+        `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
+      ),
+  })
+  if (doc.isLoading) return <p className="text-xs text-[var(--color-ink-faint)]">Loading…</p>
+  if (doc.isError) return <p className="text-xs text-[var(--color-danger)]">Cannot load {name}</p>
+  return (
+    <div className="flex flex-col gap-3">
+      {childFields.map((f) => (
+        <InlineChildGrid
+          key={f.column_name}
+          field={f}
+          rows={(doc.data?.[f.column_name] as Record<string, unknown>[]) ?? []}
+          settings={settings}
+        />
+      ))}
+    </div>
+  )
+}
+
+function InlineChildGrid({
+  field,
+  rows,
+  settings,
+}: {
+  field: import('../lib/meta').ColumnDef
+  rows: Record<string, unknown>[]
+  settings: Settings
+}) {
+  const childMeta = useMeta(field.row_table ?? '')
+  if (!childMeta.data) return null
+  const cols = childMeta.data.columns.filter(
+    (f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden,
+  )
+  const currencyCols = cols.filter((c) => c.column_type === 'Currency')
+  return (
+    <div className="overflow-hidden rounded-[var(--radius-control)] border border-[var(--color-border)] bg-[var(--color-surface)]" data-testid={`inline-children-${field.column_name}`}>
+      <div className="border-b border-[var(--color-border)] px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-muted)]">
+        {field.label ?? field.column_name} ({rows.length})
+      </div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr>
+            {cols.map((c) => (
+              <th key={c.column_name} className="border-b border-[var(--color-border)] px-3 py-1 text-left font-medium text-[var(--color-ink-muted)]">
+                {c.label ?? c.column_name}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={String(r.name ?? i)} className="border-b border-[var(--color-border)] last:border-0">
+              {cols.map((c) => (
+                <td key={c.column_name} className="px-3 py-1 text-[var(--color-ink)]">
+                  {c.column_type === 'Reference' && c.reference_table && r[c.column_name] ? (
+                    <Link
+                      to="/admin/$doctype/$name"
+                      search={{ prefill: undefined }}
+                        params={{ doctype: c.reference_table, name: String(r[c.column_name]) }}
+                      className="text-[var(--color-brand)] hover:underline"
+                    >
+                      {String(r[c.column_name])}
+                    </Link>
+                  ) : (
+                    cell(r[c.column_name], c.column_type, settings)
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+          {!rows.length && (
+            <tr>
+              <td colSpan={cols.length} className="px-3 py-3 text-center text-[var(--color-ink-faint)]">
+                No rows
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      {currencyCols.length > 0 && rows.length > 0 && (
+        <div className="border-t border-[var(--color-border)] bg-[var(--color-subtle)] px-3 py-1 text-[11px] text-[var(--color-ink-muted)]">
+          {currencyCols
+            .map(
+              (c) =>
+                `Σ ${c.label ?? c.column_name}: ${
+                  formatValue(
+                    'Currency',
+                    rows.reduce((s, r) => s + (Number(r[c.column_name]) || 0), 0),
+                    settings,
+                  )
+                }`,
+            )
+            .join(' · ')}
+        </div>
+      )}
     </div>
   )
 }
@@ -738,6 +949,273 @@ export function FilterBar({
               </button>
             </span>
           ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// #101 Phase 2: recall placed where the repeat work happens — this user's
+// recent rows and recent filter sets for THIS table, from the same
+// localStorage buffer the command bar reads. A view chip re-applies its
+// whole filter set through the normal onFiltersChange pipeline (the filters
+// live in the URL, so this is just replaying a remembered list state).
+function RecentStrip({
+  doctype,
+  onApply,
+}: {
+  doctype: string
+  onApply: (filters: Filter[]) => void
+}) {
+  const user = getSessionUser()
+  const entries = user ? recentActions(user.name, 60) : []
+  const rows = entries.filter((e) => e.kind === 'row' && e.key.startsWith(`row:${doctype}/`)).slice(0, 4)
+  const views = entries
+    .map((e) => {
+      if (e.kind !== 'list' || !e.key.startsWith(`list:${doctype}?`)) return null
+      try {
+        const parsed = JSON.parse(e.key.slice(`list:${doctype}?`.length)) as Filter[]
+        return Array.isArray(parsed) && parsed.length > 0 ? { entry: e, parsed } : null
+      } catch {
+        return null
+      }
+    })
+    .filter((v): v is { entry: RecentEntry; parsed: Filter[] } => v !== null)
+    .slice(0, 3)
+  if (rows.length === 0 && views.length === 0) return null
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2" data-testid="recent-strip">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+        Recent
+      </span>
+      {rows.map((r) => (
+        <Link
+          key={r.key}
+          to="/admin/$doctype/$name"
+          params={{ doctype, name: r.label }}
+          search={{ prefill: undefined }}
+          data-testid="recent-strip-row"
+          className="rounded-full border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2.5 py-0.5 text-xs text-[var(--color-ink-muted)] hover:border-[var(--color-brand)] hover:text-[var(--color-brand)]"
+        >
+          {r.label}
+        </Link>
+      ))}
+      {views.map(({ entry, parsed }) => (
+        <button
+          key={entry.key}
+          type="button"
+          onClick={() => onApply(parsed)}
+          data-testid="recent-strip-view"
+          title={entry.sub}
+          className="max-w-72 truncate rounded-full bg-[var(--color-brand-tint)] px-2.5 py-0.5 text-xs font-medium text-[var(--color-brand)] hover:opacity-80"
+        >
+          {entry.sub}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// #101 Phase 6: saved views + the proactive nudge. A saved view is a named,
+// shareable filter set (server-owned rows); the nudge notices the same
+// filter set applied 3+ times inside a week and offers to name it — the
+// habit becomes an artifact instead of a memory.
+const NUDGE_THRESHOLD = 3
+const NUDGE_WINDOW_MS = 7 * 86_400_000
+
+interface SavedViewRow {
+  name: string
+  label: string
+  filters: Filter[]
+  shared: boolean
+  mine: boolean
+}
+
+function SavedViewsBar({
+  doctype,
+  filters,
+  onApply,
+}: {
+  doctype: string
+  filters: Filter[]
+  onApply: (filters: Filter[]) => void
+}) {
+  const user = getSessionUser()
+  const queryClient = useQueryClient()
+  const [nudgeGone, setNudgeGone] = useState(false)
+  const [applyCount, setApplyCount] = useState(0)
+  const [nudgeName, setNudgeName] = useState('')
+
+  const views = useQuery({
+    queryKey: ['saved-views', doctype],
+    enabled: Boolean(user),
+    queryFn: () => api.get<{ views: SavedViewRow[] }>(`/api/saved_views?table=${encodeURIComponent(doctype)}`),
+  })
+
+  const sig = filters.length > 0 ? JSON.stringify(filters) : ''
+  const countKey = user ? `fc-filter-count:${user.name}` : ''
+  const dismissKey = user ? `fc-nudge-dismissed:${user.name}` : ''
+
+  // Every arrival at a non-empty filter state counts as one application.
+  useEffect(() => {
+    setNudgeGone(false)
+    if (!user || !sig) {
+      setApplyCount(0)
+      return
+    }
+    try {
+      const store = JSON.parse(localStorage.getItem(countKey) ?? '{}') as Record<
+        string,
+        { n: number; t: number }
+      >
+      const k = `${doctype}|${sig}`
+      const rec = store[k] ?? { n: 0, t: 0 }
+      const now = Date.now()
+      if (now - rec.t > NUDGE_WINDOW_MS) rec.n = 0
+      // A re-mount within half a second is the same arrival (StrictMode
+      // double-invokes effects in dev), not a second application.
+      if (now - rec.t > 500) rec.n += 1
+      rec.t = now
+      store[k] = rec
+      const keys = Object.keys(store)
+      if (keys.length > 50) {
+        keys.sort((a, b) => store[a].t - store[b].t)
+        for (const stale of keys.slice(0, keys.length - 50)) delete store[stale]
+      }
+      localStorage.setItem(countKey, JSON.stringify(store))
+      setApplyCount(rec.n)
+    } catch {
+      setApplyCount(0)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doctype, sig, user?.name])
+
+  if (!user) return null
+  const list = views.data?.views ?? []
+
+  const matching = list.find((v) => JSON.stringify(v.filters) === sig)
+  let dismissed = false
+  try {
+    dismissed = Boolean(
+      (JSON.parse(localStorage.getItem(dismissKey) ?? '{}') as Record<string, boolean>)[
+        `${doctype}|${sig}`
+      ],
+    )
+  } catch {
+    /* ignore */
+  }
+  const showNudge = Boolean(sig && applyCount >= NUDGE_THRESHOLD && !matching && !dismissed && !nudgeGone)
+
+  async function saveView() {
+    const label = nudgeName.trim() || `${doctype} view`
+    await api.post('/api/saved_views', { table: doctype, label, filters })
+    try {
+      const store = JSON.parse(localStorage.getItem(countKey) ?? '{}') as Record<string, unknown>
+      delete store[`${doctype}|${sig}`]
+      localStorage.setItem(countKey, JSON.stringify(store))
+    } catch {
+      /* ignore */
+    }
+    setNudgeGone(true)
+    void queryClient.invalidateQueries({ queryKey: ['saved-views', doctype] })
+  }
+
+  function dismissNudge() {
+    try {
+      const store = JSON.parse(localStorage.getItem(dismissKey) ?? '{}') as Record<string, boolean>
+      store[`${doctype}|${sig}`] = true
+      localStorage.setItem(dismissKey, JSON.stringify(store))
+    } catch {
+      /* ignore */
+    }
+    setNudgeGone(true)
+  }
+
+  if (list.length === 0 && !showNudge) return null
+
+  return (
+    <div className="mb-3" data-testid="saved-views-bar">
+      {list.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+            Views
+          </span>
+          {list.map((v) => {
+            const active = JSON.stringify(v.filters) === sig
+            return (
+              <span
+                key={v.name}
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                  active
+                    ? 'bg-[var(--color-brand)] text-white'
+                    : 'bg-[var(--color-brand-tint)] text-[var(--color-brand)]'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => onApply(v.filters)}
+                  data-testid="saved-view-chip"
+                  title={v.mine ? undefined : `shared by its owner`}
+                >
+                  ★ {v.label}
+                  {v.shared && <span className="ml-1 opacity-70">{v.mine ? '· shared' : '· 👥'}</span>}
+                </button>
+                {v.mine && active && (
+                  <button
+                    type="button"
+                    data-testid="saved-view-share"
+                    title={v.shared ? 'Make private' : 'Share with everyone'}
+                    onClick={async () => {
+                      await api.post(`/api/saved_views/${encodeURIComponent(v.name)}/share`, {
+                        shared: !v.shared,
+                      })
+                      void queryClient.invalidateQueries({ queryKey: ['saved-views', doctype] })
+                    }}
+                    className="rounded-full px-1 hover:bg-white/20"
+                  >
+                    {v.shared ? '🔒' : '👥'}
+                  </button>
+                )}
+                {v.mine && (
+                  <button
+                    type="button"
+                    aria-label={`Delete view ${v.label}`}
+                    data-testid="saved-view-delete"
+                    onClick={async () => {
+                      await api.delete(`/api/saved_views/${encodeURIComponent(v.name)}`)
+                      void queryClient.invalidateQueries({ queryKey: ['saved-views', doctype] })
+                    }}
+                    className="rounded-full px-1 hover:bg-white/20"
+                  >
+                    ✕
+                  </button>
+                )}
+              </span>
+            )
+          })}
+        </div>
+      )}
+      {showNudge && (
+        <div
+          className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-[var(--color-brand)]/40 bg-[var(--color-brand-tint)] px-3 py-2 text-sm"
+          data-testid="filter-nudge"
+        >
+          <span className="text-[var(--color-ink)]">
+            That's <b>{applyCount}×</b> for this filter in a week — save it as a view?
+          </span>
+          <input
+            value={nudgeName}
+            onChange={(e) => setNudgeName(e.target.value)}
+            placeholder={`${doctype} view`}
+            data-testid="nudge-name"
+            className="fc-input !w-44 !py-0.5 text-xs"
+          />
+          <button type="button" onClick={() => void saveView()} data-testid="nudge-save" className="fc-btn-primary !py-0.5 text-xs">
+            Save view
+          </button>
+          <button type="button" onClick={dismissNudge} data-testid="nudge-dismiss" className="fc-btn !py-0.5 text-xs">
+            Not now
+          </button>
         </div>
       )}
     </div>

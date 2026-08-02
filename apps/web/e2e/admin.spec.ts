@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 
-test('UI-001: full login flow into the Desk shell', async ({ page }) => {
+test('UI-001: full login flow into the Admin shell', async ({ page }) => {
   await page.goto('/')
   await expect(page).toHaveURL(/\/login/)
 
@@ -12,10 +12,10 @@ test('UI-001: full login flow into the Desk shell', async ({ page }) => {
   await page.click('button[type=submit]')
   await expect(page.getByTestId('login-error')).toBeVisible()
 
-  // Correct login lands in the Desk
+  // Correct login lands in the Admin
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/desk/)
+  await expect(page).toHaveURL(/\/admin/)
 
   // #80: the sidebar lists Home Pages; every table stays reachable through
   // the All tables entry, which shows the grouped list — user modules first,
@@ -38,7 +38,7 @@ test('UI-001: full login flow into the Desk shell', async ({ page }) => {
 
   // Navigate to a Table page
   await nav.getByText('User', { exact: true }).click()
-  await expect(page).toHaveURL(/\/desk\/User/)
+  await expect(page).toHaveURL(/\/admin\/User/)
   await expect(page.getByTestId('doctype-page')).toContainText('User')
 
   // Deep link survives reload (token persisted)
@@ -46,10 +46,10 @@ test('UI-001: full login flow into the Desk shell', async ({ page }) => {
   await expect(page.getByTestId('doctype-page')).toContainText('User')
 
   // Logout (inside the avatar's account menu, #72) returns to login and
-  // guards /desk
+  // guards /admin
   await page.getByTestId('session-user').click()
   await page.getByTestId('logout').click()
   await expect(page).toHaveURL(/\/login/)
-  await page.goto('/desk')
+  await page.goto('/admin')
   await expect(page).toHaveURL(/\/login/)
 })

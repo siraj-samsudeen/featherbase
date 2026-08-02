@@ -1,5 +1,7 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useHomePages, type HomePageShortcut } from '../lib/home-pages'
+import { ActivityFeed } from './ActivityFeed'
+import { ResumeStrip, RoutineCard } from './HomeRecall'
 
 // UI-027 / #80: a Home Page renders its grouped link cards (curated in the
 // `links` sub-table through the generic FormView — no dedicated editor) plus
@@ -10,14 +12,14 @@ function routeFor(s: HomePageShortcut): string {
   const to = s.link_to
   switch (s.type) {
     case 'dashboard':
-      return `/desk/dashboard/${encodeURIComponent(to)}`
+      return `/admin/dashboard/${encodeURIComponent(to)}`
     case 'report':
-      return `/desk/query-report/${encodeURIComponent(to)}`
+      return `/admin/query-report/${encodeURIComponent(to)}`
     case 'url':
       return to
     case 'doctype':
     default:
-      return `/desk/${encodeURIComponent(to)}`
+      return `/admin/${encodeURIComponent(to)}`
   }
 }
 
@@ -48,6 +50,11 @@ export function HomePageView({ name }: { name: string }) {
         {page.label || page.name}
       </h1>
 
+      {/* #101 Phase 5: resuming beats browsing — last row/view/search first,
+          then the pinned workspace or the routine suggestion. */}
+      <ResumeStrip />
+      <RoutineCard />
+
       {page.cards.length === 0 && page.shortcuts.length === 0 && (
         <p className="text-sm text-[var(--color-ink-faint)]" data-testid="home-page-empty">
           Nothing here yet. Links are curated on the Home Page document itself.
@@ -67,7 +74,7 @@ export function HomePageView({ name }: { name: string }) {
                 {card.links.map((l) => (
                   <Link
                     key={l.link_to}
-                    to="/desk/$doctype"
+                    to="/admin/$doctype"
                     params={{ doctype: l.link_to }}
                     search={{ filters: undefined }}
                     data-testid={`home-link-${l.link_to}`}
@@ -98,6 +105,9 @@ export function HomePageView({ name }: { name: string }) {
           ))}
         </div>
       )}
+
+      {/* #101 Phase 4: the activity feed rides every Home Page. */}
+      <ActivityFeed />
     </div>
   )
 }

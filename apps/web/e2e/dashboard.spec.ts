@@ -61,9 +61,9 @@ test('UI-026: dashboard number cards and bar chart match the underlying data', a
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
-  await page.goto(`/desk/dashboard/${encodeURIComponent(DASH)}`)
+  await page.goto(`/admin/dashboard/${encodeURIComponent(DASH)}`)
   await expect(page.getByTestId('dashboard-title')).toBeVisible()
 
   // Number cards match the counts.

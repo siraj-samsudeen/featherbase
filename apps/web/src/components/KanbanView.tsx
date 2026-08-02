@@ -115,7 +115,7 @@ export function KanbanView({
             </select>
           </label>
           <RouterLink
-            to="/desk/$doctype"
+            to="/admin/$doctype"
             params={{ doctype }}
             search={{ filters: undefined }}
             className="fc-btn"
@@ -158,7 +158,8 @@ export function KanbanView({
                   }`}
                 >
                   <RouterLink
-                    to="/desk/$doctype/$name"
+                    to="/admin/$doctype/$name"
+                    search={{ prefill: undefined }}
                     params={{ doctype, name: String(row.name) }}
                     className="font-medium text-[var(--color-brand)] hover:underline"
                     onPointerDown={(e) => e.stopPropagation()}

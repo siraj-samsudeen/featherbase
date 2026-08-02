@@ -32,10 +32,10 @@ test('UI-020: dragging a card to another column updates its field in the DB', as
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
   // Reach the Kanban from the list.
-  await page.goto(`/desk/${encodeURIComponent(DT)}`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}`)
   await page.getByTestId('open-kanban').click()
   await expect(page.getByTestId('kanban-view')).toBeVisible()
 

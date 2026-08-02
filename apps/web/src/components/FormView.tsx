@@ -15,12 +15,24 @@ import { Tags } from './Tags'
 import { Comments } from './Comments'
 import { ActivityTimeline } from './ActivityTimeline'
 import { WorkflowActions } from './WorkflowActions'
+import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
+import { usePeek } from './Peek'
 
 type Row = Record<string, unknown>
 
 // UI-004/UI-005: ONE form component renders and saves every Table from
 // its metadata. Layout columns group into sections/columns (UI-008 refines).
-export function FormView({ doctype, name }: { doctype: string; name: string }) {
+// `prefill` (#100) seeds a NEW row's initial values — how "+ New Attendance"
+// from an Employee's connections arrives with employee already set.
+export function FormView({
+  doctype,
+  name,
+  prefill,
+}: {
+  doctype: string
+  name: string
+  prefill?: Row
+}) {
   const isNew = name === 'new'
   const meta = useMeta(doctype)
   const queryClient = useQueryClient()
@@ -34,7 +46,12 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
       api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
   })
 
-  const [values, setValues] = useState<Row>({})
+  // #102 review: prefill seeds the INITIAL state synchronously, so the very
+  // first render (and any client-script `onload` in the first effect flush)
+  // already sees the prefilled reference — an onload set_value merges on
+  // top of it instead of racing it. Route-level keying on the prefill
+  // string remounts this component when the prefill changes.
+  const [values, setValues] = useState<Row>(() => (isNew && prefill ? { ...prefill } : {}))
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [banner, setBanner] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -64,9 +81,12 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   }, [doc.data, isNew])
 
   useEffect(() => {
-    setValues(baseline)
+    // Prefilled values on a new row count as edits (the form starts dirty,
+    // so a pure-prefill save is possible), not as the saved baseline.
+    setValues(isNew && prefill ? { ...prefill } : baseline)
     setErrors({})
     onloadFired.current = false
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseline])
 
   // CUST-003: surface client-script compile errors; fire onload once the form
@@ -109,7 +129,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   }
 
   // CUST-003: run a client-script handler, catching errors so a broken script
-  // never crashes the Desk — it surfaces in a dismissible banner.
+  // never crashes the Admin — it surfaces in a dismissible banner.
   function fireHandler(key: string, docSnapshot: Row) {
     const handler = clientScripts.handlers[key]
     if (!handler) return
@@ -148,7 +168,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
       await queryClient.invalidateQueries({ queryKey: ['doc', doctype] })
       await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
       if (action === 'amend') {
-        navigate({ to: '/desk/$doctype/$name', params: { doctype, name: String(res.name) } })
+        navigate({ to: '/admin/$doctype/$name', params: { doctype, name: String(res.name) }, search: { prefill: undefined } })
       } else {
         setBanner('Done')
       }
@@ -168,7 +188,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
       )
       await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
       setRenaming(false)
-      navigate({ to: '/desk/$doctype/$name', params: { doctype, name: String(res.name) } })
+      navigate({ to: '/admin/$doctype/$name', params: { doctype, name: String(res.name) }, search: { prefill: undefined } })
     } catch (err) {
       setBanner(err instanceof ApiError ? err.message : 'Rename failed')
     }
@@ -205,8 +225,9 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
       await queryClient.invalidateQueries({ queryKey: ['versions', doctype, name] })
       if (isNew) {
         navigate({
-          to: '/desk/$doctype/$name',
+          to: '/admin/$doctype/$name',
           params: { doctype, name: String(saved.name) },
+          search: { prefill: undefined },
         })
       } else {
         setBanner('Saved')
@@ -233,10 +254,10 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
   return (
     <div data-testid="form-view" className="max-w-5xl">
       <nav className="mb-2 text-xs text-gray-500" data-testid="breadcrumbs">
-        <RouterLink to="/desk" className="hover:underline">Desk</RouterLink>
+        <RouterLink to="/admin" className="hover:underline">Admin</RouterLink>
         <span className="mx-1">/</span>
         <RouterLink
-          to="/desk/$doctype"
+          to="/admin/$doctype"
           params={{ doctype }}
           search={{ filters: undefined }}
           className="hover:underline"
@@ -267,7 +288,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
         <div className="flex items-center gap-2">
           {doctype === 'Data Source' && !isNew && (
             <RouterLink
-              to="/desk/source/$name"
+              to="/admin/source/$name"
               params={{ name }}
               data-testid="form-source-browser"
               className="fc-btn"
@@ -301,6 +322,19 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
               Print
             </RouterLink>
           )}
+          {/* #100 pattern 6: walk this row's relational neighborhood. */}
+          {!isNew && m.kind !== 'settings' && (
+            <RouterLink
+              to="/admin/map/$doctype/$name"
+              params={{ doctype, name }}
+              search={{ trail: undefined }}
+              data-testid="form-map"
+              className="fc-btn"
+            >
+              Map
+            </RouterLink>
+          )}
+          {/* A bound row's pk belongs to the source — never renameable here. */}
           {!isNew && !renaming && !boundSource && (
             <button
               onClick={() => {
@@ -440,6 +474,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
         </div>
         {!isNew && (
           <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
+            <ConnectionsPanel doctype={doctype} name={name} />
             <Assignments doctype={doctype} name={name} />
             <Tags doctype={doctype} name={name} />
             <Attachments doctype={doctype} name={name} />
@@ -448,6 +483,7 @@ export function FormView({ doctype, name }: { doctype: string; name: string }) {
           </aside>
         )}
       </div>
+      {!isNew && m.kind === 'table' && <RelatedTabs doctype={doctype} name={name} />}
     </div>
   )
 }
@@ -751,6 +787,11 @@ function LinkControl({
   const [open, setOpen] = useState(false)
   const [options, setOptions] = useState<string[]>([])
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const peek = usePeek()
+  const navigate = useNavigate()
+  // #100 pattern 1: a set reference is a place you can GO — ◎ peeks at the
+  // row in a slide-over, ↗ navigates to its form. Hidden while searching.
+  const hasValue = Boolean(value) && query === null
 
   function search(q: string) {
     clearTimeout(timer.current)
@@ -785,9 +826,45 @@ function LinkControl({
           setQuery(e.target.value)
           search(e.target.value)
         }}
-        className={className}
+        className={`${className} ${hasValue ? 'pr-14' : ''}`}
         {...common}
       />
+      {hasValue && (
+        <span className="absolute inset-y-0 right-2 flex items-center gap-0.5">
+          {peek.available && (
+            <button
+              type="button"
+              tabIndex={-1}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                peek.push({ kind: 'record', table: target, name: String(value) })
+              }}
+              title={`Peek at ${target} ${String(value)}`}
+              data-testid={`link-peek-${field.column_name}`}
+              className="rounded px-1 text-sm text-[var(--color-ink-faint)] hover:text-[var(--color-brand)]"
+            >
+              ◎
+            </button>
+          )}
+          <button
+            type="button"
+            tabIndex={-1}
+            onMouseDown={(e) => {
+              e.preventDefault()
+              navigate({
+                to: '/admin/$doctype/$name',
+                params: { doctype: target, name: String(value) },
+                search: { prefill: undefined },
+              })
+            }}
+            title={`Open ${target} ${String(value)}`}
+            data-testid={`link-open-${field.column_name}`}
+            className="rounded px-1 text-sm text-[var(--color-ink-faint)] hover:text-[var(--color-brand)]"
+          >
+            ↗
+          </button>
+        </span>
+      )}
       {open && (
         <div
           className="absolute z-10 mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg"
@@ -812,8 +889,9 @@ function LinkControl({
             <p className="px-3 py-1.5 text-sm text-gray-400">No matches</p>
           )}
           <RouterLink
-            to="/desk/$doctype/$name"
+            to="/admin/$doctype/$name"
             params={{ doctype: target, name: 'new' }}
+            search={{ prefill: undefined }}
             className="block border-t border-gray-100 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50"
             data-testid="link-create-new"
           >

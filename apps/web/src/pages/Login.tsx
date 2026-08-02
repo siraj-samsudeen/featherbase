@@ -37,7 +37,7 @@ export function LoginPage() {
     const form = new FormData(e.currentTarget)
     try {
       await login(String(form.get('email')), String(form.get('password')))
-      navigate({ to: '/desk' })
+      navigate({ to: '/admin' })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Login failed')
     } finally {

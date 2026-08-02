@@ -13,9 +13,9 @@ import { saveDoc } from 'server/src/document'
 import { createPgTest, type TestClient } from 'feather-testing-postgres'
 import {
   installFetchBridge,
-  renderDesk as baseRenderDesk,
+  renderApp as baseRenderApp,
   renderSession as baseRenderSession,
-  type RenderDeskOptions,
+  type RenderAppOptions,
 } from 'feather-testing-postgres/react'
 import { routeTree } from '../src/router'
 
@@ -51,11 +51,11 @@ beforeAll(() => {
   installFetchBridge(app)
 })
 
-type Opts = Omit<RenderDeskOptions, 'routeTree' | 'token'>
+type Opts = Omit<RenderAppOptions, 'routeTree' | 'token'>
 
-/** Render the real Desk at `path`, logged in as `as`. */
-export function renderDesk(path: string, as: TestClient, opts: Opts = {}) {
-  return baseRenderDesk(path, {
+/** Render the real Admin at `path`, logged in as `as`. */
+export function renderApp(path: string, as: TestClient, opts: Opts = {}) {
+  return baseRenderApp(path, {
     routeTree,
     token: as.token,
     user: as.user ? { name: as.user } : undefined,
@@ -63,7 +63,7 @@ export function renderDesk(path: string, as: TestClient, opts: Opts = {}) {
   })
 }
 
-/** renderDesk + fluent Session. */
+/** renderApp + fluent Session. */
 export function renderSession(path: string, as: TestClient, opts: Opts = {}) {
   return baseRenderSession(path, {
     routeTree,

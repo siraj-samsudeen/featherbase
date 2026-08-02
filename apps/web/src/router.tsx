@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import {
   Link,
   Outlet,
@@ -11,7 +11,7 @@ import { ResetPasswordPage } from './pages/ResetPassword'
 import { WebFormPage } from './pages/WebForm'
 import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
-import { DeskLayout } from './pages/DeskLayout'
+import { AdminLayout } from './pages/AdminLayout'
 import { getToken } from './lib/api'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
@@ -33,14 +33,54 @@ import { TableBuilder } from './pages/TableBuilder'
 import { ImportWizard } from './pages/ImportWizard'
 import { AllTablesPage } from './pages/AllTables'
 import SourceBrowser from './pages/SourceBrowser'
+import { ExploreView } from './pages/Explore'
+import { RelationMap } from './pages/RelationMap'
 
 const rootRoute = createRootRoute({ component: Outlet })
+
+// #87: every search param below is a string to the app, but TanStack's default
+// search parser runs JSON.parse over each value — so a URL that was TYPED or
+// pasted rather than built by an in-app navigation hands us something else:
+// `?filters=[["User","enabled","=",1]]` arrives as an Array, `?report=2024` as
+// a Number. A `typeof === 'string'` check then dropped the param and stripped
+// it from the address bar, which quietly broke the promise that these URLs are
+// shareable. Coerce back to the string the app expects instead.
+function searchString(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined
+  return typeof value === 'string' ? value : JSON.stringify(value)
+}
+
+// #87: `filters` is the one search param whose SHAPE matters — ListView indexes
+// each entry as a [field, op, value] triple. A URL is user input, so the parsed
+// value is validated, not asserted: `?filters={}` and `?filters=[null]` both
+// parse as valid JSON and would otherwise reach `filters.find(...)` and throw,
+// blanking the list. Anything that is not a well-formed triple array is
+// discarded the way a malformed value always was.
+function parseFilters(raw: string | undefined): [string, string, unknown][] {
+  if (!raw) return []
+  let value: unknown
+  try {
+    value = JSON.parse(raw)
+  } catch {
+    return []
+  }
+  const ok =
+    Array.isArray(value) &&
+    value.every(
+      (f) =>
+        Array.isArray(f) &&
+        f.length === 3 &&
+        typeof f[0] === 'string' &&
+        typeof f[1] === 'string',
+    )
+  return ok ? (value as [string, string, unknown][]) : []
+}
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   beforeLoad: () => {
-    throw redirect({ to: getToken() ? '/desk' : '/login' })
+    throw redirect({ to: getToken() ? '/admin' : '/login' })
   },
 })
 
@@ -63,7 +103,7 @@ const oauthCallbackRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/oauth-callback',
   validateSearch: (search: Record<string, unknown>) => ({
-    token: typeof search.token === 'string' ? search.token : undefined,
+    token: searchString(search.token),
   }),
   component: OAuthCallbackRouteComponent,
 })
@@ -105,18 +145,18 @@ const resetPasswordRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/reset-password',
   validateSearch: (search: Record<string, unknown>) => ({
-    key: typeof search.key === 'string' ? search.key : undefined,
+    key: searchString(search.key),
   }),
   component: ResetPasswordPage,
 })
 
-const deskRoute = createRoute({
+const adminRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/desk',
+  path: '/admin',
   beforeLoad: () => {
     if (!getToken()) throw redirect({ to: '/login' })
   },
-  component: DeskLayout,
+  component: AdminLayout,
 })
 
 // PRN-001: print view lives OUTSIDE the Admin layout — no navbar/sidebar.
@@ -124,7 +164,7 @@ const printRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/print/$doctype/$name',
   validateSearch: (search: Record<string, unknown>) => ({
-    format: typeof search.format === 'string' ? search.format : undefined,
+    format: searchString(search.format),
   }),
   beforeLoad: () => {
     if (!getToken()) throw redirect({ to: '/login' })
@@ -147,27 +187,27 @@ function PrintPage() {
   )
 }
 
-// #80: /desk lands on the caller's first visible Home Page; with none
+// #80: /admin lands on the caller's first visible Home Page; with none
 // visible it falls back to a pointer at the All tables page.
-const deskIndexRoute = createRoute({
-  getParentRoute: () => deskRoute,
+const adminIndexRoute = createRoute({
+  getParentRoute: () => adminRoute,
   path: '/',
-  component: DeskIndexPage,
+  component: AdminIndexPage,
 })
 
-function DeskIndexPage() {
-  const navigate = deskIndexRoute.useNavigate()
+function AdminIndexPage() {
+  const navigate = adminIndexRoute.useNavigate()
   const pages = useHomePages()
   const first = pages.data?.pages[0]
   useEffect(() => {
-    if (first) void navigate({ to: '/desk/home/$name', params: { name: first.name }, replace: true })
+    if (first) void navigate({ to: '/admin/home/$name', params: { name: first.name }, replace: true })
   }, [first, navigate])
   if (!pages.data) return null
   if (first) return null
   return (
-    <p className="text-sm text-gray-500" data-testid="desk-index-empty">
+    <p className="text-sm text-gray-500" data-testid="admin-index-empty">
       No Home Pages are visible to you. Browse{' '}
-      <Link to="/desk/all-tables" className="text-[var(--color-brand)] underline">
+      <Link to="/admin/all-tables" className="text-[var(--color-brand)] underline">
         All tables
       </Link>{' '}
       instead.
@@ -177,7 +217,7 @@ function DeskIndexPage() {
 
 // UI-011: Table builder route (before $doctype so 'new-table' matches).
 const newTableRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'new-table',
   component: () => (
     <div data-testid="doctype-page">
@@ -188,10 +228,10 @@ const newTableRoute = createRoute({
 
 // IMP-010: Import wizard route (before $doctype so 'import' matches).
 const importRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'import',
   validateSearch: (search: Record<string, unknown>) => ({
-    table: typeof search.table === 'string' ? search.table : undefined,
+    table: searchString(search.table),
   }),
   component: () => (
     <div data-testid="doctype-page">
@@ -203,10 +243,10 @@ const importRoute = createRoute({
 // UI-002/UI-003: the generic ListView renders every Table; filters are
 // URL state so they survive reloads and are shareable.
 const doctypeRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: '$doctype',
   validateSearch: (search: Record<string, unknown>) => ({
-    filters: typeof search.filters === 'string' ? search.filters : undefined,
+    filters: searchString(search.filters),
   }),
   component: TableListPage,
 })
@@ -224,12 +264,7 @@ function TableListPage() {
       </div>
     )
   }
-  let parsed: [string, string, unknown][] = []
-  try {
-    parsed = filters ? JSON.parse(filters) : []
-  } catch {
-    parsed = []
-  }
+  const parsed = parseFilters(filters)
   return (
     <div data-testid="doctype-page">
       <ListView
@@ -251,10 +286,10 @@ function TableListPage() {
 // over every Table. Three segments, so it never collides with
 // $doctype/$name.
 const reportRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: '$doctype/view/report',
   validateSearch: (search: Record<string, unknown>) => ({
-    report: typeof search.report === 'string' ? search.report : undefined,
+    report: searchString(search.report),
   }),
   component: ReportPage,
 })
@@ -277,10 +312,10 @@ function ReportPage() {
 
 // UI-020: Kanban board view.
 const kanbanRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: '$doctype/view/kanban',
   validateSearch: (search: Record<string, unknown>) => ({
-    group_by: typeof search.group_by === 'string' ? search.group_by : undefined,
+    group_by: searchString(search.group_by),
   }),
   component: KanbanPage,
 })
@@ -303,7 +338,7 @@ function KanbanPage() {
 
 // UI-021: Calendar view.
 const calendarRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: '$doctype/view/calendar',
   component: CalendarPage,
 })
@@ -319,7 +354,7 @@ function CalendarPage() {
 
 // UI-022: Gantt view.
 const ganttRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: '$doctype/view/gantt',
   component: GanttPage,
 })
@@ -336,7 +371,7 @@ function GanttPage() {
 // RPT-004: a SQL Report renders its own SQL-driven results (static first
 // segment, so it wins over $doctype/$name).
 const queryReportRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'query-report/$name',
   component: QueryReportPage,
 })
@@ -352,7 +387,7 @@ function QueryReportPage() {
 
 // RPT-005: a script report renders its declared filters + data (static segment).
 const scriptReportRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'script-report/$name',
   component: ScriptReportPage,
 })
@@ -368,7 +403,7 @@ function ScriptReportPage() {
 
 // JOB-004: background job monitor (static segment).
 const jobsRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'jobs',
   component: JobMonitor,
 })
@@ -376,7 +411,7 @@ const jobsRoute = createRoute({
 // UI-027 / #80: a Home Page renders grouped link cards and its legacy
 // shortcuts (static segment).
 const homePageRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'home/$name',
   component: HomePagePage,
 })
@@ -393,7 +428,7 @@ function HomePagePage() {
 // #80: every table stays reachable — the sidebar's All tables entry shows
 // the grouped table list (static segment, before $doctype).
 const allTablesRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'all-tables',
   component: AllTablesPage,
 })
@@ -401,7 +436,7 @@ const allTablesRoute = createRoute({
 // EDS-2: the Data Source browser — introspect and reflect external tables
 // (static segment, before $doctype).
 const sourceBrowserRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'source/$name',
   component: SourceBrowserPage,
 })
@@ -417,7 +452,7 @@ function SourceBrowserPage() {
 
 // UI-026: a saved Dashboard renders number cards + charts (static segment).
 const dashboardRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'dashboard/$name',
   component: DashboardPage,
 })
@@ -431,25 +466,9 @@ function DashboardPage() {
   )
 }
 
-// SET-003: role & permission manager for a Table (static first segment).
-const permissionsRoute = createRoute({
-  getParentRoute: () => deskRoute,
-  path: 'permissions/$doctype',
-  component: PermissionsPage,
-})
-
-function PermissionsPage() {
-  const { doctype } = permissionsRoute.useParams()
-  return (
-    <div data-testid="doctype-page">
-      <PermissionManager key={doctype} doctype={doctype} />
-    </div>
-  )
-}
-
 // NAM-001: id-pattern editor for an existing Table (static first segment).
 const namingRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: 'naming/$doctype',
   component: NamingPage,
 })
@@ -463,18 +482,109 @@ function NamingPage() {
   )
 }
 
+// SET-003: role & permission manager for a Table (static first segment).
+const permissionsRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'permissions/$doctype',
+  component: PermissionsPage,
+})
+
+function PermissionsPage() {
+  const { doctype } = permissionsRoute.useParams()
+  return (
+    <div data-testid="doctype-page">
+      <PermissionManager key={doctype} doctype={doctype} />
+    </div>
+  )
+}
+
+// #100: `prefill` seeds a NEW row's initial values (JSON object of column →
+// value) — the "+ New Attendance from this Employee" affordance. Validated
+// like filters: URLs are user input, so anything that isn't a plain object
+// is discarded rather than crashing the form.
+function parsePrefill(raw: string | undefined): Record<string, unknown> | undefined {
+  if (!raw) return undefined
+  try {
+    const value: unknown = JSON.parse(raw)
+    if (value && typeof value === 'object' && !Array.isArray(value))
+      return value as Record<string, unknown>
+  } catch {
+    /* fall through */
+  }
+  return undefined
+}
+
 // UI-004/UI-005: the generic FormView renders and saves every Table.
 const docRoute = createRoute({
-  getParentRoute: () => deskRoute,
+  getParentRoute: () => adminRoute,
   path: '$doctype/$name',
+  validateSearch: (search: Record<string, unknown>) => ({
+    prefill: searchString(search.prefill),
+  }),
   component: TableFormPage,
 })
 
 function TableFormPage() {
   const { doctype, name } = docRoute.useParams()
+  const { prefill } = docRoute.useSearch()
+  // #102 review: the raw prefill string is part of the key — navigating
+  // from one ?prefill= URL to another (or clearing it, e.g. Ctrl/Cmd+B)
+  // remounts the form instead of retaining the previous form's values.
+  // Parsing is memoized so the object isn't rebuilt every render.
+  const parsedPrefill = useMemo(() => parsePrefill(prefill), [prefill])
   return (
     <div data-testid="doc-page">
-      <FormView key={`${doctype}/${name}`} doctype={doctype} name={name} />
+      <FormView
+        key={`${doctype}/${name}/${prefill ?? ''}`}
+        doctype={doctype}
+        name={name}
+        prefill={parsedPrefill}
+      />
+    </div>
+  )
+}
+
+// #100 pattern 4: cross-filter Explore — pane chains over reference links,
+// where clicking rows IS the filter (static segment, before $doctype).
+const exploreRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'explore',
+  validateSearch: (search: Record<string, unknown>) => ({
+    root: searchString(search.root),
+  }),
+  component: ExplorePage,
+})
+
+function ExplorePage() {
+  const { root } = exploreRoute.useSearch()
+  const navigate = exploreRoute.useNavigate()
+  return (
+    <div data-testid="doctype-page">
+      <ExploreView
+        root={root}
+        onRootChange={(r) => navigate({ search: { root: r || undefined }, replace: true })}
+      />
+    </div>
+  )
+}
+
+// #100 pattern 6: relationship map — the row's neighborhood as a walkable
+// graph. `trail` carries the hop history (static first segment).
+const mapRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'map/$doctype/$name',
+  validateSearch: (search: Record<string, unknown>) => ({
+    trail: searchString(search.trail),
+  }),
+  component: MapPage,
+})
+
+function MapPage() {
+  const { doctype, name } = mapRoute.useParams()
+  const { trail } = mapRoute.useSearch()
+  return (
+    <div data-testid="doctype-page">
+      <RelationMap key={`${doctype}/${name}`} doctype={doctype} name={name} trail={trail} />
     </div>
   )
 }
@@ -488,5 +598,5 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   printRoute,
-  deskRoute.addChildren([deskIndexRoute, newTableRoute, importRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, doctypeRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, doctypeRoute, docRoute]),
 ])

@@ -58,7 +58,7 @@ test('PRN-004: default letterhead applied, switchable, and suppressible', async 
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await page.waitForURL(/\/desk/)
+  await page.waitForURL(/\/admin/)
 
   // No choice → the default (Head Office) header/footer appear, interpolated.
   await page.goto(`/print/${encodeURIComponent(DT)}/${docName}`)

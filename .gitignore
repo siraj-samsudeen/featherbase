@@ -7,10 +7,13 @@ dist/
 !.env.example
 test-results/
 playwright-report/
+# Snapshots written by the Playwright MCP browser during agent sessions.
+.playwright-mcp/
 coverage/
 .DS_Store
 apps/web/.vite/
 storage/
+*.tsbuildinfo
 
 # Playwright MCP scratch output (screenshots land at the repo root)
 .playwright-mcp/

@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext } from '@playwright/test'
 
 const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
-const SUBJECT = 'E2E: helpdesk renders in the generic Desk'
+const SUBJECT = 'E2E: helpdesk renders in the generic Admin'
 
 async function token(request: APIRequestContext) {
   const r = await request.post('/api/login', {
@@ -30,7 +30,7 @@ async function ensureHelpdeskStructure(request: APIRequestContext) {
 
 let name = ''
 
-// Helpdesk sample app: the generic Desk renders the HD Ticket Table — list,
+// Helpdesk sample app: the generic Admin renders the HD Ticket Table — list,
 // form, and workflow actions on the bound status field — with zero bespoke
 // frontend. The spec seeds its own ticket (demo content is opt-in) and
 // removes it afterwards so no ticket outlives the run.
@@ -51,16 +51,16 @@ test.afterAll(async ({ request }) => {
   await request.delete(`/api/table/HD%20Ticket/${name}`, { headers: H })
 })
 
-test('helpdesk: a ticket renders in the Desk and opens with workflow actions', async ({
+test('helpdesk: a ticket renders in the Admin and opens with workflow actions', async ({
   page,
 }) => {
   await page.goto('/login')
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/desk/)
+  await expect(page).toHaveURL(/\/admin/)
 
-  await page.goto('/desk/HD%20Ticket')
+  await page.goto('/admin/HD%20Ticket')
   await expect(page.getByText(name)).toBeVisible()
   await expect(page.getByText(SUBJECT)).toBeVisible()
 

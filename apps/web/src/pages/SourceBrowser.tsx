@@ -99,11 +99,12 @@ export default function SourceBrowser({ name }: { name: string }) {
     <div data-testid="source-browser">
       <div className="mb-4">
         <div className="text-xs text-[var(--color-ink-faint)]">
-          <Link to="/desk" className="hover:text-[var(--color-ink)]">Home</Link>
+          <Link to="/admin" className="hover:text-[var(--color-ink)]">Home</Link>
           {' / '}
           <Link
-            to="/desk/$doctype/$name"
+            to="/admin/$doctype/$name"
             params={{ doctype: 'Data Source', name }}
+            search={{ prefill: undefined }}
             className="hover:text-[var(--color-ink)]"
           >
             Data Source
@@ -187,7 +188,7 @@ export default function SourceBrowser({ name }: { name: string }) {
                 <span key={c.name}>
                   {i > 0 && ', '}
                   <Link
-                    to="/desk/$doctype"
+                    to="/admin/$doctype"
                     params={{ doctype: c.name }}
                     search={{ filters: undefined }}
                     className="text-[var(--color-brand)] hover:underline"
@@ -257,7 +258,7 @@ export default function SourceBrowser({ name }: { name: string }) {
                     <td className="px-3 py-2 text-xs">
                       {t.already_reflected ? (
                         <Link
-                          to="/desk/$doctype"
+                          to="/admin/$doctype"
                           params={{ doctype: t.already_reflected }}
                           search={{ filters: undefined }}
                           className="text-[var(--color-brand)] hover:underline"

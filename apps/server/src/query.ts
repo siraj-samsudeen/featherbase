@@ -143,6 +143,39 @@ export async function groupCount(
   return rows.map((r) => ({ label: (r.label as string) ?? '', value: r.value as number }))
 }
 
+// NAV-001 (#102 review): the owning rows of a via-sub-table backlink, fully
+// permission-scoped. Both the count and the names go through the SAME
+// scoped WHERE as any list read (read permission + own_rows narrowing +
+// user-permission narrowing), with an EXISTS over the child table — so a
+// caller never learns the name of a parent row they cannot read, and the
+// count matches what their filtered list will actually show. Names are
+// ordered for determinism and capped by `limit`; `total` is the true
+// scoped count even beyond the cap.
+export async function relatedOwners(
+  ownerTable: string,
+  subTable: string,
+  column: string,
+  value: string,
+  user = 'Administrator',
+  limit = 500,
+): Promise<{ names: string[]; total: number }> {
+  const { table: tbl, where } = await scopedWhere(ownerTable, user, [])
+  const sub = tableName(subTable)
+  const exists = sql`exists (
+    select 1 from ${sql(sub)} s
+    where s.${sql(column)} = ${value}
+      and s.parent = ${sql(tbl)}.name
+      and s.parenttype = ${ownerTable})`
+  const rows = await sql`
+    select name from ${sql(tbl)}
+    where ${where} and ${exists}
+    order by name
+    limit ${limit}`
+  const [{ count }] = await sql`
+    select count(*)::int as count from ${sql(tbl)} where ${where} and ${exists}`
+  return { names: rows.map((r) => r.name as string), total: count as number }
+}
+
 export async function getList(table: string, args: ListArgs = {}, user = 'Administrator') {
   // M3 seam: source-bound Tables list from the source — filters, sort and
   // paging pushed down to the driver (spec EDS-5).
