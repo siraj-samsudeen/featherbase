@@ -17,6 +17,57 @@ this look — do not introduce ad-hoc colors/spacing:
   CSS variables and `.fc-*` classes — never a literal color — so it works
   under every palette × light/dark combination automatically.
 
+## 2026-08-01 — #101 Phases 2–6 complete: recent actions shipped end to end
+
+All six phases of [#101](https://github.com/siraj-samsudeen/featherbase/issues/101)
+are now built (Phase 1 below). One commit per phase on this branch.
+
+- **Phase 2 — more recall surfaces.** Sidebar gains Recent (5 destinations)
+  + Frequent (frecency top 3) groups; ListView gains a strip of this
+  table's recent rows and filter sets. Same localStorage buffer as ⌘K.
+- **Phase 3 — server truth.** Migration 0064 adds the `User Event` system
+  table (append-only via direct insert like `audit.ts`; no role
+  permissions — reads only flow through caller-scoped endpoints).
+  `POST /api/events` takes client batches (≤50, timestamps clamped to a
+  7-day trust window, 90-day retention pruned on the write path);
+  `GET /api/events/summary` returns per-key aggregates that the client
+  unions into its buffer at sign-in → cross-device recents. Client
+  flushes on a 3s debounce; `sendBeacon` (cookie-auth) carries the final
+  batch through unload.
+- **Phase 4 — homepage feed.** `GET /api/activity_feed`: `mine` = own raw
+  trail; `team` = Version rows + logins ONLY (reads never surface),
+  System Manager-gated. Feed card on every Home Page, live via a new
+  websocket `feed` ping in `publishDocEvent`, 30s refetch fallback.
+- **Phase 5 — resuming.** ResumeStrip (last row / view / search tiles;
+  the search tile refills the command bar via a `fc:prefill-search`
+  event). `GET /api/routine_suggestion` detects destinations opened on
+  ≥5 distinct days in 14 (lists/pages only, ≥2 targets); RoutineCard
+  pins them as a per-user workspace chip row.
+- **Phase 6 — saved views.** Migration 0065 adds `Saved View` (owner +
+  jsonb filters + shared flag; owner-scoped `/api/saved_views` CRUD,
+  sharing opens read-only). ListView Views bar with share/delete on own
+  chips; the nudge fires when one filter set is applied 3× in a week
+  (re-mounts within 500ms deduped — StrictMode double-fires effects).
+
+Verified end-to-end: **web e2e 96 passed / 0 failed / 6 skipped** (skips
+are all "already exists in this dev DB" guards), **server 519 passed**,
+**web unit 24 passed**, both typechecks clean. 15 new server vitest
+cases, 9 new e2e tests across recents/activity-feed/home-recall/
+saved-views specs.
+
+Gotchas (beyond the 07-31 entry's): (1) storing pre-stringified JSON into
+a jsonb column double-encodes — use `sql.json(...)`. (2) The e2e suite
+itself now generates user_event rows (beacons + batches), so specs must
+never assume "newest" without making the data in-test; both feed specs
+were hardened accordingly. (3) `ticketing.spec.ts` re-installs helpdesk
+every run — uninstall via `POST /api/uninstall_app {"name":"helpdesk"}`
+before running the server suite, or its app-fixtures test fails.
+
+Next: owner review of the whole #101 branch. Candidate follow-ups:
+frecency-boosted ranking inside `/api/search` itself, a modal ⌘K overlay
+(the dropdown was kept deliberately — "under the search" was the ask),
+edit-weighted frecency, and Team-feed pagination.
+
 ## 2026-07-31 — #101 Phase 1: the command bar remembers recent actions
 
 Issue [#101](https://github.com/siraj-samsudeen/featherbase/issues/101) is the
