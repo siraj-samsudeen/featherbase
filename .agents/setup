@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+export DEBIAN_FRONTEND=noninteractive
+readonly NODE_VERSION=22.18.0
+readonly PNPM_VERSION=10.33.0
+readonly DEFAULT_DATABASE_URL='postgres://postgres:postgres@127.0.0.1:5432/featherbase'
+export DATABASE_URL="${DATABASE_URL:-$DEFAULT_DATABASE_URL}"
+
+echo '==> Installing system prerequisites'
+sudo apt-get update -qq
+sudo apt-get install -y --no-install-recommends \
+  ca-certificates curl lsof postgresql postgresql-client xz-utils
+
+node_is_compatible() {
+  command -v node >/dev/null 2>&1 &&
+    node -e 'const [major, minor] = process.versions.node.split(".").map(Number); process.exit(major > 22 || (major === 22 && minor >= 13) ? 0 : 1)'
+}
+
+if ! node_is_compatible; then
+  case "$(uname -m)" in
+    x86_64) node_arch=x64 ;;
+    aarch64|arm64) node_arch=arm64 ;;
+    *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+  esac
+  echo "==> Installing Node.js $NODE_VERSION"
+  node_archive="$(mktemp)"
+  trap 'rm -f "$node_archive"' EXIT
+  curl -fsSL "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-$node_arch.tar.xz" -o "$node_archive"
+  sudo tar -xJf "$node_archive" -C /usr/local --strip-components=1
+  rm -f "$node_archive"
+  trap - EXIT
+fi
+
+if ! command -v pnpm >/dev/null 2>&1 || [[ "$(pnpm --version 2>/dev/null || true)" != "$PNPM_VERSION" ]]; then
+  echo "==> Installing pnpm $PNPM_VERSION"
+  sudo npm install --global --prefix /usr/local "pnpm@$PNPM_VERSION"
+fi
+
+echo '==> Installing JavaScript dependencies'
+pnpm install --frozen-lockfile
+
+if [[ "$DATABASE_URL" == "$DEFAULT_DATABASE_URL" ]]; then
+  echo '==> Starting and tuning local Postgres'
+  cluster="$(pg_lsclusters -h | awk 'NR == 1 { print $1, $2 }')"
+  if [[ -z "$cluster" ]]; then
+    echo 'Postgres was installed but no local cluster exists' >&2
+    exit 1
+  fi
+  read -r pg_version pg_name <<<"$cluster"
+  tuning_file="/etc/postgresql/$pg_version/$pg_name/conf.d/99-amp-orb.conf"
+  tuning="$(mktemp)"
+  cat >"$tuning" <<'EOF'
+# Ephemeral Amp orb: favor test speed over crash durability.
+fsync = off
+synchronous_commit = off
+full_page_writes = off
+EOF
+  if ! sudo cmp -s "$tuning" "$tuning_file"; then
+    sudo install -m 0644 "$tuning" "$tuning_file"
+  fi
+  rm -f "$tuning"
+  sudo pg_ctlcluster "$pg_version" "$pg_name" restart
+
+  sudo -u postgres psql -v ON_ERROR_STOP=1 -c "alter role postgres password 'postgres'" >/dev/null
+  if ! sudo -u postgres psql -tAc "select 1 from pg_database where datname = 'featherbase'" | grep -qx 1; then
+    sudo -u postgres createdb --owner=postgres featherbase
+  fi
+fi
+
+echo '==> Checking database connectivity'
+PGCONNECT_TIMEOUT=5 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAc 'select 1' >/dev/null
+
+echo '==> Applying migrations and patches'
+pnpm --filter server migrate
+pnpm --filter server patches
+
+echo '==> Installing Playwright Chromium and its system dependencies'
+pnpm --filter web exec playwright install --with-deps chromium
+
+echo '==> Orb setup complete'
