@@ -955,6 +955,7 @@ function RecentStrip({
           key={r.key}
           to="/admin/$doctype/$name"
           params={{ doctype, name: r.label }}
+          search={{ prefill: undefined }}
           data-testid="recent-strip-row"
           className="rounded-full border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2.5 py-0.5 text-xs text-[var(--color-ink-muted)] hover:border-[var(--color-brand)] hover:text-[var(--color-brand)]"
         >
