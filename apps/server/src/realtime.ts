@@ -1,7 +1,7 @@
 import type { Server } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { resolveToken, type SessionUser } from './auth'
-import { hasPermission } from './permissions'
+import { getRoles, hasPermission } from './permissions'
 
 // RT-001/002/003: server-side realtime over WebSockets (the local equivalent
 // of Supabase Realtime per the architecture invariants).
@@ -46,6 +46,10 @@ const clients = new Set<Client>()
 // permission eavesdropping over the socket.
 export async function canSubscribe(user: SessionUser, channel: string): Promise<boolean> {
   if (channel.startsWith('user:')) return channel === `user:${user.name}`
+  // #101 Phase 4 (PR #104 review): the team-feed invalidation ping. Gated
+  // like the feed endpoint itself (System Manager), and published with NO
+  // payload — the data always flows through /api/activity_feed.
+  if (channel === 'feed') return (await getRoles(user.name)).includes('System Manager')
   if (channel.startsWith('list:')) return hasPermission(user.name, channel.slice(5), 'read')
   if (channel.startsWith('doc:')) {
     // doc:<Table>:<name> — Table may itself contain ':' only in theory;
@@ -81,6 +85,11 @@ export function publishDocEvent(
 ): void {
   publish(`list:${table}`, event, { table, name })
   publish(`doc:${table}:${name}`, event, { table, name })
+  // #101 Phase 4: an invalidation ping for the (System Manager-only) team
+  // feed. Deliberately payload-free — the subscriber may not have read
+  // permission on this particular Table, and the feed data itself always
+  // flows through the role-gated /api/activity_feed.
+  publish('feed', 'changed')
 }
 
 export function publishUserEvent(user: string, event: string, payload?: unknown): void {

@@ -14,7 +14,7 @@ import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { generateApiKeys, login, resolveToken, revokeApiKeys, setUserPassword, issueSession, type SessionUser } from './auth'
 import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newState, verifyState, isMockProvider } from './oauth'
-import { assertPermission, assertSystemManager, getRoles } from './permissions'
+import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
@@ -30,6 +30,7 @@ import {
 } from './actions'
 import './actions/core-row-actions'
 import './actions/collection-import'
+import './actions/row-connections'
 import { renderPdf, renderPrintHtml } from './print'
 import { availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
@@ -42,6 +43,8 @@ import { requestPasswordReset, resetPassword } from './password-reset'
 import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
+import { eventSummary, recordEvents, routineSuggestion, validateEventBatch } from './events'
+import { createSavedView, deleteSavedView, listSavedViews, setSavedViewShared } from './saved-views'
 import { runApiScript } from './server-scripts'
 import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
@@ -154,6 +157,16 @@ app.post('/api/method/login', async (c) => {
 app.post('/api/method/logout', async (c) => {
   deleteCookie(c, 'sid', { path: '/' })
   return c.json({ message: '' })
+})
+
+// The SPA's sign-out. Public — it must clear the sid cookie even when the
+// bearer token is already gone or expired, otherwise the cookie survives as
+// a live credential and any token-less request after logout re-authenticates
+// as the departed user (found via #101: a post-logout whoami refetch answered
+// as the previous user and poisoned the cache for the next account).
+app.post('/api/logout', (c) => {
+  deleteCookie(c, 'sid', { path: '/' })
+  return c.json({ ok: true })
 })
 
 // SET-002: password reset (public — the caller is logged out). The request
@@ -309,6 +322,10 @@ app.get('/api/oauth/google/callback', async (c) => {
   const { email, name } = await exchangeCode(c.req.query('code'))
   const userName = await findOrCreateGoogleUser(email, name)
   const { token } = await issueSession(userName)
+  // The cookie matters here too: beacons (e.g. the unload-time event batch,
+  // #101) cannot carry a bearer token, so an OAuth session without the sid
+  // cookie would silently drop them (PR #104 review).
+  setSidCookie(c, token)
   // Bounce back into the SPA (same origin via the dev proxy), which stores the
   // token and lands in the Admin.
   return c.redirect(`/oauth-callback?token=${encodeURIComponent(token)}`)
@@ -330,13 +347,121 @@ const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').name
 
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
-  const [row] = await sql`select theme, language from "user" where name = ${user.name}`
+  const [row] = await sql`select theme, palette, language from "user" where name = ${user.name}`
   return c.json({
     ...user,
     roles: await getRoles(user.name),
     theme: (row?.theme as string) || 'light',
+    palette: (row?.palette as string) || 'classic',
     language: (row?.language as string) || 'en',
   })
+})
+
+// #101 Phase 3: batched capture of the caller's read-side intent (rows
+// visited, lists filtered, searches run). The user always comes from the
+// session — a client cannot write anyone else's trail — and reads are
+// scoped to the caller for the same reason.
+app.post('/api/events', async (c) => {
+  const events = validateEventBatch(await c.req.json().catch(() => null))
+  const inserted = await recordEvents(who(c), events)
+  // Nudge the poster's own "Mine" feed on their personal channel (PR #104
+  // review — the 'feed' channel is System Manager-only).
+  publishUserEvent(who(c), 'feed_mine')
+  return c.json({ inserted })
+})
+
+app.get('/api/events/summary', async (c) => {
+  return c.json({ entries: await eventSummary(who(c)) })
+})
+
+// #101 Phase 6: saved views — list is owner's + shared; create/share/delete
+// are owner-scoped inside the module.
+app.get('/api/saved_views', async (c) => {
+  const table = c.req.query('table')
+  if (!table) throw new AppError('ValidationError', 'Expected ?table=<Table name>')
+  return c.json({ views: await listSavedViews(who(c), table) })
+})
+
+app.post('/api/saved_views', async (c) => {
+  const view = await createSavedView(who(c), await c.req.json().catch(() => null))
+  return c.json(view, 201)
+})
+
+app.post('/api/saved_views/:name/share', async (c) => {
+  const { shared } = (await c.req.json().catch(() => ({}))) as { shared?: boolean }
+  if (typeof shared !== 'boolean') throw new AppError('ValidationError', 'Expected { shared: boolean }')
+  await setSavedViewShared(who(c), c.req.param('name'), shared)
+  return c.json({ ok: true })
+})
+
+app.delete('/api/saved_views/:name', async (c) => {
+  await deleteSavedView(who(c), c.req.param('name'))
+  return c.json({ ok: true })
+})
+
+// #101 Phase 5: destinations this user opens on many distinct days — the
+// Home Page offers to pin them as a workspace. Empty when no routine holds.
+app.get('/api/routine_suggestion', async (c) => {
+  return c.json({ targets: await routineSuggestion(who(c)) })
+})
+
+// #101 Phase 4: the homepage activity feed. 'mine' is the caller's own raw
+// trail (reads included — visible to them alone). 'team' shows CHANGES only
+// — Version rows and logins, never what a colleague merely viewed — and is
+// gated to System Manager.
+app.get('/api/activity_feed', async (c) => {
+  const user = who(c)
+  const scope = c.req.query('scope') === 'team' ? 'team' : 'mine'
+  const limit = Math.min(Math.max(Number(c.req.query('limit')) || 30, 1), 100)
+
+  if (scope === 'mine') {
+    const rows = await sql`
+      select kind, ref_key, label, sub_label, path, occurred_at
+      from user_event where created_by = ${user}
+      order by occurred_at desc limit ${limit}`
+    return c.json({
+      items: rows.map((r) => ({
+        who: user,
+        kind: r.kind as string,
+        label: (r.label as string | null) ?? (r.ref_key as string),
+        sub: (r.sub_label as string | null) ?? undefined,
+        path: (r.path as string | null) ?? '',
+        at: new Date(r.occurred_at as string).toISOString(),
+      })),
+    })
+  }
+
+  const roles = await getRoles(user)
+  if (!roles.includes('System Manager'))
+    throw new AppError('PermissionError', 'The team feed requires the System Manager role')
+  const versions = await sql`
+    select created_by, ref_table, ref_name, created_at
+    from version order by created_at desc limit ${limit}`
+  const logins = await sql`
+    select "user", full_name, created_at
+    from activity_log where operation = 'login'
+    order by created_at desc limit ${limit}`
+  const items = [
+    ...versions.map((v) => ({
+      who: v.created_by as string,
+      kind: 'change',
+      label: (v.ref_name as string | null) ?? '',
+      sub: (v.ref_table as string | null) ?? undefined,
+      path: v.ref_table && v.ref_name ? `/admin/${v.ref_table}/${v.ref_name}` : '',
+      at: new Date(v.created_at as string).toISOString(),
+    })),
+    ...logins.map((l) => ({
+      who: l.user as string,
+      kind: 'login',
+      label: (l.full_name as string | null) || (l.user as string),
+      sub: 'signed in',
+      path: '',
+      at: new Date(l.created_at as string).toISOString(),
+    })),
+  ]
+    .sort((a, b) => (a.at < b.at ? 1 : -1))
+    .slice(0, limit)
+  return c.json({ items })
 })
 
 // UI-024: persist the caller's theme preference (light/dark), per user.
@@ -346,6 +471,16 @@ app.post('/api/set_theme', async (c) => {
     throw new AppError('ValidationError', 'theme must be "light" or "dark"')
   await sql`update "user" set theme = ${theme} where name = ${who(c)}`
   return c.json({ ok: true, theme })
+})
+
+// UI-025: persist the caller's palette preference, per user.
+const PALETTES = ['classic', 'ivory', 'graphite', 'indigo'] as const
+app.post('/api/set_palette', async (c) => {
+  const { palette } = (await c.req.json().catch(() => ({}))) as { palette?: string }
+  if (!PALETTES.includes(palette as (typeof PALETTES)[number]))
+    throw new AppError('ValidationError', `palette must be one of ${PALETTES.join(', ')}`)
+  await sql`update "user" set palette = ${palette!} where name = ${who(c)}`
+  return c.json({ ok: true, palette })
 })
 
 // I18N-001/002: per-user language + the translation catalog for a language.
@@ -952,6 +1087,21 @@ app.get('/api/search', async (c) => {
 // table access is still enforced by Permission rows on every read.
 app.get('/api/home_pages', async (c) => {
   return c.json({ pages: await getVisibleHomePages(who(c)) })
+})
+
+// NAV-001 (#102 review): the tables the caller may actually read, for
+// navigation pickers like Explore's root select. Reading the metadata
+// `Table` table requires its own permission most users don't have — this
+// filters by each candidate table's read permission instead, the same
+// posture as the Home Pages endpoint.
+app.get('/api/navigable_tables', async (c) => {
+  const user = who(c)
+  const rows = await sql<{ name: string }[]>`
+    select name from table_def where kind = 'table' order by name`
+  const tables: string[] = []
+  for (const r of rows)
+    if ((await permissionScope(user, r.name, 'read')) !== 'none') tables.push(r.name)
+  return c.json({ tables })
 })
 
 // RT-003: the caller's unread notification count.

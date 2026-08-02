@@ -12,6 +12,289 @@ this look — do not introduce ad-hoc colors/spacing:
   `.fc-btn-primary`, `.fc-label`, `.fc-pill`. Prefer these over raw Tailwind.
 - Shell (navbar + workspace sidebar + awesomebar + avatar) is in
   `AdminLayout.tsx`; new pages render inside its `<Outlet/>` canvas.
+- Since UI-025 the tokens come in four palettes (`classic`/`ivory`/
+  `graphite`/`indigo`), selected per user. New UI must keep reading the
+  CSS variables and `.fc-*` classes — never a literal color — so it works
+  under every palette × light/dark combination automatically.
+
+## 2026-08-02 — PR #104 review round: seven findings fixed
+
+All findings from the owner's review of the recent-actions branch:
+
+- **Queue attribution (P1).** The client's debounced event queue is now
+  owner-tagged and fail-closed: a flush only ships events whose owner IS
+  the session the sink authenticates as; everything else is discarded,
+  never re-attributed. Logout drains the departing user's queue first,
+  while their credentials still exist. 3 new unit tests.
+- **Storage vs contract (P1).** `user_event`'s key/label/sub_label/path
+  were `Data` (varchar 140) while the API accepts 400/1000 chars — one
+  long filtered-list key failed its whole batch. 0064 rewritten to
+  'Long Text' for fresh installs; 0066 converges existing databases
+  (alter to text + column_def update + `occurred_at` index). New test
+  writes at the contract limits.
+- **Saved-view permission bypass (P1).** list/create now
+  `assertPermission(user, table, 'read')`; sharing re-checks it. New
+  test: 403 without read, opens after a Permission row grants it.
+- **Dependency pin (P1).** The earlier `git+https` change never changed
+  the transport — pnpm resolves GitHub git URLs to the codeload tarball
+  either way, and the lockfile said so. package.jsons + lockfile
+  restored to main's `github:` pin; the real remote-exec requirement is
+  attaching the feather-testing-postgres repo to the session proxy
+  (frozen install verified here).
+- **Dead feed channel (P2).** `canSubscribe` never allowed 'feed', so
+  the live ping reached nobody. Now: 'feed' is System Manager-only and
+  payload-free (`changed`); each `POST /api/events` pings the poster's
+  own `user:` channel (`feed_mine`) for the Mine tab. ActivityFeed
+  subscribes accordingly.
+- **OAuth beacons (P2).** The Google OAuth callback now sets the `sid`
+  cookie — without it, an OAuth user's unload-time beacon batch was
+  silently rejected.
+- **Dormant-user retention (P2).** The write-path prune is global (any
+  batch expires ANY user's >90-day rows), backed by the new
+  `occurred_at` index. Test covers a dormant user's rows.
+
+Verified: affected server suites 23/23, recents unit 15/15, all 12
+#101-related e2e + palette green, both typechecks clean, full web e2e
+re-run green (see below), `pnpm install --frozen-lockfile` passes.
+
+## 2026-08-02 — Relational navigation MERGED (PR #102 → main)
+
+PR #102 merged to `main` as `ec8dd61` with all four review findings fixed
+(see the "Review fixes" block in the entry below). Issue #100 stays open as
+the standing design reference for relational navigation. Noted follow-ups
+remain: per-table curation of related tabs, and a server-side join surface
+so Explore can chain via-sub-table backlinks past the client-side cap.
+
+## 2026-08-01 — #101 Phases 2–6 complete: recent actions shipped end to end
+
+All six phases of [#101](https://github.com/siraj-samsudeen/featherbase/issues/101)
+are now built (Phase 1 below). One commit per phase on this branch.
+
+- **Phase 2 — more recall surfaces.** Sidebar gains Recent (5 destinations)
+  + Frequent (frecency top 3) groups; ListView gains a strip of this
+  table's recent rows and filter sets. Same localStorage buffer as ⌘K.
+- **Phase 3 — server truth.** Migration 0064 adds the `User Event` system
+  table (append-only via direct insert like `audit.ts`; no role
+  permissions — reads only flow through caller-scoped endpoints).
+  `POST /api/events` takes client batches (≤50, timestamps clamped to a
+  7-day trust window, 90-day retention pruned on the write path);
+  `GET /api/events/summary` returns per-key aggregates that the client
+  unions into its buffer at sign-in → cross-device recents. Client
+  flushes on a 3s debounce; `sendBeacon` (cookie-auth) carries the final
+  batch through unload.
+- **Phase 4 — homepage feed.** `GET /api/activity_feed`: `mine` = own raw
+  trail; `team` = Version rows + logins ONLY (reads never surface),
+  System Manager-gated. Feed card on every Home Page, live via a new
+  websocket `feed` ping in `publishDocEvent`, 30s refetch fallback.
+- **Phase 5 — resuming.** ResumeStrip (last row / view / search tiles;
+  the search tile refills the command bar via a `fc:prefill-search`
+  event). `GET /api/routine_suggestion` detects destinations opened on
+  ≥5 distinct days in 14 (lists/pages only, ≥2 targets); RoutineCard
+  pins them as a per-user workspace chip row.
+- **Phase 6 — saved views.** Migration 0065 adds `Saved View` (owner +
+  jsonb filters + shared flag; owner-scoped `/api/saved_views` CRUD,
+  sharing opens read-only). ListView Views bar with share/delete on own
+  chips; the nudge fires when one filter set is applied 3× in a week
+  (re-mounts within 500ms deduped — StrictMode double-fires effects).
+
+Verified end-to-end: **web e2e 96 passed / 0 failed / 6 skipped** (skips
+are all "already exists in this dev DB" guards), **server 519 passed**,
+**web unit 24 passed**, both typechecks clean. 15 new server vitest
+cases, 9 new e2e tests across recents/activity-feed/home-recall/
+saved-views specs.
+
+Gotchas (beyond the 07-31 entry's): (1) storing pre-stringified JSON into
+a jsonb column double-encodes — use `sql.json(...)`. (2) The e2e suite
+itself now generates user_event rows (beacons + batches), so specs must
+never assume "newest" without making the data in-test; both feed specs
+were hardened accordingly. (3) `ticketing.spec.ts` re-installs helpdesk
+every run — uninstall via `POST /api/uninstall_app {"name":"helpdesk"}`
+before running the server suite, or its app-fixtures test fails.
+
+Next: owner review of the whole #101 branch. Candidate follow-ups:
+frecency-boosted ranking inside `/api/search` itself, a modal ⌘K overlay
+(the dropdown was kept deliberately — "under the search" was the ask),
+edit-weighted frecency, and Team-feed pagination.
+
+## 2026-07-31 — #101 Phase 1: the command bar remembers recent actions
+
+Issue [#101](https://github.com/siraj-samsudeen/featherbase/issues/101) is the
+owner's "system remembers where I've been" capability; the design reference
+(interactive exploration of six patterns + brainstorm) lives in
+`docs/design/recent-actions/`. This session shipped Phase 1 of six:
+
+- **`apps/web/src/lib/recents.ts`** — per-user localStorage ring buffer
+  (80 entries × 10 visits, dedup by key). Records rows, lists (with their
+  filter sets — the JSON `?filters=` param is part of the identity), list
+  view modes, reports/dashboards, and submitted searches. Home Pages,
+  builders and `/new` forms deliberately excluded. Ranking helpers:
+  recency, Firefox-style bucketed **frecency** (<4d→100 … older→10, 2+
+  visits required), prefix-matched past searches.
+- **AdminLayout**: a `useRouterState` hook records every admin navigation;
+  the awesomebar's *empty focused state* now shows **Recent** and
+  **Frequent** groups (ArrowUp/Down + Enter to replay, Esc closes), and
+  typing offers matching past searches (`↻` rows refill the bar).
+- **Security fix found by this work**: SPA logout dropped the bearer token
+  but never expired the HttpOnly `sid` cookie, so token-less requests after
+  logout re-authenticated as the departed user (observed: a post-logout
+  whoami refetch poisoning the cache with user A's palette for user B —
+  the exact UI-025 leak). Fixed with a public `POST /api/logout` (expires
+  the cookie; SPA awaits it before clearing state), cache clear moved to
+  after `/login` renders, `useWhoAmI` gated on a session existing, and no
+  hard 401-redirect when already on `/login`.
+- **Env fix**: `feather-testing-postgres` pin switched from `github:` (a
+  codeload tarball the remote-exec proxy 403s) to `git+https` — same
+  commit, git transport, works everywhere. Keep this form when moving back
+  to `^0.2.0`.
+
+Verified: 12 vitest cases (`test/recents.test.tsx`), new `recents.spec.ts`
+e2e (trail building, click + keyboard replay, filter round-trip, search
+recall), server auth suite incl. new cookie-expiry case. Full regression:
+web e2e 89 passed / 6 skipped / 0 failed, server 505 tests green, web unit
+24 green, both typechecks clean.
+
+Gotchas: (1) in this container set `CHROMIUM_PATH=/opt/pw-browsers/chromium`
+for Playwright — the project pins a newer bundled build that isn't
+installed. (2) `ticketing.spec.ts` installs the helpdesk app into the dev DB
+and leaves it; the server `app-fixtures` "fresh deployment" test then fails
+until `POST /api/uninstall_app {"name":"helpdesk"}` — did that here. (3) Do
+not run the vitest suites while the Playwright suite runs: the vitest
+globalSetup empties `background_job` mid-e2e.
+
+Next: #101 Phase 2 — sidebar Recent group + per-table recents strip over the
+same local store; then the `user_event` server log (Phase 3).
+## 2026-07-31 — Relational navigation: all six patterns from issue #100
+
+The design exploration in `docs/design/explorations/relational-navigation.*`
+(issue #100) is now implemented — six ways to move between related rows, all
+derived from Table metadata with zero per-table configuration:
+
+- **Server (NAV-001)** — `getBacklinks()` in `meta.ts`: the reverse-reference
+  map (every Reference column targeting a table, with sub-table references
+  resolved to their OWNING tables, Frappe's "internal links" shape), cached
+  whole and invalidated with the meta cache. Two generated-layer actions:
+  `GET /api/table/:t/:name:connections` (per-row, permission-scoped counts +
+  ready-to-use ListView `filters` arrays; via-links get a `name in [...]`
+  filter over owning rows, capped at 500) and `GET /api/table/:t:backlinks`
+  (table-level shape, no counts). `test/connections.test.ts` covers direct,
+  via-sub-table, zero-count, and 404 cases.
+- **Pattern 1, Connections panel** — `ConnectionsPanel.tsx` in the FormView
+  sidebar: each backlink group with a live count, linking to
+  `/admin/$table?filters=…`; ◎ peeks; + opens a pre-filled new row via the
+  new `?prefill=<json>` search param on the form route (FormView seeds
+  `values`, not `baseline`, so a pure-prefill save stays possible).
+  `LinkControl` finally links out: ◎ peek + ↗ open on any set Reference.
+- **Pattern 2, counters + related tabs** — `RelatedTabs` under the form:
+  count tiles double as tabs over an embedded read-only list (8 rows) with
+  "Open as filtered list ↗" and pre-filled "+ New" escapes.
+- **Pattern 3, peek stack** — `Peek.tsx`: `PeekProvider` (mounted in
+  `AdminLayout`) + stacked read-only slide-over panels for any record/list.
+  References and connection rows inside a panel push deeper; ← pops, Esc/✕
+  close all, ↗ commits to real navigation; any route change clears the stack.
+- **Pattern 5, expandable rows** — ListView rows of tables with Sub-table
+  columns get a chevron; expansion renders the child rows inline (read-only,
+  Σ over Currency columns), several rows at once.
+- **Pattern 4, cross-filter Explore** — `/admin/explore` (sidebar entry):
+  chain up to three panes over direct backlinks and child sub-tables;
+  clicking rows IS the filter (in-filters downstream), chips release,
+  footers aggregate (Σ prefers Currency > Float > Int). Via-sub-table
+  backlinks are deliberately not offered as chain steps (their filter is
+  per-row, not per-column).
+- **Pattern 6, relation map** — `/admin/map/$doctype/$name` ("Map" button on
+  every form): SVG neighborhood — forward references left, child tables +
+  backlink collections right (dashed, with counts); collections open their
+  rows below; any record click re-centers with a `?trail=` breadcrumb.
+
+Verified end-to-end: demo dataset (Supplier ← Purchase Order ▸ PO Line →
+Item; Employee ← Attendance/Payroll Slip, `reports_to` self-reference)
+created through the real metadata + save_doc APIs — the seed script is
+committed as `tools/seed-relational-demo.mjs` (idempotent-ish: rerun skips
+existing tables) — then a 13-check Playwright script exercised every
+pattern in the browser (counts, chips, URL filters, peek stack depth 3,
+Esc, two rows expanded at once, Acme → 3 POs cross-filter, map hop with
+trail). `pnpm test` fully green (server 99 files / 507 tests, web 12),
+`pnpm smoke` green, both typechecks clean.
+
+Gotchas for future sessions:
+- Adding a search param to a TanStack route makes `search` REQUIRED at
+  every `<Link>`/`navigate` to it — the `?prefill=` addition touched ~15
+  call sites (`search={{ prefill: undefined }}`). Budget for that when
+  adding params to shared routes.
+- `column_def` names like `status`/`parent` are reserved (STANDARD_COLUMNS)
+  — the demo tables use `att_status`/`slip_state`/`stage` instead.
+- In this container, Playwright needs `CHROMIUM_PATH=/opt/pw-browsers/chromium`.
+
+Next: consider per-table metadata to curate related tabs (order/visibility)
+once real usage shows which hubs need it; an Explore pane for via-sub-table
+backlinks would need a small server join surface (`name in (select parent …)`).
+
+**Review fixes (same PR, #102):** (1) via-sub-table connections now derive
+BOTH owner names and count from one permission-scoped EXISTS query
+(`relatedOwners` in `query.ts`) — a caller can no longer learn names of
+parent rows they cannot read, the count matches their scoped list, and the
+500-name cap is deterministic (ordered by name); covered by own_rows, Data
+Scope, and 501-owner tests. (2) Prefill now seeds the form's INITIAL state
+(no race with client-script `onload`) and the form route keys on the
+prefill string, so switching/clearing `?prefill=` remounts instead of
+retaining stale values. (3) An Explore pane whose upstream name set is
+truncated (>100 rows, no selection) renders a "Selection needed" notice
+instead of a silently-incomplete subset — grandparent truncation propagates
+— and Σ labels say "(shown rows)" when partial. (4) Explore's root picker
+uses new `GET /api/navigable_tables` (kind='table' filtered by each table's
+own read permission), not a read of the metadata `Table` table.
+
+## 2026-07-31 — UI-025: user-selectable color palettes (second theming axis)
+
+The Desk now ships four palettes — **Classic** (the original Frappe blue),
+**Ivory** (warm paper + clay, Anthropic-inspired), **Graphite** (pure
+neutrals + near-black primary buttons, Frappe-v15-inspired), and **Indigo**
+(indigo + pill controls, Glide-inspired) — chosen from a navbar select,
+orthogonal to light/dark. Every combination (4 × 2) works.
+
+Mechanics mirror UI-024 dark mode exactly, one axis over:
+- **CSS** (`apps/web/src/index.css`): each palette is a `[data-palette=…]`
+  token override block with a `[data-palette=…][data-theme='dark']`
+  companion (2 attributes out-specifies the generic dark block). `classic`
+  is the absence of the attribute. Three structural tokens were promoted so
+  palettes can reshape controls with zero component edits: `--radius-card`,
+  `--radius-control` (Indigo's pills), and a
+  `--color-primary-btn`/`-hover`/`-ink` trio (Graphite's black button,
+  which inverts to white in dark). Defaults reproduce Classic exactly.
+- **Server**: migration `0062_user_palette.ts` (mirror of `0035_user_theme`)
+  adds a `palette` Choice column to User; `whoami` returns it;
+  `POST /api/set_palette` validates against the four names (417 otherwise).
+- **Web**: `lib/palette.ts` is a line-for-line sibling of `lib/theme.ts`
+  (server-authoritative, localStorage mirror applied at module load so
+  there's no flash); `DeskLayout` grows a `palette-select` beside the
+  theme toggle.
+
+Verified end-to-end: HTTP (`set_palette` persists, `whoami` round-trips,
+bad value 417s) and in the real browser via the preview pane — logged in,
+switched all four palettes in both modes on the ToDo list view, confirmed
+computed styles (`--color-primary-btn` resolves per palette), reloaded to
+prove persistence with no flash. `e2e/palette.spec.ts` (new, sibling of
+`dark-mode.spec.ts`) covers switch/persist/reload/compose-with-dark/reject.
+Both typechecks clean, `pnpm smoke` green.
+
+Design references for the three new palettes (mockups the user picked from)
+are archived at the session artifact "Featherbase — three UI directions".
+
+**Review fixes (same day, PR #92):** (1) The navbar's controls don't wrap,
+so the new select overflowed 390px viewports — the language + palette
+selects are now `hidden md:block` and live in the account menu below md
+(`palette-select-mobile`); `responsive.spec.ts` passes again. (2)
+Cross-user leak: logout only removed the token, so the next account in the
+same tab inherited a still-fresh `['whoami']` cache (5-min staleTime) and
+the previous user's global `fc_theme`/`fc_palette` mirrors. `logout()` now
+calls `queryClient.clear()` and un-stamps `data-theme`/`data-palette`, and
+both mirrors are scoped per user (`fc_palette:<name>`). Deferred as issues:
+#96 (serialize preference writes / handle failures), #97 (WCAG AA role
+tokens — `--color-link`, `--color-on-brand`, status text).
+
+**Next:** Ivory was designed with serif page titles (self-hosted Source
+Serif via a `--font-display` token) — deferred to keep this change
+token-only. Also consider: palette-aware record avatars (deterministic
+hash→hue) from the Indigo mockup.
 
 ## 2026-07-31 — the "Frappe Clone" brand string is gone, and the product has a mark
 

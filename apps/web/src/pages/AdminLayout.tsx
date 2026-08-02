@@ -1,12 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, Outlet, useNavigate } from '@tanstack/react-router'
+import { Link, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, clearSession, getSessionUser, listResource } from '../lib/api'
+import {
+  actionForLocation,
+  ago,
+  connectEventSink,
+  flushPendingEvents,
+  frequentActions,
+  mergeServerEntries,
+  recentActions,
+  recentSearches,
+  recordAction,
+  type RecentEntry,
+  type ServerRecentEntry,
+} from '../lib/recents'
 import { useHomePages } from '../lib/home-pages'
 import { useRealtime } from '../lib/realtime'
 import { useTheme } from '../lib/theme'
+import { PALETTES, usePalette, type Palette } from '../lib/palette'
 import { useI18n } from '../lib/i18n'
 import { Logo } from '../components/Logo'
+import { PeekProvider } from '../components/Peek'
 
 interface SearchHit {
   table: string
@@ -14,15 +29,62 @@ interface SearchHit {
   title: string
 }
 
+// #101 Phase 3: recorded actions also stream to the server's user_event log
+// (batched; a beacon carries the final batch through unload). The sink is
+// injected here so lib/recents stays network-free for unit tests. Auth rides
+// the bearer token for fetches and the sid cookie for beacons — sendBeacon
+// cannot set headers.
+connectEventSink({
+  // The queue fail-closes on this identity: only events recorded FOR this
+  // user are ever posted with this user's credentials.
+  currentUser: () => getSessionUser()?.name ?? null,
+  post: (events) => {
+    void api.post('/api/events', { events }).catch(() => {})
+  },
+  beacon: (events) => {
+    try {
+      navigator.sendBeacon('/api/events', new Blob([JSON.stringify({ events })], { type: 'application/json' }))
+    } catch {
+      /* best-effort */
+    }
+  },
+})
+
 // Frappe-style Admin shell: top navbar (brand + command bar + avatar) and a
 // home page sidebar. All Tables render inside <Outlet/>.
 export function AdminLayout() {
   const navigate = useNavigate()
+  const router = useRouter()
   const queryClient = useQueryClient()
   const user = getSessionUser()
   const { theme, toggle: toggleTheme } = useTheme()
+  const { palette, set: setPalette } = usePalette()
   const { t, language, setLanguage } = useI18n()
   const [search, setSearch] = useState('')
+
+  // Recent actions (#101 Phase 1): every admin navigation is remembered in a
+  // per-user localStorage buffer; the command bar's empty state replays it.
+  const location = useRouterState({ select: (s) => s.location })
+  useEffect(() => {
+    if (!user) return
+    const action = actionForLocation(location.pathname, location.search as Record<string, unknown>)
+    if (action) recordAction(user.name, action)
+  }, [user?.name, location.href]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [barFocused, setBarFocused] = useState(false)
+  const [recentSel, setRecentSel] = useState(0)
+
+  // #101 Phase 3: once per signed-in user, pull the server's per-key
+  // aggregates and union them into the local buffer — recents follow the
+  // user across devices; the merge is idempotent.
+  const syncedFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (!user || syncedFor.current === user.name) return
+    syncedFor.current = user.name
+    api
+      .get<{ entries: ServerRecentEntry[] }>('/api/events/summary')
+      .then((res) => mergeServerEntries(user.name, res.entries))
+      .catch(() => {})
+  }, [user?.name]) // eslint-disable-line react-hooks/exhaustive-deps
   // UI-025: on narrow (mobile) widths the sidebar collapses into a drawer
   // toggled from the navbar; on md+ it is always shown.
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -103,7 +165,7 @@ export function AdminLayout() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault()
         const dt = currentDoctype()
-        if (dt && dt !== 'new-table') navigate({ to: '/admin/$doctype/$name', params: { doctype: dt, name: 'new' } })
+        if (dt && dt !== 'new-table') navigate({ to: '/admin/$doctype/$name', params: { doctype: dt, name: 'new' }, search: { prefill: undefined } })
         return
       }
       // Leader-key navigation only when not typing into a field.
@@ -122,14 +184,44 @@ export function AdminLayout() {
     return () => document.removeEventListener('keydown', onKey)
   }, [navigate])
 
+  // #101 Phase 5: the "Last search" resume tile hands its query to the
+  // command bar — prefilled and focused, ready to re-run.
+  useEffect(() => {
+    function onPrefill(e: Event) {
+      const q = (e as CustomEvent<string>).detail
+      if (typeof q === 'string') setSearch(q)
+      searchRef.current?.focus()
+    }
+    window.addEventListener('fc:prefill-search', onPrefill)
+    return () => window.removeEventListener('fc:prefill-search', onPrefill)
+  }, [])
+
   // UI-027 / #80: the sidebar lists the caller's visible Home Pages — the
   // dedicated endpoint is its only source (role visibility and link
   // permission-filtering are computed server-side).
   const homePages = useHomePages()
 
-  function logout() {
+  async function logout() {
+    // Drain the pending event batch FIRST, while the departing user's token
+    // and cookie still exist — afterwards the queue's owner check would
+    // discard it, and it must never ride the next account's session
+    // (PR #104 review).
+    flushPendingEvents()
+    // Invalidate the sid cookie BEFORE dropping local state: while it lives,
+    // any token-less request fired in the logout gap re-authenticates as the
+    // departing user and re-poisons the cache for the next account in this
+    // tab (#101 review).
+    await api.post('/api/logout', {}).catch(() => {})
     clearSession()
-    navigate({ to: '/login' })
+    delete document.documentElement.dataset.palette
+    delete document.documentElement.dataset.theme
+    // Leave the admin screen BEFORE dropping the cache: clearing while the
+    // layout's queries are still mounted makes every observer refetch
+    // token-less — 401s that api.ts answers with a hard redirect. Once
+    // /login has rendered there are no observers left, and the clear (PR #92
+    // review) empties the cache for whoever signs in next.
+    await navigate({ to: '/login' })
+    queryClient.clear()
   }
 
   // UI-014: row hits from the server, debounced.
@@ -145,17 +237,65 @@ export function AdminLayout() {
       api.get<{ results: SearchHit[] }>(`/api/search?q=${encodeURIComponent(debounced)}`),
   })
 
-  function openDoc(hit: SearchHit) {
+  // #101: with the bar focused and empty, the dropdown shows Recent (pure
+  // recency) and Frequent (frecency) groups; while typing it offers matching
+  // past searches. All three read the per-user localStorage buffer.
+  const trimmed = search.trim()
+  const showRecents = Boolean(barFocused && trimmed === '' && user)
+  const recentItems = showRecents && user ? recentActions(user.name, 6) : []
+  const frequentItems =
+    showRecents && user
+      ? frequentActions(user.name, 4).filter((f) => !recentItems.some((r) => r.key === f.key))
+      : []
+  const pick = [...recentItems, ...frequentItems]
+  const searchChips = user && trimmed ? recentSearches(user.name, trimmed, 3) : []
+
+  // #101 Phase 2: the sidebar's zero-keystroke recall — destinations only
+  // (searches stay in the command bar, where they can be re-run).
+  const sidebarRecent = user
+    ? recentActions(user.name, 12)
+        .filter((e) => e.kind !== 'search')
+        .slice(0, 5)
+    : []
+  const sidebarFrequent = user
+    ? frequentActions(user.name, 8)
+        .filter((f) => !sidebarRecent.some((r) => r.key === f.key))
+        .slice(0, 3)
+    : []
+
+  function recordSearch(q: string) {
+    if (user && q) recordAction(user.name, { kind: 'search', key: `search:${q.toLowerCase()}`, label: q, path: '' })
+  }
+
+  function openRecent(entry: RecentEntry) {
+    if (entry.kind === 'search') {
+      setSearch(entry.label)
+      return
+    }
     setSearch('')
-    navigate({ to: '/admin/$doctype/$name', params: { doctype: hit.table, name: hit.name } })
+    setBarFocused(false)
+    searchRef.current?.blur()
+    router.history.push(entry.path)
+  }
+
+  function openDoc(hit: SearchHit) {
+    recordSearch(search.trim())
+    setSearch('')
+    navigate({ to: '/admin/$doctype/$name', params: { doctype: hit.table, name: hit.name }, search: { prefill: undefined } })
   }
 
   // Enter opens the top match: an exactly-named Table's list first,
-  // otherwise the first row hit.
+  // otherwise the first row hit. With an empty bar, Enter replays the
+  // selected recent instead (#101).
   function runSearch(e: React.FormEvent) {
     e.preventDefault()
     const q = search.trim()
-    if (!q) return
+    if (!q) {
+      const entry = pick[Math.min(recentSel, pick.length - 1)]
+      if (entry) openRecent(entry)
+      return
+    }
+    recordSearch(q)
     const dtHit = tables.data?.data.find((d) => d.name.toLowerCase() === q.toLowerCase())
     if (dtHit) {
       setSearch('')
@@ -199,6 +339,7 @@ export function AdminLayout() {
       : []
 
   return (
+    <PeekProvider>
     <div className="flex h-full flex-col">
       {/* Navbar */}
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 sm:gap-4 sm:px-4">
@@ -220,6 +361,25 @@ export function AdminLayout() {
             ref={searchRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onFocus={() => {
+              setBarFocused(true)
+              setRecentSel(0)
+            }}
+            onBlur={() => setBarFocused(false)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.currentTarget.blur()
+                return
+              }
+              if (!showRecents || pick.length === 0) return
+              if (e.key === 'ArrowDown') {
+                e.preventDefault()
+                setRecentSel((s) => (s + 1) % pick.length)
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault()
+                setRecentSel((s) => (s - 1 + pick.length) % pick.length)
+              }
+            }}
             placeholder="Search or type a command…"
             className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-canvas)] px-3 py-1.5 pr-10 text-sm outline-none focus:border-[var(--color-brand)] focus:bg-[var(--color-surface)] focus:ring-2 focus:ring-[var(--color-brand)]/15"
           />
@@ -229,8 +389,51 @@ export function AdminLayout() {
           >
             ⌘K
           </kbd>
-          {(suggestions.length > 0 || commandHits.length > 0 || (docHits.data?.results.length ?? 0) > 0) && (
+          {(suggestions.length > 0 ||
+            commandHits.length > 0 ||
+            (docHits.data?.results.length ?? 0) > 0 ||
+            (showRecents && pick.length > 0) ||
+            searchChips.length > 0) && (
             <div className="fc-card absolute z-20 mt-1 w-full overflow-hidden py-1" data-testid="awesomebar-results">
+              {/* #101: empty-bar recents — mousedown is swallowed so the
+                  input keeps focus until the click lands. */}
+              {showRecents && pick.length > 0 && (
+                <div data-testid="awesomebar-recents" onMouseDown={(e) => e.preventDefault()}>
+                  <div className="px-3 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+                    Recent
+                  </div>
+                  {recentItems.map((r, i) => (
+                    <RecentRow key={r.key} entry={r} selected={i === Math.min(recentSel, pick.length - 1)} onOpen={openRecent} />
+                  ))}
+                  {frequentItems.length > 0 && (
+                    <div className="px-3 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+                      Frequent
+                    </div>
+                  )}
+                  {frequentItems.map((r, i) => (
+                    <RecentRow
+                      key={r.key}
+                      entry={r}
+                      selected={recentItems.length + i === Math.min(recentSel, pick.length - 1)}
+                      onOpen={openRecent}
+                    />
+                  ))}
+                </div>
+              )}
+              {/* #101: matching past searches while typing — click refills the bar. */}
+              {searchChips.map((s) => (
+                <button
+                  key={s.key}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setSearch(s.label)}
+                  data-testid="awesomebar-recent-search"
+                  className="block w-full px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
+                >
+                  <span className="text-[var(--color-ink-faint)]">↻</span> {s.label}
+                  <span className="ml-2 text-xs text-[var(--color-ink-faint)]">recent search</span>
+                </button>
+              ))}
               {/* PR-2-style command actions, matched by name. */}
               {commandHits.map((cmd) => (
                 <button
@@ -264,6 +467,7 @@ export function AdminLayout() {
                 <Link
                   key={`new-${d.name}`}
                   to="/admin/$doctype/$name"
+                  search={{ prefill: undefined }}
                   params={{ doctype: d.name, name: 'new' }}
                   onClick={() => setSearch('')}
                   data-testid="awesomebar-new"
@@ -292,16 +496,32 @@ export function AdminLayout() {
         </form>
 
         <div className="flex items-center gap-3">
+          {/* On narrow screens these selects move into the account menu —
+              the navbar's controls don't wrap, so extra always-visible
+              controls overflow at mobile widths (PR #92 review). */}
           <select
             data-testid="language-select"
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
             title="Language"
-            className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-xs text-[var(--color-ink)]"
+            className="hidden rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-xs text-[var(--color-ink)] md:block"
           >
             <option value="en">EN</option>
             <option value="fr">FR</option>
             <option value="es">ES</option>
+          </select>
+          <select
+            data-testid="palette-select"
+            value={palette}
+            onChange={(e) => setPalette(e.target.value as Palette)}
+            title="Color palette"
+            className="hidden rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-1.5 py-0.5 text-xs capitalize text-[var(--color-ink)] md:block"
+          >
+            {PALETTES.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
           </select>
           <button
             onClick={toggleTheme}
@@ -350,6 +570,39 @@ export function AdminLayout() {
                   {user?.email && (
                     <p className="truncate text-xs text-[var(--color-ink-faint)]">{user.email}</p>
                   )}
+                </div>
+                {/* Mobile home of the navbar selects (hidden there below md). */}
+                <div className="border-b border-[var(--color-border)] px-3 py-2 md:hidden">
+                  <label className="fc-label" htmlFor="palette-select-mobile">
+                    {t('Palette')}
+                  </label>
+                  <select
+                    id="palette-select-mobile"
+                    data-testid="palette-select-mobile"
+                    value={palette}
+                    onChange={(e) => setPalette(e.target.value as Palette)}
+                    className="fc-input capitalize"
+                  >
+                    {PALETTES.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="fc-label mt-2" htmlFor="language-select-mobile">
+                    {t('Language')}
+                  </label>
+                  <select
+                    id="language-select-mobile"
+                    data-testid="language-select-mobile"
+                    value={language}
+                    onChange={(e) => setLanguage(e.target.value)}
+                    className="fc-input"
+                  >
+                    <option value="en">EN</option>
+                    <option value="fr">FR</option>
+                    <option value="es">ES</option>
+                  </select>
                 </div>
                 <button
                   role="menuitem"
@@ -438,7 +691,40 @@ export function AdminLayout() {
               </Link>
             ))}
           </nav>
+          {/* #101 Phase 2: recall without a keystroke — the same per-user
+              buffer the command bar reads. */}
+          {(sidebarRecent.length > 0 || sidebarFrequent.length > 0) && (
+            <div className="border-t border-[var(--color-border)] px-2 py-2" data-testid="sidebar-recents">
+              <p className="px-2 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+                Recent
+              </p>
+              {sidebarRecent.map((r) => (
+                <SidebarRecentRow key={r.key} entry={r} onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
+              ))}
+              {sidebarFrequent.length > 0 && (
+                <p className="px-2 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+                  Frequent
+                </p>
+              )}
+              {sidebarFrequent.map((r) => (
+                <SidebarRecentRow key={r.key} entry={r} frequent onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
+              ))}
+            </div>
+          )}
           <div className="border-t border-[var(--color-border)] px-2 py-2">
+            {/* #100 pattern 4: the cross-filter Explore surface. */}
+            <Link
+              to="/admin/explore"
+              search={{ root: undefined }}
+              data-testid="explore-link"
+              className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)] hover:text-[var(--color-ink)]"
+              activeProps={{
+                className:
+                  'block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] bg-[var(--color-brand-tint)]',
+              }}
+            >
+              Explore
+            </Link>
             <Link
               to="/admin/all-tables"
               data-testid="all-tables-link"
@@ -461,6 +747,7 @@ export function AdminLayout() {
         </main>
       </div>
     </div>
+    </PeekProvider>
   )
 }
 
@@ -468,6 +755,70 @@ export function AdminLayout() {
 // /api/set_password (the endpoint scopes to the caller when no user is given).
 // Mirrors the ResetPassword page's form: fc-card / fc-label / fc-input, a
 // client-side confirm check, then a success state.
+// #101 Phase 2: one sidebar recall row — label over sub-label, truncated to
+// the rail's width, ★-marked when it comes from the Frequent ranking.
+function SidebarRecentRow({
+  entry,
+  frequent,
+  onOpen,
+}: {
+  entry: RecentEntry
+  frequent?: boolean
+  onOpen: (entry: RecentEntry) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(entry)}
+      data-testid={frequent ? 'sidebar-frequent' : 'sidebar-recent'}
+      title={entry.sub ? `${entry.label} — ${entry.sub}` : entry.label}
+      className="block w-full rounded-md px-2 py-1 text-left hover:bg-[var(--color-subtle)]"
+    >
+      <span className="block truncate text-sm text-[var(--color-ink)]">
+        {frequent && <span className="mr-1 text-[var(--color-warn)]">★</span>}
+        {entry.label}
+      </span>
+      {entry.sub && (
+        <span className="block truncate text-[11px] text-[var(--color-ink-faint)]">{entry.sub}</span>
+      )}
+    </button>
+  )
+}
+
+// #101: one row of the command bar's Recent/Frequent groups.
+const RECENT_KIND_LABEL = { row: 'row', list: 'view', page: 'page', search: 'search' } as const
+
+function RecentRow({
+  entry,
+  selected,
+  onOpen,
+}: {
+  entry: RecentEntry
+  selected: boolean
+  onOpen: (entry: RecentEntry) => void
+}) {
+  const last = entry.visits[entry.visits.length - 1] ?? 0
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(entry)}
+      data-testid="awesomebar-recent"
+      className={`flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)] ${
+        selected ? 'bg-[var(--color-brand-tint)]' : ''
+      }`}
+    >
+      <span className="w-10 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-brand)]">
+        {RECENT_KIND_LABEL[entry.kind]}
+      </span>
+      <span className="min-w-0 flex-1 truncate">
+        {entry.label}
+        {entry.sub && <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{entry.sub}</span>}
+      </span>
+      <span className="shrink-0 text-xs tabular-nums text-[var(--color-ink-faint)]">{ago(last)}</span>
+    </button>
+  )
+}
+
 function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)

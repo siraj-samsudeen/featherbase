@@ -13,3 +13,4 @@ coverage/
 .DS_Store
 apps/web/.vite/
 storage/
+*.tsbuildinfo
