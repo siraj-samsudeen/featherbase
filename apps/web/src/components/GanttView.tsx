@@ -148,7 +148,7 @@ export function GanttView({ doctype }: { doctype: string }) {
               return (
                 <div key={b.name} className="flex items-center border-b border-[var(--color-border)]" data-testid={`gantt-row-${b.name}`}>
                   <div className="shrink-0 truncate px-2 py-1 text-xs text-[var(--color-ink)]" style={{ width: 200 }}>
-                    <RouterLink to="/admin/$doctype/$name" params={{ doctype, name: b.name }} className="hover:underline">
+                    <RouterLink to="/admin/$doctype/$name" params={{ doctype, name: b.name }} search={{ prefill: undefined }} className="hover:underline">
                       {String(b.row[titleColumn] ?? b.name)}
                     </RouterLink>
                   </div>

@@ -145,6 +145,7 @@ export function CalendarView({ doctype }: { doctype: string }) {
                   >
                     <RouterLink
                       to="/admin/$doctype/$name"
+                      search={{ prefill: undefined }}
                       params={{ doctype, name: String(row.name) }}
                       className="hover:underline"
                       onPointerDown={(e) => e.stopPropagation()}

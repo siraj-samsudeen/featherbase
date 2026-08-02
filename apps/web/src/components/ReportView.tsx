@@ -283,6 +283,7 @@ export function ReportView({
       <td className="px-3 py-1.5">
         <RouterLink
           to="/admin/$doctype/$name"
+          search={{ prefill: undefined }}
           params={{ doctype, name: String(row.name) }}
           className="text-[var(--color-brand)] hover:underline"
         >
