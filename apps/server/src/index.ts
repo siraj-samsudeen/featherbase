@@ -42,7 +42,7 @@ import { requestPasswordReset, resetPassword } from './password-reset'
 import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
-import { eventSummary, recordEvents, validateEventBatch } from './events'
+import { eventSummary, recordEvents, routineSuggestion, validateEventBatch } from './events'
 import { runApiScript } from './server-scripts'
 import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
@@ -363,6 +363,12 @@ app.post('/api/events', async (c) => {
 
 app.get('/api/events/summary', async (c) => {
   return c.json({ entries: await eventSummary(who(c)) })
+})
+
+// #101 Phase 5: destinations this user opens on many distinct days — the
+// Home Page offers to pin them as a workspace. Empty when no routine holds.
+app.get('/api/routine_suggestion', async (c) => {
+  return c.json({ targets: await routineSuggestion(who(c)) })
 })
 
 // #101 Phase 4: the homepage activity feed. 'mine' is the caller's own raw

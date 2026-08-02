@@ -79,6 +79,53 @@ export interface EventSummaryEntry {
   visits: number[]
 }
 
+// #101 Phase 5: routine detection. A "routine" is a set of destinations
+// (lists, reports, dashboards — not individual rows) this user opens on many
+// distinct days. Two or more such habitual targets make a suggestion the
+// Home Page can offer to pin as a workspace; fewer means no routine, and the
+// endpoint stays quiet.
+const ROUTINE_WINDOW_DAYS = 14
+const ROUTINE_MIN_DAYS = 5
+
+export interface RoutineTarget {
+  key: string
+  label: string
+  sub?: string
+  path: string
+  days: number
+}
+
+export async function routineSuggestion(user: string): Promise<RoutineTarget[]> {
+  const rows = await sql`
+    select ref_key, count(distinct date_trunc('day', occurred_at)) as days
+    from user_event
+    where created_by = ${user}
+      and kind in ('list', 'page')
+      and occurred_at > now() - make_interval(days => ${ROUTINE_WINDOW_DAYS})
+    group by ref_key
+    having count(distinct date_trunc('day', occurred_at)) >= ${ROUTINE_MIN_DAYS}
+    order by days desc, ref_key
+    limit 4`
+  if (rows.length < 2) return []
+  const keys = rows.map((r) => r.ref_key as string)
+  const latest = await sql`
+    select distinct on (ref_key) ref_key, label, sub_label, path
+    from user_event
+    where created_by = ${user} and ref_key in ${sql(keys)}
+    order by ref_key, occurred_at desc`
+  const byKey = new Map(latest.map((l) => [l.ref_key as string, l]))
+  return rows.map((r) => {
+    const meta = byKey.get(r.ref_key as string)
+    return {
+      key: r.ref_key as string,
+      label: (meta?.label as string | null) ?? (r.ref_key as string),
+      sub: (meta?.sub_label as string | null) ?? undefined,
+      path: (meta?.path as string | null) ?? '',
+      days: Number(r.days),
+    }
+  })
+}
+
 export async function eventSummary(user: string, scan = 800): Promise<EventSummaryEntry[]> {
   const rows = await sql`
     select kind, ref_key, label, sub_label, path, occurred_at

@@ -179,6 +179,18 @@ export function AdminLayout() {
     return () => document.removeEventListener('keydown', onKey)
   }, [navigate])
 
+  // #101 Phase 5: the "Last search" resume tile hands its query to the
+  // command bar — prefilled and focused, ready to re-run.
+  useEffect(() => {
+    function onPrefill(e: Event) {
+      const q = (e as CustomEvent<string>).detail
+      if (typeof q === 'string') setSearch(q)
+      searchRef.current?.focus()
+    }
+    window.addEventListener('fc:prefill-search', onPrefill)
+    return () => window.removeEventListener('fc:prefill-search', onPrefill)
+  }, [])
+
   // UI-027 / #80: the sidebar lists the caller's visible Home Pages — the
   // dedicated endpoint is its only source (role visibility and link
   // permission-filtering are computed server-side).

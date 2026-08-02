@@ -130,6 +130,31 @@ test('#101 P3: the trail reaches the server in debounced batches', async ({ page
     .toBe(true)
 })
 
+test('#101 P5: resume tiles put yesterday one click away', async ({ page }) => {
+  await login(page)
+
+  // Build the trail: a search (opens the row), then back home.
+  const bar = page.getByTestId('awesomebar').locator('input')
+  await bar.fill('quokka-rec')
+  await expect(page.getByTestId('awesomebar-doc').first()).toBeVisible()
+  await bar.press('Enter')
+  await expect(page.getByTestId('form-view')).toBeVisible()
+  await page.goto('/admin')
+
+  const strip = page.getByTestId('resume-strip')
+  await expect(strip).toBeVisible()
+  await expect(strip.getByTestId('resume-tile-row')).toContainText(DOC)
+
+  // The search tile hands its query back to the command bar.
+  await strip.getByTestId('resume-tile-search').click()
+  await expect(bar).toHaveValue('quokka-rec')
+
+  // The row tile resumes the form.
+  await page.getByTestId('resume-tile-row').click()
+  await expect(page).toHaveURL(new RegExp(`${encodeURIComponent(DT)}/${DOC}`))
+  await expect(page.getByTestId('form-view')).toBeVisible()
+})
+
 test('#101: searches are remembered and offered back while typing', async ({ page }) => {
   await login(page)
 
