@@ -42,6 +42,7 @@ import { requestPasswordReset, resetPassword } from './password-reset'
 import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
+import { eventSummary, recordEvents, validateEventBatch } from './events'
 import { runApiScript } from './server-scripts'
 import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
@@ -348,6 +349,20 @@ app.get('/api/whoami', async (c) => {
     palette: (row?.palette as string) || 'classic',
     language: (row?.language as string) || 'en',
   })
+})
+
+// #101 Phase 3: batched capture of the caller's read-side intent (rows
+// visited, lists filtered, searches run). The user always comes from the
+// session — a client cannot write anyone else's trail — and reads are
+// scoped to the caller for the same reason.
+app.post('/api/events', async (c) => {
+  const events = validateEventBatch(await c.req.json().catch(() => null))
+  const inserted = await recordEvents(who(c), events)
+  return c.json({ inserted })
+})
+
+app.get('/api/events/summary', async (c) => {
+  return c.json({ entries: await eventSummary(who(c)) })
 })
 
 // UI-024: persist the caller's theme preference (light/dark), per user.

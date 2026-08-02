@@ -59,6 +59,97 @@ export function recordAction(user: string, action: RecentAction, now = Date.now(
     }
   }
   save(user, entries)
+  enqueueServerEvent(action, now)
+}
+
+// ---- #101 Phase 3: server mirror -------------------------------------------
+// The localStorage buffer stays the zero-latency source for the UI; every
+// recorded action is ALSO queued for the server's user_event log (debounced
+// batch POST, sendBeacon on unload) so recents survive devices and feed the
+// homepage activity stream. The sink is injected by the app shell — this
+// module stays free of api.ts so unit tests never touch the network.
+
+export interface ServerEventSink {
+  post: (events: Array<Record<string, unknown>>) => void
+  beacon: (events: Array<Record<string, unknown>>) => void
+}
+
+const FLUSH_DELAY_MS = 3000
+let sink: ServerEventSink | null = null
+let queue: Array<Record<string, unknown>> = []
+let flushTimer: ReturnType<typeof setTimeout> | null = null
+
+function flush(useBeacon = false): void {
+  if (flushTimer) {
+    clearTimeout(flushTimer)
+    flushTimer = null
+  }
+  if (!sink || queue.length === 0) return
+  const batch = queue.slice(0, 50)
+  queue = queue.slice(50)
+  if (useBeacon) sink.beacon(batch)
+  else sink.post(batch)
+  if (queue.length > 0) flushTimer = setTimeout(() => flush(), FLUSH_DELAY_MS)
+}
+
+function enqueueServerEvent(action: RecentAction, at: number): void {
+  if (!sink) return
+  queue.push({
+    kind: action.kind,
+    key: action.key,
+    label: action.label,
+    sub: action.sub,
+    path: action.path,
+    at,
+  })
+  if (!flushTimer) flushTimer = setTimeout(() => flush(), FLUSH_DELAY_MS)
+}
+
+/** App-shell hookup; safe to call more than once (last sink wins). */
+export function connectEventSink(next: ServerEventSink): void {
+  const first = sink === null
+  sink = next
+  if (first && typeof window !== 'undefined') {
+    // pagehide covers tab close, reload and navigation away — the last
+    // debounce window must not be lost, and only a beacon survives unload.
+    window.addEventListener('pagehide', () => flush(true))
+  }
+}
+
+export interface ServerRecentEntry {
+  kind: string
+  key: string
+  label: string
+  sub?: string
+  path: string
+  visits: number[]
+}
+
+/** Cross-device merge: union the server's per-key aggregates into the local
+ *  buffer (visits merged, deduplicated, capped — same shape both sides). */
+export function mergeServerEntries(user: string, remote: ServerRecentEntry[]): void {
+  if (remote.length === 0) return
+  const entries = loadAll(user)
+  for (const r of remote) {
+    if (!['row', 'list', 'page', 'search'].includes(r.kind) || !r.key) continue
+    const existing = entries.find((e) => e.key === r.key)
+    if (existing) {
+      const merged = [...new Set([...existing.visits, ...r.visits])].sort((a, b) => a - b)
+      existing.visits = merged.slice(-MAX_VISITS)
+    } else {
+      entries.push({
+        kind: r.kind as RecentKind,
+        key: r.key,
+        label: r.label || r.key,
+        sub: r.sub,
+        path: r.path,
+        visits: r.visits.slice(-MAX_VISITS),
+      })
+    }
+  }
+  entries.sort((a, b) => lastVisit(a) - lastVisit(b))
+  entries.splice(0, Math.max(0, entries.length - MAX_ENTRIES))
+  save(user, entries)
 }
 
 /** Newest-first, deduplicated by construction. */

@@ -106,6 +106,30 @@ test('#101 P2: the sidebar and the per-table strip replay the trail', async ({ p
   await expect(page.getByTestId('form-view')).toBeVisible()
 })
 
+test('#101 P3: the trail reaches the server in debounced batches', async ({ page, request }) => {
+  await login(page)
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${DOC}`)
+  await expect(page.getByTestId('form-view')).toBeVisible()
+
+  const auth = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
+  const token = ((await auth.json()) as { token: string }).token
+
+  // The client flushes after a ~3s debounce; poll the caller-scoped summary
+  // until the visit shows up server-side.
+  await expect
+    .poll(
+      async () => {
+        const res = await request.get('/api/events/summary', {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const body = (await res.json()) as { entries: Array<{ key: string }> }
+        return body.entries.some((e) => e.key === `row:${DT}/${DOC}`)
+      },
+      { timeout: 15_000 },
+    )
+    .toBe(true)
+})
+
 test('#101: searches are remembered and offered back while typing', async ({ page }) => {
   await login(page)
 

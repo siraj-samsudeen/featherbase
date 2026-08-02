@@ -5,11 +5,14 @@ import { ApiError, api, clearSession, getSessionUser, listResource } from '../li
 import {
   actionForLocation,
   ago,
+  connectEventSink,
   frequentActions,
+  mergeServerEntries,
   recentActions,
   recentSearches,
   recordAction,
   type RecentEntry,
+  type ServerRecentEntry,
 } from '../lib/recents'
 import { useHomePages } from '../lib/home-pages'
 import { useRealtime } from '../lib/realtime'
@@ -22,6 +25,25 @@ interface SearchHit {
   name: string
   title: string
 }
+
+// #101 Phase 3: recorded actions also stream to the server's user_event log
+// (batched; a beacon carries the final batch through unload). The sink is
+// injected here so lib/recents stays network-free for unit tests. Auth rides
+// the bearer token for fetches and the sid cookie for beacons — sendBeacon
+// cannot set headers.
+connectEventSink({
+  post: (events) => {
+    if (getSessionUser()) void api.post('/api/events', { events }).catch(() => {})
+  },
+  beacon: (events) => {
+    if (!getSessionUser()) return
+    try {
+      navigator.sendBeacon('/api/events', new Blob([JSON.stringify({ events })], { type: 'application/json' }))
+    } catch {
+      /* best-effort */
+    }
+  },
+})
 
 // Frappe-style Admin shell: top navbar (brand + command bar + avatar) and a
 // home page sidebar. All Tables render inside <Outlet/>.
@@ -45,6 +67,19 @@ export function AdminLayout() {
   }, [user?.name, location.href]) // eslint-disable-line react-hooks/exhaustive-deps
   const [barFocused, setBarFocused] = useState(false)
   const [recentSel, setRecentSel] = useState(0)
+
+  // #101 Phase 3: once per signed-in user, pull the server's per-key
+  // aggregates and union them into the local buffer — recents follow the
+  // user across devices; the merge is idempotent.
+  const syncedFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (!user || syncedFor.current === user.name) return
+    syncedFor.current = user.name
+    api
+      .get<{ entries: ServerRecentEntry[] }>('/api/events/summary')
+      .then((res) => mergeServerEntries(user.name, res.entries))
+      .catch(() => {})
+  }, [user?.name]) // eslint-disable-line react-hooks/exhaustive-deps
   // UI-025: on narrow (mobile) widths the sidebar collapses into a drawer
   // toggled from the navbar; on md+ it is always shown.
   const [sidebarOpen, setSidebarOpen] = useState(false)
