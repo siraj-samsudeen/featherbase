@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { api } from './api'
+import { api, getSessionUser } from './api'
 
 // Current session identity + roles, resolved from the server (whoami) and
 // cached. Used to gate role-only UI like the SET-003 permission manager.
@@ -18,6 +18,9 @@ export function useWhoAmI() {
     queryKey: ['whoami'],
     queryFn: () => api.get<WhoAmI>('/api/whoami'),
     staleTime: 5 * 60_000,
+    // Signed out there is nothing to ask — and an anonymous whoami would ride
+    // the sid cookie (if one survives) and answer as the previous user.
+    enabled: Boolean(getSessionUser()),
   })
 }
 

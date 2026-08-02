@@ -17,6 +17,46 @@ this look — do not introduce ad-hoc colors/spacing:
   CSS variables and `.fc-*` classes — never a literal color — so it works
   under every palette × light/dark combination automatically.
 
+## 2026-08-02 — PR #104 review round: seven findings fixed
+
+All findings from the owner's review of the recent-actions branch:
+
+- **Queue attribution (P1).** The client's debounced event queue is now
+  owner-tagged and fail-closed: a flush only ships events whose owner IS
+  the session the sink authenticates as; everything else is discarded,
+  never re-attributed. Logout drains the departing user's queue first,
+  while their credentials still exist. 3 new unit tests.
+- **Storage vs contract (P1).** `user_event`'s key/label/sub_label/path
+  were `Data` (varchar 140) while the API accepts 400/1000 chars — one
+  long filtered-list key failed its whole batch. 0064 rewritten to
+  'Long Text' for fresh installs; 0066 converges existing databases
+  (alter to text + column_def update + `occurred_at` index). New test
+  writes at the contract limits.
+- **Saved-view permission bypass (P1).** list/create now
+  `assertPermission(user, table, 'read')`; sharing re-checks it. New
+  test: 403 without read, opens after a Permission row grants it.
+- **Dependency pin (P1).** The earlier `git+https` change never changed
+  the transport — pnpm resolves GitHub git URLs to the codeload tarball
+  either way, and the lockfile said so. package.jsons + lockfile
+  restored to main's `github:` pin; the real remote-exec requirement is
+  attaching the feather-testing-postgres repo to the session proxy
+  (frozen install verified here).
+- **Dead feed channel (P2).** `canSubscribe` never allowed 'feed', so
+  the live ping reached nobody. Now: 'feed' is System Manager-only and
+  payload-free (`changed`); each `POST /api/events` pings the poster's
+  own `user:` channel (`feed_mine`) for the Mine tab. ActivityFeed
+  subscribes accordingly.
+- **OAuth beacons (P2).** The Google OAuth callback now sets the `sid`
+  cookie — without it, an OAuth user's unload-time beacon batch was
+  silently rejected.
+- **Dormant-user retention (P2).** The write-path prune is global (any
+  batch expires ANY user's >90-day rows), backed by the new
+  `occurred_at` index. Test covers a dormant user's rows.
+
+Verified: affected server suites 23/23, recents unit 15/15, all 12
+#101-related e2e + palette green, both typechecks clean, full web e2e
+re-run green (see below), `pnpm install --frozen-lockfile` passes.
+
 ## 2026-08-02 — Relational navigation MERGED (PR #102 → main)
 
 PR #102 merged to `main` as `ec8dd61` with all four review findings fixed
@@ -25,6 +65,104 @@ the standing design reference for relational navigation. Noted follow-ups
 remain: per-table curation of related tabs, and a server-side join surface
 so Explore can chain via-sub-table backlinks past the client-side cap.
 
+## 2026-08-01 — #101 Phases 2–6 complete: recent actions shipped end to end
+
+All six phases of [#101](https://github.com/siraj-samsudeen/featherbase/issues/101)
+are now built (Phase 1 below). One commit per phase on this branch.
+
+- **Phase 2 — more recall surfaces.** Sidebar gains Recent (5 destinations)
+  + Frequent (frecency top 3) groups; ListView gains a strip of this
+  table's recent rows and filter sets. Same localStorage buffer as ⌘K.
+- **Phase 3 — server truth.** Migration 0064 adds the `User Event` system
+  table (append-only via direct insert like `audit.ts`; no role
+  permissions — reads only flow through caller-scoped endpoints).
+  `POST /api/events` takes client batches (≤50, timestamps clamped to a
+  7-day trust window, 90-day retention pruned on the write path);
+  `GET /api/events/summary` returns per-key aggregates that the client
+  unions into its buffer at sign-in → cross-device recents. Client
+  flushes on a 3s debounce; `sendBeacon` (cookie-auth) carries the final
+  batch through unload.
+- **Phase 4 — homepage feed.** `GET /api/activity_feed`: `mine` = own raw
+  trail; `team` = Version rows + logins ONLY (reads never surface),
+  System Manager-gated. Feed card on every Home Page, live via a new
+  websocket `feed` ping in `publishDocEvent`, 30s refetch fallback.
+- **Phase 5 — resuming.** ResumeStrip (last row / view / search tiles;
+  the search tile refills the command bar via a `fc:prefill-search`
+  event). `GET /api/routine_suggestion` detects destinations opened on
+  ≥5 distinct days in 14 (lists/pages only, ≥2 targets); RoutineCard
+  pins them as a per-user workspace chip row.
+- **Phase 6 — saved views.** Migration 0065 adds `Saved View` (owner +
+  jsonb filters + shared flag; owner-scoped `/api/saved_views` CRUD,
+  sharing opens read-only). ListView Views bar with share/delete on own
+  chips; the nudge fires when one filter set is applied 3× in a week
+  (re-mounts within 500ms deduped — StrictMode double-fires effects).
+
+Verified end-to-end: **web e2e 96 passed / 0 failed / 6 skipped** (skips
+are all "already exists in this dev DB" guards), **server 519 passed**,
+**web unit 24 passed**, both typechecks clean. 15 new server vitest
+cases, 9 new e2e tests across recents/activity-feed/home-recall/
+saved-views specs.
+
+Gotchas (beyond the 07-31 entry's): (1) storing pre-stringified JSON into
+a jsonb column double-encodes — use `sql.json(...)`. (2) The e2e suite
+itself now generates user_event rows (beacons + batches), so specs must
+never assume "newest" without making the data in-test; both feed specs
+were hardened accordingly. (3) `ticketing.spec.ts` re-installs helpdesk
+every run — uninstall via `POST /api/uninstall_app {"name":"helpdesk"}`
+before running the server suite, or its app-fixtures test fails.
+
+Next: owner review of the whole #101 branch. Candidate follow-ups:
+frecency-boosted ranking inside `/api/search` itself, a modal ⌘K overlay
+(the dropdown was kept deliberately — "under the search" was the ask),
+edit-weighted frecency, and Team-feed pagination.
+
+## 2026-07-31 — #101 Phase 1: the command bar remembers recent actions
+
+Issue [#101](https://github.com/siraj-samsudeen/featherbase/issues/101) is the
+owner's "system remembers where I've been" capability; the design reference
+(interactive exploration of six patterns + brainstorm) lives in
+`docs/design/recent-actions/`. This session shipped Phase 1 of six:
+
+- **`apps/web/src/lib/recents.ts`** — per-user localStorage ring buffer
+  (80 entries × 10 visits, dedup by key). Records rows, lists (with their
+  filter sets — the JSON `?filters=` param is part of the identity), list
+  view modes, reports/dashboards, and submitted searches. Home Pages,
+  builders and `/new` forms deliberately excluded. Ranking helpers:
+  recency, Firefox-style bucketed **frecency** (<4d→100 … older→10, 2+
+  visits required), prefix-matched past searches.
+- **AdminLayout**: a `useRouterState` hook records every admin navigation;
+  the awesomebar's *empty focused state* now shows **Recent** and
+  **Frequent** groups (ArrowUp/Down + Enter to replay, Esc closes), and
+  typing offers matching past searches (`↻` rows refill the bar).
+- **Security fix found by this work**: SPA logout dropped the bearer token
+  but never expired the HttpOnly `sid` cookie, so token-less requests after
+  logout re-authenticated as the departed user (observed: a post-logout
+  whoami refetch poisoning the cache with user A's palette for user B —
+  the exact UI-025 leak). Fixed with a public `POST /api/logout` (expires
+  the cookie; SPA awaits it before clearing state), cache clear moved to
+  after `/login` renders, `useWhoAmI` gated on a session existing, and no
+  hard 401-redirect when already on `/login`.
+- **Env fix**: `feather-testing-postgres` pin switched from `github:` (a
+  codeload tarball the remote-exec proxy 403s) to `git+https` — same
+  commit, git transport, works everywhere. Keep this form when moving back
+  to `^0.2.0`.
+
+Verified: 12 vitest cases (`test/recents.test.tsx`), new `recents.spec.ts`
+e2e (trail building, click + keyboard replay, filter round-trip, search
+recall), server auth suite incl. new cookie-expiry case. Full regression:
+web e2e 89 passed / 6 skipped / 0 failed, server 505 tests green, web unit
+24 green, both typechecks clean.
+
+Gotchas: (1) in this container set `CHROMIUM_PATH=/opt/pw-browsers/chromium`
+for Playwright — the project pins a newer bundled build that isn't
+installed. (2) `ticketing.spec.ts` installs the helpdesk app into the dev DB
+and leaves it; the server `app-fixtures` "fresh deployment" test then fails
+until `POST /api/uninstall_app {"name":"helpdesk"}` — did that here. (3) Do
+not run the vitest suites while the Playwright suite runs: the vitest
+globalSetup empties `background_job` mid-e2e.
+
+Next: #101 Phase 2 — sidebar Recent group + per-table recents strip over the
+same local store; then the `user_event` server log (Phase 3).
 ## 2026-07-31 — Relational navigation: all six patterns from issue #100
 
 The design exploration in `docs/design/explorations/relational-navigation.*`

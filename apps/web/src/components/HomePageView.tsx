@@ -1,5 +1,7 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useHomePages, type HomePageShortcut } from '../lib/home-pages'
+import { ActivityFeed } from './ActivityFeed'
+import { ResumeStrip, RoutineCard } from './HomeRecall'
 
 // UI-027 / #80: a Home Page renders its grouped link cards (curated in the
 // `links` sub-table through the generic FormView — no dedicated editor) plus
@@ -47,6 +49,11 @@ export function HomePageView({ name }: { name: string }) {
         {page.icon ? `${page.icon} ` : ''}
         {page.label || page.name}
       </h1>
+
+      {/* #101 Phase 5: resuming beats browsing — last row/view/search first,
+          then the pinned workspace or the routine suggestion. */}
+      <ResumeStrip />
+      <RoutineCard />
 
       {page.cards.length === 0 && page.shortcuts.length === 0 && (
         <p className="text-sm text-[var(--color-ink-faint)]" data-testid="home-page-empty">
@@ -98,6 +105,9 @@ export function HomePageView({ name }: { name: string }) {
           ))}
         </div>
       )}
+
+      {/* #101 Phase 4: the activity feed rides every Home Page. */}
+      <ActivityFeed />
     </div>
   )
 }

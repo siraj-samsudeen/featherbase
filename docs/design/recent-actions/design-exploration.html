@@ -1,0 +1,1054 @@
+<title>Recent Actions — Featherbase</title>
+<style>
+  :root {
+    --canvas: #f4f5f6; --surface: #ffffff; --subtle: #f7f7f8;
+    --border: #ebeef0; --border-strong: #d1d8dd;
+    --ink: #1c2126; --ink-muted: #6c7680; --ink-faint: #98a1a9;
+    --brand: #2490ef; --brand-dark: #1579d0; --brand-tint: #eef6fe;
+    --good: #38a160; --good-tint: #e6f4ec;
+    --danger: #e24c4c; --danger-tint: #fbecec;
+    --warn: #cb9a26; --warn-tint: #fbf3e0;
+    --radius-card: 0.5rem; --radius-control: 0.375rem;
+    --shadow-card: 0 1px 2px rgba(25,39,52,0.04), 0 1px 3px rgba(25,39,52,0.03);
+    --shadow-pop: 0 8px 24px rgba(25,39,52,0.16);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --canvas: #16191d; --surface: #1c2126; --subtle: #242a31;
+      --border: #2a313a; --border-strong: #3a424c;
+      --ink: #e6e9ec; --ink-muted: #9aa4ae; --ink-faint: #6c7680;
+      --brand-tint: #14304a;
+      --good-tint: #16301f; --danger-tint: #3a1d1d; --warn-tint: #33290f;
+      --shadow-card: 0 1px 2px rgba(0,0,0,0.3);
+      --shadow-pop: 0 8px 24px rgba(0,0,0,0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --canvas: #16191d; --surface: #1c2126; --subtle: #242a31;
+    --border: #2a313a; --border-strong: #3a424c;
+    --ink: #e6e9ec; --ink-muted: #9aa4ae; --ink-faint: #6c7680;
+    --brand-tint: #14304a;
+    --good-tint: #16301f; --danger-tint: #3a1d1d; --warn-tint: #33290f;
+    --shadow-card: 0 1px 2px rgba(0,0,0,0.3);
+    --shadow-pop: 0 8px 24px rgba(0,0,0,0.5);
+  }
+  :root[data-theme="light"] {
+    --canvas: #f4f5f6; --surface: #ffffff; --subtle: #f7f7f8;
+    --border: #ebeef0; --border-strong: #d1d8dd;
+    --ink: #1c2126; --ink-muted: #6c7680; --ink-faint: #98a1a9;
+    --brand-tint: #eef6fe;
+    --good-tint: #e6f4ec; --danger-tint: #fbecec; --warn-tint: #fbf3e0;
+    --shadow-card: 0 1px 2px rgba(25,39,52,0.04), 0 1px 3px rgba(25,39,52,0.03);
+    --shadow-pop: 0 8px 24px rgba(25,39,52,0.16);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--canvas); color: var(--ink);
+    font-family: 'Inter', 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px; line-height: 1.55; margin: 0;
+  }
+  .page { max-width: 1120px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--brand); }
+  h1 { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; margin: 6px 0 10px; text-wrap: balance; }
+  .lede { color: var(--ink-muted); max-width: 66ch; margin: 0 0 6px; }
+  h2 { font-size: 19px; font-weight: 650; letter-spacing: -0.01em; margin: 48px 0 6px; }
+  .sub { color: var(--ink-muted); max-width: 70ch; margin: 0 0 16px; }
+  .sub strong { color: var(--ink); font-weight: 600; }
+  a { color: var(--brand); text-decoration: none; }
+  code, .mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+  code { font-size: 11.5px; background: var(--subtle); padding: 1px 5px; border-radius: 4px; }
+
+  .journeys { display: flex; gap: 10px; flex-wrap: wrap; margin: 18px 0 0; }
+  .journey { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card); padding: 10px 14px; font-size: 13px; color: var(--ink-muted); }
+  .journey b { color: var(--ink); font-weight: 600; }
+  .journey .arr { color: var(--brand); margin: 0 4px; }
+
+  .art-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-top: 14px; }
+  .art { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card); padding: 12px 14px; }
+  .art .who { font-weight: 600; font-size: 13px; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .art .who .maps { font-size: 11px; font-weight: 600; color: var(--brand); white-space: nowrap; }
+  .art p { margin: 4px 0 0; font-size: 12.5px; color: var(--ink-muted); }
+
+  /* capture architecture */
+  .cap-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 14px; }
+  .cap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card); padding: 14px 16px; position: relative; }
+  .cap.reco-cap { border-color: var(--brand); }
+  .cap .cap-tag { position: absolute; top: -9px; right: 12px; background: var(--brand); color: #fff;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; border-radius: 999px; padding: 2px 9px; }
+  .cap h4 { margin: 0 0 4px; font-size: 13.5px; font-weight: 650; }
+  .cap p { margin: 0 0 6px; font-size: 12.5px; color: var(--ink-muted); }
+  .cap .pm { font-size: 12px; }
+  .cap .pm .y { color: var(--good); font-weight: 600; }
+  .cap .pm .n { color: var(--danger); font-weight: 600; }
+
+  .frec { margin-top: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card); padding: 14px 16px; }
+  .frec h4 { margin: 0 0 4px; font-size: 13.5px; font-weight: 650; }
+  .frec p { margin: 0 0 10px; font-size: 12.5px; color: var(--ink-muted); max-width: 78ch; }
+  .buckets { display: flex; gap: 6px; align-items: stretch; }
+  .bucket { border-radius: var(--radius-control); background: var(--brand-tint); color: var(--brand);
+    padding: 6px 10px; text-align: center; min-width: 0; }
+  .bucket .bw { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .bucket .bl { font-size: 10.5px; color: var(--ink-muted); white-space: nowrap; }
+
+  /* pattern tabs */
+  .ptabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 20px 0 0; position: sticky; top: 0; z-index: 30;
+    background: var(--canvas); padding: 10px 0; }
+  .ptab { border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink-muted);
+    border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 550; cursor: pointer; font-family: inherit; }
+  .ptab:hover { background: var(--subtle); color: var(--ink); }
+  .ptab.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .ptab .n { opacity: 0.65; margin-right: 5px; font-variant-numeric: tabular-nums; }
+  .ptab:focus-visible, button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+  .pattern { display: none; }
+  .pattern.on { display: block; }
+  .pat-head { margin: 18px 0 12px; }
+  .pat-head h3 { font-size: 17px; font-weight: 650; margin: 0 0 4px; }
+  .pat-head .from { font-size: 12px; color: var(--ink-faint); font-weight: 500; }
+  .pat-head p { margin: 6px 0 0; color: var(--ink-muted); max-width: 74ch; font-size: 13.5px; }
+  .try { margin-top: 8px; font-size: 12.5px; color: var(--ink-muted); background: var(--brand-tint);
+    border-radius: var(--radius-control); padding: 7px 12px; display: inline-block; }
+  .try b { color: var(--brand); font-weight: 650; }
+
+  /* demo chrome */
+  .chrome { border: 1px solid var(--border-strong); border-radius: 10px; overflow: hidden; margin-top: 14px;
+    background: var(--canvas); box-shadow: var(--shadow-card); }
+  .chrome-bar { display: flex; align-items: center; gap: 10px; background: var(--surface);
+    border-bottom: 1px solid var(--border); padding: 8px 12px; }
+  .dots { display: flex; gap: 5px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border-strong); }
+  .urlbox { flex: 1; background: var(--subtle); border: 1px solid var(--border); border-radius: 6px;
+    font: 11.5px/1.6 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; color: var(--ink-muted);
+    padding: 3px 10px; white-space: nowrap; overflow-x: auto; }
+  .urlbox b { color: var(--brand); font-weight: 600; }
+  .chrome-body { padding: 16px; min-height: 430px; max-height: 560px; overflow: auto; position: relative; }
+
+  /* shared app components */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card); }
+  .btn { border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink);
+    border-radius: var(--radius-control); padding: 5px 12px; font-size: 13px; font-weight: 500;
+    cursor: pointer; font-family: inherit; }
+  .btn:hover { background: var(--subtle); }
+  .btn.small { padding: 2px 9px; font-size: 12px; }
+  .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .btn.primary:hover { background: var(--brand-dark); }
+  .btn.on { background: var(--brand-tint); border-color: var(--brand); color: var(--brand); }
+  .pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 1px 9px;
+    font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+  .pill.good { background: var(--good-tint); color: var(--good); }
+  .pill.warn { background: var(--warn-tint); color: var(--warn); }
+  .pill.danger { background: var(--danger-tint); color: var(--danger); }
+  .pill.brand { background: var(--brand-tint); color: var(--brand); }
+  .pill.mute { background: var(--subtle); color: var(--ink-muted); }
+
+  table.grid { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.grid th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; color: var(--ink-muted); background: var(--subtle);
+    border-bottom: 1px solid var(--border); padding: 6px 12px; white-space: nowrap; }
+  table.grid td { border-bottom: 1px solid var(--border); padding: 7px 12px; vertical-align: middle; }
+  table.grid tr:last-child td { border-bottom: 0; }
+  table.grid tr.rowlink { cursor: pointer; }
+  table.grid tr.rowlink:hover td { background: var(--subtle); }
+  table.grid td.num, table.grid th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--brand-tint);
+    border: 1px solid transparent; color: var(--brand); border-radius: 999px; padding: 3px 11px;
+    font-size: 12px; font-weight: 550; cursor: pointer; font-family: inherit; }
+  .chip:hover { border-color: var(--brand); }
+  .chip .x { cursor: pointer; border: 0; background: none; color: inherit; font-size: 13px; line-height: 1;
+    padding: 1px 5px; border-radius: 50%; font-family: inherit; }
+  .chip .x:hover { background: rgba(36,144,239,0.15); }
+  .chip.ghost { background: var(--surface); border: 1px solid var(--border-strong); color: var(--ink-muted); }
+  .chip.ghost:hover { border-color: var(--brand); color: var(--brand); }
+
+  .kind { display: inline-flex; align-items: center; justify-content: center; width: 46px;
+    border-radius: 999px; padding: 1px 0; font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
+    text-transform: uppercase; flex: none; }
+  .kind.view { background: var(--subtle); color: var(--ink-muted); }
+  .kind.list { background: var(--brand-tint); color: var(--brand); }
+  .kind.find { background: var(--brand-tint); color: var(--brand); }
+  .kind.edit { background: var(--warn-tint); color: var(--warn); }
+  .kind.new { background: var(--good-tint); color: var(--good); }
+  .kind.subm { background: var(--good-tint); color: var(--good); }
+  .kind.page { background: var(--subtle); color: var(--ink-muted); }
+
+  .when { font-size: 11px; color: var(--ink-faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+  /* mini navbar used in demos */
+  .mini-nav { display: flex; align-items: center; gap: 12px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius-card); box-shadow: var(--shadow-card);
+    padding: 8px 12px; margin-bottom: 12px; }
+  .mini-logo { width: 22px; height: 22px; border-radius: 5px; background: var(--brand); color: #fff;
+    font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none; }
+  .mini-search { flex: 1; display: flex; align-items: center; gap: 8px; border: 1px solid var(--border-strong);
+    background: var(--canvas); border-radius: var(--radius-control); padding: 5px 10px; font-size: 13px;
+    color: var(--ink-faint); cursor: text; max-width: 440px; margin: 0 auto; }
+  .mini-search kbd { margin-left: auto; border: 1px solid var(--border); background: var(--surface);
+    border-radius: 4px; padding: 0 5px; font-size: 10px; color: var(--ink-faint); font-family: inherit; }
+  .avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--brand-tint); color: var(--brand);
+    display: inline-flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 700; flex: none; }
+  .avatar.g2 { background: var(--good-tint); color: var(--good); }
+  .avatar.g3 { background: var(--warn-tint); color: var(--warn); }
+
+  /* palette */
+  .pal-scrim { position: absolute; inset: 0; background: rgba(15,23,32,0.32); z-index: 8; }
+  .pal { position: absolute; top: 26px; left: 50%; transform: translateX(-50%); width: min(560px, 94%);
+    background: var(--surface); border: 1px solid var(--border-strong); border-radius: 10px;
+    box-shadow: var(--shadow-pop); z-index: 9; overflow: hidden; }
+  @media (prefers-reduced-motion: no-preference) {
+    .pal { animation: palin 0.14s ease-out; }
+    @keyframes palin { from { transform: translate(-50%, -8px); opacity: 0.5; } to { transform: translate(-50%, 0); opacity: 1; } }
+  }
+  .pal-input { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); padding: 10px 14px; }
+  .pal-input input { flex: 1; border: 0; background: none; font: inherit; font-size: 14px; color: var(--ink); outline: none; }
+  .pal-input .esc { font-size: 10px; color: var(--ink-faint); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+  .pal-body { max-height: 330px; overflow: auto; padding-bottom: 6px; }
+  .pal-sec { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--ink-faint); padding: 10px 14px 4px; }
+  .pal-item { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; background: none;
+    border: 0; font: inherit; color: inherit; padding: 6px 14px; cursor: pointer; }
+  .pal-item .lab { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pal-item .lab small { color: var(--ink-faint); font-size: 11.5px; margin-left: 6px; }
+  .pal-item .meta { font-size: 11px; color: var(--ink-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .pal-item:hover, .pal-item.sel { background: var(--brand-tint); }
+  .pal-item.sel .lab { color: var(--brand); font-weight: 550; }
+  .pal-foot { border-top: 1px solid var(--border); padding: 6px 14px; font-size: 11px; color: var(--ink-faint);
+    display: flex; gap: 14px; background: var(--subtle); }
+  .stub { border: 1px dashed var(--border-strong); border-radius: var(--radius-card); padding: 22px;
+    text-align: center; color: var(--ink-faint); font-size: 13px; }
+  .stub b { color: var(--ink-muted); }
+
+  /* feed */
+  .ftabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); }
+  .ftab { border: 0; background: none; font: inherit; font-size: 13px; font-weight: 550; color: var(--ink-muted);
+    padding: 8px 14px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .ftab:hover { color: var(--ink); }
+  .ftab.on { color: var(--brand); border-bottom-color: var(--brand); }
+  .feed-row { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--border); }
+  .feed-row:last-child { border-bottom: 0; }
+  .feed-row .txt { flex: 1; font-size: 13px; min-width: 0; }
+  .feed-row .txt .who-n { font-weight: 600; }
+  .feed-row .txt .tgt { color: var(--brand); cursor: pointer; font-weight: 500; }
+  .feed-row .txt .tgt:hover { text-decoration: underline; }
+  .feed-row.fresh { background: var(--brand-tint); }
+  @media (prefers-reduced-motion: no-preference) {
+    .feed-row.fresh { animation: fade-in-tint 2.2s ease-out forwards; }
+    @keyframes fade-in-tint { 0% { background: var(--brand-tint); } 100% { background: transparent; } }
+  }
+  .feed-note { padding: 8px 14px; font-size: 12px; color: var(--ink-muted); background: var(--subtle);
+    border-top: 1px solid var(--border); border-radius: 0 0 var(--radius-card) var(--radius-card); }
+
+  /* sidebar demo */
+  .sb-layout { display: grid; grid-template-columns: 216px 1fr; gap: 14px; align-items: start; }
+  @media (max-width: 760px) { .sb-layout { grid-template-columns: 1fr; } }
+  .sb { padding: 8px 0; }
+  .sb-sec { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--ink-faint); padding: 12px 14px 4px; }
+  .sb-item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none;
+    border: 0; font: inherit; font-size: 13px; color: var(--ink-muted); padding: 5px 14px; cursor: pointer; }
+  .sb-item:hover { background: var(--subtle); color: var(--ink); }
+  .sb-item.on { color: var(--brand); background: var(--brand-tint); font-weight: 550; }
+  .sb-item .cnt { margin-left: auto; font-size: 11px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+  .sb-item .sub-l { display: block; font-size: 10.5px; color: var(--ink-faint); font-weight: 400; }
+
+  /* strip demo */
+  .strip { padding: 10px 14px; margin-bottom: 12px; }
+  .strip .strip-t { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--ink-faint); margin-bottom: 7px; }
+  .rowline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .strip .grp { font-size: 11px; color: var(--ink-faint); margin-right: 2px; }
+
+  /* saved views */
+  .views-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .prompt-card { position: absolute; right: 16px; bottom: 16px; width: min(340px, 92%); z-index: 7;
+    background: var(--surface); border: 1px solid var(--brand); border-radius: var(--radius-card);
+    box-shadow: var(--shadow-pop); padding: 14px 16px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .prompt-card { animation: risein 0.18s ease-out; }
+    @keyframes risein { from { transform: translateY(10px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+  }
+  .prompt-card h5 { margin: 0 0 4px; font-size: 13px; font-weight: 650; }
+  .prompt-card p { margin: 0 0 10px; font-size: 12.5px; color: var(--ink-muted); }
+  .prompt-card input[type=text] { width: 100%; border: 1px solid var(--border-strong); background: var(--canvas);
+    border-radius: var(--radius-control); font: inherit; font-size: 13px; padding: 5px 10px; color: var(--ink);
+    margin-bottom: 10px; }
+  .toast { position: absolute; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 7;
+    background: var(--ink); color: var(--canvas); font-size: 12.5px; border-radius: 999px; padding: 6px 16px;
+    box-shadow: var(--shadow-pop); }
+
+  /* continue / home */
+  .home-hi { margin: 4px 0 2px; font-size: 19px; font-weight: 650; }
+  .home-date { font-size: 12.5px; color: var(--ink-faint); margin-bottom: 14px; }
+  .resume-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+  .resume-tile { text-align: left; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-card); box-shadow: var(--shadow-card); padding: 12px 14px; cursor: pointer;
+    font: inherit; color: inherit; }
+  .resume-tile:hover { border-color: var(--brand); }
+  .resume-tile .rt-k { font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--ink-faint); margin-bottom: 4px; }
+  .resume-tile .rt-l { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+  .resume-tile .rt-s { font-size: 12px; color: var(--ink-muted); margin-top: 2px; }
+  .routine { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--border); border-left: 3px solid var(--brand); }
+  .routine h5 { margin: 0 0 4px; font-size: 13.5px; font-weight: 650; }
+  .routine p { margin: 0 0 10px; font-size: 12.5px; color: var(--ink-muted); }
+
+  /* comparison + reco (shared with sibling exploration) */
+  .cmp-wrap { overflow-x: auto; margin-top: 14px; }
+  table.cmp { border-collapse: collapse; width: 100%; min-width: 880px; font-size: 13px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
+  table.cmp th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--ink-muted); background: var(--subtle); padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  table.cmp td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.cmp tr:last-child td { border-bottom: 0; }
+  table.cmp td:first-child { font-weight: 600; white-space: nowrap; }
+  table.cmp .lo { color: var(--good); font-weight: 600; }
+  table.cmp .mid { color: var(--warn); font-weight: 600; }
+  table.cmp .hi { color: var(--danger); font-weight: 600; }
+
+  .reco { margin-top: 14px; display: grid; gap: 10px; }
+  .reco-step { display: flex; gap: 14px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-card); box-shadow: var(--shadow-card); padding: 14px 16px; }
+  .reco-step .tag { flex: none; width: 74px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+    text-transform: uppercase; padding-top: 2px; }
+  .reco-step .tag.now { color: var(--good); } .reco-step .tag.next { color: var(--brand); }
+  .reco-step .tag.later { color: var(--warn); } .reco-step .tag.maybe { color: var(--ink-faint); }
+  .reco-step h4 { margin: 0 0 3px; font-size: 14px; font-weight: 650; }
+  .reco-step p { margin: 0; font-size: 13px; color: var(--ink-muted); }
+  .footnote { margin-top: 40px; font-size: 12.5px; color: var(--ink-faint); border-top: 1px solid var(--border); padding-top: 14px; }
+</style>
+
+<div class="page">
+  <div class="eyebrow">Featherbase &middot; Design exploration</div>
+  <h1>A system that remembers where you've been</h1>
+  <p class="lede">Six interactive patterns for surfacing your recent actions — rows visited, filters applied, searches run — so a repeat operator never rebuilds the same navigation twice. Every demo below is clickable and runs on the same hypothetical trail; the fake URL bar shows the real Featherbase route each click would produce (list routes already accept <span class="mono" style="font-size:12px">?filters=…</span> today, so a remembered view is just a remembered URL).</p>
+  <div class="journeys">
+    <div class="journey">Same <b>customers</b><span class="arr">→</span>same <b>filters</b><span class="arr">→</span>same clicks, every day</div>
+    <div class="journey">The two ranking dimensions: <b>recency</b> and <b>frequency</b> ("frecency")</div>
+    <div class="journey">Trail privacy: <b>mine is mine</b>; the team sees changes, never views</div>
+  </div>
+
+  <h2>Who has tried this</h2>
+  <p class="sub">The best operator tools all converged on some slice of the same six ideas. None ships all of them together — which is the opportunity for a platform whose every screen is generated from metadata.</p>
+  <div class="art-grid">
+    <div class="art"><div class="who">Slack / Linear / Raycast <span class="maps">→ Pattern 1</span></div><p>⌘K switchers whose <i>empty state</i> is your recents, ranked by frecency. Typing narrows; two keystrokes reach anything you touched this week.</p></div>
+    <div class="art"><div class="who">Firefox awesome bar <span class="maps">→ ranking</span></div><p>Coined "frecency": each visit scores by age bucket, summed per target. Twenty years of proof that the simple version works.</p></div>
+    <div class="art"><div class="who">GitHub / Slack channels <span class="maps">→ Pattern 2</span></div><p>A home feed of what happened around you — pushes, merges, mentions. Ambient awareness without asking anyone.</p></div>
+    <div class="art"><div class="who">Notion / Confluence <span class="maps">→ Pattern 3</span></div><p>A "Recent" group pinned in the sidebar. Zero keystrokes, always visible, capped at a handful of items.</p></div>
+    <div class="art"><div class="who">Salesforce <span class="maps">→ Patterns 3 &amp; 4</span></div><p>"Recent Items" in the sidebar plus per-object MRU lists — open Accounts and see <i>your</i> recent accounts first, not an alphabetical wall.</p></div>
+    <div class="art"><div class="who">Airtable / Notion databases <span class="maps">→ Pattern 5</span></div><p>Saved views as first-class, named, shareable objects. The habit stops being a memory and becomes an artifact.</p></div>
+    <div class="art"><div class="who">Gmail <span class="maps">→ Patterns 1 &amp; 5</span></div><p>Recent searches replayable from the search box; filter chips that turn a repeated query into a stored one.</p></div>
+    <div class="art"><div class="who">Google Docs / Netflix <span class="maps">→ Pattern 6</span></div><p>"Continue where you left off" — the home screen's first job is resuming, not browsing.</p></div>
+  </div>
+
+  <h2>Where the trail lives</h2>
+  <p class="sub">Mutations are <strong>already recorded</strong> (the <code>Version</code> table logs every edit; <code>activity_log</code>/<code>access_log</code> cover logins, prints, exports). The only missing raw material is read-side intent — pages visited, searches run, filters applied. Three ways to capture it:</p>
+  <div class="cap-grid">
+    <div class="cap">
+      <h4>A · Client-only (localStorage)</h4>
+      <p>A router hook records visits, searches and filter changes into a per-user ring buffer on the device.</p>
+      <div class="pm"><span class="y">Instant, private, zero server work.</span> <span class="n">Device-local, no team feed, gone on cache clear.</span></div>
+    </div>
+    <div class="cap">
+      <h4>B · Server middleware only</h4>
+      <p>Log API reads automatically — no client code at all.</p>
+      <div class="pm"><span class="n">Rejected as primary:</span> query-cache prefetches and refetches pollute it; it can't tell "user navigated here" from "cache revalidated".</div>
+    </div>
+    <div class="cap reco-cap">
+      <div class="cap-tag">Recommended</div>
+      <h4>C · Hybrid</h4>
+      <p>LocalStorage feeds the ⌘K surface with zero latency; the same events batch to the server (debounced <code>POST /api/events</code>, beacon on unload) into a <code>user_event</code> table — defined as Table metadata like everything else.</p>
+      <div class="pm"><span class="y">Server is truth (cross-device, feed, frecency aggregates); client is a warm mirror.</span></div>
+    </div>
+  </div>
+  <div class="frec">
+    <h4>Ranking: bucketed frecency (Firefox's recipe)</h4>
+    <p>Each visit contributes a weight by age; weights sum per target, and an <i>edit</i> weighs more than a mere view. Store one aggregate row per (user, target): <code>visit_count</code>, <code>last_visit_at</code>, <code>score</code>. Raw events prune after ~90 days; aggregates stay. Both orderings ship, because the owner named both dimensions: <b>Recent</b> (pure recency) and <b>Frequent</b> (frecency).</p>
+    <div class="buckets" role="img" aria-label="Frecency weights by visit age: under 4 days 100, under 14 days 70, under 31 days 50, under 90 days 30, older 10">
+      <div class="bucket" style="flex:100"><div class="bw">100</div><div class="bl">&lt; 4 d</div></div>
+      <div class="bucket" style="flex:70"><div class="bw">70</div><div class="bl">&lt; 14 d</div></div>
+      <div class="bucket" style="flex:50"><div class="bw">50</div><div class="bl">&lt; 31 d</div></div>
+      <div class="bucket" style="flex:30"><div class="bw">30</div><div class="bl">&lt; 90 d</div></div>
+      <div class="bucket" style="flex:18"><div class="bw">10</div><div class="bl">older</div></div>
+    </div>
+  </div>
+
+  <h2>The playground</h2>
+  <p class="sub">One invented trail, shared by every demo: this morning you opened <strong>Meenakshi Traders</strong>, filtered <strong>Sales Invoice to Overdue</strong>, searched <strong>"overdue chennai"</strong>, and edited a payment — the same loop you run every day.</p>
+
+  <div class="ptabs" id="ptabs"></div>
+
+  <!-- ═══ Pattern 1 ═══ -->
+  <section class="pattern" id="p1">
+    <div class="pat-head">
+      <h3>1 · ⌘K palette — recents as the empty state</h3>
+      <div class="from">Borrowed from Slack, Linear and Raycast — the owner's core ask</div>
+      <p>⌘K today focuses an inline search box. This upgrades it to a true modal palette whose <i>empty state</i> is the payoff: before you type a single character, your recent rows, filtered views and searches are already listed, with your frequent destinations beneath. Typing switches to search — tables, rows, commands — with results boosted by your own frecency, so <i>your</i> Meenakshi outranks everyone else's M-names.</p>
+      <div class="try"><b>Try:</b> click the search box (or press <b>Ctrl/⌘ K</b> while this demo is on screen). Pick a recent item with arrow keys + Enter — the URL bar navigates. Then type <b>"me"</b> and watch frecency float Meenakshi Traders to the top. Esc closes.</div>
+    </div>
+    <div class="chrome">
+      <div class="chrome-bar"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div><div class="urlbox" id="url-p1"><b>/admin</b></div></div>
+      <div class="chrome-body" id="body-p1"></div>
+    </div>
+  </section>
+
+  <!-- ═══ Pattern 2 ═══ -->
+  <section class="pattern" id="p2">
+    <div class="pat-head">
+      <h3>2 · Homepage activity feed — mine and the team's</h3>
+      <div class="from">Borrowed from Slack and GitHub's home feeds</div>
+      <p>A feed card on the Home Page with two tabs. <b>Mine</b> shows everything I did — views, searches, filters, edits — my personal audit trail, replayable. <b>Team</b> shows what colleagues <i>changed</i>: creates, edits, submissions — never what they merely viewed. That line matters: recall is a gift to the operator, surveillance is not. The team tab is role-gated and live over the existing websocket.</p>
+      <div class="try"><b>Try:</b> switch tabs, click any target to navigate, then press <b>Simulate teammate activity</b> to watch a live event arrive at the top of the Team feed.</div>
+    </div>
+    <div class="chrome">
+      <div class="chrome-bar"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div><div class="urlbox" id="url-p2"><b>/admin</b> <span>· Home</span></div></div>
+      <div class="chrome-body" id="body-p2"></div>
+    </div>
+  </section>
+
+  <!-- ═══ Pattern 3 ═══ -->
+  <section class="pattern" id="p3">
+    <div class="pat-head">
+      <h3>3 · Sidebar "Recent" — zero keystrokes</h3>
+      <div class="from">Borrowed from Notion, Confluence and Salesforce</div>
+      <p>The palette needs a keystroke; the sidebar needs nothing. A capped "Recent" group (5–8 items, deduplicated — revisiting bumps, not duplicates) sits under the Tables list, with a "Frequent" group of frecency winners beneath. This is the pattern for people who never learn shortcuts — and every team has them.</p>
+      <div class="try"><b>Try:</b> click through the Recent and Frequent items — the main pane and the URL bar follow. Notice filtered views carry their filter summary right in the sidebar.</div>
+    </div>
+    <div class="chrome">
+      <div class="chrome-bar"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div><div class="urlbox" id="url-p3"><b>/admin</b></div></div>
+      <div class="chrome-body" id="body-p3"></div>
+    </div>
+  </section>
+
+  <!-- ═══ Pattern 4 ═══ -->
+  <section class="pattern" id="p4">
+    <div class="pat-head">
+      <h3>4 · Per-table recents strip</h3>
+      <div class="from">Borrowed from Salesforce's per-object MRU lists</div>
+      <p>Recall placed <i>where the work happens</i>: opening the Customer list shows a slim strip of <b>your</b> recent customers and recent filter sets for this table, above the grid. One click re-applies a whole filter set — the strip is just remembered URLs, which the list route already accepts.</p>
+      <div class="try"><b>Try:</b> click the <b>region = South · Active</b> view chip — the grid narrows and removable filter chips appear. Click a customer chip to jump to that row. ✕ on a chip releases it.</div>
+    </div>
+    <div class="chrome">
+      <div class="chrome-bar"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div><div class="urlbox" id="url-p4"><b>/admin/Customer</b></div></div>
+      <div class="chrome-body" id="body-p4"></div>
+    </div>
+  </section>
+
+  <!-- ═══ Pattern 5 ═══ -->
+  <section class="pattern" id="p5">
+    <div class="pat-head">
+      <h3>5 · Saved views + the proactive nudge</h3>
+      <div class="from">Borrowed from Airtable and Notion; the nudge from Gmail's filter suggestions</div>
+      <p>The highest-ceiling idea here. When the system notices the same filter set applied again and again, it offers to <i>name</i> it. A saved view is a first-class metadata row — owner, table, filters, sort, share-with-roles — so the habit becomes an artifact you and your team can click, not a sequence you re-perform. This converts observed behavior into structure, which is exactly what a metadata platform is for.</p>
+      <div class="try"><b>Try:</b> click the <b>Overdue</b> quick filter, then <b>All</b>, then <b>Overdue</b> again — the nudge appears. Name it, save, and it lands in the views bar with a share control. Click your new view to re-apply it instantly.</div>
+    </div>
+    <div class="chrome">
+      <div class="chrome-bar"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div><div class="urlbox" id="url-p5"><b>/admin/Sales Invoice</b></div></div>
+      <div class="chrome-body" id="body-p5"></div>
+    </div>
+  </section>
+
+  <!-- ═══ Pattern 6 ═══ -->
+  <section class="pattern" id="p6">
+    <div class="pat-head">
+      <h3>6 · Continue where you left off — and routines</h3>
+      <div class="from">Borrowed from Google Docs and Netflix; routines are the speculative stretch</div>
+      <p>The home screen's first job becomes <i>resuming</i>: your last row, last filtered view and last search as one-click tiles. The stretch idea: when the event log shows the same cluster of destinations opened together every morning, offer to pin them as a named workspace — the system noticing your ritual and offering to keep it.</p>
+      <div class="try"><b>Try:</b> click a resume tile to navigate. Then hit <b>Pin workspace</b> on the routine suggestion and watch it become a persistent one-click chip row.</div>
+    </div>
+    <div class="chrome">
+      <div class="chrome-bar"><div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div><div class="urlbox" id="url-p6"><b>/admin</b> <span>· Home</span></div></div>
+      <div class="chrome-body" id="body-p6"></div>
+    </div>
+  </section>
+
+  <h2>Side by side</h2>
+  <div class="cmp-wrap">
+  <table class="cmp">
+    <thead><tr><th>Pattern</th><th>Prior art</th><th>Data it needs</th><th>Server work</th><th>Screen cost</th><th>Best at</th></tr></thead>
+    <tbody>
+      <tr><td>1 · ⌘K recents</td><td>Slack, Linear, Raycast</td><td>Local recents + frecency</td><td class="lo">None to start</td><td>Overlay only</td><td>Reaching anything you've touched in two keystrokes</td></tr>
+      <tr><td>2 · Activity feed</td><td>Slack, GitHub</td><td>Server event log (+ existing <span class="mono" style="font-size:11.5px">Version</span>)</td><td class="mid">user_event + feed API + RLS</td><td>One home card</td><td>Ambient awareness — my trail and the team's changes</td></tr>
+      <tr><td>3 · Sidebar Recent</td><td>Notion, Salesforce</td><td>Same local recents as P1</td><td class="lo">None to start</td><td>Sidebar section</td><td>Zero-keystroke recall for shortcut-averse users</td></tr>
+      <tr><td>4 · Per-table strip</td><td>Salesforce MRU</td><td>Same local recents, scoped per table</td><td class="lo">None to start</td><td>Strip above grid</td><td>Recall exactly where the repeat work happens</td></tr>
+      <tr><td>5 · Saved views + nudge</td><td>Airtable, Notion, Gmail</td><td>Repeat-filter detection</td><td class="mid">saved_view table (shareable)</td><td>Views bar + a nudge</td><td>Turning a habit into a named, shareable artifact</td></tr>
+      <tr><td>6 · Continue / routines</td><td>Google Docs, Netflix</td><td>Recents; routines need the server log</td><td class="lo">Optional</td><td>One home banner</td><td>Resuming yesterday's session in one click</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>How I'd layer them</h2>
+  <p class="sub">These are layers, not rivals — they share one event stream and differ only in where recall surfaces. Ordered by leverage: what the codebase already makes cheap, first.</p>
+  <div class="reco">
+    <div class="reco-step"><div class="tag now">Ship now</div><div>
+      <h4>⌘K palette with recents (Pattern 1), captured client-side</h4>
+      <p>A router hook writes visits, searches and filter changes to localStorage; the palette gets a modal empty state with Recent / Frequent groups. Zero server change, immediate daily payoff — and it establishes the event vocabulary every later phase reuses.</p>
+    </div></div>
+    <div class="reco-step"><div class="tag next">Next</div><div>
+      <h4>Sidebar Recent (3) and per-table strip (4)</h4>
+      <p>Two more surfaces over the <i>same</i> local store — a week of UI work, no new machinery. Between them they cover the shortcut-averse and the table-centric operator.</p>
+    </div></div>
+    <div class="reco-step"><div class="tag next">Next</div><div>
+      <h4><code>user_event</code> table + batched <code>POST /api/events</code></h4>
+      <p>Server becomes the source of truth: cross-device recents, frecency aggregates, retention (raw events pruned at 90 days, aggregates kept), RLS so a user reads only their own rows. Append-only via direct insert, like <code>audit.ts</code> — nobody edits their own trail. Unlocks the "Mine" feed (Pattern 2) on the Home Page.</p>
+    </div></div>
+    <div class="reco-step"><div class="tag later">Later</div><div>
+      <h4>Team feed (2) and Continue-where-you-left-off (6)</h4>
+      <p>Team tab reads mutations from <code>Version</code> + <code>activity_log</code> — data that already exists — role-gated and live over the websocket. The resume banner and routine detection ride the same event log once it has a few weeks of history.</p>
+    </div></div>
+    <div class="reco-step"><div class="tag maybe">Own spec</div><div>
+      <h4>Saved views + proactive nudge (Pattern 5)</h4>
+      <p>The biggest single idea, and it deserves its own capability spec: a <code>saved_view</code> Table (owner, filters, sort, share-with-roles), the views bar in ListView, and the repeat-detection nudge. It changes what a "view" <i>is</i> in the product — worth deciding deliberately, not as a rider.</p>
+    </div></div>
+  </div>
+
+  <p class="footnote">All data on this page is invented for the exploration. Prior art reviewed: Slack's ⌘K switcher, Linear, Raycast, Firefox's frecency algorithm (the age-bucket weights shown are Firefox's published defaults), VS Code's MRU ordering, Salesforce Recent Items and MRU lists, GitHub's home feed, Gmail search history and filter suggestions, Airtable and Notion saved views, Google Docs' resume row — and Frappe's own awesomebar recents, which are session-only and device-local; Featherbase can remember durably. Privacy stance throughout: your full trail (including views and searches) is visible to you alone; teammates and managers see changes, never reads.</p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  const $ = (s) => document.querySelector(s);
+  function el(tag, cls, html) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (html !== undefined) n.innerHTML = html;
+    return n;
+  }
+  function setUrl(id, html) { const u = $('#url-' + id); if (u) u.innerHTML = html; }
+  function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+
+  /* ── shared invented trail ── */
+  const KINDCLS = { view: 'view', list: 'list', find: 'find', edit: 'edit', create: 'new', submit: 'subm', page: 'page' };
+  const KINDLBL = { view: 'row', list: 'view', find: 'search', edit: 'edit', create: 'new', submit: 'submit', page: 'page' };
+  const RECENTS = [
+    { kind: 'view', label: 'Meenakshi Traders', sub: 'Customer · CUST-0007', when: '2 m',
+      url: '<b>/admin/Customer/CUST-0007</b>' },
+    { kind: 'list', label: 'Sales Invoice — status = Overdue', sub: '14 rows', when: '9 m',
+      url: '<b>/admin/Sales Invoice</b><span>?filters=[["status","=","Overdue"]]</span>' },
+    { kind: 'find', label: '"overdue chennai"', sub: 'search · 6 hits', when: '11 m',
+      url: '<b>/api/search</b><span>?q=overdue+chennai</span>' },
+    { kind: 'view', label: 'INV-2026-0418', sub: 'Sales Invoice · Meenakshi Traders', when: '26 m',
+      url: '<b>/admin/Sales Invoice/INV-2026-0418</b>' },
+    { kind: 'list', label: 'Customer — region = South · Active', sub: '38 rows', when: '1 h',
+      url: '<b>/admin/Customer</b><span>?filters=[["region","=","South"],["status","=","Active"]]</span>' },
+    { kind: 'edit', label: 'PAY-2026-0119', sub: 'Payment Entry · amount changed', when: '2 h',
+      url: '<b>/admin/Payment Entry/PAY-2026-0119</b>' },
+    { kind: 'page', label: 'Sales Register', sub: 'Report', when: '3 h',
+      url: '<b>/admin/query-report/Sales Register</b>' },
+    { kind: 'find', label: '"meenakshi"', sub: 'search · 3 hits', when: 'yest',
+      url: '<b>/api/search</b><span>?q=meenakshi</span>' },
+  ];
+  const FREQUENT = [
+    { kind: 'list', label: 'Customer — region = South · Active', sub: '41 visits', score: 940,
+      url: '<b>/admin/Customer</b><span>?filters=[["region","=","South"],["status","=","Active"]]</span>' },
+    { kind: 'list', label: 'Sales Invoice — status = Overdue', sub: '33 visits', score: 811,
+      url: '<b>/admin/Sales Invoice</b><span>?filters=[["status","=","Overdue"]]</span>' },
+    { kind: 'view', label: 'Meenakshi Traders', sub: 'Customer · 18 visits', score: 645,
+      url: '<b>/admin/Customer/CUST-0007</b>' },
+    { kind: 'page', label: 'Sales Register', sub: 'Report · 12 visits', score: 380,
+      url: '<b>/admin/query-report/Sales Register</b>' },
+  ];
+  const CUSTOMERS = [
+    { id: 'CUST-0001', name: 'Anand Traders',      region: 'South', status: 'Active',   due: '₹1.2 L' },
+    { id: 'CUST-0002', name: 'Bharat Steels',      region: 'North', status: 'Active',   due: '₹0' },
+    { id: 'CUST-0003', name: 'Chettinad Exports',  region: 'South', status: 'Active',   due: '₹3.4 L' },
+    { id: 'CUST-0004', name: 'Deccan Mills',       region: 'West',  status: 'On Hold',  due: '₹5.1 L' },
+    { id: 'CUST-0005', name: 'Everest Agencies',   region: 'North', status: 'Active',   due: '₹0.4 L' },
+    { id: 'CUST-0007', name: 'Meenakshi Traders',  region: 'South', status: 'Active',   due: '₹2.8 L' },
+    { id: 'CUST-0009', name: 'Nilgiri Foods',      region: 'South', status: 'Inactive', due: '₹0' },
+    { id: 'CUST-0012', name: 'Salem Alloys',       region: 'South', status: 'Active',   due: '₹1.9 L' },
+  ];
+  const INVOICES = [
+    { id: 'INV-2026-0402', cust: 'Bharat Steels',     amt: 84000,  due: '2026-07-02', status: 'Paid' },
+    { id: 'INV-2026-0409', cust: 'Anand Traders',     amt: 36500,  due: '2026-07-09', status: 'Overdue' },
+    { id: 'INV-2026-0411', cust: 'Chettinad Exports', amt: 152000, due: '2026-07-11', status: 'Overdue' },
+    { id: 'INV-2026-0415', cust: 'Everest Agencies',  amt: 22400,  due: '2026-07-25', status: 'Unpaid' },
+    { id: 'INV-2026-0418', cust: 'Meenakshi Traders', amt: 98000,  due: '2026-07-12', status: 'Overdue' },
+    { id: 'INV-2026-0421', cust: 'Salem Alloys',      amt: 47500,  due: '2026-07-28', status: 'Unpaid' },
+    { id: 'INV-2026-0424', cust: 'Deccan Mills',      amt: 130500, due: '2026-07-18', status: 'Overdue' },
+    { id: 'INV-2026-0427', cust: 'Meenakshi Traders', amt: 15800,  due: '2026-08-02', status: 'Unpaid' },
+  ];
+  const inr = (n) => '₹' + n.toLocaleString('en-IN');
+
+  /* ── tabs ── */
+  const PATTERNS = [
+    { id: 'p1', label: '⌘K recents' },
+    { id: 'p2', label: 'Activity feed' },
+    { id: 'p3', label: 'Sidebar Recent' },
+    { id: 'p4', label: 'Per-table strip' },
+    { id: 'p5', label: 'Saved views' },
+    { id: 'p6', label: 'Continue' },
+  ];
+  const ptabs = $('#ptabs');
+  let active = 'p1';
+  PATTERNS.forEach((p, i) => {
+    const b = el('button', 'ptab', '<span class="n">' + (i + 1) + '</span>' + esc(p.label));
+    b.addEventListener('click', () => {
+      active = p.id;
+      document.querySelectorAll('.ptab').forEach((t, j) => t.classList.toggle('on', PATTERNS[j].id === p.id));
+      document.querySelectorAll('.pattern').forEach((s) => s.classList.toggle('on', s.id === p.id));
+    });
+    ptabs.appendChild(b);
+  });
+  ptabs.children[0].classList.add('on');
+  $('#p1').classList.add('on');
+
+  function kindTag(kind) { return '<span class="kind ' + KINDCLS[kind] + '">' + KINDLBL[kind] + '</span>'; }
+
+  /* ════ P1 · palette ════ */
+  (function () {
+    const body = $('#body-p1');
+    const nav = el('div', 'mini-nav');
+    nav.appendChild(el('div', 'mini-logo', 'F'));
+    const searchBox = el('div', 'mini-search', '<span>🔍</span><span>Search or type a command…</span><kbd>⌘K</kbd>');
+    searchBox.setAttribute('role', 'button'); searchBox.tabIndex = 0;
+    nav.appendChild(searchBox);
+    nav.appendChild(el('div', 'avatar', 'S'));
+    body.appendChild(nav);
+    const stub = el('div', 'stub', 'Admin home — press <b>⌘K</b> or click the search box');
+    body.appendChild(stub);
+
+    const CMDS = [
+      { label: 'New Table', url: '<b>/admin/new-table</b>' },
+      { label: 'Toggle dark mode', url: '<b>/admin</b> <span>· theme toggled</span>' },
+      { label: 'Go to Admin home', url: '<b>/admin</b>' },
+    ];
+    const TABLES = ['Customer', 'Sales Invoice', 'Item', 'Payment Entry', 'Supplier'];
+    const ROWS = [
+      { label: 'Meenakshi Traders', sub: 'Customer', frec: 645, url: '<b>/admin/Customer/CUST-0007</b>' },
+      { label: 'Deccan Mills', sub: 'Customer', frec: 40, url: '<b>/admin/Customer/CUST-0004</b>' },
+      { label: 'Everest Agencies', sub: 'Customer', frec: 25, url: '<b>/admin/Customer/CUST-0005</b>' },
+      { label: 'INV-2026-0418 · Meenakshi Traders', sub: 'Sales Invoice', frec: 120, url: '<b>/admin/Sales Invoice/INV-2026-0418</b>' },
+      { label: 'Metal Shelf 4x2', sub: 'Item', frec: 5, url: '<b>/admin/Item/ITM-0031</b>' },
+    ];
+
+    let open = false, sel = 0, items = [];
+    let scrim = null, pal = null, input = null, list = null;
+
+    function close() {
+      if (!open) return;
+      open = false;
+      scrim.remove(); pal.remove();
+    }
+    function pick(it) {
+      setUrl('p1', it.url);
+      stub.innerHTML = 'Navigated to <b>' + esc(it.plain) + '</b> — the palette closed, focus went to the page';
+      close();
+    }
+    function render() {
+      const q = input.value.trim().toLowerCase();
+      list.innerHTML = '';
+      items = [];
+      function section(title) { list.appendChild(el('div', 'pal-sec', title)); }
+      function add(it) {
+        const b = el('button', 'pal-item',
+          kindTag(it.kind || 'page') + '<span class="lab">' + esc(it.label) +
+          (it.sub ? '<small>' + esc(it.sub) + '</small>' : '') + '</span>' +
+          (it.meta ? '<span class="meta">' + esc(it.meta) + '</span>' : ''));
+        const idx = items.length;
+        b.addEventListener('click', () => pick(it));
+        b.addEventListener('mousemove', () => { sel = idx; paint(); });
+        list.appendChild(b);
+        items.push({ ...it, node: b });
+      }
+      if (!q) {
+        section('Recent');
+        RECENTS.slice(0, 6).forEach((r) => add({ ...r, plain: r.label, meta: r.when }));
+        section('Frequent');
+        FREQUENT.forEach((f) => add({ ...f, plain: f.label, meta: '★ ' + f.score }));
+        section('Commands');
+        CMDS.forEach((c) => add({ kind: 'page', label: c.label, plain: c.label, url: c.url }));
+      } else {
+        const hitT = TABLES.filter((t) => t.toLowerCase().includes(q));
+        const hitR = ROWS.filter((r) => r.label.toLowerCase().includes(q)).sort((a, b) => b.frec - a.frec);
+        const hitC = CMDS.filter((c) => c.label.toLowerCase().includes(q));
+        const hitS = RECENTS.filter((r) => r.kind === 'find' && r.label.toLowerCase().includes(q));
+        if (hitR.length) {
+          section('Rows — your frecency first');
+          hitR.forEach((r) => add({ kind: 'view', label: r.label, sub: r.sub, plain: r.label, meta: r.frec >= 100 ? '★ ' + r.frec : '', url: r.url }));
+        }
+        if (hitT.length) {
+          section('Tables');
+          hitT.forEach((t) => add({ kind: 'list', label: t, plain: t + ' list', url: '<b>/admin/' + esc(t) + '</b>' }));
+        }
+        if (hitS.length) {
+          section('Recent searches');
+          hitS.forEach((s) => add({ ...s, plain: 'search ' + s.label, meta: s.when }));
+        }
+        if (hitC.length) {
+          section('Commands');
+          hitC.forEach((c) => add({ kind: 'page', label: c.label, plain: c.label, url: c.url }));
+        }
+        if (!items.length) list.appendChild(el('div', 'pal-sec', 'No matches — Enter searches all rows server-side'));
+      }
+      sel = 0; paint();
+    }
+    function paint() {
+      items.forEach((it, i) => it.node.classList.toggle('sel', i === sel));
+      if (items[sel]) items[sel].node.scrollIntoView({ block: 'nearest' });
+    }
+    function openPal() {
+      if (open) return;
+      open = true;
+      scrim = el('div', 'pal-scrim');
+      scrim.addEventListener('click', close);
+      pal = el('div', 'pal');
+      const inWrap = el('div', 'pal-input', '<span>🔍</span>');
+      input = document.createElement('input');
+      input.placeholder = 'Type to search — empty shows your recents';
+      input.setAttribute('aria-label', 'Command palette');
+      inWrap.appendChild(input);
+      inWrap.appendChild(el('span', 'esc', 'esc'));
+      list = el('div', 'pal-body');
+      pal.appendChild(inWrap);
+      pal.appendChild(list);
+      pal.appendChild(el('div', 'pal-foot', '<span>↑↓ navigate</span><span>↵ open</span><span>esc close</span><span style="margin-left:auto">ranked by frecency</span>'));
+      body.appendChild(scrim); body.appendChild(pal);
+      input.addEventListener('input', render);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, items.length - 1); paint(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); paint(); }
+        else if (e.key === 'Enter') { e.preventDefault(); if (items[sel]) pick(items[sel]); }
+        else if (e.key === 'Escape') { close(); }
+      });
+      render();
+      input.focus();
+    }
+    searchBox.addEventListener('click', openPal);
+    searchBox.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPal(); } });
+    document.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && active === 'p1') {
+        e.preventDefault(); openPal();
+      }
+    });
+  })();
+
+  /* ════ P2 · feed ════ */
+  (function () {
+    const body = $('#body-p2');
+    const card = el('div', 'card');
+    const tabs = el('div', 'ftabs');
+    const tMine = el('button', 'ftab on', 'Mine');
+    const tTeam = el('button', 'ftab', 'Team');
+    tabs.appendChild(tMine); tabs.appendChild(tTeam);
+    card.appendChild(tabs);
+    const listWrap = el('div');
+    card.appendChild(listWrap);
+    const note = el('div', 'feed-note', '');
+    card.appendChild(note);
+    body.appendChild(card);
+    const controls = el('div', '', '');
+    controls.style.marginTop = '12px';
+    const simBtn = el('button', 'btn', 'Simulate teammate activity');
+    controls.appendChild(simBtn);
+    body.appendChild(controls);
+
+    const MINE = RECENTS.map((r) => ({
+      who: 'You', av: 'S', avc: '', kind: r.kind, when: r.when,
+      text: ({ view: 'opened', list: 'filtered', find: 'searched', edit: 'edited', page: 'opened' })[r.kind] +
+        ' <span class="tgt" data-url="' + esc(r.url).replace(/"/g, '&quot;') + '">' + esc(r.label) + '</span>' +
+        (r.sub ? ' <span style="color:var(--ink-faint)">· ' + esc(r.sub) + '</span>' : ''),
+    }));
+    const TEAM = [
+      { who: 'Fathima Beevi', av: 'FB', avc: 'g2', kind: 'submit', when: '4 m', text: 'submitted <span class="tgt" data-url="<b>/admin/Sales Invoice/INV-2026-0421</b>">INV-2026-0421</span> <span style="color:var(--ink-faint)">· Salem Alloys</span>' },
+      { who: 'Arun Krishnan', av: 'AK', avc: 'g3', kind: 'create', when: '22 m', text: 'created <span class="tgt" data-url="<b>/admin/Customer/CUST-0031</b>">Trichy Polymers</span> <span style="color:var(--ink-faint)">· Customer</span>' },
+      { who: 'You', av: 'S', avc: '', kind: 'edit', when: '2 h', text: 'edited <span class="tgt" data-url="<b>/admin/Payment Entry/PAY-2026-0119</b>">PAY-2026-0119</span> <span style="color:var(--ink-faint)">· Payment Entry</span>' },
+      { who: 'Fathima Beevi', av: 'FB', avc: 'g2', kind: 'edit', when: '3 h', text: 'edited <span class="tgt" data-url="<b>/admin/Sales Invoice/INV-2026-0424</b>">INV-2026-0424</span> <span style="color:var(--ink-faint)">· due date</span>' },
+    ];
+    const SIM = [
+      { who: 'Arun Krishnan', av: 'AK', avc: 'g3', kind: 'submit', when: 'now', text: 'submitted <span class="tgt" data-url="<b>/admin/Payment Entry/PAY-2026-0131</b>">PAY-2026-0131</span> <span style="color:var(--ink-faint)">· ₹47,500</span>' },
+      { who: 'Fathima Beevi', av: 'FB', avc: 'g2', kind: 'create', when: 'now', text: 'created <span class="tgt" data-url="<b>/admin/Sales Invoice/INV-2026-0430</b>">INV-2026-0430</span> <span style="color:var(--ink-faint)">· Nilgiri Foods</span>' },
+      { who: 'Arun Krishnan', av: 'AK', avc: 'g3', kind: 'edit', when: 'now', text: 'edited <span class="tgt" data-url="<b>/admin/Customer/CUST-0031</b>">Trichy Polymers</span> <span style="color:var(--ink-faint)">· credit limit</span>' },
+    ];
+    let mode = 'mine', simIdx = 0;
+    function row(ev, fresh) {
+      const r = el('div', 'feed-row' + (fresh ? ' fresh' : ''),
+        '<span class="avatar ' + ev.avc + '">' + ev.av + '</span>' + kindTag(ev.kind) +
+        '<span class="txt"><span class="who-n">' + esc(ev.who) + '</span> ' + ev.text + '</span>' +
+        '<span class="when">' + esc(ev.when) + '</span>');
+      r.querySelectorAll('.tgt').forEach((t) =>
+        t.addEventListener('click', () => setUrl('p2', t.getAttribute('data-url'))));
+      return r;
+    }
+    function render() {
+      tMine.classList.toggle('on', mode === 'mine');
+      tTeam.classList.toggle('on', mode === 'team');
+      listWrap.innerHTML = '';
+      (mode === 'mine' ? MINE : TEAM).forEach((ev) => listWrap.appendChild(row(ev, false)));
+      note.textContent = mode === 'mine'
+        ? 'Your full trail — views, searches, filters, edits. Visible to you alone.'
+        : 'Changes only: creates, edits, submissions. What colleagues viewed is never shown. Role-gated; live over the websocket.';
+    }
+    tMine.addEventListener('click', () => { mode = 'mine'; render(); });
+    tTeam.addEventListener('click', () => { mode = 'team'; render(); });
+    simBtn.addEventListener('click', () => {
+      TEAM.unshift(SIM[simIdx % SIM.length]); simIdx++;
+      if (mode !== 'team') { mode = 'team'; }
+      render();
+      const first = listWrap.firstChild;
+      if (first) first.classList.add('fresh');
+    });
+    render();
+  })();
+
+  /* ════ P3 · sidebar ════ */
+  (function () {
+    const body = $('#body-p3');
+    const layout = el('div', 'sb-layout');
+    const sb = el('div', 'card sb');
+    const main = el('div');
+    layout.appendChild(sb); layout.appendChild(main);
+    body.appendChild(layout);
+
+    const mainCard = el('div', 'card');
+    main.appendChild(mainCard);
+    function showMain(title, sub) {
+      mainCard.innerHTML =
+        '<div style="padding:12px 16px;border-bottom:1px solid var(--border)"><div style="font-weight:650;font-size:15px">' + esc(title) + '</div>' +
+        (sub ? '<div style="font-size:12px;color:var(--ink-faint)">' + esc(sub) + '</div>' : '') + '</div>' +
+        '<div style="padding:14px 16px"><div class="stub">rendered by the generic ListView / FormView</div></div>';
+    }
+    showMain('Admin home', 'Pick anything on the left — Recent needs zero keystrokes');
+
+    function item(txt, opts) {
+      const b = el('button', 'sb-item', txt);
+      if (opts && opts.on) b.classList.add('on');
+      sb.appendChild(b);
+      return b;
+    }
+    sb.appendChild(el('div', 'sb-sec', 'Admin'));
+    item('🏠&nbsp; Home', { on: true }).addEventListener('click', () => { setUrl('p3', '<b>/admin</b>'); showMain('Admin home', ''); });
+    sb.appendChild(el('div', 'sb-sec', 'Tables'));
+    ['Customer', 'Sales Invoice', 'Item', 'Payment Entry'].forEach((t) => {
+      item(esc(t)).addEventListener('click', () => { setUrl('p3', '<b>/admin/' + esc(t) + '</b>'); showMain(t, 'List'); });
+    });
+    sb.appendChild(el('div', 'sb-sec', 'Recent'));
+    RECENTS.slice(0, 5).forEach((r) => {
+      const b = item('<span>' + ({ view: '📄', list: '≔', find: '🔍', edit: '✎', page: '▦' })[r.kind] + '</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.label) + '<span class="sub-l">' + esc(r.sub) + '</span></span><span class="cnt">' + esc(r.when) + '</span>');
+      b.addEventListener('click', () => { setUrl('p3', r.url); showMain(r.label, r.sub); });
+    });
+    sb.appendChild(el('div', 'sb-sec', 'Frequent'));
+    FREQUENT.slice(0, 3).forEach((f) => {
+      const b = item('<span>★</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.label) + '</span><span class="cnt">' + esc(String(f.score)) + '</span>');
+      b.addEventListener('click', () => { setUrl('p3', f.url); showMain(f.label, f.sub); });
+    });
+  })();
+
+  /* ════ P4 · per-table strip ════ */
+  (function () {
+    const body = $('#body-p4');
+    const head = el('div', '', '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px"><div style="font-weight:650;font-size:16px">Customer</div><span class="pill mute">' + CUSTOMERS.length + ' rows</span><span style="flex:1"></span><button class="btn primary small">+ New</button></div>');
+    body.appendChild(head);
+
+    const strip = el('div', 'card strip');
+    strip.innerHTML = '<div class="strip-t">Recent in Customer — yours alone</div>';
+    const line = el('div', 'rowline');
+    strip.appendChild(line);
+    body.appendChild(strip);
+
+    const chipsRow = el('div', 'rowline');
+    chipsRow.style.margin = '0 0 10px';
+    body.appendChild(chipsRow);
+
+    const gridCard = el('div', 'card');
+    body.appendChild(gridCard);
+
+    const FILTS = {
+      south:  { chips: [['region', '=', 'South'], ['status', '=', 'Active']],
+                test: (c) => c.region === 'South' && c.status === 'Active',
+                url: '<b>/admin/Customer</b><span>?filters=[["region","=","South"],["status","=","Active"]]</span>' },
+      onhold: { chips: [['status', '=', 'On Hold']],
+                test: (c) => c.status === 'On Hold',
+                url: '<b>/admin/Customer</b><span>?filters=[["status","=","On Hold"]]</span>' },
+    };
+    let filt = null; // null | key of FILTS
+    function renderGrid() {
+      const rows = CUSTOMERS.filter((c) => !filt || FILTS[filt].test(c));
+      gridCard.innerHTML = '<table class="grid"><thead><tr><th>ID</th><th>Customer</th><th>Region</th><th>Status</th><th class="num">Outstanding</th></tr></thead><tbody>' +
+        rows.map((c) => '<tr class="rowlink" data-id="' + c.id + '"><td class="mono" style="font-size:12px">' + c.id + '</td><td style="font-weight:550">' + esc(c.name) + '</td><td>' + c.region + '</td><td><span class="pill ' + (c.status === 'Active' ? 'good' : c.status === 'On Hold' ? 'warn' : 'mute') + '">' + c.status + '</span></td><td class="num">' + c.due + '</td></tr>').join('') +
+        '</tbody></table>';
+      gridCard.querySelectorAll('tr.rowlink').forEach((tr) =>
+        tr.addEventListener('click', () => setUrl('p4', '<b>/admin/Customer/' + tr.getAttribute('data-id') + '</b>')));
+      chipsRow.innerHTML = '';
+      if (filt) {
+        FILTS[filt].chips.forEach((f) => {
+          const c = el('span', 'chip', esc(f.join(' ')) + '<button class="x" aria-label="Remove filter">✕</button>');
+          c.querySelector('.x').addEventListener('click', () => { filt = null; renderGrid(); setUrl('p4', '<b>/admin/Customer</b>'); });
+          chipsRow.appendChild(c);
+        });
+        const n = el('span', '', rowsCount(rows));
+        n.style.cssText = 'font-size:12px;color:var(--ink-muted)';
+        chipsRow.appendChild(n);
+      }
+    }
+    function rowsCount(rows) { return rows.length + ' of ' + CUSTOMERS.length + ' rows'; }
+
+    line.appendChild(el('span', 'grp', 'Rows:'));
+    [['CUST-0007', 'Meenakshi Traders'], ['CUST-0003', 'Chettinad Exports'], ['CUST-0012', 'Salem Alloys']].forEach(([id, nm]) => {
+      const c = el('button', 'chip ghost', esc(nm));
+      c.addEventListener('click', () => setUrl('p4', '<b>/admin/Customer/' + id + '</b>'));
+      line.appendChild(c);
+    });
+    line.appendChild(el('span', 'grp', 'Views:'));
+    const v1 = el('button', 'chip', 'region = South · Active <span style="opacity:.7">(4)</span>');
+    v1.addEventListener('click', () => { filt = 'south'; renderGrid(); setUrl('p4', FILTS.south.url); });
+    line.appendChild(v1);
+    const v2 = el('button', 'chip', 'status = On Hold <span style="opacity:.7">(1)</span>');
+    v2.addEventListener('click', () => { filt = 'onhold'; renderGrid(); setUrl('p4', FILTS.onhold.url); });
+    line.appendChild(v2);
+    renderGrid();
+  })();
+
+  /* ════ P5 · saved views ════ */
+  (function () {
+    const body = $('#body-p5');
+    const viewsBar = el('div', 'views-bar');
+    body.appendChild(viewsBar);
+    const gridCard = el('div', 'card');
+    body.appendChild(gridCard);
+    const meter = el('div', '', '');
+    meter.style.cssText = 'margin-top:10px;font-size:12px;color:var(--ink-faint)';
+    body.appendChild(meter);
+
+    let current = 'all';           // 'all' | 'overdue' | 'south' | 'big'
+    let overdueApplies = 1;        // "earlier this week" head start, honest in the meter
+    let saved = null;              // {name, shared}
+    let prompt = null, toast = null;
+
+    const FILTERS = {
+      all:     { label: 'All', test: () => true, url: '<b>/admin/Sales Invoice</b>' },
+      overdue: { label: 'Overdue', test: (r) => r.status === 'Overdue',
+                 url: '<b>/admin/Sales Invoice</b><span>?filters=[["status","=","Overdue"]]</span>' },
+      south:   { label: 'South region', test: (r) => ['Anand Traders','Chettinad Exports','Meenakshi Traders','Salem Alloys','Nilgiri Foods'].includes(r.cust),
+                 url: '<b>/admin/Sales Invoice</b><span>?filters=[["customer.region","=","South"]]</span>' },
+      big:     { label: '&gt; ₹50k', test: (r) => r.amt > 50000,
+                 url: '<b>/admin/Sales Invoice</b><span>?filters=[["grand_total","&gt;",50000]]</span>' },
+    };
+
+    function renderBar() {
+      viewsBar.innerHTML = '';
+      Object.entries(FILTERS).forEach(([key, f]) => {
+        const b = el('button', 'btn small' + (current === key ? ' on' : ''), f.label);
+        b.addEventListener('click', () => apply(key, true));
+        viewsBar.appendChild(b);
+      });
+      if (saved) {
+        const wrap = el('span', 'chip', '★ ' + esc(saved.name));
+        wrap.addEventListener('click', () => apply('overdue', false));
+        viewsBar.appendChild(wrap);
+        const share = el('button', 'btn small', saved.shared ? 'Shared with team' : 'Only me — share?');
+        share.addEventListener('click', () => {
+          saved.shared = !saved.shared; renderBar();
+          showToast(saved.shared ? 'View shared with your team' : 'View is now private');
+        });
+        viewsBar.appendChild(share);
+      }
+    }
+    function renderGrid() {
+      const f = FILTERS[current];
+      const rows = INVOICES.filter(f.test);
+      const total = rows.reduce((s, r) => s + r.amt, 0);
+      gridCard.innerHTML = '<table class="grid"><thead><tr><th>Invoice</th><th>Customer</th><th class="num">Amount</th><th>Due</th><th>Status</th></tr></thead><tbody>' +
+        rows.map((r) => '<tr class="rowlink" data-id="' + r.id + '"><td class="mono" style="font-size:12px">' + r.id + '</td><td>' + esc(r.cust) + '</td><td class="num">' + inr(r.amt) + '</td><td class="mono" style="font-size:12px">' + r.due + '</td><td><span class="pill ' + (r.status === 'Paid' ? 'good' : r.status === 'Overdue' ? 'danger' : 'warn') + '">' + r.status + '</span></td></tr>').join('') +
+        '</tbody></table>' +
+        '<div class="feed-note">' + rows.length + ' rows · ' + inr(total) + '</div>';
+      gridCard.querySelectorAll('tr.rowlink').forEach((tr) =>
+        tr.addEventListener('click', () => setUrl('p5', '<b>/admin/Sales Invoice/' + tr.getAttribute('data-id') + '</b>')));
+    }
+    function showToast(msg) {
+      if (toast) toast.remove();
+      toast = el('div', 'toast', esc(msg));
+      body.appendChild(toast);
+      setTimeout(() => { if (toast) { toast.remove(); toast = null; } }, 1800);
+    }
+    function maybeNudge() {
+      if (saved || prompt || overdueApplies < 3) return;
+      prompt = el('div', 'prompt-card');
+      prompt.innerHTML = '<h5>Save this as a view?</h5>' +
+        '<p>That\'s the <b>3rd time this week</b> you\'ve filtered Sales Invoice to <span class="mono" style="font-size:11.5px">status = Overdue</span>. Name it once, click it forever.</p>' +
+        '<input type="text" value="Overdue invoices" aria-label="View name">' +
+        '<div style="display:flex;gap:8px"><button class="btn primary small" data-a="save">Save view</button><button class="btn small" data-a="no">Not now</button></div>';
+      prompt.querySelector('[data-a=save]').addEventListener('click', () => {
+        saved = { name: prompt.querySelector('input').value || 'Overdue invoices', shared: false };
+        prompt.remove(); prompt = null;
+        renderBar(); showToast('View saved — stored as a saved_view row');
+      });
+      prompt.querySelector('[data-a=no]').addEventListener('click', () => { prompt.remove(); prompt = null; });
+      body.appendChild(prompt);
+    }
+    function apply(key, counted) {
+      current = key;
+      if (key === 'overdue' && counted) overdueApplies++;
+      setUrl('p5', FILTERS[key].url);
+      renderBar(); renderGrid(); renderMeter();
+      if (key === 'overdue') maybeNudge();
+    }
+    function renderMeter() {
+      meter.innerHTML = 'Repeat-detection demo: <b>status = Overdue</b> applied <b>' + overdueApplies + '×</b> this week (1 was earlier in the week; the nudge fires at 3).';
+    }
+    renderBar(); renderGrid(); renderMeter();
+  })();
+
+  /* ════ P6 · continue ════ */
+  (function () {
+    const body = $('#body-p6');
+    body.appendChild(el('div', 'home-hi', 'Good morning, Siraj'));
+    body.appendChild(el('div', 'home-date', 'Friday 31 July 2026 · you were last here yesterday, 6:12 pm'));
+
+    body.appendChild(el('div', 'sb-sec', 'Continue where you left off')).style.padding = '0 0 6px';
+    const grid = el('div', 'resume-grid');
+    [
+      { k: 'Last row', l: 'Meenakshi Traders', s: 'Customer · edited outstanding note', url: '<b>/admin/Customer/CUST-0007</b>' },
+      { k: 'Last view', l: 'Sales Invoice — Overdue', s: '14 open · ₹4.2 L outstanding', url: '<b>/admin/Sales Invoice</b><span>?filters=[["status","=","Overdue"]]</span>' },
+      { k: 'Last search', l: '"overdue chennai"', s: 'Run it again — 6 hits yesterday', url: '<b>/api/search</b><span>?q=overdue+chennai</span>' },
+    ].forEach((t) => {
+      const b = el('button', 'resume-tile', '<div class="rt-k">' + esc(t.k) + '</div><div class="rt-l">' + esc(t.l) + '</div><div class="rt-s">' + esc(t.s) + '</div>');
+      b.addEventListener('click', () => setUrl('p6', t.url));
+      grid.appendChild(b);
+    });
+    body.appendChild(grid);
+
+    const routine = el('div', 'card routine');
+    const pinned = el('div');
+    function renderRoutine(isPinned) {
+      if (!isPinned) {
+        routine.innerHTML = '<h5>Looks like a morning routine</h5>' +
+          '<p>On 9 of the last 10 weekdays, between 9:15 and 9:45, you opened <b>Customer · South</b>, <b>Sales Invoice · Overdue</b> and the <b>Sales Register</b> — in that order. Pin them as a workspace?</p>';
+        const row = el('div', '', '');
+        row.style.cssText = 'display:flex;gap:8px';
+        const yes = el('button', 'btn primary small', 'Pin workspace');
+        const no = el('button', 'btn small', 'Dismiss');
+        yes.addEventListener('click', () => renderRoutine(true));
+        no.addEventListener('click', () => routine.remove());
+        row.appendChild(yes); row.appendChild(no);
+        routine.appendChild(row);
+      } else {
+        routine.innerHTML = '<h5>📌 Morning rounds — your workspace</h5>' +
+          '<p>Pinned. One click opens each; this row now appears on your Home Page every day.</p>';
+        const row = el('div', '', '');
+        row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap';
+        [
+          ['Customer · South', '<b>/admin/Customer</b><span>?filters=[["region","=","South"],["status","=","Active"]]</span>'],
+          ['Sales Invoice · Overdue', '<b>/admin/Sales Invoice</b><span>?filters=[["status","=","Overdue"]]</span>'],
+          ['Sales Register', '<b>/admin/query-report/Sales Register</b>'],
+        ].forEach(([l, u]) => {
+          const c = el('button', 'chip', esc(l));
+          c.addEventListener('click', () => setUrl('p6', u));
+          row.appendChild(c);
+        });
+        routine.appendChild(row);
+      }
+    }
+    renderRoutine(false);
+    body.appendChild(routine);
+    body.appendChild(pinned);
+  })();
+})();
+</script>
