@@ -71,6 +71,41 @@ test('#101: an empty command bar lists recent visits and replays them', async ({
   await expect(page.getByTestId('form-view')).toBeVisible()
 })
 
+test('#101 P2: the sidebar and the per-table strip replay the trail', async ({ page }) => {
+  await login(page)
+  const filters = encodeURIComponent(JSON.stringify([['note', '=', 'searchable']]))
+  await page.goto(`/admin/${encodeURIComponent(DT)}?filters=${filters}`)
+  await expect(page.getByTestId('doctype-page')).toBeVisible()
+  await page.goto(`/admin/${encodeURIComponent(DT)}/${DOC}`)
+  await expect(page.getByTestId('form-view')).toBeVisible()
+
+  // Sidebar recall, zero keystrokes: the row we're on tops the group.
+  const sidebar = page.getByTestId('sidebar-recents')
+  await expect(sidebar.getByTestId('sidebar-recent').first()).toContainText(DOC)
+
+  // Its filtered-view entry carries the filter summary and replays the URL.
+  await sidebar
+    .getByTestId('sidebar-recent')
+    .filter({ hasText: 'note = searchable' })
+    .first()
+    .click()
+  await expect(page).toHaveURL(/filters=/)
+  await expect(page.getByTestId('doctype-page')).toBeVisible()
+
+  // The strip above the grid shows this table's recent row + filter set.
+  await page.goto(`/admin/${encodeURIComponent(DT)}`)
+  const strip = page.getByTestId('recent-strip')
+  await expect(strip.getByTestId('recent-strip-row').first()).toContainText(DOC)
+  await expect(strip.getByTestId('recent-strip-view').first()).toContainText('note = searchable')
+
+  // A view chip re-applies the whole filter set; a row chip opens the form.
+  await strip.getByTestId('recent-strip-view').first().click()
+  await expect(page).toHaveURL(/filters=/)
+  await strip.getByTestId('recent-strip-row').first().click()
+  await expect(page).toHaveURL(new RegExp(`${encodeURIComponent(DT)}/${DOC}`))
+  await expect(page.getByTestId('form-view')).toBeVisible()
+})
+
 test('#101: searches are remembered and offered back while typing', async ({ page }) => {
   await login(page)
 

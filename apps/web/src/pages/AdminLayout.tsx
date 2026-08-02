@@ -193,6 +193,19 @@ export function AdminLayout() {
   const pick = [...recentItems, ...frequentItems]
   const searchChips = user && trimmed ? recentSearches(user.name, trimmed, 3) : []
 
+  // #101 Phase 2: the sidebar's zero-keystroke recall — destinations only
+  // (searches stay in the command bar, where they can be re-run).
+  const sidebarRecent = user
+    ? recentActions(user.name, 12)
+        .filter((e) => e.kind !== 'search')
+        .slice(0, 5)
+    : []
+  const sidebarFrequent = user
+    ? frequentActions(user.name, 8)
+        .filter((f) => !sidebarRecent.some((r) => r.key === f.key))
+        .slice(0, 3)
+    : []
+
   function recordSearch(q: string) {
     if (user && q) recordAction(user.name, { kind: 'search', key: `search:${q.toLowerCase()}`, label: q, path: '' })
   }
@@ -621,6 +634,26 @@ export function AdminLayout() {
               </Link>
             ))}
           </nav>
+          {/* #101 Phase 2: recall without a keystroke — the same per-user
+              buffer the command bar reads. */}
+          {(sidebarRecent.length > 0 || sidebarFrequent.length > 0) && (
+            <div className="border-t border-[var(--color-border)] px-2 py-2" data-testid="sidebar-recents">
+              <p className="px-2 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+                Recent
+              </p>
+              {sidebarRecent.map((r) => (
+                <SidebarRecentRow key={r.key} entry={r} onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
+              ))}
+              {sidebarFrequent.length > 0 && (
+                <p className="px-2 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+                  Frequent
+                </p>
+              )}
+              {sidebarFrequent.map((r) => (
+                <SidebarRecentRow key={r.key} entry={r} frequent onOpen={(e) => { setSidebarOpen(false); openRecent(e) }} />
+              ))}
+            </div>
+          )}
           <div className="border-t border-[var(--color-border)] px-2 py-2">
             <Link
               to="/admin/all-tables"
@@ -651,6 +684,36 @@ export function AdminLayout() {
 // /api/set_password (the endpoint scopes to the caller when no user is given).
 // Mirrors the ResetPassword page's form: fc-card / fc-label / fc-input, a
 // client-side confirm check, then a success state.
+// #101 Phase 2: one sidebar recall row — label over sub-label, truncated to
+// the rail's width, ★-marked when it comes from the Frequent ranking.
+function SidebarRecentRow({
+  entry,
+  frequent,
+  onOpen,
+}: {
+  entry: RecentEntry
+  frequent?: boolean
+  onOpen: (entry: RecentEntry) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(entry)}
+      data-testid={frequent ? 'sidebar-frequent' : 'sidebar-recent'}
+      title={entry.sub ? `${entry.label} — ${entry.sub}` : entry.label}
+      className="block w-full rounded-md px-2 py-1 text-left hover:bg-[var(--color-subtle)]"
+    >
+      <span className="block truncate text-sm text-[var(--color-ink)]">
+        {frequent && <span className="mr-1 text-[var(--color-warn)]">★</span>}
+        {entry.label}
+      </span>
+      {entry.sub && (
+        <span className="block truncate text-[11px] text-[var(--color-ink-faint)]">{entry.sub}</span>
+      )}
+    </button>
+  )
+}
+
 // #101: one row of the command bar's Recent/Frequent groups.
 const RECENT_KIND_LABEL = { row: 'row', list: 'view', page: 'page', search: 'search' } as const
 

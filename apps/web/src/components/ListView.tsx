@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { ApiError, api, listResource } from '../lib/api'
+import { ApiError, api, getSessionUser, listResource } from '../lib/api'
+import { recentActions, type RecentEntry } from '../lib/recents'
 import { NO_COLUMN_TYPES, listColumns, useMeta } from '../lib/meta'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
@@ -360,6 +361,7 @@ export function ListView({
           )}
         </div>
       </div>
+      {onFiltersChange && <RecentStrip doctype={doctype} onApply={onFiltersChange} />}
       {onFiltersChange && meta.data && (
         <>
           <StandardFilters meta={meta.data} filters={filters} onChange={onFiltersChange} />
@@ -706,6 +708,66 @@ export function FilterBar({
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// #101 Phase 2: recall placed where the repeat work happens — this user's
+// recent rows and recent filter sets for THIS table, from the same
+// localStorage buffer the command bar reads. A view chip re-applies its
+// whole filter set through the normal onFiltersChange pipeline (the filters
+// live in the URL, so this is just replaying a remembered list state).
+function RecentStrip({
+  doctype,
+  onApply,
+}: {
+  doctype: string
+  onApply: (filters: Filter[]) => void
+}) {
+  const user = getSessionUser()
+  const entries = user ? recentActions(user.name, 60) : []
+  const rows = entries.filter((e) => e.kind === 'row' && e.key.startsWith(`row:${doctype}/`)).slice(0, 4)
+  const views = entries
+    .map((e) => {
+      if (e.kind !== 'list' || !e.key.startsWith(`list:${doctype}?`)) return null
+      try {
+        const parsed = JSON.parse(e.key.slice(`list:${doctype}?`.length)) as Filter[]
+        return Array.isArray(parsed) && parsed.length > 0 ? { entry: e, parsed } : null
+      } catch {
+        return null
+      }
+    })
+    .filter((v): v is { entry: RecentEntry; parsed: Filter[] } => v !== null)
+    .slice(0, 3)
+  if (rows.length === 0 && views.length === 0) return null
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-2" data-testid="recent-strip">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-ink-faint)]">
+        Recent
+      </span>
+      {rows.map((r) => (
+        <Link
+          key={r.key}
+          to="/admin/$doctype/$name"
+          params={{ doctype, name: r.label }}
+          data-testid="recent-strip-row"
+          className="rounded-full border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2.5 py-0.5 text-xs text-[var(--color-ink-muted)] hover:border-[var(--color-brand)] hover:text-[var(--color-brand)]"
+        >
+          {r.label}
+        </Link>
+      ))}
+      {views.map(({ entry, parsed }) => (
+        <button
+          key={entry.key}
+          type="button"
+          onClick={() => onApply(parsed)}
+          data-testid="recent-strip-view"
+          title={entry.sub}
+          className="max-w-72 truncate rounded-full bg-[var(--color-brand-tint)] px-2.5 py-0.5 text-xs font-medium text-[var(--color-brand)] hover:opacity-80"
+        >
+          {entry.sub}
+        </button>
+      ))}
     </div>
   )
 }
