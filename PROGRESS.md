@@ -17,6 +17,14 @@ this look — do not introduce ad-hoc colors/spacing:
   CSS variables and `.fc-*` classes — never a literal color — so it works
   under every palette × light/dark combination automatically.
 
+## 2026-08-02 — Relational navigation MERGED (PR #102 → main)
+
+PR #102 merged to `main` as `ec8dd61` with all four review findings fixed
+(see the "Review fixes" block in the entry below). Issue #100 stays open as
+the standing design reference for relational navigation. Noted follow-ups
+remain: per-table curation of related tabs, and a server-side join surface
+so Explore can chain via-sub-table backlinks past the client-side cap.
+
 ## 2026-07-31 — Relational navigation: all six patterns from issue #100
 
 The design exploration in `docs/design/explorations/relational-navigation.*`
