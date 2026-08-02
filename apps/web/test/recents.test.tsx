@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   actionForLocation,
   ago,
+  connectEventSink,
   describeFilters,
+  flushPendingEvents,
   frecency,
   frequentActions,
   recentActions,
@@ -113,6 +115,54 @@ describe('actionForLocation', () => {
     expect(actionForLocation('/admin/new-table', {})).toBeNull()
     expect(actionForLocation('/admin/import', {})).toBeNull()
     expect(actionForLocation('/admin/Customer/new', {})).toBeNull()
+  })
+})
+
+// PR #104 review: the debounce queue is owner-tagged and fail-closed — a
+// pending batch never rides another account's session.
+describe('server event queue attribution', () => {
+  function sinkFor(current: string | null, posted: Array<Record<string, unknown>>) {
+    connectEventSink({
+      currentUser: () => current,
+      post: (events) => posted.push(...events),
+      beacon: (events) => posted.push(...events),
+    })
+  }
+
+  beforeEach(() => {
+    // Drain whatever an earlier test queued: with no authenticated user,
+    // everything is discarded.
+    sinkFor(null, [])
+    flushPendingEvents()
+  })
+
+  it("another account's pending events are discarded, never re-attributed", () => {
+    const posted: Array<Record<string, unknown>> = []
+    recordAction('user-a', row('CUST-1'), NOW)
+    sinkFor('user-b', posted)
+    flushPendingEvents()
+    expect(posted).toHaveLength(0)
+    // The discard is permanent — they do not resurface for their owner later.
+    sinkFor('user-a', posted)
+    flushPendingEvents()
+    expect(posted).toHaveLength(0)
+  })
+
+  it("the owner's events flush under their own session", () => {
+    const posted: Array<Record<string, unknown>> = []
+    sinkFor('user-a', posted)
+    recordAction('user-a', row('CUST-2'), NOW)
+    flushPendingEvents()
+    expect(posted.map((p) => p.key)).toEqual(['row:Customer/CUST-2'])
+  })
+
+  it('a mixed queue only ships the current session’s share', () => {
+    const posted: Array<Record<string, unknown>> = []
+    sinkFor('user-a', posted)
+    recordAction('user-a', row('CUST-3'), NOW - 1000)
+    recordAction('user-b', row('CUST-4'), NOW)
+    flushPendingEvents()
+    expect(posted.map((p) => p.key)).toEqual(['row:Customer/CUST-3'])
   })
 })
 

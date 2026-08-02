@@ -59,7 +59,7 @@ export function recordAction(user: string, action: RecentAction, now = Date.now(
     }
   }
   save(user, entries)
-  enqueueServerEvent(action, now)
+  enqueueServerEvent(user, action, now)
 }
 
 // ---- #101 Phase 3: server mirror -------------------------------------------
@@ -68,15 +68,23 @@ export function recordAction(user: string, action: RecentAction, now = Date.now(
 // batch POST, sendBeacon on unload) so recents survive devices and feed the
 // homepage activity stream. The sink is injected by the app shell — this
 // module stays free of api.ts so unit tests never touch the network.
+//
+// Every queued event is tagged with its owner, and a flush only ever sends
+// events whose owner IS the session the sink would authenticate as; anything
+// else is discarded, never re-attributed (PR #104 review: A's trail must not
+// land under B when the account changes mid-debounce). Logout flushes A's
+// remainder while A's credentials still exist — see AdminLayout.logout.
 
 export interface ServerEventSink {
+  /** The user the transport would authenticate as right now. */
+  currentUser: () => string | null
   post: (events: Array<Record<string, unknown>>) => void
   beacon: (events: Array<Record<string, unknown>>) => void
 }
 
 const FLUSH_DELAY_MS = 3000
 let sink: ServerEventSink | null = null
-let queue: Array<Record<string, unknown>> = []
+let queue: Array<{ owner: string; event: Record<string, unknown> }> = []
 let flushTimer: ReturnType<typeof setTimeout> | null = null
 
 function flush(useBeacon = false): void {
@@ -85,22 +93,39 @@ function flush(useBeacon = false): void {
     flushTimer = null
   }
   if (!sink || queue.length === 0) return
-  const batch = queue.slice(0, 50)
-  queue = queue.slice(50)
+  const current = sink.currentUser()
+  // Fail closed: whatever does not belong to the authenticated session is
+  // dropped — delivery is best-effort, attribution is not.
+  const mine = current ? queue.filter((q) => q.owner === current) : []
+  queue = []
+  if (mine.length === 0) return
+  const batch = mine.slice(0, 50).map((q) => q.event)
   if (useBeacon) sink.beacon(batch)
   else sink.post(batch)
-  if (queue.length > 0) flushTimer = setTimeout(() => flush(), FLUSH_DELAY_MS)
+  if (mine.length > 50) {
+    queue = mine.slice(50)
+    flushTimer = setTimeout(() => flush(), FLUSH_DELAY_MS)
+  }
 }
 
-function enqueueServerEvent(action: RecentAction, at: number): void {
+/** Drain the queue NOW (e.g. right before sign-out, while the departing
+ *  user's credentials still exist). */
+export function flushPendingEvents(): void {
+  flush()
+}
+
+function enqueueServerEvent(owner: string, action: RecentAction, at: number): void {
   if (!sink) return
   queue.push({
-    kind: action.kind,
-    key: action.key,
-    label: action.label,
-    sub: action.sub,
-    path: action.path,
-    at,
+    owner,
+    event: {
+      kind: action.kind,
+      key: action.key,
+      label: action.label,
+      sub: action.sub,
+      path: action.path,
+      at,
+    },
   })
   if (!flushTimer) flushTimer = setTimeout(() => flush(), FLUSH_DELAY_MS)
 }

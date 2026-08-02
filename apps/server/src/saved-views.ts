@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import { sql } from './db'
 import { AppError } from './errors'
+import { assertPermission } from './permissions'
 
 // #101 Phase 6: saved views — a filter habit with a name. Owned by
 // created_by; `shared` opens a view to every user (read-only for them).
@@ -38,6 +39,9 @@ function toView(row: Record<string, unknown>, user: string): SavedView {
 }
 
 export async function listSavedViews(user: string, table: string): Promise<SavedView[]> {
+  // Views describe a Table's rows (filter columns and values) — without read
+  // permission on that Table the caller must not see them, own or shared.
+  await assertPermission(user, table, 'read')
   const rows = await sql`
     select name, ref_table, label, filters, shared, created_by
     from saved_view
@@ -50,6 +54,9 @@ export async function createSavedView(user: string, body: unknown): Promise<Save
   const parsed = createSchema.safeParse(body)
   if (!parsed.success)
     throw new AppError('ValidationError', 'Expected { table, label, filters: [[col, op, value], …] }')
+  // No publishing view chips for Tables the author cannot read — a shared
+  // chip lands in other users' list screens.
+  await assertPermission(user, parsed.data.table, 'read')
   const now = new Date()
   const row = {
     name: randomBytes(8).toString('hex'),
@@ -69,15 +76,19 @@ export async function createSavedView(user: string, body: unknown): Promise<Save
   return toView({ ...row, filters: parsed.data.filters }, user)
 }
 
-async function ownRow(user: string, name: string): Promise<void> {
-  const [row] = await sql`select created_by from saved_view where name = ${name}`
+async function ownRow(user: string, name: string): Promise<{ ref_table: string }> {
+  const [row] = await sql`select created_by, ref_table from saved_view where name = ${name}`
   if (!row) throw new AppError('NotFoundError', `Saved view ${name} does not exist`)
   if (row.created_by !== user)
     throw new AppError('PermissionError', 'Only the owner can change a saved view')
+  return { ref_table: row.ref_table as string }
 }
 
 export async function setSavedViewShared(user: string, name: string, shared: boolean): Promise<void> {
-  await ownRow(user, name)
+  const { ref_table } = await ownRow(user, name)
+  // Re-check on share: the owner may have lost access to the Table since
+  // creating the view.
+  if (shared) await assertPermission(user, ref_table, 'read')
   await sql`update saved_view set shared = ${shared}, updated_at = now(), updated_by = ${user}
     where name = ${name}`
 }

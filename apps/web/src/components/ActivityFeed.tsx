@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
-import { api } from '../lib/api'
+import { api, getSessionUser } from '../lib/api'
 import { ago } from '../lib/recents'
 import { useRealtime } from '../lib/realtime'
 import { useIsSystemManager } from '../lib/session'
@@ -67,9 +67,17 @@ export function ActivityFeed() {
     queryFn: () => api.get<{ items: FeedItem[] }>(`/api/activity_feed?scope=${scope}&limit=20`),
     refetchInterval: 30_000,
   })
-  useRealtime(['feed'], () => {
-    void queryClient.invalidateQueries({ queryKey: ['activity-feed'] })
-  })
+  // Live invalidation: 'feed' is the payload-free team ping (the server only
+  // grants that channel to System Managers); 'feed_mine' arrives on the
+  // caller's own channel when one of their event batches lands.
+  const user = getSessionUser()
+  useRealtime(
+    [...(isSystemManager ? ['feed'] : []), ...(user ? [`user:${user.name}`] : [])],
+    (e) => {
+      if (e.event === 'changed' || e.event === 'feed_mine')
+        void queryClient.invalidateQueries({ queryKey: ['activity-feed'] })
+    },
+  )
 
   const items = feed.data?.items ?? []
 

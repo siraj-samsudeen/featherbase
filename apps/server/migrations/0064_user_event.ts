@@ -24,10 +24,14 @@ export async function up() {
         reqd: true,
         in_list_view: true,
       },
-      { column_name: 'ref_key', column_type: 'Data', reqd: true, in_list_view: true },
-      { column_name: 'label', column_type: 'Data', in_list_view: true },
-      { column_name: 'sub_label', column_type: 'Data' },
-      { column_name: 'path', column_type: 'Data' },
+      // Long Text (-> text), NOT Data (-> varchar(140)): list keys and paths
+      // embed filter JSON and the API contract accepts up to 400/1000 chars —
+      // one oversized value must never fail a whole batch (0066 converges
+      // databases that ran the earlier Data-typed shape).
+      { column_name: 'ref_key', column_type: 'Long Text', reqd: true, in_list_view: true },
+      { column_name: 'label', column_type: 'Long Text', in_list_view: true },
+      { column_name: 'sub_label', column_type: 'Long Text' },
+      { column_name: 'path', column_type: 'Long Text' },
       { column_name: 'occurred_at', column_type: 'Datetime', reqd: true, in_list_view: true },
     ],
   })

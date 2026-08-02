@@ -17,6 +17,46 @@ this look — do not introduce ad-hoc colors/spacing:
   CSS variables and `.fc-*` classes — never a literal color — so it works
   under every palette × light/dark combination automatically.
 
+## 2026-08-02 — PR #104 review round: seven findings fixed
+
+All findings from the owner's review of the recent-actions branch:
+
+- **Queue attribution (P1).** The client's debounced event queue is now
+  owner-tagged and fail-closed: a flush only ships events whose owner IS
+  the session the sink authenticates as; everything else is discarded,
+  never re-attributed. Logout drains the departing user's queue first,
+  while their credentials still exist. 3 new unit tests.
+- **Storage vs contract (P1).** `user_event`'s key/label/sub_label/path
+  were `Data` (varchar 140) while the API accepts 400/1000 chars — one
+  long filtered-list key failed its whole batch. 0064 rewritten to
+  'Long Text' for fresh installs; 0066 converges existing databases
+  (alter to text + column_def update + `occurred_at` index). New test
+  writes at the contract limits.
+- **Saved-view permission bypass (P1).** list/create now
+  `assertPermission(user, table, 'read')`; sharing re-checks it. New
+  test: 403 without read, opens after a Permission row grants it.
+- **Dependency pin (P1).** The earlier `git+https` change never changed
+  the transport — pnpm resolves GitHub git URLs to the codeload tarball
+  either way, and the lockfile said so. package.jsons + lockfile
+  restored to main's `github:` pin; the real remote-exec requirement is
+  attaching the feather-testing-postgres repo to the session proxy
+  (frozen install verified here).
+- **Dead feed channel (P2).** `canSubscribe` never allowed 'feed', so
+  the live ping reached nobody. Now: 'feed' is System Manager-only and
+  payload-free (`changed`); each `POST /api/events` pings the poster's
+  own `user:` channel (`feed_mine`) for the Mine tab. ActivityFeed
+  subscribes accordingly.
+- **OAuth beacons (P2).** The Google OAuth callback now sets the `sid`
+  cookie — without it, an OAuth user's unload-time beacon batch was
+  silently rejected.
+- **Dormant-user retention (P2).** The write-path prune is global (any
+  batch expires ANY user's >90-day rows), backed by the new
+  `occurred_at` index. Test covers a dormant user's rows.
+
+Verified: affected server suites 23/23, recents unit 15/15, all 12
+#101-related e2e + palette green, both typechecks clean, full web e2e
+re-run green (see below), `pnpm install --frozen-lockfile` passes.
+
 ## 2026-08-01 — #101 Phases 2–6 complete: recent actions shipped end to end
 
 All six phases of [#101](https://github.com/siraj-samsudeen/featherbase/issues/101)

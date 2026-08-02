@@ -321,6 +321,10 @@ app.get('/api/oauth/google/callback', async (c) => {
   const { email, name } = await exchangeCode(c.req.query('code'))
   const userName = await findOrCreateGoogleUser(email, name)
   const { token } = await issueSession(userName)
+  // The cookie matters here too: beacons (e.g. the unload-time event batch,
+  // #101) cannot carry a bearer token, so an OAuth session without the sid
+  // cookie would silently drop them (PR #104 review).
+  setSidCookie(c, token)
   // Bounce back into the SPA (same origin via the dev proxy), which stores the
   // token and lands in the Admin.
   return c.redirect(`/oauth-callback?token=${encodeURIComponent(token)}`)
@@ -359,6 +363,9 @@ app.get('/api/whoami', async (c) => {
 app.post('/api/events', async (c) => {
   const events = validateEventBatch(await c.req.json().catch(() => null))
   const inserted = await recordEvents(who(c), events)
+  // Nudge the poster's own "Mine" feed on their personal channel (PR #104
+  // review — the 'feed' channel is System Manager-only).
+  publishUserEvent(who(c), 'feed_mine')
   return c.json({ inserted })
 })
 

@@ -6,6 +6,7 @@ import {
   actionForLocation,
   ago,
   connectEventSink,
+  flushPendingEvents,
   frequentActions,
   mergeServerEntries,
   recentActions,
@@ -32,11 +33,13 @@ interface SearchHit {
 // the bearer token for fetches and the sid cookie for beacons — sendBeacon
 // cannot set headers.
 connectEventSink({
+  // The queue fail-closes on this identity: only events recorded FOR this
+  // user are ever posted with this user's credentials.
+  currentUser: () => getSessionUser()?.name ?? null,
   post: (events) => {
-    if (getSessionUser()) void api.post('/api/events', { events }).catch(() => {})
+    void api.post('/api/events', { events }).catch(() => {})
   },
   beacon: (events) => {
-    if (!getSessionUser()) return
     try {
       navigator.sendBeacon('/api/events', new Blob([JSON.stringify({ events })], { type: 'application/json' }))
     } catch {
@@ -197,6 +200,11 @@ export function AdminLayout() {
   const homePages = useHomePages()
 
   async function logout() {
+    // Drain the pending event batch FIRST, while the departing user's token
+    // and cookie still exist — afterwards the queue's owner check would
+    // discard it, and it must never ride the next account's session
+    // (PR #104 review).
+    flushPendingEvents()
     // Invalidate the sid cookie BEFORE dropping local state: while it lives,
     // any token-less request fired in the logout gap re-authenticates as the
     // departing user and re-poisons the cache for the next account in this

@@ -60,11 +60,11 @@ export async function recordEvents(user: string, events: IncomingEvent[]): Promi
   })
   await sql`insert into user_event ${sql(rows)}`
   // Retention rides the write path: one indexed delete per batch keeps the
-  // table bounded without a scheduler.
+  // table bounded without a scheduler. Global on purpose — a dormant user's
+  // trail must expire even though they never post another batch.
   await sql`
     delete from user_event
-    where created_by = ${user}
-      and occurred_at < now() - make_interval(days => ${RETENTION_DAYS})`
+    where occurred_at < now() - make_interval(days => ${RETENTION_DAYS})`
   return rows.length
 }
 
