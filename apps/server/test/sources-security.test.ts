@@ -530,3 +530,16 @@ describe('re-review findings', () => {
     ).rejects.toMatchObject({ status: 404 })
   })
 })
+
+describe('round 3: global search survives bound Tables', () => {
+  test('search does not 500 when a bound Table exists, and skips its rows', async ({ admin }) => {
+    await bindAccount(admin)
+    // Before the fix this threw 42P01 (no physical table) and the whole
+    // typeahead died the moment any Table was reflected.
+    const res = (await admin.get('/api/search?q=Alpha')) as {
+      results: { doctype: string }[]
+    }
+    expect(Array.isArray(res.results)).toBe(true)
+    expect(res.results.every((r) => r.doctype !== BOUND)).toBe(true)
+  })
+})

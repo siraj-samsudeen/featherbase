@@ -21,8 +21,12 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
   if (!q) return []
   const like = '%' + q.replace(/[\\%_]/g, (c) => `\\${c}`) + '%'
 
+  // Source-bound Tables are excluded: they have no physical table here (the
+  // old query 500'd the whole search the moment one existed), and fanning a
+  // per-keystroke ilike out to every foreign store is not a typeahead's job.
   const tables = await sql`
-    select name from table_def where kind = 'table' order by name`
+    select name from table_def where kind = 'table' and data_source is null
+    order by name`
 
   const hits: SearchHit[] = []
   for (const t of tables) {
