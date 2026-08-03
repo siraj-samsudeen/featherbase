@@ -102,6 +102,22 @@ this look — do not introduce ad-hoc colors/spacing:
   CSS variables and `.fc-*` classes — never a literal color — so it works
   under every palette × light/dark combination automatically.
 
+## 2026-08-02 — Amp orb lifecycle setup
+
+Fresh Amp orbs now bootstrap through executable `.agents/setup`: it installs
+Node 22 and the repository-pinned pnpm, system/Postgres prerequisites, locked
+workspace dependencies, a Playwright Chromium bundle, provisions and tunes the
+default local database for ephemeral test speed, and applies migrations and
+patches. `.agents/resume` performs only a fast database health/repair check on
+wake and respects an externally supplied `DATABASE_URL`.
+
+Verified in a clean orb from Node 20 with no Postgres or Chromium: setup
+completed, a second run converged with all 62 migrations and the patch already
+current, a clean non-interactive login shell resolved Node 22.18.0 / pnpm
+10.33.0 / psql / Chromium, healthy resume took 0.11s, and resume restarted a
+stopped Postgres cluster in 2.35s. `./init.sh` then passed server smoke and both
+Playwright smoke checks.
+
 ## 2026-08-02 — PR #104 review round: seven findings fixed
 
 All findings from the owner's review of the recent-actions branch:
