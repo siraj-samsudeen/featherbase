@@ -503,6 +503,62 @@ and test helpers. One loose end, and it is a release chore rather than
 work: publish feather-testing-postgres 0.2.0, then move both `package.json`
 entries off the pinned git commit back to `^0.2.0`.
 
+## 2026-08-02 — PR #103 re-review: write-time scopes, tier parity, symlinks, required revisions
+
+A second review round read the whole PR against current `main` rather than
+only the first eight findings, and found nine more. Two lessons worth
+keeping: **fixing the path a review names is not the same as fixing the
+class of bug** (round one fixed read scoping and left write scoping open),
+and **a gap the new code shares with the old code is still a gap**.
+
+- **Merge conflict (blocking).** `main` had moved `/desk` → `/admin` and
+  added relational navigation. Merged deliberately: the source browser now
+  lives at `/admin/source/$name`, every new link carries main's required
+  search params, main's `ListRow` extraction is kept with the read-only
+  selection gate threaded through as a `selectable` prop, and main's Map
+  button coexists with the bound-row Rename suppression.
+- **Data Scopes judged the row as loaded, not as written.** A caller with
+  `region = north` could edit a permitted row's Reference *to* `south` —
+  and a hook could do the same. Both bound write paths now re-check the
+  finalized row (post defaults/validation/hooks) just before the source
+  write.
+- **Field tiers were missing from list/count/group** — a basic-tier caller
+  could select, filter, sort or group by a restricted column that detail
+  reads correctly hid. **This gap existed on native Tables too** (the
+  PERM-006 test only covered detail reads), so the fix lands in both
+  places: `columnSet` takes the caller's read tiers, and the bound binding
+  is narrowed before the request is built. A caller-supplied `order_by`
+  that does not resolve is now rejected rather than silently falling back
+  to the pk — that fallback was itself the hole the tier test exposed.
+- **CSV containment was lexical only**, so a symlinked file (or parent
+  directory) escaped `root_path` on read and write. Now canonical:
+  realpath on root and parent, plus an lstat that refuses a symlinked
+  target outright.
+- **Deletes required a revision only if the caller offered one.** Where a
+  binding has one, it is now mandatory — the positional-CSV hazard was
+  closed for the Desk but open to every other API caller.
+- **Read-only flips could be defeated by a cache race**: invalidation ran
+  *inside* the save transaction, so a concurrent request could repopulate
+  from pre-commit state. Invalidation moved to a new **`after_commit`**
+  hook event — and, because after-commit invalidation still leaves a
+  narrow window, the write gate now **re-reads the access mode from the
+  control DB** instead of trusting the cache. One indexed read per write
+  closes the race outright.
+- Also: a credential-named PRIMARY KEY (surfacing through `name`) makes a
+  relation unbindable; bound detail reads gate before the foreign fetch so
+  an own-rows caller cannot trigger foreign lookups; Data Source
+  administration is System Manager-only *at the controller*; and a
+  hand-written binding is validated against the live source (exists,
+  allowlisted, every mapped column present) instead of failing later at
+  query time.
+
+Verified: 7 more regression tests; **server 107 files / 570 passed / 2
+skipped**; web e2e green on the merged tree. Gotcha for the next session:
+`app-fixtures.test.ts` fails whenever a web e2e run has left the helpdesk
+app installed in the shared dev DB — uninstall it
+(`POST /api/uninstall_app {"name":"helpdesk"}`) rather than hunting a
+regression.
+
 ## 2026-08-02 — PR #103 review: authorization parity, secret hygiene, real locking
 
 Eight review findings on the sources PR, all legitimate, all fixed. The
