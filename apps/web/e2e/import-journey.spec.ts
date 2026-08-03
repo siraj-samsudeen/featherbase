@@ -124,17 +124,19 @@ test('IMP-J1: first import creates a typed Table from zones.csv', async ({
   expect(count.count).toBe(8)
 
   // R6: the pattern is the promise, not the number — verify the id shape.
-  // pins-gap (#114): the wizard's rename does NOT re-derive the series, so
-  // ids keep the parse-time prefix ZONES- instead of following the final
-  // name. When #114 is fixed this assertion fails on purpose — flip it to
-  // /^JOURNEY-ZONES-\d+$/ in the same change.
+  // known-gap #114: the wizard's rename does NOT re-derive the series, so
+  // today ids keep the parse-time ZONES- prefix instead of following the
+  // final name. Per the pins doctrine (framework §5), a passing assertion
+  // must never state the wrong behaviour — so this asserts only the
+  // neutral series shape, and R6's follows-the-final-name half carries NO
+  // evidence claim until #114 is fixed (then assert /^JOURNEY-ZONES-\d+$/).
   const rows = (await (
     await request.get(`/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","zone_name"]')}`, {
       headers,
     })
   ).json()) as { data: { name: string }[] }
   expect(rows.data).toHaveLength(8)
-  for (const r of rows.data) expect(r.name).toMatch(/^ZONES-\d+$/)
+  for (const r of rows.data) expect(r.name).toMatch(/^[A-Z][A-Z-]*-\d+$/)
 
   // J1.9 — one Import Log entry: zones.csv, 8 inserted, 0 failed, created.
   const log = (await (

@@ -65,6 +65,28 @@ And the rest of the "Next" tier landed the same day:
   awaiting the owner's call. Until then create-path journeys stay
   conditionally proven.
 
+External review round 2 adjudicated (adopt-the-useful, drop-the-bloat):
+**adopted** — discrepancy-classification replaces "code is truth"; example
+disagreements block for the owner instead of auto-winning; shapes softened
+to primary verification strategies; pins doctrine tightened (spec in the
+assertion, expected-failing; the e2e #114 pin weakened to a neutral shape
+assertion + known-gap, per the doctrine); CLAUDE.md rule narrowed to
+anti-expectation-laundering; grep linkage renamed static traceability;
+mutation testing scoped, never a headline; judgement split into
+conformance/fitness oracles; closure sweep added; four worked-example
+inconsistencies fixed (R2/R3 contradiction, J1.6 branch scoping, H2 split
+into H2+H3, C1 split into per-call proven vs cross-chunk reported).
+**dropped as low-ROI** — the 3-file split (deferred to feature #2),
+behaviour/quality/constraint normative types, atomic ID renumbering, the
+11-state evidence vocabulary, dissolving ADR 0008.
+
+The matrix moved to its canonical CSV
+(`docs/design/evidence/spreadsheet-import.csv`) and the framework is now a
+project-local skill (`.claude/skills/journey-spec/` — SKILL.md + spec
+template + evidence schema). Format decision: markdown for narrative, CSV
+for the evidence layer (the exact shape that later lands as Featherbase
+rows — dog-fooding), HTML only ever as a generated view.
+
 Next: the owner's calls — hermeticity (item 9) and the open questions
 Q1–Q5 (the wrong-table trap H1 is the highest-stakes cluster); then the
 judgement-rule corpus and mutation score, only if the earlier layers keep

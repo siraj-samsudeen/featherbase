@@ -105,9 +105,11 @@ it and watch the progress.
 
 <!-- slot: IMP-J1.6 → shots/IMP-J1.6.png -->
 
-If a cell can't be converted (text in a number column), that row is
-skipped and reported **by its spreadsheet row number** so you can find it
-in Excel — the other rows still import.
+If a cell can't be converted into a column whose type is already fixed —
+appending to an existing Table, or after you set the type yourself — that
+row is skipped and reported **by its spreadsheet row number** so you can
+find it in Excel; the other rows still import. (On a brand-new Table,
+one odd value simply makes that column infer as plain text instead.)
 
 ### 7 · See your data
 

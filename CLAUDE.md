@@ -182,11 +182,14 @@ once per run, outside any sandbox transaction. It complements
 - Commit at every stable point, not just at session end.
 - Keep `./init.sh` working at all times; if setup steps change, update it in the
   same commit.
-- **Never modify an assertion and the code under test in the same change.**
-  One or the other — the pairing is how defects get ratified as specs.
-  (Tests marked `it.fails` pin known defects by issue number: fixing the
-  defect makes its pin fail on purpose; flip it to a plain test in the same
-  change.)
+- **No expectation laundering.** An agent must not change an existing
+  expected outcome and its implementation merely to obtain a passing run,
+  unless an approved requirement or decision authorizes the behaviour
+  change. (New tests with new code in one change is normal work; weakening
+  an assertion to make broken code pass is the thing this forbids. Tests
+  marked `it.fails`/`test.fail` pin known defects by issue number, with the
+  SPEC in the assertion: fixing the defect makes the pin fail on purpose —
+  flip it to a plain test in the same change.)
 - **A discovered behaviour is not a requirement.** It has three fates —
   ratified into the spec, filed as a defect, or raised as an open question —
   and choosing is the owner's call, never an agent's. See

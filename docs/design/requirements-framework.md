@@ -49,14 +49,18 @@ shape determines the *oracle* — how a test knows the right answer:
 | **Invariant** | A relationship holding across a whole run | Arithmetic | Reconciliation assertions | rows in file = inserted + failed + dropped |
 | **Judgement** | A heuristic whose right answer is an opinion | **None** | Labelled corpus scored as %, consistency assertions | Choice promotion, target matching |
 
-Every rule in the spec carries a shape tag, because the shape decides which
-kind of test proves it — and which kind of test is theatre.
+Every rule carries a shape tag naming its **primary verification
+strategy**. The shapes overlap at the edges (an invariant is a kind of
+rule; a contract contains sequences) — the tag is routing advice for which
+evidence to reach for first, not an exclusive taxonomy, and an obligation
+may need supporting strategies beside its primary one.
 
 > **Why this is not academic.** Applying the shapes lens to this one feature
 > surfaced eight defects in code whose every inventory entry reads
 > `passing`. Three were re-confirmed by direct execution while writing this
-> document (Part II, coverage matrix). None is a sequence defect; no
-> quantity of browser tests would have found any of them.
+> document (Part II, coverage matrix). None is a sequence defect; browser
+> tests are an inefficient, incomplete way to explore these input spaces —
+> property and boundary tests are the right primary evidence.
 
 ## 2. The sorting criterion
 
@@ -75,6 +79,18 @@ reservation:
 - **Undecided** — nobody has agreed what should happen → **an open question
   with a named arbiter**. Never invented to make the document look complete,
   never resolved silently in code.
+
+### Closure — what the sorting rule alone doesn't reach
+
+Data/path/undecided sorts the edge cases you already thought of. Before a
+spec is called done, sweep the lenses the walk doesn't surface and write
+an ID or a justified `N/A` for each — one line apiece, no table required:
+actors & permissions · prior state & lifecycle (incl. reversal) ·
+concurrency & retries · external-dependency failure · durability &
+recovery · security & privacy · accessibility · performance & scale ·
+observability · compound hazards. feather-spec's cue-driven sections
+already carry half of these; an explicit `(none — reason)` is a meaningful
+answer, silence is not.
 
 ## 3. Examples are for agreement; properties are for coverage
 
@@ -97,11 +113,13 @@ So every rule-shaped rule carries **both**, with different jobs:
   the whole input space (*"outputs are always valid, unique, and ≤63
   chars"*), enforced by a property test plus enumerated boundaries.
 
-**Repair protocol, not precedence:** when an example and its property
-disagree, the example wins *as a statement of intent* — and the property is
-therefore wrong and must be fixed **in the same change**. An agent never
-applies "example beats property" as a silent tiebreak; a disagreement is a
-defect, surfaced.
+**Disagreement blocks, it never tiebreaks:** when a rule's statement, an
+example, and a property disagree, the requirement itself is inconsistent
+and implementation of that behaviour is blocked. The decision owner rules
+on which representation is wrong (or whether the example is a legitimate
+exception), and statement, examples, and property are updated **together
+in the same change**. An example stays the preferred negotiation
+instrument without becoming an automatic winner.
 
 ## 4. Judgement has no oracle
 
@@ -115,6 +133,12 @@ not facts**, and a bet cannot pass or fail a test. What you can do:
    permuting rows changes nothing.
 3. **Re-score on change** — altering a threshold reports the delta across
    the whole corpus, not one reviewer's verdict.
+
+A judgement is not oracle-free so much as split-oracle: **conformance**
+(the code implements the approved algorithm and named constants — a
+deterministic oracle) is separate from **fitness** (the heuristic is
+useful — an empirical, corpus-scored oracle). Test the first normally;
+score the second.
 
 Two honesty requirements. First, every threshold is a **named constant**
 recorded in one small ADR — spec and code reference the name, never the
@@ -140,8 +164,14 @@ Two disciplines make absence assertions safe:
 - **Assert the positive complement.** `expect(x).toHaveCount(0)` is also
   true when the page failed to render. Assert "the action bar contains
   exactly [Import]", not the absence alone.
-- **Tag polarity.** Some assertions `verify` a requirement; others
-  `pin a gap` so the day someone fixes it, a test fails and announces it.
+- **Tag polarity — and pins assert the SPEC, expected-failing.** A pin is
+  an `it.fails`/`test.fail` whose assertion states the intended behaviour;
+  it goes green only because the failure is expected, and fixing the
+  defect flips it loudly. A **passing** assertion of the wrong behaviour
+  is never a pin — it teaches agents the defect is the contract. Where an
+  expected-failing test is impractical (persistent data), weaken to a
+  neutral assertion and record the row as `known-gap` with no evidence
+  claim.
   They look identical in a test file and mean opposite things — untagged, a
   future agent reads a gap-pin as the specification and "fixes" the test by
   preserving the bug. And scope the pin correctly: this feature's Check
@@ -155,8 +185,11 @@ Two disciplines make absence assertions safe:
 per feature. Each step is the triple *(where am I, what do I do, what must
 I observably see)*. Every "see" is an observable — visible text, an enabled
 control, a row in a list — never an internal state. That discipline is what
-makes generation mechanical: where = locator, do = action, see = assertion;
-one journey ⇒ one browser test whose body follows the steps in order.
+gives the test a regular structure: where = locator, do = action, see =
+assertion; one journey ⇒ one browser test whose skeleton follows the steps
+in order — the author still owns setup, isolation, waits, and adequacy
+(the first journey spec proved exactly this: the landing path and the
+used-database branch were authoring decisions, not translations).
 Two sequence caveats named honestly: a repeating stage (per-sheet cards) is
 a *loop with cardinality*, not extra steps; and durable intermediate states
 (partially imported, unrecoverable) are first-class named states, not
@@ -232,11 +265,18 @@ removed (feather-spec's protocol).
 Rows are journeys, rules, invariants, hazards, questions; columns are
 shape, proof (tier + file), and verdict. Three integrity mechanisms:
 **the test title is the join key** (a test named `IMP-R1: …` links itself;
-CI failures name the requirement at risk; the matrix is derivable by grep
-and its diff is the change-impact report); **staleness stamps** (the matrix
+CI failures name the requirement at risk) — this is **static
+traceability**, a claim of linkage, never execution evidence: whether the
+test ran, passed, or skipped is stamped separately; **staleness stamps** (the matrix
 states the commit it was verified against — an unstamped row is a
-hypothesis, and the standing precedence for agents is *code is truth, tests
-are the enforced contract, spec is intent*); and **skip ≠ pass** (every
+hypothesis. There is **no
+automatic precedence between artifacts** — approved requirements and
+decisions define intended behaviour; code is the current implementation;
+tests are verification claims; execution results are evidence; an observed
+undocumented behaviour is a finding. When artifacts disagree, an agent
+classifies the discrepancy — implementation defect, incorrect test, stale
+requirement, unresolved product decision, or environmental failure — and
+never lets code or tests silently overrule approved intent); and **skip ≠ pass** (every
 journey test states its isolation strategy; a skipped test reports as
 distinct from a passing one — this feature's golden-path e2e currently
 skips itself on any database that has run it once, and reads green).
@@ -271,7 +311,10 @@ not a review), security (a scoped gate at file parsing and permissions).
   document cites it (a test, a workflow, another feature) — feather-spec's
   principle. Journeys and rules are born cited (tests quote them), so they
   get IDs at authoring: `IMP-J1`, `IMP-R3`, invariants `IMP-I1`, hazards
-  `IMP-H1`, questions `Q1`. Steps stay positional (`IMP-J1.4`). Once born,
+  `IMP-H1`, questions `Q1`. Steps stay positional (`IMP-J1.4`). When one
+  clause of a grouped rule needs independent citation — a test, an issue —
+  it gets a stable sub-ID at that moment (`IMP-R2.7` is the precedent);
+  groups are never pre-exploded into atomic IDs nobody cites. Once born,
   an ID is never renumbered or reused; a retired one is tombstoned with a
   `superseded-by` pointer.
 - **Tests quote the spec, never the reverse.** A discovered behaviour is not
@@ -294,7 +337,7 @@ concluded.** The policy:
 
 | Shape | Target | Measured by |
 |---|---|---|
-| Rules | Properties + boundary enumeration | **Mutation score** (the headline number) |
+| Rules | Properties + boundary enumeration | Mutation testing, scoped to rule code, surviving mutants reported — never a universal headline |
 | Sequences | Golden path + deliberate branches | Browser, budgeted by wall-clock, not count |
 | Contracts | Every documented behaviour + every error | API tests |
 | Invariants | Reconciliation across a full run | Arithmetic assertions |
@@ -429,9 +472,13 @@ boundaries, not in this file.
 **Branch at J1.2 — wrong file kind.** Drop `notes.pdf`: refused by name —
 *notes.pdf: not a CSV or Excel file* — screen otherwise unchanged.
 
-**Branch at J1.6 — a bad cell.** One Population cell reads `abc`: the other
-seven rows import; the failure is reported by its **true spreadsheet row
-number** (→ I1; volume limits → Q3).
+**Branch at J1.6 — a bad cell.** Applies once the column's type is fixed —
+appending to an existing Int column (J2), or after the user set Int by
+hand: a cell reading `abc` fails that row, the others import, and the
+failure is reported by its **true spreadsheet row number** (→ I1; volume
+limits → Q3). On the untouched new-Table path the same cell instead flips
+the whole column's inference to Data (R2 #8) and nothing fails — a
+different, correct outcome.
 
 **Isolation strategy (required by §6):** this journey creates `Zones`;
 Tables cannot yet be deleted, so on a database that has run it once the
@@ -527,7 +574,7 @@ any threshold change. Agreement anchors:
 | North ×4, South ×4 | **Choice**: North, South | repetition reads as a category |
 | Eight distinct in eight rows | Data | a list of one-offs helps nobody |
 | Nine distinct values | Data | past the point where a fixed list helps |
-| Values >140 chars or multiline | Data | long text is content, not category |
+| Values >140 chars or multiline | never Choice | long text is content — R2 #6 classifies it as Text |
 
 ### IMP-R4 — Labels keep the file's wording · `shape: rule`
 
@@ -626,8 +673,11 @@ sub-table kinds are refused; the operation is registered as a write effect
 - **IMP-H2 — abort without a record.** A permission failure mid-import is
   reported to leave already-inserted rows behind with **no history entry**
   — the one failure mode guaranteed to strand rows is the one guaranteed to
-  hide them. Pairs with the whole-file-predicate flaw in mixed workbooks
-  (one sheet validated, the other silently not).
+  hide them. *(Reported; not yet re-executed.)*
+- **IMP-H3 — whole-file predicates over per-sheet behaviour.** Any control
+  that validates or summarises must aggregate per-sheet results; a
+  whole-file predicate silently skips one sheet's problems in a mixed
+  workbook. Distinct cause and fix from H2 — split on review feedback.
 
 ## Open questions *(arbiter: Siraj)*
 
@@ -651,40 +701,20 @@ violated by shipped code; three executed here, issues being filed) ·
 **reported** (review's finding from reading or executing code, not
 independently re-run here) · **open**.
 
-| Spec item | Shape | Proof today | Verdict |
-|---|---|---|---|
-| IMP-J1 first import | sequence | e2e `apps/web/e2e/import-file.spec.ts` (CSV + .xlsx) · DSL journey `apps/web/e2e/import-journey.spec.ts` (steps quoted, zones.csv fixture) | **conditionally proven** — self-skips on a used database; the DSL spec also proves R7's auto-match notice when the precondition fails |
-| IMP-J1.2 non-tabular refused | sequence | e2e import-file.spec.ts | proven |
-| IMP-J1.6 bad cell, partial import | sequence | server `apps/server/test/import-action.test.ts` | rule tier only |
-| IMP-J2 append | sequence | e2e `apps/web/e2e/import-wizard.spec.ts` | proven |
-| IMP-J2.3″ notice survives manual pick | sequence | — | **gap** |
-| IMP-J2.6′ rehearsal on append | contract | unit+server+e2e | proven |
-| IMP-J3 multi-sheet loop | sequence | e2e import-wizard.spec.ts | proven; empty-sheet skip unasserted |
-| IMP-R1 naming — examples + properties | rule | unit `import-infer.test.ts` · properties `import-properties.test.ts` (length, validity, distinctness below the boundary) | proven |
-| IMP-R1 naming — uniqueness at the boundary | rule | pinned `it.fails` in import-properties.test.ts | **defect #110** — 63-char pair / 70-char triple collapse to one name; fixing it flips the pin |
-| IMP-R2 inference — examples + properties | rule | unit + `import-infer-tz.test.ts` · properties (total, order-independent, decimal forbids Int, Check before Choice, Text >140) | proven |
-| IMP-R2 leading-zero codes → Data | rule | pinned `it.fails` in import-properties.test.ts | **defect #111** — infers Int, zeros destroyed |
-| IMP-R2 16-digit ids → Data | rule | pinned `it.fails` in import-properties.test.ts | **defect #112** — falls through INT_RE's 15-digit guard to the unbounded FLOAT_RE |
-| IMP-R2.7 ordering guard | rule | unit | proven |
-| IMP-R3 choice promotion | judgement | unit examples only · thresholds named in ADR 0008 | consistency untested; no corpus |
-| IMP-R4 labels | rule | unit | proven |
-| IMP-R5 table naming | rule | unit | proven |
-| IMP-R6 row identity | rule | unit + e2e `naming-series.spec.ts` · id shape pinned in import-journey.spec.ts | proven in the Builder; **defect #114** — the wizard's rename does not re-derive the series (pins-gap in the journey spec) |
-| IMP-R7 target matching | judgement | unit (incl. the Zone case: perfect score, weak coverage → no auto-match) · thresholds named in ADR 0008 | anchors proven; no corpus |
-| IMP-R8 coercion | rule | unit + server | proven at rule tier |
-| IMP-R9 rehearsal on J1 | contract | — | **gap** — the commonest first journey commits blind; existing gap-pin is mis-scoped (whole-file predicate) |
-| IMP-R10 / C1 boundary | contract | server import-action.test.ts | proven |
-| IMP-I1 reconciliation | invariant | server `import-invariants.test.ts` | arithmetic proven · row-number half is **defect #115**, pinned `it.fails` |
-| IMP-I2 chunked run reconciles | invariant | server import-invariants.test.ts (3 parts, sums match) | proven — reframed: per-part rows are schema-level design |
-| IMP-I3 rehearsal writes nothing | invariant | server import-action + import-invariants (incl. no series burn) | proven |
-| IMP-H1 wrong-table trap | hazard | — | open (Q2+Q3+Q5) |
-| IMP-H2 abort without a record | hazard | — | **reported** — mid-import permission failure strands rows with no record |
-| Q1–Q5 | — | — | open |
+The matrix's canonical home is
+[`evidence/spreadsheet-import.csv`](evidence/spreadsheet-import.csv) —
+one row per obligation with shape, strategy, static link, verdict, issue,
+and stamp. CSV because this layer is genuinely tabular, diffable, and is
+the exact shape that later lands as rows in Featherbase itself
+(dog-fooding); this document keeps only the reading:
 
-**Reading the matrix:** three executed defects, three reported ones
-awaiting re-execution, two gaps, one conditionally-proven golden path, two
-judgement rules with unnamed thresholds, five open questions. That
-sentence — not a count of green entries — is the feature's true state.
+**Reading the matrix (2026-08-03):** three defects pinned expected-failing
+(#110–#112) plus one known-gap with no evidence claim (#114) and one
+pinned invariant (#115); two invariants and a chunk-run reconciliation
+proven; three *reported* claims still awaiting re-execution (H2, H3,
+cross-chunk rehearsal scope); two gaps; one conditionally-proven golden
+path; two judgement rules without a corpus; five open questions. That
+sentence — not a count of green rows — is the feature's true state.
 
 ---
 
@@ -755,7 +785,7 @@ sentence — not a count of green entries — is the feature's true state.
 ## 3. Later — only if the earlier layers earn it
 
 10. Labelled corpus for the judgement rules (synthetic, caveat recorded).
-11. Mutation score in CI as the rules headline.
+11. Mutation testing on the inference rules in CI (scoped; report surviving mutants).
 12. Hazard register as a standing artifact beyond this spec.
 13. Generated handle registry for the structural layer.
 
@@ -796,8 +826,9 @@ structural layer by default (minimal mode governs), coverage percentages.
 - **A test fails with no spec edit** → a regression, by definition; the
   rule's Why column says what breaks if the test is "fixed" instead of the
   code.
-- **An example and a property disagree** → the example wins as intent, the
-  property is repaired in the same change; never a silent tiebreak.
+- **An example and a property disagree** → the requirement is inconsistent;
+  the owner arbitrates and all representations are updated together —
+  never a silent tiebreak in either direction.
 - **A question is answered** → it graduates into a rule or step, gains
   tests and a matrix row; the document's history is the decision log.
 
