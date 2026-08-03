@@ -656,11 +656,11 @@ independently re-run here) · **open**.
 | IMP-J2.3″ notice survives manual pick | sequence | — | **gap** |
 | IMP-J2.6′ rehearsal on append | contract | unit+server+e2e | proven |
 | IMP-J3 multi-sheet loop | sequence | e2e import-wizard.spec.ts | proven; empty-sheet skip unasserted |
-| IMP-R1 naming — examples | rule | unit `import-infer.test.ts` | proven |
-| IMP-R1 naming — uniqueness property | rule | — | **defect** — 3×70-char headers collapse to one name (executed) |
-| IMP-R2 inference — examples | rule | unit + `import-infer-tz.test.ts` (east & west of UTC) | proven |
-| IMP-R2 leading-zero codes → Data | rule | — | **defect** — infers Int, zeros destroyed (executed) |
-| IMP-R2 16-digit ids → Data | rule | — | **defect** — infers Float, value changes (executed) |
+| IMP-R1 naming — examples + properties | rule | unit `import-infer.test.ts` · properties `import-properties.test.ts` (length, validity, distinctness below the boundary) | proven |
+| IMP-R1 naming — uniqueness at the boundary | rule | pinned `it.fails` in import-properties.test.ts | **defect #110** — 63-char pair / 70-char triple collapse to one name; fixing it flips the pin |
+| IMP-R2 inference — examples + properties | rule | unit + `import-infer-tz.test.ts` · properties (total, order-independent, decimal forbids Int, Check before Choice, Text >140) | proven |
+| IMP-R2 leading-zero codes → Data | rule | pinned `it.fails` in import-properties.test.ts | **defect #111** — infers Int, zeros destroyed |
+| IMP-R2 16-digit ids → Data | rule | pinned `it.fails` in import-properties.test.ts | **defect #112** — falls through INT_RE's 15-digit guard to the unbounded FLOAT_RE |
 | IMP-R2.7 ordering guard | rule | unit | proven |
 | IMP-R3 choice promotion | judgement | unit examples only | consistency untested; no corpus; thresholds unnamed |
 | IMP-R4 labels | rule | unit | proven |
@@ -703,8 +703,10 @@ sentence — not a count of green entries — is the feature's true state.
 ## 2. Next — where the defects actually live
 
 6. **Property tests for the inference rules** (R1, R2). All three executed
-   defects sit here; highest value per hour in the proposal. Issues for the
-   three are being filed from this session.
+   defects sit here; highest value per hour in the proposal. **Landed
+   2026-08-03:** `apps/server/test/import-properties.test.ts` (fast-check) —
+   11 spec-true properties passing, the three defects pinned as `it.fails`
+   against issues #110–#112 so each fix flips its pin.
 7. **The invariants layer** (I1–I3) — reconciliation across a run; this is
    what re-executes the three *reported* findings.
 8. **One ADR naming every threshold** as exported constants; spec and code

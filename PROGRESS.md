@@ -29,9 +29,19 @@ e2e vocabulary.
   post-login route is `/admin/home/home` (home recall), not `/admin`;
   `signIn` asserts the admin shell instead.
 
-Next: property tests for IMP-R1/R2 (issues #110–#112 hold the confirmed
-defects), the invariants layer (I1–I3), and the hermeticity decision
-(adoption item 9) so create-path journeys stop self-skipping.
+Same day, adoption item 6 landed too:
+`apps/server/test/import-properties.test.ts` (fast-check) — 11 spec-true
+properties over `sanitizeHeaders`/`sanitizeColumnName`/`inferColumnType`
+(length preserved, valid non-reserved identifiers, distinct below the
+truncation boundary, total, order-independent, decimal-forbids-Int,
+Check-before-Choice, Text past 140 chars), with the three executed defects
+pinned as `it.fails` against #110–#112 — each fix flips its pin, forcing
+the flip-to-`it` in the same change. Gotcha: fast-check v4 dropped
+`fullUnicodeString`; use `fc.string({ unit: 'grapheme' })`.
+
+Next: the invariants layer (I1–I3, re-executes the review's reported
+findings), the threshold ADR, and the hermeticity decision (adoption
+item 9) so create-path journeys stop self-skipping.
 
 ## 2026-08-02 — NAV-002: server-side relationship joins ('related' filter)
 
