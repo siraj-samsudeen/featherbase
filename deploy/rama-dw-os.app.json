@@ -1,0 +1,41 @@
+{
+  "name": "rama-dw-os",
+  "sources": [
+    {
+      "name": "railway-control",
+      "engine": "postgres",
+      "url_env": "RAILWAY_CONTROL_URL",
+      "default_schema": "control",
+      "access": "read_write",
+      "reflect": {
+        "schema": "control",
+        "module": "Railway Control",
+        "tables": ["control.lease", "control.run", "control.zakya_cursor"]
+      }
+    },
+    {
+      "name": "motherduck",
+      "engine": "duckdb",
+      "url_env": "MOTHERDUCK_URL",
+      "default_schema": "gold.main",
+      "access": "read_only",
+      "reflect": {
+        "schema": "gold.main",
+        "prefix": "Gold",
+        "module": "MotherDuck Gold",
+        "tables": [
+          "access_grants",
+          "budget_store_month",
+          "category",
+          "date"
+        ]
+      }
+    }
+  ],
+  "fixtures": [
+    {
+      "table": "System Settings",
+      "rows": [{ "app_name": "Rama DW OS" }]
+    }
+  ]
+}

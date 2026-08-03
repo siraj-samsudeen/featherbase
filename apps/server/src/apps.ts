@@ -5,6 +5,8 @@ import { createTable, tableName } from './doctype-engine'
 import { ensureHomePageForTable } from './home-pages'
 import { invalidateMeta } from './meta'
 import { saveDoc, deleteDoc } from './document'
+import { reflectTables } from './sources/reflect'
+import { invalidateSources } from './sources/registry'
 import { enqueue, registerJob, type JobHandler } from './jobs'
 import { swapMethod, type MethodDef, type ServerMethod } from './methods'
 import {
@@ -55,8 +57,37 @@ export interface AppFixture {
   rows: Record<string, unknown>[]
 }
 
+// EDS/M3: a Data Source the app needs, plus which of its relations to
+// reflect. This is how a source-bound deployment becomes reproducible from
+// git: the manifest declares WHAT to connect and reflect, reflection derives
+// the column shape from the live source at install time (so a schema change
+// upstream is picked up, not frozen into the manifest).
+//
+// Credentials never appear here — `url_env` names an environment variable,
+// exactly as the Data Source Table itself requires (spec BV7!).
+export interface AppSource {
+  name: string
+  engine: 'postgres' | 'duckdb' | 'csv-folder'
+  url_env?: string
+  root_path?: string
+  default_schema?: string
+  access?: 'read_only' | 'read_write'
+  table_allowlist?: string
+  // Relations to reflect once the source is connected. Table names may be
+  // schema-qualified; ambiguous bare names are refused by the reflector.
+  reflect?: {
+    schema?: string
+    prefix?: string
+    module?: string
+    tables: string[]
+  }
+}
+
 export interface AppManifest {
   name: string
+  // Data Sources this app connects, and the relations it reflects from them.
+  // Materialized FIRST — the app's own tables may be bound to them.
+  sources?: AppSource[]
   // Table definitions this app owns (same shape accepted by createTable).
   tables?: unknown[]
   // Roles this app needs. An existing role of the same name is adopted, not
@@ -307,6 +338,8 @@ type InstallResult = {
   roles: string[]
   perms: string[]
   fixtures: FixtureRef[]
+  // Data Sources this install CREATED (adopted ones are not listed).
+  sources: string[]
 }
 
 // Shared install path: create the app's Tables (each goes through the
@@ -314,10 +347,59 @@ type InstallResult = {
 // Permission links to a Role and may target a Table the app just created —
 // then its fixture documents, which may depend on all of the above.
 // `stored` is the declarative manifest to persist, or null for a code app.
+// Create the app's Data Sources and reflect what it declares. Runs BEFORE
+// the app's own tables so a manifest table may be bound to a source it
+// brings. An existing source of the same name is ADOPTED, not redefined and
+// not recorded — the same discipline roles follow, so uninstall can never
+// remove a source that predated the app.
+async function provisionSources(
+  manifest: AppManifest,
+): Promise<{ sources: string[]; tables: string[] }> {
+  const sources: string[] = []
+  const tables: string[] = []
+  for (const src of manifest.sources ?? []) {
+    const [existing] = await sql`select 1 from data_source where name = ${src.name}`
+    if (!existing) {
+      await saveDoc('Data Source', {
+        name: src.name,
+        engine: src.engine,
+        url_env: src.url_env ?? null,
+        root_path: src.root_path ?? null,
+        default_schema: src.default_schema ?? null,
+        access: src.access ?? 'read_only',
+        table_allowlist: src.table_allowlist ?? null,
+      })
+      sources.push(src.name)
+    }
+    if (!src.reflect?.tables?.length) continue
+    // Reflection needs the source to answer — an unreachable source fails
+    // the install loudly rather than leaving a half-configured app.
+    const result = await reflectTables(src.name, {
+      schema: src.reflect.schema,
+      tables: src.reflect.tables,
+      module: src.reflect.module,
+      prefix: src.reflect.prefix,
+    })
+    for (const c of result.created) tables.push(c.name)
+    // "Already reflected" is adoption, not failure; anything else is a
+    // manifest that does not match the source and must not install silently.
+    const bad = result.skipped.filter((s) => !/Already reflected/.test(s.reason))
+    if (bad.length)
+      throw new AppError(
+        'ValidationError',
+        `App ${manifest.name}: cannot reflect from ${src.name} — ` +
+          bad.map((s) => `${s.table} (${s.reason})`).join('; '),
+      )
+  }
+  return { sources, tables }
+}
+
 async function materialize(manifest: AppManifest, stored: unknown): Promise<InstallResult> {
   if (await isInstalled(manifest.name))
     throw new AppError('ConflictError', `App ${manifest.name} is already installed`)
-  const created: string[] = []
+  const provisioned = await provisionSources(manifest)
+  // Reflected Tables are the app's tables for teardown purposes.
+  const created: string[] = [...provisioned.tables]
   for (const def of manifest.tables ?? []) {
     // App tables are user-space: they group under the app's own module in the
     // sidebar. `system` marks tables created by the migration chain and is
@@ -355,11 +437,19 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
   // Cast the JSON text to jsonb explicitly — passing a JS string to a jsonb
   // column would otherwise double-encode it as a JSON string.
   await sql`
-    insert into installed_app (name, tables, roles, perms, fixtures, manifest)
+    insert into installed_app (name, tables, roles, perms, fixtures, sources, manifest)
     values (${manifest.name}, ${sql.json(created)}, ${sql.json(access.roles)},
             ${sql.json(access.perms)}, ${sql.json(fixtures as never)},
+            ${sql.json(provisioned.sources)},
             ${stored == null ? null : sql.json(stored as never)})`
-  return { name: manifest.name, tables: created, roles: access.roles, perms: access.perms, fixtures }
+  return {
+    name: manifest.name,
+    tables: created,
+    roles: access.roles,
+    perms: access.perms,
+    fixtures,
+    sources: provisioned.sources,
+  }
 }
 
 export async function installApp(name: string): Promise<InstallResult> {
@@ -397,9 +487,32 @@ const appFixtureSchema = z
   })
   .strict()
 
+const appSourceSchema = z
+  .object({
+    name: z.string().min(1),
+    engine: z.enum(['postgres', 'duckdb', 'csv-folder']),
+    // A manifest names an ENV VAR, never a connection string (BV7!).
+    url_env: z.string().min(1).optional(),
+    root_path: z.string().min(1).optional(),
+    default_schema: z.string().optional(),
+    access: z.enum(['read_only', 'read_write']).optional(),
+    table_allowlist: z.string().optional(),
+    reflect: z
+      .object({
+        schema: z.string().optional(),
+        prefix: z.string().optional(),
+        module: z.string().optional(),
+        tables: z.array(z.string().min(1)).min(1),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+
 const declarativeManifestSchema = z
   .object({
     name: z.string().min(1),
+    sources: z.array(appSourceSchema).optional(),
     tables: z.array(z.unknown()).optional(),
     roles: z.array(z.string().min(1)).optional(),
     permissions: z.array(appPermissionSchema).optional(),
@@ -438,7 +551,8 @@ export async function installAppFromManifest(input: unknown): Promise<InstallRes
 }
 
 export async function uninstallApp(name: string): Promise<{ name: string; removed: string[] }> {
-  const [row] = await sql`select tables, roles, perms, fixtures from installed_app where name = ${name}`
+  const [row] = await sql`
+    select tables, roles, perms, fixtures, sources from installed_app where name = ${name}`
   if (!row) throw new AppError('ValidationError', `App ${name} is not installed`)
   const tables = asNameList(row.tables)
 
@@ -461,6 +575,13 @@ export async function uninstallApp(name: string): Promise<{ name: string; remove
   // Access teardown works from the install ledger, so it removes exactly what
   // this install created — adopted roles/grants were never recorded.
   await teardownAccess(asNameList(row.roles), asNameList(row.perms))
+  // Data Sources go LAST: the Data Source controller refuses to delete one
+  // that still has bound Tables, and this app's bound Tables were dropped
+  // just above. Adopted sources were never recorded, so they survive.
+  for (const src of asNameList(row.sources)) {
+    await deleteDoc('Data Source', src).catch(() => {})
+    invalidateSources(src)
+  }
   await sql`delete from installed_app where name = ${name}`
   return { name, removed: tables }
 }

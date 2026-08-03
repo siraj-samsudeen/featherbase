@@ -1,0 +1,186 @@
+// A source-bound deployment is reproducible from a manifest: the app
+// declares WHICH sources to connect and WHICH relations to reflect, install
+// materializes both, uninstall removes exactly what it created.
+//
+// This is the mechanism behind deploy/rama-dw-os.app.json — verified here
+// against LOCAL fixture schemas (never the real Railway/MotherDuck stores),
+// and against the real manifest file for shape.
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { afterAll, beforeAll, beforeEach, describe, expect } from 'vitest'
+import postgres from 'postgres'
+import { test } from './pg-test'
+import { config } from '../src/config'
+import { sql } from '../src/db'
+import { invalidateSources } from '../src/sources/registry'
+
+const ENV_VAR = 'APPSRC_FIXTURE_URL'
+process.env[ENV_VAR] = config.databaseUrl
+
+let cli: ReturnType<typeof postgres>
+
+beforeAll(async () => {
+  cli = postgres(config.databaseUrl, { max: 2 })
+  await cli.unsafe(`drop schema if exists appsrc cascade`)
+  await cli.unsafe(`create schema appsrc`)
+  await cli.unsafe(`
+    create table appsrc.lease (
+      extractor text primary key,
+      holder text,
+      updated_at timestamptz not null default now()
+    )`)
+  await cli.unsafe(`
+    create table appsrc.run (
+      run_id text primary key,
+      phase text,
+      updated_at timestamptz not null default now()
+    )`)
+})
+
+beforeEach(async () => {
+  await cli.unsafe(`truncate appsrc.lease, appsrc.run`)
+  await cli.unsafe(`insert into appsrc.lease (extractor, holder) values ('sap', 'box-1')`)
+  await cli.unsafe(`insert into appsrc.run (run_id, phase) values ('R-1', 'done')`)
+})
+
+afterAll(async () => {
+  invalidateSources()
+  await cli.unsafe(`drop schema if exists appsrc cascade`)
+  await cli.end({ timeout: 2 })
+})
+
+const MANIFEST = {
+  name: 'appsrc-demo',
+  sources: [
+    {
+      name: 'appsrc-fixture',
+      engine: 'postgres' as const,
+      url_env: ENV_VAR,
+      default_schema: 'appsrc',
+      access: 'read_only' as const,
+      reflect: {
+        schema: 'appsrc',
+        prefix: 'Demo',
+        module: 'Demo Sources',
+        tables: ['appsrc.lease', 'appsrc.run'],
+      },
+    },
+  ],
+}
+
+describe('app manifests can declare Data Sources and reflections', () => {
+  test('install materializes the source and its reflected Tables', async ({ admin }) => {
+    invalidateSources()
+    const res = await admin.post<{ tables: string[]; sources: string[] }>('/api/install_app', {
+      manifest: MANIFEST,
+    })
+    expect(res.sources).toEqual(['appsrc-fixture'])
+    expect(res.tables.sort()).toEqual(['Demo Lease', 'Demo Run'])
+
+    // The bound Tables actually read from the fixture schema.
+    const meta = (await admin.get('/api/table/Demo%20Lease:meta')) as Record<string, unknown>
+    expect(meta.data_source).toBe('appsrc-fixture')
+    expect(meta.external_table).toBe('lease')
+    expect(meta.source_writable).toBe(false) // read_only source
+    const list = (await admin.get(
+      `/api/table/Demo%20Lease?fields=${encodeURIComponent('["name","holder"]')}`,
+    )) as { data: { name: string; holder: string }[]; total: number }
+    expect(list.total).toBe(1)
+    expect(list.data[0]).toMatchObject({ name: 'sap', holder: 'box-1' })
+  })
+
+  test('uninstall removes the reflected Tables and the source it created', async ({ admin }) => {
+    invalidateSources()
+    await admin.post('/api/install_app', { manifest: MANIFEST })
+    await admin.post('/api/uninstall_app', { name: 'appsrc-demo' })
+
+    const tables = await sql`
+      select name from table_def where name in ('Demo Lease', 'Demo Run')`
+    expect(tables).toHaveLength(0)
+    const [src] = await sql`select 1 from data_source where name = 'appsrc-fixture'`
+    expect(src).toBeUndefined()
+    // The foreign schema is untouched — uninstall never issues DDL upstream.
+    const rows = await cli`select extractor from appsrc.lease`
+    expect(rows).toHaveLength(1)
+  })
+
+  test('a pre-existing source is ADOPTED, not recreated, and survives uninstall', async ({
+    admin,
+  }) => {
+    invalidateSources()
+    // The operator created the source by hand first.
+    await admin.post('/api/table/Data%20Source', {
+      name: 'appsrc-fixture',
+      engine: 'postgres',
+      url_env: ENV_VAR,
+      default_schema: 'appsrc',
+      access: 'read_only',
+    })
+    const res = await admin.post<{ sources: string[] }>('/api/install_app', { manifest: MANIFEST })
+    expect(res.sources).toEqual([]) // adopted, so not recorded
+    await admin.post('/api/uninstall_app', { name: 'appsrc-demo' })
+    const [src] = await sql`select 1 from data_source where name = 'appsrc-fixture'`
+    expect(src).toBeTruthy() // predated the app — never removed
+  })
+
+  test('a relation the source does not have fails the install loudly', async ({ admin }) => {
+    invalidateSources()
+    await expect(
+      admin.post('/api/install_app', {
+        manifest: {
+          ...MANIFEST,
+          name: 'appsrc-bad',
+          sources: [
+            {
+              ...MANIFEST.sources[0],
+              reflect: { ...MANIFEST.sources[0].reflect, tables: ['appsrc.nope'] },
+            },
+          ],
+        },
+      }),
+    ).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('a manifest may not carry a connection string, only an env var name', async ({ admin }) => {
+    await expect(
+      admin.post('/api/install_app', {
+        manifest: {
+          name: 'appsrc-secret',
+          sources: [
+            {
+              name: 'appsrc-secret-src',
+              engine: 'postgres',
+              url_env: 'postgres://user:pw@host/db',
+            },
+          ],
+        },
+      }),
+    ).rejects.toMatchObject({ status: 417 })
+  })
+})
+
+// Shape only — deliberately NOT installed here. A developer machine may
+// carry the real RAILWAY_CONTROL_URL / MOTHERDUCK_URL in apps/server/.env,
+// and an install would then dial production during a unit test run.
+describe('the shipped Rama DW OS manifest', () => {
+  test('deploy/rama-dw-os.app.json is a valid manifest naming env vars only', () => {
+    const here = path.dirname(fileURLToPath(import.meta.url))
+    const file = path.resolve(here, '../../../deploy/rama-dw-os.app.json')
+    const manifest = JSON.parse(readFileSync(file, 'utf8')) as {
+      name: string
+      sources: { name: string; url_env: string; access: string; reflect: { tables: string[] } }[]
+    }
+    expect(manifest.name).toBe('rama-dw-os')
+    for (const s of manifest.sources) {
+      // Env var NAMES only — never a URL (spec BV7!).
+      expect(s.url_env).toMatch(/^[A-Z][A-Z0-9_]*$/)
+      expect(s.reflect.tables.length).toBeGreaterThan(0)
+    }
+    // The warehouse source must stay read-only.
+    expect(manifest.sources.find((s) => s.name === 'motherduck')?.access).toBe('read_only')
+    // Every source is one the engine actually supports.
+    for (const s of manifest.sources as unknown as { engine: string }[])
+      expect(['postgres', 'duckdb', 'csv-folder']).toContain(s.engine)
+  })
+})
