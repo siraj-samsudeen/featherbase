@@ -164,10 +164,12 @@ edges.
 
 > **The generation target is the feather-testing DSL, not raw Playwright.**
 > [`feather-testing-core`](https://github.com/siraj-samsudeen/feather-testing-core)
-> (published, 0.1.2) speaks the step triple natively — `visit`/`within` are
-> *where*, `clickButton`/`fillIn`/`selectOption` are *do*,
-> `assertText`/`assertHas`/`refuteHas` are *see* — so a journey compiles to
-> one fluent chain instead of locator soup:
+> (published, 0.2.0) speaks the step triple natively — `visit`/`within` are
+> *where*, `clickButton`/`fillIn`/`selectOption`/`upload`/`dropFile` are
+> *do*, `assertText`/`assertHas`/`refuteHas` plus the form-state family
+> (`assertValue`, `assertChecked`/`refuteChecked`, `assertSelected`,
+> `assertOptions`) are *see* — so a journey compiles to one fluent chain
+> instead of locator soup:
 >
 > ```ts
 > test('IMP-J1: first import creates a typed Table', async ({ session }) => {
@@ -176,27 +178,40 @@ edges.
 >     .clickLink('Import Data')
 >     .assertHas('[data-testid="drop-area"]');
 >   await session
->     .upload('drop area', 'fixtures/zones.csv')         // J1.2 — verb to contribute
+>     .dropFile('[data-testid="drop-area"]', 'fixtures/zones.csv') // J1.2
 >     .assertText('8 rows, 6 columns')
->     .assertValue('Table name', 'Zones')                // J1.3 — verb to contribute
+>     .assertValue('Table name', 'Zones')                // J1.3
 >     .clickButton('Import 8 rows')                      // J1.6
 >     .assertText('Hotel');                              // J1.7
+>   await session
+>     .clickLink('Alpha')                                // J1.8 — typed, not text
+>     .assertSelected('Region', 'North')
+>     .assertOptions('Region', ['North', 'South'])
+>     .assertChecked('Is Active');
 > });
 > ```
 >
 > Three properties make it more than sugar. Its `StepError` prints the
 > whole chain with `[ok] / [FAILED] / [skipped]` markers — the journey walk
 > with a failure position, i.e. **positional step traceability for free**,
-> complementing the rule IDs in test titles. Its `refuteText`/`refuteHas`
-> are the absence-assertion vocabulary of §5 (the positive-complement rule
-> still applies: pair a refute with an `assertHas` count). And the same
-> vocabulary has an RTL adapter, so a sequence can be exercised at the
-> integration tier without rewriting — a cheaper path for promoting
-> "never witnessed in a browser" matrix rows. Two verbs the import
-> journeys need do not exist yet — `upload(label, path)` and
-> `assertValue(label, value)` — and follow the standing policy for its
-> sibling `feather-testing-postgres`: **contribute upstream and release,
-> never patch locally**.
+> complementing the rule IDs in test titles; since 0.2.0 the session keeps
+> an executed-step history, so a journey split across several `await`s (as
+> above) still prints the *full* walk, and each queued step is wrapped in
+> Playwright's `test.step()`, so the walk appears step-by-step in the trace
+> viewer. Its `refuteText`/`refuteHas` are the absence-assertion vocabulary
+> of §5 (the positive-complement rule still applies — pair a refute with an
+> `assertHas` count — and is now documented in the DSL's own README). And
+> the same vocabulary has an RTL adapter, so a sequence can be exercised at
+> the integration tier without rewriting — a cheaper path for promoting
+> "never witnessed in a browser" matrix rows. The verbs this document
+> originally flagged as missing shipped upstream in 0.2.0 — `upload(label,
+> path)` for file inputs, `dropFile(selector, path)` for drop areas, and
+> the form-state assertion family, making J1.3 and J1.8 fully expressible.
+> Any verb still missing has an escape hatch: `step(name, fn)` queues a
+> named custom step (the callback receives `{ page, scope }`) without
+> abandoning the chain. The standing policy held — **contributed upstream
+> and released, never patched locally** (the `feather-testing-postgres`
+> policy).
 
 **Rule** — the why behind an expected value, tagged with its shape. Rules,
 not steps, carry IDs, because rules outlive UI redesigns. Rule-shaped rules
@@ -348,7 +363,9 @@ the shape, never the value" applies to pixels too); snap on demand rather
 than on every CI run, so visual noise never makes the suite flaky. The
 capture verb (`snap(slotId)`, or auto-snap at step boundaries under
 `SNAP=1`) belongs upstream in `feather-testing-core`, same policy as the
-other verbs.
+other verbs. Until it ships, 0.2.0's `step(name, fn)` escape hatch can
+host an interim capture (`step('snap IMP-J1.4', ({ page }) =>
+page.screenshot(...))`) without leaving the chain.
 
 Exemplar: [`docs/manual/spreadsheet-import.md`](../manual/spreadsheet-import.md)
 — hand-rendered once to fix the target output; the generator that derives
@@ -696,12 +713,13 @@ sentence — not a count of green entries — is the feature's true state.
    or per-run namespace) so the golden path stops self-skipping; make CI
    report skips as skips.
 10. **Adopt `feather-testing-core` as the e2e vocabulary** (Part I §6).
-    Add the published dependency, an `e2e/fixtures.ts`, and write **new**
-    journey tests in the DSL; migrate existing specs opportunistically
-    alongside the join-key renaming. Blocked-on verbs (`upload`,
-    `assertValue` and the form-state assertion family) are contributed
-    upstream and released first — the `feather-testing-postgres` policy:
-    fix in its own repo, never vendor or patch locally.
+    Add the published dependency (≥ 0.2.0), an `e2e/fixtures.ts`, and
+    write **new** journey tests in the DSL; migrate existing specs
+    opportunistically alongside the join-key renaming. The formerly
+    blocked-on verbs (`upload`, `dropFile`, `assertValue`, and the
+    form-state assertion family) shipped upstream in 0.2.0 — the
+    `feather-testing-postgres` policy held: fixed in its own repo, never
+    vendored or patched locally. **This item is unblocked.**
 
 ## 3. Later — only if the earlier layers earn it
 
