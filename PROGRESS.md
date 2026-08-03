@@ -657,6 +657,50 @@ and test helpers. One loose end, and it is a release chore rather than
 work: publish feather-testing-postgres 0.2.0, then move both `package.json`
 entries off the pinned git commit back to `^0.2.0`.
 
+## 2026-08-03 — Rama's instance becomes reproducible: prod on GitHub, config as a manifest
+
+Two gaps closed, both surfaced by the owner asking the right question:
+"should the deployment live in its own repo?"
+
+**No — a fork of the framework is the expensive mistake.** Featherbase's
+premise is that customizations are metadata, not code; forking to hold them
+throws that away and buys a permanent merge burden. But the instinct behind
+the question was right: Rama's configuration existed **only** inside one
+Railway database, and prod deployed from an *upload off a laptop* (its
+Railway source was literally `null`), so nobody else could reproduce the
+build.
+
+- **Prod deploys from GitHub.** `rama-dw-os` is connected to
+  `siraj-samsudeen/featherbase` @ main, with build config moved off the
+  untracked `railway.json` onto the service itself (preDeployCommand,
+  healthcheck, `RAILWAY_DOCKERFILE_PATH`) — a GitHub build now needs nothing
+  that isn't in the repo. Verified green from main, keeping its "Rama DW OS"
+  brand (which lives in its database, not in code). Both instances deploy
+  the same way now.
+- **Config as code.** `AppManifest` gained `sources`: which Data Sources to
+  connect (by env-var NAME — never a connection string) and which relations
+  to reflect. Install creates the sources and runs reflection, so column
+  shape is derived from the live source instead of frozen into the manifest;
+  a relation the source lacks fails the install rather than half-configuring
+  it. Sources follow the adopt-not-recreate discipline roles already use,
+  with a new `installed_app.sources` ledger column (migration 0068), and are
+  torn down LAST — a Data Source with bound Tables refuses deletion by
+  design.
+- **`deploy/rama-dw-os.app.json`** is the Rama instance as code: both
+  sources, the reflected relations, the brand. `POST /api/install_app`
+  rebuilds it.
+
+Gotcha worth keeping: the first version of the manifest test *installed* the
+shipped manifest to prove it parsed — and on a dev machine `apps/server/.env`
+carries the real credentials, so the unit test dialled production and timed
+out. The shipped manifest is now checked for SHAPE only; the mechanism is
+proved against local fixture schemas (`test/app-sources.test.ts`).
+
+Not done: prod's live instance still holds hand-made config (it predates the
+manifest). Installing the manifest there would ADOPT the existing sources
+rather than duplicate them, but that has not been exercised against prod —
+do it deliberately, not casually.
+
 ## 2026-08-03 — the dev server becomes featherbase-dev (shareable, credential-free)
 
 `rama-dw-os-dev` is now **featherbase-dev** — a general testing instance the
