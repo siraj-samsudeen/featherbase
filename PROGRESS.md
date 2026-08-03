@@ -657,6 +657,36 @@ and test helpers. One loose end, and it is a release chore rather than
 work: publish feather-testing-postgres 0.2.0, then move both `package.json`
 entries off the pinned git commit back to `^0.2.0`.
 
+## 2026-08-03 — the dev server becomes featherbase-dev (shareable, credential-free)
+
+`rama-dw-os-dev` is now **featherbase-dev** — a general testing instance the
+owner can also show to outside contributors, rather than a Rama-specific
+staging box. https://featherbase-server-production.up.railway.app (the
+service kept its name, so the URL is unchanged), project `featherbase-dev`,
+database `featherbase-dev-db`, brand "Featherbase Dev".
+
+**Sharing it meant de-provisioning it**, which is the part worth
+remembering: the instance held *production* credentials
+(`RAILWAY_CONTROL_URL`, `MOTHERDUCK_URL`) and had the real Rama control
+plane reflected into browsable Tables. Anyone given a look would have been
+given those rows. So before renaming: the three `Control *` bound Tables
+and both Data Sources were removed, and both credential env vars deleted
+from the Railway service (`DATABASE_URL`, `FILE_STORAGE_DIR`, `JWT_SECRET`
+are all that remain). Bound Tables are engine-managed and have no delete
+API — their `table_def`/`column_def`/`home_page_link` rows were removed
+directly in the dev database.
+
+Re-adding a source later is a two-minute job through the Source Browser
+(set the env var on the service, create the Data Source, reflect) — but
+**do not point featherbase-dev at production data again while it is
+shared**. Prod (`rama-dw-os`, Jeyarama-ETL project) is untouched and keeps
+both sources.
+
+Still true: the service is GitHub-connected, so merges to `main`
+auto-deploy here — verified end-to-end when PR #103 merged (the deploy of
+the merge commit went green and the instance kept its own brand, since
+`app_name` lives in its database, not the image).
+
 ## 2026-08-02 — PR #103 re-review: write-time scopes, tier parity, symlinks, required revisions
 
 A second review round read the whole PR against current `main` rather than
