@@ -673,6 +673,37 @@ and test helpers. One loose end, and it is a release chore rather than
 work: publish feather-testing-postgres 0.2.0, then move both `package.json`
 entries off the pinned git commit back to `^0.2.0`.
 
+## 2026-08-03 — one name everywhere: the prod instance is `featherbase`
+
+The `rama-dw-os` slug was retired: three months from now it would have read
+as a second, unrelated project sitting next to the real one. Renamed the
+Railway service, its database and its domain — `featherbase`,
+`featherbase-db`, **https://featherbase-rama.up.railway.app** — so the
+identifier matches the folder (`rama_dw/featherbase/`) and the app name, the
+way `dbt_runner` already does. The old prod URL is a hard 404, not a
+redirect.
+
+The UI display name is `Featherbase` on both instances (prod) and
+"Featherbase Dev" (dev), applied to the live instances directly as well as
+in the manifest, so repo and running state agree rather than drifting.
+
+Gotcha worth keeping: `DATABASE_URL` on prod was a **reference by service
+name** (`${{rama-dw-os-db.DATABASE_URL}}`). Renaming the database service
+could have left it dangling and broken the next deploy — Railway rewrote it
+to `${{featherbase-db.DATABASE_URL}}` automatically, but VERIFY the
+unrendered value (`variables(..., unrendered: true)`) after any service
+rename rather than trusting the rendered one, which looks fine either way.
+
+Also: the Railway CLI refreshes an expired OAuth token, but a token read
+straight out of `~/.railway/config.json` does not — GraphQL calls start
+returning "Not Authorized" for no visible reason. Run any `railway` command
+first to refresh, then re-read the file.
+
+Rama's manifest now lives in the `rama_dw` repo
+(`featherbase/manifest.json`, merged as data-warehouse#1606/1607/1608) with
+a README covering install, adopt-never-clobber semantics, and the MotherDuck
+blocker.
+
 ## 2026-08-03 — Rama's instance becomes reproducible: prod on GitHub, config as a manifest
 
 Two gaps closed, both surfaced by the owner asking the right question:
