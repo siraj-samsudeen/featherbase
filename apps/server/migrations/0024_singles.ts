@@ -19,7 +19,7 @@ export async function up() {
     module: 'Core',
     kind: 'settings',
     columns: [
-      { column_name: 'app_name', column_type: 'Data', default_value: 'Frappe Clone', in_list_view: true },
+      { column_name: 'app_name', column_type: 'Data', default_value: 'Featherbase', in_list_view: true },
       { column_name: 'time_zone', column_type: 'Data', default_value: 'UTC' },
       { column_name: 'date_format', column_type: 'Choice', choices: 'yyyy-mm-dd\ndd-mm-yyyy\nmm-dd-yyyy', default_value: 'yyyy-mm-dd' },
       { column_name: 'session_hours', column_type: 'Int', default_value: '8' },

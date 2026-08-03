@@ -78,7 +78,7 @@ export async function sendTestEmail(to: string): Promise<void> {
   await deliverToSink({
     to,
     from,
-    subject: 'Test email from Frappe Clone',
+    subject: 'Test email from Featherbase',
     body: 'This is a test email confirming the account can send mail.',
   })
 }

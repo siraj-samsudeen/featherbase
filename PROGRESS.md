@@ -296,6 +296,75 @@ Serif via a `--font-display` token) — deferred to keep this change
 token-only. Also consider: palette-aware record avatars (deterministic
 hash→hue) from the Indigo mockup.
 
+## 2026-07-31 — the "Frappe Clone" brand string is gone, and the product has a mark
+
+The July 2026 rename to Featherbase left the *displayed* name behind: the
+navbar, the login header, the browser tab, the System Settings `app_name`
+default (server and web), the test-email subject, the `public_info` guest
+method, and the feature board all still said "Frappe Clone".
+
+- **Every user-visible occurrence is now "Featherbase"** —
+  `apps/web/index.html`, `AdminLayout.tsx`, `Login.tsx`,
+  `apps/web/src/lib/settings.ts`, `apps/server/src/settings.ts`,
+  `apps/server/src/email.ts`, `apps/server/src/methods/_test_guest.ts`,
+  `apps/server/migrations/0024_singles.ts`, `harness/render-features.mjs`,
+  and the `methods.test.ts` assertion that pins `public_info`.
+- **`0064_rename_app_name.sql` converges existing local databases.** Editing
+  the 0024 seed only helps a database built from scratch — 0024 returns early
+  when `System Settings` already exists. The migration rewrites the
+  `column_def` default and any `single_value` row, *only* where the value is
+  still the untouched `'Frappe Clone'`, so an owner-customised `app_name`
+  survives. Verified against the dev database: the seeded default flipped, the
+  locally-customised value was left alone.
+- **What deliberately still says it.** `PROGRESS.md` history, `docs/adr/0006`
+  (it records the working name as part of the decision), `site/*.html` dumps of
+  those docs, `docs/research/frappe-architecture.md` (there `frappe_clone` is a
+  filesystem path to an upstream Frappe checkout), `docs/archive/`, and
+  `harness/evaluation/diff-request.sh` plus the `clone.json` it writes — there
+  "clone" names an artifact the harness emits, not the product. These are dated
+  records or real filenames.
+- **The docs sweep found one live offender, not many.** `.claude/agents/evaluator.md`
+  called the product "the Frappe clone" in present tense, in an *active* agent
+  definition rather than a dated record — now Featherbase (its line 52
+  `clone.json` reference was left, being a filename `diff-request.sh` actually
+  emits). Everything else in `docs/` that mentions cloning describes the
+  project's *history* as a replication of Frappe, which is accurate and stays.
+  `CLAUDE.md`'s own claim that the name survived in only two places was stale;
+  it now carries the full sanctioned list and the rule that distinguishes a
+  dated record from present-tense naming.
+- **The mark.** `apps/web/src/components/Logo.tsx` replaces the "F" letter tile
+  on the navbar and login header; `apps/web/public/favicon.svg` is the same
+  art, linked from `index.html` (first use of `apps/web/public/`). It is a
+  tilted feather with a single wedge cut out of its vane — the notch is the
+  only detail, which is why it survives 16px where barb-by-barb designs mush.
+  Drawn as a solid brand tile with the notch and shaft in the tile colour
+  rather than punched out, so it needs no transparency and holds on any
+  background. Shaft weight is 2.1 deliberately: thinner hairlines vanish at
+  16px.
+- **How it was chosen** (owner picked from rendered sheets, every candidate
+  shown at 16/24/64 plus light and dark wordmark lockups). Ruled out along the
+  way: a symmetric leaf that read as a pill; open-stroke and herringbone
+  versions that read as a fishbone; a "dissolve" that read as a paintbrush; a
+  fanned version that read as a crown. Double-F monograms in calligraphic
+  faces were explored and dropped — mirroring two F's back-to-back makes a
+  face, not a vane, and "FF" reads as a type-foundry monogram rather than
+  Featherbase. Single calligraphic F's (Snell, Zapfino, Chancery, Savoye) were
+  also dropped: they are macOS-only system fonts, so shipping one would have
+  meant outlining the glyph to paths anyway, and the swashiest faces clipped
+  their own tile at 64px.
+
+Verified: `pnpm --filter server migrate` applied 0064; `./init.sh` boots and
+both smoke suites pass; web suite 12/12 and both typechecks clean; Playwright
+screenshots of `/login` and the `/admin` navbar confirm the mark and wordmark
+render. Server suite is 501/504 with one **pre-existing, unrelated** failure —
+`app-fixtures.test.ts` "a fresh deployment has zero helpdesk tables" fails
+because this dev database has `helpdesk` in `installed_app` from an earlier
+session; its sibling test skips for that same reason.
+
+Next: that app-fixtures test asserts a fresh-deployment fact against a
+long-lived dev database, so it fails for anyone who has ever installed an app
+locally — worth making it state-independent.
+
 ## 2026-07-31 — a guard so a sixth missing `E` prefix cannot land (#93 follow-up)
 
 #93 fixed five `.sql` sites that wrote `'basic\nrestricted'` where

@@ -76,7 +76,7 @@ const sections = CATEGORY_META.filter(([key]) => features.some((f) => f.category
   })
   .join('\n')
 
-const html = `<title>Frappe Clone — Feature Board</title>
+const html = `<title>Featherbase — Feature Board</title>
 <style>
 :root{
   --ground:#F8F7F5; --panel:#FFFFFF; --ink:#201E1B; --muted:#6E6A63;
@@ -154,7 +154,7 @@ h2{font-size:15px;font-weight:650;margin:0;letter-spacing:.01em}
 }
 </style>
 <div class="top"><div class="top-inner">
-  <h1>Frappe Clone — Feature Board</h1>
+  <h1>Featherbase — Feature Board</h1>
   <span class="sub">126 features · autonomous build · updated ${new Date().toISOString().slice(0, 10)}</span>
   <span class="counts"><span class="cp"><b>${passing}</b> passing</span>
   <span class="cf"><b>${total - passing}</b> failing</span><span><b>${pct}%</b></span></span>

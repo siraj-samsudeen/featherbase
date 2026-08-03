@@ -304,16 +304,18 @@ describe('helpdesk: a registered app that installs and uninstalls cleanly', () =
     expect(acct).toMatchObject({ email_id: 'pre-existing@corp.test' })
   })
 
-  test('helpdesk is registered but NOT installed: a fresh deployment has zero helpdesk tables', async ({
-    admin,
-  }) => {
-    // Registration only puts the app in the available list — the ledger and
-    // the schema stay empty until an explicit install. (On a dev database
-    // that carries the committed structure the meta may exist; the ledger
-    // check still holds — packaging never auto-installs.)
-    expect(await isInstalled('helpdesk')).toBe(false)
+  test('registration only lists an app — packaging never auto-installs it', async ({ admin }) => {
+    // The claim here is about the registry, so it has to be made with an app
+    // whose install state this test owns. It used to be made about helpdesk:
+    // any developer who had ever installed helpdesk locally left a row in
+    // `installed_app` that outlives the sandbox transaction, so the assertion
+    // graded their session history rather than the code. Register the
+    // test-only app, never install it, and the claim holds on every database.
+    registerApp(manifest())
+    expect(await isInstalled(APP)).toBe(false)
+
     const apps = await admin.get<{ available: string[]; installed: { name: string }[] }>('/api/apps')
-    expect(apps.available).toContain('helpdesk')
-    expect(apps.installed.map((a) => a.name)).not.toContain('helpdesk')
+    expect(apps.available).toEqual(expect.arrayContaining([APP, 'helpdesk']))
+    expect(apps.installed.map((a) => a.name)).not.toContain(APP)
   })
 })
