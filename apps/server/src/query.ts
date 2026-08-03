@@ -2,7 +2,9 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName } from './doctype-engine'
-import { getUserPermissionMap, isBypassUser, permissionScope } from './permissions'
+import { getUserPermissionMap, isBypassUser, permissionScope, permittedTiers } from './permissions'
+import { SENSITIVE_COLUMNS } from './sensitive-columns'
+import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
 
 export type Filter = [string, string, unknown]
 
@@ -90,13 +92,20 @@ function parseRelatedSpec(value: unknown): RelatedSpec {
 
 const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 
-// Credential columns are never selectable or filterable (API-005/API-008).
-const SENSITIVE_COLUMNS = new Set(['password_hash', 'api_secret_hash', 'api_key', 'new_password'])
-
-function columnSet(meta: TableMeta): Set<string> {
+// PERM-006: the columns a caller may name in select/filter/order/group.
+// Tier filtering used to apply on detail reads only (filterReadFields), so a
+// basic-tier caller could still SELECT, filter or sort by a restricted
+// column through the list API and read its values — list and detail
+// disagreeing about the same permission. Passing the permitted tiers closes
+// that for native and (via dispatch.ts) source-bound Tables alike.
+function columnSet(meta: TableMeta, readTiers?: Set<'basic' | 'restricted'>): Set<string> {
   const cols = new Set<string>(STANDARD_COLUMNS)
   for (const f of meta.columns)
-    if (!NO_COLUMN_TYPES.has(f.column_type) && !SENSITIVE_COLUMNS.has(f.column_name))
+    if (
+      !NO_COLUMN_TYPES.has(f.column_type) &&
+      !SENSITIVE_COLUMNS.has(f.column_name) &&
+      (!readTiers || readTiers.has(f.tier ?? 'basic'))
+    )
       cols.add(f.column_name)
   return cols
 }
@@ -125,6 +134,16 @@ async function scopedWhere(
   if (!Array.isArray(callerFilters))
     throw new AppError('ValidationError', 'filters must be an array of [field, operator, value]')
   const meta = await getMeta(table)
+  // scopedWhere compiles SQL against the local physical table, which a
+  // source-bound Table does not have. Public entry points dispatch bound
+  // Tables before reaching here; this guard covers the rest — notably a
+  // 'related' filter TARGETING a bound Table (its rows live on the source,
+  // so a scoped subquery cannot be compiled) and any future direct caller.
+  if (isBound(meta))
+    throw new AppError(
+      'ValidationError',
+      `${table} is bound to data source ${meta.data_source} — this operation cannot compile against it${relatedDepth > 0 ? " (a 'related' filter cannot target a source-bound Table)" : ''}`,
+    )
   const scope = await permissionScope(user, table, 'read')
   if (scope === 'none')
     throw new AppError('PermissionError', `No read permission on ${table} for ${user}`)
@@ -133,7 +152,7 @@ async function scopedWhere(
       'ValidationError',
       `${table} is a Settings Table and has no list — open it directly by its name`,
     )
-  const cols = columnSet(meta)
+  const cols = columnSet(meta, await permittedTiers(user, table, 'read'))
   const tbl = tableName(table)
 
   const filters = [...callerFilters]
@@ -305,6 +324,9 @@ export async function countDocs(
   filters: Filter[] = [],
   user = 'Administrator',
 ): Promise<number> {
+  // M3 seam: source-bound Tables count on the source (spec EDS-5).
+  const meta = await getMeta(table)
+  if (isBound(meta)) return boundCountDocs(meta, filters, user)
   const { table: tbl, where } = await scopedWhere(table, user, filters)
   const [{ count }] = await sql`select count(*)::int as count from ${sql(tbl)} where ${where}`
   return count as number
@@ -319,6 +341,8 @@ export async function groupCount(
   filters: Filter[] = [],
   user = 'Administrator',
 ): Promise<{ label: string; value: number }[]> {
+  const boundMeta = await getMeta(table)
+  if (isBound(boundMeta)) return boundGroupCount(boundMeta, field, filters, user)
   const { cols, table: tbl, where } = await scopedWhere(table, user, filters)
   assertColumn(cols, field, 'group_by')
   const rows = await sql`
@@ -343,6 +367,17 @@ export async function aggregateDocs(
   sumField?: string,
   user = 'Administrator',
 ): Promise<{ count: number; sum: string | null }> {
+  // Bound Tables: counts push down to the driver; sums are not implemented
+  // on the source path yet — reject rather than 500 on a missing table.
+  const boundMeta = await getMeta(table)
+  if (isBound(boundMeta)) {
+    if (sumField)
+      throw new AppError(
+        'ValidationError',
+        `${table} is bound to data source ${boundMeta.data_source} — :aggregate sums are not supported on bound Tables yet`,
+      )
+    return { count: await boundCountDocs(boundMeta, filters, user), sum: null }
+  }
   const { meta, cols, table: tbl, where } = await scopedWhere(table, user, filters)
   if (!sumField) {
     const [row] = await sql`select count(*)::int as count from ${sql(tbl)} where ${where}`
@@ -361,6 +396,10 @@ export async function aggregateDocs(
 }
 
 export async function getList(table: string, args: ListArgs = {}, user = 'Administrator') {
+  // M3 seam: source-bound Tables list from the source — filters, sort and
+  // paging pushed down to the driver (spec EDS-5).
+  const boundMeta = await getMeta(table)
+  if (isBound(boundMeta)) return boundGetList(boundMeta, args, user)
   const { meta, table: tbl, cols, where } = await scopedWhere(table, user, args.filters ?? [])
 
   const fields = args.fields?.length ? args.fields : ['name']

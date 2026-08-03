@@ -17,6 +17,7 @@ import {
 } from '../lib/recents'
 import { useHomePages } from '../lib/home-pages'
 import { useRealtime } from '../lib/realtime'
+import { useSettings } from '../lib/settings'
 import { useTheme } from '../lib/theme'
 import { PALETTES, usePalette, type Palette } from '../lib/palette'
 import { useI18n } from '../lib/i18n'
@@ -60,6 +61,12 @@ export function AdminLayout() {
   const { theme, toggle: toggleTheme } = useTheme()
   const { palette, set: setPalette } = usePalette()
   const { t, language, setLanguage } = useI18n()
+  // SET-004: the instance brand (System Settings → app_name) names the
+  // navbar and the browser tab — "Frappe Clone" is only the default.
+  const { app_name } = useSettings()
+  useEffect(() => {
+    document.title = app_name
+  }, [app_name])
   const [search, setSearch] = useState('')
 
   // Recent actions (#101 Phase 1): every admin navigation is remembered in a
@@ -353,7 +360,9 @@ export function AdminLayout() {
         </button>
         <Link to="/admin" className="flex items-center gap-2">
           <Logo className="h-6 w-6" />
-          <span className="hidden text-sm font-semibold text-[var(--color-ink)] sm:inline">Featherbase</span>
+          {/* SET-004: the instance names itself via System Settings
+              app_name; "Featherbase" is only the default. */}
+          <span className="hidden text-sm font-semibold text-[var(--color-ink)] sm:inline">{app_name}</span>
         </Link>
 
         <form onSubmit={runSearch} className="relative mx-auto w-full max-w-md" data-testid="awesomebar">

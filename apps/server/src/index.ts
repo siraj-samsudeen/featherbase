@@ -30,6 +30,7 @@ import {
 } from './actions'
 import './actions/core-row-actions'
 import './actions/collection-import'
+import './actions/source-actions'
 import './actions/row-connections'
 import './actions/collection-aggregate'
 import { renderPdf, renderPrintHtml } from './print'
@@ -107,6 +108,14 @@ app.use(
 app.get('/api/ping', async (c) => {
   const [row] = await sql`select 1 as ok`
   return c.json({ message: 'pong', db: row.ok === 1 })
+})
+
+// SET-004: the instance's display name, public so the login page (pre-auth)
+// can brand itself. app_name only — everything else in System Settings
+// stays behind the session like /api/settings.
+app.get('/api/brand', async (c) => {
+  const s = await getSystemSettings()
+  return c.json({ app_name: s.app_name })
 })
 
 // Frappe wire parity: sessions ride an HttpOnly `sid` cookie (as in real
@@ -1232,7 +1241,12 @@ app.delete('/api/table/:table/:name', async (c) => {
   const table = await resolveTableName(c.req.param('table'))
   const name = c.req.param('name')
   const user = c.get('user')
-  await deleteDoc(table, name, user.name)
+  // Optional optimistic echo (?updated_at=...): on source-bound rows the
+  // delete conflicts when the store changed after the client loaded —
+  // essential for csv-folder rows, whose identity is positional.
+  await deleteDoc(table, name, user.name, {
+    expectUpdatedAt: c.req.query('updated_at') ?? null,
+  })
   publishDocEvent(table, name, 'deleted')
   return c.json({ ok: true })
 })

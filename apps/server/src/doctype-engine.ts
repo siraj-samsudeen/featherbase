@@ -64,6 +64,9 @@ const columnSchema = z.object({
   hidden: z.boolean().optional(),
   in_list_view: z.boolean().optional(),
   tier: z.enum(['basic', 'restricted']).optional(),
+  // EDS-3: true column name on a bound Table's source when the legal
+  // column_name had to differ (reserved word, illegal characters).
+  source_column: z.string().optional(),
 })
 
 export const tableDefSchema = z.object({
@@ -83,6 +86,14 @@ export const tableDefSchema = z.object({
   // it through createTable; the public /api/doctype routes REJECT it — a
   // user-created table can never claim system: true.
   system: z.boolean().optional(),
+  // EDS-3: binding to an external Data Source. Set only at creation (BV3) —
+  // updateTable never touches these. A bound Table gets no DDL and no RLS
+  // (BV1): its rows live on the source.
+  data_source: z.string().optional(),
+  external_schema: z.string().optional(),
+  external_table: z.string().optional(),
+  external_pk: z.string().optional(),
+  external_modified: z.string().optional(),
   columns: z.array(columnSchema).min(1),
 })
 
@@ -130,6 +141,20 @@ function targetOf(f: TableDef['columns'][number]): string | undefined {
 
 function validateDef(def: TableDef) {
   const errs: Record<string, string> = {}
+  // EDS-3/BV4/VDT-4: a source binding is only coherent for plain collection
+  // Tables — no sub_tables, no settings, no submit lifecycle (the source has
+  // no docstatus), no Sub-table columns (child rows can't live on a source).
+  if (def.data_source) {
+    if ((def.kind ?? 'table') !== 'table')
+      errs.data_source = 'Only kind "table" can be bound to a data source'
+    if (def.is_submittable)
+      errs.is_submittable = 'A source-bound Table cannot be submittable (no docstatus on the source)'
+    if (!def.external_table) errs.external_table = 'external_table is required for a bound Table'
+    if (!def.external_pk) errs.external_pk = 'external_pk is required for a bound Table'
+    for (const f of def.columns)
+      if (f.column_type === 'Sub-table')
+        errs[f.column_name] = 'Sub-table columns are not supported on source-bound Tables'
+  }
   const seen = new Set<string>()
   for (const f of def.columns) {
     if ((STANDARD_COLUMNS as readonly string[]).includes(f.column_name))
@@ -233,6 +258,15 @@ export async function updateTable(
     throw new AppError('ValidationError', 'Invalid Table definition', errs)
   }
   const def = parsed.data
+  // BV3: the binding is immutable — whatever the caller sent, the existing
+  // binding is what validateDef judges against (and what stays stored).
+  if (existing.data_source) {
+    def.data_source = existing.data_source
+    def.external_table = existing.external_table ?? undefined
+    def.external_pk = existing.external_pk ?? undefined
+  } else if (def.data_source) {
+    throw new AppError('ValidationError', 'An existing Table cannot be bound to a data source')
+  }
   if (def.is_submittable && !def.columns.some((f) => f.column_name === 'amended_from'))
     def.columns.push({
       column_name: 'amended_from',
@@ -258,6 +292,9 @@ export async function updateTable(
   if (Object.keys(errors).length)
     throw new AppError('ValidationError', 'Unsupported schema change', errors)
 
+  // A bound Table's column changes are metadata-only (BV1: no DDL against
+  // anyone's storage, ours included).
+  const isBound = Boolean(existing.data_source)
   const table = tableName(name)
   await sql.begin(async (tx) => {
     await tx`update table_def set ${tx({
@@ -271,7 +308,7 @@ export async function updateTable(
 
     for (const [i, f] of def.columns.entries()) {
       const old = before.get(f.column_name)
-      const row = {
+      const row: Record<string, unknown> = {
         position: i + 1,
         label: f.label ?? f.column_name,
         reference_table: f.reference_table ?? null,
@@ -285,6 +322,10 @@ export async function updateTable(
         in_list_view: f.in_list_view ?? false,
         tier: f.tier ?? 'basic',
       }
+      // Only touch source_column when a value exists — pre-0064 migrations
+      // that call updateTable run before the column does (fresh databases).
+      const sourceColumn = f.source_column ?? (old ? old.source_column : null)
+      if (sourceColumn != null) row.source_column = sourceColumn
       if (!old) {
         await tx`insert into column_def ${tx({
           parent: name,
@@ -293,9 +334,9 @@ export async function updateTable(
           ...row,
         })}`
         const type = pgType(f.column_type)
-        if (type && existing.kind !== 'settings')
+        if (type && existing.kind !== 'settings' && !isBound)
           await tx.unsafe(`alter table "${table}" add column if not exists "${f.column_name}" ${type}`)
-        if (f.unique && type)
+        if (f.unique && type && !isBound)
           await tx.unsafe(
             `alter table "${table}" add constraint "${table}_${f.column_name}_uq" unique ("${f.column_name}")`,
           )
@@ -303,7 +344,7 @@ export async function updateTable(
         await tx`update column_def set ${tx(row)}
           where parent = ${name} and column_name = ${f.column_name}`
         const type = pgType(f.column_type)
-        if (type && existing.kind !== 'settings' && Boolean(old.unique) !== Boolean(f.unique)) {
+        if (type && existing.kind !== 'settings' && !isBound && Boolean(old.unique) !== Boolean(f.unique)) {
           if (f.unique)
             await tx.unsafe(
               `alter table "${table}" add constraint "${table}_${f.column_name}_uq" unique ("${f.column_name}")`,
@@ -320,7 +361,7 @@ export async function updateTable(
       if (after.has(column_name)) continue
       await tx`delete from column_def where parent = ${name} and column_name = ${column_name}`
       const type = pgType(old.column_type)
-      if (type && existing.kind !== 'settings' && opts.drop_columns)
+      if (type && existing.kind !== 'settings' && !isBound && opts.drop_columns)
         await tx.unsafe(`alter table "${table}" drop column if exists "${column_name}"`)
       // without drop_columns the column (and its data) is retained
     }
@@ -354,6 +395,27 @@ export async function createTable(input: unknown): Promise<TableMeta> {
   if (existing)
     throw new AppError('ConflictError', `Table ${def.name} already exists`)
 
+  // EDS-3 (review finding 10): a binding written by hand (POST /api/doctype)
+  // is checked against the live source — it must exist, be allowlisted, and
+  // carry every mapped column — instead of persisting a Table that only
+  // fails later at query time. Imported lazily: reflect.ts imports this
+  // module for createTable.
+  if (def.data_source) {
+    const { assertBindingIsValid } = await import('./sources/reflect')
+    await assertBindingIsValid({
+      name: def.name,
+      data_source: def.data_source,
+      external_schema: def.external_schema,
+      external_table: def.external_table!,
+      external_pk: def.external_pk!,
+      external_modified: def.external_modified,
+      columns: def.columns.map((c) => ({
+        column_name: c.column_name,
+        source_column: c.source_column,
+      })),
+    })
+  }
+
   // Sub-table columns must point at an existing sub_table-kind Table.
   for (const f of def.columns) {
     if (f.column_type !== 'Sub-table') continue
@@ -369,7 +431,11 @@ export async function createTable(input: unknown): Promise<TableMeta> {
   }
 
   await sql.begin(async (tx) => {
-    await tx`insert into table_def ${tx({
+    // The binding keys exist only from migration 0064 on. Include them only
+    // when actually binding, so the pre-0064 migrations (0005…) that call
+    // createTable still work on a FRESH database mid-chain — omitting the
+    // keys entirely keeps the INSERT valid against the older shape.
+    const tableRow: Record<string, unknown> = {
       name: def.name,
       module: def.module ?? 'Core',
       kind: def.kind ?? 'table',
@@ -378,9 +444,17 @@ export async function createTable(input: unknown): Promise<TableMeta> {
       title_column: def.title_column ?? null,
       description: def.description ?? null,
       system: def.system ?? false,
-    })}`
+    }
+    if (def.data_source) {
+      tableRow.data_source = def.data_source
+      tableRow.external_schema = def.external_schema ?? null
+      tableRow.external_table = def.external_table ?? null
+      tableRow.external_pk = def.external_pk ?? null
+      tableRow.external_modified = def.external_modified ?? null
+    }
+    await tx`insert into table_def ${tx(tableRow as Record<string, never>)}`
     for (const [i, f] of def.columns.entries()) {
-      await tx`insert into column_def ${tx({
+      const columnRow: Record<string, unknown> = {
         parent: def.name,
         position: i + 1,
         column_name: f.column_name,
@@ -396,9 +470,13 @@ export async function createTable(input: unknown): Promise<TableMeta> {
         hidden: f.hidden ?? false,
         in_list_view: f.in_list_view ?? false,
         tier: f.tier ?? 'basic',
-      })}`
+      }
+      if (f.source_column != null) columnRow.source_column = f.source_column
+      await tx`insert into column_def ${tx(columnRow as Record<string, never>)}`
     }
-    const ddl = createTableDDL(def)
+    // BV1!: a bound Table never causes DDL — no CREATE TABLE, no RLS, no
+    // index. Its storage belongs to the source.
+    const ddl = def.data_source ? null : createTableDDL(def)
     if (ddl) {
       await tx.unsafe(ddl)
       if (def.kind === 'sub_table')

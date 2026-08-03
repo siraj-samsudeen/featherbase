@@ -14,3 +14,7 @@ coverage/
 apps/web/.vite/
 storage/
 *.tsbuildinfo
+
+# Playwright MCP scratch output (screenshots land at the repo root)
+.playwright-mcp/
+/*.png

@@ -5,7 +5,7 @@ import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { ApiError, api, getToken, listResource } from '../lib/api'
 import { useRealtime } from '../lib/realtime'
 import { Link as RouterLink } from '@tanstack/react-router'
-import { NO_COLUMN_TYPES, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
 import { useClientScripts, type Frm } from '../lib/client-scripts'
 import { useI18n } from '../lib/i18n'
@@ -154,6 +154,10 @@ export function FormView({
 
   const status = String((baseline as Record<string, unknown>).status ?? 'draft')
   const submittable = Boolean(m.is_submittable) && !isNew
+  // EDS-13: a bound Table on a read-only source renders with no write
+  // affordance at all — every field read-only, Save/Rename absent.
+  const sourceReadOnly = isSourceReadOnly(m)
+  const boundSource = m.data_source ?? null
 
   async function runAction(action: 'submit' | 'cancel' | 'amend') {
     setBanner(null)
@@ -271,8 +275,27 @@ export function FormView({
           <span className="text-xs text-gray-500" data-testid="form-status">
             {dirty ? 'Not saved' : isNew ? 'New document' : 'Saved'}
           </span>
+          {boundSource && (
+            <span
+              className="fc-pill ml-2 align-middle text-[10px]"
+              data-testid="source-badge"
+              title={`Rows live on data source ${boundSource}`}
+            >
+              {boundSource} · {sourceReadOnly ? 'read-only' : 'read-write'}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
+          {doctype === 'Data Source' && !isNew && (
+            <RouterLink
+              to="/admin/source/$name"
+              params={{ name }}
+              data-testid="form-source-browser"
+              className="fc-btn"
+            >
+              Browse &amp; Reflect
+            </RouterLink>
+          )}
           {!isNew && <WorkflowActions doctype={doctype} name={name} />}
           {submittable && (
             <span
@@ -311,7 +334,8 @@ export function FormView({
               Map
             </RouterLink>
           )}
-          {!isNew && !renaming && (
+          {/* A bound row's pk belongs to the source — never renameable here. */}
+          {!isNew && !renaming && !boundSource && (
             <button
               onClick={() => {
                 setRenameValue(name)
@@ -339,14 +363,16 @@ export function FormView({
               </button>
             </span>
           )}
-          <button
-            onClick={save}
-            disabled={saving || !dirty || (submittable && status !== 'draft')}
-            data-testid="form-save"
-            className="fc-btn-primary disabled:opacity-40"
-          >
-            {saving ? t('Saving…') : t('Save')}
-          </button>
+          {!sourceReadOnly && (
+            <button
+              onClick={save}
+              disabled={saving || !dirty || (submittable && status !== 'draft')}
+              data-testid="form-save"
+              className="fc-btn-primary disabled:opacity-40"
+            >
+              {saving ? t('Saving…') : t('Save')}
+            </button>
+          )}
           {submittable && status === 'draft' && !dirty && (
             <button
               onClick={() => runAction('submit')}
@@ -429,7 +455,11 @@ export function FormView({
                 ) : (
                   <FieldControl
                     key={f.column_name}
-                    field={submittable && status !== 'draft' ? { ...f, read_only: true } : f}
+                    field={
+                      sourceReadOnly || (submittable && status !== 'draft')
+                        ? { ...f, read_only: true }
+                        : f
+                    }
                     value={values[f.column_name]}
                     error={errors[f.column_name]}
                     onChange={(v) => setField(f.column_name, v)}

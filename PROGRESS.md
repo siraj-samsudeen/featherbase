@@ -657,6 +657,283 @@ and test helpers. One loose end, and it is a release chore rather than
 work: publish feather-testing-postgres 0.2.0, then move both `package.json`
 entries off the pinned git commit back to `^0.2.0`.
 
+## 2026-08-02 — PR #103 re-review: write-time scopes, tier parity, symlinks, required revisions
+
+A second review round read the whole PR against current `main` rather than
+only the first eight findings, and found nine more. Two lessons worth
+keeping: **fixing the path a review names is not the same as fixing the
+class of bug** (round one fixed read scoping and left write scoping open),
+and **a gap the new code shares with the old code is still a gap**.
+
+- **Merge conflict (blocking).** `main` had moved `/desk` → `/admin` and
+  added relational navigation. Merged deliberately: the source browser now
+  lives at `/admin/source/$name`, every new link carries main's required
+  search params, main's `ListRow` extraction is kept with the read-only
+  selection gate threaded through as a `selectable` prop, and main's Map
+  button coexists with the bound-row Rename suppression.
+- **Data Scopes judged the row as loaded, not as written.** A caller with
+  `region = north` could edit a permitted row's Reference *to* `south` —
+  and a hook could do the same. Both bound write paths now re-check the
+  finalized row (post defaults/validation/hooks) just before the source
+  write.
+- **Field tiers were missing from list/count/group** — a basic-tier caller
+  could select, filter, sort or group by a restricted column that detail
+  reads correctly hid. **This gap existed on native Tables too** (the
+  PERM-006 test only covered detail reads), so the fix lands in both
+  places: `columnSet` takes the caller's read tiers, and the bound binding
+  is narrowed before the request is built. A caller-supplied `order_by`
+  that does not resolve is now rejected rather than silently falling back
+  to the pk — that fallback was itself the hole the tier test exposed.
+- **CSV containment was lexical only**, so a symlinked file (or parent
+  directory) escaped `root_path` on read and write. Now canonical:
+  realpath on root and parent, plus an lstat that refuses a symlinked
+  target outright.
+- **Deletes required a revision only if the caller offered one.** Where a
+  binding has one, it is now mandatory — the positional-CSV hazard was
+  closed for the Desk but open to every other API caller.
+- **Read-only flips could be defeated by a cache race**: invalidation ran
+  *inside* the save transaction, so a concurrent request could repopulate
+  from pre-commit state. Invalidation moved to a new **`after_commit`**
+  hook event — and, because after-commit invalidation still leaves a
+  narrow window, the write gate now **re-reads the access mode from the
+  control DB** instead of trusting the cache. One indexed read per write
+  closes the race outright.
+- Also: a credential-named PRIMARY KEY (surfacing through `name`) makes a
+  relation unbindable; bound detail reads gate before the foreign fetch so
+  an own-rows caller cannot trigger foreign lookups; Data Source
+  administration is System Manager-only *at the controller*; and a
+  hand-written binding is validated against the live source (exists,
+  allowlisted, every mapped column present) instead of failing later at
+  query time.
+
+Verified: 7 more regression tests; **server 107 files / 570 passed / 2
+skipped**; web e2e green on the merged tree. Gotcha for the next session:
+`app-fixtures.test.ts` fails whenever a web e2e run has left the helpdesk
+app installed in the shared dev DB — uninstall it
+(`POST /api/uninstall_app {"name":"helpdesk"}`) rather than hunting a
+regression.
+
+## 2026-08-02 — PR #103 review: authorization parity, secret hygiene, real locking
+
+Eight review findings on the sources PR, all legitimate, all fixed. The
+theme is the one a new storage path always invites: **the bound path had
+drifted from the native path's guarantees.**
+
+- **Authorization parity (critical).** Bound list/count/group checked only
+  `permissionScope` and skipped Data Scopes; detail/update/delete called
+  `assertPermission`, which *accepts* an `own_rows` grant — and since bound
+  rows have no owner, such a user could read or mutate any external pk.
+  Now one `assertBoundScope(meta, user, action)` gate rejects `own_rows`
+  for **every** action (a bound Table can never satisfy it), Data Scopes
+  push into source filters as a new internal `in_or_null` operator
+  (matching the native NULL-passes semantics), concrete rows are re-checked
+  with `assertUserPermissions` on detail/write/delete, and **authorization
+  runs before the foreign fetch** rather than after.
+- **Secret hygiene (critical).** `password_hash`/`api_key`/… were stripped
+  natively but sailed straight through reflection and bound reads. The
+  predicate now lives in one module (`sensitive-columns.ts`) used by
+  query.ts, document.ts, reflect.ts (never reflected) and dispatch.ts
+  (dropped from the binding, so they can't be selected, filtered, sorted,
+  read or written even if a column_def is hand-added later).
+- **Optimistic locking was decorative (high).** The mapped `updated_at` was
+  checked in the WHERE but never advanced in the SET — a plain
+  `DEFAULT now()` column only changes on insert, so two Desk editors
+  silently overwrote each other. The old test hid it because its fake CLI
+  set `updated_at = now()` itself. The driver now advances the revision in
+  the same statement, and the empty-payload branch no longer skips the
+  check. Test: two clients load the same revision, A saves, B's stale save
+  must 409.
+- **Positional CSV deletes (high).** Only updates carried a revision, so a
+  delete spliced whatever now sat at that row number. Deletes now carry
+  `?updated_at=` end-to-end (API → engine → driver) and conflict; temp
+  files got unique names (a fixed `.fb-tmp` let two writers clobber each
+  other). The in-process lock is documented as single-replica.
+- **Schema ambiguity (high).** Candidates were keyed by bare table name,
+  server and browser alike, so `public.customer` and `archive.customer`
+  fought over one entry. Both sides now key by `schema.table`; a bare name
+  is accepted only while unambiguous and otherwise skipped with both
+  qualified options named.
+- **PK introspection (medium):** `key_column_usage` is joined on catalog +
+  schema + constraint name **and table name** — Postgres allows two tables
+  in a schema to share an explicit constraint name, which inflated
+  `pk_size` and made single-column PKs look composite.
+- **Write affordances (medium):** meta now exposes server-derived
+  `source_writable` (engine capability AND access); the Desk gates badge,
+  Save, Import and row selection on it, and a `read_write` duckdb source is
+  rejected at configuration time instead of rendering an editable form the
+  server refuses.
+- **Mixed line endings (medium):** the parser picked one global EOL and
+  rewrote every record with it, so mixed `\r\n`/`\n` files (and lone `\r`)
+  were normalized — breaking the byte-stability promise. Each record now
+  keeps its own terminator; authored records use the file's dominant one.
+
+Verified: 9 new regression tests (`sources-security.test.ts` + CSV cases)
+covering non-admin list/get/update/delete, api_key invisibility, the
+two-client conflict, stale-delete conflict, ambiguity rejection, mixed-EOL
+round trips; **server suite 101 files / 537 passed / 1 skipped**; the 45
+real seed files still round-trip byte-identically through the rewritten
+parser.
+
+## 2026-08-02 — rama-dw-os-dev: the old featherbase Railway project becomes the dev server
+
+The orphaned `featherbase` Railway project (GitHub-connected, both services
+failing on every push) is now **rama-dw-os-dev**, a working dev/staging
+install at https://featherbase-server-production.up.railway.app:
+
+- It had **no database at all** — no Postgres service, no `DATABASE_URL`,
+  so the container fell back to `localhost:5432` and every deploy since
+  creation had failed. It now has its own `rama-dw-os-dev-db` Postgres, a
+  `/data` volume, and the same env-var credential set as prod (control
+  plane over the **public proxy** — Railway private networking does not
+  cross projects). The obsolete `web` service (pre-#57 two-service layout)
+  was deleted on owner confirmation.
+- **Gotcha that cost three failed deploys: Railway's `startCommand` is not
+  a shell** — `pnpm --filter server release && pnpm --filter server start`
+  ran the release (pnpm swallowed the rest as script args) and then the
+  container simply exited; logs show migrations, then silence. And two
+  traps on top: clearing the field via GraphQL `startCommand: null` is
+  ignored (send `""`), and `railway redeploy` reuses the previous
+  deployment's recorded config, so config fixes need a NEW deploy. The
+  working shape is prod's: `preDeployCommand` for the release step, image
+  CMD for serving.
+- The service stays GitHub-connected (`siraj-samsudeen/featherbase`), so
+  pushes auto-deploy it — real staging once the sources branch merges;
+  today it runs the branch via `railway up`.
+- Configured live: brand "Rama DW OS Dev"; `railway-control` source
+  **read_only** (a test server must not write production control tables)
+  with the 3 bindable tables reflected; `motherduck` source registered
+  but MotherDuck again UNAVAILABLE from containers (same as prod — retry
+  in the Source Browser). Administrator password rotated (old `admin`
+  verified dead) and stored in gitignored `apps/server/.env.dev-admin`.
+
+## 2026-07-31 — Rama DW OS: first production deployment (Railway)
+
+Featherbase now runs in production as **Rama DW OS** at
+https://rama-dw-os-production.up.railway.app — a new `rama-dw-os` service
+in the Jeyarama-ETL Railway project (beside the pipeline services), with
+its own fresh Postgres (`rama-dw-os-db`), a `/data` volume for file
+storage, and env-var credentials. Built with the existing
+`apps/server/Dockerfile` (single-origin SPA+API); the release step
+(migrations+patches under the advisory lock) runs as Railway's
+`preDeployCommand` via an **untracked** `railway.json` at the repo root —
+untracked on purpose (the repo stays vendor-neutral) but required for any
+future `railway up`, so don't delete it from the deploy checkout.
+
+- **The first deploy caught a real fresh-database bug** the shared dev DB
+  could never show: createTable/updateTable wrote
+  `data_source`/`external_*`/`source_column` unconditionally, which the
+  pre-0064 migrations (0005 core seeds…) hit before those columns exist.
+  Fixed by including the binding keys only when set; verified by running
+  the entire chain + patches against a brand-new local database.
+- Instance branding shipped: System Settings `app_name` now drives the
+  navbar, tab title, and (via new public `GET /api/brand`) the login
+  page. Prod is named "Rama DW OS"; the default stays "Frappe Clone".
+- Prod state after configuration: `railway-control` source connects over
+  Railway **private networking** (`${{Postgres.DATABASE_URL}}` reference —
+  no public proxy) and its 3 tables are reflected (Control Run counted
+  1,493 live rows over the public URL). `motherduck` source is configured
+  but MotherDuck returns UNAVAILABLE (RPC CREATE_SLT) **from the
+  container only** — the same token works from the laptop, value verified
+  byte-identical in Railway; retry "Test connection" in the Source
+  Browser when MotherDuck stabilizes. CSV seeds are deliberately
+  local-only (deferred; M1-proper is the plan).
+- Administrator password was rotated immediately after deploy (default
+  `admin` rejected, verified); it lives in the gitignored
+  `apps/server/.env` as `RAMA_DW_OS_ADMIN_PASSWORD`. JWT_SECRET is a
+  fresh random value in Railway variables.
+- The old `featherbase` Railway project (services `featherbase-server`,
+  `web`) is superseded by this install and can be retired — owner call,
+  not done.
+- Dev-DB hygiene from this session's live testing: the web e2e run leaves
+  the helpdesk app installed (its uninstall spec is among the
+  conditionally-skipped), which fails `app-fixtures.test.ts` afterwards —
+  uninstalled via API; a lost `desk_client` SELECT grant on `"user"`
+  (source unknown; possibly a parallel worktree) failed `rls.test.ts` —
+  re-granted. Both files green again.
+
+## 2026-07-31 — External data sources land: PG reflection, DuckDB/MotherDuck, CSV folders (spec 0001 / M1+M3 slice)
+
+One coherent slice built to the existing design contract (spec 0001, design
+doc §3, execution plan M3 — with M1's seed-editing need served by a
+`csv-folder` driver instead of native-table import). Three user-facing
+capabilities, one seam:
+
+**What exists now.** A `Data Source` registry Table (EDS-1: engine
+`postgres`/`duckdb`/`csv-folder`, credentials as *env-var names* only,
+`access` read-only/read-write, allowlist, pool/timeout knobs, Test
+Connection); row actions `:test_connection`, `:introspect`, `:reflect`
+(System Manager only, P3); a Source Browser page at `/desk/source/$name`
+(reached via "Browse & Reflect" on the Data Source form). Reflection
+(EDS-2/3) generates *bound* Tables — `table_def` rows carrying
+`data_source`/`external_schema`/`external_table`/`external_pk`/
+`external_modified`, `column_def.source_column` for renamed columns — with
+**no DDL and no RLS ever** (BV1). Reads (`getList`/`getDoc`/`count`/
+`groupCount`) dispatch through `apps/server/src/sources/` with filters,
+sort and paging pushed down (EDS-5); writes (postgres + csv-folder only)
+run control-side hooks, write **only payload columns** (BV2), optimistic-
+lock on the mapped modified column / file mtime (EDS-8), and are refused
+entirely on read-only sources and the duckdb driver (EDS-7). Source
+failures surface as `DataSourceError` 502, never an empty list (EDS-11).
+The generic ListView/FormView show a source badge and drop write
+affordances on read-only sources (EDS-13).
+
+**Live wiring on this machine** (creds in gitignored `apps/server/.env`,
+loaded by a tiny opt-in parser in `config.ts`): `railway-control` →
+the Railway control-plane PG (3 of 11 tables bindable; the rest have
+composite PKs, excluded per BV6 — revisit read-only browse for those);
+`motherduck` → the warehouse via the read-scaling token (read-only);
+`rama-seeds` → `rama_dw/dbt_runner/dbt/seeds` (42 CSVs, read-write).
+
+**Verified.** Live Railway: introspect/reflect, filtered list + getDoc +
+count over 1,483 `control.run` rows, in Desk and over HTTP (no writes
+against production). CSV: in-memory parse→serialize round trip of all 42
+real seed files is byte-identical (16 MB budget file included); a Desk
+edit of `division_labels.csv` produced a one-line git diff in rama_dw and
+the UI revert left `git diff` **empty**. 26 new sandbox tests
+(`sources-postgres/duckdb/csv.test.ts`) cover conflict detection,
+read-only enforcement, path traversal, no-trailing-newline preservation;
+full server suite green (`98 files, 540 passed, 1 skipped`), both
+typechecks clean, web e2e suite green.
+
+**Gotchas.**
+- **MotherDuck was degraded mid-session**: every catalog RPC
+  (`information_schema`, even `SHOW TABLES FROM gold.main`) hit
+  DEADLINE_EXCEEDED for ~1h, on two different tokens and duckdb 1.4.1 and
+  1.5.4, while `show databases` stayed fast — it worked at session start,
+  so transient on their side. The duckdb driver is fully covered by
+  local-file tests (same code path); when MD recovers, reflect `gold`
+  from the Source Browser (schema `gold.main`, e.g. prefix `Gold`).
+- `@duckdb/node-api` is pinned **exactly 1.5.4-r.1** — MotherDuck rejects
+  DuckDB 1.5.5. Do not bump without checking their support matrix.
+- Reflection must call `ensureHomePageForTable` (it does now) — creating
+  Tables without a home-page link breaks 0060's idempotency test on the
+  next migration re-run, which is exactly how it was caught.
+- Source columns whose names collide with standard columns are renamed by
+  `sanitizeHeaders` (`status` → `status_1`) with the true name kept in
+  `source_column`; the source's `updated_at`/`modified` timestamp column
+  and its PK surface as the standard `updated_at`/`name` instead of
+  columns.
+- csv-folder rows are addressed by **row number** (`_row`), so inserting/
+  deleting renumbers later rows; the mtime lock turns concurrent edits
+  into 409s rather than corruption. Byte stability comes from keeping
+  untouched records' raw text verbatim (`sources/csv.ts`) — only edited
+  records are re-serialized.
+- Deviations from spec 0001, deliberate and small: no Reconciliation Log,
+  no drift re-sync UI (EDS-9), no `conflict_check: row` mode (only
+  `modified`/last-write-wins), no cross-source Link validation (EDS-10 is
+  companions-only, which work), import into bound Tables blocked. Local
+  reads do NOT yet flow through the seam (M3's stretch goal) — bound
+  dispatch is an early-return, native path untouched (rule 4: no refactor
+  the slice didn't need).
+
+**Next.** ~~When MotherDuck recovers: reflect a gold schema~~ — done later
+the same day: MD recovered, `gold.main` introspected (94 tables, 33s) and
+4 tables reflected as module "MotherDuck Gold" (prefix Gold); `Gold
+Category` lists 1,514 live rows read-only in the Desk, form fully
+disabled, no Save/Rename. Then candidates: read-only browse for
+composite-PK PG tables; drift re-sync (EDS-9); features.json entries for
+the three capabilities (owner action — agents may not add entries).
+
 ## 2026-07-31 — Missing `E` prefix corrupted seeded `choices`; 32 tests were failing
 
 63 server tests failed with `417 ValidationError: Invalid values for Permission`

@@ -1,6 +1,17 @@
 # Feature: External Data Sources — DocTypes bound to existing Postgres tables
 
-Status: **Proposed** — not implemented. Written 2026-07-26.
+Status: **Partially implemented** (2026-07-31, hardened 2026-08-02 after the
+PR #103 review) — EDS-1..8, 11 (modified-mode concurrency only), 13, plus
+duckdb and csv-folder drivers beyond this spec's scope; see the 2026-07-31
+and 2026-08-02 PROGRESS entries for the exact deviations (no Reconciliation
+Log, no EDS-9 drift re-sync, no `conflict_check: row`, no EDS-10
+cross-source Link validation). Written 2026-07-26.
+
+Note on P1/P4 (permissions parity): bound Tables carry no owner column, so
+an `own_rows_only` grant is **rejected for every action** — read included —
+rather than silently widened. Data Scope (PERM-005) restrictions are pushed
+into source filters for list/count/group and re-checked per row on
+detail/write/delete.
 Decision record: `docs/adr/0007-app-and-database-topology.md`.
 Background: `docs/research/frappe-multi-app-and-multi-db.md`.
 

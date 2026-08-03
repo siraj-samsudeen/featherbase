@@ -3,7 +3,7 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 import { Link } from '@tanstack/react-router'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 import { recentActions, type RecentEntry } from '../lib/recents'
-import { NO_COLUMN_TYPES, listColumns, useMeta } from '../lib/meta'
+import { NO_COLUMN_TYPES, isSourceReadOnly, listColumns, useMeta } from '../lib/meta'
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { useIsSystemManager } from '../lib/session'
@@ -216,9 +216,25 @@ export function ListView({
   async function bulkDelete() {
     setBulkBusy(true)
     setBulkError(null)
+    // Source-bound rows carry a revision (mapped modified column / file
+    // mtime); echo it so a row that changed since it was listed conflicts
+    // instead of deleting whatever now sits at that position (csv rows are
+    // positional).
+    const bound = Boolean(meta.data?.data_source && meta.data?.external_modified)
     try {
-      for (const name of selected)
-        await api.delete(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
+      for (const name of selected) {
+        let query = ''
+        if (bound) {
+          const doc = await api.get<Record<string, unknown>>(
+            `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
+          )
+          if (doc.updated_at != null)
+            query = `?updated_at=${encodeURIComponent(String(doc.updated_at))}`
+        }
+        await api.delete(
+          `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}${query}`,
+        )
+      }
       await refresh()
     } catch (err) {
       setBulkError(err instanceof ApiError ? err.message : 'Bulk delete failed')
@@ -271,6 +287,15 @@ export function ListView({
           <span className="text-xs text-[var(--color-ink-muted)]" data-testid="list-total">
             {total} total
           </span>
+          {meta.data?.data_source && (
+            <span
+              className="fc-pill ml-2 align-middle text-[10px]"
+              data-testid="source-badge"
+              title={`Rows live on data source ${meta.data.data_source}`}
+            >
+              {meta.data.data_source} · {meta.data.source_writable ? 'read-write' : 'read-only'}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -309,15 +334,18 @@ export function ListView({
           >
             Report
           </Link>
-          {/* IMP-010: append rows to this Table from a CSV/Excel file. */}
-          <Link
-            to="/admin/import"
-            search={{ table: doctype }}
-            className="fc-btn"
-            data-testid="open-import"
-          >
-            Import
-          </Link>
+          {/* IMP-010: append rows to this Table from a CSV/Excel file —
+              absent on read-only sources (EDS-13). */}
+          {!isSourceReadOnly(meta.data) && (
+            <Link
+              to="/admin/import"
+              search={{ table: doctype }}
+              className="fc-btn"
+              data-testid="open-import"
+            >
+              Import
+            </Link>
+          )}
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Choice') && (
             <Link
               to="/admin/$doctype/view/kanban"
@@ -381,7 +409,7 @@ export function ListView({
           <FilterBar meta={meta.data} filters={filters} onChange={onFiltersChange} />
         </>
       )}
-      {selected.size > 0 && (
+      {selected.size > 0 && !isSourceReadOnly(meta.data) && (
         <div
           className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-[var(--color-brand)]/30 bg-[var(--color-brand-tint)] px-3 py-2 text-sm"
           data-testid="bulk-bar"
@@ -442,19 +470,23 @@ export function ListView({
         <table className="w-full text-sm">
           <thead className="bg-[var(--color-subtle)] text-left">
             <tr>
+              {/* Selection exists only to feed the bulk bar — a read-only
+                  source has neither (EDS-13: absent, not disabled). */}
+              {!isSourceReadOnly(meta.data) && (
+                <th className="w-8 border-b border-[var(--color-border)] px-3 py-2">
+                  <input
+                    type="checkbox"
+                    data-testid="select-all"
+                    checked={rows.length > 0 && rows.every((r) => selected.has(String(r.name)))}
+                    onChange={(e) =>
+                      setSelected(
+                        e.target.checked ? new Set(rows.map((r) => String(r.name))) : new Set(),
+                      )
+                    }
+                  />
+                </th>
+              )}
               {expandable && <th className="w-7 border-b border-[var(--color-border)]" />}
-              <th className="w-8 border-b border-[var(--color-border)] px-3 py-2">
-                <input
-                  type="checkbox"
-                  data-testid="select-all"
-                  checked={rows.length > 0 && rows.every((r) => selected.has(String(r.name)))}
-                  onChange={(e) =>
-                    setSelected(
-                      e.target.checked ? new Set(rows.map((r) => String(r.name))) : new Set(),
-                    )
-                  }
-                />
-              </th>
               {columns.map((col) => (
                 <th key={col.column_name} className="border-b border-[var(--color-border)]">
                   <button
@@ -479,6 +511,7 @@ export function ListView({
                 settings={settings}
                 selected={selected.has(String(row.name))}
                 onToggleSelect={() => toggleRow(String(row.name))}
+                selectable={!isSourceReadOnly(meta.data)}
                 expandable={expandable}
                 childFields={childFields}
                 expanded={expanded.has(String(row.name))}
@@ -495,7 +528,11 @@ export function ListView({
             {!rows.length && (
               <tr>
                 <td
-                  colSpan={columns.length + (expandable ? 2 : 1)}
+                  colSpan={
+                    columns.length +
+                    (expandable ? 1 : 0) +
+                    (isSourceReadOnly(meta.data) ? 0 : 1)
+                  }
                   className="px-3 py-8 text-center text-[var(--color-ink-faint)]"
                 >
                   No rows
@@ -539,6 +576,7 @@ function ListRow({
   settings,
   selected,
   onToggleSelect,
+  selectable,
   expandable,
   childFields,
   expanded,
@@ -550,6 +588,8 @@ function ListRow({
   settings: Settings
   selected: boolean
   onToggleSelect: () => void
+  // Read-only sources have no bulk bar, so no selection either (EDS-13).
+  selectable: boolean
   expandable: boolean
   childFields: import('../lib/meta').ColumnDef[]
   expanded: boolean
@@ -573,21 +613,23 @@ function ListRow({
             </button>
           </td>
         )}
-        <td className="px-3 py-2">
-          <input
-            type="checkbox"
-            data-testid="row-check"
-            checked={selected}
-            onChange={onToggleSelect}
-          />
-        </td>
+        {selectable && (
+          <td className="px-3 py-2">
+            <input
+              type="checkbox"
+              data-testid="row-check"
+              checked={selected}
+              onChange={onToggleSelect}
+            />
+          </td>
+        )}
         {columns.map((col, i) => (
           <td key={col.column_name} className="px-3 py-2">
             {i === 0 ? (
               <Link
                 to="/admin/$doctype/$name"
                 search={{ prefill: undefined }}
-                        params={{ doctype, name: String(row.name) }}
+                params={{ doctype, name: String(row.name) }}
                 className={`font-medium text-[var(--color-brand)] hover:underline ${
                   col.column_name === 'name' ? 'font-mono text-[13px]' : ''
                 }`}
@@ -611,7 +653,7 @@ function ListRow({
       {expanded && (
         <tr data-testid="expanded-row">
           <td
-            colSpan={columns.length + 2}
+            colSpan={columns.length + 1 + (selectable ? 1 : 0)}
             className="border-b border-[var(--color-border)] bg-[var(--color-subtle)] py-3 pl-10 pr-4"
           >
             <InlineChildren doctype={doctype} name={String(row.name)} childFields={childFields} />
