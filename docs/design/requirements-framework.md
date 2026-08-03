@@ -156,11 +156,47 @@ per feature. Each step is the triple *(where am I, what do I do, what must
 I observably see)*. Every "see" is an observable — visible text, an enabled
 control, a row in a list — never an internal state. That discipline is what
 makes generation mechanical: where = locator, do = action, see = assertion;
-one journey ⇒ one Playwright test whose body follows the steps in order.
+one journey ⇒ one browser test whose body follows the steps in order.
 Two sequence caveats named honestly: a repeating stage (per-sheet cards) is
 a *loop with cardinality*, not extra steps; and durable intermediate states
 (partially imported, unrecoverable) are first-class named states, not
 edges.
+
+> **The generation target is the feather-testing DSL, not raw Playwright.**
+> [`feather-testing-core`](https://github.com/siraj-samsudeen/feather-testing-core)
+> (published, 0.1.2) speaks the step triple natively — `visit`/`within` are
+> *where*, `clickButton`/`fillIn`/`selectOption` are *do*,
+> `assertText`/`assertHas`/`refuteHas` are *see* — so a journey compiles to
+> one fluent chain instead of locator soup:
+>
+> ```ts
+> test('IMP-J1: first import creates a typed Table', async ({ session }) => {
+>   await session                                        // J1.1
+>     .visit('/')
+>     .clickLink('Import Data')
+>     .assertHas('[data-testid="drop-area"]');
+>   await session
+>     .upload('drop area', 'fixtures/zones.csv')         // J1.2 — verb to contribute
+>     .assertText('8 rows, 6 columns')
+>     .assertValue('Table name', 'Zones')                // J1.3 — verb to contribute
+>     .clickButton('Import 8 rows')                      // J1.6
+>     .assertText('Hotel');                              // J1.7
+> });
+> ```
+>
+> Three properties make it more than sugar. Its `StepError` prints the
+> whole chain with `[ok] / [FAILED] / [skipped]` markers — the journey walk
+> with a failure position, i.e. **positional step traceability for free**,
+> complementing the rule IDs in test titles. Its `refuteText`/`refuteHas`
+> are the absence-assertion vocabulary of §5 (the positive-complement rule
+> still applies: pair a refute with an `assertHas` count). And the same
+> vocabulary has an RTL adapter, so a sequence can be exercised at the
+> integration tier without rewriting — a cheaper path for promoting
+> "never witnessed in a browser" matrix rows. Two verbs the import
+> journeys need do not exist yet — `upload(label, path)` and
+> `assertValue(label, value)` — and follow the standing policy for its
+> sibling `feather-testing-postgres`: **contribute upstream and release,
+> never patch locally**.
 
 **Rule** — the why behind an expected value, tagged with its shape. Rules,
 not steps, carry IDs, because rules outlive UI redesigns. Rule-shaped rules
@@ -618,6 +654,13 @@ sentence — not a count of green entries — is the feature's true state.
 9. **Journey hermeticity** — decide the isolation strategy (table deletion
    or per-run namespace) so the golden path stops self-skipping; make CI
    report skips as skips.
+10. **Adopt `feather-testing-core` as the e2e vocabulary** (Part I §6).
+    Add the published dependency, an `e2e/fixtures.ts`, and write **new**
+    journey tests in the DSL; migrate existing specs opportunistically
+    alongside the join-key renaming. Blocked-on verbs (`upload`,
+    `assertValue` and the form-state assertion family) are contributed
+    upstream and released first — the `feather-testing-postgres` policy:
+    fix in its own repo, never vendor or patch locally.
 
 ## 3. Later — only if the earlier layers earn it
 
