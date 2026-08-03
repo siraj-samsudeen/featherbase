@@ -182,6 +182,15 @@ once per run, outside any sandbox transaction. It complements
 - Commit at every stable point, not just at session end.
 - Keep `./init.sh` working at all times; if setup steps change, update it in the
   same commit.
+- **Never modify an assertion and the code under test in the same change.**
+  One or the other — the pairing is how defects get ratified as specs.
+  (Tests marked `it.fails` pin known defects by issue number: fixing the
+  defect makes its pin fail on purpose; flip it to a plain test in the same
+  change.)
+- **A discovered behaviour is not a requirement.** It has three fates —
+  ratified into the spec, filed as a defect, or raised as an open question —
+  and choosing is the owner's call, never an agent's. See
+  `docs/design/requirements-framework.md`.
 
 ## Where decisions live
 

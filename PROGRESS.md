@@ -39,9 +39,36 @@ pinned as `it.fails` against #110–#112 — each fix flips its pin, forcing
 the flip-to-`it` in the same change. Gotcha: fast-check v4 dropped
 `fullUnicodeString`; use `fc.string({ unit: 'grapheme' })`.
 
-Next: the invariants layer (I1–I3, re-executes the review's reported
-findings), the threshold ADR, and the hermeticity decision (adoption
-item 9) so create-path journeys stop self-skipping.
+And the rest of the "Next" tier landed the same day:
+
+- **Invariants layer** (`apps/server/test/import-invariants.test.ts`):
+  IMP-I1 reconciliation proven through the real coerceRows → :import
+  pipeline; its row-number half confirmed as **defect #115** and pinned
+  (a blank row shifts every later error onto an innocent spreadsheet
+  row — coerceRows filters blanks silently while the wizard displays
+  `index + 2`). IMP-I2 **reframed with evidence**: the log schema's
+  `part`/`parts` columns show per-chunk rows are design intent, so the
+  invariant is "one row per part, all parts present, sums equal the run"
+  — proven with a 3-part chunked run. IMP-I3 proven including the
+  no-series-burn half (a rehearsal doesn't advance the id counter).
+- **ADR 0008** — every inference threshold is a named, exported bet:
+  hoisted `COLUMN_NAME_MAX`, `INT_SAFE_DIGITS`, `LONG_TEXT_CHARS`,
+  `CHOICE_*`, `AUTO_MATCH_*` in shared/import.ts; named `IMPORT_CHUNK`,
+  `SUGGEST_*`, `ERRORS_ON_SCREEN`, `LOG_ERROR_SAMPLE` where they live.
+  Behaviour-preserving: 93 import tests green, both typechecks clean,
+  wizard e2e still passes.
+- **Agent protocol** into CLAUDE.md: never touch an assertion and the
+  code under test in one change; a discovered behaviour is not a
+  requirement.
+- **Hermeticity (adoption item 9)** written up as a decision brief in the
+  framework doc — recommendation: table deletion as a product capability;
+  awaiting the owner's call. Until then create-path journeys stay
+  conditionally proven.
+
+Next: the owner's calls — hermeticity (item 9) and the open questions
+Q1–Q5 (the wrong-table trap H1 is the highest-stakes cluster); then the
+judgement-rule corpus and mutation score, only if the earlier layers keep
+earning it.
 
 ## 2026-08-02 — NAV-002: server-side relationship joins ('related' filter)
 

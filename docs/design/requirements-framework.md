@@ -604,14 +604,18 @@ sub-table kinds are refused; the operation is registered as a write effect
 - **IMP-I1 — reconciliation.** For every run: rows in file = inserted +
   failed + dropped-blank, and every failure names the **true spreadsheet
   row** — a blank row above an error must not shift the blame onto an
-  innocent neighbour. *(The review reports the row-number half violated
-  today via two independent early row-drops; not yet independently
-  re-executed — see matrix.)*
-- **IMP-I2 — one run, one record.** Exactly one history entry per real run,
-  regardless of internal chunking. *(Reported violated above the chunk
-  size; see matrix.)*
-- **IMP-I3 — rehearsal writes nothing.** No rows, no history, no counters
-  advanced.
+  innocent neighbour. *(Re-executed 2026-08-03: the arithmetic holds; the
+  row-number half is a confirmed defect — #115, pinned.)*
+- **IMP-I2 — a chunked run reconciles.** The review demanded "one run, one
+  record" and called per-chunk log rows a defect; the log schema's
+  `part`/`parts` columns show they are design intent, so the storage
+  invariant is restated with evidence: **one log row per part, every part
+  present exactly once, and the parts' sums equal the run's totals.**
+  Presenting a run as a single history entry is a UI grouping concern.
+  *(Proven 2026-08-03.)*
+- **IMP-I3 — rehearsal writes nothing.** No rows, no history, no series
+  ids burned — the first real row after a rehearsal is the first of its
+  series. *(All three proven 2026-08-03.)*
 
 ### Hazards
 
@@ -662,17 +666,17 @@ independently re-run here) · **open**.
 | IMP-R2 leading-zero codes → Data | rule | pinned `it.fails` in import-properties.test.ts | **defect #111** — infers Int, zeros destroyed |
 | IMP-R2 16-digit ids → Data | rule | pinned `it.fails` in import-properties.test.ts | **defect #112** — falls through INT_RE's 15-digit guard to the unbounded FLOAT_RE |
 | IMP-R2.7 ordering guard | rule | unit | proven |
-| IMP-R3 choice promotion | judgement | unit examples only | consistency untested; no corpus; thresholds unnamed |
+| IMP-R3 choice promotion | judgement | unit examples only · thresholds named in ADR 0008 | consistency untested; no corpus |
 | IMP-R4 labels | rule | unit | proven |
 | IMP-R5 table naming | rule | unit | proven |
 | IMP-R6 row identity | rule | unit + e2e `naming-series.spec.ts` · id shape pinned in import-journey.spec.ts | proven in the Builder; **defect #114** — the wizard's rename does not re-derive the series (pins-gap in the journey spec) |
-| IMP-R7 target matching | judgement | unit (incl. the Zone case: perfect score, weak coverage → no auto-match) | anchors proven; thresholds unnamed, no corpus |
+| IMP-R7 target matching | judgement | unit (incl. the Zone case: perfect score, weak coverage → no auto-match) · thresholds named in ADR 0008 | anchors proven; no corpus |
 | IMP-R8 coercion | rule | unit + server | proven at rule tier |
 | IMP-R9 rehearsal on J1 | contract | — | **gap** — the commonest first journey commits blind; existing gap-pin is mis-scoped (whole-file predicate) |
 | IMP-R10 / C1 boundary | contract | server import-action.test.ts | proven |
-| IMP-I1 reconciliation & true row numbers | invariant | — | **reported** — wrong row numbers after early drops (review: executed; not re-run here) |
-| IMP-I2 one run, one record | invariant | asserted only at 8 rows | **reported** — violated above chunk size; today's assertion passes only because 8 < chunk |
-| IMP-I3 rehearsal writes nothing | invariant | server | proven |
+| IMP-I1 reconciliation | invariant | server `import-invariants.test.ts` | arithmetic proven · row-number half is **defect #115**, pinned `it.fails` |
+| IMP-I2 chunked run reconciles | invariant | server import-invariants.test.ts (3 parts, sums match) | proven — reframed: per-part rows are schema-level design |
+| IMP-I3 rehearsal writes nothing | invariant | server import-action + import-invariants (incl. no series burn) | proven |
 | IMP-H1 wrong-table trap | hazard | — | open (Q2+Q3+Q5) |
 | IMP-H2 abort without a record | hazard | — | **reported** — mid-import permission failure strands rows with no record |
 | Q1–Q5 | — | — | open |
@@ -707,13 +711,29 @@ sentence — not a count of green entries — is the feature's true state.
    2026-08-03:** `apps/server/test/import-properties.test.ts` (fast-check) —
    11 spec-true properties passing, the three defects pinned as `it.fails`
    against issues #110–#112 so each fix flips its pin.
-7. **The invariants layer** (I1–I3) — reconciliation across a run; this is
-   what re-executes the three *reported* findings.
+7. **The invariants layer** (I1–I3) — reconciliation across a run.
+   **Landed 2026-08-03:** `apps/server/test/import-invariants.test.ts` —
+   I1 arithmetic proven and its row-number half confirmed as defect #115
+   (pinned); I2 reframed with schema evidence and proven; I3 proven
+   including the no-series-burn half.
 8. **One ADR naming every threshold** as exported constants; spec and code
-   reference names, never literals.
-9. **Journey hermeticity** — decide the isolation strategy (table deletion
-   or per-run namespace) so the golden path stops self-skipping; make CI
-   report skips as skips.
+   reference names, never literals. **Landed 2026-08-03:** ADR 0008 +
+   behaviour-preserving hoist across shared/import.ts, the wizard, and the
+   import action (93 import tests green).
+9. **Journey hermeticity** — decide the isolation strategy so the golden
+   path stops self-skipping; make CI report skips as skips. **Decision
+   brief (arbiter: Siraj):** *(a)* **Table deletion as a product
+   capability** — no doctype-delete endpoint exists today (only row
+   delete); this is the only option that also serves real users, it
+   unblocks e2e cleanup naturally, and the project stage says interfaces
+   are free to change. Interacts with Q5 (undo) and the delete-blocking
+   reverse-lookup already in `document.ts`. *(b)* **Per-run table names**
+   — cheap, but every CI run strands tables (issue #91's complaint) and
+   the global series counter makes their ids non-deterministic. *(c)*
+   **A dedicated e2e database reset between runs** — honest and simple,
+   but punts local dev, where the drift actually bites.
+   **Recommendation: (a).** Until decided, create-path journeys stay
+   *conditionally proven* and their skips must be reported as skips.
 10. **Adopt `feather-testing-core` as the e2e vocabulary** (Part I §6).
     Add the published dependency (≥ 0.2.0), an `e2e/fixtures.ts`, and
     write **new** journey tests in the DSL; migrate existing specs
