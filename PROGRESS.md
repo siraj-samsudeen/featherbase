@@ -316,11 +316,22 @@ method, and the feature board all still said "Frappe Clone".
   still the untouched `'Frappe Clone'`, so an owner-customised `app_name`
   survives. Verified against the dev database: the seeded default flipped, the
   locally-customised value was left alone.
-- **What deliberately still says it.** `PROGRESS.md` history, `docs/adr/0006`,
-  `docs/research/frappe-architecture.md` (there `frappe_clone` is a filesystem
-  path to an upstream Frappe checkout), the generated `site/*.html` dumps of
-  those docs, and `.claude/agents/evaluator.md`. These are dated records, per
-  the `CLAUDE.md` note.
+- **What deliberately still says it.** `PROGRESS.md` history, `docs/adr/0006`
+  (it records the working name as part of the decision), `site/*.html` dumps of
+  those docs, `docs/research/frappe-architecture.md` (there `frappe_clone` is a
+  filesystem path to an upstream Frappe checkout), `docs/archive/`, and
+  `harness/evaluation/diff-request.sh` plus the `clone.json` it writes — there
+  "clone" names an artifact the harness emits, not the product. These are dated
+  records or real filenames.
+- **The docs sweep found one live offender, not many.** `.claude/agents/evaluator.md`
+  called the product "the Frappe clone" in present tense, in an *active* agent
+  definition rather than a dated record — now Featherbase (its line 52
+  `clone.json` reference was left, being a filename `diff-request.sh` actually
+  emits). Everything else in `docs/` that mentions cloning describes the
+  project's *history* as a replication of Frappe, which is accurate and stays.
+  `CLAUDE.md`'s own claim that the name survived in only two places was stale;
+  it now carries the full sanctioned list and the rule that distinguishes a
+  dated record from present-tense naming.
 - **The mark.** `apps/web/src/components/Logo.tsx` replaces the "F" letter tile
   on the navbar and login header; `apps/web/public/favicon.svg` is the same
   art, linked from `index.html` (first use of `apps/web/public/`). It is a

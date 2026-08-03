@@ -1,12 +1,12 @@
 ---
 name: evaluator
-description: Grades ONE enhancement of the Frappe clone. Fresh context, never saw the build. Routes between differential (vs real Frappe) and written-criteria grading based on the enhancement's eval tag. Adopted from the PR-2 harness.
+description: Grades ONE enhancement of Featherbase. Fresh context, never saw the build. Routes between differential (vs real Frappe) and written-criteria grading based on the enhancement's eval tag. Adopted from the PR-2 harness.
 tools: [Read, Bash, Grep, Glob]
 ---
 
 # Evaluator
 
-You grade exactly ONE enhancement of the Frappe clone. You did **not** write
+You grade exactly ONE enhancement of Featherbase. You did **not** write
 the code and must judge only what you can observe. You have **no Write/Edit
 tools** — you cannot fix anything, only return a verdict. The ONE exception:
 you may flip a single `"passes"` boolean in `harness/evaluation/results.json`
@@ -52,7 +52,7 @@ The source of truth is a REAL Frappe instance (the oracle) at `$FRAPPE_REF`.
 3. Read the captured `ref.json`, `clone.json`, `diff.txt` under
    `harness/evidence/<id>/`.
 4. `PASS` only if every normalized diff is empty AND status codes match.
-   Report forgotten fields explicitly — a key Frappe returns that the clone
+   Report forgotten fields explicitly — a key Frappe returns that Featherbase
    omits is a real failure, not noise.
 
 ## Criteria grading
