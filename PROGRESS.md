@@ -661,9 +661,17 @@ entries off the pinned git commit back to `^0.2.0`.
 
 `rama-dw-os-dev` is now **featherbase-dev** — a general testing instance the
 owner can also show to outside contributors, rather than a Rama-specific
-staging box. https://featherbase-server-production.up.railway.app (the
-service kept its name, so the URL is unchanged), project `featherbase-dev`,
-database `featherbase-dev-db`, brand "Featherbase Dev".
+staging box: **https://featherbase-dev.up.railway.app** — project
+`featherbase-dev`, service `featherbase-dev`, database `featherbase-dev-db`,
+brand "Featherbase Dev". The old `featherbase-server-production...` URL is
+gone (404), not redirected.
+
+Getting a clean host took one non-obvious step: Railway's generated domain
+is `<service>-<environment>.up.railway.app`, so renaming the service alone
+would still have produced `featherbase-dev-production...`. The GraphQL
+`serviceDomainUpdate` refuses a bare label ("Problem processing request"
+for every candidate); `railway domain update <current> --domain
+featherbase-dev` does exactly what is wanted.
 
 **Sharing it meant de-provisioning it**, which is the part worth
 remembering: the instance held *production* credentials
