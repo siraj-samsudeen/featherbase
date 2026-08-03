@@ -649,7 +649,7 @@ independently re-run here) · **open**.
 
 | Spec item | Shape | Proof today | Verdict |
 |---|---|---|---|
-| IMP-J1 first import | sequence | e2e `apps/web/e2e/import-file.spec.ts` (CSV + .xlsx) | **conditionally proven** — self-skips on a used database; skip reads green |
+| IMP-J1 first import | sequence | e2e `apps/web/e2e/import-file.spec.ts` (CSV + .xlsx) · DSL journey `apps/web/e2e/import-journey.spec.ts` (steps quoted, zones.csv fixture) | **conditionally proven** — self-skips on a used database; the DSL spec also proves R7's auto-match notice when the precondition fails |
 | IMP-J1.2 non-tabular refused | sequence | e2e import-file.spec.ts | proven |
 | IMP-J1.6 bad cell, partial import | sequence | server `apps/server/test/import-action.test.ts` | rule tier only |
 | IMP-J2 append | sequence | e2e `apps/web/e2e/import-wizard.spec.ts` | proven |
@@ -665,7 +665,7 @@ independently re-run here) · **open**.
 | IMP-R3 choice promotion | judgement | unit examples only | consistency untested; no corpus; thresholds unnamed |
 | IMP-R4 labels | rule | unit | proven |
 | IMP-R5 table naming | rule | unit | proven |
-| IMP-R6 row identity | rule | unit + e2e `naming-series.spec.ts` | proven |
+| IMP-R6 row identity | rule | unit + e2e `naming-series.spec.ts` · id shape pinned in import-journey.spec.ts | proven in the Builder; **defect #114** — the wizard's rename does not re-derive the series (pins-gap in the journey spec) |
 | IMP-R7 target matching | judgement | unit (incl. the Zone case: perfect score, weak coverage → no auto-match) | anchors proven; thresholds unnamed, no corpus |
 | IMP-R8 coercion | rule | unit + server | proven at rule tier |
 | IMP-R9 rehearsal on J1 | contract | — | **gap** — the commonest first journey commits blind; existing gap-pin is mis-scoped (whole-file predicate) |
@@ -719,7 +719,16 @@ sentence — not a count of green entries — is the feature's true state.
     blocked-on verbs (`upload`, `dropFile`, `assertValue`, and the
     form-state assertion family) shipped upstream in 0.2.0 — the
     `feather-testing-postgres` policy held: fixed in its own repo, never
-    vendored or patched locally. **This item is unblocked.**
+    vendored or patched locally. **Landed 2026-08-03:** dependency added,
+    `e2e/fixtures.ts` (DSL `test` + composable `signIn`), the zones.csv
+    fixture with its claims file, and the first journey spec
+    (`import-journey.spec.ts`, IMP-J1). First dividends: the login form
+    gained real label associations (`fillIn` refused the unassociated
+    labels), and the spec surfaced defect #114 (wizard rename doesn't
+    re-derive the series) plus a live demonstration of the hermeticity
+    problem (item 9) — the fixture's headers auto-matched the leftover
+    `Zones` Table, so the spec now proves R7's notice on used databases
+    and the golden J1.3 on fresh ones.
 
 ## 3. Later — only if the earlier layers earn it
 

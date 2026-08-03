@@ -1,5 +1,38 @@
 # Progress Log
 
+## 2026-08-03 — Requirements framework v2 + first DSL journey spec (IMP-J1)
+
+Two threads, one session: the requirements framework became a synthesis
+(`docs/design/requirements-framework.md` — journeys/rules/shapes, merged
+from the v1 draft, an external review, and feather-spec; plus §12: the
+product manual as a generated view, exemplar in `docs/manual/`), and its
+first practical test landed — `feather-testing-core@0.2.0` adopted as the
+e2e vocabulary.
+
+- **Adopted the DSL** (`apps/web/e2e/fixtures.ts`): `test` from
+  `feather-testing-core/playwright` plus a composable `signIn`. New journey
+  specs import from here, not `@playwright/test`.
+- **First journey spec** — `apps/web/e2e/import-journey.spec.ts` walks
+  IMP-J1 (first import creates a typed Table) against the wizard using the
+  framework's zones.csv fixture (`e2e/fixtures/zones.csv` + claims file).
+  Verified end-to-end against the running app: full walk green through
+  meta/count, Import Log entry confirmed via API, re-run skips cleanly.
+- **Findings, exactly as the framework predicted:** (1) `fillIn` refused
+  the login form's unassociated labels → `Login.tsx` gained
+  `htmlFor`/`id` (accessibility dividend); (2) **#114** — the wizard's
+  rename doesn't re-derive the row-id series (ids stayed `ZONES-###`
+  after renaming to Journey Zones); pinned in the spec as a polarity-
+  tagged gap assertion; (3) hermeticity live: the fixture's headers
+  auto-matched the leftover `Zones` Table, so the spec branches — golden
+  J1.3 on a fresh DB, R7's auto-match notice + retarget on a used one.
+- **Gotcha:** `assertPath` in the DSL compares exact pathnames — the
+  post-login route is `/admin/home/home` (home recall), not `/admin`;
+  `signIn` asserts the admin shell instead.
+
+Next: property tests for IMP-R1/R2 (issues #110–#112 hold the confirmed
+defects), the invariants layer (I1–I3), and the hermeticity decision
+(adoption item 9) so create-path journeys stop self-skipping.
+
 ## 2026-08-02 — NAV-002: server-side relationship joins ('related' filter)
 
 The follow-up noted on #100/#102: the join between Explore panes (and behind
