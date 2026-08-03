@@ -42,7 +42,7 @@ export function sanitizeColumnName(header: string): string {
     .replace(/^_+|_+$/g, '')
     .replace(/_{2,}/g, '_')
   const named = /^[a-z]/.test(base) ? base : base ? `col_${base}` : ''
-  return named.slice(0, 63)
+  return named.slice(0, COLUMN_NAME_MAX)
 }
 
 // Sanitize a whole header row: blanks become col_N, duplicates and reserved
@@ -54,7 +54,7 @@ export function sanitizeHeaders(headers: string[]): string[] {
     if (RESERVED_COLUMN_NAMES.has(candidate) || taken.has(candidate)) {
       let n = 1
       while (taken.has(`${candidate}_${n}`) || RESERVED_COLUMN_NAMES.has(`${candidate}_${n}`)) n++
-      candidate = `${candidate}_${n}`.slice(0, 63)
+      candidate = `${candidate}_${n}`.slice(0, COLUMN_NAME_MAX)
     }
     taken.add(candidate)
     return candidate
@@ -82,7 +82,21 @@ export function prettifyLabel(header: string): string {
     .join(' ')
 }
 
-const INT_RE = /^-?\d{1,15}$/
+// ADR 0008: every inference threshold is a named, exported bet. Spec, ADR,
+// and tests reference these names, never the literals. Changing one means
+// re-scoring the judgement rules it feeds (see the ADR).
+export const COLUMN_NAME_MAX = 63 // Postgres identifier headroom
+export const INT_SAFE_DIGITS = 15 // 10^15 < 2^53: Int never loses precision
+export const LONG_TEXT_CHARS = 140 // beyond this a cell reads as prose
+export const CHOICE_MIN_SAMPLE = 6 // fewer values: repetition proves nothing
+export const CHOICE_MIN_OPTIONS = 2
+export const CHOICE_MAX_OPTIONS = 8 // beyond this a fixed list stops helping
+export const CHOICE_MIN_DENSITY = 3 // each option seen ~3x on average
+export const CHOICE_MAX_OPTION_CHARS = 60 // longer values are content
+export const AUTO_MATCH_MIN_SCORE = 0.6 // share of sheet headers that map
+export const AUTO_MATCH_MIN_COVERAGE = 0.8 // share of Table columns covered
+
+const INT_RE = new RegExp(`^-?\\d{1,${INT_SAFE_DIGITS}}$`)
 const FLOAT_RE = /^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const DATETIME_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/
@@ -140,7 +154,7 @@ export function inferColumnType(values: unknown[]): string {
       continue
     }
     const s = String(v).trim()
-    if (s.length > 140 || s.includes('\n')) longText = true
+    if (s.length > LONG_TEXT_CHARS || s.includes('\n')) longText = true
     if (!INT_RE.test(s)) allInt = false
     if (!FLOAT_RE.test(s)) allNumeric = false
     if (!BOOL_WORDS.has(s.toLowerCase())) allBool = false
@@ -164,11 +178,11 @@ export function inferChoices(values: unknown[]): string[] | null {
   const sample = values
     .filter((v) => !isEmpty(v) && !(v instanceof Date) && typeof v !== 'boolean')
     .map((v) => String(v).trim())
-  if (sample.length < 6) return null
+  if (sample.length < CHOICE_MIN_SAMPLE) return null
   const distinct = [...new Set(sample)]
-  if (distinct.length < 2 || distinct.length > 8) return null
-  if (sample.length < distinct.length * 3) return null
-  if (distinct.some((s) => s.length > 60 || s.includes('\n'))) return null
+  if (distinct.length < CHOICE_MIN_OPTIONS || distinct.length > CHOICE_MAX_OPTIONS) return null
+  if (sample.length < distinct.length * CHOICE_MIN_DENSITY) return null
+  if (distinct.some((s) => s.length > CHOICE_MAX_OPTION_CHARS || s.includes('\n'))) return null
   return distinct.sort()
 }
 
@@ -247,7 +261,10 @@ export function shouldAutoMatch(
   tableName: string,
   q: TableMatchQuality,
 ): boolean {
-  return q.score >= 0.6 && (q.coverage >= 0.8 || namesShareToken(sheetName, tableName))
+  return (
+    q.score >= AUTO_MATCH_MIN_SCORE &&
+    (q.coverage >= AUTO_MATCH_MIN_COVERAGE || namesShareToken(sheetName, tableName))
+  )
 }
 
 // "customer orders.csv" -> "Customer Orders", fitting the server's
