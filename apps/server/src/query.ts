@@ -134,6 +134,16 @@ async function scopedWhere(
   if (!Array.isArray(callerFilters))
     throw new AppError('ValidationError', 'filters must be an array of [field, operator, value]')
   const meta = await getMeta(table)
+  // scopedWhere compiles SQL against the local physical table, which a
+  // source-bound Table does not have. Public entry points dispatch bound
+  // Tables before reaching here; this guard covers the rest — notably a
+  // 'related' filter TARGETING a bound Table (its rows live on the source,
+  // so a scoped subquery cannot be compiled) and any future direct caller.
+  if (isBound(meta))
+    throw new AppError(
+      'ValidationError',
+      `${table} is bound to data source ${meta.data_source} — this operation cannot compile against it${relatedDepth > 0 ? " (a 'related' filter cannot target a source-bound Table)" : ''}`,
+    )
   const scope = await permissionScope(user, table, 'read')
   if (scope === 'none')
     throw new AppError('PermissionError', `No read permission on ${table} for ${user}`)
@@ -357,6 +367,17 @@ export async function aggregateDocs(
   sumField?: string,
   user = 'Administrator',
 ): Promise<{ count: number; sum: string | null }> {
+  // Bound Tables: counts push down to the driver; sums are not implemented
+  // on the source path yet — reject rather than 500 on a missing table.
+  const boundMeta = await getMeta(table)
+  if (isBound(boundMeta)) {
+    if (sumField)
+      throw new AppError(
+        'ValidationError',
+        `${table} is bound to data source ${boundMeta.data_source} — :aggregate sums are not supported on bound Tables yet`,
+      )
+    return { count: await boundCountDocs(boundMeta, filters, user), sum: null }
+  }
   const { meta, cols, table: tbl, where } = await scopedWhere(table, user, filters)
   if (!sumField) {
     const [row] = await sql`select count(*)::int as count from ${sql(tbl)} where ${where}`

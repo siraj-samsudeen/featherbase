@@ -543,3 +543,39 @@ describe('round 3: global search survives bound Tables', () => {
     expect(res.results.every((r) => r.doctype !== BOUND)).toBe(true)
   })
 })
+
+describe('main-merge interactions: related filters and :aggregate vs bound Tables', () => {
+  test('a related filter targeting a bound Table is rejected cleanly, not a 500', async ({
+    admin,
+  }) => {
+    await bindAccount(admin)
+    // A native table whose Reference points at the bound one.
+    await admin.post('/api/doctype', {
+      name: 'Sec Native Ref',
+      columns: [
+        { column_name: 'title', column_type: 'Data' },
+        { column_name: 'account', column_type: 'Reference', reference_table: BOUND },
+      ],
+    })
+    const related = encodeURIComponent(
+      JSON.stringify([['account', 'related', { table: BOUND, filters: [['label', '=', 'Alpha']] }]]),
+    )
+    await expect(
+      admin.get(`/api/table/Sec%20Native%20Ref?filters=${related}`),
+    ).rejects.toMatchObject({ status: 417 })
+  })
+
+  test(':aggregate counts bound rows and rejects sums instead of 500ing', async ({ admin }) => {
+    await bindAccount(admin)
+    const enc = encodeURIComponent(BOUND)
+    const agg = (await admin.get(`/api/table/${enc}:aggregate`)) as {
+      count: number
+      sum: string | null
+    }
+    expect(agg.count).toBe(2)
+    expect(agg.sum).toBeNull()
+    await expect(admin.get(`/api/table/${enc}:aggregate?sum=label`)).rejects.toMatchObject({
+      status: 417,
+    })
+  })
+})
