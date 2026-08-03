@@ -20,12 +20,18 @@ const queryClient = new QueryClient({
     },
   },
 })
-// TanStack's default search stringifier writes spaces as '+', but its
-// parser does NOT decode '+' back to a space — so any search value with a
-// space (a filter naming the sub-table "PO Line", a text filter) would
-// round-trip corrupted. A literal '+' is emitted as %2B, so every raw '+'
-// in the stringified output means a space: rewrite them to %20, which the
-// parser decodes correctly.
+// Empirical workaround (#106 review): with the default stringifySearch, a
+// search VALUE containing a space (e.g. a filter naming the sub-table
+// "PO Line") reproducibly reaches route components with the space replaced
+// by a literal '+', in the real browser, on the pinned router versions —
+// A/B verified both ways (revert → corrupts, patch → exact). The isolated
+// codec (defaultStringifySearch + defaultParseSearch) round-trips the same
+// value CORRECTLY in Node and the served bundle contains the correct
+// URLSearchParams-based decode, so the loss happens somewhere in the
+// router's runtime navigation path, not in the codec functions — root
+// mechanism unidentified. The rewrite below is provably safe regardless:
+// the default stringifier emits a literal '+' as %2B, so a raw '+' in its
+// output can only ever mean a space (pinned by search-stringify.test.ts).
 const router = createRouter({
   routeTree,
   stringifySearch: (search) => defaultStringifySearch(search).replace(/\+/g, '%20'),

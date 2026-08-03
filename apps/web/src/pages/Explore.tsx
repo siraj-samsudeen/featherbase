@@ -358,11 +358,13 @@ function Pane({
   })
   // NAV-002: true totals from the database over the SAME filters — never a
   // sum of whatever page happened to load.
+  // `sum` arrives as a string — the server keeps numeric(21,9) exact and
+  // leaves formatting (where precision loss is acceptable) to the client.
   const agg = useQuery({
     queryKey: ['explore-agg', table, filterKey, numericCol?.column_name ?? ''],
     enabled: columns.length > 0 && Boolean(numericCol),
     queryFn: () =>
-      api.get<{ count: number; sum: number | null }>(
+      api.get<{ count: number; sum: string | null }>(
         `/api/table/${encodeURIComponent(table)}:aggregate?filters=${encodeURIComponent(filterKey)}${
           numericCol ? `&sum=${encodeURIComponent(numericCol.column_name)}` : ''
         }`,
@@ -411,7 +413,7 @@ function Pane({
         </span>
         {numericCol && agg.data?.sum != null && (
           <span data-testid={`${testid}-sum`}>
-            Σ {numericCol.label}: {formatValue(numericCol.column_type, agg.data.sum, settings)}
+            Σ {numericCol.label}: {formatValue(numericCol.column_type, Number(agg.data.sum), settings)}
           </span>
         )}
       </div>

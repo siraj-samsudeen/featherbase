@@ -51,6 +51,25 @@ both typechecks clean, prior pattern + review-fix browser runs still pass.
 Next: the remaining #100 follow-up is per-table curation of related tabs
 (order/visibility) once real usage shows which hubs need it.
 
+**Review fixes (same PR #106):** (1) The '+' search-corruption diagnosis was
+re-verified after the reviewer showed the isolated codec round-trips
+correctly: A/B in the real browser reproduces the corruption without the
+patch and exactness with it, on the pinned versions — the served bundle
+contains the correct URLSearchParams decode, so the loss is in the router's
+runtime navigation path, mechanism unidentified. main.tsx's comment now
+states exactly that (no internals claims), and `search-stringify.test.ts`
+pins the safety condition (literal '+' emits as %2B) plus full round-trips.
+(2) DoS breadth: MAX_RELATED_HOPS = 16 caps TOTAL related specs per
+request, not just depth. (3) `:aggregate` sum must name an Int/Float/
+Currency column (417, was a Postgres 500) and returns the sum as an EXACT
+string — numeric(21,9) money never passes through float64; the client
+formats. (4) Non-array `filters` JSON is a 417 at the scopedWhere
+chokepoint (was a 500; also covers `:count`). (5) A lone `column` or lone
+`via` in a related spec is rejected instead of silently ignored. (6) The
+via-EXISTS alias is depth-indexed (`v0`,`v1`…) so repeated-table nesting is
+correct by construction. (7) `filterValueLabel` exported + unit-tested;
+the web OPS list documents WHY 'related' is absent from the FilterBar.
+
 ## Visual identity (standing directive for all UI work)
 
 The Admin is reskinned to look like Frappe. Every new UI feature MUST inherit

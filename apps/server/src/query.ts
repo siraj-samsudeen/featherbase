@@ -35,7 +35,13 @@ const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in'
 // table's own scopedWhere — read permission, own_rows narrowing, and Data
 // Scopes all apply per hop, so a related filter can never let a caller
 // observe the effect of rows they cannot read.
+//
+// #106 review: depth alone doesn't bound cost — each hop runs permission
+// queries BEFORE any SQL executes, so a wide payload of sibling specs is
+// amplification. MAX_RELATED_HOPS caps the TOTAL specs compiled per
+// request, breadth and depth together.
 const MAX_RELATED_DEPTH = 3
+const MAX_RELATED_HOPS = 16
 
 interface RelatedSpec {
   table: string
@@ -55,6 +61,12 @@ function parseRelatedSpec(value: unknown): RelatedSpec {
     throw bad(`'related' via must be a sub-table name`)
   if (v.column !== undefined && (typeof v.column !== 'string' || !v.column))
     throw bad(`'related' column must be a column name`)
+  // via and column travel together — a lone column would be silently
+  // ignored by the Reference shape, and a lone via has no column to hop on.
+  if (v.column !== undefined && v.via === undefined)
+    throw bad(`'related' column only applies together with via`)
+  if (v.via !== undefined && v.column === undefined)
+    throw bad(`'related' via needs the sub-table column that references the target`)
   if (v.filters !== undefined && !Array.isArray(v.filters))
     throw bad(`'related' filters must be an array of [field, operator, value]`)
   return {
@@ -95,7 +107,12 @@ async function scopedWhere(
   user: string,
   callerFilters: Filter[],
   relatedDepth = 0,
+  // Shared across the whole recursion of ONE request — counts every
+  // compiled related spec so breadth is bounded, not just depth.
+  hopBudget = { hops: 0 },
 ) {
+  if (!Array.isArray(callerFilters))
+    throw new AppError('ValidationError', 'filters must be an array of [field, operator, value]')
   const meta = await getMeta(table)
   const scope = await permissionScope(user, table, 'read')
   if (scope === 'none')
@@ -177,8 +194,13 @@ async function scopedWhere(
         'ValidationError',
         `'related' filters nest at most ${MAX_RELATED_DEPTH} levels deep`,
       )
+    if (++hopBudget.hops > MAX_RELATED_HOPS)
+      throw new AppError(
+        'ValidationError',
+        `At most ${MAX_RELATED_HOPS} 'related' hops per request`,
+      )
     const spec = parseRelatedSpec(raw)
-    const target = await scopedWhere(spec.table, user, spec.filters ?? [], relatedDepth + 1)
+    const target = await scopedWhere(spec.table, user, spec.filters ?? [], relatedDepth + 1, hopBudget)
 
     if (spec.via) {
       if (field !== 'name')
@@ -200,11 +222,14 @@ async function scopedWhere(
           'ValidationError',
           `${spec.via}.${spec.column ?? '?'} is not a Reference to ${spec.table}`,
         )
+      // Depth-indexed alias: self-referential or repeated-table nesting
+      // resolves by construction, not by lexical-scoping luck (#106 review).
+      const v = sql(`v${relatedDepth}`)
       return {
         frag: sql`exists (
-          select 1 from ${sql(tableName(spec.via))} v
-          where v.parent = ${sql(tbl)}.name and v.parenttype = ${meta.name}
-            and v.${sql(spec.column!)} in (select name from ${sql(target.table)} where ${target.where}))`,
+          select 1 from ${sql(tableName(spec.via))} ${v}
+          where ${v}.parent = ${sql(tbl)}.name and ${v}.parenttype = ${meta.name}
+            and ${v}.${sql(spec.column!)} in (select name from ${sql(target.table)} where ${target.where}))`,
       }
     }
 
@@ -275,23 +300,33 @@ export async function groupCount(
 
 // NAV-002: scoped aggregates over the same filter language the list
 // accepts — the true count (and optionally a sum) so a pane footer never
-// has to add up only the rows it happened to fetch.
+// has to add up only the rows it happened to fetch. The sum comes back as
+// a STRING: Currency is numeric(21,9) and a float64 cast would silently
+// lose precision the list path preserves (#106 review) — the client
+// decides how to format, the server never rounds.
+const SUMMABLE_TYPES = new Set(['Int', 'Float', 'Currency'])
+
 export async function aggregateDocs(
   table: string,
   filters: Filter[] = [],
   sumField?: string,
   user = 'Administrator',
-): Promise<{ count: number; sum: number | null }> {
-  const { cols, table: tbl, where } = await scopedWhere(table, user, filters)
+): Promise<{ count: number; sum: string | null }> {
+  const { meta, cols, table: tbl, where } = await scopedWhere(table, user, filters)
   if (!sumField) {
     const [row] = await sql`select count(*)::int as count from ${sql(tbl)} where ${where}`
     return { count: row.count as number, sum: null }
   }
   assertColumn(cols, sumField, 'sum')
+  const sumCol = meta.columns.find((f) => f.column_name === sumField)
+  if (!sumCol || !SUMMABLE_TYPES.has(sumCol.column_type))
+    throw new AppError('ValidationError', `sum must name an Int, Float, or Currency column`, {
+      sum: `${sumField} is not a summable column`,
+    })
   const [row] = await sql`
-    select count(*)::int as count, coalesce(sum(${sql(sumField)}), 0)::float as sum
+    select count(*)::int as count, coalesce(sum(${sql(sumField)}), 0)::text as sum
     from ${sql(tbl)} where ${where}`
-  return { count: row.count as number, sum: Number(row.sum) }
+  return { count: row.count as number, sum: row.sum as string }
 }
 
 export async function getList(table: string, args: ListArgs = {}, user = 'Administrator') {

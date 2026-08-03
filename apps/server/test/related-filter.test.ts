@@ -202,12 +202,61 @@ describe('NAV-002: related filters', () => {
     await expect(list(admin, LINE, ok)).resolves.toBeDefined()
   })
 
-  test(':aggregate returns true scoped count and sum over related filters', async ({ admin }) => {
+  test(':aggregate returns true scoped count and an EXACT sum over related filters', async ({
+    admin,
+  }) => {
     await setup(admin)
     const filters = [['supplier', 'related', { table: SUP, filters: [['city', '=', 'Chennai']] }]]
-    const res = await admin.get<{ count: number; sum: number }>(
+    const res = await admin.get<{ count: number; sum: string }>(
       `/api/table/${encodeURIComponent(ORDER)}:aggregate?filters=${encodeURIComponent(JSON.stringify(filters))}&sum=total`,
     )
-    expect(res).toMatchObject({ count: 2, sum: 350 })
+    expect(res.count).toBe(2)
+    // #106 review: numeric(21,9) money comes back as a string, never a
+    // lossy float — the client decides how to format
+    expect(typeof res.sum).toBe('string')
+    expect(Number(res.sum)).toBe(350)
+  })
+
+  test(':aggregate rejects a non-numeric sum column with 417, not 500', async ({ admin }) => {
+    await setup(admin)
+    const res = await admin.fetch(
+      `/api/table/${encodeURIComponent(ORDER)}:aggregate?sum=supplier`,
+    )
+    expect(res.status).toBe(417)
+  })
+
+  test('non-array filters JSON is a 417, not a 500', async ({ admin }) => {
+    await setup(admin)
+    for (const path of [
+      `/api/table/${encodeURIComponent(ORDER)}?filters=${encodeURIComponent('{}')}`,
+      `/api/table/${encodeURIComponent(ORDER)}:aggregate?filters=${encodeURIComponent('{}')}`,
+    ]) {
+      const res = await admin.fetch(path)
+      expect(res.status).toBe(417)
+    }
+  })
+
+  test('breadth is capped: more than 16 related hops in one request is a 417', async ({
+    admin,
+  }) => {
+    await setup(admin)
+    const hop = ['supplier', 'related', { table: SUP, filters: [] }]
+    const wide = Array.from({ length: 17 }, () => hop)
+    await expect(list(admin, ORDER, wide)).rejects.toMatchObject({
+      status: 417,
+      message: expect.stringMatching(/hops per request/),
+    })
+    // 16 sibling hops is fine
+    await expect(list(admin, ORDER, wide.slice(0, 16))).resolves.toBeDefined()
+  })
+
+  test('a lone column (or lone via) in a spec is rejected, not ignored', async ({ admin }) => {
+    await setup(admin)
+    await expect(
+      list(admin, ORDER, [['supplier', 'related', { table: SUP, column: 'city' }]]),
+    ).rejects.toMatchObject({ status: 417 })
+    await expect(
+      list(admin, ORDER, [['name', 'related', { table: PART, via: LINE }]]),
+    ).rejects.toMatchObject({ status: 417 })
   })
 })

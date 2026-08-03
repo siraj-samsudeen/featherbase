@@ -9,6 +9,10 @@ import { useIsSystemManager } from '../lib/session'
 
 export type Filter = [string, string, unknown]
 
+// Deliberately WITHOUT 'related' (NAV-002): the FilterBar's free-text value
+// input cannot author a relationship spec, so offering the operator here
+// could only produce malformed filters. Related filters arrive via links
+// (Connections, Explore) and render as chips like any other filter.
 const OPS = ['=', '!=', 'like', '>', '<', '>=', '<='] as const
 
 const PAGE = 20
@@ -823,7 +827,7 @@ export function StandardFilters({
 
 // Chips must stay readable for non-scalar filter values: a 'related'
 // relationship filter (NAV-002) names its target, long in-lists truncate.
-function filterValueLabel(op: string, value: unknown): string {
+export function filterValueLabel(op: string, value: unknown): string {
   if (op === 'related' && value && typeof value === 'object' && !Array.isArray(value)) {
     const spec = value as { table?: string; via?: string }
     return spec.via ? `${spec.table ?? ''} via ${spec.via}` : String(spec.table ?? '')
