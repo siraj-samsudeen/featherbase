@@ -314,6 +314,47 @@ document agents don't read):
 - **Restatements** — the journey is told once; everything else is a delta.
 - **Committee seats and published percentages** — §7 and §9.
 
+## 12. The product manual is a view, not a second document
+
+A user manual and a journey spec describe the same thing — the walk — so
+the manual is **generated from the journey layer**, never authored twice.
+Each step's *do* becomes the instruction, its *see* becomes the caption,
+and a **screenshot slot keyed by the step ID**
+(`docs/manual/shots/IMP-J1.4.png`) holds the picture. The slot contract is
+what makes one document serve the whole lifecycle:
+
+- **Before anything is built**, a slot renders its fallback — the ASCII
+  zone diagram or a mockup crop — straight from the spec. The manual
+  exists on day one, honestly labelled as a sketch.
+- **Once the journey's DSL test exists**, running it with `SNAP=1`
+  captures a screenshot at each step boundary into the slot path,
+  overwriting the fallback. **The document never changes; its assets
+  mature** — sketch → mockup → real pixels, all at the same address.
+- **Freshness is derived, not maintained.** Screenshots are produced only
+  by a passing journey test, so a missing or stale shot means the walk has
+  not been proven on this commit — the same staleness discipline as the
+  matrix (§6). Shots are committed, so a PR that changes the UI shows
+  screenshot diffs next to code diffs: change-impact for the eyes.
+
+Both standing rules survive intact. The direction rule (§8): test runs
+supply *assets only* — prose flows spec → manual, never test → spec. The
+lens rule (§7): the manual is the **end-user lens** rendered from the
+journeys — imperative voice, no rule IDs, no gaps, no matrix — while the
+spec keeps its other audiences.
+
+Caveats priced in up front: fixed viewport and theme per snap; dynamic
+values masked or seeded (row ids come from a global counter — R6's "verify
+the shape, never the value" applies to pixels too); snap on demand rather
+than on every CI run, so visual noise never makes the suite flaky. The
+capture verb (`snap(slotId)`, or auto-snap at step boundaries under
+`SNAP=1`) belongs upstream in `feather-testing-core`, same policy as the
+other verbs.
+
+Exemplar: [`docs/manual/spreadsheet-import.md`](../manual/spreadsheet-import.md)
+— hand-rendered once to fix the target output; the generator that derives
+it from the spec's journey tables is adoption work, built only after the
+format survives review.
+
 ---
 
 # Part II — Worked example: Spreadsheet Import
