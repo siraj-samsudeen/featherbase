@@ -684,11 +684,20 @@ are all that remain). Bound Tables are engine-managed and have no delete
 API — their `table_def`/`column_def`/`home_page_link` rows were removed
 directly in the dev database.
 
+**Credentials are deliberately trivial: `Administrator` / `admin`** — an
+owner decision for a box whose whole purpose is "here, take a look". That
+is only safe *because* of the de-provisioning above: there is nothing on
+this instance worth stealing, and no credential on it that reaches
+anything else. The residual risk is bounded and accepted — a visitor is a
+System Manager, so they can create Tables, install sample apps, or wire a
+Data Source to a store of **their own**; none of that touches Rama data.
+
 Re-adding a source later is a two-minute job through the Source Browser
 (set the env var on the service, create the Data Source, reflect) — but
 **do not point featherbase-dev at production data again while it is
-shared**. Prod (`rama-dw-os`, Jeyarama-ETL project) is untouched and keeps
-both sources.
+shared with a public admin password**. Prod (`rama-dw-os`, Jeyarama-ETL
+project) is untouched, keeps both sources, and keeps its rotated password
+in the gitignored `apps/server/.env`.
 
 Still true: the service is GitHub-connected, so merges to `main`
 auto-deploy here — verified end-to-end when PR #103 merged (the deploy of
