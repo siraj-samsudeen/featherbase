@@ -2,7 +2,7 @@
 // fixture folder mimics a dbt seeds/ directory; byte stability of untouched
 // records is the load-bearing property (reviewable git diffs).
 import { afterAll, beforeAll, beforeEach, describe, expect } from 'vitest'
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, utimesSync } from 'node:fs'
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test, patchDoc } from './pg-test'
@@ -235,6 +235,32 @@ describe('M1: csv-folder source', () => {
     await admin.post(`/api/table/${enc}`, { id: '3', note: 'appended' })
     const text = readFileSync(path.join(dir, 'finance', 'notes.csv'), 'utf8')
     expect(text).toBe('id,note\n1,"multi\nline note"\n2,plain\n3,appended')
+  })
+
+  test('a failed write never poisons the parse cache (round 3)', async ({ admin }) => {
+    const [stores] = await makeCsvSource(admin)
+    const enc = encodeURIComponent(stores)
+    // Prime the cache.
+    const before = (await admin.get(`/api/table/${enc}`)) as { total: number }
+    expect(before.total).toBe(3)
+    // Make the folder unwritable: the atomic tmp-file write must fail.
+    chmodSync(dir, 0o555)
+    try {
+      const res = await admin.fetch(`/api/table/${enc}`, {
+        method: 'POST',
+        body: JSON.stringify({ store_code: 'ERR', store_name: 'Never lands', city: 'X' }),
+      })
+      expect(res.status).toBeGreaterThanOrEqual(500)
+    } finally {
+      chmodSync(dir, 0o755)
+    }
+    // The file is untouched — and so must be what the API serves. Before the
+    // copy-on-write fix the cached model kept the phantom appended record
+    // (file mtime/size unchanged = the poisoned entry keeps hitting).
+    expect(readFileSync(path.join(dir, 'store_master.csv'), 'utf8')).toBe(STORES)
+    const after = (await admin.get(`/api/table/${enc}`)) as { total: number }
+    expect(after.total).toBe(3)
+    await expect(admin.get(`/api/table/${enc}/4`)).rejects.toMatchObject({ status: 404 })
   })
 
   test('path traversal in external_table is rejected', async ({ admin }) => {

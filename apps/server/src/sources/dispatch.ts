@@ -56,6 +56,14 @@ export async function boundContext(meta: TableMeta): Promise<BoundContext> {
       'ValidationError',
       `${meta.name} is bound to a credential-named primary key (${boundPk}) and cannot be queried`,
     )
+  // Same backstop for the modified mapping: it is serialized as `updated_at`
+  // on every row, so a credential-named external_modified would leak the
+  // secret column verbatim (re-review round 3).
+  if (meta.external_modified && isSensitiveColumn(meta.external_modified))
+    throw new AppError(
+      'ValidationError',
+      `${meta.name} maps updated_at to a credential-named column (${meta.external_modified}) and cannot be queried`,
+    )
   assertAllowed(cfg, schema, table)
   const bind: Binding = {
     source: cfg,

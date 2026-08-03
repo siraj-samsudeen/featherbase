@@ -441,6 +441,52 @@ describe('re-review findings', () => {
     ).rejects.toMatchObject({ status: 403 })
   })
 
+  test('round 3: a credential-named external_modified cannot map updated_at', async ({
+    admin,
+  }) => {
+    await bindAccount(admin)
+    // Creation-time: the hand-written binding is refused outright.
+    await expect(
+      admin.post('/api/doctype', {
+        name: 'Sec Modleak',
+        data_source: 'sec-fixture',
+        external_schema: 'sec_fixture',
+        external_table: 'account',
+        external_pk: 'id',
+        external_modified: 'api_key',
+        columns: [{ column_name: 'label', column_type: 'Data' }],
+      }),
+    ).rejects.toMatchObject({ status: 417 })
+    // Runtime backstop: a binding edited behind the API refuses to query
+    // rather than serializing the secret as every row's updated_at.
+    await sql`update table_def set external_modified = 'api_key' where name = ${BOUND}`
+    invalidateMeta()
+    const enc = encodeURIComponent(BOUND)
+    await expect(admin.get(`/api/table/${enc}/ACC-A`)).rejects.toMatchObject({ status: 417 })
+    await expect(
+      admin.get(`/api/table/${enc}?fields=${encodeURIComponent('["name","label"]')}`),
+    ).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('round 3: bulk import refuses bound Tables — real run and dry run agree', async ({
+    admin,
+  }) => {
+    await bindAccount(admin)
+    const res = await admin.fetch(`/api/table/${encodeURIComponent(BOUND)}:import`, {
+      method: 'POST',
+      body: JSON.stringify({ rows: [{ label: 'smuggled' }] }),
+    })
+    expect(res.status).toBe(417)
+    const dry = await admin.fetch(`/api/table/${encodeURIComponent(BOUND)}:import`, {
+      method: 'POST',
+      body: JSON.stringify({ dry_run: true, rows: [{ label: 'smuggled' }] }),
+    })
+    expect(dry.status).toBe(417)
+    // Nothing landed on the source.
+    const [{ n }] = await cli`select count(*)::int as n from sec_fixture.account`
+    expect(Number(n)).toBe(2)
+  })
+
   test('finding 10: a hand-written binding is validated against the source', async ({ admin }) => {
     invalidateSources()
     await admin.post('/api/table/Data%20Source', {

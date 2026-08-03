@@ -112,8 +112,13 @@ async function writeModel(file: string, model: CsvModel): Promise<number> {
     path.dirname(file),
     `.${path.basename(file)}.fb-tmp-${process.pid}-${randomBytes(4).toString('hex')}`,
   )
-  await fs.writeFile(tmp, serializeCsv(model), 'utf8')
-  await fs.rename(tmp, file)
+  try {
+    await fs.writeFile(tmp, serializeCsv(model), 'utf8')
+    await fs.rename(tmp, file)
+  } catch (err) {
+    await fs.unlink(tmp).catch(() => {})
+    throw err
+  }
   const stat = await fs.stat(file)
   cache.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, model })
   return stat.mtimeMs
@@ -327,22 +332,30 @@ export const csvFolderDriver: SourceDriver = {
     return withFileLock(resolveFile(bind.source, bind.table), async () => {
       const { file, model } = await loadModel(bind.source, bind.table)
       const fields = applyValues(model, model.headers.map(() => ''), values)
+      // Copy-on-write: `model` may be the cached entry — mutating it before
+      // the write lands would leave a phantom row in the cache if the write
+      // fails (mtime/size unchanged on disk = the poisoned entry keeps
+      // hitting). Build a fresh model and let writeModel cache it on
+      // success only.
+      const last = model.records[model.records.length - 1]
       // Authored records get the file's dominant EOL; a file that ends
       // without a newline keeps that style (the new tail is unterminated,
       // its predecessor gains the terminator it now needs).
-      const last = model.records[model.records.length - 1]
       const tailUnterminated = last ? last.eol === '' : model.headerEol === ''
+      const records = [...model.records]
+      let headerEol = model.headerEol
       if (tailUnterminated) {
-        if (last) last.eol = model.defaultEol
-        else model.headerEol = model.defaultEol
+        if (last) records[records.length - 1] = { ...last, eol: model.defaultEol }
+        else headerEol = model.defaultEol
       }
-      model.records.push({
+      records.push({
         fields,
         raw: serializeRecord(fields),
         eol: tailUnterminated ? '' : model.defaultEol,
       })
-      const mtimeMs = await writeModel(file, model)
-      return toRow(model, model.records.length - 1, mtimeMs)
+      const next: CsvModel = { ...model, headerEol, records }
+      const mtimeMs = await writeModel(file, next)
+      return toRow(next, next.records.length - 1, mtimeMs)
     })
   },
 
@@ -353,9 +366,12 @@ export const csvFolderDriver: SourceDriver = {
       if (idx === -1) return 'missing' as const
       if (expectModified != null && expectModified !== mtimeIso(mtimeMs)) return 'conflict' as const
       const fields = applyValues(model, model.records[idx].fields, values)
-      model.records[idx] = { fields, raw: serializeRecord(fields), eol: model.records[idx].eol }
-      const newMtime = await writeModel(file, model)
-      return toRow(model, idx, newMtime)
+      // Copy-on-write (see insert): never mutate the cached model.
+      const records = [...model.records]
+      records[idx] = { fields, raw: serializeRecord(fields), eol: records[idx].eol }
+      const next: CsvModel = { ...model, records }
+      const newMtime = await writeModel(file, next)
+      return toRow(next, idx, newMtime)
     })
   },
 
@@ -368,8 +384,11 @@ export const csvFolderDriver: SourceDriver = {
       // occupies the position (review finding 5) — the revision echo turns
       // that into a conflict instead.
       if (expectModified != null && expectModified !== mtimeIso(mtimeMs)) return 'conflict' as const
-      model.records.splice(idx, 1)
-      await writeModel(file, model)
+      // Copy-on-write (see insert): never mutate the cached model.
+      await writeModel(file, {
+        ...model,
+        records: model.records.filter((_, i) => i !== idx),
+      })
     })
   },
 

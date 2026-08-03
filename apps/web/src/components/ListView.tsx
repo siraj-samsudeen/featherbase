@@ -524,7 +524,11 @@ export function ListView({
             {!rows.length && (
               <tr>
                 <td
-                  colSpan={columns.length + (expandable ? 2 : 1)}
+                  colSpan={
+                    columns.length +
+                    (expandable ? 1 : 0) +
+                    (isSourceReadOnly(meta.data) ? 0 : 1)
+                  }
                   className="px-3 py-8 text-center text-[var(--color-ink-faint)]"
                 >
                   No rows
@@ -645,7 +649,7 @@ function ListRow({
       {expanded && (
         <tr data-testid="expanded-row">
           <td
-            colSpan={columns.length + 2}
+            colSpan={columns.length + 1 + (selectable ? 1 : 0)}
             className="border-b border-[var(--color-border)] bg-[var(--color-subtle)] py-3 pl-10 pr-4"
           >
             <InlineChildren doctype={doctype} name={String(row.name)} childFields={childFields} />
