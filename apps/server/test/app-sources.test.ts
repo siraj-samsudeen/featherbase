@@ -2,12 +2,10 @@
 // declares WHICH sources to connect and WHICH relations to reflect, install
 // materializes both, uninstall removes exactly what it created.
 //
-// This is the mechanism behind deploy/rama-dw-os.app.json — verified here
-// against LOCAL fixture schemas (never the real Railway/MotherDuck stores),
-// and against the real manifest file for shape.
-import { readFileSync } from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+// Verified against LOCAL fixture schemas — never the real Railway/MotherDuck
+// stores. A developer machine carries the production credentials in
+// apps/server/.env, so a test that "just checks it parses" by installing the
+// real manifest would dial production; that mistake was made once already.
 import { afterAll, beforeAll, beforeEach, describe, expect } from 'vitest'
 import postgres from 'postgres'
 import { test } from './pg-test'
@@ -160,27 +158,26 @@ describe('app manifests can declare Data Sources and reflections', () => {
   })
 })
 
-// Shape only — deliberately NOT installed here. A developer machine may
-// carry the real RAILWAY_CONTROL_URL / MOTHERDUCK_URL in apps/server/.env,
-// and an install would then dial production during a unit test run.
-describe('the shipped Rama DW OS manifest', () => {
-  test('deploy/rama-dw-os.app.json is a valid manifest naming env vars only', () => {
-    const here = path.dirname(fileURLToPath(import.meta.url))
-    const file = path.resolve(here, '../../../deploy/rama-dw-os.app.json')
-    const manifest = JSON.parse(readFileSync(file, 'utf8')) as {
-      name: string
-      sources: { name: string; url_env: string; access: string; reflect: { tables: string[] } }[]
+// NOTE: the Rama instance manifest deliberately does NOT live in this repo —
+// it is Rama-specific config and lives beside the pipelines it points at, in
+// rama_dw/featherbase/manifest.json. What belongs here is the MECHANISM, and
+// the guard below is the rule that manifest depends on: a manifest may never
+// carry a credential, only the NAME of an environment variable.
+describe('a manifest never carries a credential', () => {
+  test('every source shape that looks like a connection string is refused', async ({ admin }) => {
+    for (const url_env of [
+      'postgres://user:pw@host/db',
+      'md:?motherduck_token=abc',
+      '/var/secrets/token',
+    ]) {
+      await expect(
+        admin.post('/api/install_app', {
+          manifest: {
+            name: `appsrc-secret-${url_env.length}`,
+            sources: [{ name: 'appsrc-secret-src', engine: 'postgres', url_env }],
+          },
+        }),
+      ).rejects.toMatchObject({ status: 417 })
     }
-    expect(manifest.name).toBe('rama-dw-os')
-    for (const s of manifest.sources) {
-      // Env var NAMES only — never a URL (spec BV7!).
-      expect(s.url_env).toMatch(/^[A-Z][A-Z0-9_]*$/)
-      expect(s.reflect.tables.length).toBeGreaterThan(0)
-    }
-    // The warehouse source must stay read-only.
-    expect(manifest.sources.find((s) => s.name === 'motherduck')?.access).toBe('read_only')
-    // Every source is one the engine actually supports.
-    for (const s of manifest.sources as unknown as { engine: string }[])
-      expect(['postgres', 'duckdb', 'csv-folder']).toContain(s.engine)
   })
 })

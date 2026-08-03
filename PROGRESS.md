@@ -686,9 +686,26 @@ build.
   with a new `installed_app.sources` ledger column (migration 0068), and are
   torn down LAST — a Data Source with bound Tables refuses deletion by
   design.
-- **`deploy/rama-dw-os.app.json`** is the Rama instance as code: both
-  sources, the reflected relations, the brand. `POST /api/install_app`
-  rebuilds it.
+- **The manifest lives in `rama_dw/featherbase/manifest.json`, NOT here.**
+  It is Rama-specific config — it names Rama's control plane and Rama's gold
+  tables — so it belongs beside the pipelines it points at, in the repo that
+  already runs one-folder-per-service (`dbt_runner/`, `gofrugal_extract/`, …).
+  Naming follows that convention too: folder `featherbase`, app name
+  `featherbase`, guessable the way `dbt_runner` is. The decisive argument is
+  CSV: when seed editing reaches production the container must commit back to
+  `rama_dw`, and it should already be a checkout of that repo. What stays here
+  is the MECHANISM plus the rule the manifest relies on (a manifest may never
+  carry a credential, only an env-var name).
+
+**Installed against prod, and it correctly refused.** The control-plane half
+is fine; the motherduck reflection cannot run because **MotherDuck is
+unreachable from Railway containers** — `UNAVAILABLE` on `CREATE_SLT` from
+both prod and dev, while the identical token, client version and URL return
+99 gold tables from a laptop. Not a token, version, extension-load or
+transient problem; all four were ruled out. Filed as issue #113. The failed
+install left prod **unchanged** (no ledger row, sources adopted, Control Run
+still serving 1,612 rows), which is the fail-loudly-rather-than-
+half-configure property working as designed.
 
 Gotcha worth keeping: the first version of the manifest test *installed* the
 shipped manifest to prove it parsed — and on a dev machine `apps/server/.env`
