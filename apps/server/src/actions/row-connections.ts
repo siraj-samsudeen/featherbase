@@ -1,7 +1,7 @@
 import { AppError } from '../errors'
 import { getBacklinks } from '../meta'
 import { getDoc } from '../document'
-import { countDocs, relatedOwners, type Filter } from '../query'
+import { countDocs, type Filter } from '../query'
 import { permissionScope } from '../permissions'
 import { registerCollectionAction, registerRowAction } from '../actions'
 
@@ -14,9 +14,9 @@ import { registerCollectionAction, registerRowAction } from '../actions'
 // Direct backlink (Attendance.employee → Employee): filters is
 // [[column, '=', name]] — droppable straight into /admin/:table?filters=.
 // Via a sub-table (Item ← PO Line ← Purchase Order): `via` names the
-// sub-table and filters is [['name', 'in', [...owning rows]]], because the
-// owner's list can't be filtered by a column it doesn't have. Owner names
-// are capped at 500 (the list API's page clamp); `count` is the true count.
+// sub-table and filters is a compact 'related' relationship filter the
+// list engine compiles to a scoped EXISTS server-side (NAV-002) — no name
+// list, no cap.
 //
 // Tables the caller cannot read are omitted entirely — same posture as the
 // sidebar, presentation scoping backed by real read checks on navigation.
@@ -57,12 +57,19 @@ registerRowAction('connections', {
     for (const bl of await getBacklinks(table)) {
       if ((await permissionScope(user.name, bl.table, 'read')) === 'none') continue
       if (bl.via) {
-        // #102 review: owner names AND count come from one permission-scoped
-        // query (see relatedOwners) — never from the raw child table, which
-        // would disclose names of parents the caller cannot read.
-        const { names, total } = await relatedOwners(bl.table, bl.via, bl.column, name, user.name)
-        const filters: Filter[] = [['name', 'in', names]]
-        connections.push({ table: bl.table, column: bl.column, via: bl.via, count: total, filters })
+        // NAV-002: the via-link filter is a compact relationship filter the
+        // list engine evaluates server-side — no name list to disclose, no
+        // 500-owner cap, and the shareable URL never goes stale.
+        const filters: Filter[] = [
+          ['name', 'related', { via: bl.via, column: bl.column, table, filters: [['name', '=', name]] }],
+        ]
+        connections.push({
+          table: bl.table,
+          column: bl.column,
+          via: bl.via,
+          count: await countDocs(bl.table, filters, user.name),
+          filters,
+        })
       } else {
         const filters: Filter[] = [[bl.column, '=', name]]
         connections.push({

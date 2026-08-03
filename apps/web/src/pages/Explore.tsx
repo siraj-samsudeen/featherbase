@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, listResource } from '../lib/api'
-import { listColumns, useMeta, type TableMeta } from '../lib/meta'
+import { listColumns, useMeta } from '../lib/meta'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { useBacklinks } from '../lib/connections'
 import { usePeek } from '../components/Peek'
@@ -14,21 +14,65 @@ type Filter = [string, string, unknown]
 // clicking rows IS the filter: everything downstream narrows instantly,
 // counts and sums included. Selections accumulate; chips release them.
 //
-// A chain step is either a direct backlink (Supplier ← Purchase Order via
-// its `supplier` column) or a child sub-table (Purchase Order ▸ PO Line).
-// Via-sub-table backlinks are deliberately not offered as steps — their
-// filter is per-row, not per-column, so they don't compose into a pane
-// chain without a server join surface this deliberately thin page avoids.
+// NAV-002: the join between panes is SERVER-SIDE — each pane's filter is a
+// 'related' relationship filter the list engine compiles to permission-
+// scoped subqueries. No name shuttling, no 100-row ceiling, and Σ/count
+// come from :aggregate over the full filtered set, so panes are exact at
+// any scale. That also makes via-sub-table hops ("Purchase Orders · via
+// PO Line" from an Item root) real chain steps.
 
 interface Step {
-  mode: 'backlink' | 'child'
+  mode: 'backlink' | 'child' | 'viabacklink'
   table: string
   // backlink: the Reference column on `table` pointing at the upstream table
-  // child: unused (linkage is parent/parenttype)
+  // viabacklink: the Reference column on `via` pointing at the upstream table
+  // child: the upstream table's Sub-table COLUMN — one row table can back
+  //   several Sub-table columns, and the step must name which one (#106
+  //   review), both to disambiguate the picker and to filter parentfield
   column: string
+  via?: string
 }
 
 const PANE_LIMIT = 100
+
+// The filter a chained pane sends: an explicit selection filters by names;
+// otherwise the pane follows the upstream pane's ENTIRE filtered set via a
+// relationship filter evaluated in the database.
+function chainFilters(
+  step: Step,
+  upstreamTable: string,
+  upstreamSelection: Set<string>,
+  upstreamFilters: Filter[],
+): Filter[] {
+  if (upstreamSelection.size) {
+    const names = [...upstreamSelection]
+    if (step.mode === 'child')
+      return [
+        ['parenttype', '=', upstreamTable],
+        ['parentfield', '=', step.column],
+        ['parent', 'in', names],
+      ]
+    if (step.mode === 'viabacklink')
+      return [
+        [
+          'name',
+          'related',
+          { via: step.via, column: step.column, table: upstreamTable, filters: [['name', 'in', names]] },
+        ],
+      ]
+    return [[step.column, 'in', names]]
+  }
+  const spec = { table: upstreamTable, filters: upstreamFilters }
+  if (step.mode === 'child')
+    return [
+      ['parenttype', '=', upstreamTable],
+      ['parentfield', '=', step.column],
+      ['parent', 'related', spec],
+    ]
+  if (step.mode === 'viabacklink')
+    return [['name', 'related', { via: step.via, column: step.column, ...spec }]]
+  return [[step.column, 'related', spec]]
+}
 
 export function ExploreView({
   root,
@@ -63,13 +107,19 @@ export function ExploreView({
     setSel2(new Set())
   }
 
+  const pane1Filters: Filter[] = []
+  const pane2Filters = root && step2 ? chainFilters(step2, root, sel1, pane1Filters) : null
+  const pane3Filters =
+    step2 && step3 && pane2Filters ? chainFilters(step3, step2.table, sel2, pane2Filters) : null
+
   return (
     <div data-testid="explore-view">
       <div className="mb-1 text-xs text-[var(--color-ink-faint)]">Explore</div>
       <h1 className="text-xl font-semibold text-[var(--color-ink)]">Cross-filter workspace</h1>
       <p className="mb-4 mt-1 max-w-2xl text-sm text-[var(--color-ink-muted)]">
         Chain tables along their references, then click rows — each selection filters every pane
-        downstream. Click a selected row again to release it.
+        downstream. With nothing selected, a pane follows the whole upstream set. Click a selected
+        row again to release it.
       </p>
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-0.5">
@@ -112,7 +162,17 @@ export function ExploreView({
       {root && (
         <Chips
           groups={[
-            { label: root, names: sel1, clear: (n) => setSel1(toggle(sel1, n)) },
+            // Any root-selection change invalidates the pane-2 selection —
+            // whether it came from a row click or a chip ✕ (#106 review:
+            // a stale sel2 kept driving pane 3 after its row vanished).
+            {
+              label: root,
+              names: sel1,
+              clear: (n) => {
+                setSel1(toggle(sel1, n))
+                setSel2(new Set())
+              },
+            },
             { label: step2?.table ?? '', names: sel2, clear: (n) => setSel2(toggle(sel2, n)) },
           ]}
         />
@@ -121,7 +181,7 @@ export function ExploreView({
         {root && (
           <Pane
             table={root}
-            filters={[]}
+            filters={pane1Filters}
             selected={sel1}
             onToggle={(n) => {
               setSel1(toggle(sel1, n))
@@ -130,25 +190,20 @@ export function ExploreView({
             testid="explore-pane1"
           />
         )}
-        {root && step2 && (
-          <ChainedPane
-            step={step2}
-            upstreamTable={root}
-            upstreamSelection={sel1}
+        {step2 && pane2Filters && (
+          <Pane
+            table={step2.table}
+            filters={pane2Filters}
             selected={sel2}
             onToggle={(n) => setSel2(toggle(sel2, n))}
             testid="explore-pane2"
           />
         )}
-        {root && step2 && step3 && (
-          <ChainedPane
-            step={step3}
-            upstreamTable={step2.table}
-            upstreamSelection={sel2}
-            upstreamStep={step2}
-            upstreamUpstreamTable={root}
-            upstreamUpstreamSelection={sel1}
-            selected={new Set()}
+        {step3 && pane3Filters && (
+          <Pane
+            table={step3.table}
+            filters={pane3Filters}
+            selected={new Set<string>()}
             onToggle={() => {}}
             testid="explore-pane3"
           />
@@ -156,7 +211,8 @@ export function ExploreView({
       </div>
       {!root && (
         <p className="mt-6 text-sm text-[var(--color-ink-faint)]" data-testid="explore-empty">
-          Pick a starting table to build a chain — e.g. Supplier → Purchase Order → PO Line.
+          Pick a starting table to build a chain — e.g. Supplier → Purchase Order → PO Line, or
+          Item → Purchase Order · via PO Line.
         </p>
       )}
     </div>
@@ -170,8 +226,10 @@ function toggle(set: Set<string>, name: string): Set<string> {
   return next
 }
 
-// The chain-step dropdown for one pane: the upstream table's children and
-// direct backlinks, encoded as "mode:table:column".
+// The chain-step dropdown for one pane: the upstream table's children plus
+// its backlinks — DIRECT (Reference column on the next table) and VIA a
+// sub-table (the next table contains rows pointing here), both served by
+// the 'related' filter.
 function StepPicker({
   label,
   table,
@@ -191,25 +249,35 @@ function StepPicker({
   for (const f of meta.data?.columns ?? [])
     if (f.column_type === 'Sub-table' && f.row_table)
       options.push({
-        key: `child:${f.row_table}:`,
-        label: `${f.row_table} (rows)`,
-        step: { mode: 'child', table: f.row_table, column: '' },
+        // Keyed and filtered by the Sub-table COLUMN, not just the row
+        // table — two columns backed by the same row table are distinct
+        // steps (#106 review).
+        key: `child:${f.row_table}:${f.column_name}`,
+        label: `${f.row_table} (${f.label ?? f.column_name})`,
+        step: { mode: 'child', table: f.row_table, column: f.column_name },
       })
   for (const bl of backlinks.data?.backlinks ?? [])
-    if (!bl.via)
-      options.push({
-        key: `backlink:${bl.table}:${bl.column}`,
-        label: `${bl.table} · ${bl.column}`,
-        step: { mode: 'backlink', table: bl.table, column: bl.column },
-      })
-  const current = value ? `${value.mode}:${value.table}:${value.column}` : ''
+    options.push(
+      bl.via
+        ? {
+            key: `viabacklink:${bl.table}:${bl.column}:${bl.via}`,
+            label: `${bl.table} · via ${bl.via}`,
+            step: { mode: 'viabacklink', table: bl.table, column: bl.column, via: bl.via },
+          }
+        : {
+            key: `backlink:${bl.table}:${bl.column}`,
+            label: `${bl.table} · ${bl.column}`,
+            step: { mode: 'backlink', table: bl.table, column: bl.column },
+          },
+    )
+  const keyOf = (s: Step) => `${s.mode}:${s.table}:${s.column}${s.via ? `:${s.via}` : ''}`
   return (
     <label className="flex flex-col gap-0.5">
       <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
         {label}
       </span>
       <select
-        value={current}
+        value={value ? keyOf(value) : ''}
         onChange={(e) => {
           const hit = options.find((o) => o.key === e.target.value)
           onChange(hit ? hit.step : null)
@@ -257,107 +325,10 @@ function Chips({
         )
       ) : (
         <span className="text-xs text-[var(--color-ink-faint)]">
-          No selection — click rows to filter downstream panes.
+          No selection — panes follow the whole upstream set. Click rows to narrow.
         </span>
       )}
     </div>
-  )
-}
-
-// Builds the filter a chained pane needs from its upstream pane's state.
-// Upstream selection wins; with none, the pane follows the upstream pane's
-// own (possibly filtered) row set, fetched here as names only. When that
-// name set is TRUNCATED (more upstream rows exist than PANE_LIMIT), the
-// chain is not the complete relationship — `truncated` tells the pane to
-// refuse to render a silently-wrong subset (#102 review).
-function useChainFilters(
-  step: Step,
-  upstreamTable: string,
-  upstreamSelection: Set<string>,
-  upstreamFilters: Filter[],
-): { filters: Filter[]; ready: boolean; truncated: boolean; upstreamTotal: number } {
-  const needNames = upstreamSelection.size === 0
-  const names = useQuery({
-    queryKey: ['explore-names', upstreamTable, JSON.stringify(upstreamFilters)],
-    enabled: needNames,
-    queryFn: () =>
-      listResource<{ name: string }>(upstreamTable, {
-        filters: upstreamFilters,
-        fields: ['name'],
-        limit_page_length: PANE_LIMIT,
-      }),
-  })
-  const upstream = upstreamSelection.size
-    ? [...upstreamSelection]
-    : (names.data?.data ?? []).map((r) => r.name)
-  const ready = !needNames || Boolean(names.data)
-  const truncated =
-    needNames && Boolean(names.data) && names.data!.total > names.data!.data.length
-  const filters: Filter[] =
-    step.mode === 'child'
-      ? [
-          ['parenttype', '=', upstreamTable],
-          ['parent', 'in', upstream],
-        ]
-      : [[step.column, 'in', upstream]]
-  return { filters, ready, truncated, upstreamTotal: names.data?.total ?? upstream.length }
-}
-
-function ChainedPane(props: {
-  step: Step
-  upstreamTable: string
-  upstreamSelection: Set<string>
-  upstreamStep?: Step
-  upstreamUpstreamTable?: string
-  upstreamUpstreamSelection?: Set<string>
-  selected: Set<string>
-  onToggle: (name: string) => void
-  testid: string
-}) {
-  // Rebuild the upstream pane's own filters (pane 3 needs pane 2's).
-  const grandParent = useChainFilters(
-    props.upstreamStep ?? { mode: 'backlink', table: '', column: 'name' },
-    props.upstreamUpstreamTable ?? '',
-    props.upstreamUpstreamSelection ?? new Set(),
-    [],
-  )
-  const upstreamFilters = props.upstreamStep && props.upstreamUpstreamTable ? grandParent.filters : []
-  const chain = useChainFilters(
-    props.step,
-    props.upstreamTable,
-    props.upstreamSelection,
-    upstreamFilters,
-  )
-  if (!chain.ready) return <div className="fc-card p-4 text-sm text-[var(--color-ink-faint)]">Loading…</div>
-  // An incomplete upstream name set would render a silently-wrong pane —
-  // ask for an explicit selection instead of pretending completeness. A
-  // truncated grandparent poisons this pane the same way unless the pane
-  // in between has an explicit selection.
-  const grandTruncated =
-    Boolean(props.upstreamStep) &&
-    grandParent.truncated &&
-    props.upstreamSelection.size === 0
-  if (chain.truncated || grandTruncated) {
-    const blame = chain.truncated ? props.upstreamTable : props.upstreamUpstreamTable
-    const total = chain.truncated ? chain.upstreamTotal : grandParent.upstreamTotal
-    return (
-      <div className="fc-card p-4 text-sm text-[var(--color-ink-muted)]" data-testid={`${props.testid}-truncated`}>
-        <p className="mb-1 font-medium text-[var(--color-ink)]">Selection needed</p>
-        <p>
-          {blame} has {total} rows but only the first {PANE_LIMIT} can feed this pane, so it
-          would be incomplete. Click rows in the {blame} pane to continue.
-        </p>
-      </div>
-    )
-  }
-  return (
-    <Pane
-      table={props.step.table}
-      filters={chain.filters}
-      selected={props.selected}
-      onToggle={props.onToggle}
-      testid={props.testid}
-    />
   )
 }
 
@@ -378,8 +349,23 @@ function Pane({
   const settings = useSettings()
   const peek = usePeek()
   const columns = useMemo(() => (meta.data ? listColumns(meta.data) : []), [meta.data])
+  // Headline: hash-named tables (sub-tables, mostly) lead with their first
+  // real column instead of an opaque row id.
+  const displayColumns = useMemo(
+    () => (meta.data?.id_pattern === 'hash' && columns.length > 1 ? columns.slice(1) : columns),
+    [meta.data, columns],
+  )
+  // Σ prefers money over measures: Currency, then Float, then Int.
+  const numericCol = useMemo(
+    () =>
+      ['Currency', 'Float', 'Int']
+        .map((t) => displayColumns.find((c) => c.column_type === t))
+        .find(Boolean),
+    [displayColumns],
+  )
+  const filterKey = JSON.stringify(filters)
   const list = useQuery({
-    queryKey: ['explore-pane', table, JSON.stringify(filters), columns.map((c) => c.column_name)],
+    queryKey: ['explore-pane', table, filterKey, columns.map((c) => c.column_name)],
     enabled: columns.length > 0,
     queryFn: () =>
       listResource(table, {
@@ -388,6 +374,20 @@ function Pane({
         limit_page_length: PANE_LIMIT,
       }),
   })
+  // NAV-002: true totals from the database over the SAME filters — never a
+  // sum of whatever page happened to load.
+  // `sum` arrives as a string — the server keeps numeric(21,9) exact and
+  // leaves formatting (where precision loss is acceptable) to the client.
+  const agg = useQuery({
+    queryKey: ['explore-agg', table, filterKey, numericCol?.column_name ?? ''],
+    enabled: columns.length > 0 && Boolean(numericCol),
+    queryFn: () =>
+      api.get<{ count: number; sum: string | null }>(
+        `/api/table/${encodeURIComponent(table)}:aggregate?filters=${encodeURIComponent(filterKey)}${
+          numericCol ? `&sum=${encodeURIComponent(numericCol.column_name)}` : ''
+        }`,
+      ),
+  })
   if (meta.isLoading || list.isLoading)
     return <div className="fc-card p-4 text-sm text-[var(--color-ink-faint)]">Loading…</div>
   if (meta.isError || list.isError)
@@ -395,17 +395,6 @@ function Pane({
 
   const rows = list.data!.data
   const total = list.data!.total
-  // Headline: hash-named tables (sub-tables, mostly) lead with their first
-  // real column instead of an opaque row id.
-  const displayColumns =
-    meta.data!.id_pattern === 'hash' && columns.length > 1 ? columns.slice(1) : columns
-  // Σ prefers money over measures: Currency, then Float, then Int.
-  const numericCol = ['Currency', 'Float', 'Int']
-    .map((t) => displayColumns.find((c) => c.column_type === t))
-    .find(Boolean)
-  const sum = numericCol
-    ? rows.reduce((s, r) => s + (Number(r[numericCol.column_name]) || 0), 0)
-    : null
 
   return (
     <div className="fc-card overflow-hidden" data-testid={testid}>
@@ -437,14 +426,12 @@ function Pane({
       </div>
       <div className="flex justify-between border-t border-[var(--color-border)] bg-[var(--color-subtle)] px-3 py-1.5 text-xs text-[var(--color-ink-muted)]">
         <span>
-          {rows.length} row{rows.length === 1 ? '' : 's'}
-          {rows.length < total ? ` shown of ${total}` : ''}
+          {total} row{total === 1 ? '' : 's'}
+          {rows.length < total ? ` · showing ${rows.length}` : ''}
         </span>
-        {sum != null && numericCol && (
+        {numericCol && agg.data?.sum != null && (
           <span data-testid={`${testid}-sum`}>
-            Σ {numericCol.label}
-            {rows.length < total ? ' (shown rows)' : ''}:{' '}
-            {formatValue(numericCol.column_type, sum, settings)}
+            Σ {numericCol.label}: {formatValue(numericCol.column_type, Number(agg.data.sum), settings)}
           </span>
         )}
       </div>

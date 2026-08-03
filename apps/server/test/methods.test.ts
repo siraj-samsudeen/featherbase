@@ -54,7 +54,7 @@ describe('API-003: RPC for whitelisted server methods', () => {
     const res = await api.fetch('/api/method/public_info')
     expect(res.status).toBe(200)
     expect(((await res.json()) as { message: { product: string } }).message.product).toBe(
-      'Frappe Clone',
+      'Featherbase',
     )
   })
 

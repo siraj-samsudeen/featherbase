@@ -14,7 +14,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  app_name: 'Frappe Clone',
+  app_name: 'Featherbase',
   date_format: 'yyyy-mm-dd',
   currency: 'USD',
   currency_precision: 2,

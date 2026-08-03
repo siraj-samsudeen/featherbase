@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { ApiError, api, login } from '../lib/api'
+import { Logo } from '../components/Logo'
 
 export function LoginPage() {
   const navigate = useNavigate()
   // SET-004: instance brand from the public /api/brand — plain fetch, not
   // api.get, so the pre-auth page never trips the 401 redirect machinery.
-  const [appName, setAppName] = useState('Frappe Clone')
+  const [appName, setAppName] = useState('Featherbase')
   useEffect(() => {
     fetch('/api/brand')
       .then((r) => (r.ok ? r.json() : null))
@@ -49,9 +50,7 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-[var(--color-canvas)] px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-2">
-          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--color-brand)] text-lg font-bold text-white shadow-sm">
-            {appName.charAt(0).toUpperCase() || 'F'}
-          </span>
+          <Logo className="h-11 w-11 rounded-xl shadow-sm" />
           <h1 className="text-lg font-semibold text-[var(--color-ink)]">{appName}</h1>
           <p className="text-sm text-[var(--color-ink-muted)]">Sign in to your account</p>
         </div>

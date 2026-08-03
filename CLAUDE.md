@@ -11,10 +11,21 @@ platform's own users. Read `docs/ROADMAP.md` for the strategy and
 protocol — follow it every session.
 
 The project was developed under the working name `frappe-clone` and became
-Featherbase in July 2026. That name survives only in dated `PROGRESS.md`
-entries and in `docs/research/frappe-architecture.md`, where `frappe_clone` is
-a *filesystem path* to an upstream Frappe checkout — unrelated to this project
-and not to be renamed.
+Featherbase in July 2026. That name now survives only where it is a dated
+record of the past, and every one of those is deliberate — do not sweep them:
+
+- dated `PROGRESS.md` entries, and the generated `site/*.html` dumps of them;
+- `docs/adr/0006-stack-react-hono-postgres.md`, which records the working name
+  as part of the decision it documents;
+- `docs/research/frappe-architecture.md`, where `frappe_clone` is a
+  *filesystem path* to an upstream Frappe checkout — unrelated to this project
+  and not to be renamed;
+- `harness/evaluation/diff-request.sh` and the `clone.json` evidence file it
+  writes, where "clone" names an artifact the harness emits, not the product.
+
+Anywhere else — anything a user reads, and any prose that speaks in the
+present tense — the product is Featherbase. Describing its *history* as a
+replication of Frappe stays accurate and is not the old name resurfacing.
 
 ## Project stage — experimental, nothing is deployed
 

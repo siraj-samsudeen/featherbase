@@ -62,6 +62,15 @@ const getConnections = async (client: TestClient, name: string) => {
   return res.connections.filter((c) => c.table.startsWith('Cnx '))
 }
 
+// Evaluate a connection's filters through the ordinary list API — proves the
+// filter both round-trips and stays inside the caller's read scope.
+const listWith = async (client: TestClient, table: string, filters: unknown[]) => {
+  const res = await client.get<{ data: { name: string }[] }>(
+    `/api/table/${encodeURIComponent(table)}?filters=${encodeURIComponent(JSON.stringify(filters))}&limit_page_length=500`,
+  )
+  return res.data.map((r) => r.name)
+}
+
 describe('NAV-001: row connections', () => {
   test('direct backlinks carry counts and an equals filter', async ({ admin }) => {
     await setup(admin)
@@ -88,7 +97,9 @@ describe('NAV-001: row connections', () => {
     })
   })
 
-  test('via-sub-table backlinks surface the owning table with an in-filter', async ({ admin }) => {
+  test('via-sub-table backlinks surface the owning table with a related filter', async ({
+    admin,
+  }) => {
     await setup(admin)
     await admin.post('/api/save_doc', {
       doctype: ORDER,
@@ -107,9 +118,13 @@ describe('NAV-001: row connections', () => {
     const ord = cnx.find((c) => c.table === ORDER)
     expect(ord).toBeDefined()
     expect(ord).toMatchObject({ column: 'employee', via: LINE, count: 2 })
-    const [field, op, value] = ord!.filters[0]
-    expect([field, op]).toEqual(['name', 'in'])
-    expect([...(value as string[])].sort()).toEqual(['ORD-1', 'ORD-2'])
+    // NAV-002: a compact relationship filter, not a name list
+    const [field, op, spec] = ord!.filters[0]
+    expect([field, op]).toEqual(['name', 'related'])
+    expect(spec).toMatchObject({ via: LINE, column: 'employee', table: EMP })
+    // and the list engine evaluates it to exactly the owning rows
+    const listed = await listWith(admin, ORDER, ord!.filters)
+    expect(listed.sort()).toEqual(['ORD-1', 'ORD-2'])
     // the sub-table itself is never a connection entry — only its owner
     expect(cnx.find((c) => c.table === LINE)).toBeUndefined()
   })
@@ -165,11 +180,18 @@ describe('NAV-001: via-link permission scoping', () => {
     const cnx = await getConnections(alice, 'E-001')
     const ord = cnx.find((c) => c.table === ORDER)
     expect(ord).toMatchObject({ count: 1 })
-    expect(ord!.filters[0]).toEqual(['name', 'in', ['ORD-MINE']])
+    // NAV-002: no names in the response at all — the filter is relational,
+    // and EVALUATING it as alice yields only her own owner rows
+    expect(await listWith(alice, ORDER, ord!.filters)).toEqual(['ORD-MINE'])
 
-    // admin still sees both
+    // admin still sees both, through the same filter
     const all = await getConnections(admin, 'E-001')
-    expect(all.find((c) => c.table === ORDER)!.count).toBe(2)
+    const ordAll = all.find((c) => c.table === ORDER)!
+    expect(ordAll.count).toBe(2)
+    expect((await listWith(admin, ORDER, ordAll.filters)).sort()).toEqual([
+      'ORD-MINE',
+      'ORD-THEIRS',
+    ])
   })
 
   test('Data Scope on the owner table narrows names and count', async ({
@@ -198,10 +220,10 @@ describe('NAV-001: via-link permission scoping', () => {
     const cnx = await getConnections(user, 'E-001')
     const ord = cnx.find((c) => c.table === ORDER)
     expect(ord).toMatchObject({ count: 1 })
-    expect(ord!.filters[0]).toEqual(['name', 'in', ['ORD-VISIBLE']])
+    expect(await listWith(user, ORDER, ord!.filters)).toEqual(['ORD-VISIBLE'])
   })
 
-  test('more than 500 owners: true count, deterministic capped names', async ({ admin }) => {
+  test('more than 500 owners: exact count, filter has no cap at all', async ({ admin }) => {
     await setup(admin)
     // Bulk-seed 501 owners + one child row each straight through SQL — the
     // generated tables default every audit column, and the engine round
@@ -217,10 +239,12 @@ describe('NAV-001: via-link permission scoping', () => {
     const cnx = await getConnections(admin, 'E-001')
     const ord = cnx.find((c) => c.table === ORDER)!
     expect(ord.count).toBe(501)
-    const names = ord.filters[0][2] as string[]
-    expect(names).toHaveLength(500)
-    expect(names[0]).toBe('ORD-0001')
-    expect(names).not.toContain('ORD-0501') // ordered by name, capped
+    // NAV-002: the relational filter matches ALL 501 owners — the old
+    // 500-name cap is gone because there are no names to cap
+    const res = await admin.get<{ total: number }>(
+      `/api/table/${encodeURIComponent(ORDER)}?filters=${encodeURIComponent(JSON.stringify(ord.filters))}&fields=${encodeURIComponent('["name"]')}`,
+    )
+    expect(res.total).toBe(501)
   })
 })
 

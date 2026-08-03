@@ -21,6 +21,7 @@ import { useSettings } from '../lib/settings'
 import { useTheme } from '../lib/theme'
 import { PALETTES, usePalette, type Palette } from '../lib/palette'
 import { useI18n } from '../lib/i18n'
+import { Logo } from '../components/Logo'
 import { PeekProvider } from '../components/Peek'
 
 interface SearchHit {
@@ -358,9 +359,9 @@ export function AdminLayout() {
           ☰
         </button>
         <Link to="/admin" className="flex items-center gap-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded bg-[var(--color-brand)] text-xs font-bold text-white">
-            {app_name.charAt(0).toUpperCase() || 'F'}
-          </span>
+          <Logo className="h-6 w-6" />
+          {/* SET-004: the instance names itself via System Settings
+              app_name; "Featherbase" is only the default. */}
           <span className="hidden text-sm font-semibold text-[var(--color-ink)] sm:inline">{app_name}</span>
         </Link>
 
