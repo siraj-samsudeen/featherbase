@@ -9,6 +9,8 @@ import postgres from 'postgres'
 import type { TestClient } from 'feather-testing-postgres'
 import { test, patchDoc } from './pg-test'
 import { config } from '../src/config'
+import { sql } from '../src/db'
+import { invalidateMeta } from '../src/meta'
 import { invalidateSources } from '../src/sources/registry'
 
 const EXT_URL_ENV = 'SEC_FIXTURE_URL'
@@ -31,6 +33,8 @@ beforeAll(async () => {
       api_key text,
       updated_at timestamptz not null default now()
     )`)
+  // A relation whose PRIMARY KEY is credential-named (finding 7).
+  await cli.unsafe(`create table sec_fixture.keyring (api_key text primary key, note text)`)
   // Same-named table in a second schema (finding 4).
   await cli.unsafe(`create table sec_archive.account (id text primary key, label text)`)
 })
@@ -42,6 +46,8 @@ beforeEach(async () => {
       ('ACC-A', 'Alpha', 'north', 'sk-alpha-secret'),
       ('ACC-B', 'Beta',  'south', 'sk-beta-secret')`)
   await cli.unsafe(`truncate sec_archive.account`)
+  await cli.unsafe(`truncate sec_fixture.keyring`)
+  await cli.unsafe(`insert into sec_fixture.keyring values ('sk-live-1', 'prod')`)
   await cli.unsafe(`insert into sec_archive.account (id, label) values ('OLD-1', 'Archived')`)
 })
 
@@ -302,5 +308,179 @@ describe('finding 4: same-named tables in two schemas', () => {
       await cli.unsafe(`drop table if exists sec_fixture.dup_a`)
       await cli.unsafe(`drop table if exists sec_archive.dup_b`)
     }
+  })
+})
+
+describe('re-review findings', () => {
+  test('finding 2: an update cannot move a row OUT of the caller\'s Data Scope', async ({
+    admin,
+    createUser,
+  }) => {
+    await bindAccount(admin)
+    // A Reference column the Data Scope restricts: region → Sec Region.
+    await admin.post('/api/doctype', {
+      name: 'Sec Region',
+      id_pattern: 'prompt',
+      columns: [{ column_name: 'label', column_type: 'Data' }],
+    })
+    for (const r of ['north', 'south'])
+      await admin.post('/api/save_doc', { doctype: 'Sec Region', doc: { name: r } })
+    // Re-point the bound Table's region column at it.
+    const meta = (await admin.get(`/api/table/${encodeURIComponent(BOUND)}:meta`)) as {
+      columns: { column_name: string; column_type: string; source_column: string | null }[]
+    }
+    await sql`
+      update column_def set column_type = 'Reference', reference_table = 'Sec Region'
+      where parent = ${BOUND} and column_name = 'region'`
+    invalidateMeta()
+
+    const user = await userWith(admin, createUser, {
+      can_read: true,
+      can_write: true,
+    })
+    await admin.post('/api/save_doc', {
+      doctype: 'Data Scope',
+      doc: { user: user.user, allow_table: 'Sec Region', for_value: 'north' },
+    })
+    expect(meta.columns.some((c) => c.column_name === 'region')).toBe(true)
+
+    const loaded = (await user.get(`/api/table/${encodeURIComponent(BOUND)}/ACC-A`)) as Record<
+      string,
+      unknown
+    >
+    expect(loaded.region).toBe('north')
+    // Moving it to a region outside the caller's scope must be refused.
+    await expect(
+      patchDoc(user, `/api/table/${encodeURIComponent(BOUND)}/ACC-A`, {
+        region: 'south',
+        updated_at: loaded.updated_at,
+      }),
+    ).rejects.toMatchObject({ status: 403 })
+    const [row] = await cli`select region from sec_fixture.account where id = 'ACC-A'`
+    expect(row.region).toBe('north')
+  })
+
+  test('finding 3: a restricted-tier column cannot be selected, filtered or grouped', async ({
+    admin,
+    createUser,
+  }) => {
+    await bindAccount(admin)
+    await sql`
+      update column_def set tier = 'restricted'
+      where parent = ${BOUND} and column_name = 'region'`
+    invalidateMeta()
+    const user = await userWith(admin, createUser, { can_read: true, tier: 'basic' })
+    const enc = encodeURIComponent(BOUND)
+
+    await expect(
+      user.get(`/api/table/${enc}?fields=${encodeURIComponent('["name","region"]')}`),
+    ).rejects.toMatchObject({ status: 417 })
+    await expect(
+      user.get(`/api/table/${enc}?filters=${encodeURIComponent('[["region","=","north"]]')}`),
+    ).rejects.toMatchObject({ status: 417 })
+    await expect(user.get(`/api/table/${enc}?order_by=region asc`)).rejects.toMatchObject({
+      status: 417,
+    })
+    // The detail read agrees: the value is absent, not merely unselectable.
+    const doc = (await user.get(`/api/table/${enc}/ACC-A`)) as Record<string, unknown>
+    expect('region' in doc).toBe(false)
+    // An admin still sees it.
+    const adminDoc = (await admin.get(`/api/table/${enc}/ACC-A`)) as Record<string, unknown>
+    expect(adminDoc.region).toBe('north')
+  })
+
+  test('finding 7: a credential-named PRIMARY KEY makes the table unbindable', async ({
+    admin,
+  }) => {
+    invalidateSources()
+    await admin.post('/api/table/Data%20Source', {
+      name: 'sec-fixture',
+      engine: 'postgres',
+      url_env: EXT_URL_ENV,
+      default_schema: 'sec_fixture',
+      access: 'read_only',
+    })
+    const res = (await admin.get(
+      '/api/table/Data%20Source/sec-fixture:introspect?schema=sec_fixture',
+    )) as { tables: { table: string; bindable: boolean; reason?: string }[] }
+    const keyring = res.tables.find((t) => t.table === 'keyring')!
+    expect(keyring.bindable).toBe(false)
+    expect(keyring.reason).toMatch(/credential column name/)
+    const attempt = await admin.post<{ created: unknown[]; skipped: { reason: string }[] }>(
+      '/api/table/Data%20Source/sec-fixture:reflect',
+      { schema: 'sec_fixture', tables: ['keyring'], prefix: 'Leak' },
+    )
+    expect(attempt.created).toEqual([])
+  })
+
+  test('finding 9: Data Source administration is System Manager-only', async ({
+    admin,
+    createUser,
+  }) => {
+    const role = 'Sec Src Role'
+    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: role } })
+    await admin.post('/api/save_doc', {
+      doctype: 'Permission',
+      doc: {
+        ref_table: 'Data Source',
+        role,
+        can_read: true,
+        can_write: true,
+        can_create: true,
+        can_delete: true,
+      },
+    })
+    const user = await createUser({ roles: [role] })
+    await expect(
+      user.post('/api/table/Data%20Source', {
+        name: 'rogue-source',
+        engine: 'postgres',
+        url_env: EXT_URL_ENV,
+        access: 'read_write',
+      }),
+    ).rejects.toMatchObject({ status: 403 })
+  })
+
+  test('finding 10: a hand-written binding is validated against the source', async ({ admin }) => {
+    invalidateSources()
+    await admin.post('/api/table/Data%20Source', {
+      name: 'sec-fixture',
+      engine: 'postgres',
+      url_env: EXT_URL_ENV,
+      default_schema: 'sec_fixture',
+      access: 'read_only',
+    })
+    // A column that does not exist on the relation.
+    await expect(
+      admin.post('/api/doctype', {
+        name: 'Sec Handwritten',
+        data_source: 'sec-fixture',
+        external_schema: 'sec_fixture',
+        external_table: 'account',
+        external_pk: 'id',
+        columns: [{ column_name: 'nonexistent', column_type: 'Data' }],
+      }),
+    ).rejects.toMatchObject({ status: 417 })
+    // A relation that does not exist at all.
+    await expect(
+      admin.post('/api/doctype', {
+        name: 'Sec Ghost',
+        data_source: 'sec-fixture',
+        external_schema: 'sec_fixture',
+        external_table: 'no_such_table',
+        external_pk: 'id',
+        columns: [{ column_name: 'label', column_type: 'Data' }],
+      }),
+    ).rejects.toMatchObject({ status: 417 })
+    // An unknown data source.
+    await expect(
+      admin.post('/api/doctype', {
+        name: 'Sec Nosource',
+        data_source: 'does-not-exist',
+        external_table: 'account',
+        external_pk: 'id',
+        columns: [{ column_name: 'label', column_type: 'Data' }],
+      }),
+    ).rejects.toMatchObject({ status: 404 })
   })
 })

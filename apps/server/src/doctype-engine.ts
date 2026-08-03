@@ -395,6 +395,27 @@ export async function createTable(input: unknown): Promise<TableMeta> {
   if (existing)
     throw new AppError('ConflictError', `Table ${def.name} already exists`)
 
+  // EDS-3 (review finding 10): a binding written by hand (POST /api/doctype)
+  // is checked against the live source — it must exist, be allowlisted, and
+  // carry every mapped column — instead of persisting a Table that only
+  // fails later at query time. Imported lazily: reflect.ts imports this
+  // module for createTable.
+  if (def.data_source) {
+    const { assertBindingIsValid } = await import('./sources/reflect')
+    await assertBindingIsValid({
+      name: def.name,
+      data_source: def.data_source,
+      external_schema: def.external_schema,
+      external_table: def.external_table!,
+      external_pk: def.external_pk!,
+      external_modified: def.external_modified,
+      columns: def.columns.map((c) => ({
+        column_name: c.column_name,
+        source_column: c.source_column,
+      })),
+    })
+  }
+
   // Sub-table columns must point at an existing sub_table-kind Table.
   for (const f of def.columns) {
     if (f.column_type !== 'Sub-table') continue

@@ -1,6 +1,7 @@
 import type { TableController } from '../controllers'
 import { AppError } from '../errors'
 import { invalidateMeta } from '../meta'
+import { assertSystemManager } from '../permissions'
 import { invalidateSources } from '../sources/registry'
 
 // EDS-1 validation + spec S1/S3: saving a Data Source drops its cached
@@ -11,7 +12,12 @@ const ENGINES = new Set(['postgres', 'duckdb', 'csv-folder'])
 const controller: TableController = {
   table: 'Data Source',
   hooks: {
-    validate: async ({ row }) => {
+    validate: async ({ row, user }) => {
+      // P3: source administration is System Manager-only, enforced HERE
+      // rather than by permission fixtures alone — a role granted ordinary
+      // write/create on Data Source could otherwise repoint connection env
+      // vars, roots, access mode and allowlists (review finding 9).
+      await assertSystemManager(user)
       const name = String(row.name ?? '')
       if (!/^[a-z][a-z0-9-]*$/.test(name))
         throw new AppError('ValidationError', 'Invalid data source name', {
@@ -45,12 +51,17 @@ const controller: TableController = {
           url_env: 'Store the name of an environment variable, never the connection string itself',
         })
     },
-    after_save: async ({ row }) => {
+    // POST-COMMIT only (review finding 6). Invalidating inside the save
+    // transaction let a concurrent request repopulate both caches from the
+    // still-committed OLD row — so a source flipped to read_only could stay
+    // writable indefinitely. after_commit runs once the new row is visible.
+    after_commit: async ({ row }) => {
       invalidateSources(String(row.name))
-      // Bound Tables cache source_access/source_engine on their meta.
+      // Bound Tables cache source_access/source_engine/source_writable.
       invalidateMeta()
     },
-    on_trash: async ({ row, tx }) => {
+    on_trash: async ({ row, tx, user }) => {
+      await assertSystemManager(user)
       const bound = await tx`
         select name from table_def where data_source = ${String(row.name)} limit 1`
       if (bound.length)
@@ -58,7 +69,7 @@ const controller: TableController = {
           'ValidationError',
           `Data source ${row.name} still has bound Tables (e.g. ${bound[0].name}); delete them first`,
         )
-      invalidateSources(String(row.name))
+      // Cache drop happens in after_commit, not here.
     },
   },
 }

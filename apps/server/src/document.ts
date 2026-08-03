@@ -503,6 +503,7 @@ export async function saveDoc(
   await evaluateAssignmentRules(meta.name, insertResult)
   // PLAT-005: fire webhooks post-commit for the create event.
   await evaluateWebhooks('after_insert', meta.name, insertResult)
+  await runHooks('after_commit', { row: insertResult, meta, user, isNew: true, tx: sql })
   return insertResult
 }
 
@@ -551,6 +552,9 @@ async function saveBoundDoc(
   await runHooks('before_validate', hctx)
   await runHooks('validate', hctx)
   await runHooks('before_save', hctx)
+  // Re-judge the FINALIZED row: defaults and hooks can set Reference values
+  // the raw payload never carried (review finding 2).
+  await assertUserPermissions(user, meta, hctx.row)
   const inserted = await ctx.driver
     .insert(ctx.bind, mapValuesIn(ctx.bind, columnValues(meta, hctx.row)), providedName)
     .catch((err) => mapDbError(meta, err))
@@ -583,7 +587,8 @@ async function updateBoundDoc(
       'Updates must include the updated_at timestamp of the loaded row',
     )
   // Re-asserted for direct callers; own_rows can never authorize a bound
-  // write (finding 1), and Data Scopes judge the row being changed.
+  // write (finding 1). Data Scopes judge the row as loaded — and again
+  // below, after hooks, as it will be written.
   await assertBoundScope(meta, user, 'write')
   await assertUserPermissions(user, meta, current)
   const writeTiers = await permittedTiers(user, meta.name, 'write')
@@ -608,6 +613,11 @@ async function updateBoundDoc(
     else if (k in hctx.row && norm(hctx.row[k]) !== norm(current[k])) toWrite[k] = hctx.row[k]
   }
   const sourceValues = mapValuesIn(ctx.bind, toWrite)
+  // PERM-005 (review finding 2): the row as it will EXIST after this write
+  // must also sit inside the caller's Data Scopes — otherwise a permitted
+  // row could be edited (by the payload or by a hook) into a Reference
+  // value the caller may not access.
+  await assertUserPermissions(user, meta, { ...current, ...toWrite })
   const expect = ctx.bind.modified ? String(values.updated_at) : null
   const updated = await ctx.driver
     .update(ctx.bind, name, sourceValues, expect)
@@ -744,6 +754,14 @@ async function updateDoc(
   await evaluateEmailRules('on_save', meta.name, updateResult, previous)
   // PLAT-005: fire webhooks post-commit for the update event.
   await evaluateWebhooks('on_update', meta.name, updateResult)
+  await runHooks('after_commit', {
+    row: updateResult,
+    old: previous,
+    meta,
+    user,
+    isNew: false,
+    tx: sql,
+  })
   return updateResult
 }
 
@@ -964,6 +982,16 @@ export async function deleteDoc(
     }
     await tx`delete from ${tx(tableName(table))} where name = ${name}`
   })
+  // Post-commit: caches keyed on this row (e.g. a Data Source's pool and
+  // the meta of Tables bound to it) may only be dropped once the delete is
+  // actually visible to other connections.
+  await runHooks('after_commit', {
+    row: { name },
+    meta,
+    user,
+    isNew: false,
+    tx: sql,
+  })
 }
 
 // EDS-6: delete a bound row on the source. The link-integrity check runs
@@ -980,6 +1008,15 @@ async function deleteBoundDoc(
 ): Promise<void> {
   const ctx = await writableContext(meta)
   await assertBoundScope(meta, user, 'delete')
+  // Where the binding HAS a revision, deleting requires it — exactly like
+  // updates. Optional would leave the positional-csv hazard open to every
+  // caller that simply omits it (review finding 5).
+  if (ctx.bind.modified && expectUpdatedAt == null)
+    throw new AppError(
+      'ValidationError',
+      'Deletes must include the updated_at timestamp of the loaded row',
+      { updated_at: 'Required — pass ?updated_at= from the row you loaded' },
+    )
   const existing = await ctx.driver.getDoc(ctx.bind, name)
   if (!existing) throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
   await assertUserPermissions(user, meta, mapRowOut(ctx.bind, existing))
@@ -1089,8 +1126,11 @@ export async function getDoc(
     // and BEFORE the foreign fetch (review finding 1). Bound rows have no
     // created_by, so own-rows scoping denies by design; Data Scopes judge
     // the fetched row exactly as natively.
+    // A concrete share authorizes this pk on its own; otherwise the bound
+    // gate runs BEFORE the source is contacted, so an own_rows-only caller
+    // cannot make the server issue foreign lookups (review finding 8).
     const boundShared = await isSharedWith(user, table, name, 'read')
-    if (!boundShared) await assertPermission(user, table, 'read')
+    if (!boundShared) await assertBoundScope(meta, user, 'read')
     const doc = await boundFetchDoc(meta, name)
     if (!doc) throw new AppError('NotFoundError', `${table} ${name} not found`)
     if (!boundShared) {

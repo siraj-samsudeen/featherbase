@@ -1,6 +1,12 @@
+import { sql } from '../db'
 import { AppError } from '../errors'
 import type { TableMeta } from '../meta'
-import { getUserPermissionMap, isBypassUser, permissionScope } from '../permissions'
+import {
+  getUserPermissionMap,
+  isBypassUser,
+  permissionScope,
+  permittedTiers,
+} from '../permissions'
 import { isSensitiveColumn } from '../sensitive-columns'
 import { getDriver, getSource, assertAllowed } from './registry'
 import type { Binding, ListSpec, SourceConfig, SourceDriver, SourceFilter, SourceRow } from './types'
@@ -23,6 +29,17 @@ export interface BoundContext {
   bind: Binding
 }
 
+// PERM-006: drop columns the caller's read tiers don't cover, so a
+// restricted column cannot be selected, filtered, sorted or grouped through
+// the bound path either — list and detail must agree (review finding 3).
+function narrowToTiers(bind: Binding, meta: TableMeta, tiers: Set<'basic' | 'restricted'>): Binding {
+  const allowed = new Map(meta.columns.map((c) => [c.column_name, c.tier ?? 'basic']))
+  return {
+    ...bind,
+    columns: bind.columns.filter((c) => tiers.has(allowed.get(c.column_name) ?? 'basic')),
+  }
+}
+
 export async function boundContext(meta: TableMeta): Promise<BoundContext> {
   const cfg = await getSource(meta.data_source!)
   const driver = getDriver(cfg)
@@ -30,6 +47,15 @@ export async function boundContext(meta: TableMeta): Promise<BoundContext> {
   const table = meta.external_table ?? ''
   if (!table)
     throw new AppError('ValidationError', `${meta.name} is bound to ${cfg.name} but has no external_table`)
+  // Runtime backstop for finding 7: the pk is serialized as `name`, so a
+  // credential-named pk must never be queryable even if the binding was
+  // written by hand rather than through reflection.
+  const boundPk = meta.external_pk || 'name'
+  if (isSensitiveColumn(boundPk))
+    throw new AppError(
+      'ValidationError',
+      `${meta.name} is bound to a credential-named primary key (${boundPk}) and cannot be queried`,
+    )
   assertAllowed(cfg, schema, table)
   const bind: Binding = {
     source: cfg,
@@ -166,8 +192,13 @@ export interface BoundListArgs {
 
 export async function boundGetList(meta: TableMeta, args: BoundListArgs, user: string) {
   await assertBoundScope(meta, user, 'read')
-  const { bind, driver } = await boundContext(meta)
-  const scopeFilters = await boundScopeFilters(meta, user, bind)
+  const ctx = await boundContext(meta)
+  const driver = ctx.driver
+  // Scope filters are built against the FULL binding (a Data Scope may
+  // narrow by a restricted Reference the caller cannot see), then the
+  // caller-facing binding is narrowed to their read tiers.
+  const scopeFilters = await boundScopeFilters(meta, user, ctx.bind)
+  const bind = narrowToTiers(ctx.bind, meta, await permittedTiers(user, meta.name, 'read'))
 
   const fields = args.fields?.length ? args.fields : ['name']
   const selectCols = fields.map((f) => requireSourceColumn(bind, f, 'selected'))
@@ -182,7 +213,12 @@ export async function boundGetList(meta: TableMeta, args: BoundListArgs, user: s
   }
   // A stale sort_column (e.g. the DB default updated_at with no modified
   // mapping) falls back to the pk instead of failing every list.
-  const orderColumn = sourceColumnFor(bind, orderField) ?? bind.pk
+  // A caller-supplied order_by must resolve — silently falling back to the
+  // pk would accept (and appear to honor) a column the caller may not read.
+  // Only the Table's own stale sort_column default falls back.
+  const orderColumn = args.order_by
+    ? requireSourceColumn(bind, orderField, 'order_by')
+    : (sourceColumnFor(bind, orderField) ?? bind.pk)
 
   const spec: ListSpec = {
     filters: [...mapFilters(bind, args.filters ?? []), ...scopeFilters],
@@ -206,8 +242,13 @@ export async function boundCountDocs(
   user: string,
 ): Promise<number> {
   await assertBoundScope(meta, user, 'read')
-  const { bind, driver } = await boundContext(meta)
-  const scopeFilters = await boundScopeFilters(meta, user, bind)
+  const ctx = await boundContext(meta)
+  const driver = ctx.driver
+  // Scope filters are built against the FULL binding (a Data Scope may
+  // narrow by a restricted Reference the caller cannot see), then the
+  // caller-facing binding is narrowed to their read tiers.
+  const scopeFilters = await boundScopeFilters(meta, user, ctx.bind)
+  const bind = narrowToTiers(ctx.bind, meta, await permittedTiers(user, meta.name, 'read'))
   return driver.count(bind, [...mapFilters(bind, filters), ...scopeFilters])
 }
 
@@ -218,8 +259,13 @@ export async function boundGroupCount(
   user: string,
 ): Promise<{ label: string; value: number }[]> {
   await assertBoundScope(meta, user, 'read')
-  const { bind, driver } = await boundContext(meta)
-  const scopeFilters = await boundScopeFilters(meta, user, bind)
+  const ctx = await boundContext(meta)
+  const driver = ctx.driver
+  // Scope filters are built against the FULL binding (a Data Scope may
+  // narrow by a restricted Reference the caller cannot see), then the
+  // caller-facing binding is narrowed to their read tiers.
+  const scopeFilters = await boundScopeFilters(meta, user, ctx.bind)
+  const bind = narrowToTiers(ctx.bind, meta, await permittedTiers(user, meta.name, 'read'))
   return driver.groupCount(
     bind,
     requireSourceColumn(bind, field, 'group_by'),
@@ -237,6 +283,12 @@ export async function boundFetchDoc(meta: TableMeta, name: string): Promise<Sour
 
 // Write-side gate: hard driver capability plus the source's access mode
 // (spec EDS-7: reject writes on read-only sources server-side).
+//
+// The access mode is re-read from the control DB rather than taken from the
+// cached config. Cache invalidation alone cannot make "flip to read_only"
+// take effect reliably — a concurrent request can repopulate the cache from
+// pre-commit state and keep the source writable afterwards (review finding
+// 6). Writes are rare; one indexed read closes the race outright.
 export async function writableContext(meta: TableMeta): Promise<BoundContext> {
   const ctx = await boundContext(meta)
   if (!ctx.driver.writable)
@@ -244,7 +296,10 @@ export async function writableContext(meta: TableMeta): Promise<BoundContext> {
       'PermissionError',
       `Data source ${ctx.cfg.name} (${ctx.cfg.engine}) is read-only`,
     )
-  if (ctx.cfg.access !== 'read_write')
+  const [live] = await sql<{ access: string }[]>`
+    select access from data_source where name = ${ctx.cfg.name}`
+  if (!live) throw new AppError('NotFoundError', `Data Source ${ctx.cfg.name} no longer exists`)
+  if (live.access !== 'read_write')
     throw new AppError('PermissionError', `Data source ${ctx.cfg.name} is read-only`)
   return ctx
 }

@@ -2,7 +2,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName } from './doctype-engine'
-import { getUserPermissionMap, isBypassUser, permissionScope } from './permissions'
+import { getUserPermissionMap, isBypassUser, permissionScope, permittedTiers } from './permissions'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
 
@@ -20,10 +20,20 @@ const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in'
 
 const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 
-function columnSet(meta: TableMeta): Set<string> {
+// PERM-006: the columns a caller may name in select/filter/order/group.
+// Tier filtering used to apply on detail reads only (filterReadFields), so a
+// basic-tier caller could still SELECT, filter or sort by a restricted
+// column through the list API and read its values — list and detail
+// disagreeing about the same permission. Passing the permitted tiers closes
+// that for native and (via dispatch.ts) source-bound Tables alike.
+function columnSet(meta: TableMeta, readTiers?: Set<'basic' | 'restricted'>): Set<string> {
   const cols = new Set<string>(STANDARD_COLUMNS)
   for (const f of meta.columns)
-    if (!NO_COLUMN_TYPES.has(f.column_type) && !SENSITIVE_COLUMNS.has(f.column_name))
+    if (
+      !NO_COLUMN_TYPES.has(f.column_type) &&
+      !SENSITIVE_COLUMNS.has(f.column_name) &&
+      (!readTiers || readTiers.has(f.tier ?? 'basic'))
+    )
       cols.add(f.column_name)
   return cols
 }
@@ -54,7 +64,7 @@ async function scopedWhere(
       'ValidationError',
       `${table} is a Settings Table and has no list — open it directly by its name`,
     )
-  const cols = columnSet(meta)
+  const cols = columnSet(meta, await permittedTiers(user, table, 'read'))
   const tbl = tableName(table)
 
   const filters = [...callerFilters]

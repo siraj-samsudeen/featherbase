@@ -266,9 +266,13 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     const list = (await admin.get(
       `/api/table/Ext%20Tenant?filters=${encodeURIComponent('[["slug","=","doomed"]]')}`,
     )) as { data: { name: string }[] }
-    const res = await admin.fetch(`/api/table/Ext%20Tenant/${list.data[0].name}`, {
-      method: 'DELETE',
-    })
+    const loaded = (await admin.get(
+      `/api/table/Ext%20Tenant/${list.data[0].name}`,
+    )) as Record<string, unknown>
+    const res = await admin.fetch(
+      `/api/table/Ext%20Tenant/${list.data[0].name}?updated_at=${encodeURIComponent(String(loaded.updated_at))}`,
+      { method: 'DELETE' },
+    )
     expect(res.status).toBe(200)
     const rows = await cli`select 1 from ext_fixture.tenant where slug = 'doomed'`
     expect(rows).toHaveLength(0)

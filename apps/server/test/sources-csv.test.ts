@@ -164,7 +164,11 @@ describe('M1: csv-folder source', () => {
     let text = readFileSync(path.join(dir, 'store_master.csv'), 'utf8')
     expect(text).toContain('MDU,Madurai,Madurai')
 
-    const del = await admin.fetch(`/api/table/${enc}/4`, { method: 'DELETE' })
+    const loaded = (await admin.get(`/api/table/${enc}/4`)) as Record<string, unknown>
+    const del = await admin.fetch(
+      `/api/table/${enc}/4?updated_at=${encodeURIComponent(String(loaded.updated_at))}`,
+      { method: 'DELETE' },
+    )
     expect(del.status).toBe(200)
     text = readFileSync(path.join(dir, 'store_master.csv'), 'utf8')
     expect(text).toBe(STORES)
@@ -191,6 +195,14 @@ describe('M1: csv-folder source', () => {
     await patchDoc(admin, `/api/table/${enc}/2`, { note: 'edited', updated_at: doc.updated_at })
     const text = readFileSync(path.join(dir, 'finance', 'notes.csv'), 'utf8')
     expect(text).toBe('id,note\n1,"multi\nline note"\n2,edited')
+  })
+
+  test('a delete with no revision is refused outright (review finding 5)', async ({ admin }) => {
+    const [stores] = await makeCsvSource(admin)
+    const enc = encodeURIComponent(stores)
+    const res = await admin.fetch(`/api/table/${enc}/2`, { method: 'DELETE' })
+    expect(res.status).toBe(417)
+    expect(readFileSync(path.join(dir, 'store_master.csv'), 'utf8')).toBe(STORES)
   })
 
   test('a stale delete conflicts instead of removing the shifted row', async ({ admin }) => {

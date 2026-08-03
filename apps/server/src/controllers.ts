@@ -38,6 +38,14 @@ export const HOOK_EVENTS = [
   'before_cancel',
   'on_cancel',
   'on_trash',
+  // Runs AFTER the control-DB transaction commits (insert, update and
+  // delete alike). The only event where a cache may be invalidated: an
+  // in-transaction invalidation can be repopulated from the pre-commit
+  // state by a concurrent request, which left a source writable after it
+  // was flipped to read-only (PR #103 review finding 6). `tx` here is the
+  // plain pool, not a transaction — do not write through it expecting
+  // rollback.
+  'after_commit',
 ] as const
 export type HookEvent = (typeof HOOK_EVENTS)[number]
 

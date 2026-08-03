@@ -54,7 +54,9 @@ function rootOf(cfg: SourceConfig): string {
 }
 
 // Path traversal guard: external_table is a relative path that must resolve
-// inside root_path.
+// inside root_path — LEXICALLY here, and canonically in assertInsideRoot
+// before any I/O (a lexically-inside path can still be a symlink out, and
+// so can any parent directory — review finding 4).
 function resolveFile(cfg: SourceConfig, rel: string): string {
   const root = rootOf(cfg)
   const abs = path.resolve(root, rel)
@@ -63,8 +65,28 @@ function resolveFile(cfg: SourceConfig, rel: string): string {
   return abs
 }
 
+// Canonical containment: both the root and the target are resolved through
+// every symlink, then compared. The target's own final component is checked
+// with lstat so a symlinked FILE is refused even when it points back inside
+// the root (its target could be swapped afterwards).
+async function assertInsideRoot(cfg: SourceConfig, file: string): Promise<void> {
+  const realRoot = await fs.realpath(rootOf(cfg)).catch(() => {
+    throw new AppError('DataSourceError', `root_path is not readable`)
+  })
+  const parent = path.dirname(file)
+  const realParent = await fs.realpath(parent).catch(() => {
+    throw new AppError('ValidationError', `Invalid csv path ${path.basename(file)}`)
+  })
+  if (realParent !== realRoot && !realParent.startsWith(realRoot + path.sep))
+    throw new AppError('ValidationError', `csv path escapes root_path`)
+  const link = await fs.lstat(file).catch(() => null)
+  if (link?.isSymbolicLink())
+    throw new AppError('ValidationError', `csv path is a symlink and is refused`)
+}
+
 async function loadModel(cfg: SourceConfig, rel: string): Promise<{ file: string; model: CsvModel; mtimeMs: number }> {
   const file = resolveFile(cfg, rel)
+  await assertInsideRoot(cfg, file)
   let stat
   try {
     stat = await fs.stat(file)
