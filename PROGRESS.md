@@ -1,5 +1,90 @@
 # Progress Log
 
+## 2026-08-02 — NAV-002: server-side relationship joins ('related' filter)
+
+The follow-up noted on #100/#102: the join between Explore panes (and behind
+Connections via-links) moved from browser-side name shuttling into the
+database.
+
+- **`'related'` filter operator** (`query.ts`): the one relationship-shaped
+  filter the list language understands — `[col, 'related', {table, via?,
+  column?, filters?}]` compiles to IN/EXISTS subqueries. Three shapes,
+  exactly the relationships the metadata models: Reference column →
+  target; `'parent'` → owning row (sub-table rows); `'name'` + `via` →
+  rows CONTAINING a sub-table row pointing at the target ("which POs
+  contain this Item"). `filters` recurses (a pane chain is a related filter
+  inside a related filter), capped at 3 levels. **Every hop runs through
+  the target table's own scopedWhere** — read permission, own_rows, Data
+  Scopes — so a related filter can never surface the effect of rows the
+  caller cannot read (tested: Data-Scoped hop, unreadable target 403s).
+  Implementation note: postgres-client fragments are thenables, so the
+  now-async filter compiler passes them boxed in `{frag}` — awaiting a
+  fragment would EXECUTE it.
+- **`GET /api/table/:t:aggregate?filters&sum=col`** — scoped `{count, sum}`
+  over the same filter language, so pane footers show true totals.
+- **`:connections` via-links** now return a compact related filter instead
+  of up to 500 owner names — nothing to disclose, no cap (501-owner test
+  now asserts the filter matches all 501), URLs short and never stale.
+  `relatedOwners()` deleted.
+- **Explore** chains panes with related filters: no name fetching, no
+  100-row ceiling, the "Selection needed" truncation notice is GONE
+  (panes are exact at any scale), Σ/count come from `:aggregate`, and
+  **via-sub-table hops are real steps** ("Purchase Order · via PO Line"
+  from an Item root). ListView filter chips render related specs readably.
+- **Root-cause fix while verifying**: TanStack Router's default search
+  stringifier writes spaces as `+` but its parser does not decode `+`
+  back — any search value with a space round-tripped corrupted (first hit:
+  a via spec naming "PO Line"; latent for text filters too). `main.tsx`
+  now wraps `defaultStringifySearch`, rewriting `+` → `%20` (a literal
+  `+` is emitted as `%2B`, so the rewrite is exact). Verified in-browser
+  with a value containing both a space and a literal `+`.
+
+Verified: `related-filter.test.ts` (8 tests: three shapes, 2-deep nesting,
+per-hop scoping, 403 on unreadable target, malformed specs, depth cap,
+aggregate), connections tests rewritten to EVALUATE returned filters
+per-user through the list API; browser: 123-supplier chain exact with no
+selection, Σ 116,080 true total, Item → PO via-hop narrows to 3 on
+selection, connection click lands a readable related-filter URL. Full
+`pnpm test` green (server 100 files / 519 tests, web 12), smoke green,
+both typechecks clean, prior pattern + review-fix browser runs still pass.
+
+Next: the remaining #100 follow-up is per-table curation of related tabs
+(order/visibility) once real usage shows which hubs need it.
+
+**Review fixes (same PR #106):** (1) The '+' search-corruption diagnosis was
+re-verified after the reviewer showed the isolated codec round-trips
+correctly: A/B in the real browser reproduces the corruption without the
+patch and exactness with it, on the pinned versions — the served bundle
+contains the correct URLSearchParams decode, so the loss is in the router's
+runtime navigation path, mechanism unidentified. main.tsx's comment now
+states exactly that (no internals claims), and `search-stringify.test.ts`
+pins the safety condition (literal '+' emits as %2B) plus full round-trips.
+(2) DoS breadth: MAX_RELATED_HOPS = 16 caps TOTAL related specs per
+request, not just depth. (3) `:aggregate` sum must name an Int/Float/
+Currency column (417, was a Postgres 500) and returns the sum as an EXACT
+string — numeric(21,9) money never passes through float64; the client
+formats. (4) Non-array `filters` JSON is a 417 at the scopedWhere
+chokepoint (was a 500; also covers `:count`). (5) A lone `column` or lone
+`via` in a related spec is rejected instead of silently ignored. (6) The
+via-EXISTS alias is depth-indexed (`v0`,`v1`…) so repeated-table nesting is
+correct by construction. (7) `filterValueLabel` exported + unit-tested;
+the web OPS list documents WHY 'related' is absent from the FilterBar.
+
+**Second review round (same PR #106):** (1) `parentfield` — one row table
+can back SEVERAL Sub-table columns (sales_lines + return_lines → Order
+Line), and relationship paths must tell them apart: Explore child steps
+now carry the Sub-table COLUMN (distinct picker options, distinct keys)
+and filter `parentfield = <column>`; the via shape takes an optional
+`parentfield` in the spec (validated against metadata), with omitted =
+any-field — the right default for Connections' "is this row referenced at
+all" counts. Regression test builds exactly the two-columns-one-row-table
+world. (2) Removing a root chip now clears the pane-2 selection the same
+way a root row click does — a stale sel2 could otherwise keep driving
+pane 3 after its row vanished from view. (3) The reviewer's aggregate
+500s (sum=Data/position, filters=null) were already fixed by the previous
+round's summable-type + non-array guards; their exact shapes are now
+pinned as tests.
+
 ## Visual identity (standing directive for all UI work)
 
 The Admin is reskinned to look like Frappe. Every new UI feature MUST inherit

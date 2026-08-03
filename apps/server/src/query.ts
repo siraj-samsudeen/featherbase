@@ -14,7 +14,79 @@ export interface ListArgs {
   limit_page_length?: number
 }
 
-const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in'] as const
+const OPS = ['=', '!=', '>', '<', '>=', '<=', 'like', 'not like', 'in', 'not in', 'related'] as const
+
+// NAV-002: the 'related' operator — the ONE relationship-shaped filter the
+// list language understands. It constrains rows by a relationship to
+// another table's (recursively filtered, permission-scoped) rows instead of
+// by a literal value list, compiling to IN/EXISTS subqueries entirely
+// server-side. Three shapes, exactly the relationships the metadata models:
+//
+//   [refCol, 'related', { table, filters }]
+//     rows whose Reference column points at a matching target row
+//   ['parent', 'related', { table, filters }]        (sub-table rows only)
+//     child rows whose owning parent row matches
+//   ['name', 'related', { via, column, table, filters }]
+//     rows CONTAINING a sub-table row whose Reference column points at a
+//     matching target row (the "which POs contain this Item" case)
+//
+// `filters` recurses (a pane chain is a related filter inside a related
+// filter), capped at MAX_RELATED_DEPTH. Every level runs through the target
+// table's own scopedWhere — read permission, own_rows narrowing, and Data
+// Scopes all apply per hop, so a related filter can never let a caller
+// observe the effect of rows they cannot read.
+//
+// #106 review: depth alone doesn't bound cost — each hop runs permission
+// queries BEFORE any SQL executes, so a wide payload of sibling specs is
+// amplification. MAX_RELATED_HOPS caps the TOTAL specs compiled per
+// request, breadth and depth together.
+const MAX_RELATED_DEPTH = 3
+const MAX_RELATED_HOPS = 16
+
+interface RelatedSpec {
+  table: string
+  via?: string
+  column?: string
+  // #106 review: when one row table backs SEVERAL Sub-table columns
+  // (sales_lines and return_lines both → Order Line), an optional
+  // parentfield narrows the via hop to one owning column. Omitted = any
+  // field, which is the right default for "is this row referenced at all"
+  // (Connections counts).
+  parentfield?: string
+  filters?: Filter[]
+}
+
+function parseRelatedSpec(value: unknown): RelatedSpec {
+  const bad = (message: string) => new AppError('ValidationError', message)
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw bad(`'related' filter value must be an object { table, via?, column?, filters? }`)
+  const v = value as Record<string, unknown>
+  if (typeof v.table !== 'string' || !v.table)
+    throw bad(`'related' filter needs a target { table }`)
+  if (v.via !== undefined && (typeof v.via !== 'string' || !v.via))
+    throw bad(`'related' via must be a sub-table name`)
+  if (v.column !== undefined && (typeof v.column !== 'string' || !v.column))
+    throw bad(`'related' column must be a column name`)
+  // via and column travel together — a lone column would be silently
+  // ignored by the Reference shape, and a lone via has no column to hop on.
+  if (v.column !== undefined && v.via === undefined)
+    throw bad(`'related' column only applies together with via`)
+  if (v.via !== undefined && v.column === undefined)
+    throw bad(`'related' via needs the sub-table column that references the target`)
+  if (v.parentfield !== undefined && (typeof v.parentfield !== 'string' || !v.parentfield))
+    throw bad(`'related' parentfield must be a Sub-table column name`)
+  if (v.parentfield !== undefined && v.via === undefined)
+    throw bad(`'related' parentfield only applies together with via`)
+  if (v.filters !== undefined && !Array.isArray(v.filters))
+    throw bad(`'related' filters must be an array of [field, operator, value]`)
+  return {
+    table: v.table,
+    via: v.via as string | undefined,
+    column: v.column as string | undefined,
+    parentfield: v.parentfield as string | undefined,
+    filters: v.filters as Filter[] | undefined,
+  }
+}
 
 const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 
@@ -45,7 +117,13 @@ async function scopedWhere(
   table: string,
   user: string,
   callerFilters: Filter[],
+  relatedDepth = 0,
+  // Shared across the whole recursion of ONE request — counts every
+  // compiled related spec so breadth is bounded, not just depth.
+  hopBudget = { hops: 0 },
 ) {
+  if (!Array.isArray(callerFilters))
+    throw new AppError('ValidationError', 'filters must be an array of [field, operator, value]')
   const meta = await getMeta(table)
   const scope = await permissionScope(user, table, 'read')
   if (scope === 'none')
@@ -83,13 +161,24 @@ async function scopedWhere(
       }
     }
   }
-  const conds = filters.map((flt) => {
+  // SQL fragments are thenables in the postgres client — awaiting one would
+  // EXECUTE it. Async compilation therefore passes fragments boxed in
+  // { frag } so `await` only ever resolves the box, never the fragment.
+  const conds: ReturnType<typeof sql>[] = []
+  for (const flt of filters) conds.push((await compileFilter(flt)).frag)
+
+  async function compileFilter(flt: Filter): Promise<{ frag: ReturnType<typeof sql> }> {
     if (!Array.isArray(flt) || flt.length !== 3)
       throw new AppError('ValidationError', 'Each filter must be [field, operator, value]')
     const [field, op, value] = flt
     assertColumn(cols, field, 'filter')
     if (!OPS.includes(op as (typeof OPS)[number]))
       throw new AppError('ValidationError', `Unknown filter operator ${op}`)
+    if (op === 'related') return relatedCond(field, value)
+    return { frag: plainCond(field, op, value) }
+  }
+
+  function plainCond(field: string, op: string, value: unknown): ReturnType<typeof sql> {
     switch (op) {
       case '=': return sql`${sql(field)} = ${value as string}`
       case '!=': return sql`${sql(field)} is distinct from ${value as string}`
@@ -102,7 +191,108 @@ async function scopedWhere(
       case 'in': return sql`${sql(field)} in ${sql((value as string[]).length ? (value as string[]) : [null as never])}`
       default: return sql`${sql(field)} not in ${sql((value as string[]).length ? (value as string[]) : [null as never])}`
     }
-  })
+  }
+
+  // See the NAV-002 note on OPS: relationship filters compile to
+  // permission-scoped subqueries by recursing into the TARGET table's own
+  // scopedWhere, so every hop applies that table's read scoping.
+  async function relatedCond(
+    field: string,
+    raw: unknown,
+  ): Promise<{ frag: ReturnType<typeof sql> }> {
+    if (relatedDepth >= MAX_RELATED_DEPTH)
+      throw new AppError(
+        'ValidationError',
+        `'related' filters nest at most ${MAX_RELATED_DEPTH} levels deep`,
+      )
+    if (++hopBudget.hops > MAX_RELATED_HOPS)
+      throw new AppError(
+        'ValidationError',
+        `At most ${MAX_RELATED_HOPS} 'related' hops per request`,
+      )
+    const spec = parseRelatedSpec(raw)
+    const target = await scopedWhere(spec.table, user, spec.filters ?? [], relatedDepth + 1, hopBudget)
+
+    if (spec.via) {
+      if (field !== 'name')
+        throw new AppError('ValidationError', `A via-related filter applies to 'name'`)
+      const owns = meta.columns.some(
+        (f) => f.column_type === 'Sub-table' && f.row_table === spec.via,
+      )
+      if (!owns)
+        throw new AppError('ValidationError', `${meta.name} has no sub-table ${spec.via}`)
+      const viaMeta = await getMeta(spec.via)
+      const viaCol = viaMeta.columns.find(
+        (f) =>
+          f.column_name === spec.column &&
+          f.column_type === 'Reference' &&
+          f.reference_table === spec.table,
+      )
+      if (!viaCol)
+        throw new AppError(
+          'ValidationError',
+          `${spec.via}.${spec.column ?? '?'} is not a Reference to ${spec.table}`,
+        )
+      if (spec.parentfield !== undefined) {
+        const owner = meta.columns.some(
+          (f) =>
+            f.column_type === 'Sub-table' &&
+            f.row_table === spec.via &&
+            f.column_name === spec.parentfield,
+        )
+        if (!owner)
+          throw new AppError(
+            'ValidationError',
+            `${meta.name}.${spec.parentfield} is not a Sub-table column of ${spec.via} rows`,
+          )
+      }
+      // Depth-indexed alias: self-referential or repeated-table nesting
+      // resolves by construction, not by lexical-scoping luck (#106 review).
+      const v = sql(`v${relatedDepth}`)
+      const inTarget = sql`${v}.${sql(spec.column!)} in (select name from ${sql(target.table)} where ${target.where})`
+      return {
+        frag:
+          spec.parentfield !== undefined
+            ? sql`exists (
+                select 1 from ${sql(tableName(spec.via))} ${v}
+                where ${v}.parent = ${sql(tbl)}.name and ${v}.parenttype = ${meta.name}
+                  and ${v}.parentfield = ${spec.parentfield} and ${inTarget})`
+            : sql`exists (
+                select 1 from ${sql(tableName(spec.via))} ${v}
+                where ${v}.parent = ${sql(tbl)}.name and ${v}.parenttype = ${meta.name}
+                  and ${inTarget})`,
+      }
+    }
+
+    if (field === 'parent') {
+      if (meta.kind !== 'sub_table')
+        throw new AppError(
+          'ValidationError',
+          `A 'parent' related filter applies to sub-table rows only`,
+        )
+      const owns = target.meta.columns.some(
+        (f) => f.column_type === 'Sub-table' && f.row_table === meta.name,
+      )
+      if (!owns)
+        throw new AppError('ValidationError', `${spec.table} does not contain ${meta.name} rows`)
+      return {
+        frag: sql`(parenttype = ${spec.table} and parent in (select name from ${sql(target.table)} where ${target.where}))`,
+      }
+    }
+
+    const refCol = meta.columns.find(
+      (f) => f.column_name === field && f.column_type === 'Reference',
+    )
+    if (!refCol || refCol.reference_table !== spec.table)
+      throw new AppError(
+        'ValidationError',
+        `${meta.name}.${field} is not a Reference to ${spec.table}`,
+      )
+    return {
+      frag: sql`${sql(field)} in (select name from ${sql(target.table)} where ${target.where})`,
+    }
+  }
+
   const allConds = [...conds, ...extraConds]
   const where = allConds.length ? allConds.reduce((acc, c) => sql`${acc} and ${c}`) : sql`true`
   return { meta, table: tbl, cols, where }
@@ -139,37 +329,35 @@ export async function groupCount(
   return rows.map((r) => ({ label: (r.label as string) ?? '', value: r.value as number }))
 }
 
-// NAV-001 (#102 review): the owning rows of a via-sub-table backlink, fully
-// permission-scoped. Both the count and the names go through the SAME
-// scoped WHERE as any list read (read permission + own_rows narrowing +
-// user-permission narrowing), with an EXISTS over the child table — so a
-// caller never learns the name of a parent row they cannot read, and the
-// count matches what their filtered list will actually show. Names are
-// ordered for determinism and capped by `limit`; `total` is the true
-// scoped count even beyond the cap.
-export async function relatedOwners(
-  ownerTable: string,
-  subTable: string,
-  column: string,
-  value: string,
+// NAV-002: scoped aggregates over the same filter language the list
+// accepts — the true count (and optionally a sum) so a pane footer never
+// has to add up only the rows it happened to fetch. The sum comes back as
+// a STRING: Currency is numeric(21,9) and a float64 cast would silently
+// lose precision the list path preserves (#106 review) — the client
+// decides how to format, the server never rounds.
+const SUMMABLE_TYPES = new Set(['Int', 'Float', 'Currency'])
+
+export async function aggregateDocs(
+  table: string,
+  filters: Filter[] = [],
+  sumField?: string,
   user = 'Administrator',
-  limit = 500,
-): Promise<{ names: string[]; total: number }> {
-  const { table: tbl, where } = await scopedWhere(ownerTable, user, [])
-  const sub = tableName(subTable)
-  const exists = sql`exists (
-    select 1 from ${sql(sub)} s
-    where s.${sql(column)} = ${value}
-      and s.parent = ${sql(tbl)}.name
-      and s.parenttype = ${ownerTable})`
-  const rows = await sql`
-    select name from ${sql(tbl)}
-    where ${where} and ${exists}
-    order by name
-    limit ${limit}`
-  const [{ count }] = await sql`
-    select count(*)::int as count from ${sql(tbl)} where ${where} and ${exists}`
-  return { names: rows.map((r) => r.name as string), total: count as number }
+): Promise<{ count: number; sum: string | null }> {
+  const { meta, cols, table: tbl, where } = await scopedWhere(table, user, filters)
+  if (!sumField) {
+    const [row] = await sql`select count(*)::int as count from ${sql(tbl)} where ${where}`
+    return { count: row.count as number, sum: null }
+  }
+  assertColumn(cols, sumField, 'sum')
+  const sumCol = meta.columns.find((f) => f.column_name === sumField)
+  if (!sumCol || !SUMMABLE_TYPES.has(sumCol.column_type))
+    throw new AppError('ValidationError', `sum must name an Int, Float, or Currency column`, {
+      sum: `${sumField} is not a summable column`,
+    })
+  const [row] = await sql`
+    select count(*)::int as count, coalesce(sum(${sql(sumField)}), 0)::text as sum
+    from ${sql(tbl)} where ${where}`
+  return { count: row.count as number, sum: row.sum as string }
 }
 
 export async function getList(table: string, args: ListArgs = {}, user = 'Administrator') {
