@@ -70,6 +70,21 @@ via-EXISTS alias is depth-indexed (`v0`,`v1`…) so repeated-table nesting is
 correct by construction. (7) `filterValueLabel` exported + unit-tested;
 the web OPS list documents WHY 'related' is absent from the FilterBar.
 
+**Second review round (same PR #106):** (1) `parentfield` — one row table
+can back SEVERAL Sub-table columns (sales_lines + return_lines → Order
+Line), and relationship paths must tell them apart: Explore child steps
+now carry the Sub-table COLUMN (distinct picker options, distinct keys)
+and filter `parentfield = <column>`; the via shape takes an optional
+`parentfield` in the spec (validated against metadata), with omitted =
+any-field — the right default for Connections' "is this row referenced at
+all" counts. Regression test builds exactly the two-columns-one-row-table
+world. (2) Removing a root chip now clears the pane-2 selection the same
+way a root row click does — a stale sel2 could otherwise keep driving
+pane 3 after its row vanished from view. (3) The reviewer's aggregate
+500s (sum=Data/position, filters=null) were already fixed by the previous
+round's summable-type + non-array guards; their exact shapes are now
+pinned as tests.
+
 ## Visual identity (standing directive for all UI work)
 
 The Admin is reskinned to look like Frappe. Every new UI feature MUST inherit

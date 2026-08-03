@@ -41,6 +41,9 @@ async function setup(admin: TestClient) {
       { column_name: 'supplier', column_type: 'Reference', reference_table: SUP },
       { column_name: 'total', column_type: 'Currency' },
       { column_name: 'lines', column_type: 'Sub-table', row_table: LINE },
+      // #106 review: a SECOND Sub-table column backed by the SAME row
+      // table — relationship paths must distinguish the two via parentfield
+      { column_name: 'return_lines', column_type: 'Sub-table', row_table: LINE },
     ],
   })
   for (const [name, city] of [['S-A', 'Chennai'], ['S-B', 'Madurai']])
@@ -258,5 +261,82 @@ describe('NAV-002: related filters', () => {
     await expect(
       list(admin, ORDER, [['name', 'related', { table: PART, via: LINE }]]),
     ).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('two Sub-table columns, one row table: parentfield keeps the paths apart', async ({
+    admin,
+  }) => {
+    await setup(admin)
+    // O-4 SELLS P-2 but only RETURNS P-1
+    await admin.post('/api/save_doc', {
+      doctype: ORDER,
+      doc: {
+        name: 'O-4',
+        supplier: 'S-B',
+        total: 10,
+        lines: [{ part: 'P-2' }],
+        return_lines: [{ part: 'P-1' }],
+      },
+    })
+
+    // child pane scoped to ONE field: O-4's `lines` rows only, never its returns
+    const linesOnly = await list(admin, LINE, [
+      ['parenttype', '=', ORDER],
+      ['parentfield', '=', 'lines'],
+      ['parent', 'related', { table: ORDER, filters: [['name', '=', 'O-4']] }],
+    ])
+    expect(linesOnly.total).toBe(1)
+
+    // via hop WITHOUT parentfield: any field counts → O-4 contains P-1 (returns)
+    const anyField = await list(admin, ORDER, [
+      ['name', 'related', { via: LINE, column: 'part', table: PART, filters: [['name', '=', 'P-1']] }],
+    ])
+    expect(anyField.names).toContain('O-4')
+
+    // via hop WITH parentfield 'lines': O-4 does NOT sell P-1 → excluded
+    const soldOnly = await list(admin, ORDER, [
+      [
+        'name',
+        'related',
+        {
+          via: LINE,
+          column: 'part',
+          table: PART,
+          parentfield: 'lines',
+          filters: [['name', '=', 'P-1']],
+        },
+      ],
+    ])
+    expect(soldOnly.names).toEqual(['O-1', 'O-3'])
+
+    // parentfield must name a real Sub-table column of the via table
+    await expect(
+      list(admin, ORDER, [
+        ['name', 'related', { via: LINE, column: 'part', table: PART, parentfield: 'supplier' }],
+      ]),
+    ).rejects.toMatchObject({ status: 417 })
+    // and never travels without via
+    await expect(
+      list(admin, ORDER, [['supplier', 'related', { table: SUP, parentfield: 'lines' }]]),
+    ).rejects.toMatchObject({ status: 417 })
+  })
+
+  test('reviewer finding-3 shapes: sum=Data, sum=position, filters=null are 417s', async ({
+    admin,
+  }) => {
+    await setup(admin)
+    for (const qs of [
+      `sum=${encodeURIComponent('supplier')}`, // Reference column
+      'sum=position', // standard column, numeric but not a declared measure
+      `filters=${encodeURIComponent('null')}&sum=total`, // null filters
+    ]) {
+      const res = await admin.fetch(`/api/table/${encodeURIComponent(ORDER)}:aggregate?${qs}`)
+      expect(res.status).toBe(417)
+    }
+    // a Data column on the sub-table for completeness
+    const res = await admin.fetch(
+      `/api/table/${encodeURIComponent(PART)}:aggregate?sum=${encodeURIComponent('part_name')}`,
+    )
+    expect(res.status).toBe(417)
   })
 })

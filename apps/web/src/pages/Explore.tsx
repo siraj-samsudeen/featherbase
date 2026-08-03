@@ -26,6 +26,9 @@ interface Step {
   table: string
   // backlink: the Reference column on `table` pointing at the upstream table
   // viabacklink: the Reference column on `via` pointing at the upstream table
+  // child: the upstream table's Sub-table COLUMN — one row table can back
+  //   several Sub-table columns, and the step must name which one (#106
+  //   review), both to disambiguate the picker and to filter parentfield
   column: string
   via?: string
 }
@@ -46,6 +49,7 @@ function chainFilters(
     if (step.mode === 'child')
       return [
         ['parenttype', '=', upstreamTable],
+        ['parentfield', '=', step.column],
         ['parent', 'in', names],
       ]
     if (step.mode === 'viabacklink')
@@ -62,6 +66,7 @@ function chainFilters(
   if (step.mode === 'child')
     return [
       ['parenttype', '=', upstreamTable],
+      ['parentfield', '=', step.column],
       ['parent', 'related', spec],
     ]
   if (step.mode === 'viabacklink')
@@ -157,7 +162,17 @@ export function ExploreView({
       {root && (
         <Chips
           groups={[
-            { label: root, names: sel1, clear: (n) => setSel1(toggle(sel1, n)) },
+            // Any root-selection change invalidates the pane-2 selection —
+            // whether it came from a row click or a chip ✕ (#106 review:
+            // a stale sel2 kept driving pane 3 after its row vanished).
+            {
+              label: root,
+              names: sel1,
+              clear: (n) => {
+                setSel1(toggle(sel1, n))
+                setSel2(new Set())
+              },
+            },
             { label: step2?.table ?? '', names: sel2, clear: (n) => setSel2(toggle(sel2, n)) },
           ]}
         />
@@ -234,9 +249,12 @@ function StepPicker({
   for (const f of meta.data?.columns ?? [])
     if (f.column_type === 'Sub-table' && f.row_table)
       options.push({
-        key: `child:${f.row_table}:`,
-        label: `${f.row_table} (rows)`,
-        step: { mode: 'child', table: f.row_table, column: '' },
+        // Keyed and filtered by the Sub-table COLUMN, not just the row
+        // table — two columns backed by the same row table are distinct
+        // steps (#106 review).
+        key: `child:${f.row_table}:${f.column_name}`,
+        label: `${f.row_table} (${f.label ?? f.column_name})`,
+        step: { mode: 'child', table: f.row_table, column: f.column_name },
       })
   for (const bl of backlinks.data?.backlinks ?? [])
     options.push(

@@ -47,6 +47,12 @@ interface RelatedSpec {
   table: string
   via?: string
   column?: string
+  // #106 review: when one row table backs SEVERAL Sub-table columns
+  // (sales_lines and return_lines both → Order Line), an optional
+  // parentfield narrows the via hop to one owning column. Omitted = any
+  // field, which is the right default for "is this row referenced at all"
+  // (Connections counts).
+  parentfield?: string
   filters?: Filter[]
 }
 
@@ -67,12 +73,17 @@ function parseRelatedSpec(value: unknown): RelatedSpec {
     throw bad(`'related' column only applies together with via`)
   if (v.via !== undefined && v.column === undefined)
     throw bad(`'related' via needs the sub-table column that references the target`)
+  if (v.parentfield !== undefined && (typeof v.parentfield !== 'string' || !v.parentfield))
+    throw bad(`'related' parentfield must be a Sub-table column name`)
+  if (v.parentfield !== undefined && v.via === undefined)
+    throw bad(`'related' parentfield only applies together with via`)
   if (v.filters !== undefined && !Array.isArray(v.filters))
     throw bad(`'related' filters must be an array of [field, operator, value]`)
   return {
     table: v.table,
     via: v.via as string | undefined,
     column: v.column as string | undefined,
+    parentfield: v.parentfield as string | undefined,
     filters: v.filters as Filter[] | undefined,
   }
 }
@@ -222,14 +233,34 @@ async function scopedWhere(
           'ValidationError',
           `${spec.via}.${spec.column ?? '?'} is not a Reference to ${spec.table}`,
         )
+      if (spec.parentfield !== undefined) {
+        const owner = meta.columns.some(
+          (f) =>
+            f.column_type === 'Sub-table' &&
+            f.row_table === spec.via &&
+            f.column_name === spec.parentfield,
+        )
+        if (!owner)
+          throw new AppError(
+            'ValidationError',
+            `${meta.name}.${spec.parentfield} is not a Sub-table column of ${spec.via} rows`,
+          )
+      }
       // Depth-indexed alias: self-referential or repeated-table nesting
       // resolves by construction, not by lexical-scoping luck (#106 review).
       const v = sql(`v${relatedDepth}`)
+      const inTarget = sql`${v}.${sql(spec.column!)} in (select name from ${sql(target.table)} where ${target.where})`
       return {
-        frag: sql`exists (
-          select 1 from ${sql(tableName(spec.via))} ${v}
-          where ${v}.parent = ${sql(tbl)}.name and ${v}.parenttype = ${meta.name}
-            and ${v}.${sql(spec.column!)} in (select name from ${sql(target.table)} where ${target.where}))`,
+        frag:
+          spec.parentfield !== undefined
+            ? sql`exists (
+                select 1 from ${sql(tableName(spec.via))} ${v}
+                where ${v}.parent = ${sql(tbl)}.name and ${v}.parenttype = ${meta.name}
+                  and ${v}.parentfield = ${spec.parentfield} and ${inTarget})`
+            : sql`exists (
+                select 1 from ${sql(tableName(spec.via))} ${v}
+                where ${v}.parent = ${sql(tbl)}.name and ${v}.parenttype = ${meta.name}
+                  and ${inTarget})`,
       }
     }
 
