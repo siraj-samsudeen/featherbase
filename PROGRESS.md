@@ -1,5 +1,114 @@
 # Progress Log
 
+## 2026-08-04 — Owner decisions: four questions graduated into rules
+
+The arbiter ruled on the framework's open decisions (all four
+recommendations accepted): **hermeticity → table deletion becomes a
+product capability**; **Q2+Q4 → IMP-R12** (re-import is an upsert on a
+user-mapped key column, which may map the row identifier); **Q5 →
+IMP-R13** (Import Log records inserted row ids; one-click reverse);
+**Q1 → IMP-R11** (a header-only file creates the empty Table, logged
+with 0 inserted). Per the change protocol the questions are removed,
+the answers live as rules (spec'd, not yet built), H1 carries its
+resolution path, and the evidence CSV rows are stamped 2026-08-04.
+Only Q3 (error volume) remains open.
+
+Next: build table deletion first — it unblocks journey hermeticity,
+supports R13's recovery story, and is the smallest of the three. Then
+R12/R13 as their own journey-spec'd features. Q3 waits for real usage.
+
+## 2026-08-03 — Requirements framework v2 + first DSL journey spec (IMP-J1)
+
+Two threads, one session: the requirements framework became a synthesis
+(`docs/design/requirements-framework.md` — journeys/rules/shapes, merged
+from the v1 draft, an external review, and feather-spec; plus §12: the
+product manual as a generated view, exemplar in `docs/manual/`), and its
+first practical test landed — `feather-testing-core@0.2.0` adopted as the
+e2e vocabulary.
+
+- **Adopted the DSL** (`apps/web/e2e/fixtures.ts`): `test` from
+  `feather-testing-core/playwright` plus a composable `signIn`. New journey
+  specs import from here, not `@playwright/test`.
+- **First journey spec** — `apps/web/e2e/import-journey.spec.ts` walks
+  IMP-J1 (first import creates a typed Table) against the wizard using the
+  framework's zones.csv fixture (`e2e/fixtures/zones.csv` + claims file).
+  Verified end-to-end against the running app: full walk green through
+  meta/count, Import Log entry confirmed via API, re-run skips cleanly.
+- **Findings, exactly as the framework predicted:** (1) `fillIn` refused
+  the login form's unassociated labels → `Login.tsx` gained
+  `htmlFor`/`id` (accessibility dividend); (2) **#114** — the wizard's
+  rename doesn't re-derive the row-id series (ids stayed `ZONES-###`
+  after renaming to Journey Zones); pinned in the spec as a polarity-
+  tagged gap assertion; (3) hermeticity live: the fixture's headers
+  auto-matched the leftover `Zones` Table, so the spec branches — golden
+  J1.3 on a fresh DB, R7's auto-match notice + retarget on a used one.
+- **Gotcha:** `assertPath` in the DSL compares exact pathnames — the
+  post-login route is `/admin/home/home` (home recall), not `/admin`;
+  `signIn` asserts the admin shell instead.
+
+Same day, adoption item 6 landed too:
+`apps/server/test/import-properties.test.ts` (fast-check) — 11 spec-true
+properties over `sanitizeHeaders`/`sanitizeColumnName`/`inferColumnType`
+(length preserved, valid non-reserved identifiers, distinct below the
+truncation boundary, total, order-independent, decimal-forbids-Int,
+Check-before-Choice, Text past 140 chars), with the three executed defects
+pinned as `it.fails` against #110–#112 — each fix flips its pin, forcing
+the flip-to-`it` in the same change. Gotcha: fast-check v4 dropped
+`fullUnicodeString`; use `fc.string({ unit: 'grapheme' })`.
+
+And the rest of the "Next" tier landed the same day:
+
+- **Invariants layer** (`apps/server/test/import-invariants.test.ts`):
+  IMP-I1 reconciliation proven through the real coerceRows → :import
+  pipeline; its row-number half confirmed as **defect #115** and pinned
+  (a blank row shifts every later error onto an innocent spreadsheet
+  row — coerceRows filters blanks silently while the wizard displays
+  `index + 2`). IMP-I2 **reframed with evidence**: the log schema's
+  `part`/`parts` columns show per-chunk rows are design intent, so the
+  invariant is "one row per part, all parts present, sums equal the run"
+  — proven with a 3-part chunked run. IMP-I3 proven including the
+  no-series-burn half (a rehearsal doesn't advance the id counter).
+- **ADR 0008** — every inference threshold is a named, exported bet:
+  hoisted `COLUMN_NAME_MAX`, `INT_SAFE_DIGITS`, `LONG_TEXT_CHARS`,
+  `CHOICE_*`, `AUTO_MATCH_*` in shared/import.ts; named `IMPORT_CHUNK`,
+  `SUGGEST_*`, `ERRORS_ON_SCREEN`, `LOG_ERROR_SAMPLE` where they live.
+  Behaviour-preserving: 93 import tests green, both typechecks clean,
+  wizard e2e still passes.
+- **Agent protocol** into CLAUDE.md: never touch an assertion and the
+  code under test in one change; a discovered behaviour is not a
+  requirement.
+- **Hermeticity (adoption item 9)** written up as a decision brief in the
+  framework doc — recommendation: table deletion as a product capability;
+  awaiting the owner's call. Until then create-path journeys stay
+  conditionally proven.
+
+External review round 2 adjudicated (adopt-the-useful, drop-the-bloat):
+**adopted** — discrepancy-classification replaces "code is truth"; example
+disagreements block for the owner instead of auto-winning; shapes softened
+to primary verification strategies; pins doctrine tightened (spec in the
+assertion, expected-failing; the e2e #114 pin weakened to a neutral shape
+assertion + known-gap, per the doctrine); CLAUDE.md rule narrowed to
+anti-expectation-laundering; grep linkage renamed static traceability;
+mutation testing scoped, never a headline; judgement split into
+conformance/fitness oracles; closure sweep added; four worked-example
+inconsistencies fixed (R2/R3 contradiction, J1.6 branch scoping, H2 split
+into H2+H3, C1 split into per-call proven vs cross-chunk reported).
+**dropped as low-ROI** — the 3-file split (deferred to feature #2),
+behaviour/quality/constraint normative types, atomic ID renumbering, the
+11-state evidence vocabulary, dissolving ADR 0008.
+
+The matrix moved to its canonical CSV
+(`docs/design/evidence/spreadsheet-import.csv`) and the framework is now a
+project-local skill (`.claude/skills/journey-spec/` — SKILL.md + spec
+template + evidence schema). Format decision: markdown for narrative, CSV
+for the evidence layer (the exact shape that later lands as Featherbase
+rows — dog-fooding), HTML only ever as a generated view.
+
+Next: the owner's calls — hermeticity (item 9) and the open questions
+Q1–Q5 (the wrong-table trap H1 is the highest-stakes cluster); then the
+judgement-rule corpus and mutation score, only if the earlier layers keep
+earning it.
+
 ## 2026-08-02 — NAV-002: server-side relationship joins ('related' filter)
 
 The follow-up noted on #100/#102: the join between Explore panes (and behind
