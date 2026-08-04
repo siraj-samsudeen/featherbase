@@ -1,5 +1,66 @@
 # Progress Log
 
+## 2026-08-04 — checklists sample app + generic Checklist view
+
+A second flagship sample app beside helpdesk, and the fifth alternate view
+beside Kanban/Calendar/Gantt — built for a real consumer (Rama's store team
+leaders run daily section checklists on their phones and photograph fast
+movers for buyers), shipped as generic framework surface.
+
+- **`sample-apps/checklists.ts`** — a reusable **Checklist Template** (the
+  standard, defined once; items sub-table with `must_do` / `photo_proof`
+  flags) instantiated as **Checklist Runs**. A `before_validate` hook
+  SNAPSHOTS the template's items into a new run — later template edits
+  never rewrite what was ticked yesterday. Ticks stamp/clear `done_at` and
+  derive `progress` ("5/8"); a `validate` hook gates `run_status →
+  Submitted` on must-do items, where a per-item note is an accepted excuse
+  (the gate reads child rows from the DB when the payload is status-only).
+  Roles: Team Leader works own runs (`own_rows_only`); Store Manager
+  defines templates and sees all. One fixture template ships (a retail
+  section-opening list); demo runs live in `scripts/seed-checklists.ts`
+  (`pnpm --filter server seed:checklists`).
+- **Framework fix the hook needed**: `saveDoc` picked Sub-table arrays off
+  the raw payload BEFORE the hook chain, so a hook that added or replaced
+  child rows on `ctx.row` was silently ignored despite the "hooks may
+  mutate ctx.row" contract. Both save paths now re-pick children from the
+  hooked row; an absent key still means "children untouched" (the physical
+  row spread into ctx.row carries no Sub-table columns). Pinned in
+  `children.test.ts`.
+- **`ChecklistView`** (`/admin/$doctype/view/checklist?run=…`) — binds any
+  Table with checklist shape (a Sub-table column whose row table has a
+  Check column) from metadata alone: date-grouped run cards with progress
+  bars, then a tap-first run pane — whole-row ≥44px targets, one save_doc
+  per tick (server derives stamps/progress), MUST-DO badges, `+ note`
+  excuses, and per-item `photo_proof` camera chips
+  (`capture="environment"` → `/api/upload_file` bound to the CHILD row,
+  thumbnails inline). The footer advances the parent's Choice column to
+  its next declared value and surfaces the 417 gate message verbatim.
+  ListView's switcher shows Checklist only when the shape is present
+  (child-meta-aware `ChecklistSwitch`, same conditional pattern as
+  Kanban's Choice check).
+
+Verified: server 604→609 tests green including the 5-case
+`checklists-app.test.ts` round trip (snapshot immutability, done_at
+stamp/clear, DB-read submit gate, TL/SM scoping) and the hook-adds-children
+regression; full e2e 103 passed (new `checklist.spec.ts`: list → run →
+tick → gate refusal → submit; camera upload → thumbnail; 375px usability
+with no horizontal overflow); both typechecks clean; browser walkthrough at
+desktop and mobile width against seeded demo runs.
+
+Gotchas: (1) list `order_by` takes ONE column — a two-column order 417s and
+the view rendered empty until recency sorting moved client-side. (2) child
+`Datetime` values must be ISO strings — a hook stamping `new Date()` fails
+the child zod schema. (3) On Node 26 the web unit suite needs
+`NODE_OPTIONS=--localstorage-file=…`: Node's own unbacked `localStorage`
+shadows jsdom's (repo tooling pins Node 22, where this doesn't arise).
+(4) The dirty-dev-DB skip guard from the helpdesk round trip applies to any
+suite that installs a registered app by name — the checklist e2e commits an
+install into the dev database.
+
+Next: a "start run from template" affordance cheaper than the generic new
+form (template picker in the view), and per-item photo REQUIREMENT
+enforcement (photo_proof currently invites, never blocks).
+
 ## 2026-08-02 — NAV-002: server-side relationship joins ('related' filter)
 
 The follow-up noted on #100/#102: the join between Explore panes (and behind

@@ -27,6 +27,15 @@ const FIXTURE_LABELS = [
 
 type Row = Record<string, any>
 
+// A dev database may carry committed checklists structure (the checklist
+// e2e installs it over HTTP); these round trips need a clean slate, which
+// CI and throwaway DBs always are — the same guard the helpdesk round-trip
+// test uses.
+async function dirty(): Promise<boolean> {
+  const [row] = await sql`select 1 from table_def where name = ${RUN_DT}`
+  return Boolean(row)
+}
+
 async function install() {
   const res = await installApp('checklists')
   const template = res.fixtures.find((f) => f.table === TEMPLATE_DT)
@@ -37,7 +46,8 @@ async function install() {
 const unwire = () => uninstallApp('checklists').catch(() => {})
 
 describe('checklists app: template → run lifecycle', () => {
-  test('install ships a usable template; uninstall removes everything', async ({ admin }) => {
+  test('install ships a usable template; uninstall removes everything', async ({ admin, skip }) => {
+    if (await dirty()) skip('dev database already carries the checklists structure')
     const { templateName } = await install()
     try {
       const template = await admin.get<Row>(`/api/table/${encodeURIComponent(TEMPLATE_DT)}/${templateName}`)
@@ -59,7 +69,9 @@ describe('checklists app: template → run lifecycle', () => {
 
   test("a new run snapshots the template's items; editing the template later does not rewrite it", async ({
     admin,
+    skip,
   }) => {
+    if (await dirty()) skip('dev database already carries the checklists structure')
     const { templateName } = await install()
     try {
       const run = await admin.post<Row>('/api/save_doc', {
@@ -93,7 +105,8 @@ describe('checklists app: template → run lifecycle', () => {
     }
   })
 
-  test('ticking stamps done_at, unticking clears it, progress follows', async ({ admin }) => {
+  test('ticking stamps done_at, unticking clears it, progress follows', async ({ admin, skip }) => {
+    if (await dirty()) skip('dev database already carries the checklists structure')
     const { templateName } = await install()
     try {
       const run = await admin.post<Row>('/api/save_doc', {
@@ -127,7 +140,8 @@ describe('checklists app: template → run lifecycle', () => {
     }
   })
 
-  test('submit is gated on must-do items — a note is an accepted excuse', async ({ admin }) => {
+  test('submit is gated on must-do items — a note is an accepted excuse', async ({ admin, skip }) => {
+    if (await dirty()) skip('dev database already carries the checklists structure')
     const { templateName } = await install()
     try {
       const run = await admin.post<Row>('/api/save_doc', {
@@ -165,7 +179,9 @@ describe('checklists app: template → run lifecycle', () => {
   test('a team leader works own runs only; a store manager sees all', async ({
     admin,
     createUser,
+    skip,
   }) => {
+    if (await dirty()) skip('dev database already carries the checklists structure')
     const { templateName } = await install()
     try {
       const tl = await createUser({ roles: ['Team Leader'] })
