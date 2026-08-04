@@ -1,5 +1,22 @@
 # Progress Log
 
+## 2026-08-04 — Owner decisions: four questions graduated into rules
+
+The arbiter ruled on the framework's open decisions (all four
+recommendations accepted): **hermeticity → table deletion becomes a
+product capability**; **Q2+Q4 → IMP-R12** (re-import is an upsert on a
+user-mapped key column, which may map the row identifier); **Q5 →
+IMP-R13** (Import Log records inserted row ids; one-click reverse);
+**Q1 → IMP-R11** (a header-only file creates the empty Table, logged
+with 0 inserted). Per the change protocol the questions are removed,
+the answers live as rules (spec'd, not yet built), H1 carries its
+resolution path, and the evidence CSV rows are stamped 2026-08-04.
+Only Q3 (error volume) remains open.
+
+Next: build table deletion first — it unblocks journey hermeticity,
+supports R13's recovery story, and is the smallest of the three. Then
+R12/R13 as their own journey-spec'd features. Q3 waits for real usage.
+
 ## 2026-08-03 — Requirements framework v2 + first DSL journey spec (IMP-J1)
 
 Two threads, one session: the requirements framework became a synthesis

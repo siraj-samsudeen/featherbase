@@ -26,11 +26,14 @@ IMP-I1.arithmetic,invariant,reconciliation,apps/server/test/import-invariants.te
 IMP-I1.true-row-numbers,invariant,reconciliation,apps/server/test/import-invariants.test.ts,expected-failing pin — a blank row shifts later errors onto innocent rows,#115,2026-08-03
 IMP-I2,invariant,reconciliation,apps/server/test/import-invariants.test.ts,proven — one log row per part; parts complete; sums equal the run,,2026-08-03
 IMP-I3,invariant,reconciliation,"apps/server/test/import-action.test.ts; import-invariants.test.ts",proven — no rows; no log; no series ids burned,,2026-08-03
-IMP-H1,hazard,decision,,open — Q2+Q3+Q5 compound into the wrong-table trap,,2026-08-03
+IMP-H1,hazard,decision,,"resolution decided — R12 (upsert) + R13 (undo) + table deletion disarm all three legs; listed until built and proven",,2026-08-04
 IMP-H2,hazard,none,,reported — mid-import permission abort strands rows with no record; not re-executed,,2026-08-03
 IMP-H3,hazard,none,,reported — whole-file predicate over per-sheet behaviour; split from H2,,2026-08-03
-Q1,question,decision,,open — header-only file (arbiter: Siraj),,2026-08-03
-Q2,question,decision,,open — re-import semantics (blocked on Q4),,2026-08-03
+Q1,question,decision,,graduated — decided by the arbiter → IMP-R11,,2026-08-04
+Q2,question,decision,,graduated — decided by the arbiter → IMP-R12 (with Q4),,2026-08-04
 Q3,question,decision,,open — error volume,,2026-08-03
-Q4,question,decision,,open — file's own reference numbers,,2026-08-03
-Q5,question,decision,,open — stop & undo,,2026-08-03
+Q4,question,decision,,graduated — folded into IMP-R12 (key column may map the row identifier),,2026-08-04
+Q5,question,decision,,graduated — decided by the arbiter → IMP-R13,,2026-08-04
+IMP-R11,contract,api (pending),,decided 2026-08-04 — header-only file creates the empty Table and logs 0 inserted; not yet built,,2026-08-04
+IMP-R12,contract,api + browser (pending),,decided 2026-08-04 — re-import upserts on a user-mapped key (identifier mappable); not yet built,,2026-08-04
+IMP-R13,contract,api + browser (pending),,decided 2026-08-04 — Import Log records inserted row ids; one-click reverse; not yet built,,2026-08-04

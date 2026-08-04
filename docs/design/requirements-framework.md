@@ -646,6 +646,30 @@ nothing partial); malformed rows are reported, not crashed; settings and
 sub-table kinds are refused; the operation is registered as a write effect
 (GET refused).
 
+### IMP-R11 — Header-only files create the empty Table · `shape: contract`
+
+*Decided 2026-08-04 (was Q1).* A file with headers and zero data rows
+creates the Table with its inferred columns and no rows — schema-first
+template workflows are legitimate. The Import Log records the run with
+0 inserted, so it is still accounted for (→ I2). *Not yet built.*
+
+### IMP-R12 — Re-import is an upsert on a user-mapped key · `shape: contract`
+
+*Decided 2026-08-04 (was Q2 + Q4).* In the mapping step the user may mark
+one file column as the **match key** — including mapping it onto the row
+identifier, which the engine already accepts for direct sends. On import,
+rows matching an existing key **update**; the rest insert; the log records
+updated/inserted/failed separately. "I'll just import the corrected file
+again" then does what everyone expects. *Not yet built.*
+
+### IMP-R13 — An import can be undone · `shape: contract`
+
+*Decided 2026-08-04 (was Q5).* The Import Log records the **ids of the
+rows each run inserted**, and a run's history entry offers a one-click
+reverse that deletes exactly those rows (updates from R12 record prior
+values or are excluded from reversal — detail to settle at build time).
+Closes the wrong-table trap directly. *Not yet built.*
+
 ### Invariants · `shape: invariant`
 
 - **IMP-I1 — reconciliation.** For every run: rows in file = inserted +
@@ -666,10 +690,11 @@ sub-table kinds are refused; the operation is registered as a write effect
 
 ### Hazards
 
-- **IMP-H1 — the wrong-table trap.** Q2 + Q3 + Q5 compound: an import into
-  the wrong Table can be neither stopped nor undone, and re-running the
-  corrected file duplicates everything. Owned by no single step; the
-  highest-stakes open decision in the feature.
+- **IMP-H1 — the wrong-table trap.** An import into the wrong Table can
+  be neither stopped nor undone, and re-running the corrected file
+  duplicates everything. *Resolution decided 2026-08-04:* R12 (upsert)
+  + R13 (undo) + table deletion (hermeticity decision) disarm all three
+  legs. The hazard stays listed until they are built and proven.
 - **IMP-H2 — abort without a record.** A permission failure mid-import is
   reported to leave already-inserted rows behind with **no history entry**
   — the one failure mode guaranteed to strand rows is the one guaranteed to
@@ -683,11 +708,13 @@ sub-table kinds are refused; the operation is registered as a write effect
 
 | # | Question | Blocked on |
 |---|---|---|
-| Q1 | Header row, zero data rows: create an empty Table, or refuse? Today's answer emerged **by accident** from two independent code choices — exactly what an unowned decision looks like. | — |
-| Q2 | Re-import semantics: today all eight rows insert **again**. Match on a key and update? Refuse duplicates? | Q4 |
 | Q3 | Error volume: 300 failures of 1,000 — how much detail survives, and where? (Today: five on screen, twenty in history.) | — |
-| Q4 | May the user map a file column onto the row identifier when appending? The engine accepts explicit identifiers; the mapping step doesn't offer it. | — |
-| Q5 | Is "undo this import" a requirement? If yes, history must record row identities, not just counts. | — |
+
+*Graduated 2026-08-04 by the arbiter:* Q1 → R11 (create the empty Table) ·
+Q2 + Q4 → R12 (upsert on a user-mapped key, identifier mappable) ·
+Q5 → R13 (undo via row-identity logging). Per the change protocol, the
+answers now live as rules and the questions are removed; only Q3 remains
+open.
 
 ## Coverage matrix
 
@@ -762,8 +789,10 @@ sentence — not a count of green rows — is the feature's true state.
    the global series counter makes their ids non-deterministic. *(c)*
    **A dedicated e2e database reset between runs** — honest and simple,
    but punts local dev, where the drift actually bites.
-   **Recommendation: (a).** Until decided, create-path journeys stay
-   *conditionally proven* and their skips must be reported as skips.
+   **Decided 2026-08-04: (a) — table deletion becomes a product
+   capability** (with the existing reverse-lookup delete-blocking). Until
+   it ships, create-path journeys stay *conditionally proven* and their
+   skips must be reported as skips.
 10. **Adopt `feather-testing-core` as the e2e vocabulary** (Part I §6).
     Add the published dependency (≥ 0.2.0), an `e2e/fixtures.ts`, and
     write **new** journey tests in the DSL; migrate existing specs
