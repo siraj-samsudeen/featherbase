@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import * as XLSX from 'xlsx'
+import { deleteTableIfExists } from './cleanup'
 
 // IMP-006: drag & drop a CSV/Excel file -> inferred Table + imported rows.
 
@@ -32,10 +33,7 @@ test('IMP-006: drop a CSV; inferred schema prefills the builder; create imports 
   request,
 }) => {
   const token = await adminToken(request)
-  const exists = await request.get(`/api/table/${encodeURIComponent(CSV_DT)}:meta`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  test.skip(exists.status() === 200, `${CSV_DT} already exists in this DB; skipping create path`)
+  await deleteTableIfExists(request, token, CSV_DT)
 
   await login(page)
   await page.getByTestId('new-doctype-link').click()
@@ -97,10 +95,7 @@ test('IMP-006: a real .xlsx imports the same way (via the file picker)', async (
   request,
 }) => {
   const token = await adminToken(request)
-  const exists = await request.get(`/api/table/${encodeURIComponent(XLSX_DT)}:meta`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  test.skip(exists.status() === 200, `${XLSX_DT} already exists in this DB; skipping create path`)
+  await deleteTableIfExists(request, token, XLSX_DT)
 
   const ws = XLSX.utils.aoa_to_sheet([
     ['Item', 'On Hand', 'Reorder At'],

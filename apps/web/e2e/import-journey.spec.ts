@@ -1,5 +1,6 @@
 import type { APIRequestContext } from '@playwright/test'
 import { test, expect, signIn } from './fixtures'
+import { deleteTableIfExists } from './cleanup'
 
 // IMP-J1 — the first-import golden path of
 // docs/design/requirements-framework.md (Part II), written in the
@@ -8,10 +9,10 @@ import { test, expect, signIn } from './fixtures'
 // labels (the wizard's inputs are test-id addressed, not label-associated —
 // the same finding that got the login form its htmlFor attributes).
 //
-// Hermeticity (adoption item 9, still open): the Table is renamed to
-// "Journey Zones" AFTER asserting the "Zones" prefill, so re-runs and
-// sibling specs cannot collide — and the spec still self-skips when the
-// Table already exists. A skip here is a skip, not a pass.
+// Hermeticity (adoption item 9, CLOSED by table deletion — spec 0003): the
+// Table is renamed to "Journey Zones" AFTER asserting the "Zones" prefill,
+// so sibling specs cannot collide, and a leftover from a prior run is
+// pre-cleaned through the deletion capability instead of self-skipping.
 
 const DT = 'Journey Zones'
 const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
@@ -27,8 +28,7 @@ test('IMP-J1: first import creates a typed Table from zones.csv', async ({
 }) => {
   const token = await adminToken(request)
   const headers = { Authorization: `Bearer ${token}` }
-  const exists = await request.get(`/api/table/${encodeURIComponent(DT)}:meta`, { headers })
-  test.skip(exists.status() === 200, `${DT} already exists in this DB; skipping create path`)
+  await deleteTableIfExists(request, token, DT)
 
   // J1.1 — sidebar → the import screen with an empty drop area
   await signIn(session)

@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import * as XLSX from 'xlsx'
+import { deleteTableIfExists } from './cleanup'
 
 // IMP-010: the Import wizard — multi-sheet workbooks, rename-tolerant
 // existing-Table suggestions, column mapping, dry-run, Choice detection.
@@ -54,8 +55,7 @@ test('IMP-010: multi-sheet workbook — one sheet to a new Table, one mapped ont
 }) => {
   const token = await adminToken(request)
   const headers = { Authorization: `Bearer ${token}` }
-  const exists = await request.get(`/api/table/${encodeURIComponent(NEW_DT)}:meta`, { headers })
-  test.skip(exists.status() === 200, `${NEW_DT} already exists in this DB; skipping create path`)
+  await deleteTableIfExists(request, token, NEW_DT)
 
   // Pre-create the existing target the renamed sheet must find.
   const created = await request.post('/api/doctype', {
@@ -168,10 +168,7 @@ test('IMP-013: skip a sheet, drop a column, and drive the target picker', async 
 }) => {
   const token = await adminToken(request)
   const headers = { Authorization: `Bearer ${token}` }
-  const exists = await request.get(`/api/table/${encodeURIComponent('Wizard Keep')}:meta`, {
-    headers,
-  })
-  test.skip(exists.status() === 200, 'Wizard Keep already exists in this DB; skipping create path')
+  await deleteTableIfExists(request, token, 'Wizard Keep')
 
   const keep = XLSX.utils.aoa_to_sheet([
     ['Pick A', 'Pick B', 'Pick C'],
