@@ -1,0 +1,15 @@
+id,shape,strategy,static_link,verdict,issue,stamped
+DEL-J1,sequence,browser walk,,gap — spec authored before code; nothing implements it,,2026-08-04
+DEL-J2,sequence,browser walk,,gap — spec authored before code; nothing implements it,,2026-08-04
+DEL-R1,contract,api,,gap,,2026-08-04
+DEL-R2,contract,api,,gap,,2026-08-04
+DEL-R3,rule,api + examples,,gap,,2026-08-04
+DEL-R4,rule,api + examples,,gap,,2026-08-04
+DEL-R5,rule,api,,gap,,2026-08-04
+DEL-R6,contract,api,,gap,,2026-08-04
+DEL-R7,rule,api,,gap,,2026-08-04
+DEL-R8,contract,api,,gap,,2026-08-04
+DEL-I1,invariant,reconciliation,,gap,,2026-08-04
+DEL-I2,invariant,reconciliation,,gap,,2026-08-04
+DEL-H1,hazard,decision,,open — mitigations spec'd (R1 + counted confirm + R8); residual risk accepted until first deployment,,2026-08-04
+Q1,question,decision,,open — typed-name confirmation for populated tables,,2026-08-04
