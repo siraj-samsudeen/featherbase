@@ -111,6 +111,13 @@ test('a photo_proof item takes a camera upload and shows its thumbnail', async (
     ),
   })
   await expect(page.getByTestId('checklist-photo-thumb').first()).toBeVisible()
+
+  // Tapping the thumbnail opens the full-screen viewer with the real image.
+  await page.getByTestId('checklist-photo-thumb').first().click()
+  await expect(page.getByTestId('checklist-photo-view')).toBeVisible()
+  await expect(page.getByTestId('checklist-photo-view').locator('img')).toBeVisible()
+  await page.getByRole('button', { name: 'Close photo' }).click()
+  await expect(page.getByTestId('checklist-photo-view')).not.toBeVisible()
 })
 
 test.describe('mobile width', () => {

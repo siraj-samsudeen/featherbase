@@ -298,6 +298,8 @@ function RunPane({
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [noteDraft, setNoteDraft] = useState<{ item: string; text: string } | null>(null)
+  // Full-screen photo viewer: file_url of the photo being viewed, or null.
+  const [viewer, setViewer] = useState<string | null>(null)
   const doc = useQuery({
     queryKey: ['checklist-run', doctype, name],
     queryFn: () => api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
@@ -405,15 +407,18 @@ function RunPane({
           const itemName = String(item.name)
           const done = Boolean(item[binding.doneCol])
           const note = binding.noteCol ? String(item[binding.noteCol] ?? '') : ''
+          // Mockup-faithful layout: the whole tick row is the tap target,
+          // and photos + note sit UNDER the label (indented past the tick
+          // circle), never in a side column.
           return (
-            <div key={itemName} className="flex items-start gap-3 p-3" data-testid="checklist-item">
+            <div key={itemName} className="flex flex-col gap-2 p-3" data-testid="checklist-item">
               <button
                 type="button"
                 role="checkbox"
                 aria-checked={done}
                 disabled={saving || binding.readOnly}
                 onClick={() => toggle(itemName)}
-                className="flex min-h-[44px] flex-1 items-start gap-3 text-left"
+                className="flex min-h-[44px] w-full items-start gap-3 text-left"
               >
                 <span
                   className={`mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full border-2 text-sm ${
@@ -442,21 +447,23 @@ function RunPane({
                   </span>
                 </span>
               </button>
-              <span className="flex flex-none flex-col items-end gap-1">
-                {binding.photoCol && Boolean(item[binding.photoCol]) && !binding.readOnly && (
-                  <PhotoChip
+              {binding.photoCol && Boolean(item[binding.photoCol]) && !binding.readOnly && (
+                <div className="ml-9">
+                  <PhotoRow
                     childTable={binding.childTable}
                     itemName={itemName}
                     photos={photosByItem.get(itemName) ?? []}
                     onUploaded={() => photos.refetch()}
+                    onView={setViewer}
                   />
-                )}
-                {binding.noteCol &&
-                  !binding.readOnly &&
-                  (noteDraft?.item === itemName ? (
+                </div>
+              )}
+              {binding.noteCol && !binding.readOnly && (
+                <div className="ml-9">
+                  {noteDraft?.item === itemName ? (
                     <input
                       autoFocus
-                      className="fc-input w-40 text-xs"
+                      className="fc-input w-full max-w-sm text-sm"
                       defaultValue={note}
                       placeholder="Why not?"
                       onBlur={(e) => saveNote(itemName, e.target.value)}
@@ -469,11 +476,11 @@ function RunPane({
                   ) : note ? (
                     <button
                       type="button"
-                      className="max-w-40 truncate rounded bg-[var(--color-subtle)] px-2 py-0.5 text-xs text-[var(--color-ink-muted)]"
+                      className="rounded bg-[var(--color-warn-tint)] px-2 py-1 text-left text-xs text-[var(--color-warn)]"
                       onClick={() => setNoteDraft({ item: itemName, text: note })}
-                      title={note}
+                      title="Edit note"
                     >
-                      {note}
+                      Note: {note}
                     </button>
                   ) : (
                     !done && (
@@ -486,8 +493,9 @@ function RunPane({
                         + note
                       </button>
                     )
-                  ))}
-              </span>
+                  )}
+                </div>
+              )}
             </div>
           )
         })}
@@ -501,6 +509,7 @@ function RunPane({
           {error}
         </p>
       )}
+      {viewer && <PhotoLightbox fileUrl={viewer} onClose={() => setViewer(null)} />}
       {binding.statusCol && nextStatus && !binding.readOnly && (
         <button
           type="button"
@@ -516,18 +525,58 @@ function RunPane({
   )
 }
 
-// Camera chip: photo_proof items upload straight from the device camera on
-// mobile (capture=environment) and show what's attached as thumbnails.
-function PhotoChip({
+// Full-screen viewer for an attached photo. The image loads through
+// /api/signed_url so private files work the same as public ones.
+function PhotoLightbox({ fileUrl, onClose }: { fileUrl: string; onClose: () => void }) {
+  const signed = useQuery({
+    queryKey: ['signed-url', fileUrl],
+    queryFn: () =>
+      api.get<{ signed_url: string }>(`/api/signed_url?file_url=${encodeURIComponent(fileUrl)}`),
+  })
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-label="Photo viewer"
+      data-testid="checklist-photo-view"
+    >
+      {signed.data ? (
+        <img
+          src={signed.data.signed_url}
+          alt="Checklist photo"
+          className="max-h-full max-w-full rounded object-contain"
+        />
+      ) : (
+        <span className="text-sm text-white">Loading…</span>
+      )}
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close photo"
+        className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-lg text-white"
+      >
+        ×
+      </button>
+    </div>
+  )
+}
+
+// Photo row under a photo_proof item: tappable thumbnails (open the
+// full-screen viewer) plus a camera button — capture=environment opens the
+// device camera directly on mobile.
+function PhotoRow({
   childTable,
   itemName,
   photos,
   onUploaded,
+  onView,
 }: {
   childTable: string
   itemName: string
   photos: Row[]
   onUploaded: () => void
+  onView: (fileUrl: string) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
@@ -554,28 +603,35 @@ function PhotoChip({
     }
   }
   return (
-    <span className="flex items-center gap-1">
-      {photos.map((p) =>
-        p.thumbnail_url ? (
-          <img
-            key={String(p.name)}
-            src={String(p.thumbnail_url)}
-            alt={String(p.file_name)}
-            className="h-7 w-7 rounded object-cover"
-            data-testid="checklist-photo-thumb"
-          />
-        ) : (
-          <span key={String(p.name)} className="text-xs" data-testid="checklist-photo-thumb">📎</span>
-        ),
-      )}
+    <span className="flex flex-wrap items-center gap-2">
+      {photos.map((p) => (
+        <button
+          key={String(p.name)}
+          type="button"
+          onClick={() => onView(String(p.file_url))}
+          aria-label={`View ${String(p.file_name)}`}
+          className="overflow-hidden rounded border border-[var(--color-border-strong)]"
+          data-testid="checklist-photo-thumb"
+        >
+          {p.thumbnail_url ? (
+            <img
+              src={String(p.thumbnail_url)}
+              alt={String(p.file_name)}
+              className="h-14 w-14 object-cover"
+            />
+          ) : (
+            <span className="flex h-14 w-14 items-center justify-center text-lg">📎</span>
+          )}
+        </button>
+      ))}
       <button
         type="button"
-        className={`fc-btn px-2 py-1 text-xs ${failed ? 'text-[var(--color-danger)]' : ''}`}
+        className={`fc-btn px-3 py-2 text-sm ${failed ? 'text-[var(--color-danger)]' : ''}`}
         disabled={busy}
         onClick={() => inputRef.current?.click()}
         data-testid="checklist-photo-add"
       >
-        {busy ? '…' : failed ? '📷 !' : '📷'}
+        {busy ? '…' : failed ? '📷 Retry' : photos.length ? '📷' : '📷 Take photo'}
       </button>
       <input
         ref={inputRef}
