@@ -58,6 +58,7 @@ import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uni
 import { createSite, listSites, resolveSite, siteCreateDoctype, siteListDoctypes, siteCreateUser, siteListUsers } from './tenancy'
 import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
+import checklists from './sample-apps/checklists'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
@@ -76,6 +77,9 @@ registerApp(helloCrm)
 // Registered, NOT installed: a fresh deployment has zero helpdesk tables
 // until POST /api/install_app { name: 'helpdesk' } (PLAT-006, #78).
 registerApp(helpdesk)
+// Same discipline: checklist tables exist only after
+// POST /api/install_app { name: 'checklists' }.
+registerApp(checklists)
 await loadInstalledApps()
 
 type Env = { Variables: { user: SessionUser } }

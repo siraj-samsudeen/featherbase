@@ -472,6 +472,10 @@ export async function saveDoc(
       await runDocEventScripts('validate', meta.name, ctx.row, ctx.tx)
       await runHooks('before_save', ctx)
       await runDocEventScripts('before_save', meta.name, ctx.row, ctx.tx)
+      // Hooks may add or replace Sub-table arrays on ctx.row (an app hook
+      // snapshotting template items into a new row, say) — re-pick from the
+      // hooked row so what saves is what the chain left behind.
+      const finalChildInputs = pickChildInputs(meta, row)
       const dbRow = {
         ...columnValues(meta, row),
         name: String(row.name),
@@ -484,7 +488,7 @@ export async function saveDoc(
       }
       await validateLinks(stx, meta, dbRow)
       const inserted = await tx`insert into ${tx(tbl)} ${tx(dbRow as unknown as Record<string, never>)} returning *`
-      for (const input of childInputs)
+      for (const input of finalChildInputs)
         await saveChildren(stx, meta, name, input, user)
       ctx.row = { ...(inserted[0] as RowValues) }
       await runHooks('after_insert', ctx)
@@ -738,7 +742,11 @@ async function updateDoc(
       await validateLinks(stx, meta, dbRow)
       const [updated] = await tx`
         update ${tx(table)} set ${tx(dbRow)} where name = ${name} returning *`
-      for (const input of pickChildInputs(meta, values))
+      // Re-picked from the hooked row, as on insert. An absent key still
+      // means "children untouched": the physical row spread into ctx.row
+      // carries no Sub-table columns, so the key exists only if the payload
+      // sent it or a hook set it.
+      for (const input of pickChildInputs(meta, row))
         await saveChildren(stx, meta, name, input, user)
       await recordVersion(stx, meta, name, existing as RowValues, updated as RowValues, user)
       ctx.row = { ...(updated as RowValues) }

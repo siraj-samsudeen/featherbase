@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
+import { registerController, unregisterController } from '../src/controllers'
 
 const CHILD = 'Chd Item Row'
 const PARENT = 'Chd Order'
@@ -136,5 +137,40 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
       `/api/table/${encodeURIComponent(PARENT)}/${doc.name}`,
     )
     expect(read.items.map((r: any) => r.item)).toEqual(['z', 'y'])
+  })
+
+  test('a hook may add or replace child rows; what it leaves on ctx.row is what saves', async ({
+    admin,
+  }) => {
+    await setup(admin)
+    // An app-style controller that seeds child rows on insert when the
+    // payload brought none — the checklists app's template-snapshot shape.
+    const controller = {
+      table: PARENT,
+      hooks: {
+        before_validate: ({ row, isNew }: { row: Record<string, unknown>; isNew: boolean }) => {
+          if (isNew && !(Array.isArray(row.items) && row.items.length))
+            row.items = [{ item: 'seeded-1' }, { item: 'seeded-2', qty: 5 }]
+        },
+      },
+    }
+    registerController(controller)
+    try {
+      const doc = await save(admin, { title: 'hooked' })
+      expect(doc.items.map((r: any) => [r.item, Number(r.qty)])).toEqual([
+        ['seeded-1', 1],
+        ['seeded-2', 5],
+      ])
+      // The update path re-picks from the hooked row too — but an absent key
+      // still means "children untouched".
+      const updated = await save(admin, {
+        name: doc.name,
+        updated_at: doc.updated_at,
+        title: 'hooked-2',
+      })
+      expect(updated.items).toHaveLength(2)
+    } finally {
+      unregisterController(controller)
+    }
   })
 })
