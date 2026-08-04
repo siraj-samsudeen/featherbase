@@ -480,11 +480,11 @@ limits → Q3). On the untouched new-Table path the same cell instead flips
 the whole column's inference to Data (R2 #8) and nothing fails — a
 different, correct outcome.
 
-**Isolation strategy (required by §6):** this journey creates `Zones`;
-Tables cannot yet be deleted, so on a database that has run it once the
-current e2e **skips itself and reads green**. Until table deletion or a
-per-run namespace exists, the matrix must show this as *conditionally
-proven*, and CI must report the skip as a skip.
+**Isolation strategy (required by §6):** this journey creates `Zones`
+(renamed to a journey-owned name); since table deletion shipped
+(`docs/specs/0003-table-deletion.md`, 2026-08-04) the spec **pre-cleans
+its Table through the deletion capability instead of self-skipping** —
+the create path runs on every database, used or fresh.
 
 ## IMP-J2 — Append: file to existing Table *(deltas from J1 only)*
 
@@ -792,7 +792,10 @@ sentence — not a count of green rows — is the feature's true state.
    **Decided 2026-08-04: (a) — table deletion becomes a product
    capability** (with the existing reverse-lookup delete-blocking). Until
    it ships, create-path journeys stay *conditionally proven* and their
-   skips must be reported as skips.
+   skips must be reported as skips. **Shipped and proven the same day** —
+   `docs/specs/0003-table-deletion.md` (the first greenfield journey-spec
+   trial, #118); the create-path specs now pre-clean and IMP-J1 is
+   *proven*.
 10. **Adopt `feather-testing-core` as the e2e vocabulary** (Part I §6).
     Add the published dependency (≥ 0.2.0), an `e2e/fixtures.ts`, and
     write **new** journey tests in the DSL; migrate existing specs

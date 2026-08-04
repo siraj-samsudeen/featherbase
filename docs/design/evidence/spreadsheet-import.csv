@@ -1,5 +1,5 @@
 id,shape,strategy,static_link,verdict,issue,stamped
-IMP-J1,sequence,browser walk,"apps/web/e2e/import-file.spec.ts; apps/web/e2e/import-journey.spec.ts (DSL)","conditionally-proven — self-skips on a used DB; DSL spec also proves R7's notice when the precondition fails",,2026-08-03
+IMP-J1,sequence,browser walk,"apps/web/e2e/import-file.spec.ts; apps/web/e2e/import-journey.spec.ts (DSL)","proven — hermetic since table deletion (spec 0003): create-path specs pre-clean instead of self-skipping; ran green on a used DB; DSL spec still proves R7's notice when Zones exists",,2026-08-04
 IMP-J1.2,sequence,browser walk,apps/web/e2e/import-file.spec.ts,proven,,2026-08-03
 IMP-J1.6,sequence,server contract,apps/server/test/import-action.test.ts,"rule-tier only — never witnessed in a browser; branch applies to fixed-type columns",,2026-08-03
 IMP-J2,sequence,browser walk,apps/web/e2e/import-wizard.spec.ts,proven,,2026-08-03
@@ -26,7 +26,7 @@ IMP-I1.arithmetic,invariant,reconciliation,apps/server/test/import-invariants.te
 IMP-I1.true-row-numbers,invariant,reconciliation,apps/server/test/import-invariants.test.ts,expected-failing pin — a blank row shifts later errors onto innocent rows,#115,2026-08-03
 IMP-I2,invariant,reconciliation,apps/server/test/import-invariants.test.ts,proven — one log row per part; parts complete; sums equal the run,,2026-08-03
 IMP-I3,invariant,reconciliation,"apps/server/test/import-action.test.ts; import-invariants.test.ts",proven — no rows; no log; no series ids burned,,2026-08-03
-IMP-H1,hazard,decision,,"resolution decided — R12 (upsert) + R13 (undo) + table deletion disarm all three legs; listed until built and proven",,2026-08-04
+IMP-H1,hazard,decision,,"resolution decided — R12 (upsert) + R13 (undo) + table deletion disarm all three legs; table deletion built and proven 2026-08-04 (spec 0003); listed until R12/R13 land",,2026-08-04
 IMP-H2,hazard,none,,reported — mid-import permission abort strands rows with no record; not re-executed,,2026-08-03
 IMP-H3,hazard,none,,reported — whole-file predicate over per-sheet behaviour; split from H2,,2026-08-03
 Q1,question,decision,,graduated — decided by the arbiter → IMP-R11,,2026-08-04

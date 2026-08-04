@@ -233,10 +233,15 @@ subject (R4 deliberately cannot reach it).
 | # | Question | Blocked on |
 |---|---|---|
 | Q1 | Should populated Tables demand typed-name confirmation (GitHub-style) instead of a counted confirm dialog? Shipped default: counted dialog. | — |
+| Q2 | **Tombstone messaging.** A stale pointer to a deleted Table (a Recents entry, a bookmarked URL) today gets a bare "Cannot load X". The Access Log already holds who deleted it and when (R8) — should the not-found path consult it and say *"X was deleted by … on …"*? (Recents are client-side localStorage, so R4's sweep cannot reach them; they age out.) Raised by the owner 2026-08-04 while the feature was being built. | — |
+| Q3 | **Archive vs delete.** Should any Table support archive/inactive semantics (soft delete: rows or whole Tables hidden but recoverable) *alongside* hard deletion? The hermeticity decision deliberately chose hard delete + swept pointers + text testimony; an archive tier would be a separate capability with its own journeys, not a variant of this one. | Q2's answer sketches the cheap end of the spectrum |
 
 ## Retrospective — where the journey-spec format chafed (trial #1)
 
-Written after building; the point of the trial (issue #118).
+Written after building and proving every row; the point of the trial
+(issue #118). The spec was authored before any code and survived the
+build with **zero rule changes** — every edit after building was
+additive (two owner-raised open questions and this section).
 
 1. **The fixture section wants to be optional.** Import genuinely has an
    agreement dataset; deletion's "fixture" is *residue* — the interesting
@@ -265,9 +270,21 @@ Written after building; the point of the trial (issue #118).
    routes from the spec body while the exemplar's C1 names its route.
    Followed the exemplar (R2 names `DELETE /api/doctype/:name`) — a
    contract without its address isn't one. The framework should say so.
-6. **What worked without friction:** step triples translated 1:1 into
+6. **Text-addressed DSL verbs collide on nested affordances.** The
+   dialog's confirm button ("Delete") sits under the page button
+   ("Delete Table"); `clickButton('Delete')` is ambiguous, so the
+   confirm click fell back to a `step()` with a test-id locator. Not a
+   spec problem — but journeys that open dialogs will hit it every
+   time; the DSL wants a `within()`-scoped click for it.
+7. **The open-questions section earned its keep mid-build.** The owner
+   raised the stale-Recents/tombstone question while the build was in
+   flight; it landed as Q2/Q3 without touching a single rule — exactly
+   the "never resolved silently in code" routing the framework
+   promises.
+8. **What worked without friction:** step triples translated 1:1 into
    the feather-testing DSL; the isolation-strategy slot made J1's
-   self-cleaning design a *requirement* rather than an afterthought; the
+   self-cleaning design a *requirement* rather than an afterthought
+   (both journeys pre-clean *through the capability under test*); the
    evidence CSV's verdict vocabulary (`conditionally-proven` → `proven`
    for IMP-J1) recorded the hermeticity payoff in exactly the right
    place.

@@ -17,6 +17,7 @@ frozen except for `status` flips (see `CLAUDE.md`).
 |---|---|---|
 | [0001 — External Data Sources](0001-external-data-sources.md) | Proposed | DocTypes bound to existing tables in another Postgres, with no change to the foreign schema |
 | [0002 — Virtual DocTypes](0002-virtual-doctypes.md) | Proposed | Controller-supplied storage for sources that are not Postgres tables |
+| [0003 — Table Deletion](0003-table-deletion.md) | Built 2026-08-04 | Delete a Table outright — schema references block, live pointers sweep, text testimony survives. First journey-spec trial (evidence: [evidence/table-deletion.csv](evidence/table-deletion.csv)) |
 
 Both are shaped by [ADR 0007](../adr/0007-app-and-database-topology.md) and the
 research note [Frappe: many apps in one instance](../research/frappe-multi-app-and-multi-db.md).

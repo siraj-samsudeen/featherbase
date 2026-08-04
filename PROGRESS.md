@@ -1,5 +1,53 @@
 # Progress Log
 
+## 2026-08-04 — Table deletion (#118): spec 0003, first journey-spec trial
+
+Spec-first, per the framework: `docs/specs/0003-table-deletion.md` +
+`docs/specs/evidence/table-deletion.csv` were authored and committed
+BEFORE any code, then built, then every row stamped `proven` at its
+intended tier the same day. The spec survived the build with zero rule
+changes; its retrospective section records where the format chafed
+(the trial's whole point — read it before feature #2 of the gate).
+
+- **Server** — `deleteTable()` (doctype-engine.ts) +
+  `DELETE /api/doctype/:name` (System Manager). One transaction:
+  table_def row, column_def rows, physical table + rows, this table's
+  child *rows* (child Table definition stays). Schema references from
+  other Tables block, naming `Y.column` (DOC-006 one level up);
+  self-references don't; `system` tables refuse. The **sidecar sweep is
+  metadata-derived**: every column anywhere declared `Reference → Table`
+  has its matching rows deleted (Permission, Import Log, File registry,
+  home-page links, …) — no hand list; plain-text mentions (Access Log)
+  deliberately survive, and the deletion writes its own `delete_table`
+  Access Log line. Bound Tables shed only the binding (BV1); series
+  counters untouched (IMP-R6); attachment bytes unlinked post-commit.
+  12 tests in `test/table-deletion.test.ts`, titles quoting DEL-* IDs.
+- **Web** — generic `Delete Table` button in ListView's manager row
+  (hidden for `system` tables, zero per-table code); the confirmation
+  is a real dialog carrying the **live row count**; on success the
+  table's queries are dropped (not refetched — no 404 noise) and the
+  user lands on All tables. Verified by hand in the browser first.
+- **E2E hermeticity (the reason this feature won the decision)** —
+  `e2e/table-deletion.spec.ts` walks DEL-J1 (incl. cancel branch and
+  the system-table affordance absence) and DEL-J2 (refusal names the
+  blocker in the dialog; unblock; retry succeeds). The four create-path
+  import specs now **pre-clean via `e2e/cleanup.ts` instead of
+  self-skipping** — all 7 ran their real create paths green on a used
+  DB. `IMP-J1` flipped to *proven* in the import evidence CSV; #91's
+  drift complaint is closed. Full server suite: 112 files green.
+- **Gotchas:** ValidationError maps to HTTP **417** (Frappe legacy) —
+  test expectations, not 400. The DSL's text-addressed `clickButton`
+  is ambiguous when a dialog's "Delete" sits under the page's "Delete
+  Table" — confirm clicks need a test-id `step()` (retrospective #6).
+- **Open questions for the arbiter (spec 0003):** Q1 typed-name
+  confirmation; Q2 tombstone messaging for stale Recents/deep links
+  (owner-raised mid-build); Q3 archive/inactive semantics as a
+  separate capability.
+
+Next: feature #2 of the journey-spec gate — IMP-R12 (upsert re-import)
+or IMP-R13 (import undo), both already decided and spec'd as rules.
+Ask the owner to add a `harness/features.json` entry for table deletion.
+
 ## 2026-08-04 — Owner decisions: four questions graduated into rules
 
 The arbiter ruled on the framework's open decisions (all four
