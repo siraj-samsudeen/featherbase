@@ -51,10 +51,30 @@ interface SheetPlan {
   // same NamingControl the Table Builder uses. null = keep the inferred
   // default (a series derived from the Table name).
   id_pattern: string | null
-  // per file column: target column_name in the existing Table, or null (skip)
+  // per file column: target column_name in the existing Table, 'name' for
+  // the Row ID (UPS-R4 — the file's own codes become the ids), or null (skip)
   mapping: (string | null)[]
-  check: { valid: number; failed: { index: number; message: string }[] } | null
-  result: { inserted: number; failed: { index: number; message: string }[] } | null
+  // UPS-R1/J1: the match key — a mapped target column (or 'name' for the Row
+  // ID) that turns this run into an upsert. null = today's append-always.
+  key: string | null
+  // UPS-R3: what an empty mapped cell does to a matched row. Per run,
+  // meaningful only when a key is set; keep is the default.
+  empty_cells: 'keep' | 'clear'
+  // UPS-R5: the remembered choice pre-filled from this Table's last keyed
+  // import — kept around so the "as last time" notice can say so while the
+  // user is free to change or clear it.
+  suggested: { key: string; empty_cells: 'keep' | 'clear' } | null
+  check: {
+    valid: number
+    updated: number
+    inserted: number
+    failed: { index: number; message: string }[]
+  } | null
+  result: {
+    updated: number
+    inserted: number
+    failed: { index: number; message: string }[]
+  } | null
 }
 
 // ADR 0008: named UI-side thresholds — chunking and suggestion bets.
@@ -236,6 +256,110 @@ function TargetRowCount({ i, table }: { i: number; table: string }) {
   )
 }
 
+// UPS-R2 × IMPORT_CHUNK: the server resolves keys against the database and
+// catches duplicates within one REQUEST, but a duplicate split across two
+// chunks would reach it as two clean requests — and the second would
+// quietly turn into an update of the first's row. The wizard holds the
+// whole file, so it fails duplicate-key rows here, BEFORE chunking, and
+// sends only the clean remainder. sendIdx maps a sent position back to the
+// row's index in the full coerced array so server-reported failures keep
+// their true positions.
+function splitForSend(rows: Record<string, unknown>[], key: string | null) {
+  if (!key)
+    return {
+      send: rows,
+      sendIdx: rows.map((_, i) => i),
+      dupFailed: [] as { index: number; message: string }[],
+    }
+  const counts = new Map<string, number>()
+  for (const r of rows) {
+    const k = r[key] == null ? '' : String(r[key]).trim()
+    if (k) counts.set(k, (counts.get(k) ?? 0) + 1)
+  }
+  const send: Record<string, unknown>[] = []
+  const sendIdx: number[] = []
+  const dupFailed: { index: number; message: string }[] = []
+  rows.forEach((r, i) => {
+    const k = r[key] == null ? '' : String(r[key]).trim()
+    if (k && (counts.get(k) ?? 0) > 1)
+      dupFailed.push({ index: i, message: `key ${k} appears more than once in the file` })
+    else {
+      send.push(r)
+      sendIdx.push(i)
+    }
+  })
+  return { send, sendIdx, dupFailed }
+}
+
+// UPS-J1.3: real counts BEFORE anything commits — a dry run over the whole
+// (deduplicated) file the moment a match key is chosen, so marking a key is
+// never a silent mode switch. React Query keys on the run's shape; the
+// sheet's cells are fixed per file load, so the mapped columns + key +
+// choice identify the rows deterministically.
+function UpsertPreview({
+  i,
+  table,
+  keyColumn,
+  emptyCells,
+  columns,
+  rows,
+}: {
+  i: number
+  table: string
+  keyColumn: string
+  emptyCells: 'keep' | 'clear'
+  columns: string[]
+  rows: Record<string, unknown>[]
+}) {
+  const { send, dupFailed } = splitForSend(rows, keyColumn)
+  const preview = useQuery({
+    queryKey: ['iw-upsert-preview', table, keyColumn, emptyCells, columns.join('·'), rows.length],
+    enabled: send.length > 0 || dupFailed.length > 0,
+    staleTime: 30_000,
+    queryFn: async () => {
+      let updated = 0
+      let inserted = 0
+      let failed = dupFailed.length
+      for (let at = 0; at < send.length; at += IMPORT_CHUNK) {
+        const res = await api.post<{
+          valid: number
+          updated?: number
+          inserted?: number
+          failed: unknown[]
+        }>(`/api/table/${encodeURIComponent(table)}:import`, {
+          rows: send.slice(at, at + IMPORT_CHUNK),
+          dry_run: true,
+          key_column: keyColumn,
+          empty_cells: emptyCells,
+          columns,
+        })
+        updated += res.updated ?? 0
+        inserted += res.inserted ?? res.valid
+        failed += res.failed.length
+      }
+      return { updated, inserted, failed }
+    },
+  })
+  if (preview.isError) return null // e.g. no permission — rehearse/import will say so
+  if (!preview.data)
+    return (
+      <p className="mt-1 text-xs text-gray-400" data-testid={`iw-preview-pending-${i}`}>
+        Counting matches…
+      </p>
+    )
+  return (
+    <p className="mt-1 text-sm text-[var(--color-ink)]" data-testid={`iw-preview-${i}`}>
+      <strong>{preview.data.updated}</strong> rows match existing rows and will be{' '}
+      <strong>updated</strong>; <strong>{preview.data.inserted}</strong> will be added
+      {preview.data.failed > 0 && (
+        <>
+          ; <strong>{preview.data.failed}</strong> will fail
+        </>
+      )}
+    </p>
+  )
+}
+
 function mappableColumns(meta: TableMeta): MappableColumn[] {
   return meta.columns
     .filter(
@@ -289,8 +413,7 @@ export function ImportWizard() {
       })
       setFileName(file.name)
       setSheets(parsed)
-      setPlans(
-        parsed.map((sheet) => {
+      const newPlans = parsed.map((sheet) => {
           const newName =
             (parsed.length === 1 ? tableNameFromFile(file.name) : tableNameFromFile(sheet.sheetName)) ||
             'Imported Table'
@@ -330,11 +453,19 @@ export function ImportWizard() {
             inferred,
             id_pattern: null,
             mapping,
+            key: null,
+            empty_cells: 'keep',
+            suggested: null,
             check: null,
             result: null,
           } satisfies SheetPlan
-        }),
-      )
+        })
+      setPlans(newPlans)
+      // UPS-R5: for sheets that landed on an existing Table, offer back that
+      // Table's remembered match key — visibly, never silently.
+      newPlans.forEach((p, i) => {
+        if (p.mode === 'existing') void applySuggestion(i, p.table, p.mapping)
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not read the file')
     }
@@ -355,6 +486,8 @@ export function ImportWizard() {
         table: fallback,
         auto_matched: false,
         mapping: [],
+        key: null,
+        suggested: null,
         include: sheet.headers.map(() => true),
       })
       return
@@ -367,8 +500,43 @@ export function ImportWizard() {
       auto_matched: false,
       similar: null,
       mapping,
+      key: null,
+      empty_cells: 'keep',
+      suggested: null,
       include: mapping.map((m) => m !== null),
     })
+    void applySuggestion(i, value, mapping)
+  }
+
+  // UPS-R5: the match key (and empty-cells choice) used on this Table's last
+  // keyed import, read back from the Import Log and PRE-FILLED as a visible
+  // suggestion — the user confirms or changes it; it is never silently
+  // active. A reader without an Import Log grant simply gets no suggestion.
+  async function applySuggestion(i: number, forTable: string, map: (string | null)[]) {
+    try {
+      const logs = await api.get<{ data: { key_column: string | null; empty_cells: string | null }[] }>(
+        `/api/table/${encodeURIComponent('Import Log')}?fields=${encodeURIComponent(
+          '["key_column","empty_cells"]',
+        )}&filters=${encodeURIComponent(
+          JSON.stringify([['ref_table', '=', forTable]]),
+        )}&order_by=${encodeURIComponent('created_at desc')}&limit_page_length=20`,
+      )
+      const last = logs.data.find((l) => l.key_column)
+      if (!last?.key_column) return
+      const key = last.key_column
+      // Only offerable if this file still maps that column (or the Row ID).
+      if (!map.includes(key)) return
+      const empty_cells = last.empty_cells === 'clear' ? 'clear' : 'keep'
+      setPlans((ps) =>
+        ps.map((p, j) =>
+          j === i && p.mode === 'existing' && p.table === forTable && p.key === null
+            ? { ...p, key, empty_cells, suggested: { key, empty_cells } }
+            : p,
+        ),
+      )
+    } catch {
+      // No read on Import Log (or a mid-upgrade database) — no suggestion.
+    }
   }
 
   // Rows for an existing-Table plan: project the mapped file columns and
@@ -389,6 +557,18 @@ export function ImportWizard() {
     return plan.id_pattern ?? plan.inferred.id_pattern
   }
 
+  // The mapped target columns of an existing-mode run — the `columns` the
+  // server needs so UPS-R3's 'clear' knows which absent cells were
+  // mapped-but-empty rather than simply unmapped.
+  function mappedTargets(plan: SheetPlan): string[] {
+    return [
+      ...new Set(
+        plan.mapping.filter((m, idx): m is string => m !== null && plan.include[idx]),
+      ),
+    ]
+  }
+
+
   // Rows for a new-Table plan: 1:1 with the inferred (possibly renamed)
   // columns; blank-named and unchecked columns are dropped.
   function newTableRows(sheet: ParsedSheet, plan: SheetPlan) {
@@ -401,6 +581,16 @@ export function ImportWizard() {
     )
   }
 
+  // The upsert arguments of an existing-mode run, or {} for append-always.
+  function upsertArgs(plan: SheetPlan): Record<string, unknown> {
+    if (!plan.key) return {}
+    return {
+      key_column: plan.key,
+      empty_cells: plan.empty_cells,
+      columns: mappedTargets(plan),
+    }
+  }
+
   async function runCheck() {
     setError(null)
     setBusy('Checking…')
@@ -409,24 +599,37 @@ export function ImportWizard() {
         if (plan.mode !== 'existing') continue
         const rows = mappedRows(sheets[i], plan)
         if (!rows.length) {
-          setPlan(i, { check: { valid: 0, failed: [] } })
+          setPlan(i, { check: { valid: 0, updated: 0, inserted: 0, failed: [] } })
           continue
         }
-        const failed: { index: number; message: string }[] = []
+        const { send, sendIdx, dupFailed } = splitForSend(rows, plan.key)
+        const failed: { index: number; message: string }[] = [...dupFailed]
         let valid = 0
-        for (let at = 0; at < rows.length; at += IMPORT_CHUNK) {
-          const chunk = rows.slice(at, at + IMPORT_CHUNK)
+        let updated = 0
+        let inserted = 0
+        for (let at = 0; at < send.length; at += IMPORT_CHUNK) {
+          const chunk = send.slice(at, at + IMPORT_CHUNK)
           const res = await api.post<{
             valid: number
+            updated?: number
+            inserted?: number
             failed: { index: number; message: string }[]
           }>(`/api/table/${encodeURIComponent(plan.table)}:import`, {
             rows: chunk,
             dry_run: true,
+            ...upsertArgs(plan),
           })
           valid += res.valid
-          failed.push(...res.failed.map((f) => ({ ...f, index: f.index + at })))
+          updated += res.updated ?? 0
+          // A keyless dry run reports no per-action counts: every valid row
+          // is an insert.
+          inserted += res.inserted ?? res.valid
+          failed.push(...res.failed.map((f) => ({ ...f, index: sendIdx[f.index + at] })))
         }
-        setPlans((ps) => ps.map((p, j) => (j === i ? { ...p, check: { valid, failed } } : p)))
+        failed.sort((a, b) => a.index - b.index)
+        setPlans((ps) =>
+          ps.map((p, j) => (j === i ? { ...p, check: { valid, updated, inserted, failed } } : p)),
+        )
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Check failed')
@@ -461,17 +664,22 @@ export function ImportWizard() {
         } else {
           rows = mappedRows(sheet, plan)
         }
+        const { send, sendIdx, dupFailed } =
+          plan.mode === 'existing' ? splitForSend(rows, plan.key) : splitForSend(rows, null)
         let inserted = 0
-        const failed: { index: number; message: string }[] = []
-        const parts = Math.ceil(rows.length / IMPORT_CHUNK)
-        for (let at = 0; at < rows.length; at += IMPORT_CHUNK) {
-          const chunk = rows.slice(at, at + IMPORT_CHUNK)
-          setBusy(`${plan.table}: importing rows ${at + 1}–${at + chunk.length} of ${rows.length}…`)
+        let updated = 0
+        const failed: { index: number; message: string }[] = [...dupFailed]
+        const parts = Math.ceil(send.length / IMPORT_CHUNK)
+        for (let at = 0; at < send.length; at += IMPORT_CHUNK) {
+          const chunk = send.slice(at, at + IMPORT_CHUNK)
+          setBusy(`${plan.table}: importing rows ${at + 1}–${at + chunk.length} of ${send.length}…`)
           const res = await api.post<{
             inserted: number
+            updated?: number
             failed: { index: number; message: string }[]
           }>(`/api/table/${encodeURIComponent(plan.table)}:import`, {
             rows: chunk,
+            ...(plan.mode === 'existing' ? upsertArgs(plan) : {}),
             // IMP-011: recorded in the Import Log alongside the counts.
             context: {
               file_name: fileName ?? undefined,
@@ -482,9 +690,13 @@ export function ImportWizard() {
             },
           })
           inserted += res.inserted
-          failed.push(...res.failed.map((f) => ({ ...f, index: f.index + at })))
+          updated += res.updated ?? 0
+          failed.push(...res.failed.map((f) => ({ ...f, index: sendIdx[f.index + at] })))
         }
-        setPlans((ps) => ps.map((p, j) => (j === i ? { ...p, result: { inserted, failed } } : p)))
+        failed.sort((a, b) => a.index - b.index)
+        setPlans((ps) =>
+          ps.map((p, j) => (j === i ? { ...p, result: { updated, inserted, failed } } : p)),
+        )
       }
       await queryClient.invalidateQueries({ queryKey: ['tables'] })
       await queryClient.invalidateQueries({ queryKey: ['import-targets'] })
@@ -806,11 +1018,22 @@ export function ImportWizard() {
                           <input
                             type="checkbox"
                             checked={plan.include[hi]}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              const include = plan.include.map((v, j) =>
+                                j === hi ? e.target.checked : v,
+                              )
                               setPlan(i, {
-                                include: plan.include.map((v, j) => (j === hi ? e.target.checked : v)),
+                                include,
+                                // Unticking the key's file column strands the
+                                // match key — clear it rather than match on
+                                // a column that no longer imports.
+                                key:
+                                  plan.key &&
+                                  plan.mapping.some((m, j) => m === plan.key && include[j])
+                                    ? plan.key
+                                    : null,
                               })
-                            }
+                            }}
                             data-testid={`iw-map-use-${i}-${hi}`}
                             data-rowfield="include"
                           />
@@ -819,21 +1042,34 @@ export function ImportWizard() {
                         <td className="px-1 py-1">
                           <select
                             value={plan.mapping[hi] ?? ''}
-                            onChange={(e) =>
-                              setPlan(i, {
-                                mapping: plan.mapping.map((m, j) =>
-                                  j === hi ? e.target.value || null : m,
-                                ),
+                            onChange={(e) => {
+                              const mapping = plan.mapping.map((m, j) =>
+                                j === hi ? e.target.value || null : m,
+                              )
+                              const include = plan.include.map((v, j) =>
                                 // Picking a column is intent — re-check the row.
-                                include: plan.include.map((v, j) =>
-                                  j === hi ? Boolean(e.target.value) : v,
-                                ),
+                                j === hi ? Boolean(e.target.value) : v,
+                              )
+                              setPlan(i, {
+                                mapping,
+                                include,
+                                // A remapped file column can strand the match
+                                // key — an unmapped key is no key at all.
+                                key:
+                                  plan.key && mapping.some((m, j) => m === plan.key && include[j])
+                                    ? plan.key
+                                    : null,
                               })
-                            }
+                            }}
                             data-testid={`iw-map-${i}-${hi}`}
                             className="rounded border border-gray-200 px-1 py-0.5"
                           >
                             <option value="">— pick a column —</option>
+                            {/* UPS-R4: the Row ID is a first-class mapping
+                                target — the file's own codes become the ids,
+                                verbatim; the series continues for rows the
+                                file leaves blank. */}
+                            <option value="name">Row ID</option>
                             {/* Label AND real column name: labels preserve
                                 however the source file spelled its headers,
                                 so the snake_case identity disambiguates. */}
@@ -851,18 +1087,123 @@ export function ImportWizard() {
                     ))}
                   </tbody>
                 </table>
+
+                {/* UPS-J1.2/J1.3: the Match key control — a real labelled,
+                    keyboard-reachable control in the mapping step. Default
+                    none: append-always stays the default; upsert is opt-in
+                    per run. The empty-cells choice (UPS-R3) appears only
+                    once a key is set, defaulting to keep. */}
+                {(() => {
+                  const keyOptions = [
+                    ...new Set(
+                      plan.mapping.filter(
+                        (m, idx): m is string => m !== null && plan.include[idx],
+                      ),
+                    ),
+                  ]
+                  const keyLabel = (col: string) => {
+                    if (col === 'name') return 'Row ID'
+                    const c = targetCols.find((tc) => tc.column_name === col)
+                    return c?.label && c.label !== c.column_name
+                      ? `${c.label} · ${c.column_name}`
+                      : col
+                  }
+                  // The suggestion speaks the column's friendly name — "Match
+                  // on Zone Name, as last time" (UPS-J1.2), not the select's
+                  // disambiguated idiom.
+                  const friendly = (col: string) =>
+                    col === 'name'
+                      ? 'Row ID'
+                      : (targetCols.find((tc) => tc.column_name === col)?.label ?? col)
+                  return (
+                    <div className="mt-2 border-t border-gray-100 pt-2">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <label htmlFor={`iw-key-${i}`} className="fc-label m-0">
+                          Match key
+                        </label>
+                        <select
+                          id={`iw-key-${i}`}
+                          value={plan.key ?? ''}
+                          onChange={(e) => setPlan(i, { key: e.target.value || null })}
+                          data-testid={`iw-key-${i}`}
+                          className="rounded border border-gray-200 px-1 py-0.5 text-sm"
+                        >
+                          <option value="">— none: always add rows —</option>
+                          {keyOptions.map((col) => (
+                            <option key={col} value={col}>
+                              {keyLabel(col)}
+                            </option>
+                          ))}
+                        </select>
+                        {plan.suggested && plan.key === plan.suggested.key && (
+                          <span
+                            className="text-xs text-[var(--color-brand)]"
+                            data-testid={`iw-key-suggested-${i}`}
+                          >
+                            Match on {friendly(plan.suggested.key)}, as last time
+                          </span>
+                        )}
+                        {plan.key && (
+                          <span
+                            className="flex items-center gap-2 text-sm"
+                            data-testid={`iw-empty-cells-${i}`}
+                          >
+                            <span className="fc-label m-0">Empty cells</span>
+                            <label className="flex items-center gap-1">
+                              <input
+                                type="radio"
+                                name={`iw-empty-${i}`}
+                                checked={plan.empty_cells === 'keep'}
+                                onChange={() => setPlan(i, { empty_cells: 'keep' })}
+                                data-testid={`iw-empty-keep-${i}`}
+                              />
+                              keep existing values
+                            </label>
+                            <label className="flex items-center gap-1">
+                              <input
+                                type="radio"
+                                name={`iw-empty-${i}`}
+                                checked={plan.empty_cells === 'clear'}
+                                onChange={() => setPlan(i, { empty_cells: 'clear' })}
+                                data-testid={`iw-empty-clear-${i}`}
+                              />
+                              clear them
+                            </label>
+                          </span>
+                        )}
+                      </div>
+                      {plan.key && (
+                        <UpsertPreview
+                          i={i}
+                          table={plan.table}
+                          keyColumn={plan.key}
+                          emptyCells={plan.empty_cells}
+                          columns={keyOptions}
+                          rows={mappedRows(sheet, plan)}
+                        />
+                      )}
+                    </div>
+                  )
+                })()}
               </>
             )}
 
             {plan.check && (
               <div className="mt-2 text-sm" data-testid={`iw-check-${i}`}>
+                {/* UPS-J1.4: with a match key the rehearsal report is
+                    action-aware — updates and inserts counted apart. */}
                 {plan.check.failed.length === 0 ? (
                   <span className="text-green-700">
                     ✓ All {plan.check.valid} rows are ready to import
+                    {plan.key != null &&
+                      `: ${plan.check.updated} will update, ${plan.check.inserted} will insert`}
                   </span>
                 ) : (
                   <span className="text-red-600">
-                    {plan.check.valid} rows ready, {plan.check.failed.length} with problems:{' '}
+                    {plan.check.valid} rows ready
+                    {plan.key != null &&
+                      ` (${plan.check.updated} update · ${plan.check.inserted} insert)`}
+                    , {plan.check.failed.length} with problems:{' '}
                     {plan.check.failed
                       .slice(0, ERRORS_ON_SCREEN)
                       .map((f) => `row ${f.index + 2}: ${f.message}`)
@@ -874,8 +1215,12 @@ export function ImportWizard() {
             )}
             {plan.result && (
               <div className="mt-2 text-sm" data-testid={`iw-result-${i}`}>
+                {/* UPS-J1.5: completion reports updated / inserted / failed
+                    as separate counts — never one blended number. */}
                 <span className={plan.result.failed.length ? 'text-red-600' : 'text-green-700'}>
-                  Imported {plan.result.inserted} rows into{' '}
+                  {plan.result.updated > 0
+                    ? `Updated ${plan.result.updated} and added ${plan.result.inserted} rows in `
+                    : `Imported ${plan.result.inserted} rows into `}
                   <Link
                     to="/admin/$doctype"
                     params={{ doctype: plan.table }}
