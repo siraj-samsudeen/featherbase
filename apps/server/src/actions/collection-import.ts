@@ -1,15 +1,22 @@
 import { AppError } from '../errors'
-import { checkRowForInsert, saveDoc } from '../document'
-import { getMeta } from '../meta'
-import { assertPermission } from '../permissions'
+import { checkRowForInsert, saveDoc, validateRowForUpdate } from '../document'
+import { getMeta, type TableMeta } from '../meta'
+import { assertDocPermission, assertPermission, permissionScope } from '../permissions'
 import { registerCollectionAction } from '../actions'
+import { sql } from '../db'
+import { tableName } from '../doctype-engine'
 
 // IMP-005: bulk import — POST /api/table/:table:import { rows: [...] }.
 // The first real collection-action registrant (#61 left the registry empty on
 // purpose). Every row goes through saveDoc's full lifecycle — permissions,
-// validation, id patterns, automation triggers — in insert mode, so an
-// existing name conflicts instead of silently updating. Best-effort: bad rows
-// are reported by index, good rows still land.
+// validation, id patterns, automation triggers. Best-effort: bad rows are
+// reported by index, good rows still land.
+//
+// UPS-R1 (spec 0004): an optional `key_column` turns the run into an upsert.
+// Each row resolves via UPS-R2 to update / insert / fail; updates go through
+// saveDoc's update lifecycle (hooks, validation, versioning — never raw SQL);
+// the response and the Import Log carry updated / inserted / failed as
+// separate counts. Absent `key_column`, insert-only semantics byte-for-byte.
 const MAX_ROWS = 10_000
 // ADR 0008: failures kept in the Import Log's error summary (Q3 owns 'more').
 const LOG_ERROR_SAMPLE = 20
@@ -20,11 +27,189 @@ interface FailedRow {
   fields?: Record<string, string>
 }
 
+type RowAction = 'update' | 'insert' | 'fail'
+
+interface Resolution {
+  action: RowAction
+  // update: the matched row, loaded once so the saveDoc update can carry the
+  // optimistic-concurrency stamp and the permission preflight the creator.
+  name?: string
+  updated_at?: Date
+  created_by?: string
+  // fail: why, phrased for the per-row report.
+  message?: string
+}
+
+interface UpsertArgs {
+  keyColumn: string
+  emptyCells: 'keep' | 'clear'
+  // The run's mapped columns — the universe UPS-R3's 'clear' applies to.
+  // Empty cells arrive as ABSENT keys (IMP-R8), so clearing needs to know
+  // which absences were mapped-but-empty rather than simply unmapped.
+  columns: string[] | null
+}
+
+// UPS-R2 — match resolution. Keys resolve against the DATABASE, never the
+// request (a chunked run must match rows landed by earlier chunks); a key
+// duplicated WITHIN the request fails all its rows (last-wins would hide an
+// authorship conflict inside one file); a key matching several database rows
+// fails with the count (a one-line mass update is UPS-H1 in miniature).
+//
+// Performance (spec 0004 closure sweep): the lookup casts the key column to
+// text for one `= any(...)` scan per request — a seq scan on an unindexed
+// key column. That is the stated answer for now: one scan per 500-row chunk,
+// not per row; an index-on-demand lands when a real dataset hurts.
+async function resolveRows(
+  meta: TableMeta,
+  rows: unknown[],
+  keyColumn: string,
+): Promise<Resolution[]> {
+  const keyOf = (row: unknown): string => {
+    if (typeof row !== 'object' || row === null || Array.isArray(row)) return ''
+    const v = (row as Record<string, unknown>)[keyColumn]
+    return v == null ? '' : String(v).trim()
+  }
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    const k = keyOf(row)
+    if (k) counts.set(k, (counts.get(k) ?? 0) + 1)
+  }
+  const wanted = [...counts.keys()]
+  const matches = new Map<string, { name: string; updated_at: Date; created_by: string }[]>()
+  if (wanted.length) {
+    const tbl = tableName(meta.name)
+    const found =
+      keyColumn === 'name'
+        ? await sql`
+            select name, name as k, updated_at, created_by
+            from ${sql(tbl)} where name = any(${wanted})`
+        : await sql`
+            select name, ${sql(keyColumn)}::text as k, updated_at, created_by
+            from ${sql(tbl)} where ${sql(keyColumn)}::text = any(${wanted})`
+    for (const r of found) {
+      const k = String(r.k)
+      if (!matches.has(k)) matches.set(k, [])
+      matches.get(k)!.push({
+        name: String(r.name),
+        updated_at: r.updated_at as Date,
+        created_by: String(r.created_by),
+      })
+    }
+  }
+  return rows.map((row) => {
+    if (typeof row !== 'object' || row === null || Array.isArray(row))
+      return { action: 'fail', message: 'row must be an object' } satisfies Resolution
+    const k = keyOf(row)
+    if (!k)
+      return {
+        action: 'fail',
+        message: `row has no value in the match key column ${keyColumn}`,
+      } satisfies Resolution
+    if ((counts.get(k) ?? 0) > 1)
+      return {
+        action: 'fail',
+        message: `key ${k} appears more than once in the import`,
+      } satisfies Resolution
+    const hit = matches.get(k) ?? []
+    if (hit.length > 1)
+      return {
+        action: 'fail',
+        message: `key ${k} matches ${hit.length} existing rows`,
+      } satisfies Resolution
+    if (hit.length === 1)
+      return {
+        action: 'update',
+        name: hit[0].name,
+        updated_at: hit[0].updated_at,
+        created_by: hit[0].created_by,
+      } satisfies Resolution
+    return { action: 'insert' } satisfies Resolution
+  })
+}
+
+// UPS-R1 — the whole-request permission gate, extended from IMP-R10's: a
+// run mixing inserts and updates checks both; own-rows scoping applies per
+// matched row; any refusal refuses the request whole, before any write.
+async function assertRunPermitted(
+  user: string,
+  table: string,
+  resolutions: Resolution[],
+): Promise<void> {
+  if (resolutions.some((r) => r.action === 'insert'))
+    await assertPermission(user, table, 'create')
+  const updates = resolutions.filter((r) => r.action === 'update')
+  if (updates.length) {
+    // One scope read, then the per-row own-rows judgement against each
+    // matched row's creator (assertDocPermission semantics, batched).
+    const scope = await permissionScope(user, table, 'write')
+    if (scope === 'all') return
+    for (const u of updates) await assertDocPermission(user, table, 'write', u.created_by!)
+  }
+}
+
+function parseUpsertArgs(meta: TableMeta, args: Record<string, unknown>): UpsertArgs | null {
+  const key = args.key_column
+  if (key == null || key === '') {
+    if (args.empty_cells != null)
+      throw new AppError('ValidationError', 'empty_cells requires key_column')
+    return null
+  }
+  if (typeof key !== 'string')
+    throw new AppError('ValidationError', 'key_column must be a column name')
+  if (key !== 'name' && !meta.columns.some((c) => c.column_name === key))
+    throw new AppError('ValidationError', `${meta.name} has no column ${key} to match on`)
+  const emptyCells = args.empty_cells ?? 'keep'
+  if (emptyCells !== 'keep' && emptyCells !== 'clear')
+    throw new AppError('ValidationError', "empty_cells must be 'keep' or 'clear'")
+  let columns: string[] | null = null
+  if (args.columns != null) {
+    if (!Array.isArray(args.columns) || args.columns.some((c) => typeof c !== 'string'))
+      throw new AppError('ValidationError', 'columns must be an array of column names')
+    for (const c of args.columns as string[])
+      if (c !== 'name' && !meta.columns.some((mc) => mc.column_name === c))
+        throw new AppError('ValidationError', `${meta.name} has no column ${c}`)
+    columns = args.columns as string[]
+  }
+  if (emptyCells === 'clear' && !columns)
+    throw new AppError(
+      'ValidationError',
+      "empty_cells: 'clear' requires columns (the mapped columns the clearing applies to)",
+    )
+  return { keyColumn: key, emptyCells, columns }
+}
+
+// UPS-R3 — what an update touches: only mapped columns change. With the
+// per-run choice 'clear', a mapped column ABSENT from the row is the file
+// saying "this cell is empty" — send an explicit null so the update clears
+// it. With 'keep' (the default) absence stays absence: the stored value
+// survives. Row identity never changes: the update is addressed to the
+// matched name, and a mapped id differing from it fails the row instead of
+// renaming anything.
+function updateValues(
+  row: Record<string, unknown>,
+  upsert: UpsertArgs,
+  matched: Resolution,
+): Record<string, unknown> {
+  const values: Record<string, unknown> = { ...row }
+  if (upsert.emptyCells === 'clear')
+    for (const col of upsert.columns!)
+      if (col !== 'name' && col !== upsert.keyColumn && !(col in values)) values[col] = null
+  values.name = matched.name
+  // The optimistic-concurrency stamp updateDoc demands — as an ISO string,
+  // since its parse (`new Date(String(v))`) would drop milliseconds from a
+  // Date object's default rendering and refuse every update.
+  values.updated_at = matched.updated_at!.toISOString()
+  return values
+}
+
 registerCollectionAction('import', {
   effect: 'write',
   description:
     'Bulk-insert rows ({ rows: [...] }); returns { inserted, failed }. ' +
-    'With dry_run: true, validates every row and writes nothing.',
+    'With key_column, upserts: rows matching an existing value update it ' +
+    "({ updated, inserted, failed }); empty_cells 'keep'|'clear' picks what " +
+    'an empty mapped cell does to a matched row. ' +
+    'With dry_run: true, reports per-row actions and writes nothing.',
   handler: async ({ table, args, user }) => {
     const rows = args.rows
     if (!Array.isArray(rows) || rows.length === 0)
@@ -44,46 +229,101 @@ registerCollectionAction('import', {
         `${table} is bound to data source ${meta.data_source}; bulk import is not supported on bound Tables yet`,
       )
 
-    // IMP-007: dry run — same create gate, schema-level validation of every
-    // row (types, reqd, choices, name rules, existing-name conflicts), zero
+    const upsert = parseUpsertArgs(meta, args)
+    const resolutions = upsert ? await resolveRows(meta, rows, upsert.keyColumn) : null
+    if (resolutions) await assertRunPermitted(user.name, table, resolutions)
+
+    // IMP-007: dry run — same gates, schema-level validation of every row
+    // (types, reqd, choices, name rules, existing-name conflicts), zero
     // writes. Automation triggers don't run, so a trigger can still reject
-    // individual rows at real import time.
+    // individual rows at real import time. With key_column the report is
+    // action-aware (UPS-R1): per-row update / insert / fail, still no writes.
     if (args.dry_run) {
-      await assertPermission(user.name, table, 'create')
+      if (!resolutions) await assertPermission(user.name, table, 'create')
       const failed: FailedRow[] = []
+      const actions: RowAction[] = []
       const seenNames = new Set<string>()
       for (const [index, row] of rows.entries()) {
         if (typeof row !== 'object' || row === null || Array.isArray(row)) {
           failed.push({ index, message: 'row must be an object' })
+          actions.push('fail')
+          continue
+        }
+        const resolution = resolutions?.[index]
+        if (resolution && resolution.action === 'fail') {
+          failed.push({ index, message: resolution.message! })
+          actions.push('fail')
           continue
         }
         try {
+          if (resolution?.action === 'update') {
+            // The matched name is the row's identity for this run; validate
+            // the mapped values as the update they will become. The insert
+            // checks (name conflicts, reqd columns) do not apply.
+            checkRowForUpdate(meta, row as Record<string, unknown>, resolution, upsert!)
+            actions.push('update')
+            continue
+          }
           const name = String((row as Record<string, unknown>).name ?? '').trim()
           if (name && seenNames.has(name))
             throw new AppError('ConflictError', `Duplicate name ${name} within the import`)
           await checkRowForInsert(meta, row as Record<string, unknown>)
           if (name) seenNames.add(name)
+          actions.push('insert')
         } catch (err) {
           failed.push({
             index,
             message: err instanceof Error ? err.message : String(err),
             ...(err instanceof AppError && err.fields ? { fields: err.fields } : {}),
           })
+          actions.push('fail')
         }
       }
-      return { dry_run: true, valid: rows.length - failed.length, failed }
+      if (!resolutions) return { dry_run: true, valid: rows.length - failed.length, failed }
+      return {
+        dry_run: true,
+        valid: rows.length - failed.length,
+        updated: actions.filter((a) => a === 'update').length,
+        inserted: actions.filter((a) => a === 'insert').length,
+        failed,
+        actions,
+      }
     }
 
     let inserted = 0
+    let updated = 0
     const failed: FailedRow[] = []
     for (const [index, row] of rows.entries()) {
       if (typeof row !== 'object' || row === null || Array.isArray(row)) {
         failed.push({ index, message: 'row must be an object' })
         continue
       }
+      const resolution = resolutions?.[index]
+      if (resolution && resolution.action === 'fail') {
+        failed.push({ index, message: resolution.message! })
+        continue
+      }
       try {
-        await saveDoc(table, row as Record<string, unknown>, user.name, 'insert')
-        inserted++
+        if (resolution?.action === 'update') {
+          const record = row as Record<string, unknown>
+          if (
+            upsert!.keyColumn !== 'name' &&
+            record.name != null &&
+            String(record.name).trim() !== '' &&
+            String(record.name).trim() !== resolution.name
+          )
+            // UPS-R3: changing an id via upsert does not exist — refusing is
+            // louder than silently dropping the file's id cell.
+            throw new AppError(
+              'ValidationError',
+              `row maps Row ID ${String(record.name).trim()} but matches ${resolution.name}; an upsert cannot change a row's id`,
+            )
+          await saveDoc(table, updateValues(record, upsert!, resolution), user.name, 'upsert')
+          updated++
+        } else {
+          await saveDoc(table, row as Record<string, unknown>, user.name, 'insert')
+          inserted++
+        }
       } catch (err) {
         if (err instanceof AppError && err.type === 'PermissionError') throw err
         failed.push({
@@ -93,20 +333,48 @@ registerCollectionAction('import', {
         })
       }
     }
-    await writeImportLog(table, user.name, inserted, failed, args.context)
-    return { inserted, failed }
+    await writeImportLog(table, user.name, { inserted, updated, upsert }, failed, args.context)
+    if (!upsert) return { inserted, failed }
+    return { updated, inserted, failed }
   },
 })
+
+// The dry-run counterpart of an upsert update: validate the mapped values
+// the way the update will (partial schema — reqd columns may stay untouched
+// on the matched row), including what 'clear' will null out. Throws AppError
+// on the first problem, mirroring checkRowForInsert.
+function checkRowForUpdate(
+  meta: TableMeta,
+  row: Record<string, unknown>,
+  resolution: Resolution,
+  upsert: UpsertArgs,
+): void {
+  const record = updateValues(row, upsert, resolution)
+  if (
+    upsert.keyColumn !== 'name' &&
+    row.name != null &&
+    String(row.name).trim() !== '' &&
+    String(row.name).trim() !== resolution.name
+  )
+    throw new AppError(
+      'ValidationError',
+      `row maps Row ID ${String(row.name).trim()} but matches ${resolution.name}; an upsert cannot change a row's id`,
+    )
+  validateRowForUpdate(meta, record)
+}
 
 // IMP-011: one Import Log row per :import request, whatever the caller —
 // the wizard passes file/sheet/chunk context, a plain API import logs bare
 // counts. skipPermissions: the log is system-written; the importer needs no
 // grant on Import Log itself. Best-effort — a logging failure (e.g. a
 // database mid-upgrade without 0056) never breaks the import that happened.
+// UPS-R5: a keyed run also records its key_column and empty_cells choice —
+// that stored pair is what the wizard later offers back as the visible
+// "as last time" suggestion. A run with no key stores nothing (nulls).
 async function writeImportLog(
   table: string,
   user: string,
-  inserted: number,
+  counts: { inserted: number; updated: number; upsert: UpsertArgs | null },
   failed: FailedRow[],
   context: unknown,
 ): Promise<void> {
@@ -120,14 +388,18 @@ async function writeImportLog(
     'Import Log',
     {
       ref_table: table,
-      inserted,
+      inserted: counts.inserted,
+      updated: counts.updated,
       failed: failed.length,
       error_summary: failed.length
         ? failed
             .slice(0, LOG_ERROR_SAMPLE)
             .map((f) => `#${f.index}: ${f.message}`)
-            .join('\n') + (failed.length > 20 ? `\n… and ${failed.length - 20} more` : '')
+            .join('\n') +
+          (failed.length > LOG_ERROR_SAMPLE ? `\n… and ${failed.length - LOG_ERROR_SAMPLE} more` : '')
         : undefined,
+      key_column: counts.upsert?.keyColumn,
+      empty_cells: counts.upsert ? counts.upsert.emptyCells : undefined,
       file_name: str(ctx.file_name),
       sheet_name: str(ctx.sheet_name),
       table_created: ctx.table_created === true,

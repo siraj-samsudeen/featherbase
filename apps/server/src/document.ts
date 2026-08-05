@@ -88,6 +88,15 @@ async function resolveName(
   if (values.amended_from != null && values.name)
     return String(values.name)
   const rule = meta.id_pattern || 'hash'
+  // UPS-R4 (spec 0004): a caller may supply the row's id outright — the
+  // file's own reference codes become names, verbatim, and the series is
+  // NOT consumed for them (IMP-R6: the pattern is the promise, so unsupplied
+  // rows simply continue the series). 'prompt' keeps its required-name error
+  // and 'field:' keeps naming from its declared column.
+  if (rule !== 'prompt' && !rule.startsWith('field:')) {
+    const supplied = String(values.name ?? '').trim()
+    if (supplied) return supplied
+  }
   if (rule === 'hash') return hashName()
   if (rule === 'prompt') {
     const name = String(values.name ?? '').trim()
@@ -402,6 +411,14 @@ export async function checkRowForInsert(meta: TableMeta, values: RowValues): Pro
   }
 }
 
+// UPS-R1: the dry-run counterpart for rows an upsert will UPDATE — the same
+// field filtering and zod validation the update runs (partial schema: reqd
+// columns may stay untouched on the matched row), no writes. Insert-only
+// checks (name conflicts, prompt-requires-name) deliberately absent.
+export function validateRowForUpdate(meta: TableMeta, values: RowValues): void {
+  validateValues(meta, pickFieldValues(meta, values), 'update')
+}
+
 export interface SaveOptions {
   // WEB-002/003: the web-form surface is server-controlled (whitelisted columns
   // on one configured Table), so it may insert on behalf of a session user
@@ -439,7 +456,11 @@ export async function saveDoc(
         throw new AppError('ConflictError', `${table} ${values.name} already exists`)
       return updateDoc(meta, String(values.name), values, user)
     }
-    if (meta.id_pattern !== 'prompt' && values.amended_from == null)
+    // In upsert mode an unknown name on a generated-id Table is almost
+    // certainly a mistyped update — refuse it. Insert mode is different:
+    // the caller is explicitly creating, so the supplied id is intent
+    // (UPS-R4) and resolveName adopts it verbatim.
+    if (meta.id_pattern !== 'prompt' && values.amended_from == null && mode !== 'insert')
       throw new AppError('NotFoundError', `${table} ${values.name} not found`)
   }
   if (!opts.skipPermissions) {
