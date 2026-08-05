@@ -25,7 +25,10 @@ screen appends your rows to it.
 
 Click **Import Data** in the sidebar. You'll see an empty drop area.
 
+![J1.1 — The import screen with an empty drop area](shots/IMP-J1.1.png)
 <!-- slot: IMP-J1.1 → shots/IMP-J1.1.png -->
+<details><summary>original sketch (permanent fallback)</summary>
+
 ```
 ┌────────────┬──────────────────────────────────────┐
 │  Sidebar   │                                      │
@@ -36,13 +39,18 @@ Click **Import Data** in the sidebar. You'll see an empty drop area.
 └────────────┴──────────────────────────────────────┘
 ```
 
+</details>
+
 ### 2 · Drop your file
 
 Drag your file onto the drop area. Featherbase reads it immediately and
 shows one card per sheet with the counts it found — *these describe your
 file*, nothing has been imported yet.
 
+![J1.2 — One card: 8 rows, 6 columns in the file](shots/IMP-J1.2.png)
 <!-- slot: IMP-J1.2 → shots/IMP-J1.2.png -->
+<details><summary>original sketch (permanent fallback)</summary>
+
 ```
 ┌──────────────────────────────────────────────────┐
 │  zones.csv · 1 sheet                             │
@@ -51,6 +59,8 @@ file*, nothing has been imported yet.
 │  └────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────┘
 ```
+
+</details>
 
 Only CSV and Excel files are accepted — anything else is refused by name
 (*notes.pdf: not a CSV or Excel file*) and nothing changes.
@@ -61,11 +71,16 @@ The card shows where the rows will go. With no matching Table in your
 system, it reads **New Table…** with a name suggested from the file —
 `zones.csv` becomes **Zones**. You can rename it before importing.
 
+![J1.3 — Import into New Table…, name prefilled Zones](shots/IMP-J1.3.png)
 <!-- slot: IMP-J1.3 → shots/IMP-J1.3.png -->
+<details><summary>original sketch (permanent fallback)</summary>
+
 ```
 Import into:  [ New Table…            ▾ ]
 Table name:   [ Zones                   ]
 ```
+
+</details>
 
 > If a Table matching your columns already exists, it is selected for you
 > — with a visible notice that rows will be **added** to it, never
@@ -76,7 +91,10 @@ Table name:   [ Zones                   ]
 Featherbase guesses a type for every column from its values. Review the
 grid — every row is editable before you commit.
 
+![J1.4 — The inferred column grid](shots/IMP-J1.4.png)
 <!-- slot: IMP-J1.4 → shots/IMP-J1.4.png -->
+<details><summary>original sketch (permanent fallback)</summary>
+
 ```
 │ Column      │ Label      │ Type     │ Choices        │
 │ zone_name   │ Zone Name  │ Data     │                │
@@ -87,6 +105,8 @@ grid — every row is editable before you commit.
 │ is_active   │ Is Active  │ Check    │                │
 ```
 
+</details>
+
 Repeated values (North, South) become a fixed choice list; yes/no columns
 become tick boxes; dates stay dates whatever timezone your server runs in.
 
@@ -96,6 +116,7 @@ Each imported row gets a readable id in a series named after your Table —
 here `ZONES-###`. This row is locked; rename the Table and the series
 follows.
 
+![J1.5 — The locked Row ID row previews the series](shots/IMP-J1.5.png)
 <!-- slot: IMP-J1.5 → shots/IMP-J1.5.png -->
 
 ### 6 · Import
@@ -103,6 +124,7 @@ follows.
 The button already tells you what will happen: **Import 8 rows**. Click
 it and watch the progress.
 
+![J1.6 — The button already counted the file’s rows](shots/IMP-J1.6.png)
 <!-- slot: IMP-J1.6 → shots/IMP-J1.6.png -->
 
 If a cell can't be converted into a column whose type is already fixed —
@@ -116,6 +138,7 @@ one odd value simply makes that column infer as plain text instead.)
 You land in the **Zones** list with all eight rows, each carrying its
 `ZONES-…` id.
 
+![J1.7 — The new Table’s list with all eight zones](shots/IMP-J1.7.png)
 <!-- slot: IMP-J1.7 → shots/IMP-J1.7.png -->
 
 ### 8 · Open a row
@@ -160,5 +183,8 @@ sheets are ignored. <!-- slot: IMP-J3.1 → shots/IMP-J3.1.png -->
 
 *This page is a generated view of the Spreadsheet Import journeys in
 `docs/design/requirements-framework.md`. Screenshots are produced by the
-journey tests (`SNAP=1`); a sketch instead of a screenshot means that step
-has not yet been proven in a browser on this commit.*
+journey test (`SNAP=1 pnpm exec playwright test e2e/import-journey.spec.ts`);
+J1.1–J1.7 were captured from the passing walk on 2026-08-05. A sketch
+instead of a screenshot (J1.8, J1.9, the append and multi-sheet slots)
+means exactly what it says: that step has not yet been proven in a browser
+on this commit — J1.8/J1.9 are witnessed at the contract tier only.*
