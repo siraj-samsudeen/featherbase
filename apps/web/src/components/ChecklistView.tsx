@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useRef, useState } from 'react'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { ApiError, api, getToken, listResource } from '../lib/api'
 import { isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
@@ -7,11 +7,13 @@ import { isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../li
 type Row = Record<string, unknown>
 
 // Checklist view: a tap-first execution surface for any Table with checklist
-// shape — a Sub-table column whose row table carries a Check column. Like
-// Kanban binds "the Choice column to group by", this view binds by shape and
-// column-name convention, all read from metadata (no per-model code):
+// shape — a Sub-table column whose row table carries a Check column named
+// `done`. Like Kanban binds "the Choice column to group by", this view binds
+// by shape and column-name convention, all read from metadata (no per-model
+// code):
 //
-//   done column   — the Check named `done`, else the row table's first Check
+//   done column   — the Check named `done`, and only that: a row table with
+//   booleans but no `done` describes a standard, it doesn't execute one
 //   item label    — the row table's first Data/Text column
 //   must_do / photo_proof / note / done_at — optional enrichments, bound by
 //   those names when present (must-do badge, camera chip, excuse note, tick
@@ -41,7 +43,8 @@ export function ChecklistView({
   if (!shape.binding)
     return (
       <p className="text-sm text-[var(--color-ink-muted)]" data-testid="checklist-no-shape">
-        This Table has no checklist-shaped Sub-table (a row table with a Check column).
+        This Table has no checklist-shaped Sub-table (a row table with a Check column named
+        “done”).
       </p>
     )
   return run ? (
@@ -93,54 +96,56 @@ function useChecklistShape(meta: TableMeta | undefined): {
   binding: Binding | null
 } {
   const subCols = (meta?.columns ?? []).filter((f) => f.column_type === 'Sub-table' && f.row_table)
-  // Bind the first Sub-table column whose row table qualifies. One extra
-  // meta fetch per candidate — tables rarely carry more than one or two.
-  // Same queryKey as useMeta so the cache is shared; gated so an absent
-  // candidate fetches nothing.
-  const useChildMeta = (t?: string) =>
-    useQuery({
-      queryKey: ['meta', t ?? ''],
-      enabled: Boolean(t),
-      queryFn: () => api.get<TableMeta>(`/api/table/${encodeURIComponent(t!)}:meta`),
+  // Bind the first Sub-table column whose row table qualifies — EVERY
+  // candidate is looked up, so a checklist living in a Table's third
+  // sub-table binds exactly like one in its first. Same queryKey as useMeta,
+  // so the cache is shared and a Table already on screen costs no fetch.
+  const children = useQueries({
+    queries: subCols.map((sub) => ({
+      queryKey: ['meta', sub.row_table!],
+      queryFn: () =>
+        api.get<TableMeta>(`/api/table/${encodeURIComponent(sub.row_table!)}:meta`),
       staleTime: 60_000,
-    })
-  const child0 = useChildMeta(subCols[0]?.row_table ?? undefined)
-  const child1 = useChildMeta(subCols[1]?.row_table ?? undefined)
-  const children = [child0, child1].slice(0, subCols.length)
-  return useMemo(() => {
-    if (!meta) return { pending: true, binding: null }
-    if (children.some((c) => c.isLoading)) return { pending: true, binding: null }
-    for (const [i, sub] of subCols.entries()) {
-      const childMeta = children[i]?.data
-      if (!childMeta) continue
-      const checks = childMeta.columns.filter((f) => f.column_type === 'Check')
-      const done = checks.find((f) => f.column_name === 'done') ?? checks[0]
-      const label = childMeta.columns.find((f) => ['Data', 'Text'].includes(f.column_type))
-      if (!done || !label) continue
-      const named = (n: string, types: string[]) =>
-        childMeta.columns.find((f) => f.column_name === n && types.includes(f.column_type))?.column_name
-      return {
-        pending: false,
-        binding: {
-          itemsCol: sub.column_name,
-          childTable: sub.row_table!,
-          doneCol: done.column_name,
-          labelCol: label.column_name,
-          mustCol: named('must_do', ['Check']),
-          photoCol: named('photo_proof', ['Check']),
-          noteCol: named('note', ['Data', 'Text']),
-          titleCol: meta.title_column || 'name',
-          statusCol: meta.columns.find((f) => f.column_type === 'Choice'),
-          dateCol: meta.columns.find((f) => f.column_type === 'Date')?.column_name,
-          progressCol: meta.columns.find(
-            (f) => f.column_name === 'progress' && f.column_type === 'Data',
-          )?.column_name,
-          readOnly: isSourceReadOnly(meta),
-        },
-      }
+    })),
+  })
+  if (!meta) return { pending: true, binding: null }
+  if (children.some((c) => c.isLoading)) return { pending: true, binding: null }
+  for (const [i, sub] of subCols.entries()) {
+    const childMeta = children[i]?.data
+    if (!childMeta) continue
+    // The completion binding must be EXPLICIT: a Check column named `done`.
+    // Falling back to "the row table's first Check" turns every boolean into
+    // execution state — it is what made Checklist Template (whose items carry
+    // must_do / photo_proof and no `done`) look executable, so tapping a row
+    // silently rewrote the standard instead of running it.
+    const done = childMeta.columns.find(
+      (f) => f.column_type === 'Check' && f.column_name === 'done',
+    )
+    const label = childMeta.columns.find((f) => ['Data', 'Text'].includes(f.column_type))
+    if (!done || !label) continue
+    const named = (n: string, types: string[]) =>
+      childMeta.columns.find((f) => f.column_name === n && types.includes(f.column_type))?.column_name
+    return {
+      pending: false,
+      binding: {
+        itemsCol: sub.column_name,
+        childTable: sub.row_table!,
+        doneCol: done.column_name,
+        labelCol: label.column_name,
+        mustCol: named('must_do', ['Check']),
+        photoCol: named('photo_proof', ['Check']),
+        noteCol: named('note', ['Data', 'Text']),
+        titleCol: meta.title_column || 'name',
+        statusCol: meta.columns.find((f) => f.column_type === 'Choice'),
+        dateCol: meta.columns.find((f) => f.column_type === 'Date')?.column_name,
+        progressCol: meta.columns.find(
+          (f) => f.column_name === 'progress' && f.column_type === 'Data',
+        )?.column_name,
+        readOnly: isSourceReadOnly(meta),
+      },
     }
-    return { pending: false, binding: null }
-  }, [meta, child0.data, child1.data, child0.isLoading, child1.isLoading])
+  }
+  return { pending: false, binding: null }
 }
 
 function progressParts(v: unknown): { done: number; total: number } | null {
@@ -367,6 +372,13 @@ function RunPane({
   const choices = (binding.statusCol?.choices ?? '').split('\n').map((c) => c.trim()).filter(Boolean)
   const currentStatus = binding.statusCol ? String(doc.data?.[binding.statusCol.column_name] ?? '') : ''
   const nextStatus = choices[choices.indexOf(currentStatus) + 1]
+  // A run that has reached the LAST declared status has nowhere left to
+  // advance, which is what "finished" means here — the checklists app makes
+  // Submitted terminal and the server refuses every later write. So the
+  // surface stops offering ticks, notes and photos rather than inviting
+  // saves that can only come back as errors.
+  const terminal = Boolean(binding.statusCol) && choices.length > 0 && !nextStatus
+  const locked = binding.readOnly || terminal
   const parts = binding.progressCol ? progressParts(doc.data?.[binding.progressCol]) : null
 
   if (doc.isLoading) return <p className="text-sm text-gray-400">Loading…</p>
@@ -401,6 +413,14 @@ function RunPane({
         )}
       </div>
       {parts && <ProgressBar done={parts.done} total={parts.total} />}
+      {terminal && (
+        <p
+          className="rounded border border-[var(--color-border)] bg-[var(--color-subtle)] px-3 py-2 text-xs text-[var(--color-ink-muted)]"
+          data-testid="checklist-locked"
+        >
+          {currentStatus} — this run is final and can no longer be changed.
+        </p>
+      )}
 
       <div className="fc-card divide-y divide-[var(--color-border)]" data-testid="checklist-items">
         {items.map((item) => {
@@ -416,7 +436,7 @@ function RunPane({
                 type="button"
                 role="checkbox"
                 aria-checked={done}
-                disabled={saving || binding.readOnly}
+                disabled={saving || locked}
                 onClick={() => toggle(itemName)}
                 className="flex min-h-[44px] w-full items-start gap-3 text-left"
               >
@@ -447,20 +467,32 @@ function RunPane({
                   </span>
                 </span>
               </button>
-              {binding.photoCol && Boolean(item[binding.photoCol]) && !binding.readOnly && (
+              {/* A locked run still SHOWS its evidence — the photos are the
+                  record of what was done — it just stops accepting more. */}
+              {binding.photoCol &&
+                Boolean(item[binding.photoCol]) &&
+                (!locked || photosByItem.has(itemName)) && (
+                  <div className="ml-9">
+                    <PhotoRow
+                      childTable={binding.childTable}
+                      itemName={itemName}
+                      photos={photosByItem.get(itemName) ?? []}
+                      locked={locked}
+                      onUploaded={() => photos.refetch()}
+                      onView={setViewer}
+                    />
+                  </div>
+                )}
+              {/* Same rule for the excuse note: locked shows it, never edits it. */}
+              {binding.noteCol && (!locked || Boolean(note)) && (
                 <div className="ml-9">
-                  <PhotoRow
-                    childTable={binding.childTable}
-                    itemName={itemName}
-                    photos={photosByItem.get(itemName) ?? []}
-                    onUploaded={() => photos.refetch()}
-                    onView={setViewer}
-                  />
-                </div>
-              )}
-              {binding.noteCol && !binding.readOnly && (
-                <div className="ml-9">
-                  {noteDraft?.item === itemName ? (
+                  {locked ? (
+                    note && (
+                      <span className="inline-block rounded bg-[var(--color-warn-tint)] px-2 py-1 text-xs text-[var(--color-warn)]">
+                        Note: {note}
+                      </span>
+                    )
+                  ) : noteDraft?.item === itemName ? (
                     <input
                       autoFocus
                       className="fc-input w-full max-w-sm text-sm"
@@ -569,12 +601,14 @@ function PhotoRow({
   childTable,
   itemName,
   photos,
+  locked,
   onUploaded,
   onView,
 }: {
   childTable: string
   itemName: string
   photos: Row[]
+  locked: boolean
   onUploaded: () => void
   onView: (fileUrl: string) => void
 }) {
@@ -589,6 +623,10 @@ function PhotoRow({
       form.append('file', file)
       form.append('ref_doctype', childTable)
       form.append('ref_name', itemName)
+      // Shop-floor photos are operational evidence, not public assets: stored
+      // private, so reaching one costs a signed URL that the server only mints
+      // after authorizing the item it hangs on.
+      form.append('is_private', '1')
       const res = await fetch('/api/upload_file', {
         method: 'POST',
         headers: { authorization: `Bearer ${getToken()}` },
@@ -624,28 +662,32 @@ function PhotoRow({
           )}
         </button>
       ))}
-      <button
-        type="button"
-        className={`fc-btn px-3 py-2 text-sm ${failed ? 'text-[var(--color-danger)]' : ''}`}
-        disabled={busy}
-        onClick={() => inputRef.current?.click()}
-        data-testid="checklist-photo-add"
-      >
-        {busy ? '…' : failed ? '📷 Retry' : photos.length ? '📷' : '📷 Take photo'}
-      </button>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        data-testid="checklist-photo-input"
-        onChange={(e) => {
-          const f = e.target.files?.[0]
-          if (f) void upload(f)
-          e.target.value = ''
-        }}
-      />
+      {!locked && (
+        <>
+          <button
+            type="button"
+            className={`fc-btn px-3 py-2 text-sm ${failed ? 'text-[var(--color-danger)]' : ''}`}
+            disabled={busy}
+            onClick={() => inputRef.current?.click()}
+            data-testid="checklist-photo-add"
+          >
+            {busy ? '…' : failed ? '📷 Retry' : photos.length ? '📷' : '📷 Take photo'}
+          </button>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            data-testid="checklist-photo-input"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) void upload(f)
+              e.target.value = ''
+            }}
+          />
+        </>
+      )}
     </span>
   )
 }

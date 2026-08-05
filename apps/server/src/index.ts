@@ -638,6 +638,17 @@ app.post('/api/upload_file', async (c) => {
   if (!(file instanceof File))
     throw new AppError('ValidationError', 'Expected multipart form data with a "file" part')
   const isPrivate = body.is_private === '1' || body.is_private === 'true'
+  // FILE-001: attaching binds this file to a document, so the caller must be
+  // able to READ that document — otherwise an upload is a write into someone
+  // else's record, and (once attached) a signed-URL key to it. Checked BEFORE
+  // the storage object exists, so a refused upload leaves nothing behind.
+  // Read, not write: own_rows_only portals grant create without write, and
+  // their users legitimately attach to their own rows.
+  const refTable = typeof body.ref_doctype === 'string' && body.ref_doctype ? body.ref_doctype : null
+  const refName = typeof body.ref_name === 'string' && body.ref_name ? body.ref_name : null
+  if (refTable && !refName)
+    throw new AppError('ValidationError', 'ref_doctype needs a ref_name to attach to')
+  if (refTable && refName) await getDoc(refTable, refName, who(c))
   const content = Buffer.from(await file.arrayBuffer())
   const stored = await saveUpload(content, file.name, isPrivate)
   const mimeType = file.type || 'application/octet-stream'
@@ -655,10 +666,8 @@ app.post('/api/upload_file', async (c) => {
       mime_type: mimeType,
       file_size: file.size,
       is_private: isPrivate,
-      ...(typeof body.ref_doctype === 'string' && body.ref_doctype
-        ? { ref_table: body.ref_doctype }
-        : {}),
-      ...(typeof body.ref_name === 'string' && body.ref_name ? { ref_name: body.ref_name } : {}),
+      ...(refTable ? { ref_table: refTable } : {}),
+      ...(refName ? { ref_name: refName } : {}),
     },
     who(c),
   )

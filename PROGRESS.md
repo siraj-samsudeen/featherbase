@@ -1,5 +1,85 @@
 # Progress Log
 
+## 2026-08-05 — PR #116 review: the checklist snapshot becomes server-owned
+
+Five findings from the #116 review, three of them P1. The theme running
+through the first three: the run's items were treated as *payload*, when
+they are the server's record of what a store actually did.
+
+- **The snapshot is server-authoritative** (`sample-apps/checklists.ts`).
+  Creation now derives items from the template ALWAYS — supplying an
+  `items` array no longer suppresses snapshotting. Updates fold the
+  proposed array onto the persisted child rows (`reconcileItems`): only
+  the tick and its excuse note travel from the client, while the label and
+  the `must_do` / `photo_proof` policy stay as stored, `done_at` is a
+  server stamp, omitted rows can no longer delete real items, and invented
+  rows cannot add any. The submit gate therefore judges the stored
+  checklist — previously `{ run_status: 'Submitted', items: [] }` passed
+  the gate at "0/0" and then deleted every item on the way through.
+- **A submitted run is terminal.** `run_status` is an ordinary Choice
+  column, so the engine's immutability guard (which watches the standard
+  `status` column) never saw it — a Submitted run stayed a `draft`
+  document and accepted late ticks, new photos, and `Submitted → Open`.
+  `prepareRun` now refuses any update whose stored `run_status` is
+  Submitted, and `ChecklistView` locks every mutation control on a run
+  that has reached its last declared status, showing a "this run is final"
+  line instead of inviting saves that can only come back as errors.
+- **`own_rows_only` no longer leaks around the parent** — two engine
+  fixes, because neither is checklist-specific:
+  - **Child rows are only as readable as the row they hang on.** A grant
+    on a `sub_table` Table says "may read rows of this shape", never WHICH
+    rows, so a second team leader could list every `Checklist Run Item`
+    and read another leader's items directly. `getDoc` now defers to the
+    parent (`assertParentReadable`) and `scopedWhere` compiles one
+    OR-branch per Table that can own the child rows, each scoped to what
+    the caller may see of it (`parentScopeCond`).
+  - **`/api/upload_file` authorizes the referenced document** before it
+    writes a storage object or a File row, so a refused upload leaves
+    nothing behind. Read, not write: `own_rows_only` portals grant create
+    without write and their users legitimately attach to their own rows.
+  Plus: checklist photos upload `is_private`, and Team Leader's `File`
+  grant is `own_rows_only` — a leader sees the files they uploaded, and
+  minting a URL for anyone else's is refused at `/api/signed_url`, which
+  authorizes the row the photo hangs on.
+- **Checklist discovery got both stricter and wider** (`ChecklistView`).
+  The completion binding now REQUIRES a Check column named `done` — the
+  old "else the row table's first Check" fallback made the shipped
+  Checklist Template look executable, binding `must_do` as completion
+  state so tapping a row rewrote the standard instead of running it. And
+  child metadata now loads for every Sub-table candidate via `useQueries`,
+  not the first two, so a checklist in a Table's third sub-table binds
+  like one in its first.
+
+Verified: server **606 tests green** (110 files) including three new
+`checklists-app.test.ts` cases — snapshot reshaping refused, submitted run
+final both ways, and a two-team-leader pass over direct child reads, child
+lists, File lists, signed URLs and uploads. New
+`apps/web/test/checklist-binding.test.tsx` (2 cases) renders the real
+components: a checklist in the third sub-table binds past two near-misses,
+and Checklist Template reports no shape. Every new test was confirmed to
+FAIL against the unfixed code before being kept. `checklist.spec.ts` passes
+in the browser (now seeding two runs, since the first spec submits its own
+and a submitted run has no controls left) along with every upload-driving
+spec — attachments, attach-field, thumbnail, form-sidebar. Both typechecks
+clean.
+
+Gotchas: (1) `parentScopeCond` returns its fragment boxed in `{ frag }`
+like `compileFilter` does — a bare `sql` fragment is a *thenable*, so
+`await`ing one EXECUTES it instead of returning it; the typechecker catches
+this, the runtime would not have. (2) That fragment is parenthesized before
+being ANDed into the WHERE — `AND` binds tighter than the ORs inside it.
+(3) This worktree's `node_modules` predated `@duckdb/node-api`, which fails
+4 of 6 web unit FILES and one server file until `pnpm install` runs — it
+looks like a code break and is not one. (4) Ten e2e specs fail in this dev
+database (`grid-layout`, `report-*`, `dashboard`, `formview`,
+`link-autocomplete`, `client-validation`, `letterhead`); all were confirmed
+to fail identically on the unmodified base commit — dirty-dev-DB breakage,
+not a regression.
+
+Next: per-item photo *requirement* enforcement (`photo_proof` still invites
+rather than blocks), and a template-picker "start run" affordance cheaper
+than the generic new form.
+
 ## 2026-08-04 — checklists sample app + generic Checklist view
 
 A second flagship sample app beside helpdesk, and the fifth alternate view

@@ -238,6 +238,28 @@ async function assertUserPermissions(
   checkUserPermissions(user, meta.name, linkFields, row, map)
 }
 
+// PERM-007: a child row is only as readable as the row it hangs on. A grant
+// on a sub_table Table says "may read rows of this shape" — it never says
+// WHICH rows, because child rows have no standing of their own. Without this,
+// an own_rows_only grant on the parent leaks the moment someone reads the
+// child directly: the child's created_by is whoever saved the parent, and the
+// row is served. Sub-tables never hang off a source-bound Table (the engine
+// refuses that shape), so the parent always has a physical row to judge.
+async function assertParentReadable(row: RowValues, user: string) {
+  const parentType = row.parenttype ? String(row.parenttype) : ''
+  const parentName = row.parent ? String(row.parent) : ''
+  // An orphan has no parent to defer to; the child's own grant governs.
+  if (!parentType || !parentName) return
+  if (await isSharedWith(user, parentType, parentName, 'read')) return
+  const parentMeta = await getMeta(parentType)
+  const [parent] = await sql`
+    select * from ${sql(tableName(parentType))} where name = ${parentName}`
+  if (!parent) return
+  await assertPermission(user, parentType, 'read')
+  await assertDocPermission(user, parentType, 'read', String(parent.created_by))
+  await assertUserPermissions(user, parentMeta, parent as RowValues)
+}
+
 // META-007/DOC-005: extract Sub-table column arrays from the payload; they are
 // saved as child rows in the same transaction as the parent.
 function pickChildInputs(meta: TableMeta, values: RowValues) {
@@ -1159,6 +1181,7 @@ export async function getDoc(
     await assertPermission(user, table, 'read')
     await assertDocPermission(user, table, 'read', String(row.created_by))
     await assertUserPermissions(user, meta, row as RowValues)
+    if (meta.kind === 'sub_table') await assertParentReadable(row as RowValues, user)
   }
   // A share grants full field visibility; otherwise honor tiers.
   const readTiers = shared

@@ -22,10 +22,14 @@ async function ensureChecklistStructure(request: APIRequestContext) {
   if (r.status() !== 201) throw new Error(`install checklists: ${r.status()} ${await r.text()}`)
 }
 
+// TWO runs: the first spec submits its run, and a submitted run is final —
+// its controls are gone — so the photo and mobile specs get their own, opened
+// by name rather than by "whichever card sorts first".
 let runName = ''
+let openRunName = ''
 
-// Seed one run off the app's fixture template. The template-snapshot hook
-// fills its items; the spec only supplies the scope.
+// Seed off the app's fixture template. The template-snapshot hook fills the
+// items; the spec only supplies the scope.
 test.beforeAll(async ({ request }) => {
   await ensureChecklistStructure(request)
   const H = { Authorization: `Bearer ${await token(request)}` }
@@ -35,21 +39,25 @@ test.beforeAll(async ({ request }) => {
   )
   const template = ((await templates.json()) as { data: { name: string }[] }).data[0]?.name
   if (!template) throw new Error('no checklist template — the fixture should have installed one')
-  const r = await request.post('/api/save_doc', {
-    headers: H,
-    data: {
-      doctype: 'Checklist Run',
-      doc: { template, store: 'ATK', section: 'Kurti', team_leader: 'E2E TL' },
-    },
-  })
-  if (r.status() !== 201) throw new Error(`seed run: ${r.status()} ${await r.text()}`)
-  runName = ((await r.json()) as { name: string }).name
+  const seed = async (section: string) => {
+    const r = await request.post('/api/save_doc', {
+      headers: H,
+      data: {
+        doctype: 'Checklist Run',
+        doc: { template, store: 'ATK', section, team_leader: 'E2E TL' },
+      },
+    })
+    if (r.status() !== 201) throw new Error(`seed run: ${r.status()} ${await r.text()}`)
+    return ((await r.json()) as { name: string }).name
+  }
+  runName = await seed('Kurti')
+  openRunName = await seed('Denim')
 })
 
 test.afterAll(async ({ request }) => {
-  if (!runName) return
   const H = { Authorization: `Bearer ${await token(request)}` }
-  await request.delete(`/api/table/Checklist%20Run/${runName}`, { headers: H })
+  for (const name of [runName, openRunName])
+    if (name) await request.delete(`/api/table/Checklist%20Run/${name}`, { headers: H })
 })
 
 async function login(page: import('@playwright/test').Page) {
@@ -93,12 +101,19 @@ test('checklist view: list → run → tick → submit gate → submit', async (
   }
   await page.getByTestId('checklist-submit').click()
   await expect(page.getByText(`${runName} · Submitted`)).toBeVisible()
+
+  // A submitted run is final: the surface says so and stops offering edits,
+  // matching the server, which refuses every later write.
+  await expect(page.getByTestId('checklist-locked')).toBeVisible()
+  await expect(page.getByTestId('checklist-item').first().getByRole('checkbox')).toBeDisabled()
+  await expect(page.getByTestId('checklist-submit')).toHaveCount(0)
+  await expect(page.getByTestId('checklist-photo-add')).toHaveCount(0)
+  await expect(page.getByTestId('checklist-add-note')).toHaveCount(0)
 })
 
 test('a photo_proof item takes a camera upload and shows its thumbnail', async ({ page }) => {
   await login(page)
-  await page.goto('/admin/Checklist%20Run/view/checklist')
-  await page.getByTestId('checklist-run-card').first().click()
+  await page.goto(`/admin/Checklist%20Run/view/checklist?run=${openRunName}`)
   await expect(page.getByTestId('checklist-run-view')).toBeVisible()
 
   // A real 1×1 PNG so the server generates a thumbnail data URI.
@@ -127,7 +142,7 @@ test.describe('mobile width', () => {
     await login(page)
     await page.goto('/admin/Checklist%20Run/view/checklist')
     await expect(page.getByTestId('checklist-view')).toBeVisible()
-    await page.getByTestId('checklist-run-card').first().click()
+    await page.goto(`/admin/Checklist%20Run/view/checklist?run=${openRunName}`)
     await expect(page.getByTestId('checklist-run-view')).toBeVisible()
     // No horizontal overflow, and the tap target is comfortably tall.
     expect(

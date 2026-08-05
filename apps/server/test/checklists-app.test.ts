@@ -10,9 +10,13 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { installApp, uninstallApp, isInstalled } from '../src/apps'
 import { sql } from '../src/db'
+import { tableName } from '../src/doctype-engine'
+import { deleteStored } from '../src/storage'
+import type { TestClient } from 'feather-testing-postgres'
 
 const TEMPLATE_DT = 'Checklist Template'
 const RUN_DT = 'Checklist Run'
+const ITEM_DT = 'Checklist Run Item'
 
 const FIXTURE_LABELS = [
   'Aisle floor cleaned, no cartons in walkway',
@@ -44,6 +48,24 @@ async function install() {
 }
 
 const unwire = () => uninstallApp('checklists').catch(() => {})
+
+const itemNames = async (run: string): Promise<string[]> =>
+  (
+    await sql`
+      select name from ${sql(tableName(ITEM_DT))}
+      where parent = ${run} and parenttype = ${RUN_DT} order by position`
+  ).map((r) => r.name as string)
+
+// Attach a file to a row the way the checklist view does — private, bound to
+// the CHILD item row.
+async function attach(as: TestClient, itemName: string) {
+  const form = new FormData()
+  form.append('file', new File(['photo-bytes'], 'rack.jpg', { type: 'image/jpeg' }))
+  form.append('ref_doctype', ITEM_DT)
+  form.append('ref_name', itemName)
+  form.append('is_private', '1')
+  return as.fetch('/api/upload_file', { method: 'POST', body: form })
+}
 
 describe('checklists app: template → run lifecycle', () => {
   test('install ships a usable template; uninstall removes everything', async ({ admin, skip }) => {
@@ -220,6 +242,205 @@ describe('checklists app: template → run lifecycle', () => {
       }
       expect(smList.data.map((r) => r.name).sort()).toEqual([tlRun.name, adminRun.name].sort())
     } finally {
+      await unwire()
+    }
+  })
+
+  // The snapshot is what makes a run auditable: it must be the SERVER's
+  // record of the standard, not a shape the caller can redraw on the way to
+  // a clean submit.
+  test('a payload may tick items and excuse them — it may never reshape the snapshot', async ({
+    admin,
+    skip,
+  }) => {
+    if (await dirty()) skip('dev database already carries the checklists structure')
+    const { templateName } = await install()
+    try {
+      // Creation ignores caller-supplied items entirely: structure comes from
+      // the template or not at all.
+      const run = await admin.post<Row>('/api/save_doc', {
+        doctype: RUN_DT,
+        doc: {
+          template: templateName,
+          section: 'Kurti',
+          items: [{ item_label: 'one easy thing I made up', must_do: false, done: true }],
+        },
+      })
+      expect((run.items as Row[]).map((i) => i.item_label)).toEqual(FIXTURE_LABELS)
+      expect(run.progress).toBe('0/8')
+
+      // An empty array cannot delete the snapshot, and so cannot buy a clean
+      // submit: the gate judges the persisted items.
+      await expect(
+        admin.post('/api/save_doc', {
+          doctype: RUN_DT,
+          doc: { name: run.name, updated_at: run.updated_at, run_status: 'Submitted', items: [] },
+        }),
+      ).rejects.toMatchObject({ status: 417, message: expect.stringMatching(/must-do/) })
+      const intact = await admin.get<Row>(`/api/table/${encodeURIComponent(RUN_DT)}/${run.name}`)
+      expect(intact.items as Row[]).toHaveLength(8)
+      expect(intact.run_status).toBe('Open')
+
+      // Labels and the must_do / photo_proof policy are snapshot structure;
+      // done_at is a server stamp; an invented row is not an item. All four
+      // are folded back onto what is stored.
+      const forged = [
+        ...(intact.items as Row[]).map((i) => ({
+          ...i,
+          item_label: 'rewritten by the client',
+          must_do: false,
+          photo_proof: true,
+          done_at: '2001-01-01T00:00:00.000Z',
+        })),
+        { item_label: 'smuggled in', must_do: false, done: true },
+      ]
+      const saved = await admin.post<Row>('/api/save_doc', {
+        doctype: RUN_DT,
+        doc: { name: run.name, updated_at: intact.updated_at, items: forged },
+      })
+      const items = saved.items as Row[]
+      expect(items).toHaveLength(8)
+      expect(items.map((i) => i.item_label)).toEqual(FIXTURE_LABELS)
+      expect(items.map((i) => Boolean(i.must_do))).toEqual([
+        true, true, true, false, false, true, false, true,
+      ])
+      expect(items.map((i) => Boolean(i.photo_proof))).toEqual([
+        false, false, true, true, true, false, false, false,
+      ])
+      // Nothing was ticked, so nothing carries a stamp — least of all the
+      // backdated one that was sent.
+      expect(items.every((i) => !i.done_at)).toBe(true)
+      expect(saved.progress).toBe('0/8')
+    } finally {
+      await unwire()
+    }
+  })
+
+  test('a submitted run is final: no late ticks, and no way back to Open', async ({
+    admin,
+    skip,
+  }) => {
+    if (await dirty()) skip('dev database already carries the checklists structure')
+    const { templateName } = await install()
+    try {
+      const run = await admin.post<Row>('/api/save_doc', {
+        doctype: RUN_DT,
+        doc: { template: templateName, section: 'Kurti' },
+      })
+      const submitted = await admin.post<Row>('/api/save_doc', {
+        doctype: RUN_DT,
+        doc: {
+          name: run.name,
+          updated_at: run.updated_at,
+          run_status: 'Submitted',
+          items: (run.items as Row[]).map((i) => (i.must_do ? { ...i, done: true } : i)),
+        },
+      })
+      expect(submitted.run_status).toBe('Submitted')
+      expect(submitted.progress).toBe('5/8')
+
+      const refused = /submitted/i
+      // A late tick.
+      await expect(
+        admin.post('/api/save_doc', {
+          doctype: RUN_DT,
+          doc: {
+            name: run.name,
+            updated_at: submitted.updated_at,
+            items: (submitted.items as Row[]).map((i, n) => (n === 6 ? { ...i, done: true } : i)),
+          },
+        }),
+      ).rejects.toMatchObject({ status: 417, message: expect.stringMatching(refused) })
+      // A late excuse note.
+      await expect(
+        admin.post('/api/save_doc', {
+          doctype: RUN_DT,
+          doc: {
+            name: run.name,
+            updated_at: submitted.updated_at,
+            items: (submitted.items as Row[]).map((i, n) =>
+              n === 0 ? { ...i, note: 'thought better of it' } : i,
+            ),
+          },
+        }),
+      ).rejects.toMatchObject({ status: 417, message: expect.stringMatching(refused) })
+      // Reopening it.
+      await expect(
+        admin.post('/api/save_doc', {
+          doctype: RUN_DT,
+          doc: { name: run.name, updated_at: submitted.updated_at, run_status: 'Open' },
+        }),
+      ).rejects.toMatchObject({ status: 417, message: expect.stringMatching(refused) })
+
+      const after = await admin.get<Row>(`/api/table/${encodeURIComponent(RUN_DT)}/${run.name}`)
+      expect(after.run_status).toBe('Submitted')
+      expect(after.progress).toBe('5/8')
+      expect((after.items as Row[])[6].done).toBe(false)
+      expect((after.items as Row[])[0].note).toBeFalsy()
+    } finally {
+      await unwire()
+    }
+  })
+
+  // own_rows_only on the parent is only worth as much as the paths AROUND it:
+  // the child rows, the photos hanging off them, and the upload that binds a
+  // file to one.
+  test("a team leader cannot reach another leader's items, photos or uploads", async ({
+    createUser,
+    skip,
+  }) => {
+    if (await dirty()) skip('dev database already carries the checklists structure')
+    const { templateName } = await install()
+    const uploaded: string[] = []
+    try {
+      const tl1 = await createUser({ roles: ['Team Leader'] })
+      const tl2 = await createUser({ roles: ['Team Leader'] })
+      const startRun = async (as: TestClient, section: string) => {
+        const res = await as.fetch(`/api/table/${encodeURIComponent(RUN_DT)}`, {
+          method: 'POST',
+          body: JSON.stringify({ template: templateName, section }),
+        })
+        expect(res.status).toBe(201)
+        return (await res.json()) as Row
+      }
+      const run1 = await startRun(tl1, 'Kurti')
+      const run2 = await startRun(tl2, 'Denim')
+      const [item1] = await itemNames(String(run1.name))
+      const own = await itemNames(String(run2.name))
+
+      // 1. A child row is only as readable as the run it hangs on — one by
+      // name, and the whole list.
+      expect((await tl2.fetch(`/api/table/${encodeURIComponent(ITEM_DT)}/${item1}`)).status).toBe(403)
+      const childList = (await (
+        await tl2.fetch(`/api/table/${encodeURIComponent(ITEM_DT)}?limit_page_length=200`)
+      ).json()) as { data: Row[] }
+      expect(childList.data.map((r) => r.name).sort()).toEqual([...own].sort())
+
+      // 2. The owning leader attaches a photo to their own item.
+      const up = await attach(tl1, item1)
+      expect(up.status).toBe(201)
+      const photo = (await up.json()) as Row
+      uploaded.push(String(photo.file_url))
+      expect(String(photo.file_url)).toMatch(/^\/private\/files\//)
+
+      // 3. The other leader can neither list that File nor mint a URL for it.
+      const files = (await (await tl2.fetch('/api/table/File?limit_page_length=200')).json()) as {
+        data: Row[]
+      }
+      expect(files.data.map((r) => r.name)).not.toContain(photo.name)
+      const url = `/api/signed_url?file_url=${encodeURIComponent(String(photo.file_url))}`
+      expect((await tl2.fetch(url)).status).toBe(403)
+      expect((await tl1.fetch(url)).status).toBe(200)
+
+      // 4. Nor attach anything to it — refused BEFORE a storage object or a
+      // File row exists.
+      const [{ n: before }] = await sql`select count(*)::int as n from file`
+      const bad = await attach(tl2, item1)
+      expect(bad.status).toBe(403)
+      const [{ n: after }] = await sql`select count(*)::int as n from file`
+      expect(after).toBe(before)
+    } finally {
+      for (const url of uploaded) await deleteStored(url).catch(() => {})
       await unwire()
     }
   })
