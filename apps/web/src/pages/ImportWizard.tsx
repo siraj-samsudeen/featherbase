@@ -264,7 +264,7 @@ function TargetRowCount({ i, table }: { i: number; table: string }) {
 // sends only the clean remainder. sendIdx maps a sent position back to the
 // row's index in the full coerced array so server-reported failures keep
 // their true positions.
-function splitForSend(rows: Record<string, unknown>[], key: string | null) {
+export function splitForSend(rows: Record<string, unknown>[], key: string | null) {
   if (!key)
     return {
       send: rows,

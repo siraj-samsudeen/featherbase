@@ -188,3 +188,63 @@ default keep — the arbiter's third way, better than either drafted
 option) · Q4 → H1 + framework IMP-R13 (undo covers updates via the
 version trail) · Q5 → R5 (the key is remembered as a visible
 suggestion). Per the change protocol the questions live on as rules.
+
+## Trial #2 retrospective — the build session (2026-08-05)
+
+*Where the format chafed while building, for the graduation review. The
+spec body above is unchanged; this section is the trial's field notes.*
+
+**What worked.** A fully-ruled spec built with zero mid-session stalls:
+every fork the build hit had a rule to point at, and the evidence CSV's
+verdict vocabulary absorbed the one partial-tier outcome cleanly
+(J1.4, below). The example tables translated 1:1 into test cases; the
+R2 property was writable exactly as stated because `dry_run` keeps the
+database static.
+
+**Where it chafed.**
+
+1. **A prior-state claim in a ruling was false.** R4 says "the engine
+   already accepts explicit ids for direct sends" — it did not, for
+   generated-id Tables: `saveDoc` NotFound-refused an unknown supplied
+   name outside `prompt` patterns, while the dry run *accepted* the same
+   row. The ruling was still right (the build fixed the engine, and the
+   fix dissolved a latent rehearsal-vs-run disagreement), but the spec
+   asserted current behaviour nobody had probed. *Format lesson: a
+   ruling that leans on "the engine already does X" deserves a
+   ten-minute probe before it is written down as ground truth.*
+2. **"Must still be caught" without "by whom".** The closure sweep
+   demands a duplicate key split across chunks be caught, but the server
+   cannot see across requests without a run identity. The honest split —
+   server catches duplicates per request, the wizard (which holds the
+   whole file) fails duplicates before chunking — is now code and tests,
+   but the spec never assigned the obligation. *Format lesson: closure
+   lines that cross a boundary should name the side that owns them.*
+3. **R3's 'clear' needed contract surface the spec never enumerates.**
+   Empty cells arrive as *absent keys* (IMP-R8), so clearing needs the
+   run's mapped-column universe — the API grew a `columns` argument.
+   Consistent with R3's intent, but R1's enumeration doesn't mention it.
+4. **J1.4's wording promised a surface the wizard never had.** "Each row
+   says update / insert / failed" reads as a per-row UI listing; the
+   wizard's rehearsal report has always been counts + per-row *failures*.
+   Built as action-aware counts (per-row actions live in the contract's
+   `actions[]`); evidence records the caveat as conditionally-proven.
+5. **"Any mapped column (or the Row ID)"** — the parenthetical is
+   ambiguous about a Row ID nobody mapped. Built as: the Row ID is
+   offerable as key only when a file column maps onto it (a key the file
+   has no cells for would fail every row).
+
+**Discovered behaviours, three-fates queue** *(none ratified silently —
+owner's call)*:
+
+- **A mapped Row ID that differs from the matched row fails the row**
+  ("an upsert cannot change a row's id") — the loud reading of R3's
+  "changing an id via upsert does not exist"; silent-ignore was the
+  alternative. Ratify into R3's example table, or re-rule.
+- **The `columns` request argument** (mapped-column universe, required
+  for `empty_cells: 'clear'`) — fold into R1's enumeration.
+- **Performance answer stated** per the closure sweep: matching casts
+  the key column to text for one `= any(...)` scan per request (chunk),
+  not per row — a seq scan on unindexed keys, documented in
+  `resolveRows`; index-on-demand deferred until a real dataset hurts.
+- **Keyless runs log `updated: 0`** (not null) — the count is truthful;
+  R5's "stores nothing" is carried by `key_column`/`empty_cells` nulls.

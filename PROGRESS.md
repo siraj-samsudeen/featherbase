@@ -117,6 +117,66 @@ end-to-end: CLI-created `svc-…` account + token authenticated
 wire the Rama data-warehouse repo's install flow to a service-account
 token, and the #130 no-default-admin-password work it unblocks.
 
+## 2026-08-05 — Spec 0004 built: import upsert on a match key (journey-spec trial #2)
+
+The second greenfield run of the journey-spec framework, executed from a
+fully-ruled spec (all five questions ruled 2026-08-05, PR #125) with zero
+mid-session stalls. The import boundary and wizard learned update:
+
+- **Server** (`collection-import.ts`): optional `key_column` on
+  `POST /api/table/:table:import`. Rows resolve against the DATABASE —
+  never the request — per UPS-R2: empty keys fail named, in-file
+  duplicates all fail, multi-matches fail with the count, one match
+  updates, none inserts. Updates run the full saveDoc lifecycle
+  (validation, hooks, versioning; optimistic stamp carried from
+  resolution as an ISO string — `String(Date)` drops milliseconds and
+  refuses every update, the session's first bug). `empty_cells:
+  'keep'|'clear'` (UPS-R3) with 'clear' taking the run's mapped
+  `columns`; permission gate extends IMP-R10: inserts need create,
+  updates need write per matched row (own-rows per row), refused whole
+  BEFORE any write. `dry_run` returns per-row `actions[]` and writes
+  nothing. Import Log gains `updated`/`key_column`/`empty_cells` (0069
+  converges, 0056 rewritten for fresh installs).
+- **Engine** (`document.ts`, UPS-R4): `resolveName` adopts a supplied id
+  verbatim on generated-id Tables — series untouched, `prompt`/`field:`
+  unchanged — and the unknown-name NotFound guard now applies only
+  outside insert mode. This *fixed a latent disagreement*: dry run
+  accepted explicit ids the real import refused.
+- **Wizard** (`ImportWizard.tsx`): labelled, keyboard-reachable Match
+  key select over mapped targets (+ Row ID when mapped); marking a key
+  shows real preview counts (whole-file dry run) and reveals the
+  empty-cells choice (default keep); rehearse and completion count
+  updates/inserts apart; the mapping select offers **Row ID** as a
+  target (the append-path half of the old wizard gap); duplicates are
+  failed BEFORE chunking (`splitForSend` — a dup split across chunks
+  must never reach the server as two clean requests); UPS-R5's last
+  keyed choice pre-fills as a visible "Match on Zone Name, as last
+  time" suggestion read from the Import Log.
+
+Verified: 20 new server tests (`import-upsert.test.ts` — R2 property via
+fast-check over dry_run, R3 model-based property, whole-request refusal
+three ways, idempotence proven through the version trail recording
+nothing on a no-op second run); 3 web unit tests (`import-upsert-split`,
+exhaustive 1024-file sweep); e2e `import-upsert-journey.spec.ts` walks
+UPS-J1 and UPS-J2 (with the Row-ID-as-key branch) self-cleaning via
+table deletion, no skip paths. Full server suite 660 green; web 39; the
+9 existing import/deletion e2e specs green. Evidence CSV flipped
+gap→proven with stamps in the same changes as the tests; trial-#2
+retrospective (format friction + three-fates queue: id-change refusal,
+the `columns` argument, the seq-scan answer) appended to spec 0004.
+
+Gotchas: (1) `sources-csv`'s chmod-based test fails in a root container
+on the unmodified base too — root ignores directory write bits; not a
+regression. (2) fast-check can't join `apps/web` this session: any
+lockfile update re-resolves the `github:` feather-testing-postgres dep,
+and this environment's egress blocks codeload tarballs (git clone lane
+works; `pnpm install` protocol-swapped to `git+https` locally, manifests
+and lockfile restored before commit).
+
+Next: IMP-R13 (undo — insert deletion + version-trail replay for
+updates, the last leg of H1/IMP-H1); the three-fates queue in spec
+0004's retrospective needs the owner's rulings; #115's true-row naming
+still pinned.
 
 ## 2026-08-05 — PR #116 review: the checklist snapshot becomes server-owned
 
