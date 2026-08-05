@@ -31,16 +31,19 @@ const FIXTURE_LABELS = [
 
 type Row = Record<string, any>
 
-// A dev database may carry committed checklists structure (the checklist
-// e2e installs it over HTTP); these round trips need a clean slate, which
-// CI and throwaway DBs always are — the same guard the helpdesk round-trip
-// test uses.
-async function dirty(): Promise<boolean> {
-  const [row] = await sql`select 1 from table_def where name = ${RUN_DT}`
-  return Boolean(row)
-}
-
+// Table deletion (docs/specs/0003-table-deletion.md) paying its hermeticity
+// dividend, the same conversion the import create-path specs got: a dev
+// database may carry committed checklists structure (the checklist e2e
+// installs it over HTTP), so PRE-CLEAN it rather than skipping. The removal
+// happens inside the test's own transaction, so the rollback hands the
+// database back exactly as it was.
+//
+// These tests used to skip on a used database, and a skipped suite reports
+// green while proving nothing — a full run once showed "605 passed" with all
+// eight of these silently skipped. A failure to pre-clean now fails the test
+// loudly instead.
 async function install() {
+  if (await isInstalled('checklists')) await uninstallApp('checklists')
   const res = await installApp('checklists')
   const template = res.fixtures.find((f) => f.table === TEMPLATE_DT)
   if (!template) throw new Error('install created no template fixture')
@@ -68,8 +71,7 @@ async function attach(as: TestClient, itemName: string) {
 }
 
 describe('checklists app: template → run lifecycle', () => {
-  test('install ships a usable template; uninstall removes everything', async ({ admin, skip }) => {
-    if (await dirty()) skip('dev database already carries the checklists structure')
+  test('install ships a usable template; uninstall removes everything', async ({ admin }) => {
     const { templateName } = await install()
     try {
       const template = await admin.get<Row>(`/api/table/${encodeURIComponent(TEMPLATE_DT)}/${templateName}`)
@@ -91,9 +93,7 @@ describe('checklists app: template → run lifecycle', () => {
 
   test("a new run snapshots the template's items; editing the template later does not rewrite it", async ({
     admin,
-    skip,
   }) => {
-    if (await dirty()) skip('dev database already carries the checklists structure')
     const { templateName } = await install()
     try {
       const run = await admin.post<Row>('/api/save_doc', {
@@ -127,8 +127,7 @@ describe('checklists app: template → run lifecycle', () => {
     }
   })
 
-  test('ticking stamps done_at, unticking clears it, progress follows', async ({ admin, skip }) => {
-    if (await dirty()) skip('dev database already carries the checklists structure')
+  test('ticking stamps done_at, unticking clears it, progress follows', async ({ admin }) => {
     const { templateName } = await install()
     try {
       const run = await admin.post<Row>('/api/save_doc', {
@@ -162,8 +161,7 @@ describe('checklists app: template → run lifecycle', () => {
     }
   })
 
-  test('submit is gated on must-do items — a note is an accepted excuse', async ({ admin, skip }) => {
-    if (await dirty()) skip('dev database already carries the checklists structure')
+  test('submit is gated on must-do items — a note is an accepted excuse', async ({ admin }) => {
     const { templateName } = await install()
     try {
       const run = await admin.post<Row>('/api/save_doc', {
@@ -201,9 +199,7 @@ describe('checklists app: template → run lifecycle', () => {
   test('a team leader works own runs only; a store manager sees all', async ({
     admin,
     createUser,
-    skip,
   }) => {
-    if (await dirty()) skip('dev database already carries the checklists structure')
     const { templateName } = await install()
     try {
       const tl = await createUser({ roles: ['Team Leader'] })
@@ -251,9 +247,7 @@ describe('checklists app: template → run lifecycle', () => {
   // a clean submit.
   test('a payload may tick items and excuse them — it may never reshape the snapshot', async ({
     admin,
-    skip,
   }) => {
-    if (await dirty()) skip('dev database already carries the checklists structure')
     const { templateName } = await install()
     try {
       // Creation ignores caller-supplied items entirely: structure comes from
@@ -318,9 +312,7 @@ describe('checklists app: template → run lifecycle', () => {
 
   test('a submitted run is final: no late ticks, and no way back to Open', async ({
     admin,
-    skip,
   }) => {
-    if (await dirty()) skip('dev database already carries the checklists structure')
     const { templateName } = await install()
     try {
       const run = await admin.post<Row>('/api/save_doc', {
@@ -387,9 +379,7 @@ describe('checklists app: template → run lifecycle', () => {
   // file to one.
   test("a team leader cannot reach another leader's items, photos or uploads", async ({
     createUser,
-    skip,
   }) => {
-    if (await dirty()) skip('dev database already carries the checklists structure')
     const { templateName } = await install()
     const uploaded: string[] = []
     try {

@@ -53,7 +53,18 @@ they are the server's record of what a store actually did.
   not the first two, so a checklist in a Table's third sub-table binds
   like one in its first.
 
-Verified: server **606 tests green** (110 files) including three new
+- **The checklists suite pre-cleans instead of skipping** (review F1) —
+  the conversion the import create-path specs got in #118, now that
+  deletion exists to pay for it. `install()` uninstalls a committed
+  structure before installing its own, inside the test's transaction, so
+  the rollback hands the database back untouched (verified: the 4 Tables,
+  the `installed_app` row and the 8 template items all survive a run).
+  The old guard skipped, and a skipped suite reports green while proving
+  nothing — on a dirty database the full run showed **605 passed / 10
+  skipped** with all eight checklist tests silently absent; it now shows
+  **638 passed / 2 skipped** on that same database.
+
+Verified: server **638 tests green** (113 files) including three new
 `checklists-app.test.ts` cases — snapshot reshaping refused, submitted run
 final both ways, and a two-team-leader pass over direct child reads, child
 lists, File lists, signed URLs and uploads. New
@@ -71,9 +82,13 @@ like `compileFilter` does — a bare `sql` fragment is a *thenable*, so
 `await`ing one EXECUTES it instead of returning it; the typechecker catches
 this, the runtime would not have. (2) That fragment is parenthesized before
 being ANDed into the WHERE — `AND` binds tighter than the ORs inside it.
-(3) This worktree's `node_modules` predated `@duckdb/node-api`, which fails
+(3) One pre-#118 skip guard SURVIVES, in a file this PR does not touch:
+the helpdesk round trip in `app-fixtures.test.ts` still skips on a
+committed `HD Ticket`. Same conversion applies, same silent-green hazard —
+flagged for the owner rather than swept in here.
+(4) This worktree's `node_modules` predated `@duckdb/node-api`, which fails
 4 of 6 web unit FILES and one server file until `pnpm install` runs — it
-looks like a code break and is not one. (4) Ten e2e specs fail in this dev
+looks like a code break and is not one. (5) Ten e2e specs fail in this dev
 database (`grid-layout`, `report-*`, `dashboard`, `formview`,
 `link-autocomplete`, `client-validation`, `letterhead`); all were confirmed
 to fail identically on the unmodified base commit — dirty-dev-DB breakage,
