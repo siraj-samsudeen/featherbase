@@ -8,8 +8,10 @@
 <FEAT>-J1 — "<the user's own words for job A>."
 <FEAT>-J2 — "<job B>."
 
-## The fixture — `<name>.csv`
-<the agreement dataset, small, each column exercising a different rule>
+## The fixture — `<name>.csv` *(or: ## Prior state)*
+<data-shaped: the agreement dataset, small, each column exercising a
+different rule · residue-shaped: the state an upstream feature leaves
+behind, reusing its fixture>
 **Limits, stated on purpose:** deliberately benign; hostile-space coverage
 lives in the rules' properties.
 
@@ -34,6 +36,10 @@ scale: … · observability: … · compound hazards: …
 **Property:** <one sentence quantified over the whole input space>
 | Input | → | Why? |
 |---|---|---|
+
+### <FEAT>-R1b — <name> · `shape: contract`
+`<METHOD> /api/<address>` — the address is the contract's identity.
+<enumerate behaviours; example table only where values genuinely vary>
 
 ### <FEAT>-R2 — <name> · `shape: judgement`
 Conformance: <named constants, ADR ref>. Fitness: <corpus pointer + caveat>.

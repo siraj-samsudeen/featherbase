@@ -34,9 +34,12 @@ layer; HTML is always downstream.
 
 ## Authoring steps
 
-1. **Job + fixture.** One sentence per job. One deliberately benign
-   agreement fixture, designed so each column/field exercises a different
-   rule; state its limits (hostile-space coverage lives in properties).
+1. **Job + fixture *or prior state*.** One sentence per job. Data-shaped
+   features get a deliberately benign agreement fixture (each column
+   exercising a different rule; limits stated). Features whose input is
+   *residue* — state another feature leaves behind, as deletion's is —
+   describe that prior state instead; reusing the upstream feature's
+   fixture is the honest move (trial #1 finding).
 2. **Journeys** (2–3): the walk told once, each step a triple
    *(where am I, what do I do, what must I observably see)* — every "see"
    an observable at a declared boundary. Loops are repeating groups;
@@ -57,6 +60,11 @@ layer; HTML is always downstream.
    exclusive taxonomy — add supporting strategies where needed.
    - Rule-shaped: example table (business-signable, "Why?" column,
      `rejected` sentinel) **and** a one-sentence property.
+   - Contract-shaped: **name the address** (`DELETE /api/doctype/:name`)
+     — a contract without its route isn't one; that is the contract's
+     identity, not implementation detail. An example table is optional:
+     where rows would only restate the rule, enumerate the behaviours
+     instead (trial #1 finding).
    - Judgement-shaped: split **conformance** (implements the approved
      algorithm and named constants — deterministic) from **fitness**
      (useful over a labelled corpus — empirical, scored as %).
@@ -70,7 +78,10 @@ layer; HTML is always downstream.
 8. **Tests from the spec.** Journeys give the browser test its skeleton
    (feather-testing-core chains; the author still owns setup, isolation,
    waits, adequacy). Properties/boundaries prove rules; reconciliation
-   proves invariants.
+   proves invariants. Dialogs collide with text-addressed verbs (the
+   dialog's "Delete" under the page's "Delete Table") — scope with
+   `within(dialogSelector, s => s.clickButton(…))` before falling back
+   to `step()` (trial #1 finding).
 
 ## Standing rules (the corrected set)
 

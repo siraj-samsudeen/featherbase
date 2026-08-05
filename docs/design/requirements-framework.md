@@ -363,9 +363,11 @@ document agents don't read):
 
 ## 11. What this format deliberately omits
 
-- **Implementation detail** — no API routes, schemas, or component names in
-  the spec body; those live in code, `design.md`, and ADRs (feather-spec's
-  product-vs-tech lens).
+- **Implementation detail** — no schemas or component names in the spec
+  body; those live in code, `design.md`, and ADRs (feather-spec's
+  product-vs-tech lens). **One carve-out (trial #1):** a contract-shaped
+  rule names its address (`DELETE /api/doctype/:name`) — the route is the
+  contract's identity, not implementation detail.
 - **Status woven into the spec body** — the spec says what *should* be
   true; the matrix says what *is proven*, stamped with when.
 - **Hand-written "actual" columns** — actual is the test run's output.
