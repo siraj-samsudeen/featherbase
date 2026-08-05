@@ -62,7 +62,12 @@ they are the server's record of what a store actually did.
   The old guard skipped, and a skipped suite reports green while proving
   nothing — on a dirty database the full run showed **605 passed / 10
   skipped** with all eight checklist tests silently absent; it now shows
-  **638 passed / 2 skipped** on that same database.
+  **639 passed / 1 skipped** on that same database. The helpdesk round
+  trip in `app-fixtures.test.ts` got the same conversion by owner
+  instruction: it additionally clears the look-alike `Email Account`,
+  because an ADOPTED fixture row is never in the ledger and so survives
+  uninstall — leaving it in place would make the next run's "this row
+  predates the app" premise a lie.
 
 Verified: server **638 tests green** (113 files) including three new
 `checklists-app.test.ts` cases — snapshot reshaping refused, submitted run
@@ -82,10 +87,10 @@ like `compileFilter` does — a bare `sql` fragment is a *thenable*, so
 `await`ing one EXECUTES it instead of returning it; the typechecker catches
 this, the runtime would not have. (2) That fragment is parenthesized before
 being ANDed into the WHERE — `AND` binds tighter than the ORs inside it.
-(3) One pre-#118 skip guard SURVIVES, in a file this PR does not touch:
-the helpdesk round trip in `app-fixtures.test.ts` still skips on a
-committed `HD Ticket`. Same conversion applies, same silent-green hazard —
-flagged for the owner rather than swept in here.
+(3) The ONE skip guard left in the server suite is not this pattern and
+should stay: `system-flag.test.ts` asserts a property of a *freshly
+migrated* database, and the pre-clean trick cannot apply — the "leftovers"
+there are the developer's own tables, which a test may not delete.
 (4) This worktree's `node_modules` predated `@duckdb/node-api`, which fails
 4 of 6 web unit FILES and one server file until `pnpm install` runs — it
 looks like a code break and is not one. (5) Ten e2e specs fail in this dev
