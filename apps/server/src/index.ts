@@ -8,7 +8,7 @@ import { config } from './config'
 import { sql } from './db'
 import { AppError, errorResponse } from './errors'
 import { getMeta, resolveTableName } from './meta'
-import { createTable, setIdPattern, updateTable } from './doctype-engine'
+import { createTable, deleteTable, setIdPattern, updateTable } from './doctype-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
@@ -576,6 +576,13 @@ app.put('/api/doctype/:name/id_pattern', async (c) => {
   if (typeof body.id_pattern !== 'string')
     throw new AppError('ValidationError', 'Expected { id_pattern }')
   return c.json(await setIdPattern(c.req.param('name'), body.id_pattern))
+})
+
+// DEL-R1/R2 (docs/specs/0003-table-deletion.md): delete a Table outright.
+app.delete('/api/doctype/:name', async (c) => {
+  await assertSystemManager(who(c))
+  await deleteTable(c.req.param('name'), who(c))
+  return c.json({ ok: true })
 })
 
 app.put('/api/doctype/:name', async (c) => {

@@ -2,6 +2,8 @@ import { z } from 'zod'
 import { sql } from './db'
 import { AppError } from './errors'
 import { COLUMN_TYPE_VALUES, type TableMeta, getMeta, invalidateMeta } from './meta'
+import { logAccess } from './audit'
+import { deleteStored } from './storage'
 
 // Columns every generated table has (META-005); user columns cannot shadow them.
 export const STANDARD_COLUMNS = [
@@ -488,4 +490,73 @@ export async function createTable(input: unknown): Promise<TableMeta> {
   })
   invalidateMeta(def.name)
   return getMeta(def.name)
+}
+
+// DEL-R2..R8 (docs/specs/0003-table-deletion.md): delete a Table outright —
+// definition, columns, physical table, and every live pointer at it.
+export async function deleteTable(name: string, user = 'Administrator'): Promise<void> {
+  const meta = await getMeta(name)
+  if (meta.system)
+    throw new AppError('ValidationError', `${meta.name} is a system table and cannot be deleted`)
+
+  // DEL-R3: DOC-006's reverse lookup, one level up. Any OTHER Table whose
+  // schema targets this one — a Reference column or a Sub-table's row
+  // storage — blocks, even with zero data rows: the column is the dependency.
+  const blockers = await sql<{ parent: string; column_name: string }[]>`
+    select parent, column_name from column_def
+    where (reference_table = ${meta.name} or row_table = ${meta.name})
+      and parent <> ${meta.name}
+    order by parent, column_name`
+  if (blockers.length)
+    throw new AppError(
+      'ValidationError',
+      `Cannot delete ${meta.name}: referenced by ${blockers
+        .map((b) => `${b.parent}.${b.column_name}`)
+        .join(', ')}`,
+    )
+
+  // DEL-R4: "live pointer" is defined by metadata — every column anywhere
+  // declared Reference → Table. Plain-text mentions (Data columns like the
+  // Access Log's) are testimony, not pointers, and survive. Settings-kind
+  // and bound owners hold no local rows to sweep.
+  const pointers = await sql<{ parent: string; column_name: string }[]>`
+    select cd.parent, cd.column_name from column_def cd
+    join table_def td on td.name = cd.parent
+    where cd.column_type = 'Reference' and cd.reference_table = 'Table'
+      and cd.parent <> ${meta.name}
+      and td.kind <> 'settings' and td.data_source is null`
+
+  // DEL-R7: capture attachment urls before their registry rows vanish.
+  const files = await sql<{ file_url: string | null }[]>`
+    select file_url from file where ref_table = ${meta.name}`
+
+  const physical = tableName(meta.name)
+  await sql.begin(async (tx) => {
+    for (const p of pointers)
+      await tx`
+        delete from ${tx(tableName(p.parent))}
+        where ${tx(p.column_name)} = ${meta.name}`
+    // This Table's own child rows; the child Table definition is not
+    // cascaded — it may serve other parents (DEL-R2).
+    for (const f of meta.columns) {
+      if (f.column_type !== 'Sub-table') continue
+      await tx`
+        delete from ${tx(tableName(f.row_table!))} where parenttype = ${meta.name}`
+    }
+    await tx`delete from column_def where parent = ${meta.name}`
+    await tx`delete from table_def where name = ${meta.name}`
+    // DEL-R6/BV1: a bound Table sheds its binding, never its source's
+    // storage; a settings Table never had a physical table. RLS policies
+    // drop with the table. Series counters are deliberately untouched
+    // (DEL-R5 / IMP-R6: the pattern is the promise, not the number).
+    if (!meta.data_source && meta.kind !== 'settings')
+      await tx.unsafe(`drop table if exists "${physical}"`)
+  })
+  invalidateMeta(meta.name)
+  // DEL-R8: the audit line is plain text, so it outlives its subject.
+  await logAccess(user, 'delete_table', { table: meta.name })
+  // DEL-R7: bytes are removed best-effort after commit — a survivor is disk
+  // garbage, not a leak (files are only served through the registry).
+  for (const f of files)
+    if (f.file_url) await deleteStored(f.file_url).catch(() => {})
 }

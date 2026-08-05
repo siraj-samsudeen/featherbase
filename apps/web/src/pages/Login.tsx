@@ -57,8 +57,9 @@ export function LoginPage() {
         <div className="fc-card p-6">
           <form className="space-y-4" data-testid="login-form" onSubmit={onSubmit}>
             <div>
-              <label className="fc-label">Email or username</label>
+              <label className="fc-label" htmlFor="login-email">Email or username</label>
               <input
+                id="login-email"
                 type="text"
                 name="email"
                 autoComplete="username"
@@ -67,8 +68,9 @@ export function LoginPage() {
               />
             </div>
             <div>
-              <label className="fc-label">Password</label>
+              <label className="fc-label" htmlFor="login-password">Password</label>
               <input
+                id="login-password"
                 type="password"
                 name="password"
                 autoComplete="current-password"

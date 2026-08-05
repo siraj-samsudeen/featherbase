@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 import { recentActions, type RecentEntry } from '../lib/recents'
 import { NO_COLUMN_TYPES, isSourceReadOnly, listColumns, useMeta } from '../lib/meta'
@@ -88,6 +88,33 @@ export function ListView({
   const filterKey = JSON.stringify(filters)
   useEffect(() => setStart(0), [filterKey])
   useEffect(() => setSelected(new Set()), [filterKey, start, doctype])
+  // DEL-J1 (docs/specs/0003-table-deletion.md): deleting the whole Table.
+  // The confirmation must carry the LIVE row count, never a bare "sure?".
+  const navigate = useNavigate()
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const deleteCount = useQuery({
+    queryKey: ['delete-count', doctype],
+    enabled: confirmingDelete,
+    queryFn: () => api.post<{ count: number }>('/api/dashboard/count', { doctype }),
+  })
+  async function deleteTable() {
+    setDeleteBusy(true)
+    setDeleteError(null)
+    try {
+      await api.delete(`/api/doctype/${encodeURIComponent(doctype)}`)
+      // Drop this table's queries (refetching them would 404), then let the
+      // rest of the app refetch what the sweep touched (nav, home pages).
+      for (const key of ['meta', 'list', 'doc', 'delete-count'])
+        queryClient.removeQueries({ queryKey: [key, doctype] })
+      await navigate({ to: '/admin/all-tables' })
+      void queryClient.invalidateQueries()
+    } catch (e) {
+      setDeleteError(e instanceof ApiError ? e.message : String(e))
+      setDeleteBusy(false)
+    }
+  }
   // #100 pattern 5 (Access subdatasheets): rows of tables with Sub-table
   // columns expand their child rows inline via a chevron.
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -158,7 +185,14 @@ export function ListView({
   })
 
   if (meta.isLoading) return <p className="text-sm text-gray-400">Loading…</p>
-  if (meta.isError) return <p className="text-sm text-red-600">Cannot load {doctype}</p>
+  // DEL-R9: the server's not-found can carry a tombstone ("X was deleted by
+  // … on …") — show its words, not a generic shrug.
+  if (meta.isError)
+    return (
+      <p className="text-sm text-red-600" data-testid="list-error">
+        {meta.error instanceof ApiError ? meta.error.message : `Cannot load ${doctype}`}
+      </p>
+    )
 
   const total = list.data?.total ?? 0
   const rows = list.data?.data ?? []
@@ -397,10 +431,74 @@ export function ListView({
               >
                 Permissions
               </Link>
+              {/* DEL-J1/DEL-R1 (docs/specs/0003-table-deletion.md): the
+                  affordance is generic and metadata-gated — never rendered
+                  for system tables, never per-table code. */}
+              {!meta.data?.system && (
+                <button
+                  onClick={() => setConfirmingDelete(true)}
+                  className="fc-btn border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)]"
+                  data-testid="delete-table"
+                >
+                  Delete Table
+                </button>
+              )}
             </>
           )}
         </div>
       </div>
+      {/* DEL-J1.2: a real dialog — labelled, Escape-dismissable — that names
+          the Table and its live row count before anything irreversible. */}
+      {confirmingDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => !deleteBusy && setConfirmingDelete(false)}
+          onKeyDown={(e) => e.key === 'Escape' && !deleteBusy && setConfirmingDelete(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-table-title"
+            className="fc-card w-full max-w-md p-4"
+            data-testid="delete-table-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="delete-table-title" className="mb-2 text-base font-semibold text-[var(--color-ink)]">
+              Delete {doctype}?
+            </h2>
+            <p className="mb-3 text-sm text-[var(--color-ink-muted)]" data-testid="delete-table-count">
+              {deleteCount.data
+                ? `${deleteCount.data.count} row${deleteCount.data.count === 1 ? '' : 's'} will be permanently deleted.`
+                : 'Counting rows…'}{' '}
+              This cannot be undone.
+            </p>
+            {deleteError && (
+              <p className="mb-3 text-sm text-[var(--color-danger)]" data-testid="delete-table-error">
+                {deleteError}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                autoFocus
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deleteBusy}
+                className="fc-btn"
+                data-testid="delete-table-cancel"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={deleteTable}
+                disabled={deleteBusy || !deleteCount.data}
+                className="fc-btn border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)] disabled:opacity-40"
+                data-testid="delete-table-confirm"
+              >
+                {deleteBusy ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {onFiltersChange && <SavedViewsBar doctype={doctype} filters={filters} onApply={onFiltersChange} />}
       {onFiltersChange && <RecentStrip doctype={doctype} onApply={onFiltersChange} />}
       {onFiltersChange && meta.data && (
