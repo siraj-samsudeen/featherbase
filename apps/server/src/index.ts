@@ -8,7 +8,7 @@ import { config } from './config'
 import { sql } from './db'
 import { AppError, errorResponse } from './errors'
 import { getMeta, resolveTableName } from './meta'
-import { createTable, setIdPattern, updateTable } from './doctype-engine'
+import { createTable, deleteTable, setIdPattern, updateTable } from './doctype-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
@@ -582,6 +582,13 @@ app.put('/api/doctype/:name/id_pattern', async (c) => {
   return c.json(await setIdPattern(c.req.param('name'), body.id_pattern))
 })
 
+// DEL-R1/R2 (docs/specs/0003-table-deletion.md): delete a Table outright.
+app.delete('/api/doctype/:name', async (c) => {
+  await assertSystemManager(who(c))
+  await deleteTable(c.req.param('name'), who(c))
+  return c.json({ ok: true })
+})
+
 app.put('/api/doctype/:name', async (c) => {
   await assertSystemManager(who(c))
   const body = (await c.req.json()) as Record<string, unknown> & { drop_columns?: boolean }
@@ -638,17 +645,19 @@ app.post('/api/upload_file', async (c) => {
   if (!(file instanceof File))
     throw new AppError('ValidationError', 'Expected multipart form data with a "file" part')
   const isPrivate = body.is_private === '1' || body.is_private === 'true'
-  // FILE-001: attaching binds this file to a document, so the caller must be
-  // able to READ that document — otherwise an upload is a write into someone
+  // FILE-001: attaching binds this file to something, so the caller must be
+  // able to READ that thing — otherwise an upload is a write into someone
   // else's record, and (once attached) a signed-URL key to it. Checked BEFORE
   // the storage object exists, so a refused upload leaves nothing behind.
   // Read, not write: own_rows_only portals grant create without write, and
   // their users legitimately attach to their own rows.
   const refTable = typeof body.ref_doctype === 'string' && body.ref_doctype ? body.ref_doctype : null
   const refName = typeof body.ref_name === 'string' && body.ref_name ? body.ref_name : null
-  if (refTable && !refName)
-    throw new AppError('ValidationError', 'ref_doctype needs a ref_name to attach to')
+  // A ref_doctype with no ref_name attaches to the TABLE rather than to any
+  // one row (DEL-R7 registers such files so deleting the Table sweeps them),
+  // so the Table's own read grant is what there is to check.
   if (refTable && refName) await getDoc(refTable, refName, who(c))
+  else if (refTable) await assertPermission(who(c), refTable, 'read')
   const content = Buffer.from(await file.arrayBuffer())
   const stored = await saveUpload(content, file.name, isPrivate)
   const mimeType = file.type || 'application/octet-stream'

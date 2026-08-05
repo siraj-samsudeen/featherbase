@@ -91,6 +91,28 @@ describe('FILE-001: file upload + storage', () => {
     expect(res.status).toBe(401)
   })
 
+  // Attaching binds the file to something and hands out a signed-URL key to
+  // it, so the reference is authorized BEFORE any bytes are written — at row
+  // level when ref_name names one, at Table level when it does not.
+  test('refuses to attach to a row, or a Table, the caller cannot read', async ({
+    createUser,
+  }) => {
+    const stranger = await createUser({ roles: [] })
+    const [{ n: before }] = await sql`select count(*)::int as n from file`
+
+    const row = await upload(stranger, 'x.txt', 'x', 'text/plain', {
+      ref_doctype: 'User',
+      ref_name: 'Administrator',
+    })
+    expect(row.status).toBe(403)
+    const table = await upload(stranger, 'x.txt', 'x', 'text/plain', { ref_doctype: 'User' })
+    expect(table.status).toBe(403)
+
+    // Refused before storage: nothing was registered on the way out.
+    const [{ n: after }] = await sql`select count(*)::int as n from file`
+    expect(after).toBe(before)
+  })
+
   test('rejects a body with no file part', async ({ admin }) => {
     const form = new FormData()
     form.append('nope', 'not a file')

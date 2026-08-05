@@ -228,7 +228,25 @@ export async function getMeta(name: string): Promise<TableMeta> {
     return cached
   }
   const [dt] = await sql`select * from table_def where name = ${name}`
-  if (!dt) throw new AppError('NotFoundError', `Table ${name} not found`)
+  if (!dt) {
+    // DEL-R9 (docs/specs/0003-table-deletion.md): a deleted Table's
+    // not-found names the deletion — the Access Log's plain-text testimony
+    // (DEL-R8) read back at the miss. A never-created name stays a plain
+    // not-found: a tombstone is only ever minted from a real burial.
+    // Guarded: a database mid-upgrade may not have access_log yet.
+    const [grave] = await sql`
+      select "user", created_at from access_log
+      where operation = 'delete_table' and ref_table = ${name}
+      order by created_at desc limit 1`.catch(() => [])
+    if (grave)
+      throw new AppError(
+        'NotFoundError',
+        `Table ${name} was deleted by ${grave.user as string} on ${new Date(
+          grave.created_at as string,
+        ).toISOString().slice(0, 10)}`,
+      )
+    throw new AppError('NotFoundError', `Table ${name} not found`)
+  }
   const columns = await sql<ColumnDef[]>`
     select * from column_def where parent = ${name} order by position, column_name`
   const meta = { ...(dt as unknown as Omit<TableMeta, 'columns'>), columns }

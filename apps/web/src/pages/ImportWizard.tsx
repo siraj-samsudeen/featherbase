@@ -57,7 +57,11 @@ interface SheetPlan {
   result: { inserted: number; failed: { index: number; message: string }[] } | null
 }
 
-const IMPORT_CHUNK = 500
+// ADR 0008: named UI-side thresholds — chunking and suggestion bets.
+const IMPORT_CHUNK = 500 // rows per :import call; log rows are per part
+const SUGGEST_MIN_SCORE = 0.3 // weakest near-match worth surfacing as a hint
+const SUGGEST_MAX = 3 // hints shown per sheet
+const ERRORS_ON_SCREEN = 5 // failures listed inline; the log keeps more
 
 interface ImportTarget {
   name: string
@@ -112,9 +116,9 @@ function TargetPicker({
     () =>
       targets
         .map((t) => ({ t, q: tableMatchQuality(sheet.headers, t.columns) }))
-        .filter((r) => r.q.score >= 0.3)
+        .filter((r) => r.q.score >= SUGGEST_MIN_SCORE)
         .sort((a, b) => b.q.score - a.q.score || b.q.coverage - a.q.coverage)
-        .slice(0, 3),
+        .slice(0, SUGGEST_MAX),
     [targets, sheet],
   )
 
@@ -307,7 +311,7 @@ export function ImportWizard() {
             : undefined
           const pinnedScore = pinned ? scoreTableMatch(sheet.headers, pinned.columns) : 0
           const target =
-            pinned && pinnedScore >= 0.3
+            pinned && pinnedScore >= SUGGEST_MIN_SCORE
               ? pinned.name
               : best && shouldAutoMatch(newName, best.name, best.q)
                 ? best.name
@@ -860,7 +864,7 @@ export function ImportWizard() {
                   <span className="text-red-600">
                     {plan.check.valid} rows ready, {plan.check.failed.length} with problems:{' '}
                     {plan.check.failed
-                      .slice(0, 5)
+                      .slice(0, ERRORS_ON_SCREEN)
                       .map((f) => `row ${f.index + 2}: ${f.message}`)
                       .join('; ')}
                     {plan.check.failed.length > 5 && ` … and ${plan.check.failed.length - 5} more`}

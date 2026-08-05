@@ -11,6 +11,8 @@ import { registerCollectionAction } from '../actions'
 // existing name conflicts instead of silently updating. Best-effort: bad rows
 // are reported by index, good rows still land.
 const MAX_ROWS = 10_000
+// ADR 0008: failures kept in the Import Log's error summary (Q3 owns 'more').
+const LOG_ERROR_SAMPLE = 20
 
 interface FailedRow {
   index: number
@@ -122,7 +124,7 @@ async function writeImportLog(
       failed: failed.length,
       error_summary: failed.length
         ? failed
-            .slice(0, 20)
+            .slice(0, LOG_ERROR_SAMPLE)
             .map((f) => `#${f.index}: ${f.message}`)
             .join('\n') + (failed.length > 20 ? `\n… and ${failed.length - 20} more` : '')
         : undefined,

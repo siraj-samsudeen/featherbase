@@ -1,0 +1,39 @@
+id,shape,strategy,static_link,verdict,issue,stamped
+IMP-J1,sequence,browser walk,"apps/web/e2e/import-file.spec.ts; apps/web/e2e/import-journey.spec.ts (DSL)","proven — hermetic since table deletion (spec 0003): create-path specs pre-clean instead of self-skipping; ran green on a used DB; DSL spec still proves R7's notice when Zones exists",,2026-08-04
+IMP-J1.2,sequence,browser walk,apps/web/e2e/import-file.spec.ts,proven,,2026-08-03
+IMP-J1.6,sequence,server contract,apps/server/test/import-action.test.ts,"rule-tier only — never witnessed in a browser; branch applies to fixed-type columns",,2026-08-03
+IMP-J2,sequence,browser walk,apps/web/e2e/import-wizard.spec.ts,proven,,2026-08-03
+IMP-J2.3-manual-pick,sequence,browser walk,,gap — the added-rows notice disappears on a manual pick,,2026-08-03
+IMP-J2.6-rehearsal,contract,api + browser,"apps/server/test/import-action.test.ts; apps/web/e2e/import-wizard.spec.ts",proven,,2026-08-03
+IMP-J3,sequence,browser walk,apps/web/e2e/import-wizard.spec.ts,"proven; empty-sheet skip unasserted",,2026-08-03
+IMP-R1,rule,examples + properties,"apps/server/test/import-infer.test.ts; apps/server/test/import-properties.test.ts",proven,,2026-08-03
+IMP-R1.uniq-boundary,rule,property boundary,apps/server/test/import-properties.test.ts,expected-failing pin — identical 62+-char headers collapse to one name,#110,2026-08-03
+IMP-R2,rule,examples + properties,"apps/server/test/import-infer.test.ts; import-infer-tz.test.ts; import-properties.test.ts",proven,,2026-08-03
+IMP-R2.leading-zero,rule,boundary,apps/server/test/import-properties.test.ts,expected-failing pin — infers Int and destroys padding,#111,2026-08-03
+IMP-R2.16-digit,rule,boundary,apps/server/test/import-properties.test.ts,expected-failing pin — falls through INT_SAFE_DIGITS to unbounded FLOAT_RE,#112,2026-08-03
+IMP-R2.7,rule,unit,apps/server/test/import-infer.test.ts,proven — Is Active stays Check,,2026-08-03
+IMP-R3,judgement,corpus (pending),apps/server/test/import-infer.test.ts (anchors only),"anchors proven; consistency untested; no corpus; thresholds named (ADR 0008)",,2026-08-03
+IMP-R4,rule,unit,apps/server/test/import-infer.test.ts,proven,,2026-08-03
+IMP-R5,rule,unit,apps/server/test/import-infer.test.ts,proven,,2026-08-03
+IMP-R6.shape,rule,unit + browser,"apps/server/test/import-infer.test.ts; apps/web/e2e/naming-series.spec.ts; import-journey.spec.ts (neutral shape only)",proven,,2026-08-03
+IMP-R6.follows-final-name,rule,none,,known-gap — wizard rename does not re-derive the series; NO evidence claim until fixed,#114,2026-08-03
+IMP-R7,judgement,corpus (pending),apps/server/test/import-infer.test.ts (incl. the Zone no-auto-match case),"anchors proven; no corpus; thresholds named (ADR 0008)",,2026-08-03
+IMP-R8,rule,unit + server,"apps/server/test/import-infer.test.ts; import-action.test.ts",rule-tier only,,2026-08-03
+IMP-R9.on-J1,contract,none,,gap — the first-time journey commits blind; mis-scoped whole-file gap-pin fix pending (H3),,2026-08-03
+C1.per-call,contract,api,apps/server/test/import-action.test.ts,proven — insert/dry_run/403-whole-request/malformed/kind-refusal/write-effect,,2026-08-03
+C1.rehearsal-across-chunks,contract,none,,reported — the wizard chunks dry-runs so file-wide duplicate scope is per-chunk; not re-executed,,2026-08-03
+IMP-I1.arithmetic,invariant,reconciliation,apps/server/test/import-invariants.test.ts,proven — rows in = inserted + failed + dropped-blank,,2026-08-03
+IMP-I1.true-row-numbers,invariant,reconciliation,apps/server/test/import-invariants.test.ts,expected-failing pin — a blank row shifts later errors onto innocent rows,#115,2026-08-03
+IMP-I2,invariant,reconciliation,apps/server/test/import-invariants.test.ts,proven — one log row per part; parts complete; sums equal the run,,2026-08-03
+IMP-I3,invariant,reconciliation,"apps/server/test/import-action.test.ts; import-invariants.test.ts",proven — no rows; no log; no series ids burned,,2026-08-03
+IMP-H1,hazard,decision,,"resolution decided — R12 (upsert) + R13 (undo) + table deletion disarm all three legs; table deletion built and proven 2026-08-04 (spec 0003); listed until R12/R13 land",,2026-08-04
+IMP-H2,hazard,none,,reported — mid-import permission abort strands rows with no record; not re-executed,,2026-08-03
+IMP-H3,hazard,none,,reported — whole-file predicate over per-sheet behaviour; split from H2,,2026-08-03
+Q1,question,decision,,graduated — decided by the arbiter → IMP-R11,,2026-08-04
+Q2,question,decision,,graduated — decided by the arbiter → IMP-R12 (with Q4),,2026-08-04
+Q3,question,decision,,open — error volume,,2026-08-03
+Q4,question,decision,,graduated — folded into IMP-R12 (key column may map the row identifier),,2026-08-04
+Q5,question,decision,,graduated — decided by the arbiter → IMP-R13,,2026-08-04
+IMP-R11,contract,api (pending),,decided 2026-08-04 — header-only file creates the empty Table and logs 0 inserted; not yet built,,2026-08-04
+IMP-R12,contract,api + browser (pending),,decided 2026-08-04 — re-import upserts on a user-mapped key (identifier mappable); not yet built,,2026-08-04
+IMP-R13,contract,api + browser (pending),,decided 2026-08-04 — Import Log records inserted row ids; one-click reverse; not yet built,,2026-08-04

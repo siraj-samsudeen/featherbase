@@ -33,10 +33,13 @@ they are the server's record of what a store actually did.
     parent (`assertParentReadable`) and `scopedWhere` compiles one
     OR-branch per Table that can own the child rows, each scoped to what
     the caller may see of it (`parentScopeCond`).
-  - **`/api/upload_file` authorizes the referenced document** before it
-    writes a storage object or a File row, so a refused upload leaves
-    nothing behind. Read, not write: `own_rows_only` portals grant create
-    without write and their users legitimately attach to their own rows.
+  - **`/api/upload_file` authorizes the reference** before it writes a
+    storage object or a File row, so a refused upload leaves nothing
+    behind. Read, not write: `own_rows_only` portals grant create without
+    write and their users legitimately attach to their own rows. A
+    `ref_doctype` with no `ref_name` attaches to the TABLE rather than a
+    row — DEL-R7 (merged from main) registers exactly those so deleting a
+    Table sweeps them — so that case checks the Table's read grant instead.
   Plus: checklist photos upload `is_private`, and Team Leader's `File`
   grant is `own_rows_only` — a leader sees the files they uploaded, and
   minting a URL for anyone else's is refused at `/api/signed_url`, which
@@ -79,6 +82,106 @@ not a regression.
 Next: per-item photo *requirement* enforcement (`photo_proof` still invites
 rather than blocks), and a template-picker "start run" affordance cheaper
 than the generic new form.
+
+## 2026-08-05 — DEL-R9: tombstone messaging (Q2 graduated, #118)
+
+The arbiter ruled on spec 0003's Q2 the day it was raised: option (1),
+tombstone messaging. Per the change protocol the spec changed first
+(Q2 removed, DEL-R9 added, J1.4's "must see" now names the deletion),
+the new server tests demonstrably failed against the old code, then the
+implementation landed:
+
+- **Server** (`meta.ts`): `getMeta`'s not-found path reads back the
+  Access Log's `delete_table` testimony (DEL-R8) — a deleted Table 404s
+  with "*X was deleted by 〈user〉 on 〈date〉*"; a never-created name stays
+  a plain "not found" (no burial, no tombstone); repeated
+  create/delete cycles answer with the latest line. Every surface that
+  resolves a Table by name inherits the message through the same
+  boundary. Guarded for mid-upgrade databases without `access_log`.
+- **Web** (`ListView`): the list error path shows the server's words
+  (`ApiError.message`) instead of the generic "Cannot load X" — so a
+  stale Recents entry or bookmark now reads the tombstone.
+- **Proven**: 2 new API tests (deleted vs never-created vs double
+  burial) + the DEL-J1 walk's J1.4 step asserts the tombstone in the
+  browser. Full server suite 112 files / 629 green; evidence CSV rows
+  DEL-R9 and Q2 stamped 2026-08-05.
+- **Gotcha:** feather-testing-postgres's `TestApiError.message`
+  prefixes `404 NotFoundError:` — anchor assertions with `$`, never `^`.
+
+Same day, the arbiter ruled on the remaining questions: **Q1** — the
+counted confirm dialog is ratified as the confirmation rule; typed-name
+confirmation declined. **Q3** — no archive/inactive tier; hard delete
+stands, reconsidered (as its own capability) at first deployment.
+Spec 0003 now has **zero open questions**; every evidence row is
+`proven` except H1 (open by design until first deployment).
+
+Next: unchanged — feature #2 of the journey-spec gate (IMP-R12 or
+IMP-R13).
+
+## 2026-08-04 — Table deletion (#118): spec 0003, first journey-spec trial
+
+Spec-first, per the framework: `docs/specs/0003-table-deletion.md` +
+`docs/specs/evidence/table-deletion.csv` were authored and committed
+BEFORE any code, then built, then every row stamped `proven` at its
+intended tier the same day. The spec survived the build with zero rule
+changes; its retrospective section records where the format chafed
+(the trial's whole point — read it before feature #2 of the gate).
+
+- **Server** — `deleteTable()` (doctype-engine.ts) +
+  `DELETE /api/doctype/:name` (System Manager). One transaction:
+  table_def row, column_def rows, physical table + rows, this table's
+  child *rows* (child Table definition stays). Schema references from
+  other Tables block, naming `Y.column` (DOC-006 one level up);
+  self-references don't; `system` tables refuse. The **sidecar sweep is
+  metadata-derived**: every column anywhere declared `Reference → Table`
+  has its matching rows deleted (Permission, Import Log, File registry,
+  home-page links, …) — no hand list; plain-text mentions (Access Log)
+  deliberately survive, and the deletion writes its own `delete_table`
+  Access Log line. Bound Tables shed only the binding (BV1); series
+  counters untouched (IMP-R6); attachment bytes unlinked post-commit.
+  12 tests in `test/table-deletion.test.ts`, titles quoting DEL-* IDs.
+- **Web** — generic `Delete Table` button in ListView's manager row
+  (hidden for `system` tables, zero per-table code); the confirmation
+  is a real dialog carrying the **live row count**; on success the
+  table's queries are dropped (not refetched — no 404 noise) and the
+  user lands on All tables. Verified by hand in the browser first.
+- **E2E hermeticity (the reason this feature won the decision)** —
+  `e2e/table-deletion.spec.ts` walks DEL-J1 (incl. cancel branch and
+  the system-table affordance absence) and DEL-J2 (refusal names the
+  blocker in the dialog; unblock; retry succeeds). The four create-path
+  import specs now **pre-clean via `e2e/cleanup.ts` instead of
+  self-skipping** — all 7 ran their real create paths green on a used
+  DB. `IMP-J1` flipped to *proven* in the import evidence CSV; #91's
+  drift complaint is closed. Full server suite: 112 files green.
+- **Gotchas:** ValidationError maps to HTTP **417** (Frappe legacy) —
+  test expectations, not 400. The DSL's text-addressed `clickButton`
+  is ambiguous when a dialog's "Delete" sits under the page's "Delete
+  Table" — confirm clicks need a test-id `step()` (retrospective #6).
+- **Open questions for the arbiter (spec 0003):** Q1 typed-name
+  confirmation; Q2 tombstone messaging for stale Recents/deep links
+  (owner-raised mid-build); Q3 archive/inactive semantics as a
+  separate capability.
+
+Next: feature #2 of the journey-spec gate — IMP-R12 (upsert re-import)
+or IMP-R13 (import undo), both already decided and spec'd as rules.
+Ask the owner to add a `harness/features.json` entry for table deletion.
+
+## 2026-08-04 — Owner decisions: four questions graduated into rules
+
+The arbiter ruled on the framework's open decisions (all four
+recommendations accepted): **hermeticity → table deletion becomes a
+product capability**; **Q2+Q4 → IMP-R12** (re-import is an upsert on a
+user-mapped key column, which may map the row identifier); **Q5 →
+IMP-R13** (Import Log records inserted row ids; one-click reverse);
+**Q1 → IMP-R11** (a header-only file creates the empty Table, logged
+with 0 inserted). Per the change protocol the questions are removed,
+the answers live as rules (spec'd, not yet built), H1 carries its
+resolution path, and the evidence CSV rows are stamped 2026-08-04.
+Only Q3 (error volume) remains open.
+
+Next: build table deletion first — it unblocks journey hermeticity,
+supports R13's recovery story, and is the smallest of the three. Then
+R12/R13 as their own journey-spec'd features. Q3 waits for real usage.
 
 ## 2026-08-04 — checklists sample app + generic Checklist view
 
@@ -140,6 +243,98 @@ install into the dev database.
 Next: a "start run from template" affordance cheaper than the generic new
 form (template picker in the view), and per-item photo REQUIREMENT
 enforcement (photo_proof currently invites, never blocks).
+
+## 2026-08-03 — Requirements framework v2 + first DSL journey spec (IMP-J1)
+
+Two threads, one session: the requirements framework became a synthesis
+(`docs/design/requirements-framework.md` — journeys/rules/shapes, merged
+from the v1 draft, an external review, and feather-spec; plus §12: the
+product manual as a generated view, exemplar in `docs/manual/`), and its
+first practical test landed — `feather-testing-core@0.2.0` adopted as the
+e2e vocabulary.
+
+- **Adopted the DSL** (`apps/web/e2e/fixtures.ts`): `test` from
+  `feather-testing-core/playwright` plus a composable `signIn`. New journey
+  specs import from here, not `@playwright/test`.
+- **First journey spec** — `apps/web/e2e/import-journey.spec.ts` walks
+  IMP-J1 (first import creates a typed Table) against the wizard using the
+  framework's zones.csv fixture (`e2e/fixtures/zones.csv` + claims file).
+  Verified end-to-end against the running app: full walk green through
+  meta/count, Import Log entry confirmed via API, re-run skips cleanly.
+- **Findings, exactly as the framework predicted:** (1) `fillIn` refused
+  the login form's unassociated labels → `Login.tsx` gained
+  `htmlFor`/`id` (accessibility dividend); (2) **#114** — the wizard's
+  rename doesn't re-derive the row-id series (ids stayed `ZONES-###`
+  after renaming to Journey Zones); pinned in the spec as a polarity-
+  tagged gap assertion; (3) hermeticity live: the fixture's headers
+  auto-matched the leftover `Zones` Table, so the spec branches — golden
+  J1.3 on a fresh DB, R7's auto-match notice + retarget on a used one.
+- **Gotcha:** `assertPath` in the DSL compares exact pathnames — the
+  post-login route is `/admin/home/home` (home recall), not `/admin`;
+  `signIn` asserts the admin shell instead.
+
+Same day, adoption item 6 landed too:
+`apps/server/test/import-properties.test.ts` (fast-check) — 11 spec-true
+properties over `sanitizeHeaders`/`sanitizeColumnName`/`inferColumnType`
+(length preserved, valid non-reserved identifiers, distinct below the
+truncation boundary, total, order-independent, decimal-forbids-Int,
+Check-before-Choice, Text past 140 chars), with the three executed defects
+pinned as `it.fails` against #110–#112 — each fix flips its pin, forcing
+the flip-to-`it` in the same change. Gotcha: fast-check v4 dropped
+`fullUnicodeString`; use `fc.string({ unit: 'grapheme' })`.
+
+And the rest of the "Next" tier landed the same day:
+
+- **Invariants layer** (`apps/server/test/import-invariants.test.ts`):
+  IMP-I1 reconciliation proven through the real coerceRows → :import
+  pipeline; its row-number half confirmed as **defect #115** and pinned
+  (a blank row shifts every later error onto an innocent spreadsheet
+  row — coerceRows filters blanks silently while the wizard displays
+  `index + 2`). IMP-I2 **reframed with evidence**: the log schema's
+  `part`/`parts` columns show per-chunk rows are design intent, so the
+  invariant is "one row per part, all parts present, sums equal the run"
+  — proven with a 3-part chunked run. IMP-I3 proven including the
+  no-series-burn half (a rehearsal doesn't advance the id counter).
+- **ADR 0008** — every inference threshold is a named, exported bet:
+  hoisted `COLUMN_NAME_MAX`, `INT_SAFE_DIGITS`, `LONG_TEXT_CHARS`,
+  `CHOICE_*`, `AUTO_MATCH_*` in shared/import.ts; named `IMPORT_CHUNK`,
+  `SUGGEST_*`, `ERRORS_ON_SCREEN`, `LOG_ERROR_SAMPLE` where they live.
+  Behaviour-preserving: 93 import tests green, both typechecks clean,
+  wizard e2e still passes.
+- **Agent protocol** into CLAUDE.md: never touch an assertion and the
+  code under test in one change; a discovered behaviour is not a
+  requirement.
+- **Hermeticity (adoption item 9)** written up as a decision brief in the
+  framework doc — recommendation: table deletion as a product capability;
+  awaiting the owner's call. Until then create-path journeys stay
+  conditionally proven.
+
+External review round 2 adjudicated (adopt-the-useful, drop-the-bloat):
+**adopted** — discrepancy-classification replaces "code is truth"; example
+disagreements block for the owner instead of auto-winning; shapes softened
+to primary verification strategies; pins doctrine tightened (spec in the
+assertion, expected-failing; the e2e #114 pin weakened to a neutral shape
+assertion + known-gap, per the doctrine); CLAUDE.md rule narrowed to
+anti-expectation-laundering; grep linkage renamed static traceability;
+mutation testing scoped, never a headline; judgement split into
+conformance/fitness oracles; closure sweep added; four worked-example
+inconsistencies fixed (R2/R3 contradiction, J1.6 branch scoping, H2 split
+into H2+H3, C1 split into per-call proven vs cross-chunk reported).
+**dropped as low-ROI** — the 3-file split (deferred to feature #2),
+behaviour/quality/constraint normative types, atomic ID renumbering, the
+11-state evidence vocabulary, dissolving ADR 0008.
+
+The matrix moved to its canonical CSV
+(`docs/design/evidence/spreadsheet-import.csv`) and the framework is now a
+project-local skill (`.claude/skills/journey-spec/` — SKILL.md + spec
+template + evidence schema). Format decision: markdown for narrative, CSV
+for the evidence layer (the exact shape that later lands as Featherbase
+rows — dog-fooding), HTML only ever as a generated view.
+
+Next: the owner's calls — hermeticity (item 9) and the open questions
+Q1–Q5 (the wrong-table trap H1 is the highest-stakes cluster); then the
+judgement-rule corpus and mutation score, only if the earlier layers keep
+earning it.
 
 ## 2026-08-02 — NAV-002: server-side relationship joins ('related' filter)
 
