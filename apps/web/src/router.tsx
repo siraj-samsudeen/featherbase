@@ -28,6 +28,7 @@ import { JobMonitor } from './components/JobMonitor'
 import { KanbanView } from './components/KanbanView'
 import { CalendarView } from './components/CalendarView'
 import { GanttView } from './components/GanttView'
+import { ChecklistView } from './components/ChecklistView'
 import { PrintView } from './pages/PrintView'
 import { TableBuilder } from './pages/TableBuilder'
 import { ImportWizard } from './pages/ImportWizard'
@@ -368,6 +369,35 @@ function GanttPage() {
   )
 }
 
+// Checklist view: tap-first run execution for checklist-shaped Tables
+// (a Sub-table column whose row table carries a Check column).
+const checklistRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: '$doctype/view/checklist',
+  validateSearch: (search: Record<string, unknown>) => ({
+    run: searchString(search.run),
+  }),
+  component: ChecklistPage,
+})
+
+function ChecklistPage() {
+  const { doctype } = checklistRoute.useParams()
+  const { run } = checklistRoute.useSearch()
+  const navigate = checklistRoute.useNavigate()
+  return (
+    <div data-testid="doctype-page">
+      <ChecklistView
+        key={doctype}
+        doctype={doctype}
+        run={run}
+        // Push, don't replace: the phone's back button should return from a
+        // run to the run list.
+        onRunChange={(r) => navigate({ search: { run: r } })}
+      />
+    </div>
+  )
+}
+
 // RPT-004: a SQL Report renders its own SQL-driven results (static first
 // segment, so it wins over $doctype/$name).
 const queryReportRoute = createRoute({
@@ -598,5 +628,5 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, doctypeRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, doctypeRoute, docRoute]),
 ])

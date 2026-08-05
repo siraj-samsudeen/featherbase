@@ -58,6 +58,7 @@ import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uni
 import { createSite, listSites, resolveSite, siteCreateDoctype, siteListDoctypes, siteCreateUser, siteListUsers } from './tenancy'
 import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
+import checklists from './sample-apps/checklists'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
@@ -76,6 +77,9 @@ registerApp(helloCrm)
 // Registered, NOT installed: a fresh deployment has zero helpdesk tables
 // until POST /api/install_app { name: 'helpdesk' } (PLAT-006, #78).
 registerApp(helpdesk)
+// Same discipline: checklist tables exist only after
+// POST /api/install_app { name: 'checklists' }.
+registerApp(checklists)
 await loadInstalledApps()
 
 type Env = { Variables: { user: SessionUser } }
@@ -641,6 +645,19 @@ app.post('/api/upload_file', async (c) => {
   if (!(file instanceof File))
     throw new AppError('ValidationError', 'Expected multipart form data with a "file" part')
   const isPrivate = body.is_private === '1' || body.is_private === 'true'
+  // FILE-001: attaching binds this file to something, so the caller must be
+  // able to READ that thing — otherwise an upload is a write into someone
+  // else's record, and (once attached) a signed-URL key to it. Checked BEFORE
+  // the storage object exists, so a refused upload leaves nothing behind.
+  // Read, not write: own_rows_only portals grant create without write, and
+  // their users legitimately attach to their own rows.
+  const refTable = typeof body.ref_doctype === 'string' && body.ref_doctype ? body.ref_doctype : null
+  const refName = typeof body.ref_name === 'string' && body.ref_name ? body.ref_name : null
+  // A ref_doctype with no ref_name attaches to the TABLE rather than to any
+  // one row (DEL-R7 registers such files so deleting the Table sweeps them),
+  // so the Table's own read grant is what there is to check.
+  if (refTable && refName) await getDoc(refTable, refName, who(c))
+  else if (refTable) await assertPermission(who(c), refTable, 'read')
   const content = Buffer.from(await file.arrayBuffer())
   const stored = await saveUpload(content, file.name, isPrivate)
   const mimeType = file.type || 'application/octet-stream'
@@ -658,10 +675,8 @@ app.post('/api/upload_file', async (c) => {
       mime_type: mimeType,
       file_size: file.size,
       is_private: isPrivate,
-      ...(typeof body.ref_doctype === 'string' && body.ref_doctype
-        ? { ref_table: body.ref_doctype }
-        : {}),
-      ...(typeof body.ref_name === 'string' && body.ref_name ? { ref_name: body.ref_name } : {}),
+      ...(refTable ? { ref_table: refTable } : {}),
+      ...(refName ? { ref_name: refName } : {}),
     },
     who(c),
   )

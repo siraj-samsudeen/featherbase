@@ -165,7 +165,16 @@ async function scopedWhere(
   // not disqualify a row — the restriction applies to values, so NULL passes
   // (matches the detail-read check in permissions.ts, which skips empty
   // values).
-  if (!(await isBypassUser(user))) {
+  const bypass = await isBypassUser(user)
+  // PERM-007: child rows are only as visible as the rows they hang on. The
+  // Table grant says "may read rows of this shape"; the PARENT decides which
+  // ones. Metadata already names every Table that can hold these rows (the
+  // ones carrying a Sub-table column pointing here), so each becomes a
+  // branch scoped to what the caller may see of it — and a parent Table the
+  // caller cannot read at all contributes no branch, hiding its children.
+  if (meta.kind === 'sub_table' && !bypass)
+    extraConds.push((await parentScopeCond(meta.name, user)).frag)
+  if (!bypass) {
     const upMap = await getUserPermissionMap(user)
     if (upMap.size) {
       const own = upMap.get(table)
@@ -315,6 +324,42 @@ async function scopedWhere(
   const allConds = [...conds, ...extraConds]
   const where = allConds.length ? allConds.reduce((acc, c) => sql`${acc} and ${c}`) : sql`true`
   return { meta, table: tbl, cols, where }
+}
+
+// One OR-branch per Table that can own rows of this child Table: 'all' scope
+// admits every row parented there, 'own_rows' admits only those hanging off
+// rows the caller created, 'none' admits nothing. No branch at all means no
+// reachable parent, so the child list is empty rather than wide open.
+// Boxed in { frag } for the same reason compileFilter is: a bare fragment is
+// a thenable, and awaiting it would run the query instead of returning it.
+async function parentScopeCond(
+  childTable: string,
+  user: string,
+): Promise<{ frag: ReturnType<typeof sql> }> {
+  const holders = await sql`
+    select distinct parent as holder from column_def
+    where column_type = 'Sub-table' and row_table = ${childTable}`
+  const branches: ReturnType<typeof sql>[] = []
+  for (const h of holders) {
+    const holder = h.holder as string
+    const holderMeta = await getMeta(holder).catch(() => null)
+    // A source-bound Table has no local rows to scope against; the engine
+    // refuses sub-tables on one, so this only guards against stale metadata.
+    if (!holderMeta || isBound(holderMeta)) continue
+    const scope = await permissionScope(user, holder, 'read')
+    if (scope === 'none') continue
+    branches.push(
+      scope === 'all'
+        ? sql`parenttype = ${holder}`
+        : sql`(parenttype = ${holder} and parent in (
+             select name from ${sql(tableName(holder))} where created_by = ${user}))`,
+    )
+  }
+  if (!branches.length) return { frag: sql`false` }
+  // Parenthesized: this fragment is ANDed into the WHERE, and AND binds
+  // tighter than the ORs inside it.
+  const anyParent = branches.reduce((acc, b) => sql`${acc} or ${b}`)
+  return { frag: sql`(${anyParent})` }
 }
 
 // DASH: count of matching rows (number card). Same permission scoping as

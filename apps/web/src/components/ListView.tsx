@@ -7,6 +7,7 @@ import { NO_COLUMN_TYPES, isSourceReadOnly, listColumns, useMeta } from '../lib/
 import { useRealtime } from '../lib/realtime'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { useIsSystemManager } from '../lib/session'
+import { ChecklistSwitch } from './ChecklistView'
 
 export type Filter = [string, string, unknown]
 
@@ -412,6 +413,9 @@ export function ListView({
               Gantt
             </Link>
           )}
+          {/* Checklist needs a Sub-table whose row table has a Check column —
+              the component renders nothing when the shape is absent. */}
+          <ChecklistSwitch doctype={doctype} meta={meta.data} />
           {isSystemManager && (
             <>
               {/* NAM-001: change how new rows in this Table are named. */}

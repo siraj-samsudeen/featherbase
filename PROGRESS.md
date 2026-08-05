@@ -1,5 +1,108 @@
 # Progress Log
 
+## 2026-08-05 — PR #116 review: the checklist snapshot becomes server-owned
+
+Five findings from the #116 review, three of them P1. The theme running
+through the first three: the run's items were treated as *payload*, when
+they are the server's record of what a store actually did.
+
+- **The snapshot is server-authoritative** (`sample-apps/checklists.ts`).
+  Creation now derives items from the template ALWAYS — supplying an
+  `items` array no longer suppresses snapshotting. Updates fold the
+  proposed array onto the persisted child rows (`reconcileItems`): only
+  the tick and its excuse note travel from the client, while the label and
+  the `must_do` / `photo_proof` policy stay as stored, `done_at` is a
+  server stamp, omitted rows can no longer delete real items, and invented
+  rows cannot add any. The submit gate therefore judges the stored
+  checklist — previously `{ run_status: 'Submitted', items: [] }` passed
+  the gate at "0/0" and then deleted every item on the way through.
+- **A submitted run is terminal.** `run_status` is an ordinary Choice
+  column, so the engine's immutability guard (which watches the standard
+  `status` column) never saw it — a Submitted run stayed a `draft`
+  document and accepted late ticks, new photos, and `Submitted → Open`.
+  `prepareRun` now refuses any update whose stored `run_status` is
+  Submitted, and `ChecklistView` locks every mutation control on a run
+  that has reached its last declared status, showing a "this run is final"
+  line instead of inviting saves that can only come back as errors.
+- **`own_rows_only` no longer leaks around the parent** — two engine
+  fixes, because neither is checklist-specific:
+  - **Child rows are only as readable as the row they hang on.** A grant
+    on a `sub_table` Table says "may read rows of this shape", never WHICH
+    rows, so a second team leader could list every `Checklist Run Item`
+    and read another leader's items directly. `getDoc` now defers to the
+    parent (`assertParentReadable`) and `scopedWhere` compiles one
+    OR-branch per Table that can own the child rows, each scoped to what
+    the caller may see of it (`parentScopeCond`).
+  - **`/api/upload_file` authorizes the reference** before it writes a
+    storage object or a File row, so a refused upload leaves nothing
+    behind. Read, not write: `own_rows_only` portals grant create without
+    write and their users legitimately attach to their own rows. A
+    `ref_doctype` with no `ref_name` attaches to the TABLE rather than a
+    row — DEL-R7 (merged from main) registers exactly those so deleting a
+    Table sweeps them — so that case checks the Table's read grant instead.
+  Plus: checklist photos upload `is_private`, and Team Leader's `File`
+  grant is `own_rows_only` — a leader sees the files they uploaded, and
+  minting a URL for anyone else's is refused at `/api/signed_url`, which
+  authorizes the row the photo hangs on.
+- **Checklist discovery got both stricter and wider** (`ChecklistView`).
+  The completion binding now REQUIRES a Check column named `done` — the
+  old "else the row table's first Check" fallback made the shipped
+  Checklist Template look executable, binding `must_do` as completion
+  state so tapping a row rewrote the standard instead of running it. And
+  child metadata now loads for every Sub-table candidate via `useQueries`,
+  not the first two, so a checklist in a Table's third sub-table binds
+  like one in its first.
+
+- **The checklists suite pre-cleans instead of skipping** (review F1) —
+  the conversion the import create-path specs got in #118, now that
+  deletion exists to pay for it. `install()` uninstalls a committed
+  structure before installing its own, inside the test's transaction, so
+  the rollback hands the database back untouched (verified: the 4 Tables,
+  the `installed_app` row and the 8 template items all survive a run).
+  The old guard skipped, and a skipped suite reports green while proving
+  nothing — on a dirty database the full run showed **605 passed / 10
+  skipped** with all eight checklist tests silently absent; it now shows
+  **639 passed / 1 skipped** on that same database. The helpdesk round
+  trip in `app-fixtures.test.ts` got the same conversion by owner
+  instruction: it additionally clears the look-alike `Email Account`,
+  because an ADOPTED fixture row is never in the ledger and so survives
+  uninstall — leaving it in place would make the next run's "this row
+  predates the app" premise a lie.
+
+Verified: server **638 tests green** (113 files) including three new
+`checklists-app.test.ts` cases — snapshot reshaping refused, submitted run
+final both ways, and a two-team-leader pass over direct child reads, child
+lists, File lists, signed URLs and uploads. New
+`apps/web/test/checklist-binding.test.tsx` (2 cases) renders the real
+components: a checklist in the third sub-table binds past two near-misses,
+and Checklist Template reports no shape. Every new test was confirmed to
+FAIL against the unfixed code before being kept. `checklist.spec.ts` passes
+in the browser (now seeding two runs, since the first spec submits its own
+and a submitted run has no controls left) along with every upload-driving
+spec — attachments, attach-field, thumbnail, form-sidebar. Both typechecks
+clean.
+
+Gotchas: (1) `parentScopeCond` returns its fragment boxed in `{ frag }`
+like `compileFilter` does — a bare `sql` fragment is a *thenable*, so
+`await`ing one EXECUTES it instead of returning it; the typechecker catches
+this, the runtime would not have. (2) That fragment is parenthesized before
+being ANDed into the WHERE — `AND` binds tighter than the ORs inside it.
+(3) The ONE skip guard left in the server suite is not this pattern and
+should stay: `system-flag.test.ts` asserts a property of a *freshly
+migrated* database, and the pre-clean trick cannot apply — the "leftovers"
+there are the developer's own tables, which a test may not delete.
+(4) This worktree's `node_modules` predated `@duckdb/node-api`, which fails
+4 of 6 web unit FILES and one server file until `pnpm install` runs — it
+looks like a code break and is not one. (5) Ten e2e specs fail in this dev
+database (`grid-layout`, `report-*`, `dashboard`, `formview`,
+`link-autocomplete`, `client-validation`, `letterhead`); all were confirmed
+to fail identically on the unmodified base commit — dirty-dev-DB breakage,
+not a regression.
+
+Next: per-item photo *requirement* enforcement (`photo_proof` still invites
+rather than blocks), and a template-picker "start run" affordance cheaper
+than the generic new form.
+
 ## 2026-08-05 — DEL-R9: tombstone messaging (Q2 graduated, #118)
 
 The arbiter ruled on spec 0003's Q2 the day it was raised: option (1),
@@ -99,6 +202,67 @@ Only Q3 (error volume) remains open.
 Next: build table deletion first — it unblocks journey hermeticity,
 supports R13's recovery story, and is the smallest of the three. Then
 R12/R13 as their own journey-spec'd features. Q3 waits for real usage.
+
+## 2026-08-04 — checklists sample app + generic Checklist view
+
+A second flagship sample app beside helpdesk, and the fifth alternate view
+beside Kanban/Calendar/Gantt — built for a real consumer (Rama's store team
+leaders run daily section checklists on their phones and photograph fast
+movers for buyers), shipped as generic framework surface.
+
+- **`sample-apps/checklists.ts`** — a reusable **Checklist Template** (the
+  standard, defined once; items sub-table with `must_do` / `photo_proof`
+  flags) instantiated as **Checklist Runs**. A `before_validate` hook
+  SNAPSHOTS the template's items into a new run — later template edits
+  never rewrite what was ticked yesterday. Ticks stamp/clear `done_at` and
+  derive `progress` ("5/8"); a `validate` hook gates `run_status →
+  Submitted` on must-do items, where a per-item note is an accepted excuse
+  (the gate reads child rows from the DB when the payload is status-only).
+  Roles: Team Leader works own runs (`own_rows_only`); Store Manager
+  defines templates and sees all. One fixture template ships (a retail
+  section-opening list); demo runs live in `scripts/seed-checklists.ts`
+  (`pnpm --filter server seed:checklists`).
+- **Framework fix the hook needed**: `saveDoc` picked Sub-table arrays off
+  the raw payload BEFORE the hook chain, so a hook that added or replaced
+  child rows on `ctx.row` was silently ignored despite the "hooks may
+  mutate ctx.row" contract. Both save paths now re-pick children from the
+  hooked row; an absent key still means "children untouched" (the physical
+  row spread into ctx.row carries no Sub-table columns). Pinned in
+  `children.test.ts`.
+- **`ChecklistView`** (`/admin/$doctype/view/checklist?run=…`) — binds any
+  Table with checklist shape (a Sub-table column whose row table has a
+  Check column) from metadata alone: date-grouped run cards with progress
+  bars, then a tap-first run pane — whole-row ≥44px targets, one save_doc
+  per tick (server derives stamps/progress), MUST-DO badges, `+ note`
+  excuses, and per-item `photo_proof` camera chips
+  (`capture="environment"` → `/api/upload_file` bound to the CHILD row,
+  thumbnails inline). The footer advances the parent's Choice column to
+  its next declared value and surfaces the 417 gate message verbatim.
+  ListView's switcher shows Checklist only when the shape is present
+  (child-meta-aware `ChecklistSwitch`, same conditional pattern as
+  Kanban's Choice check).
+
+Verified: server 604→609 tests green including the 5-case
+`checklists-app.test.ts` round trip (snapshot immutability, done_at
+stamp/clear, DB-read submit gate, TL/SM scoping) and the hook-adds-children
+regression; full e2e 103 passed (new `checklist.spec.ts`: list → run →
+tick → gate refusal → submit; camera upload → thumbnail; 375px usability
+with no horizontal overflow); both typechecks clean; browser walkthrough at
+desktop and mobile width against seeded demo runs.
+
+Gotchas: (1) list `order_by` takes ONE column — a two-column order 417s and
+the view rendered empty until recency sorting moved client-side. (2) child
+`Datetime` values must be ISO strings — a hook stamping `new Date()` fails
+the child zod schema. (3) On Node 26 the web unit suite needs
+`NODE_OPTIONS=--localstorage-file=…`: Node's own unbacked `localStorage`
+shadows jsdom's (repo tooling pins Node 22, where this doesn't arise).
+(4) The dirty-dev-DB skip guard from the helpdesk round trip applies to any
+suite that installs a registered app by name — the checklist e2e commits an
+install into the dev database.
+
+Next: a "start run from template" affordance cheaper than the generic new
+form (template picker in the view), and per-item photo REQUIREMENT
+enforcement (photo_proof currently invites, never blocks).
 
 ## 2026-08-03 — Requirements framework v2 + first DSL journey spec (IMP-J1)
 

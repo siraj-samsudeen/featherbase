@@ -11,6 +11,7 @@
     "cli": "tsx src/cli.ts",
     "lint:sql": "tsx scripts/check-sql-escapes.ts",
     "reset:helpdesk": "tsx scripts/reset-helpdesk.ts",
+    "seed:checklists": "tsx scripts/seed-checklists.ts",
     "seed:helpdesk": "tsx scripts/seed-helpdesk.ts",
     "verify:helpdesk": "tsx scripts/verify-helpdesk.ts",
     "test": "vitest run",

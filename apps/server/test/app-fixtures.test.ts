@@ -224,14 +224,20 @@ describe('PLAT-006: app fixtures install through the real lifecycle', () => {
 
 describe('helpdesk: a registered app that installs and uninstalls cleanly', () => {
   test('full round trip: install brings up the whole structure, uninstall removes exactly it', async ({
-    skip,
     createUser,
   }) => {
-    // A dev database may carry committed helpdesk structure (seed:helpdesk /
-    // the ticketing e2e); the round trip needs a clean slate, which CI and
-    // throwaway DBs always are.
-    const [dirty] = await sql`select 1 from table_def where name = 'HD Ticket'`
-    if (dirty) skip('dev database already carries the helpdesk structure')
+    // Table deletion (docs/specs/0003-table-deletion.md) paying its
+    // hermeticity dividend: a dev database may carry committed helpdesk
+    // structure (seed:helpdesk / the ticketing e2e), so PRE-CLEAN it rather
+    // than skipping — a skipped round trip reports green while proving
+    // nothing. The removal happens inside the test's own transaction, so the
+    // rollback hands the database back exactly as it was.
+    if (await isInstalled('helpdesk')) await uninstallApp('helpdesk')
+    // The look-alike below must genuinely PREDATE the install for adoption to
+    // mean anything, so no earlier run's copy may survive into this one. An
+    // adopted account is never in the ledger, so uninstall leaves it standing
+    // — which is exactly why clearing it has to be its own step.
+    await sql`delete from email_account where name = 'Helpdesk Notifications'`
 
     // A look-alike fixture row that PREDATES the app: install must adopt it,
     // uninstall must leave it standing.
