@@ -89,8 +89,11 @@ test('DEL-J1: delete an unwanted Table — counted confirmation, then gone every
     await expect(page.getByTestId('doctype-nav').getByText(DT)).toHaveCount(0)
   })
 
-  // J1.4 — the direct URL is a not-found, never an empty list
-  await session.visit(`/admin/${ENC}`).assertText(`Cannot load ${DT}`)
+  // J1.4 — the direct URL answers with the tombstone (DEL-R9), never a
+  // bare error, never an empty list
+  await session
+    .visit(`/admin/${ENC}`)
+    .assertText(`${DT} was deleted by Administrator on`)
 
   // J1.5 — no Import Log entry names the deleted Table (swept, DEL-R4);
   // witnessed at the contract tier where the whole log is visible unpaginated.

@@ -37,7 +37,7 @@ by this file.
 | J1.1 | The unwanted Table's list view, signed in as a System Manager | The manager button row contains **Delete Table** alongside Naming and Permissions, styled as the destructive action | R1 |
 | J1.2 | Click **Delete Table** | A confirmation naming the Table and its **live row count** ("Delete Journey Zones? 8 rows will be permanently deleted. This cannot be undone.") — never a bare "are you sure" | H1 |
 | J1.3 | Confirm | Landed on **All tables**; the deleted Table absent from every module group | R2 |
-| J1.4 | Navigate to the deleted Table's list URL directly | A not-found error, not an empty list | R2 |
+| J1.4 | Navigate to the deleted Table's list URL directly | A not-found that **names the deletion** — "Journey Zones was deleted by Administrator on 2026-08-04" — never a bare error, never an empty list | R2, R9 |
 | J1.5 | Open the **Import Log** list | No entry names the deleted Table | R4 |
 
 **Branch at J1.2 — cancel.** Dismiss the confirmation: the list view is
@@ -74,7 +74,8 @@ referent — the refusal path itself proves teardown order matters.
   reverse vs table-level deletion) are kept deliberately distinct.
   Import Log rows for the table are swept (DEL-R4): a live pointer never
   outlives its target; the Access Log's plain-text trail survives as the
-  durable history (DEL-R8).
+  durable history (DEL-R8), and stale pointers that arrive later get its
+  testimony back as a tombstone (DEL-R9).
 - **concurrency & retries:** DEL-I2 — the operation is one transaction;
   a concurrent second delete of the same Table gets not-found; a retry
   after refusal is a fresh evaluation, not a queued intent.
@@ -206,6 +207,23 @@ Every successful deletion writes an Access Log entry — who, which
 table, when — using plain-text columns, so the record outlives its
 subject (R4 deliberately cannot reach it).
 
+### DEL-R9 — A stale pointer gets a tombstone, not a shrug · `shape: contract`
+
+*Graduated from Q2, decided by the arbiter 2026-08-04.* Asking for a
+Table that was deleted answers with the deletion itself: the not-found
+carries "*X was deleted by 〈user〉 on 〈date〉*", read back from R8's
+testimony at the moment of the miss. A Table that never existed stays a
+plain "not found" — a tombstone is only ever minted from a real burial.
+Every surface that resolves a Table by name (deep link, Recents entry,
+list URL) inherits the message through the same boundary; client-side
+Recents entries themselves are localStorage and age out on their own.
+
+| Ask for | → | Why? |
+|---|---|---|
+| a Table deleted yesterday | not-found: "X was deleted by Administrator on 2026-08-04" | the fact is known; say it |
+| a name that never existed | not-found: "Table X not found" | no burial, no tombstone |
+| a Table deleted twice under one name (created again between) | the **latest** deletion's line | the newest fact is the operative one |
+
 ### Invariants · `shape: invariant`
 
 - **DEL-I1 — nothing dangles.** After a successful deletion of X:
@@ -233,8 +251,11 @@ subject (R4 deliberately cannot reach it).
 | # | Question | Blocked on |
 |---|---|---|
 | Q1 | Should populated Tables demand typed-name confirmation (GitHub-style) instead of a counted confirm dialog? Shipped default: counted dialog. | — |
-| Q2 | **Tombstone messaging.** A stale pointer to a deleted Table (a Recents entry, a bookmarked URL) today gets a bare "Cannot load X". The Access Log already holds who deleted it and when (R8) — should the not-found path consult it and say *"X was deleted by … on …"*? (Recents are client-side localStorage, so R4's sweep cannot reach them; they age out.) Raised by the owner 2026-08-04 while the feature was being built. | — |
-| Q3 | **Archive vs delete.** Should any Table support archive/inactive semantics (soft delete: rows or whole Tables hidden but recoverable) *alongside* hard deletion? The hermeticity decision deliberately chose hard delete + swept pointers + text testimony; an archive tier would be a separate capability with its own journeys, not a variant of this one. | Q2's answer sketches the cheap end of the spectrum |
+| Q3 | **Archive vs delete.** Should any Table support archive/inactive semantics (soft delete: rows or whole Tables hidden but recoverable) *alongside* hard deletion? The hermeticity decision deliberately chose hard delete + swept pointers + text testimony; an archive tier would be a separate capability with its own journeys, not a variant of this one. | — |
+
+*Graduated 2026-08-04 by the arbiter:* Q2 (tombstone messaging) → R9.
+Per the change protocol the question is removed and the answer lives as
+a rule.
 
 ## Retrospective — where the journey-spec format chafed (trial #1)
 
@@ -278,9 +299,10 @@ additive (two owner-raised open questions and this section).
    time; the DSL wants a `within()`-scoped click for it.
 7. **The open-questions section earned its keep mid-build.** The owner
    raised the stale-Recents/tombstone question while the build was in
-   flight; it landed as Q2/Q3 without touching a single rule — exactly
-   the "never resolved silently in code" routing the framework
-   promises.
+   flight; it landed as Q2/Q3 without touching a single rule, and Q2 was
+   ruled on and graduated into R9 the same day — the full
+   question→decision→rule cycle inside one feature, with nothing
+   resolved silently in code.
 8. **What worked without friction:** step triples translated 1:1 into
    the feather-testing DSL; the isolation-strategy slot made J1's
    self-cleaning design a *requirement* rather than an afterthought

@@ -185,7 +185,14 @@ export function ListView({
   })
 
   if (meta.isLoading) return <p className="text-sm text-gray-400">Loading…</p>
-  if (meta.isError) return <p className="text-sm text-red-600">Cannot load {doctype}</p>
+  // DEL-R9: the server's not-found can carry a tombstone ("X was deleted by
+  // … on …") — show its words, not a generic shrug.
+  if (meta.isError)
+    return (
+      <p className="text-sm text-red-600" data-testid="list-error">
+        {meta.error instanceof ApiError ? meta.error.message : `Cannot load ${doctype}`}
+      </p>
+    )
 
   const total = list.data?.total ?? 0
   const rows = list.data?.data ?? []

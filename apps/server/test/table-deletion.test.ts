@@ -206,6 +206,41 @@ describe('DEL-R4 + DEL-I1: the sidecar sweep', () => {
   })
 })
 
+describe('DEL-R9: a stale pointer gets a tombstone, not a shrug', () => {
+  test('DEL-R9: a deleted Table answers with who and when; a never-created name stays plain', async ({
+    admin,
+  }) => {
+    await makeTable(admin)
+    await admin.delete(`/api/doctype/${ENC}`)
+    await expect(admin.get(`/api/table/${ENC}:meta`)).rejects.toMatchObject({
+      status: 404,
+      message: expect.stringMatching(
+        new RegExp(`Table ${DT} was deleted by Administrator on \\d{4}-\\d{2}-\\d{2}$`),
+      ),
+    })
+    await expect(admin.get('/api/table/Never%20Existed:meta')).rejects.toMatchObject({
+      status: 404,
+      message: expect.stringMatching(/Table Never Existed not found$/),
+    })
+  })
+
+  test('DEL-R9: recreated and deleted again — the latest burial speaks', async ({ admin }) => {
+    await makeTable(admin)
+    await admin.delete(`/api/doctype/${ENC}`)
+    await makeTable(admin)
+    await admin.delete(`/api/doctype/${ENC}`)
+    // Two delete_table lines exist; the tombstone is still singular.
+    const [lines] = await sql`
+      select count(*)::int as n from access_log
+      where operation = 'delete_table' and ref_table = ${DT}`
+    expect(lines.n).toBe(2)
+    await expect(admin.get(`/api/table/${ENC}:meta`)).rejects.toMatchObject({
+      status: 404,
+      message: expect.stringContaining(`Table ${DT} was deleted by Administrator on`),
+    })
+  })
+})
+
 describe('DEL-I2: a refusal changes nothing', () => {
   test('DEL-I2: after a blocked delete every row count is exactly as before', async ({
     admin,

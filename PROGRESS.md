@@ -1,5 +1,34 @@
 # Progress Log
 
+## 2026-08-05 — DEL-R9: tombstone messaging (Q2 graduated, #118)
+
+The arbiter ruled on spec 0003's Q2 the day it was raised: option (1),
+tombstone messaging. Per the change protocol the spec changed first
+(Q2 removed, DEL-R9 added, J1.4's "must see" now names the deletion),
+the new server tests demonstrably failed against the old code, then the
+implementation landed:
+
+- **Server** (`meta.ts`): `getMeta`'s not-found path reads back the
+  Access Log's `delete_table` testimony (DEL-R8) — a deleted Table 404s
+  with "*X was deleted by 〈user〉 on 〈date〉*"; a never-created name stays
+  a plain "not found" (no burial, no tombstone); repeated
+  create/delete cycles answer with the latest line. Every surface that
+  resolves a Table by name inherits the message through the same
+  boundary. Guarded for mid-upgrade databases without `access_log`.
+- **Web** (`ListView`): the list error path shows the server's words
+  (`ApiError.message`) instead of the generic "Cannot load X" — so a
+  stale Recents entry or bookmark now reads the tombstone.
+- **Proven**: 2 new API tests (deleted vs never-created vs double
+  burial) + the DEL-J1 walk's J1.4 step asserts the tombstone in the
+  browser. Full server suite 112 files / 629 green; evidence CSV rows
+  DEL-R9 and Q2 stamped 2026-08-05.
+- **Gotcha:** feather-testing-postgres's `TestApiError.message`
+  prefixes `404 NotFoundError:` — anchor assertions with `$`, never `^`.
+
+Next: unchanged — feature #2 of the journey-spec gate (IMP-R12 or
+IMP-R13). Q1 (typed-name confirm) and Q3 (archive semantics) remain
+open with the arbiter.
+
 ## 2026-08-04 — Table deletion (#118): spec 0003, first journey-spec trial
 
 Spec-first, per the framework: `docs/specs/0003-table-deletion.md` +
