@@ -668,8 +668,9 @@ again" then does what everyone expects. *Not yet built.*
 
 *Decided 2026-08-04 (was Q5).* The Import Log records the **ids of the
 rows each run inserted**, and a run's history entry offers a one-click
-reverse that deletes exactly those rows (updates from R12 record prior
-values or are excluded from reversal — detail to settle at build time).
+reverse that deletes exactly those rows — and, for R12 upsert runs,
+**restores updated rows by replaying the version trail** (Q4 of spec
+0004, ruled 2026-08-05).
 Closes the wrong-table trap directly. *Not yet built.*
 
 ### Invariants · `shape: invariant`

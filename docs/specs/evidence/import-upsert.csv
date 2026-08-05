@@ -1,16 +1,17 @@
 id,shape,strategy,static_link,verdict,issue,stamped
-UPS-J1,sequence,browser walk,,gap — spec'd 2026-08-05; build waits on Q1-Q5 rulings and owner go,,2026-08-05
+UPS-J1,sequence,browser walk,,gap — spec'd; all questions ruled 2026-08-05; ready to build,,2026-08-05
 UPS-J2,sequence,browser walk,,gap — spec'd; closes the import spec's Q4 wizard gap,,2026-08-05
 UPS-R1,contract,api,,gap — spec'd; log schema gains `updated`,,2026-08-05
-UPS-R2,rule,examples + property,,gap — spec'd; rows for Q1/Q2 pending their rulings,,2026-08-05
-UPS-R3,rule,examples + property,,gap — spec'd; Q3 row pending,,2026-08-05
+UPS-R2,rule,examples + property,,gap — spec'd; Q1/Q2 ruled into the example table,,2026-08-05
+UPS-R3,rule,examples + property,,gap — spec'd; Q3 ruled: per-run explicit choice — keep (default) or clear,,2026-08-05
 UPS-R4,contract,api + browser,,gap — spec'd; engine already accepts explicit ids for direct sends,,2026-08-05
+UPS-R5,contract,api + browser,,gap — spec'd; key remembered as a visible suggestion (was Q5),,2026-08-05
 UPS-I1,invariant,reconciliation,,gap — extends IMP-I1; inherits #115's fix,,2026-08-05
 UPS-I2,invariant,reconciliation,,gap — an upsert never deletes,,2026-08-05
 UPS-I3,invariant,reconciliation,,gap — idempotence,,2026-08-05
-UPS-H1,hazard,decision,,open — mass-overwrite; not disarmed until Q4 ruled,,2026-08-05
-Q1,question,decision,,open — duplicate key within file (arbiter: Siraj),,2026-08-05
-Q2,question,decision,,open — key matches multiple rows,,2026-08-05
-Q3,question,decision,,open — empty mapped cell on update,,2026-08-05
-Q4,question,decision,,open — undo covers updates? (blocked on 0003 R13 build),,2026-08-05
-Q5,question,decision,,open — sticky match key per Table,,2026-08-05
+UPS-H1,hazard,decision,,resolution ruled — preview + rehearse + versioning + R13 replay (Q4); disarmed when R13 ships,,2026-08-05
+Q1,question,decision,,graduated 2026-08-05 → UPS-R2 (both failed named),,2026-08-05
+Q2,question,decision,,graduated 2026-08-05 → UPS-R2 (failed with count),,2026-08-05
+Q3,question,decision,,graduated 2026-08-05 → UPS-R3 (per-run explicit choice; default keep),,2026-08-05
+Q4,question,decision,,graduated 2026-08-05 → UPS-H1 + IMP-R13 (undo replays the version trail),,2026-08-05
+Q5,question,decision,,graduated 2026-08-05 → UPS-R5 (remembered as a visible suggestion),,2026-08-05
