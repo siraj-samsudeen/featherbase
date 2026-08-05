@@ -25,9 +25,15 @@ implementation landed:
 - **Gotcha:** feather-testing-postgres's `TestApiError.message`
   prefixes `404 NotFoundError:` — anchor assertions with `$`, never `^`.
 
+Same day, the arbiter ruled on the remaining questions: **Q1** — the
+counted confirm dialog is ratified as the confirmation rule; typed-name
+confirmation declined. **Q3** — no archive/inactive tier; hard delete
+stands, reconsidered (as its own capability) at first deployment.
+Spec 0003 now has **zero open questions**; every evidence row is
+`proven` except H1 (open by design until first deployment).
+
 Next: unchanged — feature #2 of the journey-spec gate (IMP-R12 or
-IMP-R13). Q1 (typed-name confirm) and Q3 (archive semantics) remain
-open with the arbiter.
+IMP-R13).
 
 ## 2026-08-04 — Table deletion (#118): spec 0003, first journey-spec trial
 

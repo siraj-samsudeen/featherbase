@@ -243,19 +243,23 @@ Recents entries themselves are localStorage and age out on their own.
   platform has no backup story yet. No single rule owns the compound.
   Mitigations in force: R1 (managers only), J1.2 (the confirmation
   carries the live row count and says "cannot be undone"), R8 (the
-  audit line survives). Residual risk accepted at this project stage;
-  revisit at first deployment. *(Stronger confirmation → Q1.)*
+  audit line survives), R9 (stale pointers get the tombstone).
+  Residual risk accepted at this project stage; revisit at first
+  deployment. *(Typed-name confirmation was considered and declined —
+  Q1, ruled 2026-08-05: the counted dialog IS the confirmation rule.)*
 
 ## Open questions *(arbiter: Siraj)*
 
-| # | Question | Blocked on |
-|---|---|---|
-| Q1 | Should populated Tables demand typed-name confirmation (GitHub-style) instead of a counted confirm dialog? Shipped default: counted dialog. | — |
-| Q3 | **Archive vs delete.** Should any Table support archive/inactive semantics (soft delete: rows or whole Tables hidden but recoverable) *alongside* hard deletion? The hermeticity decision deliberately chose hard delete + swept pointers + text testimony; an archive tier would be a separate capability with its own journeys, not a variant of this one. | — |
+None open.
 
-*Graduated 2026-08-04 by the arbiter:* Q2 (tombstone messaging) → R9.
-Per the change protocol the question is removed and the answer lives as
-a rule.
+*Graduated / ruled by the arbiter:* **Q2** (2026-08-04) → R9, tombstone
+messaging. **Q1** (2026-08-05) → the counted confirm dialog is ratified
+as the confirmation rule (J1.2, H1 mitigation); typed-name confirmation
+declined. **Q3** (2026-08-05) → no archive/inactive tier now — hard
+delete + swept pointers + testimony stands; archive would be a separate
+capability with its own journeys, to be reconsidered at first
+deployment (the same trigger that reopens H1's residual risk). Per the
+change protocol the questions are removed and the answers live here.
 
 ## Retrospective — where the journey-spec format chafed (trial #1)
 

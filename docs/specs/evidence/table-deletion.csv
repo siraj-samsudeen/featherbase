@@ -13,6 +13,6 @@ DEL-R9,contract,api + browser,"apps/server/test/table-deletion.test.ts; apps/web
 DEL-I1,invariant,reconciliation,apps/server/test/table-deletion.test.ts,"proven — zero dangling rows across every declared pointer column; zero column_def rows; no physical table",,2026-08-04
 DEL-I2,invariant,reconciliation,"apps/server/test/table-deletion.test.ts; apps/web/e2e/table-deletion.spec.ts","proven — counts identical after a blocked delete; UI cancel branch leaves the list untouched",,2026-08-04
 DEL-H1,hazard,decision,,"open — mitigations built and witnessed (R1 gate, counted confirm, R8 trail); residual risk accepted until first deployment",,2026-08-04
-Q1,question,decision,,open — typed-name confirmation for populated tables,,2026-08-04
+Q1,question,decision,,graduated — ruled 2026-08-05: counted confirm dialog ratified (J1.2 / H1); typed-name confirmation declined,,2026-08-05
 Q2,question,decision,,graduated — decided by the arbiter 2026-08-04 → DEL-R9 (tombstone messaging),,2026-08-05
-Q3,question,decision,,open — archive/inactive semantics as a separate capability beside hard delete,,2026-08-04
+Q3,question,decision,,graduated — ruled 2026-08-05: no archive tier; hard delete stands; reconsider as a separate capability at first deployment,,2026-08-05
