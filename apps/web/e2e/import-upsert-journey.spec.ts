@@ -247,7 +247,9 @@ test('UPS-J2: the file’s codes become the ids', async ({ session, page, reques
   expect(byZone.Kilo).toBe('REF-101') // the file's code, verbatim
   expect(byZone.Resident).toBe('REF-102') // insert-mode collision left it untouched
   expect(byZone.Lima).toBeUndefined()
-  expect(byZone.Mike).toBe('UPSJC-001') // series continues for unsupplied rows
+  // IMP-R6: the pattern is the promise, not the number — the counter is
+  // global and survives table deletion, so a re-run sees a later value.
+  expect(byZone.Mike).toMatch(/^UPSJC-\d+$/) // series continues for unsupplied rows
 
   // Branch, second half — with the Row ID as the match key the collision IS
   // an update (that is UPS-J1's mechanics): preview says so, and the
