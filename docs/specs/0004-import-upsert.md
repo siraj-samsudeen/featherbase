@@ -5,8 +5,8 @@
 **Evidence:** `docs/specs/evidence/import-upsert.csv` (never status in this file)
 **Provenance:** owner decision 2026-08-04 — IMP-R12 (graduated from the
 import spec's Q2 + Q4). Second greenfield trial of the journey-spec
-framework. **Spec authored before any code; the build waits on the open
-questions below and on the owner's go.**
+framework. Spec authored before any code; **all five open questions
+ruled by the arbiter 2026-08-05 — ready to build.**
 
 ## The job
 
@@ -33,8 +33,8 @@ UPS-R2's example table and property, not in the files.
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
 | J1.1 | The existing Table's list view → **Import** | The wizard with the Table preselected (IMP-R7's entry variant, unchanged) | |
-| J1.2 | Drop `zones-v2.csv` | The mapping step as today, **plus a Match key control**: any mapped column (or the Row ID) can be marked as the key; default is none — append-always stays the default behaviour | R1 |
-| J1.3 | Mark **Zone Name** as the match key | A preview line with real counts before anything commits: "8 rows match existing rows and will be **updated**; 0 will be added" — never a silent mode switch | R2, H1 |
+| J1.2 | Drop `zones-v2.csv` | The mapping step as today, **plus a Match key control**: any mapped column (or the Row ID) can be marked as the key; default is none — append-always stays the default. If a key was used on this Table before, it is **pre-filled as a visible suggestion** ("Match on Zone Name, as last time") — remembered silently, applied loudly, never active without being seen | R1, R5 |
+| J1.3 | Mark **Zone Name** as the match key | A preview line with real counts before anything commits: "8 rows match existing rows and will be **updated**; 0 will be added" — never a silent mode switch. Beside it, the **empty-cells choice** appears (only when a key is set): "Empty cells: ◉ keep existing values · ○ clear them" — per run, defaulting to keep | R2, R3, H1 |
 | J1.4 | Rehearse (the existing Check) | The same per-row report, now action-aware: each row says update / insert / failed, nothing written | R1, I1 |
 | J1.5 | Click **Import** | Completion reporting updated / inserted / failed as separate counts | R1 |
 | J1.6 | The Table's list | **Still 8 rows** — not 16. Alpha shows the corrected Population; every row keeps its original id | R3, I2 |
@@ -45,8 +45,8 @@ append, the added-rows notice shows. Upsert is opt-in per run.
 
 **Branch at J1.5 — a key collision in the file.** Rows whose key
 duplicates another file row are failed and named by their true
-spreadsheet row (IMP-I1 applies); the rest proceed. *(Pending Q1 — this
-branch states the recommended default.)*
+spreadsheet row (IMP-I1 applies); the rest proceed. *(Ruled 2026-08-05,
+was Q1.)*
 
 **Isolation strategy:** self-cleaning through table deletion (spec 0003):
 setup imports `zones.csv` under a journey-owned name, the journey upserts
@@ -71,7 +71,7 @@ as match key: it is an update — that is UPS-J1.
   updates checks both; own-rows scoping applies per row. The whole-request
   refusal pattern (IMP-R10) extends: no permission → nothing partial.
 - **prior state & lifecycle:** the feature *is* prior-state-shaped; undo
-  interaction with spec 0003's R13 is Q4.
+  covers updates via the version trail (ruled, see H1 and IMP-R13).
 - **concurrency & retries:** UPS-I3 — re-running the identical file is
   idempotent; two concurrent upserts on the same key serialize on the
   row's lock (engine behaviour, witnessed not re-specified).
@@ -118,22 +118,26 @@ resolves to exactly one action, and
 | matches exactly one existing row | update that row | the point of the feature |
 | matches nothing | insert | upsert means the corrected file is the whole truth of itself |
 | is empty | failed, named by true spreadsheet row | a row without a key cannot claim a match — silently inserting would duplicate on the next run |
-| duplicates another file row's key | *(Q1 — recommended: both failed, named)* | last-wins hides an authorship conflict inside one file |
-| matches multiple existing rows | *(Q2 — recommended: failed, named, with the count)* | updating N rows from one line is H1's mass-overwrite in miniature |
+| duplicates another file row's key | **both failed**, named by their true spreadsheet rows *(ruled 2026-08-05)* | last-wins hides an authorship conflict inside one file |
+| matches multiple existing rows | **failed**, named, with the match count *(ruled 2026-08-05)* | updating N rows from one line is H1's mass-overwrite in miniature |
 
 ### UPS-R3 — What an update touches · `shape: rule`
 
 Only **mapped** columns change; unmapped database columns are untouched.
-Within a mapped column, *(Q3 — recommended: an empty cell leaves the
-stored value alone; clearing is an explicit act, not an absence)*. Row
-identity never changes: matching on Row ID updates that row; changing an
-id via upsert does not exist.
+Within a mapped column, empty-cell semantics are the **importing user's
+explicit per-run choice** *(Q3 ruled 2026-08-05 — the arbiter's third
+way)*: a control beside the match key, shown only when a key is set,
+offering **keep existing values** (the default) or **clear them**.
+Clearing is thereby always a chosen act — but the sparse-export wipe is
+possible when chosen. Row identity never changes: matching on Row ID
+updates that row; changing an id via upsert does not exist.
 
 | Existing row + file row | → | Why? |
 |---|---|---|
 | file maps 3 of 6 columns | the other 3 keep their values | the file is authoritative only for what it maps |
 | mapped cell holds a new value | value updated, full lifecycle | |
-| mapped cell is empty | *(Q3)* | data loss must be chosen, not inferred |
+| mapped cell empty · choice = keep (default) | stored value survives | absence is not intent |
+| mapped cell empty · choice = clear | value cleared, full lifecycle | the user said the file is the whole truth |
 
 ### UPS-R4 — The file's own codes as ids · `shape: contract`
 
@@ -144,6 +148,14 @@ engine enforces); the series is not consumed for supplied ids; on a Table
 whose ids came from a series, mixing (some rows supplied, some series) is
 allowed — the series simply continues for unsupplied rows (IMP-R6: the
 pattern is the promise).
+
+### UPS-R5 — The key is remembered as a suggestion · `shape: contract`
+
+*Ruled 2026-08-05 (was Q5).* The match key (and the empty-cells choice)
+used on a Table's last import is stored per Table and **pre-filled as a
+visible suggestion** on the next one — "Match on Zone Name, as last
+time" — confirmed or changed by the user, never silently active. A run
+with no key chosen stores nothing.
 
 ### Invariants · `shape: invariant`
 
@@ -159,18 +171,20 @@ pattern is the promise).
 ### Hazards
 
 - **UPS-H1 — the wrong key is a mass overwrite.** One bad key choice
-  rewrites many rows in a click. Mitigations in the spec: the J1.3
+  rewrites many rows in a click. Mitigations, all ruled: the J1.3
   preview counts before commit; rehearse shows per-row actions; updates
-  run the full lifecycle (versioning records prior values); Q4 decides
-  whether undo (0003's R13) covers updates. Not fully disarmed until Q4
-  is ruled.
+  run the full lifecycle so versioning records prior values; and undo
+  **covers updates by replaying the version trail** *(Q4 ruled
+  2026-08-05 — an R13 build requirement, cross-noted in the framework's
+  IMP-R13)*. Fully disarmed once R13 ships; until then the version
+  history UI is the manual recovery path.
 
 ## Open questions *(arbiter: Siraj)*
 
-| # | Question | Recommended default | Blocked on |
-|---|---|---|---|
-| Q1 | Duplicate key **within the file**: fail both rows (named), or last-wins? | fail both — a one-file authorship conflict should be seen, not resolved silently | — |
-| Q2 | Key matches **multiple existing rows**: fail the row, or update all matches? | fail with the match count — one line updating N rows is H1 in miniature | — |
-| Q3 | An **empty mapped cell** on update: leave the stored value, or clear it? | leave it — clearing is an explicit act; absence is not intent | — |
-| Q4 | Does **undo** (0003 R13) cover updates? Requires recording prior values per updated row (versioning already holds them — undo could replay versions). | yes, via the version trail — else H1 keeps a leg | R13 build |
-| Q5 | Is the match key **remembered per Table** (sticky default on next import) or chosen per run? | per run, sticky as a *suggestion* — remembered silently, applied loudly | — |
+None open. *All five ruled 2026-08-05:* Q1 → R2 (duplicate file keys:
+both failed, named) · Q2 → R2 (multi-match: failed with the count) ·
+Q3 → R3 (empty cells: the importing user's explicit per-run choice,
+default keep — the arbiter's third way, better than either drafted
+option) · Q4 → H1 + framework IMP-R13 (undo covers updates via the
+version trail) · Q5 → R5 (the key is remembered as a visible
+suggestion). Per the change protocol the questions live on as rules.
