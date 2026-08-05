@@ -368,6 +368,43 @@ updates, the last leg of H1/IMP-H1); the three-fates queue in spec
 0004's retrospective needs the owner's rulings; #115's true-row naming
 still pinned.
 
+## 2026-08-05 — Live Google OAuth: real exchange, domain gate, prod mock guard (PR #127)
+
+The PLAT-006 scaffold becomes a working provider, so Rama's client signs in
+with the same Google ID used on dash.jeyarama.com — one corporate OAuth
+client shared across both, no WorkOS layer.
+
+- `exchangeCode()` real branch implemented: authorization-code POST to
+  Google's token endpoint (`GOOGLE_CLIENT_SECRET`) + userinfo fetch,
+  `email_verified` required. The dev mock is untouched, so local flows and
+  the e2e suite behave exactly as before.
+- `redirect_uri` honors `x-forwarded-proto` — behind Railway's
+  TLS-terminating edge the container sees `http`, and Google's exact-match
+  registration would otherwise reject the callback.
+- `ALLOWED_LOGIN_DOMAINS` (comma-separated) gates *auto-provisioning* on
+  first sign-in; users that already exist were provisioned deliberately and
+  always sign in (the report server's grants-arm semantics). Unset = dev
+  behaviour unchanged. Provisioned users get no roles — deny-by-default;
+  a Rama-side `Viewer` role belongs in the `rama_dw` manifest, not here.
+- **Security**: the mock provider now refuses to serve under
+  `NODE_ENV=production`. An unconfigured prod deploy previously served the
+  mock consent page, which minted a session for any typed email — including
+  `Administrator`.
+
+Verified: 4 new server tests (`apps/server/test/oauth.test.ts` — mock round
+trip, gate deny/admit, off-domain existing user, prod refusal), full server
+suite green except pre-existing #126 (events retention, reproduced on an
+untouched tree), and the 3-test browser e2e `oauth.spec.ts` against live
+dev servers.
+
+Next: Railway vars on the `featherbase` service (references to
+`report-server`'s Google client + `ALLOWED_LOGIN_DOMAINS=jeyarama.com`),
+add the redirect URI in the `jeyarama-dashboards` Google client, merge
+#127, then verify a real `@jeyarama.com` sign-in on prod. Follow-ups worth
+considering: hide the Google button on the login page when the provider is
+unconfigured, and stop passing the token via the `/oauth-callback` query
+string (the sid cookie already travels).
+
 ## 2026-08-05 — PR #116 review: the checklist snapshot becomes server-owned
 
 Five findings from the #116 review, three of them P1. The theme running
