@@ -14,7 +14,7 @@ import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { getAccessToken, issueAccessToken, listAccessTokens, login, resolveToken, revokeAccessToken, setUserPassword, issueSession, type SessionUser } from './auth'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled } from './service-accounts'
-import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newState, verifyState, isMockProvider } from './oauth'
+import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newState, verifyState, isMockProvider, assertOAuthConfigured } from './oauth'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
@@ -301,19 +301,28 @@ app.on(
 // PLAT-006: Google OAuth (public — the caller is logging in). In dev a mock
 // provider stands in for Google. Flow: login → provider consent → callback →
 // find/create User → issue session → bounce back into the SPA with the token.
-app.get('/api/oauth/google/login', (c) => {
+// Mock flow stays same-origin (relative) so the dev proxy keeps the browser
+// on the SPA origin end to end; real Google needs an absolute redirect_uri that
+// byte-matches the registered one — behind a TLS-terminating proxy (Railway)
+// the container sees http, so x-forwarded-proto wins over the socket protocol.
+function oauthRedirectUri(c: Context): string {
+  if (isMockProvider()) return '/api/oauth/google/callback'
   const url = new URL(c.req.url)
-  // Mock flow stays same-origin (relative) so the dev proxy keeps the browser
-  // on the SPA origin end to end; real Google needs an absolute redirect_uri.
-  const redirectUri = isMockProvider()
-    ? '/api/oauth/google/callback'
-    : `${url.origin}/api/oauth/google/callback`
+  const proto = c.req.header('x-forwarded-proto')
+  const origin = proto ? `${proto}://${url.host}` : url.origin
+  return `${origin}/api/oauth/google/callback`
+}
+
+app.get('/api/oauth/google/login', (c) => {
+  assertOAuthConfigured()
+  const redirectUri = oauthRedirectUri(c)
   const state = newState()
   const hint = { email: c.req.query('email'), name: c.req.query('name') }
   return c.redirect(googleAuthorizeUrl(state, redirectUri, hint))
 })
 
 app.get('/api/oauth/mock/consent', (c) => {
+  assertOAuthConfigured()
   if (!isMockProvider()) throw new AppError('ValidationError', 'Mock provider is not active')
   const state = c.req.query('state') ?? ''
   const redirectUri = c.req.query('redirect_uri') ?? ''
@@ -323,6 +332,7 @@ app.get('/api/oauth/mock/consent', (c) => {
 })
 
 app.get('/api/oauth/mock/approve', (c) => {
+  assertOAuthConfigured()
   if (!isMockProvider()) throw new AppError('ValidationError', 'Mock provider is not active')
   const state = c.req.query('state') ?? ''
   const redirectUri = c.req.query('redirect_uri') ?? ''
@@ -333,8 +343,9 @@ app.get('/api/oauth/mock/approve', (c) => {
 })
 
 app.get('/api/oauth/google/callback', async (c) => {
+  assertOAuthConfigured()
   verifyState(c.req.query('state'))
-  const { email, name } = await exchangeCode(c.req.query('code'))
+  const { email, name } = await exchangeCode(c.req.query('code'), oauthRedirectUri(c))
   const userName = await findOrCreateGoogleUser(email, name)
   const { token } = await issueSession(userName)
   // The cookie matters here too: beacons (e.g. the unload-time event batch,
