@@ -189,7 +189,14 @@ export function TableBuilder() {
       navigate({ to: '/admin/$doctype', params: { doctype: name }, search: { filters: undefined } })
     } catch (err) {
       setProgress(null)
-      setError(err instanceof ApiError ? err.message : 'Create failed')
+      if (err instanceof ApiError && err.fields) {
+        const details = Object.entries(err.fields)
+          .map(([field, msg]) => `${field}: ${msg}`)
+          .join('; ')
+        setError(`${err.message} — ${details}`)
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Create failed')
+      }
     } finally {
       setSaving(false)
     }
