@@ -1,5 +1,57 @@
 # Progress Log
 
+## 2026-08-06 — Access tokens + service accounts (#131): durable automation credentials
+
+The Rama prod cutover exposed the gap: installing an instance manifest
+needs a System Manager bearer token, and the only way to mint one was
+logging in as the human Administrator and ferrying the expiring JWT by
+hand. Design ping-ponged with the owner (all five calls recorded in #131),
+then built end to end:
+
+- **One `access_token` table replaces the API-005 key pair** — named
+  tokens, `fbt_`-prefixed show-once secrets stored as SHA-256 (high
+  entropy needs no salt, and a deterministic hash keeps auth a single
+  indexed select — no more per-request scrypt), optional expiry,
+  last-used stamping in the same round-trip as the lookup, idempotent
+  revoke. Tokens ride `Authorization: Bearer`, told apart from JWTs by
+  prefix. The `token key:secret` scheme, both `user` columns, and the
+  generate/revoke endpoints are gone outright (project stage: nothing
+  deployed, change outright); API-005 flipped to `retired` in
+  `harness/features.json` by owner sanction in #131.
+- **Service accounts are User rows with `user_type = 'service'`** (raw
+  column, dedicated endpoints/CLI only) — roles, permissions, RLS and
+  audit all work unchanged; `login()`, `issueSession()` and
+  `/api/set_password` refuse them, so they authenticate by token or not
+  at all. Disabling dead-ends every token (owner `enabled` is checked at
+  resolve time); deleting cascades tokens away. Duplicate-name check is
+  case-insensitive so `administrator` can't shadow `Administrator`.
+- **Permissions**: everyone manages their own tokens; System Managers see
+  and manage all, and only they touch service accounts.
+- **UI** `/admin/access-tokens` (sidebar, next to All tables): token table
+  with state pills and one-click revoke, issue dialog (owner picker for
+  SMs, expiry presets) into a show-once copy modal, service-account
+  section with role checkboxes and enable/disable.
+- **CLI**: `create-service-account`, `issue-token` (prints the secret
+  once), `list-tokens`, `revoke-token` — production story documented in
+  `docs/DEPLOY.md` (ties into #130's break-glass Administrator).
+- **Parallel-worktree fix en passant**: `vite.config.ts` now honors
+  `WEB_PORT`/`API_PORT` so two checkouts can run side by side; this
+  session ran on :8010/:5183 with its own `featherbase_tokens` database
+  after colliding with an active session on :8000.
+
+Gotcha caught by the new suite: `String(Date)` truncates to seconds, so
+passing a raw `updated_at` back into `saveDoc` trips the optimistic-
+concurrency 409 — use `.toISOString()` (`service-accounts.ts`; the same
+latent trap exists in `oauth.ts`'s re-enable path).
+
+Verified: server suite **645 passed / 1 skipped** (113 files) including
+the new `access-tokens.test.ts` (7) and a CLI lifecycle test; web suite
+36 green; new `access-tokens.spec.ts` e2e green in the real browser; live
+end-to-end: CLI-created `svc-…` account + token authenticated
+`POST /api/install_app` (checklists app installed), revoke → 401. Next:
+wire the Rama data-warehouse repo's install flow to a service-account
+token, and the #130 no-default-admin-password work it unblocks.
+
 ## 2026-08-05 — PR #116 review: the checklist snapshot becomes server-owned
 
 Five findings from the #116 review, three of them P1. The theme running

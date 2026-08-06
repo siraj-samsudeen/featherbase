@@ -29,8 +29,9 @@ export async function createServiceAccount(
     throw new AppError('ValidationError', 'Service account names are lowercase slugs like "svc-rama-installer"', {
       name: 'lowercase letters, digits, - and _ only (max 64 chars)',
     })
-  const [existing] = await sql`select name from "user" where name = ${name}`
-  if (existing) throw new AppError('ConflictError', `User ${name} already exists`)
+  // Case-insensitive: 'administrator' must not shadow 'Administrator'.
+  const [existing] = await sql`select name from "user" where lower(name) = lower(${name})`
+  if (existing) throw new AppError('ConflictError', `User ${existing.name} already exists`)
   await saveDoc(
     'User',
     {
@@ -84,6 +85,12 @@ export async function setServiceAccountEnabled(
   const [row] = await sql`
     select name, updated_at from "user" where name = ${name} and user_type = 'service'`
   if (!row) throw new AppError('NotFoundError', `Service account ${name} not found`)
-  await saveDoc('User', { name, updated_at: row.updated_at, enabled }, actor)
+  // toISOString keeps millisecond precision — String(Date) truncates to
+  // seconds and trips the optimistic-concurrency check.
+  await saveDoc(
+    'User',
+    { name, updated_at: (row.updated_at as Date).toISOString(), enabled },
+    actor,
+  )
   return getServiceAccount(name)
 }
