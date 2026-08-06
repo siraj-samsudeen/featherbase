@@ -4,13 +4,18 @@
 //   cli seed                          (re)apply idempotent core seed data
 //   cli create-doctype --name "X" --field title:Data --field status:Select:Open|Closed [--single]
 //   cli create-user <email> <password> [--full-name "Name"] [--roles "System Manager,All"]
+//   cli create-service-account <name> [--roles "System Manager"]
+//   cli issue-token <principal> [--label "..."] [--expires <days>]
+//   cli list-tokens [<principal>]
+//   cli revoke-token <token-id>
 //   cli console                       REPL with the row API in scope
 import { sql } from './db'
 import { createTable } from './doctype-engine'
 import { getDoc, saveDoc } from './document'
 import { getList } from './query'
 import { getMeta } from './meta'
-import { setUserPassword } from './auth'
+import { issueAccessToken, listAccessTokens, revokeAccessToken, setUserPassword } from './auth'
+import { createServiceAccount } from './service-accounts'
 import { runMigrations } from './migrate'
 import { runPatches } from './patches'
 import { patches } from '../patches/index'
@@ -84,6 +89,65 @@ async function cmdCreateUser(
   console.log(`created user ${email}${roles.length ? ` with roles: ${roles.join(', ')}` : ''}`)
 }
 
+// #131: automation credentials, shell-access-is-auth (like create-user).
+async function cmdCreateServiceAccount(
+  positional: string[],
+  flags: Record<string, string | string[] | boolean>,
+) {
+  const [name] = positional
+  if (!name) throw new Error('create-service-account requires <name>')
+  const roles = asArray(flags.roles).flatMap((r) => r.split(',')).map((r) => r.trim()).filter(Boolean)
+  const account = await createServiceAccount(name, roles, 'Administrator')
+  console.log(
+    `created service account ${account.name}${account.roles.length ? ` with roles: ${account.roles.join(', ')}` : ''}`,
+  )
+}
+
+async function cmdIssueToken(
+  positional: string[],
+  flags: Record<string, string | string[] | boolean>,
+) {
+  const [principal] = positional
+  if (!principal) throw new Error('issue-token requires <principal> (a user or service account name)')
+  const label = typeof flags.label === 'string' ? flags.label : `cli ${new Date().toISOString().slice(0, 10)}`
+  let expiresAt: Date | null = null
+  if (typeof flags.expires === 'string') {
+    const days = Number(flags.expires)
+    if (!Number.isFinite(days) || days <= 0) throw new Error('--expires wants a positive number of days')
+    expiresAt = new Date(Date.now() + days * 86_400_000)
+  }
+  const issued = await issueAccessToken(principal, label, expiresAt)
+  console.log(`issued token ${issued.id} ("${issued.label}") for ${issued.owner}`)
+  if (issued.expires_at) console.log(`expires ${new Date(issued.expires_at).toISOString()}`)
+  console.log('the secret below is shown ONCE — store it now:')
+  console.log(issued.token)
+}
+
+async function cmdListTokens(positional: string[]) {
+  const tokens = await listAccessTokens(positional[0])
+  if (!tokens.length) {
+    console.log('no tokens')
+    return
+  }
+  for (const t of tokens) {
+    const state = t.revoked_at
+      ? 'revoked'
+      : t.expires_at && new Date(t.expires_at).getTime() <= Date.now()
+        ? 'expired'
+        : 'active'
+    const lastUsed = t.last_used_at ? new Date(t.last_used_at).toISOString() : 'never used'
+    const expiry = t.expires_at ? `expires ${new Date(t.expires_at).toISOString()}` : 'no expiry'
+    console.log(`${t.id}  ${state.padEnd(7)}  ${t.owner}  "${t.label}"  ${expiry}  ${lastUsed}`)
+  }
+}
+
+async function cmdRevokeToken(positional: string[]) {
+  const [id] = positional
+  if (!id) throw new Error('revoke-token requires <token-id>')
+  await revokeAccessToken(id)
+  console.log(`revoked ${id}`)
+}
+
 async function cmdSeed() {
   // Core seed migrations are written idempotently (ensureTable/ensureDoc),
   // so re-running them is a safe "seed" that repairs missing core data.
@@ -148,11 +212,23 @@ async function main() {
     case 'create-user':
       await cmdCreateUser(positional, flags)
       break
+    case 'create-service-account':
+      await cmdCreateServiceAccount(positional, flags)
+      break
+    case 'issue-token':
+      await cmdIssueToken(positional, flags)
+      break
+    case 'list-tokens':
+      await cmdListTokens(positional)
+      break
+    case 'revoke-token':
+      await cmdRevokeToken(positional)
+      break
     case 'console':
       await cmdConsole()
       break
     default:
-      console.log('usage: cli <migrate|patches|seed|create-doctype|create-user|console> [...]')
+      console.log('usage: cli <migrate|patches|seed|create-doctype|create-user|create-service-account|issue-token|list-tokens|revoke-token|console> [...]')
       process.exitCode = cmd ? 1 : 0
   }
   await sql.end()

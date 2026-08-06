@@ -12,7 +12,8 @@ import { createTable, deleteTable, setIdPattern, updateTable } from './doctype-e
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
-import { generateApiKeys, login, resolveToken, revokeApiKeys, setUserPassword, issueSession, type SessionUser } from './auth'
+import { getAccessToken, issueAccessToken, listAccessTokens, login, resolveToken, revokeAccessToken, setUserPassword, issueSession, type SessionUser } from './auth'
+import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled } from './service-accounts'
 import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newState, verifyState, isMockProvider } from './oauth'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
@@ -531,25 +532,67 @@ app.post('/api/set_password', async (c) => {
   const target = user ?? who(c)
   if (!password) throw new AppError('ValidationError', 'Expected { password }')
   if (target !== who(c)) await assertSystemManager(who(c))
+  // #131: a service account must never become password-login-able.
+  const [targetRow] = await sql`select user_type from "user" where name = ${target}`
+  if (targetRow?.user_type === 'service')
+    throw new AppError('ValidationError', 'Service accounts have no password — issue an access token instead')
   await setUserPassword(target, password)
   return c.json({ ok: true })
 })
 
-// API-005: generate/revoke integration keys. Users manage their own;
-// System Managers can target any user via {user}.
-app.post('/api/generate_api_key', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { user?: string }
-  const target = body.user ?? who(c)
-  if (target !== who(c)) await assertSystemManager(who(c))
-  return c.json(await generateApiKeys(target), 201)
+// #131: access tokens (replaces the API-005 key pair). Users manage their
+// own; System Managers can target any principal — and only they see or act
+// on tokens beyond their own.
+app.post('/api/access_tokens', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as {
+    label?: string
+    owner?: string
+    expires_at?: string
+  }
+  const owner = body.owner ?? who(c)
+  if (owner !== who(c)) await assertSystemManager(who(c))
+  if (typeof body.label !== 'string') throw new AppError('ValidationError', 'Expected { label }')
+  let expiresAt: Date | null = null
+  if (body.expires_at != null) {
+    expiresAt = new Date(body.expires_at)
+    if (Number.isNaN(expiresAt.getTime()))
+      throw new AppError('ValidationError', 'expires_at must be an ISO date-time')
+  }
+  return c.json(await issueAccessToken(owner, body.label, expiresAt), 201)
 })
 
-app.post('/api/revoke_api_key', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { user?: string }
-  const target = body.user ?? who(c)
-  if (target !== who(c)) await assertSystemManager(who(c))
-  await revokeApiKeys(target)
+app.get('/api/access_tokens', async (c) => {
+  // System Managers see every token (the admin screen); everyone else their own.
+  const all = (await getRoles(who(c))).includes('System Manager')
+  return c.json({ tokens: await listAccessTokens(all ? undefined : who(c)) })
+})
+
+app.delete('/api/access_tokens/:id', async (c) => {
+  const token = await getAccessToken(c.req.param('id'))
+  if (token.owner !== who(c)) await assertSystemManager(who(c))
+  await revokeAccessToken(token.id)
   return c.json({ ok: true })
+})
+
+// #131: service accounts — System Manager territory end to end.
+app.post('/api/service_accounts', async (c) => {
+  await assertSystemManager(who(c))
+  const body = (await c.req.json().catch(() => ({}))) as { name?: string; roles?: string[] }
+  if (typeof body.name !== 'string') throw new AppError('ValidationError', 'Expected { name }')
+  const roles = Array.isArray(body.roles) ? body.roles.filter((r) => typeof r === 'string') : []
+  return c.json(await createServiceAccount(body.name, roles, who(c)), 201)
+})
+
+app.get('/api/service_accounts', async (c) => {
+  await assertSystemManager(who(c))
+  return c.json({ service_accounts: await listServiceAccounts() })
+})
+
+app.patch('/api/service_accounts/:name', async (c) => {
+  await assertSystemManager(who(c))
+  const body = (await c.req.json().catch(() => ({}))) as { enabled?: boolean }
+  if (typeof body.enabled !== 'boolean') throw new AppError('ValidationError', 'Expected { enabled }')
+  return c.json(await setServiceAccountEnabled(c.req.param('name'), body.enabled, who(c)))
 })
 
 // #74: `system` marks tables created by the migration chain. It is set only
