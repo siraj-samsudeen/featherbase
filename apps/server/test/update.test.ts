@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
+import { getDoc, saveDoc } from '../src/document'
 
 const DT = 'Upd Test Note'
 const TABLE = 'upd_test_note'
@@ -71,6 +72,32 @@ describe('DOC-002 + META-005: update with conflict detection, standard columns a
         doc: { name: created.name, title: 'y' },
       }),
     ).rejects.toMatchObject({ status: 417 })
+  })
+
+  // A server-side caller echoes back the value it loaded, and off the driver
+  // that value is a Date. String(Date) truncates to whole seconds, so a row
+  // whose stamp carries milliseconds used to conflict with itself (#131 in
+  // service-accounts.ts, then again on the SSO path). The check accepts the
+  // shape it hands out, whatever the Table.
+  test('accepts the raw Date a loaded row carries as the echo', async ({ admin }) => {
+    await makeDT(admin)
+    const created = await admin.post<Record<string, unknown>>('/api/save_doc', {
+      doctype: DT,
+      doc: { title: 'v1' },
+    })
+    // now() usually carries milliseconds; pin one so this cannot pass by luck.
+    await sql.unsafe(
+      `update ${TABLE} set updated_at = '2026-08-06T10:20:30.123Z' where name = '${created.name}'`,
+    )
+
+    const loaded = await getDoc(DT, String(created.name))
+    expect(loaded.updated_at).toBeInstanceOf(Date)
+    const saved = await saveDoc(
+      DT,
+      { name: created.name, updated_at: loaded.updated_at, title: 'v2' },
+      'Administrator',
+    )
+    expect(saved.title).toBe('v2')
   })
 
   test('404s when updating a nonexistent name', async ({ admin }) => {

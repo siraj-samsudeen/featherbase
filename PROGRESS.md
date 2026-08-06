@@ -31,6 +31,22 @@ affected: they send an ISO string over the wire.
   #137's `token-hardening.test.ts` already pins the ruled behaviour — the
   sign-in rejects, and `enabled` is still `false` afterwards. No replacement
   test was written, because it would have duplicated that one.
+- **The sweep**, done in the follow-up commit. Exactly five call sites echo a
+  loaded `updated_at` back into `saveDoc`, and each was read before being
+  touched: `service-accounts.ts`, `index.ts`'s permission upsert,
+  `methods/frappe-client.ts`'s `set_value`, `report-chart.ts` and
+  `actions/collection-import.ts`. All five hand the value straight to the
+  concurrency check and nothing else, so `expectedStamp()` makes every one of
+  them redundant and all five came out — a sixth copy of the same
+  normalization is exactly the shim CLAUDE.md forbids. The one that looked
+  like it might differ is `collection-import.ts`, whose `updateValues()` also
+  feeds a dry-run validator; it does not read the stamp, because
+  `pickFieldValues()` skips `STANDARD_COLUMNS`. The `?:` guards came out with
+  the casts: `updateDoc` already rejects a null or missing stamp first, with
+  a clearer message than a `TypeError` on `undefined.toISOString()`.
+- Callers that *omit* `updated_at` (`apps.ts`, `customizations.ts` and
+  friends) pre-check existence or pass `'insert'`, so they only ever insert.
+  The one exception was `cli.ts`'s blind `create-user` upsert — fixed below.
 
 ---
 
