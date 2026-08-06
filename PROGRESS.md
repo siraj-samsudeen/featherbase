@@ -322,6 +322,63 @@ report-server's) and nothing else; the client id + `jeyarama.com` domain
 list ride the checked-in manifest fixture; Google console gets the
 featherbase redirect URI. Coordinate merge order with PR #136, which edits
 the same `findOrCreateGoogleUser` region.
+## 2026-08-06 — #137: review findings on the access-token feature, all five real
+
+A read-only review of the merged #134 raised five findings. Every one
+reproduced, and each now has a test that fails against #134 and passes here.
+The theme: a credential's *lifecycle* was enforced at the routes rather than
+at the operations underneath them, so any second caller bypassed it.
+
+- **P1 — a durable token could travel in a URL.** `resolveToken` accepts
+  `fbt_` wherever a Bearer credential is resolved, and two paths turn
+  `?token=` into one: private files and the browser WebSocket (which cannot
+  set headers). A non-expiring, System-Manager-equivalent secret would land
+  in browser history, referrers and proxy logs. `resolveToken` now takes
+  `{ fromUrl }` and refuses access tokens there; the `authorization` header
+  keeps accepting them, so automation is unaffected. Session JWTs still work
+  in both places — verified live: an access token on `/ws?token=` is refused
+  while a JWT establishes a session.
+- **P1 — OAuth undid an administrator's disable.** `findOrCreateGoogleUser`
+  flipped `enabled` back on for any matching disabled User *before*
+  `issueSession` got to reject it. So an OAuth round trip against a disabled
+  service account's identity re-enabled the account and every access token it
+  owned started working again, even though the interactive login was still
+  refused — disablement stopped being an incident-response control. It now
+  refuses service accounts and disabled users outright, matching `login()`
+  and `issueSession()`. Practical reach was widest with the mock provider
+  (active whenever `GOOGLE_CLIENT_ID` is unset); real Google could not assert
+  a `@service.invalid` address. Note this deletes the `saveDoc` call that
+  **#136** patches for the millisecond-`updated_at` trap — see the conflict
+  note below.
+- **P2 — password reset stamped a hash onto a passwordless principal.**
+  `/api/set_password` refused service accounts, but `resetPassword` reaches
+  `setUserPassword` directly. The invariant moved onto the write itself, and
+  `requestPasswordReset` now returns the same silent `null` as an unknown
+  user, so it cannot enumerate service accounts.
+- **P2 — "active" did not mean usable.** The service-account token count
+  excluded revoked tokens but not expired ones, and the UI called a token
+  `active` even when its owner was disabled. The count now applies the same
+  liveness conditions `resolveAccessToken` does, and the list carries
+  `owner_enabled` so the screen shows `owner disabled`. Revoke is now offered
+  until a token is actually revoked — previously it was gated on `active`, so
+  the new state would have hidden the button on the tokens most worth killing.
+- **P2 — a user Table could squat on the credential store.** A Table named
+  "Access Token" compiles to physical `access_token`; the engine's duplicate
+  check reads `table_def`, which raw tables have no row in. Proven: creating
+  it raised `relation "access_token" already exists`. `createTable` now
+  refuses reserved physical names, and 0069 raises a clear, actionable error
+  instead of letting `if not exists` silently adopt a foreign table.
+
+**Conflict note for whoever merges second:** #136 (open) edits the exact
+`saveDoc` in `findOrCreateGoogleUser` that this change removes. If #136 lands
+first, drop that hunk when rebasing — its `document.ts` `expectedStamp`
+hardening and the wider sweep stand on their own and are still wanted.
+
+Verified: server **651 passed** (114 files, up from 645), new
+`token-hardening.test.ts` (5 cases) confirmed RED against the code as merged
+before being kept, web typecheck clean, full Playwright suite green, and the
+WebSocket refusal exercised against a live stack. Next: nothing outstanding
+on tokens; the Rama install (data-warehouse#1750) is unblocked.
 
 ## 2026-08-06 — two ways a green suite goes red on a machine that has been used
 

@@ -181,6 +181,12 @@ const PHYSICAL_TABLE_OVERRIDES: Record<string, string> = {
   column: 'column_def',
 }
 
+// #137: raw tables the engine owns directly. They have no `table_def` row, so
+// the "already exists" check cannot catch a user Table that would compile to
+// the same physical name. Credential storage is the one that matters most —
+// `access_token` colliding with a user Table would break authentication.
+const RESERVED_PHYSICAL_TABLES = new Set(['access_token', 'password_reset', 'migration'])
+
 export function tableName(table: string): string {
   const naive = table.toLowerCase().replace(/\s+/g, '_')
   return PHYSICAL_TABLE_OVERRIDES[naive] ?? naive
@@ -396,6 +402,15 @@ export async function createTable(input: unknown): Promise<TableMeta> {
   const [existing] = await sql`select 1 from table_def where name = ${def.name}`
   if (existing)
     throw new AppError('ConflictError', `Table ${def.name} already exists`)
+
+  // #137: engine-owned RAW tables carry no table_def row, so the check above
+  // cannot see them — a Table named "Access Token" would sail past it and
+  // then collide with the credential store at DDL time. Refuse by physical
+  // name, which is what actually collides.
+  if (RESERVED_PHYSICAL_TABLES.has(tableName(def.name)))
+    throw new AppError('ConflictError', `Table ${def.name} collides with an internal table`, {
+      name: `"${tableName(def.name)}" is reserved for platform storage`,
+    })
 
   // EDS-3 (review finding 10): a binding written by hand (POST /api/doctype)
   // is checked against the live source — it must exist, be allowlisted, and

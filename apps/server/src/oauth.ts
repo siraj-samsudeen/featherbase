@@ -247,14 +247,20 @@ async function domainAdmitted(email: string): Promise<boolean> {
 // create one, mark it as a Google login, and return its name.
 export async function findOrCreateGoogleUser(email: string, name: string): Promise<string> {
   const [existing] = await sql`
-    select name from "user" where lower(email) = ${email} or lower(name) = ${email} limit 1`
+    select name, enabled, user_type from "user"
+    where lower(email) = ${email} or lower(name) = ${email} limit 1`
   let userName: string
   if (existing) {
     userName = existing.name as string
-    // Ensure it can sign in.
-    const row = await getDoc('User', userName)
-    if (!row.enabled)
-      await saveDoc('User', { name: userName, updated_at: row.updated_at, enabled: true }, 'Administrator')
+    // #137: a disabled principal stays disabled. This used to flip `enabled`
+    // back on ("ensure it can sign in") BEFORE issueSession got a say — so an
+    // OAuth round trip undid an administrator's disable, and every access
+    // token that principal owned started working again, even though the
+    // interactive login itself was still refused. Refusing here matches
+    // login() and issueSession(), which both reject a disabled user.
+    if (existing.user_type === 'service')
+      throw new AppError('AuthenticationError', 'This account cannot sign in')
+    if (!existing.enabled) throw new AppError('AuthenticationError', 'This account is disabled')
   } else {
     if (!(await domainAdmitted(email)))
       throw new AppError('AuthenticationError', 'Access not provisioned for this account. Contact IT.')

@@ -68,8 +68,11 @@ function serviceAccountQuery(name?: string) {
       from has_role group by parent
     ) r on r.parent = u.name
     left join (
+      -- #137: "active" must mean what resolveAccessToken accepts. Counting
+      -- merely-unrevoked tokens reported expired credentials as usable.
       select owner, count(*) as n from access_token
-      where revoked_at is null group by owner
+      where revoked_at is null and (expires_at is null or expires_at > now())
+      group by owner
     ) t on t.owner = u.name
     where u.user_type = 'service' ${name ? sql`and u.name = ${name}` : sql``}
     order by u.name`

@@ -16,6 +16,7 @@ interface Token {
   expires_at: string | null
   last_used_at: string | null
   revoked_at: string | null
+  owner_enabled?: boolean
 }
 
 interface ServiceAccount {
@@ -35,9 +36,13 @@ const EXPIRY_CHOICES = [
   { label: '1 year', days: 365 },
 ]
 
-function tokenState(t: Token): 'active' | 'revoked' | 'expired' {
+// #137: every state here means what the server does with the token. A token
+// whose owner is disabled authenticates no better than a revoked one, so it
+// must not read as "active" just because it has not been revoked.
+function tokenState(t: Token): 'active' | 'revoked' | 'expired' | 'owner disabled' {
   if (t.revoked_at) return 'revoked'
   if (t.expires_at && new Date(t.expires_at).getTime() <= Date.now()) return 'expired'
+  if (t.owner_enabled === false) return 'owner disabled'
   return 'active'
 }
 
@@ -45,6 +50,7 @@ const STATE_STYLE: Record<string, string> = {
   active: 'text-[var(--color-good)]',
   revoked: 'text-[var(--color-danger)]',
   expired: 'text-[var(--color-ink-faint)]',
+  'owner disabled': 'text-[var(--color-ink-faint)]',
 }
 
 function when(iso: string | null): string {
@@ -169,7 +175,9 @@ export function AccessTokens() {
                     {state}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    {state === 'active' && (
+                    {/* Revocable until actually revoked — an expired token or
+                        one whose owner is disabled must still be killable. */}
+                    {!t.revoked_at && (
                       <button
                         className="fc-btn"
                         data-testid={`revoke-${t.id}`}
