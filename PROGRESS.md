@@ -1,5 +1,39 @@
 # Progress Log
 
+## 2026-08-11 — #135: create-user refuses a duplicate instead of shadowing it
+
+Filed off the sweep below, then fixed. `feather create-user` handed the row
+to `saveDoc` in its default `upsert` mode, so a second call for the same
+email fell through to the update path — and the operator saw the raw
+`Updates must include the updated_at timestamp of the loaded row`. That was
+the reported symptom, and it turned out to be the milder half.
+
+- **The real hazard was case.** `user.name` and the unique index on
+  `user.email` are both case-sensitive, so `create-user ADMIN@X.COM` for an
+  existing `admin@x.com` did not collide at all — it silently created a
+  SECOND account shadowing the first. Same trap #131 closed for service
+  accounts, which is why that fix checked `lower(name) = lower($1)`.
+- **The guard** in `cmdCreateUser` matches `lower(name)` OR `lower(email)`
+  (email is unique, and a row can carry the address under either identity —
+  the lookup `findOrCreateGoogleUser` already uses) and throws
+  `User <name> already exists`. Plain `Error`, matching cli.ts's local
+  style; `main()` prints it as `error: …` and exits 1.
+- **Verified** by the real subprocess CLI, both spellings, in
+  `cli.test.ts`: exact case and upper case both exit 1 with the clear
+  message and never leak `updated_at`, and exactly one account survives
+  with its `full_name` untouched. With the guard disabled the exact-case
+  attempt reproduces #135's reported error verbatim and the upper-case one
+  writes the shadow row — the test catches both. Suite green (114 files,
+  645 passed / 1 skipped), typecheck clean.
+- **Gotcha, and it bit during this session**: `cli.test.ts` is deliberately
+  NOT sandbox-migrated (it spawns subprocesses with their own connections),
+  so its writes are real and a failed run leaves rows in the dev database.
+  A guard-disabled run left a `CLI-DUP-USER@X.COM` shadow behind that the
+  old exact-match `cleanup()` could not see. `cleanup()` now deletes on
+  `lower(name)`, so a half-failed run self-heals on the next one.
+
+---
+
 ## 2026-08-11 — optimistic concurrency accepts the Date it hands out (#136, reworked)
 
 The surviving core of #136, rebased onto main after #137 overruled its other
