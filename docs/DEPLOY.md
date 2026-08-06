@@ -91,6 +91,35 @@ to the API on the same origin, so a separate host must reverse-proxy `/api`
 to that host's origin. Prefer the single-origin image above unless you have
 a reason not to.
 
+## Automation credentials (#131)
+
+Scripts, CI, and instance-manifest installs authenticate with **access
+tokens**, not the Administrator password (which #130 demotes to break-glass).
+Bootstrap them on the production box over SSH — shell access is the
+authorization, exactly like the other CLI commands:
+
+```sh
+# e.g. on Railway: railway ssh -- pnpm --filter server cli …
+pnpm --filter server cli create-service-account svc-installer --roles "System Manager"
+pnpm --filter server cli issue-token svc-installer --label "manifest installs"
+```
+
+`issue-token` prints the `fbt_…` secret **once**; store it in your secret
+manager. It then rides any API call as a normal Bearer token:
+
+```sh
+curl -H "Authorization: Bearer fbt_…" -H 'content-type: application/json' \
+  -d '{"manifest": …}' https://<host>/api/install_app
+```
+
+Tokens are named, listable (`list-tokens`), revocable (`revoke-token`, or
+one click in *Admin → Access tokens*), and never retrievable after issue —
+only a SHA-256 lands in the database. Optional expiry via `--expires <days>`.
+Disabling the service account (Admin screen, or `enabled = false`) dead-ends
+every token it owns without destroying them; deleting it revokes them for
+good. A service account can never sign in interactively — no password, no
+session, no OAuth.
+
 ## Smoke check
 
 After a deploy: `SERVER_URL=https://... pnpm --filter server test:smoke`

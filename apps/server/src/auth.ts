@@ -1,4 +1,4 @@
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { sign, verify } from 'hono/jwt'
 import { sql } from './db'
 import { AppError } from './errors'
@@ -39,9 +39,11 @@ export interface SessionUser {
 
 export async function login(usr: string, pwd: string): Promise<{ token: string; user: SessionUser }> {
   const [user] = await sql`
-    select name, email, full_name, enabled, password_hash from "user"
+    select name, email, full_name, enabled, password_hash, user_type from "user"
     where (name = ${usr} or email = ${usr})`
-  if (!user || !user.enabled || !user.password_hash || !verifyPassword(pwd, user.password_hash as string))
+  // #131: service accounts never sign in interactively — tokens only. The
+  // refusal is deliberately the same generic message as a bad password.
+  if (!user || user.user_type === 'service' || !user.enabled || !user.password_hash || !verifyPassword(pwd, user.password_hash as string))
     throw new AppError('AuthenticationError', 'Invalid login credentials')
   // SET-004: session lifetime is driven by System Settings (session_hours),
   // clamped to a sane range so a bad setting can't disable or eternalize logins.
@@ -66,8 +68,9 @@ export async function login(usr: string, pwd: string): Promise<{ token: string; 
 // successful OAuth exchange) — the password-less counterpart to login().
 export async function issueSession(userName: string): Promise<{ token: string; user: SessionUser }> {
   const [user] = await sql`
-    select name, email, full_name, enabled from "user" where name = ${userName}`
-  if (!user || !user.enabled) throw new AppError('AuthenticationError', 'User cannot sign in')
+    select name, email, full_name, enabled, user_type from "user" where name = ${userName}`
+  if (!user || !user.enabled || user.user_type === 'service')
+    throw new AppError('AuthenticationError', 'User cannot sign in')
   const { session_hours } = await getSystemSettings()
   const hours = Math.min(Math.max(session_hours || 8, 1), 720)
   const token = await sign(
@@ -81,38 +84,85 @@ export async function issueSession(userName: string): Promise<{ token: string; u
   }
 }
 
-// API-005: integration keys. The secret is scrypt-hashed at rest and only
-// ever shown once, at generation time.
-export async function generateApiKeys(
-  user: string,
-): Promise<{ api_key: string; api_secret: string }> {
-  const api_key = 'fc_' + randomBytes(8).toString('hex')
-  const api_secret = randomBytes(16).toString('hex')
+// #131: named access tokens — THE integration credential (replaces the
+// API-005 per-user key pair). The plaintext ("fbt_" + 32 random bytes) is
+// returned exactly once, at issue time; only its SHA-256 is stored. A token
+// authenticates as its owner, with the owner's roles — no separate scopes.
+
+const TOKEN_PREFIX = 'fbt_'
+
+function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex')
+}
+
+export interface AccessTokenRow {
+  id: string
+  label: string
+  owner: string
+  created_at: string
+  expires_at: string | null
+  last_used_at: string | null
+  revoked_at: string | null
+}
+
+const tokenFields = () => sql`id, label, owner, created_at, expires_at, last_used_at, revoked_at`
+
+export async function issueAccessToken(
+  owner: string,
+  label: string,
+  expiresAt?: Date | null,
+): Promise<{ token: string } & AccessTokenRow> {
+  if (!label.trim()) throw new AppError('ValidationError', 'A token needs a label')
+  if (expiresAt && !(expiresAt.getTime() > Date.now()))
+    throw new AppError('ValidationError', 'expires_at must be in the future')
+  const [user] = await sql`select name, enabled from "user" where name = ${owner}`
+  if (!user) throw new AppError('NotFoundError', `User ${owner} not found`)
+  if (!user.enabled) throw new AppError('ValidationError', `${owner} is disabled`)
+  const token = TOKEN_PREFIX + randomBytes(32).toString('base64url')
   const [row] = await sql`
-    update "user" set api_key = ${api_key}, api_secret_hash = ${hashPassword(api_secret)}
-    where name = ${user} returning name`
-  if (!row) throw new AppError('NotFoundError', `User ${user} not found`)
-  return { api_key, api_secret }
+    insert into access_token (id, label, owner, token_hash, expires_at)
+    values (${'tok_' + randomBytes(6).toString('hex')}, ${label.trim()}, ${owner},
+            ${hashToken(token)}, ${expiresAt ?? null})
+    returning ${tokenFields()}`
+  return { token, ...(row as unknown as AccessTokenRow) }
 }
 
-export async function revokeApiKeys(user: string): Promise<void> {
-  await sql`update "user" set api_key = null, api_secret_hash = null where name = ${user}`
+// All tokens (owner undefined) or one principal's, newest first.
+export async function listAccessTokens(owner?: string): Promise<AccessTokenRow[]> {
+  const rows = owner
+    ? await sql`select ${tokenFields()} from access_token where owner = ${owner} order by created_at desc`
+    : await sql`select ${tokenFields()} from access_token order by created_at desc`
+  return rows as unknown as AccessTokenRow[]
 }
 
-async function resolveApiKey(pair: string): Promise<SessionUser> {
-  const idx = pair.indexOf(':')
-  const key = idx === -1 ? pair : pair.slice(0, idx)
-  const secret = idx === -1 ? '' : pair.slice(idx + 1)
+export async function getAccessToken(id: string): Promise<AccessTokenRow> {
+  const [row] = await sql`select ${tokenFields()} from access_token where id = ${id}`
+  if (!row) throw new AppError('NotFoundError', `Access token ${id} not found`)
+  return row as unknown as AccessTokenRow
+}
+
+// Idempotent: revoking twice keeps the first revocation stamp.
+export async function revokeAccessToken(id: string): Promise<void> {
+  const [row] = await sql`
+    update access_token set revoked_at = coalesce(revoked_at, now())
+    where id = ${id} returning id`
+  if (!row) throw new AppError('NotFoundError', `Access token ${id} not found`)
+}
+
+async function resolveAccessToken(token: string): Promise<SessionUser> {
+  // The update doubles as the lookup: a live token gets its last_used_at
+  // stamped in the same round-trip.
+  const [hit] = await sql`
+    update access_token set last_used_at = now()
+    where token_hash = ${hashToken(token)}
+      and revoked_at is null
+      and (expires_at is null or expires_at > now())
+    returning owner`
+  if (!hit) throw new AppError('AuthenticationError', 'Invalid or expired access token')
   const [user] = await sql`
-    select name, email, full_name, enabled, api_secret_hash from "user"
-    where api_key = ${key}`
-  if (
-    !user ||
-    !user.enabled ||
-    !user.api_secret_hash ||
-    !verifyPassword(secret, user.api_secret_hash as string)
-  )
-    throw new AppError('AuthenticationError', 'Invalid API key or secret')
+    select name, email, full_name, enabled from "user" where name = ${hit.owner}`
+  if (!user || !user.enabled)
+    throw new AppError('AuthenticationError', 'Invalid or expired access token')
   return {
     name: user.name as string,
     email: user.email as string,
@@ -121,11 +171,11 @@ async function resolveApiKey(pair: string): Promise<SessionUser> {
 }
 
 export async function resolveToken(authorization?: string): Promise<SessionUser> {
-  // API-005: integrations authenticate with "Authorization: token key:secret".
-  const apiPair = authorization?.match(/^token (.+)$/)?.[1]
-  if (apiPair) return resolveApiKey(apiPair)
   const token = authorization?.match(/^Bearer (.+)$/)?.[1]
   if (!token) throw new AppError('AuthenticationError', 'Authentication required')
+  // #131: access tokens ride the same Bearer header as sessions, told apart
+  // by their prefix — no JWT parse attempted on them.
+  if (token.startsWith(TOKEN_PREFIX)) return resolveAccessToken(token)
   let payload: { sub?: unknown }
   try {
     payload = (await verify(token, JWT_SECRET, 'HS256')) as { sub?: unknown }
