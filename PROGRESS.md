@@ -1,5 +1,39 @@
 # Progress Log
 
+## 2026-08-11 — optimistic concurrency accepts the Date it hands out (#136, reworked)
+
+The surviving core of #136, rebased onto main after #137 overruled its other
+half.
+
+`updateDoc` compared the echoed `updated_at` against
+`new Date(String(values.updated_at))`. `String(Date)` renders
+`Thu Aug 06 2026 10:20:30 GMT+0000 (…)` — whole seconds, milliseconds gone. So
+any server-side caller that loaded a row and echoed its stamp straight back
+409'd against itself whenever the stored value carried a millisecond
+component, which `now()` almost always produces. HTTP callers were never
+affected: they send an ISO string over the wire.
+
+- **`document.ts`** grows `expectedStamp()`, which normalizes a `Date` through
+  `toISOString()` and leaves strings alone. Both concurrency sites use it —
+  the native `updateDoc` check and the `expect` that `updateBoundDoc` hands
+  the bound-source driver, where `String(Date)` could never have matched a
+  source revision either.
+- **Verified** by a new `update.test.ts` case on an ordinary Table, against a
+  stamp forced to `…:30.123Z` rather than trusting `now()` to carry one. The
+  bug is in the shared save path, so it affected every Table, not just User.
+- **What #137 took away.** #136 also cast the stamp at the SSO call site,
+  where `findOrCreateGoogleUser` re-enabled a disabled User by echoing the
+  `updated_at` it had just loaded. #137 deleted that path outright — a
+  disabled principal is now refused rather than revived, and the refusal is
+  made indistinguishable from the service-account one. So the cast has
+  nothing left to fix and was dropped, not ported. Its test went with it: the
+  premise ("signing in re-enables a disabled user") is now inverted, and
+  #137's `token-hardening.test.ts` already pins the ruled behaviour — the
+  sign-in rejects, and `enabled` is still `false` afterwards. No replacement
+  test was written, because it would have duplicated that one.
+
+---
+
 ## 2026-08-11 — the mysql engine joins the Data Source drivers
 
 Motivated by the VMS system on AWS RDS (MySQL 8.4, `caching_sha2_password`,
