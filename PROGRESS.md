@@ -1,5 +1,70 @@
 # Progress Log
 
+## 2026-08-06 — two ways a green suite goes red on a machine that has been used
+
+A local `pnpm test` came back with four failures on a feature branch. None of
+them were the branch's fault, and neither cause named itself in its error.
+
+- **`init.sh` never installed a newly added dependency**
+  (`init.sh`). Line 11 read `[ -d node_modules ] || pnpm install`. Once a
+  checkout had installed even once, that guard held forever — so switching to
+  a branch that ADDS a dependency installed nothing, and the suite died with
+  `Cannot find package 'fast-check'` (also `@duckdb/node-api`, and
+  `feather-testing-core` in the web e2e fixtures). The packages were in
+  `pnpm-lock.yaml` the whole time; nothing pointed at the install step.
+  The guard is gone — `pnpm install` now runs every boot. On the reporting
+  checkout it took **380ms and added the 6 missing packages without touching
+  the lockfile**, which is the whole argument: the cost is noise, the
+  debugging it prevents is not.
+
+- **`user_event` is shared state that outlives a run**
+  (`apps/server/test/global-setup.ts`). The read-side trail (#101) is written
+  by the *app*, so `./init.sh`, the Playwright e2e suite, and any manual
+  click-through all commit rows as Administrator, outside any sandbox
+  transaction. This machine had **955** of them. `eventSummary` scans only the
+  newest 800 rows per user, so the clamp test's deliberately backdated
+  `now − 7d` event sank below the scan window and was simply absent from the
+  summary — surfacing as `Cannot read properties of undefined (reading
+  'visits')`, which reads as a broken endpoint rather than a crowded table.
+  This is the `background_job` gotcha exactly, so it gets the same treatment
+  in the same place: `global-setup` now empties both tables from a
+  `SHARED_TABLES` list. Losing the trail costs nothing — it is telemetry, the
+  client keeps its own warm mirror, and nothing user-visible depends on old
+  rows.
+
+The events failure reproduces on `main`, so it was never branch-specific; it
+was latent on any machine with a few hundred committed events, and dormant on
+a fresh one.
+
+**Verified:** `apps/server` full suite green — **113 files, 640 passed, 1
+skipped** (the clamp test passes against a DB that still had the 955 rows
+before setup ran). On the reporting checkout after the install, the three
+previously-uncollectable files pass — `import-properties` (14),
+`import-upsert` (20), `sources-duckdb` (3). `playwright test --list` in
+`apps/web` now collects **111 tests in 73 files**, so the
+`feather-testing-core` fixture import resolves. `pnpm lint:sql` clean;
+`bash -n init.sh` clean. `./init.sh` was NOT booted end to end — the reporting
+checkout owned :8000 and :5173 at the time, and taking those ports would have
+disrupted live work; the changed line is the dependency step alone, and it was
+exercised directly.
+
+While here, `apps/server/vitest.config.ts` was corrected twice over: it named a
+`tab_background_job` table that does not exist (`to_regclass` confirms only
+`background_job` does), and it described `globalSetup` as emptying the queue
+alone.
+
+**Gotcha for the next person:** the first full run after a `pnpm install` took
+**726s and ended in a hook timeout**, with every test still passing.
+`cli.test.ts` spawns the CLI through `npx tsx`, and on a cold cache `npx` goes
+to the registry before it runs anything. The very next run was **59.9s with
+`cli.test.ts` at 3.2s**. So a one-off slow run right after an install is that,
+not a regression — though a test suite that can reach the network is a hazard
+worth removing on its own terms.
+
+**Next:** nothing pending from this thread. Worth knowing: any future table the
+app writes outside a sandbox transaction belongs in `SHARED_TABLES` the day it
+lands, not the day a test goes red.
+
 ## 2026-08-06 — Access tokens + service accounts (#131): durable automation credentials
 
 The Rama prod cutover exposed the gap: installing an instance manifest
@@ -51,6 +116,7 @@ end-to-end: CLI-created `svc-…` account + token authenticated
 `POST /api/install_app` (checklists app installed), revoke → 401. Next:
 wire the Rama data-warehouse repo's install flow to a service-account
 token, and the #130 no-default-admin-password work it unblocks.
+
 
 ## 2026-08-05 — PR #116 review: the checklist snapshot becomes server-owned
 

@@ -8,7 +8,13 @@ echo "==> featherbase init"
 
 # --- 1. Dependencies -------------------------------------------------------
 command -v pnpm >/dev/null || npm install -g pnpm
-[ -d node_modules ] || pnpm install
+# Unconditional on purpose. Gating on `[ -d node_modules ]` meant that once a
+# checkout had installed once, switching to a branch that ADDS a dependency
+# never installed it — the suite then died with "Cannot find package
+# 'fast-check'" and nothing pointed at the install step. `pnpm install` is
+# near-instant when the lockfile is already satisfied, so paying it every boot
+# is cheaper than the debugging it saves.
+pnpm install
 
 # --- 2. Database -----------------------------------------------------------
 # DATABASE_URL is the single source of truth; the default below must stay in
