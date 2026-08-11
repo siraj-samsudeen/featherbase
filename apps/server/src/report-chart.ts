@@ -93,9 +93,7 @@ export async function pinChartToDashboard(
   if (at >= 0) charts[at] = chart
   else charts.push(chart)
   const nextConfig = { ...config, charts }
-  // Carry the loaded `updated_at` stamp (as a full-precision ISO string) so the
-  // optimistic-concurrency check on updates passes — a bare Date stringifies
-  // without milliseconds and would spuriously conflict.
-  const updatedAt = dash.updated_at ? new Date(dash.updated_at as string).toISOString() : undefined
-  return saveDoc('Dashboard', { name: dashboard, updated_at: updatedAt, config: nextConfig }, user)
+  // Carry the loaded `updated_at` stamp so the optimistic-concurrency check on
+  // the update passes; saveDoc normalizes it.
+  return saveDoc('Dashboard', { name: dashboard, updated_at: dash.updated_at, config: nextConfig }, user)
 }

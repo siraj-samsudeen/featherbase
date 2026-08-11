@@ -36,6 +36,12 @@ export async function up() {
       // sheet back together (1/3, 2/3, ...).
       { column_name: 'part', column_type: 'Int' },
       { column_name: 'parts', column_type: 'Int' },
+      // RVT-R1 (spec 0005): the run identity its parts share, the rows this
+      // part wrote, and when the run was reverted. Existing databases
+      // converge in 0073.
+      { column_name: 'run_id', column_type: 'Data' },
+      { column_name: 'touched', column_type: 'JSON', hidden: true },
+      { column_name: 'reverted_at', column_type: 'Datetime', in_list_view: true },
     ],
   })
 }

@@ -54,6 +54,198 @@ instance swap from the deploy itself, not a bug — retried clean.
 `CREDENTIALS_KEY` encrypted storage), or triage #153–#157 and
 #162–#164. Reflect more of the 50 VMS tables as Rama needs them —
 order no longer matters.
+## 2026-08-11 — spec 0005 built: revert an import run (RVT-J1, R1–R6, I1–I3)
+
+The signed spec (PR #148) built in one pass: migration 0073 (0070/0071
+claimed by parallel PRs, 0072 landed unannounced with #152 — renumbered on
+discovery), RVT-R1 recording in the import action (run_id + per-part
+touched rows {name, action, stamp, version?}), the :import-revert action
+(dry_run rehearsal, stamp-based edited-after skips, named-row override,
+whole-request permission refusal), and two wizard surfaces sharing one
+RevertControl: the completion panel and the RunHistory strip (?table=
+preselect) — the strip exists because single-sheet imports auto-navigate
+away (the ratified IMP/UPS walk, deliberately unchanged).
+
+**Build findings, three-fates queue (owner's call):**
+- `track_changes` cannot be set through any API surface — the flag is a DB
+  default the create/update endpoints never read. RVT-R3's
+  no-version-trail class is therefore unreachable end-to-end and proven
+  rule-tier against the exported pure planRevert. Ratify a builder toggle,
+  or accept the default-on world.
+- The revert's log stamping (reverted_at) is a raw UPDATE like the
+  version-trail write — system bookkeeping, not a lifecycle write.
+
+**Verified:** server import suites 139/139 (13 new revert tests incl.
+whole-refusal and double-revert no-op), web 42/42, all 11 import e2e green
+incl. the new RVT-J1 walk — run against port-randomized isolated servers
+after discovering FOUR parallel sessions fighting over the usual ports
+(the served bundle is now verified to contain this branch's code before
+any e2e run is trusted). UPS-H1 closed in the 0004 evidence: the fourth
+mitigation shipped. **Next:** typed confirmation above ~20 updates, then
+index-on-demand (#145).
+## 2026-08-11 — FK-aware reflection: reflected foreign keys become References
+
+Motivated by the VMS database (Django on MySQL 8.4/RDS): `accidents_accident`
+carries `vehicle_id`/`driver_id` FK columns that used to reflect as plain
+Ints, so the relation map had nothing to walk. Now reflection reads the FK
+edges and emits real `Reference` columns, and the RelationMap navigates
+between reflected tables like any native ones.
+
+**Design (codebase-design pass):** the `SourceDriver.introspect` seam gains
+exactly ONE engine-neutral fact per column — `references: {schema, table,
+column}`, the single-column FK edge, read from
+`information_schema.key_column_usage` on mysql and postgres alike (shared
+grouping in `sources/fk.ts` drops composite FKs — a Reference holds one
+value). Drivers that cannot report FKs (duckdb, csv-folder) simply omit it.
+No new driver methods, no engine switches.
+
+**The ordering problem** (tables reflect one at a time, in any order) is
+solved by resolving BOTH directions on every reflect, all inside reflect.ts:
+- forward: a new table's FK column becomes a Reference when its target is
+  already bound to the same source AND the FK lands on that binding's
+  external_pk;
+- reverse: every FK edge is recorded raw on the column_def (migration
+  **0074** — 0073 was claimed by the concurrent import-revert PR:
+  `source_fk_schema/table/column`), and when a table reflects,
+  every recorded edge on the same source that lands on its pk is upgraded
+  to Reference in place (direct column_def update — deliberately bypassing
+  updateTable's column_type-change guard, which exists for user edits).
+
+So reflecting in ANY order converges to the same linked graph with no
+re-reflection call; an FK at a never-reflected table stays a plain Int and
+upgrades automatically if that table ever reflects. Cross-source references
+cannot arise (targets are matched within one source's bindings only).
+Bound-table deletes already skip bound parents in the link-integrity scan,
+and bound saves never run native validateLinks, so the upgraded columns are
+safe on both write paths.
+
+**Verified:** 4 new mysql tests (FK edges on introspect; parent-first;
+child-first convergence; walkable graph — forward values + `:connections`
+backlink counts) and 1 postgres test (edge + child-first), all through the
+HTTP API with a Django-style vehicle/driver/accident/garage fixture where
+garage is deliberately never reflected. Full server suite **707 passed /
+117 files** + typecheck on an isolated `featherbase_fkreflect` DB. Browser
+(ports 8041/5197, own DB, local MySQL 9.6 `vms_demo`): reflected
+`accidents_accident` + `vehicles_vehicle` + `accounts_customuser` child-
+first in one call, opened `/admin/map/Vms Accidents Accident/1` — both
+forward nodes rendered, clicking Vehicle re-centered the map, the vehicle
+showed the accident backlink (count 2), and the collection listed both rows.
+
+**Review round (same PR):** two defects fixed. (1) The postgres FK query
+moved off information_schema onto `pg_constraint` — constraint names are
+unique per TABLE in Postgres, so the schema+name-keyed views cross-multiply
+when two tables reuse a name (e.g. `fk_ref` on both), silently dropping
+genuine edges; `conrelid`/`confrelid` are unambiguous. Pinned by a test with
+two same-named constraints. (2) A source relation bound MORE than once
+(hand-bound EDS-3 + reflected) now resolves Reference targets
+deterministically: the **earliest-created binding wins** (tie-break: name
+asc) — consistent with linkReferencesTo, which never rewrites a column that
+is already a Reference. Pinned by a doubly-bound test.
+
+**Next:** after merge + featherbase-dev redeploy, re-reflect the real VMS
+tables and walk the map against RDS. Note for that retest: tables reflected
+BEFORE this change carry no source_fk_* records, so they will not converge —
+delete and re-reflect them (order then no longer matters).
+
+## 2026-08-11 — #135: create-user refuses a duplicate instead of shadowing it
+
+Filed off the sweep below, then fixed. `feather create-user` handed the row
+to `saveDoc` in its default `upsert` mode, so a second call for the same
+email fell through to the update path — and the operator saw the raw
+`Updates must include the updated_at timestamp of the loaded row`. That was
+the reported symptom, and it turned out to be the milder half.
+
+- **The real hazard was case.** `user.name` and the unique index on
+  `user.email` are both case-sensitive, so `create-user ADMIN@X.COM` for an
+  existing `admin@x.com` did not collide at all — it silently created a
+  SECOND account shadowing the first. Same trap #131 closed for service
+  accounts, which is why that fix checked `lower(name) = lower($1)`.
+- **The guard** in `cmdCreateUser` matches `lower(name)` OR `lower(email)`
+  (email is unique, and a row can carry the address under either identity —
+  the lookup `findOrCreateGoogleUser` already uses) and throws
+  `User <name> already exists`. Plain `Error`, matching cli.ts's local
+  style; `main()` prints it as `error: …` and exits 1.
+- **Verified** by the real subprocess CLI, both spellings, in
+  `cli.test.ts`: exact case and upper case both exit 1 with the clear
+  message and never leak `updated_at`, and exactly one account survives
+  with its `full_name` untouched. With the guard disabled the exact-case
+  attempt reproduces #135's reported error verbatim (`error: Updates must
+  include the updated_at timestamp of the loaded row`) and never reaches the
+  upper-case spelling — the test catches it on the first assertion.
+- **Gotcha**: `cli.test.ts` is deliberately NOT sandbox-migrated (it spawns
+  subprocesses with their own connections), so its writes are real and a
+  failed run can leave rows behind — including a case-variant
+  `CLI-DUP-USER@X.COM` shadow that an exact-match `cleanup()` could not see.
+  `cleanup()` now deletes on `lower(name)`, so a half-failed run self-heals
+  on the next one. It also folds in main's `svc-cli-test` teardown, which
+  landed on the same function.
+
+---
+
+## 2026-08-11 — optimistic concurrency accepts the Date it hands out (#136, reworked)
+
+The surviving core of #136, rebased onto main after #137 overruled its other
+half.
+
+`updateDoc` compared the echoed `updated_at` against
+`new Date(String(values.updated_at))`. `String(Date)` renders
+`Thu Aug 06 2026 10:20:30 GMT+0000 (…)` — whole seconds, milliseconds gone. So
+any server-side caller that loaded a row and echoed its stamp straight back
+409'd against itself whenever the stored value carried a millisecond
+component, which `now()` almost always produces. HTTP callers were never
+affected: they send an ISO string over the wire.
+
+- **`document.ts`** grows `expectedStamp()`, which normalizes a `Date` through
+  `toISOString()` and leaves strings alone. Both concurrency sites use it —
+  the native `updateDoc` check and the `expect` that `updateBoundDoc` hands
+  the bound-source driver, where `String(Date)` could never have matched a
+  source revision either.
+- **Verified** by a new `update.test.ts` case on an ordinary Table, against a
+  stamp forced to `…:30.123Z` rather than trusting `now()` to carry one. The
+  bug is in the shared save path, so it affected every Table, not just User.
+- **What #137 took away.** #136 also cast the stamp at the SSO call site,
+  where `findOrCreateGoogleUser` re-enabled a disabled User by echoing the
+  `updated_at` it had just loaded. #137 deleted that path outright — a
+  disabled principal is now refused rather than revived, and the refusal is
+  made indistinguishable from the service-account one. So the cast has
+  nothing left to fix and was dropped, not ported. Its test went with it: the
+  premise ("signing in re-enables a disabled user") is now inverted, and
+  #137's `token-hardening.test.ts` already pins the ruled behaviour — the
+  sign-in rejects, and `enabled` is still `false` afterwards. No replacement
+  test was written, because it would have duplicated that one.
+- **The sweep**, done in the follow-up commit. Exactly five call sites echo a
+  loaded `updated_at` back into `saveDoc`, and each was read before being
+  touched: `service-accounts.ts`, `index.ts`'s permission upsert,
+  `methods/frappe-client.ts`'s `set_value`, `report-chart.ts` and
+  `actions/collection-import.ts`. All five hand the value straight to the
+  concurrency check and nothing else, so `expectedStamp()` makes every one of
+  them redundant and all five came out — a sixth copy of the same
+  normalization is exactly the shim CLAUDE.md forbids. The one that looked
+  like it might differ is `collection-import.ts`, whose `updateValues()` also
+  feeds a dry-run validator; it does not read the stamp, because
+  `pickFieldValues()` skips `STANDARD_COLUMNS`. The `?:` guards came out with
+  the casts: `updateDoc` already rejects a null or missing stamp first, with
+  a clearer message than a `TypeError` on `undefined.toISOString()`.
+- Callers that *omit* `updated_at` (`apps.ts`, `customizations.ts` and
+  friends) pre-check existence or pass `'insert'`, so they only ever insert.
+  The one exception was `cli.ts`'s blind `create-user` upsert — fixed above.
+- **Both new tests were confirmed red against the un-fixed code**, one at a
+  time. Reverting `updateDoc` to `new Date(String(...))` fails the
+  `update.test.ts` case with `… has been modified after you loaded it` — and
+  now also fails two `import-upsert` cases, which is the removed
+  `collection-import.ts` cast showing that the central normalization is
+  load-bearing rather than decorative. Deleting the `cli.ts` guard fails the
+  `cli.test.ts` case with #135's raw error verbatim.
+- **Verified**: `pnpm --filter server typecheck` clean; server suite
+  **116 files, 693 passed**, against a dedicated `featherbase_pr136`
+  database (migrations + patches). Main's baseline immediately before this
+  work was 691 passed / 116 files — the two added tests are the whole
+  delta, and no file count moved because `oauth.test.ts` was already main's.
+- **Next**: the bound-source half — `updateBoundDoc`'s `expect` now
+  normalizes a Date too, but no test drives a bound source with a Date echo
+  (the native path is the one under test).
+
+---
 
 ## 2026-08-11 — the mysql engine joins the Data Source drivers
 

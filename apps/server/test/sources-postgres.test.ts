@@ -40,6 +40,38 @@ beforeAll(async () => {
   await cli.unsafe(`
     insert into ext_fixture.tenant (slug, plan, internal_notes)
     values ('acme', 'pro', 'cli-only'), ('globex', 'free', null)`)
+  // FK pair + one FK at a table the tests never reflect (garage).
+  await cli.unsafe(`
+    create table ext_fixture.vehicle (
+      id serial primary key,
+      reg_no text not null,
+      updated_at timestamptz not null default now()
+    )`)
+  await cli.unsafe(`
+    create table ext_fixture.garage (id serial primary key, city text)`)
+  await cli.unsafe(`
+    create table ext_fixture.accident (
+      id serial primary key,
+      severity text,
+      vehicle_id int not null references ext_fixture.vehicle(id),
+      garage_id int references ext_fixture.garage(id),
+      updated_at timestamptz not null default now()
+    )`)
+  // Two tables sharing one constraint NAME (legal in Postgres — constraint
+  // names are unique per table, not per schema). The hand-written
+  // "fk_ref" on both must not cross-multiply in the catalog query.
+  await cli.unsafe(`
+    create table ext_fixture.claim (
+      id serial primary key,
+      vehicle_id int,
+      constraint fk_ref foreign key (vehicle_id) references ext_fixture.vehicle(id)
+    )`)
+  await cli.unsafe(`
+    create table ext_fixture.inspection (
+      id serial primary key,
+      vehicle_id int,
+      constraint fk_ref foreign key (vehicle_id) references ext_fixture.vehicle(id)
+    )`)
 })
 
 afterAll(async () => {
@@ -329,5 +361,132 @@ describe('EDS-11: source failure', () => {
     const body = (await res.json()) as { error: { type: string; message: string } }
     expect(body.error.type).toBe('DataSourceError')
     expect(body.error.message).toContain('ext-dead')
+  })
+})
+
+describe('EDS-2: foreign keys reflect as References', () => {
+  test('FK edges surface on introspect and converge in child-first order', async ({ admin }) => {
+    await makeSource(admin)
+    const intro = (await admin.get(
+      '/api/table/Data%20Source/ext-fixture:introspect?schema=ext_fixture',
+    )) as {
+      tables: {
+        table: string
+        columns: {
+          name: string
+          references?: { schema: string; table: string; column: string } | null
+        }[]
+      }[]
+    }
+    const accident = intro.tables.find((t) => t.table === 'accident')!
+    expect(accident.columns.find((c) => c.name === 'vehicle_id')!.references).toEqual({
+      schema: 'ext_fixture',
+      table: 'vehicle',
+      column: 'id',
+    })
+
+    // Child first: plain Int until the parent arrives, then upgraded in place.
+    const reflectRes = await admin.fetch('/api/table/Data%20Source/ext-fixture:reflect', {
+      method: 'POST',
+      body: JSON.stringify({ schema: 'ext_fixture', tables: ['accident'] }),
+    })
+    expect(reflectRes.status).toBe(200)
+    const created = ((await reflectRes.json()) as { created: { name: string }[] }).created[0].name
+    const colsOf = async () => {
+      const meta = (await admin.get(`/api/table/${encodeURIComponent(created)}:meta`)) as {
+        columns: { column_name: string; column_type: string; reference_table: string | null }[]
+      }
+      return new Map(meta.columns.map((c) => [c.column_name, c]))
+    }
+    expect((await colsOf()).get('vehicle_id')).toMatchObject({
+      column_type: 'Int',
+      reference_table: null,
+    })
+    const parentRes = await admin.fetch('/api/table/Data%20Source/ext-fixture:reflect', {
+      method: 'POST',
+      body: JSON.stringify({ schema: 'ext_fixture', tables: ['vehicle'] }),
+    })
+    expect(parentRes.status).toBe(200)
+    const vehicleName = ((await parentRes.json()) as { created: { name: string }[] }).created[0]
+      .name
+    const cols = await colsOf()
+    expect(cols.get('vehicle_id')).toMatchObject({
+      column_type: 'Reference',
+      reference_table: vehicleName,
+    })
+    // garage is never reflected — its FK column stays Int.
+    expect(cols.get('garage_id')).toMatchObject({ column_type: 'Int', reference_table: null })
+  })
+
+  test('a doubly-bound relation resolves to a deterministic Reference target', async ({
+    admin,
+  }) => {
+    await makeSource(admin)
+    // Bind the vehicle relation TWICE by hand (legal via EDS-3); the
+    // earliest-created binding must win as the Reference target — names
+    // chosen so the created_at tie-break (name asc) agrees.
+    for (const name of ['Alpha Vehicle', 'Zeta Vehicle']) {
+      await admin.post('/api/doctype', {
+        name,
+        data_source: 'ext-fixture',
+        external_schema: 'ext_fixture',
+        external_table: 'vehicle',
+        external_pk: 'id',
+        columns: [{ column_name: 'reg_no', column_type: 'Data' }],
+      })
+    }
+    const res = await admin.fetch('/api/table/Data%20Source/ext-fixture:reflect', {
+      method: 'POST',
+      body: JSON.stringify({ schema: 'ext_fixture', tables: ['accident'] }),
+    })
+    expect(res.status).toBe(200)
+    const created = ((await res.json()) as { created: { name: string }[] }).created[0].name
+    const meta = (await admin.get(`/api/table/${encodeURIComponent(created)}:meta`)) as {
+      columns: { column_name: string; column_type: string; reference_table: string | null }[]
+    }
+    expect(meta.columns.find((c) => c.column_name === 'vehicle_id')).toMatchObject({
+      column_type: 'Reference',
+      reference_table: 'Alpha Vehicle',
+    })
+  })
+
+  test('two tables sharing a constraint name both keep their FK edge', async ({ admin }) => {
+    await makeSource(admin)
+    const intro = (await admin.get(
+      '/api/table/Data%20Source/ext-fixture:introspect?schema=ext_fixture',
+    )) as {
+      tables: {
+        table: string
+        columns: {
+          name: string
+          references?: { schema: string; table: string; column: string } | null
+        }[]
+      }[]
+    }
+    for (const tableName of ['claim', 'inspection']) {
+      const t = intro.tables.find((x) => x.table === tableName)!
+      expect(t.columns.find((c) => c.name === 'vehicle_id')!.references).toEqual({
+        schema: 'ext_fixture',
+        table: 'vehicle',
+        column: 'id',
+      })
+    }
+    const res = await admin.fetch('/api/table/Data%20Source/ext-fixture:reflect', {
+      method: 'POST',
+      body: JSON.stringify({ schema: 'ext_fixture', tables: ['vehicle', 'claim', 'inspection'] }),
+    })
+    expect(res.status).toBe(200)
+    const created = ((await res.json()) as { created: { table: string; name: string }[] }).created
+    const vehicleName = created.find((c) => c.table === 'vehicle')!.name
+    for (const t of ['claim', 'inspection']) {
+      const name = created.find((c) => c.table === t)!.name
+      const meta = (await admin.get(`/api/table/${encodeURIComponent(name)}:meta`)) as {
+        columns: { column_name: string; column_type: string; reference_table: string | null }[]
+      }
+      expect(meta.columns.find((c) => c.column_name === 'vehicle_id')).toMatchObject({
+        column_type: 'Reference',
+        reference_table: vehicleName,
+      })
+    }
   })
 })

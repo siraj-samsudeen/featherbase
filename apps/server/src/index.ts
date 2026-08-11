@@ -31,6 +31,7 @@ import {
 } from './actions'
 import './actions/core-row-actions'
 import './actions/collection-import'
+import './actions/collection-import-revert'
 import './actions/source-actions'
 import './actions/row-connections'
 import './actions/collection-aggregate'
@@ -894,7 +895,7 @@ app.post('/api/permissions/:doctype', async (c) => {
   if (existing)
     await saveDoc(
       'Permission',
-      { name: existing.name as string, updated_at: (existing.updated_at as Date).toISOString(), ...flags },
+      { name: existing.name as string, updated_at: existing.updated_at, ...flags },
       user,
     )
   else await saveDoc('Permission', { ref_table: doctype, role: body.role, tier: 'basic', ...flags }, user)

@@ -477,6 +477,9 @@ const allTablesRoute = createRoute({
 const prototypeConnectSourceRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'prototype/connect-source',
+  validateSearch: (search: Record<string, unknown>) => ({
+    step: searchString(search.step),
+  }),
   component: PrototypeConnectSourcePage,
 })
 

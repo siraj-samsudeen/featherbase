@@ -74,6 +74,14 @@ async function cmdCreateUser(
   if (!email || !password) throw new Error('create-user requires <email> <password>')
   const roles = asArray(flags.roles).flatMap((r) => r.split(',')).map((r) => r.trim()).filter(Boolean)
   const fullName = typeof flags['full-name'] === 'string' ? (flags['full-name'] as string) : email
+  // #135: say plainly that the user exists. saveDoc upserts, so a second
+  // create-user would route into the update path and surface the raw
+  // optimistic-concurrency error instead. Case-insensitive on name AND email
+  // (email is unique): `administrator` must not shadow `Administrator` — the
+  // same trap #131 closed for service accounts.
+  const [existing] = await sql`
+    select name from "user" where lower(name) = lower(${email}) or lower(email) = lower(${email})`
+  if (existing) throw new Error(`User ${existing.name as string} already exists`)
   await saveDoc(
     'User',
     {
