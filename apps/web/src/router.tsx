@@ -37,6 +37,7 @@ import { AllTablesPage } from './pages/AllTables'
 import SourceBrowser from './pages/SourceBrowser'
 import { PrototypeConnectSourcePage } from './pages/PrototypeConnectSource'
 import { ExploreView } from './pages/Explore'
+import { parseChain, parseSelect } from './lib/explore-steps'
 import { RelationMap } from './pages/RelationMap'
 
 const rootRoute = createRootRoute({ component: Outlet })
@@ -602,18 +603,37 @@ const exploreRoute = createRoute({
   path: 'explore',
   validateSearch: (search: Record<string, unknown>) => ({
     root: searchString(search.root),
+    // Entry points (ListView split button, RelationMap) deep-link a whole
+    // workspace: `chain` pre-builds step2/step3, `select` preselects pane 1.
+    // Both are validated the parseFilters way — malformed means absent.
+    chain: searchString(search.chain),
+    select: searchString(search.select),
   }),
   component: ExplorePage,
 })
 
 function ExplorePage() {
-  const { root } = exploreRoute.useSearch()
+  const { root, chain, select } = exploreRoute.useSearch()
   const navigate = exploreRoute.useNavigate()
   return (
     <div data-testid="doctype-page">
+      {/* Params initialize state, they are not two-way bound — in-view step
+          and selection changes stay pure state (#87 keeps root shareable;
+          the chain/select params exist for the entry points). The key
+          remounts the workspace when a navigation hands us new params. */}
       <ExploreView
+        key={`${root ?? ''}|${chain ?? ''}|${select ?? ''}`}
         root={root}
-        onRootChange={(r) => navigate({ search: { root: r || undefined }, replace: true })}
+        initialChain={parseChain(chain)}
+        initialSelect={parseSelect(select)}
+        onRootChange={(r) =>
+          navigate({
+            // A root change is a fresh workspace — any deep-linked chain and
+            // selection belonged to the old root, so they leave the URL too.
+            search: { root: r || undefined, chain: undefined, select: undefined },
+            replace: true,
+          })
+        }
       />
     </div>
   )
