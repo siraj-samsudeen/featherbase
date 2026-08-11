@@ -93,6 +93,6 @@ export async function setServiceAccountEnabled(
   const [row] = await sql`
     select row_id, updated_at from "user" where row_id = ${name} and user_type = 'service'`
   if (!row) throw new AppError('NotFoundError', `Service account ${name} not found`)
-  await saveDoc('User', { name, updated_at: row.updated_at, enabled }, actor)
+  await saveDoc('User', { row_id: name, updated_at: row.updated_at, enabled }, actor)
   return getServiceAccount(name)
 }

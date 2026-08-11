@@ -894,7 +894,7 @@ app.post('/api/permissions/:doctype', async (c) => {
   if (existing)
     await saveDoc(
       'Permission',
-      { name: existing.row_id as string, updated_at: existing.updated_at, ...flags },
+      { row_id: existing.row_id as string, updated_at: existing.updated_at, ...flags },
       user,
     )
   else await saveDoc('Permission', { ref_table: doctype, role: body.role, tier: 'basic', ...flags }, user)
@@ -1175,8 +1175,8 @@ app.post('/api/enqueue_job', async (c) => {
 // JOB-004: retry a failed job from the Admin.
 app.post('/api/retry_job', async (c) => {
   await assertSystemManager(who(c))
-  const { name } = (await c.req.json().catch(() => ({}))) as { name?: string }
-  if (!name) throw new AppError('ValidationError', 'Expected { name }')
+  const { row_id: name } = (await c.req.json().catch(() => ({}))) as { row_id?: string }
+  if (!name) throw new AppError('ValidationError', 'Expected { row_id }')
   const retried = await retryJob(name)
   if (!retried) throw new AppError('ValidationError', `Job ${name} is not in a failed state`)
   return c.json({ ok: true })

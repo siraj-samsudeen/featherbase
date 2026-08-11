@@ -271,7 +271,7 @@ export async function findOrCreateGoogleUser(email: string, name: string): Promi
       throw new AppError('AuthenticationError', 'Access not provisioned for this account. Contact IT.')
     const created = await saveDoc(
       'User',
-      { name: email, email, full_name: name || email, enabled: true, roles: [] },
+      { row_id: email, email, full_name: name || email, enabled: true, roles: [] },
       'Administrator',
     )
     userName = String(created.row_id)

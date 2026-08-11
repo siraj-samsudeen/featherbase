@@ -59,7 +59,7 @@ export async function importCustomizations(
     await saveDoc(
       'Custom Field',
       {
-        name: `${f.dt}-${f.column_name}`,
+        row_id: `${f.dt}-${f.column_name}`,
         dt: f.dt,
         column_name: f.column_name,
         label: f.label ?? null,
@@ -85,7 +85,7 @@ export async function importCustomizations(
     await saveDoc(
       'Metadata Override',
       {
-        name: `${p.table_name}-${p.column_name ?? ''}-${p.property}`,
+        row_id: `${p.table_name}-${p.column_name ?? ''}-${p.property}`,
         table_name: p.table_name,
         column_name: p.column_name ?? null,
         property: p.property,

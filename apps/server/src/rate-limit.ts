@@ -41,7 +41,7 @@ export function resetRateLimit(user?: string) {
 }
 
 export async function rateLimit(c: Context, next: Next) {
-  const user = (c.get('user') as { name?: string } | undefined)?.name
+  const user = (c.get('user') as { row_id?: string } | undefined)?.row_id
   if (!user) return next()
 
   const now = Date.now()
