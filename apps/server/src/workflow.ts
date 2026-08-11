@@ -210,7 +210,7 @@ export async function applyWorkflowAction(
 
   await sql`
     insert into workflow_action ${sql({
-      name: randomBytes(5).toString('hex'),
+      row_id: randomBytes(5).toString('hex'),
       created_by: user,
       updated_by: user,
       ref_table: table,

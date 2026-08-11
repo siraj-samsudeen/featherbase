@@ -80,11 +80,11 @@ export function publish(channel: string, event: string, payload?: unknown): void
 // Convenience emitters for the row lifecycle.
 export function publishDocEvent(
   table: string,
-  name: string,
+  rowId: string,
   event: 'created' | 'updated' | 'deleted',
 ): void {
-  publish(`list:${table}`, event, { table, name })
-  publish(`doc:${table}:${name}`, event, { table, name })
+  publish(`list:${table}`, event, { table, row_id: rowId })
+  publish(`doc:${table}:${rowId}`, event, { table, row_id: rowId })
   // #101 Phase 4: an invalidation ping for the (System Manager-only) team
   // feed. Deliberately payload-free — the subscriber may not have read
   // permission on this particular Table, and the feed data itself always

@@ -9,7 +9,7 @@ import { tableName } from './doctype-engine'
 
 export interface SearchHit {
   table: string
-  name: string
+  row_id: string
   title: string
 }
 
@@ -46,7 +46,7 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
     for (const row of rows) {
       hits.push({
         table: meta.name,
-        name: String(row.row_id),
+        row_id: String(row.row_id),
         title: String(row.title ?? row.row_id),
       })
       if (hits.length >= TOTAL_CAP) break

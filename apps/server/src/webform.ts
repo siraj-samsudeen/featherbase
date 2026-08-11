@@ -75,7 +75,7 @@ export async function submitWebForm(
   // name so it belongs to them (created_by) and shows up in their
   // own_rows_only portal.
   sessionUser?: string,
-): Promise<{ name: string; message: string }> {
+): Promise<{ row_id: string; message: string }> {
   const form = await loadForm(route)
   const allowed = new Set(columnNames(form.web_fields))
   // Accept ONLY whitelisted columns — a submitter can't set arbitrary columns.
@@ -91,7 +91,7 @@ export async function submitWebForm(
     skipPermissions: true,
   })
   return {
-    name: doc.row_id as string,
+    row_id: doc.row_id as string,
     message: (form.success_message as string) ?? 'Submitted.',
   }
 }

@@ -1,4 +1,5 @@
 import { AppError } from './errors'
+import { ROW_KEY } from './meta'
 import { getDoc, saveDoc } from './document'
 import { runReportRows } from './auto-email-report'
 
@@ -23,7 +24,7 @@ function pickFields(
   rows: Record<string, unknown>[],
   spec: ReportChartSpec,
 ): { labelField: string; valueField: string } {
-  const labelField = spec.label_field ?? columns.find((c) => c !== 'name') ?? columns[0]
+  const labelField = spec.label_field ?? columns.find((c) => c !== ROW_KEY) ?? columns[0]
   const valueField =
     spec.value_field ??
     columns.find((c) => c !== labelField && rows.some((r) => isNumeric(r[c]))) ??

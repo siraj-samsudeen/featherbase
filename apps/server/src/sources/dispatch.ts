@@ -1,6 +1,6 @@
 import { sql } from '../db'
 import { AppError } from '../errors'
-import type { TableMeta } from '../meta'
+import { ROW_KEY, type TableMeta } from '../meta'
 import {
   getUserPermissionMap,
   isBypassUser,
@@ -50,7 +50,7 @@ export async function boundContext(meta: TableMeta): Promise<BoundContext> {
   // Runtime backstop for finding 7: the pk is serialized as `name`, so a
   // credential-named pk must never be queryable even if the binding was
   // written by hand rather than through reflection.
-  const boundPk = meta.external_pk || 'name'
+  const boundPk = meta.external_pk || ROW_KEY
   if (isSensitiveColumn(boundPk))
     throw new AppError(
       'ValidationError',
@@ -69,7 +69,7 @@ export async function boundContext(meta: TableMeta): Promise<BoundContext> {
     source: cfg,
     schema,
     table,
-    pk: meta.external_pk || 'name',
+    pk: meta.external_pk || ROW_KEY,
     modified: meta.external_modified ?? null,
     columns: meta.columns
       .filter((c) => !NO_COLUMN_TYPES.has(c.column_type))
@@ -91,7 +91,7 @@ export async function boundContext(meta: TableMeta): Promise<BoundContext> {
 // Doc-field name → source column. 'name' is the pk; 'updated_at' is the
 // mapped modified column (when one exists).
 function sourceColumnFor(bind: Binding, field: string): string | null {
-  if (field === 'name') return bind.pk
+  if (field === ROW_KEY) return bind.pk
   if (field === 'updated_at' && bind.modified) return bind.modified
   const col = bind.columns.find((c) => c.column_name === field)
   return col ? col.source_column : null
@@ -110,7 +110,7 @@ function requireSourceColumn(bind: Binding, field: string, what: string): string
 // synthesized standard columns of spec EDS-4).
 export function mapRowOut(bind: Binding, row: SourceRow): SourceRow {
   const out: SourceRow = {
-    name: row[bind.pk] == null ? null : String(row[bind.pk]),
+    [ROW_KEY]: row[bind.pk] == null ? null : String(row[bind.pk]),
     created_by: null,
     created_at: null,
     updated_at: bind.modified ? (row[bind.modified] ?? null) : null,
@@ -208,10 +208,10 @@ export async function boundGetList(meta: TableMeta, args: BoundListArgs, user: s
   const scopeFilters = await boundScopeFilters(meta, user, ctx.bind)
   const bind = narrowToTiers(ctx.bind, meta, await permittedTiers(user, meta.name, 'read'))
 
-  const fields = args.fields?.length ? args.fields : ['name']
+  const fields = args.fields?.length ? args.fields : [ROW_KEY]
   const selectCols = fields.map((f) => requireSourceColumn(bind, f, 'selected'))
 
-  let orderField = meta.sort_column || (bind.modified ? 'updated_at' : 'name')
+  let orderField = meta.sort_column || (bind.modified ? 'updated_at' : ROW_KEY)
   let orderDir = (meta.sort_order || 'desc').toLowerCase()
   if (args.order_by) {
     const m = args.order_by.trim().match(/^([a-z][a-z0-9_]*)\s*(asc|desc)?$/i)
@@ -236,7 +236,7 @@ export async function boundGetList(meta: TableMeta, args: BoundListArgs, user: s
     offset: Math.max(args.limit_start ?? 0, 0),
   }
   const { rows, total } = await driver.getList(bind, spec)
-  const wanted = new Set(['name', ...fields])
+  const wanted = new Set([ROW_KEY, ...fields])
   const data = rows.map((r) => {
     const full = mapRowOut(bind, r)
     return Object.fromEntries(Object.entries(full).filter(([k]) => wanted.has(k)))
@@ -305,7 +305,7 @@ export async function writableContext(meta: TableMeta): Promise<BoundContext> {
       `Data source ${ctx.cfg.name} (${ctx.cfg.engine}) is read-only`,
     )
   const [live] = await sql<{ access: string }[]>`
-    select access from data_source where name = ${ctx.cfg.name}`
+    select access from data_source where row_id = ${ctx.cfg.name}`
   if (!live) throw new AppError('NotFoundError', `Data Source ${ctx.cfg.name} no longer exists`)
   if (live.access !== 'read_write')
     throw new AppError('PermissionError', `Data source ${ctx.cfg.name} is read-only`)

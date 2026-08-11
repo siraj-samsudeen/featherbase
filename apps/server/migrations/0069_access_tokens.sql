@@ -7,7 +7,7 @@
 create table if not exists access_token (
   id varchar(140) primary key,
   label varchar(140) not null,
-  owner varchar(140) not null references "user"(name) on delete cascade,
+  owner varchar(140) not null references "user"(row_id) on delete cascade,
   token_hash char(64) not null unique,
   created_at timestamptz not null default now(),
   expires_at timestamptz,

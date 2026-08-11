@@ -54,7 +54,7 @@ export async function siteMigrate(site: string): Promise<void> {
     create table if not exists column_def (
       id bigserial primary key, parent text not null, column_name text not null, column_type text not null);
     create table if not exists "user" (
-      name text primary key, email text unique, full_name text,
+      row_id text primary key, email text unique, full_name text,
       enabled boolean not null default true, created_at timestamptz not null default now());
   `)
 }
@@ -105,7 +105,7 @@ export async function siteCreateDoctype(
     await tx`insert into table_def ${tx({ name, module: 'Site' })}`
     for (const f of columns) await tx`insert into column_def ${tx({ parent: name, column_name: f.column_name, column_type: f.column_type })}`
     const cols = columns.map((f) => `"${f.column_name.replace(/[^a-z0-9_]/gi, '_')}" text`).join(', ')
-    await tx.unsafe(`create table if not exists ${tableFor(name)} (name text primary key${cols ? ', ' + cols : ''})`)
+    await tx.unsafe(`create table if not exists ${tableFor(name)} (row_id text primary key${cols ? ', ' + cols : ''})`)
   })
   return { name }
 }

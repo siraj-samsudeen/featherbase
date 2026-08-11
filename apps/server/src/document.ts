@@ -1145,7 +1145,7 @@ export async function renameDoc(
       `${table} is bound to data source ${meta.data_source}; its primary keys belong to the source and cannot be renamed here`,
     )
   const target = newName.trim()
-  if (!target) throw new AppError('ValidationError', 'New name is required', { name: 'Required' })
+  if (!target) throw new AppError('ValidationError', 'A new Row ID is required', { [ROW_KEY]: 'Required' })
   if (target === oldName) return getDoc(table, oldName, user)
 
   await sql.begin(async (tx) => {

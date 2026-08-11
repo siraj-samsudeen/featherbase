@@ -7,5 +7,5 @@ export async function up() {
   const pwd = process.env.ADMIN_PASSWORD ?? 'admin'
   await sql`
     update "user" set password_hash = ${hashPassword(pwd)}
-    where name = 'Administrator' and password_hash is null`
+    where row_id = 'Administrator' and password_hash is null`
 }

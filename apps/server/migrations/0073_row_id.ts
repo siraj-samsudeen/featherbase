@@ -59,15 +59,17 @@ export async function up() {
   // Stored, data-driven references to the key: Saved View filters are
   // [field, op, value] triples authored by the Desk, and print/email templates
   // interpolate {{ name }} / {{ doc.name }}.
+  // filters is jsonb, so the rewrite goes through its text form and back.
   await sql`
-    update saved_view set filters = replace(filters, '["name",', '["row_id",')
-    where filters like '%["name",%'`
+    update saved_view
+    set filters = replace(filters::text, '["name",', '["row_id",')::jsonb
+    where filters::text like '%["name",%'`
   await sql`
     update print_format set template = replace(template, '{{ name }}', '{{ row_id }}')
     where template like '%{{ name }}%'`
   await sql`
-    update email_rule set body = replace(body, '{{ doc.name }}', '{{ doc.row_id }}')
-    where body like '%{{ doc.name }}%'`
+    update email_rule set message = replace(message, '{{ doc.name }}', '{{ doc.row_id }}')
+    where message like '%{{ doc.name }}%'`
   await sql`
     update email_rule set subject = replace(subject, '{{ doc.name }}', '{{ doc.row_id }}')
     where subject like '%{{ doc.name }}%'`

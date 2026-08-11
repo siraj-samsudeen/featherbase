@@ -1,3 +1,4 @@
+import { ROW_KEY } from './meta'
 import { sql } from './db'
 import { AppError } from './errors'
 import { getDoc } from './document'
@@ -26,7 +27,7 @@ export async function runReportRows(reportName: string, user: string): Promise<R
   const cfg = (report.config as { columns?: string[]; filters?: [string, string, unknown][]; group_by?: string } | null) ?? {}
   const refTable = String(report.ref_table ?? '')
   if (!refTable) throw new AppError('ValidationError', `${reportName} has no ref_table`)
-  const columns = [...new Set(['name', ...(cfg.columns ?? [])])]
+  const columns = [...new Set([ROW_KEY, ...(cfg.columns ?? [])])]
   const { data } = await getList(
     refTable,
     { fields: columns, filters: cfg.filters ?? [], limit_page_length: 500 },
