@@ -75,9 +75,9 @@ async function reflectTenant(admin: {
     body: JSON.stringify({ schema: 'ext_fixture', tables: ['tenant'] }),
   })
   expect(res.status).toBe(200)
-  const body = (await res.json()) as { created: { row_id: string }[]; skipped: unknown[] }
+  const body = (await res.json()) as { created: { name: string }[]; skipped: unknown[] }
   expect(body.created).toHaveLength(1)
-  return body.created[0].row_id
+  return body.created[0].name
 }
 
 describe('EDS-1: Data Source registry', () => {

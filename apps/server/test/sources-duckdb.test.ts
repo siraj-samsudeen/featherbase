@@ -50,9 +50,9 @@ async function makeDuckSource(admin: {
     body: JSON.stringify({ schema: 'warehouse.main', tables: ['daily_sales'] }),
   })
   expect(res.status).toBe(200)
-  const body = (await res.json()) as { created: { row_id: string }[]; skipped: { reason: string }[] }
+  const body = (await res.json()) as { created: { name: string }[]; skipped: { reason: string }[] }
   expect(body.created).toHaveLength(1)
-  return body.created[0].row_id
+  return body.created[0].name
 }
 
 describe('M3: duckdb read-only source', () => {

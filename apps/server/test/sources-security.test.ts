@@ -70,12 +70,12 @@ async function bindAccount(admin: TestClient, access = 'read_write'): Promise<vo
     default_schema: 'sec_fixture',
     access,
   })
-  const res = await admin.post<{ created: { row_id: string }[]; skipped: { reason: string }[] }>(
+  const res = await admin.post<{ created: { name: string }[]; skipped: { reason: string }[] }>(
     '/api/table/Data%20Source/sec-fixture:reflect',
     { schema: 'sec_fixture', tables: ['account'], prefix: 'Sec' },
   )
   expect(res.skipped).toEqual([])
-  expect(res.created[0].row_id).toBe(BOUND)
+  expect(res.created[0].name).toBe(BOUND)
 }
 
 // A role granted the given Permission flags, plus a user holding it.
@@ -265,12 +265,12 @@ describe('finding 4: same-named tables in two schemas', () => {
     expect(ambiguous.created).toEqual([])
     expect(ambiguous.skipped[0].reason).toMatch(/Ambiguous/)
 
-    const qualified = await admin.post<{ created: { row_id: string }[] }>(
+    const qualified = await admin.post<{ created: { name: string }[] }>(
       '/api/table/Data%20Source/sec-fixture:reflect',
       { tables: ['sec_archive.account'], prefix: 'Arch' },
     )
     expect(qualified.created).toHaveLength(1)
-    const name = qualified.created[0].row_id
+    const name = qualified.created[0].name
     const meta = (await admin.get(`/api/table/${encodeURIComponent(name)}:meta`)) as Record<
       string,
       unknown

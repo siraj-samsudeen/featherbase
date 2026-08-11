@@ -79,9 +79,9 @@ async function reflectTenant(admin: {
     body: JSON.stringify({ schema: 'ext_mysql', tables: ['tenant'] }),
   })
   expect(res.status).toBe(200)
-  const body = (await res.json()) as { created: { row_id: string }[]; skipped: unknown[] }
+  const body = (await res.json()) as { created: { name: string }[]; skipped: unknown[] }
   expect(body.created).toHaveLength(1)
-  return body.created[0].row_id
+  return body.created[0].name
 }
 
 describe.skipIf(!MYSQL_URL)('mysql: Data Source registry', () => {

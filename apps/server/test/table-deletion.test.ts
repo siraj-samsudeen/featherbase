@@ -341,7 +341,7 @@ describe('DEL-R6: a bound Table sheds its binding, never its source', () => {
     })
     expect(res.status).toBe(200)
     const { created } = (await res.json()) as { created: { name: string }[] }
-    const bound = created[0].row_id
+    const bound = created[0].name
 
     await admin.delete(`/api/doctype/${encodeURIComponent(bound)}`)
 

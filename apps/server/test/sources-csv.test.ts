@@ -88,7 +88,7 @@ async function makeCsvSource(admin: {
     body: JSON.stringify({ tables: ['store_master.csv', 'finance/notes.csv'] }),
   })
   expect(res.status).toBe(200)
-  const body = (await res.json()) as { created: { row_id: string }[]; skipped: { reason: string }[] }
+  const body = (await res.json()) as { created: { name: string }[]; skipped: { reason: string }[] }
   expect(body.skipped).toEqual([])
   return body.created.map((c) => c.name)
 }
