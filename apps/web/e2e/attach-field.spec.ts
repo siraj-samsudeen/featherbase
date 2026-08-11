@@ -52,7 +52,7 @@ test('UI-023: Attach Image uploads, previews, persists the URL, and clears', asy
 
   // Upload an image: preview renders, field holds the file URL, form dirty.
   await page.locator('[data-attach-input=photo]').setInputFiles({
-    row_id: 'avatar.png',
+    name: 'avatar.png',
     mimeType: 'image/png',
     buffer: PNG,
   })
@@ -68,7 +68,7 @@ test('UI-023: Attach Image uploads, previews, persists the URL, and clears', asy
 
   // Plain Attach uploads too: link but no preview.
   await page.locator('[data-attach-input=doc_file]').setInputFiles({
-    row_id: 'spec.txt',
+    name: 'spec.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('attach me'),
   })

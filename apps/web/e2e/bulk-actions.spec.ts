@@ -24,7 +24,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, { headers: auth })
   ).json()) as { data: { name: string }[] }
   for (const row of listed.data)
-    await request.delete(`/api/table/${encodeURIComponent(DT)}/${row.row_id}`, { headers: auth })
+    await request.delete(`/api/table/${encodeURIComponent(DT)}/${row.name}`, { headers: auth })
   for (const title of ['one', 'two', 'three', 'four', 'five']) {
     await request.post(`/api/table/${encodeURIComponent(DT)}`, {
       headers: auth,

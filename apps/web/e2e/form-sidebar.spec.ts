@@ -42,7 +42,7 @@ test('UI-017: assignments, tags, and attachments persist across reload', async (
 
   // Attach a file.
   await page.getByTestId('attach-file-input').setInputFiles({
-    row_id: 'spec.txt',
+    name: 'spec.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('sidebar attachment'),
   })

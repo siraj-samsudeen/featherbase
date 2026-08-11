@@ -33,7 +33,7 @@ test.beforeAll(async ({ request }) => {
   const existing = (await (
     await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=500`, { headers })
   ).json()) as { data: { name: string }[] }
-  for (const d of existing.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.row_id}`, { headers })
+  for (const d of existing.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.name}`, { headers })
   for (const [region, amount] of ROWS)
     await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { region, amount } })
 

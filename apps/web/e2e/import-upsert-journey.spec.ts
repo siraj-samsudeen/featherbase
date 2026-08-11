@@ -153,7 +153,7 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
   const byZone = Object.fromEntries(after.data.map((r) => [r.zone_name, r]))
   expect(Number(byZone.Alpha.population)).toBe(13500)
   expect(Number(byZone.Bravo.population)).toBe(8400)
-  for (const r of idsBefore.data) expect(byZone[r.zone_name].row_id).toBe(r.row_id)
+  for (const r of idsBefore.data) expect(byZone[r.zone_name].name).toBe(r.name)
 
   // J1.7 — the run's history entry carries updated and inserted separately.
   const log = (await (
@@ -243,7 +243,7 @@ test('UPS-J2: the file’s codes become the ids', async ({ session, page, reques
       { headers },
     )
   ).json()) as { data: { name: string; zone_name: string }[] }
-  const byZone = Object.fromEntries(rows.data.map((r) => [r.zone_name, r.row_id]))
+  const byZone = Object.fromEntries(rows.data.map((r) => [r.zone_name, r.name]))
   expect(byZone.Kilo).toBe('REF-101') // the file's code, verbatim
   expect(byZone.Resident).toBe('REF-102') // insert-mode collision left it untouched
   expect(byZone.Lima).toBeUndefined()
@@ -278,7 +278,7 @@ test('UPS-J2: the file’s codes become the ids', async ({ session, page, reques
     )
   ).json()) as { data: { name: string; zone_name: string; population: unknown }[] }
   expect(afterKeyed.data).toHaveLength(3) // updated in place, nothing doubled
-  const lima = afterKeyed.data.find((r) => r.row_id === 'REF-102')
+  const lima = afterKeyed.data.find((r) => r.name === 'REF-102')
   expect(lima?.zone_name).toBe('Lima') // the resident row took the file's values
   expect(Number(lima?.population)).toBe(5200)
 

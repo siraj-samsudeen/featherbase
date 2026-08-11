@@ -40,7 +40,7 @@ test.beforeAll(async ({ request }) => {
     )
   ).json()) as { data: { name: string }[] }
   for (const n of notifs.data)
-    await request.delete(`/api/table/Notification%20Log/${n.row_id}`, { headers })
+    await request.delete(`/api/table/Notification%20Log/${n.name}`, { headers })
 })
 
 test('RT-001: a doc created in one session appears in another session list', async ({ browser }) => {

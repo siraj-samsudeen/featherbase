@@ -91,7 +91,7 @@ test('FILE-004: image attachment gets a thumbnail; text does not', async ({ page
 
   // Attach a real (decodable) image.
   await page.getByTestId('attach-file-input').setInputFiles({
-    row_id: 'picture.png',
+    name: 'picture.png',
     mimeType: 'image/png',
     buffer: makePng(240, 160),
   })
@@ -110,7 +110,7 @@ test('FILE-004: image attachment gets a thumbnail; text does not', async ({ page
 
   // Attach a text file → no thumbnail on its row.
   await page.getByTestId('attach-file-input').setInputFiles({
-    row_id: 'note.txt',
+    name: 'note.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('not an image'),
   })

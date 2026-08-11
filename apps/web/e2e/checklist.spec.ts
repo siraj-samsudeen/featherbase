@@ -118,7 +118,7 @@ test('a photo_proof item takes a camera upload and shows its thumbnail', async (
 
   // A real 1×1 PNG so the server generates a thumbnail data URI.
   await page.getByTestId('checklist-photo-input').first().setInputFiles({
-    row_id: 'fast-mover.png',
+    name: 'fast-mover.png',
     mimeType: 'image/png',
     buffer: Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',

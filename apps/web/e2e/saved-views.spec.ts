@@ -32,7 +32,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   })
   for (const v of ((await existing.json()) as { views: Array<{ name: string; mine: boolean }> })
     .views) {
-    if (v.mine) await request.delete(`/api/saved_views/${v.row_id}`, { headers: auth })
+    if (v.mine) await request.delete(`/api/saved_views/${v.name}`, { headers: auth })
   }
 })
 

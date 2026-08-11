@@ -340,7 +340,7 @@ function ServiceAccounts({
   })
 
   const create = useMutation({
-    mutationFn: () => api.post('/api/service_accounts', { name: name.trim(), roles }),
+    mutationFn: () => api.post('/api/service_accounts', { row_id: name.trim(), roles }),
     onSuccess: () => {
       setName('')
       setRoles([])

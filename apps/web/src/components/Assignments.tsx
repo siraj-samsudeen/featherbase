@@ -37,7 +37,7 @@ export function Assignments({ doctype, name }: { doctype: string; name: string }
     setBusy(true)
     setError(null)
     try {
-      await api.post('/api/assign', { doctype, name, assign_to: to })
+      await api.post('/api/assign', { doctype, row_id: name, assign_to: to })
       setAssignTo('')
       await queryClient.invalidateQueries({ queryKey: ['assignments', doctype, name] })
     } catch (err) {

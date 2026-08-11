@@ -53,7 +53,7 @@ export function JobMonitor() {
   async function retry(name: string) {
     setBusy(name)
     try {
-      await api.post('/api/retry_job', { name })
+      await api.post('/api/retry_job', { row_id: name })
       await jobs.refetch()
     } finally {
       setBusy(null)

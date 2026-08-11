@@ -145,7 +145,7 @@ test('IMP-J1: first import creates a typed Table from zones.csv', async ({
     })
   ).json()) as { data: { name: string }[] }
   expect(rows.data).toHaveLength(8)
-  for (const r of rows.data) expect(r.row_id).toMatch(/^[A-Z][A-Z-]*-\d+$/)
+  for (const r of rows.data) expect(r.name).toMatch(/^[A-Z][A-Z-]*-\d+$/)
 
   // J1.9 — one Import Log entry: zones.csv, 8 inserted, 0 failed, created.
   const log = (await (

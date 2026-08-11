@@ -34,7 +34,7 @@ test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', asyn
   const doc = (await (
     await page.request.get(`/api/table/User/${encodeURIComponent(EMAIL)}`, { headers })
   ).json()) as { name: string; social_login: string; enabled: boolean }
-  expect(doc.row_id).toBe(EMAIL)
+  expect(doc.name).toBe(EMAIL)
   expect(doc.social_login).toBe('google')
   expect(doc.enabled).toBe(true)
 })

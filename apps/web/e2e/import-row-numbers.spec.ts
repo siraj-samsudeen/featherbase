@@ -65,7 +65,7 @@ test('#115: a blank row does not shift the blame — failures name the TRUE Exce
   await expect(page.getByTestId('import-wizard')).toBeVisible()
 
   await page.getByTestId('iw-file-input').setInputFiles({
-    row_id: 'truth.xlsx',
+    name: 'truth.xlsx',
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     buffer: workbook(),
   })

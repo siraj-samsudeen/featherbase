@@ -1,5 +1,57 @@
 # Progress Log
 
+## 2026-08-11 — #132: the physical row key becomes `row_id` (server + Desk done)
+
+Continues the entry below, which recorded the half-done state. Both suites are
+now green and the Desk is swept; the Playwright e2e suite is not, and that is
+the one open item.
+
+**Green now.** Server `694 passed | 11 skipped` across `116 passed | 1 skipped`
+files. Server typecheck clean. Web typecheck clean. Web unit tests `42/42`.
+Migration chain from an EMPTY database: 74 applied, 48 generated tables on
+`row_id`, `table_def` + the raw engine tables keeping `name`.
+
+**Proved over HTTP** against an isolated stack (`PORT=8020`, own database) — the
+thing #132 actually asked for:
+
+    POST /api/doctype  { "name": "Student 132",
+      "columns": [ {"column_name":"name"}, {"column_name":"grade"} ] }   -> 201
+
+`name` is a legal user column again. The physical table came out
+`row_id, created_by, …, name, grade`; a row inserted as
+`{"name":"Ada Lovelace","grade":"A"}` came back `row_id=c4a1fc002f` with
+`name` carrying the student's actual name, listed and re-fetched by `row_id`,
+while `:meta` still identifies the Table as `name = Student 132`.
+
+**Admin smoke** (login → Table list → form) passes against that stack:
+`smoke`, `admin`, `listview`, `formview` specs all green.
+
+**Open: 25 of 108 Playwright e2e specs fail** (83 pass) on a freshly migrated
+database, so this is real, not leftover state. They cluster in reports
+(`report-view`, `report-chart`, `report-export`, `saved-report`,
+`script-report`, `query-report`), `filters`, `grid-layout`, `realtime`,
+`oauth`, `single-doctype`, `submit-actions`, `ticketing`. The pattern in the
+ones inspected is spec-side row-key wiring the scripted sweep did not reach,
+not engine breakage — but that is an inference from a sample, not a finding for
+all 25. PR #174 stays a DRAFT until they are green.
+
+**Gotchas earned the hard way, beyond the ones below.**
+- A scripted `.name` → `.row_id` sweep will happily rename Playwright's
+  `getByRole('button', { name: 'Sign in' })` — the ACCESSIBLE NAME, not a row
+  key — and `setInputFiles({ name, mimeType, buffer })`. Both were silent
+  until the specs ran.
+- It will also rename function PARAMETERS (`(dt: string, name: string) =>`)
+  and leave the body referencing `name`, which only shows up at runtime as
+  `name is not defined`.
+- The reliable driver turned out to be `tsc` itself: parse its diagnostics and
+  flip whichever side it names. That fixed the last ~40 web sites mechanically.
+- Things that KEEP `name` and were wrongly swept at least once each: app
+  manifests (`AppManifest.name`, `registerApp`), patch ids, `installed_app`,
+  reflect's `created[]` (Table names), `TableMeta.name`, and the `:meta`
+  endpoint's identity.
+
+**Next:** the 25 e2e specs, then flip #174 out of draft.
+
 ## 2026-08-11 — #132 part 1: the physical row key becomes `row_id` (INCOMPLETE)
 
 Branch `fix/row-id-physical-rename`, PR open and **not mergeable yet** — the
