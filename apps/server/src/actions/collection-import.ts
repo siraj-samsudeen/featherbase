@@ -291,6 +291,10 @@ registerCollectionAction('import', {
     let inserted = 0
     let updated = 0
     const failed: FailedRow[] = []
+    // RVT-R1 (spec 0005): record every row this part writes — id, action,
+    // and the updated_at stamp the write left — so the run is revertable.
+    const touched: TouchedRow[] = []
+    const runStart = new Date()
     for (const [index, row] of rows.entries()) {
       if (typeof row !== 'object' || row === null || Array.isArray(row)) {
         failed.push({ index, message: 'row must be an object' })
@@ -316,11 +320,17 @@ registerCollectionAction('import', {
               'ValidationError',
               `row maps Row ID ${String(record.name).trim()} but matches ${resolution.name}; an upsert cannot change a row's id`,
             )
-          await saveDoc(table, updateValues(record, upsert!, resolution), user.name, 'upsert')
+          const saved = await saveDoc(table, updateValues(record, upsert!, resolution), user.name, 'upsert')
           updated++
+          touched.push(await touchedUpdate(table, saved, runStart))
         } else {
-          await saveDoc(table, row as Record<string, unknown>, user.name, 'insert')
+          const saved = await saveDoc(table, row as Record<string, unknown>, user.name, 'insert')
           inserted++
+          touched.push({
+            name: String(saved.name),
+            action: 'inserted',
+            stamp: stampOf(saved.updated_at),
+          })
         }
       } catch (err) {
         if (err instanceof AppError && err.type === 'PermissionError') throw err
@@ -331,11 +341,42 @@ registerCollectionAction('import', {
         })
       }
     }
-    await writeImportLog(table, user.name, { inserted, updated, upsert }, failed, args.context)
+    await writeImportLog(table, user.name, { inserted, updated, upsert }, failed, args.context, touched)
     if (!upsert) return { inserted, failed }
     return { updated, inserted, failed }
   },
 })
+
+// RVT-R1: the record of one written row. `version` names the version row an
+// update produced (its before-values are the revert's restore source); an
+// insert has none, and a no-op update deliberately records none.
+export interface TouchedRow {
+  name: string
+  action: 'updated' | 'inserted'
+  stamp: string
+  version?: string
+}
+
+const stampOf = (v: unknown): string =>
+  v instanceof Date ? v.toISOString() : new Date(String(v)).toISOString()
+
+// Tie an update to the version row it just wrote. recordVersion skips no-op
+// updates, so "the newest version row, only if born in this request" is
+// exact: an older row fails the runStart check and the entry carries no
+// version — RVT-R3's `skipped: unchanged` at revert time.
+async function touchedUpdate(table: string, saved: Record<string, unknown>, runStart: Date): Promise<TouchedRow> {
+  const entry: TouchedRow = {
+    name: String(saved.name),
+    action: 'updated',
+    stamp: stampOf(saved.updated_at),
+  }
+  const [v] = await sql`
+    select name, created_at from version
+    where ref_table = ${table} and ref_name = ${entry.name}
+    order by created_at desc limit 1`
+  if (v && (v.created_at as Date).getTime() >= runStart.getTime()) entry.version = String(v.name)
+  return entry
+}
 
 // The dry-run counterpart of an upsert update: validate the mapped values
 // the way the update will (partial schema — reqd columns may stay untouched
@@ -375,6 +416,7 @@ async function writeImportLog(
   counts: { inserted: number; updated: number; upsert: UpsertArgs | null },
   failed: FailedRow[],
   context: unknown,
+  touched: TouchedRow[],
 ): Promise<void> {
   const ctx = (typeof context === 'object' && context !== null ? context : {}) as Record<
     string,
@@ -403,6 +445,10 @@ async function writeImportLog(
       table_created: ctx.table_created === true,
       part: int(ctx.part),
       parts: int(ctx.parts),
+      // RVT-R1: the run identity (wizard-minted, shared across parts) and
+      // this part's written rows. A run without a run_id is not revertable.
+      run_id: str(ctx.run_id),
+      touched: touched.length ? touched : undefined,
     },
     user,
     'insert',
