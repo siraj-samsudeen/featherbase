@@ -1,5 +1,24 @@
 # Progress Log
 
+## 2026-08-11 — the wizard shows the spreadsheet: preview grid with Excel-true numbers
+
+Third item of the production-readiness push. Each sheet card now carries a
+collapsible preview of the file itself — row numbers down the left edge
+through the SAME excelRow translation the error messages use, so the grid
+and the failures cannot disagree. Blank rows render as numbered gaps (the
+geometry #115 preserved); after a check or import, failed rows highlight in
+place with their message in a Problem column, and the details element opens
+itself. Capped at PREVIEW_ROWS (50, ADR 0008-style named bet) plus every
+failed row beyond the cap, with an explicit "… N more rows" gap marker —
+no silent truncation.
+
+**Verified:** web 42/42, typecheck clean, 10/10 import e2e on isolated
+worktree servers — import-row-numbers.spec extended to assert the preview
+flags row 6 (not innocent row 5) and that blank row 3 occupies its own
+numbered place; screenshotted for the owner. **Next:** revert-a-run
+(default skip-since-edited + explicit override, per owner ruling), then
+typed confirmation above ~20 updates, then index-on-demand (#145).
+
 ## 2026-08-11 — deepening: the import run becomes a module (import-run.ts)
 
 Codebase-design pass over the morning's import work. The finding: row-number

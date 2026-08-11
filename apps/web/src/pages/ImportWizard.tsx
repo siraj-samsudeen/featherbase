@@ -22,6 +22,7 @@ import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import {
   countDataRows,
   excelRow,
+  isBlankRow,
   isImportableFile,
   parseWorkbook,
   type ParsedSheet,
@@ -335,6 +336,101 @@ function mappableColumns(meta: TableMeta): MappableColumn[] {
         !c.read_only,
     )
     .map((c) => ({ column_name: c.column_name, label: c.label, column_type: c.column_type }))
+}
+
+// ADR 0008: preview cap — enough to spot trouble, cheap to render. Failed
+// rows beyond the cap always render.
+const PREVIEW_ROWS = 50
+
+function previewCell(v: unknown): string {
+  if (v == null) return ''
+  if (v instanceof Date) return v.toISOString().slice(0, 10)
+  return String(v)
+}
+
+// The sheet itself, numbered like Excel — through the same excelRow
+// translation the error messages use, so the preview and the failures
+// CANNOT disagree (#115). Blank rows render as gaps rather than vanishing;
+// failed rows are highlighted in place with their message. Collapsed until
+// a check or import reports problems.
+function SheetPreview({
+  i,
+  sheet,
+  failed,
+}: {
+  i: number
+  sheet: ParsedSheet
+  failed: { sourceIndex: number; message: string }[] | null
+}) {
+  const byRow = new Map((failed ?? []).map((f) => [f.sourceIndex, f.message]))
+  const rows = sheet.rows.map((cells, si) => ({ cells, si }))
+  const head = rows.slice(0, PREVIEW_ROWS)
+  const tailFailed = rows.slice(PREVIEW_ROWS).filter((r) => byRow.has(r.si))
+  const hidden = rows.length - head.length - tailFailed.length
+  const problemCol = byRow.size > 0
+
+  function previewRow({ cells, si }: { cells: unknown[]; si: number }) {
+    const message = byRow.get(si)
+    const blank = isBlankRow(cells)
+    return (
+      <tr
+        key={si}
+        data-testid={`iw-preview-row-${i}-${excelRow(si, sheet.headerExcelRow)}`}
+        data-failed={message ? 'true' : undefined}
+        className={message ? 'bg-red-50' : blank ? 'text-gray-300' : undefined}
+      >
+        <td className="px-2 py-0.5 text-right text-gray-400">
+          {excelRow(si, sheet.headerExcelRow)}
+        </td>
+        {sheet.headers.map((_, c) => (
+          <td key={c} className="whitespace-nowrap px-2 py-0.5">
+            {blank ? (c === 0 ? '—' : '') : previewCell(cells[c])}
+          </td>
+        ))}
+        {problemCol && <td className="px-2 py-0.5 text-red-700">{message ?? ''}</td>}
+      </tr>
+    )
+  }
+
+  return (
+    <details className="mt-2" data-testid={`iw-sheet-preview-${i}`} open={problemCol}>
+      <summary className="cursor-pointer text-xs text-gray-500">
+        Preview — row numbers match your spreadsheet
+      </summary>
+      <div className="mt-1 max-h-64 overflow-auto rounded border border-gray-100">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 bg-gray-50 text-left text-gray-600">
+            <tr>
+              {/* The header's own Excel row number sits in the corner. */}
+              <th className="w-10 px-2 py-1 text-right font-normal text-gray-400">
+                {sheet.headerExcelRow}
+              </th>
+              {sheet.headers.map((h, c) => (
+                <th key={c} className="px-2 py-1 font-medium">
+                  {h}
+                </th>
+              ))}
+              {problemCol && <th className="px-2 py-1 font-medium text-red-600">Problem</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {head.map(previewRow)}
+            {hidden > 0 && (
+              <tr data-testid={`iw-preview-gap-${i}`}>
+                <td
+                  colSpan={sheet.headers.length + (problemCol ? 2 : 1)}
+                  className="px-2 py-1 text-gray-400"
+                >
+                  … {hidden} more rows
+                </td>
+              </tr>
+            )}
+            {tailFailed.map(previewRow)}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  )
 }
 
 export function ImportWizard() {
@@ -1134,6 +1230,14 @@ export function ImportWizard() {
                   )
                 })()}
               </>
+            )}
+
+            {plan.mode !== 'skip' && (
+              <SheetPreview
+                i={i}
+                sheet={sheet}
+                failed={plan.result?.failed ?? plan.check?.failed ?? null}
+              />
             )}
 
             {plan.check && (
