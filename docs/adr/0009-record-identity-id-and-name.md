@@ -4,9 +4,9 @@
 
 > Renumbered 0007 → 0009 on 2026-08-11: this ADR was filed as 0007 while
 > [ADR 0007](0007-app-and-database-topology.md) already held that number, so
-> "ADR 0007" was ambiguous. Entries in `PROGRESS.md` dated before this and
-> [#89](https://github.com/siraj-samsudeen/featherbase/issues/89)'s title still
-> say "ADR 0007" — those are dated records, left as written.
+> "ADR 0007" was ambiguous. [#89](https://github.com/siraj-samsudeen/featherbase/issues/89)
+> was retitled to match. Entries in `PROGRESS.md` dated before this still say
+> "ADR 0007" — those are dated records, left as written.
 
 ## Context
 
