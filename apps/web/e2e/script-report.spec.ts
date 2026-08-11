@@ -41,7 +41,7 @@ test('RPT-005: script report renders filter controls and data', async ({ page })
 
   // Declared filter control renders, and data columns render.
   await expect(page.getByTestId('sr-filter-enabled')).toBeVisible()
-  await expect(page.getByTestId('sr-col-name')).toBeVisible()
+  await expect(page.getByTestId('sr-col-row_id')).toBeVisible()
   await expect(page.getByTestId('sr-col-enabled')).toBeVisible()
   await expect(page.getByTestId('script-report-rows')).toContainText('Administrator')
 

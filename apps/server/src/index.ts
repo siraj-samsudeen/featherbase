@@ -7,7 +7,7 @@ import { secureHeaders } from 'hono/secure-headers'
 import { config } from './config'
 import { sql } from './db'
 import { AppError, errorResponse } from './errors'
-import { getMeta, resolveTableName } from './meta'
+import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { createTable, deleteTable, setIdPattern, updateTable } from './doctype-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
@@ -710,9 +710,9 @@ app.post('/api/save_doc', async (c) => {
   const body = (await c.req.json()) as { doctype?: string; doc?: Record<string, unknown> }
   if (!body.doctype || typeof body.doc !== 'object' || body.doc === null)
     throw new AppError('ValidationError', 'Expected { doctype, doc }')
-  const hadName = Boolean(body.doc.name)
+  const hadRowId = Boolean(body.doc[ROW_KEY])
   const saved = await saveDoc(body.doctype, body.doc, who(c))
-  publishDocEvent(body.doctype, String(saved.row_id), hadName ? 'updated' : 'created')
+  publishDocEvent(body.doctype, String(saved.row_id), hadRowId ? 'updated' : 'created')
   return c.json(saved, 201)
 })
 
