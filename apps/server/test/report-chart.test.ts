@@ -28,7 +28,7 @@ async function setup(admin: TestClient) {
     ['s3', 'North', 25],
   ] as const
   for (const [name, region, amount] of rows)
-    await admin.post(`/api/table/${encodeURIComponent(DT)}`, { name, region, amount })
+    await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: name, region, amount })
 
   await admin.post('/api/save_doc', {
     doctype: 'Report',

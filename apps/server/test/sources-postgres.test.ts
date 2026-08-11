@@ -221,7 +221,7 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     const list = (await admin.get(
       `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["row_id","slug","updated_at"]')}&filters=${encodeURIComponent('[["slug","=","acme"]]')}`,
     )) as { data: Record<string, unknown>[] }
-    const { name, updated_at } = list.data[0]
+    const { row_id: name, updated_at } = list.data[0]
     const updated = await patchDoc<Record<string, unknown>>(
       admin,
       `/api/table/Ext%20Tenant/${String(name)}`,
@@ -240,7 +240,7 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     const list = (await admin.get(
       `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["row_id","updated_at"]')}&filters=${encodeURIComponent('[["slug","=","globex"]]')}`,
     )) as { data: Record<string, unknown>[] }
-    const { name, updated_at } = list.data[0]
+    const { row_id: name, updated_at } = list.data[0]
     // The CLI writes directly, bumping updated_at.
     await cli`update ext_fixture.tenant set plan = 'pro', updated_at = now() where slug = 'globex'`
     await expect(

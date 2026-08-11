@@ -47,9 +47,9 @@ async function setup(admin: TestClient) {
     ],
   })
   for (const [name, city] of [['S-A', 'Chennai'], ['S-B', 'Madurai']])
-    await admin.post('/api/save_doc', { doctype: SUP, doc: { name, city } })
+    await admin.post('/api/save_doc', { doctype: SUP, doc: { row_id: name, city } })
   for (const name of ['P-1', 'P-2'])
-    await admin.post('/api/save_doc', { doctype: PART, doc: { name, part_name: name } })
+    await admin.post('/api/save_doc', { doctype: PART, doc: { row_id: name, part_name: name } })
   await admin.post('/api/save_doc', {
     doctype: ORDER,
     doc: { row_id: 'O-1', supplier: 'S-A', total: 100, lines: [{ part: 'P-1', qty: 2 }] },
@@ -296,7 +296,7 @@ describe('NAV-002: related filters', () => {
     // via hop WITH parentfield 'lines': O-4 does NOT sell P-1 → excluded
     const soldOnly = await list(admin, ORDER, [
       [
-        'name',
+        'row_id',
         'related',
         {
           via: LINE,

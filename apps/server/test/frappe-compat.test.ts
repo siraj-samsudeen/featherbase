@@ -120,7 +120,7 @@ describe('Frappe compat: frappe.client.* RPC namespace', () => {
 
     const set = await admin.post<{ message: { stage: string } }>(
       '/api/method/frappe.client.set_value',
-      { doctype: DT, name, fieldname: 'stage', value: 'Done' },
+      { doctype: DT, row_id: name, fieldname: 'stage', value: 'Done' },
     )
     expect(set.message.stage).toBe('Done')
 
@@ -130,7 +130,7 @@ describe('Frappe compat: frappe.client.* RPC namespace', () => {
     })
     expect(del.message).toBe('ok')
     await expect(
-      admin.post('/api/method/frappe.client.get', { doctype: DT, name }),
+      admin.post('/api/method/frappe.client.get', { doctype: DT, row_id: name }),
     ).rejects.toMatchObject({ status: 404 })
   })
 

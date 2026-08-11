@@ -27,7 +27,7 @@ async function setup(admin: TestClient) {
       row_id: REPORT,
       ref_table: 'User',
       report_type: 'Query Report',
-      query: 'select name, created_at from "user" where created_at >= {from_date} order by name',
+      query: 'select row_id, created_at from "user" where created_at >= {from_date} order by row_id',
     },
   })
 }
@@ -42,7 +42,7 @@ describe('RPT-004: query reports', () => {
   }) => {
     await setup(admin)
     const past = await runQueryReport(REPORT, { from_date: '2000-01-01' }, 'Administrator')
-    expect(past.columns).toEqual(['name', 'created_at'])
+    expect(past.columns).toEqual(['row_id', 'created_at'])
     expect(past.rows.some((r) => r.row_id === 'Administrator')).toBe(true)
 
     const future = await runQueryReport(REPORT, { from_date: '2999-01-01' }, 'Administrator')

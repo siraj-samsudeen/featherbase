@@ -29,7 +29,7 @@ describe('IMP-R1 properties: column naming', () => {
   })
 
   it('IMP-R1: every output is a valid identifier of at most 63 chars, never reserved', () => {
-    const reserved = new Set(['name', 'owner', 'created_at', 'updated_at', 'parent', 'parenttype', 'parentfield'])
+    const reserved = new Set(['row_id', 'owner', 'created_at', 'updated_at', 'parent', 'parenttype', 'parentfield'])
     fc.assert(
       fc.property(fc.array(shortHeader, { minLength: 1, maxLength: 12 }), (headers) => {
         for (const out of sanitizeHeaders(headers)) {

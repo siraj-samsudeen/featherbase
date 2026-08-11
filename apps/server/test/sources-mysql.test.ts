@@ -200,7 +200,7 @@ describe.skipIf(!MYSQL_URL)('mysql: writing bound rows', () => {
     const list = (await admin.get(
       `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["row_id","slug","updated_at"]')}&filters=${encodeURIComponent('[["slug","=","acme"]]')}`,
     )) as { data: Record<string, unknown>[] }
-    const { name, updated_at } = list.data[0]
+    const { row_id: name, updated_at } = list.data[0]
     const updated = await patchDoc<Record<string, unknown>>(
       admin,
       `/api/table/Ext%20Tenant/${String(name)}`,
@@ -221,7 +221,7 @@ describe.skipIf(!MYSQL_URL)('mysql: writing bound rows', () => {
     const list = (await admin.get(
       `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["row_id","updated_at"]')}&filters=${encodeURIComponent('[["slug","=","globex"]]')}`,
     )) as { data: Record<string, unknown>[] }
-    const { name, updated_at } = list.data[0]
+    const { row_id: name, updated_at } = list.data[0]
     // Land the CLI write in a different millisecond than the loaded echo.
     await new Promise((r) => setTimeout(r, 5))
     await cli.query(
