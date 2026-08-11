@@ -31,7 +31,9 @@ import { CalendarView } from './components/CalendarView'
 import { GanttView } from './components/GanttView'
 import { ChecklistView } from './components/ChecklistView'
 import { PrintView } from './pages/PrintView'
-import { TableBuilder } from './pages/TableBuilder'
+// PROTOTYPE — THROWAWAY (#151): ?variant= UX variants on /admin/new-table.
+// PrototypeHost wraps the real TableBuilder; restore the direct import when done.
+import { PrototypeHost } from './pages/table-builder-prototype/PrototypeHost'
 import { ImportWizard } from './pages/ImportWizard'
 import { AllTablesPage } from './pages/AllTables'
 import SourceBrowser from './pages/SourceBrowser'
@@ -221,11 +223,15 @@ function AdminIndexPage() {
 const newTableRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'new-table',
+  // PROTOTYPE — THROWAWAY: PrototypeHost renders TableBuilder unless
+  // ?variant= names a UX variant. Restore <TableBuilder /> when done.
   component: () => (
     <div data-testid="doctype-page">
-      <TableBuilder />
+      <PrototypeHost />
     </div>
   ),
+  // (the ?variant= param is read via window.location in the prototype, so no
+  // validateSearch — adding one makes `search` required on every Link here)
 })
 
 // IMP-010: Import wizard route (before $doctype so 'import' matches).
