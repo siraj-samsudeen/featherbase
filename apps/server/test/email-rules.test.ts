@@ -18,12 +18,12 @@ async function setup() {
   await loadJobs()
   await sql`delete from email_rule where ref_table = ${DT}`
   await sql`delete from email_queue`
-  await sql`delete from email_account where name = ${ACCOUNT}`
+  await sql`delete from email_account where row_id = ${ACCOUNT}`
   await sql`delete from column_def where parent = ${DT}`
   await sql`delete from table_def where name = ${DT}`
   await sql.unsafe('drop table if exists eml_rule_task')
   await sql`insert into email_account ${sql({
-    name: ACCOUNT, created_by: 'Administrator', updated_by: 'Administrator',
+    row_id: ACCOUNT, created_by: 'Administrator', updated_by: 'Administrator',
     email_id: 'rules@frappe.test', is_default: true,
   })}`
   await createTable({
@@ -35,7 +35,7 @@ async function setup() {
     ],
   })
   await sql`insert into email_rule ${sql({
-    name: 'High Priority Alert', created_by: 'Administrator', updated_by: 'Administrator',
+    row_id: 'High Priority Alert', created_by: 'Administrator', updated_by: 'Administrator',
     ref_table: DT, event: 'on_submit',
     condition_field: 'priority', condition_value: 'High',
     recipient: 'manager@x.com', subject: 'High priority submitted', message: 'see {{ doc.title }}',
@@ -54,7 +54,7 @@ describe('EML-004: email rule on submit with condition', () => {
     await setup()
     const doc = await saveDoc(DT, { title: 'urgent', priority: 'High' }, 'Administrator')
     expect(await queuedFor('High priority submitted')).toBe(0) // not yet — only on submit
-    await submitDoc(DT, String(doc.name), 'Administrator')
+    await submitDoc(DT, String(doc.row_id), 'Administrator')
     expect(await queuedFor('High priority submitted')).toBe(1)
   })
 
@@ -62,7 +62,7 @@ describe('EML-004: email rule on submit with condition', () => {
     await setup()
     const before = await queuedFor('High priority submitted')
     const doc = await saveDoc(DT, { title: 'chill', priority: 'Low' }, 'Administrator')
-    await submitDoc(DT, String(doc.name), 'Administrator')
+    await submitDoc(DT, String(doc.row_id), 'Administrator')
     expect(await queuedFor('High priority submitted')).toBe(before) // unchanged
   })
 
@@ -70,7 +70,7 @@ describe('EML-004: email rule on submit with condition', () => {
     await setup()
     const before = await queuedFor('High priority submitted')
     const doc = await saveDoc(DT, { title: 'urgent2', priority: 'High' }, 'Administrator')
-    await submitDoc(DT, String(doc.name), 'Administrator')
+    await submitDoc(DT, String(doc.row_id), 'Administrator')
     expect(await queuedFor('High priority submitted')).toBe(before + 1)
   })
 })

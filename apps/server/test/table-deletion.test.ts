@@ -290,7 +290,7 @@ describe('DEL-R5: row-id series survive deletion', () => {
       doc: { title: 'b' },
     })) as { name: string }
     const num = (s: string) => Number(s.split('-').pop())
-    expect(num(second.name)).toBeGreaterThan(num(first.name))
+    expect(num(second.row_id)).toBeGreaterThan(num(first.row_id))
   })
 })
 

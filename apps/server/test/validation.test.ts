@@ -68,9 +68,9 @@ describe('META-009: Choice validates against choices', () => {
     await setup(admin)
     const doc = await save(admin, { title: 'u' })
     await expect(
-      save(admin, { name: doc.name, updated_at: doc.updated_at, severity: 'Nope' }),
+      save(admin, { name: doc.row_id, updated_at: doc.updated_at, severity: 'Nope' }),
     ).rejects.toMatchObject({ status: 417 })
-    const updated = await save(admin, { name: doc.name, updated_at: doc.updated_at, severity: 'High' })
+    const updated = await save(admin, { name: doc.row_id, updated_at: doc.updated_at, severity: 'High' })
     // update must not demand reqd columns it isn't changing
     expect(updated.title).toBe('u')
   })

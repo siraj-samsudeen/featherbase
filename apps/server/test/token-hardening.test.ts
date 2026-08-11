@@ -68,7 +68,7 @@ describe('#137 P1: OAuth cannot revive a disabled principal', () => {
     await expect(findOrCreateGoogleUser(email, 'Disabled Human')).rejects.toMatchObject({
       type: 'AuthenticationError',
     })
-    const [human] = await sql`select enabled from "user" where name = ${email}`
+    const [human] = await sql`select enabled from "user" where row_id = ${email}`
     expect(human.enabled).toBe(false)
 
     // A service account is refused outright, enabled or not — and critically,
@@ -82,7 +82,7 @@ describe('#137 P1: OAuth cannot revive a disabled principal', () => {
     await expect(
       findOrCreateGoogleUser('svc-oauth-test@service.invalid', 'svc'),
     ).rejects.toMatchObject({ type: 'AuthenticationError' })
-    const [svc] = await sql`select enabled from "user" where name = 'svc-oauth-test'`
+    const [svc] = await sql`select enabled from "user" where row_id = 'svc-oauth-test'`
     expect(svc.enabled).toBe(false)
     // The token stays dead.
     const who = await admin.fetch('/api/whoami', {
@@ -99,7 +99,7 @@ describe('#137 P2: a service account never acquires a password', () => {
     await expect(setUserPassword('svc-pw-test', 'sneaky123')).rejects.toMatchObject({
       type: 'ValidationError',
     })
-    const [row] = await sql`select password_hash from "user" where name = 'svc-pw-test'`
+    const [row] = await sql`select password_hash from "user" where row_id = 'svc-pw-test'`
     expect(row.password_hash).toBeNull()
 
     // Reset reaches setUserPassword directly, so it must be stopped earlier —
@@ -274,7 +274,7 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
 
     // The principal becomes a service account between the request and the
     // click, so setUserPassword now refuses.
-    await sql`update "user" set user_type = 'service' where name = ${email}`
+    await sql`update "user" set user_type = 'service' where row_id = ${email}`
 
     // The link is inert from here on: it can never stamp a password, no
     // matter how many times it is presented.
@@ -283,7 +283,7 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
         type: 'ValidationError',
       })
     }
-    const [row] = await sql`select password_hash from "user" where name = ${email}`
+    const [row] = await sql`select password_hash from "user" where row_id = ${email}`
     expect(row.password_hash).toBeNull()
   })
 
@@ -300,7 +300,7 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
     // is what separates burn-on-use from an atomic write-and-consume. Under
     // atomicity the refused write rolls the deletion back and the row is still
     // sitting there, live for the rest of its hour.
-    await sql`update "user" set user_type = 'service' where name = ${email}`
+    await sql`update "user" set user_type = 'service' where row_id = ${email}`
     await expect(resetPassword(token as string, 'burned-pw-1')).rejects.toMatchObject({
       type: 'ValidationError',
     })
@@ -314,7 +314,7 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
       type: 'ValidationError',
       message: 'This reset link is invalid or has expired',
     })
-    const [row] = await sql`select password_hash from "user" where name = ${email}`
+    const [row] = await sql`select password_hash from "user" where row_id = ${email}`
     expect(row.password_hash).toBeNull()
   })
 
@@ -326,14 +326,14 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
     })
     const token = await requestPasswordReset(email)
     await resetPassword(token as string, 'first-password-1')
-    const [afterFirst] = await sql`select password_hash from "user" where name = ${email}`
+    const [afterFirst] = await sql`select password_hash from "user" where row_id = ${email}`
     expect(afterFirst.password_hash).not.toBeNull()
 
     // Replaying it must not set a second password.
     await expect(resetPassword(token as string, 'second-password-2')).rejects.toMatchObject({
       type: 'ValidationError',
     })
-    const [afterSecond] = await sql`select password_hash from "user" where name = ${email}`
+    const [afterSecond] = await sql`select password_hash from "user" where row_id = ${email}`
     expect(afterSecond.password_hash).toBe(afterFirst.password_hash)
   })
 })

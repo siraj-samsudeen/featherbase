@@ -32,8 +32,8 @@ describe('HD Ticket: naming series + defaults', () => {
     await installHelpdesk()
     const a = await seed('HD Ticket', { subject: 'Cannot log in to portal' })
     const b = await seed('HD Ticket', { subject: 'Invoice PDF is blank' })
-    expect(String(a.name)).toMatch(/^HDT-\d{5}$/)
-    expect(num(b.name)).toBe(num(a.name) + 1)
+    expect(String(a.row_id)).toMatch(/^HDT-\d{5}$/)
+    expect(num(b.row_id)).toBe(num(a.row_id) + 1)
     expect(a.ticket_status).toBe('Open')
   })
 
@@ -79,10 +79,10 @@ describe('HD Ticket permissions: customers see only their own', () => {
     // Customers file through the public web form (their Permission grants
     // own_rows_only read + create, not write — direct field edits are the desk
     // roles' job).
-    const mine = await carl.post<{ name: string }>('/api/web_form/new-ticket', {
+    const mine = await carl.post<{ row_id: string }>('/api/web_form/new-ticket', {
       values: { subject: "Carl's login problem" },
     })
-    const theirs = await gina.post<{ name: string }>('/api/web_form/new-ticket', {
+    const theirs = await gina.post<{ row_id: string }>('/api/web_form/new-ticket', {
       values: { subject: "Gina's invoice problem" },
     })
 
@@ -96,7 +96,7 @@ describe('HD Ticket permissions: customers see only their own', () => {
     // carry committed demo tickets).
     const all = await admin.get<{ data: { name: string }[] }>(
       `/api/table/HD%20Ticket?filters=${encodeURIComponent(
-        JSON.stringify([['name', 'in', [mine.name, theirs.name]]]),
+        JSON.stringify([['row_id', 'in', [mine.name, theirs.name]]]),
       )}`,
     )
     expect(all.data).toHaveLength(2)
@@ -120,37 +120,37 @@ describe('HD Ticket workflow: Open → In Progress → Resolved → Closed on th
     const manager = await createUser({ roles: ['Support Manager'] })
     const customer = await createUser({ roles: ['Customer'] })
 
-    const doc = await customer.post<{ name: string }>('/api/web_form/new-ticket', {
+    const doc = await customer.post<{ row_id: string }>('/api/web_form/new-ticket', {
       values: { subject: 'Lifecycle under test' },
     })
 
     // From Open the agent sees exactly one action.
     const open = await agent.get<{ actions: { action: string }[] }>(
-      `/api/workflow/HD%20Ticket/${doc.name}`,
+      `/api/workflow/HD%20Ticket/${doc.row_id}`,
     )
     expect(open.actions.map((a) => a.action)).toEqual(['Start'])
 
-    await agent.post(`/api/table/${encodeURIComponent('HD Ticket')}/${encodeURIComponent(doc.name)}:apply_workflow_action`, { action: 'Start' })
+    await agent.post(`/api/table/${encodeURIComponent('HD Ticket')}/${encodeURIComponent(doc.row_id)}:apply_workflow_action`, { action: 'Start' })
 
     // Resolving without resolution_details violates the transition condition.
     await expect(
-      agent.post(`/api/table/${encodeURIComponent('HD Ticket')}/${encodeURIComponent(doc.name)}:apply_workflow_action`, { action: 'Resolve' }),
+      agent.post(`/api/table/${encodeURIComponent('HD Ticket')}/${encodeURIComponent(doc.row_id)}:apply_workflow_action`, { action: 'Resolve' }),
     ).rejects.toMatchObject({ status: 417 })
 
-    const current = await admin.get<{ updated_at: string }>(`/api/table/HD%20Ticket/${doc.name}`)
-    await patchDoc(agent, `/api/table/HD%20Ticket/${doc.name}`, {
+    const current = await admin.get<{ updated_at: string }>(`/api/table/HD%20Ticket/${doc.row_id}`)
+    await patchDoc(agent, `/api/table/HD%20Ticket/${doc.row_id}`, {
       updated_at: current.updated_at,
       resolution_details: 'Password reset + MFA re-enrolled.',
     })
-    await agent.post(`/api/table/${encodeURIComponent('HD Ticket')}/${encodeURIComponent(doc.name)}:apply_workflow_action`, { action: 'Resolve' })
+    await agent.post(`/api/table/${encodeURIComponent('HD Ticket')}/${encodeURIComponent(doc.row_id)}:apply_workflow_action`, { action: 'Resolve' })
 
     // The bound ticket_status field is save-protected: a direct edit is refused.
     const resolved = await admin.get<{ ticket_status: string; updated_at: string }>(
-      `/api/table/HD%20Ticket/${doc.name}`,
+      `/api/table/HD%20Ticket/${doc.row_id}`,
     )
     expect(resolved.ticket_status).toBe('Resolved')
     await expect(
-      patchDoc(agent, `/api/table/HD%20Ticket/${doc.name}`, {
+      patchDoc(agent, `/api/table/HD%20Ticket/${doc.row_id}`, {
         updated_at: resolved.updated_at,
         ticket_status: 'Closed',
       }),
@@ -158,15 +158,15 @@ describe('HD Ticket workflow: Open → In Progress → Resolved → Closed on th
 
     // Close is manager-only; from Resolved the customer may only Reopen.
     await expect(
-      agent.post(`/api/table/${encodeURIComponent('HD Ticket')}/${encodeURIComponent(doc.name)}:apply_workflow_action`, { action: 'Close' }),
+      agent.post(`/api/table/${encodeURIComponent('HD Ticket')}/${encodeURIComponent(doc.row_id)}:apply_workflow_action`, { action: 'Close' }),
     ).rejects.toMatchObject({ status: 403 })
     const custActions = await customer.get<{ actions: { action: string }[] }>(
-      `/api/workflow/HD%20Ticket/${doc.name}`,
+      `/api/workflow/HD%20Ticket/${doc.row_id}`,
     )
     expect(custActions.actions.map((a) => a.action)).toEqual(['Reopen'])
 
-    await manager.post(`/api/table/${encodeURIComponent('HD Ticket')}/${encodeURIComponent(doc.name)}:apply_workflow_action`, { action: 'Close' })
-    const closed = await admin.get<{ ticket_status: string }>(`/api/table/HD%20Ticket/${doc.name}`)
+    await manager.post(`/api/table/${encodeURIComponent('HD Ticket')}/${encodeURIComponent(doc.row_id)}:apply_workflow_action`, { action: 'Close' })
+    const closed = await admin.get<{ ticket_status: string }>(`/api/table/HD%20Ticket/${doc.row_id}`)
     expect(closed.ticket_status).toBe('Closed')
   })
 
@@ -177,21 +177,21 @@ describe('HD Ticket workflow: Open → In Progress → Resolved → Closed on th
     await installHelpdesk()
     const agent = await createUser({ roles: ['Support Agent'] })
     const customer = await createUser({ roles: ['Customer'] })
-    const filed = await customer.post<{ name: string }>('/api/web_form/new-ticket', {
+    const filed = await customer.post<{ row_id: string }>('/api/web_form/new-ticket', {
       values: { subject: 'Notify me when fixed' },
     })
-    const doc = await admin.get<{ name: string; raised_by: string }>(
+    const doc = await admin.get<{ row_id: string; raised_by: string }>(
       `/api/table/HD%20Ticket/${filed.name}`,
     )
     expect(doc.raised_by).toBe(customer.user)
 
-    await agent.post(`/api/table/${encodeURIComponent('HD Ticket')}/${encodeURIComponent(doc.name)}:apply_workflow_action`, { action: 'Start' })
-    const current = await admin.get<{ updated_at: string }>(`/api/table/HD%20Ticket/${doc.name}`)
-    await patchDoc(agent, `/api/table/HD%20Ticket/${doc.name}`, {
+    await agent.post(`/api/table/${encodeURIComponent('HD Ticket')}/${encodeURIComponent(doc.row_id)}:apply_workflow_action`, { action: 'Start' })
+    const current = await admin.get<{ updated_at: string }>(`/api/table/HD%20Ticket/${doc.row_id}`)
+    await patchDoc(agent, `/api/table/HD%20Ticket/${doc.row_id}`, {
       updated_at: current.updated_at,
       resolution_details: 'Cache cleared.',
     })
-    await agent.post(`/api/table/${encodeURIComponent('HD Ticket')}/${encodeURIComponent(doc.name)}:apply_workflow_action`, { action: 'Resolve' })
+    await agent.post(`/api/table/${encodeURIComponent('HD Ticket')}/${encodeURIComponent(doc.row_id)}:apply_workflow_action`, { action: 'Resolve' })
 
     // The queue stores the raw template — rendering happens at delivery
     // time, in the email job. (A workflow "Approval required" notification
@@ -199,11 +199,11 @@ describe('HD Ticket workflow: Open → In Progress → Resolved → Closed on th
     const queued = await admin.get<{ data: { recipient: string; subject: string }[] }>(
       `/api/table/${encodeURIComponent('Email Queue')}?fields=${encodeURIComponent(
         JSON.stringify(['recipient', 'subject']),
-      )}&filters=${encodeURIComponent(JSON.stringify([['reference_name', '=', doc.name]]))}`,
+      )}&filters=${encodeURIComponent(JSON.stringify([['reference_name', '=', doc.row_id]]))}`,
     )
     expect(queued.data).toContainEqual({
       recipient: customer.user,
-      subject: 'Your ticket {{ doc.name }} has been resolved',
+      subject: 'Your ticket {{ doc.row_id }} has been resolved',
     })
   })
 })
@@ -215,7 +215,7 @@ describe('HD Ticket web form: public intake with owner attribution', () => {
   }) => {
     await installHelpdesk()
     const customer = await createUser({ roles: ['Customer'] })
-    const filed = await customer.post<{ name: string }>('/api/web_form/new-ticket', {
+    const filed = await customer.post<{ row_id: string }>('/api/web_form/new-ticket', {
       values: {
         subject: 'Filed from the public form',
         description: 'Details here',

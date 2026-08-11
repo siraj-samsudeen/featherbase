@@ -60,7 +60,7 @@ export async function deliverToSink(msg: MailMessage): Promise<void> {
   const from = msg.from ?? (await defaultSender())
   await sql`
     insert into email_sink ${sql({
-      name: id(),
+      row_id: id(),
       created_by: 'Administrator',
       updated_by: 'Administrator',
       mail_from: from,

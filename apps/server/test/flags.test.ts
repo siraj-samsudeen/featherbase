@@ -45,7 +45,7 @@ describe('META-010: field flags', () => {
     expect(doc.grade).toBe('system')
 
     const upd = (await (
-      await save(admin, { name: doc.name, updated_at: doc.updated_at, grade: 'hacked again', title: 'b2' })
+      await save(admin, { name: doc.row_id, updated_at: doc.updated_at, grade: 'hacked again', title: 'b2' })
     ).json()) as Record<string, unknown>
     expect(upd.title).toBe('b2')
     expect(upd.grade).toBe('system')

@@ -18,11 +18,11 @@ async function setup(admin: TestClient) {
 }
 
 async function grant(admin: TestClient, perms: Record<string, boolean>) {
-  const doc = await admin.post<{ name: string }>('/api/save_doc', {
+  const doc = await admin.post<{ row_id: string }>('/api/save_doc', {
     doctype: 'Permission',
     doc: { ref_table: DT, role: ROLE, ...perms },
   })
-  return doc.name
+  return doc.row_id
 }
 
 describe('PERM-002/003: Permission grants enforced server-side', () => {
@@ -94,14 +94,14 @@ describe('PERM-002/003: Permission grants enforced server-side', () => {
     expect(created.status).toBe(201)
     const doc = (await created.json()) as Record<string, unknown>
     expect(doc.created_by).toBe(user.user)
-    const put = await user.fetch(`/api/table/${encodeURIComponent(DT)}/${doc.name}`, {
+    const put = await user.fetch(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`, {
       method: 'PATCH',
       body: JSON.stringify({ updated_at: doc.updated_at, title: 'mine2' }),
     })
     expect(put.status).toBe(200)
     // still no delete
     expect(
-      (await user.fetch(`/api/table/${encodeURIComponent(DT)}/${doc.name}`, { method: 'DELETE' }))
+      (await user.fetch(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`, { method: 'DELETE' }))
         .status,
     ).toBe(403)
   })

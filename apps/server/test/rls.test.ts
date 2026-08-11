@@ -29,8 +29,8 @@ async function as(user: string | null) {
 async function cleanup() {
   await sql`delete from permission where ref_table in (${DT}, ${SECRET_DT})`
   await sql`delete from has_role where parent = ${USER}`
-  await sql`delete from "user" where name = ${USER}`
-  await sql`delete from role where name = ${ROLE}`
+  await sql`delete from "user" where row_id = ${USER}`
+  await sql`delete from role where row_id = ${ROLE}`
   await sql`delete from table_def where name in (${DT}, ${CHILD}, ${SECRET_DT})`
   await sql`delete from column_def where parent in (${DT}, ${CHILD}, ${SECRET_DT})`
   await sql.unsafe('drop table if exists rls_vault, rls_vault_item, rls_hidden')

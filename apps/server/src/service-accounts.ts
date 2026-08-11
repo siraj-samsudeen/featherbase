@@ -35,7 +35,7 @@ export async function createServiceAccount(
   await saveDoc(
     'User',
     {
-      name,
+      row_id: name,
       email: `${name}@service.invalid`,
       full_name: name,
       enabled: true,

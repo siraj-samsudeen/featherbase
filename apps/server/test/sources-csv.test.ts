@@ -160,7 +160,7 @@ describe('M1: csv-folder source', () => {
       store_name: 'Madurai',
       city: 'Madurai',
     })
-    expect(created.name).toBe('4')
+    expect(created.row_id).toBe('4')
     let text = readFileSync(path.join(dir, 'store_master.csv'), 'utf8')
     expect(text).toContain('MDU,Madurai,Madurai')
 

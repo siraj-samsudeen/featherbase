@@ -16,7 +16,7 @@ const CUST_B = 'upn-cust-b@x.com'
 async function setup(admin: TestClient) {
   for (const u of [CUST_A, CUST_B])
     await sql`insert into "user" ${sql({
-      name: u, created_by: 'Administrator', updated_by: 'Administrator', email: u, enabled: true,
+      row_id: u, created_by: 'Administrator', updated_by: 'Administrator', email: u, enabled: true,
     })}`
   await admin.post('/api/doctype', {
     name: DT,

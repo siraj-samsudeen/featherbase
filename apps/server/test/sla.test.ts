@@ -26,10 +26,10 @@ async function setup(admin: TestClient) {
   await loadJobs()
   await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
   await sql`insert into "user" ${sql({
-    name: MGR, created_by: 'Administrator', updated_by: 'Administrator', email: MGR, enabled: true,
+    row_id: MGR, created_by: 'Administrator', updated_by: 'Administrator', email: MGR, enabled: true,
   })}`
   await sql`insert into has_role ${sql({
-    name: 'sla-hr-1', created_by: 'Administrator', updated_by: 'Administrator',
+    row_id: 'sla-hr-1', created_by: 'Administrator', updated_by: 'Administrator',
     parent: MGR, parenttype: 'User', parentfield: 'roles', position: 1, role: ROLE,
   })}`
   await admin.post('/api/doctype', {
@@ -101,21 +101,21 @@ describe('SLA: deadline stamping + escalation', () => {
     // real lifecycle path — a direct write to a workflow-bound field is
     // rejected, see workflow-state-field.test.ts).
     await sql`update sla_ticket set resolution_by = now() - interval '1 hour'
-      where name in (${String(doc.name)}, ${String(done.name)})`
+      where name in (${String(doc.row_id)}, ${String(done.name)})`
     await admin.post(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent(String(done.name))}:apply_workflow_action`, { action: 'Resolve' })
 
     await enqueue('check_sla', {})
     await nudgeDueJobs()
     await drainJobs()
 
-    const [late] = await sql`select sla_status from sla_ticket where name = ${String(doc.name)}`
+    const [late] = await sql`select sla_status from sla_ticket where name = ${String(doc.row_id)}`
     expect(late.sla_status).toBe('Overdue')
     const [ok] = await sql`select sla_status from sla_ticket where name = ${String(done.name)}`
     expect(ok.sla_status).toBe('On Track') // fulfilled state — never escalated
 
     const mails = await sql`
       select recipient from email_queue
-      where ref_table = ${DT} and reference_name = ${String(doc.name)}`
+      where ref_table = ${DT} and reference_name = ${String(doc.row_id)}`
     expect(mails.map((m) => m.recipient)).toContain(MGR)
 
     // A second sweep must not escalate (or email) the same document again.
@@ -124,7 +124,7 @@ describe('SLA: deadline stamping + escalation', () => {
     await drainJobs()
     const again = await sql`
       select count(*)::int as c from email_queue
-      where ref_table = ${DT} and reference_name = ${String(doc.name)}`
+      where ref_table = ${DT} and reference_name = ${String(doc.row_id)}`
     expect(again[0].c).toBe(1)
   })
 })

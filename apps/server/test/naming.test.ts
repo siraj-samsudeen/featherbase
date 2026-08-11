@@ -36,7 +36,7 @@ describe('META-006: naming rules', () => {
   test('field: naming uses the field value and requires it', async ({ admin }) => {
     await makeDT(admin, FIELD_DT, 'field:title')
     const doc = await save(admin, FIELD_DT, { title: 'India' })
-    expect(doc.name).toBe('India')
+    expect(doc.row_id).toBe('India')
     await expect(save(admin, FIELD_DT, {})).rejects.toMatchObject({ status: 417 })
   })
 
@@ -45,7 +45,7 @@ describe('META-006: naming rules', () => {
   }) => {
     await makeDT(admin, PROMPT_DT, 'prompt')
     const doc = await save(admin, PROMPT_DT, { name: 'Hardware', title: 'x' })
-    expect(doc.name).toBe('Hardware')
+    expect(doc.row_id).toBe('Hardware')
     await expect(save(admin, PROMPT_DT, { title: 'y' })).rejects.toMatchObject({ status: 417 })
   })
 

@@ -118,7 +118,7 @@ export async function siteListDoctypes(site: string): Promise<string[]> {
 
 export async function siteCreateUser(site: string, email: string, fullName?: string): Promise<{ name: string }> {
   const c = siteClient(site)
-  await c`insert into "user" ${c({ name: email, email, full_name: fullName ?? email })}
+  await c`insert into "user" ${c({ row_id: email, email, full_name: fullName ?? email })}
     on conflict (row_id) do nothing`
   return { name: email }
 }

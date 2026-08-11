@@ -32,7 +32,7 @@ export async function createAssignment(
   const subject = `${assignedBy} assigned you ${table} ${name}`
   await sql`
     insert into notification_log ${sql({
-      name: randomBytes(5).toString('hex'),
+      row_id: randomBytes(5).toString('hex'),
       created_by: assignedBy,
       updated_by: assignedBy,
       for_user: assignTo,

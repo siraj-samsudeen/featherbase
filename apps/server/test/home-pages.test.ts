@@ -146,7 +146,7 @@ describe('GET /api/home_pages: link permission filtering', () => {
     // Simulate a table dropped after being linked (e.g. app uninstall) —
     // the Reference validation forbids saving this shape over the API.
     await sql`insert into home_page_link ${sql({
-      name: 'hp-dead-link',
+      row_id: 'hp-dead-link',
       parent: 'hp-dead',
       parenttype: 'Home Page',
       parentfield: 'links',
@@ -243,7 +243,7 @@ describe('0060 seeds are idempotent', () => {
 
   test('an emptied System page is reseeded with grouped cards', async ({ admin }) => {
     await sql`delete from home_page_link where parent = 'system'`
-    await sql`delete from home_page where name = 'system'`
+    await sql`delete from home_page where row_id = 'system'`
     await homePagesUp()
     const system = (await pages(admin)).find((p) => p.name === 'system')!
     expect(system.cards.map((c) => c.label)).toEqual([

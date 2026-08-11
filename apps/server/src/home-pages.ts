@@ -75,7 +75,7 @@ export async function ensureModuleHomePage(module: string): Promise<string> {
   }
   // Module pages sort between the "Home" page (0) and the System page (100).
   await sql`insert into home_page ${sql({
-    name,
+    row_id: name,
     label: page.label,
     module,
     sequence: module === 'Core' ? 0 : 50,
@@ -95,7 +95,7 @@ export async function ensureHomePageForTable(table: string, module: string): Pro
     select coalesce(max(position), 0) + 1 as next from home_page_link
     where parent = ${pageName} and parenttype = 'Home Page'`
   await sql`insert into home_page_link ${sql({
-    name: randomUUID(),
+    row_id: randomUUID(),
     parent: pageName,
     parenttype: 'Home Page',
     parentfield: 'links',

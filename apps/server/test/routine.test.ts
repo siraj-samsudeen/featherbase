@@ -11,7 +11,7 @@ const DAY = 86_400_000
 async function seed(user: string, key: string, kind: string, days: number[]) {
   for (const d of days) {
     await sql`insert into user_event ${sql({
-      name: `rt-${key}-${d}`.replace(/[^a-zA-Z0-9-]/g, '_').slice(0, 130),
+      row_id: `rt-${key}-${d}`.replace(/[^a-zA-Z0-9-]/g, '_').slice(0, 130),
       created_by: user,
       updated_by: user,
       created_at: new Date(),

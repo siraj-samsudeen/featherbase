@@ -49,7 +49,7 @@ describe('DOC-012: rename document + cascade Link references', () => {
       },
     })
 
-    const renamed = await admin.post<{ name: string }>(
+    const renamed = await admin.post<{ row_id: string }>(
       `/api/table/${encodeURIComponent(CUST)}/Acme:rename`,
       { new_name: 'Acme Corp' },
     )

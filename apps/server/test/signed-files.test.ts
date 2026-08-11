@@ -25,7 +25,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn) {
     doc: { ref_table: DT, role: READER_ROLE, can_read: true },
   })
   const docName = (
-    await admin.post<{ name: string }>('/api/save_doc', {
+    await admin.post<{ row_id: string }>('/api/save_doc', {
       doctype: DT,
       doc: { title: 'secret' },
     })

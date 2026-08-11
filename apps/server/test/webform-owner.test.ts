@@ -38,10 +38,10 @@ async function setup(admin: TestClient) {
 describe('WEB-002/003: web-form owner attribution', () => {
   test('an anonymous submit creates as Administrator', async ({ admin, api }) => {
     await setup(admin)
-    const res = await api.post<{ name: string }>(`/api/web_form/${ROUTE}`, {
+    const res = await api.post<{ row_id: string }>(`/api/web_form/${ROUTE}`, {
       values: { subject: 'anon' },
     })
-    const [row] = await sql`select created_by from wf_owner_req where name = ${res.name}`
+    const [row] = await sql`select created_by from wf_owner_req where name = ${res.row_id}`
     expect(row.created_by).toBe('Administrator')
   })
 
@@ -51,10 +51,10 @@ describe('WEB-002/003: web-form owner attribution', () => {
   }) => {
     await setup(admin)
     const cust = await createUser({ roles: [ROLE] })
-    const res = await cust.post<{ name: string }>(`/api/web_form/${ROUTE}`, {
+    const res = await cust.post<{ row_id: string }>(`/api/web_form/${ROUTE}`, {
       values: { subject: 'mine' },
     })
-    const [row] = await sql`select created_by from wf_owner_req where name = ${res.name}`
+    const [row] = await sql`select created_by from wf_owner_req where name = ${res.row_id}`
     expect(row.created_by).toBe(cust.user)
 
     // The own_rows_only read grant now surfaces exactly this document.
@@ -62,6 +62,6 @@ describe('WEB-002/003: web-form owner attribution', () => {
       `/api/table/${encodeURIComponent(DT)}`,
     )
     expect(list.total).toBe(1)
-    expect(list.data[0].name).toBe(res.name)
+    expect(list.data[0].name).toBe(res.row_id)
   })
 })

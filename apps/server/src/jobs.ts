@@ -45,7 +45,7 @@ export async function enqueue(
   const name = jobName()
   await sql`
     insert into background_job ${sql({
-      name,
+      row_id: name,
       created_by: 'Administrator',
       updated_by: 'Administrator',
       method,
@@ -68,7 +68,7 @@ async function logExecution(
 ): Promise<void> {
   await sql`
     insert into job_execution ${sql({
-      name: jobName(),
+      row_id: jobName(),
       created_by: 'Administrator',
       updated_by: 'Administrator',
       job,

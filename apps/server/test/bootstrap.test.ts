@@ -13,9 +13,9 @@ describe('META-012: Table and Column are themselves Tables', () => {
   test('GET /api/table/Table lists Tables including Table itself', async ({ admin }) => {
     const body = await admin.get<{ data: { name: string; kind: string }[] }>(
       `/api/table/Table?${new URLSearchParams({
-        filters: JSON.stringify([['name', 'in', ['Table', 'Column']]]),
+        filters: JSON.stringify([['row_id', 'in', ['Table', 'Column']]]),
         fields: JSON.stringify(['name', 'kind']),
-        order_by: 'name asc',
+        order_by: 'row_id asc',
       })}`,
     )
     expect(body.data).toEqual([

@@ -96,7 +96,7 @@ describe('app manifests can declare Data Sources and reflections', () => {
     const tables = await sql`
       select name from table_def where name in ('Demo Lease', 'Demo Run')`
     expect(tables).toHaveLength(0)
-    const [src] = await sql`select 1 from data_source where name = 'appsrc-fixture'`
+    const [src] = await sql`select 1 from data_source where row_id = 'appsrc-fixture'`
     expect(src).toBeUndefined()
     // The foreign schema is untouched — uninstall never issues DDL upstream.
     const rows = await cli`select extractor from appsrc.lease`
@@ -118,7 +118,7 @@ describe('app manifests can declare Data Sources and reflections', () => {
     const res = await admin.post<{ sources: string[] }>('/api/install_app', { manifest: MANIFEST })
     expect(res.sources).toEqual([]) // adopted, so not recorded
     await admin.post('/api/uninstall_app', { name: 'appsrc-demo' })
-    const [src] = await sql`select 1 from data_source where name = 'appsrc-fixture'`
+    const [src] = await sql`select 1 from data_source where row_id = 'appsrc-fixture'`
     expect(src).toBeTruthy() // predated the app — never removed
   })
 

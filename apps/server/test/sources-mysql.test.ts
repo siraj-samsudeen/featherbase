@@ -188,7 +188,7 @@ describe.skipIf(!MYSQL_URL)('mysql: writing bound rows', () => {
       slug: 'initech',
       plan: 'pro',
     })
-    expect(String(created.name)).toMatch(/^\d+$/)
+    expect(String(created.row_id)).toMatch(/^\d+$/)
     expect(created.plan).toBe('pro')
     const [rows] = await cli.query(`select plan from ext_mysql.tenant where slug = 'initech'`)
     expect((rows as { plan: string }[])[0].plan).toBe('pro')

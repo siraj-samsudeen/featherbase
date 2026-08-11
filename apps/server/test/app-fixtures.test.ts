@@ -74,7 +74,7 @@ describe('PLAT-006: app fixtures install through the real lifecycle', () => {
       // The rows exist — created through saveDoc, so standard columns are set.
       const [row] = await sql`select title, created_by from fixture_test_item where name = 'seed-1'`
       expect(row).toMatchObject({ title: 'first', created_by: 'Administrator' })
-      const [rule] = await sql`select ref_table from email_rule where name = ${RULE}`
+      const [rule] = await sql`select ref_table from email_rule where row_id = ${RULE}`
       expect(rule).toMatchObject({ ref_table: DT })
 
       // The ledger records the created fixture identities.
@@ -85,7 +85,7 @@ describe('PLAT-006: app fixtures install through the real lifecycle', () => {
       // table), the app table dropped, the ledger row removed.
       await uninstallApp(APP)
       expect(await isInstalled(APP)).toBe(false)
-      expect((await sql`select 1 from email_rule where name = ${RULE}`).length).toBe(0)
+      expect((await sql`select 1 from email_rule where row_id = ${RULE}`).length).toBe(0)
       expect((await sql`select 1 from table_def where name = ${DT}`).length).toBe(0)
     } finally {
       await unwire()
@@ -110,12 +110,12 @@ describe('PLAT-006: app fixtures install through the real lifecycle', () => {
         { table: DT, name: 'seed-1' },
         { table: DT, name: 'seed-2' },
       ])
-      const [rule] = await sql`select ref_table, recipient from email_rule where name = ${RULE}`
+      const [rule] = await sql`select ref_table, recipient from email_rule where row_id = ${RULE}`
       expect(rule).toMatchObject({ ref_table: 'ToDo', recipient: 'pre-existing@test.invalid' })
 
       await uninstallApp(APP)
       // The adopted row predates the app and must survive it.
-      expect((await sql`select 1 from email_rule where name = ${RULE}`).length).toBe(1)
+      expect((await sql`select 1 from email_rule where row_id = ${RULE}`).length).toBe(1)
     } finally {
       await unwire()
       await deleteDoc('Email Rule', RULE).catch(() => {})
@@ -237,7 +237,7 @@ describe('helpdesk: a registered app that installs and uninstalls cleanly', () =
     // mean anything, so no earlier run's copy may survive into this one. An
     // adopted account is never in the ledger, so uninstall leaves it standing
     // — which is exactly why clearing it has to be its own step.
-    await sql`delete from email_account where name = 'Helpdesk Notifications'`
+    await sql`delete from email_account where row_id = 'Helpdesk Notifications'`
 
     // A look-alike fixture row that PREDATES the app: install must adopt it,
     // uninstall must leave it standing.
@@ -263,21 +263,21 @@ describe('helpdesk: a registered app that installs and uninstalls cleanly', () =
 
       // Structure present: workflow with sub-rows, SLA with priorities, the
       // published web form, the automation rows.
-      expect((await sql`select 1 from workflow where name = 'HD Ticket Flow'`).length).toBe(1)
+      expect((await sql`select 1 from workflow where row_id = 'HD Ticket Flow'`).length).toBe(1)
       expect((await sql`select 1 from workflow_document_state where parent = 'HD Ticket Flow'`).length).toBe(4)
       expect((await sql`select 1 from workflow_transition where parent = 'HD Ticket Flow'`).length).toBe(4)
       expect((await sql`select 1 from sla_priority where parent = 'HD Ticket SLA'`).length).toBe(4)
-      expect((await sql`select 1 from web_form where name = 'New Ticket' and published = true`).length).toBe(1)
-      expect((await sql`select 1 from server_script where name = 'HD Ticket Defaults'`).length).toBe(1)
-      expect((await sql`select 1 from email_rule where name = 'HD Ticket Resolved Notice'`).length).toBe(1)
+      expect((await sql`select 1 from web_form where row_id = 'New Ticket' and published = true`).length).toBe(1)
+      expect((await sql`select 1 from server_script where row_id = 'HD Ticket Defaults'`).length).toBe(1)
+      expect((await sql`select 1 from email_rule where row_id = 'HD Ticket Resolved Notice'`).length).toBe(1)
       // The adopted account kept ITS email and never became app property.
-      const [acct] = await sql`select email_id from email_account where name = 'Helpdesk Notifications'`
+      const [acct] = await sql`select email_id from email_account where row_id = 'Helpdesk Notifications'`
       expect(acct).toMatchObject({ email_id: 'pre-existing@corp.test' })
 
       // The app actually works end-to-end: a customer files through the
       // public web form and the SLA/server-script fixtures stamp the row.
       const customer = await createUser({ roles: ['Customer'] })
-      const filed = await customer.post<{ name: string }>('/api/web_form/new-ticket', {
+      const filed = await customer.post<{ row_id: string }>('/api/web_form/new-ticket', {
         values: { subject: 'Round-trip ticket', priority: 'Urgent' },
       })
       expect(filed.name).toMatch(/^HDT-\d{5}$/)
@@ -294,19 +294,19 @@ describe('helpdesk: a registered app that installs and uninstalls cleanly', () =
     expect(await isInstalled('helpdesk')).toBe(false)
     expect((await sql`select 1 from table_def where name = 'HD Ticket'`).length).toBe(0)
     expect((await sql`select 1 from information_schema.tables where table_name = 'hd_ticket'`).length).toBe(0)
-    expect((await sql`select 1 from workflow where name = 'HD Ticket Flow'`).length).toBe(0)
+    expect((await sql`select 1 from workflow where row_id = 'HD Ticket Flow'`).length).toBe(0)
     expect((await sql`select 1 from workflow_document_state where parent = 'HD Ticket Flow'`).length).toBe(0)
     expect((await sql`select 1 from workflow_transition where parent = 'HD Ticket Flow'`).length).toBe(0)
-    expect((await sql`select 1 from service_level_agreement where name = 'HD Ticket SLA'`).length).toBe(0)
+    expect((await sql`select 1 from service_level_agreement where row_id = 'HD Ticket SLA'`).length).toBe(0)
     expect((await sql`select 1 from sla_priority where parent = 'HD Ticket SLA'`).length).toBe(0)
-    expect((await sql`select 1 from server_script where name = 'HD Ticket Defaults'`).length).toBe(0)
-    expect((await sql`select 1 from email_rule where name = 'HD Ticket Resolved Notice'`).length).toBe(0)
-    expect((await sql`select 1 from web_form where name = 'New Ticket'`).length).toBe(0)
+    expect((await sql`select 1 from server_script where row_id = 'HD Ticket Defaults'`).length).toBe(0)
+    expect((await sql`select 1 from email_rule where row_id = 'HD Ticket Resolved Notice'`).length).toBe(0)
+    expect((await sql`select 1 from web_form where row_id = 'New Ticket'`).length).toBe(0)
     expect((await sql`select 1 from permission where role in ('Support Agent', 'Support Manager', 'Customer')`).length).toBe(0)
 
     // The pre-existing look-alike Email Account survives (adopted, so never
     // in the ledger) — and it was never the app's default to dangle.
-    const [acct] = await sql`select email_id from email_account where name = 'Helpdesk Notifications'`
+    const [acct] = await sql`select email_id from email_account where row_id = 'Helpdesk Notifications'`
     expect(acct).toMatchObject({ email_id: 'pre-existing@corp.test' })
   })
 
@@ -322,6 +322,6 @@ describe('helpdesk: a registered app that installs and uninstalls cleanly', () =
 
     const apps = await admin.get<{ available: string[]; installed: { name: string }[] }>('/api/apps')
     expect(apps.available).toEqual(expect.arrayContaining([APP, 'helpdesk']))
-    expect(apps.installed.map((a) => a.name)).not.toContain(APP)
+    expect(apps.installed.map((a) => a.row_id)).not.toContain(APP)
   })
 })

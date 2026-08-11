@@ -107,7 +107,7 @@ describe('RPT-004: query reports', () => {
 
     // …nor edit an existing report's query (pass the exact updated_at stamp so
     // the gate — not the concurrency check — is what rejects).
-    const [{ updated_at }] = await sql`select updated_at from report where name = ${REPORT}`
+    const [{ updated_at }] = await sql`select updated_at from report where row_id = ${REPORT}`
     await expect(
       saveDoc(
         'Report',

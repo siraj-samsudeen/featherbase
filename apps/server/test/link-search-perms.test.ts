@@ -8,7 +8,7 @@ const ROLE = 'Ls Role'
 // The exact query shape a Link autocomplete issues.
 const searchQs = (q: string) =>
   `/api/table/${encodeURIComponent(TARGET)}?${new URLSearchParams({
-    filters: JSON.stringify([['name', 'like', `%${q}%`]]),
+    filters: JSON.stringify([['row_id', 'like', `%${q}%`]]),
     fields: JSON.stringify(['name']),
     limit_page_length: '10',
   })}`

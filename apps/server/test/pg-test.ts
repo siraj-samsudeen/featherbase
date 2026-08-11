@@ -37,7 +37,7 @@ export const test = createPgTest(
         },
         'Administrator',
       )
-      return String(doc.name)
+      return String(doc.row_id)
     },
   },
   { defaultRoles: ['All'] },

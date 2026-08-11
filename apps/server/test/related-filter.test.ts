@@ -83,7 +83,7 @@ describe('NAV-002: related filters', () => {
   test('via sub-table: rows containing a child that points at the target', async ({ admin }) => {
     await setup(admin)
     const { names } = await list(admin, ORDER, [
-      ['name', 'related', { via: LINE, column: 'part', table: PART, filters: [['name', '=', 'P-1']] }],
+      ['row_id', 'related', { via: LINE, column: 'part', table: PART, filters: [['row_id', '=', 'P-1']] }],
     ])
     expect(names).toEqual(['O-1', 'O-3'])
   })
@@ -167,7 +167,7 @@ describe('NAV-002: related filters', () => {
     await bad([['supplier', 'related', {}]]) // no table
     await bad([['total', 'related', { table: SUP }]]) // not a Reference column
     await bad([['supplier', 'related', { table: PART }]]) // wrong target
-    await bad([['name', 'related', { via: LINE, column: 'qty', table: PART }]]) // via col not a Reference
+    await bad([['row_id', 'related', { via: LINE, column: 'qty', table: PART }]]) // via col not a Reference
 
     // depth cap: a 4th nested hop is rejected (3 is the maximum)
     const supHop = (filters: unknown[]) => ({ table: SUP, filters })
@@ -259,7 +259,7 @@ describe('NAV-002: related filters', () => {
       list(admin, ORDER, [['supplier', 'related', { table: SUP, column: 'city' }]]),
     ).rejects.toMatchObject({ status: 417 })
     await expect(
-      list(admin, ORDER, [['name', 'related', { table: PART, via: LINE }]]),
+      list(admin, ORDER, [['row_id', 'related', { table: PART, via: LINE }]]),
     ).rejects.toMatchObject({ status: 417 })
   })
 
@@ -283,13 +283,13 @@ describe('NAV-002: related filters', () => {
     const linesOnly = await list(admin, LINE, [
       ['parenttype', '=', ORDER],
       ['parentfield', '=', 'lines'],
-      ['parent', 'related', { table: ORDER, filters: [['name', '=', 'O-4']] }],
+      ['parent', 'related', { table: ORDER, filters: [['row_id', '=', 'O-4']] }],
     ])
     expect(linesOnly.total).toBe(1)
 
     // via hop WITHOUT parentfield: any field counts → O-4 contains P-1 (returns)
     const anyField = await list(admin, ORDER, [
-      ['name', 'related', { via: LINE, column: 'part', table: PART, filters: [['name', '=', 'P-1']] }],
+      ['row_id', 'related', { via: LINE, column: 'part', table: PART, filters: [['row_id', '=', 'P-1']] }],
     ])
     expect(anyField.names).toContain('O-4')
 
@@ -303,7 +303,7 @@ describe('NAV-002: related filters', () => {
           column: 'part',
           table: PART,
           parentfield: 'lines',
-          filters: [['name', '=', 'P-1']],
+          filters: [['row_id', '=', 'P-1']],
         },
       ],
     ])
@@ -312,7 +312,7 @@ describe('NAV-002: related filters', () => {
     // parentfield must name a real Sub-table column of the via table
     await expect(
       list(admin, ORDER, [
-        ['name', 'related', { via: LINE, column: 'part', table: PART, parentfield: 'supplier' }],
+        ['row_id', 'related', { via: LINE, column: 'part', table: PART, parentfield: 'supplier' }],
       ]),
     ).rejects.toMatchObject({ status: 417 })
     // and never travels without via

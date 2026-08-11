@@ -53,7 +53,7 @@ describe('app registry: install lifecycle', () => {
     const installed = await installApp(APP)
     expect(installed.tables).toEqual([DT])
     expect(await isInstalled(APP)).toBe(true)
-    expect((await listInstalledApps()).map((a) => a.name)).toContain(APP)
+    expect((await listInstalledApps()).map((a) => a.row_id)).toContain(APP)
     await expect(installApp(APP)).rejects.toMatchObject({ type: 'ConflictError' })
 
     const removed = await uninstallApp(APP)
@@ -113,8 +113,8 @@ describe('app registry: legacy row tolerance', () => {
     await sql`insert into installed_app (name, tables) values ('cov-legacy-str', ${'["Legacy X"]'}::jsonb)`
     await sql`insert into installed_app (name, tables) values ('cov-legacy-bad', ${'"not json['}::jsonb)`
     const apps = await listInstalledApps()
-    expect(apps.find((a) => a.name === 'cov-legacy-str')?.tables).toEqual(['Legacy X'])
-    expect(apps.find((a) => a.name === 'cov-legacy-bad')?.tables).toEqual([])
+    expect(apps.find((a) => a.row_id === 'cov-legacy-str')?.tables).toEqual(['Legacy X'])
+    expect(apps.find((a) => a.row_id === 'cov-legacy-bad')?.tables).toEqual([])
     // Neither name has a registered manifest — loadInstalledApps must skip them.
     await loadInstalledApps()
   })
@@ -152,7 +152,7 @@ describe('workflow: initDocState backfill', () => {
     const DT = 'Cov Init Note'
     await makeDT(admin, DT)
     const doc = await saveDoc(DT, { title: 'pre-workflow' }, 'Administrator')
-    await sql`update cov_init_note set note_status = null where name = ${String(doc.name)}`
+    await sql`update cov_init_note set note_status = null where name = ${String(doc.row_id)}`
     await admin.post('/api/save_doc', {
       doctype: 'Workflow',
       doc: {
@@ -168,7 +168,7 @@ describe('workflow: initDocState backfill', () => {
       },
     })
     await initDocState(DT)
-    const [row] = await sql`select note_status from cov_init_note where name = ${String(doc.name)}`
+    const [row] = await sql`select note_status from cov_init_note where name = ${String(doc.row_id)}`
     expect(row.note_status).toBe('Open')
   })
 })
@@ -238,7 +238,7 @@ describe('SLA: non-matching paths', () => {
     await applySla(await getMeta(DT), values)
     expect(values.response_by).toBeUndefined() // disabled SLA never stamps
 
-    await sql`update service_level_agreement set enabled = true where name = 'Cov Sla Off'`
+    await sql`update service_level_agreement set enabled = true where row_id = 'Cov Sla Off'`
     const unmatched: Record<string, unknown> = { title: 'y', priority: 'Low' } // no Low row
     await applySla(await getMeta(DT), unmatched)
     expect(unmatched.response_by).toBeUndefined()
@@ -264,13 +264,13 @@ describe('SLA: non-matching paths', () => {
     })
     const doc = await saveDoc(DT, { title: 'late', priority: 'High' }, 'Administrator')
     await sql`update cov_sla_norole set resolution_by = now() - interval '1 hour'
-      where name = ${String(doc.name)}`
+      where name = ${String(doc.row_id)}`
     await enqueue('check_sla', {})
     await sql`
       update background_job set run_at = now()
       where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
     await drainJobs()
-    const [row] = await sql`select sla_status from cov_sla_norole where name = ${String(doc.name)}`
+    const [row] = await sql`select sla_status from cov_sla_norole where name = ${String(doc.row_id)}`
     expect(row.sla_status).toBe('Overdue')
     const mails = await sql`
       select 1 from email_queue where ref_table = ${DT}`
@@ -284,11 +284,11 @@ describe('assignment + RPC edges', () => {
     await makeDT(admin, DT)
     const user = await createUser({ roles: [] })
     const doc = await saveDoc(DT, { title: 'x' }, 'Administrator')
-    await createAssignment(DT, String(doc.name), String(user.user), 'Administrator')
+    await createAssignment(DT, String(doc.row_id), String(user.user), 'Administrator')
     const [todo] = await sql`
       select description from todo
-      where ref_table = ${DT} and reference_name = ${String(doc.name)}`
-    expect(todo.description).toBe(`Assigned ${DT} ${String(doc.name)}`)
+      where ref_table = ${DT} and reference_name = ${String(doc.row_id)}`
+    expect(todo.description).toBe(`Assigned ${DT} ${String(doc.row_id)}`)
   })
 
   test('frappe.client.get_value resolves filters arrays and returns null on no match', async ({

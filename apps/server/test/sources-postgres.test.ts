@@ -208,7 +208,7 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
       slug: 'initech',
       plan: 'pro',
     })
-    expect(String(created.name)).toMatch(/^[0-9a-f-]{36}$/)
+    expect(String(created.row_id)).toMatch(/^[0-9a-f-]{36}$/)
     const [row] = await cli`select slug, plan from ext_fixture.tenant where slug = 'initech'`
     expect(row.plan).toBe('pro')
   })

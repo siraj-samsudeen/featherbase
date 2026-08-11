@@ -41,7 +41,7 @@ describe('API-004: authentication', () => {
   })
 
   test('a valid token resolves the correct user and stamps ownership', async ({ admin }) => {
-    const me = await admin.get<{ name: string }>('/api/whoami')
+    const me = await admin.get<{ row_id: string }>('/api/whoami')
     expect(me.name).toBe('Administrator')
   })
 

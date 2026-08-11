@@ -120,7 +120,7 @@ describe('checklists app: template → run lifecycle', () => {
         doctype: TEMPLATE_DT,
         doc: { name: templateName, updated_at: template.updated_at, items: edited },
       })
-      const runAfter = await admin.get<Row>(`/api/table/${encodeURIComponent(RUN_DT)}/${run.name}`)
+      const runAfter = await admin.get<Row>(`/api/table/${encodeURIComponent(RUN_DT)}/${run.row_id}`)
       expect((runAfter.items as Row[])[0].item_label).toBe(FIXTURE_LABELS[0])
     } finally {
       await unwire()
@@ -139,7 +139,7 @@ describe('checklists app: template → run lifecycle', () => {
 
       const ticked = await admin.post<Row>('/api/save_doc', {
         doctype: RUN_DT,
-        doc: { name: run.name, updated_at: run.updated_at, items: tick(run.items as Row[], 0, true) },
+        doc: { name: run.row_id, updated_at: run.updated_at, items: tick(run.items as Row[], 0, true) },
       })
       expect(ticked.progress).toBe('1/8')
       expect((ticked.items as Row[])[0].done).toBe(true)
@@ -149,7 +149,7 @@ describe('checklists app: template → run lifecycle', () => {
       const unticked = await admin.post<Row>('/api/save_doc', {
         doctype: RUN_DT,
         doc: {
-          name: run.name,
+          name: run.row_id,
           updated_at: ticked.updated_at,
           items: tick(ticked.items as Row[], 0, false),
         },
@@ -174,7 +174,7 @@ describe('checklists app: template → run lifecycle', () => {
       await expect(
         admin.post('/api/save_doc', {
           doctype: RUN_DT,
-          doc: { name: run.name, updated_at: run.updated_at, run_status: 'Submitted' },
+          doc: { name: run.row_id, updated_at: run.updated_at, run_status: 'Submitted' },
         }),
       ).rejects.toMatchObject({
         status: 417,
@@ -187,7 +187,7 @@ describe('checklists app: template → run lifecycle', () => {
       )
       const submitted = await admin.post<Row>('/api/save_doc', {
         doctype: RUN_DT,
-        doc: { name: run.name, updated_at: run.updated_at, run_status: 'Submitted', items },
+        doc: { name: run.row_id, updated_at: run.updated_at, run_status: 'Submitted', items },
       })
       expect(submitted.run_status).toBe('Submitted')
       expect(submitted.progress).toBe('4/8')
@@ -268,10 +268,10 @@ describe('checklists app: template → run lifecycle', () => {
       await expect(
         admin.post('/api/save_doc', {
           doctype: RUN_DT,
-          doc: { name: run.name, updated_at: run.updated_at, run_status: 'Submitted', items: [] },
+          doc: { name: run.row_id, updated_at: run.updated_at, run_status: 'Submitted', items: [] },
         }),
       ).rejects.toMatchObject({ status: 417, message: expect.stringMatching(/must-do/) })
-      const intact = await admin.get<Row>(`/api/table/${encodeURIComponent(RUN_DT)}/${run.name}`)
+      const intact = await admin.get<Row>(`/api/table/${encodeURIComponent(RUN_DT)}/${run.row_id}`)
       expect(intact.items as Row[]).toHaveLength(8)
       expect(intact.run_status).toBe('Open')
 
@@ -290,7 +290,7 @@ describe('checklists app: template → run lifecycle', () => {
       ]
       const saved = await admin.post<Row>('/api/save_doc', {
         doctype: RUN_DT,
-        doc: { name: run.name, updated_at: intact.updated_at, items: forged },
+        doc: { name: run.row_id, updated_at: intact.updated_at, items: forged },
       })
       const items = saved.items as Row[]
       expect(items).toHaveLength(8)
@@ -322,7 +322,7 @@ describe('checklists app: template → run lifecycle', () => {
       const submitted = await admin.post<Row>('/api/save_doc', {
         doctype: RUN_DT,
         doc: {
-          name: run.name,
+          name: run.row_id,
           updated_at: run.updated_at,
           run_status: 'Submitted',
           items: (run.items as Row[]).map((i) => (i.must_do ? { ...i, done: true } : i)),
@@ -337,7 +337,7 @@ describe('checklists app: template → run lifecycle', () => {
         admin.post('/api/save_doc', {
           doctype: RUN_DT,
           doc: {
-            name: run.name,
+            name: run.row_id,
             updated_at: submitted.updated_at,
             items: (submitted.items as Row[]).map((i, n) => (n === 6 ? { ...i, done: true } : i)),
           },
@@ -348,7 +348,7 @@ describe('checklists app: template → run lifecycle', () => {
         admin.post('/api/save_doc', {
           doctype: RUN_DT,
           doc: {
-            name: run.name,
+            name: run.row_id,
             updated_at: submitted.updated_at,
             items: (submitted.items as Row[]).map((i, n) =>
               n === 0 ? { ...i, note: 'thought better of it' } : i,
@@ -360,11 +360,11 @@ describe('checklists app: template → run lifecycle', () => {
       await expect(
         admin.post('/api/save_doc', {
           doctype: RUN_DT,
-          doc: { name: run.name, updated_at: submitted.updated_at, run_status: 'Open' },
+          doc: { name: run.row_id, updated_at: submitted.updated_at, run_status: 'Open' },
         }),
       ).rejects.toMatchObject({ status: 417, message: expect.stringMatching(refused) })
 
-      const after = await admin.get<Row>(`/api/table/${encodeURIComponent(RUN_DT)}/${run.name}`)
+      const after = await admin.get<Row>(`/api/table/${encodeURIComponent(RUN_DT)}/${run.row_id}`)
       expect(after.run_status).toBe('Submitted')
       expect(after.progress).toBe('5/8')
       expect((after.items as Row[])[6].done).toBe(false)

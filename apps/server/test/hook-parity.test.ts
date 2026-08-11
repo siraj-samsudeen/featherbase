@@ -49,7 +49,7 @@ describe('Frappe lifecycle + app-contract parity', () => {
       seen.length = 0
       await saveDoc(
         DT,
-        { name: doc.name, updated_at: (doc.updated_at as Date).toISOString(), title: 'again' },
+        { name: doc.row_id, updated_at: (doc.updated_at as Date).toISOString(), title: 'again' },
         'Administrator',
       )
       expect(seen).toEqual(['before_validate', 'validate', 'on_update'])

@@ -103,7 +103,7 @@ describe('Frappe compat: frappe.client.* RPC namespace', () => {
 
     const listed = await admin.post<{ message: { name: string }[] }>(
       '/api/method/frappe.client.get_list',
-      { doctype: DT, fields: ['name', 'title'], filters: [['title', '=', 'first']] },
+      { doctype: DT, fields: ['row_id', 'title'], filters: [['title', '=', 'first']] },
     )
     expect(listed.message.map((r) => r.name)).toContain(name)
 

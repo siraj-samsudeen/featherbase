@@ -42,10 +42,10 @@ describe('META-004: schema sync does not leave stale prepared statements', () =>
     for (let round = 1; round <= 3; round++) {
       // Warm every pooled connection with reads/updates on this table.
       let updated_at = (await (
-        await areq(`/api/table/${encodeURIComponent(DT)}/${doc.name}`)
+        await areq(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`)
       ).json() as { updated_at: string }).updated_at
       for (let i = 0; i < 5; i++) {
-        const upd = await areq(`/api/table/${encodeURIComponent(DT)}/${doc.name}`, {
+        const upd = await areq(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`, {
           method: 'PATCH',
           body: JSON.stringify({ a: `warm-${round}-${i}`, updated_at }),
         })
@@ -63,9 +63,9 @@ describe('META-004: schema sync does not leave stale prepared statements', () =>
 
       // …then EVERY subsequent request must succeed (no per-connection 500).
       for (let i = 0; i < 10; i++) {
-        const read = await areq(`/api/table/${encodeURIComponent(DT)}/${doc.name}`)
+        const read = await areq(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`)
         expect(read.status).toBe(200)
-        const upd = await areq(`/api/table/${encodeURIComponent(DT)}/${doc.name}`, {
+        const upd = await areq(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`, {
           method: 'PATCH',
           body: JSON.stringify({ a: `post-${round}-${i}`, updated_at }),
         })

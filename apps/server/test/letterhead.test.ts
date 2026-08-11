@@ -91,7 +91,7 @@ describe('PRN-004: letterheads', () => {
   test('a Print Format can name the letterhead it prints with', async () => {
     await setup()
     await sql`
-      insert into print_format (name, created_by, updated_by, ref_table, is_default, letter_head, template)
+      insert into print_format (row_id, created_by, updated_by, ref_table, is_default, letter_head, template)
       values ('Lh Fmt', 'Administrator', 'Administrator', ${DT}, false, 'Lh Branch',
         '<h1>RECEIPT</h1><p>{{ company }}</p>')`
     const html = await renderPrintHtml(DT, 'lh-1', 'Administrator', 'Lh Fmt')

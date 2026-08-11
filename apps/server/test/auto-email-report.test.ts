@@ -19,8 +19,8 @@ const RECIP = 'aer-boss@x.com'
 async function setup(admin: TestClient) {
   await sql`delete from email_sink where subject like ${'Auto Email Report:%'}`
   await sql`delete from email_queue where ref_table = 'Report' and reference_name = ${REPORT}`
-  await sql`delete from auto_email_report where name = ${AER}`
-  await sql`delete from report where name = ${REPORT}`
+  await sql`delete from auto_email_report where row_id = ${AER}`
+  await sql`delete from report where row_id = ${REPORT}`
   await sql`delete from column_def where parent = ${DT}`
   await sql`delete from table_def where name = ${DT}`
   await sql.unsafe('drop table if exists aer_srv_widget')
@@ -119,7 +119,7 @@ describe('EML-007: Auto Email Report', () => {
     expect(Buffer.from(sink.attachment_b64 as string, 'base64').toString('utf8')).toContain('Washer,3')
 
     // last_sent was stamped.
-    const [row] = await sql`select last_sent from auto_email_report where name = ${AER}`
+    const [row] = await sql`select last_sent from auto_email_report where row_id = ${AER}`
     expect(row.last_sent).not.toBeNull()
   })
 
@@ -134,7 +134,7 @@ describe('EML-007: Auto Email Report', () => {
     expect(delivered).not.toContain(AER)
 
     // Simulate two days passing → due again.
-    await sql`update auto_email_report set last_sent = now() - interval '2 days' where name = ${AER}`
+    await sql`update auto_email_report set last_sent = now() - interval '2 days' where row_id = ${AER}`
     const later = await runDueAutoEmailReports(new Date())
     expect(later).toContain(AER)
   })

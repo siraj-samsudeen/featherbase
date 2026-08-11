@@ -120,7 +120,7 @@ describe('NAV-001: row connections', () => {
     expect(ord).toMatchObject({ column: 'employee', via: LINE, count: 2 })
     // NAV-002: a compact relationship filter, not a name list
     const [field, op, spec] = ord!.filters[0]
-    expect([field, op]).toEqual(['name', 'related'])
+    expect([field, op]).toEqual(['row_id', 'related'])
     expect(spec).toMatchObject({ via: LINE, column: 'employee', table: EMP })
     // and the list engine evaluates it to exactly the owning rows
     const listed = await listWith(admin, ORDER, ord!.filters)

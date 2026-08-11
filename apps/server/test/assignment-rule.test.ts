@@ -16,7 +16,7 @@ const A2 = 'asg-agent2@x.com'
 async function setup(admin: TestClient) {
   for (const u of [A1, A2])
     await sql`insert into "user" ${sql({
-      name: u, created_by: 'Administrator', updated_by: 'Administrator', email: u, enabled: true,
+      row_id: u, created_by: 'Administrator', updated_by: 'Administrator', email: u, enabled: true,
     })}`
   await admin.post('/api/doctype', {
     name: DT,
@@ -69,8 +69,8 @@ describe('Assignment Rules: round-robin auto-assignment', () => {
 
   test('a disabled rule never assigns', async ({ admin }) => {
     await setup(admin)
-    await sql`update assignment_rule set disabled = true where name = ${RULE}`
+    await sql`update assignment_rule set disabled = true where row_id = ${RULE}`
     const doc = await saveDoc(DT, { title: 'off' }, 'Administrator')
-    expect(await assignee(String(doc.name))).toBeUndefined()
+    expect(await assignee(String(doc.row_id))).toBeUndefined()
   })
 })

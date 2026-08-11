@@ -170,11 +170,11 @@ describe('#131: service accounts', () => {
     admin,
     api,
   }) => {
-    const created = await admin.post<{ name: string; roles: string[]; enabled: boolean }>(
+    const created = await admin.post<{ row_id: string; roles: string[]; enabled: boolean }>(
       '/api/service_accounts',
       { name: 'svc-test-bot', roles: ['System Manager'] },
     )
-    expect(created.name).toBe('svc-test-bot')
+    expect(created.row_id).toBe('svc-test-bot')
     expect(created.roles).toContain('System Manager')
 
     // No password login, ever — even after someone tries to set one.
@@ -246,7 +246,7 @@ describe('#131: service accounts', () => {
       label: 'doomed token',
       owner: 'svc-doomed',
     })
-    await sql`delete from "user" where name = ${'svc-doomed'}`
+    await sql`delete from "user" where row_id = ${'svc-doomed'}`
     const [gone] = await sql`select 1 from access_token where id = ${issued.id}`
     expect(gone).toBeUndefined()
     const res = await api.fetch('/api/whoami', {

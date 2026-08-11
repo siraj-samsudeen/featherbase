@@ -47,18 +47,18 @@ describe('CUST-004: server scripts', () => {
   test('can set a field (before_save event)', async ({ admin }) => {
     await setup(admin)
     await makeScript(admin, { name: 'ss-srv-set', script_type: 'Document Event', ref_table: DT, event: 'before_save', script: 'doc.size_label = doc.amount > 100 ? "big" : "small"', enabled: true })
-    const created = await admin.post<{ name: string }>('/api/save_doc', {
+    const created = await admin.post<{ row_id: string }>('/api/save_doc', {
       doctype: DT,
       doc: { amount: 200 },
     })
-    const [row] = await sql`select size_label from ss_srv_doc where name = ${created.name}`
+    const [row] = await sql`select size_label from ss_srv_doc where name = ${created.row_id}`
     expect(row.size_label).toBe('big')
   })
 
   test('sandbox blocks require, process, and fetch', async ({ admin }) => {
     await setup(admin)
     for (const bad of ['require("fs")', 'process.exit(1)', 'fetch("http://x")']) {
-      await sql`delete from server_script where name = 'ss-srv-evil'`
+      await sql`delete from server_script where row_id = 'ss-srv-evil'`
       await makeScript(admin, { name: 'ss-srv-evil', script_type: 'Document Event', ref_table: DT, event: 'validate', script: bad, enabled: true })
       const res = await saveTarget(admin, { amount: 1 })
       expect(res.status).toBe(417)
@@ -96,7 +96,7 @@ describe('CUST-004: server scripts', () => {
 
     // A direct attempt to read the pid errors (process not defined) — it never
     // returns a number.
-    await sql`delete from server_script where name = 'ss-srv-esc'`
+    await sql`delete from server_script where row_id = 'ss-srv-esc'`
     await makeScript(admin, { name: 'ss-srv-esc', script_type: 'API', api_method: 'srv_esc2', script: 'result = Object.constructor("return process.pid")()', enabled: true })
     await expect(runApiScript('srv_esc2', {})).rejects.toMatchObject({ type: 'ValidationError' })
   })

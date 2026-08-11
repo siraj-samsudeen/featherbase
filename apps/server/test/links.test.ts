@@ -52,7 +52,7 @@ describe('META-008: Link integrity', () => {
     await expect(
       admin.post('/api/save_doc', {
         doctype: TICKET,
-        doc: { name: doc.name, updated_at: doc.updated_at, customer: 'Nobody' },
+        doc: { name: doc.row_id, updated_at: doc.updated_at, customer: 'Nobody' },
       }),
     ).rejects.toMatchObject({ status: 417 })
 
@@ -60,7 +60,7 @@ describe('META-008: Link integrity', () => {
       admin.post('/api/save_doc', {
         doctype: TICKET,
         doc: {
-          name: doc.name,
+          name: doc.row_id,
           updated_at: doc.updated_at,
           allocs: [{ customer: 'Acme' }, { customer: 'Ghost' }],
         },
@@ -72,7 +72,7 @@ describe('META-008: Link integrity', () => {
 
     await admin.post('/api/save_doc', {
       doctype: TICKET,
-      doc: { name: doc.name, updated_at: doc.updated_at, allocs: [{ customer: 'Acme' }] },
+      doc: { name: doc.row_id, updated_at: doc.updated_at, allocs: [{ customer: 'Acme' }] },
     })
   })
 
