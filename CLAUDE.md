@@ -207,3 +207,21 @@ once per run, outside any sandbox transaction. It complements
 - `docs/research/` — Frappe architecture, Glide, and stack studies.
 - `docs/archive/convex-capabilities/` — specs from the retired Convex
   implementation, preserved on the `archive/convex-v1` tag.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as GitHub issues in `siraj-samsudeen/featherbase`, driven through
+the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles, each label string equal to its name
+(`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`,
+`wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context — one root `CONTEXT.md` plus `docs/adr/` for the whole
+monorepo. See `docs/agents/domain.md`.

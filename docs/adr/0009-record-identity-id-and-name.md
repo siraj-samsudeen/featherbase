@@ -1,6 +1,12 @@
-# ADR 0007: Record identity — `id` and `name`, and the column naming convention
+# ADR 0009: Record identity — `id` and `name`, and the column naming convention
 
 **Status:** Accepted · **Date:** 2026-07-31
+
+> Renumbered 0007 → 0009 on 2026-08-11: this ADR was filed as 0007 while
+> [ADR 0007](0007-app-and-database-topology.md) already held that number, so
+> "ADR 0007" was ambiguous. Entries in `PROGRESS.md` dated before this and
+> [#89](https://github.com/siraj-samsudeen/featherbase/issues/89)'s title still
+> say "ADR 0007" — those are dated records, left as written.
 
 ## Context
 
