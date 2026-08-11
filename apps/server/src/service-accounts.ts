@@ -61,15 +61,20 @@ function serviceAccountQuery(name?: string) {
   return sql`
     select u.name, u.full_name, u.enabled, u.created_at,
       coalesce(r.roles, '{}') as roles,
-      coalesce(t.n, 0)::int as token_count
+      -- #137: "active" must mean exactly what resolveAccessToken accepts, and
+      -- that predicate has three parts: not revoked, not expired, AND the
+      -- owner enabled. The subquery below covers the first two; the owner's
+      -- flag has to be applied out here, where u is in scope. Without it a
+      -- disabled service account advertised a token_count of 2 while zero of
+      -- its tokens could authenticate — the count contradicted the very
+      -- kill switch the operator had just used.
+      coalesce(case when u.enabled then t.n end, 0)::int as token_count
     from "user" u
     left join (
       select parent, array_agg(role order by role) as roles
       from has_role group by parent
     ) r on r.parent = u.name
     left join (
-      -- #137: "active" must mean what resolveAccessToken accepts. Counting
-      -- merely-unrevoked tokens reported expired credentials as usable.
       select owner, count(*) as n from access_token
       where revoked_at is null and (expires_at is null or expires_at > now())
       group by owner

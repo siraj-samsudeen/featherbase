@@ -181,12 +181,6 @@ const PHYSICAL_TABLE_OVERRIDES: Record<string, string> = {
   column: 'column_def',
 }
 
-// #137: raw tables the engine owns directly. They have no `table_def` row, so
-// the "already exists" check cannot catch a user Table that would compile to
-// the same physical name. Credential storage is the one that matters most —
-// `access_token` colliding with a user Table would break authentication.
-const RESERVED_PHYSICAL_TABLES = new Set(['access_token', 'password_reset', 'migration'])
-
 export function tableName(table: string): string {
   const naive = table.toLowerCase().replace(/\s+/g, '_')
   return PHYSICAL_TABLE_OVERRIDES[naive] ?? naive
@@ -403,14 +397,29 @@ export async function createTable(input: unknown): Promise<TableMeta> {
   if (existing)
     throw new AppError('ConflictError', `Table ${def.name} already exists`)
 
-  // #137: engine-owned RAW tables carry no table_def row, so the check above
-  // cannot see them — a Table named "Access Token" would sail past it and
-  // then collide with the credential store at DDL time. Refuse by physical
-  // name, which is what actually collides.
-  if (RESERVED_PHYSICAL_TABLES.has(tableName(def.name)))
-    throw new AppError('ConflictError', `Table ${def.name} collides with an internal table`, {
-      name: `"${tableName(def.name)}" is reserved for platform storage`,
-    })
+  // #137: engine-owned RAW tables (series, single_value, migration,
+  // access_token, tag_link, …) carry no `table_def` row, so the check above
+  // cannot see them — a Table named "Access Token" sailed past it and then
+  // collided with the credential store at DDL time, surfacing as a raw
+  // `relation "access_token" already exists`.
+  //
+  // The reserved set is DERIVED, not enumerated: whatever already occupies
+  // the physical name we are about to create is a collision, no matter what
+  // created it. A hand-written literal rots silently every time a raw table
+  // is added (the first draft of this guard covered 3 of ~10), and this asks
+  // the database the same question the DDL would — just early enough to
+  // answer with a real error instead of a Postgres one. Settings Tables are
+  // exempt because they generate no DDL; their values live in single_value.
+  const physical = tableName(def.name)
+  if (def.kind !== 'settings') {
+    const [clash] = await sql`
+      select 1 from information_schema.tables
+      where table_schema = current_schema() and table_name = ${physical}`
+    if (clash)
+      throw new AppError('ConflictError', `Table ${def.name} collides with an internal table`, {
+        name: `"${physical}" is reserved for platform storage`,
+      })
+  }
 
   // EDS-3 (review finding 10): a binding written by hand (POST /api/doctype)
   // is checked against the live source — it must exist, be allowlisted, and

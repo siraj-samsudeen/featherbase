@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { sql } from './db'
 import { AppError } from './errors'
-import { saveDoc, getDoc } from './document'
+import { saveDoc } from './document'
 import { getSystemSettings } from './settings'
 
 // PLAT-006: social login (Google OAuth) mapped to the User Table. The client
@@ -258,9 +258,14 @@ export async function findOrCreateGoogleUser(email: string, name: string): Promi
     // token that principal owned started working again, even though the
     // interactive login itself was still refused. Refusing here matches
     // login() and issueSession(), which both reject a disabled user.
-    if (existing.user_type === 'service')
-      throw new AppError('AuthenticationError', 'This account cannot sign in')
-    if (!existing.enabled) throw new AppError('AuthenticationError', 'This account is disabled')
+    //
+    // ONE refusal, ONE message, deliberately. Separate "this account is
+    // disabled" and "this account cannot sign in" replies let an unauthenticated
+    // caller probe an address and learn which accounts exist and in what
+    // state — the exact enumeration oracle requestPasswordReset() avoids by
+    // returning a silent null. The generic wording matches login()'s.
+    if (existing.user_type === 'service' || !existing.enabled)
+      throw new AppError('AuthenticationError', 'Invalid login credentials')
   } else {
     if (!(await domainAdmitted(email)))
       throw new AppError('AuthenticationError', 'Access not provisioned for this account. Contact IT.')

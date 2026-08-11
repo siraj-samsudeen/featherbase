@@ -29,14 +29,17 @@ export function verifyPassword(password: string, stored: string): boolean {
 // refused service accounts, but password reset reaches this function directly,
 // so a reset link could still stamp a password_hash onto a principal
 // documented as having none. The guard is on the write itself.
-export async function setUserPassword(name: string, password: string) {
-  const [row] = await sql`select user_type from "user" where name = ${name}`
+//
+// `tx` lets a caller run this inside its own transaction — resetPassword needs
+// the write and the token's consumption to succeed or fail together.
+export async function setUserPassword(name: string, password: string, tx: typeof sql = sql) {
+  const [row] = await tx`select user_type from "user" where name = ${name}`
   if (row?.user_type === 'service')
     throw new AppError(
       'ValidationError',
       'Service accounts have no password — issue an access token instead',
     )
-  await sql`
+  await tx`
     update "user" set password_hash = ${hashPassword(password)}
     where name = ${name}`
 }
@@ -142,17 +145,24 @@ export async function issueAccessToken(
 // All tokens (owner undefined) or one principal's, newest first. #137:
 // owner_enabled rides along because a live-looking token whose owner is
 // disabled cannot authenticate — the UI must not call it active.
+//
+// The join is a LEFT join on purpose. An inner join drops any token whose
+// owner no longer matches a `user` row, so the credential vanishes from the
+// admin screen while `resolveAccessToken` would still find it by hash — an
+// operator cannot revoke what they cannot see. A missing owner is reported
+// as `owner_enabled: false`, which is the truth: such a token authenticates
+// nobody, and it stays listed and revocable.
 export async function listAccessTokens(owner?: string): Promise<AccessTokenRow[]> {
   const rows = owner
     ? await sql`
         select t.id, t.label, t.owner, t.created_at, t.expires_at, t.last_used_at, t.revoked_at,
-               u.enabled as owner_enabled
-        from access_token t join "user" u on u.name = t.owner
+               coalesce(u.enabled, false) as owner_enabled
+        from access_token t left join "user" u on u.name = t.owner
         where t.owner = ${owner} order by t.created_at desc`
     : await sql`
         select t.id, t.label, t.owner, t.created_at, t.expires_at, t.last_used_at, t.revoked_at,
-               u.enabled as owner_enabled
-        from access_token t join "user" u on u.name = t.owner
+               coalesce(u.enabled, false) as owner_enabled
+        from access_token t left join "user" u on u.name = t.owner
         order by t.created_at desc`
   return rows as unknown as AccessTokenRow[]
 }

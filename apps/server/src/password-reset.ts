@@ -46,12 +46,21 @@ export async function resetPassword(token: string, newPassword: string): Promise
   if (newPassword.length < 6)
     throw new AppError('ValidationError', 'Password must be at least 6 characters')
 
-  const [row] = await sql`
-    select "user", expires_at from password_reset where token = ${token}`
-  if (!row || new Date(row.expires_at as string).getTime() < Date.now())
-    throw new AppError('ValidationError', 'This reset link is invalid or has expired')
+  // #137: the write and the token's consumption are ONE transaction. They
+  // used to be two statements: if setUserPassword threw — and since #137 it
+  // does throw, for a principal that became `user_type = 'service'` between
+  // the request and the click — the `delete` never ran and the link stayed
+  // usable for the rest of its hour, contradicting the single-use guarantee
+  // this very comment makes. Either both happen or neither does.
+  await sql.begin(async (tx) => {
+    const stx = tx as unknown as typeof sql
+    const [row] = await stx`
+      select "user", expires_at from password_reset where token = ${token} for update`
+    if (!row || new Date(row.expires_at as string).getTime() < Date.now())
+      throw new AppError('ValidationError', 'This reset link is invalid or has expired')
 
-  await setUserPassword(row.user as string, newPassword)
-  // Single-use: consume this token and any others outstanding for the user.
-  await sql`delete from password_reset where "user" = ${row.user as string}`
+    await setUserPassword(row.user as string, newPassword, stx)
+    // Single-use: consume this token and any others outstanding for the user.
+    await stx`delete from password_reset where "user" = ${row.user as string}`
+  })
 }

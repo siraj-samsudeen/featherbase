@@ -1,10 +1,20 @@
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
-import { issueAccessToken, listAccessTokens, setUserPassword } from '../src/auth'
+import {
+  getAccessToken,
+  issueAccessToken,
+  listAccessTokens,
+  revokeAccessToken,
+  setUserPassword,
+} from '../src/auth'
 import { findOrCreateGoogleUser } from '../src/oauth'
-import { requestPasswordReset } from '../src/password-reset'
+import { requestPasswordReset, resetPassword } from '../src/password-reset'
 import { createTable } from '../src/doctype-engine'
+import { getServiceAccount } from '../src/service-accounts'
 
 // #137: review findings on the #131 access-token feature. Each case fails
 // against the code as merged in #134.
@@ -130,5 +140,224 @@ describe('#137 P2: a user Table cannot squat on the credential store', () => {
     await expect(
       createTable({ name: 'Access Token', columns: [{ column_name: 'label', column_type: 'Data' }] }),
     ).rejects.toMatchObject({ type: 'ConflictError' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #137 round 2: findings on the fix above. Each case below fails against the
+// first cut of this PR (029becd) and passes here.
+// ---------------------------------------------------------------------------
+
+const MIGRATIONS = fileURLToPath(new URL('../migrations/', import.meta.url))
+
+describe('#137 R2: the access_token guard reaches databases that already ran 0069', () => {
+  test('the guard is a migration of its own, and it fires only on a squatter', async () => {
+    // Which file carries the guard?
+    const carriers = readdirSync(MIGRATIONS).filter(
+      (f) => f.endsWith('.sql') && readFileSync(join(MIGRATIONS, f), 'utf8').includes('credential store'),
+    )
+    expect(carriers).toHaveLength(1)
+    const [guardFile] = carriers
+
+    // THE POINT: runMigrations() skips any file already recorded in the
+    // `migration` table. Every checkout that has access tokens recorded
+    // 0069 when they landed, so a guard written INTO 0069 can never run
+    // again there — and on a fresh database it is vacuous, because
+    // access_token cannot pre-exist the migration that creates it. Only a
+    // later, not-yet-recorded file converges a real developer database.
+    expect(guardFile).not.toMatch(/^0069/)
+    expect(readFileSync(join(MIGRATIONS, '0069_access_tokens.sql'), 'utf8')).not.toMatch(
+      /raise exception/i,
+    )
+
+    const body = readFileSync(join(MIGRATIONS, guardFile), 'utf8')
+
+    // Against the real credential store the guard is a no-op.
+    await sql.begin(async (tx) => {
+      await tx.unsafe(body)
+    })
+
+    // Against a squatting table — what a Table named "Access Token" compiles
+    // to — it refuses, and says how to fix it. (Wrapped in a savepoint so the
+    // deliberate failure does not poison the surrounding test transaction.)
+    await expect(
+      sql.begin(async (tx) => {
+        await tx.unsafe(`alter table access_token rename to access_token_real`)
+        await tx.unsafe(`create table access_token (id varchar(140) primary key, label varchar(140))`)
+        await tx.unsafe(body)
+      }),
+    ).rejects.toThrow(/credential store/)
+  })
+})
+
+describe('#137 R2: the token list never hides a credential', () => {
+  test('a token whose owner row has vanished is still listed, and still revocable', async ({
+    admin,
+  }) => {
+    await serviceAccount(admin, 'svc-orphan')
+    const { id } = await issueAccessToken('svc-orphan', 'orphaned')
+
+    // The FK normally keeps owner pointing at a real user, so this state is
+    // constructed rather than provoked. It is worth defending anyway: an
+    // INNER join drops such a row from the admin screen while
+    // resolveAccessToken would still match it by hash — an operator cannot
+    // revoke a credential they have been shown does not exist.
+    await sql`alter table access_token drop constraint access_token_owner_fkey`
+    await sql`update access_token set owner = 'ghost-principal' where id = ${id}`
+
+    const listed = await listAccessTokens()
+    expect(listed.map((t) => t.id)).toContain(id)
+    expect(listed.find((t) => t.id === id)?.owner_enabled).toBe(false)
+    // Filtering by that owner must find it too — that is how the screen drills in.
+    expect((await listAccessTokens('ghost-principal')).map((t) => t.id)).toContain(id)
+
+    await revokeAccessToken(id)
+    expect((await getAccessToken(id)).revoked_at).not.toBeNull()
+  })
+})
+
+describe('#137 R2: token_count agrees with what actually authenticates', () => {
+  test('a disabled service account reports zero active tokens', async ({ admin }) => {
+    await serviceAccount(admin, 'svc-count-disabled')
+    const { token } = await issueAccessToken('svc-count-disabled', 'one')
+    await issueAccessToken('svc-count-disabled', 'two')
+    expect((await getServiceAccount('svc-count-disabled')).token_count).toBe(2)
+
+    await admin.fetch('/api/service_accounts/svc-count-disabled', {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled: false }),
+    })
+
+    // Ground truth first: resolveAccessToken refuses, because it checks the
+    // owner's enabled flag. The count must say the same thing.
+    const who = await admin.fetch('/api/whoami', {
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(who.status).toBe(401)
+    expect((await getServiceAccount('svc-count-disabled')).token_count).toBe(0)
+  })
+})
+
+describe('#137 R2: OAuth refusals cannot be told apart', () => {
+  test('a disabled user and a service account fail identically', async ({ admin, seed }) => {
+    void seed
+    const disabled = 'enum-disabled@example.com'
+    await admin.post('/api/save_doc', {
+      doctype: 'User',
+      doc: { name: disabled, email: disabled, enabled: false },
+    })
+    await serviceAccount(admin, 'svc-enum')
+
+    const a = await findOrCreateGoogleUser(disabled, 'x').catch((e: Error) => e)
+    const b = await findOrCreateGoogleUser('svc-enum@service.invalid', 'x').catch((e: Error) => e)
+
+    // Distinguishable refusals let an unauthenticated caller probe an address
+    // and learn whether it exists and in what state — the enumeration oracle
+    // requestPasswordReset() already avoids by returning a silent null.
+    expect(a).toBeInstanceOf(Error)
+    expect(a.message).toBe(b.message)
+    expect((a as { type?: string }).type).toBe((b as { type?: string }).type)
+  })
+})
+
+describe('#137 R2: a reset link is single-use, and a failed write leaves nothing behind', () => {
+  test('a link that cannot set a password never sets one, however often it is used', async ({
+    admin,
+  }) => {
+    const email = 'reset-then-service@example.com'
+    await admin.post('/api/save_doc', {
+      doctype: 'User',
+      doc: { name: email, email, enabled: true },
+    })
+    const token = await requestPasswordReset(email)
+    expect(token).toBeTruthy()
+
+    // The principal becomes a service account between the request and the
+    // click, so setUserPassword now refuses.
+    await sql`update "user" set user_type = 'service' where name = ${email}`
+
+    // The write and the token's consumption are one transaction, so a failure
+    // leaves NO partial state — and the link is inert from here on: it can
+    // never stamp a password, no matter how many times it is presented.
+    for (const attempt of ['first', 'second']) {
+      await expect(resetPassword(token as string, `pw-${attempt}-123`)).rejects.toMatchObject({
+        type: 'ValidationError',
+      })
+    }
+    const [row] = await sql`select password_hash from "user" where name = ${email}`
+    expect(row.password_hash).toBeNull()
+  })
+
+  test('a failed consumption takes the password write down with it', async ({ admin }) => {
+    const email = 'reset-atomic@example.com'
+    await admin.post('/api/save_doc', {
+      doctype: 'User',
+      doc: { name: email, email, enabled: true },
+    })
+    const token = await requestPasswordReset(email)
+
+    // Break the consumption specifically — the ordering that tells an atomic
+    // implementation apart from two loose statements. Two statements would
+    // have already written the new password_hash by the time the delete blew
+    // up, leaving a changed password AND a live reset link: the single-use
+    // guarantee gone, in the direction that matters.
+    await sql.unsafe(`create function fb_block_reset_delete() returns trigger
+      language plpgsql as $$ begin raise exception 'delete blocked'; end $$`)
+    await sql.unsafe(`create trigger fb_block_reset_delete before delete on password_reset
+      for each row execute function fb_block_reset_delete()`)
+
+    await expect(resetPassword(token as string, 'atomic-pw-1')).rejects.toThrow()
+
+    // Reaching this line at all is part of the assertion: resetPassword
+    // contained the failure in its own transaction, so this one is still
+    // usable. Without that boundary the statement below fails outright with
+    // "current transaction is aborted".
+    await sql.unsafe(`drop trigger fb_block_reset_delete on password_reset`)
+    const [row] = await sql`select password_hash from "user" where name = ${email}`
+    expect(row.password_hash).toBeNull()
+  })
+
+  test('a successful reset consumes the link, so it cannot be replayed', async ({ admin }) => {
+    const email = 'reset-replay@example.com'
+    await admin.post('/api/save_doc', {
+      doctype: 'User',
+      doc: { name: email, email, enabled: true },
+    })
+    const token = await requestPasswordReset(email)
+    await resetPassword(token as string, 'first-password-1')
+    const [afterFirst] = await sql`select password_hash from "user" where name = ${email}`
+    expect(afterFirst.password_hash).not.toBeNull()
+
+    // Replaying it must not set a second password.
+    await expect(resetPassword(token as string, 'second-password-2')).rejects.toMatchObject({
+      type: 'ValidationError',
+    })
+    const [afterSecond] = await sql`select password_hash from "user" where name = ${email}`
+    expect(afterSecond.password_hash).toBe(afterFirst.password_hash)
+  })
+})
+
+describe('#137 R2: the reserved set covers every engine-owned raw table', () => {
+  test('no user Table may compile onto a raw platform table', async () => {
+    // The first cut listed three names by hand; the database has ten such
+    // tables. Deriving the set means this list is a witness, not a duplicate
+    // of the implementation — a new raw table is covered the day it lands.
+    const raw = (
+      await sql`
+        select t.table_name from information_schema.tables t
+        where t.table_schema = current_schema()
+          and t.table_name in ('access_token','installed_app','migration','password_reset',
+                               'patch_log','series','single_value','site','tag_link','user_settings')
+        order by 1`
+    ).map((r) => r.table_name as string)
+    expect(raw.length).toBe(10)
+
+    for (const physical of raw) {
+      // 'single_value' -> 'Single Value': the inverse of tableName().
+      const name = physical.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ')
+      await expect(
+        createTable({ name, columns: [{ column_name: 'x', column_type: 'Data' }] }),
+      ).rejects.toMatchObject({ type: 'ConflictError' })
+    }
   })
 })

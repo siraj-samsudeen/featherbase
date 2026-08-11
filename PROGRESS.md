@@ -99,6 +99,84 @@ button when no provider is configured, and stop passing the session token in
 the `/oauth-callback` query string (the sid cookie already travels, and the
 query string lands in history and referrers) — that one is pre-existing, from
 `3752eb6`, and is being filed separately rather than fixed here.
+## 2026-08-11 — #137 round 2: the review of the review, seven findings
+
+A second read of the #137 hardening (itself a review of #131/#134) found seven
+things. All fixed here, rebased onto main. The through-line is the same one as
+last time: a guard is only worth what it actually *runs on*.
+
+- **The migration guard was written where it can never run.** 0069 was edited
+  in place to refuse an `access_token` table that is not the credential store.
+  But `runMigrations` skips any file already recorded in `migration`, so every
+  checkout that already has access tokens skips the new lines forever — and on
+  a fresh database the check is vacuous, because `access_token` cannot pre-exist
+  the migration that creates it. It protected exactly nobody. 0069 is restored
+  byte-for-byte and the guard is now **0071_access_token_guard.sql**, a file no
+  database has recorded. Proven both directions against a real database: with
+  the guard back inside 0069 a squatting table produces "migrations up to date"
+  and no error; as 0071 it raises with the remedy. (0070 was already taken by
+  PR #127, hence 0071.)
+- **The token list hid the tokens most worth seeing.** `listAccessTokens` inner-
+  joined `"user"`, so a token whose owner no longer matches a user row vanished
+  from the admin screen while `resolveAccessToken` could still match it by hash —
+  an operator cannot revoke a credential they have been shown does not exist.
+  Now a `left join` with `coalesce(u.enabled, false)`.
+- **The reserved-name set is derived, not listed.** The literal covered
+  `access_token`, `password_reset`, `migration` — 3 of the 10 raw tables this
+  database actually has, so a Table named "Series" or "User Settings" still
+  reached DDL and came back as a raw `relation … already exists`. `createTable`
+  now asks the database whether the physical name is taken. Nothing to keep in
+  sync: a new raw table is covered the day it lands. Settings Tables are exempt
+  (they generate no DDL).
+- **`token_count` contradicted the kill switch.** It applied two of
+  `resolveAccessToken`'s three conditions, omitting the owner's `enabled`, so a
+  disabled service account advertised live tokens while none authenticated.
+- **OAuth refusals were an enumeration oracle.** "This account is disabled" and
+  "This account cannot sign in" are distinguishable; both are now the same
+  generic refusal as `login()`. The **disabled account is still refused** — the
+  #137 ruling that a disable must survive an OAuth round trip is untouched; it
+  simply stops being *identifiable* as disabled.
+- **Password reset was two statements pretending to be one.** The write and the
+  token's consumption are now one transaction, so a failure cannot leave a
+  changed password beside a still-live link.
+- Dead `getDoc` import removed from `oauth.ts`.
+
+**One expectation moved, deliberately.** `ddl.test.ts` asserted a **500** when a
+Table's name collided with a raw table — that raw Postgres error is precisely
+what finding 3 exists to remove, so it is now a **409**. The transactional-
+rollback guarantee that test *also* covered has not been dropped: a second test
+keeps it, failing the DDL via a composite type, which occupies the same
+`pg_class` namespace but is invisible to an `information_schema.tables` check.
+That test passes against the old code too — it is coverage preserved, not a
+new claim.
+
+**Verified:** server **680 passed / 115 files**, both typechecks clean, web
+42/42. Every new assertion was confirmed RED against the unfixed tree first
+(6 failures with the expected messages, including the raw
+`relation "installed_app" already exists`). The atomicity case is pinned by a
+trigger that blocks the DELETE: unfixed, the surrounding transaction aborts;
+fixed, it survives and the password write is gone with it. Live HTTP against
+an isolated stack (own database, port 8077): "Series" and "User Settings" now
+409 with an actionable message, and a disabled service account reports
+`token_count: 0` while its token returns 401 — count and reality agree.
+
+**Open for the owner, not decided here.** Finding 6 was filed as "the token
+survives a failed write" but its stated remedy was "make consumption atomic".
+Those pull opposite ways: atomic means a failed write rolls the deletion back,
+so the link *does* survive (inert, since the same guard refuses it every time).
+Burn-on-use — consume in its own committed transaction, then write — would kill
+the link on any failure, at the cost of a transient error costing the user their
+link. Atomic was implemented, per the explicit instruction; the alternative is a
+ratification call.
+
+**Gotchas.** `apps/server/migrations/` already contains two `0064_*` and two
+`0069_*` files; the numbers are not unique and `runMigrations` orders by
+filename, so `0069_access_tokens.sql` sorts before `0069_import_upsert_log.ts`
+by luck of the alphabet. Left alone deliberately — renumbering an applied
+migration is the same class of mistake as editing one. Also: `init.sh` still
+hardcodes 8000/5173 in its port-cleanup loop, so it cannot be used from a
+worktree while another checkout is serving; this session drove migrations and
+tests directly against `DATABASE_URL` instead.
 
 ## 2026-08-11 — #128 review: the builder's rejection names a column, not an index
 
@@ -169,6 +247,7 @@ The pin survives the refactor rather than passing vacuously.
 `text-red-600`, and TableBuilder keeps pre-existing `hover:text-red-600` /
 `bg-blue-50` literals outside the error UI — all pre-dating this change and
 out of this branch's scope.
+
 
 ## 2026-08-11 — the wizard shows the spreadsheet: preview grid with Excel-true numbers
 
