@@ -27,7 +27,7 @@ describe('Frappe lifecycle + app-contract parity', () => {
     const seen: string[] = []
     const APP = `hookp-order-${Date.now()}`
     registerApp({
-      row_id: APP,
+      name: APP,
       doc_events: {
         [DT]: {
           before_validate: ({ row }) => {
@@ -63,7 +63,7 @@ describe('Frappe lifecycle + app-contract parity', () => {
     const seen: string[] = []
     const APP = `hookp-submit-${Date.now()}`
     registerApp({
-      row_id: APP,
+      name: APP,
       doc_events: {
         [DT]: {
           before_submit: ({ row }) => {
@@ -99,7 +99,7 @@ describe('Frappe lifecycle + app-contract parity', () => {
     const audited: string[] = []
     const APP = `hookp-wild-${Date.now()}`
     registerApp({
-      row_id: APP,
+      name: APP,
       doc_events: {
         '*': { after_insert: ({ meta }) => void audited.push(meta.name) },
       },
@@ -119,7 +119,7 @@ describe('Frappe lifecycle + app-contract parity', () => {
     const APP = `hookp-sched-${Date.now()}`
     const METHOD = `hookp_sweep_${Date.now()}`
     registerApp({
-      row_id: APP,
+      name: APP,
       scheduler_events: [{ method: METHOD, every_seconds: 3600, handler: async () => {} }],
     })
     try {
@@ -138,7 +138,7 @@ describe('Frappe lifecycle + app-contract parity', () => {
     const APP = `hookp-override-${Date.now()}`
     const guest = { row_id: 'Guest', email: 'guest@x', full_name: 'Guest' }
     registerApp({
-      row_id: APP,
+      name: APP,
       override_whitelisted_methods: { 'frappe.ping': () => 'pong from app' },
     })
     try {

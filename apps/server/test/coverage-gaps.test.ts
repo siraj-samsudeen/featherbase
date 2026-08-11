@@ -67,7 +67,7 @@ describe('app registry: install lifecycle', () => {
     const DT = 'Cov Rewire Note'
     await makeDT(admin, DT)
     const seen: string[] = []
-    registerApp({ row_id: APP, doc_events: { [DT]: { after_insert: () => void seen.push('hit') } } })
+    registerApp({ name: APP, doc_events: { [DT]: { after_insert: () => void seen.push('hit') } } })
     try {
       await installApp(APP)
       // Simulate the restart: hooks lost from the process, row still in DB.
