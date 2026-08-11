@@ -1,5 +1,34 @@
 # Progress Log
 
+## 2026-08-11 — spec 0005 built: revert an import run (RVT-J1, R1–R6, I1–I3)
+
+The signed spec (PR #148) built in one pass: migration 0073 (0070/0071
+claimed by parallel PRs, 0072 landed unannounced with #152 — renumbered on
+discovery), RVT-R1 recording in the import action (run_id + per-part
+touched rows {name, action, stamp, version?}), the :import-revert action
+(dry_run rehearsal, stamp-based edited-after skips, named-row override,
+whole-request permission refusal), and two wizard surfaces sharing one
+RevertControl: the completion panel and the RunHistory strip (?table=
+preselect) — the strip exists because single-sheet imports auto-navigate
+away (the ratified IMP/UPS walk, deliberately unchanged).
+
+**Build findings, three-fates queue (owner's call):**
+- `track_changes` cannot be set through any API surface — the flag is a DB
+  default the create/update endpoints never read. RVT-R3's
+  no-version-trail class is therefore unreachable end-to-end and proven
+  rule-tier against the exported pure planRevert. Ratify a builder toggle,
+  or accept the default-on world.
+- The revert's log stamping (reverted_at) is a raw UPDATE like the
+  version-trail write — system bookkeeping, not a lifecycle write.
+
+**Verified:** server import suites 139/139 (13 new revert tests incl.
+whole-refusal and double-revert no-op), web 42/42, all 11 import e2e green
+incl. the new RVT-J1 walk — run against port-randomized isolated servers
+after discovering FOUR parallel sessions fighting over the usual ports
+(the served bundle is now verified to contain this branch's code before
+any e2e run is trusted). UPS-H1 closed in the 0004 evidence: the fourth
+mitigation shipped. **Next:** typed confirmation above ~20 updates, then
+index-on-demand (#145).
 ## 2026-08-11 — FK-aware reflection: reflected foreign keys become References
 
 Motivated by the VMS database (Django on MySQL 8.4/RDS): `accidents_accident`
