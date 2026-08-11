@@ -125,7 +125,7 @@ describe('PERM-004: generated RLS for direct clients', () => {
   it('every direct write is denied, even on the permitted table', async () => {
     await as(USER)
     await expect(
-      direct`insert into rls_vault (name, title) values ('hack', 'x')`,
+      direct`insert into rls_vault (row_id, title) values ('hack', 'x')`,
     ).rejects.toThrow(/permission denied/)
     await expect(direct`update rls_vault set title = 'x'`).rejects.toThrow(
       /permission denied/,

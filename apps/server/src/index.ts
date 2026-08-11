@@ -725,7 +725,7 @@ app.get('/api/print/:doctype/:name', async (c) => {
   const html = await renderPrintHtml(doctype, name, who(c), format, letterHead)
   const pdf = await renderPdf(html)
   // PLAT-007: record the print/access.
-  await logAccess(who(c), 'print', { table: doctype, name, method: 'pdf' })
+  await logAccess(who(c), 'print', { table: doctype, row_id: name, method: 'pdf' })
   return c.body(new Uint8Array(pdf), 200, {
     'content-type': 'application/pdf',
     'content-disposition': `inline; filename="${name.replace(/[^\w.-]/g, '_')}.pdf"`,
