@@ -1,9 +1,9 @@
 // PROTOTYPE — THROWAWAY. Variant C: no table metaphor at all. Each column is
-// a card: one big label input, the type as friendly labelled chips, and the
+// a card: a labelled name input, the type as friendly chips, and the
 // type-specific detail control appears inside the card properly labelled.
-// The database name is a small derived footnote, not a demand. Reference
-// targets come from a real dropdown of existing tables. Layout types
-// (Section/Column Break) are deliberately absent from this variant.
+// The database identifier is a quiet "stored as" footnote, not a demand.
+// Restyled 2026-08-11 to the fc-* tokens (PROGRESS.md "Visual identity"):
+// CSS variables only, so it holds up across all four palettes and dark mode.
 import { useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -76,18 +76,18 @@ export function VariantC() {
     <div className="max-w-2xl">
       <h1 className="mb-4 text-xl font-semibold text-[var(--color-ink)]">New Table</h1>
 
-      <div className="fc-card mb-4 p-4">
-        <div className="mb-3 flex flex-wrap gap-4">
+      <div className="fc-card mb-4 p-5">
+        <div className="mb-4 flex flex-wrap gap-4">
           <div className="grow">
             <label className="fc-label">Table name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Employee" className="fc-input w-full" />
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Employee" className="fc-input" />
           </div>
           <div>
             <label className="fc-label">Module</label>
             <input value={module} onChange={(e) => setModule(e.target.value)} placeholder="Custom" className="fc-input max-w-40" />
           </div>
         </div>
-        <label className="fc-label">How should rows be numbered?</label>
+        <label className="fc-label">Row ID</label>
         <NamingControl
           value={idPattern}
           onChange={setNamingOverride}
@@ -102,39 +102,46 @@ export function VariantC() {
         {columns.map((c, i) => {
           const verdict = verdicts[i]
           return (
-            <div key={i} className="fc-card p-4">
-              <div className="mb-2 flex items-start justify-between gap-2">
-                <input
-                  value={c.label}
-                  onChange={(e) =>
-                    patch(i, {
-                      label: e.target.value,
-                      ...(c.name_touched ? {} : { column_name: slugify(e.target.value) }),
-                    })
-                  }
-                  placeholder="What is this column called? e.g. Date of Birth"
-                  autoFocus={i === columns.length - 1}
-                  className="w-full border-0 border-b border-gray-200 pb-1 text-base font-medium outline-none focus:border-[var(--color-brand)]"
-                />
-                <button
-                  aria-label="Remove column"
-                  onClick={() => setColumns((cs) => cs.filter((_, j) => j !== i))}
-                  className="text-gray-300 hover:text-red-600"
-                >
-                  ×
-                </button>
+            <div key={i} className="fc-card p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+                  Column {i + 1}
+                </span>
+                {columns.length > 1 && (
+                  <button
+                    aria-label="Remove column"
+                    onClick={() => setColumns((cs) => cs.filter((_, j) => j !== i))}
+                    className="rounded px-1.5 text-sm text-[var(--color-ink-faint)] transition hover:bg-[var(--color-subtle)] hover:text-[var(--color-danger)]"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
 
-              <div className="mb-3 flex flex-wrap gap-1.5">
+              <input
+                value={c.label}
+                onChange={(e) =>
+                  patch(i, {
+                    label: e.target.value,
+                    ...(c.name_touched ? {} : { column_name: slugify(e.target.value) }),
+                  })
+                }
+                placeholder="e.g. Date of Birth"
+                autoFocus={i === columns.length - 1}
+                className="fc-input mb-4 text-base font-medium"
+              />
+
+              <label className="fc-label">Type</label>
+              <div className="mb-1 flex flex-wrap gap-1.5">
                 {FRIENDLY.map((f) => (
                   <button
                     key={f.type}
                     title={f.hint}
                     onClick={() => patch(i, { column_type: f.type, target: '' })}
-                    className={`rounded-full border px-2.5 py-0.5 text-xs transition-colors ${
+                    className={`fc-pill border px-3 py-1 transition ${
                       c.column_type === f.type
-                        ? 'border-[var(--color-brand)] bg-[var(--color-brand)] text-white'
-                        : 'border-gray-200 text-gray-600 hover:border-gray-400'
+                        ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/10 text-[var(--color-brand)]'
+                        : 'border-[var(--color-border-strong)] text-[var(--color-ink-muted)] hover:border-[var(--color-brand)] hover:text-[var(--color-brand)]'
                     }`}
                   >
                     {f.label}
@@ -143,20 +150,20 @@ export function VariantC() {
               </div>
 
               {c.column_type === 'Choice' && (
-                <div className="mb-3">
+                <div className="mt-3">
                   <label className="fc-label">The options, comma-separated</label>
                   <input
                     value={c.target}
                     onChange={(e) => patch(i, { target: e.target.value })}
                     placeholder="Small, Medium, Large"
-                    className="fc-input w-full"
+                    className="fc-input"
                   />
                 </div>
               )}
               {c.column_type === 'Reference' && (
-                <div className="mb-3">
+                <div className="mt-3">
                   <label className="fc-label">Which table does it link to?</label>
-                  <select value={c.target} onChange={(e) => patch(i, { target: e.target.value })} className="fc-input w-full">
+                  <select value={c.target} onChange={(e) => patch(i, { target: e.target.value })} className="fc-input">
                     <option value="">Choose a table…</option>
                     {(tables?.data ?? []).map((t) => (
                       <option key={t.name} value={t.name}>{t.name}</option>
@@ -165,29 +172,45 @@ export function VariantC() {
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
-                <label className="flex items-center gap-1.5">
-                  <input type="checkbox" checked={c.reqd} onChange={(e) => patch(i, { reqd: e.target.checked })} />
-                  Must be filled in
+              <div className="mt-4 flex flex-wrap items-center gap-5 border-t border-[var(--color-border)] pt-3 text-sm text-[var(--color-ink-muted)]">
+                <label className="flex cursor-pointer items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={c.reqd}
+                    onChange={(e) => patch(i, { reqd: e.target.checked })}
+                    className="accent-[var(--color-brand)]"
+                  />
+                  Required
                 </label>
-                <label className="flex items-center gap-1.5">
-                  <input type="checkbox" checked={c.in_list_view} onChange={(e) => patch(i, { in_list_view: e.target.checked })} />
+                <label className="flex cursor-pointer items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={c.in_list_view}
+                    onChange={(e) => patch(i, { in_list_view: e.target.checked })}
+                    className="accent-[var(--color-brand)]"
+                  />
                   Show in the list
                 </label>
-                {c.column_name.trim() && (
-                  <span className="ml-auto font-mono text-xs text-gray-400" title="The name in the database — derived from the label">
-                    {c.column_name}
+                {c.column_name.trim() && !verdict && (
+                  <span
+                    className="ml-auto font-mono text-xs text-[var(--color-ink-faint)]"
+                    title="How it's stored in the database — derived from the label"
+                  >
+                    stored as {c.column_name}
                   </span>
                 )}
               </div>
 
               {verdict && c.column_name.trim() && (
-                <p className="mt-2 text-xs text-[var(--color-danger)]">
+                <p className="mt-3 rounded-[var(--radius-control)] bg-[var(--color-danger-tint)] px-3 py-2 text-xs text-[var(--color-danger)]">
                   {verdict.error}
                   {verdict.fix && (
                     <>
                       {' '}
-                      <button onClick={() => patch(i, { column_name: verdict.fix!, name_touched: true })} className="font-medium underline">
+                      <button
+                        onClick={() => patch(i, { column_name: verdict.fix!, name_touched: true })}
+                        className="font-semibold underline"
+                      >
                         Use “{verdict.fix}”
                       </button>
                     </>
@@ -199,22 +222,25 @@ export function VariantC() {
         })}
       </div>
 
-      <button onClick={() => setColumns((cs) => [...cs, blankCol()])} className="fc-btn mt-3">
-        + Add a column
-      </button>
-
-      {error && <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
-
-      <div>
+      <div className="mt-4 flex items-center gap-3">
+        <button onClick={() => setColumns((cs) => [...cs, blankCol()])} className="fc-btn">
+          + Add a column
+        </button>
         <button
           onClick={create}
           disabled={saving || !name.trim() || hasBlockers}
           title={hasBlockers ? 'Fix the flagged columns first' : undefined}
-          className="fc-btn fc-btn-primary mt-4"
+          className="fc-btn-primary"
         >
           Create Table
         </button>
       </div>
+
+      {error && (
+        <div className="mt-4 rounded-[var(--radius-control)] bg-[var(--color-danger-tint)] px-3 py-2 text-sm text-[var(--color-danger)]">
+          {error}
+        </div>
+      )}
     </div>
   )
 }

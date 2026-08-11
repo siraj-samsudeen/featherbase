@@ -64,10 +64,13 @@ export function checkColumn(
         ? prefixed
         : undefined
     return {
+      // Vocabulary note: the product calls this the row's ID, but the
+      // physical column is still literally "name" until #132 lands — so
+      // the word stays taken and the message says why in the user's terms.
       error:
         name === 'name'
-          ? 'Every row already has a built-in “name” — the Row ID set above'
-          : `“${name}” is one of the built-in columns every table gets`,
+          ? 'Taken by the row’s ID (still stored as “name” — #132)'
+          : `“${name}” is a built-in column every table gets`,
       fix,
     }
   }
