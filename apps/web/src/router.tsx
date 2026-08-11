@@ -35,6 +35,7 @@ import { TableBuilder } from './pages/TableBuilder'
 import { ImportWizard } from './pages/ImportWizard'
 import { AllTablesPage } from './pages/AllTables'
 import SourceBrowser from './pages/SourceBrowser'
+import { PrototypeConnectSourcePage } from './pages/PrototypeConnectSource'
 import { ExploreView } from './pages/Explore'
 import { RelationMap } from './pages/RelationMap'
 
@@ -471,6 +472,17 @@ const allTablesRoute = createRoute({
   component: AllTablesPage,
 })
 
+// PROTOTYPE — throwaway route for the connect-a-data-source UX exploration.
+// Three variants via ?variant=A|B|C, table picker via ?step=tables.
+const prototypeConnectSourceRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'prototype/connect-source',
+  validateSearch: (search: Record<string, unknown>) => ({
+    step: searchString(search.step),
+  }),
+  component: PrototypeConnectSourcePage,
+})
+
 // EDS-2: the Data Source browser — introspect and reflect external tables
 // (static segment, before $doctype).
 const sourceBrowserRoute = createRoute({
@@ -636,5 +648,5 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, doctypeRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, doctypeRoute, docRoute]),
 ])

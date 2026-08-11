@@ -1,5 +1,59 @@
 # Progress Log
 
+## 2026-08-11 — VMS connected end-to-end; the connection-console direction is set
+
+The session that motivated the mysql engine, run in parallel with its build.
+Three strands:
+
+**VMS is live.** On the deployed featherbase-dev, the `vms` Data Source
+(engine `mysql`, `url_env` VMS_DATABASE_URL) now reaches the real RDS
+instance: test_connection ok, all **50 tables** of the VMS Django app
+introspect (every one bindable, `id` pks), `vehicles_vehicle` reflected as
+`Vms Vehicles Vehicle`, **184 real rows** read over HTTP, and a write
+correctly 403s (read_only). The road there, for the record: security group
+blocked → opened; whitelisted the wrong IP; the DB turned out to be MySQL
+on 3306 (hence the engine build); the grant landed on a nonexistent
+uppercase `VMS` schema before lowercase `vms`. Every one of those failure
+modes is a diagnosis rung the connection-console spec now formalizes.
+Remaining nicety: append `?sslmode=REQUIRED` to VMS_DATABASE_URL on
+Railway (RDS currently accepts non-TLS).
+
+**Connection console prototyped and spec'd.** A three-variant throwaway UI
+prototype (mattpocock prototype skill, sub-shape B) ran at
+`/admin/prototype/connect-source`; the owner picked the "connection
+console" design (form + live per-phase checks side by side) and ratified
+five requirements — phased test with inline diagnosis, post-auth database
+dropdown, verified grants, advanced disclosure, saved-source health.
+Recorded as **spec 0006-connection-console.md** (journey-spec form,
+evidence CSV all-gap; renumbered from 0005 after colliding with
+0005-import-revert on merge — the duplicate-numbering hazard, again).
+The prototype (A/C variants in this branch's history) stays throwaway;
+CONN-R1's encrypted-credential storage is the big design decision.
+
+**Review workflow ratified.** PR #152 got a two-axis review
+(mattpocock code-review skill: Standards + Spec sub-agents) after merge;
+findings filed as issues #153–#157 (worst: the non-atomic
+write-then-re-read race, #155). CLAUDE.md now routes SDLC stages to the
+mattpocock skills by owner directive — the Spec axis caught four real
+findings a solo review missed, which is the argument for the routing.
+
+**Addendum, same day — relational navigation over VMS verified.** After
+PR #161 (FK-aware reflection; two-axis review sent two pre-merge fixes
+back, the rest are issues #162–#164) merged and featherbase-dev
+redeployed: deleted the two pre-FK reflections, re-reflected five tables
+in one deliberately child-first call, and every FK column came back
+`Reference` (accident→vehicle/customuser; vehicle→vehicletype/
+customuser/department, all against the real RDS). Walked the RelationMap
+in the browser: vehicle 186 → owner (user 234, trail shown, the
+self-referential approved_by/reports_to FKs resolved too) → the Vehicles
+backlink (count 1) → opened the collection → clicked back to 186. One
+scare: a mid-browse 502 on the backlink list turned out to be the Railway
+instance swap from the deploy itself, not a bug — retried clean.
+
+**Next:** build spec 0006 (fold the winning console into SourceBrowser,
+`CREDENTIALS_KEY` encrypted storage), or triage #153–#157 and
+#162–#164. Reflect more of the 50 VMS tables as Rama needs them —
+order no longer matters.
 ## 2026-08-11 — spec 0005 built: revert an import run (RVT-J1, R1–R6, I1–I3)
 
 The signed spec (PR #148) built in one pass: migration 0073 (0070/0071
