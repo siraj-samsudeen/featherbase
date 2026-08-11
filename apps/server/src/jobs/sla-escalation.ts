@@ -46,7 +46,7 @@ registerJob('check_sla', async () => {
     const overdue = await sql`
       update ${sql(tbl)} set sla_status = 'Overdue'
       where sla_status = 'On Track' and resolution_by < now() ${stateCond}
-      returning name`
+      returning row_id`
     if (!overdue.length) continue
 
     const role = (sla.escalation_role as string) || null

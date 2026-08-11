@@ -53,7 +53,7 @@ describe('app registry: install lifecycle', () => {
     const installed = await installApp(APP)
     expect(installed.tables).toEqual([DT])
     expect(await isInstalled(APP)).toBe(true)
-    expect((await listInstalledApps()).map((a) => a.row_id)).toContain(APP)
+    expect((await listInstalledApps()).map((a) => a.name)).toContain(APP)
     await expect(installApp(APP)).rejects.toMatchObject({ type: 'ConflictError' })
 
     const removed = await uninstallApp(APP)
@@ -113,8 +113,8 @@ describe('app registry: legacy row tolerance', () => {
     await sql`insert into installed_app (name, tables) values ('cov-legacy-str', ${'["Legacy X"]'}::jsonb)`
     await sql`insert into installed_app (name, tables) values ('cov-legacy-bad', ${'"not json['}::jsonb)`
     const apps = await listInstalledApps()
-    expect(apps.find((a) => a.row_id === 'cov-legacy-str')?.tables).toEqual(['Legacy X'])
-    expect(apps.find((a) => a.row_id === 'cov-legacy-bad')?.tables).toEqual([])
+    expect(apps.find((a) => a.name === 'cov-legacy-str')?.tables).toEqual(['Legacy X'])
+    expect(apps.find((a) => a.name === 'cov-legacy-bad')?.tables).toEqual([])
     // Neither name has a registered manifest — loadInstalledApps must skip them.
     await loadInstalledApps()
   })
