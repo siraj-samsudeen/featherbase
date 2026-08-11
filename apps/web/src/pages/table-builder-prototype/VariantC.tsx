@@ -76,29 +76,37 @@ export function VariantC() {
     <div className="max-w-2xl">
       <h1 className="mb-4 text-xl font-semibold text-[var(--color-ink)]">New Table</h1>
 
-      <div className="fc-card mb-4 p-5">
-        <div className="mb-4 flex flex-wrap gap-4">
-          <div className="grow">
-            <label className="fc-label">Table name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Employee" className="fc-input" />
+      <div className="space-y-3">
+        <div className="fc-card p-5">
+          <div className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+            Table
           </div>
-          <div>
-            <label className="fc-label">Module</label>
-            <input value={module} onChange={(e) => setModule(e.target.value)} placeholder="Custom" className="fc-input max-w-40" />
+          <div className="flex flex-wrap gap-4">
+            <div className="grow">
+              <label className="fc-label">Table name</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Employee" className="fc-input" />
+            </div>
+            <div>
+              <label className="fc-label">Module</label>
+              <input value={module} onChange={(e) => setModule(e.target.value)} placeholder="Custom" className="fc-input max-w-40" />
+            </div>
           </div>
         </div>
-        <label className="fc-label">Row ID</label>
-        <NamingControl
-          value={idPattern}
-          onChange={setNamingOverride}
-          defaultPrefix={seriesPrefix(name)}
-          columns={columns
-            .filter((c) => c.column_name.trim())
-            .map((c) => ({ column_name: c.column_name.trim(), label: c.label.trim() || c.column_name.trim() }))}
-        />
-      </div>
 
-      <div className="space-y-3">
+        <div className="fc-card p-5">
+          <div className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+            Row ID
+          </div>
+          <NamingControl
+            value={idPattern}
+            onChange={setNamingOverride}
+            defaultPrefix={seriesPrefix(name)}
+            columns={columns
+              .filter((c) => c.column_name.trim())
+              .map((c) => ({ column_name: c.column_name.trim(), label: c.label.trim() || c.column_name.trim() }))}
+          />
+        </div>
+
         {columns.map((c, i) => {
           const verdict = verdicts[i]
           return (
