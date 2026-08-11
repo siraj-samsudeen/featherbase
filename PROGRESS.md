@@ -1,5 +1,57 @@
 # Progress Log
 
+## 2026-08-11 — FK-aware reflection: reflected foreign keys become References
+
+Motivated by the VMS database (Django on MySQL 8.4/RDS): `accidents_accident`
+carries `vehicle_id`/`driver_id` FK columns that used to reflect as plain
+Ints, so the relation map had nothing to walk. Now reflection reads the FK
+edges and emits real `Reference` columns, and the RelationMap navigates
+between reflected tables like any native ones.
+
+**Design (codebase-design pass):** the `SourceDriver.introspect` seam gains
+exactly ONE engine-neutral fact per column — `references: {schema, table,
+column}`, the single-column FK edge, read from
+`information_schema.key_column_usage` on mysql and postgres alike (shared
+grouping in `sources/fk.ts` drops composite FKs — a Reference holds one
+value). Drivers that cannot report FKs (duckdb, csv-folder) simply omit it.
+No new driver methods, no engine switches.
+
+**The ordering problem** (tables reflect one at a time, in any order) is
+solved by resolving BOTH directions on every reflect, all inside reflect.ts:
+- forward: a new table's FK column becomes a Reference when its target is
+  already bound to the same source AND the FK lands on that binding's
+  external_pk;
+- reverse: every FK edge is recorded raw on the column_def (migration
+  **0073**: `source_fk_schema/table/column`), and when a table reflects,
+  every recorded edge on the same source that lands on its pk is upgraded
+  to Reference in place (direct column_def update — deliberately bypassing
+  updateTable's column_type-change guard, which exists for user edits).
+
+So reflecting in ANY order converges to the same linked graph with no
+re-reflection call; an FK at a never-reflected table stays a plain Int and
+upgrades automatically if that table ever reflects. Cross-source references
+cannot arise (targets are matched within one source's bindings only).
+Bound-table deletes already skip bound parents in the link-integrity scan,
+and bound saves never run native validateLinks, so the upgraded columns are
+safe on both write paths.
+
+**Verified:** 4 new mysql tests (FK edges on introspect; parent-first;
+child-first convergence; walkable graph — forward values + `:connections`
+backlink counts) and 1 postgres test (edge + child-first), all through the
+HTTP API with a Django-style vehicle/driver/accident/garage fixture where
+garage is deliberately never reflected. Full server suite **707 passed /
+117 files** + typecheck on an isolated `featherbase_fkreflect` DB. Browser
+(ports 8041/5197, own DB, local MySQL 9.6 `vms_demo`): reflected
+`accidents_accident` + `vehicles_vehicle` + `accounts_customuser` child-
+first in one call, opened `/admin/map/Vms Accidents Accident/1` — both
+forward nodes rendered, clicking Vehicle re-centered the map, the vehicle
+showed the accident backlink (count 2), and the collection listed both rows.
+
+**Next:** after merge + featherbase-dev redeploy, re-reflect the real VMS
+tables and walk the map against RDS. Note for that retest: tables reflected
+BEFORE this change carry no source_fk_* records, so they will not converge —
+delete and re-reflect them (order then no longer matters).
+
 ## 2026-08-11 — the mysql engine joins the Data Source drivers
 
 Motivated by the VMS system on AWS RDS (MySQL 8.4, `caching_sha2_password`,
