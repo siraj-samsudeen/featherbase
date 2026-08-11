@@ -8,6 +8,10 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     fileParallelism: false,
+    // The mock OAuth provider is opt-in (it mints a session for any typed
+    // email). The suite drives it deliberately, so it opts in here; the
+    // fail-closed test deletes this var for the length of one test.
+    env: { ALLOW_MOCK_OAUTH: '1' },
     // Empties the tables that outlive a run — `background_job` (rows orphaned
     // by an interrupted run) and `user_event` (rows the app itself commits
     // outside any sandbox) — so neither can fail the next one. See the file.

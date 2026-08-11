@@ -1,5 +1,55 @@
 # Progress Log
 
+## 2026-08-11 — PR #127 review: the mock provider fails closed, and `state` finally means something
+
+Two security findings from the #127 review, fixed on the branch before it
+merges. Both are about a guard that looked like a guard without being one.
+
+**A (critical) — the prod mock guard failed open.** `assertOAuthConfigured`
+refused only when the client id was missing *and* `NODE_ENV === 'production'`.
+So the mock consent page — pre-auth, un-rate-limited, and willing to mint a
+session for any typed email including `Administrator` — stayed reachable
+whenever `NODE_ENV` was unset or misspelled, and, worse, whenever a System
+Manager blanked `google_client_id` in the Admin UI. Absence of configuration
+was what *enabled* the mock.
+
+Now nothing but an explicit `ALLOW_MOCK_OAUTH=1` turns it on. `init.sh` sets
+it (local dev boot); `vitest.config.ts` sets it (the suite drives the mock
+deliberately); a deployment runs neither and so can never serve it. The
+misleading name is gone, split into two functions that say what they do:
+`assertMockProviderAllowed` (refuses the mock) and `assertSignInAvailable`
+(refuses sign-in when no provider is configured). `exchangeCode` re-checks at
+the point the identity is actually conjured.
+
+**B (high) — `state` gave no CSRF protection.** It was an HMAC over a
+`Math.random()` nonce, and the callback checked only the signature and expiry
+— nothing bound it to a browser. An attacker could start a login, complete
+consent with their OWN Google account, and hand the victim the callback URL,
+planting the attacker's session in the victim's browser (login CSRF /
+session fixation). The state now rides a short-lived HttpOnly, SameSite=Lax
+cookie (`secure` derived from the request's real protocol, not `NODE_ENV`,
+so Railway's TLS edge and plain-http dev both work) and must match at the
+callback. The nonce comes from `crypto.randomBytes`. PKCE (S256) added: a
+`code_challenge` on the authorize redirect, the `code_verifier` — carried in
+its own cookie — on the token exchange.
+
+Verified: server suite 673/673 and web units 39/39 against an isolated
+`featherbase_sso127` database (sibling worktree sessions own :8000/:5173 and
+:8010/:5183 — this one ran on :8020/:5193 and left theirs alone); the 3-test
+browser e2e `oauth.spec.ts` green. The two new tests were mutation-checked —
+forcing `mockOAuthEnabled()` to `true` and dropping the cookie check makes
+exactly those three fail, so they bite. Live HTTP against a running server
+reproduced both defects' conditions: with `NODE_ENV` unset and
+`google_client_id` blank all four OAuth routes answer 401, and a callback URL
+replayed into a cookie-less or mismatched browser is refused while the
+originating browser completes.
+
+Next: the deploy note changes — Railway needs `GOOGLE_CLIENT_SECRET` and must
+NOT set `ALLOW_MOCK_OAUTH`. Still open from the earlier entry: hide the
+Google button when no provider is configured, and stop passing the session
+token in the `/oauth-callback` query string (the sid cookie already travels,
+and the query string lands in history and referrers).
+
 ## 2026-08-11 — #128 review: the builder's rejection names a column, not an index
 
 PR #129 surfaced the server's `err.fields` in TableBuilder but flattened the

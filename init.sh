@@ -108,6 +108,11 @@ pnpm --filter server migrate
 pnpm --filter server patches
 
 # --- 4. App servers (idempotent: kill stale, start fresh, wait for health) --
+# The mock Google provider is opt-in and nothing else: it mints a session for
+# any typed email, so it stays off unless a developer machine says otherwise.
+# This is a local dev boot, so it says otherwise. A deployment never runs
+# init.sh and so never sets this — the mock is unreachable there.
+export ALLOW_MOCK_OAUTH=1
 # Kill by listening port — pattern-matching the tsx wrapper misses the actual
 # node child that holds the port (and its in-process meta cache).
 

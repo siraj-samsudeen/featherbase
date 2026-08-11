@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { sql } from './db'
 import { AppError } from './errors'
 import { saveDoc, getDoc } from './document'
@@ -7,10 +7,9 @@ import { getSystemSettings } from './settings'
 // PLAT-006: social login (Google OAuth) mapped to the User Table. The client
 // id and the login-domain allowlist are instance configuration (System
 // Settings — checked in via manifest fixtures, editable in the Admin UI);
-// only GOOGLE_CLIENT_SECRET comes from the environment. With no client id
-// configured a mock provider stands in for Google: a local consent page
-// returns a signed authorization `code` that the callback exchanges for the
-// user's identity.
+// only GOOGLE_CLIENT_SECRET comes from the environment. A mock provider can
+// stand in for Google in development: a local consent page returns a signed
+// authorization `code` that the callback exchanges for the user's identity.
 
 const SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-me'
 
@@ -19,11 +18,29 @@ export async function oauthClientId(): Promise<string> {
   return (await getSystemSettings()).google_client_id
 }
 
-// The mock provider hands out a session for any typed email — it must never
-// serve real traffic. A production deployment without a Google client id gets
-// a refusal, not the mock.
-export function assertOAuthConfigured(clientId: string): void {
-  if (!clientId && process.env.NODE_ENV === 'production')
+// The mock provider mints a session for ANY typed email — `Administrator`
+// included — from a pre-auth, un-rate-limited endpoint. So it is opt-in and
+// nothing else: only ALLOW_MOCK_OAUTH=1 turns it on. Absence of configuration
+// must never be what enables it, which is how the previous NODE_ENV check
+// failed open (unset/misspelled NODE_ENV, or a System Manager blanking
+// google_client_id in the Admin UI, both re-opened the mock).
+export function mockOAuthEnabled(): boolean {
+  return process.env.ALLOW_MOCK_OAUTH === '1'
+}
+
+// Guards the /api/oauth/mock/* routes. Named for what it does: it refuses the
+// mock provider. It does NOT assert that OAuth is configured.
+export function assertMockProviderAllowed(clientId: string): void {
+  if (!mockOAuthEnabled())
+    throw new AppError('AuthenticationError', 'Mock OAuth provider is disabled')
+  if (clientId) throw new AppError('ValidationError', 'Mock provider is not active')
+}
+
+// Guards the real sign-in routes (login + callback). A configured client id
+// means real Google. Without one the mock would have to serve — so sign-in is
+// refused outright unless the mock was explicitly opted into.
+export function assertSignInAvailable(clientId: string): void {
+  if (!clientId && !mockOAuthEnabled())
     throw new AppError('AuthenticationError', 'Google sign-in is not configured')
 }
 
@@ -49,17 +66,53 @@ function unpack(token: string): Record<string, unknown> {
   return obj
 }
 
-export function newState(): string {
-  return pack({ nonce: Math.random().toString(36).slice(2) })
+// --- login challenge: state + PKCE ------------------------------------------
+// A signature alone binds state to nothing: an attacker can start a login,
+// finish consent with their OWN Google account, and hand the victim's browser
+// the resulting callback URL — planting the attacker's session in the victim's
+// browser (login CSRF / session fixation). So the state is also written to a
+// short-lived HttpOnly cookie and must match at the callback: a state minted
+// for one browser is worthless in another.
+//
+// The PKCE verifier rides the same trip. It proves the browser that finishes
+// the exchange is the one that started it, so a stolen authorization code
+// cannot be redeemed by anyone else.
+export function newLoginChallenge(): { state: string; verifier: string } {
+  return {
+    // Math.random() is not a CSPRNG — its output is predictable enough to
+    // forge. The nonce is security-bearing, so it comes from crypto.
+    state: pack({ nonce: randomBytes(32).toString('base64url') }),
+    verifier: randomBytes(32).toString('base64url'),
+  }
 }
-export function verifyState(state: string | undefined): void {
+
+// PKCE S256: the challenge is the SHA-256 of the verifier, base64url-encoded.
+export function codeChallengeFor(verifier: string): string {
+  return createHash('sha256').update(verifier).digest('base64url')
+}
+
+// `cookieState` is the value of the state cookie set at login. Both must be
+// present and identical, and the state must still carry a valid signature.
+export function verifyState(state: string | undefined, cookieState: string | undefined): void {
   if (!state) throw new AppError('AuthenticationError', 'Missing OAuth state')
+  if (!cookieState)
+    throw new AppError('AuthenticationError', 'Missing OAuth state cookie — start sign-in again')
+  const a = Buffer.from(state)
+  const b = Buffer.from(cookieState)
+  if (a.length !== b.length || !timingSafeEqual(a, b))
+    throw new AppError('AuthenticationError', 'OAuth state does not match this browser')
   unpack(state) // throws if invalid/expired
 }
 
 // The authorization URL the browser is sent to. Real Google in prod; the local
 // mock consent page in dev.
-export function googleAuthorizeUrl(clientId: string, state: string, redirectUri: string, hint?: { email?: string; name?: string }): string {
+export function googleAuthorizeUrl(
+  clientId: string,
+  state: string,
+  redirectUri: string,
+  codeChallenge: string,
+  hint?: { email?: string; name?: string },
+): string {
   if (clientId) {
     const p = new URLSearchParams({
       client_id: clientId,
@@ -68,6 +121,8 @@ export function googleAuthorizeUrl(clientId: string, state: string, redirectUri:
       scope: 'openid email profile',
       state,
       prompt: 'select_account',
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
     })
     return `https://accounts.google.com/o/oauth2/v2/auth?${p.toString()}`
   }
@@ -114,9 +169,15 @@ export async function exchangeCode(
   code: string | undefined,
   redirectUri: string,
   clientId: string,
+  codeVerifier: string | undefined,
 ): Promise<{ email: string; name: string }> {
   if (!code) throw new AppError('AuthenticationError', 'Missing authorization code')
   if (!clientId) {
+    // This is the mock branch — the one that mints a session from a typed
+    // email. Guarded here too, not just at the route: this is where the
+    // identity is actually conjured.
+    if (!mockOAuthEnabled())
+      throw new AppError('AuthenticationError', 'Mock OAuth provider is disabled')
     const obj = unpack(code)
     const email = String(obj.email ?? '').trim().toLowerCase()
     if (!email) throw new AppError('AuthenticationError', 'No email in code')
@@ -131,6 +192,8 @@ export async function exchangeCode(
       client_secret: process.env.GOOGLE_CLIENT_SECRET ?? '',
       redirect_uri: redirectUri,
       grant_type: 'authorization_code',
+      // PKCE: Google checks this against the code_challenge sent at authorize.
+      code_verifier: codeVerifier ?? '',
     }),
     signal: AbortSignal.timeout(15_000),
   })
