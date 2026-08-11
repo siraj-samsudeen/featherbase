@@ -267,6 +267,8 @@ function VariantATables({ goBack }: { goBack: () => void }) {
 
 function VariantBConnect({ goTables }: { goTables: () => void }) {
   const { outcome, run } = useSimulatedTest()
+  const [engine, setEngine] = useState('MySQL')
+  const ENGINES = ['MySQL', 'Postgres', 'DuckDB', 'CSV folder']
   const phaseState = (i: number): 'pending' | 'running' | 'ok' | 'fail' => {
     if (outcome.kind === 'idle') return 'pending'
     if (outcome.kind === 'running') return i < outcome.phase ? 'ok' : i === outcome.phase ? 'running' : 'pending'
@@ -276,8 +278,19 @@ function VariantBConnect({ goTables }: { goTables: () => void }) {
   return (
     <div className="mx-auto max-w-5xl py-8 grid grid-cols-5 gap-6">
       <div className="fc-card col-span-3 p-6">
-        <h2 className="text-base font-semibold mb-1">Connect to MySQL</h2>
+        <h2 className="text-base font-semibold mb-1">Connect to {engine}</h2>
         <p className="text-sm text-[var(--color-ink-muted)] mb-4">Credentials are encrypted and never shown again.</p>
+        <div className="mb-4 inline-flex rounded-[var(--radius-control)] border border-[var(--color-border-strong)] p-0.5">
+          {ENGINES.map((e) => (
+            <button
+              key={e}
+              onClick={() => setEngine(e)}
+              className={`rounded px-3 py-1 text-sm ${e === engine ? 'bg-[var(--color-brand)] text-white font-medium' : 'text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)]'}`}
+            >
+              {e}
+            </button>
+          ))}
+        </div>
         <CredFields />
         <div className="mt-5 flex justify-end">
           <button className="fc-btn-primary" onClick={run} disabled={outcome.kind === 'running'}>
