@@ -165,10 +165,16 @@ export function ListView({
 
   const allColumns = meta.data ? listColumns(meta.data) : []
   const columns = allColumns.filter((c) => !hiddenCols.has(c.column_name))
+  // A bound table only has updated_at when the source table has a modified
+  // column to map (external_modified) — defaulting to it otherwise makes the
+  // server refuse EVERY list load (the caller-supplied order_by must resolve;
+  // only server-side defaults fall back to the pk). Sort by name instead.
+  const defaultSortField =
+    meta.data?.data_source && !meta.data.external_modified ? 'name' : 'updated_at'
   const orderBy = sort
     ? `${sort.field} ${sort.dir}`
     : meta.data
-      ? `${meta.data.sort_column || 'updated_at'} ${meta.data.sort_order || 'desc'}`
+      ? `${meta.data.sort_column || defaultSortField} ${meta.data.sort_order || 'desc'}`
       : undefined
 
   const list = useQuery({
@@ -635,9 +641,16 @@ export function ListView({
                     (expandable ? 1 : 0) +
                     (isSourceReadOnly(meta.data) ? 0 : 1)
                   }
-                  className="px-3 py-8 text-center text-[var(--color-ink-faint)]"
+                  className={`px-3 py-8 text-center ${list.isError ? 'text-[var(--color-danger)]' : 'text-[var(--color-ink-faint)]'}`}
+                  data-testid={list.isError ? 'list-rows-error' : undefined}
                 >
-                  No rows
+                  {/* A refused list query is an error, not an empty table —
+                      rendering it as "No rows" hides real data (#176). */}
+                  {list.isError
+                    ? list.error instanceof ApiError
+                      ? list.error.message
+                      : `Cannot load rows for ${doctype}`
+                    : 'No rows'}
                 </td>
               </tr>
             )}
