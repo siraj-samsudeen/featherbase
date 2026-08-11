@@ -11,7 +11,13 @@ decisions live in one root-level ADR set.
 
 ## Before exploring, read these
 
-- **`CONTEXT.md`** at the repo root — the glossary / ubiquitous language.
+- **`CONTEXT.md`** at the repo root — the ubiquitous language: the terms this
+  project uses and, under each, the words it has retired (`_Avoid_`). Treat the
+  `_Avoid_` lists as binding on prose you write — issue titles, spec text, test
+  names, commit messages.
+- **`docs/GLOSSARY.md`** — the same concepts annotated with *where they live in
+  the code*. Read this when you need to find an implementation; read
+  `CONTEXT.md` when you need to choose a word.
 - **`docs/adr/`** — read ADRs that touch the area you're about to work in.
   [ADR 0006](../adr/0006-stack-react-hono-postgres.md) records the current
   stack and supersedes 0001–0004; later ADRs cover topology, record identity,
@@ -29,11 +35,13 @@ them lazily when terms or decisions actually get resolved.
 ```
 /
 ├── CLAUDE.md                          ← invariants + session protocol
-├── CONTEXT.md                         ← glossary (created lazily)
+├── CONTEXT.md                         ← ubiquitous language + _Avoid_ lists
 ├── docs/
+│   ├── GLOSSARY.md                    ← same terms, mapped to the code
 │   ├── adr/                           ← all architecture decisions
 │   │   ├── 0006-stack-react-hono-postgres.md
-│   │   └── 0007-app-and-database-topology.md
+│   │   ├── 0007-app-and-database-topology.md
+│   │   └── 0009-record-identity-id-and-name.md
 │   ├── specs/                         ← feather-spec requirements
 │   └── design/                        ← execution plan, requirements framework
 ├── apps/{server,web}
