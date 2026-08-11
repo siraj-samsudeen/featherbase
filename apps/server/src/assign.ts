@@ -42,5 +42,5 @@ export async function createAssignment(
       read: false,
     })}`
   publishUserEvent(assignTo, 'notification', { subject })
-  return todo.name as string
+  return todo.row_id as string
 }

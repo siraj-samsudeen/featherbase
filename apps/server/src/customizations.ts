@@ -54,7 +54,7 @@ export async function importCustomizations(
 
   for (const f of bundle.custom_fields ?? []) {
     const [existing] = await sql`
-      select name from custom_field where dt = ${f.dt} and column_name = ${f.column_name}`
+      select row_id from custom_field where dt = ${f.dt} and column_name = ${f.column_name}`
     if (existing) continue // already present — idempotent
     await saveDoc(
       'Custom Field',
@@ -78,7 +78,7 @@ export async function importCustomizations(
 
   for (const p of bundle.property_setters ?? []) {
     const [existing] = await sql`
-      select name from metadata_override
+      select row_id from metadata_override
       where table_name = ${p.table_name} and coalesce(column_name, '') = ${p.column_name ?? ''}
         and property = ${p.property}`
     if (existing) continue

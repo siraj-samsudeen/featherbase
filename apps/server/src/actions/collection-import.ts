@@ -1,6 +1,6 @@
 import { AppError } from '../errors'
 import { checkRowForInsert, saveDoc, validateRowForUpdate } from '../document'
-import { getMeta, type TableMeta } from '../meta'
+import { ROW_KEY, getMeta, type TableMeta } from '../meta'
 import { assertDocPermission, assertPermission, permissionScope } from '../permissions'
 import { registerCollectionAction } from '../actions'
 import { sql } from '../db'
@@ -33,7 +33,7 @@ interface Resolution {
   action: RowAction
   // update: the matched row, loaded once so the saveDoc update can carry the
   // optimistic-concurrency stamp and the permission preflight the creator.
-  name?: string
+  row_id?: string
   updated_at?: Date
   created_by?: string
   // fail: why, phrased for the per-row report.
@@ -75,22 +75,23 @@ async function resolveRows(
     if (k) counts.set(k, (counts.get(k) ?? 0) + 1)
   }
   const wanted = [...counts.keys()]
-  const matches = new Map<string, { name: string; updated_at: Date; created_by: string }[]>()
+  const matches = new Map<string, { row_id: string; updated_at: Date; created_by: string }[]>()
   if (wanted.length) {
     const tbl = tableName(meta.name)
+    const key = sql(meta.row_key)
     const found =
-      keyColumn === 'name'
+      keyColumn === ROW_KEY
         ? await sql`
-            select name, name as k, updated_at, created_by
-            from ${sql(tbl)} where name = any(${wanted})`
+            select ${key} as row_id, ${key} as k, updated_at, created_by
+            from ${sql(tbl)} where ${key} = any(${wanted})`
         : await sql`
-            select name, ${sql(keyColumn)}::text as k, updated_at, created_by
+            select ${key} as row_id, ${sql(keyColumn)}::text as k, updated_at, created_by
             from ${sql(tbl)} where ${sql(keyColumn)}::text = any(${wanted})`
     for (const r of found) {
       const k = String(r.k)
       if (!matches.has(k)) matches.set(k, [])
       matches.get(k)!.push({
-        name: String(r.name),
+        row_id: String(r.row_id),
         updated_at: r.updated_at as Date,
         created_by: String(r.created_by),
       })
@@ -119,7 +120,7 @@ async function resolveRows(
     if (hit.length === 1)
       return {
         action: 'update',
-        name: hit[0].name,
+        row_id: hit[0].row_id,
         updated_at: hit[0].updated_at,
         created_by: hit[0].created_by,
       } satisfies Resolution
@@ -156,7 +157,7 @@ function parseUpsertArgs(meta: TableMeta, args: Record<string, unknown>): Upsert
   }
   if (typeof key !== 'string')
     throw new AppError('ValidationError', 'key_column must be a column name')
-  if (key !== 'name' && !meta.columns.some((c) => c.column_name === key))
+  if (key !== ROW_KEY && !meta.columns.some((c) => c.column_name === key))
     throw new AppError('ValidationError', `${meta.name} has no column ${key} to match on`)
   const emptyCells = args.empty_cells ?? 'keep'
   if (emptyCells !== 'keep' && emptyCells !== 'clear')
@@ -166,7 +167,7 @@ function parseUpsertArgs(meta: TableMeta, args: Record<string, unknown>): Upsert
     if (!Array.isArray(args.columns) || args.columns.some((c) => typeof c !== 'string'))
       throw new AppError('ValidationError', 'columns must be an array of column names')
     for (const c of args.columns as string[])
-      if (c !== 'name' && !meta.columns.some((mc) => mc.column_name === c))
+      if (c !== ROW_KEY && !meta.columns.some((mc) => mc.column_name === c))
         throw new AppError('ValidationError', `${meta.name} has no column ${c}`)
     columns = args.columns as string[]
   }
@@ -193,8 +194,8 @@ function updateValues(
   const values: Record<string, unknown> = { ...row }
   if (upsert.emptyCells === 'clear')
     for (const col of upsert.columns!)
-      if (col !== 'name' && col !== upsert.keyColumn && !(col in values)) values[col] = null
-  values.name = matched.name
+      if (col !== ROW_KEY && col !== upsert.keyColumn && !(col in values)) values[col] = null
+  values[ROW_KEY] = matched.row_id
   // The optimistic-concurrency stamp updateDoc demands; saveDoc normalizes it.
   values.updated_at = matched.updated_at
   return values
@@ -229,7 +230,7 @@ registerCollectionAction('import', {
 
     const upsert = parseUpsertArgs(meta, args)
     const resolutions = upsert ? await resolveRows(meta, rows, upsert.keyColumn) : null
-    if (resolutions) await assertRunPermitted(user.name, table, resolutions)
+    if (resolutions) await assertRunPermitted(user.row_id, table, resolutions)
 
     // IMP-007: dry run — same gates, schema-level validation of every row
     // (types, reqd, choices, name rules, existing-name conflicts), zero
@@ -237,7 +238,7 @@ registerCollectionAction('import', {
     // individual rows at real import time. With key_column the report is
     // action-aware (UPS-R1): per-row update / insert / fail, still no writes.
     if (args.dry_run) {
-      if (!resolutions) await assertPermission(user.name, table, 'create')
+      if (!resolutions) await assertPermission(user.row_id, table, 'create')
       const failed: FailedRow[] = []
       const actions: RowAction[] = []
       const seenNames = new Set<string>()
@@ -262,7 +263,7 @@ registerCollectionAction('import', {
             actions.push('update')
             continue
           }
-          const name = String((row as Record<string, unknown>).name ?? '').trim()
+          const name = String((row as Record<string, unknown>)[ROW_KEY] ?? '').trim()
           if (name && seenNames.has(name))
             throw new AppError('ConflictError', `Duplicate name ${name} within the import`)
           await checkRowForInsert(meta, row as Record<string, unknown>)
@@ -305,21 +306,21 @@ registerCollectionAction('import', {
         if (resolution?.action === 'update') {
           const record = row as Record<string, unknown>
           if (
-            upsert!.keyColumn !== 'name' &&
-            record.name != null &&
-            String(record.name).trim() !== '' &&
-            String(record.name).trim() !== resolution.name
+            upsert!.keyColumn !== ROW_KEY &&
+            record[ROW_KEY] != null &&
+            String(record[ROW_KEY]).trim() !== '' &&
+            String(record[ROW_KEY]).trim() !== resolution.row_id
           )
             // UPS-R3: changing an id via upsert does not exist — refusing is
             // louder than silently dropping the file's id cell.
             throw new AppError(
               'ValidationError',
-              `row maps Row ID ${String(record.name).trim()} but matches ${resolution.name}; an upsert cannot change a row's id`,
+              `row maps Row ID ${String(record[ROW_KEY]).trim()} but matches ${resolution.row_id}; an upsert cannot change a row's id`,
             )
-          await saveDoc(table, updateValues(record, upsert!, resolution), user.name, 'upsert')
+          await saveDoc(table, updateValues(record, upsert!, resolution), user.row_id, 'upsert')
           updated++
         } else {
-          await saveDoc(table, row as Record<string, unknown>, user.name, 'insert')
+          await saveDoc(table, row as Record<string, unknown>, user.row_id, 'insert')
           inserted++
         }
       } catch (err) {
@@ -331,7 +332,7 @@ registerCollectionAction('import', {
         })
       }
     }
-    await writeImportLog(table, user.name, { inserted, updated, upsert }, failed, args.context)
+    await writeImportLog(table, user.row_id, { inserted, updated, upsert }, failed, args.context)
     if (!upsert) return { inserted, failed }
     return { updated, inserted, failed }
   },
@@ -349,14 +350,14 @@ function checkRowForUpdate(
 ): void {
   const record = updateValues(row, upsert, resolution)
   if (
-    upsert.keyColumn !== 'name' &&
-    row.name != null &&
-    String(row.name).trim() !== '' &&
-    String(row.name).trim() !== resolution.name
+    upsert.keyColumn !== ROW_KEY &&
+    row.row_id != null &&
+    String(row.row_id).trim() !== '' &&
+    String(row.row_id).trim() !== resolution.row_id
   )
     throw new AppError(
       'ValidationError',
-      `row maps Row ID ${String(row.name).trim()} but matches ${resolution.name}; an upsert cannot change a row's id`,
+      `row maps Row ID ${String(row.row_id).trim()} but matches ${resolution.row_id}; an upsert cannot change a row's id`,
     )
   validateRowForUpdate(meta, record)
 }

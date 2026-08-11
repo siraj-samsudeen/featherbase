@@ -80,8 +80,8 @@ async function cmdCreateUser(
   // (email is unique): `administrator` must not shadow `Administrator` — the
   // same trap #131 closed for service accounts.
   const [existing] = await sql`
-    select name from "user" where lower(name) = lower(${email}) or lower(email) = lower(${email})`
-  if (existing) throw new Error(`User ${existing.name as string} already exists`)
+    select row_id from "user" where lower(row_id) = lower(${email}) or lower(email) = lower(${email})`
+  if (existing) throw new Error(`User ${existing.row_id as string} already exists`)
   await saveDoc(
     'User',
     {

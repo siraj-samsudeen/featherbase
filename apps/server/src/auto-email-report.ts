@@ -104,7 +104,7 @@ export async function deliverAutoEmailReport(
     })
   }
 
-  await sql`update auto_email_report set last_sent = now(), updated_at = now() where name = ${name}`
+  await sql`update auto_email_report set last_sent = now(), updated_at = now() where row_id = ${name}`
   return { recipients: recipients.length, rows: rows.length }
 }
 

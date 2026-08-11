@@ -63,7 +63,7 @@ function reconcileItems(stored: ItemRow[], proposed: ItemRow[]): ItemRow[] {
     proposed.filter((p) => p.name != null).map((p) => [String(p.name), p]),
   )
   return stored.map((row) => {
-    const sent = byName.get(String(row.name))
+    const sent = byName.get(String(row.row_id))
     const done = sent && 'done' in sent ? Boolean(sent.done) : isDone(row)
     return {
       ...row,
@@ -89,7 +89,7 @@ async function prepareRun(ctx: HookContext): Promise<void> {
   if (!ctx.isNew && ctx.old?.run_status === 'Submitted')
     throw new AppError(
       'ValidationError',
-      `${String(row.name ?? 'This run')} is submitted and can no longer be changed`,
+      `${String(row.row_id ?? 'This run')} is submitted and can no longer be changed`,
       { run_status: 'A submitted run is final — start a new run instead' },
     )
 

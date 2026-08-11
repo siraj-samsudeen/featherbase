@@ -18,7 +18,7 @@ registerJob('check_sla', async () => {
   if (!tableOk) return
 
   const slas = await sql`
-    select name, ref_table, fulfilled_states, escalation_role
+    select row_id, ref_table, fulfilled_states, escalation_role
     from service_level_agreement where enabled = true`
 
   for (const sla of slas) {
@@ -52,21 +52,21 @@ registerJob('check_sla', async () => {
     const role = (sla.escalation_role as string) || null
     if (!role) continue
     const holders = await sql`
-      select distinct u.name, u.email from has_role hr
-      join "user" u on u.name = hr.parent
+      select distinct u.row_id, u.email from has_role hr
+      join "user" u on u.row_id = hr.parent
       where hr.parenttype = 'User' and hr.role = ${role} and u.enabled = true`
     for (const row of overdue) {
       for (const h of holders) {
         await queueEmail({
-          to: (h.email as string) || (h.name as string),
-          subject: `SLA breached: ${table} ${row.name as string}`,
+          to: (h.email as string) || (h.row_id as string),
+          subject: `SLA breached: ${table} ${row.row_id as string}`,
           body:
-            `${table} ${row.name as string} has passed its resolution deadline ` +
+            `${table} ${row.row_id as string} has passed its resolution deadline ` +
             `and is now Overdue.\n\nOpen the row: /admin/${encodeURIComponent(
               table,
-            )}/${encodeURIComponent(row.name as string)}`,
+            )}/${encodeURIComponent(row.row_id as string)}`,
           ref_table: table,
-          reference_name: row.name as string,
+          reference_name: row.row_id as string,
         })
       }
     }

@@ -36,18 +36,18 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
     const title = meta.title_column
     const rows = title
       ? await sql`
-          select name, ${sql(title)} as title from ${sql(tableName(meta.name))}
-          where name ilike ${like} or ${sql(title)} ilike ${like}
+          select row_id, ${sql(title)} as title from ${sql(tableName(meta.name))}
+          where row_id ilike ${like} or ${sql(title)} ilike ${like}
           limit ${PER_TABLE}`
       : await sql`
-          select name, name as title from ${sql(tableName(meta.name))}
-          where name ilike ${like}
+          select row_id, row_id as title from ${sql(tableName(meta.name))}
+          where row_id ilike ${like}
           limit ${PER_TABLE}`
     for (const row of rows) {
       hits.push({
         table: meta.name,
-        name: String(row.name),
-        title: String(row.title ?? row.name),
+        name: String(row.row_id),
+        title: String(row.title ?? row.row_id),
       })
       if (hits.length >= TOTAL_CAP) break
     }

@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { sql } from './db'
 import { AppError } from './errors'
-import { getMeta, invalidateMeta } from './meta'
+import { getMeta, invalidateMeta, physicalRowKey } from './meta'
 import { tableName } from './doctype-engine'
 import { getRoles } from './permissions'
 import { getDoc } from './document'
@@ -30,7 +30,7 @@ export interface WorkflowTransition {
   condition?: string | null
 }
 export interface Workflow {
-  name: string
+  row_id: string
   ref_table: string
   // The column on the target Table that carries the state. Defaults to the
   // auto-added `workflow_state`; set it to an existing column (e.g. a
@@ -64,18 +64,18 @@ async function hasWorkflowSchema(): Promise<boolean> {
 export async function getActiveWorkflow(table: string): Promise<Workflow | null> {
   if (!(await hasWorkflowSchema())) return null
   const [wf] = await sql`
-    select name, ref_table, state_field from workflow
+    select row_id, ref_table, state_field from workflow
     where ref_table = ${table} and is_active = true
     order by updated_at desc limit 1`
   if (!wf) return null
   const states = await sql<WorkflowState[]>`
     select state, target_status from workflow_document_state
-    where parent = ${wf.name as string} and parenttype = 'Workflow' order by position`
+    where parent = ${wf.row_id as string} and parenttype = 'Workflow' order by position`
   const transitions = await sql<WorkflowTransition[]>`
     select state, action, next_state, allowed, "condition" from workflow_transition
-    where parent = ${wf.name as string} and parenttype = 'Workflow' order by position`
+    where parent = ${wf.row_id as string} and parenttype = 'Workflow' order by position`
   return {
-    name: wf.name as string,
+    row_id: wf.row_id as string,
     ref_table: wf.ref_table as string,
     state_field: (wf.state_field as string | null) ?? null,
     states,
@@ -206,7 +206,7 @@ export async function applyWorkflowAction(
   await sql`
     update ${sql(tableName(table))}
     set ${sql(field)} = ${transition.next_state}, status = ${status}, updated_at = now()
-    where name = ${name}`
+    where ${sql(physicalRowKey(table))} = ${name}`
 
   await sql`
     insert into workflow_action ${sql({
@@ -256,7 +256,7 @@ async function notifyPendingApprovers(
 
   const holders = await sql<{ parent: string; email: string | null }[]>`
     select distinct hr.parent, u.email from has_role hr
-    join "user" u on u.name = hr.parent
+    join "user" u on u.row_id = hr.parent
     where hr.parenttype = 'User' and hr.role in ${sql(roles)}
       and u.enabled = true`
   const approvers = holders

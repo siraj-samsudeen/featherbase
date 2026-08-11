@@ -21,8 +21,14 @@ create table table_def (
   position integer not null default 0
 );
 
+-- #132: a Column row's key is a surrogate (the natural key is the
+-- (parent, column_name) pair below), so it is a Row ID like any other and is
+-- spelled `row_id`. `table_def.name` above is the opposite case — a NATURAL
+-- key holding the Table's own identifier, which is what `parent` and the rest
+-- of the metadata layer point at — so it keeps `name`.
+-- Existing checkouts are converged by migration 0073.
 create table column_def (
-  name text primary key default gen_random_uuid()::text,
+  row_id text primary key default gen_random_uuid()::text,
   parent text not null references table_def(name) on delete cascade,
   position integer not null default 0,
   column_name text not null,

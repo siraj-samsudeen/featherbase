@@ -119,12 +119,12 @@ export async function siteListDoctypes(site: string): Promise<string[]> {
 export async function siteCreateUser(site: string, email: string, fullName?: string): Promise<{ name: string }> {
   const c = siteClient(site)
   await c`insert into "user" ${c({ name: email, email, full_name: fullName ?? email })}
-    on conflict (name) do nothing`
+    on conflict (row_id) do nothing`
   return { name: email }
 }
 
 export async function siteListUsers(site: string): Promise<string[]> {
   const c = siteClient(site)
-  const rows = await c`select name from "user" order by name`
+  const rows = await c`select row_id from "user" order by row_id`
   return rows.map((r) => r.name as string)
 }

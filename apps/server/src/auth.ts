@@ -30,7 +30,7 @@ export function verifyPassword(password: string, stored: string): boolean {
 // so a reset link could still stamp a password_hash onto a principal
 // documented as having none. The guard is on the write itself.
 export async function setUserPassword(name: string, password: string) {
-  const [row] = await sql`select user_type from "user" where name = ${name}`
+  const [row] = await sql`select user_type from "user" where row_id = ${name}`
   if (row?.user_type === 'service')
     throw new AppError(
       'ValidationError',
@@ -38,19 +38,19 @@ export async function setUserPassword(name: string, password: string) {
     )
   await sql`
     update "user" set password_hash = ${hashPassword(password)}
-    where name = ${name}`
+    where row_id = ${name}`
 }
 
 export interface SessionUser {
-  name: string
+  row_id: string
   email: string
   full_name: string | null
 }
 
 export async function login(usr: string, pwd: string): Promise<{ token: string; user: SessionUser }> {
   const [user] = await sql`
-    select name, email, full_name, enabled, password_hash, user_type from "user"
-    where (name = ${usr} or email = ${usr})`
+    select row_id, email, full_name, enabled, password_hash, user_type from "user"
+    where (row_id = ${usr} or email = ${usr})`
   // #131: service accounts never sign in interactively — tokens only. The
   // refusal is deliberately the same generic message as a bad password.
   if (!user || user.user_type === 'service' || !user.enabled || !user.password_hash || !verifyPassword(pwd, user.password_hash as string))
@@ -61,16 +61,16 @@ export async function login(usr: string, pwd: string): Promise<{ token: string; 
   const hours = Math.min(Math.max(session_hours || 8, 1), 720)
   const token = await sign(
     {
-      sub: user.name as string,
+      sub: user.row_id as string,
       exp: Math.floor(Date.now() / 1000) + hours * 3600,
     },
     JWT_SECRET,
   )
   // PLAT-007: record the successful authentication.
-  await logActivity(user.name as string, 'login', { full_name: user.full_name as string | null })
+  await logActivity(user.row_id as string, 'login', { full_name: user.full_name as string | null })
   return {
     token,
-    user: { name: user.name as string, email: user.email as string, full_name: user.full_name as string | null },
+    user: { row_id: user.row_id as string, email: user.email as string, full_name: user.full_name as string | null },
   }
 }
 
@@ -78,19 +78,19 @@ export async function login(usr: string, pwd: string): Promise<{ token: string; 
 // successful OAuth exchange) — the password-less counterpart to login().
 export async function issueSession(userName: string): Promise<{ token: string; user: SessionUser }> {
   const [user] = await sql`
-    select name, email, full_name, enabled, user_type from "user" where name = ${userName}`
+    select row_id, email, full_name, enabled, user_type from "user" where row_id = ${userName}`
   if (!user || !user.enabled || user.user_type === 'service')
     throw new AppError('AuthenticationError', 'User cannot sign in')
   const { session_hours } = await getSystemSettings()
   const hours = Math.min(Math.max(session_hours || 8, 1), 720)
   const token = await sign(
-    { sub: user.name as string, exp: Math.floor(Date.now() / 1000) + hours * 3600 },
+    { sub: user.row_id as string, exp: Math.floor(Date.now() / 1000) + hours * 3600 },
     JWT_SECRET,
   )
-  await logActivity(user.name as string, 'login', { full_name: user.full_name as string | null })
+  await logActivity(user.row_id as string, 'login', { full_name: user.full_name as string | null })
   return {
     token,
-    user: { name: user.name as string, email: user.email as string, full_name: user.full_name as string | null },
+    user: { row_id: user.row_id as string, email: user.email as string, full_name: user.full_name as string | null },
   }
 }
 
@@ -127,7 +127,7 @@ export async function issueAccessToken(
   if (!label.trim()) throw new AppError('ValidationError', 'A token needs a label')
   if (expiresAt && !(expiresAt.getTime() > Date.now()))
     throw new AppError('ValidationError', 'expires_at must be in the future')
-  const [user] = await sql`select name, enabled from "user" where name = ${owner}`
+  const [user] = await sql`select row_id, enabled from "user" where row_id = ${owner}`
   if (!user) throw new AppError('NotFoundError', `User ${owner} not found`)
   if (!user.enabled) throw new AppError('ValidationError', `${owner} is disabled`)
   const token = TOKEN_PREFIX + randomBytes(32).toString('base64url')
@@ -154,12 +154,12 @@ export async function listAccessTokens(owner?: string): Promise<AccessTokenRow[]
     ? await sql`
         select t.id, t.label, t.owner, t.created_at, t.expires_at, t.last_used_at, t.revoked_at,
                coalesce(u.enabled, false) as owner_enabled
-        from access_token t left join "user" u on u.name = t.owner
+        from access_token t left join "user" u on u.row_id = t.owner
         where t.owner = ${owner} order by t.created_at desc`
     : await sql`
         select t.id, t.label, t.owner, t.created_at, t.expires_at, t.last_used_at, t.revoked_at,
                coalesce(u.enabled, false) as owner_enabled
-        from access_token t left join "user" u on u.name = t.owner
+        from access_token t left join "user" u on u.row_id = t.owner
         order by t.created_at desc`
   return rows as unknown as AccessTokenRow[]
 }
@@ -189,11 +189,11 @@ async function resolveAccessToken(token: string): Promise<SessionUser> {
     returning owner`
   if (!hit) throw new AppError('AuthenticationError', 'Invalid or expired access token')
   const [user] = await sql`
-    select name, email, full_name, enabled from "user" where name = ${hit.owner}`
+    select row_id, email, full_name, enabled from "user" where row_id = ${hit.owner}`
   if (!user || !user.enabled)
     throw new AppError('AuthenticationError', 'Invalid or expired access token')
   return {
-    name: user.name as string,
+    row_id: user.row_id as string,
     email: user.email as string,
     full_name: user.full_name as string | null,
   }
@@ -227,8 +227,8 @@ export async function resolveToken(
     throw new AppError('AuthenticationError', 'Invalid or expired session')
   }
   const [user] = await sql`
-    select name, email, full_name, enabled from "user" where name = ${String(payload.sub)}`
+    select row_id, email, full_name, enabled from "user" where row_id = ${String(payload.sub)}`
   if (!user || !user.enabled)
     throw new AppError('AuthenticationError', 'Invalid or expired session')
-  return { name: user.name as string, email: user.email as string, full_name: user.full_name as string | null }
+  return { row_id: user.row_id as string, email: user.email as string, full_name: user.full_name as string | null }
 }

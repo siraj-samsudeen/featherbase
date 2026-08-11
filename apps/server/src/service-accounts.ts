@@ -30,8 +30,8 @@ export async function createServiceAccount(
       name: 'lowercase letters, digits, - and _ only (max 64 chars)',
     })
   // Case-insensitive: 'administrator' must not shadow 'Administrator'.
-  const [existing] = await sql`select name from "user" where lower(name) = lower(${name})`
-  if (existing) throw new AppError('ConflictError', `User ${existing.name} already exists`)
+  const [existing] = await sql`select row_id from "user" where lower(row_id) = lower(${name})`
+  if (existing) throw new AppError('ConflictError', `User ${existing.row_id} already exists`)
   await saveDoc(
     'User',
     {
@@ -43,7 +43,7 @@ export async function createServiceAccount(
     },
     actor,
   )
-  await sql`update "user" set user_type = 'service' where name = ${name}`
+  await sql`update "user" set user_type = 'service' where row_id = ${name}`
   return getServiceAccount(name)
 }
 
@@ -59,7 +59,7 @@ export async function getServiceAccount(name: string): Promise<ServiceAccount> {
 
 function serviceAccountQuery(name?: string) {
   return sql`
-    select u.name, u.full_name, u.enabled, u.created_at,
+    select u.row_id, u.full_name, u.enabled, u.created_at,
       coalesce(r.roles, '{}') as roles,
       -- #137: "active" must mean exactly what resolveAccessToken accepts, and
       -- that predicate has three parts: not revoked, not expired, AND the
@@ -73,14 +73,14 @@ function serviceAccountQuery(name?: string) {
     left join (
       select parent, array_agg(role order by role) as roles
       from has_role group by parent
-    ) r on r.parent = u.name
+    ) r on r.parent = u.row_id
     left join (
       select owner, count(*) as n from access_token
       where revoked_at is null and (expires_at is null or expires_at > now())
       group by owner
-    ) t on t.owner = u.name
-    where u.user_type = 'service' ${name ? sql`and u.name = ${name}` : sql``}
-    order by u.name`
+    ) t on t.owner = u.row_id
+    where u.user_type = 'service' ${name ? sql`and u.row_id = ${name}` : sql``}
+    order by u.row_id`
 }
 
 // Disabling dead-ends every token the account owns (resolveAccessToken
@@ -91,7 +91,7 @@ export async function setServiceAccountEnabled(
   actor: string,
 ): Promise<ServiceAccount> {
   const [row] = await sql`
-    select name, updated_at from "user" where name = ${name} and user_type = 'service'`
+    select row_id, updated_at from "user" where row_id = ${name} and user_type = 'service'`
   if (!row) throw new AppError('NotFoundError', `Service account ${name} not found`)
   await saveDoc('User', { name, updated_at: row.updated_at, enabled }, actor)
   return getServiceAccount(name)

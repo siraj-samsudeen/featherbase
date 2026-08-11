@@ -117,7 +117,7 @@ const helpdesk: AppManifest = {
           condition_field: 'ticket_status',
           condition_value: 'Resolved',
           recipient: '{{ doc.raised_by }}',
-          subject: 'Your ticket {{ doc.name }} has been resolved',
+          subject: 'Your ticket {{ doc.row_id }} has been resolved',
           message:
             'Hello,\n\nyour ticket "{{ doc.subject }}" was resolved.\n\n' +
             'Resolution: {{ doc.resolution_details }}\n\n' +

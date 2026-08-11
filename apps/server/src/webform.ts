@@ -26,7 +26,7 @@ export interface WebFormConfig {
 
 async function loadForm(route: string) {
   const [form] = await sql`
-    select name, title, route, ref_table, web_fields, published, success_message
+    select row_id, title, route, ref_table, web_fields, published, success_message
     from web_form where route = ${route}`
   if (!form || !form.published)
     throw new AppError('NotFoundError', `No published web form at ${route}`)
@@ -91,7 +91,7 @@ export async function submitWebForm(
     skipPermissions: true,
   })
   return {
-    name: doc.name as string,
+    name: doc.row_id as string,
     message: (form.success_message as string) ?? 'Submitted.',
   }
 }
