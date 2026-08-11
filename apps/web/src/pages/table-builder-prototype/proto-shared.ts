@@ -51,11 +51,26 @@ export const blankCol = (): ProtoColumn => ({
 export function checkColumn(
   c: ProtoColumn,
   siblings: ProtoColumn[],
+  tableName = '',
 ): { error: string; fix?: string } | null {
   const name = c.column_name.trim()
   if (!name) return null // blank rows are dropped, never sent
-  if (RESERVED.includes(name))
-    return { error: `“${name}” is reserved — every table already has it` }
+  if (RESERVED.includes(name)) {
+    // The conventional dodge is prefixing with the table: employee_name,
+    // task_status. Only offer it while it actually resolves the collision.
+    const prefixed = tableName.trim() ? `${slugify(tableName)}_${name}` : ''
+    const fix =
+      prefixed && SNAKE.test(prefixed) && !siblings.some((s) => s !== c && s.column_name.trim() === prefixed)
+        ? prefixed
+        : undefined
+    return {
+      error:
+        name === 'name'
+          ? 'Every row already has a built-in “name” — the Row ID set above'
+          : `“${name}” is one of the built-in columns every table gets`,
+      fix,
+    }
+  }
   if (!SNAKE.test(name)) {
     const fix = slugify(name)
     return {

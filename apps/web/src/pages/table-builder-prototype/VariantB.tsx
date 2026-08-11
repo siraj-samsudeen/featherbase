@@ -64,8 +64,8 @@ export function VariantB() {
   }
 
   const verdicts = useMemo(
-    () => (columns ?? []).map((c) => checkColumn(c, columns ?? [])),
-    [columns],
+    () => (columns ?? []).map((c) => checkColumn(c, columns ?? [], name)),
+    [columns, name],
   )
   const hasBlockers = verdicts.some(Boolean)
 
@@ -175,7 +175,22 @@ export function VariantB() {
                         onChange={(e) => patch(i, { column_name: e.target.value })}
                         className={`w-full rounded border px-1 py-0.5 font-mono text-xs ${verdicts[i] ? 'border-[var(--color-danger)]' : 'border-gray-200'}`}
                       />
-                      {verdicts[i] && <p className="mt-0.5 text-xs text-[var(--color-danger)]">{verdicts[i]!.error}</p>}
+                      {verdicts[i] && (
+                        <p className="mt-0.5 text-xs text-[var(--color-danger)]">
+                          {verdicts[i]!.error}
+                          {verdicts[i]!.fix && (
+                            <>
+                              {' '}
+                              <button
+                                onClick={() => patch(i, { column_name: verdicts[i]!.fix! })}
+                                className="font-medium underline"
+                              >
+                                Use “{verdicts[i]!.fix}”
+                              </button>
+                            </>
+                          )}
+                        </p>
+                      )}
                     </td>
                     <td className="px-1 py-1">
                       <select value={c.column_type} onChange={(e) => patch(i, { column_type: e.target.value })} className="rounded border border-gray-200 px-1 py-0.5">

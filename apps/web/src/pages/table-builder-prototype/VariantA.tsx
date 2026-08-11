@@ -38,8 +38,8 @@ export function VariantA() {
   const idPattern = namingOverride ?? (name.trim() ? idPatternFor(name) : '.###')
 
   const verdicts = useMemo(
-    () => columns.map((c) => checkColumn(c, columns)),
-    [columns],
+    () => columns.map((c) => checkColumn(c, columns, name)),
+    [columns, name],
   )
   const hasBlockers = verdicts.some((v, i) => v && columns[i].column_name.trim())
 

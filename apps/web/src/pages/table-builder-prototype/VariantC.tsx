@@ -50,7 +50,7 @@ export function VariantC() {
       }),
   })
 
-  const verdicts = useMemo(() => columns.map((c) => checkColumn(c, columns)), [columns])
+  const verdicts = useMemo(() => columns.map((c) => checkColumn(c, columns, name)), [columns, name])
   const hasBlockers = verdicts.some((v, i) => v && columns[i].column_name.trim())
 
   function patch(i: number, p: Partial<ProtoColumn>) {
