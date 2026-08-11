@@ -324,7 +324,7 @@ describe('re-review findings', () => {
       columns: [{ column_name: 'label', column_type: 'Data' }],
     })
     for (const r of ['north', 'south'])
-      await admin.post('/api/save_doc', { doctype: 'Sec Region', doc: { name: r } })
+      await admin.post('/api/save_doc', { doctype: 'Sec Region', doc: { row_id: r } })
     // Re-point the bound Table's region column at it.
     const meta = (await admin.get(`/api/table/${encodeURIComponent(BOUND)}:meta`)) as {
       columns: { column_name: string; column_type: string; source_column: string | null }[]

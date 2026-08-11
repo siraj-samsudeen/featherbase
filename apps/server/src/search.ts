@@ -34,14 +34,16 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
     if (!(await hasPermission(user, t.name as string, 'read'))) continue
     const meta = await getMeta(t.name as string)
     const title = meta.title_column
+    // The wire key is always `row_id`; `Table` alone stores it as `name`.
+    const key = sql(meta.row_key)
     const rows = title
       ? await sql`
-          select row_id, ${sql(title)} as title from ${sql(tableName(meta.name))}
-          where row_id ilike ${like} or ${sql(title)} ilike ${like}
+          select ${key} as row_id, ${sql(title)} as title from ${sql(tableName(meta.name))}
+          where ${key} ilike ${like} or ${sql(title)} ilike ${like}
           limit ${PER_TABLE}`
       : await sql`
-          select row_id, row_id as title from ${sql(tableName(meta.name))}
-          where row_id ilike ${like}
+          select ${key} as row_id, ${key} as title from ${sql(tableName(meta.name))}
+          where ${key} ilike ${like}
           limit ${PER_TABLE}`
     for (const row of rows) {
       hits.push({

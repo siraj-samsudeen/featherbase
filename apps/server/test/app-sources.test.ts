@@ -109,7 +109,7 @@ describe('app manifests can declare Data Sources and reflections', () => {
     invalidateSources()
     // The operator created the source by hand first.
     await admin.post('/api/table/Data%20Source', {
-      name: 'appsrc-fixture',
+      row_id: 'appsrc-fixture',
       engine: 'postgres',
       url_env: ENV_VAR,
       default_schema: 'appsrc',

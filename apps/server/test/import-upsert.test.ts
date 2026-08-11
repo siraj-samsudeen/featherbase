@@ -117,7 +117,7 @@ describe('UPS-R1: the import boundary learns update', () => {
       `/api/table/Version?fields=${encodeURIComponent('["data"]')}&filters=${encodeURIComponent(
         JSON.stringify([
           ['ref_table', '=', DT],
-          ['ref_name', '=', String(before.Alpha.name)],
+          ['ref_name', '=', String(before.Alpha.row_id)],
         ]),
       )}`,
     )
