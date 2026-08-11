@@ -4,7 +4,7 @@
 // instead of the control database. Drivers receive source-column names only;
 // the column_name<->source_column mapping is the dispatcher's job.
 
-export type SourceEngine = 'postgres' | 'duckdb' | 'csv-folder'
+export type SourceEngine = 'postgres' | 'mysql' | 'duckdb' | 'csv-folder'
 export type SourceAccess = 'read_only' | 'read_write'
 
 // Hard per-engine write capability (mirrors each driver's `writable` flag,
@@ -13,6 +13,7 @@ export type SourceAccess = 'read_only' | 'read_write'
 // engine can write AND access is read_write.
 export const ENGINE_WRITABLE: Record<SourceEngine, boolean> = {
   postgres: true,
+  mysql: true,
   duckdb: false,
   'csv-folder': true,
 }

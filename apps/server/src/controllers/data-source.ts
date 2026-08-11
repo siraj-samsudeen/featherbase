@@ -7,7 +7,7 @@ import { invalidateSources } from '../sources/registry'
 // EDS-1 validation + spec S1/S3: saving a Data Source drops its cached
 // config and pool, and invalidates the meta cache so bound Tables pick up a
 // flipped access mode without a restart.
-const ENGINES = new Set(['postgres', 'duckdb', 'csv-folder'])
+const ENGINES = new Set(['postgres', 'mysql', 'duckdb', 'csv-folder'])
 
 const controller: TableController = {
   table: 'Data Source',
@@ -26,7 +26,7 @@ const controller: TableController = {
       const engine = String(row.engine ?? '')
       if (!ENGINES.has(engine))
         throw new AppError('ValidationError', 'Invalid engine', {
-          engine: 'engine must be postgres, duckdb or csv-folder',
+          engine: 'engine must be postgres, mysql, duckdb or csv-folder',
         })
       if (engine === 'csv-folder') {
         if (!String(row.root_path ?? '').trim())
