@@ -1,5 +1,57 @@
 # Progress Log
 
+## 2026-08-11 — the mysql engine joins the Data Source drivers
+
+Motivated by the VMS system on AWS RDS (MySQL 8.4, `caching_sha2_password`,
+TLS): Featherbase can now connect, test, introspect and reflect a MySQL
+database exactly like a Postgres one. The credential URL stays in an env var
+(`VMS_DATABASE_URL` on the deployment) and is never stored — BV7 unchanged.
+
+**Design (codebase-design pass, recorded here in lieu of an ADR since it
+extends the existing EDS seam rather than deciding a new one):** the
+`SourceDriver` interface did not change — a fourth adapter fits every method
+as-is. MySQL's lack of `RETURNING` is exactly the complexity the seam hides:
+`insert`/`update` re-select the row through the pk (`LAST_INSERT_ID()` for
+auto_increment keys). Dialect differences live INSIDE `mysql-driver.ts`, not
+in a shared dialect module — the duckdb driver already duplicated `buildWhere`
+deliberately, because the variance (placeholders, quoting, `<=>`, casts)
+touches nearly every line; a shared abstraction would be a shallow seam.
+
+The seams it plugs into: `SourceEngine`/`ENGINE_WRITABLE` (types.ts), the
+driver map (registry.ts), the controller's `ENGINES` set, reflect.ts's `reqd`
+heuristic (now postgres-or-mysql), and **migration 0072** adding `mysql` to
+the engine Choice column. Row actions test_connection/introspect/reflect
+worked unchanged, as designed.
+
+Dialect notes worth knowing later: information_schema comes back with
+UPPERCASE keys (aliased to lowercase in the query); `tinyint(1)` maps to
+Check; unique violations arrive as errno 1062 and are re-shaped into the
+postgres `23505` + `detail` form so mapDbError's field-wise errors work
+identically; optimistic-lock comparison is `timestampdiff(microsecond) <
+1000` because DATETIME precision varies; the session pins `timezone: 'Z'` so
+values round-trip — but DATETIME has no zone, so rows written by clients in
+another server timezone read shifted (use TIMESTAMP columns or aligned zones
+if that matters). TLS rides the URL: `?sslmode=REQUIRED` (RDS without the CA
+bundle), `VERIFY_CA`/`VERIFY_IDENTITY`, or `ssl=true`.
+
+**Verified:** new `sources-mysql.test.ts` (11 tests mirroring the postgres
+suite: registry, scrubbed failures, introspection, reflection, reads, the
+no-RETURNING insert, conflict on a concurrent CLI write, ER_DUP_ENTRY
+field-wise mapping, delete, read_only flip) — runs only when `MYSQL_TEST_URL`
+is set; CI got a `mysql:8.4` service so it runs there. Full server suite
+**702 passed / 117 files** on an isolated `featherbase_mysqlpr` (aligned
+`RLS_TEST_URL`; port 8000 was held by another session). End-to-end over HTTP
+on `PORT=8100`: created a `vms` source (engine mysql, url_env
+`VMS_DATABASE_URL` → local MySQL 9.6 seeded with `vehicle` + composite-pk
+`trip_log`), test_connection ok, introspect proposed the right types,
+reflect created `Vms Vehicle` and refused `trip_log` ("Needs a single-column
+primary key"), list/get returned the rows, and a write on the read_only
+source got 403.
+
+**Next:** update `VMS_DATABASE_URL` on featherbase-dev (Railway) to the
+mysql:// URL on port 3306 (with `?sslmode=REQUIRED`) after merge, and retest
+against the real RDS instance.
+
 ## 2026-08-11 — a reset link burns on use, not on success (#137 finding 6, ruled)
 
 Round 2 left finding 6 open for the owner, because the finding and its stated

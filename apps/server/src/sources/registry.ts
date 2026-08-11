@@ -2,6 +2,7 @@ import { sql } from '../db'
 import { AppError } from '../errors'
 import type { SourceConfig, SourceDriver, SourceEngine } from './types'
 import { postgresDriver } from './postgres-driver'
+import { mysqlDriver } from './mysql-driver'
 import { duckdbDriver } from './duckdb-driver'
 import { csvFolderDriver } from './csv-driver'
 
@@ -15,6 +16,7 @@ const cache = new Map<string, SourceConfig>()
 
 const DRIVERS: Record<SourceEngine, SourceDriver> = {
   postgres: postgresDriver,
+  mysql: mysqlDriver,
   duckdb: duckdbDriver,
   'csv-folder': csvFolderDriver,
 }
