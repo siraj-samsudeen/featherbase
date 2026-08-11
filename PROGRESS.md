@@ -190,6 +190,39 @@ an-import-run (default skip-since-edited-rows + explicit override, per
 owner ruling), typed confirmation above ~20 updates, index-on-demand on the
 match key (#145). Ratification queue: #142–#144.
 
+## 2026-08-11 — OAuth config moves into System Settings (PR #127 rework)
+
+Owner decision: allowlists and client ids are instance configuration, not
+deployment environment — anything an env var would carry that is not a
+secret creates a permanent manual step per install. So PR #127's
+`ALLOWED_LOGIN_DOMAINS` env var (and the `GOOGLE_CLIENT_ID` env read it sat
+beside) are gone before ever shipping:
+
+- System Settings gains `google_client_id` and `allowed_login_domains`
+  (migration 0070, same idempotent column_def pattern as 0025). Values live
+  in the `single_value` EAV store, editable in the Admin UI, and a
+  `rama_dw` manifest fixture can check them in.
+- `oauth.ts` reads both from `getSystemSettings()`; provider selection
+  (mock vs real Google) now keys off the *setting*, resolved per request.
+  **Only `GOOGLE_CLIENT_SECRET` remains an environment variable.**
+- The production guard is unchanged in spirit: no client id configured +
+  `NODE_ENV=production` → sign-in refused, mock never serves.
+- Branch also merged origin/main (access tokens #131 replaced API keys;
+  conflicts in `index.ts` imports and `PROGRESS.md` only).
+
+Verified: 5 server tests in `test/oauth.test.ts` (domain-gate tests now set
+`single_value` rows inside the sandbox — no env fiddling, no cleanup; new
+test proves a configured client id flips login to accounts.google.com and
+shuts the mock endpoints), full suite 650 green (the #126 events failure
+was fixed on main), 3-test browser e2e green, migration 0070 applied
+locally.
+
+Deploy story after this: Railway needs `GOOGLE_CLIENT_SECRET` (reference to
+report-server's) and nothing else; the client id + `jeyarama.com` domain
+list ride the checked-in manifest fixture; Google console gets the
+featherbase redirect URI. Coordinate merge order with PR #136, which edits
+the same `findOrCreateGoogleUser` region.
+
 ## 2026-08-06 — two ways a green suite goes red on a machine that has been used
 
 A local `pnpm test` came back with four failures on a feature branch. None of

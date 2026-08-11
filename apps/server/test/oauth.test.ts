@@ -5,8 +5,17 @@ import { saveDoc } from '../src/document'
 import type { TestClient } from 'feather-testing-postgres'
 
 // PLAT-006: Google OAuth server-side flow, driven through the dev mock
-// provider (GOOGLE_CLIENT_ID unset). The browser dance is three redirects:
-// login → consent → approve → callback; here we chase them by hand.
+// provider (no google_client_id in System Settings). The browser dance is
+// three redirects: login → consent → approve → callback; chased by hand.
+// The domain allowlist is instance config in System Settings, so tests set
+// it inside their sandbox transaction — no env vars, no cleanup.
+
+async function setAllowedDomains(value: string) {
+  await sql`
+    insert into single_value (table_name, field, value)
+    values ('System Settings', 'allowed_login_domains', ${value})
+    on conflict (table_name, field) do update set value = excluded.value`
+}
 
 async function mockSignIn(api: TestClient, email: string, name = 'Test User') {
   const approve = await api.fetch(
@@ -41,20 +50,16 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     expect(user).toMatchObject({ social_login: 'google', enabled: true })
   })
 
-  test('ALLOWED_LOGIN_DOMAINS blocks auto-provisioning foreign domains', async ({ api }) => {
-    process.env.ALLOWED_LOGIN_DOMAINS = 'jeyarama.com'
-    try {
-      const denied = await mockSignIn(api, 'stranger@gmail.com')
-      expect(denied.status).toBe(401)
-      const [row] = await sql`select 1 from "user" where email = 'stranger@gmail.com'`
-      expect(row).toBeUndefined()
+  test('allowed_login_domains blocks auto-provisioning foreign domains', async ({ api }) => {
+    await setAllowedDomains('jeyarama.com')
+    const denied = await mockSignIn(api, 'stranger@gmail.com')
+    expect(denied.status).toBe(401)
+    const [row] = await sql`select 1 from "user" where email = 'stranger@gmail.com'`
+    expect(row).toBeUndefined()
 
-      const admitted = await mockSignIn(api, 'kannan@jeyarama.com')
-      expect(admitted.status).toBe(302)
-      expect(admitted.headers.get('location')).toContain('/oauth-callback?token=')
-    } finally {
-      delete process.env.ALLOWED_LOGIN_DOMAINS
-    }
+    const admitted = await mockSignIn(api, 'kannan@jeyarama.com')
+    expect(admitted.status).toBe(302)
+    expect(admitted.headers.get('location')).toContain('/oauth-callback?token=')
   })
 
   test('an existing user signs in even off-domain (provisioned deliberately)', async ({ api }) => {
@@ -63,14 +68,25 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
       { name: 'contractor@outside.io', email: 'contractor@outside.io', enabled: true, roles: [] },
       'Administrator',
     )
-    process.env.ALLOWED_LOGIN_DOMAINS = 'jeyarama.com'
-    try {
-      const res = await mockSignIn(api, 'contractor@outside.io')
-      expect(res.status).toBe(302)
-      expect(res.headers.get('location')).toContain('/oauth-callback?token=')
-    } finally {
-      delete process.env.ALLOWED_LOGIN_DOMAINS
-    }
+    await setAllowedDomains('jeyarama.com')
+    const res = await mockSignIn(api, 'contractor@outside.io')
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toContain('/oauth-callback?token=')
+  })
+
+  test('a google_client_id in System Settings switches to the real provider', async ({ api }) => {
+    await sql`
+      insert into single_value (table_name, field, value)
+      values ('System Settings', 'google_client_id', 'test-client-id')
+      on conflict (table_name, field) do update set value = excluded.value`
+    const res = await api.fetch('/api/oauth/google/login')
+    expect(res.status).toBe(302)
+    const loc = res.headers.get('location') as string
+    expect(loc).toContain('https://accounts.google.com/o/oauth2/v2/auth')
+    expect(loc).toContain('client_id=test-client-id')
+    expect(loc).toContain('redirect_uri=')
+    // With a real provider active, the mock endpoints refuse.
+    expect((await api.fetch('/api/oauth/mock/consent')).status).toBe(417)
   })
 
   test('the mock provider refuses to serve in production', async ({ api }) => {

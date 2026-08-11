@@ -2,26 +2,28 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import { sql } from './db'
 import { AppError } from './errors'
 import { saveDoc, getDoc } from './document'
+import { getSystemSettings } from './settings'
 
-// PLAT-006: social login (Google OAuth) mapped to the User Table. In dev
-// (no GOOGLE_CLIENT_ID configured) a mock provider stands in for Google: a
-// local consent page returns a signed authorization `code` that the callback
-// exchanges for the user's identity. With GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET
-// set, the same handlers drive real Google (authorization-code exchange +
-// userinfo). ALLOWED_LOGIN_DOMAINS restricts who may auto-provision an account.
+// PLAT-006: social login (Google OAuth) mapped to the User Table. The client
+// id and the login-domain allowlist are instance configuration (System
+// Settings — checked in via manifest fixtures, editable in the Admin UI);
+// only GOOGLE_CLIENT_SECRET comes from the environment. With no client id
+// configured a mock provider stands in for Google: a local consent page
+// returns a signed authorization `code` that the callback exchanges for the
+// user's identity.
 
 const SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-me'
 
 // Real Google is used only when a client id is configured; otherwise mock.
-export function isMockProvider(): boolean {
-  return !process.env.GOOGLE_CLIENT_ID
+export async function oauthClientId(): Promise<string> {
+  return (await getSystemSettings()).google_client_id
 }
 
 // The mock provider hands out a session for any typed email — it must never
-// serve real traffic. A production deployment without Google credentials gets
+// serve real traffic. A production deployment without a Google client id gets
 // a refusal, not the mock.
-export function assertOAuthConfigured(): void {
-  if (isMockProvider() && process.env.NODE_ENV === 'production')
+export function assertOAuthConfigured(clientId: string): void {
+  if (!clientId && process.env.NODE_ENV === 'production')
     throw new AppError('AuthenticationError', 'Google sign-in is not configured')
 }
 
@@ -57,10 +59,10 @@ export function verifyState(state: string | undefined): void {
 
 // The authorization URL the browser is sent to. Real Google in prod; the local
 // mock consent page in dev.
-export function googleAuthorizeUrl(state: string, redirectUri: string, hint?: { email?: string; name?: string }): string {
-  if (!isMockProvider()) {
+export function googleAuthorizeUrl(clientId: string, state: string, redirectUri: string, hint?: { email?: string; name?: string }): string {
+  if (clientId) {
     const p = new URLSearchParams({
-      client_id: process.env.GOOGLE_CLIENT_ID as string,
+      client_id: clientId,
       redirect_uri: redirectUri,
       response_type: 'code',
       scope: 'openid email profile',
@@ -111,9 +113,10 @@ export function mockApproveRedirect(state: string, redirectUri: string, email: s
 export async function exchangeCode(
   code: string | undefined,
   redirectUri: string,
+  clientId: string,
 ): Promise<{ email: string; name: string }> {
   if (!code) throw new AppError('AuthenticationError', 'Missing authorization code')
-  if (isMockProvider()) {
+  if (!clientId) {
     const obj = unpack(code)
     const email = String(obj.email ?? '').trim().toLowerCase()
     if (!email) throw new AppError('AuthenticationError', 'No email in code')
@@ -124,7 +127,7 @@ export async function exchangeCode(
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       code,
-      client_id: process.env.GOOGLE_CLIENT_ID as string,
+      client_id: clientId,
       client_secret: process.env.GOOGLE_CLIENT_SECRET ?? '',
       redirect_uri: redirectUri,
       grant_type: 'authorization_code',
@@ -146,19 +149,15 @@ export async function exchangeCode(
   return { email, name: String(info.name ?? email) }
 }
 
-// ALLOWED_LOGIN_DOMAINS (comma-separated) limits which email domains may
-// auto-provision an account on first sign-in. Empty = no restriction (dev).
-// Users that already exist were provisioned deliberately and always may
-// sign in, mirroring the report server's grants arm.
-function allowedLoginDomains(): string[] {
-  return (process.env.ALLOWED_LOGIN_DOMAINS ?? '')
+// System Settings `allowed_login_domains` (comma-separated) limits which
+// email domains may auto-provision an account on first sign-in. Empty = no
+// restriction (dev). Users that already exist were provisioned deliberately
+// and always may sign in, mirroring the report server's grants arm.
+async function domainAdmitted(email: string): Promise<boolean> {
+  const domains = (await getSystemSettings()).allowed_login_domains
     .split(',')
     .map((d) => d.trim().toLowerCase())
     .filter(Boolean)
-}
-
-function domainAdmitted(email: string): boolean {
-  const domains = allowedLoginDomains()
   if (!domains.length) return true
   const at = email.lastIndexOf('@')
   return at > 0 && domains.includes(email.slice(at + 1))
@@ -177,7 +176,7 @@ export async function findOrCreateGoogleUser(email: string, name: string): Promi
     if (!row.enabled)
       await saveDoc('User', { name: userName, updated_at: row.updated_at, enabled: true }, 'Administrator')
   } else {
-    if (!domainAdmitted(email))
+    if (!(await domainAdmitted(email)))
       throw new AppError('AuthenticationError', 'Access not provisioned for this account. Contact IT.')
     const created = await saveDoc(
       'User',
