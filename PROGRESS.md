@@ -22,7 +22,8 @@ solved by resolving BOTH directions on every reflect, all inside reflect.ts:
   already bound to the same source AND the FK lands on that binding's
   external_pk;
 - reverse: every FK edge is recorded raw on the column_def (migration
-  **0073**: `source_fk_schema/table/column`), and when a table reflects,
+  **0074** — 0073 was claimed by the concurrent import-revert PR:
+  `source_fk_schema/table/column`), and when a table reflects,
   every recorded edge on the same source that lands on its pk is upgraded
   to Reference in place (direct column_def update — deliberately bypassing
   updateTable's column_type-change guard, which exists for user edits).
