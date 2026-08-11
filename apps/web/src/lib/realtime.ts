@@ -22,7 +22,10 @@ class RealtimeClient {
     const token = getToken()
     if (!token) return
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    const socket = new WebSocket(`${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`)
+    // #173: no token in the URL — the handshake is same-origin, so the
+    // HttpOnly `sid` cookie rides along and is what the server authenticates.
+    // getToken() above is only the "am I signed in?" gate.
+    const socket = new WebSocket(`${proto}://${location.host}/ws`)
     this.socket = socket
     socket.onopen = () => {
       if (this.channels.size) socket.send(JSON.stringify({ subscribe: [...this.channels] }))
