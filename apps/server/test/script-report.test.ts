@@ -54,7 +54,7 @@ describe('RPT-005: script reports', () => {
     })
     expect(built.status).toBe(201)
     const res = await runScriptReport('SR Srv Bad', {}, 'Administrator')
-    expect(res.columns).toContain('name')
+    expect(res.columns).toContain('row_id')
     expect(res.rows.some((r) => r.row_id === 'Administrator')).toBe(true)
   })
 

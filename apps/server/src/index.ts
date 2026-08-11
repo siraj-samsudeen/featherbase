@@ -643,10 +643,10 @@ app.delete('/api/access_tokens/:id', async (c) => {
 // #131: service accounts — System Manager territory end to end.
 app.post('/api/service_accounts', async (c) => {
   await assertSystemManager(who(c))
-  const body = (await c.req.json().catch(() => ({}))) as { name?: string; roles?: string[] }
-  if (typeof body.name !== 'string') throw new AppError('ValidationError', 'Expected { name }')
+  const body = (await c.req.json().catch(() => ({}))) as { row_id?: string; roles?: string[] }
+  if (typeof body.row_id !== 'string') throw new AppError('ValidationError', 'Expected { row_id }')
   const roles = Array.isArray(body.roles) ? body.roles.filter((r) => typeof r === 'string') : []
-  return c.json(await createServiceAccount(body.name, roles, who(c)), 201)
+  return c.json(await createServiceAccount(body.row_id, roles, who(c)), 201)
 })
 
 app.get('/api/service_accounts', async (c) => {
@@ -992,8 +992,8 @@ app.post('/api/uninstall_app', async (c) => {
 // the configured report.
 app.post('/api/run_auto_email_report', async (c) => {
   await assertSystemManager(who(c))
-  const { name } = (await c.req.json().catch(() => ({}))) as { name?: string }
-  if (!name) throw new AppError('ValidationError', 'Expected { name }')
+  const { row_id: name } = (await c.req.json().catch(() => ({}))) as { row_id?: string }
+  if (!name) throw new AppError('ValidationError', 'Expected { row_id }')
   return c.json(await deliverAutoEmailReport(name, who(c)))
 })
 
