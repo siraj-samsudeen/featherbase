@@ -29,7 +29,7 @@ export const test = createPgTest(
       const doc = await saveDoc(
         'User',
         {
-          name: email,
+          row_id: email,
           email,
           full_name: fullName ?? email.split('@')[0],
           enabled: true,

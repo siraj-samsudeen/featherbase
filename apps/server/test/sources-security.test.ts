@@ -64,18 +64,18 @@ const BOUND = 'Sec Account'
 async function bindAccount(admin: TestClient, access = 'read_write'): Promise<void> {
   invalidateSources()
   await admin.post('/api/table/Data%20Source', {
-    name: 'sec-fixture',
+    row_id: 'sec-fixture',
     engine: 'postgres',
     url_env: EXT_URL_ENV,
     default_schema: 'sec_fixture',
     access,
   })
-  const res = await admin.post<{ created: { name: string }[]; skipped: { reason: string }[] }>(
+  const res = await admin.post<{ created: { row_id: string }[]; skipped: { reason: string }[] }>(
     '/api/table/Data%20Source/sec-fixture:reflect',
     { schema: 'sec_fixture', tables: ['account'], prefix: 'Sec' },
   )
   expect(res.skipped).toEqual([])
-  expect(res.created[0].name).toBe(BOUND)
+  expect(res.created[0].row_id).toBe(BOUND)
 }
 
 // A role granted the given Permission flags, plus a user holding it.
@@ -85,7 +85,7 @@ async function userWith(
   perm: Record<string, unknown>,
 ): Promise<TestClient> {
   const role = 'Sec Role'
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: role } })
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: role } })
   await admin.post('/api/save_doc', {
     doctype: 'Permission',
     doc: { ref_table: BOUND, role, ...perm },
@@ -151,9 +151,9 @@ describe('finding 1: bound tables honor own-rows and Data Scope rules', () => {
     })
     const list = (await user.get(
       `/api/table/${encodeURIComponent(BOUND)}?fields=${encodeURIComponent('["name","label"]')}`,
-    )) as { data: { name: string }[]; total: number }
+    )) as { data: { row_id: string }[]; total: number }
     expect(list.total).toBe(1)
-    expect(list.data[0].name).toBe('ACC-A')
+    expect(list.data[0].row_id).toBe('ACC-A')
 
     const count = (await user.get(`/api/table/${encodeURIComponent(BOUND)}:count`)) as {
       count: number
@@ -252,7 +252,7 @@ describe('finding 4: same-named tables in two schemas', () => {
   }) => {
     invalidateSources()
     await admin.post('/api/table/Data%20Source', {
-      name: 'sec-fixture',
+      row_id: 'sec-fixture',
       engine: 'postgres',
       url_env: EXT_URL_ENV,
       access: 'read_only',
@@ -265,12 +265,12 @@ describe('finding 4: same-named tables in two schemas', () => {
     expect(ambiguous.created).toEqual([])
     expect(ambiguous.skipped[0].reason).toMatch(/Ambiguous/)
 
-    const qualified = await admin.post<{ created: { name: string }[] }>(
+    const qualified = await admin.post<{ created: { row_id: string }[] }>(
       '/api/table/Data%20Source/sec-fixture:reflect',
       { tables: ['sec_archive.account'], prefix: 'Arch' },
     )
     expect(qualified.created).toHaveLength(1)
-    const name = qualified.created[0].name
+    const name = qualified.created[0].row_id
     const meta = (await admin.get(`/api/table/${encodeURIComponent(name)}:meta`)) as Record<
       string,
       unknown
@@ -278,9 +278,9 @@ describe('finding 4: same-named tables in two schemas', () => {
     expect(meta.external_schema).toBe('sec_archive')
     const list = (await admin.get(
       `/api/table/${encodeURIComponent(name)}?fields=${encodeURIComponent('["name"]')}`,
-    )) as { data: { name: string }[]; total: number }
+    )) as { data: { row_id: string }[]; total: number }
     expect(list.total).toBe(1)
-    expect(list.data[0].name).toBe('OLD-1')
+    expect(list.data[0].row_id).toBe('OLD-1')
   })
 
   test('a same-named PK constraint on another table does not corrupt pk detection', async ({
@@ -293,7 +293,7 @@ describe('finding 4: same-named tables in two schemas', () => {
     try {
       invalidateSources()
       await admin.post('/api/table/Data%20Source', {
-        name: 'sec-fixture',
+        row_id: 'sec-fixture',
         engine: 'postgres',
         url_env: EXT_URL_ENV,
         access: 'read_only',
@@ -394,7 +394,7 @@ describe('re-review findings', () => {
   }) => {
     invalidateSources()
     await admin.post('/api/table/Data%20Source', {
-      name: 'sec-fixture',
+      row_id: 'sec-fixture',
       engine: 'postgres',
       url_env: EXT_URL_ENV,
       default_schema: 'sec_fixture',
@@ -418,7 +418,7 @@ describe('re-review findings', () => {
     createUser,
   }) => {
     const role = 'Sec Src Role'
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: role } })
+    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: role } })
     await admin.post('/api/save_doc', {
       doctype: 'Permission',
       doc: {
@@ -433,7 +433,7 @@ describe('re-review findings', () => {
     const user = await createUser({ roles: [role] })
     await expect(
       user.post('/api/table/Data%20Source', {
-        name: 'rogue-source',
+        row_id: 'rogue-source',
         engine: 'postgres',
         url_env: EXT_URL_ENV,
         access: 'read_write',
@@ -490,7 +490,7 @@ describe('re-review findings', () => {
   test('finding 10: a hand-written binding is validated against the source', async ({ admin }) => {
     invalidateSources()
     await admin.post('/api/table/Data%20Source', {
-      name: 'sec-fixture',
+      row_id: 'sec-fixture',
       engine: 'postgres',
       url_env: EXT_URL_ENV,
       default_schema: 'sec_fixture',

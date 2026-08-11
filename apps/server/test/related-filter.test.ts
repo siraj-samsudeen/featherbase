@@ -52,23 +52,23 @@ async function setup(admin: TestClient) {
     await admin.post('/api/save_doc', { doctype: PART, doc: { name, part_name: name } })
   await admin.post('/api/save_doc', {
     doctype: ORDER,
-    doc: { name: 'O-1', supplier: 'S-A', total: 100, lines: [{ part: 'P-1', qty: 2 }] },
+    doc: { row_id: 'O-1', supplier: 'S-A', total: 100, lines: [{ part: 'P-1', qty: 2 }] },
   })
   await admin.post('/api/save_doc', {
     doctype: ORDER,
-    doc: { name: 'O-2', supplier: 'S-A', total: 250, lines: [{ part: 'P-2' }] },
+    doc: { row_id: 'O-2', supplier: 'S-A', total: 250, lines: [{ part: 'P-2' }] },
   })
   await admin.post('/api/save_doc', {
     doctype: ORDER,
-    doc: { name: 'O-3', supplier: 'S-B', total: 40, lines: [{ part: 'P-1' }] },
+    doc: { row_id: 'O-3', supplier: 'S-B', total: 40, lines: [{ part: 'P-1' }] },
   })
 }
 
 const list = async (client: TestClient, table: string, filters: unknown[]) => {
-  const res = await client.get<{ data: { name: string }[]; total: number }>(
+  const res = await client.get<{ data: { row_id: string }[]; total: number }>(
     `/api/table/${encodeURIComponent(table)}?filters=${encodeURIComponent(JSON.stringify(filters))}&fields=${encodeURIComponent('["name"]')}&order_by=${encodeURIComponent('name asc')}`,
   )
-  return { names: res.data.map((r) => r.name), total: res.total }
+  return { names: res.data.map((r) => r.row_id), total: res.total }
 }
 
 describe('NAV-002: related filters', () => {
@@ -118,7 +118,7 @@ describe('NAV-002: related filters', () => {
   test('every hop applies the hopped table’s read scoping', async ({ admin, createUser }) => {
     await setup(admin)
     const ROLE = 'Rel Role'
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
     for (const dt of [ORDER, LINE])
       await admin.post('/api/save_doc', {
         doctype: 'Permission',
@@ -148,7 +148,7 @@ describe('NAV-002: related filters', () => {
   }) => {
     await setup(admin)
     const ROLE = 'Rel Narrow Role'
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
     await admin.post('/api/save_doc', {
       doctype: 'Permission',
       doc: { ref_table: ORDER, role: ROLE, can_read: true },
@@ -271,7 +271,7 @@ describe('NAV-002: related filters', () => {
     await admin.post('/api/save_doc', {
       doctype: ORDER,
       doc: {
-        name: 'O-4',
+        row_id: 'O-4',
         supplier: 'S-B',
         total: 10,
         lines: [{ part: 'P-2' }],

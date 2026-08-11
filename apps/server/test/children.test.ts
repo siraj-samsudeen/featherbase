@@ -86,10 +86,10 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
     })
     const [rowA, , rowC] = doc.items
     const updated = await save(admin, {
-      name: doc.row_id,
+      row_id: doc.row_id,
       updated_at: doc.updated_at,
       items: [
-        { name: rowC.name, item: 'c-edited', qty: 9 },
+        { row_id: rowC.row_id, item: 'c-edited', qty: 9 },
         { item: 'd' },
       ],
     })
@@ -97,8 +97,8 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
       ['c-edited', 1],
       ['d', 2],
     ])
-    expect(updated.items[0].name).toBe(rowC.name)
-    expect(updated.items.some((r: any) => r.name === rowA.name)).toBe(false)
+    expect(updated.items[0].row_id).toBe(rowC.row_id)
+    expect(updated.items.some((r: any) => r.row_id === rowA.row_id)).toBe(false)
     const [{ count }] = await sql.unsafe(
       `select count(*)::int as count from ${CTABLE} where parent='${doc.row_id}'`,
     )
@@ -110,7 +110,7 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
     const doc = await save(admin, { title: 'before', items: [{ item: 'ok' }] })
     await expect(
       save(admin, {
-        name: doc.row_id,
+        row_id: doc.row_id,
         updated_at: doc.updated_at,
         title: 'after',
         items: [{ item: 'ok' }, { qty: 'boom' }],
@@ -122,7 +122,7 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
         'items.1.qty': expect.anything(),
       },
     })
-    const [row] = await sql.unsafe(`select title from ${PTABLE} where name='${doc.row_id}'`)
+    const [row] = await sql.unsafe(`select title from ${PTABLE} where row_id='${doc.row_id}'`)
     expect(row.title).toBe('before')
     const [{ count }] = await sql.unsafe(
       `select count(*)::int as count from ${CTABLE} where parent='${doc.row_id}'`,
@@ -164,7 +164,7 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
       // The update path re-picks from the hooked row too — but an absent key
       // still means "children untouched".
       const updated = await save(admin, {
-        name: doc.row_id,
+        row_id: doc.row_id,
         updated_at: doc.updated_at,
         title: 'hooked-2',
       })

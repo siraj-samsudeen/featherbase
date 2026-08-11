@@ -114,7 +114,7 @@ describe('EML-005: template rendering', () => {
         columns: [{ column_name: 'subject', column_type: 'Data' }],
       })
       const { saveDoc } = await import('../src/document')
-      await saveDoc('Eml Ref', { name: 'ref-1', subject: 'Quarterly Numbers' }, 'Administrator')
+      await saveDoc('Eml Ref', { row_id: 'ref-1', subject: 'Quarterly Numbers' }, 'Administrator')
 
       await queueEmail({
         to: 'r@x.com',
@@ -146,7 +146,7 @@ describe('EML-003: PDF attachment', () => {
         columns: [{ column_name: 'customer', column_type: 'Data' }],
       })
       const { saveDoc } = await import('../src/document')
-      await saveDoc('Eml Pdf', { name: 'inv-1', customer: 'Wonka Industries' }, 'Administrator')
+      await saveDoc('Eml Pdf', { row_id: 'inv-1', customer: 'Wonka Industries' }, 'Administrator')
 
       await queueEmail({
         to: 'billing@x.com',

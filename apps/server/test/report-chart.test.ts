@@ -36,7 +36,7 @@ async function setup(admin: TestClient) {
   })
   await admin.post('/api/save_doc', {
     doctype: 'Dashboard',
-    doc: { name: DASH, label: 'RC Dash', config: { cards: [], charts: [] } },
+    doc: { row_id: DASH, label: 'RC Dash', config: { cards: [], charts: [] } },
   })
 }
 

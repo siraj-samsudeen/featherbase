@@ -28,7 +28,7 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
     await createProbeDoctype(admin)
     const doc = await seed(DT, { title: 'first', qty: 3 })
     expect(doc.row_id).toBeTruthy()
-    const listed = await admin.get<{ data: { name: string }[] }>(
+    const listed = await admin.get<{ data: { row_id: string }[] }>(
       `/api/table/${encodeURIComponent(DT)}`,
     )
     expect(listed.data).toHaveLength(1)
@@ -41,7 +41,7 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
     await createProbeDoctype(admin)
     const doc = await seed(DT, { title: 'first', qty: 3 })
     expect(doc.row_id).toBeTruthy()
-    const listed = await admin.get<{ data: { name: string }[] }>(
+    const listed = await admin.get<{ data: { row_id: string }[] }>(
       `/api/table/${encodeURIComponent(DT)}`,
     )
     expect(listed.data).toHaveLength(1)
@@ -63,9 +63,9 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
   test('users created in a test are sandboxed too', async ({ client, admin }) => {
     expect(client.user).toMatch(/@feather\.test/)
     const who = await client.get<{ row_id: string }>('/api/whoami')
-    expect(who.name).toBe(client.user)
+    expect(who.row_id).toBe(client.user)
     // Visible inside the sandbox:
-    const listed = await admin.get<{ data: { name: string }[] }>(
+    const listed = await admin.get<{ data: { row_id: string }[] }>(
       `/api/table/User?filters=${encodeURIComponent(JSON.stringify([['row_id', '=', client.user]]))}`,
     )
     expect(listed.data).toHaveLength(1)
@@ -79,7 +79,7 @@ afterAll(async () => {
     select exists(select 1 from information_schema.tables where table_name = 'sandbox_probe')
   `
   expect(exists).toBe(false)
-  const leftoverUsers = await root<{ name: string }[]>`
+  const leftoverUsers = await root<{ row_id: string }[]>`
     select name from "user" where name like '%@feather.test'
   `
   expect(leftoverUsers).toHaveLength(0)

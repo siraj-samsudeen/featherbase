@@ -36,13 +36,13 @@ async function setup() {
       { column_name: 'amount', column_type: 'Int' },
     ],
   })
-  await saveDoc(DT, { name: 'lh-1', company: 'Umbrella Corp', amount: 4200 }, 'Administrator')
+  await saveDoc(DT, { row_id: 'lh-1', company: 'Umbrella Corp', amount: 4200 }, 'Administrator')
 
   // Two letterheads; only Lh Corp is the default.
   await saveDoc(
     'Letter Head',
     {
-      name: 'Lh Corp',
+      row_id: 'Lh Corp',
       is_default: true,
       header_html: '<div>ACME GLOBAL — invoice for {{ company }}</div>',
       footer_html: '<div>Thank you for your business</div>',
@@ -52,7 +52,7 @@ async function setup() {
   await saveDoc(
     'Letter Head',
     {
-      name: 'Lh Branch',
+      row_id: 'Lh Branch',
       is_default: false,
       header_html: '<div>ACME BRANCH OFFICE</div>',
       footer_html: '<div>Branch footer line</div>',

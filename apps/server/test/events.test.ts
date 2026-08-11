@@ -54,7 +54,7 @@ describe('#101: POST /api/events + GET /api/events/summary', () => {
     await admin.post('/api/events', { events: [ev('row:X/private')] })
     await admin.post('/api/save_doc', {
       doctype: 'User',
-      doc: { name: 'events-b@x.com', email: 'events-b@x.com', enabled: true },
+      doc: { row_id: 'events-b@x.com', email: 'events-b@x.com', enabled: true },
     })
     const { token } = await issueSession('events-b@x.com')
     const res = await api.fetch('/api/events/summary', {

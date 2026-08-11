@@ -45,7 +45,7 @@ describe('API-001/API-002: generic REST resource', () => {
       await admin.post(`/api/table/${encodeURIComponent(DT)}`, { title: t, stars: s })
     const qs = new URLSearchParams({
       filters: JSON.stringify([['stars', '>=', 5]]),
-      fields: JSON.stringify(['name', 'title', 'stars']),
+      fields: JSON.stringify(['row_id', 'title', 'stars']),
       order_by: 'stars desc',
       limit_page_length: '2',
     })

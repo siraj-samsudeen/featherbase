@@ -874,7 +874,7 @@ const PERM_FLAGS = ['can_read', 'can_write', 'can_create', 'can_delete', 'can_su
 app.get('/api/permissions/:doctype', async (c) => {
   await assertSystemManager(who(c))
   const doctype = c.req.param('doctype')
-  const roles = (await sql`select row_id from role order by row_id`).map((r) => r.name as string)
+  const roles = (await sql`select row_id from role order by row_id`).map((r) => r.row_id as string)
   const perms = await sql`
     select row_id, role, ${sql(PERM_FLAGS as unknown as string[])}
     from permission where ref_table = ${doctype} and tier = 'basic' order by role`
@@ -907,9 +907,9 @@ app.post('/api/permissions/:doctype', async (c) => {
 app.get('/api/query_report/:name', async (c) => {
   const report = await getDoc('Report', c.req.param('name'), who(c))
   if (report.report_type !== 'Query Report')
-    throw new AppError('ValidationError', `${report.name} is not a Query Report`)
+    throw new AppError('ValidationError', `${report.row_id} is not a Query Report`)
   return c.json({
-    name: report.name,
+    row_id: report.row_id,
     ref_doctype: report.ref_table ?? null,
     filters: parseFilters(typeof report.query === 'string' ? report.query : ''),
   })

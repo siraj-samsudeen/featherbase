@@ -62,13 +62,13 @@ beforeAll(async () => {
   })
   await areq('/api/save_doc', {
     method: 'POST',
-    body: JSON.stringify({ doctype: 'Role', doc: { name: ROLE } }),
+    body: JSON.stringify({ doctype: 'Role', doc: { row_id: ROLE } }),
   })
   await areq('/api/save_doc', {
     method: 'POST',
     body: JSON.stringify({
       doctype: 'User',
-      doc: { name: USER, email: USER, roles: [{ role: ROLE }] },
+      doc: { row_id: USER, email: USER, roles: [{ role: ROLE }] },
     }),
   })
   await areq('/api/save_doc', {

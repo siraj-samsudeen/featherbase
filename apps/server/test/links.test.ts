@@ -24,7 +24,7 @@ async function setup(admin: TestClient) {
       { column_name: 'allocs', column_type: 'Sub-table', row_table: ROW },
     ],
   })
-  await admin.post('/api/save_doc', { doctype: CUSTOMER, doc: { name: 'Acme', city: 'Pune' } })
+  await admin.post('/api/save_doc', { doctype: CUSTOMER, doc: { row_id: 'Acme', city: 'Pune' } })
 }
 
 describe('META-008: Link integrity', () => {
@@ -52,7 +52,7 @@ describe('META-008: Link integrity', () => {
     await expect(
       admin.post('/api/save_doc', {
         doctype: TICKET,
-        doc: { name: doc.row_id, updated_at: doc.updated_at, customer: 'Nobody' },
+        doc: { row_id: doc.row_id, updated_at: doc.updated_at, customer: 'Nobody' },
       }),
     ).rejects.toMatchObject({ status: 417 })
 
@@ -60,7 +60,7 @@ describe('META-008: Link integrity', () => {
       admin.post('/api/save_doc', {
         doctype: TICKET,
         doc: {
-          name: doc.row_id,
+          row_id: doc.row_id,
           updated_at: doc.updated_at,
           allocs: [{ customer: 'Acme' }, { customer: 'Ghost' }],
         },
@@ -72,7 +72,7 @@ describe('META-008: Link integrity', () => {
 
     await admin.post('/api/save_doc', {
       doctype: TICKET,
-      doc: { name: doc.row_id, updated_at: doc.updated_at, allocs: [{ customer: 'Acme' }] },
+      doc: { row_id: doc.row_id, updated_at: doc.updated_at, allocs: [{ customer: 'Acme' }] },
     })
   })
 

@@ -161,7 +161,7 @@ describe('FILE-002: attachments listing + delete cleanup', () => {
         ['ref_table', '=', 'User'],
         ['ref_name', '=', 'Guest'],
       ])
-      const fields = encodeURIComponent(JSON.stringify(['name', 'file_name', 'file_url']))
+      const fields = encodeURIComponent(JSON.stringify(['row_id', 'file_name', 'file_url']))
       const listed = await admin.get<{ data: { file_name: string }[] }>(
         `/api/table/File?filters=${encodeURIComponent(filters)}&fields=${fields}`,
       )

@@ -108,7 +108,7 @@ describe('PLAT-004: developer CLI', () => {
   it('create-user refuses an email that already exists, whatever its case', async () => {
     await saveDoc(
       'User',
-      { name: DUP_USER, email: DUP_USER, full_name: 'Already Here', enabled: true },
+      { row_id: DUP_USER, email: DUP_USER, full_name: 'Already Here', enabled: true },
       'Administrator',
     )
 
@@ -133,14 +133,14 @@ describe('PLAT-004: developer CLI', () => {
     // One account, untouched — no overwrite and no case-variant shadow.
     const rows = await sql`select row_id, full_name from "user" where lower(row_id) = ${DUP_USER}`
     expect(rows).toHaveLength(1)
-    expect(rows[0].name).toBe(DUP_USER)
+    expect(rows[0].row_id).toBe(DUP_USER)
     expect(rows[0].full_name).toBe('Already Here')
   }, 60_000)
 
   it('console evaluates a piped script with the document API in scope', async () => {
     const stdout = cli(
       ['console'],
-      'const d = await getDoc("User","Administrator"); console.log("NAME=" + d.name)\n',
+      'const d = await getDoc("User","Administrator"); console.log("NAME=" + d.row_id)\n',
     )
     expect(stdout).toContain('NAME=Administrator')
   }, 60_000)

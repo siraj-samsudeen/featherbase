@@ -67,7 +67,7 @@ describe('CUST-001: custom fields', () => {
     })
     expect(upd.status).toBe(200)
     const read = await admin.get<Record<string, unknown>>(
-      `/api/table/User/Administrator?fields=${encodeURIComponent(JSON.stringify(['name', FIELD]))}`,
+      `/api/table/User/Administrator?fields=${encodeURIComponent(JSON.stringify(['row_id', FIELD]))}`,
     )
     expect(read[FIELD]).toBe('vip')
   })
@@ -108,7 +108,7 @@ describe('CUST-001: custom fields', () => {
     invalidateMeta('User')
     expect((await getMeta('User')).columns.some((f) => f.column_name === FIELD)).toBe(false)
     // Column still present with data (non-destructive).
-    const [row] = await sql.unsafe(`select ${FIELD} from "user" where name = 'Administrator'`)
+    const [row] = await sql.unsafe(`select ${FIELD} from "user" where row_id = 'Administrator'`)
     expect(row[FIELD]).toBe('vip')
   })
 })

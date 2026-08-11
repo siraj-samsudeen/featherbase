@@ -121,15 +121,15 @@ const CADENCE_MS: Record<string, number> = {
 // list of report-config names delivered. Called by the daily scheduled job and
 // exposed for a manual "run now" trigger.
 export async function runDueAutoEmailReports(now = new Date()): Promise<string[]> {
-  const rows = await sql<{ name: string; frequency: string; last_sent: Date | null }[]>`
-    select name, frequency, last_sent from auto_email_report where enabled = true`
+  const rows = await sql<{ row_id: string; frequency: string; last_sent: Date | null }[]>`
+    select row_id, frequency, last_sent from auto_email_report where enabled = true`
   const delivered: string[] = []
   for (const r of rows) {
     const gap = CADENCE_MS[r.frequency] ?? CADENCE_MS.Daily
     const due = !r.last_sent || now.getTime() - new Date(r.last_sent).getTime() >= gap
     if (!due) continue
-    await deliverAutoEmailReport(r.name)
-    delivered.push(r.name)
+    await deliverAutoEmailReport(r.row_id as string)
+    delivered.push(r.row_id as string)
   }
   return delivered
 }

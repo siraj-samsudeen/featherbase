@@ -38,7 +38,7 @@ describe('DOC-009: version history', () => {
 
     await admin.post('/api/save_doc', {
       doctype: DT,
-      doc: { name: doc.row_id, updated_at: doc.updated_at, title: 'v2', amount: 25 },
+      doc: { row_id: doc.row_id, updated_at: doc.updated_at, title: 'v2', amount: 25 },
     })
     const versions = await sql`
       select data from version where ref_table = ${DT} and ref_name = ${String(doc.row_id)}
@@ -57,7 +57,7 @@ describe('DOC-009: version history', () => {
     )
     await admin.post('/api/save_doc', {
       doctype: DT,
-      doc: { name: doc.row_id, updated_at: fresh.updated_at, title: 'v3' },
+      doc: { row_id: doc.row_id, updated_at: fresh.updated_at, title: 'v3' },
     })
     const after = await sql`
       select 1 from version where ref_table = ${DT} and ref_name = ${String(doc.row_id)}`
@@ -72,7 +72,7 @@ describe('DOC-009: version history', () => {
     })
     await admin.post('/api/save_doc', {
       doctype: DT,
-      doc: { name: doc.row_id, updated_at: doc.updated_at, title: 'same' },
+      doc: { row_id: doc.row_id, updated_at: doc.updated_at, title: 'same' },
     })
     const versions = await sql`
       select 1 from version where ref_name = ${String(doc.row_id)}`
@@ -101,24 +101,24 @@ describe('DOC-008: amend cancelled documents', () => {
     const amended = await admin.post<Record<string, any>>(
       `/api/table/${encodeURIComponent(DT)}/${doc.row_id}:amend`,
     )
-    expect(amended.name).toBe(`${doc.row_id}-1`)
+    expect(amended.row_id).toBe(`${doc.row_id}-1`)
     expect(amended.amended_from).toBe(doc.row_id)
     expect(amended.status).toBe('draft')
     expect(amended.title).toBe('to amend')
     expect(amended.lines.map((r: any) => r.item)).toEqual(['x', 'y'])
-    expect(amended.lines[0].name).not.toBe(doc.lines[0].name)
+    expect(amended.lines[0].row_id).not.toBe(doc.lines[0].row_id)
 
     // amended doc is editable and resubmittable
     const edit = await admin.fetch('/api/save_doc', {
       method: 'POST',
       body: JSON.stringify({
         doctype: DT,
-        doc: { name: amended.name, updated_at: amended.updated_at, amount: 120 },
+        doc: { row_id: amended.row_id, updated_at: amended.updated_at, amount: 120 },
       }),
     })
     expect(edit.status).toBe(201)
     const resubmit = await admin.fetch(
-      `/api/table/${encodeURIComponent(DT)}/${amended.name}:submit`,
+      `/api/table/${encodeURIComponent(DT)}/${amended.row_id}:submit`,
       { method: 'POST' },
     )
     expect(resubmit.status).toBe(200)

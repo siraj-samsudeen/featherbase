@@ -24,7 +24,7 @@ async function nudgeDueJobs() {
 
 async function setup(admin: TestClient) {
   await loadJobs()
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
   await sql`insert into "user" ${sql({
     row_id: MGR, created_by: 'Administrator', updated_by: 'Administrator', email: MGR, enabled: true,
   })}`
@@ -49,7 +49,7 @@ async function setup(admin: TestClient) {
     ],
   })
   await saveDoc('Workflow', {
-    name: FLOW,
+    row_id: FLOW,
     ref_table: DT,
     is_active: true,
     state_field: 'ticket_status',
@@ -62,7 +62,7 @@ async function setup(admin: TestClient) {
     ],
   })
   await saveDoc('Service Level Agreement', {
-    name: SLA,
+    row_id: SLA,
     ref_table: DT,
     enabled: true,
     priority_field: 'priority',
@@ -101,16 +101,16 @@ describe('SLA: deadline stamping + escalation', () => {
     // real lifecycle path — a direct write to a workflow-bound field is
     // rejected, see workflow-state-field.test.ts).
     await sql`update sla_ticket set resolution_by = now() - interval '1 hour'
-      where name in (${String(doc.row_id)}, ${String(done.name)})`
-    await admin.post(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent(String(done.name))}:apply_workflow_action`, { action: 'Resolve' })
+      where row_id in (${String(doc.row_id)}, ${String(done.row_id)})`
+    await admin.post(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent(String(done.row_id))}:apply_workflow_action`, { action: 'Resolve' })
 
     await enqueue('check_sla', {})
     await nudgeDueJobs()
     await drainJobs()
 
-    const [late] = await sql`select sla_status from sla_ticket where name = ${String(doc.row_id)}`
+    const [late] = await sql`select sla_status from sla_ticket where row_id = ${String(doc.row_id)}`
     expect(late.sla_status).toBe('Overdue')
-    const [ok] = await sql`select sla_status from sla_ticket where name = ${String(done.name)}`
+    const [ok] = await sql`select sla_status from sla_ticket where row_id = ${String(done.row_id)}`
     expect(ok.sla_status).toBe('On Track') // fulfilled state — never escalated
 
     const mails = await sql`

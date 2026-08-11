@@ -52,9 +52,9 @@ describe('PERM-002/003: Permission grants enforced server-side', () => {
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","title"]')}`,
     )
     expect(list.status).toBe(200)
-    const { data } = (await list.json()) as { data: { name: string; title: string }[] }
+    const { data } = (await list.json()) as { data: { row_id: string; title: string }[] }
     expect(data.length).toBeGreaterThan(0)
-    const name = data[0].name
+    const name = data[0].row_id
 
     expect(
       (

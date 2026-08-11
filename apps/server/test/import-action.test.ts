@@ -82,8 +82,8 @@ describe('IMP-005: bulk import', () => {
       failed: { index: number; message: string }[]
     }>(PATH, {
       rows: [
-        { name: 'ROW-1', title: 'original' },
-        { name: 'ROW-1', title: 'sneaky update' },
+        { row_id: 'ROW-1', title: 'original' },
+        { row_id: 'ROW-1', title: 'sneaky update' },
       ],
     })
     expect(res.inserted).toBe(1)
@@ -191,16 +191,16 @@ describe('IMP-005: bulk import', () => {
     admin,
   }) => {
     await setup(admin, { id_pattern: 'prompt' })
-    await admin.post(PATH, { rows: [{ name: 'ROW-1', title: 'already here' }] })
+    await admin.post(PATH, { rows: [{ row_id: 'ROW-1', title: 'already here' }] })
     const res = await admin.post<{
       valid: number
       failed: { index: number; message: string }[]
     }>(PATH, {
       dry_run: true,
       rows: [
-        { name: 'ROW-1', title: 'conflicts with DB' },
-        { name: 'ROW-2', title: 'ok' },
-        { name: 'ROW-2', title: 'duplicate within file' },
+        { row_id: 'ROW-1', title: 'conflicts with DB' },
+        { row_id: 'ROW-2', title: 'ok' },
+        { row_id: 'ROW-2', title: 'duplicate within file' },
         { title: 'prompt table needs a name' },
       ],
     })

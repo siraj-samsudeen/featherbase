@@ -17,7 +17,7 @@ const createSchema = z.object({
 })
 
 export interface SavedView {
-  name: string
+  row_id: string
   table: string
   label: string
   filters: unknown
@@ -28,7 +28,7 @@ export interface SavedView {
 
 function toView(row: Record<string, unknown>, user: string): SavedView {
   return {
-    name: row.row_id as string,
+    row_id: row.row_id as string,
     table: row.ref_table as string,
     label: row.label as string,
     filters: row.filters,
@@ -59,7 +59,7 @@ export async function createSavedView(user: string, body: unknown): Promise<Save
   await assertPermission(user, parsed.data.table, 'read')
   const now = new Date()
   const row = {
-    name: randomBytes(8).toString('hex'),
+    row_id: randomBytes(8).toString('hex'),
     created_by: user,
     updated_by: user,
     created_at: now,

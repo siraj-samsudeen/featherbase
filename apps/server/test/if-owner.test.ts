@@ -60,11 +60,11 @@ describe('PERM-007: own_rows_only permissions', () => {
     expect(list.data[0].created_by).toBe(alice.user)
 
     // Detail: own doc 200, other's 403
-    expect((await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.name}`)).status).toBe(200)
+    expect((await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.row_id}`)).status).toBe(200)
     const bobList = (await (
       await bob.fetch(`/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name"]')}`)
-    ).json()) as { data: { name: string }[] }
-    const bobDoc = bobList.data[0].name
+    ).json()) as { data: { row_id: string }[] }
+    const bobDoc = bobList.data[0].row_id
     expect((await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${bobDoc}`)).status).toBe(403)
 
     // Write/delete on other's doc 403; on own doc allowed
@@ -81,18 +81,18 @@ describe('PERM-007: own_rows_only permissions', () => {
         .status,
     ).toBe(403)
     const own = (await (
-      await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.name}`)
+      await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.row_id}`)
     ).json()) as Record<string, unknown>
     expect(
       (
-        await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.name}`, {
+        await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.row_id}`, {
           method: 'PATCH',
           body: JSON.stringify({ updated_at: own.updated_at, t: 'mine v2' }),
         })
       ).status,
     ).toBe(200)
     expect(
-      (await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.name}`, { method: 'DELETE' }))
+      (await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.row_id}`, { method: 'DELETE' }))
         .status,
     ).toBe(200)
   })

@@ -25,7 +25,7 @@ async function setup(admin: TestClient) {
   await admin.post('/api/save_doc', {
     doctype: 'Web Form',
     doc: {
-      name: 'WfOwn Request Form',
+      row_id: 'WfOwn Request Form',
       title: 'Request',
       route: ROUTE,
       ref_table: DT,
@@ -41,7 +41,7 @@ describe('WEB-002/003: web-form owner attribution', () => {
     const res = await api.post<{ row_id: string }>(`/api/web_form/${ROUTE}`, {
       values: { subject: 'anon' },
     })
-    const [row] = await sql`select created_by from wf_owner_req where name = ${res.row_id}`
+    const [row] = await sql`select created_by from wf_owner_req where row_id = ${res.row_id}`
     expect(row.created_by).toBe('Administrator')
   })
 
@@ -54,14 +54,14 @@ describe('WEB-002/003: web-form owner attribution', () => {
     const res = await cust.post<{ row_id: string }>(`/api/web_form/${ROUTE}`, {
       values: { subject: 'mine' },
     })
-    const [row] = await sql`select created_by from wf_owner_req where name = ${res.row_id}`
+    const [row] = await sql`select created_by from wf_owner_req where row_id = ${res.row_id}`
     expect(row.created_by).toBe(cust.user)
 
     // The own_rows_only read grant now surfaces exactly this document.
-    const list = await cust.get<{ data: { name: string }[]; total: number }>(
+    const list = await cust.get<{ data: { row_id: string }[]; total: number }>(
       `/api/table/${encodeURIComponent(DT)}`,
     )
     expect(list.total).toBe(1)
-    expect(list.data[0].name).toBe(res.row_id)
+    expect(list.data[0].row_id).toBe(res.row_id)
   })
 })

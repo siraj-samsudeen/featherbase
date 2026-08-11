@@ -27,7 +27,7 @@ async function setup(admin: TestClient) {
     ],
   })
   await saveDoc('Assignment Rule', {
-    name: RULE,
+    row_id: RULE,
     ref_table: DT,
     assign_condition: "doc.priority === 'High'",
     assign_to_field: 'agent',
@@ -48,23 +48,23 @@ describe('Assignment Rules: round-robin auto-assignment', () => {
     const d1 = await saveDoc(DT, { title: 'one' }, 'Administrator')
     const d2 = await saveDoc(DT, { title: 'two' }, 'Administrator')
     const d3 = await saveDoc(DT, { title: 'three' }, 'Administrator')
-    expect(await assignee(String(d1.name))).toBe(A1)
-    expect(await assignee(String(d2.name))).toBe(A2)
-    expect(await assignee(String(d3.name))).toBe(A1)
+    expect(await assignee(String(d1.row_id))).toBe(A1)
+    expect(await assignee(String(d2.row_id))).toBe(A2)
+    expect(await assignee(String(d3.row_id))).toBe(A1)
     // assign_to_field stamped the pool user into the document itself.
-    const [row] = await sql`select agent from asg_rule_ticket where name = ${String(d2.name)}`
+    const [row] = await sql`select agent from asg_rule_ticket where row_id = ${String(d2.row_id)}`
     expect(row.agent).toBe(A2)
     // The assignee got a notification.
     const [note] = await sql`
       select for_user from notification_log
-      where ref_table = ${DT} and ref_name = ${String(d1.name)}`
+      where ref_table = ${DT} and ref_name = ${String(d1.row_id)}`
     expect(note.for_user).toBe(A1)
   })
 
   test('skips documents that fail the condition', async ({ admin }) => {
     await setup(admin)
     const low = await saveDoc(DT, { title: 'low', priority: 'Low' }, 'Administrator')
-    expect(await assignee(String(low.name))).toBeUndefined()
+    expect(await assignee(String(low.row_id))).toBeUndefined()
   })
 
   test('a disabled rule never assigns', async ({ admin }) => {

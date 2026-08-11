@@ -18,7 +18,7 @@ async function setup(
       { column_name: 'salary', column_type: 'Currency', tier: 'restricted' },
     ],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
   // basic-tier read+write only (no restricted-tier grant)
   await admin.post('/api/save_doc', {
     doctype: 'Permission',
@@ -37,10 +37,10 @@ async function setup(
 describe('PERM-006: field-level (tier) permissions', () => {
   test('restricted-tier field is omitted from reads for a basic-tier user', async ({ admin, createUser }) => {
     const user = await setup(admin, createUser)
-    const list = await user.get<{ data: { name: string }[] }>(
+    const list = await user.get<{ data: { row_id: string }[] }>(
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name"]')}`,
     )
-    const name = list.data[0].name
+    const name = list.data[0].row_id
     const doc = await user.get<Record<string, unknown>>(
       `/api/table/${encodeURIComponent(DT)}/${name}`,
     )
@@ -59,10 +59,10 @@ describe('PERM-006: field-level (tier) permissions', () => {
     createUser,
   }) => {
     const user = await setup(admin, createUser)
-    const list = await user.get<{ data: { name: string }[] }>(
+    const list = await user.get<{ data: { row_id: string }[] }>(
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name"]')}`,
     )
-    const name = list.data[0].name
+    const name = list.data[0].row_id
     const cur = await admin.get<Record<string, unknown>>(
       `/api/table/${encodeURIComponent(DT)}/${name}`,
     )

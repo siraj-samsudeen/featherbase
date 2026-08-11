@@ -31,7 +31,7 @@ async function setup(admin: TestClient) {
   })
   await admin.post('/api/save_doc', {
     doctype: 'Metadata Override',
-    doc: { name: `${DT}-title-reqd`, table_name: DT, column_name: 'title', property: 'reqd', value: '1' },
+    doc: { row_id: `${DT}-title-reqd`, table_name: DT, column_name: 'title', property: 'reqd', value: '1' },
   })
 }
 

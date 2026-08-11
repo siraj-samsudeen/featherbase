@@ -26,7 +26,7 @@ async function setup(admin: TestClient) {
     ],
   })
   for (const n of ['Acme', 'Globex', 'Initech', 'Umbrella'])
-    await admin.post('/api/save_doc', { doctype: CUSTOMER, doc: { name: n } })
+    await admin.post('/api/save_doc', { doctype: CUSTOMER, doc: { row_id: n } })
 }
 
 const docPath = (dt: string, name: string) =>
@@ -54,7 +54,7 @@ describe('DOC-006: delete with referential integrity', () => {
     })
     await expect(admin.delete(docPath(CUSTOMER, 'Globex'))).rejects.toMatchObject({
       status: 417,
-      message: expect.stringContaining(String(inv.name)),
+      message: expect.stringContaining(String(inv.row_id)),
     })
   })
 
@@ -66,9 +66,9 @@ describe('DOC-006: delete with referential integrity', () => {
       doc: { lines: [{ supplier: 'Umbrella' }] },
     })
     // Unlink first by deleting the invoice, then the customer is deletable.
-    await admin.delete(docPath(INVOICE, String(inv.name)))
+    await admin.delete(docPath(INVOICE, String(inv.row_id)))
     const [{ count }] = await sql.unsafe(
-      `select count(*)::int as count from del_line_row where parent='${inv.name}'`,
+      `select count(*)::int as count from del_line_row where parent='${inv.row_id}'`,
     )
     expect(count).toBe(0)
     await admin.delete(docPath(CUSTOMER, 'Umbrella'))

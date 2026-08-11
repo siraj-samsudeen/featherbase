@@ -61,7 +61,7 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
         body: JSON.stringify({ title: 'from scoped user' }),
       })
       expect(ins.status).toBe(201)
-      const created = (await ins.json()) as { name: string; title: string }
+      const created = (await ins.json()) as { row_id: string; title: string }
       expect(created.title).toBe('from scoped user')
       expect((await user.fetch(`/api/table/${encodeURIComponent(DT)}`)).status).toBe(200)
 
@@ -99,7 +99,7 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
   }) => {
     // The role and a grant with the same identity exist BEFORE the install,
     // with flags the manifest disagrees with.
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
     const pre = await admin.post<{ row_id: string }>('/api/save_doc', {
       doctype: 'Permission',
       doc: { ref_table: 'ToDo', role: ROLE, can_read: true },
@@ -117,13 +117,13 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
       // Neither the role nor the grant was created by this install.
       expect(res.roles).toEqual([])
       expect(res.perms).toEqual([])
-      const [perm] = await sql`select can_write, can_delete from permission where row_id = ${pre.name}`
+      const [perm] = await sql`select can_write, can_delete from permission where row_id = ${pre.row_id}`
       expect(perm).toMatchObject({ can_write: false, can_delete: false })
 
       await uninstallApp(APP)
       // The adopted role and grant predate the app and must survive it.
       expect((await sql`select 1 from role where row_id = ${ROLE}`).length).toBe(1)
-      expect((await sql`select 1 from permission where row_id = ${pre.name}`).length).toBe(1)
+      expect((await sql`select 1 from permission where row_id = ${pre.row_id}`).length).toBe(1)
     } finally {
       await unwire()
     }

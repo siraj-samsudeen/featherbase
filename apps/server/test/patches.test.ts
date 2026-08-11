@@ -51,14 +51,14 @@ describe('PLAT-003: patch runner', () => {
   it('a failing patch aborts cleanly: it and later patches are not recorded or applied', async () => {
     const patches: Patch[] = [
       {
-        name: 't_patch_a',
+        row_id: 't_patch_a',
         up: async (tx) => {
           await tx.unsafe('create table if not exists patch_probe (n text)')
           await tx`insert into patch_probe (n) values ('a')`
         },
       },
       {
-        name: 't_patch_b',
+        row_id: 't_patch_b',
         up: async (tx) => {
           // Partial work, then a failure — the transaction must roll ALL of it back.
           await tx`insert into patch_probe (n) values ('b-partial')`
@@ -66,7 +66,7 @@ describe('PLAT-003: patch runner', () => {
         },
       },
       {
-        name: 't_patch_c',
+        row_id: 't_patch_c',
         up: async (tx) => {
           await tx`insert into patch_probe (n) values ('c')`
         },

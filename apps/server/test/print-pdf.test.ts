@@ -33,7 +33,7 @@ async function setup() {
       { column_name: 'amount', column_type: 'Int' },
     ],
   })
-  await saveDoc(DT, { name: 'srv-1', customer: 'Umbrella Corp', amount: 9876 }, 'Administrator')
+  await saveDoc(DT, { row_id: 'srv-1', customer: 'Umbrella Corp', amount: 9876 }, 'Administrator')
 }
 
 describe('PRN-003: server-side PDF', () => {

@@ -13,7 +13,7 @@ describe('API-004: authentication', () => {
       json({ usr: 'Administrator', pwd: process.env.ADMIN_PASSWORD ?? 'admin' }),
     )
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { token: string; user: { name: string } }
+    const body = (await res.json()) as { token: string; user: { row_id: string } }
     expect(body.token.split('.')).toHaveLength(3)
     expect(body.user.name).toBe('Administrator')
   })
@@ -42,7 +42,7 @@ describe('API-004: authentication', () => {
 
   test('a valid token resolves the correct user and stamps ownership', async ({ admin }) => {
     const me = await admin.get<{ row_id: string }>('/api/whoami')
-    expect(me.name).toBe('Administrator')
+    expect(me.row_id).toBe('Administrator')
   })
 
   test('ping stays public', async ({ api }) => {

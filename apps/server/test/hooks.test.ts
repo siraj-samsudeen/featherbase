@@ -62,7 +62,7 @@ describe('DOC-003: lifecycle hook chain', () => {
       expect(doc.title).toBe('ABC')
       expect(doc.computed).toBe('ABC:new')
       const [row] = await sql.unsafe(
-        `select title, computed from hook_chain_probe where name='${doc.row_id}'`,
+        `select title, computed from hook_chain_probe where row_id='${doc.row_id}'`,
       )
       expect(row).toMatchObject({ title: 'ABC', computed: 'ABC:new' })
     } finally {
@@ -84,7 +84,7 @@ describe('DOC-003: lifecycle hook chain', () => {
       events.length = 0
       const upd = await admin.post<Record<string, unknown>>('/api/save_doc', {
         doctype: DT,
-        doc: { name: doc.row_id, updated_at: doc.updated_at, title: 'y' },
+        doc: { row_id: doc.row_id, updated_at: doc.updated_at, title: 'y' },
       })
       expect(events).toEqual(['validate', 'before_save', 'after_save'])
       expect(upd.computed).toBe('Y:upd')

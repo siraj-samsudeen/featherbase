@@ -35,7 +35,7 @@ describe('META-001: table/column storage and Meta loader', () => {
     const body = await admin.get<{ row_id: string; columns: unknown[] }>(
       `/api/table/${encodeURIComponent(DT)}:meta`,
     )
-    expect(body.name).toBe(DT)
+    expect(body.row_id).toBe(DT)
     expect(body.columns).toHaveLength(2)
   })
 

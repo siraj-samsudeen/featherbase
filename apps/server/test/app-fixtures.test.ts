@@ -35,14 +35,14 @@ function manifest(extra: Partial<AppManifest> = {}): AppManifest {
     ],
     fixtures: [
       // Rows on the app's OWN table…
-      { table: DT, rows: [{ name: 'seed-1', title: 'first' }, { name: 'seed-2', title: 'second' }] },
+      { table: DT, rows: [{ row_id: 'seed-1', title: 'first' }, { row_id: 'seed-2', title: 'second' }] },
       // …and a document on a CORE table that references the app's table —
       // uninstall must remove it BEFORE dropping the table it points at.
       {
         table: 'Email Rule',
         rows: [
           {
-            name: RULE,
+            row_id: RULE,
             ref_table: DT,
             event: 'on_save',
             recipient: 'ops@test.invalid',
@@ -66,13 +66,13 @@ describe('PLAT-006: app fixtures install through the real lifecycle', () => {
     try {
       const res = await installApp(APP)
       expect(res.fixtures).toEqual([
-        { table: DT, name: 'seed-1' },
-        { table: DT, name: 'seed-2' },
-        { table: 'Email Rule', name: RULE },
+        { table: DT, row_id: 'seed-1' },
+        { table: DT, row_id: 'seed-2' },
+        { table: 'Email Rule', row_id: RULE },
       ])
 
       // The rows exist — created through saveDoc, so standard columns are set.
-      const [row] = await sql`select title, created_by from fixture_test_item where name = 'seed-1'`
+      const [row] = await sql`select title, created_by from fixture_test_item where row_id = 'seed-1'`
       expect(row).toMatchObject({ title: 'first', created_by: 'Administrator' })
       const [rule] = await sql`select ref_table from email_rule where row_id = ${RULE}`
       expect(rule).toMatchObject({ ref_table: DT })
@@ -96,7 +96,7 @@ describe('PLAT-006: app fixtures install through the real lifecycle', () => {
     // The Email Rule exists BEFORE the install, with settings the manifest
     // disagrees with (a different recipient).
     await saveDoc('Email Rule', {
-      name: RULE,
+      row_id: RULE,
       ref_table: 'ToDo',
       event: 'on_save',
       recipient: 'pre-existing@test.invalid',
@@ -107,8 +107,8 @@ describe('PLAT-006: app fixtures install through the real lifecycle', () => {
       const res = await installApp(APP)
       // Only the app's own two rows were created — the rule was adopted.
       expect(res.fixtures).toEqual([
-        { table: DT, name: 'seed-1' },
-        { table: DT, name: 'seed-2' },
+        { table: DT, row_id: 'seed-1' },
+        { table: DT, row_id: 'seed-2' },
       ])
       const [rule] = await sql`select ref_table, recipient from email_rule where row_id = ${RULE}`
       expect(rule).toMatchObject({ ref_table: 'ToDo', recipient: 'pre-existing@test.invalid' })
@@ -156,19 +156,19 @@ describe('PLAT-006: app fixtures install through the real lifecycle', () => {
                 columns: [{ column_name: 'title', column_type: 'Data' }],
               },
             ],
-            fixtures: [{ table: 'Decl Fixture Item', rows: [{ name: 'decl-1', title: 'shipped' }] }],
+            fixtures: [{ table: 'Decl Fixture Item', rows: [{ row_id: 'decl-1', title: 'shipped' }] }],
           },
         }),
       })
       expect(res.status).toBe(201)
       const body = (await res.json()) as { fixtures: unknown }
-      expect(body.fixtures).toEqual([{ table: 'Decl Fixture Item', name: 'decl-1' }])
-      const [row] = await sql`select title from decl_fixture_item where name = 'decl-1'`
+      expect(body.fixtures).toEqual([{ table: 'Decl Fixture Item', row_id: 'decl-1' }])
+      const [row] = await sql`select title from decl_fixture_item where row_id = 'decl-1'`
       expect(row).toMatchObject({ title: 'shipped' })
 
       const un = await admin.fetch('/api/uninstall_app', {
         method: 'POST',
-        body: JSON.stringify({ name: DECL }),
+        body: JSON.stringify({ row_id: DECL }),
       })
       expect(un.status).toBe(200)
       expect((await sql`select 1 from table_def where name = 'Decl Fixture Item'`).length).toBe(0)
@@ -182,7 +182,7 @@ describe('PLAT-006: app fixtures install through the real lifecycle', () => {
       manifest({
         fixtures: [
           // recipient is reqd on Email Rule — this row cannot save.
-          { table: 'Email Rule', rows: [{ name: RULE, ref_table: DT, event: 'on_save' }] },
+          { table: 'Email Rule', rows: [{ row_id: RULE, ref_table: DT, event: 'on_save' }] },
         ],
       }),
     )
@@ -242,7 +242,7 @@ describe('helpdesk: a registered app that installs and uninstalls cleanly', () =
     // A look-alike fixture row that PREDATES the app: install must adopt it,
     // uninstall must leave it standing.
     await saveDoc('Email Account', {
-      name: 'Helpdesk Notifications',
+      row_id: 'Helpdesk Notifications',
       email_id: 'pre-existing@corp.test',
     })
 
@@ -280,9 +280,9 @@ describe('helpdesk: a registered app that installs and uninstalls cleanly', () =
       const filed = await customer.post<{ row_id: string }>('/api/web_form/new-ticket', {
         values: { subject: 'Round-trip ticket', priority: 'Urgent' },
       })
-      expect(filed.name).toMatch(/^HDT-\d{5}$/)
+      expect(filed.row_id).toMatch(/^HDT-\d{5}$/)
       const [ticket] = await sql`
-        select raised_by, sla_status from hd_ticket where name = ${filed.name}`
+        select raised_by, sla_status from hd_ticket where row_id = ${filed.row_id}`
       expect(ticket).toMatchObject({ raised_by: customer.user, sla_status: 'On Track' })
     } finally {
       await uninstallApp('helpdesk')
@@ -320,7 +320,7 @@ describe('helpdesk: a registered app that installs and uninstalls cleanly', () =
     registerApp(manifest())
     expect(await isInstalled(APP)).toBe(false)
 
-    const apps = await admin.get<{ available: string[]; installed: { name: string }[] }>('/api/apps')
+    const apps = await admin.get<{ available: string[]; installed: { row_id: string }[] }>('/api/apps')
     expect(apps.available).toEqual(expect.arrayContaining([APP, 'helpdesk']))
     expect(apps.installed.map((a) => a.row_id)).not.toContain(APP)
   })

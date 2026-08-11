@@ -60,7 +60,7 @@ async function makeSource(
   const res = await admin.fetch('/api/table/Data%20Source', {
     method: 'POST',
     body: JSON.stringify({
-      name: 'ext-mysql',
+      row_id: 'ext-mysql',
       engine: 'mysql',
       url_env: EXT_URL_ENV,
       default_schema: 'ext_mysql',
@@ -79,9 +79,9 @@ async function reflectTenant(admin: {
     body: JSON.stringify({ schema: 'ext_mysql', tables: ['tenant'] }),
   })
   expect(res.status).toBe(200)
-  const body = (await res.json()) as { created: { name: string }[]; skipped: unknown[] }
+  const body = (await res.json()) as { created: { row_id: string }[]; skipped: unknown[] }
   expect(body.created).toHaveLength(1)
-  return body.created[0].name
+  return body.created[0].row_id
 }
 
 describe.skipIf(!MYSQL_URL)('mysql: Data Source registry', () => {
@@ -96,7 +96,7 @@ describe.skipIf(!MYSQL_URL)('mysql: Data Source registry', () => {
 
   test('an unreachable server fails without echoing the URL or password', async ({ admin }) => {
     process.env.EXT_MYSQL_DEAD_URL = 'mysql://nobody:hunter2@127.0.0.1:59998/nope'
-    await makeSource(admin, { name: 'ext-mysql-dead', url_env: 'EXT_MYSQL_DEAD_URL' })
+    await makeSource(admin, { row_id: 'ext-mysql-dead', url_env: 'EXT_MYSQL_DEAD_URL' })
     const bad = await admin.post<{ ok: boolean; error: string }>(
       '/api/table/Data%20Source/ext-mysql-dead:test_connection',
       {},
@@ -172,7 +172,7 @@ describe.skipIf(!MYSQL_URL)('mysql: reading bound rows', () => {
     )) as { count: number }
     expect(count.count).toBe(1)
 
-    const name = String(filtered.data[0].name)
+    const name = String(filtered.data[0].row_id)
     const doc = (await admin.get(`/api/table/Ext%20Tenant/${name}`)) as Record<string, unknown>
     expect(doc.slug).toBe('acme')
     expect(doc.updated_at).toBeTruthy()
@@ -251,12 +251,12 @@ describe.skipIf(!MYSQL_URL)('mysql: writing bound rows', () => {
     await admin.post('/api/table/Ext%20Tenant', { slug: 'doomed' })
     const list = (await admin.get(
       `/api/table/Ext%20Tenant?filters=${encodeURIComponent('[["slug","=","doomed"]]')}`,
-    )) as { data: { name: string }[] }
+    )) as { data: { row_id: string }[] }
     const loaded = (await admin.get(
-      `/api/table/Ext%20Tenant/${list.data[0].name}`,
+      `/api/table/Ext%20Tenant/${list.data[0].row_id}`,
     )) as Record<string, unknown>
     const res = await admin.fetch(
-      `/api/table/Ext%20Tenant/${list.data[0].name}?updated_at=${encodeURIComponent(String(loaded.updated_at))}`,
+      `/api/table/Ext%20Tenant/${list.data[0].row_id}?updated_at=${encodeURIComponent(String(loaded.updated_at))}`,
       { method: 'DELETE' },
     )
     expect(res.status).toBe(200)

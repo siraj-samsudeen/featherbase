@@ -16,7 +16,7 @@ async function makeDT(admin: TestClient, name: string, id_pattern: string) {
 }
 
 const save = (admin: TestClient, doctype: string, doc: Record<string, unknown>) =>
-  admin.post<{ name: string } & Record<string, unknown>>('/api/save_doc', { doctype, doc })
+  admin.post<{ row_id: string } & Record<string, unknown>>('/api/save_doc', { doctype, doc })
 
 describe('META-006: naming rules', () => {
   test('50 parallel series inserts produce distinct gapless sequential names', async ({
@@ -26,7 +26,7 @@ describe('META-006: naming rules', () => {
     const results = await Promise.all(
       Array.from({ length: 50 }, (_, i) => save(admin, SERIES_DT, { title: `t${i}` })),
     )
-    const names = results.map((r) => r.name)
+    const names = results.map((r) => r.row_id)
     expect(new Set(names).size).toBe(50)
     const nums = names.map((n) => Number(n.replace('NMINV-', ''))).sort((a, b) => a - b)
     expect(nums).toEqual(Array.from({ length: 50 }, (_, i) => i + 1))
@@ -44,7 +44,7 @@ describe('META-006: naming rules', () => {
     admin,
   }) => {
     await makeDT(admin, PROMPT_DT, 'prompt')
-    const doc = await save(admin, PROMPT_DT, { name: 'Hardware', title: 'x' })
+    const doc = await save(admin, PROMPT_DT, { row_id: 'Hardware', title: 'x' })
     expect(doc.row_id).toBe('Hardware')
     await expect(save(admin, PROMPT_DT, { title: 'y' })).rejects.toMatchObject({ status: 417 })
   })
@@ -53,13 +53,13 @@ describe('META-006: naming rules', () => {
     admin,
   }) => {
     await makeDT(admin, PROMPT_DT, 'prompt')
-    const first = await save(admin, PROMPT_DT, { name: 'Software', title: 'v1' })
+    const first = await save(admin, PROMPT_DT, { row_id: 'Software', title: 'v1' })
     await save(admin, PROMPT_DT, {
-      name: 'Software',
+      row_id: 'Software',
       updated_at: first.updated_at,
       title: 'v2',
     })
-    const [row] = await sql.unsafe(`select title from nm_category where name='Software'`)
+    const [row] = await sql.unsafe(`select title from nm_category where row_id='Software'`)
     expect(row.title).toBe('v2')
   })
 })

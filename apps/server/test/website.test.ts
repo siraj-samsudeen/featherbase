@@ -14,14 +14,14 @@ async function makePage(admin: TestClient, doc: Record<string, unknown>) {
 // Each test creates its pages inside its own sandbox transaction.
 async function setup(admin: TestClient) {
   await makePage(admin, {
-    name: 'srv-pub-pg',
+    row_id: 'srv-pub-pg',
     title: 'Public',
     route: 'srv-pub',
     content: '<h1>Hello Public</h1>',
     published: true,
   })
   await makePage(admin, {
-    name: 'srv-draft-pg',
+    row_id: 'srv-draft-pg',
     title: 'Draft',
     route: 'srv-draft',
     content: '<h1>Secret</h1>',
@@ -63,7 +63,7 @@ describe('WEB-001: web pages', () => {
     await setup(admin)
     await sql`delete from web_page where route = 'srv-pub'`
     await makePage(admin, {
-      name: 'srv-pub-pg2',
+      row_id: 'srv-pub-pg2',
       title: 'A & B <x>',
       route: 'srv-pub',
       content: '<p class="c">ok</p>',

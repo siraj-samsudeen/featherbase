@@ -25,7 +25,7 @@ async function setup(admin: TestClient) {
       { column_name: 'customer', column_type: 'Reference', reference_table: 'User' },
     ],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
   await admin.post('/api/save_doc', {
     doctype: 'Permission',
     doc: { ref_table: DT, role: ROLE, can_read: true },
@@ -52,7 +52,7 @@ describe('PERM-005: NULL links pass Data Scope list narrowing', () => {
     })
     const body = await agent.get<{ data: { subject: string }[]; total: number }>(
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
-        JSON.stringify(['name', 'subject']),
+        JSON.stringify(['row_id', 'subject']),
       )}`,
     )
     const subjects = body.data.map((d) => d.subject).sort()

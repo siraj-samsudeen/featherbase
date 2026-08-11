@@ -49,10 +49,10 @@ afterAll(async () => {
 })
 
 const MANIFEST = {
-  name: 'appsrc-demo',
+  row_id: 'appsrc-demo',
   sources: [
     {
-      name: 'appsrc-fixture',
+      row_id: 'appsrc-fixture',
       engine: 'postgres' as const,
       url_env: ENV_VAR,
       default_schema: 'appsrc',
@@ -83,15 +83,15 @@ describe('app manifests can declare Data Sources and reflections', () => {
     expect(meta.source_writable).toBe(false) // read_only source
     const list = (await admin.get(
       `/api/table/Demo%20Lease?fields=${encodeURIComponent('["name","holder"]')}`,
-    )) as { data: { name: string; holder: string }[]; total: number }
+    )) as { data: { row_id: string; holder: string }[]; total: number }
     expect(list.total).toBe(1)
-    expect(list.data[0]).toMatchObject({ name: 'sap', holder: 'box-1' })
+    expect(list.data[0]).toMatchObject({ row_id: 'sap', holder: 'box-1' })
   })
 
   test('uninstall removes the reflected Tables and the source it created', async ({ admin }) => {
     invalidateSources()
     await admin.post('/api/install_app', { manifest: MANIFEST })
-    await admin.post('/api/uninstall_app', { name: 'appsrc-demo' })
+    await admin.post('/api/uninstall_app', { row_id: 'appsrc-demo' })
 
     const tables = await sql`
       select name from table_def where name in ('Demo Lease', 'Demo Run')`
@@ -109,7 +109,7 @@ describe('app manifests can declare Data Sources and reflections', () => {
     invalidateSources()
     // The operator created the source by hand first.
     await admin.post('/api/table/Data%20Source', {
-      name: 'appsrc-fixture',
+      row_id: 'appsrc-fixture',
       engine: 'postgres',
       url_env: ENV_VAR,
       default_schema: 'appsrc',
@@ -117,7 +117,7 @@ describe('app manifests can declare Data Sources and reflections', () => {
     })
     const res = await admin.post<{ sources: string[] }>('/api/install_app', { manifest: MANIFEST })
     expect(res.sources).toEqual([]) // adopted, so not recorded
-    await admin.post('/api/uninstall_app', { name: 'appsrc-demo' })
+    await admin.post('/api/uninstall_app', { row_id: 'appsrc-demo' })
     const [src] = await sql`select 1 from data_source where row_id = 'appsrc-fixture'`
     expect(src).toBeTruthy() // predated the app — never removed
   })
@@ -128,7 +128,7 @@ describe('app manifests can declare Data Sources and reflections', () => {
       admin.post('/api/install_app', {
         manifest: {
           ...MANIFEST,
-          name: 'appsrc-bad',
+          row_id: 'appsrc-bad',
           sources: [
             {
               ...MANIFEST.sources[0],
@@ -144,10 +144,10 @@ describe('app manifests can declare Data Sources and reflections', () => {
     await expect(
       admin.post('/api/install_app', {
         manifest: {
-          name: 'appsrc-secret',
+          row_id: 'appsrc-secret',
           sources: [
             {
-              name: 'appsrc-secret-src',
+              row_id: 'appsrc-secret-src',
               engine: 'postgres',
               url_env: 'postgres://user:pw@host/db',
             },
@@ -173,8 +173,8 @@ describe('a manifest never carries a credential', () => {
       await expect(
         admin.post('/api/install_app', {
           manifest: {
-            name: `appsrc-secret-${url_env.length}`,
-            sources: [{ name: 'appsrc-secret-src', engine: 'postgres', url_env }],
+            row_id: `appsrc-secret-${url_env.length}`,
+            sources: [{ row_id: 'appsrc-secret-src', engine: 'postgres', url_env }],
           },
         }),
       ).rejects.toMatchObject({ status: 417 })

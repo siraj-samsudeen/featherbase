@@ -17,7 +17,7 @@ describe('#101: /api/saved_views', () => {
     const list = await admin.get<{ views: Array<Record<string, unknown>> }>(
       '/api/saved_views?table=Customer',
     )
-    const view = list.views.find((v) => v.name === created.row_id)!
+    const view = list.views.find((v) => v.row_id === created.row_id)!
     expect(view).toMatchObject({ label: 'Open ones', shared: false, mine: true })
     expect(view.filters).toEqual(FILTERS)
     // A different table's bar does not see it.
@@ -54,7 +54,7 @@ describe('#101: /api/saved_views', () => {
     })
     await admin.post('/api/save_doc', {
       doctype: 'User',
-      doc: { name: 'sv-user@x.com', email: 'sv-user@x.com', enabled: true },
+      doc: { row_id: 'sv-user@x.com', email: 'sv-user@x.com', enabled: true },
     })
     const { token } = await issueSession('sv-user@x.com')
     const auth = { authorization: `Bearer ${token}` }
@@ -97,7 +97,7 @@ describe('#101: /api/saved_views', () => {
     })
     await admin.post('/api/save_doc', {
       doctype: 'User',
-      doc: { name: 'sv-locked@x.com', email: 'sv-locked@x.com', enabled: true },
+      doc: { row_id: 'sv-locked@x.com', email: 'sv-locked@x.com', enabled: true },
     })
     const { token } = await issueSession('sv-locked@x.com')
     const auth = { authorization: `Bearer ${token}` }
@@ -140,7 +140,7 @@ describe('#101: /api/saved_views', () => {
     const list = await admin.get<{ views: Array<{ row_id: string }> }>(
       '/api/saved_views?table=Customer',
     )
-    expect(list.views.some((v) => v.name === created.row_id)).toBe(false)
+    expect(list.views.some((v) => v.row_id === created.row_id)).toBe(false)
     await expect(admin.delete(`/api/saved_views/${created.row_id}`)).rejects.toMatchObject({
       status: 404,
     })

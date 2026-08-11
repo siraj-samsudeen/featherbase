@@ -24,7 +24,7 @@ async function setup(admin: TestClient) {
   })
   await admin.post('/api/save_doc', {
     doctype: 'Report',
-    doc: { name: REPORT, ref_table: 'User', report_type: 'Script Report', report_script: 'Srv Echo' },
+    doc: { row_id: REPORT, ref_table: 'User', report_type: 'Script Report', report_script: 'Srv Echo' },
   })
 }
 
@@ -49,13 +49,13 @@ describe('RPT-005: script reports', () => {
       method: 'POST',
       body: JSON.stringify({
         doctype: 'Report',
-        doc: { name: 'SR Srv Bad', ref_table: 'User', report_type: 'Script Report', report_script: 'User Report' },
+        doc: { row_id: 'SR Srv Bad', ref_table: 'User', report_type: 'Script Report', report_script: 'User Report' },
       }),
     })
     expect(built.status).toBe(201)
     const res = await runScriptReport('SR Srv Bad', {}, 'Administrator')
     expect(res.columns).toContain('name')
-    expect(res.rows.some((r) => r.name === 'Administrator')).toBe(true)
+    expect(res.rows.some((r) => r.row_id === 'Administrator')).toBe(true)
   })
 
   test('rejects a Report that names an unregistered script', async ({ admin }) => {
@@ -64,7 +64,7 @@ describe('RPT-005: script reports', () => {
       method: 'POST',
       body: JSON.stringify({
         doctype: 'Report',
-        doc: { name: 'SR Srv Missing', ref_table: 'User', report_type: 'Script Report', report_script: 'No Such Report' },
+        doc: { row_id: 'SR Srv Missing', ref_table: 'User', report_type: 'Script Report', report_script: 'No Such Report' },
       }),
     })
     expect(res.status).toBe(201)

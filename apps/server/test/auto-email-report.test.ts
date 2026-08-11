@@ -59,7 +59,7 @@ async function setup(admin: TestClient) {
   await admin.post('/api/save_doc', {
     doctype: 'Auto Email Report',
     doc: {
-      name: AER,
+      row_id: AER,
       report: REPORT,
       recipients: RECIP,
       file_format: 'CSV',

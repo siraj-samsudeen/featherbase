@@ -23,7 +23,7 @@ async function installHelpdesk() {
   if (!have) await installApp('helpdesk')
 }
 
-const num = (name: unknown) => Number(String(name).slice('HDT-'.length))
+const num = (row_id: unknown) => Number(String(name).slice('HDT-'.length))
 
 describe('HD Ticket: naming series + defaults', () => {
   test('new tickets get sequential HDT- numbers and open on the ticket_status field', async ({
@@ -86,17 +86,17 @@ describe('HD Ticket permissions: customers see only their own', () => {
       values: { subject: "Gina's invoice problem" },
     })
 
-    const list = await carl.get<{ data: { name: string }[] }>('/api/table/HD%20Ticket')
-    expect(list.data.map((d) => d.name)).toEqual([mine.name])
-    await expect(carl.get(`/api/table/HD%20Ticket/${theirs.name}`)).rejects.toMatchObject({
+    const list = await carl.get<{ data: { row_id: string }[] }>('/api/table/HD%20Ticket')
+    expect(list.data.map((d) => d.row_id)).toEqual([mine.row_id])
+    await expect(carl.get(`/api/table/HD%20Ticket/${theirs.row_id}`)).rejects.toMatchObject({
       status: 403,
     })
 
     // Admin sees both (filter to this test's rows — the dev database may
     // carry committed demo tickets).
-    const all = await admin.get<{ data: { name: string }[] }>(
+    const all = await admin.get<{ data: { row_id: string }[] }>(
       `/api/table/HD%20Ticket?filters=${encodeURIComponent(
-        JSON.stringify([['row_id', 'in', [mine.name, theirs.name]]]),
+        JSON.stringify([['row_id', 'in', [mine.row_id, theirs.row_id]]]),
       )}`,
     )
     expect(all.data).toHaveLength(2)
@@ -181,7 +181,7 @@ describe('HD Ticket workflow: Open → In Progress → Resolved → Closed on th
       values: { subject: 'Notify me when fixed' },
     })
     const doc = await admin.get<{ row_id: string; raised_by: string }>(
-      `/api/table/HD%20Ticket/${filed.name}`,
+      `/api/table/HD%20Ticket/${filed.row_id}`,
     )
     expect(doc.raised_by).toBe(customer.user)
 
@@ -223,7 +223,7 @@ describe('HD Ticket web form: public intake with owner attribution', () => {
       },
     })
     const doc = await admin.get<{ created_by: string; raised_by: string; ticket_status: string }>(
-      `/api/table/HD%20Ticket/${filed.name}`,
+      `/api/table/HD%20Ticket/${filed.row_id}`,
     )
     expect(doc.created_by).toBe(customer.user)
     expect(doc.raised_by).toBe(customer.user)

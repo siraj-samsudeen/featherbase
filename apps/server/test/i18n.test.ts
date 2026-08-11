@@ -13,7 +13,7 @@ async function seedFrench(admin: TestClient) {
   ]) {
     await admin.post('/api/save_doc', {
       doctype: 'Translation',
-      doc: { name: `t-fr-${src}`, language: 'fr', source_text: src, translated_text: tr },
+      doc: { row_id: `t-fr-${src}`, language: 'fr', source_text: src, translated_text: tr },
     })
   }
 }
@@ -35,7 +35,7 @@ describe('I18N-001: translations', () => {
       admin.post('/api/save_doc', {
         doctype: 'Translation',
         // A different primary key: only the (language, source_text) pair clashes.
-        doc: { name: 'other-name', language: 'fr', source_text: 'Save', translated_text: 'X' },
+        doc: { row_id: 'other-name', language: 'fr', source_text: 'Save', translated_text: 'X' },
       }),
     ).rejects.toThrow(/Duplicate value for language, source_text/)
   })

@@ -51,7 +51,7 @@ describe('DOC-007: submittable documents', () => {
       await expect(
         admin.post('/api/save_doc', {
           doctype: DT,
-          doc: { name: doc.row_id, updated_at: submitted.updated_at, amount: 999 },
+          doc: { row_id: doc.row_id, updated_at: submitted.updated_at, amount: 999 },
         }),
       ).rejects.toMatchObject({
         status: 417,
@@ -78,7 +78,7 @@ describe('DOC-007: submittable documents', () => {
       await expect(
         admin.post('/api/save_doc', {
           doctype: DT,
-          doc: { name: doc.row_id, updated_at: cancelled.updated_at, amount: 5 },
+          doc: { row_id: doc.row_id, updated_at: cancelled.updated_at, amount: 5 },
         }),
       ).rejects.toMatchObject({ status: 417 })
     } finally {
@@ -101,7 +101,7 @@ describe('DOC-007: submittable documents', () => {
       doc: { x: 'a' },
     })
     await expect(
-      admin.post(`/api/table/${encodeURIComponent(PLAIN)}/${plain.name}:submit`),
+      admin.post(`/api/table/${encodeURIComponent(PLAIN)}/${plain.row_id}:submit`),
     ).rejects.toMatchObject({
       status: 417,
       message: expect.stringMatching(/not submittable/),

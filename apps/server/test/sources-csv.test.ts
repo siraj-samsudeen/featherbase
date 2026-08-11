@@ -78,7 +78,7 @@ async function makeCsvSource(admin: {
 }): Promise<string[]> {
   invalidateSources()
   await admin.post('/api/table/Data%20Source', {
-    name: 'seed-fixture',
+    row_id: 'seed-fixture',
     engine: 'csv-folder',
     root_path: dir,
     access: 'read_write',
@@ -88,7 +88,7 @@ async function makeCsvSource(admin: {
     body: JSON.stringify({ tables: ['store_master.csv', 'finance/notes.csv'] }),
   })
   expect(res.status).toBe(200)
-  const body = (await res.json()) as { created: { name: string }[]; skipped: { reason: string }[] }
+  const body = (await res.json()) as { created: { row_id: string }[]; skipped: { reason: string }[] }
   expect(body.skipped).toEqual([])
   return body.created.map((c) => c.name)
 }
@@ -97,7 +97,7 @@ describe('M1: csv-folder source', () => {
   test('introspects every csv (recursively), skipping non-csv files', async ({ admin }) => {
     invalidateSources()
     await admin.post('/api/table/Data%20Source', {
-      name: 'seed-fixture',
+      row_id: 'seed-fixture',
       engine: 'csv-folder',
       root_path: dir,
       access: 'read_write',

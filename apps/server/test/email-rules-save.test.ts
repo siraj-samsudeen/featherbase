@@ -61,7 +61,7 @@ describe('EML-004 extended: on_create / on_save rules + templated recipient', ()
 
     const resolved = await saveDoc(
       DT,
-      { name: doc.row_id, updated_at: (doc.updated_at as Date).toISOString(), stage: 'Resolved' },
+      { row_id: doc.row_id, updated_at: (doc.updated_at as Date).toISOString(), stage: 'Resolved' },
       'Administrator',
     )
     const afterResolve = await queued(SUBJ_RESOLVED)
@@ -72,7 +72,7 @@ describe('EML-004 extended: on_create / on_save rules + templated recipient', ()
     // A later save that KEEPS stage=Resolved must not re-fire the rule.
     await saveDoc(
       DT,
-      { name: doc.row_id, updated_at: (resolved.updated_at as Date).toISOString(), title: 'ticket v2' },
+      { row_id: doc.row_id, updated_at: (resolved.updated_at as Date).toISOString(), title: 'ticket v2' },
       'Administrator',
     )
     expect((await queued(SUBJ_RESOLVED)).length).toBe(1)
@@ -83,7 +83,7 @@ describe('EML-004 extended: on_create / on_save rules + templated recipient', ()
     const doc = await saveDoc(DT, { title: 'no email' }, 'Administrator') // raised_by unset
     await saveDoc(
       DT,
-      { name: doc.row_id, updated_at: (doc.updated_at as Date).toISOString(), stage: 'Resolved' },
+      { row_id: doc.row_id, updated_at: (doc.updated_at as Date).toISOString(), stage: 'Resolved' },
       'Administrator',
     )
     const rows = await queued(SUBJ_RESOLVED)

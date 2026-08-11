@@ -10,7 +10,7 @@ const USER = 'roletest@x.com'
 async function makeUser(admin: TestClient) {
   await admin.post('/api/save_doc', {
     doctype: 'User',
-    doc: { name: USER, email: USER, enabled: true },
+    doc: { row_id: USER, email: USER, enabled: true },
   })
 }
 
@@ -30,7 +30,7 @@ describe('PERM-001: role model', () => {
       body: JSON.stringify({
         doctype: 'User',
         doc: {
-          name: USER,
+          row_id: USER,
           updated_at: doc.updated_at,
           roles: [{ role: 'System Manager' }, { role: 'Guest' }],
         },
@@ -46,7 +46,7 @@ describe('PERM-001: role model', () => {
       method: 'POST',
       body: JSON.stringify({
         doctype: 'User',
-        doc: { name: USER, updated_at: doc2.updated_at, roles: [{ role: 'Guest' }] },
+        doc: { row_id: USER, updated_at: doc2.updated_at, roles: [{ role: 'Guest' }] },
       }),
     })
     expect(remove.status).toBe(201)
@@ -59,7 +59,7 @@ describe('PERM-001: role model', () => {
     await expect(
       admin.post('/api/save_doc', {
         doctype: 'User',
-        doc: { name: USER, updated_at: doc.updated_at, roles: [{ role: 'Fake Role' }] },
+        doc: { row_id: USER, updated_at: doc.updated_at, roles: [{ role: 'Fake Role' }] },
       }),
     ).rejects.toMatchObject({ status: 417 })
   })

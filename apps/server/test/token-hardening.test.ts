@@ -63,7 +63,7 @@ describe('#137 P1: OAuth cannot revive a disabled principal', () => {
     const email = 'disabled-human@example.com'
     await admin.post('/api/save_doc', {
       doctype: 'User',
-      doc: { name: email, email, enabled: false },
+      doc: { row_id: email, email, enabled: false },
     })
     await expect(findOrCreateGoogleUser(email, 'Disabled Human')).rejects.toMatchObject({
       type: 'AuthenticationError',
@@ -122,7 +122,7 @@ describe('#137 P2: "active" means the token actually authenticates', () => {
 
     const [account] = (await admin.get<{ service_accounts: { token_count: number }[] }>(
       '/api/service_accounts',
-    )).service_accounts.filter((a) => (a as { name: string }).name === 'svc-count-test')
+    )).service_accounts.filter((a) => (a as { row_id: string }).row_id === 'svc-count-test')
     expect(account.token_count).toBe(1) // not 2 — the expired one cannot authenticate
 
     // A token whose owner is disabled is not "active" either.
@@ -244,7 +244,7 @@ describe('#137 R2: OAuth refusals cannot be told apart', () => {
     const disabled = 'enum-disabled@example.com'
     await admin.post('/api/save_doc', {
       doctype: 'User',
-      doc: { name: disabled, email: disabled, enabled: false },
+      doc: { row_id: disabled, email: disabled, enabled: false },
     })
     await serviceAccount(admin, 'svc-enum')
 
@@ -267,7 +267,7 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
     const email = 'reset-then-service@example.com'
     await admin.post('/api/save_doc', {
       doctype: 'User',
-      doc: { name: email, email, enabled: true },
+      doc: { row_id: email, email, enabled: true },
     })
     const token = await requestPasswordReset(email)
     expect(token).toBeTruthy()
@@ -291,7 +291,7 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
     const email = 'reset-burn@example.com'
     await admin.post('/api/save_doc', {
       doctype: 'User',
-      doc: { name: email, email, enabled: true },
+      doc: { row_id: email, email, enabled: true },
     })
     const token = await requestPasswordReset(email)
 
@@ -322,7 +322,7 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
     const email = 'reset-replay@example.com'
     await admin.post('/api/save_doc', {
       doctype: 'User',
-      doc: { name: email, email, enabled: true },
+      doc: { row_id: email, email, enabled: true },
     })
     const token = await requestPasswordReset(email)
     await resetPassword(token as string, 'first-password-1')

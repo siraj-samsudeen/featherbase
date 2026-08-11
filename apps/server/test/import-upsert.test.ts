@@ -133,7 +133,7 @@ describe('UPS-R1: the import boundary learns update', () => {
   }) => {
     await setup(admin)
     await seed(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
     await admin.post('/api/save_doc', {
       doctype: 'Permission',
       doc: { ref_table: DT, role: ROLE, can_read: true, can_create: true },
@@ -167,7 +167,7 @@ describe('UPS-R1: the import boundary learns update', () => {
   }) => {
     await setup(admin)
     await seed(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
     await admin.post('/api/save_doc', {
       doctype: 'Permission',
       doc: { ref_table: DT, role: ROLE, can_read: true, can_write: true },
@@ -194,7 +194,7 @@ describe('UPS-R1: the import boundary learns update', () => {
     createUser,
   }) => {
     await setup(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
     await admin.post('/api/save_doc', {
       doctype: 'Permission',
       doc: {
@@ -451,7 +451,7 @@ describe('UPS-R3: what an update touches', () => {
     const before = await rowsByZone(admin)
     const res = await admin.post<{ updated: number; failed: { message: string }[] }>(PATH, {
       key_column: 'zone',
-      rows: [{ zone: 'Alpha', name: 'SMUGGLED-ID', pop: 1 }],
+      rows: [{ zone: 'Alpha', row_id: 'SMUGGLED-ID', pop: 1 }],
     })
     expect(res.updated).toBe(0)
     expect(res.failed).toHaveLength(1)
@@ -509,8 +509,8 @@ describe('UPS-R4: the file’s own codes as ids', () => {
     await setup(admin)
     const res = await admin.post<{ inserted: number; failed: unknown[] }>(PATH, {
       rows: [
-        { name: 'Z-07/A x', zone: 'Coded' }, // charset: verbatim incl. slash+space
-        { name: 'REF-002', zone: 'Coded2' },
+        { row_id: 'Z-07/A x', zone: 'Coded' }, // charset: verbatim incl. slash+space
+        { row_id: 'REF-002', zone: 'Coded2' },
         { zone: 'Series' }, // unsupplied — the series continues for it
       ],
     })
@@ -528,11 +528,11 @@ describe('UPS-R4: the file’s own codes as ids', () => {
     admin,
   }) => {
     await setup(admin)
-    await admin.post(PATH, { rows: [{ name: 'REF-001', zone: 'First', pop: 1 }] })
+    await admin.post(PATH, { rows: [{ row_id: 'REF-001', zone: 'First', pop: 1 }] })
 
     const collide = await admin.post<{ inserted: number; failed: { index: number; message: string }[] }>(
       PATH,
-      { rows: [{ name: 'REF-001', zone: 'Second' }, { name: 'REF-003', zone: 'Third' }] },
+      { rows: [{ row_id: 'REF-001', zone: 'Second' }, { row_id: 'REF-003', zone: 'Third' }] },
     )
     expect(collide.inserted).toBe(1)
     expect(collide.failed.map((f) => f.index)).toEqual([0])
@@ -540,7 +540,7 @@ describe('UPS-R4: the file’s own codes as ids', () => {
 
     const upsert = await admin.post<{ updated: number; inserted: number }>(PATH, {
       key_column: 'name',
-      rows: [{ name: 'REF-001', pop: 42 }],
+      rows: [{ row_id: 'REF-001', pop: 42 }],
     })
     expect(upsert.updated).toBe(1)
     expect(upsert.inserted).toBe(0)

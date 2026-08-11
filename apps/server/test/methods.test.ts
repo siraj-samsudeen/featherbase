@@ -28,7 +28,7 @@ describe('API-003: RPC for whitelisted server methods', () => {
   test('rejects a non-whitelisted method with 403', async ({ admin }) => {
     const res = await admin.fetch('/api/method/setUserPassword', {
       method: 'POST',
-      body: JSON.stringify({ name: 'Administrator', password: 'x' }),
+      body: JSON.stringify({ row_id: 'Administrator', password: 'x' }),
     })
     expect(res.status).toBe(403)
     expect(((await res.json()) as { error: { type: string } }).error.type).toBe('PermissionError')

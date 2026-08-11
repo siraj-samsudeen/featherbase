@@ -472,7 +472,7 @@ export async function saveDoc(
     // the caller is explicitly creating, so the supplied id is intent
     // (UPS-R4) and resolveName adopts it verbatim.
     if (meta.id_pattern !== 'prompt' && values.amended_from == null && mode !== 'insert')
-      throw new AppError('NotFoundError', `${table} ${values.name} not found`)
+      throw new AppError('NotFoundError', `${table} ${values[ROW_KEY]} not found`)
   }
   if (!opts.skipPermissions) {
     await assertPermission(user, table, 'create')

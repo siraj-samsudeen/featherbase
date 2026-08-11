@@ -24,13 +24,13 @@ async function setup(admin: TestClient) {
       { column_name: 'amount', column_type: 'Int' },
     ],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
 
   // Draft can EITHER auto-approve (small amounts) OR need approval (large ones).
   await admin.post('/api/save_doc', {
     doctype: 'Workflow',
     doc: {
-      name: FLOW,
+      row_id: FLOW,
       ref_table: DT,
       is_active: true,
       states: [
@@ -47,8 +47,8 @@ async function setup(admin: TestClient) {
 }
 
 async function seedDocs(admin: TestClient) {
-  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { name: 'small', title: 'a', amount: 500 })
-  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { name: 'big', title: 'b', amount: 5000 })
+  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'small', title: 'a', amount: 500 })
+  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'big', title: 'b', amount: 5000 })
 }
 
 describe('conditional workflow transitions', () => {

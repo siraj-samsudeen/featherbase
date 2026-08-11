@@ -27,7 +27,7 @@ describe('Frappe lifecycle + app-contract parity', () => {
     const seen: string[] = []
     const APP = `hookp-order-${Date.now()}`
     registerApp({
-      name: APP,
+      row_id: APP,
       doc_events: {
         [DT]: {
           before_validate: ({ row }) => {
@@ -49,7 +49,7 @@ describe('Frappe lifecycle + app-contract parity', () => {
       seen.length = 0
       await saveDoc(
         DT,
-        { name: doc.row_id, updated_at: (doc.updated_at as Date).toISOString(), title: 'again' },
+        { row_id: doc.row_id, updated_at: (doc.updated_at as Date).toISOString(), title: 'again' },
         'Administrator',
       )
       expect(seen).toEqual(['before_validate', 'validate', 'on_update'])
@@ -63,7 +63,7 @@ describe('Frappe lifecycle + app-contract parity', () => {
     const seen: string[] = []
     const APP = `hookp-submit-${Date.now()}`
     registerApp({
-      name: APP,
+      row_id: APP,
       doc_events: {
         [DT]: {
           before_submit: ({ row }) => {
@@ -79,15 +79,15 @@ describe('Frappe lifecycle + app-contract parity', () => {
       await installApp(APP)
       const ok = await saveDoc(DT, { title: 'fine' }, 'Administrator')
       seen.length = 0
-      await submitDoc(DT, String(ok.name), 'Administrator')
+      await submitDoc(DT, String(ok.row_id), 'Administrator')
       expect(seen).toEqual(['before_submit', 'on_update', 'on_submit'])
 
       const bad = await saveDoc(DT, { title: 'blocked' }, 'Administrator')
-      await expect(submitDoc(DT, String(bad.name), 'Administrator')).rejects.toThrow(
+      await expect(submitDoc(DT, String(bad.row_id), 'Administrator')).rejects.toThrow(
         'submission blocked',
       )
       const [row] = await sql`
-        select status from hook_parity_note where name = ${String(bad.name)}`
+        select status from hook_parity_note where row_id = ${String(bad.row_id)}`
       expect(row.status).toBe('draft') // the abort rolled the write back
     } finally {
       await uninstallApp(APP).catch(() => {})
@@ -99,7 +99,7 @@ describe('Frappe lifecycle + app-contract parity', () => {
     const audited: string[] = []
     const APP = `hookp-wild-${Date.now()}`
     registerApp({
-      name: APP,
+      row_id: APP,
       doc_events: {
         '*': { after_insert: ({ meta }) => void audited.push(meta.name) },
       },
@@ -107,7 +107,7 @@ describe('Frappe lifecycle + app-contract parity', () => {
     try {
       await installApp(APP)
       await saveDoc(DT, { title: 'a' }, 'Administrator')
-      await saveDoc('Role', { name: `Hookp Wild Role ${Date.now()}` }, 'Administrator')
+      await saveDoc('Role', { row_id: `Hookp Wild Role ${Date.now()}` }, 'Administrator')
       expect(audited).toContain(DT)
       expect(audited).toContain('Role')
     } finally {
@@ -119,7 +119,7 @@ describe('Frappe lifecycle + app-contract parity', () => {
     const APP = `hookp-sched-${Date.now()}`
     const METHOD = `hookp_sweep_${Date.now()}`
     registerApp({
-      name: APP,
+      row_id: APP,
       scheduler_events: [{ method: METHOD, every_seconds: 3600, handler: async () => {} }],
     })
     try {
@@ -136,9 +136,9 @@ describe('Frappe lifecycle + app-contract parity', () => {
 
   test('override_whitelisted_methods swaps an RPC handler and restores it on uninstall', async () => {
     const APP = `hookp-override-${Date.now()}`
-    const guest = { name: 'Guest', email: 'guest@x', full_name: 'Guest' }
+    const guest = { row_id: 'Guest', email: 'guest@x', full_name: 'Guest' }
     registerApp({
-      name: APP,
+      row_id: APP,
       override_whitelisted_methods: { 'frappe.ping': () => 'pong from app' },
     })
     try {

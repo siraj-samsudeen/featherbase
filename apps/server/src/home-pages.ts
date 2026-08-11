@@ -35,7 +35,7 @@ export interface HomePageCard {
 }
 
 export interface VisibleHomePage {
-  name: string
+  row_id: string
   label: string
   icon: string | null
   module: string | null
@@ -189,7 +189,7 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
 
   const out: VisibleHomePage[] = []
   for (const p of pages) {
-    const required = rolesByPage.get(p.name as string) ?? []
+    const required = rolesByPage.get(p.row_id as string) ?? []
     const visible = isAdmin || required.length === 0 || required.some((r) => roles.includes(r))
     if (!visible) continue
 
@@ -197,7 +197,7 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
     // card; links before the first break form an unlabeled card.
     const cards: HomePageCard[] = []
     let current: HomePageCard | null = null
-    for (const l of linksByPage.get(p.name as string) ?? []) {
+    for (const l of linksByPage.get(p.row_id as string) ?? []) {
       if (l.type === 'Card Break') {
         current = { label: l.label || null, links: [] }
         cards.push(current)
@@ -222,8 +222,8 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
     }
 
     out.push({
-      name: p.name as string,
-      label: (p.label as string) || (p.name as string),
+      row_id: p.row_id as string,
+      label: (p.label as string) || (p.row_id as string),
       icon: (p.icon as string) ?? null,
       module: (p.module as string) ?? null,
       cards: cards.filter((c) => c.links.length > 0),

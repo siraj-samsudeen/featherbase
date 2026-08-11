@@ -81,7 +81,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   test('an existing user signs in even off-domain (provisioned deliberately)', async ({ api }) => {
     await saveDoc(
       'User',
-      { name: 'contractor@outside.io', email: 'contractor@outside.io', enabled: true, roles: [] },
+      { row_id: 'contractor@outside.io', email: 'contractor@outside.io', enabled: true, roles: [] },
       'Administrator',
     )
     await setAllowedDomains('jeyarama.com')
@@ -247,7 +247,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const approveTo = (redirect_uri: string) =>
       api.fetch(
         '/api/oauth/mock/approve?' +
-          new URLSearchParams({ state, redirect_uri, email: 'Administrator', name: 'x' }).toString(),
+          new URLSearchParams({ state, redirect_uri, email: 'Administrator', row_id: 'x' }).toString(),
         { headers: { cookie } },
       )
 
