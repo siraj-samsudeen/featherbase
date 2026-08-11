@@ -53,6 +53,106 @@ tables and walk the map against RDS. Note for that retest: tables reflected
 BEFORE this change carry no source_fk_* records, so they will not converge —
 delete and re-reflect them (order then no longer matters).
 
+## 2026-08-11 — #135: create-user refuses a duplicate instead of shadowing it
+
+Filed off the sweep below, then fixed. `feather create-user` handed the row
+to `saveDoc` in its default `upsert` mode, so a second call for the same
+email fell through to the update path — and the operator saw the raw
+`Updates must include the updated_at timestamp of the loaded row`. That was
+the reported symptom, and it turned out to be the milder half.
+
+- **The real hazard was case.** `user.name` and the unique index on
+  `user.email` are both case-sensitive, so `create-user ADMIN@X.COM` for an
+  existing `admin@x.com` did not collide at all — it silently created a
+  SECOND account shadowing the first. Same trap #131 closed for service
+  accounts, which is why that fix checked `lower(name) = lower($1)`.
+- **The guard** in `cmdCreateUser` matches `lower(name)` OR `lower(email)`
+  (email is unique, and a row can carry the address under either identity —
+  the lookup `findOrCreateGoogleUser` already uses) and throws
+  `User <name> already exists`. Plain `Error`, matching cli.ts's local
+  style; `main()` prints it as `error: …` and exits 1.
+- **Verified** by the real subprocess CLI, both spellings, in
+  `cli.test.ts`: exact case and upper case both exit 1 with the clear
+  message and never leak `updated_at`, and exactly one account survives
+  with its `full_name` untouched. With the guard disabled the exact-case
+  attempt reproduces #135's reported error verbatim (`error: Updates must
+  include the updated_at timestamp of the loaded row`) and never reaches the
+  upper-case spelling — the test catches it on the first assertion.
+- **Gotcha**: `cli.test.ts` is deliberately NOT sandbox-migrated (it spawns
+  subprocesses with their own connections), so its writes are real and a
+  failed run can leave rows behind — including a case-variant
+  `CLI-DUP-USER@X.COM` shadow that an exact-match `cleanup()` could not see.
+  `cleanup()` now deletes on `lower(name)`, so a half-failed run self-heals
+  on the next one. It also folds in main's `svc-cli-test` teardown, which
+  landed on the same function.
+
+---
+
+## 2026-08-11 — optimistic concurrency accepts the Date it hands out (#136, reworked)
+
+The surviving core of #136, rebased onto main after #137 overruled its other
+half.
+
+`updateDoc` compared the echoed `updated_at` against
+`new Date(String(values.updated_at))`. `String(Date)` renders
+`Thu Aug 06 2026 10:20:30 GMT+0000 (…)` — whole seconds, milliseconds gone. So
+any server-side caller that loaded a row and echoed its stamp straight back
+409'd against itself whenever the stored value carried a millisecond
+component, which `now()` almost always produces. HTTP callers were never
+affected: they send an ISO string over the wire.
+
+- **`document.ts`** grows `expectedStamp()`, which normalizes a `Date` through
+  `toISOString()` and leaves strings alone. Both concurrency sites use it —
+  the native `updateDoc` check and the `expect` that `updateBoundDoc` hands
+  the bound-source driver, where `String(Date)` could never have matched a
+  source revision either.
+- **Verified** by a new `update.test.ts` case on an ordinary Table, against a
+  stamp forced to `…:30.123Z` rather than trusting `now()` to carry one. The
+  bug is in the shared save path, so it affected every Table, not just User.
+- **What #137 took away.** #136 also cast the stamp at the SSO call site,
+  where `findOrCreateGoogleUser` re-enabled a disabled User by echoing the
+  `updated_at` it had just loaded. #137 deleted that path outright — a
+  disabled principal is now refused rather than revived, and the refusal is
+  made indistinguishable from the service-account one. So the cast has
+  nothing left to fix and was dropped, not ported. Its test went with it: the
+  premise ("signing in re-enables a disabled user") is now inverted, and
+  #137's `token-hardening.test.ts` already pins the ruled behaviour — the
+  sign-in rejects, and `enabled` is still `false` afterwards. No replacement
+  test was written, because it would have duplicated that one.
+- **The sweep**, done in the follow-up commit. Exactly five call sites echo a
+  loaded `updated_at` back into `saveDoc`, and each was read before being
+  touched: `service-accounts.ts`, `index.ts`'s permission upsert,
+  `methods/frappe-client.ts`'s `set_value`, `report-chart.ts` and
+  `actions/collection-import.ts`. All five hand the value straight to the
+  concurrency check and nothing else, so `expectedStamp()` makes every one of
+  them redundant and all five came out — a sixth copy of the same
+  normalization is exactly the shim CLAUDE.md forbids. The one that looked
+  like it might differ is `collection-import.ts`, whose `updateValues()` also
+  feeds a dry-run validator; it does not read the stamp, because
+  `pickFieldValues()` skips `STANDARD_COLUMNS`. The `?:` guards came out with
+  the casts: `updateDoc` already rejects a null or missing stamp first, with
+  a clearer message than a `TypeError` on `undefined.toISOString()`.
+- Callers that *omit* `updated_at` (`apps.ts`, `customizations.ts` and
+  friends) pre-check existence or pass `'insert'`, so they only ever insert.
+  The one exception was `cli.ts`'s blind `create-user` upsert — fixed above.
+- **Both new tests were confirmed red against the un-fixed code**, one at a
+  time. Reverting `updateDoc` to `new Date(String(...))` fails the
+  `update.test.ts` case with `… has been modified after you loaded it` — and
+  now also fails two `import-upsert` cases, which is the removed
+  `collection-import.ts` cast showing that the central normalization is
+  load-bearing rather than decorative. Deleting the `cli.ts` guard fails the
+  `cli.test.ts` case with #135's raw error verbatim.
+- **Verified**: `pnpm --filter server typecheck` clean; server suite
+  **116 files, 693 passed**, against a dedicated `featherbase_pr136`
+  database (migrations + patches). Main's baseline immediately before this
+  work was 691 passed / 116 files — the two added tests are the whole
+  delta, and no file count moved because `oauth.test.ts` was already main's.
+- **Next**: the bound-source half — `updateBoundDoc`'s `expect` now
+  normalizes a Date too, but no test drives a bound source with a Date echo
+  (the native path is the one under test).
+
+---
+
 ## 2026-08-11 — the mysql engine joins the Data Source drivers
 
 Motivated by the VMS system on AWS RDS (MySQL 8.4, `caching_sha2_password`,

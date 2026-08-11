@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { sql } from '../src/db'
+import { saveDoc } from '../src/document'
 
 // PLAT-004: the developer CLI runs real commands against the dev database.
 // We spawn it as a subprocess (its own connection) and assert the DB effects.
@@ -14,6 +15,7 @@ const CLI = join(serverDir, 'src', 'cli.ts')
 const DT = 'Cli Test Widget'
 const USER = 'cli-test-user@x.com'
 const SVC = 'svc-cli-test'
+const DUP_USER = 'cli-dup-user@x.com'
 
 // execFileSync (not async execFile) so the `input` stdin option is honored.
 function cli(args: string[], input = ''): string {
@@ -25,11 +27,11 @@ function cli(args: string[], input = ''): string {
   })
 }
 
+// Case-insensitive: a run that fails mid-way can leave a case-variant row
+// behind, and an exact-match delete would strand it for every later run.
 async function cleanup() {
-  await sql`delete from has_role where parent = ${USER}`
-  await sql`delete from "user" where name = ${USER}`
-  await sql`delete from has_role where parent = ${SVC}`
-  await sql`delete from "user" where name = ${SVC}` // cascades its access_token rows
+  await sql`delete from has_role where lower(parent) in ${sql([USER, DUP_USER, SVC])}`
+  await sql`delete from "user" where lower(name) in ${sql([USER, DUP_USER, SVC])}` // cascades access_token rows
   await sql`delete from table_def where name = ${DT}`
   await sql.unsafe('drop table if exists cli_test_widget')
 }
@@ -97,6 +99,43 @@ describe('PLAT-004: developer CLI', () => {
     expect(revoked).toContain(`revoked ${tok.id}`)
     expect(cli(['list-tokens', SVC])).toContain('revoked')
   }, 120_000)
+
+  // #135, both halves. Same spelling: saveDoc upserts, so without the guard
+  // this routed into the update path and reported the raw optimistic-
+  // concurrency error. Different case: `name` and the unique index on `email`
+  // are both case-sensitive, so it silently created a SECOND account shadowing
+  // the first — the trap #131 closed for service accounts.
+  it('create-user refuses an email that already exists, whatever its case', async () => {
+    await saveDoc(
+      'User',
+      { name: DUP_USER, email: DUP_USER, full_name: 'Already Here', enabled: true },
+      'Administrator',
+    )
+
+    const attempt = (spelling: string) => {
+      try {
+        cli(['create-user', spelling, 'clitestpw123'])
+        return null
+      } catch (err) {
+        return err as { status?: number; stderr?: string }
+      }
+    }
+
+    for (const spelling of [DUP_USER, DUP_USER.toUpperCase()]) {
+      const failure = attempt(spelling)
+      expect(failure, `create-user ${spelling} should have failed`).not.toBeNull()
+      expect(failure?.status).toBe(1)
+      expect(failure?.stderr).toContain(`User ${DUP_USER} already exists`)
+      // Not the internal concurrency protocol leaking out (#135).
+      expect(failure?.stderr).not.toContain('updated_at')
+    }
+
+    // One account, untouched — no overwrite and no case-variant shadow.
+    const rows = await sql`select name, full_name from "user" where lower(name) = ${DUP_USER}`
+    expect(rows).toHaveLength(1)
+    expect(rows[0].name).toBe(DUP_USER)
+    expect(rows[0].full_name).toBe('Already Here')
+  }, 60_000)
 
   it('console evaluates a piped script with the document API in scope', async () => {
     const stdout = cli(

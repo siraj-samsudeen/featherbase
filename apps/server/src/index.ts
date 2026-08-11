@@ -894,7 +894,7 @@ app.post('/api/permissions/:doctype', async (c) => {
   if (existing)
     await saveDoc(
       'Permission',
-      { name: existing.name as string, updated_at: (existing.updated_at as Date).toISOString(), ...flags },
+      { name: existing.name as string, updated_at: existing.updated_at, ...flags },
       user,
     )
   else await saveDoc('Permission', { ref_table: doctype, role: body.role, tier: 'basic', ...flags }, user)
