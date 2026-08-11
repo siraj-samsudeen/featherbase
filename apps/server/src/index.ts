@@ -1067,14 +1067,14 @@ app.put('/api/user_settings/:doctype', async (c) => {
 // EML-006 / UI-017: assign a document to a user. Creates a ToDo in their
 // task list and notifies them (Notification Log + realtime user event).
 app.post('/api/assign', async (c) => {
-  const { doctype, name, assign_to, description } = (await c.req.json()) as {
+  const { doctype, row_id: name, assign_to, description } = (await c.req.json()) as {
     doctype?: string
-    name?: string
+    row_id?: string
     assign_to?: string
     description?: string
   }
   if (!doctype || !name || !assign_to)
-    throw new AppError('ValidationError', 'Expected { doctype, name, assign_to }')
+    throw new AppError('ValidationError', 'Expected { doctype, row_id, assign_to }')
   // The assigner must be able to read the document.
   await getDoc(doctype, name, who(c))
   const [target] = await sql`select row_id from "user" where row_id = ${assign_to}`
@@ -1096,13 +1096,13 @@ app.get('/api/tags/:doctype/:name', async (c) => {
 })
 
 app.post('/api/tags', async (c) => {
-  const { doctype, name, tag } = (await c.req.json()) as {
+  const { doctype, row_id: name, tag } = (await c.req.json()) as {
     doctype?: string
-    name?: string
+    row_id?: string
     tag?: string
   }
   if (!doctype || !name || !tag?.trim())
-    throw new AppError('ValidationError', 'Expected { doctype, name, tag }')
+    throw new AppError('ValidationError', 'Expected { doctype, row_id, tag }')
   await getDoc(doctype, name, who(c))
   await sql`
     insert into tag_link ${sql({ ref_table: doctype, ref_name: name, tag: tag.trim(), created_by: who(c) })}

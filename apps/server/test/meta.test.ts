@@ -32,10 +32,10 @@ describe('META-001: table/column storage and Meta loader', () => {
 
   test('serves meta over HTTP', async ({ admin }) => {
     await makeDT()
-    const body = await admin.get<{ row_id: string; columns: unknown[] }>(
+    const body = await admin.get<{ name: string; columns: unknown[] }>(
       `/api/table/${encodeURIComponent(DT)}:meta`,
     )
-    expect(body.row_id).toBe(DT)
+    expect(body.name).toBe(DT)
     expect(body.columns).toHaveLength(2)
   })
 
