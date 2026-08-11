@@ -148,7 +148,7 @@ function pickFieldValues(meta: TableMeta, values: RowValues): RowValues {
     out[key] = value ?? null
   }
   if (Object.keys(errors).length)
-    throw new AppError('ValidationError', 'Unknown fields', errors)
+    throw new AppError("ValidationError", `Unknown fields: ${Object.keys(errors).join(", ")}`, errors)
   return out
 }
 

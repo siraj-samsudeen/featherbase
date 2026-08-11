@@ -104,7 +104,7 @@ describe('API-006: consistent error envelope', () => {
     const res = await api.fetch('/api/doctype', {
       method: 'POST',
       headers: { authorization: `Bearer ${tok}` },
-      body: JSON.stringify({ name: 'Envelope Probe DT', columns: [] }),
+      body: JSON.stringify({ row_id: 'Envelope Probe DT', columns: [] }),
     })
     expect(res.status).toBe(403)
     expect((await envelope(res)).type).toBe('PermissionError')

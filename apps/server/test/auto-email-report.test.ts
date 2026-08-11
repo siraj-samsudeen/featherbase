@@ -49,7 +49,7 @@ async function setup(admin: TestClient) {
   await admin.post('/api/save_doc', {
     doctype: 'Report',
     doc: {
-      name: REPORT,
+      row_id: REPORT,
       ref_table: DT,
       report_type: 'Report Builder',
       config: { columns: ['title', 'qty'], filters: [] },

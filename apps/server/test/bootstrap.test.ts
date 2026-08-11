@@ -19,8 +19,8 @@ describe('META-012: Table and Column are themselves Tables', () => {
       })}`,
     )
     expect(body.data).toEqual([
-      { name: 'Column', kind: 'sub_table' },
-      { name: 'Table', kind: 'table' },
+      { row_id: 'Column', kind: 'sub_table' },
+      { row_id: 'Table', kind: 'table' },
     ])
   })
 

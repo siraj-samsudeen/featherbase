@@ -21,10 +21,10 @@ type ItemRow = Record<string, unknown>
 // so every decision (progress, the submit gate) is taken against this, never
 // against what a caller sent.
 async function persistedItems(ctx: HookContext): Promise<ItemRow[]> {
-  if (!ctx.row.name) return []
+  if (!ctx.row.row_id) return []
   return await ctx.tx`
     select * from ${ctx.tx(tableName('Checklist Run Item'))}
-    where parent = ${String(ctx.row.name)}
+    where parent = ${String(ctx.row.row_id)}
       and parenttype = 'Checklist Run' and parentfield = 'items'
     order by position`
 }
@@ -60,7 +60,7 @@ function stampDoneAt(done: boolean, stored: unknown): string | null {
 // policy flags are snapshot structure and stay as the server recorded them.
 function reconcileItems(stored: ItemRow[], proposed: ItemRow[]): ItemRow[] {
   const byName = new Map(
-    proposed.filter((p) => p.name != null).map((p) => [String(p.name), p]),
+    proposed.filter((p) => p.row_id != null).map((p) => [String(p.row_id), p]),
   )
   return stored.map((row) => {
     const sent = byName.get(String(row.row_id))
@@ -104,7 +104,7 @@ async function prepareRun(ctx: HookContext): Promise<void> {
     const [template] = row.template
       ? await ctx.tx`
           select * from ${ctx.tx(tableName('Checklist Template'))}
-          where name = ${String(row.template)}`
+          where row_id = ${String(row.template)}`
       : [undefined]
     const templateItems = template
       ? await ctx.tx`
