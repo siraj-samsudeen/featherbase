@@ -40,11 +40,11 @@ describe('PLAT-005: declarative app install over the API', () => {
         body: JSON.stringify({ manifest: MANIFEST }),
       })
       expect(res.status).toBe(201)
-      expect((await res.json()) as object).toMatchObject({ row_id: APP, tables: [DT], roles: [ROLE] })
+      expect((await res.json()) as object).toMatchObject({ name: APP, tables: [DT], roles: [ROLE] })
 
       // The manifest is persisted — uninstall and boot work from stored data.
       const [row] = await sql`select manifest from installed_app where name = ${APP}`
-      expect(row.manifest).toMatchObject({ row_id: APP })
+      expect(row.manifest).toMatchObject({ name: APP })
 
       // The declared access model works for a scoped user.
       const user = await createUser({ roles: [ROLE] })
@@ -58,7 +58,7 @@ describe('PLAT-005: declarative app install over the API', () => {
       // Uninstall over the API tears down Tables, roles and grants.
       const un = await admin.fetch('/api/uninstall_app', {
         method: 'POST',
-        body: JSON.stringify({ row_id: APP }),
+        body: JSON.stringify({ name: APP }),
       })
       expect(un.status).toBe(200)
       expect((await sql`select 1 from table_def where name = ${DT}`).length).toBe(0)

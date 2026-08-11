@@ -39,7 +39,7 @@ const noteApp: AppManifest = {
 }
 
 const hookApp: AppManifest = {
-  row_id: APP2,
+  name: APP2,
   // No DocTypes of its own — it only hooks a DocType owned by "core".
   doc_events: {
     [CORE_DT]: { after_save: () => { fired.push('app') } },
