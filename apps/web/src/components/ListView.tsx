@@ -166,15 +166,19 @@ export function ListView({
   const allColumns = meta.data ? listColumns(meta.data) : []
   const columns = allColumns.filter((c) => !hiddenCols.has(c.column_name))
   // A bound table only has updated_at when the source table has a modified
-  // column to map (external_modified) — defaulting to it otherwise makes the
-  // server refuse EVERY list load (the caller-supplied order_by must resolve;
-  // only server-side defaults fall back to the pk). Sort by name instead.
-  const defaultSortField =
-    meta.data?.data_source && !meta.data.external_modified ? 'name' : 'updated_at'
+  // column to map (external_modified) — sending it as the explicit order
+  // makes the server refuse EVERY list load (a caller-supplied order_by must
+  // resolve; only server-side defaults fall back to the pk). That covers both
+  // the hardcoded fallback AND a stale stored sort_column ('updated_at' is
+  // the table_def DB default; migration 0075 repairs it, this guards the
+  // window). #176
+  const boundNoRevision = Boolean(meta.data?.data_source && !meta.data.external_modified)
+  const metaSortColumn =
+    boundNoRevision && meta.data?.sort_column === 'updated_at' ? '' : (meta.data?.sort_column ?? '')
   const orderBy = sort
     ? `${sort.field} ${sort.dir}`
     : meta.data
-      ? `${meta.data.sort_column || defaultSortField} ${meta.data.sort_order || 'desc'}`
+      ? `${metaSortColumn || (boundNoRevision ? 'name' : 'updated_at')} ${meta.data.sort_order || 'desc'}`
       : undefined
 
   const list = useQuery({
