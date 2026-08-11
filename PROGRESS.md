@@ -1,5 +1,39 @@
 # Progress Log
 
+## 2026-08-11 — #115 polish: two-axis review findings fixed, row-number truth hardened
+
+Two-axis review (standards + spec, parallel reviewers) of the morning's
+#115 commit surfaced six findings; all fixed here. Notably the review ran
+while another session had switched the primary checkout to its own branch —
+this work therefore lives in its own worktree with its own ports (the
+PR #134 recipe), and e2e ran against those.
+
+- **The row arithmetic now genuinely lives in one place.** `excelRow` and
+  `isBlankRow` moved to `apps/web/src/lib/parse-file.ts` (the module that
+  owns sheet geometry) and are imported everywhere — the wizard's and
+  TableBuilder's inlined copies are gone, so the "only translation"
+  comment is now true instead of aspirational.
+- **Two numbering schemes no longer share a field name.** The server's
+  per-chunk `index` becomes `sourceIndex` at the response boundary and is
+  never stored; wizard plan state and TableBuilder both carry
+  `{ sourceIndex, message }`.
+- **IMP-I1 disclosure closed:** a data row with nothing in any *mapped*
+  column is sent nowhere — the wizard's check/result and TableBuilder's
+  failure message now say "N rows have no data in the imported columns and
+  were skipped" instead of letting counts quietly disagree with the file.
+  (TableBuilder's success path still navigates without the note — the
+  residual is recorded here on purpose.)
+- **The untested header-offset path has witnesses:** new
+  `apps/web/test/parse-file.test.ts` proves blank-row geometry, blank rows
+  *above* the header (headerExcelRow = 3 → 'b' names Excel row 6), and
+  all-blank-sheet skipping, via real .xlsx buffers (jsdom's File lacks
+  arrayBuffer — patched in the test helper, not the code).
+
+**Verified:** web 42/42 (three new), typechecks clean both sides, all 10
+import e2e specs green against isolated worktree servers (PORT=8010 /
+WEB_PORT=5183). **Next:** unchanged from the entry below — preview grid,
+then revert-a-run.
+
 ## 2026-08-11 — #115 fixed: the only row number a user sees is Excel's own
 
 First item of the production-readiness push (spec-0004 upsert merged as

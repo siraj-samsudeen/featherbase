@@ -19,7 +19,13 @@ import {
 import { ApiError, api, listResource } from '../lib/api'
 import { NamingControl } from '../components/NamingControl'
 import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
-import { countDataRows, isImportableFile, parseWorkbook, type ParsedSheet } from '../lib/parse-file'
+import {
+  countDataRows,
+  excelRow,
+  isImportableFile,
+  parseWorkbook,
+  type ParsedSheet,
+} from '../lib/parse-file'
 
 // IMP-010: the Import wizard. Drop a CSV or a whole workbook; every sheet
 // gets a target — a new Table (inferred, like the builder) or an existing
@@ -65,16 +71,23 @@ interface SheetPlan {
   // import — kept around so the "as last time" notice can say so while the
   // user is free to change or clear it.
   suggested: { key: string; empty_cells: 'keep' | 'clear' } | null
+  // Failures carry sourceIndex — the row's 0-based position in the sheet's
+  // data rows, blanks included (#115). The server's per-chunk `index` is
+  // translated the moment a response lands and never stored. `skipped`
+  // counts data rows with nothing in any mapped column: they are sent
+  // nowhere, so IMP-I1's arithmetic is disclosed, not silently absorbed.
   check: {
     valid: number
     updated: number
     inserted: number
-    failed: { index: number; message: string }[]
+    skipped: number
+    failed: { sourceIndex: number; message: string }[]
   } | null
   result: {
     updated: number
     inserted: number
-    failed: { index: number; message: string }[]
+    skipped: number
+    failed: { sourceIndex: number; message: string }[]
   } | null
 }
 
@@ -270,7 +283,7 @@ export function splitForSend(rows: CoercedRow[], key: string | null) {
     return {
       send: rows.map((r) => r.values),
       sendIdx: rows.map((r) => r.sourceIndex),
-      dupFailed: [] as { index: number; message: string }[],
+      dupFailed: [] as { sourceIndex: number; message: string }[],
     }
   const counts = new Map<string, number>()
   for (const r of rows) {
@@ -279,26 +292,20 @@ export function splitForSend(rows: CoercedRow[], key: string | null) {
   }
   const send: Record<string, unknown>[] = []
   const sendIdx: number[] = []
-  const dupFailed: { index: number; message: string }[] = []
+  const dupFailed: { sourceIndex: number; message: string }[] = []
   for (const r of rows) {
     const k = r.values[key] == null ? '' : String(r.values[key]).trim()
     if (k && (counts.get(k) ?? 0) > 1)
-      dupFailed.push({ index: r.sourceIndex, message: `key ${k} appears more than once in the file` })
+      dupFailed.push({
+        sourceIndex: r.sourceIndex,
+        message: `key ${k} appears more than once in the file`,
+      })
     else {
       send.push(r.values)
       sendIdx.push(r.sourceIndex)
     }
   }
   return { send, sendIdx, dupFailed }
-}
-
-// #115 / IMP-I1: a failure's `index` is the row's source index among the
-// sheet's data rows (blanks included, per parse-file's blankrows: true).
-// This is the ONLY translation from internal indices to the row numbers a
-// user sees; every message goes through it so the wizard's numbers always
-// match Excel's — including when the header itself isn't row 1.
-function excelRow(sourceIndex: number, headerExcelRow: number): number {
-  return headerExcelRow + 1 + sourceIndex
 }
 
 // UPS-J1.3: real counts BEFORE anything commits — a dry run over the whole
@@ -608,12 +615,16 @@ export function ImportWizard() {
       for (const [i, plan] of plans.entries()) {
         if (plan.mode !== 'existing') continue
         const rows = mappedRows(sheets[i], plan)
+        // IMP-I1 disclosure: data rows with nothing in any MAPPED column are
+        // sent nowhere — say so instead of letting the counts quietly
+        // disagree with the file.
+        const skipped = countDataRows(sheets[i].rows) - rows.length
         if (!rows.length) {
-          setPlan(i, { check: { valid: 0, updated: 0, inserted: 0, failed: [] } })
+          setPlan(i, { check: { valid: 0, updated: 0, inserted: 0, skipped, failed: [] } })
           continue
         }
         const { send, sendIdx, dupFailed } = splitForSend(rows, plan.key)
-        const failed: { index: number; message: string }[] = [...dupFailed]
+        const failed: { sourceIndex: number; message: string }[] = [...dupFailed]
         let valid = 0
         let updated = 0
         let inserted = 0
@@ -634,11 +645,17 @@ export function ImportWizard() {
           // A keyless dry run reports no per-action counts: every valid row
           // is an insert.
           inserted += res.inserted ?? res.valid
-          failed.push(...res.failed.map((f) => ({ ...f, index: sendIdx[f.index + at] })))
+          // The server's per-chunk index becomes a source index HERE and is
+          // never stored (#115).
+          failed.push(
+            ...res.failed.map((f) => ({ sourceIndex: sendIdx[f.index + at], message: f.message })),
+          )
         }
-        failed.sort((a, b) => a.index - b.index)
+        failed.sort((a, b) => a.sourceIndex - b.sourceIndex)
         setPlans((ps) =>
-          ps.map((p, j) => (j === i ? { ...p, check: { valid, updated, inserted, failed } } : p)),
+          ps.map((p, j) =>
+            j === i ? { ...p, check: { valid, updated, inserted, skipped, failed } } : p,
+          ),
         )
       }
     } catch (err) {
@@ -676,9 +693,10 @@ export function ImportWizard() {
         }
         const { send, sendIdx, dupFailed } =
           plan.mode === 'existing' ? splitForSend(rows, plan.key) : splitForSend(rows, null)
+        const skipped = countDataRows(sheet.rows) - rows.length
         let inserted = 0
         let updated = 0
-        const failed: { index: number; message: string }[] = [...dupFailed]
+        const failed: { sourceIndex: number; message: string }[] = [...dupFailed]
         const parts = Math.ceil(send.length / IMPORT_CHUNK)
         for (let at = 0; at < send.length; at += IMPORT_CHUNK) {
           const chunk = send.slice(at, at + IMPORT_CHUNK)
@@ -701,11 +719,13 @@ export function ImportWizard() {
           })
           inserted += res.inserted
           updated += res.updated ?? 0
-          failed.push(...res.failed.map((f) => ({ ...f, index: sendIdx[f.index + at] })))
+          failed.push(
+            ...res.failed.map((f) => ({ sourceIndex: sendIdx[f.index + at], message: f.message })),
+          )
         }
-        failed.sort((a, b) => a.index - b.index)
+        failed.sort((a, b) => a.sourceIndex - b.sourceIndex)
         setPlans((ps) =>
-          ps.map((p, j) => (j === i ? { ...p, result: { updated, inserted, failed } } : p)),
+          ps.map((p, j) => (j === i ? { ...p, result: { updated, inserted, skipped, failed } } : p)),
         )
       }
       await queryClient.invalidateQueries({ queryKey: ['tables'] })
@@ -1216,9 +1236,15 @@ export function ImportWizard() {
                     , {plan.check.failed.length} with problems:{' '}
                     {plan.check.failed
                       .slice(0, ERRORS_ON_SCREEN)
-                      .map((f) => `row ${excelRow(f.index, sheet.headerExcelRow)}: ${f.message}`)
+                      .map((f) => `row ${excelRow(f.sourceIndex, sheet.headerExcelRow)}: ${f.message}`)
                       .join('; ')}
                     {plan.check.failed.length > 5 && ` … and ${plan.check.failed.length - 5} more`}
+                  </span>
+                )}
+                {plan.check.skipped > 0 && (
+                  <span className="ml-1 text-gray-500" data-testid={`iw-check-skipped-${i}`}>
+                    ({plan.check.skipped} rows have no data in the imported columns and will be
+                    skipped)
                   </span>
                 )}
               </div>
@@ -1241,9 +1267,11 @@ export function ImportWizard() {
                   </Link>
                   {plan.result.failed.length > 0 &&
                     `; ${plan.result.failed.length} failed (first: row ${excelRow(
-                      plan.result.failed[0].index,
+                      plan.result.failed[0].sourceIndex,
                       sheet.headerExcelRow,
                     )}: ${plan.result.failed[0].message})`}
+                  {plan.result.skipped > 0 &&
+                    ` (${plan.result.skipped} rows had no data in the imported columns and were skipped)`}
                 </span>
               </div>
             )}

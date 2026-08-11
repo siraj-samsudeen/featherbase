@@ -30,7 +30,7 @@ describe('UPS-R2: splitForSend — pre-chunk duplicate catching', () => {
       //                                    the server names it per-request
     ]
     const { send, sendIdx, dupFailed } = splitForSend(rows, 'zone')
-    expect(dupFailed.map((f) => f.index)).toEqual([1, 4])
+    expect(dupFailed.map((f) => f.sourceIndex)).toEqual([1, 4])
     expect(dupFailed[0].message).toContain('Dup')
     expect(send.map((r) => r.pop)).toEqual([1, 3, 5])
     expect(sendIdx).toEqual([0, 3, 6])
@@ -58,14 +58,14 @@ describe('UPS-R2: splitForSend — pre-chunk duplicate catching', () => {
 
       // Partition: |send| + |dupFailed| = |rows|; indices disjoint, exhaustive.
       expect(send.length + dupFailed.length).toBe(rows.length)
-      const claimed = [...sendIdx, ...dupFailed.map((f) => f.index)].sort((a, b) => a - b)
+      const claimed = [...sendIdx, ...dupFailed.map((f) => f.sourceIndex)].sort((a, b) => a - b)
       expect(claimed).toEqual(rows.map((_, i) => i))
 
       // Exactly the multi-occurrence keys fail; empty keys pass through.
       const counts = new Map<string, number>()
       for (const k of keys) if (k) counts.set(k, (counts.get(k) ?? 0) + 1)
       for (const f of dupFailed)
-        expect(counts.get(String(rows[f.index].values.zone)) ?? 0).toBeGreaterThan(1)
+        expect(counts.get(String(rows[f.sourceIndex].values.zone)) ?? 0).toBeGreaterThan(1)
       for (const [pos, r] of send.entries()) expect(rows[sendIdx[pos]].values).toBe(r)
     }
   })

@@ -1,22 +1,38 @@
 // IMP-006: parse a dropped CSV/Excel file into headers + rows in the browser.
 // SheetJS handles both formats; dynamically imported (like ReportView's
 // export) so the parser stays out of the main bundle.
+//
+// #115: this module owns row-number truth. Sheet geometry is preserved
+// (blank rows included), and the two exported helpers below — isBlankRow
+// and excelRow — are the only blank-row predicate and the only
+// index→row-number arithmetic anywhere; every consumer imports them.
 
 export interface ParsedSheet {
   sheetName: string
   headers: string[]
   rows: unknown[][]
   // 1-based Excel row of the header. Data row i (0-based, blanks included)
-  // sits at Excel row headerExcelRow + 1 + i — the ONLY row arithmetic
-  // downstream code may do (#115: users see Excel's numbers, nothing else).
+  // sits at Excel row excelRow(i, headerExcelRow) — see below.
   headerExcelRow: number
+}
+
+// The one definition of "blank": no cell with visible content.
+export function isBlankRow(row: unknown[]): boolean {
+  return !row.some((c) => c != null && String(c).trim() !== '')
+}
+
+// The one index→row-number translation (#115): a data row's source index
+// (0-based, blanks included) to the row number the user sees in Excel —
+// correct even when blank rows sit above the header.
+export function excelRow(sourceIndex: number, headerExcelRow: number): number {
+  return headerExcelRow + 1 + sourceIndex
 }
 
 // A row with at least one non-empty cell — what the imports will act on.
 // Counts shown to the user use this, never raw .length (#115: blank rows
 // survive parsing to keep row numbers true, but they are not data).
 export function countDataRows(rows: unknown[][]): number {
-  return rows.filter((r) => r.some((c) => c != null && String(c).trim() !== '')).length
+  return rows.filter((r) => !isBlankRow(r)).length
 }
 
 const ACCEPTED = /\.(csv|tsv|xlsx|xlsm|xls)$/i
@@ -46,9 +62,8 @@ export async function parseWorkbook(file: File): Promise<ParsedSheet[]> {
     })
     // The header is the first non-blank row; blank rows above it are
     // counted (headerExcelRow), never kept.
-    const isBlank = (r: unknown[]) => !r.some((c) => c != null && String(c).trim() !== '')
     let h = 0
-    while (h < grid.length && isBlank(grid[h])) h++
+    while (h < grid.length && isBlankRow(grid[h])) h++
     if (h === grid.length) continue
     const headers = grid[h].map((c) => (c == null ? '' : String(c)))
     sheets.push({ sheetName, headers, rows: grid.slice(h + 1), headerExcelRow: h + 1 })

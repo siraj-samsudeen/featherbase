@@ -5,7 +5,13 @@ import { coerceRows, idPatternFor, inferTableDef, seriesPrefix, tableNameFromFil
 import { ApiError, api } from '../lib/api'
 import { NamingControl } from '../components/NamingControl'
 import { COLUMN_TYPES } from '../lib/meta'
-import { countDataRows, isImportableFile, parseWorkbook } from '../lib/parse-file'
+import {
+  countDataRows,
+  excelRow,
+  isBlankRow,
+  isImportableFile,
+  parseWorkbook,
+} from '../lib/parse-file'
 
 interface ColumnRow {
   column_name: string
@@ -148,8 +154,11 @@ export function TableBuilder() {
           importCols.map((c) => ({ column_name: c.column_name.trim(), column_type: c.column_type })),
           imported.rows.map((r) => importCols.map((c) => r[c.source_index!])),
         )
+        // IMP-I1 disclosure: data rows with nothing in any imported column
+        // are sent nowhere — named below rather than silently absorbed.
+        const skipped = countDataRows(imported.rows) - rows.length
         let inserted = 0
-        const failed: { index: number; message: string }[] = []
+        const failed: { sourceIndex: number; message: string }[] = []
         for (let at = 0; at < rows.length; at += IMPORT_CHUNK) {
           const chunk = rows.slice(at, at + IMPORT_CHUNK)
           setProgress(`Importing rows ${at + 1}–${at + chunk.length} of ${rows.length}…`)
@@ -158,9 +167,14 @@ export function TableBuilder() {
             failed: { index: number; message: string }[]
           }>(`/api/table/${encodeURIComponent(name)}:import`, { rows: chunk.map((r) => r.values) })
           inserted += res.inserted
-          // #115: report the row's SOURCE index (blanks included), so the
-          // displayed number below matches the user's spreadsheet.
-          failed.push(...res.failed.map((f) => ({ ...f, index: rows[f.index + at].sourceIndex })))
+          // The server's per-chunk index becomes a source index HERE and is
+          // never stored (#115).
+          failed.push(
+            ...res.failed.map((f) => ({
+              sourceIndex: rows[f.index + at].sourceIndex,
+              message: f.message,
+            })),
+          )
         }
         setProgress(null)
         if (failed.length) {
@@ -168,9 +182,11 @@ export function TableBuilder() {
             `Table created; ${inserted} of ${rows.length} rows imported. ` +
               `Failed rows: ${failed
                 .slice(0, 3)
-                // #115: index is the source row; + header + 1 = Excel's number.
-                .map((f) => `#${f.index + imported.headerExcelRow + 1} (${f.message})`)
-                .join('; ')}${failed.length > 3 ? ` and ${failed.length - 3} more` : ''}`,
+                .map((f) => `#${excelRow(f.sourceIndex, imported.headerExcelRow)} (${f.message})`)
+                .join('; ')}${failed.length > 3 ? ` and ${failed.length - 3} more` : ''}` +
+              (skipped > 0
+                ? ` ${skipped} rows had no data in the imported columns and were skipped.`
+                : ''),
           )
           await queryClient.invalidateQueries({ queryKey: ['tables'] })
           await queryClient.invalidateQueries({ queryKey: ['home-pages'] })
@@ -195,9 +211,7 @@ export function TableBuilder() {
   // #115: blanks survive parsing for row-number truth but are not data —
   // neither previewed nor counted anywhere the user reads.
   const dataRows = imported ? countDataRows(imported.rows) : 0
-  const previewRows = imported
-    ? imported.rows.filter((r) => r.some((c) => c != null && String(c).trim() !== '')).slice(0, 8)
-    : []
+  const previewRows = imported ? imported.rows.filter((r) => !isBlankRow(r)).slice(0, 8) : []
   const previewCols = columns.filter((c) => c.source_index !== null && c.column_name.trim())
 
   return (
