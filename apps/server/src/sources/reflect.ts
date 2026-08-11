@@ -329,6 +329,14 @@ async function buildBoundTable(
     ...(modified ? { external_modified: modified } : {}),
     columns,
   })
+  // Without a modified mapping the table has no updated_at, so the DB-default
+  // sort_column ('updated_at') would make every explicit-order list refuse
+  // (#176). createTable's schema doesn't carry sort_column — set it the same
+  // way the FK edges below are recorded.
+  if (!modified) {
+    await sql`update table_def set sort_column = 'name' where name = ${name}`
+    invalidateMeta(name)
+  }
   // Record every FK edge raw on the new column_defs — the convergence
   // record linkReferencesTo resolves when the TARGET table reflects later.
   for (const [i, c] of dataColumns.entries()) {
