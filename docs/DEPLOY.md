@@ -38,7 +38,7 @@ Everything comes from the environment; every variable has a dev default in
 | `PORT` | no (8000) | HTTP + WebSocket port |
 | `WEB_ORIGINS` | yes, if the SPA is served from another origin | comma-separated CORS allowlist |
 | `JWT_SECRET` | **yes** | session/token signing (dev default is `dev-secret-change-me`) |
-| `SITE_URL` | for password-reset emails | absolute URL of the SPA |
+| `SITE_URL` | **yes, behind a proxy** | this instance's absolute external URL (`https://app.example.com`) — password-reset links and the OAuth `redirect_uri`/cookie-`Secure` decision. Set it and no request header can steer either; leave it unset and the server falls back to the request, trusting the first `x-forwarded-proto` hop |
 | `FILE_STORAGE_DIR` | recommended | uploaded-file directory (must persist across deploys) |
 | `CHROMIUM_PATH` / `PLAYWRIGHT_BROWSERS_PATH` | for PDF printing | Chromium binary resolution — never hardcoded |
 

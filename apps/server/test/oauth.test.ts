@@ -1,5 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
+import { config } from '../src/config'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import type { TestClient } from 'feather-testing-postgres'
@@ -175,5 +176,95 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const { state } = await beginLogin(api)
     // Same signed state, no cookie — the mock consent bounce refuses too.
     expect((await api.fetch(approveUrl(state, 'someone@gmail.com', 'Someone'))).status).toBe(401)
+  })
+
+  // --- Defect C: x-forwarded-proto is a LIST, not a scalar -------------------
+  // A proxy chain APPENDS its own hop rather than overwriting, so a request
+  // that reached the edge over TLS can arrive as `https,http`. Comparing the
+  // whole header to 'https' then read false and set the login cookies WITHOUT
+  // `Secure` — anyone who can get the browser onto plain http reads the state
+  // and verifier that the CSRF fix depends on.
+  test('a proxy that appends to x-forwarded-proto cannot downgrade the login cookies', async ({
+    api,
+  }) => {
+    await setClientId('test-client-id')
+    const res = await api.fetch('/api/oauth/google/login', {
+      headers: { 'x-forwarded-proto': 'https,http' },
+    })
+    expect(res.status).toBe(302)
+    const cookies = res.headers.getSetCookie()
+    expect(cookies).toHaveLength(2)
+    for (const cookie of cookies) expect(cookie).toMatch(/;\s*Secure/i)
+
+    // One origin decides both, so the cookie flag and the redirect_uri can
+    // never disagree: `https,http://…` was the other half of the same bug.
+    const redirectUri = new URLSearchParams((res.headers.get('location') as string).split('?')[1]).get(
+      'redirect_uri',
+    )
+    expect(redirectUri).toMatch(/^https:\/\/[^,]+\/api\/oauth\/google\/callback$/)
+  })
+
+  test('a configured SITE_URL settles the origin and the header is not consulted', async ({
+    api,
+  }) => {
+    await setClientId('test-client-id')
+    const previous = config.siteUrl
+    config.siteUrl = 'https://app.example.com'
+    try {
+      const res = await api.fetch('/api/oauth/google/login', {
+        headers: { 'x-forwarded-proto': 'http' },
+      })
+      const redirectUri = new URLSearchParams((res.headers.get('location') as string).split('?')[1]).get(
+        'redirect_uri',
+      )
+      expect(redirectUri).toBe('https://app.example.com/api/oauth/google/callback')
+      for (const cookie of res.headers.getSetCookie()) expect(cookie).toMatch(/;\s*Secure/i)
+    } finally {
+      config.siteUrl = previous
+    }
+  })
+
+  test('an x-forwarded-proto that is not http or https is ignored', async ({ api }) => {
+    await setClientId('test-client-id')
+    const res = await api.fetch('/api/oauth/google/login', {
+      headers: { 'x-forwarded-proto': 'javascript' },
+    })
+    const redirectUri = new URLSearchParams((res.headers.get('location') as string).split('?')[1]).get(
+      'redirect_uri',
+    )
+    // Falls back to the protocol the socket actually spoke — the header never
+    // gets interpolated into the origin verbatim.
+    expect(redirectUri).toMatch(/^http:\/\/[^/]+\/api\/oauth\/google\/callback$/)
+    for (const cookie of res.headers.getSetCookie()) expect(cookie).not.toMatch(/;\s*Secure/i)
+  })
+
+  // --- Defect D: the mock reflected any redirect_uri -------------------------
+  // The mock mints a session for ANY typed email, `Administrator` included.
+  // Reflecting the caller's redirect_uri handed that authorization code to
+  // whatever host asked for it.
+  test('the mock approve endpoint refuses an off-origin redirect_uri', async ({ api }) => {
+    const { state, cookie } = await beginLogin(api)
+    const approveTo = (redirect_uri: string) =>
+      api.fetch(
+        '/api/oauth/mock/approve?' +
+          new URLSearchParams({ state, redirect_uri, email: 'Administrator', name: 'x' }).toString(),
+        { headers: { cookie } },
+      )
+
+    for (const evil of [
+      'https://evil.example.com/x',
+      '//evil.example.com/x', // protocol-relative — a "starts with /" check would pass it
+      'http://localhost:8000/api/oauth/google/callback/../../evil',
+      '/api/oauth/google/callback/../../evil',
+    ]) {
+      const res = await approveTo(evil)
+      expect(res.status).toBe(400)
+      expect(res.headers.get('location')).toBeNull()
+    }
+
+    // The application's own callback still works.
+    const ok = await api.fetch(approveUrl(state, 'demo.user@gmail.com', 'Demo'), { headers: { cookie } })
+    expect(ok.status).toBe(302)
+    expect(ok.headers.get('location')).toMatch(/^\/api\/oauth\/google\/callback\?/)
   })
 })

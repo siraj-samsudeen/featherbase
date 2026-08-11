@@ -154,9 +154,26 @@ export function mockConsentHtml(state: string, redirectUri: string, email: strin
     </form></body></html>`
 }
 
+// The one place the mock provider is allowed to send an authorization code:
+// this application's own callback. A real provider only redirects to a URI
+// registered with it; the mock's equivalent is this constant.
+export const OAUTH_CALLBACK_PATH = '/api/oauth/google/callback'
+
 // Approve → issue a signed code carrying the chosen identity, then bounce to the
 // OAuth callback exactly as a real provider would.
+//
+// The redirect target is allowlisted, not reflected. The mock mints a session
+// for ANY typed email — `Administrator` included — so reflecting the caller's
+// `redirect_uri` handed an admin authorization code to whatever host asked
+// for it (`?redirect_uri=https://evil.example.com/x` → 302 there with the
+// code attached). Exact match, so neither a protocol-relative `//host` nor a
+// `…/callback/../../elsewhere` traversal slips past.
 export function mockApproveRedirect(state: string, redirectUri: string, email: string, name: string): string {
+  if (redirectUri !== OAUTH_CALLBACK_PATH)
+    throw new AppError(
+      'BadRequestError',
+      `Mock provider only redirects to ${OAUTH_CALLBACK_PATH}`,
+    )
   const code = pack({ email, name })
   const p = new URLSearchParams({ code, state })
   return `${redirectUri}?${p.toString()}`

@@ -2,8 +2,10 @@
 
 ## 2026-08-11 — PR #127 review: the mock provider fails closed, and `state` finally means something
 
-Two security findings from the #127 review, fixed on the branch before it
-merges. Both are about a guard that looked like a guard without being one.
+Four security findings from the #127 review, fixed on the branch before it
+merges. A and B are guards that looked like guards without being ones; C and
+D — from a second, adversarial pass over the fixes themselves — are the
+opposite failure, trusting a value the caller supplies.
 
 **A (critical) — the prod mock guard failed open.** `assertOAuthConfigured`
 refused only when the client id was missing *and* `NODE_ENV === 'production'`.
@@ -44,11 +46,59 @@ reproduced both defects' conditions: with `NODE_ENV` unset and
 replayed into a cookie-less or mismatched browser is refused while the
 originating browser completes.
 
-Next: the deploy note changes — Railway needs `GOOGLE_CLIENT_SECRET` and must
-NOT set `ALLOW_MOCK_OAUTH`. Still open from the earlier entry: hide the
-Google button when no provider is configured, and stop passing the session
-token in the `/oauth-callback` query string (the sid cookie already travels,
-and the query string lands in history and referrers).
+**C (high, same review) — `x-forwarded-proto` is a list, and we read it as a
+scalar.** A proxy chain *appends* its hop rather than overwriting, so a
+request that reached the edge over TLS arrives as `x-forwarded-proto:
+https,http`. Both readers compared that whole string to `'https'`, got false,
+and set the brand-new `oauth_state` / `oauth_verifier` cookies **without
+`Secure`** — the CSRF fix above, undone by a header the attacker controls.
+The same header interpolated `https,http://host` into the `redirect_uri`.
+
+The fix is one function, `externalOrigin()`, and both readers now go through
+it, so the cookie flag and the `redirect_uri` cannot disagree. Configuration
+comes first: `SITE_URL` — already the env var for password-reset links, now
+also in `config.siteUrl` with one reader instead of two — is the deployment's
+own absolute URL, and a value we own cannot be steered by a request header.
+Only a checkout that has not been told where it lives falls back to the
+request, and then the header is parsed as what it is: first hop only,
+trimmed, and accepted only if it is literally `http` or `https` (so
+`x-forwarded-proto: javascript` can no longer be pasted into an origin).
+
+**D (medium) — the mock reflected any `redirect_uri`.** `mockApproveRedirect`
+bounced to whatever the caller asked for, and the mock mints a session for
+ANY typed email including `Administrator`: `?redirect_uri=https://evil.example.com/x`
+returned `302` there with an admin authorization code attached. It is now an
+exact-match allowlist against `OAUTH_CALLBACK_PATH`, which also refuses the
+protocol-relative `//host` and `…/callback/../../elsewhere` forms; anything
+else is a 400 naming the only permitted target.
+
+Verified: server suite **677/677 across 115 files** (673 existing + 4 new)
+against an isolated `featherbase_pr127` database, `pnpm --filter server
+typecheck` clean. Sibling sessions own :8000 and :8020 — this one ran its
+live server on :8033 and left both answering. The four new tests were
+confirmed red first by stashing *only* the source fix and re-running: exactly
+those four fail (no `Secure` on the cookie, `javascript://localhost/…` as the
+redirect_uri, `SITE_URL` ignored, and a 302 to `evil.example.com`) while all
+seven pre-existing OAuth tests stay green. Live HTTP against a running server
+then reproduced both exploits and refused them: `x-forwarded-proto: https,http`
+now yields `HttpOnly; Secure; SameSite=Lax` and a clean
+`https://app.example.com/api/oauth/google/callback`, and all three off-origin
+`redirect_uri` shapes answer 400 while the full mock sign-in still completes
+to `/oauth-callback?token=`.
+
+Gotcha for the next session: `featherbase_pr127` had a committed
+`Administrator` row with `social_login = 'google'`, left outside any sandbox
+transaction by the reviewer's live exploit. It made the fail-closed test's
+"nothing was provisioned" assertion fail for reasons that had nothing to do
+with the code. Cleared.
+
+Next: the deploy note now documents `SITE_URL` as required behind a proxy;
+still outstanding is that Railway needs `GOOGLE_CLIENT_SECRET` and must NOT
+set `ALLOW_MOCK_OAUTH`. Still open from the earlier entry: hide the Google
+button when no provider is configured, and stop passing the session token in
+the `/oauth-callback` query string (the sid cookie already travels, and the
+query string lands in history and referrers) — that one is pre-existing, from
+`3752eb6`, and is being filed separately rather than fixed here.
 
 ## 2026-08-11 — #128 review: the builder's rejection names a column, not an index
 
