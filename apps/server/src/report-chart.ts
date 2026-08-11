@@ -96,5 +96,5 @@ export async function pinChartToDashboard(
   const nextConfig = { ...config, charts }
   // Carry the loaded `updated_at` stamp so the optimistic-concurrency check on
   // the update passes; saveDoc normalizes it.
-  return saveDoc('Dashboard', { name: dashboard, updated_at: dash.updated_at, config: nextConfig }, user)
+  return saveDoc('Dashboard', { row_id: dashboard, updated_at: dash.updated_at, config: nextConfig }, user)
 }

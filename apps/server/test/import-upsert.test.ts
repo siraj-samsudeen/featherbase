@@ -517,11 +517,11 @@ describe('UPS-R4: the file’s own codes as ids', () => {
     expect(res.inserted).toBe(3)
     expect(res.failed).toEqual([])
     const byZone = await rowsByZone(admin)
-    expect(byZone.Coded.name).toBe('Z-07/A x')
-    expect(byZone.Coded2.name).toBe('REF-002')
+    expect(byZone.Coded.row_id).toBe('Z-07/A x')
+    expect(byZone.Coded2.row_id).toBe('REF-002')
     // IMP-R6: the pattern is the promise — and the two supplied ids burned
     // nothing, so the first series row is the FIRST of its series.
-    expect(byZone.Series.name).toBe('UPST-001')
+    expect(byZone.Series.row_id).toBe('UPST-001')
   })
 
   test('UPS-R4: on append without a key a colliding code fails by its row; as the match key it updates (UPS-J2 branch)', async ({
@@ -539,7 +539,7 @@ describe('UPS-R4: the file’s own codes as ids', () => {
     expect(collide.failed[0].message).toContain('already exists')
 
     const upsert = await admin.post<{ updated: number; inserted: number }>(PATH, {
-      key_column: 'name',
+      key_column: 'row_id',
       rows: [{ row_id: 'REF-001', pop: 42 }],
     })
     expect(upsert.updated).toBe(1)
