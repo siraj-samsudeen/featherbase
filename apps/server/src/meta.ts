@@ -44,6 +44,12 @@ export interface ColumnDef {
   // EDS-3: on a source-bound Table, the true column name on the source when
   // it differs from column_name (reserved/illegal names). Null = same name.
   source_column: string | null
+  // EDS-2: raw FK edge recorded at reflection time — the source relation and
+  // column this column's foreign key lands on. Kept even after the column is
+  // upgraded to Reference; lets reflection converge in any table order.
+  source_fk_schema?: string | null
+  source_fk_table?: string | null
+  source_fk_column?: string | null
 }
 
 export interface TableMeta {

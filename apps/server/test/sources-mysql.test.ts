@@ -43,6 +43,43 @@ beforeAll(async () => {
   await cli.query(`
     insert into ext_mysql.tenant (slug, plan, internal_notes)
     values ('acme', 'pro', 'cli-only'), ('globex', 'free', null)`)
+  // Django-style FK trio (the VMS shape): accident points at vehicle and
+  // driver, plus at garage — which the tests deliberately never reflect.
+  await cli.query(`
+    create table ext_mysql.vehicle (
+      id int auto_increment primary key,
+      reg_no varchar(50) not null,
+      updated_at datetime(3) not null default current_timestamp(3)
+    )`)
+  await cli.query(`
+    create table ext_mysql.driver (
+      id int auto_increment primary key,
+      full_name varchar(100) not null,
+      updated_at datetime(3) not null default current_timestamp(3)
+    )`)
+  await cli.query(`
+    create table ext_mysql.garage (
+      id int auto_increment primary key,
+      city varchar(50)
+    )`)
+  await cli.query(`
+    create table ext_mysql.accident (
+      id int auto_increment primary key,
+      severity varchar(20),
+      vehicle_id int not null,
+      driver_id int,
+      garage_id int,
+      updated_at datetime(3) not null default current_timestamp(3),
+      foreign key (vehicle_id) references vehicle(id),
+      foreign key (driver_id) references driver(id),
+      foreign key (garage_id) references garage(id)
+    )`)
+  await cli.query(`insert into ext_mysql.vehicle (reg_no) values ('KA-01-1234'), ('KA-02-9999')`)
+  await cli.query(`insert into ext_mysql.driver (full_name) values ('Asha Rao')`)
+  await cli.query(`insert into ext_mysql.garage (city) values ('Mysuru')`)
+  await cli.query(`
+    insert into ext_mysql.accident (severity, vehicle_id, driver_id, garage_id)
+    values ('minor', 1, 1, 1), ('major', 1, null, null)`)
 })
 
 afterAll(async () => {
@@ -148,6 +185,136 @@ describe.skipIf(!MYSQL_URL)('mysql: introspection and reflection', () => {
     expect(meta.source_access).toBe('read_write')
     const colNames = (meta.columns as { column_name: string }[]).map((c) => c.column_name)
     expect(colNames).toEqual(['slug', 'plan', 'active', 'internal_notes'])
+  })
+})
+
+// Reflect the given source tables, asserting all were created; returns the
+// created Desk names keyed by source table name.
+async function reflect(
+  admin: { fetch: (p: string, i?: RequestInit) => Promise<Response> },
+  tables: string[],
+): Promise<Record<string, string>> {
+  const res = await admin.fetch('/api/table/Data%20Source/ext-mysql:reflect', {
+    method: 'POST',
+    body: JSON.stringify({ schema: 'ext_mysql', tables }),
+  })
+  expect(res.status).toBe(200)
+  const body = (await res.json()) as {
+    created: { table: string; name: string }[]
+    skipped: { table: string; reason: string }[]
+  }
+  expect(body.skipped).toEqual([])
+  return Object.fromEntries(body.created.map((c) => [c.table, c.name]))
+}
+
+interface MetaColumn {
+  column_name: string
+  column_type: string
+  reference_table: string | null
+}
+
+async function metaColumns(
+  admin: { get: (p: string) => Promise<unknown> },
+  name: string,
+): Promise<Map<string, MetaColumn>> {
+  const meta = (await admin.get(`/api/table/${encodeURIComponent(name)}:meta`)) as {
+    columns: MetaColumn[]
+  }
+  return new Map(meta.columns.map((c) => [c.column_name, c]))
+}
+
+describe.skipIf(!MYSQL_URL)('mysql: foreign keys reflect as References', () => {
+  test('introspect reports the FK edge on each referencing column', async ({ admin }) => {
+    await makeSource(admin)
+    const res = (await admin.get(
+      '/api/table/Data%20Source/ext-mysql:introspect?schema=ext_mysql',
+    )) as {
+      tables: {
+        table: string
+        columns: {
+          name: string
+          references?: { schema: string; table: string; column: string } | null
+        }[]
+      }[]
+    }
+    const accident = res.tables.find((t) => t.table === 'accident')!
+    expect(accident.columns.find((c) => c.name === 'vehicle_id')!.references).toEqual({
+      schema: 'ext_mysql',
+      table: 'vehicle',
+      column: 'id',
+    })
+    expect(accident.columns.find((c) => c.name === 'driver_id')!.references).toEqual({
+      schema: 'ext_mysql',
+      table: 'driver',
+      column: 'id',
+    })
+    expect(accident.columns.find((c) => c.name === 'severity')!.references ?? null).toBeNull()
+    // tenant_tag's composite PRIMARY key is not a foreign key edge.
+    const tag = res.tables.find((t) => t.table === 'tenant_tag')!
+    expect(tag.columns.find((c) => c.name === 'tenant_id')!.references ?? null).toBeNull()
+  })
+
+  test('parent-first: reflecting vehicle+driver then accident emits Reference columns', async ({
+    admin,
+  }) => {
+    await makeSource(admin)
+    const names = await reflect(admin, ['vehicle', 'driver', 'accident'])
+    const cols = await metaColumns(admin, names.accident)
+    expect(cols.get('vehicle_id')).toMatchObject({
+      column_type: 'Reference',
+      reference_table: names.vehicle,
+    })
+    expect(cols.get('driver_id')).toMatchObject({
+      column_type: 'Reference',
+      reference_table: names.driver,
+    })
+    // garage is NOT reflected — its FK column stays a plain Int.
+    expect(cols.get('garage_id')).toMatchObject({ column_type: 'Int', reference_table: null })
+  })
+
+  test('child-first: reflecting the parent later upgrades the recorded FK columns', async ({
+    admin,
+  }) => {
+    await makeSource(admin)
+    const first = await reflect(admin, ['accident'])
+    // Before the parents exist the FK columns can only be plain Ints.
+    let cols = await metaColumns(admin, first.accident)
+    expect(cols.get('vehicle_id')).toMatchObject({ column_type: 'Int', reference_table: null })
+    // Reflecting the parents converges the graph — no re-reflection call.
+    const parents = await reflect(admin, ['vehicle', 'driver'])
+    cols = await metaColumns(admin, first.accident)
+    expect(cols.get('vehicle_id')).toMatchObject({
+      column_type: 'Reference',
+      reference_table: parents.vehicle,
+    })
+    expect(cols.get('driver_id')).toMatchObject({
+      column_type: 'Reference',
+      reference_table: parents.driver,
+    })
+    expect(cols.get('garage_id')).toMatchObject({ column_type: 'Int', reference_table: null })
+  })
+
+  test('the relation graph is walkable: forward reference values and backlink connections', async ({
+    admin,
+  }) => {
+    await makeSource(admin)
+    const names = await reflect(admin, ['vehicle', 'driver', 'accident'])
+    // Forward: the accident row carries the vehicle pk as its Reference value.
+    const accident = (await admin.get(
+      `/api/table/${encodeURIComponent(names.accident)}/1`,
+    )) as Record<string, unknown>
+    expect(String(accident.vehicle_id)).toBe('1')
+    const vehicle = (await admin.get(
+      `/api/table/${encodeURIComponent(names.vehicle)}/${String(accident.vehicle_id)}`,
+    )) as Record<string, unknown>
+    expect(vehicle.reg_no).toBe('KA-01-1234')
+    // Backlink: vehicle 1 is hit by both seeded accidents.
+    const cnx = (await admin.get(
+      `/api/table/${encodeURIComponent(names.vehicle)}/1:connections`,
+    )) as { connections: { table: string; column: string; count: number }[] }
+    expect(cnx.connections).toContainEqual(
+      expect.objectContaining({ table: names.accident, column: 'vehicle_id', count: 2 }),
+    )
   })
 })
 
