@@ -20,7 +20,7 @@ async function setup(admin: TestClient) {
   await admin.post('/api/save_doc', {
     doctype: 'Custom Field',
     doc: {
-      name: `${DT}-priority`,
+      row_id: `${DT}-priority`,
       dt: DT,
       column_name: 'priority',
       label: 'Priority',

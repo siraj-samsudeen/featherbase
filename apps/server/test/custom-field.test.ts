@@ -16,7 +16,7 @@ async function addCustomField(admin: TestClient) {
   await admin.post('/api/save_doc', {
     doctype: 'Custom Field',
     doc: {
-      name: `User-${FIELD}`,
+      row_id: `User-${FIELD}`,
       dt: 'User',
       column_name: FIELD,
       label: 'Custom Tag',
@@ -43,7 +43,7 @@ describe('CUST-001: custom fields', () => {
       body: JSON.stringify({
         doctype: 'Custom Field',
         doc: {
-          name: `User-${FIELD}`,
+          row_id: `User-${FIELD}`,
           dt: 'User',
           column_name: FIELD,
           label: 'Custom Tag',

@@ -28,7 +28,7 @@ async function setup(admin: TestClient) {
     await admin.post('/api/save_doc', {
       doctype: 'Web Form',
       doc: {
-        name,
+        row_id: name,
         title: 'Contact',
         route,
         ref_table: DT,

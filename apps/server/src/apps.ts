@@ -3,7 +3,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { createTable, tableName } from './doctype-engine'
 import { ensureHomePageForTable } from './home-pages'
-import { invalidateMeta } from './meta'
+import { invalidateMeta, physicalRowKey } from './meta'
 import { saveDoc, deleteDoc } from './document'
 import { reflectTables } from './sources/reflect'
 import { invalidateSources } from './sources/registry'
@@ -224,7 +224,7 @@ async function provisionAccess(manifest: AppManifest): Promise<{ roles: string[]
   for (const role of manifest.roles ?? []) {
     const [have] = await sql`select 1 from role where row_id = ${role}`
     if (have) continue
-    await saveDoc('Role', { name: role })
+    await saveDoc('Role', { row_id: role })
     roles.push(role)
   }
   const perms: string[] = []
@@ -292,7 +292,8 @@ async function provisionFixtures(manifest: AppManifest): Promise<FixtureRef[]> {
       const name = row.row_id == null ? '' : String(row.row_id).trim()
       if (name) {
         const [have] = await sql`
-          select 1 from ${sql(tableName(fixture.table))} where name = ${name}`
+          select 1 from ${sql(tableName(fixture.table))}
+          where ${sql(physicalRowKey(fixture.table))} = ${name}`
         if (have) continue
       }
       const saved = await saveDoc(fixture.table, { ...row }, 'Administrator', 'insert')
