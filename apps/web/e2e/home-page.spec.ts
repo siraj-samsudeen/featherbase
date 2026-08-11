@@ -20,7 +20,7 @@ test.beforeAll(async ({ request }) => {
   await request.delete(`/api/table/Dashboard/${DASH}`, { headers })
   await request.post('/api/save_doc', {
     headers,
-    data: { doctype: 'Dashboard', doc: { name: DASH, label: 'WS Board', config: JSON.stringify({ cards: [{ label: 'All', doctype: DT }] }) } },
+    data: { doctype: 'Dashboard', doc: { row_id: DASH, label: 'WS Board', config: JSON.stringify({ cards: [{ label: 'All', doctype: DT }] }) } },
   })
   await request.delete(`/api/table/Home Page/${WS}`, { headers })
   const ws = await request.post('/api/save_doc', {
@@ -28,7 +28,7 @@ test.beforeAll(async ({ request }) => {
     data: {
       doctype: 'Home Page',
       doc: {
-        name: WS,
+        row_id: WS,
         label: 'Sales',
         shortcuts: JSON.stringify([
           { label: 'Tasks', type: 'doctype', link_to: DT },

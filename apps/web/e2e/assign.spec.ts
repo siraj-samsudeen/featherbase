@@ -28,7 +28,7 @@ test.beforeAll(async ({ request }) => {
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   // Assignee user needs read on ToDo + this DT to see their list; grant via a role.
-  await request.post('/api/save_doc', { headers, data: { doctype: 'Role', doc: { name: 'Asg Role' } } })
+  await request.post('/api/save_doc', { headers, data: { doctype: 'Role', doc: { row_id: 'Asg Role' } } })
   for (const rd of ['ToDo', DT])
     await request.post('/api/save_doc', {
       headers,
@@ -36,17 +36,17 @@ test.beforeAll(async ({ request }) => {
     })
   await request.post('/api/save_doc', {
     headers,
-    data: { doctype: 'User', doc: { name: ASSIGNEE, email: ASSIGNEE, full_name: 'Asg User', roles: [{ role: 'Asg Role' }] } },
+    data: { doctype: 'User', doc: { row_id: ASSIGNEE, email: ASSIGNEE, full_name: 'Asg User', roles: [{ role: 'Asg Role' }] } },
   })
   await request.post('/api/set_password', { headers, data: { user: ASSIGNEE, password: ASSIGNEE_PWD } })
   // Clear assignee notifications.
   const notifs = (await (
     await request.get(`/api/table/Notification%20Log?filters=${encodeURIComponent(JSON.stringify([['for_user', '=', ASSIGNEE]]))}&limit_page_length=200`, { headers })
   ).json()) as { data: { name: string }[] }
-  for (const n of notifs.data) await request.delete(`/api/table/Notification%20Log/${n.name}`, { headers })
+  for (const n of notifs.data) await request.delete(`/api/table/Notification%20Log/${n.row_id}`, { headers })
 
   docName = `asg-${Date.now()}`
-  const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { name: docName, title: 'assign me' } })
+  const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { row_id: docName, title: 'assign me' } })
   if (doc.status() !== 201) throw new Error(`doc: ${doc.status()}`)
 })
 

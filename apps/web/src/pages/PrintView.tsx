@@ -60,8 +60,8 @@ export function PrintView({
     queryFn: () =>
       listResource<PrintFormat>('Print Format', {
         filters: [['ref_table', '=', doctype]],
-        fields: ['name', 'is_default', 'template', 'letter_head'],
-        order_by: 'name asc',
+        fields: ['row_id', 'is_default', 'template', 'letter_head'],
+        order_by: 'row_id asc',
         limit_page_length: 100,
       }),
   })
@@ -69,8 +69,8 @@ export function PrintView({
     queryKey: ['letter-heads'],
     queryFn: () =>
       listResource<LetterHead>('Letter Head', {
-        fields: ['name', 'is_default', 'header_html', 'footer_html'],
-        order_by: 'name asc',
+        fields: ['row_id', 'is_default', 'header_html', 'footer_html'],
+        order_by: 'row_id asc',
         limit_page_length: 100,
       }),
   })
@@ -264,7 +264,7 @@ function AutoLayout({
 
 // Sub-table rows carry framework columns; only show meaningful ones in print.
 const HIDDEN_CHILD_COLS = new Set([
-  'name',
+  'row_id',
   'created_by',
   'created_at',
   'updated_at',

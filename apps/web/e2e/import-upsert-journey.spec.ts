@@ -67,7 +67,7 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
   expect(((await seeded.json()) as { inserted: number }).inserted).toBe(8)
   const idsBefore = (await (
     await request.get(
-      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","zone_name"]')}&limit_page_length=100`,
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["row_id","zone_name"]')}&limit_page_length=100`,
       { headers },
     )
   ).json()) as { data: { name: string; zone_name: string }[] }
@@ -144,7 +144,7 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
   const after = (await (
     await request.get(
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
-        '["name","zone_name","population"]',
+        '["row_id","zone_name","population"]',
       )}&limit_page_length=100`,
       { headers },
     )
@@ -153,7 +153,7 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
   const byZone = Object.fromEntries(after.data.map((r) => [r.zone_name, r]))
   expect(Number(byZone.Alpha.population)).toBe(13500)
   expect(Number(byZone.Bravo.population)).toBe(8400)
-  for (const r of idsBefore.data) expect(byZone[r.zone_name].name).toBe(r.name)
+  for (const r of idsBefore.data) expect(byZone[r.zone_name].row_id).toBe(r.row_id)
 
   // J1.7 — the run's history entry carries updated and inserted separately.
   const log = (await (
@@ -208,7 +208,7 @@ test('UPS-J2: the file’s codes become the ids', async ({ session, page, reques
   // The colliding resident: a row already holding the file's REF-102 code.
   await request.post(`/api/table/${encodeURIComponent(DT2)}:import`, {
     headers,
-    data: { rows: [{ name: 'REF-102', zone_name: 'Resident', population: 1 }] },
+    data: { rows: [{ row_id: 'REF-102', zone_name: 'Resident', population: 1 }] },
   })
 
   // J2.3′ — in the mapping step (append), map the Code column onto Row ID.
@@ -238,12 +238,12 @@ test('UPS-J2: the file’s codes become the ids', async ({ session, page, reques
   const rows = (await (
     await request.get(
       `/api/table/${encodeURIComponent(DT2)}?fields=${encodeURIComponent(
-        '["name","zone_name"]',
+        '["row_id","zone_name"]',
       )}&limit_page_length=100`,
       { headers },
     )
   ).json()) as { data: { name: string; zone_name: string }[] }
-  const byZone = Object.fromEntries(rows.data.map((r) => [r.zone_name, r.name]))
+  const byZone = Object.fromEntries(rows.data.map((r) => [r.zone_name, r.row_id]))
   expect(byZone.Kilo).toBe('REF-101') // the file's code, verbatim
   expect(byZone.Resident).toBe('REF-102') // insert-mode collision left it untouched
   expect(byZone.Lima).toBeUndefined()
@@ -272,13 +272,13 @@ test('UPS-J2: the file’s codes become the ids', async ({ session, page, reques
   const afterKeyed = (await (
     await request.get(
       `/api/table/${encodeURIComponent(DT2)}?fields=${encodeURIComponent(
-        '["name","zone_name","population"]',
+        '["row_id","zone_name","population"]',
       )}&limit_page_length=100`,
       { headers },
     )
   ).json()) as { data: { name: string; zone_name: string; population: unknown }[] }
   expect(afterKeyed.data).toHaveLength(3) // updated in place, nothing doubled
-  const lima = afterKeyed.data.find((r) => r.name === 'REF-102')
+  const lima = afterKeyed.data.find((r) => r.row_id === 'REF-102')
   expect(lima?.zone_name).toBe('Lima') // the resident row took the file's values
   expect(Number(lima?.population)).toBe(5200)
 

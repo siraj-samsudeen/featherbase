@@ -35,7 +35,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     data: { title: 'attach fixture' },
   })
   if (created.status() !== 201) throw new Error(`doc: ${created.status()}`)
-  docName = ((await created.json()) as { name: string }).name
+  docName = ((await created.json()) as { row_id: string }).row_id
 })
 
 test('UI-023: Attach Image uploads, previews, persists the URL, and clears', async ({
@@ -52,7 +52,7 @@ test('UI-023: Attach Image uploads, previews, persists the URL, and clears', asy
 
   // Upload an image: preview renders, field holds the file URL, form dirty.
   await page.locator('[data-attach-input=photo]').setInputFiles({
-    name: 'avatar.png',
+    row_id: 'avatar.png',
     mimeType: 'image/png',
     buffer: PNG,
   })
@@ -68,7 +68,7 @@ test('UI-023: Attach Image uploads, previews, persists the URL, and clears', asy
 
   // Plain Attach uploads too: link but no preview.
   await page.locator('[data-attach-input=doc_file]').setInputFiles({
-    name: 'spec.txt',
+    row_id: 'spec.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('attach me'),
   })

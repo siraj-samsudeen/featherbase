@@ -29,7 +29,7 @@ export function Comments({ doctype, name }: { doctype: string; name: string }) {
           ['ref_table', '=', doctype],
           ['ref_name', '=', name],
         ],
-        fields: ['name', 'content', 'created_by', 'created_at'],
+        fields: ['row_id', 'content', 'created_by', 'created_at'],
         order_by: 'created_at asc',
         limit_page_length: 200,
       }),
@@ -41,8 +41,8 @@ export function Comments({ doctype, name }: { doctype: string; name: string }) {
     enabled: mention !== null,
     queryFn: () =>
       listResource<{ row_id: string }>('User', {
-        fields: ['name'],
-        order_by: 'name asc',
+        fields: ['row_id'],
+        order_by: 'row_id asc',
         limit_page_length: 500,
       }),
   })

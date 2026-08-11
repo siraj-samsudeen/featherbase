@@ -95,7 +95,7 @@ test('#87: a filters URL applies when opened cold, not just when the app built i
     { headers: auth },
   )
   for (const row of ((await existing.json()) as { data: { name: string }[] }).data) {
-    await request.delete(`/api/table/${encodeURIComponent(DT_COLD)}/${row.name}`, { headers: auth })
+    await request.delete(`/api/table/${encodeURIComponent(DT_COLD)}/${row.row_id}`, { headers: auth })
   }
   for (let i = 0; i < 10; i++) {
     await request.post(`/api/table/${encodeURIComponent(DT_COLD)}`, {

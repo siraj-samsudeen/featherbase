@@ -30,14 +30,14 @@ export function CalendarView({ doctype }: { doctype: string }) {
     [meta.data],
   )
   const field = dateColumns[0]?.column_name
-  const titleColumn = meta.data?.title_column || 'name'
+  const titleColumn = meta.data?.title_column || 'row_id'
 
   const rows = useQuery({
     queryKey: ['calendar', doctype, field],
     enabled: Boolean(meta.data && field),
     queryFn: () =>
       listResource<Row>(doctype, {
-        fields: [...new Set(['name', field!, titleColumn])],
+        fields: [...new Set(['row_id', field!, titleColumn])],
         order_by: field!,
         limit_page_length: 1000,
       }),

@@ -66,7 +66,7 @@ test.beforeAll(async ({ request }) => {
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   await request.delete(`/api/table/${encodeURIComponent(DT)}/${DOC}`, { headers })
-  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { name: DOC, title: 'x' } })
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { row_id: DOC, title: 'x' } })
 })
 
 async function cleanupFiles(request: APIRequestContext) {
@@ -91,7 +91,7 @@ test('FILE-004: image attachment gets a thumbnail; text does not', async ({ page
 
   // Attach a real (decodable) image.
   await page.getByTestId('attach-file-input').setInputFiles({
-    name: 'picture.png',
+    row_id: 'picture.png',
     mimeType: 'image/png',
     buffer: makePng(240, 160),
   })
@@ -110,7 +110,7 @@ test('FILE-004: image attachment gets a thumbnail; text does not', async ({ page
 
   // Attach a text file → no thumbnail on its row.
   await page.getByTestId('attach-file-input').setInputFiles({
-    name: 'note.txt',
+    row_id: 'note.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('not an image'),
   })

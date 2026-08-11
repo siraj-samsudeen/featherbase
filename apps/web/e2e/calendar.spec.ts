@@ -28,8 +28,8 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   const listed = (await (await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, { headers })).json()) as { data: { name: string }[] }
-  for (const r of listed.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${r.name}`, { headers })
-  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { name: 'evt-1', title: 'Deadline', due: DAY_FROM } })
+  for (const r of listed.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${r.row_id}`, { headers })
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { row_id: 'evt-1', title: 'Deadline', due: DAY_FROM } })
 })
 
 test('UI-021: events appear on their date and dragging updates the date field', async ({ page }) => {

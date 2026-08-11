@@ -37,14 +37,14 @@ export function GanttView({ doctype }: { doctype: string }) {
   )
   const startField = dateColumns[0]?.column_name
   const endField = dateColumns[1]?.column_name
-  const titleColumn = meta.data?.title_column || 'name'
+  const titleColumn = meta.data?.title_column || 'row_id'
 
   const rows = useQuery({
     queryKey: ['gantt', doctype, startField, endField],
     enabled: Boolean(meta.data && startField && endField),
     queryFn: () =>
       listResource<Row>(doctype, {
-        fields: [...new Set(['name', startField!, endField!, titleColumn])],
+        fields: [...new Set(['row_id', startField!, endField!, titleColumn])],
         order_by: startField!,
         limit_page_length: 1000,
       }),

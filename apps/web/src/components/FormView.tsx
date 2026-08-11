@@ -798,8 +798,8 @@ function LinkControl({
     timer.current = setTimeout(async () => {
       try {
         const res = await listResource<{ row_id: string }>(target, {
-          filters: q ? [['name', 'like', `%${q}%`]] : [],
-          fields: ['name'],
+          filters: q ? [['row_id', 'like', `%${q}%`]] : [],
+          fields: ['row_id'],
           limit_page_length: 10,
         })
         setOptions(res.data.map((r) => r.row_id))

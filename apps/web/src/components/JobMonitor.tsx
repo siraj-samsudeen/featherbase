@@ -43,7 +43,7 @@ export function JobMonitor() {
     queryKey: ['jobs'],
     queryFn: () =>
       listResource<Job>('Background Job', {
-        fields: ['name', 'method', 'job_status', 'attempts', 'error', 'created_at'],
+        fields: ['row_id', 'method', 'job_status', 'attempts', 'error', 'created_at'],
         order_by: 'created_at desc',
         limit_page_length: 100,
       }),

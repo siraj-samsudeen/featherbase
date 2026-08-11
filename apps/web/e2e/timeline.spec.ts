@@ -25,7 +25,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   docName = `tl-doc-${Math.random().toString(36).slice(2, 8)}`
   const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
-    data: { name: docName, title: 'original' },
+    data: { row_id: docName, title: 'original' },
   })
   if (doc.status() !== 201) throw new Error(`doc: ${doc.status()}`)
 })

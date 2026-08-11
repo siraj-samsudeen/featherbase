@@ -29,7 +29,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   await request.delete(`/api/table/${encodeURIComponent(DT)}/cf-doc`, { headers })
   await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
-    data: { name: 'cf-doc', title: 'has custom', [FIELD]: 'urgent' },
+    data: { row_id: 'cf-doc', title: 'has custom', [FIELD]: 'urgent' },
   })
 })
 

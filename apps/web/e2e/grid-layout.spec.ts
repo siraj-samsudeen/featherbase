@@ -22,7 +22,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
       items: [{ item: 'one', qty: 1 }, { item: 'two', qty: 2 }, { item: 'three', qty: 3 }],
     },
   })
-  docName = ((await created.json()) as { name: string }).name
+  docName = ((await created.json()) as { row_id: string }).row_id
 
   const metaS = await request.get(`/api/table/${encodeURIComponent(SEC_DT)}:meta`, { headers: auth })
   if (metaS.status() === 404) {

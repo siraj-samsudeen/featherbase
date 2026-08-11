@@ -55,9 +55,9 @@ function chainFilters(
     if (step.mode === 'viabacklink')
       return [
         [
-          'name',
+          'row_id',
           'related',
-          { via: step.via, column: step.column, table: upstreamTable, filters: [['name', 'in', names]] },
+          { via: step.via, column: step.column, table: upstreamTable, filters: [['row_id', 'in', names]] },
         ],
       ]
     return [[step.column, 'in', names]]
@@ -70,7 +70,7 @@ function chainFilters(
       ['parent', 'related', spec],
     ]
   if (step.mode === 'viabacklink')
-    return [['name', 'related', { via: step.via, column: step.column, ...spec }]]
+    return [['row_id', 'related', { via: step.via, column: step.column, ...spec }]]
   return [[step.column, 'related', spec]]
 }
 

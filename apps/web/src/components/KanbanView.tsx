@@ -31,14 +31,14 @@ export function KanbanView({
     ? groupBy
     : choiceColumns[0]?.column_name
 
-  const titleColumn = meta.data?.title_column || 'name'
+  const titleColumn = meta.data?.title_column || 'row_id'
 
   const rows = useQuery({
     queryKey: ['kanban', doctype, field],
     enabled: Boolean(meta.data && field),
     queryFn: () =>
       listResource<Row>(doctype, {
-        fields: [...new Set(['name', field!, titleColumn])],
+        fields: [...new Set(['row_id', field!, titleColumn])],
         order_by: 'updated_at desc',
         limit_page_length: 500,
       }),

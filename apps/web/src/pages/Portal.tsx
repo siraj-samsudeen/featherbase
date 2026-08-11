@@ -51,7 +51,7 @@ export function PortalListPage({ doctype }: { doctype: string }) {
     queryFn: () =>
       // The API scopes this to the caller's own rows via own_rows_only.
       listResource<Row>(doctype, {
-        fields: [...new Set(['name', ...columns])],
+        fields: [...new Set(['row_id', ...columns])],
         order_by: 'updated_at desc',
         limit_page_length: 200,
       }),

@@ -11,7 +11,7 @@ async function adminHeaders(request: APIRequestContext) {
 async function resetKeyFromSink(request: APIRequestContext): Promise<string> {
   const headers = await adminHeaders(request)
   const filters = encodeURIComponent(JSON.stringify([['mail_to', '=', USER]]))
-  const fields = encodeURIComponent(JSON.stringify(['name', 'body', 'created_at']))
+  const fields = encodeURIComponent(JSON.stringify(['row_id', 'body', 'created_at']))
   // Poll: the mail is delivered inside the reset-request handler, but allow a
   // few retries so this never races the sink write under load.
   for (let attempt = 0; attempt < 10; attempt++) {
@@ -40,7 +40,7 @@ test.beforeAll(async ({ request }) => {
   await request.delete(`/api/table/User/${encodeURIComponent(USER)}`, { headers })
   const created = await request.post('/api/save_doc', {
     headers,
-    data: { doctype: 'User', doc: { name: USER, email: USER, full_name: 'Set2 E2E', enabled: true } },
+    data: { doctype: 'User', doc: { row_id: USER, email: USER, full_name: 'Set2 E2E', enabled: true } },
   })
   if (created.status() !== 201) throw new Error(`create user: ${created.status()} ${await created.text()}`)
   await request.post('/api/set_password', { headers, data: { user: USER, password: 'initialpw123' } })
@@ -49,7 +49,7 @@ test.beforeAll(async ({ request }) => {
   const old = (await (
     await request.get(`/api/table/Email%20Sink?filters=${filters}&limit_page_length=50`, { headers })
   ).json()) as { data: { name: string }[] }
-  for (const m of old.data) await request.delete(`/api/table/Email%20Sink/${m.name}`, { headers })
+  for (const m of old.data) await request.delete(`/api/table/Email%20Sink/${m.row_id}`, { headers })
 })
 
 // SET-002: a user resets their password via the emailed link, then logs in

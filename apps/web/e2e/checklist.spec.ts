@@ -17,7 +17,7 @@ async function ensureChecklistStructure(request: APIRequestContext) {
   if (has.ok()) return
   const r = await request.post('/api/install_app', {
     headers: H,
-    data: { name: 'checklists' },
+    data: { row_id: 'checklists' },
   })
   if (r.status() !== 201) throw new Error(`install checklists: ${r.status()} ${await r.text()}`)
 }
@@ -34,7 +34,7 @@ test.beforeAll(async ({ request }) => {
   await ensureChecklistStructure(request)
   const H = { Authorization: `Bearer ${await token(request)}` }
   const templates = await request.get(
-    '/api/table/Checklist%20Template?fields=%5B%22name%22%5D&limit_page_length=1',
+    '/api/table/Checklist%20Template?fields=%5B%22row_id%22%5D&limit_page_length=1',
     { headers: H },
   )
   const template = ((await templates.json()) as { data: { name: string }[] }).data[0]?.name
@@ -48,7 +48,7 @@ test.beforeAll(async ({ request }) => {
       },
     })
     if (r.status() !== 201) throw new Error(`seed run: ${r.status()} ${await r.text()}`)
-    return ((await r.json()) as { name: string }).name
+    return ((await r.json()) as { row_id: string }).row_id
   }
   runName = await seed('Kurti')
   openRunName = await seed('Denim')
@@ -118,7 +118,7 @@ test('a photo_proof item takes a camera upload and shows its thumbnail', async (
 
   // A real 1×1 PNG so the server generates a thumbnail data URI.
   await page.getByTestId('checklist-photo-input').first().setInputFiles({
-    name: 'fast-mover.png',
+    row_id: 'fast-mover.png',
     mimeType: 'image/png',
     buffer: Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',

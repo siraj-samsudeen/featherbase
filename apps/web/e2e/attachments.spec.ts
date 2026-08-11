@@ -40,13 +40,13 @@ test('FILE-002: attach two files, both listed, delete one cleans up storage', as
 
   // Attach two files.
   await page.getByTestId('attach-file-input').setInputFiles({
-    name: 'notes.txt',
+    row_id: 'notes.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('first attachment'),
   })
   await expect(page.getByTestId('attachment-row')).toHaveCount(1)
   await page.getByTestId('attach-file-input').setInputFiles({
-    name: 'photo.png',
+    row_id: 'photo.png',
     mimeType: 'image/png',
     buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]),
   })

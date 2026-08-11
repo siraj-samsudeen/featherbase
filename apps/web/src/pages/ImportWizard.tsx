@@ -1146,7 +1146,7 @@ export function ImportWizard() {
                     ),
                   ]
                   const keyLabel = (col: string) => {
-                    if (col === 'name') return 'Row ID'
+                    if (col === 'row_id') return 'Row ID'
                     const c = targetCols.find((tc) => tc.column_name === col)
                     return c?.label && c.label !== c.column_name
                       ? `${c.label} · ${c.column_name}`
@@ -1156,7 +1156,7 @@ export function ImportWizard() {
                   // on Zone Name, as last time" (UPS-J1.2), not the select's
                   // disambiguated idiom.
                   const friendly = (col: string) =>
-                    col === 'name'
+                    col === 'row_id'
                       ? 'Row ID'
                       : (targetCols.find((tc) => tc.column_name === col)?.label ?? col)
                   return (

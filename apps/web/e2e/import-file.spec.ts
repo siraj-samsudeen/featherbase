@@ -109,7 +109,7 @@ test('IMP-006: a real .xlsx imports the same way (via the file picker)', async (
   await login(page)
   await page.getByTestId('new-doctype-link').click()
   await page.getByTestId('dt-file-input').setInputFiles({
-    name: 'import inventory.xlsx',
+    row_id: 'import inventory.xlsx',
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     buffer,
   })
@@ -135,7 +135,7 @@ test('IMP-006: a non-tabular file is refused with a message', async ({ page }) =
   await login(page)
   await page.getByTestId('new-doctype-link').click()
   await page.getByTestId('dt-file-input').setInputFiles({
-    name: 'notes.txt',
+    row_id: 'notes.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('hello'),
   })

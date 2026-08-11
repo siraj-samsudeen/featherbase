@@ -25,7 +25,7 @@ export function Assignments({ doctype, name }: { doctype: string; name: string }
           ['reference_name', '=', name],
           ['todo_status', '=', 'Open'],
         ],
-        fields: ['name', 'allocated_to', 'todo_status'],
+        fields: ['row_id', 'allocated_to', 'todo_status'],
         order_by: 'created_at asc',
         limit_page_length: 50,
       }),

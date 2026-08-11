@@ -140,12 +140,12 @@ test('IMP-J1: first import creates a typed Table from zones.csv', async ({
   // neutral series shape, and R6's follows-the-final-name half carries NO
   // evidence claim until #114 is fixed (then assert /^JOURNEY-ZONES-\d+$/).
   const rows = (await (
-    await request.get(`/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","zone_name"]')}`, {
+    await request.get(`/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["row_id","zone_name"]')}`, {
       headers,
     })
   ).json()) as { data: { name: string }[] }
   expect(rows.data).toHaveLength(8)
-  for (const r of rows.data) expect(r.name).toMatch(/^[A-Z][A-Z-]*-\d+$/)
+  for (const r of rows.data) expect(r.row_id).toMatch(/^[A-Z][A-Z-]*-\d+$/)
 
   // J1.9 — one Import Log entry: zones.csv, 8 inserted, 0 failed, created.
   const log = (await (

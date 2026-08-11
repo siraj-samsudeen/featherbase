@@ -24,7 +24,7 @@ test.beforeAll(async ({ request }) => {
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
 
-  await request.post('/api/save_doc', { headers: H, data: { doctype: 'Role', doc: { name: ROLE } } })
+  await request.post('/api/save_doc', { headers: H, data: { doctype: 'Role', doc: { row_id: ROLE } } })
   // own_rows_only grant: website users only ever see/created their own tickets.
   await request.post('/api/save_doc', {
     headers: H,
@@ -37,7 +37,7 @@ test.beforeAll(async ({ request }) => {
     await request.delete(`/api/table/User/${encodeURIComponent(u)}`, { headers: H })
     await request.post('/api/save_doc', {
       headers: H,
-      data: { doctype: 'User', doc: { name: u, email: u, enabled: true, roles: [{ role: ROLE }] } },
+      data: { doctype: 'User', doc: { row_id: u, email: u, enabled: true, roles: [{ role: ROLE }] } },
     })
     await request.post('/api/set_password', { headers: H, data: { user: u, password: PWD } })
   }
@@ -49,7 +49,7 @@ test.beforeAll(async ({ request }) => {
     await request.get(`/api/table/${encodeURIComponent(DT)}?limit=100`, { headers: H })
   ).json()) as { data?: { name: string }[] }
   for (const d of existing.data ?? [])
-    await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.name}`, { headers: H })
+    await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.row_id}`, { headers: H })
 
   // Each user creates their own ticket (owner = creator).
   const aTok = await token(request, ALICE, PWD)
@@ -62,7 +62,7 @@ test.beforeAll(async ({ request }) => {
     headers: { Authorization: `Bearer ${bTok}` },
     data: { subject: 'Bob billing question' },
   })
-  bobDoc = ((await b.json()) as { name: string }).name
+  bobDoc = ((await b.json()) as { row_id: string }).row_id
 })
 
 async function loginUI(page: import('@playwright/test').Page, usr: string) {

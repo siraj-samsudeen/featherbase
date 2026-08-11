@@ -135,7 +135,7 @@ function useChecklistShape(meta: TableMeta | undefined): {
         mustCol: named('must_do', ['Check']),
         photoCol: named('photo_proof', ['Check']),
         noteCol: named('note', ['Data', 'Text']),
-        titleCol: meta.title_column || 'name',
+        titleCol: meta.title_column || 'row_id',
         statusCol: meta.columns.find((f) => f.column_type === 'Choice'),
         dateCol: meta.columns.find((f) => f.column_type === 'Date')?.column_name,
         progressCol: meta.columns.find(
@@ -174,7 +174,7 @@ function RunList({
   const fields = [
     ...new Set(
       [
-        'name',
+        'row_id',
         'updated_at',
         binding.titleCol,
         binding.statusCol?.column_name,
@@ -321,7 +321,7 @@ function RunPane({
           ['ref_table', '=', binding.childTable],
           ['ref_name', 'in', items.map((i) => String(i.row_id))],
         ],
-        fields: ['name', 'file_name', 'file_url', 'thumbnail_url', 'ref_name'],
+        fields: ['row_id', 'file_name', 'file_url', 'thumbnail_url', 'ref_name'],
         order_by: 'created_at asc',
         limit_page_length: 200,
       }),

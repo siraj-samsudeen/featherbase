@@ -24,7 +24,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: auth,
-    data: { name: DOC, note: 'hot' },
+    data: { row_id: DOC, note: 'hot' },
   })
   // Re-runs must start clean: drop Administrator's leftover views for DT.
   const existing = await request.get(`/api/saved_views?table=${encodeURIComponent(DT)}`, {
@@ -32,7 +32,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   })
   for (const v of ((await existing.json()) as { views: Array<{ name: string; mine: boolean }> })
     .views) {
-    if (v.mine) await request.delete(`/api/saved_views/${v.name}`, { headers: auth })
+    if (v.mine) await request.delete(`/api/saved_views/${v.row_id}`, { headers: auth })
   }
 })
 

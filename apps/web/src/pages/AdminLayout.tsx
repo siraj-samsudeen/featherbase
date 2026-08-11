@@ -132,8 +132,8 @@ export function AdminLayout() {
     queryFn: () =>
       listResource<{ row_id: string; module: string; system: boolean }>('Table', {
         filters: [['kind', '!=', 'sub_table']],
-        fields: ['name', 'module', 'system'],
-        order_by: 'name asc',
+        fields: ['row_id', 'module', 'system'],
+        order_by: 'row_id asc',
         limit_page_length: 200,
       }),
   })

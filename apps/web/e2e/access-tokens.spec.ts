@@ -53,7 +53,7 @@ test('#131: service account + token lifecycle through the Admin screen', async (
     headers: { Authorization: `Bearer ${secret}` },
   })
   expect(who.status()).toBe(200)
-  expect(((await who.json()) as { name: string }).name).toBe(SVC)
+  expect(((await who.json()) as { row_id: string }).row_id).toBe(SVC)
 
   // The token row is listed as active with its label; revoke it.
   const row = page.locator('[data-testid^="token-tok_"]', { hasText: 'e2e spec token' }).first()

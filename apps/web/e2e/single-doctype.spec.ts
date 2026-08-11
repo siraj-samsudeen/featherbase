@@ -37,6 +37,6 @@ test('SET-001: System Settings opens as a form and saves persistently', async ({
       headers: { Authorization: `Bearer ${token}` },
     })
   ).json()) as { name: string; app_name: string }
-  expect(doc.name).toBe('System Settings')
+  expect(doc.row_id).toBe('System Settings')
   expect(doc.app_name).toBe(newName)
 })

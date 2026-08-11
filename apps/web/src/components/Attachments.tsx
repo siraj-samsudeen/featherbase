@@ -28,7 +28,7 @@ export function Attachments({ doctype, name }: { doctype: string; name: string }
           ['ref_table', '=', doctype],
           ['ref_name', '=', name],
         ],
-        fields: ['name', 'file_name', 'file_url', 'is_private', 'thumbnail_url'],
+        fields: ['row_id', 'file_name', 'file_url', 'is_private', 'thumbnail_url'],
         order_by: 'created_at asc',
         limit_page_length: 100,
       }),

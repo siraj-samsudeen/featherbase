@@ -37,7 +37,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     })
   ).json()) as { data: { name: string }[] }
   for (const row of listed.data)
-    await request.delete(`/api/table/${encodeURIComponent(DT)}/${row.name}`, { headers: auth })
+    await request.delete(`/api/table/${encodeURIComponent(DT)}/${row.row_id}`, { headers: auth })
 
   const seed: [string, string, number][] = [
     ['alpha', 'Open', 1],

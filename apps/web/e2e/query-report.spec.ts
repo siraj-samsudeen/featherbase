@@ -16,7 +16,7 @@ test.beforeAll(async ({ request }) => {
     data: {
       doctype: 'Report',
       doc: {
-        name: REPORT,
+        row_id: REPORT,
         ref_table: 'User',
         report_type: 'Query Report',
         query: 'select name, enabled from "user" where created_at >= {from_date} order by name',
@@ -58,14 +58,14 @@ test('RPT-004: a non-System-Manager cannot author Query Report SQL', async ({ re
   const USER = 'e2e-rpt-editor@x.com'
   const PWD = 'rpteditor12345'
 
-  await request.post('/api/save_doc', { headers, data: { doctype: 'Role', doc: { name: ROLE } } })
+  await request.post('/api/save_doc', { headers, data: { doctype: 'Role', doc: { row_id: ROLE } } })
   await request.post('/api/save_doc', {
     headers,
     data: { doctype: 'Permission', doc: { ref_table: 'Report', role: ROLE, can_read: true, can_write: true, can_create: true } },
   })
   await request.post('/api/save_doc', {
     headers,
-    data: { doctype: 'User', doc: { name: USER, email: USER, enabled: true, roles: [{ role: ROLE }] } },
+    data: { doctype: 'User', doc: { row_id: USER, email: USER, enabled: true, roles: [{ role: ROLE }] } },
   })
   await request.post('/api/set_password', { headers, data: { user: USER, password: PWD } })
 
@@ -75,7 +75,7 @@ test('RPT-004: a non-System-Manager cannot author Query Report SQL', async ({ re
   // Same role CAN create an ordinary report (proves it has base Report perms)…
   const ok = await request.post('/api/save_doc', {
     headers: userHeaders,
-    data: { doctype: 'Report', doc: { name: 'E2E Editor Builder', ref_table: 'User', report_type: 'Report Builder' } },
+    data: { doctype: 'Report', doc: { row_id: 'E2E Editor Builder', ref_table: 'User', report_type: 'Report Builder' } },
   })
   expect(ok.status()).toBe(201)
 
@@ -84,7 +84,7 @@ test('RPT-004: a non-System-Manager cannot author Query Report SQL', async ({ re
     headers: userHeaders,
     data: {
       doctype: 'Report',
-      doc: { name: 'E2E Editor Evil', ref_table: 'User', report_type: 'Query Report', query: 'select name from "user"' },
+      doc: { row_id: 'E2E Editor Evil', ref_table: 'User', report_type: 'Query Report', query: 'select name from "user"' },
     },
   })
   expect(denied.status()).toBe(403)

@@ -59,8 +59,8 @@ export function ReportView({
     queryFn: () =>
       listResource<{ row_id: string }>('Report', {
         filters: [['ref_table', '=', doctype]],
-        fields: ['name'],
-        order_by: 'name asc',
+        fields: ['row_id'],
+        order_by: 'row_id asc',
         limit_page_length: 100,
       }),
   })
@@ -70,8 +70,8 @@ export function ReportView({
     queryKey: ['dashboards-for-pin'],
     queryFn: () =>
       listResource<{ row_id: string }>('Dashboard', {
-        fields: ['name'],
-        order_by: 'name asc',
+        fields: ['row_id'],
+        order_by: 'row_id asc',
         limit_page_length: 100,
       }),
   })
@@ -98,7 +98,7 @@ export function ReportView({
   }, [selected, available])
 
   const fetchFields = useMemo(() => {
-    const set = new Set(['name', ...columns])
+    const set = new Set(['row_id', ...columns])
     if (groupBy) set.add(groupBy)
     return [...set]
   }, [columns, groupBy])

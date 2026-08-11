@@ -42,7 +42,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     data: {
       doctype: DT,
       doc: {
-        name: docName,
+        row_id: docName,
         customer: 'Wayne Enterprises',
         lines: [
           { product: 'Widget', qty: 3 },

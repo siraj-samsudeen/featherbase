@@ -79,7 +79,7 @@ test('IMP-010: multi-sheet workbook — one sheet to a new Table, one mapped ont
   await expect(page.getByTestId('import-wizard')).toBeVisible()
 
   await page.getByTestId('iw-file-input').setInputFiles({
-    name: 'q3 numbers FINAL.xlsx', // junk file name: nothing can be inferred from it
+    row_id: 'q3 numbers FINAL.xlsx', // junk file row_id: nothing can be inferred from it
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     buffer: workbook(),
   })
@@ -187,7 +187,7 @@ test('IMP-013: skip a sheet, drop a column, and drive the target picker', async 
   await login(page)
   await page.getByTestId('import-data-link').click()
   await page.getByTestId('iw-file-input').setInputFiles({
-    name: 'pick and skip.xlsx',
+    row_id: 'pick and skip.xlsx',
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     buffer,
   })
@@ -257,7 +257,7 @@ test('IMP-010: the list view Import button preselects that Table as the target',
   const sku = `Cog-${Date.now()}`
   const csv = `Wizard SKU,Bin Count,Restock Level\n${sku},4,1`
   await page.getByTestId('iw-file-input').setInputFiles({
-    name: 'anything at all.csv',
+    row_id: 'anything at all.csv',
     mimeType: 'text/csv',
     buffer: Buffer.from(csv),
   })

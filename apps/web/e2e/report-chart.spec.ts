@@ -33,7 +33,7 @@ test.beforeAll(async ({ request }) => {
   const existing = (await (
     await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=500`, { headers })
   ).json()) as { data: { name: string }[] }
-  for (const d of existing.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.name}`, { headers })
+  for (const d of existing.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.row_id}`, { headers })
   for (const [region, amount] of ROWS)
     await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { region, amount } })
 
@@ -43,7 +43,7 @@ test.beforeAll(async ({ request }) => {
     headers,
     data: {
       doctype: 'Report',
-      doc: { name: REPORT, ref_table: DT, report_type: 'Report Builder', config: { columns: ['region', 'amount'], filters: [] } },
+      doc: { row_id: REPORT, ref_table: DT, report_type: 'Report Builder', config: { columns: ['region', 'amount'], filters: [] } },
     },
   })
 
@@ -51,7 +51,7 @@ test.beforeAll(async ({ request }) => {
   await request.delete(`/api/table/Dashboard/${encodeURIComponent(DASH)}`, { headers })
   await request.post('/api/save_doc', {
     headers,
-    data: { doctype: 'Dashboard', doc: { name: DASH, label: 'RC Board', config: { cards: [], charts: [] } } },
+    data: { doctype: 'Dashboard', doc: { row_id: DASH, label: 'RC Board', config: { cards: [], charts: [] } } },
   })
 })
 

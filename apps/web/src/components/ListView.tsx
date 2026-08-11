@@ -1001,7 +1001,7 @@ export function FilterBar({
       .filter((f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden)
       .map((f) => ({ fieldname: f.column_name, label: f.label ?? f.column_name })),
   ]
-  const [field, setField] = useState('name')
+  const [field, setField] = useState('row_id')
   const [op, setOp] = useState<string>('=')
   const [value, setValue] = useState('')
 

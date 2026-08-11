@@ -21,7 +21,7 @@ test.beforeAll(async ({ request }) => {
     data: {
       doctype: 'Server Script',
       doc: {
-        name: 'ss-e2e-reject',
+        row_id: 'ss-e2e-reject',
         script_type: 'Document Event',
         ref_table: DT,
         event: 'validate',

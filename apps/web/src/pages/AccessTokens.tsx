@@ -336,7 +336,7 @@ function ServiceAccounts({
 
   const roleList = useQuery({
     queryKey: ['roles-all'],
-    queryFn: () => listResource<{ row_id: string }>('Role', { fields: ['name'], order_by: 'name asc' }),
+    queryFn: () => listResource<{ row_id: string }>('Role', { fields: ['row_id'], order_by: 'row_id asc' }),
   })
 
   const create = useMutation({
