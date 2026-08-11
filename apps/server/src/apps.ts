@@ -362,7 +362,7 @@ async function provisionSources(
     const [existing] = await sql`select 1 from data_source where row_id = ${src.name}`
     if (!existing) {
       await saveDoc('Data Source', {
-        name: src.name,
+        row_id: src.name,
         engine: src.engine,
         url_env: src.url_env ?? null,
         root_path: src.root_path ?? null,

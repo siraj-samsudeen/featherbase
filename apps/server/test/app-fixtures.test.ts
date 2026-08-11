@@ -168,7 +168,7 @@ describe('PLAT-006: app fixtures install through the real lifecycle', () => {
 
       const un = await admin.fetch('/api/uninstall_app', {
         method: 'POST',
-        body: JSON.stringify({ row_id: DECL }),
+        body: JSON.stringify({ name: DECL }),
       })
       expect(un.status).toBe(200)
       expect((await sql`select 1 from table_def where name = 'Decl Fixture Item'`).length).toBe(0)
