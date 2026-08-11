@@ -617,6 +617,14 @@ async function saveBoundDoc(
   return result
 }
 
+// A server-side caller usually echoes back the `updated_at` it loaded, which
+// comes off the driver as a Date. String(Date) truncates to whole seconds, so
+// any row whose stamp carries milliseconds would fail its own echo; normalize
+// through toISOString instead. HTTP callers already send an ISO string.
+function expectedStamp(value: unknown): string {
+  return value instanceof Date ? value.toISOString() : String(value)
+}
+
 // EDS-8, 'modified' mode: when the source has a mapped modified column the
 // client must echo the updated_at it loaded, exactly like native updates.
 // Without one, updates are last-write-wins (the Desk shows that state).
@@ -665,7 +673,7 @@ async function updateBoundDoc(
   // row could be edited (by the payload or by a hook) into a Reference
   // value the caller may not access.
   await assertUserPermissions(user, meta, { ...current, ...toWrite })
-  const expect = ctx.bind.modified ? String(values.updated_at) : null
+  const expect = ctx.bind.modified ? expectedStamp(values.updated_at) : null
   const updated = await ctx.driver
     .update(ctx.bind, name, sourceValues, expect)
     .catch((err) => mapDbError(meta, err))
@@ -745,7 +753,7 @@ async function updateDoc(
         await assertUserPermissions(user, meta, existing as RowValues)
       }
       const dbModified = (existing.updated_at as Date).getTime()
-      const sentModified = new Date(String(values.updated_at)).getTime()
+      const sentModified = new Date(expectedStamp(values.updated_at)).getTime()
       if (Number.isNaN(sentModified) || dbModified !== sentModified)
         throw new AppError(
           'ConflictError',

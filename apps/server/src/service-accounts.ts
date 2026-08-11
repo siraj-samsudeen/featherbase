@@ -93,12 +93,6 @@ export async function setServiceAccountEnabled(
   const [row] = await sql`
     select name, updated_at from "user" where name = ${name} and user_type = 'service'`
   if (!row) throw new AppError('NotFoundError', `Service account ${name} not found`)
-  // toISOString keeps millisecond precision — String(Date) truncates to
-  // seconds and trips the optimistic-concurrency check.
-  await saveDoc(
-    'User',
-    { name, updated_at: (row.updated_at as Date).toISOString(), enabled },
-    actor,
-  )
+  await saveDoc('User', { name, updated_at: row.updated_at, enabled }, actor)
   return getServiceAccount(name)
 }

@@ -101,9 +101,11 @@ whitelist('frappe.client.set_value', async ({ args, user }) => {
   const name = str(args, 'name')
   const columnName = str(args, 'fieldname')
   const current = await getDoc(table, name, user.name)
-  const updatedAt =
-    current.updated_at instanceof Date ? current.updated_at.toISOString() : current.updated_at
-  return saveDoc(table, { name, updated_at: updatedAt, [columnName]: args.value ?? null }, user.name)
+  return saveDoc(
+    table,
+    { name, updated_at: current.updated_at, [columnName]: args.value ?? null },
+    user.name,
+  )
 }, { effect: 'write' })
 
 whitelist('frappe.client.delete', async ({ args, user }) => {
