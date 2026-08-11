@@ -32,6 +32,7 @@ beforeAll(async () => {
       plan varchar(50),
       active tinyint(1) not null default 1,
       internal_notes text,
+      password varchar(128),
       updated_at datetime(3) not null default current_timestamp(3)
     )`)
   await cli.query(`
@@ -184,6 +185,8 @@ describe.skipIf(!MYSQL_URL)('mysql: introspection and reflection', () => {
     expect(meta.external_modified).toBe('updated_at')
     expect(meta.source_access).toBe('read_write')
     const colNames = (meta.columns as { column_name: string }[]).map((c) => c.column_name)
+    // `password` exists on the source but is credential-named — never
+    // reflected (the VMS finding behind migration 0076).
     expect(colNames).toEqual(['slug', 'plan', 'active', 'internal_notes'])
   })
 })
