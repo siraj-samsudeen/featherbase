@@ -285,10 +285,18 @@ async function buildBoundTable(
     { name: string; external_schema: string | null; external_table: string | null; external_pk: string | null }[]
   >`
     select name, external_schema, external_table, external_pk from table_def
-    where data_source = ${cfg.name}`
-  const boundByRelation = new Map(
-    bound.map((b) => [`${b.external_schema ?? ''}\u0000${b.external_table ?? ''}`, b]),
-  )
+    where data_source = ${cfg.name}
+    order by created_at asc, name asc`
+  // A source relation can be bound MORE than once (a hand-bound EDS-3 Table
+  // plus a reflected one). The EARLIEST-created binding wins as the
+  // Reference target — deterministic, stable across re-reflections, and
+  // consistent with linkReferencesTo, which never rewrites a column that is
+  // already a Reference (so the first binding to arrive keeps its edges).
+  const boundByRelation = new Map<string, (typeof bound)[number]>()
+  for (const b of bound) {
+    const key = `${b.external_schema ?? ''}\u0000${b.external_table ?? ''}`
+    if (!boundByRelation.has(key)) boundByRelation.set(key, b)
+  }
   const columns = dataColumns.map((c, i) => {
     const target = c.references
       ? boundByRelation.get(`${c.references.schema}\u0000${c.references.table}`)

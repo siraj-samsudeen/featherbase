@@ -57,6 +57,21 @@ beforeAll(async () => {
       garage_id int references ext_fixture.garage(id),
       updated_at timestamptz not null default now()
     )`)
+  // Two tables sharing one constraint NAME (legal in Postgres — constraint
+  // names are unique per table, not per schema). The hand-written
+  // "fk_ref" on both must not cross-multiply in the catalog query.
+  await cli.unsafe(`
+    create table ext_fixture.claim (
+      id serial primary key,
+      vehicle_id int,
+      constraint fk_ref foreign key (vehicle_id) references ext_fixture.vehicle(id)
+    )`)
+  await cli.unsafe(`
+    create table ext_fixture.inspection (
+      id serial primary key,
+      vehicle_id int,
+      constraint fk_ref foreign key (vehicle_id) references ext_fixture.vehicle(id)
+    )`)
 })
 
 afterAll(async () => {
@@ -401,5 +416,77 @@ describe('EDS-2: foreign keys reflect as References', () => {
     })
     // garage is never reflected — its FK column stays Int.
     expect(cols.get('garage_id')).toMatchObject({ column_type: 'Int', reference_table: null })
+  })
+
+  test('a doubly-bound relation resolves to a deterministic Reference target', async ({
+    admin,
+  }) => {
+    await makeSource(admin)
+    // Bind the vehicle relation TWICE by hand (legal via EDS-3); the
+    // earliest-created binding must win as the Reference target — names
+    // chosen so the created_at tie-break (name asc) agrees.
+    for (const name of ['Alpha Vehicle', 'Zeta Vehicle']) {
+      await admin.post('/api/doctype', {
+        name,
+        data_source: 'ext-fixture',
+        external_schema: 'ext_fixture',
+        external_table: 'vehicle',
+        external_pk: 'id',
+        columns: [{ column_name: 'reg_no', column_type: 'Data' }],
+      })
+    }
+    const res = await admin.fetch('/api/table/Data%20Source/ext-fixture:reflect', {
+      method: 'POST',
+      body: JSON.stringify({ schema: 'ext_fixture', tables: ['accident'] }),
+    })
+    expect(res.status).toBe(200)
+    const created = ((await res.json()) as { created: { name: string }[] }).created[0].name
+    const meta = (await admin.get(`/api/table/${encodeURIComponent(created)}:meta`)) as {
+      columns: { column_name: string; column_type: string; reference_table: string | null }[]
+    }
+    expect(meta.columns.find((c) => c.column_name === 'vehicle_id')).toMatchObject({
+      column_type: 'Reference',
+      reference_table: 'Alpha Vehicle',
+    })
+  })
+
+  test('two tables sharing a constraint name both keep their FK edge', async ({ admin }) => {
+    await makeSource(admin)
+    const intro = (await admin.get(
+      '/api/table/Data%20Source/ext-fixture:introspect?schema=ext_fixture',
+    )) as {
+      tables: {
+        table: string
+        columns: {
+          name: string
+          references?: { schema: string; table: string; column: string } | null
+        }[]
+      }[]
+    }
+    for (const tableName of ['claim', 'inspection']) {
+      const t = intro.tables.find((x) => x.table === tableName)!
+      expect(t.columns.find((c) => c.name === 'vehicle_id')!.references).toEqual({
+        schema: 'ext_fixture',
+        table: 'vehicle',
+        column: 'id',
+      })
+    }
+    const res = await admin.fetch('/api/table/Data%20Source/ext-fixture:reflect', {
+      method: 'POST',
+      body: JSON.stringify({ schema: 'ext_fixture', tables: ['vehicle', 'claim', 'inspection'] }),
+    })
+    expect(res.status).toBe(200)
+    const created = ((await res.json()) as { created: { table: string; name: string }[] }).created
+    const vehicleName = created.find((c) => c.table === 'vehicle')!.name
+    for (const t of ['claim', 'inspection']) {
+      const name = created.find((c) => c.table === t)!.name
+      const meta = (await admin.get(`/api/table/${encodeURIComponent(name)}:meta`)) as {
+        columns: { column_name: string; column_type: string; reference_table: string | null }[]
+      }
+      expect(meta.columns.find((c) => c.column_name === 'vehicle_id')).toMatchObject({
+        column_type: 'Reference',
+        reference_table: vehicleName,
+      })
+    }
   })
 })

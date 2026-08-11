@@ -48,6 +48,17 @@ first in one call, opened `/admin/map/Vms Accidents Accident/1` — both
 forward nodes rendered, clicking Vehicle re-centered the map, the vehicle
 showed the accident backlink (count 2), and the collection listed both rows.
 
+**Review round (same PR):** two defects fixed. (1) The postgres FK query
+moved off information_schema onto `pg_constraint` — constraint names are
+unique per TABLE in Postgres, so the schema+name-keyed views cross-multiply
+when two tables reuse a name (e.g. `fk_ref` on both), silently dropping
+genuine edges; `conrelid`/`confrelid` are unambiguous. Pinned by a test with
+two same-named constraints. (2) A source relation bound MORE than once
+(hand-bound EDS-3 + reflected) now resolves Reference targets
+deterministically: the **earliest-created binding wins** (tie-break: name
+asc) — consistent with linkReferencesTo, which never rewrites a column that
+is already a Reference. Pinned by a doubly-bound test.
+
 **Next:** after merge + featherbase-dev redeploy, re-reflect the real VMS
 tables and walk the map against RDS. Note for that retest: tables reflected
 BEFORE this change carry no source_fk_* records, so they will not converge —

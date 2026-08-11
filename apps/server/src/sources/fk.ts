@@ -1,9 +1,11 @@
-// Shared FK-edge grouping for driver introspection. Both SQL drivers read
-// information_schema.key_column_usage rows in the same alias shape; this
-// folds them into per-column single-column edges. A composite FK (two rows
-// under one constraint) is dropped — a Reference holds ONE value, so only a
-// single-column FK can ever become one. A column under two constraints keeps
-// the first (deterministic via the driver's ORDER BY).
+// FK-edge grouping for driver introspection over
+// information_schema.key_column_usage (the mysql driver; postgres reads
+// pg_constraint directly, where conrelid disambiguates reused constraint
+// names). Folds constraint rows into per-column single-column edges. A
+// composite FK (two rows under one constraint) is dropped — a Reference
+// holds ONE value, so only a single-column FK can ever become one. A column
+// under two constraints keeps the first (deterministic via the driver's
+// ORDER BY).
 
 export interface FkEdge {
   schema: string
