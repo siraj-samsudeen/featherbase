@@ -1,5 +1,43 @@
 # Progress Log
 
+## 2026-08-11 — migrate.ts: guard against two migrations claiming the same number (#149)
+
+`migrations/` is numbered by hand and `migrate.ts` recorded applied
+migrations by filename — nothing stopped two files sharing a numeric prefix
+from both applying silently (whichever sorted first "won" the slot). The
+repo already had two such collisions on disk from parallel sessions:
+`0064_data_sources.ts`/`0064_user_event.ts` and
+`0069_access_tokens.sql`/`0069_import_upsert_log.ts` — both additive on
+disjoint tables, both applied in real checkouts, neither may be renumbered
+per the issue.
+
+Added `findDuplicateMigrationPrefixes` (pure, DB-free, exported from
+`apps/server/src/migrate.ts`): groups the directory listing by the token
+before the first underscore, and errors — naming every file involved — for
+any prefix claimed by more than one file, except an explicit
+`GRANDFATHERED_DUPLICATE_PREFIXES` allowlist holding exactly those two
+pre-existing pairs, dated and pointed at #149 in the comment. `0010_rls.sql`
+vs `0010a_rename_rls_role.sql` is a deliberate same-batch sub-ordering, not
+a collision — the prefix is the *whole* token before `_`, so `0010` and
+`0010a` are distinct on purpose. `runMigrations()` now calls the guard right
+after listing the directory, before applying anything, and throws with all
+the duplicate messages if it finds a new (non-grandfathered) collision.
+
+**Verified:** new `apps/server/test/migrate-duplicate-prefix.test.ts` (6
+cases: a fresh duplicate fails naming both files, the grandfathered 0064 and
+0069 pairs pass, unique prefixes pass, `0010`/`0010a` is correctly not a
+collision, a THIRD file landing on a grandfathered number still fails, and
+the real `migrations/` directory on disk has no un-grandfathered
+duplicates) — `pnpm vitest run test/migrate-duplicate-prefix.test.ts`, 6/6.
+`pnpm --filter server typecheck` clean. Ran the real migration runner
+against the dev DB (`DATABASE_URL=postgres://localhost:5432/featherbase`,
+`tsx -e "import('./src/migrate.js').then(m => m.runMigrations())..."`) twice
+— applied the one pending migration (0074) on the first run, reported
+"migrations up to date" on the second, no failure from the 0064/0069 pairs.
+Also ran `test/cli.test.ts` (spawns the CLI subprocess, which calls
+`runMigrations` on boot) — 5/5 green. **Next:** nothing queued by this
+change; #149 is closed by this PR.
+
 ## 2026-08-11 — VMS connected end-to-end; the connection-console direction is set
 
 The session that motivated the mysql engine, run in parallel with its build.
