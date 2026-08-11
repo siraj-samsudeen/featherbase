@@ -66,7 +66,7 @@ async function setup(admin: TestClient) {
 
 const list = async (client: TestClient, table: string, filters: unknown[]) => {
   const res = await client.get<{ data: { row_id: string }[]; total: number }>(
-    `/api/table/${encodeURIComponent(table)}?filters=${encodeURIComponent(JSON.stringify(filters))}&fields=${encodeURIComponent('["name"]')}&order_by=${encodeURIComponent('name asc')}`,
+    `/api/table/${encodeURIComponent(table)}?filters=${encodeURIComponent(JSON.stringify(filters))}&fields=${encodeURIComponent('["row_id"]')}&order_by=${encodeURIComponent('row_id asc')}`,
   )
   return { names: res.data.map((r) => r.row_id), total: res.total }
 }

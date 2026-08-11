@@ -38,7 +38,7 @@ describe('PERM-006: field-level (tier) permissions', () => {
   test('restricted-tier field is omitted from reads for a basic-tier user', async ({ admin, createUser }) => {
     const user = await setup(admin, createUser)
     const list = await user.get<{ data: { row_id: string }[] }>(
-      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name"]')}`,
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["row_id"]')}`,
     )
     const name = list.data[0].row_id
     const doc = await user.get<Record<string, unknown>>(
@@ -60,7 +60,7 @@ describe('PERM-006: field-level (tier) permissions', () => {
   }) => {
     const user = await setup(admin, createUser)
     const list = await user.get<{ data: { row_id: string }[] }>(
-      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name"]')}`,
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["row_id"]')}`,
     )
     const name = list.data[0].row_id
     const cur = await admin.get<Record<string, unknown>>(

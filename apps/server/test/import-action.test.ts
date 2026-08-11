@@ -36,7 +36,7 @@ describe('IMP-005: bulk import', () => {
 
     const list = await admin.get<{ data: Record<string, unknown>[] }>(
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
-        '["name","title","qty","active","due","created_by"]',
+        '["row_id","title","qty","active","due","created_by"]',
       )}&order_by=${encodeURIComponent('title asc')}`,
     )
     expect(list.data).toHaveLength(3)

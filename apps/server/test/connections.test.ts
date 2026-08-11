@@ -242,7 +242,7 @@ describe('NAV-001: via-link permission scoping', () => {
     // NAV-002: the relational filter matches ALL 501 owners — the old
     // 500-name cap is gone because there are no names to cap
     const res = await admin.get<{ total: number }>(
-      `/api/table/${encodeURIComponent(ORDER)}?filters=${encodeURIComponent(JSON.stringify(ord.filters))}&fields=${encodeURIComponent('["name"]')}`,
+      `/api/table/${encodeURIComponent(ORDER)}?filters=${encodeURIComponent(JSON.stringify(ord.filters))}&fields=${encodeURIComponent('["row_id"]')}`,
     )
     expect(res.total).toBe(501)
   })

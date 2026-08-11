@@ -150,7 +150,7 @@ describe('finding 1: bound tables honor own-rows and Data Scope rules', () => {
       doc: { user: user.user, allow_table: BOUND, for_value: 'ACC-A' },
     })
     const list = (await user.get(
-      `/api/table/${encodeURIComponent(BOUND)}?fields=${encodeURIComponent('["name","label"]')}`,
+      `/api/table/${encodeURIComponent(BOUND)}?fields=${encodeURIComponent('["row_id","label"]')}`,
     )) as { data: { row_id: string }[]; total: number }
     expect(list.total).toBe(1)
     expect(list.data[0].row_id).toBe('ACC-A')
@@ -184,7 +184,7 @@ describe('finding 2: credential-named source columns never surface', () => {
     expect(meta.columns.map((c) => c.column_name)).not.toContain('api_key')
 
     const list = (await admin.get(
-      `/api/table/${encodeURIComponent(BOUND)}?fields=${encodeURIComponent('["name","label"]')}`,
+      `/api/table/${encodeURIComponent(BOUND)}?fields=${encodeURIComponent('["row_id","label"]')}`,
     )) as { data: Record<string, unknown>[] }
     expect(JSON.stringify(list)).not.toContain('sk-alpha-secret')
 
@@ -277,7 +277,7 @@ describe('finding 4: same-named tables in two schemas', () => {
     >
     expect(meta.external_schema).toBe('sec_archive')
     const list = (await admin.get(
-      `/api/table/${encodeURIComponent(name)}?fields=${encodeURIComponent('["name"]')}`,
+      `/api/table/${encodeURIComponent(name)}?fields=${encodeURIComponent('["row_id"]')}`,
     )) as { data: { row_id: string }[]; total: number }
     expect(list.total).toBe(1)
     expect(list.data[0].row_id).toBe('OLD-1')
@@ -373,7 +373,7 @@ describe('re-review findings', () => {
     const enc = encodeURIComponent(BOUND)
 
     await expect(
-      user.get(`/api/table/${enc}?fields=${encodeURIComponent('["name","region"]')}`),
+      user.get(`/api/table/${enc}?fields=${encodeURIComponent('["row_id","region"]')}`),
     ).rejects.toMatchObject({ status: 417 })
     await expect(
       user.get(`/api/table/${enc}?filters=${encodeURIComponent('[["region","=","north"]]')}`),
@@ -464,7 +464,7 @@ describe('re-review findings', () => {
     const enc = encodeURIComponent(BOUND)
     await expect(admin.get(`/api/table/${enc}/ACC-A`)).rejects.toMatchObject({ status: 417 })
     await expect(
-      admin.get(`/api/table/${enc}?fields=${encodeURIComponent('["name","label"]')}`),
+      admin.get(`/api/table/${enc}?fields=${encodeURIComponent('["row_id","label"]')}`),
     ).rejects.toMatchObject({ status: 417 })
   })
 

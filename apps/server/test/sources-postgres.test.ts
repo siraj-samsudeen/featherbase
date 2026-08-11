@@ -164,13 +164,13 @@ describe('EDS-5: reading bound rows', () => {
     await makeSource(admin)
     await reflectTenant(admin)
     const list = (await admin.get(
-      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["name","slug","plan"]')}&order_by=slug asc`,
+      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["row_id","slug","plan"]')}&order_by=slug asc`,
     )) as { data: Record<string, unknown>[]; total: number }
     expect(list.total).toBe(2)
     expect(list.data.map((r) => r.slug)).toEqual(['acme', 'globex'])
 
     const filtered = (await admin.get(
-      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["name","slug"]')}&filters=${encodeURIComponent('[["plan","=","pro"]]')}`,
+      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["row_id","slug"]')}&filters=${encodeURIComponent('[["plan","=","pro"]]')}`,
     )) as { data: Record<string, unknown>[]; total: number }
     expect(filtered.total).toBe(1)
     expect(filtered.data[0].slug).toBe('acme')
@@ -219,7 +219,7 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     await makeSource(admin)
     await reflectTenant(admin)
     const list = (await admin.get(
-      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["name","slug","updated_at"]')}&filters=${encodeURIComponent('[["slug","=","acme"]]')}`,
+      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["row_id","slug","updated_at"]')}&filters=${encodeURIComponent('[["slug","=","acme"]]')}`,
     )) as { data: Record<string, unknown>[] }
     const { name, updated_at } = list.data[0]
     const updated = await patchDoc<Record<string, unknown>>(
@@ -238,7 +238,7 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     await makeSource(admin)
     await reflectTenant(admin)
     const list = (await admin.get(
-      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["name","updated_at"]')}&filters=${encodeURIComponent('[["slug","=","globex"]]')}`,
+      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["row_id","updated_at"]')}&filters=${encodeURIComponent('[["slug","=","globex"]]')}`,
     )) as { data: Record<string, unknown>[] }
     const { name, updated_at } = list.data[0]
     // The CLI writes directly, bumping updated_at.

@@ -82,7 +82,7 @@ describe('app manifests can declare Data Sources and reflections', () => {
     expect(meta.external_table).toBe('lease')
     expect(meta.source_writable).toBe(false) // read_only source
     const list = (await admin.get(
-      `/api/table/Demo%20Lease?fields=${encodeURIComponent('["name","holder"]')}`,
+      `/api/table/Demo%20Lease?fields=${encodeURIComponent('["row_id","holder"]')}`,
     )) as { data: { row_id: string; holder: string }[]; total: number }
     expect(list.total).toBe(1)
     expect(list.data[0]).toMatchObject({ row_id: 'sap', holder: 'box-1' })

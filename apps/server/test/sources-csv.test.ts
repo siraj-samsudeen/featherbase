@@ -121,7 +121,7 @@ describe('M1: csv-folder source', () => {
     expect(stores).toBe('Seed Store Master')
     const enc = encodeURIComponent(stores)
     const list = (await admin.get(
-      `/api/table/${enc}?fields=${encodeURIComponent('["name","store_code","store_name"]')}&order_by=store_code asc`,
+      `/api/table/${enc}?fields=${encodeURIComponent('["row_id","store_code","store_name"]')}&order_by=store_code asc`,
     )) as { data: Record<string, unknown>[]; total: number }
     expect(list.total).toBe(3)
     expect(list.data.map((r) => r.store_code)).toEqual(['CHN', 'KKL', 'TVM'])

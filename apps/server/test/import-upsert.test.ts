@@ -45,7 +45,7 @@ async function seed(admin: TestClient) {
 async function rowsByZone(admin: TestClient) {
   const list = await admin.get<{ data: Record<string, unknown>[] }>(
     `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
-      '["name","zone","pop","note","stage","updated_by","updated_at"]',
+      '["row_id","zone","pop","note","stage","updated_by","updated_at"]',
     )}&order_by=${encodeURIComponent('zone asc')}&limit_page_length=100`,
   )
   return Object.fromEntries(list.data.map((r) => [String(r.zone), r]))

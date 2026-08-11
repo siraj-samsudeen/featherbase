@@ -49,7 +49,7 @@ describe('PERM-002/003: Permission grants enforced server-side', () => {
     const user = await createUser({ roles: [ROLE] })
     await grant(admin, { can_read: true })
     const list = await user.fetch(
-      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","title"]')}`,
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["row_id","title"]')}`,
     )
     expect(list.status).toBe(200)
     const { data } = (await list.json()) as { data: { row_id: string; title: string }[] }

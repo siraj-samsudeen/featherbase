@@ -155,7 +155,7 @@ describe('IMP-I3: rehearsal writes nothing', () => {
     })
     expect(real.inserted).toBe(1)
     const list = await admin.get<{ data: { row_id: string }[] }>(
-      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name"]')}`,
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["row_id"]')}`,
     )
     expect(list.data).toHaveLength(1)
     expect(list.data[0].row_id).toMatch(/(^|\D)0*1$/)

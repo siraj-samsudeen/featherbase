@@ -53,7 +53,7 @@ describe('PERM-007: own_rows_only permissions', () => {
     // List: alice sees exactly her one doc
     const list = (await (
       await alice.fetch(
-        `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","created_by"]')}`,
+        `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["row_id","created_by"]')}`,
       )
     ).json()) as { data: { created_by: string }[]; total: number }
     expect(list.total).toBe(1)
@@ -62,7 +62,7 @@ describe('PERM-007: own_rows_only permissions', () => {
     // Detail: own doc 200, other's 403
     expect((await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.row_id}`)).status).toBe(200)
     const bobList = (await (
-      await bob.fetch(`/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name"]')}`)
+      await bob.fetch(`/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["row_id"]')}`)
     ).json()) as { data: { row_id: string }[] }
     const bobDoc = bobList.data[0].row_id
     expect((await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${bobDoc}`)).status).toBe(403)
@@ -109,7 +109,7 @@ describe('PERM-007: own_rows_only permissions', () => {
     })
     const list = (await (
       await alice.fetch(
-        `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","created_by"]')}`,
+        `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["row_id","created_by"]')}`,
       )
     ).json()) as { total: number }
     expect(list.total).toBeGreaterThanOrEqual(1) // sees bob's doc now too
