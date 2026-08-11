@@ -82,6 +82,14 @@ interface ImportedFile {
 
 type BuilderView = 'grid' | 'cards'
 
+// #151: fc-input's tokens at table density, so the grid and the cards read
+// as one design. (fc-input itself is px-3 py-1.5 — too tall for grid rows.)
+const CELL_INPUT =
+  'w-full rounded-[var(--radius-control)] border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2 py-1 text-sm text-[var(--color-ink)] outline-none transition placeholder:text-[var(--color-ink-faint)] focus:border-[var(--color-brand)] focus:ring-2 focus:ring-[var(--color-brand)]/20'
+
+// The kicker style shared with the cards view's "COLUMN n" headers.
+const KICKER = 'text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]'
+
 const VIEW_KEY = 'fc-table-builder-view'
 
 function initialView(): BuilderView {
@@ -396,8 +404,8 @@ export function TableBuilder() {
         }}
         className={`mb-4 cursor-pointer rounded-md border-2 border-dashed px-4 py-5 text-center text-sm transition-colors ${
           dragging
-            ? 'border-[var(--color-brand)] bg-blue-50 text-[var(--color-brand)]'
-            : 'border-[var(--color-hairline-strong,#d1d8dd)] text-gray-500 hover:border-[var(--color-brand)]'
+            ? 'border-[var(--color-brand)] bg-[var(--color-brand)]/5 text-[var(--color-brand)]'
+            : 'border-[var(--color-border-strong)] text-[var(--color-ink-muted)] hover:border-[var(--color-brand)]'
         }`}
       >
         {imported ? (
@@ -410,7 +418,7 @@ export function TableBuilder() {
                 e.stopPropagation()
                 clearImport()
               }}
-              className="ml-1 text-gray-400 hover:text-red-600"
+              className="ml-1 text-[var(--color-ink-faint)] hover:text-[var(--color-danger)]"
               aria-label="Remove file"
             >
               ×
@@ -492,16 +500,16 @@ export function TableBuilder() {
       {view === 'grid' && (
         <div className="fc-card overflow-x-auto">
           <table className="w-full text-sm" data-testid="dt-fields">
-            <thead className="bg-gray-50 text-left text-xs text-gray-600">
+            <thead className="bg-[var(--color-subtle)] text-left">
               <tr>
-                <th className="px-2 py-1">Field label</th>
-                <th className="px-2 py-1">
-                  Database name <span className="font-normal text-gray-400">(auto)</span>
+                <th className={`px-3 py-2 ${KICKER}`}>Field label</th>
+                <th className={`px-2 py-2 ${KICKER}`}>
+                  Database name <span className="font-normal normal-case tracking-normal">(auto)</span>
                 </th>
-                <th className="px-2 py-1">Type</th>
-                <th className="px-2 py-1">Details</th>
-                <th className="px-2 py-1" title="Must be filled in every row">Reqd</th>
-                <th className="px-2 py-1" title="Shown in the list view">List</th>
+                <th className={`px-2 py-2 ${KICKER}`}>Type</th>
+                <th className={`px-2 py-2 ${KICKER}`}>Details</th>
+                <th className={`px-2 py-2 ${KICKER}`} title="Must be filled in every row">Reqd</th>
+                <th className={`px-2 py-2 ${KICKER}`} title="Shown in the list view">List</th>
                 <th />
               </tr>
             </thead>
@@ -509,9 +517,12 @@ export function TableBuilder() {
               {/* NAM-001: the row id is column one, matching the Import Wizard.
                   Every record has an id; where it comes from is the same kind of
                   decision as any other column's. Always present, never removed. */}
-              <tr className="border-t border-gray-100 bg-blue-50/60" data-testid="dt-row-id">
-                <td className="px-2 py-1 align-baseline text-gray-500">Row ID</td>
-                <td className="px-1 py-1" colSpan={5}>
+              <tr
+                className="border-t border-[var(--color-border)] bg-[var(--color-brand)]/5"
+                data-testid="dt-row-id"
+              >
+                <td className="px-3 py-2 align-baseline text-[var(--color-ink-muted)]">Row ID</td>
+                <td className="px-2 py-2" colSpan={5}>
                   <NamingControl
                     value={idPattern}
                     onChange={setNamingOverride}
@@ -519,7 +530,7 @@ export function TableBuilder() {
                     columns={namingColumns}
                   />
                 </td>
-                <td className="px-1 text-center text-gray-300" title="always present">
+                <td className="px-2 text-center text-[var(--color-ink-faint)]" title="always present">
                   🔒
                 </td>
               </tr>
@@ -529,18 +540,18 @@ export function TableBuilder() {
                   /* data-columnrow marks the editable column rows: specs address
                      these, so a decorative row (Row ID, and anything added later)
                      can never shift the indices they read. */
-                  <tr key={i} className="border-t border-gray-100 align-top" data-columnrow="">
-                    <td className="px-1 py-1">
+                  <tr key={i} className="border-t border-[var(--color-border)] align-top" data-columnrow="">
+                    <td className="px-3 py-2">
                       <input
                         value={c.label}
                         onChange={(e) => setColumnLabel(i, e.target.value)}
                         onBlur={() => markTouched(i)}
                         data-rowfield="label"
                         placeholder="e.g. Date of Birth"
-                        className="w-full rounded border border-gray-200 px-1 py-0.5"
+                        className={CELL_INPUT}
                       />
                     </td>
-                    <td className="px-1 py-1">
+                    <td className="px-2 py-2">
                       <input
                         value={c.column_name}
                         onChange={(e) => setColumn(i, { column_name: e.target.value, name_touched: true })}
@@ -552,15 +563,15 @@ export function TableBuilder() {
                         }}
                         aria-invalid={msg ? true : undefined}
                         aria-describedby={msg ? `dt-col-error-${i}` : undefined}
-                        className={`w-full rounded border px-1 py-0.5 font-mono text-xs ${
-                          msg ? 'border-[var(--color-danger)]' : 'border-gray-200'
-                        } ${c.name_touched || c.column_name ? '' : 'bg-gray-50'}`}
+                        className={`${CELL_INPUT} font-mono text-xs ${
+                          msg ? 'border-[var(--color-danger)]' : ''
+                        } ${c.name_touched || c.column_name ? '' : 'bg-[var(--color-subtle)]'}`}
                       />
                       {msg && (
                         <p
                           id={`dt-col-error-${i}`}
                           data-testid={`dt-col-error-${i}`}
-                          className="mt-0.5 text-xs text-[var(--color-danger)]"
+                          className="mt-1 rounded-[var(--radius-control)] bg-[var(--color-danger-tint)] px-2 py-1 text-xs text-[var(--color-danger)]"
                         >
                           {msg.text}
                           {msg.fix && (
@@ -568,7 +579,7 @@ export function TableBuilder() {
                               {' '}
                               <button
                                 onClick={() => setColumn(i, { column_name: msg.fix, name_touched: true })}
-                                className="font-medium underline"
+                                className="font-semibold underline"
                               >
                                 Use “{msg.fix}”
                               </button>
@@ -577,12 +588,12 @@ export function TableBuilder() {
                         </p>
                       )}
                     </td>
-                    <td className="px-1 py-1">
+                    <td className="px-2 py-2">
                       <select
                         value={c.column_type}
                         onChange={(e) => setColumn(i, { column_type: e.target.value })}
                         data-rowfield="column_type"
-                        className="rounded border border-gray-200 px-1 py-0.5"
+                        className={CELL_INPUT}
                       >
                         {COLUMN_TYPES.map((t) => (
                           <option key={t} value={t}>
@@ -591,7 +602,7 @@ export function TableBuilder() {
                         ))}
                       </select>
                     </td>
-                    <td className="px-1 py-1">
+                    <td className="px-2 py-2">
                       <input
                         value={c.target}
                         onChange={(e) => setColumn(i, { target: e.target.value })}
@@ -607,32 +618,34 @@ export function TableBuilder() {
                                 : ''
                         }
                         disabled={!TARGET_REQUIRED_TYPES.includes(c.column_type)}
-                        className="w-full rounded border border-gray-200 px-1 py-0.5 disabled:bg-transparent"
+                        className={`${CELL_INPUT} disabled:border-transparent disabled:bg-transparent`}
                       />
                     </td>
-                    <td className="px-1 py-1 text-center">
+                    <td className="px-2 py-2 text-center align-middle">
                       <input
                         type="checkbox"
                         checked={c.reqd}
                         onChange={(e) => setColumn(i, { reqd: e.target.checked })}
                         data-rowfield="reqd"
+                        className="accent-[var(--color-brand)]"
                       />
                     </td>
-                    <td className="px-1 py-1 text-center">
+                    <td className="px-2 py-2 text-center align-middle">
                       <input
                         type="checkbox"
                         checked={c.in_list_view}
                         onChange={(e) => setColumn(i, { in_list_view: e.target.checked })}
                         data-rowfield="in_list_view"
+                        className="accent-[var(--color-brand)]"
                       />
                     </td>
-                    <td className="px-1 text-center">
+                    <td className="px-2 py-2 text-center align-middle">
                       <button
                         aria-label="Remove column"
                         onClick={() => removeColumn(i)}
-                        className="text-gray-300 hover:text-red-600"
+                        className="rounded px-1.5 text-sm text-[var(--color-ink-faint)] transition hover:bg-[var(--color-subtle)] hover:text-[var(--color-danger)]"
                       >
-                        ×
+                        ✕
                       </button>
                     </td>
                   </tr>
@@ -643,7 +656,7 @@ export function TableBuilder() {
           <button
             onClick={addColumn}
             data-testid="dt-add-field"
-            className="w-full border-t border-gray-100 px-2 py-1 text-left text-xs text-gray-500 hover:bg-gray-50"
+            className="w-full border-t border-[var(--color-border)] px-3 py-1.5 text-left text-xs font-medium text-[var(--color-ink-muted)] transition hover:bg-[var(--color-subtle)] hover:text-[var(--color-brand)]"
           >
             + Add column
           </button>
@@ -681,13 +694,13 @@ export function TableBuilder() {
 
       {imported && previewCols.length > 0 && (
         <div className="fc-card mt-4 overflow-x-auto">
-          <div className="border-b border-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
+          <div className={`border-b border-[var(--color-border)] px-3 py-2 ${KICKER}`}>
             Data preview{' '}
             {dataRows > previewRows.length &&
               `(first ${previewRows.length} of ${dataRows} rows)`}
           </div>
           <table className="w-full text-sm" data-testid="dt-preview">
-            <thead className="bg-gray-50 text-left text-xs text-gray-600">
+            <thead className="bg-[var(--color-subtle)] text-left text-xs text-[var(--color-ink-muted)]">
               <tr>
                 {previewCols.map((c) => (
                   <th key={c.column_name} className="px-2 py-1">
@@ -698,11 +711,11 @@ export function TableBuilder() {
             </thead>
             <tbody>
               {previewRows.map((r, ri) => (
-                <tr key={ri} className="border-t border-gray-100">
+                <tr key={ri} className="border-t border-[var(--color-border)]">
                   {previewCols.map((c) => {
                     const v = r[c.source_index!]
                     return (
-                      <td key={c.column_name} className="px-2 py-1 text-gray-700">
+                      <td key={c.column_name} className="px-2 py-1 text-[var(--color-ink-muted)]">
                         {v instanceof Date ? v.toLocaleDateString() : v == null ? '' : String(v)}
                       </td>
                     )
@@ -715,7 +728,7 @@ export function TableBuilder() {
       )}
 
       {moreSheets > 1 && (
-        <p className="mt-3 text-sm text-gray-500" data-testid="dt-more-sheets">
+        <p className="mt-3 text-sm text-[var(--color-ink-muted)]" data-testid="dt-more-sheets">
           This workbook has {moreSheets} sheets — only the first is used here. The{' '}
           <Link to="/admin/import" search={{ table: undefined }} className="text-[var(--color-brand)] underline">
             Import wizard
@@ -724,7 +737,7 @@ export function TableBuilder() {
         </p>
       )}
       {progress && (
-        <p className="mt-3 text-sm text-gray-500" data-testid="dt-progress">
+        <p className="mt-3 text-sm text-[var(--color-ink-muted)]" data-testid="dt-progress">
           {progress}
         </p>
       )}

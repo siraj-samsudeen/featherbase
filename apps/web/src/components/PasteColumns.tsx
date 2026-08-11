@@ -17,6 +17,14 @@ function splitLine(line: string): string[] {
   return line.split(sep).map((s) => s.trim()).filter(Boolean)
 }
 
+// #151: shown as the placeholder, filled by Tab or "Try a sample" — so the
+// inference can be SEEN working before the user commits their own columns.
+const SAMPLE = [
+  'Employee Name, Date of Birth, Salary, Department',
+  'Ravi Kumar, 12/03/1990, 45000, Stores',
+  'Meena S, 04/11/1988, 52000, Accounts',
+].join('\n')
+
 export function PasteColumns({ onBuild }: { onBuild: (cols: PastedColumn[]) => void }) {
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
@@ -66,14 +74,41 @@ export function PasteColumns({ onBuild }: { onBuild: (cols: PastedColumn[]) => v
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          // Tab completes the placeholder sample while the box is empty —
+          // one keypress shows the inference working end to end.
+          if (e.key === 'Tab' && !text.trim()) {
+            e.preventDefault()
+            setText(SAMPLE)
+          }
+        }}
         rows={4}
         data-testid="dt-paste-text"
-        placeholder={'Employee Name, Date of Birth, Salary\nRavi Kumar, 12/03/1990, 45000'}
+        placeholder={SAMPLE}
         className="fc-input font-mono text-sm"
         autoFocus
       />
-      <p className="mt-1 text-xs text-[var(--color-ink-faint)]">
-        First line: the column names. Optional further lines: sample data, used to guess each type.
+      <p className="mt-1 flex items-center gap-2 text-xs text-[var(--color-ink-faint)]">
+        <span>
+          First line: the column names. Optional further lines: sample data, used to guess each type.
+        </span>
+        {text.trim() ? (
+          <button
+            data-testid="dt-paste-clear"
+            onClick={() => setText('')}
+            className="shrink-0 font-medium text-[var(--color-ink-muted)] underline hover:text-[var(--color-brand)]"
+          >
+            Clear
+          </button>
+        ) : (
+          <button
+            data-testid="dt-paste-sample"
+            onClick={() => setText(SAMPLE)}
+            className="shrink-0 font-medium text-[var(--color-ink-muted)] underline hover:text-[var(--color-brand)]"
+          >
+            Try a sample (or press Tab)
+          </button>
+        )}
       </p>
       {preview.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
