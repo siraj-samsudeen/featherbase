@@ -151,7 +151,7 @@ function asNameList(v: unknown): string[] {
 // that row on uninstall, nothing more.
 interface FixtureRef {
   table: string
-  name: string
+  row_id: string
 }
 
 function asFixtureRefs(v: unknown): FixtureRef[] {
@@ -160,7 +160,7 @@ function asFixtureRefs(v: unknown): FixtureRef[] {
   return raw.filter(
     (r): r is FixtureRef =>
       r != null && typeof r === 'object' &&
-      typeof (r as FixtureRef).table === 'string' && typeof (r as FixtureRef).name === 'string',
+      typeof (r as FixtureRef).table === 'string' && typeof (r as FixtureRef).row_id === 'string',
   )
 }
 
@@ -297,7 +297,7 @@ async function provisionFixtures(manifest: AppManifest): Promise<FixtureRef[]> {
         if (have) continue
       }
       const saved = await saveDoc(fixture.table, { ...row }, 'Administrator', 'insert')
-      created.push({ table: fixture.table, name: String(saved.row_id) })
+      created.push({ table: fixture.table, row_id: String(saved.row_id) })
     }
   }
   return created
@@ -311,7 +311,7 @@ async function provisionFixtures(manifest: AppManifest): Promise<FixtureRef[]> {
 async function teardownFixtures(fixtures: FixtureRef[]): Promise<void> {
   for (const ref of [...fixtures].reverse()) {
     try {
-      await deleteDoc(ref.table, ref.name)
+      await deleteDoc(ref.table, ref.row_id)
     } catch (err) {
       if (err instanceof AppError && err.type === 'NotFoundError') continue
       throw err

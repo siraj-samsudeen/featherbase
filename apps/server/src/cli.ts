@@ -85,7 +85,7 @@ async function cmdCreateUser(
   await saveDoc(
     'User',
     {
-      name: email,
+      row_id: email,
       email,
       full_name: fullName,
       enabled: true,
@@ -107,7 +107,7 @@ async function cmdCreateServiceAccount(
   const roles = asArray(flags.roles).flatMap((r) => r.split(',')).map((r) => r.trim()).filter(Boolean)
   const account = await createServiceAccount(name, roles, 'Administrator')
   console.log(
-    `created service account ${account.name}${account.roles.length ? ` with roles: ${account.roles.join(', ')}` : ''}`,
+    `created service account ${account.row_id}${account.roles.length ? ` with roles: ${account.roles.join(', ')}` : ''}`,
   )
 }
 

@@ -12,7 +12,7 @@ import { saveDoc } from './document'
 const NAME_RE = /^[a-z0-9][a-z0-9_-]{1,63}$/
 
 export interface ServiceAccount {
-  name: string
+  row_id: string
   full_name: string | null
   enabled: boolean
   created_at: string
