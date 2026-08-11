@@ -1,5 +1,38 @@
 # Progress Log
 
+## 2026-08-11 — the VMS lists come alive: a stale sort and a leaked password column
+
+The owner reported reflected VMS tables rendering empty with a long
+"loading". Diagnosis peeled three layers, each shipped as its own PR:
+
+1. **#177** — ListView sent `order_by=updated_at desc` for every table; a
+   bound table without `external_modified` has no updated_at, the server
+   (correctly) refuses an explicit unresolvable order, and ListView
+   rendered the refusal as "No rows" — with react-query's three retries
+   supplying the "loading". Default sort now derives from meta; a failed
+   list query renders as the error it is. (#176)
+2. **#178** — second layer: the table_def itself stores the DB-default
+   `sort_column: 'updated_at'`. Migration **0075** repairs bound tables
+   without a modified mapping to sort by `name`; reflect sets it correctly
+   at creation; ListView guards the un-migrated window.
+3. **#179** — the moment the list rendered, it exposed every VMS user's
+   Django pbkdf2 hash: `password` was not in SENSITIVE_COLUMNS (only
+   `password_hash` and friends). Added; reflection already skips
+   sensitive names, migration **0076** drops already-reflected password
+   column_defs; the mysql suite now seeds a `password` column to pin the
+   exclusion.
+
+**Verified live on featherbase-dev after each merge:** Customuser lists
+217 rows sorted by name, error states render red instead of "No rows",
+and the meta carries no password column. Gotcha for future sessions: an
+"empty" bound table is a refused query until proven otherwise — check
+the network tab before checking the data.
+
+**Next:** the Explore entry points the owner picked (options B + C:
+split-button on ListView, "Open in Explore" on the RelationMap) — branch
+`claude/explore-entrypoints` has the design notes; Explore needs
+`chain`/`select` search params first.
+
 ## 2026-08-11 — #145 ruled and built: the match key gets its index on demand
 
 The last item of the production-readiness push. The first REAL keyed run
