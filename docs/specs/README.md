@@ -19,7 +19,8 @@ frozen except for `status` flips (see `CLAUDE.md`).
 | [0002 — Virtual DocTypes](0002-virtual-doctypes.md) | Proposed | Controller-supplied storage for sources that are not Postgres tables |
 | [0003 — Table Deletion](0003-table-deletion.md) | Built 2026-08-04 | Delete a Table outright — schema references block, live pointers sweep, text testimony survives. First journey-spec trial (evidence: [evidence/table-deletion.csv](evidence/table-deletion.csv)) |
 | [0004 — Import Upsert](0004-import-upsert.md) | Built | Spreadsheet import upserts by key (evidence: [evidence/import-upsert.csv](evidence/import-upsert.csv)) |
-| [0005 — Connection Console](0005-connection-console.md) | Proposed | Connect a Data Source through the UI: typed credentials encrypted at rest, phased test with inline diagnosis, post-auth database dropdown, verified grants, advanced disclosure, saved-source health (evidence: [evidence/connection-console.csv](evidence/connection-console.csv)) |
+| [0005 — Import Revert](0005-import-revert.md) | Proposed | Row-level reverse of a completed import (evidence: [evidence/import-revert.csv](evidence/import-revert.csv)) |
+| [0006 — Connection Console](0006-connection-console.md) | Proposed | Connect a Data Source through the UI: typed credentials encrypted at rest, phased test with inline diagnosis, post-auth database dropdown, verified grants, advanced disclosure, saved-source health (evidence: [evidence/connection-console.csv](evidence/connection-console.csv)) |
 
 Both are shaped by [ADR 0007](../adr/0007-app-and-database-topology.md) and the
 research note [Frappe: many apps in one instance](../research/frappe-multi-app-and-multi-db.md).

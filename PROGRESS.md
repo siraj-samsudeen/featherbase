@@ -1,5 +1,47 @@
 # Progress Log
 
+## 2026-08-11 — VMS connected end-to-end; the connection-console direction is set
+
+The session that motivated the mysql engine, run in parallel with its build.
+Three strands:
+
+**VMS is live.** On the deployed featherbase-dev, the `vms` Data Source
+(engine `mysql`, `url_env` VMS_DATABASE_URL) now reaches the real RDS
+instance: test_connection ok, all **50 tables** of the VMS Django app
+introspect (every one bindable, `id` pks), `vehicles_vehicle` reflected as
+`Vms Vehicles Vehicle`, **184 real rows** read over HTTP, and a write
+correctly 403s (read_only). The road there, for the record: security group
+blocked → opened; whitelisted the wrong IP; the DB turned out to be MySQL
+on 3306 (hence the engine build); the grant landed on a nonexistent
+uppercase `VMS` schema before lowercase `vms`. Every one of those failure
+modes is a diagnosis rung the connection-console spec now formalizes.
+Remaining nicety: append `?sslmode=REQUIRED` to VMS_DATABASE_URL on
+Railway (RDS currently accepts non-TLS).
+
+**Connection console prototyped and spec'd.** A three-variant throwaway UI
+prototype (mattpocock prototype skill, sub-shape B) ran at
+`/admin/prototype/connect-source`; the owner picked the "connection
+console" design (form + live per-phase checks side by side) and ratified
+five requirements — phased test with inline diagnosis, post-auth database
+dropdown, verified grants, advanced disclosure, saved-source health.
+Recorded as **spec 0006-connection-console.md** (journey-spec form,
+evidence CSV all-gap; renumbered from 0005 after colliding with
+0005-import-revert on merge — the duplicate-numbering hazard, again).
+The prototype (A/C variants in this branch's history) stays throwaway;
+CONN-R1's encrypted-credential storage is the big design decision.
+
+**Review workflow ratified.** PR #152 got a two-axis review
+(mattpocock code-review skill: Standards + Spec sub-agents) after merge;
+findings filed as issues #153–#157 (worst: the non-atomic
+write-then-re-read race, #155). CLAUDE.md now routes SDLC stages to the
+mattpocock skills by owner directive — the Spec axis caught four real
+findings a solo review missed, which is the argument for the routing.
+
+**Next:** build spec 0006 (fold the winning console into SourceBrowser,
+`CREDENTIALS_KEY` encrypted storage), or triage #153–#157. The VMS
+reflection itself is done; reflect more of the 50 tables as Rama needs
+them.
+
 ## 2026-08-11 — the mysql engine joins the Data Source drivers
 
 Motivated by the VMS system on AWS RDS (MySQL 8.4, `caching_sha2_password`,
