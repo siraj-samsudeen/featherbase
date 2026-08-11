@@ -58,7 +58,7 @@ async function resolveLetterHead(
   if (!name) {
     const [def] = await sql`
       select row_id from letter_head where is_default = true limit 1`
-    if (def?.name) name = String(def.name)
+    if (def?.row_id) name = String(def.row_id)
   }
   if (!name) return null
   const [lh] = await sql`

@@ -190,7 +190,7 @@ describe('auto-membership: a built table never vanishes from navigation', () => 
     await makeTable(admin, 'HP Crate', 'Warehouse')
     const page = (await pages(admin)).find((p) => p.module === 'Warehouse')
     expect(page).toBeDefined()
-    expect(page!.name).toBe('warehouse')
+    expect(page!.row_id).toBe('warehouse')
     expect(page!.label).toBe('Warehouse')
     expect(page!.cards.flatMap((c) => c.links.map((l) => l.link_to))).toContain('HP Crate')
   })
@@ -258,7 +258,7 @@ describe('0060 seeds are idempotent', () => {
     const linked = system.cards.flatMap((c) => c.links.map((l) => l.link_to))
     const engine = await sql`
       select name from table_def where system = true and kind in ('table', 'settings')`
-    expect(new Set(linked)).toEqual(new Set(engine.map((r) => String(r.row_id))))
+    expect(new Set(linked)).toEqual(new Set(engine.map((r) => String(r.name))))
     expect(linked.length).toBe(engine.length)
   })
 })
