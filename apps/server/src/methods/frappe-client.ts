@@ -54,7 +54,7 @@ whitelist('frappe.client.get_list', async ({ args, user }) => {
 }, { effect: 'read' })
 
 whitelist('frappe.client.get', async ({ args, user }) => {
-  return getDoc(str(args, 'doctype'), str(args, 'name'), user.row_id)
+  return getDoc(str(args, 'doctype'), str(args, 'row_id'), user.row_id)
 }, { effect: 'read' })
 
 whitelist('frappe.client.get_count', async ({ args, user }) => {
@@ -77,7 +77,7 @@ whitelist('frappe.client.get_value', async ({ args, user }) => {
       : null
   const name = filterList
     ? ((await getList(table, { filters: filterList, limit_page_length: 1 }, user.row_id))
-        .data[0]?.name as string | undefined)
+        .data[0]?.row_id as string | undefined)
     : args.filters != null && args.filters !== ''
       ? String(args.filters)
       : undefined
@@ -98,18 +98,18 @@ whitelist('frappe.client.insert', async ({ args, user }) => {
 // versioning) — matching Frappe's frappe.client.set_value semantics.
 whitelist('frappe.client.set_value', async ({ args, user }) => {
   const table = str(args, 'doctype')
-  const name = str(args, 'name')
+  const name = str(args, 'row_id')
   const columnName = str(args, 'fieldname')
   const current = await getDoc(table, name, user.row_id)
   return saveDoc(
     table,
-    { name, updated_at: current.updated_at, [columnName]: args.value ?? null },
+    { row_id: name, updated_at: current.updated_at, [columnName]: args.value ?? null },
     user.row_id,
   )
 }, { effect: 'write' })
 
 whitelist('frappe.client.delete', async ({ args, user }) => {
-  await deleteDoc(str(args, 'doctype'), str(args, 'name'), user.row_id)
+  await deleteDoc(str(args, 'doctype'), str(args, 'row_id'), user.row_id)
   return 'ok'
 }, { effect: 'write' })
 

@@ -92,12 +92,12 @@ describe('Frappe compat: frappe.client.* RPC namespace', () => {
       '/api/method/frappe.client.insert',
       { doc: { doctype: DT, title: 'first' } },
     )
-    const name = inserted.message.name
+    const name = inserted.message.row_id
     expect(name).toBeTruthy()
 
     const got = await admin.post<{ message: { title: string } }>('/api/method/frappe.client.get', {
       doctype: DT,
-      name,
+      row_id: name,
     })
     expect(got.message.title).toBe('first')
 
@@ -126,7 +126,7 @@ describe('Frappe compat: frappe.client.* RPC namespace', () => {
 
     const del = await admin.post<{ message: string }>('/api/method/frappe.client.delete', {
       doctype: DT,
-      name,
+      row_id: name,
     })
     expect(del.message).toBe('ok')
     await expect(
@@ -179,9 +179,9 @@ describe('Frappe compat: frappe.client.* RPC namespace', () => {
     // Frappe's dict filter form.
     const byDict = await admin.post<{ message: { row_id: string } }>(
       '/api/method/frappe.client.get_value',
-      { doctype: DT + ' Prompt', filters: { title: 'numeric name' }, fieldname: 'name' },
+      { doctype: DT + ' Prompt', filters: { title: 'numeric name' }, fieldname: 'row_id' },
     )
-    expect(byDict.message.name).toBe('1234567890')
+    expect(byDict.message.row_id).toBe('1234567890')
   })
 
   test('get_doctype returns the meta bundle with child-table metas', async ({ admin }) => {
