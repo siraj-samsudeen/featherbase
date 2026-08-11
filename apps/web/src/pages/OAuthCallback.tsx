@@ -15,9 +15,9 @@ export function OAuthCallbackPage({ token }: { token?: string }) {
     setToken(token)
     // Hydrate the session user, then enter the Admin.
     api
-      .get<{ name: string; email: string; full_name: string | null }>('/api/whoami')
+      .get<{ row_id: string; email: string; full_name: string | null }>('/api/whoami')
       .then((u) => {
-        localStorage.setItem('fc_user', JSON.stringify({ name: u.name, email: u.email, full_name: u.full_name }))
+        localStorage.setItem('fc_user', JSON.stringify({ name: u.row_id, email: u.email, full_name: u.full_name }))
         navigate({ to: '/admin' })
       })
       .catch(() => navigate({ to: '/login' }))

@@ -72,7 +72,7 @@ export function ActivityFeed() {
   // caller's own channel when one of their event batches lands.
   const user = getSessionUser()
   useRealtime(
-    [...(isSystemManager ? ['feed'] : []), ...(user ? [`user:${user.name}`] : [])],
+    [...(isSystemManager ? ['feed'] : []), ...(user ? [`user:${user.row_id}`] : [])],
     (e) => {
       if (e.event === 'changed' || e.event === 'feed_mine')
         void queryClient.invalidateQueries({ queryKey: ['activity-feed'] })

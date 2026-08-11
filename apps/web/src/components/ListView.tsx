@@ -579,10 +579,10 @@ export function ListView({
                   <input
                     type="checkbox"
                     data-testid="select-all"
-                    checked={rows.length > 0 && rows.every((r) => selected.has(String(r.name)))}
+                    checked={rows.length > 0 && rows.every((r) => selected.has(String(r.row_id)))}
                     onChange={(e) =>
                       setSelected(
-                        e.target.checked ? new Set(rows.map((r) => String(r.name))) : new Set(),
+                        e.target.checked ? new Set(rows.map((r) => String(r.row_id))) : new Set(),
                       )
                     }
                   />
@@ -606,22 +606,22 @@ export function ListView({
           <tbody data-testid="list-rows">
             {rows.map((row) => (
               <ListRow
-                key={String(row.name)}
+                key={String(row.row_id)}
                 row={row}
                 doctype={doctype}
                 columns={columns}
                 settings={settings}
-                selected={selected.has(String(row.name))}
-                onToggleSelect={() => toggleRow(String(row.name))}
+                selected={selected.has(String(row.row_id))}
+                onToggleSelect={() => toggleRow(String(row.row_id))}
                 selectable={!isSourceReadOnly(meta.data)}
                 expandable={expandable}
                 childFields={childFields}
-                expanded={expanded.has(String(row.name))}
+                expanded={expanded.has(String(row.row_id))}
                 onToggleExpand={() =>
                   setExpanded((prev) => {
                     const next = new Set(prev)
-                    if (next.has(String(row.name))) next.delete(String(row.name))
-                    else next.add(String(row.name))
+                    if (next.has(String(row.row_id))) next.delete(String(row.row_id))
+                    else next.add(String(row.row_id))
                     return next
                   })
                 }
@@ -731,7 +731,7 @@ function ListRow({
               <Link
                 to="/admin/$doctype/$name"
                 search={{ prefill: undefined }}
-                params={{ doctype, name: String(row.name) }}
+                params={{ doctype, name: String(row.row_id) }}
                 className={`font-medium text-[var(--color-brand)] hover:underline ${
                   col.column_name === 'name' ? 'font-mono text-[13px]' : ''
                 }`}
@@ -758,7 +758,7 @@ function ListRow({
             colSpan={columns.length + 1 + (selectable ? 1 : 0)}
             className="border-b border-[var(--color-border)] bg-[var(--color-subtle)] py-3 pl-10 pr-4"
           >
-            <InlineChildren doctype={doctype} name={String(row.name)} childFields={childFields} />
+            <InlineChildren doctype={doctype} name={String(row.row_id)} childFields={childFields} />
           </td>
         </tr>
       )}
@@ -833,7 +833,7 @@ function InlineChildGrid({
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={String(r.name ?? i)} className="border-b border-[var(--color-border)] last:border-0">
+            <tr key={String(r.row_id ?? i)} className="border-b border-[var(--color-border)] last:border-0">
               {cols.map((c) => (
                 <td key={c.column_name} className="px-3 py-1 text-[var(--color-ink)]">
                   {c.column_type === 'Reference' && c.reference_table && r[c.column_name] ? (
@@ -1092,7 +1092,7 @@ function RecentStrip({
   onApply: (filters: Filter[]) => void
 }) {
   const user = getSessionUser()
-  const entries = user ? recentActions(user.name, 60) : []
+  const entries = user ? recentActions(user.row_id, 60) : []
   const rows = entries.filter((e) => e.kind === 'row' && e.key.startsWith(`row:${doctype}/`)).slice(0, 4)
   const views = entries
     .map((e) => {
@@ -1148,7 +1148,7 @@ const NUDGE_THRESHOLD = 3
 const NUDGE_WINDOW_MS = 7 * 86_400_000
 
 interface SavedViewRow {
-  name: string
+  row_id: string
   label: string
   filters: Filter[]
   shared: boolean
@@ -1177,8 +1177,8 @@ function SavedViewsBar({
   })
 
   const sig = filters.length > 0 ? JSON.stringify(filters) : ''
-  const countKey = user ? `fc-filter-count:${user.name}` : ''
-  const dismissKey = user ? `fc-nudge-dismissed:${user.name}` : ''
+  const countKey = user ? `fc-filter-count:${user.row_id}` : ''
+  const dismissKey = user ? `fc-nudge-dismissed:${user.row_id}` : ''
 
   // Every arrival at a non-empty filter state counts as one application.
   useEffect(() => {
@@ -1212,7 +1212,7 @@ function SavedViewsBar({
       setApplyCount(0)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doctype, sig, user?.name])
+  }, [doctype, sig, user?.row_id])
 
   if (!user) return null
   const list = views.data?.views ?? []
@@ -1268,7 +1268,7 @@ function SavedViewsBar({
             const active = JSON.stringify(v.filters) === sig
             return (
               <span
-                key={v.name}
+                key={v.row_id}
                 className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
                   active
                     ? 'bg-[var(--color-brand)] text-white'
@@ -1290,7 +1290,7 @@ function SavedViewsBar({
                     data-testid="saved-view-share"
                     title={v.shared ? 'Make private' : 'Share with everyone'}
                     onClick={async () => {
-                      await api.post(`/api/saved_views/${encodeURIComponent(v.name)}/share`, {
+                      await api.post(`/api/saved_views/${encodeURIComponent(v.row_id)}/share`, {
                         shared: !v.shared,
                       })
                       void queryClient.invalidateQueries({ queryKey: ['saved-views', doctype] })
@@ -1306,7 +1306,7 @@ function SavedViewsBar({
                     aria-label={`Delete view ${v.label}`}
                     data-testid="saved-view-delete"
                     onClick={async () => {
-                      await api.delete(`/api/saved_views/${encodeURIComponent(v.name)}`)
+                      await api.delete(`/api/saved_views/${encodeURIComponent(v.row_id)}`)
                       void queryClient.invalidateQueries({ queryKey: ['saved-views', doctype] })
                     }}
                     className="rounded-full px-1 hover:bg-white/20"

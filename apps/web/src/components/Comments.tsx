@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 
 interface CommentRow {
-  name: string
+  row_id: string
   content: string
   created_by: string
   created_at: string
@@ -40,7 +40,7 @@ export function Comments({ doctype, name }: { doctype: string; name: string }) {
     queryKey: ['mention-users'],
     enabled: mention !== null,
     queryFn: () =>
-      listResource<{ name: string }>('User', {
+      listResource<{ row_id: string }>('User', {
         fields: ['name'],
         order_by: 'name asc',
         limit_page_length: 500,
@@ -50,7 +50,7 @@ export function Comments({ doctype, name }: { doctype: string; name: string }) {
     if (!mention) return []
     const q = mention.q.toLowerCase()
     return (users.data?.data ?? [])
-      .map((u) => u.name)
+      .map((u) => u.row_id)
       .filter((n) => n.toLowerCase().includes(q))
       .slice(0, 6)
   }, [mention, users.data])
@@ -122,7 +122,7 @@ export function Comments({ doctype, name }: { doctype: string; name: string }) {
           <p className="text-xs text-[var(--color-ink-faint)]">No comments yet</p>
         )}
         {comments.data?.data.map((c) => (
-          <div key={c.name} className="flex gap-2" data-testid="comment-item">
+          <div key={c.row_id} className="flex gap-2" data-testid="comment-item">
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-brand)] text-[10px] font-semibold text-white">
               {initials(c.created_by)}
             </span>
@@ -145,7 +145,7 @@ export function Comments({ doctype, name }: { doctype: string; name: string }) {
           value={draft}
           onChange={onChange}
           rows={2}
-          placeholder={`Comment as ${me?.name ?? 'you'}… use @ to mention`}
+          placeholder={`Comment as ${me?.row_id ?? 'you'}… use @ to mention`}
           className="fc-input resize-none"
           data-testid="comment-input"
         />

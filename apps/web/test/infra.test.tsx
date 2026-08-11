@@ -21,7 +21,7 @@ test('the Admin renders a DocType list with data seeded through the API', async 
   })
   await renderApp('/admin/ToDo', admin)
   expect(await screen.findByTestId('doctype-page')).toBeInTheDocument()
-  expect(await screen.findByText(doc.name)).toBeInTheDocument()
+  expect(await screen.findByText(doc.row_id)).toBeInTheDocument()
 })
 
 test('the Session DSL drives the page', async ({ admin, seed }) => {
@@ -29,9 +29,9 @@ test('the Session DSL drives the page', async ({ admin, seed }) => {
     description: 'Only visible inside this sandbox',
     allocated_to: 'Administrator',
   })
-  leakedName = doc.name
+  leakedName = doc.row_id
   const { session } = await renderSession('/admin/ToDo', admin)
-  await session.assertText(doc.name).refuteText('No such row')
+  await session.assertText(doc.row_id).refuteText('No such row')
 })
 
 test("previous test's seed rolled back — its ToDo is gone from the list", async ({ admin }) => {

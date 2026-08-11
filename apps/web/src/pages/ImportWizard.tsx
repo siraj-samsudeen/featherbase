@@ -105,14 +105,14 @@ interface ImportTarget {
 }
 
 async function fetchTargets(): Promise<ImportTarget[]> {
-  const list = await listResource<{ name: string }>('Table', {
+  const list = await listResource<{ row_id: string }>('Table', {
     filters: [['kind', '=', 'table']],
-    fields: ['name'],
-    order_by: 'name asc',
+    fields: ['row_id'],
+    order_by: 'row_id asc',
     limit_page_length: 500,
   })
   const metas = await Promise.all(
-    list.data.map((t) => api.get<TableMeta>(`/api/table/${encodeURIComponent(t.name)}:meta`)),
+    list.data.map((t) => api.get<TableMeta>(`/api/table/${encodeURIComponent(t.row_id)}:meta`)),
   )
   return metas.map((m) => ({ name: m.name, columns: mappableColumns(m) }))
 }

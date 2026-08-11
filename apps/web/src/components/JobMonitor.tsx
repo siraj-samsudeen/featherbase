@@ -6,7 +6,7 @@ import { useRealtime } from '../lib/realtime'
 // JOB-004: monitor background jobs and retry failed ones from the Admin UI.
 
 interface Job {
-  name: string
+  row_id: string
   method: string
   job_status: string
   attempts: number | string
@@ -26,7 +26,7 @@ export function JobMonitor() {
   // JOB-005: live progress for a demo long-running job, over realtime.
   const user = getSessionUser()
   const [progress, setProgress] = useState<{ job: string; percent: number; message: string | null } | null>(null)
-  useRealtime(user ? [`user:${user.name}`] : [], (e) => {
+  useRealtime(user ? [`user:${user.row_id}`] : [], (e) => {
     if (e.event === 'job_progress') {
       const p = e.payload as { job: string; percent: number; message: string | null }
       setProgress(p)
@@ -35,8 +35,8 @@ export function JobMonitor() {
 
   async function runDemo() {
     setProgress({ job: 'pending', percent: 0, message: 'Starting…' })
-    const res = await api.post<{ name: string }>('/api/enqueue_job', { method: 'demo_progress' })
-    setProgress({ job: res.name, percent: 0, message: 'Queued' })
+    const res = await api.post<{ row_id: string }>('/api/enqueue_job', { method: 'demo_progress' })
+    setProgress({ job: res.row_id, percent: 0, message: 'Queued' })
   }
 
   const jobs = useQuery({
@@ -100,9 +100,9 @@ export function JobMonitor() {
           </thead>
           <tbody data-testid="job-rows">
             {rows.map((j) => (
-              <tr key={j.name} className="border-b border-[var(--color-border)] last:border-0" data-testid={`job-${j.name}`}>
+              <tr key={j.row_id} className="border-b border-[var(--color-border)] last:border-0" data-testid={`job-${j.row_id}`}>
                 <td className="px-3 py-2 font-medium text-[var(--color-ink)]">{j.method}</td>
-                <td className={`px-3 py-2 ${STATUS_STYLE[j.job_status] ?? ''}`} data-testid={`job-status-${j.name}`}>
+                <td className={`px-3 py-2 ${STATUS_STYLE[j.job_status] ?? ''}`} data-testid={`job-status-${j.row_id}`}>
                   {j.job_status}
                 </td>
                 <td className="px-3 py-2 text-[var(--color-ink-muted)]">{String(j.attempts)}</td>
@@ -113,11 +113,11 @@ export function JobMonitor() {
                   {j.job_status === 'failed' && (
                     <button
                       className="fc-btn"
-                      data-testid={`retry-${j.name}`}
-                      disabled={busy === j.name}
-                      onClick={() => void retry(j.name)}
+                      data-testid={`retry-${j.row_id}`}
+                      disabled={busy === j.row_id}
+                      onClick={() => void retry(j.row_id)}
                     >
-                      {busy === j.name ? 'Retrying…' : 'Retry'}
+                      {busy === j.row_id ? 'Retrying…' : 'Retry'}
                     </button>
                   )}
                 </td>

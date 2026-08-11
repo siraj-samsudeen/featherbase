@@ -18,7 +18,7 @@ export interface HomePageCard {
 }
 
 export interface HomePage {
-  name: string
+  row_id: string
   label: string
   icon: string | null
   module: string | null

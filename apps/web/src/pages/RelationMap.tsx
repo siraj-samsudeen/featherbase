@@ -19,7 +19,7 @@ type Row = Record<string, unknown>
 interface ForwardNode {
   label: string
   table: string
-  name: string
+  row_id: string
 }
 interface GroupNode {
   kind: 'child' | 'cnx'
@@ -66,13 +66,13 @@ export function RelationMap({
 
   const forward: ForwardNode[] = []
   if (m.kind === 'sub_table' && typeof d.parenttype === 'string' && typeof d.parent === 'string')
-    forward.push({ label: 'parent', table: d.parenttype, name: d.parent })
+    forward.push({ label: 'parent', table: d.parenttype, row_id: d.parent })
   for (const f of m.columns)
     if (f.column_type === 'Reference' && f.reference_table && d[f.column_name])
       forward.push({
         label: f.label ?? f.column_name,
         table: f.reference_table,
-        name: String(d[f.column_name]),
+        row_id: String(d[f.column_name]),
       })
 
   const groups: GroupNode[] = []
@@ -238,7 +238,7 @@ export function RelationMap({
           {forward.map((f, i) => (
             <g
               key={`fn-${i}`}
-              onClick={() => hop(f.table, f.name)}
+              onClick={() => hop(f.table, f.row_id)}
               className="cursor-pointer"
               data-testid={`map-forward-${f.table}`}
             >
@@ -253,7 +253,7 @@ export function RelationMap({
                 className="hover:stroke-[var(--color-brand)]"
               />
               <text x={52} y={nodeY(i) + 20} fontSize={12.5} fontWeight={600} fill="var(--color-ink)">
-                {truncate(f.name, 20)}
+                {truncate(f.row_id, 20)}
               </text>
               <text x={52} y={nodeY(i) + 35} fontSize={10.5} fill="var(--color-ink-muted)">
                 {truncate(f.table, 24)}
@@ -432,8 +432,8 @@ function SimpleRowsTable({
       <tbody>
         {rows.map((r, i) => (
           <tr
-            key={String(r.name ?? i)}
-            onClick={() => r.name && onPick(String(r.name))}
+            key={String(r.row_id ?? i)}
+            onClick={() => r.row_id && onPick(String(r.row_id))}
             data-testid="map-row"
             className="cursor-pointer border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]"
           >

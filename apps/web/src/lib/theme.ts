@@ -12,7 +12,7 @@ export type Theme = 'light' | 'dark'
 
 function storageKey(): string | null {
   const user = getSessionUser()
-  return user ? `fc_theme:${user.name}` : null
+  return user ? `fc_theme:${user.row_id}` : null
 }
 
 export function applyTheme(theme: Theme) {

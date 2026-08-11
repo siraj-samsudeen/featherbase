@@ -57,7 +57,7 @@ export function ReportView({
   const savedReports = useQuery({
     queryKey: ['saved-reports', doctype],
     queryFn: () =>
-      listResource<{ name: string }>('Report', {
+      listResource<{ row_id: string }>('Report', {
         filters: [['ref_table', '=', doctype]],
         fields: ['name'],
         order_by: 'name asc',
@@ -69,7 +69,7 @@ export function ReportView({
   const dashboards = useQuery({
     queryKey: ['dashboards-for-pin'],
     queryFn: () =>
-      listResource<{ name: string }>('Dashboard', {
+      listResource<{ row_id: string }>('Dashboard', {
         fields: ['name'],
         order_by: 'name asc',
         limit_page_length: 100,
@@ -217,7 +217,7 @@ export function ReportView({
   function exportRows(): (string | number)[][] {
     const header = ['Name', ...columns.map(label)]
     const out: (string | number)[][] = [header]
-    const member = (row: Row) => [String(row.name), ...columns.map((c) => exportCell(row, c))]
+    const member = (row: Row) => [String(row.row_id), ...columns.map((c) => exportCell(row, c))]
     if (groupBy) {
       for (const [key, list] of groups.entries()) {
         out.push([
@@ -279,15 +279,15 @@ export function ReportView({
   }
 
   const bodyRow = (row: Row) => (
-    <tr key={String(row.name)} className="border-t border-[var(--color-border)]" data-testid="report-row">
+    <tr key={String(row.row_id)} className="border-t border-[var(--color-border)]" data-testid="report-row">
       <td className="px-3 py-1.5">
         <RouterLink
           to="/admin/$doctype/$name"
           search={{ prefill: undefined }}
-          params={{ doctype, name: String(row.name) }}
+          params={{ doctype, name: String(row.row_id) }}
           className="text-[var(--color-brand)] hover:underline"
         >
-          {String(row.name)}
+          {String(row.row_id)}
         </RouterLink>
       </td>
       {columns.map((c) => (
@@ -389,8 +389,8 @@ export function ReportView({
         >
           <option value="">Saved reports…</option>
           {savedReports.data?.data.map((r) => (
-            <option key={r.name} value={r.name}>
-              {r.name}
+            <option key={r.row_id} value={r.row_id}>
+              {r.row_id}
             </option>
           ))}
         </select>
@@ -509,8 +509,8 @@ export function ReportView({
             >
               <option value="">Dashboard…</option>
               {dashboards.data?.data.map((d) => (
-                <option key={d.name} value={d.name}>
-                  {d.name}
+                <option key={d.row_id} value={d.row_id}>
+                  {d.row_id}
                 </option>
               ))}
             </select>

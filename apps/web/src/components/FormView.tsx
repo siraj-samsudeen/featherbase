@@ -168,7 +168,7 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', doctype] })
       await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
       if (action === 'amend') {
-        navigate({ to: '/admin/$doctype/$name', params: { doctype, name: String(res.name) }, search: { prefill: undefined } })
+        navigate({ to: '/admin/$doctype/$name', params: { doctype, name: String(res.row_id) }, search: { prefill: undefined } })
       } else {
         setBanner('Done')
       }
@@ -188,7 +188,7 @@ export function FormView({
       )
       await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
       setRenaming(false)
-      navigate({ to: '/admin/$doctype/$name', params: { doctype, name: String(res.name) }, search: { prefill: undefined } })
+      navigate({ to: '/admin/$doctype/$name', params: { doctype, name: String(res.row_id) }, search: { prefill: undefined } })
     } catch (err) {
       setBanner(err instanceof ApiError ? err.message : 'Rename failed')
     }
@@ -213,10 +213,10 @@ export function FormView({
     try {
       const payload: Row = { ...valuesRef.current }
       if (!isNew) {
-        payload.name = name
+        payload.row_id = name
         payload.updated_at = baseline.updated_at
       } else {
-        delete payload.name
+        delete payload.row_id
       }
       suppressStaleUntil.current = Date.now() + 2000
       const saved = await api.post<Row>('/api/save_doc', { doctype, doc: payload })
@@ -226,7 +226,7 @@ export function FormView({
       if (isNew) {
         navigate({
           to: '/admin/$doctype/$name',
-          params: { doctype, name: String(saved.name) },
+          params: { doctype, name: String(saved.row_id) },
           search: { prefill: undefined },
         })
       } else {
@@ -654,7 +654,7 @@ function FieldControl({
           onChange={onChange}
           common={common}
           refDoctype={meta.name}
-          refName={typeof values.name === 'string' ? values.name : undefined}
+          refName={typeof values.row_id === 'string' ? values.row_id : undefined}
         />,
       )
     default:
@@ -718,7 +718,7 @@ function ChildGrid({
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={String(row.name ?? i)} className="border-b border-gray-100 last:border-0">
+            <tr key={String(row.row_id ?? i)} className="border-b border-gray-100 last:border-0">
               {cols.map((c) => (
                 <td key={c.column_name} className="px-1 py-1">
                   <input
@@ -797,12 +797,12 @@ function LinkControl({
     clearTimeout(timer.current)
     timer.current = setTimeout(async () => {
       try {
-        const res = await listResource<{ name: string }>(target, {
+        const res = await listResource<{ row_id: string }>(target, {
           filters: q ? [['name', 'like', `%${q}%`]] : [],
           fields: ['name'],
           limit_page_length: 10,
         })
-        setOptions(res.data.map((r) => r.name))
+        setOptions(res.data.map((r) => r.row_id))
         setOpen(true)
       } catch {
         setOptions([])

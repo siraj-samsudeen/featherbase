@@ -26,7 +26,7 @@ import { PeekProvider } from '../components/Peek'
 
 interface SearchHit {
   table: string
-  name: string
+  row_id: string
   title: string
 }
 
@@ -38,7 +38,7 @@ interface SearchHit {
 connectEventSink({
   // The queue fail-closes on this identity: only events recorded FOR this
   // user are ever posted with this user's credentials.
-  currentUser: () => getSessionUser()?.name ?? null,
+  currentUser: () => getSessionUser()?.row_id ?? null,
   post: (events) => {
     void api.post('/api/events', { events }).catch(() => {})
   },
@@ -75,8 +75,8 @@ export function AdminLayout() {
   useEffect(() => {
     if (!user) return
     const action = actionForLocation(location.pathname, location.search as Record<string, unknown>)
-    if (action) recordAction(user.name, action)
-  }, [user?.name, location.href]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (action) recordAction(user.row_id, action)
+  }, [user?.row_id, location.href]) // eslint-disable-line react-hooks/exhaustive-deps
   const [barFocused, setBarFocused] = useState(false)
   const [recentSel, setRecentSel] = useState(0)
 
@@ -85,13 +85,13 @@ export function AdminLayout() {
   // user across devices; the merge is idempotent.
   const syncedFor = useRef<string | null>(null)
   useEffect(() => {
-    if (!user || syncedFor.current === user.name) return
-    syncedFor.current = user.name
+    if (!user || syncedFor.current === user.row_id) return
+    syncedFor.current = user.row_id
     api
       .get<{ entries: ServerRecentEntry[] }>('/api/events/summary')
-      .then((res) => mergeServerEntries(user.name, res.entries))
+      .then((res) => mergeServerEntries(user.row_id, res.entries))
       .catch(() => {})
-  }, [user?.name]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.row_id]) // eslint-disable-line react-hooks/exhaustive-deps
   // UI-025: on narrow (mobile) widths the sidebar collapses into a drawer
   // toggled from the navbar; on md+ it is always shown.
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -122,7 +122,7 @@ export function AdminLayout() {
     queryKey: ['unread-count'],
     queryFn: () => api.get<{ count: number }>('/api/unread_count'),
   })
-  useRealtime(user ? [`user:${user.name}`] : [], (e) => {
+  useRealtime(user ? [`user:${user.row_id}`] : [], (e) => {
     if (e.event === 'notification')
       void queryClient.invalidateQueries({ queryKey: ['unread-count'] })
   })
@@ -130,7 +130,7 @@ export function AdminLayout() {
   const tables = useQuery({
     queryKey: ['tables'],
     queryFn: () =>
-      listResource<{ name: string; module: string; system: boolean }>('Table', {
+      listResource<{ row_id: string; module: string; system: boolean }>('Table', {
         filters: [['kind', '!=', 'sub_table']],
         fields: ['name', 'module', 'system'],
         order_by: 'name asc',
@@ -249,29 +249,29 @@ export function AdminLayout() {
   // past searches. All three read the per-user localStorage buffer.
   const trimmed = search.trim()
   const showRecents = Boolean(barFocused && trimmed === '' && user)
-  const recentItems = showRecents && user ? recentActions(user.name, 6) : []
+  const recentItems = showRecents && user ? recentActions(user.row_id, 6) : []
   const frequentItems =
     showRecents && user
-      ? frequentActions(user.name, 4).filter((f) => !recentItems.some((r) => r.key === f.key))
+      ? frequentActions(user.row_id, 4).filter((f) => !recentItems.some((r) => r.key === f.key))
       : []
   const pick = [...recentItems, ...frequentItems]
-  const searchChips = user && trimmed ? recentSearches(user.name, trimmed, 3) : []
+  const searchChips = user && trimmed ? recentSearches(user.row_id, trimmed, 3) : []
 
   // #101 Phase 2: the sidebar's zero-keystroke recall — destinations only
   // (searches stay in the command bar, where they can be re-run).
   const sidebarRecent = user
-    ? recentActions(user.name, 12)
+    ? recentActions(user.row_id, 12)
         .filter((e) => e.kind !== 'search')
         .slice(0, 5)
     : []
   const sidebarFrequent = user
-    ? frequentActions(user.name, 8)
+    ? frequentActions(user.row_id, 8)
         .filter((f) => !sidebarRecent.some((r) => r.key === f.key))
         .slice(0, 3)
     : []
 
   function recordSearch(q: string) {
-    if (user && q) recordAction(user.name, { kind: 'search', key: `search:${q.toLowerCase()}`, label: q, path: '' })
+    if (user && q) recordAction(user.row_id, { kind: 'search', key: `search:${q.toLowerCase()}`, label: q, path: '' })
   }
 
   function openRecent(entry: RecentEntry) {
@@ -288,7 +288,7 @@ export function AdminLayout() {
   function openDoc(hit: SearchHit) {
     recordSearch(search.trim())
     setSearch('')
-    navigate({ to: '/admin/$doctype/$name', params: { doctype: hit.table, name: hit.name }, search: { prefill: undefined } })
+    navigate({ to: '/admin/$doctype/$name', params: { doctype: hit.table, name: hit.row_id }, search: { prefill: undefined } })
   }
 
   // Enter opens the top match: an exactly-named Table's list first,
@@ -303,10 +303,10 @@ export function AdminLayout() {
       return
     }
     recordSearch(q)
-    const dtHit = tables.data?.data.find((d) => d.name.toLowerCase() === q.toLowerCase())
+    const dtHit = tables.data?.data.find((d) => d.row_id.toLowerCase() === q.toLowerCase())
     if (dtHit) {
       setSearch('')
-      navigate({ to: '/admin/$doctype', params: { doctype: dtHit.name }, search: { filters: undefined } })
+      navigate({ to: '/admin/$doctype', params: { doctype: dtHit.row_id }, search: { filters: undefined } })
       return
     }
     const doc = docHits.data?.results[0]
@@ -317,7 +317,7 @@ export function AdminLayout() {
     navigate({ to: '/admin/$doctype', params: { doctype: q }, search: { filters: undefined } })
   }
 
-  const initials = (user?.full_name || user?.name || '?')
+  const initials = (user?.full_name || user?.row_id || '?')
     .split(/[\s@.]+/)
     .filter(Boolean)
     .slice(0, 2)
@@ -329,7 +329,7 @@ export function AdminLayout() {
   const suggestions =
     search.trim().length > 0
       ? (tables.data?.data ?? [])
-          .filter((d) => d.name.toLowerCase().includes(search.trim().toLowerCase()))
+          .filter((d) => d.row_id.toLowerCase().includes(search.trim().toLowerCase()))
           .sort((a, b) => Number(a.system) - Number(b.system))
           .slice(0, 7)
       : []
@@ -460,42 +460,42 @@ export function AdminLayout() {
               ))}
               {suggestions.map((d) => (
                 <Link
-                  key={d.name}
+                  key={d.row_id}
                   to="/admin/$doctype"
-                  params={{ doctype: d.name }}
+                  params={{ doctype: d.row_id }}
                   search={{ filters: undefined }}
                   onClick={() => setSearch('')}
                   className="block px-3 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
                 >
-                  {d.name}
+                  {d.row_id}
                   <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{d.module}</span>
                 </Link>
               ))}
               {/* UI-014: "new X" action for matched Tables */}
               {suggestions.slice(0, 2).map((d) => (
                 <Link
-                  key={`new-${d.name}`}
+                  key={`new-${d.row_id}`}
                   to="/admin/$doctype/$name"
                   search={{ prefill: undefined }}
-                  params={{ doctype: d.name, name: 'new' }}
+                  params={{ doctype: d.row_id, name: 'new' }}
                   onClick={() => setSearch('')}
                   data-testid="awesomebar-new"
                   className="block px-3 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
                 >
-                  <span className="text-[var(--color-brand)]">+</span> New {d.name}
+                  <span className="text-[var(--color-brand)]">+</span> New {d.row_id}
                 </Link>
               ))}
               {/* UI-014: row hits */}
               {docHits.data?.results.map((h) => (
                 <button
-                  key={`${h.table}/${h.name}`}
+                  key={`${h.table}/${h.row_id}`}
                   onClick={() => openDoc(h)}
                   data-testid="awesomebar-doc"
                   className="block w-full px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
                 >
                   {h.title}
-                  {h.title !== h.name && (
-                    <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{h.name}</span>
+                  {h.title !== h.row_id && (
+                    <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{h.row_id}</span>
                   )}
                   <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{h.table}</span>
                 </button>
@@ -558,13 +558,13 @@ export function AdminLayout() {
             <button
               onClick={() => setAccountOpen((o) => !o)}
               data-testid="session-user"
-              title={user?.full_name || user?.name}
+              title={user?.full_name || user?.row_id}
               aria-haspopup="menu"
               aria-expanded={accountOpen}
               className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-brand)] text-xs font-semibold text-white"
             >
               <span aria-hidden="true">{initials}</span>
-              <span className="sr-only">{user?.full_name || user?.name}</span>
+              <span className="sr-only">{user?.full_name || user?.row_id}</span>
             </button>
             {accountOpen && (
               <div
@@ -574,7 +574,7 @@ export function AdminLayout() {
               >
                 <div className="border-b border-[var(--color-border)] px-3 py-2">
                   <p className="truncate text-sm font-medium text-[var(--color-ink)]">
-                    {user?.full_name || user?.name}
+                    {user?.full_name || user?.row_id}
                   </p>
                   {user?.email && (
                     <p className="truncate text-xs text-[var(--color-ink-faint)]">{user.email}</p>
@@ -685,10 +685,10 @@ export function AdminLayout() {
             )}
             {(homePages.data?.pages ?? []).map((p) => (
               <Link
-                key={p.name}
+                key={p.row_id}
                 to="/admin/home/$name"
-                params={{ name: p.name }}
-                data-testid={`home-page-link-${p.name}`}
+                params={{ name: p.row_id }}
+                data-testid={`home-page-link-${p.row_id}`}
                 className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-subtle)]"
                 activeProps={{
                   className:
@@ -696,7 +696,7 @@ export function AdminLayout() {
                 }}
               >
                 {p.icon ? `${p.icon} ` : ''}
-                {p.label || p.name}
+                {p.label || p.row_id}
               </Link>
             ))}
           </nav>

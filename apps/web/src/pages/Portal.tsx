@@ -20,7 +20,7 @@ function PortalShell({ children }: { children: React.ReactNode }) {
           <span className="text-sm font-semibold text-[var(--color-ink)]">Portal</span>
         </div>
         <div className="flex items-center gap-3 text-xs text-[var(--color-ink-muted)]">
-          <span data-testid="portal-user">{user?.full_name || user?.name}</span>
+          <span data-testid="portal-user">{user?.full_name || user?.row_id}</span>
           <button
             data-testid="portal-logout"
             onClick={() => {
@@ -78,14 +78,14 @@ export function PortalListPage({ doctype }: { doctype: string }) {
           </thead>
           <tbody>
             {rows.data?.data.map((row) => (
-              <tr key={String(row.name)} className="border-t border-[var(--color-border)]" data-testid="portal-row">
+              <tr key={String(row.row_id)} className="border-t border-[var(--color-border)]" data-testid="portal-row">
                 <td className="px-3 py-1.5">
                   <Link
                     to="/portal/$doctype/$name"
-                    params={{ doctype, name: String(row.name) }}
+                    params={{ doctype, name: String(row.row_id) }}
                     className="text-[var(--color-brand)] hover:underline"
                   >
-                    {String(row.name)}
+                    {String(row.row_id)}
                   </Link>
                 </td>
                 {columns.map((c) => (

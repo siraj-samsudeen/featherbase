@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, listResource } from '../lib/api'
 
 interface ToDoRow {
-  name: string
+  row_id: string
   allocated_to: string
   todo_status: string
 }
@@ -57,7 +57,7 @@ export function Assignments({ doctype, name }: { doctype: string; name: string }
           <li className="text-xs text-[var(--color-ink-faint)]">No one assigned</li>
         )}
         {todos.data?.data.map((t) => (
-          <li key={t.name} className="text-sm text-[var(--color-ink)]" data-testid="assignee">
+          <li key={t.row_id} className="text-sm text-[var(--color-ink)]" data-testid="assignee">
             {t.allocated_to}
           </li>
         ))}

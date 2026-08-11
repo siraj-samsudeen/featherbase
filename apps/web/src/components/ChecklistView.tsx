@@ -243,15 +243,15 @@ function RunList({
             const status = binding.statusCol ? String(row[binding.statusCol.column_name] ?? '') : ''
             return (
               <button
-                key={String(row.name)}
+                key={String(row.row_id)}
                 type="button"
-                onClick={() => onOpen(String(row.name))}
+                onClick={() => onOpen(String(row.row_id))}
                 className="fc-card flex w-full flex-col gap-2 p-3 text-left"
                 data-testid="checklist-run-card"
               >
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="font-semibold text-[var(--color-ink)]">
-                    {String(row[binding.titleCol] ?? row.name)}
+                    {String(row[binding.titleCol] ?? row.row_id)}
                   </span>
                   {status && <span className="fc-pill">{status}</span>}
                 </div>
@@ -319,7 +319,7 @@ function RunPane({
       listResource<Row>('File', {
         filters: [
           ['ref_table', '=', binding.childTable],
-          ['ref_name', 'in', items.map((i) => String(i.name))],
+          ['ref_name', 'in', items.map((i) => String(i.row_id))],
         ],
         fields: ['name', 'file_name', 'file_url', 'thumbnail_url', 'ref_name'],
         order_by: 'created_at asc',
@@ -354,7 +354,7 @@ function RunPane({
   const toggle = (itemName: string) =>
     saveItems(
       items.map((i) =>
-        String(i.name) === itemName ? { ...i, [binding.doneCol]: !i[binding.doneCol] } : i,
+        String(i.row_id) === itemName ? { ...i, [binding.doneCol]: !i[binding.doneCol] } : i,
       ),
     )
 
@@ -362,7 +362,7 @@ function RunPane({
     setNoteDraft(null)
     if (!binding.noteCol) return
     return saveItems(
-      items.map((i) => (String(i.name) === itemName ? { ...i, [binding.noteCol!]: text } : i)),
+      items.map((i) => (String(i.row_id) === itemName ? { ...i, [binding.noteCol!]: text } : i)),
     )
   }
 
@@ -424,7 +424,7 @@ function RunPane({
 
       <div className="fc-card divide-y divide-[var(--color-border)]" data-testid="checklist-items">
         {items.map((item) => {
-          const itemName = String(item.name)
+          const itemName = String(item.row_id)
           const done = Boolean(item[binding.doneCol])
           const note = binding.noteCol ? String(item[binding.noteCol] ?? '') : ''
           // Mockup-faithful layout: the whole tick row is the tap target,
@@ -644,7 +644,7 @@ function PhotoRow({
     <span className="flex flex-wrap items-center gap-2">
       {photos.map((p) => (
         <button
-          key={String(p.name)}
+          key={String(p.row_id)}
           type="button"
           onClick={() => onView(String(p.file_url))}
           aria-label={`View ${String(p.file_name)}`}

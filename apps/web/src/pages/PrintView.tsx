@@ -6,7 +6,7 @@ import { NO_COLUMN_TYPES, useMeta, type ColumnDef, type TableMeta } from '../lib
 type Row = Record<string, unknown>
 
 interface PrintFormat {
-  name: string
+  row_id: string
   is_default: boolean
   template: string
   letter_head?: string | null
@@ -16,7 +16,7 @@ interface PrintFormat {
 // ordinary Table. It is applied to any printed row — the one marked
 // is_default, one named on the Print Format, or one chosen here.
 interface LetterHead {
-  name: string
+  row_id: string
   is_default: boolean
   header_html: string
   footer_html: string
@@ -91,7 +91,7 @@ export function PrintView({
   const active =
     format === 'standard'
       ? undefined
-      : (format && formatList.find((f) => f.name === format)) ||
+      : (format && formatList.find((f) => f.row_id === format)) ||
         (format === undefined ? formatList.find((f) => f.is_default) : undefined)
   const fmt = (v: unknown) => {
     if (v == null || v === '') return '—'
@@ -107,7 +107,7 @@ export function PrintView({
       ? undefined
       : lhList.find(
           (l) =>
-            l.name === (letterHeadChoice ?? active?.letter_head ?? undefined),
+            l.row_id === (letterHeadChoice ?? active?.letter_head ?? undefined),
         ) ?? (letterHeadChoice === undefined ? lhList.find((l) => l.is_default) : undefined)
 
   return (
@@ -125,15 +125,15 @@ export function PrintView({
         <div className="flex items-center gap-2 print:hidden">
           {formatList.length > 0 && (
             <select
-              value={active?.name ?? 'standard'}
+              value={active?.row_id ?? 'standard'}
               onChange={(e) => onFormatChange?.(e.target.value)}
               className="fc-input w-44"
               data-testid="print-format-picker"
             >
               <option value="standard">Standard (auto)</option>
               {formatList.map((f) => (
-                <option key={f.name} value={f.name}>
-                  {f.name}
+                <option key={f.row_id} value={f.row_id}>
+                  {f.row_id}
                   {f.is_default ? ' (default)' : ''}
                 </option>
               ))}
@@ -151,8 +151,8 @@ export function PrintView({
               <option value="auto">Letterhead: default</option>
               <option value="none">No letterhead</option>
               {lhList.map((l) => (
-                <option key={l.name} value={l.name}>
-                  {l.name}
+                <option key={l.row_id} value={l.row_id}>
+                  {l.row_id}
                   {l.is_default ? ' (default)' : ''}
                 </option>
               ))}
@@ -175,7 +175,7 @@ export function PrintView({
       {active ? (
         <div
           data-testid="print-format-body"
-          data-format={active.name}
+          data-format={active.row_id}
           dangerouslySetInnerHTML={{ __html: interpolate(active.template ?? '', d) }}
         />
       ) : (
