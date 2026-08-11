@@ -12,6 +12,7 @@ import {
   isImportableFile,
   parseWorkbook,
 } from '../lib/parse-file'
+import { sendImportRun } from '../lib/import-run'
 
 interface ColumnRow {
   column_name: string
@@ -37,7 +38,6 @@ const blank = (): ColumnRow => ({
 })
 
 const TARGET_REQUIRED_TYPES = ['Choice', 'Reference', 'Sub-table']
-const IMPORT_CHUNK = 500
 
 interface ImportedFile {
   fileName: string
@@ -157,25 +157,12 @@ export function TableBuilder() {
         // IMP-I1 disclosure: data rows with nothing in any imported column
         // are sent nowhere — named below rather than silently absorbed.
         const skipped = countDataRows(imported.rows) - rows.length
-        let inserted = 0
-        const failed: { sourceIndex: number; message: string }[] = []
-        for (let at = 0; at < rows.length; at += IMPORT_CHUNK) {
-          const chunk = rows.slice(at, at + IMPORT_CHUNK)
-          setProgress(`Importing rows ${at + 1}–${at + chunk.length} of ${rows.length}…`)
-          const res = await api.post<{
-            inserted: number
-            failed: { index: number; message: string }[]
-          }>(`/api/table/${encodeURIComponent(name)}:import`, { rows: chunk.map((r) => r.values) })
-          inserted += res.inserted
-          // The server's per-chunk index becomes a source index HERE and is
-          // never stored (#115).
-          failed.push(
-            ...res.failed.map((f) => ({
-              sourceIndex: rows[f.index + at].sourceIndex,
-              message: f.message,
-            })),
-          )
-        }
+        const { inserted, failed } = await sendImportRun({
+          table: name,
+          rows,
+          onChunk: ({ from, to, total }) =>
+            setProgress(`Importing rows ${from}–${to} of ${total}…`),
+        })
         setProgress(null)
         if (failed.length) {
           setError(

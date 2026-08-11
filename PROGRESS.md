@@ -1,5 +1,29 @@
 # Progress Log
 
+## 2026-08-11 — deepening: the import run becomes a module (import-run.ts)
+
+Codebase-design pass over the morning's import work. The finding: row-number
+truth was deep (one interface in parse-file.ts) but the import RUN was not —
+split → chunk → POST → translate the server's per-chunk index → aggregate →
+sort existed as four near-copies (wizard runCheck, runImport, UpsertPreview;
+TableBuilder.create), plus IMPORT_CHUNK declared twice. That is exactly why
+the #115 index fix had to be applied three times and review still caught a
+fourth site diverging.
+
+`apps/web/src/lib/import-run.ts` now owns the run: `sendImportRun({table,
+rows, upsert?, dryRun?, context?, onChunk?}) → {valid, updated, inserted,
+failed: {sourceIndex, message}[]}`. splitForSend moved in beside it (the
+unit suite imports it from there now); the server's `index` never leaves
+the module. Callers shrank to a handful of lines each — net −95 lines with
+the module included. Seam deliberately placed AFTER projection/coercion:
+the two UIs own their plan shapes, and a projection-swallowing interface
+would have been wider, not deeper. No injected transport seam — one
+adapter is a hypothetical seam; e2e covers the wire.
+
+**Verified:** web 42/42, typecheck clean, 10/10 import e2e on isolated
+worktree servers (PORT=8010/WEB_PORT=5183). **Next:** unchanged — preview
+grid, then revert-a-run.
+
 ## 2026-08-11 — #115 polish: two-axis review findings fixed, row-number truth hardened
 
 Two-axis review (standards + spec, parallel reviewers) of the morning's

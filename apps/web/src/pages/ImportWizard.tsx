@@ -26,6 +26,7 @@ import {
   parseWorkbook,
   type ParsedSheet,
 } from '../lib/parse-file'
+import { sendImportRun, type ImportUpsertArgs } from '../lib/import-run'
 
 // IMP-010: the Import wizard. Drop a CSV or a whole workbook; every sheet
 // gets a target — a new Table (inferred, like the builder) or an existing
@@ -91,8 +92,8 @@ interface SheetPlan {
   } | null
 }
 
-// ADR 0008: named UI-side thresholds — chunking and suggestion bets.
-const IMPORT_CHUNK = 500 // rows per :import call; log rows are per part
+// ADR 0008: named UI-side thresholds — suggestion bets. (IMPORT_CHUNK
+// lives with the import-run module now.)
 const SUGGEST_MIN_SCORE = 0.3 // weakest near-match worth surfacing as a hint
 const SUGGEST_MAX = 3 // hints shown per sheet
 const ERRORS_ON_SCREEN = 5 // failures listed inline; the log keeps more
@@ -270,44 +271,6 @@ function TargetRowCount({ i, table }: { i: number; table: string }) {
   )
 }
 
-// UPS-R2 × IMPORT_CHUNK: the server resolves keys against the database and
-// catches duplicates within one REQUEST, but a duplicate split across two
-// chunks would reach it as two clean requests — and the second would
-// quietly turn into an update of the first's row. The wizard holds the
-// whole file, so it fails duplicate-key rows here, BEFORE chunking, and
-// sends only the clean remainder. sendIdx maps a sent position back to the
-// row's SOURCE index in the sheet (#115: blanks included), so every
-// server-reported failure names the true spreadsheet row.
-export function splitForSend(rows: CoercedRow[], key: string | null) {
-  if (!key)
-    return {
-      send: rows.map((r) => r.values),
-      sendIdx: rows.map((r) => r.sourceIndex),
-      dupFailed: [] as { sourceIndex: number; message: string }[],
-    }
-  const counts = new Map<string, number>()
-  for (const r of rows) {
-    const k = r.values[key] == null ? '' : String(r.values[key]).trim()
-    if (k) counts.set(k, (counts.get(k) ?? 0) + 1)
-  }
-  const send: Record<string, unknown>[] = []
-  const sendIdx: number[] = []
-  const dupFailed: { sourceIndex: number; message: string }[] = []
-  for (const r of rows) {
-    const k = r.values[key] == null ? '' : String(r.values[key]).trim()
-    if (k && (counts.get(k) ?? 0) > 1)
-      dupFailed.push({
-        sourceIndex: r.sourceIndex,
-        message: `key ${k} appears more than once in the file`,
-      })
-    else {
-      send.push(r.values)
-      sendIdx.push(r.sourceIndex)
-    }
-  }
-  return { send, sendIdx, dupFailed }
-}
-
 // UPS-J1.3: real counts BEFORE anything commits — a dry run over the whole
 // (deduplicated) file the moment a match key is chosen, so marking a key is
 // never a silent mode switch. React Query keys on the run's shape; the
@@ -328,33 +291,18 @@ function UpsertPreview({
   columns: string[]
   rows: CoercedRow[]
 }) {
-  const { send, dupFailed } = splitForSend(rows, keyColumn)
   const preview = useQuery({
     queryKey: ['iw-upsert-preview', table, keyColumn, emptyCells, columns.join('·'), rows.length],
-    enabled: send.length > 0 || dupFailed.length > 0,
+    enabled: rows.length > 0,
     staleTime: 30_000,
     queryFn: async () => {
-      let updated = 0
-      let inserted = 0
-      let failed = dupFailed.length
-      for (let at = 0; at < send.length; at += IMPORT_CHUNK) {
-        const res = await api.post<{
-          valid: number
-          updated?: number
-          inserted?: number
-          failed: unknown[]
-        }>(`/api/table/${encodeURIComponent(table)}:import`, {
-          rows: send.slice(at, at + IMPORT_CHUNK),
-          dry_run: true,
-          key_column: keyColumn,
-          empty_cells: emptyCells,
-          columns,
-        })
-        updated += res.updated ?? 0
-        inserted += res.inserted ?? res.valid
-        failed += res.failed.length
-      }
-      return { updated, inserted, failed }
+      const report = await sendImportRun({
+        table,
+        rows,
+        dryRun: true,
+        upsert: { key_column: keyColumn, empty_cells: emptyCells, columns },
+      })
+      return { updated: report.updated, inserted: report.inserted, failed: report.failed.length }
     },
   })
   if (preview.isError) return null // e.g. no permission — rehearse/import will say so
@@ -598,9 +546,9 @@ export function ImportWizard() {
     )
   }
 
-  // The upsert arguments of an existing-mode run, or {} for append-always.
-  function upsertArgs(plan: SheetPlan): Record<string, unknown> {
-    if (!plan.key) return {}
+  // The upsert arguments of an existing-mode run, or null for append-always.
+  function upsertArgs(plan: SheetPlan): ImportUpsertArgs | null {
+    if (!plan.key) return null
     return {
       key_column: plan.key,
       empty_cells: plan.empty_cells,
@@ -623,39 +571,14 @@ export function ImportWizard() {
           setPlan(i, { check: { valid: 0, updated: 0, inserted: 0, skipped, failed: [] } })
           continue
         }
-        const { send, sendIdx, dupFailed } = splitForSend(rows, plan.key)
-        const failed: { sourceIndex: number; message: string }[] = [...dupFailed]
-        let valid = 0
-        let updated = 0
-        let inserted = 0
-        for (let at = 0; at < send.length; at += IMPORT_CHUNK) {
-          const chunk = send.slice(at, at + IMPORT_CHUNK)
-          const res = await api.post<{
-            valid: number
-            updated?: number
-            inserted?: number
-            failed: { index: number; message: string }[]
-          }>(`/api/table/${encodeURIComponent(plan.table)}:import`, {
-            rows: chunk,
-            dry_run: true,
-            ...upsertArgs(plan),
-          })
-          valid += res.valid
-          updated += res.updated ?? 0
-          // A keyless dry run reports no per-action counts: every valid row
-          // is an insert.
-          inserted += res.inserted ?? res.valid
-          // The server's per-chunk index becomes a source index HERE and is
-          // never stored (#115).
-          failed.push(
-            ...res.failed.map((f) => ({ sourceIndex: sendIdx[f.index + at], message: f.message })),
-          )
-        }
-        failed.sort((a, b) => a.sourceIndex - b.sourceIndex)
+        const report = await sendImportRun({
+          table: plan.table,
+          rows,
+          dryRun: true,
+          upsert: upsertArgs(plan),
+        })
         setPlans((ps) =>
-          ps.map((p, j) =>
-            j === i ? { ...p, check: { valid, updated, inserted, skipped, failed } } : p,
-          ),
+          ps.map((p, j) => (j === i ? { ...p, check: { ...report, skipped } } : p)),
         )
       }
     } catch (err) {
@@ -691,41 +614,36 @@ export function ImportWizard() {
         } else {
           rows = mappedRows(sheet, plan)
         }
-        const { send, sendIdx, dupFailed } =
-          plan.mode === 'existing' ? splitForSend(rows, plan.key) : splitForSend(rows, null)
         const skipped = countDataRows(sheet.rows) - rows.length
-        let inserted = 0
-        let updated = 0
-        const failed: { sourceIndex: number; message: string }[] = [...dupFailed]
-        const parts = Math.ceil(send.length / IMPORT_CHUNK)
-        for (let at = 0; at < send.length; at += IMPORT_CHUNK) {
-          const chunk = send.slice(at, at + IMPORT_CHUNK)
-          setBusy(`${plan.table}: importing rows ${at + 1}–${at + chunk.length} of ${send.length}…`)
-          const res = await api.post<{
-            inserted: number
-            updated?: number
-            failed: { index: number; message: string }[]
-          }>(`/api/table/${encodeURIComponent(plan.table)}:import`, {
-            rows: chunk,
-            ...(plan.mode === 'existing' ? upsertArgs(plan) : {}),
-            // IMP-011: recorded in the Import Log alongside the counts.
-            context: {
-              file_name: fileName ?? undefined,
-              sheet_name: sheet.sheetName,
-              table_created: plan.mode === 'new' && at === 0,
-              part: Math.floor(at / IMPORT_CHUNK) + 1,
-              parts,
-            },
-          })
-          inserted += res.inserted
-          updated += res.updated ?? 0
-          failed.push(
-            ...res.failed.map((f) => ({ sourceIndex: sendIdx[f.index + at], message: f.message })),
-          )
-        }
-        failed.sort((a, b) => a.sourceIndex - b.sourceIndex)
+        const report = await sendImportRun({
+          table: plan.table,
+          rows,
+          upsert: plan.mode === 'existing' ? upsertArgs(plan) : null,
+          // IMP-011: recorded in the Import Log alongside the counts.
+          context: (part, parts) => ({
+            file_name: fileName ?? undefined,
+            sheet_name: sheet.sheetName,
+            table_created: plan.mode === 'new' && part === 1,
+            part,
+            parts,
+          }),
+          onChunk: ({ from, to, total }) =>
+            setBusy(`${plan.table}: importing rows ${from}–${to} of ${total}…`),
+        })
         setPlans((ps) =>
-          ps.map((p, j) => (j === i ? { ...p, result: { updated, inserted, skipped, failed } } : p)),
+          ps.map((p, j) =>
+            j === i
+              ? {
+                  ...p,
+                  result: {
+                    updated: report.updated,
+                    inserted: report.inserted,
+                    skipped,
+                    failed: report.failed,
+                  },
+                }
+              : p,
+          ),
         )
       }
       await queryClient.invalidateQueries({ queryKey: ['tables'] })
