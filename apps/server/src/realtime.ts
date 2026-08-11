@@ -104,7 +104,9 @@ export function attachRealtime(server: Server): void {
     try {
       const url = new URL(req.url ?? '', 'http://localhost')
       const token = url.searchParams.get('token')
-      const user = await resolveToken(token ? `Bearer ${token}` : undefined)
+      // #137: the browser cannot set headers on a WebSocket, so this is
+      // URL-borne by necessity — session JWTs only, never an access token.
+      const user = await resolveToken(token ? `Bearer ${token}` : undefined, { fromUrl: true })
       const client: Client = { socket, user, channels: new Set() }
       clients.add(client)
       // Personal channel is always subscribed.

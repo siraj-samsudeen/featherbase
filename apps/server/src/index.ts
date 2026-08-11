@@ -217,10 +217,13 @@ async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   if (isPrivate) {
     const signed = verifyFileSignature(fileUrl, c.req.query('expires'), c.req.query('signature'))
     if (!signed) {
+      // #137: the header still accepts any credential; the ?token= fallback
+      // refuses access tokens, which must never travel in a URL.
+      const header = c.req.header('authorization')
       const token = c.req.query('token')
-      const user = await resolveToken(
-        c.req.header('authorization') ?? (token ? `Bearer ${token}` : undefined),
-      )
+      const user = header
+        ? await resolveToken(header)
+        : await resolveToken(token ? `Bearer ${token}` : undefined, { fromUrl: true })
       if (row.ref_table && row.ref_name)
         await getDoc(row.ref_table as string, row.ref_name as string, user.name)
       else await getDoc('File', row.name as string, user.name)

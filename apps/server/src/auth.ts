@@ -25,7 +25,17 @@ export function verifyPassword(password: string, stored: string): boolean {
   return candidate.length === expected.length && timingSafeEqual(candidate, expected)
 }
 
+// #137: the invariant lives here, not at the route. /api/set_password already
+// refused service accounts, but password reset reaches this function directly,
+// so a reset link could still stamp a password_hash onto a principal
+// documented as having none. The guard is on the write itself.
 export async function setUserPassword(name: string, password: string) {
+  const [row] = await sql`select user_type from "user" where name = ${name}`
+  if (row?.user_type === 'service')
+    throw new AppError(
+      'ValidationError',
+      'Service accounts have no password — issue an access token instead',
+    )
   await sql`
     update "user" set password_hash = ${hashPassword(password)}
     where name = ${name}`
@@ -103,6 +113,8 @@ export interface AccessTokenRow {
   expires_at: string | null
   last_used_at: string | null
   revoked_at: string | null
+  /** Only present on list results — see listAccessTokens. */
+  owner_enabled?: boolean
 }
 
 const tokenFields = () => sql`id, label, owner, created_at, expires_at, last_used_at, revoked_at`
@@ -127,11 +139,28 @@ export async function issueAccessToken(
   return { token, ...(row as unknown as AccessTokenRow) }
 }
 
-// All tokens (owner undefined) or one principal's, newest first.
+// All tokens (owner undefined) or one principal's, newest first. #137:
+// owner_enabled rides along because a live-looking token whose owner is
+// disabled cannot authenticate — the UI must not call it active.
+//
+// The join is a LEFT join on purpose. An inner join drops any token whose
+// owner no longer matches a `user` row, so the credential vanishes from the
+// admin screen while `resolveAccessToken` would still find it by hash — an
+// operator cannot revoke what they cannot see. A missing owner is reported
+// as `owner_enabled: false`, which is the truth: such a token authenticates
+// nobody, and it stays listed and revocable.
 export async function listAccessTokens(owner?: string): Promise<AccessTokenRow[]> {
   const rows = owner
-    ? await sql`select ${tokenFields()} from access_token where owner = ${owner} order by created_at desc`
-    : await sql`select ${tokenFields()} from access_token order by created_at desc`
+    ? await sql`
+        select t.id, t.label, t.owner, t.created_at, t.expires_at, t.last_used_at, t.revoked_at,
+               coalesce(u.enabled, false) as owner_enabled
+        from access_token t left join "user" u on u.name = t.owner
+        where t.owner = ${owner} order by t.created_at desc`
+    : await sql`
+        select t.id, t.label, t.owner, t.created_at, t.expires_at, t.last_used_at, t.revoked_at,
+               coalesce(u.enabled, false) as owner_enabled
+        from access_token t left join "user" u on u.name = t.owner
+        order by t.created_at desc`
   return rows as unknown as AccessTokenRow[]
 }
 
@@ -170,12 +199,27 @@ async function resolveAccessToken(token: string): Promise<SessionUser> {
   }
 }
 
-export async function resolveToken(authorization?: string): Promise<SessionUser> {
+// #137: some routes accept a credential from `?token=` so that <img src>,
+// download links and the browser WebSocket (which cannot set headers) work.
+// A URL lands in browser history, referrers, proxy and access logs — fine for
+// a short-lived session JWT, not for a long-lived access token that carries
+// its owner's roles. Those callers pass `fromUrl` and get a hard refusal.
+export async function resolveToken(
+  authorization?: string,
+  opts: { fromUrl?: boolean } = {},
+): Promise<SessionUser> {
   const token = authorization?.match(/^Bearer (.+)$/)?.[1]
   if (!token) throw new AppError('AuthenticationError', 'Authentication required')
   // #131: access tokens ride the same Bearer header as sessions, told apart
   // by their prefix — no JWT parse attempted on them.
-  if (token.startsWith(TOKEN_PREFIX)) return resolveAccessToken(token)
+  if (token.startsWith(TOKEN_PREFIX)) {
+    if (opts.fromUrl)
+      throw new AppError(
+        'AuthenticationError',
+        'An access token must be sent in the Authorization header, never in a URL',
+      )
+    return resolveAccessToken(token)
+  }
   let payload: { sub?: unknown }
   try {
     payload = (await verify(token, JWT_SECRET, 'HS256')) as { sub?: unknown }

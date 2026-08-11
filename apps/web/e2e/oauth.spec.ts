@@ -40,8 +40,9 @@ test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', asyn
 })
 
 test('PLAT-006: a second OAuth sign-in links the same User (no duplicate)', async ({ page, request }) => {
-  // Pre-create the user (as if from a first sign-in), disabled, to prove the
-  // flow links + re-enables rather than duplicating.
+  // Pre-create the user (as if from a first sign-in) to prove the flow LINKS
+  // rather than duplicating. It is created enabled on purpose: since #137 a
+  // disabled account is refused, never re-enabled by signing in.
   const headers = await adminHeaders(request)
   await request.post('/api/save_doc', {
     headers,

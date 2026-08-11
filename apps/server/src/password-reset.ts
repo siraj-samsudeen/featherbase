@@ -18,9 +18,11 @@ const SITE_URL = config.siteUrl || 'http://localhost:5173'
 // mail. Returns the token in dev/test so callers can assert without scraping.
 export async function requestPasswordReset(usr: string): Promise<string | null> {
   const [user] = await sql`
-    select name, email, enabled from "user"
+    select name, email, enabled, user_type from "user"
     where (name = ${usr} or email = ${usr})`
-  if (!user || !user.enabled) return null
+  // #137: a service account has no password to reset. Fall through the same
+  // silent `null` as an unknown user so this cannot be used to enumerate them.
+  if (!user || !user.enabled || user.user_type === 'service') return null
 
   const token = randomBytes(24).toString('hex')
   const expires = new Date(Date.now() + TOKEN_TTL_MS)
@@ -44,12 +46,33 @@ export async function resetPassword(token: string, newPassword: string): Promise
   if (newPassword.length < 6)
     throw new AppError('ValidationError', 'Password must be at least 6 characters')
 
-  const [row] = await sql`
-    select "user", expires_at from password_reset where token = ${token}`
-  if (!row || new Date(row.expires_at as string).getTime() < Date.now())
-    throw new AppError('ValidationError', 'This reset link is invalid or has expired')
+  // #137, burn-on-use: the link is consumed the moment it is used, in its own
+  // committed transaction, BEFORE the password write is attempted. A write
+  // that then fails — as it does for a principal that became
+  // `user_type = 'service'` between the request and the click — does not give
+  // the link back.
+  //
+  // The tempting alternative is to make the write and the consumption atomic,
+  // but atomicity is the weaker guarantee here: rolling the write back rolls
+  // the deletion back with it, so a reset link survives its own use and stays
+  // live for the rest of its hour. For a credential-reset link, "usable at
+  // most once" is the property worth having outright. Losing a reset to a
+  // failed write costs the user one more click on "forgot password"; leaving
+  // a used link alive costs them the account.
+  //
+  // `for update` plus deleting every outstanding token for the user settles
+  // concurrent clicks: the first to take the row lock consumes them all, and
+  // the losers re-read under READ COMMITTED, find nothing, and are refused.
+  const user = await sql.begin(async (tx) => {
+    const stx = tx as unknown as typeof sql
+    const [row] = await stx`
+      select "user", expires_at from password_reset where token = ${token} for update`
+    if (!row || new Date(row.expires_at as string).getTime() < Date.now())
+      throw new AppError('ValidationError', 'This reset link is invalid or has expired')
 
-  await setUserPassword(row.user as string, newPassword)
-  // Single-use: consume this token and any others outstanding for the user.
-  await sql`delete from password_reset where "user" = ${row.user as string}`
+    await stx`delete from password_reset where "user" = ${row.user as string}`
+    return row.user as string
+  })
+
+  await setUserPassword(user, newPassword)
 }

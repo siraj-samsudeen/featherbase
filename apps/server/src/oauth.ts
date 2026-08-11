@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { sql } from './db'
 import { AppError } from './errors'
-import { saveDoc, getDoc } from './document'
+import { saveDoc } from './document'
 import { getSystemSettings } from './settings'
 
 // PLAT-006: social login (Google OAuth) mapped to the User Table. The client
@@ -247,14 +247,25 @@ async function domainAdmitted(email: string): Promise<boolean> {
 // create one, mark it as a Google login, and return its name.
 export async function findOrCreateGoogleUser(email: string, name: string): Promise<string> {
   const [existing] = await sql`
-    select name from "user" where lower(email) = ${email} or lower(name) = ${email} limit 1`
+    select name, enabled, user_type from "user"
+    where lower(email) = ${email} or lower(name) = ${email} limit 1`
   let userName: string
   if (existing) {
     userName = existing.name as string
-    // Ensure it can sign in.
-    const row = await getDoc('User', userName)
-    if (!row.enabled)
-      await saveDoc('User', { name: userName, updated_at: row.updated_at, enabled: true }, 'Administrator')
+    // #137: a disabled principal stays disabled. This used to flip `enabled`
+    // back on ("ensure it can sign in") BEFORE issueSession got a say — so an
+    // OAuth round trip undid an administrator's disable, and every access
+    // token that principal owned started working again, even though the
+    // interactive login itself was still refused. Refusing here matches
+    // login() and issueSession(), which both reject a disabled user.
+    //
+    // ONE refusal, ONE message, deliberately. Separate "this account is
+    // disabled" and "this account cannot sign in" replies let an unauthenticated
+    // caller probe an address and learn which accounts exist and in what
+    // state — the exact enumeration oracle requestPasswordReset() avoids by
+    // returning a silent null. The generic wording matches login()'s.
+    if (existing.user_type === 'service' || !existing.enabled)
+      throw new AppError('AuthenticationError', 'Invalid login credentials')
   } else {
     if (!(await domainAdmitted(email)))
       throw new AppError('AuthenticationError', 'Access not provisioned for this account. Contact IT.')

@@ -80,10 +80,14 @@ describe('META-003: Table save generates its physical table', () => {
     })
   })
 
-  test('rolls back metadata when DDL fails (transactional)', async ({ admin }) => {
-    // Second create of same name 409s before DDL; simulate DDL failure via
-    // a column_name that collides with a standard column being caught earlier.
-    // Real transactional check: table already exists but table_def row absent.
+  // #137: a physical table with no table_def row used to reach DDL and come
+  // back as a raw Postgres `relation "ddl_ghost" already exists` — a 500 for
+  // what is really a naming conflict. createTable now asks the database for
+  // the name first and refuses with a 409. The 500 this once asserted was the
+  // symptom the #137 review set out to remove, so the expectation moves with
+  // the behaviour; the transactional guarantee it also covered is kept alive
+  // by the test below, which fails DDL a way the name check cannot see.
+  test('refuses a name already taken by a raw table, before any DDL', async ({ admin }) => {
     await sql.unsafe(`create table if not exists ddl_ghost (name text)`)
     const res = await admin.fetch('/api/doctype', {
       method: 'POST',
@@ -92,8 +96,27 @@ describe('META-003: Table save generates its physical table', () => {
         columns: [{ column_name: 'x', column_type: 'Data' }],
       }),
     })
-    expect(res.status).toBe(500)
+    expect(res.status).toBe(409)
     const [row] = await sql`select 1 from table_def where name = 'Ddl Ghost'`
+    expect(row).toBeUndefined()
+  })
+
+  test('rolls back metadata when DDL fails (transactional)', async ({ admin }) => {
+    // A composite type occupies the same pg_class namespace as a table, so
+    // `create table ddl_ghost2` still fails — but it is NOT an
+    // information_schema.tables row, so the name check above lets this
+    // through and the failure happens where we want it: inside the DDL, after
+    // the table_def row has been written. Metadata must not survive it.
+    await sql.unsafe(`create type ddl_ghost2 as (a int)`)
+    const res = await admin.fetch('/api/doctype', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'Ddl Ghost2',
+        columns: [{ column_name: 'x', column_type: 'Data' }],
+      }),
+    })
+    expect(res.status).toBe(500)
+    const [row] = await sql`select 1 from table_def where name = 'Ddl Ghost2'`
     expect(row).toBeUndefined()
   })
 })

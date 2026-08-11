@@ -1,5 +1,47 @@
 # Progress Log
 
+## 2026-08-11 — a reset link burns on use, not on success (#137 finding 6, ruled)
+
+Round 2 left finding 6 open for the owner, because the finding and its stated
+remedy pulled opposite ways: "the token survives a failed write" cannot be
+fixed by making the write and the deletion atomic, since atomicity is exactly
+what rolls the deletion back and hands the link back. The owner has ruled
+**burn-on-use**.
+
+`resetPassword` now consumes the token in its own committed transaction —
+`select ... for update`, delete every outstanding token for that user, commit —
+and only then calls `setUserPassword`. A refused write no longer resurrects the
+link. Concurrency is settled by the same row lock as before: the first click to
+take it consumes them all, and the losers re-read under READ COMMITTED, find
+nothing, and get the ordinary "invalid or has expired" refusal. The rationale
+now lives in the comment, which previously argued the opposite case.
+
+The cost is accepted and one-sided: a failed write costs the user another
+"forgot password" click, where a used link left alive costs them the account.
+
+`setUserPassword`'s `tx` parameter existed only to enrol it in that
+transaction, and no other caller passed one, so it is gone rather than left
+unused.
+
+The test that pinned atomicity — a trigger blocking the DELETE — pinned the
+property now rejected, so it is replaced by one that pins the ruling: after the
+service-account guard refuses the write, the `password_reset` row is gone and
+the second attempt is turned away by the lookup, with the invalid/expired
+message rather than the guard's. Confirmed RED against the atomic
+implementation first (source stashed, test kept: `expected 1 to be +0` at the
+row-count assertion, since the rolled-back delete leaves the token sitting
+there).
+
+**Verified:** rebased onto `origin/main` `4ae5a8c` (PR #127). Conflicts were
+`PROGRESS.md` twice — both same-day entries, kept side by side — and one import
+line in `oauth.ts`; main's `getDoc` import served only the OAuth re-enable this
+PR deletes, so it went with it. This PR's rulings survive the rebase intact:
+a disabled principal stays disabled, and the refusals remain one
+indistinguishable message. Server suite **691 passed / 116 files** against an
+isolated `featherbase_pr137` (680 before the rebase, on the same database),
+server typecheck clean. No server was started — port 8000 was held by another
+session's process, so this session verified statically and through the suite.
+
 ## 2026-08-11 — PR #127 review: the mock provider fails closed, and `state` finally means something
 
 Four security findings from the #127 review, fixed on the branch before it
@@ -99,6 +141,86 @@ button when no provider is configured, and stop passing the session token in
 the `/oauth-callback` query string (the sid cookie already travels, and the
 query string lands in history and referrers) — that one is pre-existing, from
 `3752eb6`, and is being filed separately rather than fixed here.
+## 2026-08-11 — #137 round 2: the review of the review, seven findings
+
+A second read of the #137 hardening (itself a review of #131/#134) found seven
+things. All fixed here, rebased onto main. The through-line is the same one as
+last time: a guard is only worth what it actually *runs on*.
+
+- **The migration guard was written where it can never run.** 0069 was edited
+  in place to refuse an `access_token` table that is not the credential store.
+  But `runMigrations` skips any file already recorded in `migration`, so every
+  checkout that already has access tokens skips the new lines forever — and on
+  a fresh database the check is vacuous, because `access_token` cannot pre-exist
+  the migration that creates it. It protected exactly nobody. 0069 is restored
+  byte-for-byte and the guard is now **0071_access_token_guard.sql**, a file no
+  database has recorded. Proven both directions against a real database: with
+  the guard back inside 0069 a squatting table produces "migrations up to date"
+  and no error; as 0071 it raises with the remedy. (0070 was already taken by
+  PR #127, hence 0071.)
+- **The token list hid the tokens most worth seeing.** `listAccessTokens` inner-
+  joined `"user"`, so a token whose owner no longer matches a user row vanished
+  from the admin screen while `resolveAccessToken` could still match it by hash —
+  an operator cannot revoke a credential they have been shown does not exist.
+  Now a `left join` with `coalesce(u.enabled, false)`.
+- **The reserved-name set is derived, not listed.** The literal covered
+  `access_token`, `password_reset`, `migration` — 3 of the 10 raw tables this
+  database actually has, so a Table named "Series" or "User Settings" still
+  reached DDL and came back as a raw `relation … already exists`. `createTable`
+  now asks the database whether the physical name is taken. Nothing to keep in
+  sync: a new raw table is covered the day it lands. Settings Tables are exempt
+  (they generate no DDL).
+- **`token_count` contradicted the kill switch.** It applied two of
+  `resolveAccessToken`'s three conditions, omitting the owner's `enabled`, so a
+  disabled service account advertised live tokens while none authenticated.
+- **OAuth refusals were an enumeration oracle.** "This account is disabled" and
+  "This account cannot sign in" are distinguishable; both are now the same
+  generic refusal as `login()`. The **disabled account is still refused** — the
+  #137 ruling that a disable must survive an OAuth round trip is untouched; it
+  simply stops being *identifiable* as disabled.
+- **Password reset was two statements pretending to be one.** The write and the
+  token's consumption became one transaction, so a failure could not leave a
+  changed password beside a still-live link. *(Superseded — the owner has since
+  ruled burn-on-use; see the 2026-08-11 entry above.)*
+- Dead `getDoc` import removed from `oauth.ts`.
+
+**One expectation moved, deliberately.** `ddl.test.ts` asserted a **500** when a
+Table's name collided with a raw table — that raw Postgres error is precisely
+what finding 3 exists to remove, so it is now a **409**. The transactional-
+rollback guarantee that test *also* covered has not been dropped: a second test
+keeps it, failing the DDL via a composite type, which occupies the same
+`pg_class` namespace but is invisible to an `information_schema.tables` check.
+That test passes against the old code too — it is coverage preserved, not a
+new claim.
+
+**Verified:** server **680 passed / 115 files**, both typechecks clean, web
+42/42. Every new assertion was confirmed RED against the unfixed tree first
+(6 failures with the expected messages, including the raw
+`relation "installed_app" already exists`). The atomicity case is pinned by a
+trigger that blocks the DELETE: unfixed, the surrounding transaction aborts;
+fixed, it survives and the password write is gone with it. Live HTTP against
+an isolated stack (own database, port 8077): "Series" and "User Settings" now
+409 with an actionable message, and a disabled service account reports
+`token_count: 0` while its token returns 401 — count and reality agree.
+
+**Open for the owner, not decided here.** *(Decided since — burn-on-use. See
+the 2026-08-11 entry above.)* Finding 6 was filed as "the token
+survives a failed write" but its stated remedy was "make consumption atomic".
+Those pull opposite ways: atomic means a failed write rolls the deletion back,
+so the link *does* survive (inert, since the same guard refuses it every time).
+Burn-on-use — consume in its own committed transaction, then write — would kill
+the link on any failure, at the cost of a transient error costing the user their
+link. Atomic was implemented, per the explicit instruction; the alternative is a
+ratification call.
+
+**Gotchas.** `apps/server/migrations/` already contains two `0064_*` and two
+`0069_*` files; the numbers are not unique and `runMigrations` orders by
+filename, so `0069_access_tokens.sql` sorts before `0069_import_upsert_log.ts`
+by luck of the alphabet. Left alone deliberately — renumbering an applied
+migration is the same class of mistake as editing one. Also: `init.sh` still
+hardcodes 8000/5173 in its port-cleanup loop, so it cannot be used from a
+worktree while another checkout is serving; this session drove migrations and
+tests directly against `DATABASE_URL` instead.
 
 ## 2026-08-11 — #128 review: the builder's rejection names a column, not an index
 
@@ -169,6 +291,7 @@ The pin survives the refactor rather than passing vacuously.
 `text-red-600`, and TableBuilder keeps pre-existing `hover:text-red-600` /
 `bg-blue-50` literals outside the error UI — all pre-dating this change and
 out of this branch's scope.
+
 
 ## 2026-08-11 — the wizard shows the spreadsheet: preview grid with Excel-true numbers
 
@@ -322,6 +445,63 @@ report-server's) and nothing else; the client id + `jeyarama.com` domain
 list ride the checked-in manifest fixture; Google console gets the
 featherbase redirect URI. Coordinate merge order with PR #136, which edits
 the same `findOrCreateGoogleUser` region.
+## 2026-08-06 — #137: review findings on the access-token feature, all five real
+
+A read-only review of the merged #134 raised five findings. Every one
+reproduced, and each now has a test that fails against #134 and passes here.
+The theme: a credential's *lifecycle* was enforced at the routes rather than
+at the operations underneath them, so any second caller bypassed it.
+
+- **P1 — a durable token could travel in a URL.** `resolveToken` accepts
+  `fbt_` wherever a Bearer credential is resolved, and two paths turn
+  `?token=` into one: private files and the browser WebSocket (which cannot
+  set headers). A non-expiring, System-Manager-equivalent secret would land
+  in browser history, referrers and proxy logs. `resolveToken` now takes
+  `{ fromUrl }` and refuses access tokens there; the `authorization` header
+  keeps accepting them, so automation is unaffected. Session JWTs still work
+  in both places — verified live: an access token on `/ws?token=` is refused
+  while a JWT establishes a session.
+- **P1 — OAuth undid an administrator's disable.** `findOrCreateGoogleUser`
+  flipped `enabled` back on for any matching disabled User *before*
+  `issueSession` got to reject it. So an OAuth round trip against a disabled
+  service account's identity re-enabled the account and every access token it
+  owned started working again, even though the interactive login was still
+  refused — disablement stopped being an incident-response control. It now
+  refuses service accounts and disabled users outright, matching `login()`
+  and `issueSession()`. Practical reach was widest with the mock provider
+  (active whenever `GOOGLE_CLIENT_ID` is unset); real Google could not assert
+  a `@service.invalid` address. Note this deletes the `saveDoc` call that
+  **#136** patches for the millisecond-`updated_at` trap — see the conflict
+  note below.
+- **P2 — password reset stamped a hash onto a passwordless principal.**
+  `/api/set_password` refused service accounts, but `resetPassword` reaches
+  `setUserPassword` directly. The invariant moved onto the write itself, and
+  `requestPasswordReset` now returns the same silent `null` as an unknown
+  user, so it cannot enumerate service accounts.
+- **P2 — "active" did not mean usable.** The service-account token count
+  excluded revoked tokens but not expired ones, and the UI called a token
+  `active` even when its owner was disabled. The count now applies the same
+  liveness conditions `resolveAccessToken` does, and the list carries
+  `owner_enabled` so the screen shows `owner disabled`. Revoke is now offered
+  until a token is actually revoked — previously it was gated on `active`, so
+  the new state would have hidden the button on the tokens most worth killing.
+- **P2 — a user Table could squat on the credential store.** A Table named
+  "Access Token" compiles to physical `access_token`; the engine's duplicate
+  check reads `table_def`, which raw tables have no row in. Proven: creating
+  it raised `relation "access_token" already exists`. `createTable` now
+  refuses reserved physical names, and 0069 raises a clear, actionable error
+  instead of letting `if not exists` silently adopt a foreign table.
+
+**Conflict note for whoever merges second:** #136 (open) edits the exact
+`saveDoc` in `findOrCreateGoogleUser` that this change removes. If #136 lands
+first, drop that hunk when rebasing — its `document.ts` `expectedStamp`
+hardening and the wider sweep stand on their own and are still wanted.
+
+Verified: server **651 passed** (114 files, up from 645), new
+`token-hardening.test.ts` (5 cases) confirmed RED against the code as merged
+before being kept, web typecheck clean, full Playwright suite green, and the
+WebSocket refusal exercised against a live stack. Next: nothing outstanding
+on tokens; the Rama install (data-warehouse#1750) is unblocked.
 
 ## 2026-08-06 — two ways a green suite goes red on a machine that has been used
 
