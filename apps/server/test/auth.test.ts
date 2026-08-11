@@ -15,7 +15,7 @@ describe('API-004: authentication', () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as { token: string; user: { row_id: string } }
     expect(body.token.split('.')).toHaveLength(3)
-    expect(body.user.name).toBe('Administrator')
+    expect(body.user.row_id).toBe('Administrator')
   })
 
   test('login also works by email; wrong password is 401', async ({ api }) => {

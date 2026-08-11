@@ -1,5 +1,5 @@
 import { AppError } from '../errors'
-import { getBacklinks } from '../meta'
+import { ROW_KEY, getBacklinks } from '../meta'
 import { getDoc } from '../document'
 import { countDocs, type Filter } from '../query'
 import { permissionScope } from '../permissions'
@@ -61,7 +61,7 @@ registerRowAction('connections', {
         // list engine evaluates server-side — no name list to disclose, no
         // 500-owner cap, and the shareable URL never goes stale.
         const filters: Filter[] = [
-          ['name', 'related', { via: bl.via, column: bl.column, table, filters: [['name', '=', name]] }],
+          [ROW_KEY, 'related', { via: bl.via, column: bl.column, table, filters: [[ROW_KEY, '=', name]] }],
         ]
         connections.push({
           table: bl.table,
