@@ -12,13 +12,14 @@ import {
   shouldAutoMatch,
   tableMatchQuality,
   tableNameFromFile,
+  type CoercedRow,
   type InferredTableDef,
   type TableMatchQuality,
 } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
 import { NamingControl } from '../components/NamingControl'
 import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
-import { isImportableFile, parseWorkbook, type ParsedSheet } from '../lib/parse-file'
+import { countDataRows, isImportableFile, parseWorkbook, type ParsedSheet } from '../lib/parse-file'
 
 // IMP-010: the Import wizard. Drop a CSV or a whole workbook; every sheet
 // gets a target — a new Table (inferred, like the builder) or an existing
@@ -262,33 +263,42 @@ function TargetRowCount({ i, table }: { i: number; table: string }) {
 // quietly turn into an update of the first's row. The wizard holds the
 // whole file, so it fails duplicate-key rows here, BEFORE chunking, and
 // sends only the clean remainder. sendIdx maps a sent position back to the
-// row's index in the full coerced array so server-reported failures keep
-// their true positions.
-export function splitForSend(rows: Record<string, unknown>[], key: string | null) {
+// row's SOURCE index in the sheet (#115: blanks included), so every
+// server-reported failure names the true spreadsheet row.
+export function splitForSend(rows: CoercedRow[], key: string | null) {
   if (!key)
     return {
-      send: rows,
-      sendIdx: rows.map((_, i) => i),
+      send: rows.map((r) => r.values),
+      sendIdx: rows.map((r) => r.sourceIndex),
       dupFailed: [] as { index: number; message: string }[],
     }
   const counts = new Map<string, number>()
   for (const r of rows) {
-    const k = r[key] == null ? '' : String(r[key]).trim()
+    const k = r.values[key] == null ? '' : String(r.values[key]).trim()
     if (k) counts.set(k, (counts.get(k) ?? 0) + 1)
   }
   const send: Record<string, unknown>[] = []
   const sendIdx: number[] = []
   const dupFailed: { index: number; message: string }[] = []
-  rows.forEach((r, i) => {
-    const k = r[key] == null ? '' : String(r[key]).trim()
+  for (const r of rows) {
+    const k = r.values[key] == null ? '' : String(r.values[key]).trim()
     if (k && (counts.get(k) ?? 0) > 1)
-      dupFailed.push({ index: i, message: `key ${k} appears more than once in the file` })
+      dupFailed.push({ index: r.sourceIndex, message: `key ${k} appears more than once in the file` })
     else {
-      send.push(r)
-      sendIdx.push(i)
+      send.push(r.values)
+      sendIdx.push(r.sourceIndex)
     }
-  })
+  }
   return { send, sendIdx, dupFailed }
+}
+
+// #115 / IMP-I1: a failure's `index` is the row's source index among the
+// sheet's data rows (blanks included, per parse-file's blankrows: true).
+// This is the ONLY translation from internal indices to the row numbers a
+// user sees; every message goes through it so the wizard's numbers always
+// match Excel's — including when the header itself isn't row 1.
+function excelRow(sourceIndex: number, headerExcelRow: number): number {
+  return headerExcelRow + 1 + sourceIndex
 }
 
 // UPS-J1.3: real counts BEFORE anything commits — a dry run over the whole
@@ -309,7 +319,7 @@ function UpsertPreview({
   keyColumn: string
   emptyCells: 'keep' | 'clear'
   columns: string[]
-  rows: Record<string, unknown>[]
+  rows: CoercedRow[]
 }) {
   const { send, dupFailed } = splitForSend(rows, keyColumn)
   const preview = useQuery({
@@ -645,7 +655,7 @@ export function ImportWizard() {
       for (const [i, plan] of plans.entries()) {
         if (plan.mode === 'skip') continue
         const sheet = sheets[i]
-        let rows: Record<string, unknown>[]
+        let rows: CoercedRow[]
         if (plan.mode === 'new') {
           await api.post('/api/doctype', {
             name: plan.table,
@@ -777,7 +787,7 @@ export function ImportWizard() {
               <div className="text-sm font-semibold text-[var(--color-ink)]">
                 Sheet "{sheet.sheetName}"{' '}
                 <span className="font-normal text-gray-500">
-                  — {sheet.rows.length} rows, {sheet.headers.length} columns in the file
+                  — {countDataRows(sheet.rows)} rows, {sheet.headers.length} columns in the file
                 </span>
               </div>
               <div className="flex items-center gap-2 text-sm">
@@ -1206,7 +1216,7 @@ export function ImportWizard() {
                     , {plan.check.failed.length} with problems:{' '}
                     {plan.check.failed
                       .slice(0, ERRORS_ON_SCREEN)
-                      .map((f) => `row ${f.index + 2}: ${f.message}`)
+                      .map((f) => `row ${excelRow(f.index, sheet.headerExcelRow)}: ${f.message}`)
                       .join('; ')}
                     {plan.check.failed.length > 5 && ` … and ${plan.check.failed.length - 5} more`}
                   </span>
@@ -1230,9 +1240,10 @@ export function ImportWizard() {
                     {plan.table}
                   </Link>
                   {plan.result.failed.length > 0 &&
-                    `; ${plan.result.failed.length} failed (first: row ${
-                      plan.result.failed[0].index + 2
-                    }: ${plan.result.failed[0].message})`}
+                    `; ${plan.result.failed.length} failed (first: row ${excelRow(
+                      plan.result.failed[0].index,
+                      sheet.headerExcelRow,
+                    )}: ${plan.result.failed[0].message})`}
                 </span>
               </div>
             )}
@@ -1286,7 +1297,7 @@ export function ImportWizard() {
             {anyChecked && blockingProblems > 0
               ? `Import anyway (skip ${blockingProblems} bad rows)`
               : `Import ${sheets.reduce(
-                  (n, s, si) => n + (plans[si]?.mode === 'skip' ? 0 : s.rows.length),
+                  (n, s, si) => n + (plans[si]?.mode === 'skip' ? 0 : countDataRows(s.rows)),
                   0,
                 )} rows`}
           </button>

@@ -15,6 +15,7 @@ export {
   shouldAutoMatch,
   tableMatchQuality,
   tableNameFromFile,
+  type CoercedRow,
   type InferredColumn,
   type InferredTableDef,
   type MappingTarget,

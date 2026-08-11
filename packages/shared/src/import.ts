@@ -341,21 +341,32 @@ export function inferTableDef(
 // IMP-004: normalize parsed cells to what each (possibly user-edited) column
 // type expects on the wire — booleans for Check, YYYY-MM-DD for Date, ISO
 // strings for Datetime; empty cells are omitted entirely.
+//
+// #115 / IMP-I1: blank rows are dropped, but never silently — each coerced
+// row carries its `sourceIndex` into the input rows (the sheet's data rows
+// IN ORDER, blanks included), so display code can always name the TRUE
+// spreadsheet row (+2: the header is row 1). The only row number a user
+// ever sees is Excel's own.
+export interface CoercedRow {
+  values: Record<string, unknown>
+  sourceIndex: number
+}
+
 export function coerceRows(
   columns: { column_name: string; column_type: string }[],
   rows: unknown[][],
-): Record<string, unknown>[] {
+): CoercedRow[] {
   return rows
-    .map((cells) => {
-      const row: Record<string, unknown> = {}
+    .map((cells, sourceIndex) => {
+      const values: Record<string, unknown> = {}
       for (const [i, col] of columns.entries()) {
         const v = cells[i]
         if (isEmpty(v)) continue
-        row[col.column_name] = coerceCell(v, col.column_type)
+        values[col.column_name] = coerceCell(v, col.column_type)
       }
-      return row
+      return { values, sourceIndex }
     })
-    .filter((row) => Object.keys(row).length > 0)
+    .filter((r) => Object.keys(r.values).length > 0)
 }
 
 function coerceCell(v: unknown, columnType: string): unknown {

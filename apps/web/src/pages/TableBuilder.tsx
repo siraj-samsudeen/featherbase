@@ -5,7 +5,7 @@ import { coerceRows, idPatternFor, inferTableDef, seriesPrefix, tableNameFromFil
 import { ApiError, api } from '../lib/api'
 import { NamingControl } from '../components/NamingControl'
 import { COLUMN_TYPES } from '../lib/meta'
-import { isImportableFile, parseWorkbook } from '../lib/parse-file'
+import { countDataRows, isImportableFile, parseWorkbook } from '../lib/parse-file'
 
 interface ColumnRow {
   column_name: string
@@ -36,7 +36,8 @@ const IMPORT_CHUNK = 500
 interface ImportedFile {
   fileName: string
   headers: string[]
-  rows: unknown[][]
+  rows: unknown[][] // sheet geometry, blanks included (#115)
+  headerExcelRow: number
 }
 
 // UI-011: build and edit Tables entirely from the Admin. Uses POST
@@ -78,11 +79,11 @@ export function TableBuilder() {
     }
     try {
       const sheets = await parseWorkbook(file)
-      const { headers, rows } = sheets[0]
+      const { headers, rows, headerExcelRow } = sheets[0]
       // The quick builder handles one sheet; the Import wizard handles all.
       setMoreSheets(sheets.length > 1 ? sheets.length : 0)
       const def = inferTableDef(tableNameFromFile(file.name) || 'Imported Table', headers, rows)
-      setImported({ fileName: file.name, headers, rows })
+      setImported({ fileName: file.name, headers, rows, headerExcelRow })
       setName((n) => n.trim() || def.name)
       setColumns(
         def.columns.map((c, i) => ({
@@ -155,9 +156,11 @@ export function TableBuilder() {
           const res = await api.post<{
             inserted: number
             failed: { index: number; message: string }[]
-          }>(`/api/table/${encodeURIComponent(name)}:import`, { rows: chunk })
+          }>(`/api/table/${encodeURIComponent(name)}:import`, { rows: chunk.map((r) => r.values) })
           inserted += res.inserted
-          failed.push(...res.failed.map((f) => ({ ...f, index: f.index + at })))
+          // #115: report the row's SOURCE index (blanks included), so the
+          // displayed number below matches the user's spreadsheet.
+          failed.push(...res.failed.map((f) => ({ ...f, index: rows[f.index + at].sourceIndex })))
         }
         setProgress(null)
         if (failed.length) {
@@ -165,7 +168,8 @@ export function TableBuilder() {
             `Table created; ${inserted} of ${rows.length} rows imported. ` +
               `Failed rows: ${failed
                 .slice(0, 3)
-                .map((f) => `#${f.index + 2} (${f.message})`)
+                // #115: index is the source row; + header + 1 = Excel's number.
+                .map((f) => `#${f.index + imported.headerExcelRow + 1} (${f.message})`)
                 .join('; ')}${failed.length > 3 ? ` and ${failed.length - 3} more` : ''}`,
           )
           await queryClient.invalidateQueries({ queryKey: ['tables'] })
@@ -188,7 +192,12 @@ export function TableBuilder() {
     }
   }
 
-  const previewRows = imported ? imported.rows.slice(0, 8) : []
+  // #115: blanks survive parsing for row-number truth but are not data —
+  // neither previewed nor counted anywhere the user reads.
+  const dataRows = imported ? countDataRows(imported.rows) : 0
+  const previewRows = imported
+    ? imported.rows.filter((r) => r.some((c) => c != null && String(c).trim() !== '')).slice(0, 8)
+    : []
   const previewCols = columns.filter((c) => c.source_index !== null && c.column_name.trim())
 
   return (
@@ -217,7 +226,7 @@ export function TableBuilder() {
       >
         {imported ? (
           <span data-testid="dt-file-name">
-            <strong>{imported.fileName}</strong> — {imported.rows.length} rows,{' '}
+            <strong>{imported.fileName}</strong> — {dataRows} rows,{' '}
             {imported.headers.length} columns detected{' '}
             <button
               data-testid="dt-clear-file"
@@ -392,8 +401,8 @@ export function TableBuilder() {
         <div className="fc-card mt-4 overflow-x-auto">
           <div className="border-b border-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
             Data preview{' '}
-            {imported.rows.length > previewRows.length &&
-              `(first ${previewRows.length} of ${imported.rows.length} rows)`}
+            {dataRows > previewRows.length &&
+              `(first ${previewRows.length} of ${dataRows} rows)`}
           </div>
           <table className="w-full text-sm" data-testid="dt-preview">
             <thead className="bg-gray-50 text-left text-xs text-gray-600">
@@ -451,7 +460,7 @@ export function TableBuilder() {
         {saving
           ? 'Creating…'
           : imported
-            ? `Create Table & Import ${imported.rows.length} rows`
+            ? `Create Table & Import ${dataRows} rows`
             : 'Create Table'}
       </button>
     </div>

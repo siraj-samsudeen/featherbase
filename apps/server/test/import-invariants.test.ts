@@ -36,7 +36,8 @@ async function setup(admin: TestClient) {
 
 // The wizard's whole pipeline in miniature: parsed sheet cells (spreadsheet
 // rows 2..n; row 1 is the header) → coerceRows → POST :import. The wizard
-// then reports a failure as `row ${f.index + 2}` (ImportWizard.tsx).
+// reports a failure via its excelRow helper: the row's SOURCE index
+// (blanks included) + 2 (ImportWizard.tsx).
 const SHEET: unknown[][] = [
   ['fine one', '1'], //      spreadsheet row 2
   ['', ''], //               spreadsheet row 3 — entirely blank
@@ -54,26 +55,24 @@ describe('IMP-I1: reconciliation across a run', () => {
     expect(dropped).toBe(1) // exactly the blank row
 
     const res = await admin.post<{ inserted: number; failed: { index: number }[] }>(PATH, {
-      rows: coerced,
+      rows: coerced.map((r) => r.values),
     })
     expect(res.inserted + res.failed.length + dropped).toBe(SHEET.length)
     expect(res.inserted).toBe(4)
     expect(res.failed).toHaveLength(1)
   })
 
-  // pins-gap #115: coerceRows drops blank rows silently (import.ts —
-  // `.filter(row => keys.length > 0)`), so the failure index counts the
-  // COERCED array while the wizard displays `index + 2` as if it counted
-  // the sheet. One blank row above a bad row shifts the blame onto an
-  // innocent neighbour: the bad cell sits at spreadsheet row 6, the user
-  // is told row 5. When #115 is fixed, this fails on purpose — flip it to
-  // a plain test in the same change.
-  it.fails('IMP-I1: a failure names the TRUE spreadsheet row (pins #115)', async () => {
+  // #115 FIXED: coerceRows still drops blank rows, but each surviving row
+  // carries its sourceIndex into the sheet's data rows — so the blank row
+  // above the bad one can no longer shift the blame onto an innocent
+  // neighbour. (This was the it.fails pin; flipped to a plain test in the
+  // fixing change, per the pin's own instruction.)
+  it('IMP-I1: a failure names the TRUE spreadsheet row (#115 fixed)', async () => {
     const coerced = coerceRows(COLUMNS, SHEET)
-    // The bad row ('abc') sits at coerced index 3 because the blank row
-    // above it vanished without a trace.
-    const badCoercedIndex = coerced.findIndex((r) => r.qty === 'abc')
-    const displayed = badCoercedIndex + 2 // the wizard's mapping
+    // The bad row ('abc') sits at coerced position 3, but its sourceIndex
+    // remembers the vanished blank above it.
+    const bad = coerced.find((r) => r.values.qty === 'abc')!
+    const displayed = bad.sourceIndex + 2 // the wizard's excelRow mapping
     expect(displayed).toBe(6) // its true spreadsheet row
   })
 })

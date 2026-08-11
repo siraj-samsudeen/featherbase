@@ -36,7 +36,9 @@ describe('east of UTC (Asia/Calcutta, +05:30)', () => {
 
   test('coercion keeps the calendar day of a UTC-midnight Date', () => {
     process.env.TZ = 'Asia/Calcutta'
-    expect(coerceRows(dateColumn, [[new Date('2026-01-15')]])).toEqual([{ due: '2026-01-15' }])
+    expect(coerceRows(dateColumn, [[new Date('2026-01-15')]])).toEqual([
+      { values: { due: '2026-01-15' }, sourceIndex: 0 },
+    ])
   })
 })
 
@@ -50,11 +52,15 @@ describe('west of UTC (America/New_York, -05:00)', () => {
 
   test('coercion must not shift the day backwards', () => {
     process.env.TZ = 'America/New_York'
-    expect(coerceRows(dateColumn, [[new Date('2026-01-15')]])).toEqual([{ due: '2026-01-15' }])
+    expect(coerceRows(dateColumn, [[new Date('2026-01-15')]])).toEqual([
+      { values: { due: '2026-01-15' }, sourceIndex: 0 },
+    ])
   })
 
   test('a local-midnight Date keeps its local calendar day', () => {
     process.env.TZ = 'America/New_York'
-    expect(coerceRows(dateColumn, [[new Date(2026, 0, 15)]])).toEqual([{ due: '2026-01-15' }])
+    expect(coerceRows(dateColumn, [[new Date(2026, 0, 15)]])).toEqual([
+      { values: { due: '2026-01-15' }, sourceIndex: 0 },
+    ])
   })
 })

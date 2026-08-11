@@ -6,6 +6,17 @@ export interface ParsedSheet {
   sheetName: string
   headers: string[]
   rows: unknown[][]
+  // 1-based Excel row of the header. Data row i (0-based, blanks included)
+  // sits at Excel row headerExcelRow + 1 + i — the ONLY row arithmetic
+  // downstream code may do (#115: users see Excel's numbers, nothing else).
+  headerExcelRow: number
+}
+
+// A row with at least one non-empty cell — what the imports will act on.
+// Counts shown to the user use this, never raw .length (#115: blank rows
+// survive parsing to keep row numbers true, but they are not data).
+export function countDataRows(rows: unknown[][]): number {
+  return rows.filter((r) => r.some((c) => c != null && String(c).trim() !== '')).length
 }
 
 const ACCEPTED = /\.(csv|tsv|xlsx|xlsm|xls)$/i
@@ -24,16 +35,23 @@ export async function parseWorkbook(file: File): Promise<ParsedSheet[]> {
   if (!wb.SheetNames.length) throw new Error('The file has no sheets')
   const sheets: ParsedSheet[] = []
   for (const sheetName of wb.SheetNames) {
+    // #115: blankrows: true keeps the sheet's real geometry — a blank row
+    // survives as all-nulls instead of silently vanishing and shifting
+    // every row number below it. coerceRows is the single place blanks are
+    // dropped, and it records each survivor's source index.
     const grid = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheetName], {
       header: 1,
       defval: null,
-      blankrows: false,
+      blankrows: true,
     })
-    if (!grid.length) continue
-    const [headerRow, ...rows] = grid
-    const headers = (headerRow as unknown[]).map((h) => (h == null ? '' : String(h)))
-    if (!headers.some((h) => h.trim())) continue
-    sheets.push({ sheetName, headers, rows })
+    // The header is the first non-blank row; blank rows above it are
+    // counted (headerExcelRow), never kept.
+    const isBlank = (r: unknown[]) => !r.some((c) => c != null && String(c).trim() !== '')
+    let h = 0
+    while (h < grid.length && isBlank(grid[h])) h++
+    if (h === grid.length) continue
+    const headers = grid[h].map((c) => (c == null ? '' : String(c)))
+    sheets.push({ sheetName, headers, rows: grid.slice(h + 1), headerExcelRow: h + 1 })
   }
   if (!sheets.length)
     throw new Error('The file has no sheet with a header row and data')

@@ -1,5 +1,48 @@
 # Progress Log
 
+## 2026-08-11 — #115 fixed: the only row number a user sees is Excel's own
+
+First item of the production-readiness push (spec-0004 upsert merged as
+PR #140 this morning; customer developers start importing real data today).
+Owner's directive: the user's mental model must never straddle two
+numbering schemes — internal indices stay internal, everywhere.
+
+**The bug had two layers, and the pin only saw one.**
+
+1. The known layer (#115 as filed): `coerceRows` dropped blank rows
+   silently, so failure indices counted the coerced array while the wizard
+   displayed `index + 2` as if they counted the sheet.
+2. The layer found while verifying end-to-end: `parseWorkbook` passed
+   `blankrows: false` to SheetJS, so blank rows vanished *before*
+   `coerceRows` ever ran — fixing layer 1 alone left real-file numbering
+   exactly as wrong as before. The unit-tier pin could never catch this;
+   only walking a real .xlsx through the wizard did.
+
+**The fix.** Sheet geometry is preserved end to end: `parseWorkbook` keeps
+blank rows (`blankrows: true`) and reports `headerExcelRow` (the header's
+own 1-based row, so a header that isn't row 1 numbers truthfully too —
+a bug nobody had filed). `coerceRows` is now the single place blanks are
+dropped, and each surviving row carries its `sourceIndex`
+(`CoercedRow { values, sourceIndex }` — signature changed outright, all
+callers updated, no compat shim). The wizard's `excelRow()` helper is the
+only index→row-number translation in the codebase; `splitForSend` reports
+source indices; TableBuilder same. User-facing counts ("N rows") count
+data rows, never raw geometry.
+
+**Verified:** server import suites 126/126 (the #115 `it.fails` pin
+flipped to a plain passing test, per its own instruction); web units
+39/39 (splitForSend suite rewritten with gapped source indices); new
+browser witness `apps/web/e2e/import-row-numbers.spec.ts` — a real .xlsx
+with a blank row 3 and a bad row 6: the wizard says "row 6", asserted
+`not.toContainText('row 5')`. Full web e2e 110 passed (one RT-002 flake,
+green in isolation, unrelated).
+
+**Next:** the rest of the 2026-08-11 push, in order — Excel-style preview
+grid in the wizard (failed rows highlighted at their true numbers), revert-
+an-import-run (default skip-since-edited-rows + explicit override, per
+owner ruling), typed confirmation above ~20 updates, index-on-demand on the
+match key (#145). Ratification queue: #142–#144.
+
 ## 2026-08-06 — two ways a green suite goes red on a machine that has been used
 
 A local `pnpm test` came back with four failures on a feature branch. None of

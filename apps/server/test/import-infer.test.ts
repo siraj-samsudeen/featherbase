@@ -318,12 +318,14 @@ describe('IMP-004: coerceRows', () => {
       ['B', '', 'no', '2026-02-01'],
     ])
     expect(rows).toEqual([
-      { title: 'A', qty: '3', active: true, due: '2026-01-15' },
-      { title: 'B', active: false, due: '2026-02-01' },
+      { values: { title: 'A', qty: '3', active: true, due: '2026-01-15' }, sourceIndex: 0 },
+      { values: { title: 'B', active: false, due: '2026-02-01' }, sourceIndex: 1 },
     ])
   })
 
-  test('fully empty rows are dropped', () => {
-    expect(coerceRows(columns, [['', null, '', undefined], ['C']])).toEqual([{ title: 'C' }])
+  test('fully empty rows are dropped — but the survivor keeps its source index (#115)', () => {
+    expect(coerceRows(columns, [['', null, '', undefined], ['C']])).toEqual([
+      { values: { title: 'C' }, sourceIndex: 1 },
+    ])
   })
 })
