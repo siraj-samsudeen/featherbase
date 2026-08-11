@@ -12,6 +12,10 @@ export const SENSITIVE_COLUMNS = new Set([
   'api_key',
   'token_hash',
   'new_password',
+  // Django (and most ORMs) call the credential column plain `password` —
+  // the real VMS source rendered every user's pbkdf2 hash in the list view
+  // before this was added. Migration 0076 drops already-reflected ones.
+  'password',
 ])
 
 export function isSensitiveColumn(name: string): boolean {
