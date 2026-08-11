@@ -181,8 +181,8 @@ including rows named in `override`.
 ## Open questions *(arbiter: Siraj)*
 
 None open. The three 2026-08-11 rulings are baked into R4/R5 (skip
-default, explicit override, no third mode). Two agent-drafted calls are
-flagged for ratification at review rather than held open, since a
-defensible default exists: R6 derives who-may-revert purely from row
-permissions (no importer-only restriction), and RVT-I2's "revert never
-deletes a Table" mirrors UPS-I2's stance.
+default, explicit override, no third mode), and the two agent-drafted
+calls were **ratified by the arbiter 2026-08-11 at spec review**: R6
+derives who-may-revert purely from row permissions (no importer-only
+restriction), and RVT-I2's "revert never deletes a Table" stands,
+mirroring UPS-I2.

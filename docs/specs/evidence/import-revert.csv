@@ -10,5 +10,5 @@ RVT-I1,invariant,reconciliation,,gap,,2026-08-11
 RVT-I2,invariant,reconciliation,,gap,,2026-08-11
 RVT-I3,invariant,reconciliation,,gap,,2026-08-11
 RVT-H1,hazard,decision,,open — mitigations enumerated in spec; built alongside R5,,2026-08-11
-Q-ratify-r6,question,decision,,open — agent-drafted: who-may-revert derives from row permissions alone; ratify or re-rule at spec review,,2026-08-11
-Q-ratify-i2,question,decision,,open — agent-drafted: revert never deletes a Table even when table_created; ratify or re-rule at spec review,,2026-08-11
+Q-ratify-r6,question,decision,,graduated 2026-08-11 → RVT-R6 (row permissions alone decide who may revert),,2026-08-11
+Q-ratify-i2,question,decision,,graduated 2026-08-11 → RVT-I2 (a revert never deletes a Table),,2026-08-11
