@@ -1,5 +1,59 @@
 # Progress Log
 
+## 2026-08-11 — #132: the physical row key becomes `row_id` (COMPLETE)
+
+Closes out the two entries below. Every suite is green and PR #174 is out of
+draft. **Not merged, not rebased** — main has since absorbed #175's TableBuilder
+rework and the owner is handling that rebase.
+
+**Final numbers**, all against an isolated stack (own database, `PORT=8020` /
+`WEB_PORT=5193`, `ALLOW_MOCK_OAUTH=1`):
+
+| | |
+|---|---|
+| Playwright e2e | **111 passed, 2 skipped, 0 failed** (113) — from a freshly migrated database |
+| Server suite | **693 passed, 12 skipped** — 116 files passed, 1 skipped |
+| Web unit | **42 / 42** |
+| Server + web typecheck | 0 errors |
+| Migrate from empty | 74 applied |
+
+**Four REAL defects the scripted sweep had left behind** — found by the specs,
+fixed in the product, not papered over in the tests:
+
+1. **`/api/save_doc` published every update as `created`.** It decided
+   created-vs-updated from `body.doc.name`, which the rename made permanently
+   absent, so a second session watching the same row never got the stale-row
+   banner. Now keyed off `row_id`.
+2. **The Import Wizard's Row ID mapping target was `<option value="name">`.**
+   Mapping a CSV column onto the Row ID therefore posted a `name` field the
+   server rejected — UPS-R4 ("the file's own codes become the ids") was broken
+   end to end, even though the neighbouring `keyLabel`/`friendly` helpers had
+   already moved to `row_id`.
+3. **`QueryReportView`'s auto-run effect depended on `meta.data?.name`**, now
+   permanently `undefined`, so the effect never re-fired and a query report
+   rendered its title and filters but never ran.
+4. **`ReportView` and `ChecklistView` saved rows with `doc.name`** — saving a
+   report silently did nothing useful, and a checklist run could not persist.
+
+**The biggest time sink was not the rename.** A stale `tsx watch` server kept
+port 8020 while a replacement failed with `EADDRINUSE` and logged nothing
+visible; the old process then served requests against a database that had been
+dropped and recreated underneath it, producing 500s and a *different* set of ~13
+failures on every run. Two full debugging passes chased phantom bugs before the
+`EADDRINUSE` line surfaced. **If e2e failures shift between identical runs,
+check `lsof -ti:8020 -sTCP:LISTEN` before believing any of them.**
+
+**Also worth keeping:** `Unknown fields` now names the offending fields. That
+one-line change is what located defects 2 and 4 — the bare message had hidden
+them behind a generic 417.
+
+**Sweep classes that need a human eye** (each bit at least once): Playwright's
+`getByRole(..., { name })` accessible-name option; `setInputFiles({ name, … })`;
+function *parameters* renamed while their bodies still say `name`; app
+manifests, patch ids, `installed_app`, reflect's `created[]`, `TableMeta.name`,
+and `/api/install_app`'s `{ name }`. Driving edits off `tsc` diagnostics rather
+than regex was the reliable method.
+
 ## 2026-08-11 — #132: the physical row key becomes `row_id` (server + Desk done)
 
 Continues the entry below, which recorded the half-done state. Both suites are
