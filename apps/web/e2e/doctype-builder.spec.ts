@@ -107,3 +107,59 @@ test('UI-011: create a DocType with 5 fields from the Admin; list+form work imme
   expect(body.module).toBe('Custom')
   expect(body.system).toBe(false)
 })
+
+// #128: a rejected create must accuse the column the user is looking at.
+// The payload drops blank-named rows, so the server's `columns.0` is the
+// SECOND row on screen — the same off-by-a-blank-row class of bug #115 fixed
+// for imported rows. A blank row above a bad column is the witness.
+test('#128: a blank row above a bad column does not shift the blame', async ({ page }) => {
+  await page.goto('/login')
+  await page.fill('input[name=email]', 'Administrator')
+  await page.fill('input[name=password]', ADMIN_PWD)
+  await page.click('button[type=submit]')
+  await expect(page).toHaveURL(/\/admin/)
+
+  await page.getByTestId('new-doctype-link').click()
+  await expect(page.getByTestId('doctype-builder')).toBeVisible()
+  // Never created: the definition is refused at validation, before any DDL.
+  await page.getByTestId('dt-name').fill('Offset Probe')
+
+  const rows = page.getByTestId('dt-fields').locator('tbody tr[data-columnrow]')
+  // Row 0 stays blank — the user cleared its name. It is dropped from the
+  // payload, so every server index below counts from row 1.
+  await page.getByTestId('dt-add-field').click()
+  const bad = rows.nth(1)
+  await bad.locator('[data-rowfield=column_name]').fill('Bad Name')
+  await bad.locator('[data-rowfield=label]').fill('Price')
+
+  await page.getByTestId('dt-create').click()
+
+  // The banner names the column, announces itself, and leaks no index path.
+  const banner = page.getByTestId('dt-error')
+  await expect(banner).toBeVisible()
+  await expect(banner).toHaveAttribute('role', 'alert')
+  await expect(banner).toContainText('Price')
+  await expect(banner).toContainText('snake_case')
+  await expect(banner).not.toContainText('columns.0')
+  await expect(banner).not.toContainText('columns.1')
+
+  // The mark lands on row 1 — the bad column — and never on the blank row 0.
+  await expect(page.getByTestId('dt-col-error-1')).toBeVisible()
+  await expect(page.getByTestId('dt-col-error-0')).toHaveCount(0)
+
+  // The offending input is described by its error and holds focus, so a
+  // screen-reader user is taken to the fault instead of hunting for it.
+  const badInput = bad.locator('[data-rowfield=column_name]')
+  await expect(badInput).toHaveAttribute('aria-invalid', 'true')
+  await expect(badInput).toHaveAttribute('aria-describedby', 'dt-col-error-1')
+  await expect(badInput).toBeFocused()
+  await expect(rows.nth(0).locator('[data-rowfield=column_name]')).not.toHaveAttribute(
+    'aria-invalid',
+    'true',
+  )
+
+  // The accusation dies with the correction, not at the next submit.
+  await badInput.fill('price')
+  await expect(page.getByTestId('dt-col-error-1')).toHaveCount(0)
+  await expect(banner).toHaveCount(0)
+})

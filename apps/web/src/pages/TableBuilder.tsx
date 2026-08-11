@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { coerceRows, idPatternFor, inferTableDef, seriesPrefix, tableNameFromFile } from 'shared'
@@ -39,6 +39,56 @@ const blank = (): ColumnRow => ({
 
 const TARGET_REQUIRED_TYPES = ['Choice', 'Reference', 'Sub-table']
 
+// A column as SENT: its grid row travels with it. The payload drops
+// blank-named rows, so the server's `columns.<n>` counts a different list
+// than the user is looking at — sourceIndex is the way back, the same
+// shape #115 gave imported rows rather than re-deriving the offset.
+type KeptColumn = ColumnRow & { sourceIndex: number }
+
+function keptColumns(columns: ColumnRow[]): KeptColumn[] {
+  return columns
+    .map((c, sourceIndex) => ({ ...c, sourceIndex }))
+    .filter((c) => c.column_name.trim())
+}
+
+const COLUMN_PATH = /^columns\.(\d+)(?:\..+)?$/
+
+// Paths that are not a column are already plain field names; give them the
+// user's word for the control rather than the payload key.
+const TOP_LEVEL_LABEL: Record<string, string> = {
+  name: 'Table name',
+  module: 'Module',
+  id_pattern: 'Row ID',
+  columns: 'Columns',
+  system: 'Table',
+}
+
+// The user's mental model must never straddle two numbering schemes
+// (2026-08-11 owner directive): a server path like `columns.0.column_name`
+// is translated to the grid row it came from and named by the label the
+// user typed. Returns the per-row errors to mark inline, plus sentences
+// for the banner.
+function describeFieldErrors(
+  fields: Record<string, string>,
+  kept: KeptColumn[],
+): { rows: Record<number, string>; parts: string[] } {
+  const rows: Record<number, string> = {}
+  const parts: string[] = []
+  for (const [path, message] of Object.entries(fields)) {
+    const match = COLUMN_PATH.exec(path)
+    const col = match ? kept[Number(match[1])] : undefined
+    if (!col) {
+      const label = TOP_LEVEL_LABEL[path] ?? (path.includes('.') ? null : path)
+      parts.push(label ? `${label}: ${message}` : message)
+      continue
+    }
+    const who = col.label.trim() || col.column_name.trim()
+    rows[col.sourceIndex] = rows[col.sourceIndex] ? `${rows[col.sourceIndex]}; ${message}` : message
+    parts.push(`Column “${who}”: ${message}`)
+  }
+  return { rows, parts }
+}
+
 interface ImportedFile {
   fileName: string
   headers: string[]
@@ -66,11 +116,44 @@ export function TableBuilder() {
   const [moreSheets, setMoreSheets] = useState(0)
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Field-level server errors, keyed by GRID row — the same mechanism
+  // FormView uses (`if (err.fields) setErrors(err.fields)`), so the two
+  // pages report a rejected save the one way.
+  const [columnErrors, setColumnErrors] = useState<Record<number, string>>({})
   const [saving, setSaving] = useState(false)
   const [progress, setProgress] = useState<string | null>(null)
+  // The offending input, so a rejected create moves the caret there instead
+  // of leaving a screen-reader user with no idea where the fault is.
+  const nameInputs = useRef(new Map<number, HTMLInputElement>())
+  const [focusRow, setFocusRow] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (focusRow == null) return
+    nameInputs.current.get(focusRow)?.focus()
+    setFocusRow(null)
+  }, [focusRow])
+
+  // The accusation dies with the correction, not at the next submit: editing
+  // a flagged row clears its mark, and the banner goes with the last one.
+  function clearColumnError(i: number) {
+    if (!(i in columnErrors)) return
+    const rest = { ...columnErrors }
+    delete rest[i]
+    setColumnErrors(rest)
+    if (Object.keys(rest).length === 0) setError(null)
+  }
+
+  // Adding or removing a row shifts every index below it, so marks keyed by
+  // row would start accusing the wrong column. Drop them all instead.
+  function clearAllColumnErrors() {
+    if (Object.keys(columnErrors).length === 0) return
+    setColumnErrors({})
+    setError(null)
+  }
 
   function setColumn(i: number, patch: Partial<ColumnRow>) {
     setColumns((cs) => cs.map((c, j) => (j === i ? { ...c, ...patch } : c)))
+    clearColumnError(i)
   }
 
   // Before a name is typed there is no prefix to derive, but the control should
@@ -79,6 +162,7 @@ export function TableBuilder() {
 
   async function loadFile(file: File) {
     setError(null)
+    setColumnErrors({})
     if (!isImportableFile(file.name)) {
       setError(`${file.name}: not a CSV or Excel file`)
       return
@@ -113,15 +197,19 @@ export function TableBuilder() {
     setImported(null)
     setMoreSheets(0)
     setColumns([blank()])
+    setColumnErrors({})
     setProgress(null)
     if (fileInput.current) fileInput.current.value = ''
   }
 
   async function create() {
     setError(null)
+    setColumnErrors({})
     setSaving(true)
+    // Hoisted out of the try: the catch needs the SENT list to read the
+    // server's indices back onto the grid.
+    const kept = keptColumns(columns)
     try {
-      const kept = columns.filter((c) => c.column_name.trim())
       const payload = {
         name,
         id_pattern: idPattern,
@@ -189,7 +277,17 @@ export function TableBuilder() {
       navigate({ to: '/admin/$doctype', params: { doctype: name }, search: { filters: undefined } })
     } catch (err) {
       setProgress(null)
-      setError(err instanceof ApiError ? err.message : 'Create failed')
+      if (err instanceof ApiError && err.fields) {
+        const { rows, parts } = describeFieldErrors(err.fields, kept)
+        setColumnErrors(rows)
+        setError(parts.length ? `${err.message} — ${parts.join('; ')}` : err.message)
+        const first = Object.keys(rows)
+          .map(Number)
+          .sort((a, b) => a - b)[0]
+        if (first !== undefined) setFocusRow(first)
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Create failed')
+      }
     } finally {
       setSaving(false)
     }
@@ -326,8 +424,25 @@ export function TableBuilder() {
                     value={c.column_name}
                     onChange={(e) => setColumn(i, { column_name: e.target.value })}
                     data-rowfield="column_name"
-                    className="w-full rounded border border-gray-200 px-1 py-0.5"
+                    ref={(el) => {
+                      if (el) nameInputs.current.set(i, el)
+                      else nameInputs.current.delete(i)
+                    }}
+                    aria-invalid={columnErrors[i] ? true : undefined}
+                    aria-describedby={columnErrors[i] ? `dt-col-error-${i}` : undefined}
+                    className={`w-full rounded border px-1 py-0.5 ${
+                      columnErrors[i] ? 'border-[var(--color-danger)]' : 'border-gray-200'
+                    }`}
                   />
+                  {columnErrors[i] && (
+                    <p
+                      id={`dt-col-error-${i}`}
+                      data-testid={`dt-col-error-${i}`}
+                      className="mt-0.5 text-xs text-[var(--color-danger)]"
+                    >
+                      {columnErrors[i]}
+                    </p>
+                  )}
                 </td>
                 <td className="px-1 py-1">
                   <input
@@ -379,7 +494,10 @@ export function TableBuilder() {
                 <td className="px-1 text-center">
                   <button
                     aria-label="Remove column"
-                    onClick={() => setColumns((cs) => cs.filter((_, j) => j !== i))}
+                    onClick={() => {
+                      setColumns((cs) => cs.filter((_, j) => j !== i))
+                      clearAllColumnErrors()
+                    }}
                     className="text-gray-300 hover:text-red-600"
                   >
                     ×
@@ -390,7 +508,10 @@ export function TableBuilder() {
           </tbody>
         </table>
         <button
-          onClick={() => setColumns((cs) => [...cs, blank()])}
+          onClick={() => {
+            setColumns((cs) => [...cs, blank()])
+            clearAllColumnErrors()
+          }}
           data-testid="dt-add-field"
           className="w-full border-t border-gray-100 px-2 py-1 text-left text-xs text-gray-500 hover:bg-gray-50"
         >
@@ -448,7 +569,11 @@ export function TableBuilder() {
         </p>
       )}
       {error && (
-        <p className="mt-3 text-sm text-red-600" data-testid="dt-error">
+        <p
+          role="alert"
+          className="mt-3 rounded border border-[var(--color-danger)] bg-[var(--color-danger-tint)] px-2 py-1.5 text-sm text-[var(--color-danger)]"
+          data-testid="dt-error"
+        >
           {error}
         </p>
       )}
