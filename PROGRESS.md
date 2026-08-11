@@ -37,10 +37,23 @@ write-then-re-read race, #155). CLAUDE.md now routes SDLC stages to the
 mattpocock skills by owner directive — the Spec axis caught four real
 findings a solo review missed, which is the argument for the routing.
 
+**Addendum, same day — relational navigation over VMS verified.** After
+PR #161 (FK-aware reflection; two-axis review sent two pre-merge fixes
+back, the rest are issues #162–#164) merged and featherbase-dev
+redeployed: deleted the two pre-FK reflections, re-reflected five tables
+in one deliberately child-first call, and every FK column came back
+`Reference` (accident→vehicle/customuser; vehicle→vehicletype/
+customuser/department, all against the real RDS). Walked the RelationMap
+in the browser: vehicle 186 → owner (user 234, trail shown, the
+self-referential approved_by/reports_to FKs resolved too) → the Vehicles
+backlink (count 1) → opened the collection → clicked back to 186. One
+scare: a mid-browse 502 on the backlink list turned out to be the Railway
+instance swap from the deploy itself, not a bug — retried clean.
+
 **Next:** build spec 0006 (fold the winning console into SourceBrowser,
-`CREDENTIALS_KEY` encrypted storage), or triage #153–#157. The VMS
-reflection itself is done; reflect more of the 50 tables as Rama needs
-them.
+`CREDENTIALS_KEY` encrypted storage), or triage #153–#157 and
+#162–#164. Reflect more of the 50 VMS tables as Rama needs them —
+order no longer matters.
 
 ## 2026-08-11 — the mysql engine joins the Data Source drivers
 
