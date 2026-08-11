@@ -195,10 +195,8 @@ function updateValues(
     for (const col of upsert.columns!)
       if (col !== 'name' && col !== upsert.keyColumn && !(col in values)) values[col] = null
   values.name = matched.name
-  // The optimistic-concurrency stamp updateDoc demands — as an ISO string,
-  // since its parse (`new Date(String(v))`) would drop milliseconds from a
-  // Date object's default rendering and refuse every update.
-  values.updated_at = matched.updated_at!.toISOString()
+  // The optimistic-concurrency stamp updateDoc demands; saveDoc normalizes it.
+  values.updated_at = matched.updated_at
   return values
 }
 

@@ -22,15 +22,16 @@ the reported symptom, and it turned out to be the milder half.
   `cli.test.ts`: exact case and upper case both exit 1 with the clear
   message and never leak `updated_at`, and exactly one account survives
   with its `full_name` untouched. With the guard disabled the exact-case
-  attempt reproduces #135's reported error verbatim and the upper-case one
-  writes the shadow row — the test catches both. Suite green (114 files,
-  645 passed / 1 skipped), typecheck clean.
-- **Gotcha, and it bit during this session**: `cli.test.ts` is deliberately
-  NOT sandbox-migrated (it spawns subprocesses with their own connections),
-  so its writes are real and a failed run leaves rows in the dev database.
-  A guard-disabled run left a `CLI-DUP-USER@X.COM` shadow behind that the
-  old exact-match `cleanup()` could not see. `cleanup()` now deletes on
-  `lower(name)`, so a half-failed run self-heals on the next one.
+  attempt reproduces #135's reported error verbatim (`error: Updates must
+  include the updated_at timestamp of the loaded row`) and never reaches the
+  upper-case spelling — the test catches it on the first assertion.
+- **Gotcha**: `cli.test.ts` is deliberately NOT sandbox-migrated (it spawns
+  subprocesses with their own connections), so its writes are real and a
+  failed run can leave rows behind — including a case-variant
+  `CLI-DUP-USER@X.COM` shadow that an exact-match `cleanup()` could not see.
+  `cleanup()` now deletes on `lower(name)`, so a half-failed run self-heals
+  on the next one. It also folds in main's `svc-cli-test` teardown, which
+  landed on the same function.
 
 ---
 
@@ -80,7 +81,22 @@ affected: they send an ISO string over the wire.
   a clearer message than a `TypeError` on `undefined.toISOString()`.
 - Callers that *omit* `updated_at` (`apps.ts`, `customizations.ts` and
   friends) pre-check existence or pass `'insert'`, so they only ever insert.
-  The one exception was `cli.ts`'s blind `create-user` upsert — fixed below.
+  The one exception was `cli.ts`'s blind `create-user` upsert — fixed above.
+- **Both new tests were confirmed red against the un-fixed code**, one at a
+  time. Reverting `updateDoc` to `new Date(String(...))` fails the
+  `update.test.ts` case with `… has been modified after you loaded it` — and
+  now also fails two `import-upsert` cases, which is the removed
+  `collection-import.ts` cast showing that the central normalization is
+  load-bearing rather than decorative. Deleting the `cli.ts` guard fails the
+  `cli.test.ts` case with #135's raw error verbatim.
+- **Verified**: `pnpm --filter server typecheck` clean; server suite
+  **116 files, 693 passed**, against a dedicated `featherbase_pr136`
+  database (migrations + patches). Main's baseline immediately before this
+  work was 691 passed / 116 files — the two added tests are the whole
+  delta, and no file count moved because `oauth.test.ts` was already main's.
+- **Next**: the bound-source half — `updateBoundDoc`'s `expect` now
+  normalizes a Date too, but no test drives a bound source with a Date echo
+  (the native path is the one under test).
 
 ---
 
