@@ -1,5 +1,61 @@
 # Progress Log
 
+## 2026-08-11 — #150: the session JWT leaves the OAuth callback URL
+
+The callback finished sign-in with `c.redirect('/oauth-callback?token=<7-day
+session JWT>')` — a long-lived credential parked in browser history, in the
+`Referer` of everything that page fetched next, and in every proxy/CDN access
+log on the way. Pre-existing, from `3752eb6`; found during the adversarial
+re-review of #127 and filed separately.
+
+**What the investigation decided the shape.** The issue's first suggestion —
+redirect empty and let the sid cookie carry it — does not survive contact with
+the SPA. `apps/web/src/lib/api.ts` sends `Authorization: Bearer <fc_token>`
+from `localStorage`, and three places need the *literal* token, not an
+ambient cookie: the realtime WebSocket (`/ws?token=…`, a handshake that cannot
+set a header), the multipart upload fetches in `Attachments`/`FormView`/
+`ChecklistView`, and the `?token=` on private file URLs. The router's
+`beforeLoad` guards read `getToken()` too. A bare-cookie redirect would have
+left every OAuth session without a token and broken Google sign-in.
+
+So: the issue's second shape, a **one-time handoff code**. The callback still
+sets the sid cookie, then redirects to `/oauth-callback?code=<32 random
+bytes>`. The SPA POSTs that code to the new public `POST /api/oauth/session`
+and gets `{ token, user }` — the same pair `/api/login` returns, so the
+whoami round trip the callback page used to make is gone. The code lives 60
+seconds in an in-process map, is deleted on *any* redemption attempt, and is
+bound to the browser it was minted for: redemption requires the sid cookie to
+equal the session being handed over. The copy left in history or a log is
+already spent, and worthless in another browser besides.
+
+**Gotcha, and the reason this needed a live browser.** React StrictMode runs
+the callback effect twice in development, so the SPA redeemed the code twice:
+the second POST 401'd, and `request()` treats a 401 as "session over" —
+`clearSession()` plus a hard bounce to `/login`, wiping the session the first
+POST had just stored. Sign-in landed on the login page with the server having
+done everything right. The redemption is now memoised per code at module
+scope, where a remount cannot reach it. Nothing in the old code cared, because
+storing a token twice is idempotent; one-time semantics are not.
+
+**Verified:** server suite **711 passed / 16 skipped, 117 files** and both
+typechecks clean; `oauth.test.ts` 14/14, with the four `?token=` assertions
+changed to `?code=` (authorized by #150 — the expectation *is* the fix) and
+four new tests for the exchange: round trip, no-replay, cookie binding,
+unknown code. Both new guards were mutation-checked — deleting the burn fails
+the replay test, deleting the cookie compare fails the binding test. Live
+browser against port-randomized servers (API 21777 / web 27777, bundle
+verified to contain this branch's code first): `oauth.spec.ts` 3/3, which now
+records every main-frame URL of the flow and asserts none contains `token=`
+nor the token the SPA ends up holding, plus `smoke` and `account-menu`
+(the password path through the new `setSession`).
+
+**Residual risk:** the handoff map is per-process, so a server restart inside
+the redirect window, or a future multi-replica deployment without sticky
+routing, bounces that one sign-in back to `/login`. Out of scope but worth
+filing: private file URLs (`?token=`) and the realtime WebSocket still carry
+the session JWT in a URL — same leak class, different surfaces, and
+`resolveToken`'s `fromUrl` guard only keeps *access* tokens out of them.
+
 ## 2026-08-11 — migrate.ts: guard against two migrations claiming the same number (#149)
 
 `migrations/` is numbered by hand and `migrate.ts` recorded applied

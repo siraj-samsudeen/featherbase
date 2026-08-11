@@ -23,11 +23,12 @@ export function clearSession() {
   localStorage.removeItem(USER_KEY)
 }
 
-// PLAT-006: store a session token obtained out-of-band (the OAuth callback
-// redirect carries it). The user profile is filled in on the next whoami.
-export function setToken(token: string) {
+// The single place a session is written down. Both sign-in paths land here:
+// the password login below, and the OAuth callback (#150), which redeems its
+// one-time handoff code for exactly this pair.
+export function setSession(token: string, user: SessionUser) {
   localStorage.setItem(TOKEN_KEY, token)
-  localStorage.removeItem(USER_KEY)
+  localStorage.setItem(USER_KEY, JSON.stringify(user))
 }
 
 export class ApiError extends Error {
@@ -91,8 +92,7 @@ export const api = {
 
 export async function login(usr: string, pwd: string): Promise<SessionUser> {
   const res = await api.post<{ token: string; user: SessionUser }>('/api/login', { usr, pwd })
-  localStorage.setItem(TOKEN_KEY, res.token)
-  localStorage.setItem(USER_KEY, JSON.stringify(res.user))
+  setSession(res.token, res.user)
   return res.user
 }
 

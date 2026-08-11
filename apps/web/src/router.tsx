@@ -100,19 +100,20 @@ const webFormRoute = createRoute({
   component: WebFormPage,
 })
 
-// PLAT-006: OAuth callback landing (public) — stores the token from the query
-// and enters the Admin.
+// PLAT-006: OAuth callback landing (public) — redeems the one-time handoff
+// code from the query for a session (#150: never the token itself) and enters
+// the Admin.
 const oauthCallbackRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/oauth-callback',
   validateSearch: (search: Record<string, unknown>) => ({
-    token: searchString(search.token),
+    code: searchString(search.code),
   }),
   component: OAuthCallbackRouteComponent,
 })
 function OAuthCallbackRouteComponent() {
-  const { token } = oauthCallbackRoute.useSearch()
-  return <OAuthCallbackPage token={token} />
+  const { code } = oauthCallbackRoute.useSearch()
+  return <OAuthCallbackPage code={code} />
 }
 
 // WEB-003: customer portal — a logged-in website user sees only their own
