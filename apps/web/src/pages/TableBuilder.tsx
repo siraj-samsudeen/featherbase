@@ -1,10 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { coerceRows, idPatternFor, inferTableDef, seriesPrefix, tableNameFromFile } from 'shared'
 import { ApiError, api } from '../lib/api'
 import { NamingControl } from '../components/NamingControl'
+import { ColumnCards } from '../components/ColumnCards'
+import { PasteColumns, type PastedColumn } from '../components/PasteColumns'
 import { COLUMN_TYPES } from '../lib/meta'
+import {
+  type BuilderColumn,
+  TARGET_REQUIRED_TYPES,
+  blankColumn,
+  checkColumn,
+  slugify,
+} from '../lib/column-rules'
 import {
   countDataRows,
   excelRow,
@@ -14,38 +23,13 @@ import {
 } from '../lib/parse-file'
 import { sendImportRun } from '../lib/import-run'
 
-interface ColumnRow {
-  column_name: string
-  label: string
-  column_type: string
-  // Entered comma-/newline-separated; split into reference_table/choices/row_table
-  // on submit depending on column_type.
-  target: string
-  reqd: boolean
-  in_list_view: boolean
-  // Index into the imported file's header row; null for hand-added columns.
-  source_index: number | null
-}
-
-const blank = (): ColumnRow => ({
-  column_name: '',
-  label: '',
-  column_type: 'Data',
-  target: '',
-  reqd: false,
-  in_list_view: false,
-  source_index: null,
-})
-
-const TARGET_REQUIRED_TYPES = ['Choice', 'Reference', 'Sub-table']
-
 // A column as SENT: its grid row travels with it. The payload drops
 // blank-named rows, so the server's `columns.<n>` counts a different list
 // than the user is looking at — sourceIndex is the way back, the same
 // shape #115 gave imported rows rather than re-deriving the offset.
-type KeptColumn = ColumnRow & { sourceIndex: number }
+type KeptColumn = BuilderColumn & { sourceIndex: number }
 
-function keptColumns(columns: ColumnRow[]): KeptColumn[] {
+function keptColumns(columns: BuilderColumn[]): KeptColumn[] {
   return columns
     .map((c, sourceIndex) => ({ ...c, sourceIndex }))
     .filter((c) => c.column_name.trim())
@@ -96,10 +80,28 @@ interface ImportedFile {
   headerExcelRow: number
 }
 
+type BuilderView = 'grid' | 'cards'
+
+const VIEW_KEY = 'fc-table-builder-view'
+
+function initialView(): BuilderView {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'cards' ? 'cards' : 'grid'
+  } catch {
+    return 'grid'
+  }
+}
+
 // UI-011: build and edit Tables entirely from the Admin. Uses POST
 // /api/doctype (create) and PUT /api/doctype/:name (schema sync).
 // IMP-006: dropping a CSV/Excel file infers the whole definition and
 // bulk-imports the file's rows via POST /api/table/:table:import.
+// #151: the column list has two views over one state — the grid (power
+// view, full engine type list) and cards (guided, friendly type chips) —
+// plus a paste-a-list entry box. The database identifier derives from the
+// label until the user claims it, and the mirrored server rules run
+// inline as advisory hints; the server round-trip (#128) stays the
+// authority and is never blocked client-side.
 export function TableBuilder() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -111,15 +113,19 @@ export function TableBuilder() {
   // to let the server default the table into 'Core', mis-filing it among the
   // platform tables in the sidebar.
   const [module, setModule] = useState('Custom')
-  const [columns, setColumns] = useState<ColumnRow[]>([blank()])
+  const [columns, setColumns] = useState<BuilderColumn[]>([blankColumn()])
+  const [view, setView] = useState<BuilderView>(initialView)
   const [imported, setImported] = useState<ImportedFile | null>(null)
   const [moreSheets, setMoreSheets] = useState(0)
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Field-level server errors, keyed by GRID row — the same mechanism
+  // Field-level SERVER errors, keyed by GRID row — the same mechanism
   // FormView uses (`if (err.fields) setErrors(err.fields)`), so the two
   // pages report a rejected save the one way.
   const [columnErrors, setColumnErrors] = useState<Record<number, string>>({})
+  // Rows the user has left (blurred) — only those show the advisory client
+  // verdicts, so nobody is scolded mid-word.
+  const [touchedRows, setTouchedRows] = useState<Set<number>>(new Set())
   const [saving, setSaving] = useState(false)
   const [progress, setProgress] = useState<string | null>(null)
   // The offending input, so a rejected create moves the caret there instead
@@ -132,6 +138,21 @@ export function TableBuilder() {
     nameInputs.current.get(focusRow)?.focus()
     setFocusRow(null)
   }, [focusRow])
+
+  // #151: advisory mirror of the server's rules (see lib/column-rules.ts).
+  const verdicts = useMemo(
+    () => columns.map((c) => checkColumn(c, columns, name)),
+    [columns, name],
+  )
+
+  function setBuilderView(v: BuilderView) {
+    setView(v)
+    try {
+      localStorage.setItem(VIEW_KEY, v)
+    } catch {
+      /* private mode — the toggle still works, it just doesn't persist */
+    }
+  }
 
   // The accusation dies with the correction, not at the next submit: editing
   // a flagged row clears its mark, and the banner goes with the last one.
@@ -146,14 +167,50 @@ export function TableBuilder() {
   // Adding or removing a row shifts every index below it, so marks keyed by
   // row would start accusing the wrong column. Drop them all instead.
   function clearAllColumnErrors() {
+    setTouchedRows(new Set())
     if (Object.keys(columnErrors).length === 0) return
     setColumnErrors({})
     setError(null)
   }
 
-  function setColumn(i: number, patch: Partial<ColumnRow>) {
+  function setColumn(i: number, patch: Partial<BuilderColumn>) {
     setColumns((cs) => cs.map((c, j) => (j === i ? { ...c, ...patch } : c)))
     clearColumnError(i)
+  }
+
+  // #151: the identifier follows the label until the user claims it.
+  function setColumnLabel(i: number, label: string) {
+    const c = columns[i]
+    setColumn(i, { label, ...(c.name_touched ? {} : { column_name: slugify(label) }) })
+  }
+
+  function markTouched(i: number) {
+    setTouchedRows((t) => new Set(t).add(i))
+  }
+
+  function addColumn() {
+    setColumns((cs) => [...cs, blankColumn()])
+    clearAllColumnErrors()
+  }
+
+  function removeColumn(i: number) {
+    setColumns((cs) => cs.filter((_, j) => j !== i))
+    clearAllColumnErrors()
+  }
+
+  function addPastedColumns(pasted: PastedColumn[]) {
+    setColumns((cs) => [
+      ...cs.filter((c) => c.column_name.trim() || c.label.trim()),
+      ...pasted.map((p, i) => ({
+        ...blankColumn(),
+        label: p.label,
+        column_name: p.column_name,
+        column_type: p.column_type,
+        in_list_view: cs.filter((c) => c.column_name.trim()).length + i < 4,
+        name_touched: true,
+      })),
+    ])
+    clearAllColumnErrors()
   }
 
   // Before a name is typed there is no prefix to derive, but the control should
@@ -163,6 +220,7 @@ export function TableBuilder() {
   async function loadFile(file: File) {
     setError(null)
     setColumnErrors({})
+    setTouchedRows(new Set())
     if (!isImportableFile(file.name)) {
       setError(`${file.name}: not a CSV or Excel file`)
       return
@@ -178,14 +236,17 @@ export function TableBuilder() {
       setColumns(
         def.columns.map((c, i) => ({
           column_name: c.column_name,
-          label: c.label,
+          label: c.label ?? '',
           column_type: c.column_type,
           // Detected Choice options surface in the grid's target field,
           // editable like hand-entered ones.
           target: c.choices ? c.choices.split('\n').join(', ') : '',
           reqd: false,
-          in_list_view: c.in_list_view,
+          in_list_view: c.in_list_view ?? false,
           source_index: i,
+          // An inferred identifier is already claimed — editing the label
+          // must not silently rename an imported column.
+          name_touched: true,
         })),
       )
     } catch (err) {
@@ -196,8 +257,9 @@ export function TableBuilder() {
   function clearImport() {
     setImported(null)
     setMoreSheets(0)
-    setColumns([blank()])
+    setColumns([blankColumn()])
     setColumnErrors({})
+    setTouchedRows(new Set())
     setProgress(null)
     if (fileInput.current) fileInput.current.value = ''
   }
@@ -299,6 +361,21 @@ export function TableBuilder() {
   const previewRows = imported ? imported.rows.filter((r) => !isBlankRow(r)).slice(0, 8) : []
   const previewCols = columns.filter((c) => c.source_index !== null && c.column_name.trim())
 
+  // Server error wins the row's message slot; the client verdict is the
+  // advisory fallback shown once the row has been visited.
+  function rowMessage(i: number): { text: string; fix?: string } | null {
+    if (columnErrors[i]) return { text: columnErrors[i] }
+    const v = touchedRows.has(i) ? verdicts[i] : null
+    return v && columns[i].column_name.trim() ? { text: v.error, fix: v.fix } : null
+  }
+
+  const namingColumns = columns
+    .filter((c) => c.column_name.trim())
+    .map((c) => ({
+      column_name: c.column_name.trim(),
+      label: c.label.trim() || c.column_name.trim(),
+    }))
+
   return (
     <div data-testid="doctype-builder" className="max-w-3xl">
       <h1 className="mb-4 text-xl font-semibold text-[var(--color-ink)]">New Table</h1>
@@ -378,146 +455,229 @@ export function TableBuilder() {
         </div>
       </div>
 
-      <div className="fc-card overflow-x-auto">
-        <table className="w-full text-sm" data-testid="dt-fields">
-          <thead className="bg-gray-50 text-left text-xs text-gray-600">
-            <tr>
-              <th className="px-2 py-1">Column Name</th>
-              <th className="px-2 py-1">Label</th>
-              <th className="px-2 py-1">Column Type</th>
-              <th className="px-2 py-1">Target</th>
-              <th className="px-2 py-1">Reqd</th>
-              <th className="px-2 py-1">List</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {/* NAM-001: the row id is column one, matching the Import Wizard.
-                Every record has an id; where it comes from is the same kind of
-                decision as any other column's. Always present, never removed. */}
-            <tr className="border-t border-gray-100 bg-blue-50/60" data-testid="dt-row-id">
-              <td className="px-2 py-1 align-baseline text-gray-500">Row ID</td>
-              <td className="px-1 py-1" colSpan={5}>
-                <NamingControl
-                  value={idPattern}
-                  onChange={setNamingOverride}
-                  defaultPrefix={seriesPrefix(name)}
-                  columns={columns
-                    .filter((c) => c.column_name.trim())
-                    .map((c) => ({
-                      column_name: c.column_name.trim(),
-                      label: c.label.trim() || c.column_name.trim(),
-                    }))}
-                />
-              </td>
-              <td className="px-1 text-center text-gray-300" title="always present">
-                🔒
-              </td>
-            </tr>
-            {columns.map((c, i) => (
-              /* data-columnrow marks the editable column rows: specs address
-                 these, so a decorative row (Row ID, and anything added later)
-                 can never shift the indices they read. */
-              <tr key={i} className="border-t border-gray-100" data-columnrow="">
-                <td className="px-1 py-1">
-                  <input
-                    value={c.column_name}
-                    onChange={(e) => setColumn(i, { column_name: e.target.value })}
-                    data-rowfield="column_name"
-                    ref={(el) => {
-                      if (el) nameInputs.current.set(i, el)
-                      else nameInputs.current.delete(i)
-                    }}
-                    aria-invalid={columnErrors[i] ? true : undefined}
-                    aria-describedby={columnErrors[i] ? `dt-col-error-${i}` : undefined}
-                    className={`w-full rounded border px-1 py-0.5 ${
-                      columnErrors[i] ? 'border-[var(--color-danger)]' : 'border-gray-200'
-                    }`}
-                  />
-                  {columnErrors[i] && (
-                    <p
-                      id={`dt-col-error-${i}`}
-                      data-testid={`dt-col-error-${i}`}
-                      className="mt-0.5 text-xs text-[var(--color-danger)]"
-                    >
-                      {columnErrors[i]}
-                    </p>
-                  )}
-                </td>
-                <td className="px-1 py-1">
-                  <input
-                    value={c.label}
-                    onChange={(e) => setColumn(i, { label: e.target.value })}
-                    data-rowfield="label"
-                    className="w-full rounded border border-gray-200 px-1 py-0.5"
+      <div className="mb-1 flex items-end justify-between gap-4">
+        {/* #151: B's paste box folds in above the grid — an entry
+            accelerator, not a mode. Hidden while a file drives the columns. */}
+        <div>{!imported && <PasteColumns onBuild={addPastedColumns} />}</div>
+        <div
+          className="mb-3 inline-flex overflow-hidden rounded-[var(--radius-control)] border border-[var(--color-border-strong)] text-xs"
+          role="group"
+          aria-label="Column editor view"
+        >
+          <button
+            data-testid="dt-view-grid"
+            onClick={() => setBuilderView('grid')}
+            className={`px-3 py-1 font-medium transition ${
+              view === 'grid'
+                ? 'bg-[var(--color-brand)] text-white'
+                : 'bg-[var(--color-surface)] text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)]'
+            }`}
+          >
+            Grid
+          </button>
+          <button
+            data-testid="dt-view-cards"
+            onClick={() => setBuilderView('cards')}
+            className={`px-3 py-1 font-medium transition ${
+              view === 'cards'
+                ? 'bg-[var(--color-brand)] text-white'
+                : 'bg-[var(--color-surface)] text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)]'
+            }`}
+          >
+            Cards
+          </button>
+        </div>
+      </div>
+
+      {view === 'grid' && (
+        <div className="fc-card overflow-x-auto">
+          <table className="w-full text-sm" data-testid="dt-fields">
+            <thead className="bg-gray-50 text-left text-xs text-gray-600">
+              <tr>
+                <th className="px-2 py-1">Field label</th>
+                <th className="px-2 py-1">
+                  Database name <span className="font-normal text-gray-400">(auto)</span>
+                </th>
+                <th className="px-2 py-1">Type</th>
+                <th className="px-2 py-1">Details</th>
+                <th className="px-2 py-1" title="Must be filled in every row">Reqd</th>
+                <th className="px-2 py-1" title="Shown in the list view">List</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {/* NAM-001: the row id is column one, matching the Import Wizard.
+                  Every record has an id; where it comes from is the same kind of
+                  decision as any other column's. Always present, never removed. */}
+              <tr className="border-t border-gray-100 bg-blue-50/60" data-testid="dt-row-id">
+                <td className="px-2 py-1 align-baseline text-gray-500">Row ID</td>
+                <td className="px-1 py-1" colSpan={5}>
+                  <NamingControl
+                    value={idPattern}
+                    onChange={setNamingOverride}
+                    defaultPrefix={seriesPrefix(name)}
+                    columns={namingColumns}
                   />
                 </td>
-                <td className="px-1 py-1">
-                  <select
-                    value={c.column_type}
-                    onChange={(e) => setColumn(i, { column_type: e.target.value })}
-                    data-rowfield="column_type"
-                    className="rounded border border-gray-200 px-1 py-0.5"
-                  >
-                    {COLUMN_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td className="px-1 py-1">
-                  <input
-                    value={c.target}
-                    onChange={(e) => setColumn(i, { target: e.target.value })}
-                    data-rowfield="target"
-                    placeholder={TARGET_REQUIRED_TYPES.includes(c.column_type) ? 'required' : ''}
-                    className="w-full rounded border border-gray-200 px-1 py-0.5"
-                  />
-                </td>
-                <td className="px-1 py-1 text-center">
-                  <input
-                    type="checkbox"
-                    checked={c.reqd}
-                    onChange={(e) => setColumn(i, { reqd: e.target.checked })}
-                    data-rowfield="reqd"
-                  />
-                </td>
-                <td className="px-1 py-1 text-center">
-                  <input
-                    type="checkbox"
-                    checked={c.in_list_view}
-                    onChange={(e) => setColumn(i, { in_list_view: e.target.checked })}
-                    data-rowfield="in_list_view"
-                  />
-                </td>
-                <td className="px-1 text-center">
-                  <button
-                    aria-label="Remove column"
-                    onClick={() => {
-                      setColumns((cs) => cs.filter((_, j) => j !== i))
-                      clearAllColumnErrors()
-                    }}
-                    className="text-gray-300 hover:text-red-600"
-                  >
-                    ×
-                  </button>
+                <td className="px-1 text-center text-gray-300" title="always present">
+                  🔒
                 </td>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        <button
-          onClick={() => {
-            setColumns((cs) => [...cs, blank()])
-            clearAllColumnErrors()
-          }}
-          data-testid="dt-add-field"
-          className="w-full border-t border-gray-100 px-2 py-1 text-left text-xs text-gray-500 hover:bg-gray-50"
-        >
-          + Add column
-        </button>
-      </div>
+              {columns.map((c, i) => {
+                const msg = rowMessage(i)
+                return (
+                  /* data-columnrow marks the editable column rows: specs address
+                     these, so a decorative row (Row ID, and anything added later)
+                     can never shift the indices they read. */
+                  <tr key={i} className="border-t border-gray-100 align-top" data-columnrow="">
+                    <td className="px-1 py-1">
+                      <input
+                        value={c.label}
+                        onChange={(e) => setColumnLabel(i, e.target.value)}
+                        onBlur={() => markTouched(i)}
+                        data-rowfield="label"
+                        placeholder="e.g. Date of Birth"
+                        className="w-full rounded border border-gray-200 px-1 py-0.5"
+                      />
+                    </td>
+                    <td className="px-1 py-1">
+                      <input
+                        value={c.column_name}
+                        onChange={(e) => setColumn(i, { column_name: e.target.value, name_touched: true })}
+                        onBlur={() => markTouched(i)}
+                        data-rowfield="column_name"
+                        ref={(el) => {
+                          if (el) nameInputs.current.set(i, el)
+                          else nameInputs.current.delete(i)
+                        }}
+                        aria-invalid={msg ? true : undefined}
+                        aria-describedby={msg ? `dt-col-error-${i}` : undefined}
+                        className={`w-full rounded border px-1 py-0.5 font-mono text-xs ${
+                          msg ? 'border-[var(--color-danger)]' : 'border-gray-200'
+                        } ${c.name_touched || c.column_name ? '' : 'bg-gray-50'}`}
+                      />
+                      {msg && (
+                        <p
+                          id={`dt-col-error-${i}`}
+                          data-testid={`dt-col-error-${i}`}
+                          className="mt-0.5 text-xs text-[var(--color-danger)]"
+                        >
+                          {msg.text}
+                          {msg.fix && (
+                            <>
+                              {' '}
+                              <button
+                                onClick={() => setColumn(i, { column_name: msg.fix, name_touched: true })}
+                                className="font-medium underline"
+                              >
+                                Use “{msg.fix}”
+                              </button>
+                            </>
+                          )}
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-1 py-1">
+                      <select
+                        value={c.column_type}
+                        onChange={(e) => setColumn(i, { column_type: e.target.value })}
+                        data-rowfield="column_type"
+                        className="rounded border border-gray-200 px-1 py-0.5"
+                      >
+                        {COLUMN_TYPES.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-1 py-1">
+                      <input
+                        value={c.target}
+                        onChange={(e) => setColumn(i, { target: e.target.value })}
+                        onBlur={() => markTouched(i)}
+                        data-rowfield="target"
+                        placeholder={
+                          c.column_type === 'Choice'
+                            ? 'Choices: Small, Medium…'
+                            : c.column_type === 'Reference'
+                              ? 'Which table?'
+                              : c.column_type === 'Sub-table'
+                                ? 'Which sub-table?'
+                                : ''
+                        }
+                        disabled={!TARGET_REQUIRED_TYPES.includes(c.column_type)}
+                        className="w-full rounded border border-gray-200 px-1 py-0.5 disabled:bg-transparent"
+                      />
+                    </td>
+                    <td className="px-1 py-1 text-center">
+                      <input
+                        type="checkbox"
+                        checked={c.reqd}
+                        onChange={(e) => setColumn(i, { reqd: e.target.checked })}
+                        data-rowfield="reqd"
+                      />
+                    </td>
+                    <td className="px-1 py-1 text-center">
+                      <input
+                        type="checkbox"
+                        checked={c.in_list_view}
+                        onChange={(e) => setColumn(i, { in_list_view: e.target.checked })}
+                        data-rowfield="in_list_view"
+                      />
+                    </td>
+                    <td className="px-1 text-center">
+                      <button
+                        aria-label="Remove column"
+                        onClick={() => removeColumn(i)}
+                        className="text-gray-300 hover:text-red-600"
+                      >
+                        ×
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <button
+            onClick={addColumn}
+            data-testid="dt-add-field"
+            className="w-full border-t border-gray-100 px-2 py-1 text-left text-xs text-gray-500 hover:bg-gray-50"
+          >
+            + Add column
+          </button>
+        </div>
+      )}
+
+      {view === 'cards' && (
+        <div className="space-y-3">
+          <div className="fc-card p-5">
+            <div className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
+              Row ID
+            </div>
+            <NamingControl
+              value={idPattern}
+              onChange={setNamingOverride}
+              defaultPrefix={seriesPrefix(name)}
+              columns={namingColumns}
+            />
+          </div>
+          <ColumnCards
+            columns={columns}
+            verdicts={columns.map((_, i) => {
+              const msg = rowMessage(i)
+              return msg ? { error: msg.text, fix: msg.fix } : null
+            })}
+            onPatch={(i, p) => {
+              setColumn(i, p)
+              markTouched(i)
+            }}
+            onRemove={removeColumn}
+            onAdd={addColumn}
+          />
+        </div>
+      )}
 
       {imported && previewCols.length > 0 && (
         <div className="fc-card mt-4 overflow-x-auto">
@@ -577,6 +737,7 @@ export function TableBuilder() {
           {error}
         </p>
       )}
+
       <button
         onClick={create}
         disabled={saving || !name.trim()}
