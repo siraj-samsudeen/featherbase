@@ -26,8 +26,8 @@ test.beforeAll(async ({ request }) => {
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   const existing = (await (
     await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=500`, { headers })
-  ).json()) as { data: { name: string }[] }
-  for (const d of existing.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.name}`, { headers })
+  ).json()) as { data: { row_id: string }[] }
+  for (const d of existing.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.row_id}`, { headers })
 
   // Task A: 2026-03-02 → 2026-03-05 (4 days). Task B: 2026-03-04 → 2026-03-06 (3 days).
   const a = await request.post(`/api/table/${encodeURIComponent(DT)}`, {

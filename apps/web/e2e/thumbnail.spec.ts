@@ -72,8 +72,8 @@ test.beforeAll(async ({ request }) => {
 async function cleanupFiles(request: APIRequestContext) {
   const headers = await adminAuth(request)
   const filters = encodeURIComponent(JSON.stringify([['ref_table', '=', DT], ['ref_name', '=', DOC]]))
-  const listed = (await (await request.get(`/api/table/File?filters=${filters}`, { headers })).json()) as { data: { name: string }[] }
-  for (const f of listed.data) await request.delete(`/api/table/File/${f.name}`, { headers })
+  const listed = (await (await request.get(`/api/table/File?filters=${filters}`, { headers })).json()) as { data: { row_id: string }[] }
+  for (const f of listed.data) await request.delete(`/api/table/File/${f.row_id}`, { headers })
 }
 
 test.beforeEach(async ({ request }) => cleanupFiles(request))

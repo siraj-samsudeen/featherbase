@@ -121,7 +121,7 @@ export function ReportView({
       const config: ReportConfig = { columns, group_by: groupBy, filters }
       await api.post('/api/save_doc', {
         doctype: 'Report',
-        doc: { name: saveName, ref_table: doctype, config },
+        doc: { row_id: saveName, ref_table: doctype, config },
       })
       await queryClient.invalidateQueries({ queryKey: ['saved-reports', doctype] })
       setSaveOpen(false)

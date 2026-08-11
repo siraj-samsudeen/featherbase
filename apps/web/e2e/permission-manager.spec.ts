@@ -32,8 +32,8 @@ test.beforeAll(async ({ request }) => {
       `/api/table/Permission?filters=${encodeURIComponent(JSON.stringify([['ref_table', '=', DT]]))}&limit_page_length=200`,
       { headers },
     )
-  ).json()) as { data: { name: string }[] }
-  for (const p of existing.data) await request.delete(`/api/table/Permission/${p.name}`, { headers })
+  ).json()) as { data: { row_id: string }[] }
+  for (const p of existing.data) await request.delete(`/api/table/Permission/${p.row_id}`, { headers })
   // Start with read + write + create so the role's user can save.
   await request.post('/api/save_doc', {
     headers,

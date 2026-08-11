@@ -36,7 +36,7 @@ test('SET-001: System Settings opens as a form and saves persistently', async ({
     await page.request.get('/api/table/System%20Settings/System%20Settings', {
       headers: { Authorization: `Bearer ${token}` },
     })
-  ).json()) as { name: string; app_name: string }
-  expect(doc.name).toBe('System Settings')
+  ).json()) as { row_id: string; app_name: string }
+  expect(doc.row_id).toBe('System Settings')
   expect(doc.app_name).toBe(newName)
 })

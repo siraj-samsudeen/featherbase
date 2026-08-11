@@ -38,9 +38,9 @@ test.beforeAll(async ({ request }) => {
       `/api/table/Notification%20Log?filters=${encodeURIComponent(JSON.stringify([['for_user', '=', OTHER_USER]]))}&limit_page_length=200`,
       { headers },
     )
-  ).json()) as { data: { name: string }[] }
+  ).json()) as { data: { row_id: string }[] }
   for (const n of notifs.data)
-    await request.delete(`/api/table/Notification%20Log/${n.name}`, { headers })
+    await request.delete(`/api/table/Notification%20Log/${n.row_id}`, { headers })
 })
 
 test('RT-001: a doc created in one session appears in another session list', async ({ browser }) => {

@@ -30,9 +30,9 @@ test.beforeAll(async ({ request }) => {
   )
   const prior = (await (
     await request.get(`/api/table/Comment?filters=${filters}`, { headers })
-  ).json()) as { data: { name: string }[] }
+  ).json()) as { data: { row_id: string }[] }
   for (const c of prior.data)
-    await request.delete(`/api/table/Comment/${c.name}`, { headers })
+    await request.delete(`/api/table/Comment/${c.row_id}`, { headers })
   const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
     data: { row_id: docName, title: 'discuss me' },

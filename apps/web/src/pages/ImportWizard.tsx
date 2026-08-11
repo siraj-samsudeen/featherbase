@@ -1113,7 +1113,7 @@ export function ImportWizard() {
                                 target — the file's own codes become the ids,
                                 verbatim; the series continues for rows the
                                 file leaves blank. */}
-                            <option value="name">Row ID</option>
+                            <option value="row_id">Row ID</option>
                             {/* Label AND real column name: labels preserve
                                 however the source file spelled its headers,
                                 so the snake_case identity disambiguates. */}

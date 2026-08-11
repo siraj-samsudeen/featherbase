@@ -7,7 +7,7 @@ import { api, ApiError } from '../lib/api'
 // them to be bound as parameters server-side.
 
 interface QueryReportMeta {
-  name: string
+  row_id: string
   ref_doctype: string | null // wire key unchanged: GET /api/query_report/:name still returns `ref_doctype`
   filters: string[]
 }
@@ -49,7 +49,7 @@ export function QueryReportView({ name }: { name: string }) {
   useEffect(() => {
     if (meta.data) void run()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meta.data?.name])
+  }, [meta.data?.row_id])
 
   if (meta.isError)
     return (
@@ -63,7 +63,7 @@ export function QueryReportView({ name }: { name: string }) {
     <div data-testid="query-report" className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold text-[var(--color-ink)]" data-testid="query-report-title">
-          {meta.data.name}
+          {meta.data.row_id}
         </h1>
       </div>
 

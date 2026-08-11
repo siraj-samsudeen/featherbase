@@ -42,8 +42,8 @@ test.beforeAll(async ({ request }) => {
   // Clear assignee notifications.
   const notifs = (await (
     await request.get(`/api/table/Notification%20Log?filters=${encodeURIComponent(JSON.stringify([['for_user', '=', ASSIGNEE]]))}&limit_page_length=200`, { headers })
-  ).json()) as { data: { name: string }[] }
-  for (const n of notifs.data) await request.delete(`/api/table/Notification%20Log/${n.name}`, { headers })
+  ).json()) as { data: { row_id: string }[] }
+  for (const n of notifs.data) await request.delete(`/api/table/Notification%20Log/${n.row_id}`, { headers })
 
   docName = `asg-${Date.now()}`
   const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { row_id: docName, title: 'assign me' } })

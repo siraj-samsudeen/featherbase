@@ -340,7 +340,7 @@ function RunPane({
     try {
       const saved = await api.post<Row>('/api/save_doc', {
         doctype,
-        doc: { name, updated_at: doc.data.updated_at, [binding.itemsCol]: next, ...extra },
+        doc: { row_id: name, updated_at: doc.data.updated_at, [binding.itemsCol]: next, ...extra },
       })
       queryClient.setQueryData(['checklist-run', doctype, name], saved)
       queryClient.invalidateQueries({ queryKey: ['checklist-list', doctype] })

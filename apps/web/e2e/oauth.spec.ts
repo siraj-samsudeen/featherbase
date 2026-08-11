@@ -33,8 +33,8 @@ test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', asyn
   const headers = await adminHeaders(page.request)
   const doc = (await (
     await page.request.get(`/api/table/User/${encodeURIComponent(EMAIL)}`, { headers })
-  ).json()) as { name: string; social_login: string; enabled: boolean }
-  expect(doc.name).toBe(EMAIL)
+  ).json()) as { row_id: string; social_login: string; enabled: boolean }
+  expect(doc.row_id).toBe(EMAIL)
   expect(doc.social_login).toBe('google')
   expect(doc.enabled).toBe(true)
 })
@@ -58,7 +58,7 @@ test('PLAT-006: a second OAuth sign-in links the same User (no duplicate)', asyn
   // Exactly one User with that email.
   const listed = (await (
     await request.get(`/api/table/User?filters=${encodeURIComponent(JSON.stringify([['email', '=', EMAIL]]))}`, { headers })
-  ).json()) as { data: { name: string }[] }
+  ).json()) as { data: { row_id: string }[] }
   expect(listed.data.length).toBe(1)
 })
 

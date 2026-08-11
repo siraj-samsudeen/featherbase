@@ -19,7 +19,7 @@ test.beforeAll(async ({ request }) => {
         row_id: REPORT,
         ref_table: 'User',
         report_type: 'Query Report',
-        query: 'select name, enabled from "user" where created_at >= {from_date} order by name',
+        query: 'select row_id, enabled from "user" where created_at >= {from_date} order by row_id',
       },
     },
   })
@@ -37,7 +37,7 @@ test('RPT-004: a SQL report with a date filter runs and renders', async ({ page 
   await page.goto(`/admin/query-report/${encodeURIComponent(REPORT)}`)
   await expect(page.getByTestId('query-report-title')).toHaveText(REPORT)
   await expect(page.getByTestId('filter-from_date')).toBeVisible()
-  await expect(page.getByTestId('qr-col-name')).toBeVisible()
+  await expect(page.getByTestId('qr-col-row_id')).toBeVisible()
 
   // A permissive date returns rows including Administrator.
   await page.getByTestId('filter-from_date').fill('2000-01-01')
@@ -84,7 +84,7 @@ test('RPT-004: a non-System-Manager cannot author Query Report SQL', async ({ re
     headers: userHeaders,
     data: {
       doctype: 'Report',
-      doc: { row_id: 'E2E Editor Evil', ref_table: 'User', report_type: 'Query Report', query: 'select name from "user"' },
+      doc: { row_id: 'E2E Editor Evil', ref_table: 'User', report_type: 'Query Report', query: 'select row_id from "user"' },
     },
   })
   expect(denied.status()).toBe(403)

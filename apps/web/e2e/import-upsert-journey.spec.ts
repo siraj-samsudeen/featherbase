@@ -70,7 +70,7 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["row_id","zone_name"]')}&limit_page_length=100`,
       { headers },
     )
-  ).json()) as { data: { name: string; zone_name: string }[] }
+  ).json()) as { data: { row_id: string; zone_name: string }[] }
   expect(idsBefore.data).toHaveLength(8)
 
   // J1.1 — the existing Table's list view → Import: the wizard opens with
@@ -148,12 +148,12 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
       )}&limit_page_length=100`,
       { headers },
     )
-  ).json()) as { data: { name: string; zone_name: string; population: unknown }[] }
+  ).json()) as { data: { row_id: string; zone_name: string; population: unknown }[] }
   expect(after.data).toHaveLength(8) // not 16
   const byZone = Object.fromEntries(after.data.map((r) => [r.zone_name, r]))
   expect(Number(byZone.Alpha.population)).toBe(13500)
   expect(Number(byZone.Bravo.population)).toBe(8400)
-  for (const r of idsBefore.data) expect(byZone[r.zone_name].name).toBe(r.name)
+  for (const r of idsBefore.data) expect(byZone[r.zone_name].row_id).toBe(r.row_id)
 
   // J1.7 — the run's history entry carries updated and inserted separately.
   const log = (await (
@@ -218,8 +218,8 @@ test('UPS-J2: the file’s codes become the ids', async ({ session, page, reques
     .assertText('3 rows, 3 columns in the file')
   await session.step('J2.3′: the Row ID accepts the mapping', async ({ page }) => {
     await expect(page.getByTestId('iw-target-0')).toHaveValue(DT2)
-    await page.getByTestId('iw-map-0-0').selectOption('name') // Code → Row ID
-    await expect(page.getByTestId('iw-map-0-0')).toHaveValue('name')
+    await page.getByTestId('iw-map-0-0').selectOption('row_id') // Code → Row ID
+    await expect(page.getByTestId('iw-map-0-0')).toHaveValue('row_id')
   })
   await snap(page, 'UPS-J2.3')
 
@@ -242,8 +242,8 @@ test('UPS-J2: the file’s codes become the ids', async ({ session, page, reques
       )}&limit_page_length=100`,
       { headers },
     )
-  ).json()) as { data: { name: string; zone_name: string }[] }
-  const byZone = Object.fromEntries(rows.data.map((r) => [r.zone_name, r.name]))
+  ).json()) as { data: { row_id: string; zone_name: string }[] }
+  const byZone = Object.fromEntries(rows.data.map((r) => [r.zone_name, r.row_id]))
   expect(byZone.Kilo).toBe('REF-101') // the file's code, verbatim
   expect(byZone.Resident).toBe('REF-102') // insert-mode collision left it untouched
   expect(byZone.Lima).toBeUndefined()
@@ -258,8 +258,8 @@ test('UPS-J2: the file’s codes become the ids', async ({ session, page, reques
     .visit(`/admin/import?table=${encodeURIComponent(DT2)}`)
     .dropFile('[data-testid="iw-dropzone"]', 'e2e/fixtures/zone-codes.csv')
   await session.step('J2 branch: Row ID as match key turns collisions into updates', async ({ page }) => {
-    await page.getByTestId('iw-map-0-0').selectOption('name')
-    await page.getByTestId('iw-key-0').selectOption('name') // Row ID as the key
+    await page.getByTestId('iw-map-0-0').selectOption('row_id')
+    await page.getByTestId('iw-key-0').selectOption('row_id') // Row ID as the key
     await expect(page.getByTestId('iw-preview-0')).toContainText(
       '2 rows match existing rows and will be updated; 0 will be added; 1 will fail',
     )
@@ -276,9 +276,9 @@ test('UPS-J2: the file’s codes become the ids', async ({ session, page, reques
       )}&limit_page_length=100`,
       { headers },
     )
-  ).json()) as { data: { name: string; zone_name: string; population: unknown }[] }
+  ).json()) as { data: { row_id: string; zone_name: string; population: unknown }[] }
   expect(afterKeyed.data).toHaveLength(3) // updated in place, nothing doubled
-  const lima = afterKeyed.data.find((r) => r.name === 'REF-102')
+  const lima = afterKeyed.data.find((r) => r.row_id === 'REF-102')
   expect(lima?.zone_name).toBe('Lima') // the resident row took the file's values
   expect(Number(lima?.population)).toBe(5200)
 

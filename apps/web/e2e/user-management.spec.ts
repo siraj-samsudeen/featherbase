@@ -48,8 +48,8 @@ test.beforeAll(async ({ request }) => {
   const filters = encodeURIComponent(JSON.stringify([['mail_to', '=', USER]]))
   const old = (await (
     await request.get(`/api/table/Email%20Sink?filters=${filters}&limit_page_length=50`, { headers })
-  ).json()) as { data: { name: string }[] }
-  for (const m of old.data) await request.delete(`/api/table/Email%20Sink/${m.name}`, { headers })
+  ).json()) as { data: { row_id: string }[] }
+  for (const m of old.data) await request.delete(`/api/table/Email%20Sink/${m.row_id}`, { headers })
 })
 
 // SET-002: a user resets their password via the emailed link, then logs in

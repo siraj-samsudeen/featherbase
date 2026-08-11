@@ -12,7 +12,7 @@ async function token(request: APIRequestContext) {
 
 // The Helpdesk is a registered installable app now (PLAT-006, #78), so the
 // spec installs it through the real endpoint — POST /api/install_app
-// { row_id: 'helpdesk' } — exactly as a deployment would. Idempotent: a
+// { name: 'helpdesk' } — exactly as a deployment would. Idempotent: a
 // database that already carries the structure (seed-helpdesk.ts, or a
 // previous run) is left as-is; a later `POST /api/uninstall_app` can remove
 // the footprint wholesale.
@@ -23,7 +23,7 @@ async function ensureHelpdeskStructure(request: APIRequestContext) {
 
   const r = await request.post('/api/install_app', {
     headers: H,
-    data: { row_id: 'helpdesk' },
+    data: { name: 'helpdesk' },
   })
   if (r.status() !== 201) throw new Error(`install helpdesk: ${r.status()} ${await r.text()}`)
 }

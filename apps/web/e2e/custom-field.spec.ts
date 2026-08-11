@@ -21,7 +21,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     headers,
     data: {
       doctype: 'Custom Field',
-      doc: { name: `${DT}-${FIELD}`, dt: DT, column_name: FIELD, label: 'Priority Note', column_type: 'Data', in_list_view: true },
+      doc: { row_id: `${DT}-${FIELD}`, dt: DT, column_name: FIELD, label: 'Priority Note', column_type: 'Data', in_list_view: true },
     },
   })
   if (![201, 200].includes(cf.status())) throw new Error(`custom field: ${cf.status()}`)
