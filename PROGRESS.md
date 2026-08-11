@@ -1,5 +1,75 @@
 # Progress Log
 
+## 2026-08-11 — #132 part 1: the physical row key becomes `row_id` (INCOMPLETE)
+
+Branch `fix/row-id-physical-rename`, PR open and **not mergeable yet** — the
+server engine and the migration are done and verified, the callers are not.
+Recorded here so the next session starts from fact rather than from the diff.
+
+**The decision that shapes everything.** Every generated table's primary key
+is now the physical column `row_id`, and `name` has left `STANDARD_COLUMNS`,
+so a user Table may finally carry a `name` column. Two tables are deliberately
+NOT renamed, and the reasoning is in `apps/server/src/meta.ts`:
+
+- `table_def.name` **stays**. Its DDL (`0002_doctype.sql`) shows a NATURAL key
+  holding the Table's own identifier (`'Student'`), the target of a real
+  foreign key (`column_def.parent references table_def(name)`) and what
+  `reference_table`, `row_table`, `parenttype` and `permission.table` all point
+  at. That identifier is a different concept from a row id — explicitly out of
+  scope per #132.
+- `column_def.name` **renames**. Same DDL shows `default gen_random_uuid()::text`
+  — a pure surrogate whose natural key is `unique (parent, column_name)`. The
+  task brief assumed both were Table identifiers; the code says otherwise for
+  this one.
+
+That split creates the one hazard worth knowing about: `Table` is itself served
+through the fully generic row API (`bootstrap.test.ts` does `GET /api/table/Table`),
+so the engine cannot hardcode a single physical key. Resolution: `TableMeta.row_key`
+carries the PHYSICAL column, `physicalRowKey()` holds the single `{ Table: 'name' }`
+exception, and `stripInternalColumns` aliases it to `row_id` on the way out. **The
+wire format is uniformly `row_id`** — nothing above the SQL layer, the Desk
+included, knows about the exception.
+
+**Migration `0073_row_id.ts`** (number announced because this repo has had silent
+duplicate-number collisions). It renames only tables whose single-column PK is
+literally `name` — keying off the PK, not "has a column called name", is what
+keeps it safe now that a user column may legitimately be `name`. `0002` was also
+edited so a FRESH database creates `column_def.row_id` directly; every step in
+0073 is conditional, so it is a no-op on a new checkout. It also rewrites
+`sort_column`/`title_column`/`id_pattern` values that named the key, plus stored
+Saved View filters and `{{ name }}` / `{{ doc.name }}` templates.
+
+**Verified.** Full chain from an EMPTY database succeeds (dropdb/createdb, 74
+migrations). Resulting schema is exactly the intent: 48 generated tables on
+`row_id`; `table_def`, `series`, `migration`, `installed_app`, `site` keep
+`name`; `access_token`/`password_reset` keep their own keys. `pnpm --filter
+server typecheck` is clean.
+
+**Not done — this is the honest part.**
+- Server suite is **93 files failing / 23 passing** (was 111 failing at the
+  start of the test sweep). The remaining failures are test assertions still
+  written against `name`, not engine bugs — spot-checked `document.test.ts`,
+  where the engine round-trips correctly and only the assertion lagged.
+- **`apps/web` is entirely un-swept.** The app will not work until it is. A
+  full inventory of every row-key site in the web client exists in the PR
+  discussion; the mechanical shape is `row.name` → `row.row_id`, route params,
+  query keys, and `lib/meta.ts:100`'s hardcoded `{ column_name: 'name' }`.
+- No end-to-end HTTP proof, no Admin UI smoke, no web typecheck.
+
+**Gotchas for whoever picks this up.**
+- macOS `sed` has no `\b`; use `perl -pi -e`.
+- Scripted sweeps must protect `${...}` interpolations, and a naive one-level
+  brace guard is not enough — `${sql({ data: { changed } })}` nests twice and
+  got mangled (caught by `tsc`, but only because the result happened to be a
+  type error). Object-literal `name:` keys and shorthand `name,` inside
+  `${sql({...})}` need their own pass; that is where the real bugs hid
+  (`activity_log`, `home_page`, `background_job` inserts).
+- `SessionUser.name` became `row_id` — the `user` table is a generated table
+  like any other, so ~60 call sites moved with it.
+
+**Next:** finish `apps/web`, then the remaining server test assertions, then the
+e2e specs; only then is the verification bar meetable.
+
 ## 2026-08-11 — #135: create-user refuses a duplicate instead of shadowing it
 
 Filed off the sweep below, then fixed. `feather create-user` handed the row
