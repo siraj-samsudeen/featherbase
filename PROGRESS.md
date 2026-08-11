@@ -1,5 +1,22 @@
 # Progress Log
 
+## 2026-08-11 — #145 ruled and built: the match key gets its index on demand
+
+The last item of the production-readiness push. The first REAL keyed run
+on a (table, key) creates an expression index on exactly the cast
+resolveRows compares with — `((key::text))` — so a plain column index
+would not have served the query and was not built. Rehearsals create
+nothing: IMP-I3's "writes nothing" is read as covering the catalog too.
+Once per process per pair; IF NOT EXISTS carries restarts; a sha-suffixed
+name keeps long identifiers inside Postgres's 63-char limit without
+truncation collisions. Row-ID keys are excluded (the primary key serves).
+
+**Verified:** new import-key-index.test.ts (dry run creates nothing; real
+run creates the ::text index; second run idempotent; name-key creates
+nothing); all import suites 141/141; the upsert journey re-run live with
+the DDL in-path (the post-journey index check is vacuous by design — the
+journey's spec-0003 teardown deletes the table, indexes included).
+
 ## 2026-08-11 — UPS-H1's last tooth: the typed confirmation guard
 
 Owner decision from the morning's production-readiness plan, ruled into
