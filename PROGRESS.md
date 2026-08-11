@@ -1,5 +1,47 @@
 # Progress Log
 
+## 2026-08-11 — a reset link burns on use, not on success (#137 finding 6, ruled)
+
+Round 2 left finding 6 open for the owner, because the finding and its stated
+remedy pulled opposite ways: "the token survives a failed write" cannot be
+fixed by making the write and the deletion atomic, since atomicity is exactly
+what rolls the deletion back and hands the link back. The owner has ruled
+**burn-on-use**.
+
+`resetPassword` now consumes the token in its own committed transaction —
+`select ... for update`, delete every outstanding token for that user, commit —
+and only then calls `setUserPassword`. A refused write no longer resurrects the
+link. Concurrency is settled by the same row lock as before: the first click to
+take it consumes them all, and the losers re-read under READ COMMITTED, find
+nothing, and get the ordinary "invalid or has expired" refusal. The rationale
+now lives in the comment, which previously argued the opposite case.
+
+The cost is accepted and one-sided: a failed write costs the user another
+"forgot password" click, where a used link left alive costs them the account.
+
+`setUserPassword`'s `tx` parameter existed only to enrol it in that
+transaction, and no other caller passed one, so it is gone rather than left
+unused.
+
+The test that pinned atomicity — a trigger blocking the DELETE — pinned the
+property now rejected, so it is replaced by one that pins the ruling: after the
+service-account guard refuses the write, the `password_reset` row is gone and
+the second attempt is turned away by the lookup, with the invalid/expired
+message rather than the guard's. Confirmed RED against the atomic
+implementation first (source stashed, test kept: `expected 1 to be +0` at the
+row-count assertion, since the rolled-back delete leaves the token sitting
+there).
+
+**Verified:** rebased onto `origin/main` `4ae5a8c` (PR #127). Conflicts were
+`PROGRESS.md` twice — both same-day entries, kept side by side — and one import
+line in `oauth.ts`; main's `getDoc` import served only the OAuth re-enable this
+PR deletes, so it went with it. This PR's rulings survive the rebase intact:
+a disabled principal stays disabled, and the refusals remain one
+indistinguishable message. Server suite **691 passed / 116 files** against an
+isolated `featherbase_pr137` (680 before the rebase, on the same database),
+server typecheck clean. No server was started — port 8000 was held by another
+session's process, so this session verified statically and through the suite.
+
 ## 2026-08-11 — PR #127 review: the mock provider fails closed, and `state` finally means something
 
 Four security findings from the #127 review, fixed on the branch before it
@@ -137,8 +179,9 @@ last time: a guard is only worth what it actually *runs on*.
   #137 ruling that a disable must survive an OAuth round trip is untouched; it
   simply stops being *identifiable* as disabled.
 - **Password reset was two statements pretending to be one.** The write and the
-  token's consumption are now one transaction, so a failure cannot leave a
-  changed password beside a still-live link.
+  token's consumption became one transaction, so a failure could not leave a
+  changed password beside a still-live link. *(Superseded — the owner has since
+  ruled burn-on-use; see the 2026-08-11 entry above.)*
 - Dead `getDoc` import removed from `oauth.ts`.
 
 **One expectation moved, deliberately.** `ddl.test.ts` asserted a **500** when a
@@ -160,7 +203,8 @@ an isolated stack (own database, port 8077): "Series" and "User Settings" now
 409 with an actionable message, and a disabled service account reports
 `token_count: 0` while its token returns 401 — count and reality agree.
 
-**Open for the owner, not decided here.** Finding 6 was filed as "the token
+**Open for the owner, not decided here.** *(Decided since — burn-on-use. See
+the 2026-08-11 entry above.)* Finding 6 was filed as "the token
 survives a failed write" but its stated remedy was "make consumption atomic".
 Those pull opposite ways: atomic means a failed write rolls the deletion back,
 so the link *does* survive (inert, since the same guard refuses it every time).
