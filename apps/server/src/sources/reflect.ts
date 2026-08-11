@@ -30,6 +30,8 @@ export interface ReflectionCandidate {
     column_type: string
     nullable: boolean
     is_pk: boolean
+    // FK edge on the source, when the driver reports one (EDS-2).
+    references: { schema: string; table: string; column: string } | null
   }[]
 }
 
@@ -78,6 +80,7 @@ async function candidateFor(
       column_type: c.column_type,
       nullable: c.nullable,
       is_pk: c.is_pk,
+      references: c.references ?? null,
     })),
   }
   if (!pk)
@@ -274,16 +277,35 @@ async function buildBoundTable(
     (c) => c.name !== pk && c.name !== modified && !isSensitiveColumn(c.name),
   )
   const legalNames = sanitizeHeaders(dataColumns.map((c) => c.name))
-  const columns = dataColumns.map((c, i) => ({
-    column_name: legalNames[i],
-    source_column: c.name,
-    label: prettifyLabel(c.name),
-    column_type: c.column_type,
-    // Write-relevant only on engines with a write path; keeps forms honest
-    // about what the source will reject.
-    reqd: (cfg.engine === 'postgres' || cfg.engine === 'mysql') && !c.nullable && !c.has_default,
-    in_list_view: i < 4,
-  }))
+  // FK-aware types (EDS-2): a column whose source FK lands on the bound pk
+  // of a table ALREADY reflected from this source becomes a Reference to it.
+  // Every FK edge is also recorded raw (source_fk_*) after creation, so the
+  // other reflection order converges too — see linkReferencesTo.
+  const bound = await sql<
+    { name: string; external_schema: string | null; external_table: string | null; external_pk: string | null }[]
+  >`
+    select name, external_schema, external_table, external_pk from table_def
+    where data_source = ${cfg.name}`
+  const boundByRelation = new Map(
+    bound.map((b) => [`${b.external_schema ?? ''}\u0000${b.external_table ?? ''}`, b]),
+  )
+  const columns = dataColumns.map((c, i) => {
+    const target = c.references
+      ? boundByRelation.get(`${c.references.schema}\u0000${c.references.table}`)
+      : undefined
+    const isRef = Boolean(target && c.references && target.external_pk === c.references.column)
+    return {
+      column_name: legalNames[i],
+      source_column: c.name,
+      label: prettifyLabel(c.name),
+      column_type: isRef ? 'Reference' : c.column_type,
+      ...(isRef ? { reference_table: target!.name } : {}),
+      // Write-relevant only on engines with a write path; keeps forms honest
+      // about what the source will reject.
+      reqd: (cfg.engine === 'postgres' || cfg.engine === 'mysql') && !c.nullable && !c.has_default,
+      in_list_view: i < 4,
+    }
+  })
   const name = candidate.proposed_name
   const [clash] = await sql`select 1 from table_def where name = ${name}`
   if (clash) throw new AppError('ConflictError', `Table ${name} already exists`)
@@ -299,6 +321,18 @@ async function buildBoundTable(
     ...(modified ? { external_modified: modified } : {}),
     columns,
   })
+  // Record every FK edge raw on the new column_defs — the convergence
+  // record linkReferencesTo resolves when the TARGET table reflects later.
+  for (const [i, c] of dataColumns.entries()) {
+    if (!c.references) continue
+    await sql`
+      update column_def set
+        source_fk_schema = ${c.references.schema},
+        source_fk_table = ${c.references.table},
+        source_fk_column = ${c.references.column}
+      where parent = ${name} and column_name = ${legalNames[i]}`
+  }
+  await linkReferencesTo(cfg, t, name, pk)
   // Platform convention (#80): every new non-sub_table Table gets a link on
   // its module's home page — reflected Tables included, or they'd be
   // reachable only through All tables (and the 0060 idempotency contract
@@ -306,4 +340,31 @@ async function buildBoundTable(
   await ensureHomePageForTable(name, opts.module ?? cfg.name)
   invalidateMeta(name)
   return name
+}
+
+// The other half of order-independent FK reflection (EDS-2): tables reflect
+// one at a time, so when a child reflected BEFORE its parent, the child's FK
+// column could not be a Reference yet — only its raw source_fk_* record
+// exists. The moment the parent arrives, every recorded edge on this source
+// that lands on the parent's bound pk is upgraded in place. Reflecting in
+// any order therefore converges to the same linked graph, no re-reflection
+// needed. (This deliberately bypasses updateTable, whose column_type-change
+// guard exists for user edits — this is the engine finishing reflection.)
+async function linkReferencesTo(
+  cfg: SourceConfig,
+  t: IntrospectedTable,
+  name: string,
+  pk: string,
+): Promise<void> {
+  const upgraded = await sql<{ parent: string }[]>`
+    update column_def cd set column_type = 'Reference', reference_table = ${name}
+    from table_def td
+    where td.name = cd.parent
+      and td.data_source = ${cfg.name}
+      and cd.source_fk_schema = ${t.schema}
+      and cd.source_fk_table = ${t.table}
+      and cd.source_fk_column = ${pk}
+      and cd.column_type <> 'Reference'
+    returning cd.parent`
+  for (const parent of new Set(upgraded.map((r) => r.parent))) invalidateMeta(parent)
 }

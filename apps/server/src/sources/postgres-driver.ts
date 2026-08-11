@@ -1,5 +1,6 @@
 import postgres from 'postgres'
 import { AppError } from '../errors'
+import { fkKey, singleColumnFks } from './fk'
 import type {
   Binding,
   IntrospectedTable,
@@ -172,6 +173,30 @@ export const postgresDriver: SourceDriver = {
        order by c.table_schema, c.table_name, c.ordinal_position`,
       [schemaFilter ?? null],
     )
+    // FK edges, same alias shape the mysql driver produces; composite FKs
+    // (which fan out N×N through constraint_column_usage) are dropped by the
+    // shared single-column grouping.
+    const fkRows = await run(
+      cfg,
+      `select tc.constraint_schema, tc.constraint_name,
+              kcu.table_schema, kcu.table_name, kcu.column_name,
+              ccu.table_schema as referenced_table_schema,
+              ccu.table_name as referenced_table_name,
+              ccu.column_name as referenced_column_name
+       from information_schema.table_constraints tc
+       join information_schema.key_column_usage kcu
+         on kcu.constraint_schema = tc.constraint_schema
+        and kcu.constraint_name = tc.constraint_name
+       join information_schema.constraint_column_usage ccu
+         on ccu.constraint_schema = tc.constraint_schema
+        and ccu.constraint_name = tc.constraint_name
+       where tc.constraint_type = 'FOREIGN KEY'
+         and kcu.table_schema not in ('pg_catalog', 'information_schema')
+         and ($1::text is null or kcu.table_schema = $1)
+       order by tc.constraint_schema, tc.constraint_name, kcu.ordinal_position`,
+      [schemaFilter ?? null],
+    )
+    const fks = singleColumnFks(fkRows)
     const tables = new Map<string, IntrospectedTable>()
     for (const r of rows) {
       const key = `${r.table_schema}.${r.table_name}`
@@ -190,6 +215,9 @@ export const postgresDriver: SourceDriver = {
         is_pk: isPk,
         max_length: r.character_maximum_length == null ? null : Number(r.character_maximum_length),
         column_type: mapPgType(String(r.data_type), r.character_maximum_length as number | null),
+        references:
+          fks.get(fkKey(String(r.table_schema), String(r.table_name), String(r.column_name))) ??
+          null,
       })
     }
     return [...tables.values()]

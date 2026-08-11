@@ -40,6 +40,23 @@ beforeAll(async () => {
   await cli.unsafe(`
     insert into ext_fixture.tenant (slug, plan, internal_notes)
     values ('acme', 'pro', 'cli-only'), ('globex', 'free', null)`)
+  // FK pair + one FK at a table the tests never reflect (garage).
+  await cli.unsafe(`
+    create table ext_fixture.vehicle (
+      id serial primary key,
+      reg_no text not null,
+      updated_at timestamptz not null default now()
+    )`)
+  await cli.unsafe(`
+    create table ext_fixture.garage (id serial primary key, city text)`)
+  await cli.unsafe(`
+    create table ext_fixture.accident (
+      id serial primary key,
+      severity text,
+      vehicle_id int not null references ext_fixture.vehicle(id),
+      garage_id int references ext_fixture.garage(id),
+      updated_at timestamptz not null default now()
+    )`)
 })
 
 afterAll(async () => {
@@ -329,5 +346,60 @@ describe('EDS-11: source failure', () => {
     const body = (await res.json()) as { error: { type: string; message: string } }
     expect(body.error.type).toBe('DataSourceError')
     expect(body.error.message).toContain('ext-dead')
+  })
+})
+
+describe('EDS-2: foreign keys reflect as References', () => {
+  test('FK edges surface on introspect and converge in child-first order', async ({ admin }) => {
+    await makeSource(admin)
+    const intro = (await admin.get(
+      '/api/table/Data%20Source/ext-fixture:introspect?schema=ext_fixture',
+    )) as {
+      tables: {
+        table: string
+        columns: {
+          name: string
+          references?: { schema: string; table: string; column: string } | null
+        }[]
+      }[]
+    }
+    const accident = intro.tables.find((t) => t.table === 'accident')!
+    expect(accident.columns.find((c) => c.name === 'vehicle_id')!.references).toEqual({
+      schema: 'ext_fixture',
+      table: 'vehicle',
+      column: 'id',
+    })
+
+    // Child first: plain Int until the parent arrives, then upgraded in place.
+    const reflectRes = await admin.fetch('/api/table/Data%20Source/ext-fixture:reflect', {
+      method: 'POST',
+      body: JSON.stringify({ schema: 'ext_fixture', tables: ['accident'] }),
+    })
+    expect(reflectRes.status).toBe(200)
+    const created = ((await reflectRes.json()) as { created: { name: string }[] }).created[0].name
+    const colsOf = async () => {
+      const meta = (await admin.get(`/api/table/${encodeURIComponent(created)}:meta`)) as {
+        columns: { column_name: string; column_type: string; reference_table: string | null }[]
+      }
+      return new Map(meta.columns.map((c) => [c.column_name, c]))
+    }
+    expect((await colsOf()).get('vehicle_id')).toMatchObject({
+      column_type: 'Int',
+      reference_table: null,
+    })
+    const parentRes = await admin.fetch('/api/table/Data%20Source/ext-fixture:reflect', {
+      method: 'POST',
+      body: JSON.stringify({ schema: 'ext_fixture', tables: ['vehicle'] }),
+    })
+    expect(parentRes.status).toBe(200)
+    const vehicleName = ((await parentRes.json()) as { created: { name: string }[] }).created[0]
+      .name
+    const cols = await colsOf()
+    expect(cols.get('vehicle_id')).toMatchObject({
+      column_type: 'Reference',
+      reference_table: vehicleName,
+    })
+    // garage is never reflected — its FK column stays Int.
+    expect(cols.get('garage_id')).toMatchObject({ column_type: 'Int', reference_table: null })
   })
 })
