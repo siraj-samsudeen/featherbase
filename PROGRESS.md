@@ -1,5 +1,21 @@
 # Progress Log
 
+## 2026-08-11 — UPS-H1's last tooth: the typed confirmation guard
+
+Owner decision from the morning's production-readiness plan, ruled into
+spec 0004's H1 mitigation list in this same change (requirement first,
+then code). A run about to update more than CONFIRM_UPDATES_OVER (20)
+rows stops at Import and demands the number typed back — counts from a
+click-time dry run, never stale UI state; any plan change clears a
+pending confirmation. Small runs stay friction-free.
+
+**Verified:** all 12 import e2e walks green (the new
+import-typed-confirmation.spec.ts proves: guard appears with seeded data
+intact, wrong number keeps the trigger disabled, exact number proceeds
+through the ratified auto-navigation; the 8-row UPS journey passing
+unprompted is the friction-free half). Typecheck clean. **Next:**
+index-on-demand on the match key (#145).
+
 ## 2026-08-11 — #150: the session JWT leaves the OAuth callback URL
 
 The callback finished sign-in with `c.redirect('/oauth-callback?token=<7-day

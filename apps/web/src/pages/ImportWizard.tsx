@@ -99,6 +99,9 @@ interface SheetPlan {
 // ADR 0008: named UI-side thresholds — suggestion bets. (IMPORT_CHUNK
 // lives with the import-run module now.)
 const SUGGEST_MIN_SCORE = 0.3 // weakest near-match worth surfacing as a hint
+// UPS-H1 (owner decision 2026-08-11): beyond this many updates in one run,
+// the count must be typed back — the preview is passive, typing 1,200 is not.
+const CONFIRM_UPDATES_OVER = 20
 const SUGGEST_MAX = 3 // hints shown per sheet
 const ERRORS_ON_SCREEN = 5 // failures listed inline; the log keeps more
 
@@ -646,6 +649,11 @@ export function ImportWizard() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  // UPS-H1's typed confirmation: set when a click-time dry run counted more
+  // than CONFIRM_UPDATES_OVER updates; cleared by any plan change.
+  const [confirmUpdates, setConfirmUpdates] = useState<{ total: number; typed: string } | null>(
+    null,
+  )
 
   // Every importable Table with its mappable columns — the mapping targets
   // and the corpus the rename-tolerant suggestions score against.
@@ -657,6 +665,9 @@ export function ImportWizard() {
 
   function setPlan(i: number, patch: Partial<SheetPlan>) {
     setPlans((ps) => ps.map((p, j) => (j === i ? { ...p, ...patch, check: null, result: null } : p)))
+    // A changed plan invalidates a pending typed confirmation — its total
+    // was computed for the previous mapping/key.
+    setConfirmUpdates(null)
   }
 
   async function loadFile(file: File) {
@@ -885,10 +896,35 @@ export function ImportWizard() {
     }
   }
 
-  async function runImport() {
+  async function runImport(confirmed = false) {
     setError(null)
     setBusy('Importing…')
     try {
+      // UPS-H1: a run about to update more than CONFIRM_UPDATES_OVER rows
+      // stops here and demands the number be typed back. Counts come from a
+      // dry run at click time — the same rehearsal the server will honour —
+      // never from stale UI state.
+      if (!confirmed) {
+        let updates = 0
+        for (const [i, plan] of plans.entries()) {
+          if (plan.mode !== 'existing' || !plan.key) continue
+          const rows = mappedRows(sheets[i], plan)
+          if (!rows.length) continue
+          const report = await sendImportRun({
+            table: plan.table,
+            rows,
+            dryRun: true,
+            upsert: upsertArgs(plan),
+          })
+          updates += report.updated
+        }
+        if (updates > CONFIRM_UPDATES_OVER) {
+          setConfirmUpdates({ total: updates, typed: '' })
+          setBusy(null)
+          return
+        }
+      }
+      setConfirmUpdates(null)
       for (const [i, plan] of plans.entries()) {
         if (plan.mode === 'skip') continue
         const sheet = sheets[i]
@@ -1547,9 +1583,33 @@ export function ImportWizard() {
               Check
             </button>
           )}
+          {confirmUpdates && (
+            <span
+              className="mr-2 rounded bg-amber-50 px-2 py-1 text-sm text-amber-900"
+              data-testid="iw-confirm-updates"
+            >
+              This import will <strong>update {confirmUpdates.total} existing rows</strong>. Type{' '}
+              <strong>{confirmUpdates.total}</strong> to confirm:{' '}
+              <input
+                className="fc-input mx-1 w-24 py-0.5"
+                data-testid="iw-confirm-input"
+                aria-label={`Type ${confirmUpdates.total} to confirm updating ${confirmUpdates.total} rows`}
+                value={confirmUpdates.typed}
+                onChange={(e) => setConfirmUpdates({ ...confirmUpdates, typed: e.target.value })}
+              />
+              <button
+                className="fc-btn-primary py-0.5 disabled:opacity-40"
+                data-testid="iw-confirm-go"
+                disabled={!!busy || confirmUpdates.typed.trim() !== String(confirmUpdates.total)}
+                onClick={() => void runImport(true)}
+              >
+                Update {confirmUpdates.total} rows
+              </button>
+            </span>
+          )}
           <button
-            onClick={runImport}
-            disabled={!!busy || plans.every((p) => p.mode === 'skip')}
+            onClick={() => void runImport()}
+            disabled={!!busy || !!confirmUpdates || plans.every((p) => p.mode === 'skip')}
             data-testid="iw-import"
             className="fc-btn-primary disabled:opacity-40"
           >
