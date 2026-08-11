@@ -23,7 +23,7 @@ async function installHelpdesk() {
   if (!have) await installApp('helpdesk')
 }
 
-const num = (row_id: unknown) => Number(String(name).slice('HDT-'.length))
+const num = (rowId: unknown) => Number(String(rowId).slice('HDT-'.length))
 
 describe('HD Ticket: naming series + defaults', () => {
   test('new tickets get sequential HDT- numbers and open on the ticket_status field', async ({

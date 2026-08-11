@@ -80,7 +80,7 @@ afterAll(async () => {
   `
   expect(exists).toBe(false)
   const leftoverUsers = await root<{ row_id: string }[]>`
-    select name from "user" where name like '%@feather.test'
+    select row_id from "user" where row_id like '%@feather.test'
   `
   expect(leftoverUsers).toHaveLength(0)
 })

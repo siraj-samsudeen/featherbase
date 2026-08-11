@@ -20,7 +20,7 @@ import { getServiceAccount } from '../src/service-accounts'
 // against the code as merged in #134.
 
 async function serviceAccount(admin: { post: (p: string, b?: unknown) => Promise<unknown> }, name: string) {
-  await admin.post('/api/service_accounts', { name, roles: ['System Manager'] })
+  await admin.post('/api/service_accounts', { row_id: name, roles: ['System Manager'] })
 }
 
 describe('#137 P1: an access token is header-only, never URL-borne', () => {
