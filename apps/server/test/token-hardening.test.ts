@@ -260,7 +260,7 @@ describe('#137 R2: OAuth refusals cannot be told apart', () => {
   })
 })
 
-describe('#137 R2: a reset link is single-use, and a failed write leaves nothing behind', () => {
+describe('#137 R2: a reset link is single-use, and a failed write still burns it', () => {
   test('a link that cannot set a password never sets one, however often it is used', async ({
     admin,
   }) => {
@@ -276,9 +276,8 @@ describe('#137 R2: a reset link is single-use, and a failed write leaves nothing
     // click, so setUserPassword now refuses.
     await sql`update "user" set user_type = 'service' where name = ${email}`
 
-    // The write and the token's consumption are one transaction, so a failure
-    // leaves NO partial state — and the link is inert from here on: it can
-    // never stamp a password, no matter how many times it is presented.
+    // The link is inert from here on: it can never stamp a password, no
+    // matter how many times it is presented.
     for (const attempt of ['first', 'second']) {
       await expect(resetPassword(token as string, `pw-${attempt}-123`)).rejects.toMatchObject({
         type: 'ValidationError',
@@ -288,31 +287,33 @@ describe('#137 R2: a reset link is single-use, and a failed write leaves nothing
     expect(row.password_hash).toBeNull()
   })
 
-  test('a failed consumption takes the password write down with it', async ({ admin }) => {
-    const email = 'reset-atomic@example.com'
+  test('a write that fails does not give the link back', async ({ admin }) => {
+    const email = 'reset-burn@example.com'
     await admin.post('/api/save_doc', {
       doctype: 'User',
       doc: { name: email, email, enabled: true },
     })
     const token = await requestPasswordReset(email)
 
-    // Break the consumption specifically — the ordering that tells an atomic
-    // implementation apart from two loose statements. Two statements would
-    // have already written the new password_hash by the time the delete blew
-    // up, leaving a changed password AND a live reset link: the single-use
-    // guarantee gone, in the direction that matters.
-    await sql.unsafe(`create function fb_block_reset_delete() returns trigger
-      language plpgsql as $$ begin raise exception 'delete blocked'; end $$`)
-    await sql.unsafe(`create trigger fb_block_reset_delete before delete on password_reset
-      for each row execute function fb_block_reset_delete()`)
+    // Same failure mode as above — the principal turns into a service account
+    // between the request and the click — but this case pins the ORDER, which
+    // is what separates burn-on-use from an atomic write-and-consume. Under
+    // atomicity the refused write rolls the deletion back and the row is still
+    // sitting there, live for the rest of its hour.
+    await sql`update "user" set user_type = 'service' where name = ${email}`
+    await expect(resetPassword(token as string, 'burned-pw-1')).rejects.toMatchObject({
+      type: 'ValidationError',
+    })
 
-    await expect(resetPassword(token as string, 'atomic-pw-1')).rejects.toThrow()
+    const outstanding = await sql`select 1 from password_reset where token = ${token}`
+    expect(outstanding.length).toBe(0)
 
-    // Reaching this line at all is part of the assertion: resetPassword
-    // contained the failure in its own transaction, so this one is still
-    // usable. Without that boundary the statement below fails outright with
-    // "current transaction is aborted".
-    await sql.unsafe(`drop trigger fb_block_reset_delete on password_reset`)
+    // And the second click is refused as a spent link, not re-run against the
+    // guard: the token is gone, so the lookup is what turns it away.
+    await expect(resetPassword(token as string, 'burned-pw-2')).rejects.toMatchObject({
+      type: 'ValidationError',
+      message: 'This reset link is invalid or has expired',
+    })
     const [row] = await sql`select password_hash from "user" where name = ${email}`
     expect(row.password_hash).toBeNull()
   })

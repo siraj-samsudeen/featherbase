@@ -29,17 +29,14 @@ export function verifyPassword(password: string, stored: string): boolean {
 // refused service accounts, but password reset reaches this function directly,
 // so a reset link could still stamp a password_hash onto a principal
 // documented as having none. The guard is on the write itself.
-//
-// `tx` lets a caller run this inside its own transaction — resetPassword needs
-// the write and the token's consumption to succeed or fail together.
-export async function setUserPassword(name: string, password: string, tx: typeof sql = sql) {
-  const [row] = await tx`select user_type from "user" where name = ${name}`
+export async function setUserPassword(name: string, password: string) {
+  const [row] = await sql`select user_type from "user" where name = ${name}`
   if (row?.user_type === 'service')
     throw new AppError(
       'ValidationError',
       'Service accounts have no password — issue an access token instead',
     )
-  await tx`
+  await sql`
     update "user" set password_hash = ${hashPassword(password)}
     where name = ${name}`
 }

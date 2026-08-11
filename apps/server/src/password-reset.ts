@@ -46,21 +46,33 @@ export async function resetPassword(token: string, newPassword: string): Promise
   if (newPassword.length < 6)
     throw new AppError('ValidationError', 'Password must be at least 6 characters')
 
-  // #137: the write and the token's consumption are ONE transaction. They
-  // used to be two statements: if setUserPassword threw — and since #137 it
-  // does throw, for a principal that became `user_type = 'service'` between
-  // the request and the click — the `delete` never ran and the link stayed
-  // usable for the rest of its hour, contradicting the single-use guarantee
-  // this very comment makes. Either both happen or neither does.
-  await sql.begin(async (tx) => {
+  // #137, burn-on-use: the link is consumed the moment it is used, in its own
+  // committed transaction, BEFORE the password write is attempted. A write
+  // that then fails — as it does for a principal that became
+  // `user_type = 'service'` between the request and the click — does not give
+  // the link back.
+  //
+  // The tempting alternative is to make the write and the consumption atomic,
+  // but atomicity is the weaker guarantee here: rolling the write back rolls
+  // the deletion back with it, so a reset link survives its own use and stays
+  // live for the rest of its hour. For a credential-reset link, "usable at
+  // most once" is the property worth having outright. Losing a reset to a
+  // failed write costs the user one more click on "forgot password"; leaving
+  // a used link alive costs them the account.
+  //
+  // `for update` plus deleting every outstanding token for the user settles
+  // concurrent clicks: the first to take the row lock consumes them all, and
+  // the losers re-read under READ COMMITTED, find nothing, and are refused.
+  const user = await sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     const [row] = await stx`
       select "user", expires_at from password_reset where token = ${token} for update`
     if (!row || new Date(row.expires_at as string).getTime() < Date.now())
       throw new AppError('ValidationError', 'This reset link is invalid or has expired')
 
-    await setUserPassword(row.user as string, newPassword, stx)
-    // Single-use: consume this token and any others outstanding for the user.
     await stx`delete from password_reset where "user" = ${row.user as string}`
+    return row.user as string
   })
+
+  await setUserPassword(user, newPassword)
 }
