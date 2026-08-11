@@ -1,5 +1,75 @@
 # Progress Log
 
+## 2026-08-11 — #128 review: the builder's rejection names a column, not an index
+
+PR #129 surfaced the server's `err.fields` in TableBuilder but flattened the
+Zod map into one page-level sentence. Five defects from the review, and the
+first is the same shape as the one #115 fixed earlier today — which is why
+this branch was rebased onto that work rather than landing beside it.
+
+Rebased again onto `2873d80` to land on top of the day's TableBuilder
+refactors rather than fork from them. The import path in `create()` is now
+main's throughout — `sendImportRun()`, `excelRow()`/`isBlankRow()` from
+`parse-file`, and the skipped-row disclosure — with this branch's local
+`IMPORT_CHUNK` and inline chunk loop deleted rather than kept beside them.
+Only the validation work below is this branch's own; `keptColumns()`'s
+`sourceIndex` is deliberately the same name and shape main gave imported
+rows, not a second dialect.
+
+- **The indices were offset by blank-row filtering (P1).** The payload is
+  built from `columns.filter(c => c.column_name.trim())`, so the server's
+  `columns.0` counted the SENT list while the UI rendered the unfiltered
+  grid. Clear row 1's name, mistype row 2, and the error pointed at the
+  blank row. Fixed the way #115 fixed it — `keptColumns()` threads a
+  `sourceIndex` with each column rather than re-deriving the offset, and
+  the catch block reads the server's index back onto the grid through it.
+  Not a second mechanism: the same lesson, the same shape.
+- **Raw Zod paths no longer reach the user.** `describeFieldErrors()`
+  translates `columns.0.column_name` to the column's own label — *Column
+  "Price": column_name must be snake_case* — honouring this morning's
+  directive that the user's mental model must never straddle two numbering
+  schemes. Non-column paths get the control's name (`name` → "Table name"),
+  never a dotted key.
+- **The error is announced.** The banner is `role="alert"`; the offending
+  input carries `aria-invalid` and `aria-describedby` pointing at its own
+  inline message, and a rejected create moves focus to the first bad row.
+  Previously a screen-reader user pressed Create and heard nothing.
+- **Marked inline, per row, reusing FormView's mechanism** (`err.fields` →
+  a keyed error map → rendered beside the control) rather than the second,
+  page-level dialect this PR had invented. The review flagged the
+  divergence as duplicated code.
+- **The accusation dies with the correction.** `setError(null)` ran only on
+  the next submit, so the banner kept naming a column the user had already
+  fixed. Editing a flagged row now clears its mark, and the banner goes
+  with the last one; adding or removing a row drops every mark, because the
+  indices below it have shifted and a stale mark would accuse the wrong
+  column — the very bug being fixed.
+- **`text-red-600` → `--color-danger` / `--color-danger-tint`**, so the
+  error survives palette switching and dark mode like the rest of the
+  Admin. Confirmed by computed style, not by eye: `rgb(226,76,76)` on
+  `rgb(251,236,236)` under `classic`.
+
+**Verified** against an isolated stack (own database + ports 8010/5183 —
+`:8000`/`:5173` belonged to a live sibling session and were left alone):
+`pnpm --filter web typecheck` clean, web units **42/42**, full web e2e
+**112 passed / 1 skipped / 0 failed** (counts re-measured after the rebase
+onto `2873d80`; the pre-rebase run read 39/39 and 111/2). New browser
+witness in
+`e2e/doctype-builder.spec.ts` — a blank row above a bad column: the banner
+says *Column "Price"*, asserted `not.toContainText('columns.0')`, the mark
+lands on row 1 and `dt-col-error-0` has count 0, the bad input holds focus,
+and typing a fix clears both. Confirmed to FAIL against the unfixed code
+first (it reported `columns.0.column_name` with no `role`), and re-confirmed
+to still bite AFTER the rebase: inverting `keptColumns()` to filter before
+indexing — the exact off-by-a-blank-row defect — fails the spec at
+`dt-col-error-1` not found, because the mark lands back on the blank row.
+The pin survives the refactor rather than passing vacuously.
+
+**Left alone deliberately:** `FormView`'s own per-field error still uses
+`text-red-600`, and TableBuilder keeps pre-existing `hover:text-red-600` /
+`bg-blue-50` literals outside the error UI — all pre-dating this change and
+out of this branch's scope.
+
 ## 2026-08-11 — the wizard shows the spreadsheet: preview grid with Excel-true numbers
 
 Third item of the production-readiness push. Each sheet card now carries a
