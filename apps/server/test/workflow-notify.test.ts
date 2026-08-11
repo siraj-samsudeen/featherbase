@@ -22,7 +22,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn): Promise<TestC
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: APPROVER_ROLE } })
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: APPROVER_ROLE } })
   await admin.post('/api/save_doc', {
     doctype: 'Permission',
     doc: { ref_table: DT, role: APPROVER_ROLE, tier: 'basic', can_read: true, can_write: true },

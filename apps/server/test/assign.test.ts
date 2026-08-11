@@ -19,7 +19,7 @@ async function setup(admin: TestClient) {
   })
   await admin.post('/api/save_doc', {
     doctype: 'User',
-    doc: { name: ASSIGNEE, email: ASSIGNEE },
+    doc: { row_id: ASSIGNEE, email: ASSIGNEE },
   })
   await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'asg-1', title: 'x' })
 }

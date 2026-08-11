@@ -12,7 +12,7 @@ async function setup(admin: TestClient, createUser: (o?: { roles?: string[] }) =
     name: DT,
     columns: [{ column_name: 't', column_type: 'Data' }],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
   // own_rows_only grant: read/write/create/delete only on own docs
   await admin.post('/api/save_doc', {
     doctype: 'Permission',

@@ -12,7 +12,7 @@ async function setup(admin: TestClient) {
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
   // seed one row as admin for read tests
   await admin.post('/api/save_doc', { doctype: DT, doc: { title: 'seeded' } })
 }

@@ -23,7 +23,7 @@ async function setup(
     id_pattern: 'prompt',
     columns: [{ column_name: 'note', column_type: 'Data' }],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
   const alice = await createUser({ roles: [ROLE] })
   const bob = await createUser({ roles: [ROLE] })
   return { alice, bob }

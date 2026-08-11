@@ -16,7 +16,7 @@ async function setup(admin: TestClient) {
     name: DT,
     columns: [{ column_name: 'subject', column_type: 'Data', reqd: true }],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
   // The customer role holds NO create Permission — the web form is the only door.
   await admin.post('/api/save_doc', {
     doctype: 'Permission',

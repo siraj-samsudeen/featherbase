@@ -122,7 +122,7 @@ describe('#137 P2: "active" means the token actually authenticates', () => {
 
     const [account] = (await admin.get<{ service_accounts: { token_count: number }[] }>(
       '/api/service_accounts',
-    )).service_accounts.filter((a) => (a as { row_id: string }).row_id === 'svc-count-test')
+    )).service_accounts.filter((a) => (a as { name: string }).row_id === 'svc-count-test')
     expect(account.token_count).toBe(1) // not 2 — the expired one cannot authenticate
 
     // A token whose owner is disabled is not "active" either.

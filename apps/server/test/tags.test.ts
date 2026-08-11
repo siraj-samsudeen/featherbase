@@ -20,7 +20,7 @@ async function setup(admin: TestClient) {
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
-  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { name: 't1', title: 'x' })
+  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 't1', title: 'x' })
 }
 
 describe('UI-017: tags', () => {

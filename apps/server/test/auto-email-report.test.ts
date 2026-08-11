@@ -35,12 +35,12 @@ async function setup(admin: TestClient) {
   })
   // Two documents to report on. One title has a comma to exercise CSV quoting.
   await admin.post(`/api/table/${encodeURIComponent(DT)}`, {
-    name: 'aer-1',
+    row_id: 'aer-1',
     title: 'Bolt, hex',
     qty: 10,
   })
   await admin.post(`/api/table/${encodeURIComponent(DT)}`, {
-    name: 'aer-2',
+    row_id: 'aer-2',
     title: 'Washer',
     qty: 3,
   })

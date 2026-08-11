@@ -65,7 +65,7 @@ describe('DEL-R2: deletion removes what creation wrote', () => {
     expect(defs.n).toBe(0)
     expect(await physicalExists(DT)).toBe(false)
     // The child Table definition survives; this parent's child ROWS do not.
-    const childMeta = (await admin.get('/api/table/Deletion%20Child:meta')) as { row_id: string }
+    const childMeta = (await admin.get('/api/table/Deletion%20Child:meta')) as { name: string }
     expect(childMeta.name).toBe('Deletion Child')
     const [orphans] = await sql`
       select count(*)::int as n from deletion_child where parenttype = ${DT}`
@@ -288,7 +288,7 @@ describe('DEL-R5: row-id series survive deletion', () => {
     const second = (await admin.post('/api/save_doc', {
       doctype: DT,
       doc: { title: 'b' },
-    })) as { row_id: string }
+    })) as { name: string }
     const num = (s: string) => Number(s.split('-').pop())
     expect(num(second.row_id)).toBeGreaterThan(num(first.row_id))
   })
@@ -340,7 +340,7 @@ describe('DEL-R6: a bound Table sheds its binding, never its source', () => {
       body: JSON.stringify({ tables: ['zones.csv'] }),
     })
     expect(res.status).toBe(200)
-    const { created } = (await res.json()) as { created: { row_id: string }[] }
+    const { created } = (await res.json()) as { created: { name: string }[] }
     const bound = created[0].row_id
 
     await admin.delete(`/api/doctype/${encodeURIComponent(bound)}`)
