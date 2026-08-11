@@ -33,4 +33,9 @@ export const config = {
   allowedOrigins: (
     process.env.WEB_ORIGINS ?? 'http://localhost:5173,http://127.0.0.1:5173'
   ).split(','),
+  // The deployment's own absolute URL, as a browser sees it (`https://app.example.com`).
+  // Used for links the server hands out — password-reset emails, and the OAuth
+  // `redirect_uri`. Configuration, so it cannot be steered by a request header;
+  // empty means "derive it from the request", which is what a dev checkout does.
+  siteUrl: (process.env.SITE_URL ?? '').trim().replace(/\/+$/, ''),
 }

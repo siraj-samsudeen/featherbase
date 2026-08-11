@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { config } from './config'
 import { sql } from './db'
 import { AppError } from './errors'
 import { setUserPassword } from './auth'
@@ -9,7 +10,9 @@ import { deliverToSink } from './email'
 // reset endpoint consumes the token and sets the new password.
 
 const TOKEN_TTL_MS = 60 * 60 * 1000 // 1 hour
-const SITE_URL = process.env.SITE_URL ?? 'http://localhost:5173'
+// One reader of SITE_URL, so the reset link and the OAuth redirect_uri can
+// never be told two different things about where this instance lives.
+const SITE_URL = config.siteUrl || 'http://localhost:5173'
 
 // Never reveal whether an account exists; only a real, enabled user gets a
 // mail. Returns the token in dev/test so callers can assert without scraping.

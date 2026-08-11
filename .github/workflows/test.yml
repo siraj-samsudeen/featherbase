@@ -22,6 +22,12 @@ concurrency:
 env:
   # Matches the default in apps/server/src/config.ts and init.sh.
   DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/featherbase
+  # The mock OAuth provider is opt-in and fails closed: absence of
+  # configuration must never enable it, because /api/oauth/mock/consent is
+  # pre-auth and mints a session for any email, `Administrator` included.
+  # The e2e specs drive that mock, so CI opts in explicitly — exactly as
+  # init.sh does for a developer machine. Never set this in a deployment.
+  ALLOW_MOCK_OAUTH: '1'
 
 jobs:
   unit:

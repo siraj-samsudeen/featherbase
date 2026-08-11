@@ -14,7 +14,7 @@ import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { getAccessToken, issueAccessToken, listAccessTokens, login, resolveToken, revokeAccessToken, setUserPassword, issueSession, type SessionUser } from './auth'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled } from './service-accounts'
-import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newState, verifyState, isMockProvider } from './oauth'
+import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, OAUTH_CALLBACK_PATH } from './oauth'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
@@ -298,23 +298,78 @@ app.on(
   },
 )
 
+// The origin a browser reaches this instance on. `SITE_URL` is configuration
+// and therefore authoritative: a request header cannot steer it. Only a
+// checkout that has not been told where it lives falls back to the request,
+// and then `x-forwarded-proto` is read as what it is — a LIST. A proxy chain
+// APPENDS its hop rather than overwriting, so a request that reached the edge
+// over TLS arrives as `https,http`; comparing that whole string to 'https'
+// read false and set the login cookies without `Secure`, and interpolated
+// `https,http://host` into the redirect_uri. Only the first hop is the
+// client's, and anything that is not http/https is not a protocol we will
+// paste into an origin.
+function externalOrigin(c: Context): URL {
+  if (config.siteUrl) return new URL(config.siteUrl)
+  const url = new URL(c.req.url)
+  const forwarded = c.req.header('x-forwarded-proto')?.split(',')[0].trim().toLowerCase()
+  const proto = forwarded === 'http' || forwarded === 'https' ? forwarded : url.protocol.slice(0, -1)
+  return new URL(`${proto}://${url.host}`)
+}
+
 // PLAT-006: Google OAuth (public — the caller is logging in). In dev a mock
 // provider stands in for Google. Flow: login → provider consent → callback →
 // find/create User → issue session → bounce back into the SPA with the token.
-app.get('/api/oauth/google/login', (c) => {
-  const url = new URL(c.req.url)
-  // Mock flow stays same-origin (relative) so the dev proxy keeps the browser
-  // on the SPA origin end to end; real Google needs an absolute redirect_uri.
-  const redirectUri = isMockProvider()
-    ? '/api/oauth/google/callback'
-    : `${url.origin}/api/oauth/google/callback`
-  const state = newState()
+// Mock flow stays same-origin (relative) so the dev proxy keeps the browser
+// on the SPA origin end to end; real Google needs an absolute redirect_uri
+// that byte-matches the registered one.
+function oauthRedirectUri(c: Context, clientId: string): string {
+  if (!clientId) return OAUTH_CALLBACK_PATH
+  return `${externalOrigin(c).origin}${OAUTH_CALLBACK_PATH}`
+}
+
+// The login challenge (OAuth `state` + PKCE verifier) rides HttpOnly cookies
+// so it is bound to the browser that started the sign-in. Same attributes as
+// the sid cookie, plus `secure` whenever the browser reached us over TLS and a
+// ten-minute life — they exist only for the length of one consent round trip.
+const OAUTH_STATE_COOKIE = 'oauth_state'
+const OAUTH_VERIFIER_COOKIE = 'oauth_verifier'
+
+// Derived from the external origin, not NODE_ENV: behind Railway's TLS-
+// terminating edge the container sees http, and a `secure` cookie on a
+// plain-http dev origin is silently dropped by the browser. Same origin the
+// redirect_uri comes from, so the two can never disagree.
+function oauthCookieOptions(c: Context) {
+  return {
+    httpOnly: true,
+    sameSite: 'Lax' as const,
+    path: '/',
+    maxAge: 600,
+    secure: externalOrigin(c).protocol === 'https:',
+  }
+}
+
+function setLoginChallengeCookies(c: Context, state: string, verifier: string) {
+  setCookie(c, OAUTH_STATE_COOKIE, state, oauthCookieOptions(c))
+  setCookie(c, OAUTH_VERIFIER_COOKIE, verifier, oauthCookieOptions(c))
+}
+
+function clearLoginChallengeCookies(c: Context) {
+  deleteCookie(c, OAUTH_STATE_COOKIE, { path: '/' })
+  deleteCookie(c, OAUTH_VERIFIER_COOKIE, { path: '/' })
+}
+
+app.get('/api/oauth/google/login', async (c) => {
+  const clientId = await oauthClientId()
+  assertSignInAvailable(clientId)
+  const redirectUri = oauthRedirectUri(c, clientId)
+  const { state, verifier } = newLoginChallenge()
+  setLoginChallengeCookies(c, state, verifier)
   const hint = { email: c.req.query('email'), name: c.req.query('name') }
-  return c.redirect(googleAuthorizeUrl(state, redirectUri, hint))
+  return c.redirect(googleAuthorizeUrl(clientId, state, redirectUri, codeChallengeFor(verifier), hint))
 })
 
-app.get('/api/oauth/mock/consent', (c) => {
-  if (!isMockProvider()) throw new AppError('ValidationError', 'Mock provider is not active')
+app.get('/api/oauth/mock/consent', async (c) => {
+  assertMockProviderAllowed(await oauthClientId())
   const state = c.req.query('state') ?? ''
   const redirectUri = c.req.query('redirect_uri') ?? ''
   const email = c.req.query('email') ?? 'demo.user@gmail.com'
@@ -322,19 +377,27 @@ app.get('/api/oauth/mock/consent', (c) => {
   return c.html(mockConsentHtml(state, redirectUri, email, name))
 })
 
-app.get('/api/oauth/mock/approve', (c) => {
-  if (!isMockProvider()) throw new AppError('ValidationError', 'Mock provider is not active')
+app.get('/api/oauth/mock/approve', async (c) => {
+  assertMockProviderAllowed(await oauthClientId())
   const state = c.req.query('state') ?? ''
   const redirectUri = c.req.query('redirect_uri') ?? ''
-  verifyState(state)
+  verifyState(state, getCookie(c, OAUTH_STATE_COOKIE))
   const email = c.req.query('email') ?? ''
   const name = c.req.query('name') ?? ''
   return c.redirect(mockApproveRedirect(state, redirectUri, email, name))
 })
 
 app.get('/api/oauth/google/callback', async (c) => {
-  verifyState(c.req.query('state'))
-  const { email, name } = await exchangeCode(c.req.query('code'))
+  const clientId = await oauthClientId()
+  assertSignInAvailable(clientId)
+  // The state must match the cookie this browser got at login. Without that
+  // binding an attacker could complete consent with their own account and
+  // hand the victim the callback URL, planting the attacker's session.
+  verifyState(c.req.query('state'), getCookie(c, OAUTH_STATE_COOKIE))
+  const verifier = getCookie(c, OAUTH_VERIFIER_COOKIE)
+  // One challenge, one use — clear it whether or not the exchange succeeds.
+  clearLoginChallengeCookies(c)
+  const { email, name } = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
   const userName = await findOrCreateGoogleUser(email, name)
   const { token } = await issueSession(userName)
   // The cookie matters here too: beacons (e.g. the unload-time event batch,

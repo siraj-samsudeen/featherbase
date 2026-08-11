@@ -1,5 +1,105 @@
 # Progress Log
 
+## 2026-08-11 — PR #127 review: the mock provider fails closed, and `state` finally means something
+
+Four security findings from the #127 review, fixed on the branch before it
+merges. A and B are guards that looked like guards without being ones; C and
+D — from a second, adversarial pass over the fixes themselves — are the
+opposite failure, trusting a value the caller supplies.
+
+**A (critical) — the prod mock guard failed open.** `assertOAuthConfigured`
+refused only when the client id was missing *and* `NODE_ENV === 'production'`.
+So the mock consent page — pre-auth, un-rate-limited, and willing to mint a
+session for any typed email including `Administrator` — stayed reachable
+whenever `NODE_ENV` was unset or misspelled, and, worse, whenever a System
+Manager blanked `google_client_id` in the Admin UI. Absence of configuration
+was what *enabled* the mock.
+
+Now nothing but an explicit `ALLOW_MOCK_OAUTH=1` turns it on. `init.sh` sets
+it (local dev boot); `vitest.config.ts` sets it (the suite drives the mock
+deliberately); a deployment runs neither and so can never serve it. The
+misleading name is gone, split into two functions that say what they do:
+`assertMockProviderAllowed` (refuses the mock) and `assertSignInAvailable`
+(refuses sign-in when no provider is configured). `exchangeCode` re-checks at
+the point the identity is actually conjured.
+
+**B (high) — `state` gave no CSRF protection.** It was an HMAC over a
+`Math.random()` nonce, and the callback checked only the signature and expiry
+— nothing bound it to a browser. An attacker could start a login, complete
+consent with their OWN Google account, and hand the victim the callback URL,
+planting the attacker's session in the victim's browser (login CSRF /
+session fixation). The state now rides a short-lived HttpOnly, SameSite=Lax
+cookie (`secure` derived from the request's real protocol, not `NODE_ENV`,
+so Railway's TLS edge and plain-http dev both work) and must match at the
+callback. The nonce comes from `crypto.randomBytes`. PKCE (S256) added: a
+`code_challenge` on the authorize redirect, the `code_verifier` — carried in
+its own cookie — on the token exchange.
+
+Verified: server suite 673/673 and web units 39/39 against an isolated
+`featherbase_sso127` database (sibling worktree sessions own :8000/:5173 and
+:8010/:5183 — this one ran on :8020/:5193 and left theirs alone); the 3-test
+browser e2e `oauth.spec.ts` green. The two new tests were mutation-checked —
+forcing `mockOAuthEnabled()` to `true` and dropping the cookie check makes
+exactly those three fail, so they bite. Live HTTP against a running server
+reproduced both defects' conditions: with `NODE_ENV` unset and
+`google_client_id` blank all four OAuth routes answer 401, and a callback URL
+replayed into a cookie-less or mismatched browser is refused while the
+originating browser completes.
+
+**C (high, same review) — `x-forwarded-proto` is a list, and we read it as a
+scalar.** A proxy chain *appends* its hop rather than overwriting, so a
+request that reached the edge over TLS arrives as `x-forwarded-proto:
+https,http`. Both readers compared that whole string to `'https'`, got false,
+and set the brand-new `oauth_state` / `oauth_verifier` cookies **without
+`Secure`** — the CSRF fix above, undone by a header the attacker controls.
+The same header interpolated `https,http://host` into the `redirect_uri`.
+
+The fix is one function, `externalOrigin()`, and both readers now go through
+it, so the cookie flag and the `redirect_uri` cannot disagree. Configuration
+comes first: `SITE_URL` — already the env var for password-reset links, now
+also in `config.siteUrl` with one reader instead of two — is the deployment's
+own absolute URL, and a value we own cannot be steered by a request header.
+Only a checkout that has not been told where it lives falls back to the
+request, and then the header is parsed as what it is: first hop only,
+trimmed, and accepted only if it is literally `http` or `https` (so
+`x-forwarded-proto: javascript` can no longer be pasted into an origin).
+
+**D (medium) — the mock reflected any `redirect_uri`.** `mockApproveRedirect`
+bounced to whatever the caller asked for, and the mock mints a session for
+ANY typed email including `Administrator`: `?redirect_uri=https://evil.example.com/x`
+returned `302` there with an admin authorization code attached. It is now an
+exact-match allowlist against `OAUTH_CALLBACK_PATH`, which also refuses the
+protocol-relative `//host` and `…/callback/../../elsewhere` forms; anything
+else is a 400 naming the only permitted target.
+
+Verified: server suite **677/677 across 115 files** (673 existing + 4 new)
+against an isolated `featherbase_pr127` database, `pnpm --filter server
+typecheck` clean. Sibling sessions own :8000 and :8020 — this one ran its
+live server on :8033 and left both answering. The four new tests were
+confirmed red first by stashing *only* the source fix and re-running: exactly
+those four fail (no `Secure` on the cookie, `javascript://localhost/…` as the
+redirect_uri, `SITE_URL` ignored, and a 302 to `evil.example.com`) while all
+seven pre-existing OAuth tests stay green. Live HTTP against a running server
+then reproduced both exploits and refused them: `x-forwarded-proto: https,http`
+now yields `HttpOnly; Secure; SameSite=Lax` and a clean
+`https://app.example.com/api/oauth/google/callback`, and all three off-origin
+`redirect_uri` shapes answer 400 while the full mock sign-in still completes
+to `/oauth-callback?token=`.
+
+Gotcha for the next session: `featherbase_pr127` had a committed
+`Administrator` row with `social_login = 'google'`, left outside any sandbox
+transaction by the reviewer's live exploit. It made the fail-closed test's
+"nothing was provisioned" assertion fail for reasons that had nothing to do
+with the code. Cleared.
+
+Next: the deploy note now documents `SITE_URL` as required behind a proxy;
+still outstanding is that Railway needs `GOOGLE_CLIENT_SECRET` and must NOT
+set `ALLOW_MOCK_OAUTH`. Still open from the earlier entry: hide the Google
+button when no provider is configured, and stop passing the session token in
+the `/oauth-callback` query string (the sid cookie already travels, and the
+query string lands in history and referrers) — that one is pre-existing, from
+`3752eb6`, and is being filed separately rather than fixed here.
+
 ## 2026-08-11 — #128 review: the builder's rejection names a column, not an index
 
 PR #129 surfaced the server's `err.fields` in TableBuilder but flattened the
@@ -190,6 +290,39 @@ an-import-run (default skip-since-edited-rows + explicit override, per
 owner ruling), typed confirmation above ~20 updates, index-on-demand on the
 match key (#145). Ratification queue: #142–#144.
 
+## 2026-08-11 — OAuth config moves into System Settings (PR #127 rework)
+
+Owner decision: allowlists and client ids are instance configuration, not
+deployment environment — anything an env var would carry that is not a
+secret creates a permanent manual step per install. So PR #127's
+`ALLOWED_LOGIN_DOMAINS` env var (and the `GOOGLE_CLIENT_ID` env read it sat
+beside) are gone before ever shipping:
+
+- System Settings gains `google_client_id` and `allowed_login_domains`
+  (migration 0070, same idempotent column_def pattern as 0025). Values live
+  in the `single_value` EAV store, editable in the Admin UI, and a
+  `rama_dw` manifest fixture can check them in.
+- `oauth.ts` reads both from `getSystemSettings()`; provider selection
+  (mock vs real Google) now keys off the *setting*, resolved per request.
+  **Only `GOOGLE_CLIENT_SECRET` remains an environment variable.**
+- The production guard is unchanged in spirit: no client id configured +
+  `NODE_ENV=production` → sign-in refused, mock never serves.
+- Branch also merged origin/main (access tokens #131 replaced API keys;
+  conflicts in `index.ts` imports and `PROGRESS.md` only).
+
+Verified: 5 server tests in `test/oauth.test.ts` (domain-gate tests now set
+`single_value` rows inside the sandbox — no env fiddling, no cleanup; new
+test proves a configured client id flips login to accounts.google.com and
+shuts the mock endpoints), full suite 650 green (the #126 events failure
+was fixed on main), 3-test browser e2e green, migration 0070 applied
+locally.
+
+Deploy story after this: Railway needs `GOOGLE_CLIENT_SECRET` (reference to
+report-server's) and nothing else; the client id + `jeyarama.com` domain
+list ride the checked-in manifest fixture; Google console gets the
+featherbase redirect URI. Coordinate merge order with PR #136, which edits
+the same `findOrCreateGoogleUser` region.
+
 ## 2026-08-06 — two ways a green suite goes red on a machine that has been used
 
 A local `pnpm test` came back with four failures on a feature branch. None of
@@ -367,6 +500,43 @@ Next: IMP-R13 (undo — insert deletion + version-trail replay for
 updates, the last leg of H1/IMP-H1); the three-fates queue in spec
 0004's retrospective needs the owner's rulings; #115's true-row naming
 still pinned.
+
+## 2026-08-05 — Live Google OAuth: real exchange, domain gate, prod mock guard (PR #127)
+
+The PLAT-006 scaffold becomes a working provider, so Rama's client signs in
+with the same Google ID used on dash.jeyarama.com — one corporate OAuth
+client shared across both, no WorkOS layer.
+
+- `exchangeCode()` real branch implemented: authorization-code POST to
+  Google's token endpoint (`GOOGLE_CLIENT_SECRET`) + userinfo fetch,
+  `email_verified` required. The dev mock is untouched, so local flows and
+  the e2e suite behave exactly as before.
+- `redirect_uri` honors `x-forwarded-proto` — behind Railway's
+  TLS-terminating edge the container sees `http`, and Google's exact-match
+  registration would otherwise reject the callback.
+- `ALLOWED_LOGIN_DOMAINS` (comma-separated) gates *auto-provisioning* on
+  first sign-in; users that already exist were provisioned deliberately and
+  always sign in (the report server's grants-arm semantics). Unset = dev
+  behaviour unchanged. Provisioned users get no roles — deny-by-default;
+  a Rama-side `Viewer` role belongs in the `rama_dw` manifest, not here.
+- **Security**: the mock provider now refuses to serve under
+  `NODE_ENV=production`. An unconfigured prod deploy previously served the
+  mock consent page, which minted a session for any typed email — including
+  `Administrator`.
+
+Verified: 4 new server tests (`apps/server/test/oauth.test.ts` — mock round
+trip, gate deny/admit, off-domain existing user, prod refusal), full server
+suite green except pre-existing #126 (events retention, reproduced on an
+untouched tree), and the 3-test browser e2e `oauth.spec.ts` against live
+dev servers.
+
+Next: Railway vars on the `featherbase` service (references to
+`report-server`'s Google client + `ALLOWED_LOGIN_DOMAINS=jeyarama.com`),
+add the redirect URI in the `jeyarama-dashboards` Google client, merge
+#127, then verify a real `@jeyarama.com` sign-in on prod. Follow-ups worth
+considering: hide the Google button on the login page when the provider is
+unconfigured, and stop passing the token via the `/oauth-callback` query
+string (the sid cookie already travels).
 
 ## 2026-08-05 — PR #116 review: the checklist snapshot becomes server-owned
 
