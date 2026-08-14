@@ -76,7 +76,10 @@ describe('FILE-001: file upload + storage', () => {
       const anon = await api.fetch(doc.file_url as string)
       expect(anon.status).toBe(401)
 
-      const authed = await api.fetch(`${doc.file_url}?token=${admin.token}`)
+      // #173: the browser presents the HttpOnly `sid` cookie, not a URL token.
+      const authed = await api.fetch(doc.file_url as string, {
+        headers: { cookie: `sid=${admin.token}` },
+      })
       expect(authed.status).toBe(200)
       expect(await authed.text()).toBe('classified')
     } finally {

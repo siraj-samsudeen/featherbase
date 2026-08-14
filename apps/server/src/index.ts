@@ -205,7 +205,8 @@ app.post('/api/reset_password', async (c) => {
 
 // FILE-001: serve stored files. Only files registered as a File doc are
 // readable. Public bucket needs no session; the private bucket accepts a
-// bearer header or ?token= (so <img src> and download links work).
+// bearer header, the `sid` cookie a browser sends on its own (so <img src>
+// and download links work — #173), or a signed URL.
 async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   const [row] = await sql`
     select row_id, file_name, mime_type, ref_table, ref_name
@@ -218,13 +219,13 @@ async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   if (isPrivate) {
     const signed = verifyFileSignature(fileUrl, c.req.query('expires'), c.req.query('signature'))
     if (!signed) {
-      // #137: the header still accepts any credential; the ?token= fallback
-      // refuses access tokens, which must never travel in a URL.
-      const header = c.req.header('authorization')
-      const token = c.req.query('token')
-      const user = header
-        ? await resolveToken(header)
-        : await resolveToken(token ? `Bearer ${token}` : undefined, { fromUrl: true })
+      // #137/#173: the credential is the Authorization header, or the HttpOnly
+      // `sid` cookie the browser already sends on a same-origin <img>/<a>
+      // request. `?token=` is deliberately not read — a URL lands in history,
+      // in `Referer` and in proxy logs, and that is true of a session JWT just
+      // as it is of an access token. A caller that can set no header at all
+      // mints a short-lived signed URL from /api/signed_url instead.
+      const user = await resolveToken(authCredential(c))
       if (row.ref_table && row.ref_name)
         await getDoc(row.ref_table as string, row.ref_name as string, user.row_id)
       else await getDoc('File', row.row_id as string, user.row_id)

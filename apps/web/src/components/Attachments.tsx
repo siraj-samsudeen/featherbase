@@ -72,8 +72,9 @@ export function Attachments({ doctype, name }: { doctype: string; name: string }
     }
   }
 
-  const href = (f: FileRow) =>
-    f.is_private ? `${f.file_url}?token=${getToken()}` : f.file_url
+  // #173: private files carry no credential in the URL. The link is
+  // same-origin, so the HttpOnly `sid` cookie authenticates it.
+  const href = (f: FileRow) => f.file_url
 
   return (
     <div className="fc-card p-4" data-testid="attachments-panel">

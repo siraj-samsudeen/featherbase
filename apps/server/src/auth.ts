@@ -199,27 +199,46 @@ async function resolveAccessToken(token: string): Promise<SessionUser> {
   }
 }
 
-// #137: some routes accept a credential from `?token=` so that <img src>,
-// download links and the browser WebSocket (which cannot set headers) work.
-// A URL lands in browser history, referrers, proxy and access logs — fine for
-// a short-lived session JWT, not for a long-lived access token that carries
-// its owner's roles. Those callers pass `fromUrl` and get a hard refusal.
-export async function resolveToken(
-  authorization?: string,
-  opts: { fromUrl?: boolean } = {},
-): Promise<SessionUser> {
+// #173: sessions ride an HttpOnly `sid` cookie. A raw Node request — the
+// WebSocket upgrade — has no Hono context to read it through, so parse the
+// header directly and hand back the same `Bearer <token>` shape resolveToken
+// takes. An absent, empty or malformed cookie is simply no credential.
+const SID_COOKIE = 'sid'
+
+export function credentialFromCookieHeader(header?: string): string | undefined {
+  if (!header) return undefined
+  for (const part of header.split(';')) {
+    const eq = part.indexOf('=')
+    if (eq === -1 || part.slice(0, eq).trim() !== SID_COOKIE) continue
+    const raw = part.slice(eq + 1).trim()
+    // Cookie values are percent-encoded on the way out; a malformed one is
+    // simply not a credential.
+    let value = raw
+    if (raw.includes('%')) {
+      try {
+        value = decodeURIComponent(raw)
+      } catch {
+        return undefined
+      }
+    }
+    return value ? `Bearer ${value}` : undefined
+  }
+  return undefined
+}
+
+// #137 accepted a credential from `?token=` for <img src>, download links and
+// the browser WebSocket, refusing only access tokens there. #173 finished the
+// job: no route reads a credential out of a URL at all now — those callers
+// authenticate from the `sid` cookie, which is already on the request — so
+// there is no URL-borne case left to refuse. A URL lands in browser history,
+// referrers and proxy logs, and that is as true of a session JWT as it is of
+// an access token.
+export async function resolveToken(authorization?: string): Promise<SessionUser> {
   const token = authorization?.match(/^Bearer (.+)$/)?.[1]
   if (!token) throw new AppError('AuthenticationError', 'Authentication required')
   // #131: access tokens ride the same Bearer header as sessions, told apart
   // by their prefix — no JWT parse attempted on them.
-  if (token.startsWith(TOKEN_PREFIX)) {
-    if (opts.fromUrl)
-      throw new AppError(
-        'AuthenticationError',
-        'An access token must be sent in the Authorization header, never in a URL',
-      )
-    return resolveAccessToken(token)
-  }
+  if (token.startsWith(TOKEN_PREFIX)) return resolveAccessToken(token)
   let payload: { sub?: unknown }
   try {
     payload = (await verify(token, JWT_SECRET, 'HS256')) as { sub?: unknown }

@@ -198,6 +198,70 @@ Also ran `test/cli.test.ts` (spawns the CLI subprocess, which calls
 `runMigrations` on boot) — 5/5 green. **Next:** nothing queued by this
 change; #149 is closed by this PR.
 
+## 2026-08-11 — the session JWT is out of URLs entirely (issue #173)
+
+#150 (PR #170, still open) takes the session JWT out of the OAuth callback
+redirect. Reviewing that turned up **two more surfaces putting the same
+7-day JWT in a query string**, filed as #173 and built here after the owner
+labelled it `ready-for-agent`:
+
+- **private file links** — `Attachments.tsx` and `FormView.tsx` appended
+  `?token=${getToken()}` to `/private/...`, and `serveFile` accepted it. The
+  #137 `fromUrl` guard refused only long-lived `fbt_` access tokens, so
+  session JWTs sailed through;
+- **the realtime WebSocket** — the browser connected to `/ws?token=<jwt>`.
+
+**The cookie was already there.** The `sid` cookie *is* the session JWT
+(`setSidCookie` stores `session.token`), it is HttpOnly/Lax/`path=/`, and
+both surfaces are same-origin — an `<img>`/`<a>` request carries it, and so
+does the WebSocket upgrade, which is an ordinary HTTP request before it
+switches protocols. So the URL token was decorating requests that were
+already authenticated. No new machinery: `serveFile` now uses the existing
+`authCredential(c)`, and the WS handshake reads `req.headers.cookie` through
+a new `credentialFromCookieHeader` in `auth.ts`. Signed URLs
+(`/api/signed_url`) remain the credential-free path for anything that can
+set no header at all.
+
+Neither route reads `?token=` any more, which left `resolveToken`'s
+`fromUrl` option with no callers — **deleted**, along with the refusal it
+guarded. The invariant it encoded is now structural: there is no URL-borne
+credential path left to refuse.
+
+**Verified end-to-end**, not just in unit tests. Against a live server:
+a private file is 401 with no credential, **401 with the session JWT in
+`?token=`** (was 200), 200 on the cookie alone, 200 on the header; the
+WebSocket connects on the cookie and closes 4001 for both `?token=` and no
+credential. In a real browser, the full Playwright suite is **114 passed /
+1 skipped**, including a new `private-file-cookie.spec.ts` that pins the
+link shape — and that guard was *proved to bite* by temporarily restoring
+the old client line, where it caught the raw JWT in the href. Server suite
+**712 passed / 16 skipped**, web unit **42 passed**, both typechecks clean,
+smoke green.
+
+Two existing tests changed shape (`files.test.ts`, `signed-files.test.ts`):
+both authenticated via `?token=`, so they now send the cookie. The
+assertions and their intent — session required, permission enforced — are
+untouched; only the credential transport moved, which is what #173
+authorizes.
+
+**Gotchas for the next session.** `init.sh` hardcodes killing ports
+8000/5173, so it *cannot* be used while another checkout is running — this
+session ran on an isolated stack instead (own database `featherbase_i173`,
+API 8100, web 5273 via `API_PORT`/`WEB_PORT`, Playwright via `WEB_URL`).
+Two false alarms worth recognising: omitting `RLS_TEST_URL` fails all five
+`rls.test.ts` cases with `relation "rls_vault" does not exist` (the RLS
+client lands on the wrong database), and `oauth.spec.ts` fails without
+`ALLOW_MOCK_OAUTH=1`, which `init.sh` normally sets. Also, killing a `tsx
+watch` server by port alone is not enough — the parent respawns it and the
+restart dies on `EADDRINUSE` while the *old* code keeps serving, which
+briefly made a passing fix look broken.
+
+**Next:** #170 still needs merging to close #150 itself. The remaining
+`?token=` in the tree is that OAuth callback redirect at `index.ts:413`,
+which is #150's to remove — deliberately untouched here. Otherwise the
+open threads are unchanged: build spec 0006 (connection console), or triage
+#153–#157 and #162–#164.
+
 ## 2026-08-11 — VMS connected end-to-end; the connection-console direction is set
 
 The session that motivated the mysql engine, run in parallel with its build.
@@ -344,6 +408,42 @@ is already a Reference. Pinned by a doubly-bound test.
 tables and walk the map against RDS. Note for that retest: tables reflected
 BEFORE this change carry no source_fk_* records, so they will not converge —
 delete and re-reflect them (order then no longer matters).
+
+## 2026-08-11 — Google SSO live on prod: rollout completed and verified
+
+The #127 email tier is now working end to end on
+`featherbase-rama.up.railway.app`. What landed where, and how it was proven:
+
+- **Google console** (owner): the featherbase redirect URI
+  `https://featherbase-rama.up.railway.app/api/oauth/google/callback` was
+  added to the shared `jeyarama-dashboards` Internal client — the same
+  client dash.jeyarama.com uses, which is what makes it single sign-on.
+- **Config**: `google_client_id` + `allowed_login_domains=jeyarama.com`
+  reached prod as System Settings singles PATCHed over the admin API — the
+  full manifest install stays blocked (#113 MotherDuck unreachable from
+  Railway, and `RAILWAY_CONTROL_URL` is no longer on the service), and the
+  checked-in `rama_dw` manifest fixture carries the same values, so a
+  future install is an idempotent no-op for these. Env on the service is
+  secrets/topology only: `GOOGLE_CLIENT_SECRET` (reference to
+  report-server's) and `SITE_URL`.
+- **Verified**: before config, both `/api/oauth/google/login` and the mock
+  consent route answered 401 on prod (mock hole confirmed closed after the
+  #127 merge). After config, login 302s to accounts.google.com with the
+  correct client id, the exact registered https `redirect_uri` (SITE_URL
+  path), `prompt=select_account`, and a PKCE S256 challenge; Google renders
+  the "continue to Jeyarama Dashboards" page — no `redirect_uri_mismatch`.
+  The owner then completed a real `siraj@jeyarama.com` sign-in and landed
+  in `/admin`; the user row was auto-provisioned exactly per design:
+  `social_login='google'`, enabled, no roles.
+- Filed on the way: #158 — the disabled-account refusal at the OAuth
+  callback is the deliberately generic "Invalid login credentials" rendered
+  as raw JSON; since Google has verified email ownership at that point, a
+  clear human-readable page there would be enumeration-safe. Owner's call.
+
+Next for SSO: role grants for provisioned users (a Rama `Viewer` role
+belongs in the `rama_dw` manifest, not the framework), #158 and #150 as
+ruled, and the floor tier (emp-code+PIN) which is designed separately —
+#127 is deliberately not extended in that direction.
 
 ## 2026-08-11 — #132: the physical row key becomes `row_id` (COMPLETE)
 

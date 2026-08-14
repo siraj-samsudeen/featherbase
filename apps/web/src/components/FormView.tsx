@@ -925,8 +925,9 @@ function AttachControl({
   const [busy, setBusy] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const isImage = field.column_type === 'Attach Image'
+  // #173: a private file URL carries no credential — the <img>/<a> request is
+  // same-origin, so the HttpOnly `sid` cookie authenticates it.
   const url = typeof value === 'string' && value ? value : null
-  const withToken = (u: string) => (u.startsWith('/private/') ? `${u}?token=${getToken()}` : u)
 
   async function upload(file: globalThis.File) {
     setBusy(true)
@@ -970,7 +971,7 @@ function AttachControl({
         <div>
           {isImage && (
             <img
-              src={withToken(url)}
+              src={url}
               alt={field.label ?? field.column_name}
               data-testid={`attach-preview-${field.column_name}`}
               className="mb-2 max-h-40 rounded-md border border-[var(--color-border)]"
@@ -978,7 +979,7 @@ function AttachControl({
           )}
           <div className="flex items-center gap-2 text-sm">
             <a
-              href={withToken(url)}
+              href={url}
               target="_blank"
               rel="noreferrer"
               className="truncate text-[var(--color-brand)] hover:underline"
