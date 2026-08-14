@@ -1,5 +1,58 @@
 # Progress Log
 
+## 2026-08-14 — Excel-like list editing: three view toggles, ratified by prototype
+
+The owner asked for Excel-like editing in the list view ("clicking a
+record navigates away"). The session ran the full arc: a throwaway UX
+prototype (three variants on the real `$doctype` route via `?variant=`,
+stubbed saves), the owner test-drove the ideas and ratified **all three
+as view-level toggles**, then the real build landed test-first:
+
+1. **View toggle** (List · Grid · Datasheet) in the list toolbar,
+   persisted per user in `user_settings` beside sort/hiddenCols. A click
+   beats a late settings response (`viewTouched` ref) — the async load
+   can no longer overwrite a fresh choice. Editing modes are absent on
+   read-only sources (EDS-13 absence, gated on `isSourceReadOnly`).
+2. **List mode side-peek** — clicking a row opens the ordinary FormView
+   in a slide-over `PeekDrawer`; the name link still full-page
+   navigates; Esc/scrim closes and invalidates the list. One generic
+   FormView keeps serving every Table (invariant #3).
+3. **Grid mode** (`GridEditView`) — Excel semantics: ring selection,
+   type-to-overwrite, Enter/F2 edit, Tab/Enter/arrows move, and a row
+   autosaves the moment selection LEAVES it: fresh GET then PATCH of
+   only the changed fields (`changedFields` in `lib/list-edit.ts`, unit-
+   tested: '' clears to null, Check never null, wire-string numerics
+   compare equal). Refused saves keep the row dirty with a sticky error
+   dot.
+4. **Datasheet mode** (`DatasheetView`) — every cell always an input;
+   row autosave on focusout; a ghost bottom line creates rows through
+   the ordinary row POST so id patterns and triggers run.
+
+**Verified:** isolated stack (scratch db `featherbase_listproto`, ports
+8010/5188 per the worktree-isolation recipe); new `e2e/list-editing.spec.ts`
+covers all four journeys with server-side assertions — 4/4 green; full
+web e2e 120 passed (UPS-J2 green on re-run, the known flake), vitest
+71/71 (7 new), typecheck clean. Web-only — no migrations, no server
+changes.
+
+**Gotchas hit:** (a) the commit→move→save sequence runs in one event
+where just-set React state is unreadable — dirty rows live in a ref and
+saves take row DATA, not an index; (b) datasheet cell values are input
+values, invisible to Playwright text locators — rows carry
+`data-row-name`; (c) the list wire returns Int columns as strings
+(postgres client numerics) — `changedFields` coerces both sides.
+
+The ratifying prototype's full source is preserved on branch
+`prototype/list-editing`; the feature branch removes it. Owner: this
+ships genuinely new capability — please add a features.json entry (and
+consider a spec doc) per the hard rule; also decide whether Kanban/
+Report should join the same toggle group someday.
+
+**Next:** the toggle group truncates at narrow widths (Datasheet label
+clips); worth a responsive pass. Grid mode still has no multi-cell
+ranges/clipboard — the ratified follow-up if real range ops are wanted
+is Glide Data Grid (see the 2026-08-14 options discussion).
+
 ## 2026-08-11 — Explore gets its front doors: chain/select deep links, split button, map hand-off
 
 The two entry points the owner picked from the mockup exploration
