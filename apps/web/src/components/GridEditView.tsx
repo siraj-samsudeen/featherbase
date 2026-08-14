@@ -35,43 +35,35 @@ export function GridEditView({
   onSaved: () => void | Promise<void>
 }) {
   const [rows, setRows] = useState<Row[]>(serverRows)
-  const [dirty, setDirty] = useState<Set<string>>(new Set())
   const [sel, setSel] = useState<CellSel | null>(null)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const { status, save } = useRowSave(doctype, onSaved)
   const gridRef = useRef<HTMLDivElement>(null)
+  // Dirty rows live in a ref: the commit→move→save sequence runs inside one
+  // event, where state set a line earlier is not yet readable. Re-renders
+  // that repaint the dot always accompany the mutations (setRows / status).
+  const dirty = useRef(new Set<string>())
 
   // Server truth flows in whenever no local edit is pending — a refetch
   // mid-edit must not clobber the user's typing.
   useEffect(() => {
-    if (!dirty.size && !editing) setRows(serverRows)
+    if (!dirty.current.size && !editing) setRows(serverRows)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverRows])
 
-  function saveRow(r: number) {
-    const row = rows[r]
-    if (!row) return
+  // Takes the row DATA, not an index — the caller may hold an edit newer
+  // than the `rows` state this render closed over.
+  function saveRowData(row: Row) {
     const name = String(row.name)
-    if (!dirty.has(name)) return
-    setDirty((d) => {
-      const next = new Set(d)
-      next.delete(name)
-      return next
-    })
+    if (!dirty.current.has(name)) return
+    dirty.current.delete(name)
     const original = serverRows.find((s) => String(s.name) === name)
     if (!original) return
-    void save(name, changedFields(original, row, editableColumnDefs(meta, columns))).then(
-      (ok) => {
-        // A refused save keeps the row dirty — the edit is still unsynced.
-        if (!ok)
-          setDirty((d) => {
-            const next = new Set(d)
-            next.add(name)
-            return next
-          })
-      },
-    )
+    void save(name, changedFields(original, row, editableColumnDefs(meta, columns))).then((ok) => {
+      // A refused save keeps the row dirty — the edit is still unsynced.
+      if (!ok) dirty.current.add(name)
+    })
   }
 
   function startEdit(r: number, c: number, seed?: string) {
@@ -82,26 +74,32 @@ export function GridEditView({
   }
 
   function commit(move: 'down' | 'right' | 'stay') {
+    let currentRows = rows
     if (sel && editing) {
       const { r, c } = sel
       const key = columns[c].column_name
       if (draft !== String(rows[r][key] ?? '')) {
-        setRows((rs) => rs.map((row, i) => (i === r ? { ...row, [key]: draft } : row)))
-        setDirty((d) => new Set(d).add(String(rows[r].name)))
+        currentRows = rows.map((row, i) => (i === r ? { ...row, [key]: draft } : row))
+        setRows(currentRows)
+        dirty.current.add(String(rows[r].name))
       }
     }
     setEditing(false)
-    if (sel && move !== 'stay') doMove(move === 'down' ? { dr: 1 } : { dc: 1 })
+    if (sel && move !== 'stay') {
+      const delta = move === 'down' ? { dr: 1 } : { dc: 1 }
+      const { sel: next, leftRow } = moveSelection(sel, delta, currentRows.length, columns.length)
+      setSel(next)
+      // Leaving the row is the autosave moment — with the just-committed data.
+      if (leftRow || move === 'down') saveRowData(currentRows[sel.r])
+    }
     gridRef.current?.focus()
   }
 
   function doMove(delta: { dr?: number; dc?: number }) {
-    setSel((s) => {
-      if (!s) return s
-      const { sel: next, leftRow } = moveSelection(s, delta, rows.length, columns.length)
-      if (leftRow) saveRow(s.r)
-      return next
-    })
+    if (!sel) return
+    const { sel: next, leftRow } = moveSelection(sel, delta, rows.length, columns.length)
+    setSel(next)
+    if (leftRow) saveRowData(rows[sel.r])
   }
 
   function onGridKey(e: React.KeyboardEvent) {
@@ -121,7 +119,7 @@ export function GridEditView({
   // Focus leaving the grid entirely is also a "left the row" moment.
   function onGridBlur(e: React.FocusEvent) {
     if (gridRef.current?.contains(e.relatedTarget as Node)) return
-    rows.forEach((_, r) => saveRow(r))
+    rows.forEach((row) => saveRowData(row))
   }
 
   return (
@@ -156,10 +154,14 @@ export function GridEditView({
             {rows.map((row, r) => (
               <tr
                 key={String(row.name)}
+                data-row-name={String(row.name)}
                 className="border-b border-[var(--color-border)] last:border-0"
               >
                 <td className="w-7 px-2 text-center">
-                  <RowStatusDot status={status[String(row.name)]} dirty={dirty.has(String(row.name))} />
+                  <RowStatusDot
+                    status={status[String(row.name)]}
+                    dirty={dirty.current.has(String(row.name))}
+                  />
                 </td>
                 {columns.map((col, c) => {
                   const selected = sel?.r === r && sel?.c === c

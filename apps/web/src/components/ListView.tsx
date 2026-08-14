@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
@@ -90,8 +90,11 @@ export function ListView({
   const [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
   const [start, setStart] = useState(0)
   // List editing (owner-ratified 2026-08-14): the table body renders in one
-  // of three modes — classic list, Excel-like grid, or datasheet.
+  // of three modes — classic list, Excel-like grid, or datasheet. A click
+  // beats the async saved-settings load — the ref stops a late response
+  // from overwriting a choice the user just made.
   const [view, setView] = useState<ListViewMode>('list')
+  const viewTouched = useRef(false)
   // UI-013: per-user saved settings (sort, hidden columns, filters).
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set())
   const [colPickerOpen, setColPickerOpen] = useState(false)
@@ -159,7 +162,8 @@ export function ListView({
         if (s) {
           if (s.sort) setSort(s.sort)
           if (Array.isArray(s.hiddenCols)) setHiddenCols(new Set(s.hiddenCols))
-          if (s.view && VIEW_MODES.some((m) => m.key === s.view)) setView(s.view)
+          if (s.view && VIEW_MODES.some((m) => m.key === s.view) && !viewTouched.current)
+            setView(s.view)
         }
         setSettingsLoaded(true)
       })
@@ -374,6 +378,7 @@ export function ListView({
                   data-testid={`view-toggle-${m.key}`}
                   aria-pressed={view === m.key}
                   onClick={() => {
+                    viewTouched.current = true
                     setView(m.key)
                     persist({ view: m.key })
                   }}

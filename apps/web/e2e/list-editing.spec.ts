@@ -49,6 +49,22 @@ async function signIn(page: Page) {
   await page.waitForURL(/\/admin/)
 }
 
+// Rows are hash-named; the API maps a title to its row name (and current
+// field values). Datasheet cells are inputs, whose values are invisible to
+// text locators — rows are addressed by data-row-name instead.
+async function fetchRows(page: Page) {
+  const token = await page.evaluate(() => localStorage.getItem('fc_token'))
+  const fields = encodeURIComponent(JSON.stringify(['name', 'title', 'city', 'qty']))
+  const res = await page.request.get(
+    `/api/table/${encodeURIComponent(DT)}?fields=${fields}&limit_page_length=100`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  // Int columns arrive as strings on the list wire (postgres client numerics).
+  return ((await res.json()) as {
+    data: { name: string; title: string; city: string | null; qty: number | string | null }[]
+  }).data
+}
+
 test('view toggle switches modes and the choice persists per user', async ({ page }) => {
   await signIn(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}`)
@@ -65,4 +81,54 @@ test('view toggle switches modes and the choice persists per user', async ({ pag
   await expect(page.getByTestId('sheet-view')).toBeVisible()
   await page.getByTestId('view-toggle-list').click()
   await expect(page.getByTestId('list-rows')).toBeVisible()
+})
+
+test('grid: edit a cell, leave the row — the row autosaves via the server', async ({ page }) => {
+  await signIn(page)
+  await page.goto(`/admin/${encodeURIComponent(DT)}`)
+  await page.getByTestId('view-toggle-grid').click()
+  await expect(page.getByTestId('grid-view')).toBeVisible()
+
+  // alpha's City cell: click to select, Enter to edit, type, Enter commits
+  // and moves down — leaving the row is the autosave moment.
+  const alphaName = (await fetchRows(page)).find((r) => r.title === 'alpha')!.name
+  const alphaRow = page.locator(`[data-row-name="${alphaName}"]`)
+  await alphaRow.getByTestId('grid-cell-city').click()
+  await page.keyboard.press('Enter')
+  await page.getByTestId('grid-cell-editor').fill('Tirunelveli')
+  await page.keyboard.press('Enter')
+
+  await expect(alphaRow.getByTestId('row-saved')).toBeVisible()
+  await expect(alphaRow.getByTestId('grid-cell-city')).toHaveText('Tirunelveli')
+
+  // The server, not local state, is the record: verify over the API.
+  expect((await fetchRows(page)).find((r) => r.title === 'alpha')?.city).toBe('Tirunelveli')
+
+  // Back to list for the next test's default.
+  await page.getByTestId('view-toggle-list').click()
+})
+
+test('datasheet: direct cell edit autosaves on row exit; ghost row creates', async ({ page }) => {
+  await signIn(page)
+  await page.goto(`/admin/${encodeURIComponent(DT)}`)
+  await page.getByTestId('view-toggle-sheet').click()
+  await expect(page.getByTestId('sheet-view')).toBeVisible()
+
+  // Edit beta's qty in place, then click elsewhere to leave the row.
+  const betaName = (await fetchRows(page)).find((r) => r.title === 'beta')!.name
+  const betaRow = page.locator(`[data-row-name="${betaName}"]`)
+  await betaRow.getByTestId('sheet-cell-qty').locator('input').fill('42')
+  await page.getByTestId('list-total').click()
+  await expect(betaRow.getByTestId('row-saved')).toBeVisible()
+
+  // Ghost row: type a title and press Enter — a real row appears.
+  await page.getByTestId('sheet-ghost-title').fill('delta')
+  await page.getByTestId('sheet-ghost-title').press('Enter')
+  await expect(page.getByTestId('list-total')).toContainText('4 total')
+
+  const listed = await fetchRows(page)
+  expect(Number(listed.find((r) => r.title === 'beta')?.qty)).toBe(42)
+  expect(listed.some((r) => r.title === 'delta')).toBe(true)
+
+  await page.getByTestId('view-toggle-list').click()
 })

@@ -119,6 +119,7 @@ export function DatasheetView({
             {rows.map((row, r) => (
               <tr
                 key={String(row.name)}
+                data-row-name={String(row.name)}
                 onBlur={rowBlur(String(row.name))}
                 className="border-b border-[var(--color-border)] last:border-0 focus-within:bg-[var(--color-subtle)]/60 hover:bg-[var(--color-subtle)]/40"
               >
