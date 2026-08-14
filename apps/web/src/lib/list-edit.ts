@@ -23,12 +23,13 @@ const NUMBER_TYPES = new Set(['Int', 'Float', 'Currency'])
 // Inputs hand back strings; compare and send values in the column's own
 // type so "3" typed over 3 is not a change and numbers PATCH as numbers.
 function coerce(value: unknown, columnType: string): unknown {
+  // Check is boolean at every stage — an unchecked box is false, never null.
+  if (columnType === 'Check') return value !== 'false' && Boolean(value)
   if (value === '' || value == null) return null
   if (NUMBER_TYPES.has(columnType)) {
     const n = Number(value)
     return Number.isNaN(n) ? value : n
   }
-  if (columnType === 'Check') return Boolean(value)
   return value
 }
 

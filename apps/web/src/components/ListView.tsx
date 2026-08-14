@@ -9,6 +9,8 @@ import { formatValue, useSettings, type Settings } from '../lib/settings'
 import { useIsSystemManager } from '../lib/session'
 import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
+import { GridEditView } from './GridEditView'
+import { DatasheetView } from './DatasheetView'
 
 export type Filter = [string, string, unknown]
 
@@ -61,6 +63,16 @@ export function Indicator({ value }: { value: string }) {
   )
 }
 
+// List editing: the three body modes. Editing modes are offered only when
+// the table accepts writes (EDS-13: affordances are absent on read-only
+// sources, never disabled).
+export type ListViewMode = 'list' | 'grid' | 'sheet'
+const VIEW_MODES: { key: ListViewMode; label: string }[] = [
+  { key: 'list', label: 'List' },
+  { key: 'grid', label: 'Grid' },
+  { key: 'sheet', label: 'Datasheet' },
+]
+
 // UI-002/UI-003: ONE list component renders every Table from its metadata.
 export function ListView({
   doctype,
@@ -77,6 +89,9 @@ export function ListView({
   const queryClient = useQueryClient()
   const [sort, setSort] = useState<{ field: string; dir: 'asc' | 'desc' } | null>(null)
   const [start, setStart] = useState(0)
+  // List editing (owner-ratified 2026-08-14): the table body renders in one
+  // of three modes — classic list, Excel-like grid, or datasheet.
+  const [view, setView] = useState<ListViewMode>('list')
   // UI-013: per-user saved settings (sort, hidden columns, filters).
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set())
   const [colPickerOpen, setColPickerOpen] = useState(false)
@@ -135,15 +150,16 @@ export function ListView({
     let cancelled = false
     setSettingsLoaded(false)
     api
-      .get<{ settings: { sort?: typeof sort; hiddenCols?: string[] } | null }>(
-        `/api/user_settings/${encodeURIComponent(doctype)}`,
-      )
+      .get<{
+        settings: { sort?: typeof sort; hiddenCols?: string[]; view?: ListViewMode } | null
+      }>(`/api/user_settings/${encodeURIComponent(doctype)}`)
       .then((res) => {
         if (cancelled) return
         const s = res.settings
         if (s) {
           if (s.sort) setSort(s.sort)
           if (Array.isArray(s.hiddenCols)) setHiddenCols(new Set(s.hiddenCols))
+          if (s.view && VIEW_MODES.some((m) => m.key === s.view)) setView(s.view)
         }
         setSettingsLoaded(true)
       })
@@ -156,11 +172,12 @@ export function ListView({
   }, [doctype])
 
   // Persist settings whenever the user changes them (after the initial load).
-  function persist(next: { sort?: typeof sort; hiddenCols?: Set<string> }) {
+  function persist(next: { sort?: typeof sort; hiddenCols?: Set<string>; view?: ListViewMode }) {
     if (!settingsLoaded) return
     void api.put(`/api/user_settings/${encodeURIComponent(doctype)}`, {
       sort: next.sort !== undefined ? next.sort : sort,
       hiddenCols: [...(next.hiddenCols ?? hiddenCols)],
+      view: next.view ?? view,
     })
   }
 
@@ -344,6 +361,33 @@ export function ListView({
           )}
         </div>
         <div className="flex items-center gap-2">
+          {/* List editing: view-mode toggle. Editing modes need writes. */}
+          {!isSourceReadOnly(meta.data) && (
+            <div
+              className="flex overflow-hidden rounded border border-[var(--color-border-strong,var(--color-border))]"
+              role="group"
+              aria-label="List view mode"
+            >
+              {VIEW_MODES.map((m) => (
+                <button
+                  key={m.key}
+                  data-testid={`view-toggle-${m.key}`}
+                  aria-pressed={view === m.key}
+                  onClick={() => {
+                    setView(m.key)
+                    persist({ view: m.key })
+                  }}
+                  className={`px-2.5 py-1 text-xs ${
+                    view === m.key
+                      ? 'bg-[var(--color-brand)] text-white'
+                      : 'bg-[var(--color-surface)] text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="relative">
             <button
               onClick={() => setColPickerOpen((o) => !o)}
@@ -580,6 +624,25 @@ export function ListView({
           )}
         </div>
       )}
+      {view === 'grid' && meta.data ? (
+        <GridEditView
+          doctype={doctype}
+          meta={meta.data}
+          rows={rows}
+          columns={columns}
+          settings={settings}
+          onSaved={refresh}
+        />
+      ) : view === 'sheet' && meta.data ? (
+        <DatasheetView
+          doctype={doctype}
+          meta={meta.data}
+          rows={rows}
+          columns={columns}
+          settings={settings}
+          onSaved={refresh}
+        />
+      ) : (
       <div className="fc-card overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-[var(--color-subtle)] text-left">
@@ -663,6 +726,7 @@ export function ListView({
           </tbody>
         </table>
       </div>
+      )}
       <div className="mt-3 flex items-center gap-3 text-sm">
         <button
           disabled={start === 0}

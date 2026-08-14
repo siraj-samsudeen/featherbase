@@ -59,6 +59,17 @@ describe('changedFields', () => {
     ).toEqual({})
   })
 
+  test('Check columns are always boolean — unchecking sends false, not null', () => {
+    expect(
+      changedFields({ done: true }, { done: 'false' }, [
+        { column_name: 'done', column_type: 'Check' },
+      ]),
+    ).toEqual({ done: false })
+    expect(
+      changedFields({ done: false }, { done: '' }, [{ column_name: 'done', column_type: 'Check' }]),
+    ).toEqual({})
+  })
+
   test('numeric strings from inputs coerce for number columns', () => {
     expect(
       changedFields({ qty: 3 }, { qty: '4' }, [{ column_name: 'qty', column_type: 'Int' }]),
