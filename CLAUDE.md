@@ -86,9 +86,13 @@ the calculus changes.
 - [`feather-testing-postgres`](https://github.com/siraj-samsudeen/feather-testing-postgres)
   — the SQL Sandbox test harness, consumed as a published npm dependency. It
   lives in its own repo; fix it there and release, never vendor it back in.
-  *Temporarily pinned to a git commit* while the `renderApp` rename sits
-  unreleased on its `main`; move both `package.json`s back to `^0.2.0` once
-  it publishes (see the 2026-07-31 `PROGRESS.md` entry)
+  *Temporarily pinned to a git commit* — now `59b7b84`, which teaches
+  `seed()` the Table/Row wire (`POST /api/save_row { table, row }`) and
+  corrects its `{ name }` return type to `{ row_id }`. That commit sits on
+  the harness's `table-row-vocabulary` branch alongside the still-unreleased
+  `renderApp` rename; move both `package.json`s back to a version range once
+  the harness publishes (see the 2026-07-31 and 2026-08-14 `PROGRESS.md`
+  entries)
 - Monorepo — pnpm workspaces; boot everything with `./init.sh`
 
 **Visual identity is a standing directive.** Every new UI feature must inherit

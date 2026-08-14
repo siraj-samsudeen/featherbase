@@ -41,9 +41,9 @@ describe('naming', () => {
       id_pattern: 'NMINV-.####',
       columns: [{ column_name: 'title', column_type: 'Data' }],
     })
-    const doc = await admin.post<{ name: string }>('/api/save_doc', {
-      doctype: 'Nm Invoice',
-      doc: { title: 'first' },
+    const doc = await admin.post<{ name: string }>('/api/save_row', {
+      table: 'Nm Invoice',
+      row: { title: 'first' },
     })
     expect(doc.name).toBe('NMINV-0001')
   })

@@ -45,7 +45,7 @@ curl -s http://localhost:8000/api/table_def \
 ```
 
 Then create, edit, complete, delete items — in the Admin, and over HTTP:
-`POST /api/save_doc`, `GET /api/table/Todo Item` (with a filter for
+`POST /api/save_row`, `GET /api/table/Todo Item` (with a filter for
 `done = 0`), `PATCH /api/table/Todo Item/:name` (echoing `updated_at` —
 optimistic locking), `DELETE`.
 

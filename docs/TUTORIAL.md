@@ -110,12 +110,12 @@ no Task-specific frontend code exists anywhere.
 Create a task: a new row lives at **`/admin/Task/new`** (the literal
 name `new` renders an empty `FormView` —
 `apps/web/src/components/FormView.tsx`). Fill in a title and save; the form
-POSTs to `/api/save_doc` and the id pattern assigns `TASK-0001`.
+POSTs to `/api/save_row` and the id pattern assigns `TASK-0001`.
 
 Create a few more. Then try the HTTP equivalent:
 
 ```bash
-curl -s http://localhost:8000/api/save_doc \
+curl -s http://localhost:8000/api/save_row \
   -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"doctype":"Task","doc":{"title":"Read ARCHITECTURE.md","due_date":"2026-08-01"}}'
 ```
@@ -152,7 +152,7 @@ Let's enforce a rule: a task's title must be at least five characters.
 `apps/server/src/server-scripts.ts` in a hardened `node:vm` sandbox inside
 the save transaction).
 
-Create one at `/admin/Server Script/new` (or via `save_doc`):
+Create one at `/admin/Server Script/new` (or via `save_row`):
 
 - **name**: `task-title-length` (Server Script uses prompt naming)
 - **script_type**: `Document Event`
@@ -212,9 +212,9 @@ describe('Task tutorial', () => {
         { column_name: 'stage', column_type: 'Choice', choices: 'Open\nDone', default_value: 'Open' },
       ],
     })
-    const doc = await admin.post<{ name: string; stage: string }>('/api/save_doc', {
-      doctype: 'Tutorial Task',
-      doc: { title: 'Write the tutorial' },
+    const doc = await admin.post<{ name: string; stage: string }>('/api/save_row', {
+      table: 'Tutorial Task',
+      row: { title: 'Write the tutorial' },
     })
     expect(doc.name).toBe('TUT-0001')
     expect(doc.stage).toBe('Open')

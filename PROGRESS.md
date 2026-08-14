@@ -1,5 +1,61 @@
 # Progress Log
 
+## 2026-08-14 — DocType leaves the wire: `/api/table_def`, `/api/save_row`, `{ table, row }`
+
+The July 2026 rename reached the vocabulary but stopped at the API. Owner
+ruling: finish it now, *before* the next big features — a 1,345-site rename
+is far worse to attempt once feature branches are open against it.
+
+Renamed together, because a partial wire rename is a compile error, not a
+style inconsistency (TanStack Router types the `$table` param):
+
+| Was | Is |
+|---|---|
+| `POST /api/doctype` (+3) | `POST /api/table_def` |
+| `POST /api/save_doc { doctype, doc }` | `POST /api/save_row { table, row }` |
+| `/api/print/:doctype`, `/api/permissions/:doctype`, … | `…/:table` |
+| `/api/tenancy/doctype(s)` | `/api/tenancy/table_def(s)` |
+| `ref_doctype` / `reference_doctype` | `ref_table` / `reference_table` |
+| router `$doctype` + ~20 components | `$table` |
+| `doctype-engine.ts` (+4 test files) | `table-engine.ts` |
+| realtime channel `doc:<Table>:<id>` | `row:<Table>:<id>` |
+
+`/api/table_def` rather than `/api/table`, because **`/api/table/:table`
+already serves rows** — the definition routes and the row routes are
+different things and must not collide. The realtime channel moved for
+consistency: the recents namespace already said `row:`.
+
+**Deliberately NOT renamed**, each for a reason:
+
+- `table_def.name` — the standing natural-key exemption.
+- `0002_doctype.sql` — renaming an applied migration makes it re-run.
+- `frm.doc` and `frappe.ui.form.on` — the Client Script API. Renaming one
+  field while leaving `frappe.ui.form.on` would be incoherent; that surface
+  is Frappe-shaped on purpose and deserves its own ruling. One test uses it;
+  no stored scripts exist.
+
+**Migration `0080`** (number announced) rewrites Home Page shortcuts whose
+stored `type` was `'doctype'` — a value inside a `jsonb` document, which no
+column rename can reach. Same shape as 0078, idempotent the same way.
+
+**The harness had to move first.** `feather-testing-postgres` is a separate
+repo; its `seed()` fixture posted `/api/save_doc { doctype, doc }`, so 6
+tests failed on a route that no longer existed — the last blocker after the
+other 239 were fixed here. Fixed there (commit `59b7b84`, branch
+`table-row-vocabulary`) and re-pinned in both `package.json`s. That commit
+also corrects a *pre-existing* staleness: `seed()` promised `{ name: string }`
+long after #132 made the physical key `row_id`.
+
+**Verified** on fresh databases throughout: server **717 passed / 0 failed**,
+web **64/64**, both typechecks clean, `./init.sh` boots, full e2e **117
+passed** with the known-flaky UPS-J2 green on re-run.
+
+**Next:** the design docs (`docs/specs/0001`, `0002`, `data-and-admin-topology`,
+`execution-plan`, ADR 0007) still say DocType in present-tense prose. Left out
+of this change on purpose — they carry real "Frappe's own DocType" references
+that a blanket sweep would corrupt, so they need the same A/B care, not the
+same regex.
+
 ## 2026-08-14 — the import log's payload says `row_id` too (owner ruling)
 
 The previous entry left `TouchedRow.name` alone and asked for a ruling. The
