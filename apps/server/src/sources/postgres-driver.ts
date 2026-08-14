@@ -1,5 +1,6 @@
 import postgres from 'postgres'
 import { AppError } from '../errors'
+import { fkKey } from './fk'
 import type {
   Binding,
   IntrospectedTable,
@@ -172,6 +173,43 @@ export const postgresDriver: SourceDriver = {
        order by c.table_schema, c.table_name, c.ordinal_position`,
       [schemaFilter ?? null],
     )
+    // FK edges from pg_constraint, NOT information_schema: constraint names
+    // are unique per TABLE in Postgres, so the information_schema views
+    // (keyed on schema+name) cross-multiply when two tables reuse a name —
+    // pg_constraint's conrelid/confrelid oids are unambiguous. Single-column
+    // FKs only (conkey length 1); a Reference holds one value.
+    const fkRows = await run(
+      cfg,
+      `select ns.nspname as table_schema, rel.relname as table_name,
+              att.attname as column_name,
+              fns.nspname as referenced_table_schema,
+              frel.relname as referenced_table_name,
+              fatt.attname as referenced_column_name
+       from pg_constraint con
+       join pg_class rel on rel.oid = con.conrelid
+       join pg_namespace ns on ns.oid = rel.relnamespace
+       join pg_class frel on frel.oid = con.confrelid
+       join pg_namespace fns on fns.oid = frel.relnamespace
+       join pg_attribute att on att.attrelid = con.conrelid and att.attnum = con.conkey[1]
+       join pg_attribute fatt on fatt.attrelid = con.confrelid and fatt.attnum = con.confkey[1]
+       where con.contype = 'f' and array_length(con.conkey, 1) = 1
+         and ns.nspname not in ('pg_catalog', 'information_schema')
+         and ($1::text is null or ns.nspname = $1)
+       order by ns.nspname, rel.relname, att.attname, con.oid`,
+      [schemaFilter ?? null],
+    )
+    // A column under two FK constraints keeps the first (the ORDER BY makes
+    // that deterministic) — same rule as the mysql grouping.
+    const fks = new Map<string, { schema: string; table: string; column: string }>()
+    for (const r of fkRows) {
+      const key = fkKey(String(r.table_schema), String(r.table_name), String(r.column_name))
+      if (fks.has(key)) continue
+      fks.set(key, {
+        schema: String(r.referenced_table_schema),
+        table: String(r.referenced_table_name),
+        column: String(r.referenced_column_name),
+      })
+    }
     const tables = new Map<string, IntrospectedTable>()
     for (const r of rows) {
       const key = `${r.table_schema}.${r.table_name}`
@@ -190,6 +228,9 @@ export const postgresDriver: SourceDriver = {
         is_pk: isPk,
         max_length: r.character_maximum_length == null ? null : Number(r.character_maximum_length),
         column_type: mapPgType(String(r.data_type), r.character_maximum_length as number | null),
+        references:
+          fks.get(fkKey(String(r.table_schema), String(r.table_name), String(r.column_name))) ??
+          null,
       })
     }
     return [...tables.values()]

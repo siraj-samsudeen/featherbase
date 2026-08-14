@@ -724,7 +724,7 @@ export function AdminLayout() {
             {/* #100 pattern 4: the cross-filter Explore surface. */}
             <Link
               to="/admin/explore"
-              search={{ root: undefined }}
+              search={{ root: undefined, chain: undefined, select: undefined }}
               data-testid="explore-link"
               className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)] hover:text-[var(--color-ink)]"
               activeProps={{

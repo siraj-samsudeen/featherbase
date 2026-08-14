@@ -75,6 +75,11 @@ export interface IntrospectedColumn {
   // Featherbase column type the reflector proposes for this column.
   column_type: string
   max_length?: number | null
+  // Single-column foreign key edge this column carries, engine-neutrally:
+  // the referenced relation and column on the SAME source. Composite FKs are
+  // not reported (they cannot become a Reference). Drivers that cannot read
+  // FK metadata simply omit it.
+  references?: { schema: string; table: string; column: string } | null
 }
 
 export interface IntrospectedTable {

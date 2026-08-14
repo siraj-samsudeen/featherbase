@@ -55,15 +55,83 @@ async function mockSignIn(api: TestClient, email: string, name = 'Test User') {
   return api.fetch(approve.headers.get('location') as string, { headers: { cookie } })
 }
 
+// #150: what the callback hands the SPA is a one-time handoff code, not the
+// session token. These two read the landing redirect the way the SPA does.
+function handoffCode(res: Response): string | null {
+  const location = res.headers.get('location') as string
+  return new URLSearchParams(location.split('?')[1] ?? '').get('code')
+}
+
+function sidCookie(res: Response): string {
+  const sid = res.headers.getSetCookie().find((c) => c.startsWith('sid='))
+  return sid?.split(';')[0] ?? ''
+}
+
+function redeem(api: TestClient, code: string | null, cookie: string) {
+  return api.fetch('/api/oauth/session', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ code }),
+  })
+}
+
 describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   test('full mock flow provisions a user and hands the SPA a session', async ({ api }) => {
     const res = await mockSignIn(api, 'new.person@gmail.com')
     expect(res.status).toBe(302)
     const landing = res.headers.get('location') as string
-    expect(landing).toContain('/oauth-callback?token=')
+    // #150: the landing URL carries a handoff code and no session token. The
+    // assertion used to be `/oauth-callback?token=` — the change of expectation
+    // IS the fix, not an accommodation of one.
+    expect(landing).toContain('/oauth-callback?code=')
+    expect(landing).not.toContain('token=')
+
+    // The SPA redeems that code over POST, presenting the sid cookie the same
+    // response set, and gets the session it needs (its WebSocket and private
+    // file URLs carry the literal token).
+    const redeemed = await redeem(api, handoffCode(res), sidCookie(res))
+    expect(redeemed.status).toBe(200)
+    const session = (await redeemed.json()) as { token: string; user: { name: string } }
+    expect(session.user.name).toBe('new.person@gmail.com')
+    // The token is a real session: it authenticates as that user.
+    const whoami = await api.fetch('/api/whoami', {
+      headers: { authorization: `Bearer ${session.token}` },
+    })
+    expect(whoami.status).toBe(200)
+    expect(((await whoami.json()) as { name: string }).name).toBe('new.person@gmail.com')
+
     const [user] = await sql`
       select social_login, enabled from "user" where email = 'new.person@gmail.com'`
     expect(user).toMatchObject({ social_login: 'google', enabled: true })
+  })
+
+  // #150: the code is a one-shot. The copy left behind in browser history, in
+  // a Referer header or in a proxy log is already spent by the time anyone
+  // reads it — unlike the 7-day session JWT that used to be in that URL.
+  test('a handoff code cannot be redeemed twice', async ({ api }) => {
+    const res = await mockSignIn(api, 'replay@gmail.com')
+    const code = handoffCode(res)
+    const cookie = sidCookie(res)
+    expect((await redeem(api, code, cookie)).status).toBe(200)
+    expect((await redeem(api, code, cookie)).status).toBe(401)
+  })
+
+  // And it is bound to the browser it was minted for: redemption requires the
+  // sid cookie set by the same callback response. A code lifted from the URL
+  // is worth nothing in another browser.
+  test('a handoff code redeemed without the matching sid cookie is refused', async ({ api }) => {
+    const res = await mockSignIn(api, 'bound@gmail.com')
+    const code = handoffCode(res)
+    expect((await redeem(api, code, '')).status).toBe(401)
+    const other = await mockSignIn(api, 'someone.else@gmail.com')
+    expect((await redeem(api, code, sidCookie(other))).status).toBe(401)
+    // Burned by the failed attempts — the right browser cannot use it either.
+    expect((await redeem(api, code, sidCookie(res))).status).toBe(401)
+  })
+
+  test('an unknown or missing handoff code is refused', async ({ api }) => {
+    expect((await redeem(api, 'not-a-real-code', '')).status).toBe(401)
+    expect((await redeem(api, null, '')).status).toBe(401)
   })
 
   test('allowed_login_domains blocks auto-provisioning foreign domains', async ({ api }) => {
@@ -75,7 +143,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
 
     const admitted = await mockSignIn(api, 'kannan@jeyarama.com')
     expect(admitted.status).toBe(302)
-    expect(admitted.headers.get('location')).toContain('/oauth-callback?token=')
+    expect(admitted.headers.get('location')).toContain('/oauth-callback?code=')
   })
 
   test('an existing user signs in even off-domain (provisioned deliberately)', async ({ api }) => {
@@ -87,7 +155,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     await setAllowedDomains('jeyarama.com')
     const res = await mockSignIn(api, 'contractor@outside.io')
     expect(res.status).toBe(302)
-    expect(res.headers.get('location')).toContain('/oauth-callback?token=')
+    expect(res.headers.get('location')).toContain('/oauth-callback?code=')
   })
 
   test('a google_client_id in System Settings switches to the real provider', async ({ api }) => {
@@ -169,7 +237,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     // The browser that actually started the sign-in still completes normally.
     const genuine = await api.fetch(callbackUrl, { headers: { cookie } })
     expect(genuine.status).toBe(302)
-    expect(genuine.headers.get('location')).toContain('/oauth-callback?token=')
+    expect(genuine.headers.get('location')).toContain('/oauth-callback?code=')
   })
 
   test('the approve step also requires the state cookie', async ({ api }) => {

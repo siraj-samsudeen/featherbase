@@ -1,6 +1,7 @@
 import mysql from 'mysql2'
 import type { Pool } from 'mysql2/promise'
 import { AppError } from '../errors'
+import { fkKey, singleColumnFks } from './fk'
 import type {
   Binding,
   IntrospectedTable,
@@ -253,6 +254,26 @@ export const mysqlDriver: SourceDriver = {
        order by c.table_schema, c.table_name, c.ordinal_position`,
       [schemaFilter, schemaFilter],
     )
+    // FK edges: every column that participates in a foreign key, with its
+    // referenced relation. Composite FKs are grouped in JS and dropped —
+    // only a single-column FK can ever become a Reference.
+    const fkRows = await run(
+      cfg,
+      `select kcu.constraint_schema as constraint_schema,
+              kcu.constraint_name as constraint_name,
+              kcu.table_schema as table_schema, kcu.table_name as table_name,
+              kcu.column_name as column_name,
+              kcu.referenced_table_schema as referenced_table_schema,
+              kcu.referenced_table_name as referenced_table_name,
+              kcu.referenced_column_name as referenced_column_name
+       from information_schema.key_column_usage kcu
+       where kcu.referenced_table_name is not null
+         and kcu.table_schema not in ('mysql', 'information_schema', 'performance_schema', 'sys')
+         and (? is null or kcu.table_schema = ?)
+       order by kcu.constraint_schema, kcu.constraint_name, kcu.ordinal_position`,
+      [schemaFilter, schemaFilter],
+    )
+    const fks = singleColumnFks(fkRows)
     const tables = new Map<string, IntrospectedTable>()
     for (const r of rows) {
       const key = `${r.table_schema}.${r.table_name}`
@@ -278,6 +299,9 @@ export const mysqlDriver: SourceDriver = {
           String(r.column_type ?? ''),
           r.character_maximum_length == null ? null : Number(r.character_maximum_length),
         ),
+        references:
+          fks.get(fkKey(String(r.table_schema), String(r.table_name), String(r.column_name))) ??
+          null,
       })
     }
     return [...tables.values()]

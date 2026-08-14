@@ -35,7 +35,9 @@ import { TableBuilder } from './pages/TableBuilder'
 import { ImportWizard } from './pages/ImportWizard'
 import { AllTablesPage } from './pages/AllTables'
 import SourceBrowser from './pages/SourceBrowser'
+import { PrototypeConnectSourcePage } from './pages/PrototypeConnectSource'
 import { ExploreView } from './pages/Explore'
+import { parseChain, parseSelect } from './lib/explore-steps'
 import { RelationMap } from './pages/RelationMap'
 
 const rootRoute = createRootRoute({ component: Outlet })
@@ -99,19 +101,20 @@ const webFormRoute = createRoute({
   component: WebFormPage,
 })
 
-// PLAT-006: OAuth callback landing (public) — stores the token from the query
-// and enters the Admin.
+// PLAT-006: OAuth callback landing (public) — redeems the one-time handoff
+// code from the query for a session (#150: never the token itself) and enters
+// the Admin.
 const oauthCallbackRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/oauth-callback',
   validateSearch: (search: Record<string, unknown>) => ({
-    token: searchString(search.token),
+    code: searchString(search.code),
   }),
   component: OAuthCallbackRouteComponent,
 })
 function OAuthCallbackRouteComponent() {
-  const { token } = oauthCallbackRoute.useSearch()
-  return <OAuthCallbackPage token={token} />
+  const { code } = oauthCallbackRoute.useSearch()
+  return <OAuthCallbackPage code={code} />
 }
 
 // WEB-003: customer portal — a logged-in website user sees only their own
@@ -471,6 +474,17 @@ const allTablesRoute = createRoute({
   component: AllTablesPage,
 })
 
+// PROTOTYPE — throwaway route for the connect-a-data-source UX exploration.
+// Three variants via ?variant=A|B|C, table picker via ?step=tables.
+const prototypeConnectSourceRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'prototype/connect-source',
+  validateSearch: (search: Record<string, unknown>) => ({
+    step: searchString(search.step),
+  }),
+  component: PrototypeConnectSourcePage,
+})
+
 // EDS-2: the Data Source browser — introspect and reflect external tables
 // (static segment, before $doctype).
 const sourceBrowserRoute = createRoute({
@@ -589,18 +603,37 @@ const exploreRoute = createRoute({
   path: 'explore',
   validateSearch: (search: Record<string, unknown>) => ({
     root: searchString(search.root),
+    // Entry points (ListView split button, RelationMap) deep-link a whole
+    // workspace: `chain` pre-builds step2/step3, `select` preselects pane 1.
+    // Both are validated the parseFilters way — malformed means absent.
+    chain: searchString(search.chain),
+    select: searchString(search.select),
   }),
   component: ExplorePage,
 })
 
 function ExplorePage() {
-  const { root } = exploreRoute.useSearch()
+  const { root, chain, select } = exploreRoute.useSearch()
   const navigate = exploreRoute.useNavigate()
   return (
     <div data-testid="doctype-page">
+      {/* Params initialize state, they are not two-way bound — in-view step
+          and selection changes stay pure state (#87 keeps root shareable;
+          the chain/select params exist for the entry points). The key
+          remounts the workspace when a navigation hands us new params. */}
       <ExploreView
+        key={`${root ?? ''}|${chain ?? ''}|${select ?? ''}`}
         root={root}
-        onRootChange={(r) => navigate({ search: { root: r || undefined }, replace: true })}
+        initialChain={parseChain(chain)}
+        initialSelect={parseSelect(select)}
+        onRootChange={(r) =>
+          navigate({
+            // A root change is a fresh workspace — any deep-linked chain and
+            // selection belonged to the old root, so they leave the URL too.
+            search: { root: r || undefined, chain: undefined, select: undefined },
+            replace: true,
+          })
+        }
       />
     </div>
   )
@@ -636,5 +669,5 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, doctypeRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, doctypeRoute, docRoute]),
 ])

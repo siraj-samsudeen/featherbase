@@ -210,6 +210,28 @@ once per run, outside any sandbox transaction. It complements
 
 ## Agent skills
 
+### SDLC skill routing (owner directive, 2026-08-11)
+
+Use the mattpocock-skills plugin at the matching lifecycle stage — invoke
+the skill, don't improvise the equivalent:
+
+| Stage | Skill |
+|---|---|
+| Building a feature or fixing a bug test-first | `mattpocock-skills:tdd` |
+| Diagnosing a bug, failure, or perf regression | `mattpocock-skills:diagnosing-bugs` |
+| Reviewing a PR, branch, or "changes since X" | `mattpocock-skills:code-review` (Standards + Spec axes) |
+| Answering a design question with throwaway code | `mattpocock-skills:prototype` |
+| Designing or deepening a module interface/seam | `mattpocock-skills:codebase-design` |
+| Pinning domain vocabulary or recording an ADR | `mattpocock-skills:domain-modeling` |
+| Delegating reading/API-fact gathering | `mattpocock-skills:research` |
+| Resolving an in-progress merge/rebase conflict | `mattpocock-skills:resolving-merge-conflicts` |
+| Stress-testing a plan before committing to it | `mattpocock-skills:grilling` |
+
+Requirements documents still use the featherbase-local `journey-spec`
+skill, not a plugin. When spawning sub-sessions or task chips, name the
+required skills in the prompt — spawned agents read this file, but an
+explicit instruction survives context loss.
+
 ### Issue tracker
 
 Issues live as GitHub issues in `siraj-samsudeen/featherbase`, driven through

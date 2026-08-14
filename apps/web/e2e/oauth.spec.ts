@@ -15,6 +15,15 @@ test.beforeEach(async ({ request }) => {
 })
 
 test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', async ({ page }) => {
+  // #150: every URL this flow puts in the address bar — and therefore in
+  // history, in the Referer of anything the page fetches next, and in every
+  // proxy log on the way — is recorded, so the assertion below can prove the
+  // session token is in none of them.
+  const visited: string[] = []
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) visited.push(frame.url())
+  })
+
   await page.goto('/login')
   // Kick off the OAuth flow (full-page navigation to the server endpoint).
   await page.getByTestId('google-login').click()
@@ -28,6 +37,14 @@ test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', asyn
   // We land in the Admin, signed in as the new user.
   await page.waitForURL(/\/admin/)
   await expect(page.getByTestId('session-user')).toBeVisible()
+
+  // #150: the landing carried a one-time handoff code, never the session
+  // token; the SPA POSTed that code back and holds the real token now.
+  expect(visited.some((u) => u.includes('/oauth-callback?code='))).toBe(true)
+  for (const url of visited) expect(url).not.toContain('token=')
+  const stored = await page.evaluate(() => localStorage.getItem('fc_token'))
+  expect(stored).toBeTruthy()
+  expect(visited.join(' ')).not.toContain(stored as string)
 
   // The User was created and marked as a Google login.
   const headers = await adminHeaders(page.request)

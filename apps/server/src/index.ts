@@ -14,7 +14,7 @@ import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { getAccessToken, issueAccessToken, listAccessTokens, login, resolveToken, revokeAccessToken, setUserPassword, issueSession, type SessionUser } from './auth'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled } from './service-accounts'
-import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, OAUTH_CALLBACK_PATH } from './oauth'
+import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
@@ -31,6 +31,7 @@ import {
 } from './actions'
 import './actions/core-row-actions'
 import './actions/collection-import'
+import './actions/collection-import-revert'
 import './actions/source-actions'
 import './actions/row-connections'
 import './actions/collection-aggregate'
@@ -402,14 +403,24 @@ app.get('/api/oauth/google/callback', async (c) => {
   clearLoginChallengeCookies(c)
   const { email, name } = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
   const userName = await findOrCreateGoogleUser(email, name)
-  const { token } = await issueSession(userName)
+  const session = await issueSession(userName)
   // The cookie matters here too: beacons (e.g. the unload-time event batch,
   // #101) cannot carry a bearer token, so an OAuth session without the sid
   // cookie would silently drop them (PR #104 review).
-  setSidCookie(c, token)
-  // Bounce back into the SPA (same origin via the dev proxy), which stores the
-  // token and lands in the Admin.
-  return c.redirect(`/oauth-callback?token=${encodeURIComponent(token)}`)
+  setSidCookie(c, session.token)
+  // #150: the session token itself never travels in this URL — a 7-day
+  // credential in a query string lands in browser history, in the Referer of
+  // anything that page fetches next, and in every proxy log on the way. The
+  // SPA gets a one-time, one-minute handoff code and POSTs it back below.
+  return c.redirect(`/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
+})
+
+// #150: the other half of the handoff. Public — the code IS the credential,
+// alongside the sid cookie set by the callback that minted it, and the session
+// this returns is the thing being established. Redeeming burns the code.
+app.post('/api/oauth/session', async (c) => {
+  const { code } = (await c.req.json().catch(() => ({}))) as { code?: string }
+  return c.json(redeemHandoffCode(code, getCookie(c, 'sid')))
 })
 
 // ---- API-004: everything below requires a valid session --------------------

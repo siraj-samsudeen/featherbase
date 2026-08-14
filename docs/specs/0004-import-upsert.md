@@ -173,11 +173,14 @@ with no key chosen stores nothing.
 - **UPS-H1 — the wrong key is a mass overwrite.** One bad key choice
   rewrites many rows in a click. Mitigations, all ruled: the J1.3
   preview counts before commit; rehearse shows per-row actions; updates
-  run the full lifecycle so versioning records prior values; and undo
+  run the full lifecycle so versioning records prior values; undo
   **covers updates by replaying the version trail** *(Q4 ruled
-  2026-08-05 — an R13 build requirement, cross-noted in the framework's
-  IMP-R13)*. Fully disarmed once R13 ships; until then the version
-  history UI is the manual recovery path.
+  2026-08-05; shipped run-scoped as spec 0005's import revert,
+  2026-08-11)*; and — *owner decision 2026-08-11, for the first
+  real-data deployment* — a run about to update **more than
+  `CONFIRM_UPDATES_OVER` (20) rows** demands the number be **typed
+  back** before the import proceeds: the preview count is passive and
+  easy to click past; typing 1,200 is not.
 
 ## Open questions *(arbiter: Siraj)*
 

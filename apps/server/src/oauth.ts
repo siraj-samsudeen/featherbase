@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { sql } from './db'
+import type { SessionUser } from './auth'
 import { AppError } from './errors'
 import { saveDoc } from './document'
 import { getSystemSettings } from './settings'
@@ -227,6 +228,55 @@ export async function exchangeCode(
   if (!email || info.email_verified !== true)
     throw new AppError('AuthenticationError', 'Google account has no verified email')
   return { email, name: String(info.name ?? email) }
+}
+
+// --- #150: the sign-in handoff code -----------------------------------------
+// The callback used to bounce to `/oauth-callback?token=<7-day session JWT>`,
+// which parks a long-lived credential in browser history, in the `Referer` of
+// every later outbound request from that page, and in every proxy/CDN access
+// log along the way.
+//
+// The SPA still needs the literal token at that moment — its WebSocket carries
+// it as a query parameter and private file downloads append it — so an empty
+// redirect on the sid cookie alone would break sign-in. What travels in the
+// URL instead is a handoff code: 32 random bytes, redeemable exactly once,
+// over POST, within a minute. Redeeming burns it, so the copy left behind in
+// history or a log is already spent.
+//
+// It is also bound to the browser it was minted for: the same response sets
+// the sid cookie, and redemption requires that cookie to match the session
+// being handed over. A code intercepted in flight is worthless elsewhere.
+const HANDOFF_TTL_MS = 60_000
+
+interface HandoffSession {
+  token: string
+  user: SessionUser
+}
+
+const handoffs = new Map<string, { session: HandoffSession; expires: number }>()
+
+export function mintHandoffCode(session: HandoffSession): string {
+  const now = Date.now()
+  // Abandoned codes (the user closes the tab mid-redirect) would otherwise
+  // accumulate for the process's lifetime.
+  for (const [code, entry] of handoffs) if (entry.expires <= now) handoffs.delete(code)
+  const code = randomBytes(32).toString('base64url')
+  handoffs.set(code, { session, expires: now + HANDOFF_TTL_MS })
+  return code
+}
+
+// One code, one use. The entry is deleted whatever the outcome — an expired or
+// wrong-browser attempt burns it too, so nothing is left to retry against.
+export function redeemHandoffCode(code: string | undefined, sid: string | undefined): HandoffSession {
+  const invalid = () => new AppError('AuthenticationError', 'Invalid or expired sign-in code')
+  if (!code) throw invalid()
+  const entry = handoffs.get(code)
+  handoffs.delete(code)
+  if (!entry || entry.expires <= Date.now()) throw invalid()
+  const a = Buffer.from(sid ?? '')
+  const b = Buffer.from(entry.session.token)
+  if (a.length !== b.length || !timingSafeEqual(a, b)) throw invalid()
+  return entry.session
 }
 
 // System Settings `allowed_login_domains` (comma-separated) limits which

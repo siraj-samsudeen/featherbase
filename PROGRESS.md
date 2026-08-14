@@ -1,5 +1,350 @@
 # Progress Log
 
+## 2026-08-11 — Explore gets its front doors: chain/select deep links, split button, map hand-off
+
+The two entry points the owner picked from the mockup exploration
+(options B and C), plus the URL vocabulary that powers them:
+
+1. **`?chain=` and `?select=` on `/admin/explore`** — up to two step
+   objects pre-building step2/step3, and pane-1 row names arriving
+   preselected. Validated the #87 `parseFilters` way (malformed means
+   absent, never a throw); a chain resolves stage-by-stage against the
+   live meta/backlink options, so a stale URL degrades to the panes that
+   still resolve instead of blanking. Params initialize state only —
+   in-view clicks stay pure state, parity with `root`.
+2. **Option B** — an Explore split button in the ListView manager row:
+   main face opens the bare root; the chevron lists the table's
+   chainable dependents (capped at two, the pane limit) and deep-links
+   the chain.
+3. **Option C** — "Open in Explore" on the RelationMap header: root =
+   the mapped table, select = the mapped row, chain = first option out
+   of the root, then first option out of THAT table (two hops, because
+   pane 3 chains off pane 2's table — two siblings of the root can never
+   both resolve).
+
+The option-building logic left Explore's StepPicker for a shared seam,
+`apps/web/src/lib/explore-steps.ts` — one pure `stepOptions` +
+`useStepOptions` consumed by all three surfaces, with unit tests on the
+parsers. **Design finding for the owner:** checking two sibling
+dependents in the split button yields two panes, not three — a sibling
+cannot be pane 3 under the current chain model; the e2e pins the
+graceful degrade.
+
+**Verified:** isolated stack (scratch DB `featherbase_explore_entry`,
+ports 8012/5186, per the worktree-isolation recipe); new
+`e2e/explore.spec.ts` covers all four journeys (deep link renders three
+narrowed panes; malformed/stale chain degrades; split button; map
+hand-off) — 4/4 green, full web e2e 115+ green (two known-flaky specs,
+realtime RT-003 and UPS-J2, pass on re-run), vitest 64/64, typecheck
+clean. Web-only — no migrations, no server changes.
+
+## 2026-08-11 — the VMS lists come alive: a stale sort and a leaked password column
+
+The owner reported reflected VMS tables rendering empty with a long
+"loading". Diagnosis peeled three layers, each shipped as its own PR:
+
+1. **#177** — ListView sent `order_by=updated_at desc` for every table; a
+   bound table without `external_modified` has no updated_at, the server
+   (correctly) refuses an explicit unresolvable order, and ListView
+   rendered the refusal as "No rows" — with react-query's three retries
+   supplying the "loading". Default sort now derives from meta; a failed
+   list query renders as the error it is. (#176)
+2. **#178** — second layer: the table_def itself stores the DB-default
+   `sort_column: 'updated_at'`. Migration **0075** repairs bound tables
+   without a modified mapping to sort by `name`; reflect sets it correctly
+   at creation; ListView guards the un-migrated window.
+3. **#179** — the moment the list rendered, it exposed every VMS user's
+   Django pbkdf2 hash: `password` was not in SENSITIVE_COLUMNS (only
+   `password_hash` and friends). Added; reflection already skips
+   sensitive names, migration **0076** drops already-reflected password
+   column_defs; the mysql suite now seeds a `password` column to pin the
+   exclusion.
+
+**Verified live on featherbase-dev after each merge:** Customuser lists
+217 rows sorted by name, error states render red instead of "No rows",
+and the meta carries no password column. Gotcha for future sessions: an
+"empty" bound table is a refused query until proven otherwise — check
+the network tab before checking the data.
+
+**Next:** the Explore entry points the owner picked (options B + C:
+split-button on ListView, "Open in Explore" on the RelationMap) — branch
+`claude/explore-entrypoints` has the design notes; Explore needs
+`chain`/`select` search params first.
+
+## 2026-08-11 — #145 ruled and built: the match key gets its index on demand
+
+The last item of the production-readiness push. The first REAL keyed run
+on a (table, key) creates an expression index on exactly the cast
+resolveRows compares with — `((key::text))` — so a plain column index
+would not have served the query and was not built. Rehearsals create
+nothing: IMP-I3's "writes nothing" is read as covering the catalog too.
+Once per process per pair; IF NOT EXISTS carries restarts; a sha-suffixed
+name keeps long identifiers inside Postgres's 63-char limit without
+truncation collisions. Row-ID keys are excluded (the primary key serves).
+
+**Verified:** new import-key-index.test.ts (dry run creates nothing; real
+run creates the ::text index; second run idempotent; name-key creates
+nothing); all import suites 141/141; the upsert journey re-run live with
+the DDL in-path (the post-journey index check is vacuous by design — the
+journey's spec-0003 teardown deletes the table, indexes included).
+
+## 2026-08-11 — UPS-H1's last tooth: the typed confirmation guard
+
+Owner decision from the morning's production-readiness plan, ruled into
+spec 0004's H1 mitigation list in this same change (requirement first,
+then code). A run about to update more than CONFIRM_UPDATES_OVER (20)
+rows stops at Import and demands the number typed back — counts from a
+click-time dry run, never stale UI state; any plan change clears a
+pending confirmation. Small runs stay friction-free.
+
+**Verified:** all 12 import e2e walks green (the new
+import-typed-confirmation.spec.ts proves: guard appears with seeded data
+intact, wrong number keeps the trigger disabled, exact number proceeds
+through the ratified auto-navigation; the 8-row UPS journey passing
+unprompted is the friction-free half). Typecheck clean. **Next:**
+index-on-demand on the match key (#145).
+
+## 2026-08-11 — #150: the session JWT leaves the OAuth callback URL
+
+The callback finished sign-in with `c.redirect('/oauth-callback?token=<7-day
+session JWT>')` — a long-lived credential parked in browser history, in the
+`Referer` of everything that page fetched next, and in every proxy/CDN access
+log on the way. Pre-existing, from `3752eb6`; found during the adversarial
+re-review of #127 and filed separately.
+
+**What the investigation decided the shape.** The issue's first suggestion —
+redirect empty and let the sid cookie carry it — does not survive contact with
+the SPA. `apps/web/src/lib/api.ts` sends `Authorization: Bearer <fc_token>`
+from `localStorage`, and three places need the *literal* token, not an
+ambient cookie: the realtime WebSocket (`/ws?token=…`, a handshake that cannot
+set a header), the multipart upload fetches in `Attachments`/`FormView`/
+`ChecklistView`, and the `?token=` on private file URLs. The router's
+`beforeLoad` guards read `getToken()` too. A bare-cookie redirect would have
+left every OAuth session without a token and broken Google sign-in.
+
+So: the issue's second shape, a **one-time handoff code**. The callback still
+sets the sid cookie, then redirects to `/oauth-callback?code=<32 random
+bytes>`. The SPA POSTs that code to the new public `POST /api/oauth/session`
+and gets `{ token, user }` — the same pair `/api/login` returns, so the
+whoami round trip the callback page used to make is gone. The code lives 60
+seconds in an in-process map, is deleted on *any* redemption attempt, and is
+bound to the browser it was minted for: redemption requires the sid cookie to
+equal the session being handed over. The copy left in history or a log is
+already spent, and worthless in another browser besides.
+
+**Gotcha, and the reason this needed a live browser.** React StrictMode runs
+the callback effect twice in development, so the SPA redeemed the code twice:
+the second POST 401'd, and `request()` treats a 401 as "session over" —
+`clearSession()` plus a hard bounce to `/login`, wiping the session the first
+POST had just stored. Sign-in landed on the login page with the server having
+done everything right. The redemption is now memoised per code at module
+scope, where a remount cannot reach it. Nothing in the old code cared, because
+storing a token twice is idempotent; one-time semantics are not.
+
+**Verified:** server suite **711 passed / 16 skipped, 117 files** and both
+typechecks clean; `oauth.test.ts` 14/14, with the four `?token=` assertions
+changed to `?code=` (authorized by #150 — the expectation *is* the fix) and
+four new tests for the exchange: round trip, no-replay, cookie binding,
+unknown code. Both new guards were mutation-checked — deleting the burn fails
+the replay test, deleting the cookie compare fails the binding test. Live
+browser against port-randomized servers (API 21777 / web 27777, bundle
+verified to contain this branch's code first): `oauth.spec.ts` 3/3, which now
+records every main-frame URL of the flow and asserts none contains `token=`
+nor the token the SPA ends up holding, plus `smoke` and `account-menu`
+(the password path through the new `setSession`).
+
+**Residual risk:** the handoff map is per-process, so a server restart inside
+the redirect window, or a future multi-replica deployment without sticky
+routing, bounces that one sign-in back to `/login`. Out of scope but worth
+filing: private file URLs (`?token=`) and the realtime WebSocket still carry
+the session JWT in a URL — same leak class, different surfaces, and
+`resolveToken`'s `fromUrl` guard only keeps *access* tokens out of them.
+
+## 2026-08-11 — migrate.ts: guard against two migrations claiming the same number (#149)
+
+`migrations/` is numbered by hand and `migrate.ts` recorded applied
+migrations by filename — nothing stopped two files sharing a numeric prefix
+from both applying silently (whichever sorted first "won" the slot). The
+repo already had two such collisions on disk from parallel sessions:
+`0064_data_sources.ts`/`0064_user_event.ts` and
+`0069_access_tokens.sql`/`0069_import_upsert_log.ts` — both additive on
+disjoint tables, both applied in real checkouts, neither may be renumbered
+per the issue.
+
+Added `findDuplicateMigrationPrefixes` (pure, DB-free, exported from
+`apps/server/src/migrate.ts`): groups the directory listing by the token
+before the first underscore, and errors — naming every file involved — for
+any prefix claimed by more than one file, except an explicit
+`GRANDFATHERED_DUPLICATE_PREFIXES` allowlist holding exactly those two
+pre-existing pairs, dated and pointed at #149 in the comment. `0010_rls.sql`
+vs `0010a_rename_rls_role.sql` is a deliberate same-batch sub-ordering, not
+a collision — the prefix is the *whole* token before `_`, so `0010` and
+`0010a` are distinct on purpose. `runMigrations()` now calls the guard right
+after listing the directory, before applying anything, and throws with all
+the duplicate messages if it finds a new (non-grandfathered) collision.
+
+**Verified:** new `apps/server/test/migrate-duplicate-prefix.test.ts` (6
+cases: a fresh duplicate fails naming both files, the grandfathered 0064 and
+0069 pairs pass, unique prefixes pass, `0010`/`0010a` is correctly not a
+collision, a THIRD file landing on a grandfathered number still fails, and
+the real `migrations/` directory on disk has no un-grandfathered
+duplicates) — `pnpm vitest run test/migrate-duplicate-prefix.test.ts`, 6/6.
+`pnpm --filter server typecheck` clean. Ran the real migration runner
+against the dev DB (`DATABASE_URL=postgres://localhost:5432/featherbase`,
+`tsx -e "import('./src/migrate.js').then(m => m.runMigrations())..."`) twice
+— applied the one pending migration (0074) on the first run, reported
+"migrations up to date" on the second, no failure from the 0064/0069 pairs.
+Also ran `test/cli.test.ts` (spawns the CLI subprocess, which calls
+`runMigrations` on boot) — 5/5 green. **Next:** nothing queued by this
+change; #149 is closed by this PR.
+
+## 2026-08-11 — VMS connected end-to-end; the connection-console direction is set
+
+The session that motivated the mysql engine, run in parallel with its build.
+Three strands:
+
+**VMS is live.** On the deployed featherbase-dev, the `vms` Data Source
+(engine `mysql`, `url_env` VMS_DATABASE_URL) now reaches the real RDS
+instance: test_connection ok, all **50 tables** of the VMS Django app
+introspect (every one bindable, `id` pks), `vehicles_vehicle` reflected as
+`Vms Vehicles Vehicle`, **184 real rows** read over HTTP, and a write
+correctly 403s (read_only). The road there, for the record: security group
+blocked → opened; whitelisted the wrong IP; the DB turned out to be MySQL
+on 3306 (hence the engine build); the grant landed on a nonexistent
+uppercase `VMS` schema before lowercase `vms`. Every one of those failure
+modes is a diagnosis rung the connection-console spec now formalizes.
+Remaining nicety: append `?sslmode=REQUIRED` to VMS_DATABASE_URL on
+Railway (RDS currently accepts non-TLS).
+
+**Connection console prototyped and spec'd.** A three-variant throwaway UI
+prototype (mattpocock prototype skill, sub-shape B) ran at
+`/admin/prototype/connect-source`; the owner picked the "connection
+console" design (form + live per-phase checks side by side) and ratified
+five requirements — phased test with inline diagnosis, post-auth database
+dropdown, verified grants, advanced disclosure, saved-source health.
+Recorded as **spec 0006-connection-console.md** (journey-spec form,
+evidence CSV all-gap; renumbered from 0005 after colliding with
+0005-import-revert on merge — the duplicate-numbering hazard, again).
+The prototype (A/C variants in this branch's history) stays throwaway;
+CONN-R1's encrypted-credential storage is the big design decision.
+
+**Review workflow ratified.** PR #152 got a two-axis review
+(mattpocock code-review skill: Standards + Spec sub-agents) after merge;
+findings filed as issues #153–#157 (worst: the non-atomic
+write-then-re-read race, #155). CLAUDE.md now routes SDLC stages to the
+mattpocock skills by owner directive — the Spec axis caught four real
+findings a solo review missed, which is the argument for the routing.
+
+**Addendum, same day — relational navigation over VMS verified.** After
+PR #161 (FK-aware reflection; two-axis review sent two pre-merge fixes
+back, the rest are issues #162–#164) merged and featherbase-dev
+redeployed: deleted the two pre-FK reflections, re-reflected five tables
+in one deliberately child-first call, and every FK column came back
+`Reference` (accident→vehicle/customuser; vehicle→vehicletype/
+customuser/department, all against the real RDS). Walked the RelationMap
+in the browser: vehicle 186 → owner (user 234, trail shown, the
+self-referential approved_by/reports_to FKs resolved too) → the Vehicles
+backlink (count 1) → opened the collection → clicked back to 186. One
+scare: a mid-browse 502 on the backlink list turned out to be the Railway
+instance swap from the deploy itself, not a bug — retried clean.
+
+**Next:** build spec 0006 (fold the winning console into SourceBrowser,
+`CREDENTIALS_KEY` encrypted storage), or triage #153–#157 and
+#162–#164. Reflect more of the 50 VMS tables as Rama needs them —
+order no longer matters.
+## 2026-08-11 — spec 0005 built: revert an import run (RVT-J1, R1–R6, I1–I3)
+
+The signed spec (PR #148) built in one pass: migration 0073 (0070/0071
+claimed by parallel PRs, 0072 landed unannounced with #152 — renumbered on
+discovery), RVT-R1 recording in the import action (run_id + per-part
+touched rows {name, action, stamp, version?}), the :import-revert action
+(dry_run rehearsal, stamp-based edited-after skips, named-row override,
+whole-request permission refusal), and two wizard surfaces sharing one
+RevertControl: the completion panel and the RunHistory strip (?table=
+preselect) — the strip exists because single-sheet imports auto-navigate
+away (the ratified IMP/UPS walk, deliberately unchanged).
+
+**Build findings, three-fates queue (owner's call):**
+- `track_changes` cannot be set through any API surface — the flag is a DB
+  default the create/update endpoints never read. RVT-R3's
+  no-version-trail class is therefore unreachable end-to-end and proven
+  rule-tier against the exported pure planRevert. Ratify a builder toggle,
+  or accept the default-on world.
+- The revert's log stamping (reverted_at) is a raw UPDATE like the
+  version-trail write — system bookkeeping, not a lifecycle write.
+
+**Verified:** server import suites 139/139 (13 new revert tests incl.
+whole-refusal and double-revert no-op), web 42/42, all 11 import e2e green
+incl. the new RVT-J1 walk — run against port-randomized isolated servers
+after discovering FOUR parallel sessions fighting over the usual ports
+(the served bundle is now verified to contain this branch's code before
+any e2e run is trusted). UPS-H1 closed in the 0004 evidence: the fourth
+mitigation shipped. **Next:** typed confirmation above ~20 updates, then
+index-on-demand (#145).
+## 2026-08-11 — FK-aware reflection: reflected foreign keys become References
+
+Motivated by the VMS database (Django on MySQL 8.4/RDS): `accidents_accident`
+carries `vehicle_id`/`driver_id` FK columns that used to reflect as plain
+Ints, so the relation map had nothing to walk. Now reflection reads the FK
+edges and emits real `Reference` columns, and the RelationMap navigates
+between reflected tables like any native ones.
+
+**Design (codebase-design pass):** the `SourceDriver.introspect` seam gains
+exactly ONE engine-neutral fact per column — `references: {schema, table,
+column}`, the single-column FK edge, read from
+`information_schema.key_column_usage` on mysql and postgres alike (shared
+grouping in `sources/fk.ts` drops composite FKs — a Reference holds one
+value). Drivers that cannot report FKs (duckdb, csv-folder) simply omit it.
+No new driver methods, no engine switches.
+
+**The ordering problem** (tables reflect one at a time, in any order) is
+solved by resolving BOTH directions on every reflect, all inside reflect.ts:
+- forward: a new table's FK column becomes a Reference when its target is
+  already bound to the same source AND the FK lands on that binding's
+  external_pk;
+- reverse: every FK edge is recorded raw on the column_def (migration
+  **0074** — 0073 was claimed by the concurrent import-revert PR:
+  `source_fk_schema/table/column`), and when a table reflects,
+  every recorded edge on the same source that lands on its pk is upgraded
+  to Reference in place (direct column_def update — deliberately bypassing
+  updateTable's column_type-change guard, which exists for user edits).
+
+So reflecting in ANY order converges to the same linked graph with no
+re-reflection call; an FK at a never-reflected table stays a plain Int and
+upgrades automatically if that table ever reflects. Cross-source references
+cannot arise (targets are matched within one source's bindings only).
+Bound-table deletes already skip bound parents in the link-integrity scan,
+and bound saves never run native validateLinks, so the upgraded columns are
+safe on both write paths.
+
+**Verified:** 4 new mysql tests (FK edges on introspect; parent-first;
+child-first convergence; walkable graph — forward values + `:connections`
+backlink counts) and 1 postgres test (edge + child-first), all through the
+HTTP API with a Django-style vehicle/driver/accident/garage fixture where
+garage is deliberately never reflected. Full server suite **707 passed /
+117 files** + typecheck on an isolated `featherbase_fkreflect` DB. Browser
+(ports 8041/5197, own DB, local MySQL 9.6 `vms_demo`): reflected
+`accidents_accident` + `vehicles_vehicle` + `accounts_customuser` child-
+first in one call, opened `/admin/map/Vms Accidents Accident/1` — both
+forward nodes rendered, clicking Vehicle re-centered the map, the vehicle
+showed the accident backlink (count 2), and the collection listed both rows.
+
+**Review round (same PR):** two defects fixed. (1) The postgres FK query
+moved off information_schema onto `pg_constraint` — constraint names are
+unique per TABLE in Postgres, so the schema+name-keyed views cross-multiply
+when two tables reuse a name (e.g. `fk_ref` on both), silently dropping
+genuine edges; `conrelid`/`confrelid` are unambiguous. Pinned by a test with
+two same-named constraints. (2) A source relation bound MORE than once
+(hand-bound EDS-3 + reflected) now resolves Reference targets
+deterministically: the **earliest-created binding wins** (tie-break: name
+asc) — consistent with linkReferencesTo, which never rewrites a column that
+is already a Reference. Pinned by a doubly-bound test.
+
+**Next:** after merge + featherbase-dev redeploy, re-reflect the real VMS
+tables and walk the map against RDS. Note for that retest: tables reflected
+BEFORE this change carry no source_fk_* records, so they will not converge —
+delete and re-reflect them (order then no longer matters).
+
 ## 2026-08-11 — #132: the physical row key becomes `row_id` (COMPLETE)
 
 Closes out the two entries below. Every suite is green and PR #174 is out of
