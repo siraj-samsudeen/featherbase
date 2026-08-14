@@ -48,6 +48,18 @@ ships genuinely new capability — please add a features.json entry (and
 consider a spec doc) per the hard rule; also decide whether Kanban/
 Report should join the same toggle group someday.
 
+**Post-review, same branch:** an independent tester agent (code-read
+while blocked on a dead dev server) flagged that grid rows leaving via a
+MOUSE CLICK into another row never autosaved — reproduced red-first,
+fixed (rows ref: the editor's blur-commit runs in the same event as the
+click), pinned by a fifth e2e; render-site `isSourceReadOnly` gates
+added. And the blocker itself became the fix that outlives the session:
+**`./init.sh` now honors `API_PORT`/`WEB_PORT`** (defaults unchanged),
+so every worktree boots its own persistent stack and the kill loop can
+no longer murder a sibling checkout's servers — proven live with a
+second stack on 8010/5188 while :8000 kept its PID. CONTRIBUTING
+documents the one-command worktree recipe.
+
 **Next:** the toggle group truncates at narrow widths (Datasheet label
 clips); worth a responsive pass. Grid mode still has no multi-cell
 ranges/clipboard — the ratified follow-up if real range ops are wanted
