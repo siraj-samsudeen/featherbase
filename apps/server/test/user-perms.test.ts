@@ -25,7 +25,7 @@ async function setup(
       { column_name: 'company', column_type: 'Reference', reference_table: COMPANY },
     ],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
   for (const dt of [PROJECT, COMPANY])
     await admin.post('/api/save_doc', {
       doctype: 'Permission',
@@ -33,7 +33,7 @@ async function setup(
     })
   const user = await createUser({ roles: [ROLE] })
   for (const c of ['Company A', 'Company B'])
-    await admin.post('/api/save_doc', { doctype: COMPANY, doc: { name: c } })
+    await admin.post('/api/save_doc', { doctype: COMPANY, doc: { row_id: c } })
   for (const [t, c] of [['pa', 'Company A'], ['pb', 'Company B']])
     await admin.post('/api/save_doc', { doctype: PROJECT, doc: { title: t, company: c } })
   // Restrict the user to Company A
@@ -59,11 +59,11 @@ describe('PERM-005: Data Scopes', () => {
     createUser,
   }) => {
     const user = await setup(admin, createUser)
-    const res = await user.get<{ data: { name: string }[]; total: number }>(
+    const res = await user.get<{ data: { row_id: string }[]; total: number }>(
       `/api/table/${encodeURIComponent(COMPANY)}`,
     )
     expect(res.total).toBe(1)
-    expect(res.data[0].name).toBe('Company A')
+    expect(res.data[0].row_id).toBe('Company A')
   })
 
   test('direct reads of non-permitted docs are 403 (linked and target)', async ({
@@ -71,8 +71,8 @@ describe('PERM-005: Data Scopes', () => {
     createUser,
   }) => {
     const user = await setup(admin, createUser)
-    const pb = await sql.unsafe(`select name from up_project where title='pb'`)
-    expect((await user.fetch(`/api/table/${encodeURIComponent(PROJECT)}/${pb[0].name}`)).status).toBe(403)
+    const pb = await sql.unsafe(`select row_id from up_project where title='pb'`)
+    expect((await user.fetch(`/api/table/${encodeURIComponent(PROJECT)}/${pb[0].row_id}`)).status).toBe(403)
     expect((await user.fetch(`/api/table/${encodeURIComponent(COMPANY)}/Company%20B`)).status).toBe(403)
     expect((await user.fetch(`/api/table/${encodeURIComponent(COMPANY)}/Company%20A`)).status).toBe(200)
   })

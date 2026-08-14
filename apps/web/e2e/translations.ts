@@ -14,7 +14,7 @@ import type { APIRequestContext } from '@playwright/test'
 // The name is derived from the pair, so at most one row per (language, source)
 // can ever exist and two specs seeding the same string cannot collide.
 
-type Row = { name: string; language: string; source_text: string }
+type Row = { row_id: string; language: string; source_text: string }
 type Headers = Record<string, string>
 
 const docName = (language: string, source: string) =>
@@ -22,7 +22,7 @@ const docName = (language: string, source: string) =>
 
 async function listTranslations(request: APIRequestContext, headers: Headers): Promise<Row[]> {
   const res = await request.get(
-    '/api/table/Translation?fields=["name","language","source_text"]&limit=500',
+    '/api/table/Translation?fields=["row_id","language","source_text"]&limit=500',
     { headers },
   )
   if (!res.ok()) throw new Error(`list Translation: ${res.status()}`)
@@ -41,14 +41,14 @@ export async function seedTranslations(
   const names: string[] = []
   for (const [source, translated] of entries) {
     for (const row of existing.filter((r) => r.language === language && r.source_text === source))
-      await request.delete(`/api/table/Translation/${encodeURIComponent(row.name)}`, { headers })
+      await request.delete(`/api/table/Translation/${encodeURIComponent(row.row_id)}`, { headers })
 
     const name = docName(language, source)
     const res = await request.post('/api/save_doc', {
       headers,
       data: {
         doctype: 'Translation',
-        doc: { name, language, source_text: source, translated_text: translated },
+        doc: { row_id: name, language, source_text: source, translated_text: translated },
       },
     })
     // Checking this is the point: the old specs ignored the status, so a seed

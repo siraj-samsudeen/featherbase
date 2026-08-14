@@ -17,7 +17,7 @@ const createSchema = z.object({
 })
 
 export interface SavedView {
-  name: string
+  row_id: string
   table: string
   label: string
   filters: unknown
@@ -28,7 +28,7 @@ export interface SavedView {
 
 function toView(row: Record<string, unknown>, user: string): SavedView {
   return {
-    name: row.name as string,
+    row_id: row.row_id as string,
     table: row.ref_table as string,
     label: row.label as string,
     filters: row.filters,
@@ -43,7 +43,7 @@ export async function listSavedViews(user: string, table: string): Promise<Saved
   // permission on that Table the caller must not see them, own or shared.
   await assertPermission(user, table, 'read')
   const rows = await sql`
-    select name, ref_table, label, filters, shared, created_by
+    select row_id, ref_table, label, filters, shared, created_by
     from saved_view
     where ref_table = ${table} and (created_by = ${user} or shared = true)
     order by created_by = ${user} desc, label`
@@ -59,7 +59,7 @@ export async function createSavedView(user: string, body: unknown): Promise<Save
   await assertPermission(user, parsed.data.table, 'read')
   const now = new Date()
   const row = {
-    name: randomBytes(8).toString('hex'),
+    row_id: randomBytes(8).toString('hex'),
     created_by: user,
     updated_by: user,
     created_at: now,
@@ -77,7 +77,7 @@ export async function createSavedView(user: string, body: unknown): Promise<Save
 }
 
 async function ownRow(user: string, name: string): Promise<{ ref_table: string }> {
-  const [row] = await sql`select created_by, ref_table from saved_view where name = ${name}`
+  const [row] = await sql`select created_by, ref_table from saved_view where row_id = ${name}`
   if (!row) throw new AppError('NotFoundError', `Saved view ${name} does not exist`)
   if (row.created_by !== user)
     throw new AppError('PermissionError', 'Only the owner can change a saved view')
@@ -90,10 +90,10 @@ export async function setSavedViewShared(user: string, name: string, shared: boo
   // creating the view.
   if (shared) await assertPermission(user, ref_table, 'read')
   await sql`update saved_view set shared = ${shared}, updated_at = now(), updated_by = ${user}
-    where name = ${name}`
+    where row_id = ${name}`
 }
 
 export async function deleteSavedView(user: string, name: string): Promise<void> {
   await ownRow(user, name)
-  await sql`delete from saved_view where name = ${name}`
+  await sql`delete from saved_view where row_id = ${name}`
 }

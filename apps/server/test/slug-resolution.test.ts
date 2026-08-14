@@ -23,7 +23,7 @@ describe('#56: Table slugs in resource URLs', () => {
     await setup(admin)
     for (const spelling of ['slug-test-note', 'slug_test_note', 'Slug-Test-Note']) {
       const res = await admin.fetch(
-        `/api/table/${spelling}?fields=${encodeURIComponent('["name","title"]')}`,
+        `/api/table/${spelling}?fields=${encodeURIComponent('["row_id","title"]')}`,
       )
       expect(res.status).toBe(200)
       const { data } = (await res.json()) as { data: { title: string }[] }

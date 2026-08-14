@@ -124,7 +124,7 @@ test('UI-025: a second user in the same tab does not inherit the first user’s 
   await request.delete(`/api/table/User/${encodeURIComponent(USER_B)}`, { headers })
   const created = await request.post('/api/save_doc', {
     headers,
-    data: { doctype: 'User', doc: { name: USER_B, email: USER_B, full_name: 'Palette E2E', enabled: true } },
+    data: { doctype: 'User', doc: { row_id: USER_B, email: USER_B, full_name: 'Palette E2E', enabled: true } },
   })
   if (created.status() !== 201) throw new Error(`create user: ${created.status()} ${await created.text()}`)
   await request.post('/api/set_password', { headers, data: { user: USER_B, password: 'palettepw123' } })

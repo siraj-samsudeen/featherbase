@@ -20,6 +20,6 @@ registerCollectionAction('aggregate', {
       }
     }
     const sumField = typeof args.sum === 'string' && args.sum ? args.sum : undefined
-    return aggregateDocs(table, filters, sumField, user.name)
+    return aggregateDocs(table, filters, sumField, user.row_id)
   },
 })

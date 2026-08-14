@@ -12,17 +12,17 @@ async function setup(admin: TestClient) {
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
   // seed one row as admin for read tests
   await admin.post('/api/save_doc', { doctype: DT, doc: { title: 'seeded' } })
 }
 
 async function grant(admin: TestClient, perms: Record<string, boolean>) {
-  const doc = await admin.post<{ name: string }>('/api/save_doc', {
+  const doc = await admin.post<{ row_id: string }>('/api/save_doc', {
     doctype: 'Permission',
     doc: { ref_table: DT, role: ROLE, ...perms },
   })
-  return doc.name
+  return doc.row_id
 }
 
 describe('PERM-002/003: Permission grants enforced server-side', () => {
@@ -49,12 +49,12 @@ describe('PERM-002/003: Permission grants enforced server-side', () => {
     const user = await createUser({ roles: [ROLE] })
     await grant(admin, { can_read: true })
     const list = await user.fetch(
-      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","title"]')}`,
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["row_id","title"]')}`,
     )
     expect(list.status).toBe(200)
-    const { data } = (await list.json()) as { data: { name: string; title: string }[] }
+    const { data } = (await list.json()) as { data: { row_id: string; title: string }[] }
     expect(data.length).toBeGreaterThan(0)
-    const name = data[0].name
+    const name = data[0].row_id
 
     expect(
       (
@@ -94,14 +94,14 @@ describe('PERM-002/003: Permission grants enforced server-side', () => {
     expect(created.status).toBe(201)
     const doc = (await created.json()) as Record<string, unknown>
     expect(doc.created_by).toBe(user.user)
-    const put = await user.fetch(`/api/table/${encodeURIComponent(DT)}/${doc.name}`, {
+    const put = await user.fetch(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`, {
       method: 'PATCH',
       body: JSON.stringify({ updated_at: doc.updated_at, title: 'mine2' }),
     })
     expect(put.status).toBe(200)
     // still no delete
     expect(
-      (await user.fetch(`/api/table/${encodeURIComponent(DT)}/${doc.name}`, { method: 'DELETE' }))
+      (await user.fetch(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`, { method: 'DELETE' }))
         .status,
     ).toBe(403)
   })

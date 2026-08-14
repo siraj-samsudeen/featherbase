@@ -28,7 +28,7 @@ describe('API-003: RPC for whitelisted server methods', () => {
   test('rejects a non-whitelisted method with 403', async ({ admin }) => {
     const res = await admin.fetch('/api/method/setUserPassword', {
       method: 'POST',
-      body: JSON.stringify({ name: 'Administrator', password: 'x' }),
+      body: JSON.stringify({ row_id: 'Administrator', password: 'x' }),
     })
     expect(res.status).toBe(403)
     expect(((await res.json()) as { error: { type: string } }).error.type).toBe('PermissionError')
@@ -68,11 +68,11 @@ describe('API-003: RPC for whitelisted server methods', () => {
       name: 'Rpc Verb Guard',
       columns: [{ column_name: 'title', column_type: 'Data' }],
     })
-    const doc = await admin.post<{ name: string }>('/api/table/Rpc%20Verb%20Guard', {
+    const doc = await admin.post<{ row_id: string }>('/api/table/Rpc%20Verb%20Guard', {
       title: 'still here',
     })
     const res = await admin.fetch(
-      `/api/method/frappe.client.delete?doctype=Rpc Verb Guard&name=${doc.name}`,
+      `/api/method/frappe.client.delete?doctype=Rpc Verb Guard&name=${doc.row_id}`,
     )
     expect(res.status).toBe(405)
     expect(((await res.json()) as { error: { type: string } }).error.type).toBe(
@@ -80,7 +80,7 @@ describe('API-003: RPC for whitelisted server methods', () => {
     )
     // The row must still exist — the GET must not have deleted it.
     const stillThere = await admin.fetch(
-      `/api/table/Rpc%20Verb%20Guard/${encodeURIComponent(doc.name)}`,
+      `/api/table/Rpc%20Verb%20Guard/${encodeURIComponent(doc.row_id)}`,
     )
     expect(stillThere.status).toBe(200)
   })

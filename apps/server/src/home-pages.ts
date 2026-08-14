@@ -35,7 +35,7 @@ export interface HomePageCard {
 }
 
 export interface VisibleHomePage {
-  name: string
+  row_id: string
   label: string
   icon: string | null
   module: string | null
@@ -61,21 +61,21 @@ export function homePageForModule(module: string): { name: string; label: string
 // not user mutations — nothing in the save lifecycle applies to them.
 export async function ensureModuleHomePage(module: string): Promise<string> {
   const [existing] = await sql`
-    select name from home_page where module = ${module} order by name limit 1`
-  if (existing) return existing.name as string
+    select row_id from home_page where module = ${module} order by row_id limit 1`
+  if (existing) return existing.row_id as string
   const page = homePageForModule(module)
   // The slug may collide with an unrelated page (e.g. a user module named
   // "System" vs the seeded 'system' page, which carries no module) — probe
   // for a free name rather than adopting a page that isn't this module's.
   let name = page.name
   for (let i = 2; ; i++) {
-    const [taken] = await sql`select 1 from home_page where name = ${name}`
+    const [taken] = await sql`select 1 from home_page where row_id = ${name}`
     if (!taken) break
     name = `${page.name}-${i}`
   }
   // Module pages sort between the "Home" page (0) and the System page (100).
   await sql`insert into home_page ${sql({
-    name,
+    row_id: name,
     label: page.label,
     module,
     sequence: module === 'Core' ? 0 : 50,
@@ -95,7 +95,7 @@ export async function ensureHomePageForTable(table: string, module: string): Pro
     select coalesce(max(position), 0) + 1 as next from home_page_link
     where parent = ${pageName} and parenttype = 'Home Page'`
   await sql`insert into home_page_link ${sql({
-    name: randomUUID(),
+    row_id: randomUUID(),
     parent: pageName,
     parenttype: 'Home Page',
     parentfield: 'links',
@@ -126,8 +126,8 @@ function parseShortcuts(raw: unknown): HomePageShortcut[] {
 // the one endpoint the sidebar (and the page view) consume.
 export async function getVisibleHomePages(user: string): Promise<VisibleHomePage[]> {
   const pages = await sql`
-    select name, label, icon, module, shortcuts from home_page
-    order by coalesce(sequence, 50) asc, label asc, name asc`
+    select row_id, label, icon, module, shortcuts from home_page
+    order by coalesce(sequence, 50) asc, label asc, row_id asc`
   if (pages.length === 0) return []
 
   const isAdmin = user === 'Administrator'
@@ -145,7 +145,7 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
   const links = await sql`
     select parent, label, type, link_to from home_page_link
     where parenttype = 'Home Page'
-    order by parent, position asc, name asc`
+    order by parent, position asc, row_id asc`
   const linksByPage = new Map<string, { label: string; type: string; link_to: string | null }[]>()
   for (const l of links) {
     const list = linksByPage.get(l.parent as string) ?? []
@@ -189,7 +189,7 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
 
   const out: VisibleHomePage[] = []
   for (const p of pages) {
-    const required = rolesByPage.get(p.name as string) ?? []
+    const required = rolesByPage.get(p.row_id as string) ?? []
     const visible = isAdmin || required.length === 0 || required.some((r) => roles.includes(r))
     if (!visible) continue
 
@@ -197,7 +197,7 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
     // card; links before the first break form an unlabeled card.
     const cards: HomePageCard[] = []
     let current: HomePageCard | null = null
-    for (const l of linksByPage.get(p.name as string) ?? []) {
+    for (const l of linksByPage.get(p.row_id as string) ?? []) {
       if (l.type === 'Card Break') {
         current = { label: l.label || null, links: [] }
         cards.push(current)
@@ -222,8 +222,8 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
     }
 
     out.push({
-      name: p.name as string,
-      label: (p.label as string) || (p.name as string),
+      row_id: p.row_id as string,
+      label: (p.label as string) || (p.row_id as string),
       icon: (p.icon as string) ?? null,
       module: (p.module as string) ?? null,
       cards: cards.filter((c) => c.links.length > 0),

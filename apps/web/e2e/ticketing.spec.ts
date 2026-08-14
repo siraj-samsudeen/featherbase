@@ -42,7 +42,7 @@ test.beforeAll(async ({ request }) => {
     data: { doctype: 'HD Ticket', doc: { subject: SUBJECT } },
   })
   if (r.status() !== 201) throw new Error(`seed ticket: ${r.status()} ${await r.text()}`)
-  name = ((await r.json()) as { name: string }).name
+  name = ((await r.json()) as { row_id: string }).row_id
 })
 
 test.afterAll(async ({ request }) => {

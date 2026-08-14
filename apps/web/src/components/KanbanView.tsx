@@ -21,7 +21,7 @@ export function KanbanView({
   const meta = useMeta(doctype)
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
-  const [dragging, setDragging] = useState<{ name: string; from: string } | null>(null)
+  const [dragging, setDragging] = useState<{ row_id: string; from: string } | null>(null)
 
   const choiceColumns = useMemo(
     () => (meta.data?.columns ?? []).filter((f) => f.column_type === 'Choice'),
@@ -31,14 +31,14 @@ export function KanbanView({
     ? groupBy
     : choiceColumns[0]?.column_name
 
-  const titleColumn = meta.data?.title_column || 'name'
+  const titleColumn = meta.data?.title_column || 'row_id'
 
   const rows = useQuery({
     queryKey: ['kanban', doctype, field],
     enabled: Boolean(meta.data && field),
     queryFn: () =>
       listResource<Row>(doctype, {
-        fields: [...new Set(['name', field!, titleColumn])],
+        fields: [...new Set(['row_id', field!, titleColumn])],
         order_by: 'updated_at desc',
         limit_page_length: 500,
       }),
@@ -86,7 +86,7 @@ export function KanbanView({
     const to = colEl?.getAttribute('data-column')
     const card = dragging
     setDragging(null)
-    if (to) void moveCard(card.name, card.from, to)
+    if (to) void moveCard(card.row_id, card.from, to)
   }
 
   return (
@@ -149,22 +149,22 @@ export function KanbanView({
             <div className="flex flex-col gap-2">
               {byColumn.get(col)!.map((row) => (
                 <div
-                  key={String(row.name)}
+                  key={String(row.row_id)}
                   data-testid="kanban-card"
-                  data-card={String(row.name)}
-                  onPointerDown={() => setDragging({ name: String(row.name), from: col })}
+                  data-card={String(row.row_id)}
+                  onPointerDown={() => setDragging({ row_id: String(row.row_id), from: col })}
                   className={`cursor-grab rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-sm shadow-sm ${
-                    dragging?.name === row.name ? 'opacity-50' : ''
+                    dragging?.row_id === row.row_id ? 'opacity-50' : ''
                   }`}
                 >
                   <RouterLink
                     to="/admin/$doctype/$name"
                     search={{ prefill: undefined }}
-                    params={{ doctype, name: String(row.name) }}
+                    params={{ doctype, name: String(row.row_id) }}
                     className="font-medium text-[var(--color-brand)] hover:underline"
                     onPointerDown={(e) => e.stopPropagation()}
                   >
-                    {String(row[titleColumn] ?? row.name)}
+                    {String(row[titleColumn] ?? row.row_id)}
                   </RouterLink>
                 </div>
               ))}

@@ -8,7 +8,7 @@ import { AppError } from '../errors'
 whitelist('ping', ({ args, user }) => ({
   pong: true,
   echo: args,
-  user: user.name,
+  user: user.row_id,
 }), { effect: 'read' })
 
 // A method that does real work through the permission-checked query layer:
@@ -17,6 +17,6 @@ whitelist('count_docs', async ({ args, user }) => {
   const table = String(args.table ?? '')
   if (!table)
     throw new AppError('ValidationError', 'table is required', { table: 'Required' })
-  const res = await getList(table, { limit_page_length: 1 }, user.name)
+  const res = await getList(table, { limit_page_length: 1 }, user.row_id)
   return { table, total: res.total }
 }, { effect: 'read' })

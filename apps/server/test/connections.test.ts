@@ -3,7 +3,7 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 
-// Relational navigation (#100): GET /api/table/:table/:name:connections
+// Relational navigation (#100): GET /api/table/:table/:row_id:connections
 // returns every table pointing at the row via Reference columns, with
 // permission-scoped counts and ready-to-use ListView filters — including
 // the via-sub-table ("internal links") case where the owning table is
@@ -43,8 +43,8 @@ async function setup(admin: TestClient) {
       { column_name: 'lines', column_type: 'Sub-table', row_table: LINE },
     ],
   })
-  await admin.post(`/api/table/${encodeURIComponent(EMP)}`, { name: 'E-001' })
-  await admin.post(`/api/table/${encodeURIComponent(EMP)}`, { name: 'E-002' })
+  await admin.post(`/api/table/${encodeURIComponent(EMP)}`, { row_id: 'E-001' })
+  await admin.post(`/api/table/${encodeURIComponent(EMP)}`, { row_id: 'E-002' })
 }
 
 type Cnx = {
@@ -68,7 +68,7 @@ const listWith = async (client: TestClient, table: string, filters: unknown[]) =
   const res = await client.get<{ data: { name: string }[] }>(
     `/api/table/${encodeURIComponent(table)}?filters=${encodeURIComponent(JSON.stringify(filters))}&limit_page_length=500`,
   )
-  return res.data.map((r) => r.name)
+  return res.data.map((r) => r.row_id)
 }
 
 describe('NAV-001: row connections', () => {
@@ -103,15 +103,15 @@ describe('NAV-001: row connections', () => {
     await setup(admin)
     await admin.post('/api/save_doc', {
       doctype: ORDER,
-      doc: { name: 'ORD-1', title: 'one', lines: [{ employee: 'E-001' }, { employee: 'E-001' }] },
+      doc: { row_id: 'ORD-1', title: 'one', lines: [{ employee: 'E-001' }, { employee: 'E-001' }] },
     })
     await admin.post('/api/save_doc', {
       doctype: ORDER,
-      doc: { name: 'ORD-2', title: 'two', lines: [{ employee: 'E-001' }] },
+      doc: { row_id: 'ORD-2', title: 'two', lines: [{ employee: 'E-001' }] },
     })
     await admin.post('/api/save_doc', {
       doctype: ORDER,
-      doc: { name: 'ORD-3', title: 'three', lines: [{ employee: 'E-002' }] },
+      doc: { row_id: 'ORD-3', title: 'three', lines: [{ employee: 'E-002' }] },
     })
 
     const cnx = await getConnections(admin, 'E-001')
@@ -120,7 +120,7 @@ describe('NAV-001: row connections', () => {
     expect(ord).toMatchObject({ column: 'employee', via: LINE, count: 2 })
     // NAV-002: a compact relationship filter, not a name list
     const [field, op, spec] = ord!.filters[0]
-    expect([field, op]).toEqual(['name', 'related'])
+    expect([field, op]).toEqual(['row_id', 'related'])
     expect(spec).toMatchObject({ via: LINE, column: 'employee', table: EMP })
     // and the list engine evaluates it to exactly the owning rows
     const listed = await listWith(admin, ORDER, ord!.filters)
@@ -162,7 +162,7 @@ describe('NAV-001: via-link permission scoping', () => {
     createUser,
   }) => {
     await setup(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
     await grant(admin, EMP)
     await grant(admin, LINE, { can_create: true })
     await grant(admin, ORDER, { can_create: true, own_rows_only: true })
@@ -170,11 +170,11 @@ describe('NAV-001: via-link permission scoping', () => {
 
     await alice.post('/api/save_doc', {
       doctype: ORDER,
-      doc: { name: 'ORD-MINE', title: 'mine', lines: [{ employee: 'E-001' }] },
+      doc: { row_id: 'ORD-MINE', title: 'mine', lines: [{ employee: 'E-001' }] },
     })
     await admin.post('/api/save_doc', {
       doctype: ORDER,
-      doc: { name: 'ORD-THEIRS', title: 'theirs', lines: [{ employee: 'E-001' }] },
+      doc: { row_id: 'ORD-THEIRS', title: 'theirs', lines: [{ employee: 'E-001' }] },
     })
 
     const cnx = await getConnections(alice, 'E-001')
@@ -199,18 +199,18 @@ describe('NAV-001: via-link permission scoping', () => {
     createUser,
   }) => {
     await setup(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
     await grant(admin, EMP)
     await grant(admin, LINE)
     await grant(admin, ORDER)
     const user = await createUser({ roles: [ROLE] })
     await admin.post('/api/save_doc', {
       doctype: ORDER,
-      doc: { name: 'ORD-VISIBLE', title: 'v', lines: [{ employee: 'E-001' }] },
+      doc: { row_id: 'ORD-VISIBLE', title: 'v', lines: [{ employee: 'E-001' }] },
     })
     await admin.post('/api/save_doc', {
       doctype: ORDER,
-      doc: { name: 'ORD-HIDDEN', title: 'h', lines: [{ employee: 'E-001' }] },
+      doc: { row_id: 'ORD-HIDDEN', title: 'h', lines: [{ employee: 'E-001' }] },
     })
     await admin.post('/api/save_doc', {
       doctype: 'Data Scope',
@@ -229,10 +229,10 @@ describe('NAV-001: via-link permission scoping', () => {
     // generated tables default every audit column, and the engine round
     // trip for 1000+ rows is not what this test measures.
     await sql.unsafe(`
-      insert into cnx_order (name, title)
+      insert into cnx_order (row_id, title)
       select 'ORD-' || lpad(i::text, 4, '0'), 'bulk' from generate_series(1, 501) i`)
     await sql.unsafe(`
-      insert into cnx_order_line (name, parent, parenttype, parentfield, employee, qty)
+      insert into cnx_order_line (row_id, parent, parenttype, parentfield, employee, qty)
       select 'L-' || i, 'ORD-' || lpad(i::text, 4, '0'), 'Cnx Order', 'lines', 'E-001', 1
       from generate_series(1, 501) i`)
 
@@ -242,7 +242,7 @@ describe('NAV-001: via-link permission scoping', () => {
     // NAV-002: the relational filter matches ALL 501 owners — the old
     // 500-name cap is gone because there are no names to cap
     const res = await admin.get<{ total: number }>(
-      `/api/table/${encodeURIComponent(ORDER)}?filters=${encodeURIComponent(JSON.stringify(ord.filters))}&fields=${encodeURIComponent('["name"]')}`,
+      `/api/table/${encodeURIComponent(ORDER)}?filters=${encodeURIComponent(JSON.stringify(ord.filters))}&fields=${encodeURIComponent('["row_id"]')}`,
     )
     expect(res.total).toBe(501)
   })
@@ -253,7 +253,7 @@ describe('NAV-001: via-link permission scoping', () => {
 describe('NAV-001: navigable tables', () => {
   test('filters by per-table read permission', async ({ admin, createUser }) => {
     await setup(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: 'Cnx Nav Role' } })
+    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: 'Cnx Nav Role' } })
     await admin.post('/api/save_doc', {
       doctype: 'Permission',
       doc: { ref_table: EMP, role: 'Cnx Nav Role', can_read: true },

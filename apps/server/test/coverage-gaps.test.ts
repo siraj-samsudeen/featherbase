@@ -129,14 +129,14 @@ describe('workflow: definition validation edges', () => {
     await expect(
       admin.post('/api/save_doc', {
         doctype: 'Workflow',
-        doc: { name: 'Cov Empty Flow', ref_table: DT, is_active: false, states: [], transitions: [] },
+        doc: { row_id: 'Cov Empty Flow', ref_table: DT, is_active: false, states: [], transitions: [] },
       }),
     ).rejects.toMatchObject({ status: 417 })
     await expect(
       admin.post('/api/save_doc', {
         doctype: 'Workflow',
         doc: {
-          name: 'Cov From Ghost Flow',
+          row_id: 'Cov From Ghost Flow',
           ref_table: DT,
           is_active: false,
           states: [{ state: 'A', target_status: 'draft' }],
@@ -152,11 +152,11 @@ describe('workflow: initDocState backfill', () => {
     const DT = 'Cov Init Note'
     await makeDT(admin, DT)
     const doc = await saveDoc(DT, { title: 'pre-workflow' }, 'Administrator')
-    await sql`update cov_init_note set note_status = null where name = ${String(doc.name)}`
+    await sql`update cov_init_note set note_status = null where row_id = ${String(doc.row_id)}`
     await admin.post('/api/save_doc', {
       doctype: 'Workflow',
       doc: {
-        name: 'Cov Init Flow',
+        row_id: 'Cov Init Flow',
         ref_table: DT,
         is_active: true,
         state_field: 'note_status',
@@ -168,7 +168,7 @@ describe('workflow: initDocState backfill', () => {
       },
     })
     await initDocState(DT)
-    const [row] = await sql`select note_status from cov_init_note where name = ${String(doc.name)}`
+    const [row] = await sql`select note_status from cov_init_note where row_id = ${String(doc.row_id)}`
     expect(row.note_status).toBe('Open')
   })
 })
@@ -182,7 +182,7 @@ describe('web form: field whitelist parsing', () => {
     await admin.post('/api/save_doc', {
       doctype: 'Web Form',
       doc: {
-        name: 'Cov WF Broken',
+        row_id: 'Cov WF Broken',
         title: 'Broken',
         route: 'cov-broken',
         ref_table: DT,
@@ -195,7 +195,7 @@ describe('web form: field whitelist parsing', () => {
     await admin.post('/api/save_doc', {
       doctype: 'Web Form',
       doc: {
-        name: 'Cov WF Array',
+        row_id: 'Cov WF Array',
         title: 'Array',
         route: 'cov-array',
         ref_table: DT,
@@ -209,7 +209,7 @@ describe('web form: field whitelist parsing', () => {
     await admin.post('/api/save_doc', {
       doctype: 'Web Form',
       doc: {
-        name: 'Cov WF Nofields',
+        row_id: 'Cov WF Nofields',
         title: 'Nofields',
         route: 'cov-nofields',
         ref_table: DT,
@@ -229,7 +229,7 @@ describe('SLA: non-matching paths', () => {
     expect(await getActiveSla(DT)).toBeNull()
 
     await saveDoc('Service Level Agreement', {
-      name: 'Cov Sla Off',
+      row_id: 'Cov Sla Off',
       ref_table: DT,
       enabled: false,
       priorities: [{ priority: 'High', response_hours: 1, resolution_hours: 2 }],
@@ -238,7 +238,7 @@ describe('SLA: non-matching paths', () => {
     await applySla(await getMeta(DT), values)
     expect(values.response_by).toBeUndefined() // disabled SLA never stamps
 
-    await sql`update service_level_agreement set enabled = true where name = 'Cov Sla Off'`
+    await sql`update service_level_agreement set enabled = true where row_id = 'Cov Sla Off'`
     const unmatched: Record<string, unknown> = { title: 'y', priority: 'Low' } // no Low row
     await applySla(await getMeta(DT), unmatched)
     expect(unmatched.response_by).toBeUndefined()
@@ -256,7 +256,7 @@ describe('SLA: non-matching paths', () => {
     const DT = 'Cov Sla NoRole'
     await makeDT(admin, DT)
     await saveDoc('Service Level Agreement', {
-      name: 'Cov Sla NoRole Policy',
+      row_id: 'Cov Sla NoRole Policy',
       ref_table: DT,
       enabled: true,
       fulfilled_states: '',
@@ -264,13 +264,13 @@ describe('SLA: non-matching paths', () => {
     })
     const doc = await saveDoc(DT, { title: 'late', priority: 'High' }, 'Administrator')
     await sql`update cov_sla_norole set resolution_by = now() - interval '1 hour'
-      where name = ${String(doc.name)}`
+      where row_id = ${String(doc.row_id)}`
     await enqueue('check_sla', {})
     await sql`
       update background_job set run_at = now()
       where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
     await drainJobs()
-    const [row] = await sql`select sla_status from cov_sla_norole where name = ${String(doc.name)}`
+    const [row] = await sql`select sla_status from cov_sla_norole where row_id = ${String(doc.row_id)}`
     expect(row.sla_status).toBe('Overdue')
     const mails = await sql`
       select 1 from email_queue where ref_table = ${DT}`
@@ -284,11 +284,11 @@ describe('assignment + RPC edges', () => {
     await makeDT(admin, DT)
     const user = await createUser({ roles: [] })
     const doc = await saveDoc(DT, { title: 'x' }, 'Administrator')
-    await createAssignment(DT, String(doc.name), String(user.user), 'Administrator')
+    await createAssignment(DT, String(doc.row_id), String(user.user), 'Administrator')
     const [todo] = await sql`
       select description from todo
-      where ref_table = ${DT} and reference_name = ${String(doc.name)}`
-    expect(todo.description).toBe(`Assigned ${DT} ${String(doc.name)}`)
+      where ref_table = ${DT} and reference_name = ${String(doc.row_id)}`
+    expect(todo.description).toBe(`Assigned ${DT} ${String(doc.row_id)}`)
   })
 
   test('frappe.client.get_value resolves filters arrays and returns null on no match', async ({

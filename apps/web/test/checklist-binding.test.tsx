@@ -53,7 +53,7 @@ test('discovery reaches a checklist in the third Sub-table, past two near-misses
     ],
   })
 
-  const run = await admin.post<{ name: string }>('/api/save_doc', {
+  const run = await admin.post<{ row_id: string }>('/api/save_doc', {
     doctype: 'Third Sub Parent',
     doc: {
       run_title: 'Runs from the third sub-table',
@@ -69,7 +69,7 @@ test('discovery reaches a checklist in the third Sub-table, past two near-misses
   // …and the run pane binds `steps`, the one carrying `done` — not the
   // near-miss ahead of it, and not nothing at all.
   await renderApp(
-    `/admin/Third%20Sub%20Parent/view/checklist?run=${encodeURIComponent(run.name)}`,
+    `/admin/Third%20Sub%20Parent/view/checklist?run=${encodeURIComponent(run.row_id)}`,
     admin,
   )
   expect(await screen.findByText('Unlock the shutter')).toBeInTheDocument()

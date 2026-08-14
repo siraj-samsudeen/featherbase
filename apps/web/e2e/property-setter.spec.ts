@@ -17,7 +17,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   await request.delete(`/api/table/${encodeURIComponent(DT)}/ps-doc`, { headers })
   await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
-    data: { name: 'ps-doc', title: 'hi' },
+    data: { row_id: 'ps-doc', title: 'hi' },
   })
   // Clean any prior setter.
   await request.delete(`/api/table/Metadata%20Override/${encodeURIComponent(`${DT}-title-label`)}`, { headers })
@@ -43,7 +43,7 @@ test('CUST-002: a label override shows in the form and reverts when removed', as
     headers,
     data: {
       doctype: 'Metadata Override',
-      doc: { name: `${DT}-title-label`, table_name: DT, column_name: 'title', property: 'label', value: 'Headline' },
+      doc: { row_id: `${DT}-title-label`, table_name: DT, column_name: 'title', property: 'label', value: 'Headline' },
     },
   })
   expect([200, 201]).toContain(ps.status())

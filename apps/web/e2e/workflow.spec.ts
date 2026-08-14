@@ -20,7 +20,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
 
-  await request.post('/api/save_doc', { headers, data: { doctype: 'Role', doc: { name: 'Wf Ui Approver' } } })
+  await request.post('/api/save_doc', { headers, data: { doctype: 'Role', doc: { row_id: 'Wf Ui Approver' } } })
 
   // Fresh workflow each run (delete old first so states/transitions are clean).
   await request.delete('/api/table/Workflow/Wf%20Ui%20Flow', { headers })
@@ -29,7 +29,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     data: {
       doctype: 'Workflow',
       doc: {
-        name: 'Wf Ui Flow',
+        row_id: 'Wf Ui Flow',
         ref_table: DT,
         is_active: true,
         states: [
@@ -45,7 +45,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   
   const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
-    data: { name: DOC, title: 'Approve me' },
+    data: { row_id: DOC, title: 'Approve me' },
   })
   if (doc.status() !== 201) throw new Error(`doc: ${doc.status()}`)
 })

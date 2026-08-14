@@ -297,11 +297,11 @@ async function domainAdmitted(email: string): Promise<boolean> {
 // create one, mark it as a Google login, and return its name.
 export async function findOrCreateGoogleUser(email: string, name: string): Promise<string> {
   const [existing] = await sql`
-    select name, enabled, user_type from "user"
-    where lower(email) = ${email} or lower(name) = ${email} limit 1`
+    select row_id, enabled, user_type from "user"
+    where lower(email) = ${email} or lower(row_id) = ${email} limit 1`
   let userName: string
   if (existing) {
-    userName = existing.name as string
+    userName = existing.row_id as string
     // #137: a disabled principal stays disabled. This used to flip `enabled`
     // back on ("ensure it can sign in") BEFORE issueSession got a say — so an
     // OAuth round trip undid an administrator's disable, and every access
@@ -321,12 +321,12 @@ export async function findOrCreateGoogleUser(email: string, name: string): Promi
       throw new AppError('AuthenticationError', 'Access not provisioned for this account. Contact IT.')
     const created = await saveDoc(
       'User',
-      { name: email, email, full_name: name || email, enabled: true, roles: [] },
+      { row_id: email, email, full_name: name || email, enabled: true, roles: [] },
       'Administrator',
     )
-    userName = String(created.name)
+    userName = String(created.row_id)
   }
   // social_login is read_only (system-managed) → set it with a direct write.
-  await sql`update "user" set social_login = 'google' where name = ${userName}`
+  await sql`update "user" set social_login = 'google' where row_id = ${userName}`
   return userName
 }

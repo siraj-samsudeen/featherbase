@@ -15,9 +15,9 @@ import { drainJobs, loadJobs, retryJob } from '../src/jobs'
 
 async function failedJob(): Promise<string> {
   await loadJobs() // registers ping_job
-  const [{ name }] = await sql`
+  const [{ row_id: name }] = await sql`
     insert into background_job ${sql({
-      name: `jr-failed-${Date.now()}`,
+      row_id: `jr-failed-${Date.now()}`,
       created_by: 'Administrator',
       updated_by: 'Administrator',
       method: 'ping_job',
@@ -26,7 +26,7 @@ async function failedJob(): Promise<string> {
       max_attempts: 3,
       error: 'boom',
       payload: '{}',
-    })} returning name`
+    })} returning row_id`
   return name as string
 }
 
@@ -35,20 +35,20 @@ describe('JOB-004: retry failed jobs', () => {
     const name = await failedJob()
     expect(await retryJob(name)).toBe(true)
 
-    const [queued] = await sql`select job_status, attempts from background_job where name = ${name}`
+    const [queued] = await sql`select job_status, attempts from background_job where row_id = ${name}`
     expect(queued.job_status).toBe('queued')
     expect(Number(queued.attempts)).toBe(0)
 
     await drainJobs()
-    const [done] = await sql`select job_status from background_job where name = ${name}`
+    const [done] = await sql`select job_status from background_job where row_id = ${name}`
     expect(done.job_status).toBe('done')
   })
 
   test('will not retry a job that is not failed', async () => {
     await loadJobs()
-    const [{ name }] = await sql`
+    const [{ row_id: name }] = await sql`
       insert into background_job ${sql({
-        name: 'jr-notfailed',
+        row_id: 'jr-notfailed',
         created_by: 'Administrator',
         updated_by: 'Administrator',
         method: 'ping_job',
@@ -56,7 +56,7 @@ describe('JOB-004: retry failed jobs', () => {
         attempts: 1,
         max_attempts: 3,
         payload: '{}',
-      })} returning name`
+      })} returning row_id`
     expect(await retryJob(name as string)).toBe(false)
   })
 
@@ -66,7 +66,7 @@ describe('JOB-004: retry failed jobs', () => {
     const name = await failedJob()
     const ok = await admin.fetch('/api/retry_job', {
       method: 'POST',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ row_id: name }),
       headers: { 'content-type': 'application/json' },
     })
     expect(ok.status).toBe(200)
@@ -74,7 +74,7 @@ describe('JOB-004: retry failed jobs', () => {
     // Re-retrying the now-done job is rejected.
     const again = await admin.fetch('/api/retry_job', {
       method: 'POST',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ row_id: name }),
       headers: { 'content-type': 'application/json' },
     })
     expect(again.status).toBe(417)

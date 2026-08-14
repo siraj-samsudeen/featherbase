@@ -60,7 +60,7 @@ async function seedAndRun(admin: TestClient) {
 async function rowsByZone(admin: TestClient) {
   const list = await admin.get<{ data: Record<string, unknown>[] }>(
     `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
-      '["name","zone","pop","note","updated_at"]',
+      '["row_id","zone","pop","note","updated_at"]',
     )}&limit_page_length=100`,
   )
   return Object.fromEntries(list.data.map((r) => [String(r.zone), r]))
@@ -208,13 +208,13 @@ describe('RVT-R2/R3: the revert boundary restores and deletes', () => {
     const runId = await seedAndRun(admin)
     const { Alpha } = await rowsByZone(admin)
     await admin.fetch(
-      `/api/table/${encodeURIComponent(DT)}/${encodeURIComponent(String(Alpha.name))}`,
+      `/api/table/${encodeURIComponent(DT)}/${encodeURIComponent(String(Alpha.row_id))}`,
       { method: 'DELETE' },
     )
     const res = await admin.post<RevertRes>(REVERT, { run_id: runId })
     expect(res.restored).toBe(0)
     expect(res.deleted).toBe(1) // Charlie still goes
-    expect(res.skipped).toEqual([{ name: String(Alpha.name), reason: 'row-deleted' }])
+    expect(res.skipped).toEqual([{ name: String(Alpha.row_id), reason: 'row-deleted' }])
   })
 
   test('RVT-R3: an inserted row already deleted — skipped: already-gone', async ({ admin }) => {
@@ -222,12 +222,12 @@ describe('RVT-R2/R3: the revert boundary restores and deletes', () => {
     const runId = newRunId()
     await admin.post(IMPORT, { rows: [{ zone: 'Echo', pop: 5 }], context: { run_id: runId } })
     const { Echo } = await rowsByZone(admin)
-    await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent(String(Echo.name))}`, {
+    await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent(String(Echo.row_id))}`, {
       method: 'DELETE',
     })
     const res = await admin.post<RevertRes>(REVERT, { run_id: runId })
     expect(res.deleted).toBe(0)
-    expect(res.skipped).toEqual([{ name: String(Echo.name), reason: 'already-gone' }])
+    expect(res.skipped).toEqual([{ name: String(Echo.row_id), reason: 'already-gone' }])
   })
 })
 
@@ -241,18 +241,18 @@ describe('RVT-R4: edited-after detection and the override', () => {
     const { Alpha } = await rowsByZone(admin)
     await admin.post('/api/save_doc', {
       doctype: DT,
-      doc: { name: Alpha.name, updated_at: Alpha.updated_at, pop: 99999 },
+      doc: { row_id: Alpha.row_id, updated_at: Alpha.updated_at, pop: 99999 },
     })
 
     const first = await admin.post<RevertRes>(REVERT, { run_id: runId })
     expect(first.restored).toBe(0)
     expect(first.deleted).toBe(1) // Charlie still goes
-    expect(first.skipped).toEqual([{ name: String(Alpha.name), reason: 'edited-after' }])
+    expect(first.skipped).toEqual([{ name: String(Alpha.row_id), reason: 'edited-after' }])
 
     // RVT-R5's escalation: override names exactly the skipped row.
     const second = await admin.post<RevertRes>(REVERT, {
       run_id: runId,
-      override: [String(Alpha.name)],
+      override: [String(Alpha.row_id)],
     })
     expect(second.restored).toBe(1)
     const after = await rowsByZone(admin)
@@ -297,7 +297,7 @@ describe('RVT-R6: whole-request permission refusal', () => {
   }) => {
     await setup(admin)
     const runId = await seedAndRun(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
     await admin.post('/api/save_doc', {
       doctype: 'Permission',
       doc: { ref_table: DT, role: ROLE, can_read: true, can_write: true }, // no delete

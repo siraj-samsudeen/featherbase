@@ -22,7 +22,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   const created = await request.post('/api/save_doc', {
     headers: auth,
-    data: { doctype: DT, doc: { name: DOC, title: 'v1' } },
+    data: { doctype: DT, doc: { row_id: DOC, title: 'v1' } },
   })
   if (![201, 409, 417].includes(created.status())) throw new Error(`doc: ${created.status()}`)
 })
@@ -52,7 +52,7 @@ test('#101 P4: my trail and the team changes surface on the Home Page', async ({
     headers: { Authorization: `Bearer ${token}` },
     data: {
       doctype: DT,
-      doc: { name: DOC, title: title === 'v1' ? 'v2' : 'v1', updated_at },
+      doc: { row_id: DOC, title: title === 'v1' ? 'v2' : 'v1', updated_at },
     },
   })
   if (edited.status() !== 200 && edited.status() !== 201)

@@ -290,7 +290,7 @@ describe('DEL-R5: row-id series survive deletion', () => {
       doc: { title: 'b' },
     })) as { name: string }
     const num = (s: string) => Number(s.split('-').pop())
-    expect(num(second.name)).toBeGreaterThan(num(first.name))
+    expect(num(second.row_id)).toBeGreaterThan(num(first.row_id))
   })
 })
 
@@ -330,7 +330,7 @@ describe('DEL-R6: a bound Table sheds its binding, never its source', () => {
   test('DEL-R6: the binding goes; the source file keeps its bytes', async ({ admin }) => {
     invalidateSources()
     await admin.post('/api/table/Data%20Source', {
-      name: 'del-fixture',
+      row_id: 'del-fixture',
       engine: 'csv-folder',
       root_path: dir,
       access: 'read_write',

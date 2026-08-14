@@ -80,12 +80,12 @@ async function cmdCreateUser(
   // (email is unique): `administrator` must not shadow `Administrator` — the
   // same trap #131 closed for service accounts.
   const [existing] = await sql`
-    select name from "user" where lower(name) = lower(${email}) or lower(email) = lower(${email})`
-  if (existing) throw new Error(`User ${existing.name as string} already exists`)
+    select row_id from "user" where lower(row_id) = lower(${email}) or lower(email) = lower(${email})`
+  if (existing) throw new Error(`User ${existing.row_id as string} already exists`)
   await saveDoc(
     'User',
     {
-      name: email,
+      row_id: email,
       email,
       full_name: fullName,
       enabled: true,
@@ -107,7 +107,7 @@ async function cmdCreateServiceAccount(
   const roles = asArray(flags.roles).flatMap((r) => r.split(',')).map((r) => r.trim()).filter(Boolean)
   const account = await createServiceAccount(name, roles, 'Administrator')
   console.log(
-    `created service account ${account.name}${account.roles.length ? ` with roles: ${account.roles.join(', ')}` : ''}`,
+    `created service account ${account.row_id}${account.roles.length ? ` with roles: ${account.roles.join(', ')}` : ''}`,
   )
 }
 

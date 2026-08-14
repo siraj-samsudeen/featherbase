@@ -16,7 +16,7 @@ const CUST_B = 'upn-cust-b@x.com'
 async function setup(admin: TestClient) {
   for (const u of [CUST_A, CUST_B])
     await sql`insert into "user" ${sql({
-      name: u, created_by: 'Administrator', updated_by: 'Administrator', email: u, enabled: true,
+      row_id: u, created_by: 'Administrator', updated_by: 'Administrator', email: u, enabled: true,
     })}`
   await admin.post('/api/doctype', {
     name: DT,
@@ -25,7 +25,7 @@ async function setup(admin: TestClient) {
       { column_name: 'customer', column_type: 'Reference', reference_table: 'User' },
     ],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
   await admin.post('/api/save_doc', {
     doctype: 'Permission',
     doc: { ref_table: DT, role: ROLE, can_read: true },
@@ -52,7 +52,7 @@ describe('PERM-005: NULL links pass Data Scope list narrowing', () => {
     })
     const body = await agent.get<{ data: { subject: string }[]; total: number }>(
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
-        JSON.stringify(['name', 'subject']),
+        JSON.stringify(['row_id', 'subject']),
       )}`,
     )
     const subjects = body.data.map((d) => d.subject).sort()

@@ -16,7 +16,7 @@ test.beforeAll(async ({ request }) => {
     headers,
     data: { method: 'ping_job', job_status: 'failed', attempts: 3, max_attempts: 3, error: 'simulated failure', payload: '{}' },
   })
-  jobName = ((await res.json()) as { name: string }).name
+  jobName = ((await res.json()) as { row_id: string }).row_id
 })
 
 // JOB-004: a failed job appears in the monitor; clicking Retry re-runs it.

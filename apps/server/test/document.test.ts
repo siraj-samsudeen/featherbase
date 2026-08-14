@@ -23,7 +23,7 @@ describe('DOC-001: save_doc inserts through the Document engine', () => {
       doctype: DT,
       doc: { title: 'hello', qty: 3 },
     })
-    expect(doc.name).toBeTruthy()
+    expect(doc.row_id).toBeTruthy()
     expect(doc.created_by).toBe('Administrator')
     expect(doc.created_at).toBeTruthy()
     expect(doc.updated_at).toBeTruthy()
@@ -32,7 +32,7 @@ describe('DOC-001: save_doc inserts through the Document engine', () => {
     expect(doc.qty).toBe('3')
 
     const read = await admin.get<Record<string, unknown>>(
-      `/api/table/${encodeURIComponent(DT)}/${doc.name}`,
+      `/api/table/${encodeURIComponent(DT)}/${doc.row_id}`,
     )
     expect(read.title).toBe('hello')
   })

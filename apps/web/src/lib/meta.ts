@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
 
 export interface ColumnDef {
-  name: string
+  row_id: string
   parent: string
   position: number
   column_name: string
@@ -98,7 +98,7 @@ export function listColumns(
   let flagged = dataColumns.filter((c) => c.in_list_view)
   if (!flagged.length) flagged = dataColumns.slice(0, 2)
   return [
-    { column_name: 'name', label: 'Name', column_type: 'Data' },
+    { column_name: 'row_id', label: 'Row ID', column_type: 'Data' },
     ...flagged.map((c) => ({
       column_name: c.column_name,
       label: c.label ?? c.column_name,

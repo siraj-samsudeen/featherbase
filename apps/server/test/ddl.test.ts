@@ -34,7 +34,7 @@ describe('META-003: Table save generates its physical table', () => {
 
     const cols = await columns('ddl_test_task')
     expect(cols).toMatchObject({
-      name: 'character varying',
+      row_id: 'character varying',
       created_by: 'character varying',
       created_at: 'timestamp with time zone',
       updated_at: 'timestamp with time zone',
@@ -52,7 +52,7 @@ describe('META-003: Table save generates its physical table', () => {
     expect(cols.sec).toBeUndefined()
 
     await sql.unsafe(
-      `insert into ddl_test_task (name, code) values ('a', 'X'), ('b', 'X')`,
+      `insert into ddl_test_task (row_id, code) values ('a', 'X'), ('b', 'X')`,
     ).then(
       () => {
         throw new Error('unique constraint not enforced')
@@ -88,7 +88,7 @@ describe('META-003: Table save generates its physical table', () => {
   // the behaviour; the transactional guarantee it also covered is kept alive
   // by the test below, which fails DDL a way the name check cannot see.
   test('refuses a name already taken by a raw table, before any DDL', async ({ admin }) => {
-    await sql.unsafe(`create table if not exists ddl_ghost (name text)`)
+    await sql.unsafe(`create table if not exists ddl_ghost (row_id text)`)
     const res = await admin.fetch('/api/doctype', {
       method: 'POST',
       body: JSON.stringify({

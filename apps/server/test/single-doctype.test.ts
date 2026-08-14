@@ -32,7 +32,7 @@ describe('SET-001: settings tables', () => {
   test('reads defaults before anything is saved', async () => {
     await setup()
     const doc = await getDoc(DT, DT, 'Administrator')
-    expect(doc.name).toBe(DT)
+    expect(doc.row_id).toBe(DT)
     expect(doc.title).toBe('Default Title')
     expect(doc.count).toBe(5)
     expect(doc.active).toBe(false)

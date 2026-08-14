@@ -63,7 +63,7 @@ export function useClientScripts(doctype: string): CompiledScripts {
           ['ref_table', '=', doctype],
           ['enabled', '=', true],
         ],
-        fields: ['name', 'script'],
+        fields: ['row_id', 'script'],
         limit_page_length: 50,
       }),
     staleTime: 30_000,

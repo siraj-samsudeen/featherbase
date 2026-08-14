@@ -35,7 +35,7 @@ export function HomePageView({ name }: { name: string }) {
     )
   if (!pages.data) return <div className="p-4 text-[var(--color-ink-faint)]">Loading…</div>
 
-  const page = pages.data.pages.find((p) => p.name === name)
+  const page = pages.data.pages.find((p) => p.row_id === name)
   if (!page)
     return (
       <div className="fc-card p-4 text-sm text-red-600" data-testid="home-page-error">
@@ -47,7 +47,7 @@ export function HomePageView({ name }: { name: string }) {
     <div data-testid="home-page" className="space-y-4">
       <h1 className="text-lg font-semibold text-[var(--color-ink)]" data-testid="home-page-title">
         {page.icon ? `${page.icon} ` : ''}
-        {page.label || page.name}
+        {page.label || page.row_id}
       </h1>
 
       {/* #101 Phase 5: resuming beats browsing — last row/view/search first,

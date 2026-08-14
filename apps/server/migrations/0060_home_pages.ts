@@ -133,10 +133,10 @@ const SYSTEM_CARDS: [string, string[]][] = [
 ]
 
 async function seedSystemPage() {
-  const [page] = await sql`select 1 from home_page where name = 'system'`
+  const [page] = await sql`select 1 from home_page where row_id = 'system'`
   if (!page)
     await sql`insert into home_page ${sql({
-      name: 'system',
+      row_id: 'system',
       label: 'System',
       sequence: 100,
     })}`
@@ -170,7 +170,7 @@ async function seedSystemPage() {
     for (const row of rows) {
       position += 1
       await sql`insert into home_page_link ${sql({
-        name: randomUUID(),
+        row_id: randomUUID(),
         parent: 'system',
         parenttype: 'Home Page',
         parentfield: 'links',

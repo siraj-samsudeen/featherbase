@@ -25,7 +25,7 @@ test.beforeAll(async ({ request }) => {
     },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
-  await request.post('/api/save_doc', { headers: H, data: { doctype: 'Role', doc: { name: 'Wf Cond Approver' } } })
+  await request.post('/api/save_doc', { headers: H, data: { doctype: 'Role', doc: { row_id: 'Wf Cond Approver' } } })
 
   await request.delete(`/api/table/Workflow/${encodeURIComponent(FLOW)}`, { headers: H })
   const wf = await request.post('/api/save_doc', {
@@ -33,7 +33,7 @@ test.beforeAll(async ({ request }) => {
     data: {
       doctype: 'Workflow',
       doc: {
-        name: FLOW,
+        row_id: FLOW,
         ref_table: DT,
         is_active: true,
         states: [
@@ -50,8 +50,8 @@ test.beforeAll(async ({ request }) => {
   })
   if (![200, 201].includes(wf.status())) throw new Error(`workflow: ${wf.status()}`)
 
-  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers: H, data: { name: BIG, title: 'big', amount: 5000 } })
-  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers: H, data: { name: SMALL, title: 'small', amount: 500 } })
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers: H, data: { row_id: BIG, title: 'big', amount: 5000 } })
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers: H, data: { row_id: SMALL, title: 'small', amount: 500 } })
 })
 
 async function login(page: import('@playwright/test').Page) {

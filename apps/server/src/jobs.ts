@@ -45,7 +45,7 @@ export async function enqueue(
   const name = jobName()
   await sql`
     insert into background_job ${sql({
-      name,
+      row_id: name,
       created_by: 'Administrator',
       updated_by: 'Administrator',
       method,
@@ -68,7 +68,7 @@ async function logExecution(
 ): Promise<void> {
   await sql`
     insert into job_execution ${sql({
-      name: jobName(),
+      row_id: jobName(),
       created_by: 'Administrator',
       updated_by: 'Administrator',
       job,
@@ -84,8 +84,8 @@ export async function runOneJob(): Promise<boolean> {
   // Atomic claim: flip exactly one due queued job to running.
   const [claimed] = await sql`
     update background_job set job_status = 'running', updated_at = now()
-    where name = (
-      select name from background_job
+    where row_id = (
+      select row_id from background_job
       where job_status = 'queued' and (run_at is null or run_at <= now())
       order by run_at asc, created_at asc
       limit 1 for update skip locked
@@ -104,7 +104,7 @@ export async function runOneJob(): Promise<boolean> {
   const ctx: JobContext = {
     setProgress: (percent, message) =>
       publishUserEvent(claimed.created_by as string, 'job_progress', {
-        job: claimed.name,
+        job: claimed.row_id,
         method,
         percent: Math.max(0, Math.min(100, Math.round(percent))),
         message: message ?? null,
@@ -116,8 +116,8 @@ export async function runOneJob(): Promise<boolean> {
     await handler(payload, ctx)
     await sql`
       update background_job set job_status = 'done', attempts = ${attempt}, error = null, updated_at = now()
-      where name = ${claimed.name as string}`
-    await logExecution(claimed.name as string, method, attempt, 'success')
+      where row_id = ${claimed.row_id as string}`
+    await logExecution(claimed.row_id as string, method, attempt, 'success')
 
     // JOB-003: recurring jobs re-enqueue for the next interval.
     const every = claimed.repeat_every == null ? null : Number(claimed.repeat_every)
@@ -135,8 +135,8 @@ export async function runOneJob(): Promise<boolean> {
     await sql`
       update background_job
       set job_status = ${nextStatus}, attempts = ${attempt}, error = ${message}, updated_at = now()
-      where name = ${claimed.name as string}`
-    await logExecution(claimed.name as string, method, attempt, 'error', message)
+      where row_id = ${claimed.row_id as string}`
+    await logExecution(claimed.row_id as string, method, attempt, 'error', message)
     return true
   }
 }
@@ -147,8 +147,8 @@ export async function retryJob(name: string): Promise<boolean> {
   const [row] = await sql`
     update background_job
     set job_status = 'queued', attempts = 0, error = null, run_at = now(), updated_at = now()
-    where name = ${name} and job_status = 'failed'
-    returning name`
+    where row_id = ${name} and job_status = 'failed'
+    returning row_id`
   return Boolean(row)
 }
 

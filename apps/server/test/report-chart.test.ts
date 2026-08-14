@@ -28,15 +28,15 @@ async function setup(admin: TestClient) {
     ['s3', 'North', 25],
   ] as const
   for (const [name, region, amount] of rows)
-    await admin.post(`/api/table/${encodeURIComponent(DT)}`, { name, region, amount })
+    await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: name, region, amount })
 
   await admin.post('/api/save_doc', {
     doctype: 'Report',
-    doc: { name: REPORT, ref_table: DT, report_type: 'Report Builder', config: { columns: ['region', 'amount'], filters: [] } },
+    doc: { row_id: REPORT, ref_table: DT, report_type: 'Report Builder', config: { columns: ['region', 'amount'], filters: [] } },
   })
   await admin.post('/api/save_doc', {
     doctype: 'Dashboard',
-    doc: { name: DASH, label: 'RC Dash', config: { cards: [], charts: [] } },
+    doc: { row_id: DASH, label: 'RC Dash', config: { cards: [], charts: [] } },
   })
 }
 

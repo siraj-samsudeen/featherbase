@@ -25,15 +25,15 @@ test.beforeAll(async ({ request }) => {
     data: { name: DT, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
-  await request.post('/api/save_doc', { headers, data: { doctype: 'Role', doc: { name: ROLE } } })
+  await request.post('/api/save_doc', { headers, data: { doctype: 'Role', doc: { row_id: ROLE } } })
   // Clear any Permission rows left by earlier runs so exactly one row exists.
   const existing = (await (
     await request.get(
       `/api/table/Permission?filters=${encodeURIComponent(JSON.stringify([['ref_table', '=', DT]]))}&limit_page_length=200`,
       { headers },
     )
-  ).json()) as { data: { name: string }[] }
-  for (const p of existing.data) await request.delete(`/api/table/Permission/${p.name}`, { headers })
+  ).json()) as { data: { row_id: string }[] }
+  for (const p of existing.data) await request.delete(`/api/table/Permission/${p.row_id}`, { headers })
   // Start with read + write + create so the role's user can save.
   await request.post('/api/save_doc', {
     headers,
@@ -41,7 +41,7 @@ test.beforeAll(async ({ request }) => {
   })
   await request.post('/api/save_doc', {
     headers,
-    data: { doctype: 'User', doc: { name: USER, email: USER, enabled: true, roles: [{ role: ROLE }] } },
+    data: { doctype: 'User', doc: { row_id: USER, email: USER, enabled: true, roles: [{ role: ROLE }] } },
   })
   await request.post('/api/set_password', { headers, data: { user: USER, password: PWD } })
   // Seed a document the role's user will try to save (update).
@@ -49,7 +49,7 @@ test.beforeAll(async ({ request }) => {
     headers,
     data: { title: 'seed' },
   })
-  seedName = ((await seed.json()) as { name: string }).name
+  seedName = ((await seed.json()) as { row_id: string }).row_id
 })
 
 // Updating an existing doc needs write permission — that is the "save ability"

@@ -19,17 +19,17 @@ async function setup(admin: TestClient, createUser: CreateUserFn) {
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
   // A role that can read the doctype, and a document to attach the file to.
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: READER_ROLE } })
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: READER_ROLE } })
   await admin.post('/api/save_doc', {
     doctype: 'Permission',
     doc: { ref_table: DT, role: READER_ROLE, can_read: true },
   })
   const docName = (
-    await admin.post<{ name: string }>('/api/save_doc', {
+    await admin.post<{ row_id: string }>('/api/save_doc', {
       doctype: DT,
       doc: { title: 'secret' },
     })
-  ).name
+  ).row_id
 
   // Two users: one holds the reader role, one holds nothing.
   const reader = await createUser({ roles: [READER_ROLE] })

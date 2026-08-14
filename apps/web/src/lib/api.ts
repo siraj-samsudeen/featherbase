@@ -4,7 +4,7 @@ const TOKEN_KEY = 'fc_token'
 const USER_KEY = 'fc_user'
 
 export interface SessionUser {
-  name: string
+  row_id: string
   email: string
   full_name: string | null
 }

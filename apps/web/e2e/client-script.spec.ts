@@ -29,7 +29,7 @@ async function makeClientScript(request: APIRequestContext, name: string, dt: st
   await request.delete(`/api/table/Client%20Script/${name}`, { headers })
   const res = await request.post('/api/save_doc', {
     headers,
-    data: { doctype: 'Client Script', doc: { name, ref_table: dt, script, enabled: true } },
+    data: { doctype: 'Client Script', doc: { row_id: name, ref_table: dt, script, enabled: true } },
   })
   if (res.status() !== 201) throw new Error(`client script ${name}: ${res.status()} ${await res.text()}`)
 }

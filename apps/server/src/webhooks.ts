@@ -24,11 +24,11 @@ export async function evaluateWebhooks(
     select 1 from information_schema.tables where table_name = 'webhook'`
   if (!tableOk) return
   const hooks = await sql`
-    select name from webhook
+    select row_id from webhook
     where webhook_table = ${table} and webhook_event = ${event} and enabled = true`
   for (const h of hooks) {
     // Snapshot the row so the payload reflects the state at event time.
-    await enqueue('deliver_webhook', { webhook: h.name as string, event, row }, { maxAttempts: 3 })
+    await enqueue('deliver_webhook', { webhook: h.row_id as string, event, row }, { maxAttempts: 3 })
   }
 }
 
@@ -38,7 +38,7 @@ registerJob('deliver_webhook', async (payload) => {
     event: string
     row: Record<string, unknown>
   }
-  const [h] = await sql`select request_url, webhook_secret from webhook where name = ${webhook}`
+  const [h] = await sql`select request_url, webhook_secret from webhook where row_id = ${webhook}`
   if (!h) return // webhook was deleted since enqueue — nothing to do
 
   const body = JSON.stringify(row)

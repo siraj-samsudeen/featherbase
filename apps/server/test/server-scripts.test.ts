@@ -36,7 +36,7 @@ function saveTarget(admin: TestClient, doc: Record<string, unknown>) {
 describe('CUST-004: server scripts', () => {
   test('rejects a save conditionally (validate event)', async ({ admin }) => {
     await setup(admin)
-    await makeScript(admin, { name: 'ss-srv-reject', script_type: 'Document Event', ref_table: DT, event: 'validate', script: 'if (doc.amount < 0) frappe.throw("no negatives")', enabled: true })
+    await makeScript(admin, { row_id: 'ss-srv-reject', script_type: 'Document Event', ref_table: DT, event: 'validate', script: 'if (doc.amount < 0) frappe.throw("no negatives")', enabled: true })
     const bad = await saveTarget(admin, { amount: -1 })
     expect(bad.status).toBe(417)
     expect(((await bad.json()) as { error: { message: string } }).error.message).toContain('no negatives')
@@ -46,20 +46,20 @@ describe('CUST-004: server scripts', () => {
 
   test('can set a field (before_save event)', async ({ admin }) => {
     await setup(admin)
-    await makeScript(admin, { name: 'ss-srv-set', script_type: 'Document Event', ref_table: DT, event: 'before_save', script: 'doc.size_label = doc.amount > 100 ? "big" : "small"', enabled: true })
-    const created = await admin.post<{ name: string }>('/api/save_doc', {
+    await makeScript(admin, { row_id: 'ss-srv-set', script_type: 'Document Event', ref_table: DT, event: 'before_save', script: 'doc.size_label = doc.amount > 100 ? "big" : "small"', enabled: true })
+    const created = await admin.post<{ row_id: string }>('/api/save_doc', {
       doctype: DT,
       doc: { amount: 200 },
     })
-    const [row] = await sql`select size_label from ss_srv_doc where name = ${created.name}`
+    const [row] = await sql`select size_label from ss_srv_doc where row_id = ${created.row_id}`
     expect(row.size_label).toBe('big')
   })
 
   test('sandbox blocks require, process, and fetch', async ({ admin }) => {
     await setup(admin)
     for (const bad of ['require("fs")', 'process.exit(1)', 'fetch("http://x")']) {
-      await sql`delete from server_script where name = 'ss-srv-evil'`
-      await makeScript(admin, { name: 'ss-srv-evil', script_type: 'Document Event', ref_table: DT, event: 'validate', script: bad, enabled: true })
+      await sql`delete from server_script where row_id = 'ss-srv-evil'`
+      await makeScript(admin, { row_id: 'ss-srv-evil', script_type: 'Document Event', ref_table: DT, event: 'validate', script: bad, enabled: true })
       const res = await saveTarget(admin, { amount: 1 })
       expect(res.status).toBe(417)
       expect(((await res.json()) as { error: { message: string } }).error.message).toMatch(/is not defined|is not a function/)
@@ -68,20 +68,20 @@ describe('CUST-004: server scripts', () => {
 
   test('does not run a disabled script', async ({ admin }) => {
     await setup(admin)
-    await makeScript(admin, { name: 'ss-srv-off', script_type: 'Document Event', ref_table: DT, event: 'validate', script: 'frappe.throw("should not fire")', enabled: false })
+    await makeScript(admin, { row_id: 'ss-srv-off', script_type: 'Document Event', ref_table: DT, event: 'validate', script: 'frappe.throw("should not fire")', enabled: false })
     const res = await saveTarget(admin, { amount: 1 })
     expect(res.status).toBe(201)
   })
 
   test('runs an API script and returns its result', async ({ admin }) => {
     await setup(admin)
-    await makeScript(admin, { name: 'ss-srv-double', script_type: 'API', api_method: 'srv_double', script: 'result = (args.n || 0) * 2', enabled: true })
+    await makeScript(admin, { row_id: 'ss-srv-double', script_type: 'API', api_method: 'srv_double', script: 'result = (args.n || 0) * 2', enabled: true })
     expect(await runApiScript('srv_double', { n: 21 })).toBe(42)
   })
 
   test('time-boxes a runaway script instead of hanging', async ({ admin }) => {
     await setup(admin)
-    await makeScript(admin, { name: 'ss-srv-loop', script_type: 'API', api_method: 'srv_loop', script: 'while(true){}', enabled: true })
+    await makeScript(admin, { row_id: 'ss-srv-loop', script_type: 'API', api_method: 'srv_loop', script: 'while(true){}', enabled: true })
     await expect(runApiScript('srv_loop', {})).rejects.toMatchObject({ type: 'ValidationError' })
   })
 
@@ -89,15 +89,15 @@ describe('CUST-004: server scripts', () => {
     await setup(admin)
     // Eval #13 regression: injecting host built-ins let Object.constructor
     // (the host Function) run in the host realm and reach `process`.
-    await makeScript(admin, { name: 'ss-srv-esc', script_type: 'API', api_method: 'srv_esc', script: 'result = Object.constructor("return typeof process")()', enabled: true })
+    await makeScript(admin, { row_id: 'ss-srv-esc', script_type: 'API', api_method: 'srv_esc', script: 'result = Object.constructor("return typeof process")()', enabled: true })
     // In the sandbox, Object is context-native → process is undefined, not the
     // host process object.
     expect(await runApiScript('srv_esc', {})).toBe('undefined')
 
     // A direct attempt to read the pid errors (process not defined) — it never
     // returns a number.
-    await sql`delete from server_script where name = 'ss-srv-esc'`
-    await makeScript(admin, { name: 'ss-srv-esc', script_type: 'API', api_method: 'srv_esc2', script: 'result = Object.constructor("return process.pid")()', enabled: true })
+    await sql`delete from server_script where row_id = 'ss-srv-esc'`
+    await makeScript(admin, { row_id: 'ss-srv-esc', script_type: 'API', api_method: 'srv_esc2', script: 'result = Object.constructor("return process.pid")()', enabled: true })
     await expect(runApiScript('srv_esc2', {})).rejects.toMatchObject({ type: 'ValidationError' })
   })
 })

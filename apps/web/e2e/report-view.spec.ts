@@ -35,9 +35,9 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, {
       headers: auth,
     })
-  ).json()) as { data: { name: string }[] }
+  ).json()) as { data: { row_id: string }[] }
   for (const row of listed.data)
-    await request.delete(`/api/table/${encodeURIComponent(DT)}/${row.name}`, { headers: auth })
+    await request.delete(`/api/table/${encodeURIComponent(DT)}/${row.row_id}`, { headers: auth })
 
   const seed: [string, string, number][] = [
     ['alpha', 'Open', 1],

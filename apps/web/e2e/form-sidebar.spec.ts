@@ -17,7 +17,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   docName = `sb-${Date.now()}`
-  const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { name: docName, title: 'sidebar doc' } })
+  const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { row_id: docName, title: 'sidebar doc' } })
   if (doc.status() !== 201) throw new Error(`doc: ${doc.status()}`)
 })
 

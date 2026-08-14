@@ -27,13 +27,13 @@ async function setup(admin: TestClient) {
     ],
   })
   await sql`insert into email_rule ${sql({
-    name: 'EmlSave On Create', created_by: 'Administrator', updated_by: 'Administrator',
+    row_id: 'EmlSave On Create', created_by: 'Administrator', updated_by: 'Administrator',
     ref_table: DT, event: 'on_create',
     recipient: 'ops@x.com', subject: SUBJ_CREATE, message: 'new {{ doc.title }}',
     enabled: true,
   })}`
   await sql`insert into email_rule ${sql({
-    name: 'EmlSave On Resolve', created_by: 'Administrator', updated_by: 'Administrator',
+    row_id: 'EmlSave On Resolve', created_by: 'Administrator', updated_by: 'Administrator',
     ref_table: DT, event: 'on_save',
     condition_field: 'stage', condition_value: 'Resolved',
     recipient: '{{ doc.raised_by }}', subject: SUBJ_RESOLVED, message: 'done {{ doc.title }}',
@@ -61,7 +61,7 @@ describe('EML-004 extended: on_create / on_save rules + templated recipient', ()
 
     const resolved = await saveDoc(
       DT,
-      { name: doc.name, updated_at: (doc.updated_at as Date).toISOString(), stage: 'Resolved' },
+      { row_id: doc.row_id, updated_at: (doc.updated_at as Date).toISOString(), stage: 'Resolved' },
       'Administrator',
     )
     const afterResolve = await queued(SUBJ_RESOLVED)
@@ -72,7 +72,7 @@ describe('EML-004 extended: on_create / on_save rules + templated recipient', ()
     // A later save that KEEPS stage=Resolved must not re-fire the rule.
     await saveDoc(
       DT,
-      { name: doc.name, updated_at: (resolved.updated_at as Date).toISOString(), title: 'ticket v2' },
+      { row_id: doc.row_id, updated_at: (resolved.updated_at as Date).toISOString(), title: 'ticket v2' },
       'Administrator',
     )
     expect((await queued(SUBJ_RESOLVED)).length).toBe(1)
@@ -83,7 +83,7 @@ describe('EML-004 extended: on_create / on_save rules + templated recipient', ()
     const doc = await saveDoc(DT, { title: 'no email' }, 'Administrator') // raised_by unset
     await saveDoc(
       DT,
-      { name: doc.name, updated_at: (doc.updated_at as Date).toISOString(), stage: 'Resolved' },
+      { row_id: doc.row_id, updated_at: (doc.updated_at as Date).toISOString(), stage: 'Resolved' },
       'Administrator',
     )
     const rows = await queued(SUBJ_RESOLVED)

@@ -1,13 +1,15 @@
 import { z } from 'zod'
 import { sql } from './db'
 import { AppError } from './errors'
-import { COLUMN_TYPE_VALUES, type TableMeta, getMeta, invalidateMeta } from './meta'
+import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
 import { logAccess } from './audit'
 import { deleteStored } from './storage'
 
 // Columns every generated table has (META-005); user columns cannot shadow them.
+// #132: `name` left this list when the primary key became `row_id`, so a user
+// Table may now carry the most natural column name there is.
 export const STANDARD_COLUMNS = [
-  'name',
+  ROW_KEY,
   'created_by',
   'created_at',
   'updated_at',
@@ -192,7 +194,7 @@ export function tableName(table: string): string {
 function createTableDDL(def: TableDef): string | null {
   if (def.kind === 'settings') return null
   const cols: string[] = [
-    `"name" varchar(140) primary key`,
+    `"${ROW_KEY}" varchar(140) primary key`,
     `"created_by" varchar(140) not null default 'Administrator'`,
     `"created_at" timestamptz not null default now()`,
     `"updated_at" timestamptz not null default now()`,

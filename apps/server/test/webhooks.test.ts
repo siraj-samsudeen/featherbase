@@ -76,8 +76,8 @@ async function setup(admin: TestClient) {
   })
 }
 
-async function makeDoc(admin: TestClient): Promise<{ name: string; updated_at: string }> {
-  return await admin.post<{ name: string; updated_at: string }>('/api/save_doc', {
+async function makeDoc(admin: TestClient): Promise<{ row_id: string; updated_at: string }> {
+  return await admin.post<{ row_id: string; updated_at: string }>('/api/save_doc', {
     doctype: DT,
     doc: { title: 'v1' },
   })
@@ -119,14 +119,14 @@ describe('PLAT-005: webhooks', () => {
     // Updating fires on_update.
     await admin.post('/api/save_doc', {
       doctype: DT,
-      doc: { name: doc.name, updated_at: doc.updated_at, title: 'v2' },
+      doc: { row_id: doc.row_id, updated_at: doc.updated_at, title: 'v2' },
     })
 
-    const hits = await waitForHits((r) => r.path === '/hook' && JSON.parse(r.body).name === doc.name, 1)
+    const hits = await waitForHits((r) => r.path === '/hook' && JSON.parse(r.body).row_id === doc.row_id, 1)
     expect(hits.length).toBe(1)
     const hit = hits[0]
     expect(hit.event).toBe('on_update')
-    const payload = JSON.parse(hit.body) as { name: string; title: string }
+    const payload = JSON.parse(hit.body) as { row_id: string; title: string }
     expect(payload.title).toBe('v2')
     // The signature verifies against the exact body with the shared secret.
     expect(hit.signature).toBe(createHmac('sha256', SECRET).update(hit.body).digest('hex'))
@@ -143,12 +143,12 @@ describe('PLAT-005: webhooks', () => {
     const doc = await makeDoc(admin)
     await admin.post('/api/save_doc', {
       doctype: DT,
-      doc: { name: doc.name, updated_at: doc.updated_at, title: 'v2' },
+      doc: { row_id: doc.row_id, updated_at: doc.updated_at, title: 'v2' },
     })
 
     // Two hits to /retry: the first 500'd, the retry succeeded.
     const retryHits = await waitForHits(
-      (r) => r.path === '/retry' && JSON.parse(r.body).name === doc.name,
+      (r) => r.path === '/retry' && JSON.parse(r.body).row_id === doc.row_id,
       2,
     )
     expect(retryHits.length).toBe(2)

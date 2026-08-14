@@ -29,7 +29,7 @@ export function GanttView({ doctype }: { doctype: string }) {
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
   // Live resize state: which row, and the previewed end day.
-  const [resize, setResize] = useState<{ name: string; startX: number; origEnd: number; end: number } | null>(null)
+  const [resize, setResize] = useState<{ row_id: string; startX: number; origEnd: number; end: number } | null>(null)
 
   const dateColumns = useMemo(
     () => (meta.data?.columns ?? []).filter((f) => f.column_type === 'Date'),
@@ -37,14 +37,14 @@ export function GanttView({ doctype }: { doctype: string }) {
   )
   const startField = dateColumns[0]?.column_name
   const endField = dateColumns[1]?.column_name
-  const titleColumn = meta.data?.title_column || 'name'
+  const titleColumn = meta.data?.title_column || 'row_id'
 
   const rows = useQuery({
     queryKey: ['gantt', doctype, startField, endField],
     enabled: Boolean(meta.data && startField && endField),
     queryFn: () =>
       listResource<Row>(doctype, {
-        fields: [...new Set(['name', startField!, endField!, titleColumn])],
+        fields: [...new Set(['row_id', startField!, endField!, titleColumn])],
         order_by: startField!,
         limit_page_length: 1000,
       }),
@@ -66,10 +66,10 @@ export function GanttView({ doctype }: { doctype: string }) {
       if (s == null || e == null) return null
       if (e < s) e = s
       // A live resize overrides the stored end for its bar.
-      if (resize && resize.name === row.name) e = Math.max(s, resize.end)
-      return { row, name: String(row.name), s, e }
+      if (resize && resize.row_id === row.row_id) e = Math.max(s, resize.end)
+      return { row, row_id: String(row.row_id), s, e }
     })
-    .filter((b): b is { row: Row; name: string; s: number; e: number } => b !== null)
+    .filter((b): b is { row: Row; row_id: string; s: number; e: number } => b !== null)
 
   // Timeline range: pad one day on each side of the data.
   const today = Math.round(Date.now() / DAY_MS)
@@ -104,7 +104,7 @@ export function GanttView({ doctype }: { doctype: string }) {
     if (!resize) return
     const r = resize
     setResize(null)
-    void commitEnd(r.name, r.origEnd, Math.max(r.end, bars.find((b) => b.name === r.name)?.s ?? r.end))
+    void commitEnd(r.row_id, r.origEnd, Math.max(r.end, bars.find((b) => b.row_id === r.row_id)?.s ?? r.end))
   }
 
   return (
@@ -146,15 +146,15 @@ export function GanttView({ doctype }: { doctype: string }) {
               const leftDays = b.s - rangeStart
               const spanDays = b.e - b.s + 1
               return (
-                <div key={b.name} className="flex items-center border-b border-[var(--color-border)]" data-testid={`gantt-row-${b.name}`}>
+                <div key={b.row_id} className="flex items-center border-b border-[var(--color-border)]" data-testid={`gantt-row-${b.row_id}`}>
                   <div className="shrink-0 truncate px-2 py-1 text-xs text-[var(--color-ink)]" style={{ width: 200 }}>
-                    <RouterLink to="/admin/$doctype/$name" params={{ doctype, name: b.name }} search={{ prefill: undefined }} className="hover:underline">
-                      {String(b.row[titleColumn] ?? b.name)}
+                    <RouterLink to="/admin/$doctype/$name" params={{ doctype, name: b.row_id }} search={{ prefill: undefined }} className="hover:underline">
+                      {String(b.row[titleColumn] ?? b.row_id)}
                     </RouterLink>
                   </div>
                   <div className="relative py-1.5" style={{ width: totalDays * DAY_W, height: 28 }}>
                     <div
-                      data-testid={`gantt-bar-${b.name}`}
+                      data-testid={`gantt-bar-${b.row_id}`}
                       data-start={fromDayNum(b.s)}
                       data-end={fromDayNum(b.e)}
                       data-days={spanDays}
@@ -164,10 +164,10 @@ export function GanttView({ doctype }: { doctype: string }) {
                       <span className="sr-only">{spanDays} days</span>
                       {/* Right-edge resize handle */}
                       <div
-                        data-testid={`gantt-resize-${b.name}`}
+                        data-testid={`gantt-resize-${b.row_id}`}
                         onPointerDown={(e) => {
                           e.preventDefault()
-                          setResize({ name: b.name, startX: e.clientX, origEnd: b.e, end: b.e })
+                          setResize({ row_id: b.row_id, startX: e.clientX, origEnd: b.e, end: b.e })
                         }}
                         className="absolute right-0 top-0 h-4 w-2 cursor-ew-resize rounded-r bg-[var(--color-brand-strong,#1b6fd0)]"
                         style={{ background: 'rgba(0,0,0,0.35)' }}

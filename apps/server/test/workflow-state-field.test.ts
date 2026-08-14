@@ -26,7 +26,7 @@ async function setup(admin: TestClient) {
   await admin.post('/api/save_doc', {
     doctype: 'Workflow',
     doc: {
-      name: WF,
+      row_id: WF,
       ref_table: DT,
       is_active: true,
       state_field: 'ticket_status',
@@ -55,7 +55,7 @@ describe('Workflow state_field binding', () => {
   }) => {
     await setup(admin)
     await sql`insert into email_rule ${sql({
-      name: 'WfBind Closed Rule', created_by: 'Administrator', updated_by: 'Administrator',
+      row_id: 'WfBind Closed Rule', created_by: 'Administrator', updated_by: 'Administrator',
       ref_table: DT, event: 'on_save',
       condition_field: 'ticket_status', condition_value: 'Closed',
       recipient: 'watcher@x.com', subject: 'WfBind closed', message: 'closed',
@@ -63,9 +63,9 @@ describe('Workflow state_field binding', () => {
     })}`
     const doc = await saveDoc(DT, { title: 'bind me' }, 'Administrator')
     expect(doc.ticket_status).toBe('Open')
-    const after = await applyWorkflowAction(DT, String(doc.name), 'Close', 'Administrator')
+    const after = await applyWorkflowAction(DT, String(doc.row_id), 'Close', 'Administrator')
     expect(after.ticket_status).toBe('Closed')
-    const [row] = await sql`select ticket_status from wf_bind_ticket where name = ${String(doc.name)}`
+    const [row] = await sql`select ticket_status from wf_bind_ticket where row_id = ${String(doc.row_id)}`
     expect(row.ticket_status).toBe('Closed')
     // The transition counted as a save: the conditional on_save rule fired.
     const mails = await sql`select 1 from email_queue where subject = 'WfBind closed'`
@@ -77,7 +77,7 @@ describe('Workflow state_field binding', () => {
     const doc = await saveDoc(DT, { title: 'locked' }, 'Administrator')
     const res = await saveDoc(
       DT,
-      { name: doc.name, updated_at: (doc.updated_at as Date).toISOString(), ticket_status: 'Closed' },
+      { row_id: doc.row_id, updated_at: (doc.updated_at as Date).toISOString(), ticket_status: 'Closed' },
       'Administrator',
     ).catch((e) => e)
     expect(res).toBeInstanceOf(Error)
@@ -96,7 +96,7 @@ describe('Workflow state_field binding', () => {
       admin.post('/api/save_doc', {
         doctype: 'Workflow',
         doc: {
-          name: WF + ' Bad',
+          row_id: WF + ' Bad',
           ref_table: DT,
           is_active: true,
           state_field: 'no_such_field',

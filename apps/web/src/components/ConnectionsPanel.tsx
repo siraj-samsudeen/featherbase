@@ -165,17 +165,17 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={String(r.name)} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]">
+            <tr key={String(r.row_id)} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]">
               {columns.map((c, i) => (
                 <td key={c.column_name} className="px-3 py-1.5">
                   {i === 0 ? (
                     <Link
                       to="/admin/$doctype/$name"
                       search={{ prefill: undefined }}
-                      params={{ doctype: connection.table, name: String(r.name) }}
+                      params={{ doctype: connection.table, name: String(r.row_id) }}
                       className="font-medium text-[var(--color-brand)] hover:underline"
                     >
-                      {formatValue(c.column_type, r[c.column_name], settings) || String(r.name)}
+                      {formatValue(c.column_type, r[c.column_name], settings) || String(r.row_id)}
                     </Link>
                   ) : (
                     formatValue(c.column_type, r[c.column_name], settings) || '—'

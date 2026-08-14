@@ -98,7 +98,7 @@ async function makeSource(
   const res = await admin.fetch('/api/table/Data%20Source', {
     method: 'POST',
     body: JSON.stringify({
-      name: 'ext-mysql',
+      row_id: 'ext-mysql',
       engine: 'mysql',
       url_env: EXT_URL_ENV,
       default_schema: 'ext_mysql',
@@ -134,7 +134,7 @@ describe.skipIf(!MYSQL_URL)('mysql: Data Source registry', () => {
 
   test('an unreachable server fails without echoing the URL or password', async ({ admin }) => {
     process.env.EXT_MYSQL_DEAD_URL = 'mysql://nobody:hunter2@127.0.0.1:59998/nope'
-    await makeSource(admin, { name: 'ext-mysql-dead', url_env: 'EXT_MYSQL_DEAD_URL' })
+    await makeSource(admin, { row_id: 'ext-mysql-dead', url_env: 'EXT_MYSQL_DEAD_URL' })
     const bad = await admin.post<{ ok: boolean; error: string }>(
       '/api/table/Data%20Source/ext-mysql-dead:test_connection',
       {},
@@ -326,13 +326,13 @@ describe.skipIf(!MYSQL_URL)('mysql: reading bound rows', () => {
     await makeSource(admin)
     await reflectTenant(admin)
     const list = (await admin.get(
-      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["name","slug","plan"]')}&order_by=slug asc`,
+      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["row_id","slug","plan"]')}&order_by=slug asc`,
     )) as { data: Record<string, unknown>[]; total: number }
     expect(list.total).toBe(2)
     expect(list.data.map((r) => r.slug)).toEqual(['acme', 'globex'])
 
     const filtered = (await admin.get(
-      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["name","slug"]')}&filters=${encodeURIComponent('[["plan","=","pro"]]')}`,
+      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["row_id","slug"]')}&filters=${encodeURIComponent('[["plan","=","pro"]]')}`,
     )) as { data: Record<string, unknown>[]; total: number }
     expect(filtered.total).toBe(1)
     expect(filtered.data[0].slug).toBe('acme')
@@ -342,7 +342,7 @@ describe.skipIf(!MYSQL_URL)('mysql: reading bound rows', () => {
     )) as { count: number }
     expect(count.count).toBe(1)
 
-    const name = String(filtered.data[0].name)
+    const name = String(filtered.data[0].row_id)
     const doc = (await admin.get(`/api/table/Ext%20Tenant/${name}`)) as Record<string, unknown>
     expect(doc.slug).toBe('acme')
     expect(doc.updated_at).toBeTruthy()
@@ -358,7 +358,7 @@ describe.skipIf(!MYSQL_URL)('mysql: writing bound rows', () => {
       slug: 'initech',
       plan: 'pro',
     })
-    expect(String(created.name)).toMatch(/^\d+$/)
+    expect(String(created.row_id)).toMatch(/^\d+$/)
     expect(created.plan).toBe('pro')
     const [rows] = await cli.query(`select plan from ext_mysql.tenant where slug = 'initech'`)
     expect((rows as { plan: string }[])[0].plan).toBe('pro')
@@ -368,9 +368,9 @@ describe.skipIf(!MYSQL_URL)('mysql: writing bound rows', () => {
     await makeSource(admin)
     await reflectTenant(admin)
     const list = (await admin.get(
-      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["name","slug","updated_at"]')}&filters=${encodeURIComponent('[["slug","=","acme"]]')}`,
+      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["row_id","slug","updated_at"]')}&filters=${encodeURIComponent('[["slug","=","acme"]]')}`,
     )) as { data: Record<string, unknown>[] }
-    const { name, updated_at } = list.data[0]
+    const { row_id: name, updated_at } = list.data[0]
     const updated = await patchDoc<Record<string, unknown>>(
       admin,
       `/api/table/Ext%20Tenant/${String(name)}`,
@@ -389,9 +389,9 @@ describe.skipIf(!MYSQL_URL)('mysql: writing bound rows', () => {
     await makeSource(admin)
     await reflectTenant(admin)
     const list = (await admin.get(
-      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["name","updated_at"]')}&filters=${encodeURIComponent('[["slug","=","globex"]]')}`,
+      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["row_id","updated_at"]')}&filters=${encodeURIComponent('[["slug","=","globex"]]')}`,
     )) as { data: Record<string, unknown>[] }
-    const { name, updated_at } = list.data[0]
+    const { row_id: name, updated_at } = list.data[0]
     // Land the CLI write in a different millisecond than the loaded echo.
     await new Promise((r) => setTimeout(r, 5))
     await cli.query(
@@ -421,12 +421,12 @@ describe.skipIf(!MYSQL_URL)('mysql: writing bound rows', () => {
     await admin.post('/api/table/Ext%20Tenant', { slug: 'doomed' })
     const list = (await admin.get(
       `/api/table/Ext%20Tenant?filters=${encodeURIComponent('[["slug","=","doomed"]]')}`,
-    )) as { data: { name: string }[] }
+    )) as { data: { row_id: string }[] }
     const loaded = (await admin.get(
-      `/api/table/Ext%20Tenant/${list.data[0].name}`,
+      `/api/table/Ext%20Tenant/${list.data[0].row_id}`,
     )) as Record<string, unknown>
     const res = await admin.fetch(
-      `/api/table/Ext%20Tenant/${list.data[0].name}?updated_at=${encodeURIComponent(String(loaded.updated_at))}`,
+      `/api/table/Ext%20Tenant/${list.data[0].row_id}?updated_at=${encodeURIComponent(String(loaded.updated_at))}`,
       { method: 'DELETE' },
     )
     expect(res.status).toBe(200)

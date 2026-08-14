@@ -35,7 +35,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     data: { title: 'attach fixture' },
   })
   if (created.status() !== 201) throw new Error(`doc: ${created.status()}`)
-  docName = ((await created.json()) as { name: string }).name
+  docName = ((await created.json()) as { row_id: string }).row_id
 })
 
 test('UI-023: Attach Image uploads, previews, persists the URL, and clears', async ({

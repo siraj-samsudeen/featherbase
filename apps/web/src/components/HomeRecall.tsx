@@ -33,7 +33,7 @@ export function ResumeStrip() {
   const router = useRouter()
   const user = getSessionUser()
   if (!user) return null
-  const entries = recentActions(user.name, 40)
+  const entries = recentActions(user.row_id, 40)
   const lastRow = entries.find((e) => e.kind === 'row')
   const lastView = entries.find((e) => e.kind === 'list' || e.kind === 'page')
   const lastSearch = entries.find((e) => e.kind === 'search')
@@ -97,7 +97,7 @@ export function RoutineCard() {
   const router = useRouter()
   const user = getSessionUser()
   const [workspace, setWorkspace] = useState<WorkspaceTarget[]>(() =>
-    user ? loadWorkspace(user.name) : [],
+    user ? loadWorkspace(user.row_id) : [],
   )
   const [dismissed, setDismissed] = useState(false)
   const suggestion = useQuery({
@@ -135,7 +135,7 @@ export function RoutineCard() {
   const signature = targets.map((t) => t.key).sort().join('|')
   let dismissedBefore = false
   try {
-    dismissedBefore = localStorage.getItem(DISMISS_KEY(user.name)) === signature
+    dismissedBefore = localStorage.getItem(DISMISS_KEY(user.row_id)) === signature
   } catch {
     /* ignore */
   }
@@ -165,7 +165,7 @@ export function RoutineCard() {
           data-testid="routine-pin"
           onClick={() => {
             try {
-              localStorage.setItem(WORKSPACE_KEY(user.name), JSON.stringify(targets))
+              localStorage.setItem(WORKSPACE_KEY(user.row_id), JSON.stringify(targets))
             } catch {
               /* ignore */
             }
@@ -180,7 +180,7 @@ export function RoutineCard() {
           data-testid="routine-dismiss"
           onClick={() => {
             try {
-              localStorage.setItem(DISMISS_KEY(user.name), signature)
+              localStorage.setItem(DISMISS_KEY(user.row_id), signature)
             } catch {
               /* ignore */
             }

@@ -18,7 +18,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   if (exists.status() === 404) {
     const created = await request.post('/api/save_doc', {
       headers: auth,
-      data: { doctype: 'User', doc: { name: USER, email: USER, full_name: 'Routine E2E', enabled: true } },
+      data: { doctype: 'User', doc: { row_id: USER, email: USER, full_name: 'Routine E2E', enabled: true } },
     })
     if (created.status() !== 201) throw new Error(`user: ${created.status()}`)
   }

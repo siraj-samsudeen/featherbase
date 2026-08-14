@@ -18,7 +18,7 @@ test.beforeAll(async ({ request }) => {
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { title: 'orig' } })
-  docName = ((await doc.json()) as { name: string }).name
+  docName = ((await doc.json()) as { row_id: string }).row_id
 })
 
 async function login(page: import('@playwright/test').Page) {

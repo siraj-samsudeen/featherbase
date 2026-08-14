@@ -11,16 +11,16 @@ describe('META-012: Table and Column are themselves Tables', () => {
   })
 
   test('GET /api/table/Table lists Tables including Table itself', async ({ admin }) => {
-    const body = await admin.get<{ data: { name: string; kind: string }[] }>(
+    const body = await admin.get<{ data: { row_id: string; kind: string }[] }>(
       `/api/table/Table?${new URLSearchParams({
-        filters: JSON.stringify([['name', 'in', ['Table', 'Column']]]),
-        fields: JSON.stringify(['name', 'kind']),
-        order_by: 'name asc',
+        filters: JSON.stringify([['row_id', 'in', ['Table', 'Column']]]),
+        fields: JSON.stringify(['row_id', 'kind']),
+        order_by: 'row_id asc',
       })}`,
     )
     expect(body.data).toEqual([
-      { name: 'Column', kind: 'sub_table' },
-      { name: 'Table', kind: 'table' },
+      { row_id: 'Column', kind: 'sub_table' },
+      { row_id: 'Table', kind: 'table' },
     ])
   })
 

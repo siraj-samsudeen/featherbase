@@ -83,7 +83,7 @@ test('#115: a blank row does not shift the blame — failures name the TRUE Exce
   await expect(page.getByTestId('iw-check-0')).not.toContainText('row 5')
 
   // The preview grid opens on problems and highlights the SAME rows the
-  // messages name: row 6 is flagged, its innocent neighbour row 5 is not,
+  // messages row_id: row 6 is flagged, its innocent neighbour row 5 is not,
   // and the blank row 3 still occupies its own numbered place.
   await expect(page.getByTestId('iw-preview-row-0-6')).toHaveAttribute('data-failed', 'true')
   await expect(page.getByTestId('iw-preview-row-0-6')).toContainText('abc')

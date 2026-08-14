@@ -34,7 +34,7 @@ describe('DOC-010: get_list with filters, fields, order_by, pagination', () => {
     const body = await admin.get<{ total: number; data: { title: string }[] }>(
       listPath({
         filters: JSON.stringify([['stage', '=', 'Open']]),
-        fields: JSON.stringify(['name', 'title', 'qty']),
+        fields: JSON.stringify(['row_id', 'title', 'qty']),
       }),
     )
     expect(body.total).toBe(2)

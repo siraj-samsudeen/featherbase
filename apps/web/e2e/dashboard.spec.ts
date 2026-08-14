@@ -28,8 +28,8 @@ test.beforeAll(async ({ request }) => {
   // Clear any docs from a prior run so the counts are exact.
   const existing = (await (
     await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=500`, { headers })
-  ).json()) as { data: { name: string }[] }
-  for (const d of existing.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.name}`, { headers })
+  ).json()) as { data: { row_id: string }[] }
+  for (const d of existing.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.row_id}`, { headers })
 
   for (const stage of STATUSES)
     await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { title: 't', stage } })
@@ -40,7 +40,7 @@ test.beforeAll(async ({ request }) => {
     data: {
       doctype: 'Dashboard',
       doc: {
-        name: DASH,
+        row_id: DASH,
         label: 'E2E Board',
         config: JSON.stringify({
           cards: [

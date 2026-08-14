@@ -111,14 +111,14 @@ interface ImportTarget {
 }
 
 async function fetchTargets(): Promise<ImportTarget[]> {
-  const list = await listResource<{ name: string }>('Table', {
+  const list = await listResource<{ row_id: string }>('Table', {
     filters: [['kind', '=', 'table']],
-    fields: ['name'],
-    order_by: 'name asc',
+    fields: ['row_id'],
+    order_by: 'row_id asc',
     limit_page_length: 500,
   })
   const metas = await Promise.all(
-    list.data.map((t) => api.get<TableMeta>(`/api/table/${encodeURIComponent(t.name)}:meta`)),
+    list.data.map((t) => api.get<TableMeta>(`/api/table/${encodeURIComponent(t.row_id)}:meta`)),
   )
   return metas.map((m) => ({ name: m.name, columns: mappableColumns(m) }))
 }
@@ -1357,7 +1357,7 @@ export function ImportWizard() {
                                 target — the file's own codes become the ids,
                                 verbatim; the series continues for rows the
                                 file leaves blank. */}
-                            <option value="name">Row ID</option>
+                            <option value="row_id">Row ID</option>
                             {/* Label AND real column name: labels preserve
                                 however the source file spelled its headers,
                                 so the snake_case identity disambiguates. */}
@@ -1390,7 +1390,7 @@ export function ImportWizard() {
                     ),
                   ]
                   const keyLabel = (col: string) => {
-                    if (col === 'name') return 'Row ID'
+                    if (col === 'row_id') return 'Row ID'
                     const c = targetCols.find((tc) => tc.column_name === col)
                     return c?.label && c.label !== c.column_name
                       ? `${c.label} · ${c.column_name}`
@@ -1400,7 +1400,7 @@ export function ImportWizard() {
                   // on Zone Name, as last time" (UPS-J1.2), not the select's
                   // disambiguated idiom.
                   const friendly = (col: string) =>
-                    col === 'name'
+                    col === 'row_id'
                       ? 'Row ID'
                       : (targetCols.find((tc) => tc.column_name === col)?.label ?? col)
                   return (

@@ -76,7 +76,7 @@ const helpdesk: AppManifest = {
       table: 'Workflow',
       rows: [
         {
-          name: 'HD Ticket Flow',
+          row_id: 'HD Ticket Flow',
           ref_table: 'HD Ticket',
           is_active: true,
           state_field: 'ticket_status',
@@ -105,19 +105,19 @@ const helpdesk: AppManifest = {
       // defaultSender() falls back to the oldest account, then to
       // no-reply@localhost, so nothing dangles (same call 0057 made).
       table: 'Email Account',
-      rows: [{ name: 'Helpdesk Notifications', email_id: 'support@helpdesk.test', is_default: true }],
+      rows: [{ row_id: 'Helpdesk Notifications', email_id: 'support@helpdesk.test', is_default: true }],
     },
     {
       table: 'Email Rule',
       rows: [
         {
-          name: 'HD Ticket Resolved Notice',
+          row_id: 'HD Ticket Resolved Notice',
           ref_table: 'HD Ticket',
           event: 'on_save',
           condition_field: 'ticket_status',
           condition_value: 'Resolved',
           recipient: '{{ doc.raised_by }}',
-          subject: 'Your ticket {{ doc.name }} has been resolved',
+          subject: 'Your ticket {{ doc.row_id }} has been resolved',
           message:
             'Hello,\n\nyour ticket "{{ doc.subject }}" was resolved.\n\n' +
             'Resolution: {{ doc.resolution_details }}\n\n' +
@@ -130,7 +130,7 @@ const helpdesk: AppManifest = {
       table: 'Server Script',
       rows: [
         {
-          name: 'HD Ticket Defaults',
+          row_id: 'HD Ticket Defaults',
           script_type: 'Document Event',
           ref_table: 'HD Ticket',
           event: 'validate',
@@ -143,7 +143,7 @@ const helpdesk: AppManifest = {
       table: 'Service Level Agreement',
       rows: [
         {
-          name: 'HD Ticket SLA',
+          row_id: 'HD Ticket SLA',
           ref_table: 'HD Ticket',
           enabled: true,
           priority_field: 'priority',
@@ -164,7 +164,7 @@ const helpdesk: AppManifest = {
       table: 'Web Form',
       rows: [
         {
-          name: 'New Ticket',
+          row_id: 'New Ticket',
           title: 'Raise a support ticket',
           route: 'new-ticket',
           ref_table: 'HD Ticket',

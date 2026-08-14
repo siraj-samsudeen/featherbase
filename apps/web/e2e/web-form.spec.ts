@@ -28,7 +28,7 @@ test.beforeAll(async ({ request }) => {
     data: {
       doctype: 'Web Form',
       doc: {
-        name: 'wf-e2e',
+        row_id: 'wf-e2e',
         title: 'Contact E2E',
         route: ROUTE,
         ref_table: DT,

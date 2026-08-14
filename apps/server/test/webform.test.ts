@@ -28,7 +28,7 @@ async function setup(admin: TestClient) {
     await admin.post('/api/save_doc', {
       doctype: 'Web Form',
       doc: {
-        name,
+        row_id: name,
         title: 'Contact',
         route,
         ref_table: DT,
@@ -54,9 +54,9 @@ describe('WEB-002: web forms', () => {
       message: 'Hi',
       secret_note: 'should be dropped',
     })
-    expect(res.name).toBeTruthy()
+    expect(res.row_id).toBeTruthy()
     const [doc] =
-      await sql`select full_name, message, secret_note from wf_srv_msg where name = ${res.name}`
+      await sql`select full_name, message, secret_note from wf_srv_msg where row_id = ${res.row_id}`
     expect(doc.full_name).toBe('Alice')
     expect(doc.message).toBe('Hi')
     expect(doc.secret_note).toBeNull() // whitelist kept it out

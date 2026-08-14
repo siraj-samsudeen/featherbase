@@ -17,9 +17,9 @@ async function save(admin: TestClient, doc: Record<string, unknown>) {
 
 // Each test creates its accounts inside its own sandbox transaction.
 async function setup(admin: TestClient) {
-  await save(admin, { name: USER, email: USER, full_name: 'Reset Me', enabled: true })
+  await save(admin, { row_id: USER, email: USER, full_name: 'Reset Me', enabled: true })
   await admin.post('/api/set_password', { user: USER, password: 'origpw123' })
-  await save(admin, { name: DISABLED, email: DISABLED, full_name: 'No Login', enabled: false })
+  await save(admin, { row_id: DISABLED, email: DISABLED, full_name: 'No Login', enabled: false })
 }
 
 describe('SET-002: password reset', () => {

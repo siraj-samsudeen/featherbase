@@ -82,10 +82,10 @@ describe('app manifests can declare Data Sources and reflections', () => {
     expect(meta.external_table).toBe('lease')
     expect(meta.source_writable).toBe(false) // read_only source
     const list = (await admin.get(
-      `/api/table/Demo%20Lease?fields=${encodeURIComponent('["name","holder"]')}`,
-    )) as { data: { name: string; holder: string }[]; total: number }
+      `/api/table/Demo%20Lease?fields=${encodeURIComponent('["row_id","holder"]')}`,
+    )) as { data: { row_id: string; holder: string }[]; total: number }
     expect(list.total).toBe(1)
-    expect(list.data[0]).toMatchObject({ name: 'sap', holder: 'box-1' })
+    expect(list.data[0]).toMatchObject({ row_id: 'sap', holder: 'box-1' })
   })
 
   test('uninstall removes the reflected Tables and the source it created', async ({ admin }) => {
@@ -96,7 +96,7 @@ describe('app manifests can declare Data Sources and reflections', () => {
     const tables = await sql`
       select name from table_def where name in ('Demo Lease', 'Demo Run')`
     expect(tables).toHaveLength(0)
-    const [src] = await sql`select 1 from data_source where name = 'appsrc-fixture'`
+    const [src] = await sql`select 1 from data_source where row_id = 'appsrc-fixture'`
     expect(src).toBeUndefined()
     // The foreign schema is untouched — uninstall never issues DDL upstream.
     const rows = await cli`select extractor from appsrc.lease`
@@ -109,7 +109,7 @@ describe('app manifests can declare Data Sources and reflections', () => {
     invalidateSources()
     // The operator created the source by hand first.
     await admin.post('/api/table/Data%20Source', {
-      name: 'appsrc-fixture',
+      row_id: 'appsrc-fixture',
       engine: 'postgres',
       url_env: ENV_VAR,
       default_schema: 'appsrc',
@@ -118,7 +118,7 @@ describe('app manifests can declare Data Sources and reflections', () => {
     const res = await admin.post<{ sources: string[] }>('/api/install_app', { manifest: MANIFEST })
     expect(res.sources).toEqual([]) // adopted, so not recorded
     await admin.post('/api/uninstall_app', { name: 'appsrc-demo' })
-    const [src] = await sql`select 1 from data_source where name = 'appsrc-fixture'`
+    const [src] = await sql`select 1 from data_source where row_id = 'appsrc-fixture'`
     expect(src).toBeTruthy() // predated the app — never removed
   })
 
@@ -174,7 +174,7 @@ describe('a manifest never carries a credential', () => {
         admin.post('/api/install_app', {
           manifest: {
             name: `appsrc-secret-${url_env.length}`,
-            sources: [{ name: 'appsrc-secret-src', engine: 'postgres', url_env }],
+            sources: [{ row_id: 'appsrc-secret-src', engine: 'postgres', url_env }],
           },
         }),
       ).rejects.toMatchObject({ status: 417 })

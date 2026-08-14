@@ -18,8 +18,8 @@ const SITE_URL = config.siteUrl || 'http://localhost:5173'
 // mail. Returns the token in dev/test so callers can assert without scraping.
 export async function requestPasswordReset(usr: string): Promise<string | null> {
   const [user] = await sql`
-    select name, email, enabled, user_type from "user"
-    where (name = ${usr} or email = ${usr})`
+    select row_id, email, enabled, user_type from "user"
+    where (row_id = ${usr} or email = ${usr})`
   // #137: a service account has no password to reset. Fall through the same
   // silent `null` as an unknown user so this cannot be used to enumerate them.
   if (!user || !user.enabled || user.user_type === 'service') return null
@@ -28,13 +28,13 @@ export async function requestPasswordReset(usr: string): Promise<string | null> 
   const expires = new Date(Date.now() + TOKEN_TTL_MS)
   await sql`insert into password_reset ${sql({
     token,
-    user: user.name as string,
+    user: user.row_id as string,
     expires_at: expires,
   })}`
 
   const link = `${SITE_URL}/reset-password?key=${token}`
   await deliverToSink({
-    to: (user.email as string) ?? (user.name as string),
+    to: (user.email as string) ?? (user.row_id as string),
     subject: 'Reset your password',
     body: `A password reset was requested for your account.\n\nReset it here: ${link}\n\nThis link expires in one hour. If you did not request this, ignore this email.`,
   })

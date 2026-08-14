@@ -16,7 +16,7 @@ test.beforeAll(async ({ request }) => {
     data: {
       doctype: 'Web Page',
       doc: {
-        name: 'about-e2e-doc',
+        row_id: 'about-e2e-doc',
         title: 'About E2E',
         route: ROUTE,
         content: '<h1>About This Company</h1><p id="tagline">We ship features.</p>',
@@ -48,7 +48,7 @@ test('WEB-001: an unpublished Web Page is not served', async ({ page, request })
     headers,
     data: {
       doctype: 'Web Page',
-      doc: { name: 'draft-e2e-doc', title: 'Draft', route: 'draft-e2e', content: '<p>hidden</p>', published: false },
+      doc: { row_id: 'draft-e2e-doc', title: 'Draft', route: 'draft-e2e', content: '<p>hidden</p>', published: false },
     },
   })
   const res = await request.get('/web/draft-e2e')

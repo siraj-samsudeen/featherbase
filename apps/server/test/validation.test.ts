@@ -46,7 +46,7 @@ describe('DOC-011: field-wise validation errors', () => {
     })
     const ok = await save(admin, { title: 'works', qty: '7', severity: 'High', due: '2026-08-01' })
     expect(ok.qty).toBe('7')
-    const [row] = await sql.unsafe(`select qty from ${TABLE} where name='${ok.name}'`)
+    const [row] = await sql.unsafe(`select qty from ${TABLE} where row_id='${ok.row_id}'`)
     expect(Number(row.qty)).toBe(7)
   })
 })
@@ -68,9 +68,9 @@ describe('META-009: Choice validates against choices', () => {
     await setup(admin)
     const doc = await save(admin, { title: 'u' })
     await expect(
-      save(admin, { name: doc.name, updated_at: doc.updated_at, severity: 'Nope' }),
+      save(admin, { row_id: doc.row_id, updated_at: doc.updated_at, severity: 'Nope' }),
     ).rejects.toMatchObject({ status: 417 })
-    const updated = await save(admin, { name: doc.name, updated_at: doc.updated_at, severity: 'High' })
+    const updated = await save(admin, { row_id: doc.row_id, updated_at: doc.updated_at, severity: 'High' })
     // update must not demand reqd columns it isn't changing
     expect(updated.title).toBe('u')
   })

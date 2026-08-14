@@ -54,7 +54,7 @@ describe('#101: POST /api/events + GET /api/events/summary', () => {
     await admin.post('/api/events', { events: [ev('row:X/private')] })
     await admin.post('/api/save_doc', {
       doctype: 'User',
-      doc: { name: 'events-b@x.com', email: 'events-b@x.com', enabled: true },
+      doc: { row_id: 'events-b@x.com', email: 'events-b@x.com', enabled: true },
     })
     const { token } = await issueSession('events-b@x.com')
     const res = await api.fetch('/api/events/summary', {
@@ -106,7 +106,7 @@ describe('#101: POST /api/events + GET /api/events/summary', () => {
 
   test('rows older than the retention window are pruned on the write path', async ({ admin }) => {
     await sql`insert into user_event ${sql({
-      name: 'evt-ancient',
+      row_id: 'evt-ancient',
       created_by: 'Administrator',
       updated_by: 'Administrator',
       created_at: new Date(),
@@ -121,7 +121,7 @@ describe('#101: POST /api/events + GET /api/events/summary', () => {
     // A dormant user's expired trail goes too — retention is global, not
     // per-poster (PR #104 review).
     await sql`insert into user_event ${sql({
-      name: 'evt-dormant',
+      row_id: 'evt-dormant',
       created_by: 'dormant@x.com',
       updated_by: 'dormant@x.com',
       created_at: new Date(),
@@ -137,7 +137,7 @@ describe('#101: POST /api/events + GET /api/events/summary', () => {
     const summary = await admin.get<{ entries: Array<{ key: string }> }>('/api/events/summary')
     expect(summary.entries.some((e) => e.key === 'row:X/fresh')).toBe(true)
     expect(summary.entries.some((e) => e.key === 'row:X/ancient')).toBe(false)
-    const [dormant] = await sql`select 1 from user_event where name = 'evt-dormant'`
+    const [dormant] = await sql`select 1 from user_event where row_id = 'evt-dormant'`
     expect(dormant).toBeUndefined()
   })
 })

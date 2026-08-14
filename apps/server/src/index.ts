@@ -7,7 +7,7 @@ import { secureHeaders } from 'hono/secure-headers'
 import { config } from './config'
 import { sql } from './db'
 import { AppError, errorResponse } from './errors'
-import { getMeta, resolveTableName } from './meta'
+import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { createTable, deleteTable, setIdPattern, updateTable } from './doctype-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
@@ -166,7 +166,7 @@ app.post('/api/method/login', async (c) => {
   return c.json({
     message: 'Logged In',
     home_page: '/admin',
-    full_name: session.user.full_name ?? session.user.name,
+    full_name: session.user.full_name ?? session.user.row_id,
   })
 })
 
@@ -209,7 +209,7 @@ app.post('/api/reset_password', async (c) => {
 // and download links work — #173), or a signed URL.
 async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
   const [row] = await sql`
-    select name, file_name, mime_type, ref_table, ref_name
+    select row_id, file_name, mime_type, ref_table, ref_name
     from file where file_url = ${fileUrl}`
   if (!row) throw new AppError('NotFoundError', `File not found: ${fileUrl}`)
 
@@ -227,8 +227,8 @@ async function serveFile(c: Context<Env>, fileUrl: string, isPrivate: boolean) {
       // mints a short-lived signed URL from /api/signed_url instead.
       const user = await resolveToken(authCredential(c))
       if (row.ref_table && row.ref_name)
-        await getDoc(row.ref_table as string, row.ref_name as string, user.name)
-      else await getDoc('File', row.name as string, user.name)
+        await getDoc(row.ref_table as string, row.ref_name as string, user.row_id)
+      else await getDoc('File', row.row_id as string, user.row_id)
     }
   }
 
@@ -257,7 +257,7 @@ app.post('/api/web_form/:route', async (c) => {
   // cookie) gets the document created in their name — that's what makes
   // their if_owner portal show it. An invalid/absent credential is anonymous.
   const sessionUser = await resolveToken(authCredential(c))
-    .then((u) => u.name)
+    .then((u) => u.row_id)
     .catch(() => undefined)
   return c.json(await submitWebForm(c.req.param('route'), body.values ?? {}, sessionUser), 201)
 })
@@ -285,7 +285,7 @@ app.on(
   async (c, next) => {
     const path = c.req.param('path') as string
     const user = methodAllowsGuest(path)
-      ? { name: 'Guest', email: 'guest@example.com', full_name: 'Guest' }
+      ? { row_id: 'Guest', email: 'guest@example.com', full_name: 'Guest' }
       : await resolveToken(authCredential(c))
     c.set('user', user)
     await next()
@@ -436,14 +436,14 @@ app.use('/api/*', async (c, next) => {
 // key by the resolved user and read their budget).
 app.use('/api/*', rateLimit)
 
-const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').name
+const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').row_id
 
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
-  const [row] = await sql`select theme, palette, language from "user" where name = ${user.name}`
+  const [row] = await sql`select theme, palette, language from "user" where row_id = ${user.row_id}`
   return c.json({
     ...user,
-    roles: await getRoles(user.name),
+    roles: await getRoles(user.row_id),
     theme: (row?.theme as string) || 'light',
     palette: (row?.palette as string) || 'classic',
     language: (row?.language as string) || 'en',
@@ -562,7 +562,7 @@ app.post('/api/set_theme', async (c) => {
   const { theme } = (await c.req.json().catch(() => ({}))) as { theme?: string }
   if (theme !== 'light' && theme !== 'dark')
     throw new AppError('ValidationError', 'theme must be "light" or "dark"')
-  await sql`update "user" set theme = ${theme} where name = ${who(c)}`
+  await sql`update "user" set theme = ${theme} where row_id = ${who(c)}`
   return c.json({ ok: true, theme })
 })
 
@@ -572,7 +572,7 @@ app.post('/api/set_palette', async (c) => {
   const { palette } = (await c.req.json().catch(() => ({}))) as { palette?: string }
   if (!PALETTES.includes(palette as (typeof PALETTES)[number]))
     throw new AppError('ValidationError', `palette must be one of ${PALETTES.join(', ')}`)
-  await sql`update "user" set palette = ${palette!} where name = ${who(c)}`
+  await sql`update "user" set palette = ${palette!} where row_id = ${who(c)}`
   return c.json({ ok: true, palette })
 })
 
@@ -581,7 +581,7 @@ app.post('/api/set_language', async (c) => {
   const { language } = (await c.req.json().catch(() => ({}))) as { language?: string }
   if (!language || !/^[a-z]{2}(-[a-z]{2})?$/i.test(language))
     throw new AppError('ValidationError', 'Expected a language code like "en" or "fr"')
-  await sql`update "user" set language = ${language} where name = ${who(c)}`
+  await sql`update "user" set language = ${language} where row_id = ${who(c)}`
   return c.json({ ok: true, language })
 })
 
@@ -611,7 +611,7 @@ app.post('/api/set_password', async (c) => {
   if (!password) throw new AppError('ValidationError', 'Expected { password }')
   if (target !== who(c)) await assertSystemManager(who(c))
   // #131: a service account must never become password-login-able.
-  const [targetRow] = await sql`select user_type from "user" where name = ${target}`
+  const [targetRow] = await sql`select user_type from "user" where row_id = ${target}`
   if (targetRow?.user_type === 'service')
     throw new AppError('ValidationError', 'Service accounts have no password — issue an access token instead')
   await setUserPassword(target, password)
@@ -655,10 +655,10 @@ app.delete('/api/access_tokens/:id', async (c) => {
 // #131: service accounts — System Manager territory end to end.
 app.post('/api/service_accounts', async (c) => {
   await assertSystemManager(who(c))
-  const body = (await c.req.json().catch(() => ({}))) as { name?: string; roles?: string[] }
-  if (typeof body.name !== 'string') throw new AppError('ValidationError', 'Expected { name }')
+  const body = (await c.req.json().catch(() => ({}))) as { row_id?: string; roles?: string[] }
+  if (typeof body.row_id !== 'string') throw new AppError('ValidationError', 'Expected { row_id }')
   const roles = Array.isArray(body.roles) ? body.roles.filter((r) => typeof r === 'string') : []
-  return c.json(await createServiceAccount(body.name, roles, who(c)), 201)
+  return c.json(await createServiceAccount(body.row_id, roles, who(c)), 201)
 })
 
 app.get('/api/service_accounts', async (c) => {
@@ -722,9 +722,9 @@ app.post('/api/save_doc', async (c) => {
   const body = (await c.req.json()) as { doctype?: string; doc?: Record<string, unknown> }
   if (!body.doctype || typeof body.doc !== 'object' || body.doc === null)
     throw new AppError('ValidationError', 'Expected { doctype, doc }')
-  const hadName = Boolean(body.doc.name)
+  const hadRowId = Boolean(body.doc[ROW_KEY])
   const saved = await saveDoc(body.doctype, body.doc, who(c))
-  publishDocEvent(body.doctype, String(saved.name), hadName ? 'updated' : 'created')
+  publishDocEvent(body.doctype, String(saved.row_id), hadRowId ? 'updated' : 'created')
   return c.json(saved, 201)
 })
 
@@ -737,7 +737,7 @@ app.get('/api/print/:doctype/:name', async (c) => {
   const html = await renderPrintHtml(doctype, name, who(c), format, letterHead)
   const pdf = await renderPdf(html)
   // PLAT-007: record the print/access.
-  await logAccess(who(c), 'print', { table: doctype, name, method: 'pdf' })
+  await logAccess(who(c), 'print', { table: doctype, row_id: name, method: 'pdf' })
   return c.body(new Uint8Array(pdf), 200, {
     'content-type': 'application/pdf',
     'content-disposition': `inline; filename="${name.replace(/[^\w.-]/g, '_')}.pdf"`,
@@ -805,7 +805,7 @@ app.post('/api/upload_file', async (c) => {
   // direct write (the save lifecycle ignores client values for read_only
   // fields) and reflected on the returned doc.
   if (thumbnail_url) {
-    await sql`update file set thumbnail_url = ${thumbnail_url} where name = ${String(doc.name)}`
+    await sql`update file set thumbnail_url = ${thumbnail_url} where row_id = ${String(doc.row_id)}`
     doc.thumbnail_url = thumbnail_url
   }
   return c.json(doc, 201)
@@ -819,13 +819,13 @@ app.get('/api/signed_url', async (c) => {
   const fileUrl = c.req.query('file_url')
   if (!fileUrl) throw new AppError('ValidationError', 'Expected file_url')
   const [row] = await sql`
-    select name, ref_table, ref_name from file where file_url = ${fileUrl}`
+    select row_id, ref_table, ref_name from file where file_url = ${fileUrl}`
   if (!row) throw new AppError('NotFoundError', `File not found: ${fileUrl}`)
   const user = who(c)
   if (fileUrl.startsWith('/private/files/')) {
     if (row.ref_table && row.ref_name)
       await getDoc(row.ref_table as string, row.ref_name as string, user)
-    else await getDoc('File', row.name as string, user)
+    else await getDoc('File', row.row_id as string, user)
     return c.json({ signed_url: signFileUrl(fileUrl) })
   }
   return c.json({ signed_url: fileUrl })
@@ -886,9 +886,9 @@ const PERM_FLAGS = ['can_read', 'can_write', 'can_create', 'can_delete', 'can_su
 app.get('/api/permissions/:doctype', async (c) => {
   await assertSystemManager(who(c))
   const doctype = c.req.param('doctype')
-  const roles = (await sql`select name from role order by name`).map((r) => r.name as string)
+  const roles = (await sql`select row_id from role order by row_id`).map((r) => r.row_id as string)
   const perms = await sql`
-    select name, role, ${sql(PERM_FLAGS as unknown as string[])}
+    select row_id, role, ${sql(PERM_FLAGS as unknown as string[])}
     from permission where ref_table = ${doctype} and tier = 'basic' order by role`
   return c.json({ doctype, roles, perms })
 })
@@ -901,12 +901,12 @@ app.post('/api/permissions/:doctype', async (c) => {
   if (!body.role) throw new AppError('ValidationError', 'Expected { role }')
   const flags = Object.fromEntries(PERM_FLAGS.map((f) => [f, Boolean(body[f])]))
   const [existing] = await sql`
-    select name, updated_at from permission
+    select row_id, updated_at from permission
     where ref_table = ${doctype} and role = ${body.role} and tier = 'basic'`
   if (existing)
     await saveDoc(
       'Permission',
-      { name: existing.name as string, updated_at: existing.updated_at, ...flags },
+      { row_id: existing.row_id as string, updated_at: existing.updated_at, ...flags },
       user,
     )
   else await saveDoc('Permission', { ref_table: doctype, role: body.role, tier: 'basic', ...flags }, user)
@@ -919,9 +919,9 @@ app.post('/api/permissions/:doctype', async (c) => {
 app.get('/api/query_report/:name', async (c) => {
   const report = await getDoc('Report', c.req.param('name'), who(c))
   if (report.report_type !== 'Query Report')
-    throw new AppError('ValidationError', `${report.name} is not a Query Report`)
+    throw new AppError('ValidationError', `${report.row_id} is not a Query Report`)
   return c.json({
-    name: report.name,
+    row_id: report.row_id,
     ref_doctype: report.ref_table ?? null,
     filters: parseFilters(typeof report.query === 'string' ? report.query : ''),
   })
@@ -1004,8 +1004,8 @@ app.post('/api/uninstall_app', async (c) => {
 // the configured report.
 app.post('/api/run_auto_email_report', async (c) => {
   await assertSystemManager(who(c))
-  const { name } = (await c.req.json().catch(() => ({}))) as { name?: string }
-  if (!name) throw new AppError('ValidationError', 'Expected { name }')
+  const { row_id: name } = (await c.req.json().catch(() => ({}))) as { row_id?: string }
+  if (!name) throw new AppError('ValidationError', 'Expected { row_id }')
   return c.json(await deliverAutoEmailReport(name, who(c)))
 })
 
@@ -1052,7 +1052,7 @@ app.get('/api/workflow/:doctype/:name', async (c) => {
   const state = currentState(wf, doc)
   const roles = await getRoles(who(c))
   return c.json({
-    workflow: wf.name,
+    workflow: wf.row_id,
     state,
     actions: availableActions(wf, state, roles, doc).map((t) => ({ action: t.action, next_state: t.next_state })),
   })
@@ -1079,17 +1079,17 @@ app.put('/api/user_settings/:doctype', async (c) => {
 // EML-006 / UI-017: assign a document to a user. Creates a ToDo in their
 // task list and notifies them (Notification Log + realtime user event).
 app.post('/api/assign', async (c) => {
-  const { doctype, name, assign_to, description } = (await c.req.json()) as {
+  const { doctype, row_id: name, assign_to, description } = (await c.req.json()) as {
     doctype?: string
-    name?: string
+    row_id?: string
     assign_to?: string
     description?: string
   }
   if (!doctype || !name || !assign_to)
-    throw new AppError('ValidationError', 'Expected { doctype, name, assign_to }')
+    throw new AppError('ValidationError', 'Expected { doctype, row_id, assign_to }')
   // The assigner must be able to read the document.
   await getDoc(doctype, name, who(c))
-  const [target] = await sql`select name from "user" where name = ${assign_to}`
+  const [target] = await sql`select row_id from "user" where row_id = ${assign_to}`
   if (!target) throw new AppError('NotFoundError', `User ${assign_to} not found`)
 
   const todo = await createAssignment(doctype, name, assign_to, who(c), description)
@@ -1108,13 +1108,13 @@ app.get('/api/tags/:doctype/:name', async (c) => {
 })
 
 app.post('/api/tags', async (c) => {
-  const { doctype, name, tag } = (await c.req.json()) as {
+  const { doctype, row_id: name, tag } = (await c.req.json()) as {
     doctype?: string
-    name?: string
+    row_id?: string
     tag?: string
   }
   if (!doctype || !name || !tag?.trim())
-    throw new AppError('ValidationError', 'Expected { doctype, name, tag }')
+    throw new AppError('ValidationError', 'Expected { doctype, row_id, tag }')
   await getDoc(doctype, name, who(c))
   await sql`
     insert into tag_link ${sql({ ref_table: doctype, ref_name: name, tag: tag.trim(), created_by: who(c) })}
@@ -1187,8 +1187,8 @@ app.post('/api/enqueue_job', async (c) => {
 // JOB-004: retry a failed job from the Admin.
 app.post('/api/retry_job', async (c) => {
   await assertSystemManager(who(c))
-  const { name } = (await c.req.json().catch(() => ({}))) as { name?: string }
-  if (!name) throw new AppError('ValidationError', 'Expected { name }')
+  const { row_id: name } = (await c.req.json().catch(() => ({}))) as { row_id?: string }
+  if (!name) throw new AppError('ValidationError', 'Expected { row_id }')
   const retried = await retryJob(name)
   if (!retried) throw new AppError('ValidationError', `Job ${name} is not in a failed state`)
   return c.json({ ok: true })
@@ -1290,7 +1290,7 @@ app.get('/api/table/:table', async (c) => {
   if (suffix === 'actions') return c.json(listActions())
   if (suffix === 'meta') {
     const meta = await getMeta(table)
-    await assertPermission(user.name, meta.name, 'read')
+    await assertPermission(user.row_id, meta.name, 'read')
     return c.json(meta)
   }
   if (suffix === 'count') {
@@ -1303,7 +1303,7 @@ app.get('/api/table/:table', async (c) => {
         throw new AppError('BadRequestError', 'filters must be valid JSON')
       }
     }
-    return c.json({ count: await countDocs(table, parsed as never, user.name) })
+    return c.json({ count: await countDocs(table, parsed as never, user.row_id) })
   }
   if (suffix) {
     const action = getCollectionAction(suffix)
@@ -1311,7 +1311,7 @@ app.get('/api/table/:table', async (c) => {
       throw new AppError('NotFoundError', `No readable collection action ":${suffix}"`)
     return c.json(await action.handler({ table, args: c.req.query(), user }))
   }
-  return c.json(await getList(table, listArgsFromQuery(c.req.query()), user.name))
+  return c.json(await getList(table, listArgsFromQuery(c.req.query()), user.row_id))
 })
 
 // POST with no suffix is create-only: a client-sent name is honored for
@@ -1331,8 +1331,8 @@ app.post('/api/table/:table', async (c) => {
     return c.json(await action.handler({ table, args, user }), 201)
   }
   const doc = (await c.req.json()) as Record<string, unknown>
-  const saved = await saveDoc(table, doc, user.name, 'insert')
-  publishDocEvent(table, String(saved.name), 'created')
+  const saved = await saveDoc(table, doc, user.row_id, 'insert')
+  publishDocEvent(table, String(saved.row_id), 'created')
   return c.json(saved, 201)
 })
 
@@ -1348,7 +1348,7 @@ app.get('/api/table/:table/:name', async (c) => {
       throw new AppError('NotFoundError', `No readable row action ":${suffix}"`)
     return c.json(await action.handler({ table, name, args: c.req.query(), user }))
   }
-  return c.json(await getDoc(table, name, user.name))
+  return c.json(await getDoc(table, name, user.row_id))
 })
 
 // A suffix here must name a registered write-effect row action — plain
@@ -1374,9 +1374,9 @@ app.patch('/api/table/:table/:name', async (c) => {
   const name = c.req.param('name')
   const user = c.get('user')
   const doc = (await c.req.json()) as Record<string, unknown>
-  doc.name = name
-  const saved = await saveDoc(table, doc, user.name)
-  publishDocEvent(table, String(saved.name), 'updated')
+  doc.row_id = name
+  const saved = await saveDoc(table, doc, user.row_id)
+  publishDocEvent(table, String(saved.row_id), 'updated')
   return c.json(saved)
 })
 
@@ -1387,7 +1387,7 @@ app.delete('/api/table/:table/:name', async (c) => {
   // Optional optimistic echo (?updated_at=...): on source-bound rows the
   // delete conflicts when the store changed after the client loaded —
   // essential for csv-folder rows, whose identity is positional.
-  await deleteDoc(table, name, user.name, {
+  await deleteDoc(table, name, user.row_id, {
     expectUpdatedAt: c.req.query('updated_at') ?? null,
   })
   publishDocEvent(table, name, 'deleted')

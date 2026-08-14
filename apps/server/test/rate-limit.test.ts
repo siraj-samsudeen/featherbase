@@ -17,7 +17,7 @@ async function setup(admin: TestClient) {
   await admin.post('/api/save_doc', {
     doctype: 'User',
     doc: {
-      name: USER,
+      row_id: USER,
       email: USER,
       enabled: true,
       api_rate_limit: BUDGET,

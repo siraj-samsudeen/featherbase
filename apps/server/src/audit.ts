@@ -22,7 +22,7 @@ export async function logActivity(
   if (!(await tableExists('activity_log'))) return
   const now = new Date()
   await sql`insert into activity_log ${sql({
-    name: id(),
+    row_id: id(),
     created_by: user,
     updated_by: user,
     created_at: now,
@@ -38,12 +38,12 @@ export async function logActivity(
 export async function logAccess(
   user: string,
   operation: string,
-  ref: { table?: string; name?: string; method?: string } = {},
+  ref: { table?: string; row_id?: string; method?: string } = {},
 ): Promise<void> {
   if (!(await tableExists('access_log'))) return
   const now = new Date()
   await sql`insert into access_log ${sql({
-    name: id(),
+    row_id: id(),
     created_by: user,
     updated_by: user,
     created_at: now,
@@ -52,7 +52,7 @@ export async function logAccess(
     user,
     operation,
     ref_table: ref.table ?? null,
-    reference_name: ref.name ?? null,
+    reference_name: ref.row_id ?? null,
     method: ref.method ?? null,
   })}`
 }

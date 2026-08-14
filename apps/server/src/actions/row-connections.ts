@@ -1,5 +1,5 @@
 import { AppError } from '../errors'
-import { getBacklinks } from '../meta'
+import { ROW_KEY, getBacklinks } from '../meta'
 import { getDoc } from '../document'
 import { countDocs, type Filter } from '../query'
 import { permissionScope } from '../permissions'
@@ -36,11 +36,11 @@ registerCollectionAction('backlinks', {
   effect: 'read',
   description: 'Tables whose Reference columns point at this table (no per-row counts).',
   handler: async ({ table, user }) => {
-    if ((await permissionScope(user.name, table, 'read')) === 'none')
-      throw new AppError('PermissionError', `No read permission on ${table} for ${user.name}`)
+    if ((await permissionScope(user.row_id, table, 'read')) === 'none')
+      throw new AppError('PermissionError', `No read permission on ${table} for ${user.row_id}`)
     const backlinks = []
     for (const bl of await getBacklinks(table))
-      if ((await permissionScope(user.name, bl.table, 'read')) !== 'none') backlinks.push(bl)
+      if ((await permissionScope(user.row_id, bl.table, 'read')) !== 'none') backlinks.push(bl)
     return { backlinks }
   },
 })
@@ -51,23 +51,23 @@ registerRowAction('connections', {
     'Tables whose Reference columns point at this row, with counts and ready-to-use list filters.',
   handler: async ({ table, name, user }) => {
     // Row-level read check (404/403 exactly like GET on the row itself).
-    await getDoc(table, name, user.name)
+    await getDoc(table, name, user.row_id)
 
     const connections: Connection[] = []
     for (const bl of await getBacklinks(table)) {
-      if ((await permissionScope(user.name, bl.table, 'read')) === 'none') continue
+      if ((await permissionScope(user.row_id, bl.table, 'read')) === 'none') continue
       if (bl.via) {
         // NAV-002: the via-link filter is a compact relationship filter the
         // list engine evaluates server-side — no name list to disclose, no
         // 500-owner cap, and the shareable URL never goes stale.
         const filters: Filter[] = [
-          ['name', 'related', { via: bl.via, column: bl.column, table, filters: [['name', '=', name]] }],
+          [ROW_KEY, 'related', { via: bl.via, column: bl.column, table, filters: [[ROW_KEY, '=', name]] }],
         ]
         connections.push({
           table: bl.table,
           column: bl.column,
           via: bl.via,
-          count: await countDocs(bl.table, filters, user.name),
+          count: await countDocs(bl.table, filters, user.row_id),
           filters,
         })
       } else {
@@ -76,7 +76,7 @@ registerRowAction('connections', {
           table: bl.table,
           column: bl.column,
           via: null,
-          count: await countDocs(bl.table, filters, user.name),
+          count: await countDocs(bl.table, filters, user.row_id),
           filters,
         })
       }

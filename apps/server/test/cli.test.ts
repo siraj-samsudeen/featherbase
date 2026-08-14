@@ -31,7 +31,7 @@ function cli(args: string[], input = ''): string {
 // behind, and an exact-match delete would strand it for every later run.
 async function cleanup() {
   await sql`delete from has_role where lower(parent) in ${sql([USER, DUP_USER, SVC])}`
-  await sql`delete from "user" where lower(name) in ${sql([USER, DUP_USER, SVC])}` // cascades access_token rows
+  await sql`delete from "user" where lower(row_id) in ${sql([USER, DUP_USER, SVC])}` // cascades access_token rows
   await sql`delete from table_def where name = ${DT}`
   await sql.unsafe('drop table if exists cli_test_widget')
 }
@@ -67,7 +67,7 @@ describe('PLAT-004: developer CLI', () => {
     ])
     expect(stdout).toContain(`created user ${USER}`)
 
-    const [u] = await sql`select full_name, enabled from "user" where name = ${USER}`
+    const [u] = await sql`select full_name, enabled from "user" where row_id = ${USER}`
     expect(u.full_name).toBe('CLI Test')
     expect(u.enabled).toBe(true)
     const roles = await sql`select role from has_role where parent = ${USER}`
@@ -77,7 +77,7 @@ describe('PLAT-004: developer CLI', () => {
   it('service-account + token lifecycle: create, issue, list, revoke (#131)', async () => {
     const created = cli(['create-service-account', SVC, '--roles', 'System Manager'])
     expect(created).toContain(`created service account ${SVC}`)
-    const [u] = await sql`select enabled, user_type, password_hash from "user" where name = ${SVC}`
+    const [u] = await sql`select enabled, user_type, password_hash from "user" where row_id = ${SVC}`
     expect(u.user_type).toBe('service')
     expect(u.enabled).toBe(true)
     expect(u.password_hash).toBeNull()
@@ -108,7 +108,7 @@ describe('PLAT-004: developer CLI', () => {
   it('create-user refuses an email that already exists, whatever its case', async () => {
     await saveDoc(
       'User',
-      { name: DUP_USER, email: DUP_USER, full_name: 'Already Here', enabled: true },
+      { row_id: DUP_USER, email: DUP_USER, full_name: 'Already Here', enabled: true },
       'Administrator',
     )
 
@@ -131,16 +131,16 @@ describe('PLAT-004: developer CLI', () => {
     }
 
     // One account, untouched — no overwrite and no case-variant shadow.
-    const rows = await sql`select name, full_name from "user" where lower(name) = ${DUP_USER}`
+    const rows = await sql`select row_id, full_name from "user" where lower(row_id) = ${DUP_USER}`
     expect(rows).toHaveLength(1)
-    expect(rows[0].name).toBe(DUP_USER)
+    expect(rows[0].row_id).toBe(DUP_USER)
     expect(rows[0].full_name).toBe('Already Here')
   }, 60_000)
 
   it('console evaluates a piped script with the document API in scope', async () => {
     const stdout = cli(
       ['console'],
-      'const d = await getDoc("User","Administrator"); console.log("NAME=" + d.name)\n',
+      'const d = await getDoc("User","Administrator"); console.log("NAME=" + d.row_id)\n',
     )
     expect(stdout).toContain('NAME=Administrator')
   }, 60_000)

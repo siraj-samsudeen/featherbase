@@ -78,7 +78,7 @@ async function makeCsvSource(admin: {
 }): Promise<string[]> {
   invalidateSources()
   await admin.post('/api/table/Data%20Source', {
-    name: 'seed-fixture',
+    row_id: 'seed-fixture',
     engine: 'csv-folder',
     root_path: dir,
     access: 'read_write',
@@ -97,7 +97,7 @@ describe('M1: csv-folder source', () => {
   test('introspects every csv (recursively), skipping non-csv files', async ({ admin }) => {
     invalidateSources()
     await admin.post('/api/table/Data%20Source', {
-      name: 'seed-fixture',
+      row_id: 'seed-fixture',
       engine: 'csv-folder',
       root_path: dir,
       access: 'read_write',
@@ -121,7 +121,7 @@ describe('M1: csv-folder source', () => {
     expect(stores).toBe('Seed Store Master')
     const enc = encodeURIComponent(stores)
     const list = (await admin.get(
-      `/api/table/${enc}?fields=${encodeURIComponent('["name","store_code","store_name"]')}&order_by=store_code asc`,
+      `/api/table/${enc}?fields=${encodeURIComponent('["row_id","store_code","store_name"]')}&order_by=store_code asc`,
     )) as { data: Record<string, unknown>[]; total: number }
     expect(list.total).toBe(3)
     expect(list.data.map((r) => r.store_code)).toEqual(['CHN', 'KKL', 'TVM'])
@@ -160,7 +160,7 @@ describe('M1: csv-folder source', () => {
       store_name: 'Madurai',
       city: 'Madurai',
     })
-    expect(created.name).toBe('4')
+    expect(created.row_id).toBe('4')
     let text = readFileSync(path.join(dir, 'store_master.csv'), 'utf8')
     expect(text).toContain('MDU,Madurai,Madurai')
 

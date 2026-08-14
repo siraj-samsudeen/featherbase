@@ -11,10 +11,10 @@ const controller: TableController = {
     before_save: async ({ row, tx }) => {
       if (!row.is_default) return
       const stx = (tx ?? sql) as typeof sql
-      const self = String(row.name ?? '')
+      const self = String(row.row_id ?? '')
       await stx`
         update letter_head set is_default = false
-        where is_default = true and name <> ${self}`
+        where is_default = true and row_id <> ${self}`
     },
   },
 }

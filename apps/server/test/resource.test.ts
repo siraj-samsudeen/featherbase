@@ -24,15 +24,15 @@ describe('API-001/API-002: generic REST resource', () => {
       `/api/table/${encodeURIComponent(DT)}`,
       { title: 'proj-a', stars: 1 },
     )
-    expect(created.name).toBeTruthy()
+    expect(created.row_id).toBeTruthy()
 
     // READ one
-    const one = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${created.name}`)
+    const one = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${created.row_id}`)
     expect(one.status).toBe(200)
     expect(((await one.json()) as Record<string, unknown>).title).toBe('proj-a')
 
     // UPDATE (PUT)
-    const put = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${created.name}`, {
+    const put = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${created.row_id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ updated_at: created.updated_at, title: 'proj-b' }),
@@ -45,7 +45,7 @@ describe('API-001/API-002: generic REST resource', () => {
       await admin.post(`/api/table/${encodeURIComponent(DT)}`, { title: t, stars: s })
     const qs = new URLSearchParams({
       filters: JSON.stringify([['stars', '>=', 5]]),
-      fields: JSON.stringify(['name', 'title', 'stars']),
+      fields: JSON.stringify(['row_id', 'title', 'stars']),
       order_by: 'stars desc',
       limit_page_length: '2',
     })
@@ -56,12 +56,12 @@ describe('API-001/API-002: generic REST resource', () => {
     expect(list.data.map((r) => r.title)).toEqual(['x3', 'x2'])
 
     // DELETE
-    const del = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${created.name}`, {
+    const del = await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${created.row_id}`, {
       method: 'DELETE',
     })
     expect(del.status).toBe(200)
     expect(
-      (await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${created.name}`)).status,
+      (await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${created.row_id}`)).status,
     ).toBe(404)
   })
 

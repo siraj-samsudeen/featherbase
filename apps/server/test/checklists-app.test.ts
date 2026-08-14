@@ -47,7 +47,7 @@ async function install() {
   const res = await installApp('checklists')
   const template = res.fixtures.find((f) => f.table === TEMPLATE_DT)
   if (!template) throw new Error('install created no template fixture')
-  return { ...res, templateName: template.name }
+  return { ...res, templateName: template.row_id }
 }
 
 const unwire = () => uninstallApp('checklists').catch(() => {})
@@ -55,9 +55,9 @@ const unwire = () => uninstallApp('checklists').catch(() => {})
 const itemNames = async (run: string): Promise<string[]> =>
   (
     await sql`
-      select name from ${sql(tableName(ITEM_DT))}
+      select row_id from ${sql(tableName(ITEM_DT))}
       where parent = ${run} and parenttype = ${RUN_DT} order by position`
-  ).map((r) => r.name as string)
+  ).map((r) => r.row_id as string)
 
 // Attach a file to a row the way the checklist view does — private, bound to
 // the CHILD item row.
@@ -118,9 +118,9 @@ describe('checklists app: template → run lifecycle', () => {
       )
       await admin.post('/api/save_doc', {
         doctype: TEMPLATE_DT,
-        doc: { name: templateName, updated_at: template.updated_at, items: edited },
+        doc: { row_id: templateName, updated_at: template.updated_at, items: edited },
       })
-      const runAfter = await admin.get<Row>(`/api/table/${encodeURIComponent(RUN_DT)}/${run.name}`)
+      const runAfter = await admin.get<Row>(`/api/table/${encodeURIComponent(RUN_DT)}/${run.row_id}`)
       expect((runAfter.items as Row[])[0].item_label).toBe(FIXTURE_LABELS[0])
     } finally {
       await unwire()
@@ -139,7 +139,7 @@ describe('checklists app: template → run lifecycle', () => {
 
       const ticked = await admin.post<Row>('/api/save_doc', {
         doctype: RUN_DT,
-        doc: { name: run.name, updated_at: run.updated_at, items: tick(run.items as Row[], 0, true) },
+        doc: { row_id: run.row_id, updated_at: run.updated_at, items: tick(run.items as Row[], 0, true) },
       })
       expect(ticked.progress).toBe('1/8')
       expect((ticked.items as Row[])[0].done).toBe(true)
@@ -149,7 +149,7 @@ describe('checklists app: template → run lifecycle', () => {
       const unticked = await admin.post<Row>('/api/save_doc', {
         doctype: RUN_DT,
         doc: {
-          name: run.name,
+          row_id: run.row_id,
           updated_at: ticked.updated_at,
           items: tick(ticked.items as Row[], 0, false),
         },
@@ -174,7 +174,7 @@ describe('checklists app: template → run lifecycle', () => {
       await expect(
         admin.post('/api/save_doc', {
           doctype: RUN_DT,
-          doc: { name: run.name, updated_at: run.updated_at, run_status: 'Submitted' },
+          doc: { row_id: run.row_id, updated_at: run.updated_at, run_status: 'Submitted' },
         }),
       ).rejects.toMatchObject({
         status: 417,
@@ -187,7 +187,7 @@ describe('checklists app: template → run lifecycle', () => {
       )
       const submitted = await admin.post<Row>('/api/save_doc', {
         doctype: RUN_DT,
-        doc: { name: run.name, updated_at: run.updated_at, run_status: 'Submitted', items },
+        doc: { row_id: run.row_id, updated_at: run.updated_at, run_status: 'Submitted', items },
       })
       expect(submitted.run_status).toBe('Submitted')
       expect(submitted.progress).toBe('4/8')
@@ -218,12 +218,12 @@ describe('checklists app: template → run lifecycle', () => {
       })
 
       // TL: own run readable, the admin's run invisible, template read-only.
-      expect((await tl.fetch(`/api/table/${encodeURIComponent(RUN_DT)}/${tlRun.name}`)).status).toBe(200)
-      expect((await tl.fetch(`/api/table/${encodeURIComponent(RUN_DT)}/${adminRun.name}`)).status).toBe(403)
+      expect((await tl.fetch(`/api/table/${encodeURIComponent(RUN_DT)}/${tlRun.row_id}`)).status).toBe(200)
+      expect((await tl.fetch(`/api/table/${encodeURIComponent(RUN_DT)}/${adminRun.row_id}`)).status).toBe(403)
       const tlList = (await (await tl.fetch(`/api/table/${encodeURIComponent(RUN_DT)}`)).json()) as {
         data: Row[]
       }
-      expect(tlList.data.map((r) => r.name)).toEqual([tlRun.name])
+      expect(tlList.data.map((r) => r.row_id)).toEqual([tlRun.row_id])
       expect(
         (
           await tl.fetch(`/api/table/${encodeURIComponent(TEMPLATE_DT)}/${templateName}`, {
@@ -236,7 +236,7 @@ describe('checklists app: template → run lifecycle', () => {
       const smList = (await (await sm.fetch(`/api/table/${encodeURIComponent(RUN_DT)}`)).json()) as {
         data: Row[]
       }
-      expect(smList.data.map((r) => r.name).sort()).toEqual([tlRun.name, adminRun.name].sort())
+      expect(smList.data.map((r) => r.row_id).sort()).toEqual([tlRun.row_id, adminRun.row_id].sort())
     } finally {
       await unwire()
     }
@@ -268,10 +268,10 @@ describe('checklists app: template → run lifecycle', () => {
       await expect(
         admin.post('/api/save_doc', {
           doctype: RUN_DT,
-          doc: { name: run.name, updated_at: run.updated_at, run_status: 'Submitted', items: [] },
+          doc: { row_id: run.row_id, updated_at: run.updated_at, run_status: 'Submitted', items: [] },
         }),
       ).rejects.toMatchObject({ status: 417, message: expect.stringMatching(/must-do/) })
-      const intact = await admin.get<Row>(`/api/table/${encodeURIComponent(RUN_DT)}/${run.name}`)
+      const intact = await admin.get<Row>(`/api/table/${encodeURIComponent(RUN_DT)}/${run.row_id}`)
       expect(intact.items as Row[]).toHaveLength(8)
       expect(intact.run_status).toBe('Open')
 
@@ -290,7 +290,7 @@ describe('checklists app: template → run lifecycle', () => {
       ]
       const saved = await admin.post<Row>('/api/save_doc', {
         doctype: RUN_DT,
-        doc: { name: run.name, updated_at: intact.updated_at, items: forged },
+        doc: { row_id: run.row_id, updated_at: intact.updated_at, items: forged },
       })
       const items = saved.items as Row[]
       expect(items).toHaveLength(8)
@@ -322,7 +322,7 @@ describe('checklists app: template → run lifecycle', () => {
       const submitted = await admin.post<Row>('/api/save_doc', {
         doctype: RUN_DT,
         doc: {
-          name: run.name,
+          row_id: run.row_id,
           updated_at: run.updated_at,
           run_status: 'Submitted',
           items: (run.items as Row[]).map((i) => (i.must_do ? { ...i, done: true } : i)),
@@ -337,7 +337,7 @@ describe('checklists app: template → run lifecycle', () => {
         admin.post('/api/save_doc', {
           doctype: RUN_DT,
           doc: {
-            name: run.name,
+            row_id: run.row_id,
             updated_at: submitted.updated_at,
             items: (submitted.items as Row[]).map((i, n) => (n === 6 ? { ...i, done: true } : i)),
           },
@@ -348,7 +348,7 @@ describe('checklists app: template → run lifecycle', () => {
         admin.post('/api/save_doc', {
           doctype: RUN_DT,
           doc: {
-            name: run.name,
+            row_id: run.row_id,
             updated_at: submitted.updated_at,
             items: (submitted.items as Row[]).map((i, n) =>
               n === 0 ? { ...i, note: 'thought better of it' } : i,
@@ -360,11 +360,11 @@ describe('checklists app: template → run lifecycle', () => {
       await expect(
         admin.post('/api/save_doc', {
           doctype: RUN_DT,
-          doc: { name: run.name, updated_at: submitted.updated_at, run_status: 'Open' },
+          doc: { row_id: run.row_id, updated_at: submitted.updated_at, run_status: 'Open' },
         }),
       ).rejects.toMatchObject({ status: 417, message: expect.stringMatching(refused) })
 
-      const after = await admin.get<Row>(`/api/table/${encodeURIComponent(RUN_DT)}/${run.name}`)
+      const after = await admin.get<Row>(`/api/table/${encodeURIComponent(RUN_DT)}/${run.row_id}`)
       expect(after.run_status).toBe('Submitted')
       expect(after.progress).toBe('5/8')
       expect((after.items as Row[])[6].done).toBe(false)
@@ -395,8 +395,8 @@ describe('checklists app: template → run lifecycle', () => {
       }
       const run1 = await startRun(tl1, 'Kurti')
       const run2 = await startRun(tl2, 'Denim')
-      const [item1] = await itemNames(String(run1.name))
-      const own = await itemNames(String(run2.name))
+      const [item1] = await itemNames(String(run1.row_id))
+      const own = await itemNames(String(run2.row_id))
 
       // 1. A child row is only as readable as the run it hangs on — one by
       // name, and the whole list.
@@ -404,7 +404,7 @@ describe('checklists app: template → run lifecycle', () => {
       const childList = (await (
         await tl2.fetch(`/api/table/${encodeURIComponent(ITEM_DT)}?limit_page_length=200`)
       ).json()) as { data: Row[] }
-      expect(childList.data.map((r) => r.name).sort()).toEqual([...own].sort())
+      expect(childList.data.map((r) => r.row_id).sort()).toEqual([...own].sort())
 
       // 2. The owning leader attaches a photo to their own item.
       const up = await attach(tl1, item1)
@@ -417,7 +417,7 @@ describe('checklists app: template → run lifecycle', () => {
       const files = (await (await tl2.fetch('/api/table/File?limit_page_length=200')).json()) as {
         data: Row[]
       }
-      expect(files.data.map((r) => r.name)).not.toContain(photo.name)
+      expect(files.data.map((r) => r.row_id)).not.toContain(photo.row_id)
       const url = `/api/signed_url?file_url=${encodeURIComponent(String(photo.file_url))}`
       expect((await tl2.fetch(url)).status).toBe(403)
       expect((await tl1.fetch(url)).status).toBe(200)

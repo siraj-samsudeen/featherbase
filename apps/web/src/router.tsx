@@ -205,7 +205,7 @@ function AdminIndexPage() {
   const pages = useHomePages()
   const first = pages.data?.pages[0]
   useEffect(() => {
-    if (first) void navigate({ to: '/admin/home/$name', params: { name: first.name }, replace: true })
+    if (first) void navigate({ to: '/admin/home/$name', params: { name: first.row_id }, replace: true })
   }, [first, navigate])
   if (!pages.data) return null
   if (first) return null

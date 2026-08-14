@@ -3,7 +3,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { createTable, tableName } from './doctype-engine'
 import { ensureHomePageForTable } from './home-pages'
-import { invalidateMeta } from './meta'
+import { invalidateMeta, physicalRowKey } from './meta'
 import { saveDoc, deleteDoc } from './document'
 import { reflectTables } from './sources/reflect'
 import { invalidateSources } from './sources/registry'
@@ -151,7 +151,7 @@ function asNameList(v: unknown): string[] {
 // that row on uninstall, nothing more.
 interface FixtureRef {
   table: string
-  name: string
+  row_id: string
 }
 
 function asFixtureRefs(v: unknown): FixtureRef[] {
@@ -160,7 +160,7 @@ function asFixtureRefs(v: unknown): FixtureRef[] {
   return raw.filter(
     (r): r is FixtureRef =>
       r != null && typeof r === 'object' &&
-      typeof (r as FixtureRef).table === 'string' && typeof (r as FixtureRef).name === 'string',
+      typeof (r as FixtureRef).table === 'string' && typeof (r as FixtureRef).row_id === 'string',
   )
 }
 
@@ -222,14 +222,14 @@ async function dropSchedulerJobs(manifest: AppManifest): Promise<void> {
 async function provisionAccess(manifest: AppManifest): Promise<{ roles: string[]; perms: string[] }> {
   const roles: string[] = []
   for (const role of manifest.roles ?? []) {
-    const [have] = await sql`select 1 from role where name = ${role}`
+    const [have] = await sql`select 1 from role where row_id = ${role}`
     if (have) continue
-    await saveDoc('Role', { name: role })
+    await saveDoc('Role', { row_id: role })
     roles.push(role)
   }
   const perms: string[] = []
   for (const p of manifest.permissions ?? []) {
-    const [role] = await sql`select 1 from role where name = ${p.role}`
+    const [role] = await sql`select 1 from role where row_id = ${p.role}`
     if (!role)
       throw new AppError(
         'ValidationError',
@@ -258,7 +258,7 @@ async function provisionAccess(manifest: AppManifest): Promise<{ roles: string[]
       can_cancel: p.can_cancel ?? false,
       can_amend: p.can_amend ?? false,
     })
-    perms.push(String(saved.name))
+    perms.push(String(saved.row_id))
   }
   return { roles, perms }
 }
@@ -267,13 +267,13 @@ async function provisionAccess(manifest: AppManifest): Promise<{ roles: string[]
 // references any more — a role survives while any Permission still links to
 // it or any user still holds it (shared roles outlive one app's uninstall).
 async function teardownAccess(roles: string[], perms: string[]): Promise<void> {
-  for (const name of perms) await sql`delete from permission where name = ${name}`
+  for (const name of perms) await sql`delete from permission where row_id = ${name}`
   for (const role of roles) {
     const [inPerm] = await sql`select 1 from permission where role = ${role} limit 1`
     if (inPerm) continue
     const [held] = await sql`select 1 from has_role where role = ${role} limit 1`
     if (held) continue
-    await sql`delete from role where name = ${role}`
+    await sql`delete from role where row_id = ${role}`
   }
 }
 
@@ -289,14 +289,15 @@ async function provisionFixtures(manifest: AppManifest): Promise<FixtureRef[]> {
   const created: FixtureRef[] = []
   for (const fixture of manifest.fixtures ?? []) {
     for (const row of fixture.rows) {
-      const name = row.name == null ? '' : String(row.name).trim()
+      const name = row.row_id == null ? '' : String(row.row_id).trim()
       if (name) {
         const [have] = await sql`
-          select 1 from ${sql(tableName(fixture.table))} where name = ${name}`
+          select 1 from ${sql(tableName(fixture.table))}
+          where ${sql(physicalRowKey(fixture.table))} = ${name}`
         if (have) continue
       }
       const saved = await saveDoc(fixture.table, { ...row }, 'Administrator', 'insert')
-      created.push({ table: fixture.table, name: String(saved.name) })
+      created.push({ table: fixture.table, row_id: String(saved.row_id) })
     }
   }
   return created
@@ -310,7 +311,7 @@ async function provisionFixtures(manifest: AppManifest): Promise<FixtureRef[]> {
 async function teardownFixtures(fixtures: FixtureRef[]): Promise<void> {
   for (const ref of [...fixtures].reverse()) {
     try {
-      await deleteDoc(ref.table, ref.name)
+      await deleteDoc(ref.table, ref.row_id)
     } catch (err) {
       if (err instanceof AppError && err.type === 'NotFoundError') continue
       throw err
@@ -358,10 +359,10 @@ async function provisionSources(
   const sources: string[] = []
   const tables: string[] = []
   for (const src of manifest.sources ?? []) {
-    const [existing] = await sql`select 1 from data_source where name = ${src.name}`
+    const [existing] = await sql`select 1 from data_source where row_id = ${src.name}`
     if (!existing) {
       await saveDoc('Data Source', {
-        name: src.name,
+        row_id: src.name,
         engine: src.engine,
         url_env: src.url_env ?? null,
         root_path: src.root_path ?? null,

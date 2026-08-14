@@ -24,7 +24,7 @@ describe('DOC-002 + META-005: update with conflict detection, standard columns a
 
     const updated = await admin.post<Record<string, unknown>>('/api/save_doc', {
       doctype: DT,
-      doc: { name: created.name, updated_at: created.updated_at, title: 'v2' },
+      doc: { row_id: created.row_id, updated_at: created.updated_at, title: 'v2' },
     })
     expect(updated.title).toBe('v2')
     expect(new Date(String(updated.updated_at)).getTime()).toBeGreaterThan(
@@ -44,18 +44,18 @@ describe('DOC-002 + META-005: update with conflict detection, standard columns a
     // First save wins
     await admin.post('/api/save_doc', {
       doctype: DT,
-      doc: { name: created.name, updated_at: created.updated_at, title: 'b' },
+      doc: { row_id: created.row_id, updated_at: created.updated_at, title: 'b' },
     })
 
     // Second save with the ORIGINAL (now stale) timestamp loses
     await expect(
       admin.post('/api/save_doc', {
         doctype: DT,
-        doc: { name: created.name, updated_at: created.updated_at, title: 'c' },
+        doc: { row_id: created.row_id, updated_at: created.updated_at, title: 'c' },
       }),
     ).rejects.toMatchObject({ status: 409, type: 'ConflictError' })
     const [row] = await sql.unsafe(
-      `select title from ${TABLE} where name = '${created.name}'`,
+      `select title from ${TABLE} where row_id = '${created.row_id}'`,
     )
     expect(row.title).toBe('b')
   })
@@ -69,7 +69,7 @@ describe('DOC-002 + META-005: update with conflict detection, standard columns a
     await expect(
       admin.post('/api/save_doc', {
         doctype: DT,
-        doc: { name: created.name, title: 'y' },
+        doc: { row_id: created.row_id, title: 'y' },
       }),
     ).rejects.toMatchObject({ status: 417 })
   })
@@ -87,14 +87,14 @@ describe('DOC-002 + META-005: update with conflict detection, standard columns a
     })
     // now() usually carries milliseconds; pin one so this cannot pass by luck.
     await sql.unsafe(
-      `update ${TABLE} set updated_at = '2026-08-06T10:20:30.123Z' where name = '${created.name}'`,
+      `update ${TABLE} set updated_at = '2026-08-06T10:20:30.123Z' where row_id = '${created.row_id}'`,
     )
 
-    const loaded = await getDoc(DT, String(created.name))
+    const loaded = await getDoc(DT, String(created.row_id))
     expect(loaded.updated_at).toBeInstanceOf(Date)
     const saved = await saveDoc(
       DT,
-      { name: created.name, updated_at: loaded.updated_at, title: 'v2' },
+      { row_id: created.row_id, updated_at: loaded.updated_at, title: 'v2' },
       'Administrator',
     )
     expect(saved.title).toBe('v2')
@@ -105,7 +105,7 @@ describe('DOC-002 + META-005: update with conflict detection, standard columns a
     await expect(
       admin.post('/api/save_doc', {
         doctype: DT,
-        doc: { name: 'ghost', updated_at: new Date().toISOString(), title: 'z' },
+        doc: { row_id: 'ghost', updated_at: new Date().toISOString(), title: 'z' },
       }),
     ).rejects.toMatchObject({ status: 404 })
   })

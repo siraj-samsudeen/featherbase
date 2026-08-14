@@ -20,7 +20,7 @@ async function setup(admin: TestClient) {
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
-  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { name: 't1', title: 'x' })
+  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 't1', title: 'x' })
 }
 
 describe('UI-017: tags', () => {
@@ -29,7 +29,7 @@ describe('UI-017: tags', () => {
     for (const tag of ['urgent', 'finance']) {
       const res = await admin.fetch('/api/tags', {
         method: 'POST',
-        body: JSON.stringify({ doctype: DT, name: 't1', tag }),
+        body: JSON.stringify({ doctype: DT, row_id: 't1', tag }),
       })
       expect(res.status).toBe(201)
     }
@@ -39,7 +39,7 @@ describe('UI-017: tags', () => {
     // Duplicate is a no-op, not an error.
     const dup = await admin.fetch('/api/tags', {
       method: 'POST',
-      body: JSON.stringify({ doctype: DT, name: 't1', tag: 'urgent' }),
+      body: JSON.stringify({ doctype: DT, row_id: 't1', tag: 'urgent' }),
     })
     expect(dup.status).toBe(201)
     const after = await admin.get<{ tags: string[] }>(`/api/tags/${encodeURIComponent(DT)}/t1`)
@@ -57,7 +57,7 @@ describe('UI-017: tags', () => {
     await setup(admin)
     const res = await admin.fetch('/api/tags', {
       method: 'POST',
-      body: JSON.stringify({ doctype: DT, name: 'ghost', tag: 'x' }),
+      body: JSON.stringify({ doctype: DT, row_id: 'ghost', tag: 'x' }),
     })
     expect(res.status).toBe(404)
   })
@@ -66,7 +66,7 @@ describe('UI-017: tags', () => {
     await setup(admin)
     const res = await admin.fetch('/api/tags', {
       method: 'POST',
-      body: JSON.stringify({ doctype: DT, name: 't1', tag: '  ' }),
+      body: JSON.stringify({ doctype: DT, row_id: 't1', tag: '  ' }),
     })
     expect(res.status).toBe(417)
   })

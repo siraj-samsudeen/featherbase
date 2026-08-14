@@ -11,19 +11,19 @@ import { registerRowAction } from '../actions'
 registerRowAction('submit', {
   effect: 'write',
   description: 'Submit a draft row (only if its Table is_submittable).',
-  handler: ({ table, name, user }) => submitDoc(table, name, user.name),
+  handler: ({ table, name, user }) => submitDoc(table, name, user.row_id),
 })
 
 registerRowAction('cancel', {
   effect: 'write',
   description: 'Cancel a submitted row.',
-  handler: ({ table, name, user }) => cancelDoc(table, name, user.name),
+  handler: ({ table, name, user }) => cancelDoc(table, name, user.row_id),
 })
 
 registerRowAction('amend', {
   effect: 'write',
   description: 'Create an editable copy of a cancelled row (amended_from).',
-  handler: ({ table, name, user }) => amendDoc(table, name, user.name),
+  handler: ({ table, name, user }) => amendDoc(table, name, user.row_id),
 })
 
 registerRowAction('apply_workflow_action', {
@@ -33,7 +33,7 @@ registerRowAction('apply_workflow_action', {
     const action = args.action
     if (typeof action !== 'string' || !action)
       throw new AppError('ValidationError', 'Expected { action }')
-    return applyWorkflowAction(table, name, action, user.name)
+    return applyWorkflowAction(table, name, action, user.row_id)
   },
 })
 
@@ -44,6 +44,6 @@ registerRowAction('rename', {
     const newName = args.new_name
     if (typeof newName !== 'string' || !newName)
       throw new AppError('ValidationError', 'Expected { new_name }')
-    return renameDoc(table, name, newName, user.name)
+    return renameDoc(table, name, newName, user.row_id)
   },
 })

@@ -44,7 +44,7 @@ export async function recordEvents(user: string, events: IncomingEvent[]): Promi
   const rows = events.map((e) => {
     const at = typeof e.at === 'number' ? Math.min(Math.max(e.at, now - MAX_EVENT_AGE_MS), now) : now
     return {
-      name: id(),
+      row_id: id(),
       created_by: user,
       updated_by: user,
       created_at: new Date(now),

@@ -22,7 +22,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn): Promise<TestC
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: APPROVER_ROLE } })
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: APPROVER_ROLE } })
   await admin.post('/api/save_doc', {
     doctype: 'Permission',
     doc: { ref_table: DT, role: APPROVER_ROLE, tier: 'basic', can_read: true, can_write: true },
@@ -33,7 +33,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn): Promise<TestC
   await admin.post('/api/save_doc', {
     doctype: 'Workflow',
     doc: {
-      name: FLOW,
+      row_id: FLOW,
       ref_table: DT,
       is_active: true,
       states: [
@@ -57,7 +57,7 @@ describe('WF-004: pending-approval notifications', () => {
   }) => {
     await setup(admin, createUser)
     await admin.post(`/api/table/${encodeURIComponent(DT)}`, {
-      name: 'wf-notify-1',
+      row_id: 'wf-notify-1',
       title: 'Widget order',
     })
 
@@ -92,7 +92,7 @@ describe('WF-004: pending-approval notifications', () => {
     // Legacy relied on the previous test's document sitting in Pending;
     // recreate that state explicitly: create the doc and submit it.
     await admin.post(`/api/table/${encodeURIComponent(DT)}`, {
-      name: 'wf-notify-1',
+      row_id: 'wf-notify-1',
       title: 'Widget order',
     })
     await admin.post(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent('wf-notify-1')}:apply_workflow_action`, { action: 'Submit' })

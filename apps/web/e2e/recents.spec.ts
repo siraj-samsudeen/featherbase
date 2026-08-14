@@ -23,7 +23,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: auth,
-    data: { name: DOC, note: 'searchable' },
+    data: { row_id: DOC, note: 'searchable' },
   })
   if (![201, 409].includes(doc.status())) throw new Error(`doc: ${doc.status()}`)
 })

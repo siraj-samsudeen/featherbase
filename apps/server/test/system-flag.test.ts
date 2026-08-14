@@ -15,7 +15,7 @@ describe('system flag: the migration chain owns it', () => {
   test('every migration-created table carries system = true', async () => {
     const unflagged = await sql`
       select name from table_def where system = false and name in ${sql(ENGINE_TABLES)}`
-    expect(unflagged.map((r) => r.name)).toEqual([])
+    expect(unflagged.map((r) => r.row_id)).toEqual([])
   })
 
   test('the opt-in Helpdesk demo is never flagged as a platform table', async () => {
@@ -27,7 +27,7 @@ describe('system flag: the migration chain owns it', () => {
 
   test('a fresh migrated database has zero system = false tables', async ({ skip }) => {
     const rows = await sql`select name from table_def where system = false`
-    const names = rows.map((r) => String(r.name))
+    const names = rows.map((r) => String(r.row_id))
     // A dev database legitimately carries user/opt-in tables (system = false
     // by design) — the strict zero check only holds on a freshly migrated
     // database, which CI always is. Regression target: a future migration

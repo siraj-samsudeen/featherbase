@@ -19,8 +19,9 @@ export interface InferredTableDef {
 
 // Mirrors the server's STANDARD_COLUMNS (doctype-engine.ts): user columns can
 // never shadow these, so inferred names step aside with a numeric suffix.
+// #132: the row key is 'row_id'; 'name' is a legal user column again.
 const RESERVED_COLUMN_NAMES = new Set([
-  'name',
+  'row_id',
   'created_by',
   'created_at',
   'updated_at',

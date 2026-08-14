@@ -21,7 +21,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     headers,
     data: {
       doctype: 'Custom Field',
-      doc: { name: `${DT}-${FIELD}`, dt: DT, column_name: FIELD, label: 'Priority Note', column_type: 'Data', in_list_view: true },
+      doc: { row_id: `${DT}-${FIELD}`, dt: DT, column_name: FIELD, label: 'Priority Note', column_type: 'Data', in_list_view: true },
     },
   })
   if (![201, 200].includes(cf.status())) throw new Error(`custom field: ${cf.status()}`)
@@ -29,7 +29,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   await request.delete(`/api/table/${encodeURIComponent(DT)}/cf-doc`, { headers })
   await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
-    data: { name: 'cf-doc', title: 'has custom', [FIELD]: 'urgent' },
+    data: { row_id: 'cf-doc', title: 'has custom', [FIELD]: 'urgent' },
   })
 })
 

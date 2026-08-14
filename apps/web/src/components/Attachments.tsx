@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, getToken, listResource } from '../lib/api'
 
 interface FileRow {
-  name: string
+  row_id: string
   file_name: string
   file_url: string
   is_private: boolean
@@ -28,7 +28,7 @@ export function Attachments({ doctype, name }: { doctype: string; name: string }
           ['ref_table', '=', doctype],
           ['ref_name', '=', name],
         ],
-        fields: ['name', 'file_name', 'file_url', 'is_private', 'thumbnail_url'],
+        fields: ['row_id', 'file_name', 'file_url', 'is_private', 'thumbnail_url'],
         order_by: 'created_at asc',
         limit_page_length: 100,
       }),
@@ -112,7 +112,7 @@ export function Attachments({ doctype, name }: { doctype: string; name: string }
       <ul className="space-y-1">
         {files.data?.data.map((f) => (
           <li
-            key={f.name}
+            key={f.row_id}
             className="group flex items-center justify-between gap-2 text-sm"
             data-testid="attachment-row"
           >
@@ -134,7 +134,7 @@ export function Attachments({ doctype, name }: { doctype: string; name: string }
             </a>
             <button
               aria-label={`Remove ${f.file_name}`}
-              onClick={() => remove(f.name)}
+              onClick={() => remove(f.row_id)}
               data-testid="attachment-delete"
               className="text-[var(--color-ink-faint)] opacity-0 transition group-hover:opacity-100 hover:text-[var(--color-danger)]"
             >

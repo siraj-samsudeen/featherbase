@@ -88,24 +88,24 @@ describe('Frappe compat: frappe.client.* RPC namespace', () => {
     admin,
   }) => {
     await makeDT(admin)
-    const inserted = await admin.post<{ message: { name: string } }>(
+    const inserted = await admin.post<{ message: { row_id: string } }>(
       '/api/method/frappe.client.insert',
       { doc: { doctype: DT, title: 'first' } },
     )
-    const name = inserted.message.name
+    const name = inserted.message.row_id
     expect(name).toBeTruthy()
 
     const got = await admin.post<{ message: { title: string } }>('/api/method/frappe.client.get', {
       doctype: DT,
-      name,
+      row_id: name,
     })
     expect(got.message.title).toBe('first')
 
-    const listed = await admin.post<{ message: { name: string }[] }>(
+    const listed = await admin.post<{ message: { row_id: string }[] }>(
       '/api/method/frappe.client.get_list',
-      { doctype: DT, fields: ['name', 'title'], filters: [['title', '=', 'first']] },
+      { doctype: DT, fields: ['row_id', 'title'], filters: [['title', '=', 'first']] },
     )
-    expect(listed.message.map((r) => r.name)).toContain(name)
+    expect(listed.message.map((r) => r.row_id)).toContain(name)
 
     const count = await admin.post<{ message: number }>('/api/method/frappe.client.get_count', {
       doctype: DT,
@@ -120,17 +120,17 @@ describe('Frappe compat: frappe.client.* RPC namespace', () => {
 
     const set = await admin.post<{ message: { stage: string } }>(
       '/api/method/frappe.client.set_value',
-      { doctype: DT, name, fieldname: 'stage', value: 'Done' },
+      { doctype: DT, row_id: name, fieldname: 'stage', value: 'Done' },
     )
     expect(set.message.stage).toBe('Done')
 
     const del = await admin.post<{ message: string }>('/api/method/frappe.client.delete', {
       doctype: DT,
-      name,
+      row_id: name,
     })
     expect(del.message).toBe('ok')
     await expect(
-      admin.post('/api/method/frappe.client.get', { doctype: DT, name }),
+      admin.post('/api/method/frappe.client.get', { doctype: DT, row_id: name }),
     ).rejects.toMatchObject({ status: 404 })
   })
 
@@ -168,7 +168,7 @@ describe('Frappe compat: frappe.client.* RPC namespace', () => {
     })
     await admin.post('/api/save_doc', {
       doctype: DT + ' Prompt',
-      doc: { name: '1234567890', title: 'numeric name' },
+      doc: { row_id: '1234567890', title: 'numeric name' },
     })
     const byName = await admin.post<{ message: { title: string } }>(
       '/api/method/frappe.client.get_value',
@@ -177,11 +177,11 @@ describe('Frappe compat: frappe.client.* RPC namespace', () => {
     expect(byName.message.title).toBe('numeric name')
 
     // Frappe's dict filter form.
-    const byDict = await admin.post<{ message: { name: string } }>(
+    const byDict = await admin.post<{ message: { row_id: string } }>(
       '/api/method/frappe.client.get_value',
-      { doctype: DT + ' Prompt', filters: { title: 'numeric name' }, fieldname: 'name' },
+      { doctype: DT + ' Prompt', filters: { title: 'numeric name' }, fieldname: 'row_id' },
     )
-    expect(byDict.message.name).toBe('1234567890')
+    expect(byDict.message.row_id).toBe('1234567890')
   })
 
   test('get_doctype returns the meta bundle with child-table metas', async ({ admin }) => {
@@ -198,7 +198,7 @@ describe('Frappe compat: frappe.client.* RPC namespace', () => {
       ],
     })
     const bundle = await admin.post<{
-      message: { doctype: { name: string }; child_doctypes: { name: string }[] }
+      message: { doctype: { row_id: string }; child_doctypes: { row_id: string }[] }
     }>('/api/method/frappe.client.get_doctype', { doctype: DT })
     expect(bundle.message.doctype.name).toBe(DT)
     expect(bundle.message.child_doctypes.map((c) => c.name)).toEqual([DT + ' Child'])

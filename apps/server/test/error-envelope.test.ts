@@ -77,7 +77,7 @@ describe('API-006: consistent error envelope', () => {
   test('409 ConflictError on duplicate insert', async ({ admin }) => {
     const res = await admin.fetch('/api/table/User', {
       method: 'POST',
-      body: JSON.stringify({ name: 'Administrator', email: 'admin@example.com' }),
+      body: JSON.stringify({ row_id: 'Administrator', email: 'admin@example.com' }),
     })
     expect(res.status).toBe(409)
     expect((await envelope(res)).type).toBe('ConflictError')
@@ -91,7 +91,7 @@ describe('API-006: consistent error envelope', () => {
     const email = `envelope-probe-${Math.random().toString(36).slice(2, 8)}@x.com`
     const mk = await admin.fetch('/api/save_doc', {
       method: 'POST',
-      body: JSON.stringify({ doctype: 'User', doc: { name: email, email } }),
+      body: JSON.stringify({ doctype: 'User', doc: { row_id: email, email } }),
     })
     expect(mk.status).toBe(201)
     await setUserPassword(email, 'probe-pw-12345')
@@ -104,7 +104,7 @@ describe('API-006: consistent error envelope', () => {
     const res = await api.fetch('/api/doctype', {
       method: 'POST',
       headers: { authorization: `Bearer ${tok}` },
-      body: JSON.stringify({ name: 'Envelope Probe DT', columns: [] }),
+      body: JSON.stringify({ row_id: 'Envelope Probe DT', columns: [] }),
     })
     expect(res.status).toBe(403)
     expect((await envelope(res)).type).toBe('PermissionError')

@@ -16,7 +16,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   for (const c of ['Globex Ltd', 'Acme Ltd']) {
     const res = await request.post(`/api/table/${encodeURIComponent(CUST)}`, {
       headers: auth,
-      data: { name: c, city: 'x' },
+      data: { row_id: c, city: 'x' },
     })
     if (![201, 409].includes(res.status())) throw new Error(`cust: ${res.status()}`)
   }
@@ -27,7 +27,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     data: { title: 'link autocomplete fixture', qty: 1 },
   })
   if (created.status() !== 201) throw new Error(`fixture doc: ${created.status()}`)
-  docName = ((await created.json()) as { name: string }).name
+  docName = ((await created.json()) as { row_id: string }).row_id
 })
 
 test('UI-006: link autocomplete filters, selects, persists, and offers create-new', async ({ page }) => {

@@ -47,18 +47,18 @@ whitelist('frappe.client.get_list', async ({ args, user }) => {
       limit_start: args.limit_start != null ? Number(args.limit_start) : undefined,
       limit_page_length: args.limit_page_length != null ? Number(args.limit_page_length) : undefined,
     },
-    user.name,
+    user.row_id,
   )
   // Frappe's get_list message is the row array itself.
   return result.data
 }, { effect: 'read' })
 
 whitelist('frappe.client.get', async ({ args, user }) => {
-  return getDoc(str(args, 'doctype'), str(args, 'name'), user.name)
+  return getDoc(str(args, 'doctype'), str(args, 'row_id'), user.row_id)
 }, { effect: 'read' })
 
 whitelist('frappe.client.get_count', async ({ args, user }) => {
-  return countDocs(str(args, 'doctype'), (asJson(args.filters) as Filter[]) ?? [], user.name)
+  return countDocs(str(args, 'doctype'), (asJson(args.filters) as Filter[]) ?? [], user.row_id)
 }, { effect: 'read' })
 
 // Frappe returns { <fieldname>: <value> } for get_value. `filters` may be a
@@ -76,13 +76,13 @@ whitelist('frappe.client.get_value', async ({ args, user }) => {
       ? (Object.entries(parsed).map(([field, value]) => [field, '=', value]) as Filter[])
       : null
   const name = filterList
-    ? ((await getList(table, { filters: filterList, limit_page_length: 1 }, user.name))
-        .data[0]?.name as string | undefined)
+    ? ((await getList(table, { filters: filterList, limit_page_length: 1 }, user.row_id))
+        .data[0]?.row_id as string | undefined)
     : args.filters != null && args.filters !== ''
       ? String(args.filters)
       : undefined
   if (!name) return null
-  const row = await getDoc(table, name, user.name)
+  const row = await getDoc(table, name, user.row_id)
   return { [columnName]: row[columnName] ?? null }
 }, { effect: 'read' })
 
@@ -91,25 +91,25 @@ whitelist('frappe.client.insert', async ({ args, user }) => {
   const table = typeof doc?.doctype === 'string' ? doc.doctype : undefined
   if (!doc || !table) throw new AppError('ValidationError', 'Expected doc with a doctype')
   const { doctype: _dt, ...values } = doc
-  return saveDoc(table, values, user.name, 'insert')
+  return saveDoc(table, values, user.row_id, 'insert')
 }, { effect: 'write' })
 
 // set_value: load-modify-save through the full lifecycle (validation, hooks,
 // versioning) — matching Frappe's frappe.client.set_value semantics.
 whitelist('frappe.client.set_value', async ({ args, user }) => {
   const table = str(args, 'doctype')
-  const name = str(args, 'name')
+  const name = str(args, 'row_id')
   const columnName = str(args, 'fieldname')
-  const current = await getDoc(table, name, user.name)
+  const current = await getDoc(table, name, user.row_id)
   return saveDoc(
     table,
-    { name, updated_at: current.updated_at, [columnName]: args.value ?? null },
-    user.name,
+    { row_id: name, updated_at: current.updated_at, [columnName]: args.value ?? null },
+    user.row_id,
   )
 }, { effect: 'write' })
 
 whitelist('frappe.client.delete', async ({ args, user }) => {
-  await deleteDoc(str(args, 'doctype'), str(args, 'name'), user.name)
+  await deleteDoc(str(args, 'doctype'), str(args, 'row_id'), user.row_id)
   return 'ok'
 }, { effect: 'write' })
 

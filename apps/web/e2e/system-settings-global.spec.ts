@@ -34,7 +34,7 @@ test.beforeAll(async ({ request }) => {
   // A known doc: 9 March 2026, amount 1234.5.
   await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
-    data: { name: 'set4-doc', due: '2026-03-09', amount: 1234.5 },
+    data: { row_id: 'set4-doc', due: '2026-03-09', amount: 1234.5 },
   })
   // Start from a known global format.
   await setSettings(request, { date_format: 'dd-mm-yyyy', currency: 'USD', currency_precision: 2 })

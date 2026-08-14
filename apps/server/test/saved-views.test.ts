@@ -8,7 +8,7 @@ const FILTERS = [['status', '=', 'Open'] as [string, string, unknown]]
 
 describe('#101: /api/saved_views', () => {
   test('create + list round-trips the filter set; owner rows sort first', async ({ admin }) => {
-    const created = await admin.post<{ name: string; mine: boolean }>('/api/saved_views', {
+    const created = await admin.post<{ row_id: string; mine: boolean }>('/api/saved_views', {
       table: 'Customer',
       label: 'Open ones',
       filters: FILTERS,
@@ -17,7 +17,7 @@ describe('#101: /api/saved_views', () => {
     const list = await admin.get<{ views: Array<Record<string, unknown>> }>(
       '/api/saved_views?table=Customer',
     )
-    const view = list.views.find((v) => v.name === created.name)!
+    const view = list.views.find((v) => v.row_id === created.row_id)!
     expect(view).toMatchObject({ label: 'Open ones', shared: false, mine: true })
     expect(view.filters).toEqual(FILTERS)
     // A different table's bar does not see it.
@@ -47,14 +47,14 @@ describe('#101: /api/saved_views', () => {
       doctype: 'Permission',
       doc: { ref_table: DT, role: 'All', tier: 'basic', can_read: true },
     })
-    const created = await admin.post<{ name: string }>('/api/saved_views', {
+    const created = await admin.post<{ row_id: string }>('/api/saved_views', {
       table: DT,
       label: 'Mine only',
       filters: FILTERS,
     })
     await admin.post('/api/save_doc', {
       doctype: 'User',
-      doc: { name: 'sv-user@x.com', email: 'sv-user@x.com', enabled: true },
+      doc: { row_id: 'sv-user@x.com', email: 'sv-user@x.com', enabled: true },
     })
     const { token } = await issueSession('sv-user@x.com')
     const auth = { authorization: `Bearer ${token}` }
@@ -64,7 +64,7 @@ describe('#101: /api/saved_views', () => {
     })
     expect(((await before.json()) as { views: unknown[] }).views).toHaveLength(0)
 
-    await admin.post(`/api/saved_views/${created.name}/share`, { shared: true })
+    await admin.post(`/api/saved_views/${created.row_id}/share`, { shared: true })
     const after = await api.fetch(`/api/saved_views?table=${encodeURIComponent(DT)}`, {
       headers: auth,
     })
@@ -73,13 +73,13 @@ describe('#101: /api/saved_views', () => {
     expect(views[0]).toMatchObject({ label: 'Mine only', shared: true, mine: false })
 
     // The non-owner can neither re-share nor delete it.
-    const share = await api.fetch(`/api/saved_views/${created.name}/share`, {
+    const share = await api.fetch(`/api/saved_views/${created.row_id}/share`, {
       method: 'POST',
       headers: auth,
       body: JSON.stringify({ shared: false }),
     })
     expect(share.status).toBe(403)
-    const del = await api.fetch(`/api/saved_views/${created.name}`, {
+    const del = await api.fetch(`/api/saved_views/${created.row_id}`, {
       method: 'DELETE',
       headers: auth,
     })
@@ -97,7 +97,7 @@ describe('#101: /api/saved_views', () => {
     })
     await admin.post('/api/save_doc', {
       doctype: 'User',
-      doc: { name: 'sv-locked@x.com', email: 'sv-locked@x.com', enabled: true },
+      doc: { row_id: 'sv-locked@x.com', email: 'sv-locked@x.com', enabled: true },
     })
     const { token } = await issueSession('sv-locked@x.com')
     const auth = { authorization: `Bearer ${token}` }
@@ -131,17 +131,17 @@ describe('#101: /api/saved_views', () => {
   })
 
   test('the owner can delete; a missing view 404s', async ({ admin }) => {
-    const created = await admin.post<{ name: string }>('/api/saved_views', {
+    const created = await admin.post<{ row_id: string }>('/api/saved_views', {
       table: 'Customer',
       label: 'Ephemeral',
       filters: FILTERS,
     })
-    await admin.delete(`/api/saved_views/${created.name}`)
-    const list = await admin.get<{ views: Array<{ name: string }> }>(
+    await admin.delete(`/api/saved_views/${created.row_id}`)
+    const list = await admin.get<{ views: Array<{ row_id: string }> }>(
       '/api/saved_views?table=Customer',
     )
-    expect(list.views.some((v) => v.name === created.name)).toBe(false)
-    await expect(admin.delete(`/api/saved_views/${created.name}`)).rejects.toMatchObject({
+    expect(list.views.some((v) => v.row_id === created.row_id)).toBe(false)
+    await expect(admin.delete(`/api/saved_views/${created.row_id}`)).rejects.toMatchObject({
       status: 404,
     })
   })

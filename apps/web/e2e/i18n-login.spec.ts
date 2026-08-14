@@ -19,7 +19,7 @@ test.beforeAll(async ({ request }) => {
   await request.delete(`/api/table/User/${encodeURIComponent(USER)}`, { headers })
   await request.post('/api/save_doc', {
     headers,
-    data: { doctype: 'User', doc: { name: USER, email: USER, full_name: 'FR User', enabled: true, language: 'fr', roles: [{ role: 'System Manager' }] } },
+    data: { doctype: 'User', doc: { row_id: USER, email: USER, full_name: 'FR User', enabled: true, language: 'fr', roles: [{ role: 'System Manager' }] } },
   })
   await request.post('/api/set_password', { headers, data: { user: USER, password: PWD } })
 

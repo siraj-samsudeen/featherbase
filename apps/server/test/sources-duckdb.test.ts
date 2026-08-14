@@ -40,7 +40,7 @@ async function makeDuckSource(admin: {
 }): Promise<string> {
   invalidateSources()
   await admin.post('/api/table/Data%20Source', {
-    name: 'duck-fixture',
+    row_id: 'duck-fixture',
     engine: 'duckdb',
     url_env: DUCK_URL_ENV,
     access: 'read_only',
@@ -74,7 +74,7 @@ describe('M3: duckdb read-only source', () => {
     const name = await makeDuckSource(admin)
     const enc = encodeURIComponent(name)
     const list = (await admin.get(
-      `/api/table/${enc}?fields=${encodeURIComponent('["name","business_date","qty","amount"]')}&filters=${encodeURIComponent('[["name","=","KKL"]]')}&order_by=business_date asc`,
+      `/api/table/${enc}?fields=${encodeURIComponent('["row_id","business_date","qty","amount"]')}&filters=${encodeURIComponent('[["row_id","=","KKL"]]')}&order_by=business_date asc`,
     )) as { data: Record<string, unknown>[]; total: number }
     expect(list.total).toBe(2)
     expect(list.data.map((r) => r.qty)).toEqual(['10', '12'])

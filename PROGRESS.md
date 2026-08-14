@@ -1,5 +1,58 @@
 # Progress Log
 
+## 2026-08-14 — #132 catches up with main: the rename meets four months of newer code
+
+The `row_id` branch had drifted 48 commits behind. Merging main in (rather
+than replaying 32 commits) left only three conflicts, but the textual merge
+was the easy half: everything main had built *after* the fork was still
+written against `name`, and a clean merge says nothing about that.
+
+**Migration renumbered `0073_row_id.ts` → `0077_row_id.ts`** (announced, per
+the standing rule). Main's `0073_import_revert_log.ts` had claimed the same
+number, and #149's new guard — which grandfathers the old 0064/0069 pairs but
+refuses any *new* collision — made the merged tree refuse to boot. 0077 also
+happens to be the correct order: 0074–0076 were written pre-rename, so they
+should run first and let the rename convert the result.
+
+**The stale-`name` sweep.** Two classes, and only one of them is loud:
+
+1. *Typed* — `user.name` on `SessionUser` in the revert action. `tsc` caught
+   these immediately.
+2. *Untyped* — reads off `Record<string, unknown>` rows, which the compiler
+   cannot see through: `saved.name`, `{ name: r.touched.name }` as the values
+   handed to `saveDoc`, and raw SQL (`select name … from version`,
+   `where name = …` on `import_log`). Empirically confirmed against the
+   migrated database that `import_log`, `version`, `user` and `role` all carry
+   `row_id` and no `name` — so these were silent `undefined`s, not type errors.
+
+`ensureKeyIndex` deserves its own line: it guarded with a hardcoded
+`keyColumn === 'name'`, now `ROW_KEY`. Left alone it would have created a
+redundant index on the primary key — and, worse, *skipped* the index for a
+user column legitimately called `name`, which is exactly the thing #132
+exists to make possible.
+
+**`TouchedRow.name` was deliberately NOT renamed.** It is a field of the
+import log's JSON payload, not a physical column, and the revert API surfaces
+it in `skipped`/`failed`. The reads *from database rows* were the bug; the
+payload's own vocabulary is a separate question and stays the owner's call.
+
+Test-side, the fix was propagating a convention the branch had already ruled
+(`doc: { row_id: … }`, `post<{ row_id: string }>`), not inventing one — with
+the one trap that `name: DT` in an `/api/doctype` payload is the *Table's*
+natural key and stays `name`.
+
+**Verified end-to-end**, isolated scratch DBs throughout: server 725 passed /
+0 failed, web unit 64/64, both typechecks clean; `./init.sh` boots and smoke
+passes; full e2e on a *pristine* database 117 passed, with the known-flaky
+UPS-J2 green on re-run. Two findings worth recording: `portal.spec.ts` is not
+idempotent across e2e runs (it asserts a row *count*, and e2e writes real rows
+— it failed only after I had run the suite four times, and its actual scoping
+assertion never failed), and web tests must be pointed at the migrated DB or
+they silently exercise the default one.
+
+**Next:** the revert UI still renders `TouchedRow.name` — worth a ruling on
+whether that payload field follows the rename. Otherwise #132 is ready.
+
 ## 2026-08-11 — Explore gets its front doors: chain/select deep links, split button, map hand-off
 
 The two entry points the owner picked from the mockup exploration
@@ -444,6 +497,182 @@ Next for SSO: role grants for provisioned users (a Rama `Viewer` role
 belongs in the `rama_dw` manifest, not the framework), #158 and #150 as
 ruled, and the floor tier (emp-code+PIN) which is designed separately —
 #127 is deliberately not extended in that direction.
+
+## 2026-08-11 — #132: the physical row key becomes `row_id` (COMPLETE)
+
+Closes out the two entries below. Every suite is green and PR #174 is out of
+draft. **Not merged, not rebased** — main has since absorbed #175's TableBuilder
+rework and the owner is handling that rebase.
+
+**Final numbers**, all against an isolated stack (own database, `PORT=8020` /
+`WEB_PORT=5193`, `ALLOW_MOCK_OAUTH=1`):
+
+| | |
+|---|---|
+| Playwright e2e | **111 passed, 2 skipped, 0 failed** (113) — from a freshly migrated database |
+| Server suite | **693 passed, 12 skipped** — 116 files passed, 1 skipped |
+| Web unit | **42 / 42** |
+| Server + web typecheck | 0 errors |
+| Migrate from empty | 74 applied |
+
+**Four REAL defects the scripted sweep had left behind** — found by the specs,
+fixed in the product, not papered over in the tests:
+
+1. **`/api/save_doc` published every update as `created`.** It decided
+   created-vs-updated from `body.doc.name`, which the rename made permanently
+   absent, so a second session watching the same row never got the stale-row
+   banner. Now keyed off `row_id`.
+2. **The Import Wizard's Row ID mapping target was `<option value="name">`.**
+   Mapping a CSV column onto the Row ID therefore posted a `name` field the
+   server rejected — UPS-R4 ("the file's own codes become the ids") was broken
+   end to end, even though the neighbouring `keyLabel`/`friendly` helpers had
+   already moved to `row_id`.
+3. **`QueryReportView`'s auto-run effect depended on `meta.data?.name`**, now
+   permanently `undefined`, so the effect never re-fired and a query report
+   rendered its title and filters but never ran.
+4. **`ReportView` and `ChecklistView` saved rows with `doc.name`** — saving a
+   report silently did nothing useful, and a checklist run could not persist.
+
+**The biggest time sink was not the rename.** A stale `tsx watch` server kept
+port 8020 while a replacement failed with `EADDRINUSE` and logged nothing
+visible; the old process then served requests against a database that had been
+dropped and recreated underneath it, producing 500s and a *different* set of ~13
+failures on every run. Two full debugging passes chased phantom bugs before the
+`EADDRINUSE` line surfaced. **If e2e failures shift between identical runs,
+check `lsof -ti:8020 -sTCP:LISTEN` before believing any of them.**
+
+**Also worth keeping:** `Unknown fields` now names the offending fields. That
+one-line change is what located defects 2 and 4 — the bare message had hidden
+them behind a generic 417.
+
+**Sweep classes that need a human eye** (each bit at least once): Playwright's
+`getByRole(..., { name })` accessible-name option; `setInputFiles({ name, … })`;
+function *parameters* renamed while their bodies still say `name`; app
+manifests, patch ids, `installed_app`, reflect's `created[]`, `TableMeta.name`,
+and `/api/install_app`'s `{ name }`. Driving edits off `tsc` diagnostics rather
+than regex was the reliable method.
+
+## 2026-08-11 — #132: the physical row key becomes `row_id` (server + Desk done)
+
+Continues the entry below, which recorded the half-done state. Both suites are
+now green and the Desk is swept; the Playwright e2e suite is not, and that is
+the one open item.
+
+**Green now.** Server `694 passed | 11 skipped` across `116 passed | 1 skipped`
+files. Server typecheck clean. Web typecheck clean. Web unit tests `42/42`.
+Migration chain from an EMPTY database: 74 applied, 48 generated tables on
+`row_id`, `table_def` + the raw engine tables keeping `name`.
+
+**Proved over HTTP** against an isolated stack (`PORT=8020`, own database) — the
+thing #132 actually asked for:
+
+    POST /api/doctype  { "name": "Student 132",
+      "columns": [ {"column_name":"name"}, {"column_name":"grade"} ] }   -> 201
+
+`name` is a legal user column again. The physical table came out
+`row_id, created_by, …, name, grade`; a row inserted as
+`{"name":"Ada Lovelace","grade":"A"}` came back `row_id=c4a1fc002f` with
+`name` carrying the student's actual name, listed and re-fetched by `row_id`,
+while `:meta` still identifies the Table as `name = Student 132`.
+
+**Admin smoke** (login → Table list → form) passes against that stack:
+`smoke`, `admin`, `listview`, `formview` specs all green.
+
+**Open: 25 of 108 Playwright e2e specs fail** (83 pass) on a freshly migrated
+database, so this is real, not leftover state. They cluster in reports
+(`report-view`, `report-chart`, `report-export`, `saved-report`,
+`script-report`, `query-report`), `filters`, `grid-layout`, `realtime`,
+`oauth`, `single-doctype`, `submit-actions`, `ticketing`. The pattern in the
+ones inspected is spec-side row-key wiring the scripted sweep did not reach,
+not engine breakage — but that is an inference from a sample, not a finding for
+all 25. PR #174 stays a DRAFT until they are green.
+
+**Gotchas earned the hard way, beyond the ones below.**
+- A scripted `.name` → `.row_id` sweep will happily rename Playwright's
+  `getByRole('button', { name: 'Sign in' })` — the ACCESSIBLE NAME, not a row
+  key — and `setInputFiles({ name, mimeType, buffer })`. Both were silent
+  until the specs ran.
+- It will also rename function PARAMETERS (`(dt: string, name: string) =>`)
+  and leave the body referencing `name`, which only shows up at runtime as
+  `name is not defined`.
+- The reliable driver turned out to be `tsc` itself: parse its diagnostics and
+  flip whichever side it names. That fixed the last ~40 web sites mechanically.
+- Things that KEEP `name` and were wrongly swept at least once each: app
+  manifests (`AppManifest.name`, `registerApp`), patch ids, `installed_app`,
+  reflect's `created[]` (Table names), `TableMeta.name`, and the `:meta`
+  endpoint's identity.
+
+**Next:** the 25 e2e specs, then flip #174 out of draft.
+
+## 2026-08-11 — #132 part 1: the physical row key becomes `row_id` (INCOMPLETE)
+
+Branch `fix/row-id-physical-rename`, PR open and **not mergeable yet** — the
+server engine and the migration are done and verified, the callers are not.
+Recorded here so the next session starts from fact rather than from the diff.
+
+**The decision that shapes everything.** Every generated table's primary key
+is now the physical column `row_id`, and `name` has left `STANDARD_COLUMNS`,
+so a user Table may finally carry a `name` column. Two tables are deliberately
+NOT renamed, and the reasoning is in `apps/server/src/meta.ts`:
+
+- `table_def.name` **stays**. Its DDL (`0002_doctype.sql`) shows a NATURAL key
+  holding the Table's own identifier (`'Student'`), the target of a real
+  foreign key (`column_def.parent references table_def(name)`) and what
+  `reference_table`, `row_table`, `parenttype` and `permission.table` all point
+  at. That identifier is a different concept from a row id — explicitly out of
+  scope per #132.
+- `column_def.name` **renames**. Same DDL shows `default gen_random_uuid()::text`
+  — a pure surrogate whose natural key is `unique (parent, column_name)`. The
+  task brief assumed both were Table identifiers; the code says otherwise for
+  this one.
+
+That split creates the one hazard worth knowing about: `Table` is itself served
+through the fully generic row API (`bootstrap.test.ts` does `GET /api/table/Table`),
+so the engine cannot hardcode a single physical key. Resolution: `TableMeta.row_key`
+carries the PHYSICAL column, `physicalRowKey()` holds the single `{ Table: 'name' }`
+exception, and `stripInternalColumns` aliases it to `row_id` on the way out. **The
+wire format is uniformly `row_id`** — nothing above the SQL layer, the Desk
+included, knows about the exception.
+
+**Migration `0073_row_id.ts`** (number announced because this repo has had silent
+duplicate-number collisions). It renames only tables whose single-column PK is
+literally `name` — keying off the PK, not "has a column called name", is what
+keeps it safe now that a user column may legitimately be `name`. `0002` was also
+edited so a FRESH database creates `column_def.row_id` directly; every step in
+0073 is conditional, so it is a no-op on a new checkout. It also rewrites
+`sort_column`/`title_column`/`id_pattern` values that named the key, plus stored
+Saved View filters and `{{ name }}` / `{{ doc.name }}` templates.
+
+**Verified.** Full chain from an EMPTY database succeeds (dropdb/createdb, 74
+migrations). Resulting schema is exactly the intent: 48 generated tables on
+`row_id`; `table_def`, `series`, `migration`, `installed_app`, `site` keep
+`name`; `access_token`/`password_reset` keep their own keys. `pnpm --filter
+server typecheck` is clean.
+
+**Not done — this is the honest part.**
+- Server suite is **93 files failing / 23 passing** (was 111 failing at the
+  start of the test sweep). The remaining failures are test assertions still
+  written against `name`, not engine bugs — spot-checked `document.test.ts`,
+  where the engine round-trips correctly and only the assertion lagged.
+- **`apps/web` is entirely un-swept.** The app will not work until it is. A
+  full inventory of every row-key site in the web client exists in the PR
+  discussion; the mechanical shape is `row.name` → `row.row_id`, route params,
+  query keys, and `lib/meta.ts:100`'s hardcoded `{ column_name: 'name' }`.
+- No end-to-end HTTP proof, no Admin UI smoke, no web typecheck.
+
+**Gotchas for whoever picks this up.**
+- macOS `sed` has no `\b`; use `perl -pi -e`.
+- Scripted sweeps must protect `${...}` interpolations, and a naive one-level
+  brace guard is not enough — `${sql({ data: { changed } })}` nests twice and
+  got mangled (caught by `tsc`, but only because the result happened to be a
+  type error). Object-literal `name:` keys and shorthand `name,` inside
+  `${sql({...})}` need their own pass; that is where the real bugs hid
+  (`activity_log`, `home_page`, `background_job` inserts).
+- `SessionUser.name` became `row_id` — the `user` table is a generated table
+  like any other, so ~60 call sites moved with it.
+
+**Next:** finish `apps/web`, then the remaining server test assertions, then the
+e2e specs; only then is the verification bar meetable.
 
 ## 2026-08-11 — #135: create-user refuses a duplicate instead of shadowing it
 

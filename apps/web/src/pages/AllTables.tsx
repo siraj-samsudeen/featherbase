@@ -12,10 +12,10 @@ export function AllTablesPage() {
   const tables = useQuery({
     queryKey: ['tables'],
     queryFn: () =>
-      listResource<{ name: string; module: string; system: boolean }>('Table', {
+      listResource<{ row_id: string; module: string; system: boolean }>('Table', {
         filters: [['kind', '!=', 'sub_table']],
-        fields: ['name', 'module', 'system'],
-        order_by: 'name asc',
+        fields: ['row_id', 'module', 'system'],
+        order_by: 'row_id asc',
         limit_page_length: 200,
       }),
   })
@@ -40,8 +40,8 @@ export function AllTablesPage() {
     })
   }
 
-  const byModule = new Map<string, { name: string; module: string; system: boolean }[]>()
-  const systemTables: { name: string; module: string; system: boolean }[] = []
+  const byModule = new Map<string, { row_id: string; module: string; system: boolean }[]>()
+  const systemTables: { row_id: string; module: string; system: boolean }[] = []
   for (const dt of tables.data?.data ?? []) {
     if (dt.system) {
       systemTables.push(dt)
@@ -71,14 +71,14 @@ export function AllTablesPage() {
             </div>
             {(byModule.get(mod) ?? []).map((dt) => (
               <Link
-                key={dt.name}
+                key={dt.row_id}
                 to="/admin/$doctype"
-                params={{ doctype: dt.name }}
+                params={{ doctype: dt.row_id }}
                 search={{ filters: undefined }}
                 className={linkClass}
                 activeProps={{ className: activeClass }}
               >
-                {dt.name}
+                {dt.row_id}
               </Link>
             ))}
           </div>
@@ -109,14 +109,14 @@ export function AllTablesPage() {
             {systemOpen &&
               systemTables.map((dt) => (
                 <Link
-                  key={dt.name}
+                  key={dt.row_id}
                   to="/admin/$doctype"
-                  params={{ doctype: dt.name }}
+                  params={{ doctype: dt.row_id }}
                   search={{ filters: undefined }}
                   className={linkClass}
                   activeProps={{ className: activeClass }}
                 >
-                  {dt.name}
+                  {dt.row_id}
                 </Link>
               ))}
           </>

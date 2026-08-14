@@ -34,10 +34,10 @@ test.beforeAll(async ({ request }) => {
   await ensureChecklistStructure(request)
   const H = { Authorization: `Bearer ${await token(request)}` }
   const templates = await request.get(
-    '/api/table/Checklist%20Template?fields=%5B%22name%22%5D&limit_page_length=1',
+    '/api/table/Checklist%20Template?fields=%5B%22row_id%22%5D&limit_page_length=1',
     { headers: H },
   )
-  const template = ((await templates.json()) as { data: { name: string }[] }).data[0]?.name
+  const template = ((await templates.json()) as { data: { row_id: string }[] }).data[0]?.row_id
   if (!template) throw new Error('no checklist template — the fixture should have installed one')
   const seed = async (section: string) => {
     const r = await request.post('/api/save_doc', {
@@ -48,7 +48,7 @@ test.beforeAll(async ({ request }) => {
       },
     })
     if (r.status() !== 201) throw new Error(`seed run: ${r.status()} ${await r.text()}`)
-    return ((await r.json()) as { name: string }).name
+    return ((await r.json()) as { row_id: string }).row_id
   }
   runName = await seed('Kurti')
   openRunName = await seed('Denim')

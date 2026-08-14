@@ -12,7 +12,7 @@ const VIEWER = 'Wf Srv Viewer'
 const FLOW = 'Wf Srv Flow'
 
 const FLOW_DOC = {
-  name: FLOW,
+  row_id: FLOW,
   ref_table: DT,
   is_active: true,
   states: [
@@ -34,7 +34,7 @@ async function setup(admin: TestClient) {
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
   for (const r of [APPROVER, VIEWER])
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: r } })
+    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: r } })
   // Viewer can read+write the doc but is NOT the approver.
   await admin.post('/api/save_doc', {
     doctype: 'Permission',
@@ -47,7 +47,7 @@ async function makeFlow(admin: TestClient) {
 }
 
 async function makeDoc(admin: TestClient) {
-  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { name: 'wf-srv-1', title: 'x' })
+  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'wf-srv-1', title: 'x' })
 }
 
 // Replay of the WF-002 drive (Submit → Approve) without its assertions.
@@ -76,7 +76,7 @@ describe('WF-001: workflow definition', () => {
       admin.post('/api/save_doc', {
         doctype: 'Workflow',
         doc: {
-          name: 'Wf Srv Orphan',
+          row_id: 'Wf Srv Orphan',
           ref_table: DT,
           is_active: false,
           states: [{ state: 'A', target_status: 'draft' }],

@@ -18,7 +18,7 @@ export function Tags({ doctype, name }: { doctype: string; name: string }) {
     if (!tag) return
     setError(null)
     try {
-      await api.post('/api/tags', { doctype, name, tag })
+      await api.post('/api/tags', { doctype, row_id: name, tag })
       setDraft('')
       await queryClient.invalidateQueries({ queryKey: ['tags', doctype, name] })
     } catch (err) {

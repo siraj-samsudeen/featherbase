@@ -15,7 +15,7 @@ test.beforeAll(async ({ request }) => {
     headers,
     data: {
       doctype: 'Report',
-      doc: { name: REPORT, ref_table: 'User', report_type: 'Script Report', report_script: 'User Report' },
+      doc: { row_id: REPORT, ref_table: 'User', report_type: 'Script Report', report_script: 'User Report' },
     },
   })
   if (res.status() !== 201) throw new Error(`create report: ${res.status()} ${await res.text()}`)
@@ -24,7 +24,7 @@ test.beforeAll(async ({ request }) => {
   await request.delete(`/api/table/User/${encodeURIComponent(u)}`, { headers })
   await request.post('/api/save_doc', {
     headers,
-    data: { doctype: 'User', doc: { name: u, email: u, full_name: 'SR Disabled', enabled: false } },
+    data: { doctype: 'User', doc: { row_id: u, email: u, full_name: 'SR Disabled', enabled: false } },
   })
 })
 
@@ -41,7 +41,7 @@ test('RPT-005: script report renders filter controls and data', async ({ page })
 
   // Declared filter control renders, and data columns render.
   await expect(page.getByTestId('sr-filter-enabled')).toBeVisible()
-  await expect(page.getByTestId('sr-col-name')).toBeVisible()
+  await expect(page.getByTestId('sr-col-row_id')).toBeVisible()
   await expect(page.getByTestId('sr-col-enabled')).toBeVisible()
   await expect(page.getByTestId('script-report-rows')).toContainText('Administrator')
 

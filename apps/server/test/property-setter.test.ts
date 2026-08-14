@@ -22,7 +22,7 @@ async function addLabelSetter(admin: TestClient) {
     body: JSON.stringify({
       doctype: 'Metadata Override',
       doc: {
-        name: `${DT}-title-label`,
+        row_id: `${DT}-title-label`,
         table_name: DT,
         column_name: 'title',
         property: 'label',
@@ -53,7 +53,7 @@ describe('CUST-002: metadata overrides', () => {
     await admin.post('/api/save_doc', {
       doctype: 'Metadata Override',
       doc: {
-        name: `${DT}-title-reqd`,
+        row_id: `${DT}-title-reqd`,
         table_name: DT,
         column_name: 'title',
         property: 'reqd',

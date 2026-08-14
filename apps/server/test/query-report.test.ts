@@ -15,7 +15,7 @@ const REPORT = 'Rpt Srv Recent'
 // A role that can fully edit Report docs, a user holding only that role, and
 // the admin-authored query report — rebuilt per test inside the sandbox tx.
 async function setup(admin: TestClient) {
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
   await admin.post('/api/save_doc', {
     doctype: 'Permission',
     doc: { ref_table: 'Report', role: ROLE, can_read: true, can_write: true, can_create: true },
@@ -24,10 +24,10 @@ async function setup(admin: TestClient) {
   await admin.post('/api/save_doc', {
     doctype: 'Report',
     doc: {
-      name: REPORT,
+      row_id: REPORT,
       ref_table: 'User',
       report_type: 'Query Report',
-      query: 'select name, created_at from "user" where created_at >= {from_date} order by name',
+      query: 'select row_id, created_at from "user" where created_at >= {from_date} order by row_id',
     },
   })
 }
@@ -42,8 +42,8 @@ describe('RPT-004: query reports', () => {
   }) => {
     await setup(admin)
     const past = await runQueryReport(REPORT, { from_date: '2000-01-01' }, 'Administrator')
-    expect(past.columns).toEqual(['name', 'created_at'])
-    expect(past.rows.some((r) => r.name === 'Administrator')).toBe(true)
+    expect(past.columns).toEqual(['row_id', 'created_at'])
+    expect(past.rows.some((r) => r.row_id === 'Administrator')).toBe(true)
 
     const future = await runQueryReport(REPORT, { from_date: '2999-01-01' }, 'Administrator')
     expect(future.rows).toHaveLength(0)
@@ -71,7 +71,7 @@ describe('RPT-004: query reports', () => {
     await admin.post('/api/save_doc', {
       doctype: 'Report',
       doc: {
-        name: 'Rpt Srv Evil',
+        row_id: 'Rpt Srv Evil',
         ref_table: 'User',
         report_type: 'Query Report',
         query: 'update "user" set full_name = full_name',
@@ -93,26 +93,26 @@ describe('RPT-004: query reports', () => {
 
     // The author role CAN create an ordinary (non-SQL) report…
     await expect(
-      saveDoc('Report', { name: 'Rpt Srv Builder', ref_table: 'User', report_type: 'Report Builder' }, AUTHOR),
+      saveDoc('Report', { row_id: 'Rpt Srv Builder', ref_table: 'User', report_type: 'Report Builder' }, AUTHOR),
     ).resolves.toBeTruthy()
 
     // …but CANNOT create a Query Report with SQL…
     await expect(
       saveDoc(
         'Report',
-        { name: 'Rpt Srv Evil2', ref_table: 'User', report_type: 'Query Report', query: 'select name from "user"' },
+        { row_id: 'Rpt Srv Evil2', ref_table: 'User', report_type: 'Query Report', query: 'select name from "user"' },
         AUTHOR,
       ),
     ).rejects.toMatchObject({ type: 'PermissionError' })
 
     // …nor edit an existing report's query (pass the exact updated_at stamp so
     // the gate — not the concurrency check — is what rejects).
-    const [{ updated_at }] = await sql`select updated_at from report where name = ${REPORT}`
+    const [{ updated_at }] = await sql`select updated_at from report where row_id = ${REPORT}`
     await expect(
       saveDoc(
         'Report',
         {
-          name: REPORT,
+          row_id: REPORT,
           updated_at: (updated_at as Date).toISOString(),
           query: 'select name, password_hash from "user"',
         },

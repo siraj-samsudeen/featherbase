@@ -18,7 +18,7 @@ export function CalendarView({ doctype }: { doctype: string }) {
   const meta = useMeta(doctype)
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
-  const [dragging, setDragging] = useState<{ name: string; from: string } | null>(null)
+  const [dragging, setDragging] = useState<{ row_id: string; from: string } | null>(null)
   // Month being viewed (first of month). Defaults to the current month.
   const [view, setView] = useState(() => {
     const now = new Date()
@@ -30,14 +30,14 @@ export function CalendarView({ doctype }: { doctype: string }) {
     [meta.data],
   )
   const field = dateColumns[0]?.column_name
-  const titleColumn = meta.data?.title_column || 'name'
+  const titleColumn = meta.data?.title_column || 'row_id'
 
   const rows = useQuery({
     queryKey: ['calendar', doctype, field],
     enabled: Boolean(meta.data && field),
     queryFn: () =>
       listResource<Row>(doctype, {
-        fields: [...new Set(['name', field!, titleColumn])],
+        fields: [...new Set(['row_id', field!, titleColumn])],
         order_by: field!,
         limit_page_length: 1000,
       }),
@@ -91,7 +91,7 @@ export function CalendarView({ doctype }: { doctype: string }) {
     const to = cell?.getAttribute('data-date')
     const ev = dragging
     setDragging(null)
-    if (to) void moveEvent(ev.name, ev.from, to)
+    if (to) void moveEvent(ev.row_id, ev.from, to)
   }
 
   const monthLabel = view.toLocaleString('en-US', { month: 'long', year: 'numeric' })
@@ -135,22 +135,22 @@ export function CalendarView({ doctype }: { doctype: string }) {
               <div className="flex flex-col gap-1">
                 {(byDate.get(key) ?? []).map((row) => (
                   <div
-                    key={String(row.name)}
+                    key={String(row.row_id)}
                     data-testid="cal-event"
-                    data-event={String(row.name)}
-                    onPointerDown={() => setDragging({ name: String(row.name), from: key })}
+                    data-event={String(row.row_id)}
+                    onPointerDown={() => setDragging({ row_id: String(row.row_id), from: key })}
                     className={`cursor-grab truncate rounded bg-[var(--color-brand-tint)] px-1 py-0.5 text-xs text-[var(--color-brand)] ${
-                      dragging?.name === row.name ? 'opacity-50' : ''
+                      dragging?.row_id === row.row_id ? 'opacity-50' : ''
                     }`}
                   >
                     <RouterLink
                       to="/admin/$doctype/$name"
                       search={{ prefill: undefined }}
-                      params={{ doctype, name: String(row.name) }}
+                      params={{ doctype, name: String(row.row_id) }}
                       className="hover:underline"
                       onPointerDown={(e) => e.stopPropagation()}
                     >
-                      {String(row[titleColumn] ?? row.name)}
+                      {String(row[titleColumn] ?? row.row_id)}
                     </RouterLink>
                   </div>
                 ))}

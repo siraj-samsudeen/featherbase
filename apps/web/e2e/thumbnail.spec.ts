@@ -66,14 +66,14 @@ test.beforeAll(async ({ request }) => {
   })
   if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
   await request.delete(`/api/table/${encodeURIComponent(DT)}/${DOC}`, { headers })
-  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { name: DOC, title: 'x' } })
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { row_id: DOC, title: 'x' } })
 })
 
 async function cleanupFiles(request: APIRequestContext) {
   const headers = await adminAuth(request)
   const filters = encodeURIComponent(JSON.stringify([['ref_table', '=', DT], ['ref_name', '=', DOC]]))
-  const listed = (await (await request.get(`/api/table/File?filters=${filters}`, { headers })).json()) as { data: { name: string }[] }
-  for (const f of listed.data) await request.delete(`/api/table/File/${f.name}`, { headers })
+  const listed = (await (await request.get(`/api/table/File?filters=${filters}`, { headers })).json()) as { data: { row_id: string }[] }
+  for (const f of listed.data) await request.delete(`/api/table/File/${f.row_id}`, { headers })
 }
 
 test.beforeEach(async ({ request }) => cleanupFiles(request))

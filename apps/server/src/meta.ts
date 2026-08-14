@@ -25,7 +25,7 @@ export const COLUMN_TYPE_VALUES = [
 export type ColumnType = (typeof COLUMN_TYPE_VALUES)[number]
 
 export interface ColumnDef {
-  name: string
+  row_id: string
   parent: string
   position: number
   column_name: string
@@ -52,8 +52,35 @@ export interface ColumnDef {
   source_fk_column?: string | null
 }
 
+// #132: the row key. Every generated table's primary key is the physical
+// column `row_id` — the "Row ID" the product has spoken about since the
+// vocabulary rename — and `row_id` is what every API response and request
+// carries. `name` is no longer reserved, so a user Table may finally have a
+// plain `name` column (Student.name, Customer.name).
+export const ROW_KEY = 'row_id'
+
+// The ONE table whose primary key is not the physical `row_id`: `table_def`
+// keeps `name`, because there the key is a NATURAL one — it holds the Table's
+// own identifier ('Student'), it is the target of a real foreign key
+// (`column_def.parent references table_def(name)`), and Table names are what
+// `reference_table`, `row_table`, `parenttype`, `permission.table` and the
+// whole metadata layer point at. That identifier is a different concept from a
+// row id and is deliberately out of scope for #132.
+//
+// This exception is PHYSICAL ONLY. Every API response still carries the key as
+// `row_id`, so nothing above the SQL layer — the Desk included — has to know.
+const PHYSICAL_ROW_KEY_OVERRIDES: Record<string, string> = { Table: 'name' }
+
+export function physicalRowKey(table: string): string {
+  return PHYSICAL_ROW_KEY_OVERRIDES[table] ?? ROW_KEY
+}
+
 export interface TableMeta {
   name: string
+  // Physical primary-key column of this Table's storage — `row_id` for every
+  // Table but `Table` itself (see physicalRowKey). SQL construction uses this;
+  // the wire format is always `row_id`.
+  row_key: string
   module: string
   kind: 'table' | 'sub_table' | 'settings'
   is_submittable: boolean
@@ -255,14 +282,18 @@ export async function getMeta(name: string): Promise<TableMeta> {
   }
   const columns = await sql<ColumnDef[]>`
     select * from column_def where parent = ${name} order by position, column_name`
-  const meta = { ...(dt as unknown as Omit<TableMeta, 'columns'>), columns }
+  const meta = {
+    ...(dt as unknown as Omit<TableMeta, 'columns' | 'row_key'>),
+    row_key: physicalRowKey(name),
+    columns,
+  }
 
   // EDS-7/EDS-13: surface the bound source's access mode and engine on the
   // meta the Desk consumes. Loaded here so it caches (and invalidates) with
   // the meta itself; the Data Source controller invalidates on save.
   if (meta.data_source) {
     const [src] = await sql`
-      select access, engine from data_source where name = ${meta.data_source}`
+      select access, engine from data_source where row_id = ${meta.data_source}`
     meta.source_access = (src?.access as 'read_only' | 'read_write' | undefined) ?? 'read_only'
     meta.source_engine = (src?.engine as string | undefined) ?? null
     meta.source_writable =

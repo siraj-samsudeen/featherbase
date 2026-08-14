@@ -17,9 +17,9 @@ async function cleanup(request: APIRequestContext) {
   )
   const listed = (await (
     await request.get(`/api/table/File?filters=${filters}`, { headers: auth })
-  ).json()) as { data: { name: string }[] }
+  ).json()) as { data: { row_id: string }[] }
   for (const f of listed.data)
-    await request.delete(`/api/table/File/${f.name}`, { headers: auth })
+    await request.delete(`/api/table/File/${f.row_id}`, { headers: auth })
 }
 
 test.beforeEach(async ({ request }) => cleanup(request))

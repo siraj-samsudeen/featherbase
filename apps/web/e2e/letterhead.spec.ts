@@ -26,30 +26,30 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   await request.delete(`/api/table/${encodeURIComponent(DT)}/${docName}`, { headers })
   await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
-    data: { name: docName, customer: 'Wayne Enterprises' },
+    data: { row_id: docName, customer: 'Wayne Enterprises' },
   })
 
   for (const lh of [
     {
-      name: 'Lh Head Office',
+      row_id: 'Lh Head Office',
       is_default: true,
       header_html: '<div data-testid="lh-ho">HEAD OFFICE — invoice for {{ customer }}</div>',
       footer_html: '<div data-testid="lh-ho-foot">Registered No. 12345</div>',
     },
     {
-      name: 'Lh Regional',
+      row_id: 'Lh Regional',
       is_default: false,
       header_html: '<div data-testid="lh-reg">REGIONAL OFFICE</div>',
       footer_html: '<div data-testid="lh-reg-foot">Regional footer</div>',
     },
   ]) {
-    const name = encodeURIComponent(lh.name)
+    const name = encodeURIComponent(lh.row_id)
     await request.delete(`/api/table/Letter%20Head/${name}`, { headers })
     const res = await request.post('/api/save_doc', {
       headers,
       data: { doctype: 'Letter Head', doc: lh },
     })
-    if (res.status() !== 201) throw new Error(`letterhead ${lh.name}: ${res.status()}`)
+    if (res.status() !== 201) throw new Error(`letterhead ${lh.row_id}: ${res.status()}`)
   }
 })
 

@@ -77,7 +77,7 @@ describe('PLAT-001: app install/uninstall', () => {
       expect(tbl).toBeTruthy()
 
       // The app's before_save hook fires: the stamp is set on save.
-      const doc = await saveDoc(APP1_DT, { name: 'note-1', title: 'hi' }, 'Administrator')
+      const doc = await saveDoc(APP1_DT, { row_id: 'note-1', title: 'hi' }, 'Administrator')
       expect(doc.stamp).toBe('wired-by-app')
 
       // Installed-state is recorded with the owned Table.
@@ -100,7 +100,7 @@ describe('PLAT-001: app install/uninstall', () => {
       expect(tbl).toBeUndefined()
 
       // The Table is really gone — saving one now fails.
-      await expect(saveDoc(APP1_DT, { name: 'note-2' }, 'Administrator')).rejects.toBeTruthy()
+      await expect(saveDoc(APP1_DT, { row_id: 'note-2' }, 'Administrator')).rejects.toBeTruthy()
     } finally {
       await unwire(APP1, APP1_DT)
     }
@@ -127,14 +127,14 @@ describe('PLAT-002: app doc_events fire alongside the core controller', () => {
       await installApp(APP2)
 
       fired.length = 0
-      await saveDoc(CORE_DT, { name: 'task-1', title: 'a' }, 'Administrator')
+      await saveDoc(CORE_DT, { row_id: 'task-1', title: 'a' }, 'Administrator')
       // BOTH fired, core before the later-registered app hook.
       expect(fired).toEqual(['core', 'app'])
 
       // After uninstall, only the core controller remains.
       await uninstallApp(APP2)
       fired.length = 0
-      await saveDoc(CORE_DT, { name: 'task-2', title: 'b' }, 'Administrator')
+      await saveDoc(CORE_DT, { row_id: 'task-2', title: 'b' }, 'Administrator')
       expect(fired).toEqual(['core'])
     } finally {
       await unwire(APP2, CORE_DT)

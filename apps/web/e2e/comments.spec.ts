@@ -30,12 +30,12 @@ test.beforeAll(async ({ request }) => {
   )
   const prior = (await (
     await request.get(`/api/table/Comment?filters=${filters}`, { headers })
-  ).json()) as { data: { name: string }[] }
+  ).json()) as { data: { row_id: string }[] }
   for (const c of prior.data)
-    await request.delete(`/api/table/Comment/${c.name}`, { headers })
+    await request.delete(`/api/table/Comment/${c.row_id}`, { headers })
   const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
-    data: { name: docName, title: 'discuss me' },
+    data: { row_id: docName, title: 'discuss me' },
   })
   if (doc.status() !== 201) throw new Error(`doc: ${doc.status()}`)
 })
@@ -88,7 +88,7 @@ test('UI-018: post comments with an @mention; they persist and render', async ({
   const listed = (await (
     await page.request.get(
       `/api/table/Comment?filters=${filters}&fields=${encodeURIComponent(
-        JSON.stringify(['name', 'content']),
+        JSON.stringify(['row_id', 'content']),
       )}`,
       { headers: { Authorization: `Bearer ${token}` } },
     )
