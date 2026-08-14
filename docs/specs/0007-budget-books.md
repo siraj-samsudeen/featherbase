@@ -38,19 +38,20 @@ bound table inside one transaction. The engine never interprets the
 grain: two books with different dimensions and period shapes run on the
 same code with zero per-book logic.
 
-## The fixture — `beverages-budget.csv`
+## The agreement dataset — quarterly beverage lines
 
-Six lines of a quarterly beverages budget:
 `store, subcategory, owner, q1, q2, q3, q4` — key = store + subcategory,
 measures = q1…q4, owners split between two users (`priya`, `arun`) so
-one fixture exercises same-owner and cross-owner walks. Quarterly on
-purpose: the engine must not assume twelve months. Lives at
-`apps/web/e2e/fixtures/beverages-budget.csv` with its `.claims.md`.
+one dataset exercises same-owner and cross-owner walks. Quarterly on
+purpose: the engine must not assume twelve months. Seeded inline by the
+tests; it graduates to a shared file fixture
+(`apps/web/e2e/fixtures/beverages-budget.csv` + `.claims.md`) when the
+M3 import-as-proposal journey needs an actual workbook to upload.
 
-**Limits, stated on purpose:** the fixture exercises one grain
+**Limits, stated on purpose:** the dataset exercises one grain
 (2 key columns) and one period shape (4 quarters). Grain-agnosticism is
 proven by BUD-R1's property (any key/measure declaration over any
-table), not by a second fixture.
+table), not by a second dataset.
 
 ## BUD-J1 — Build, iterate, baseline *(shape: sequence)*
 
@@ -66,9 +67,11 @@ table), not by a second fixture.
 **Branch at J1.4 — baseline twice.** A second `:baseline` on an active
 book is refused; v0 is unique per book. *(→ R2)*
 
-**Isolation strategy:** self-cleaning — the journey creates its own
-table (journey-owned name) and its own book; teardown closes the book
-and deletes table and book (Table Deletion, spec 0003). No skip path.
+**Isolation strategy:** journey-owned unique names per run; teardown
+closes the book and deletes the line table (Table Deletion, spec 0003).
+The book row and its applied changes are deliberately permanent
+(BUD-R9), so full self-cleaning is impossible by design — the unique
+suffix is what keeps reruns independent. No skip path.
 
 ## BUD-J2 — Propose, approve, applied *(deltas from J1's active book)*
 
