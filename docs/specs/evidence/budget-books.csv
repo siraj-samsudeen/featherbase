@@ -1,0 +1,21 @@
+id,shape,strategy,static_link,verdict,issue,stamped
+BUD-J1,sequence,browser walk,,gap,,
+BUD-J2,sequence,browser walk,,gap,,
+BUD-J3,sequence,api,,gap,,
+BUD-R1,contract,properties,,gap,,
+BUD-R2,contract,api,,gap,,
+BUD-R3,contract,properties,,gap,,
+BUD-R4,rule,properties,,gap,,
+BUD-R5,contract,api,,gap,,
+BUD-R6,rule,properties,,gap,,
+BUD-R7,rule,properties,,gap,,
+BUD-R8,rule,properties,,gap,,
+BUD-R9,contract,api,,gap,,
+BUD-R10,invariant,reconciliation,,gap,,
+BUD-I1,invariant,reconciliation,,gap,,
+BUD-I2,invariant,api,,gap,,
+BUD-H1,hazard,api,,open,,
+BUD-H2,hazard,none,,open,,
+Q1,question,none,,open — deferred by owner 2026-08-14,,2026-08-14
+Q2,question,none,,open — deferred by owner 2026-08-14,,2026-08-14
+Q3,question,none,,open — awaiting owner ratification,,2026-08-14
