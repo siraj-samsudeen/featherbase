@@ -83,6 +83,31 @@ test('view toggle switches modes and the choice persists per user', async ({ pag
   await expect(page.getByTestId('list-rows')).toBeVisible()
 })
 
+test('list: row click opens the side-peek; the form saves and the list stays put', async ({
+  page,
+}) => {
+  await signIn(page)
+  await page.goto(`/admin/${encodeURIComponent(DT)}`)
+  await expect(page.getByTestId('list-rows')).toBeVisible()
+
+  // Clicking a row (not just its name link) side-peeks the real form.
+  const gammaName = (await fetchRows(page)).find((r) => r.title === 'gamma')!.name
+  await page.getByTestId('list-rows').locator('tr').filter({ hasText: 'gamma' }).first().click()
+  await expect(page.getByTestId('peek-drawer')).toBeVisible()
+  await expect(page.getByTestId('peek-drawer')).toContainText(gammaName)
+
+  // The drawer hosts the ordinary FormView — edit and save through it.
+  await page.getByTestId('peek-drawer').locator('[data-field=city]').fill('Karaikudi')
+  await page.getByTestId('peek-drawer').getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByTestId('peek-drawer').getByText('Saved')).toBeVisible()
+
+  // Esc closes; the list is still on screen and shows the new value.
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('peek-drawer')).toHaveCount(0)
+  await expect(page.getByTestId('list-rows')).toContainText('Karaikudi')
+  expect((await fetchRows(page)).find((r) => r.title === 'gamma')?.city).toBe('Karaikudi')
+})
+
 test('grid: edit a cell, leave the row — the row autosaves via the server', async ({ page }) => {
   await signIn(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}`)

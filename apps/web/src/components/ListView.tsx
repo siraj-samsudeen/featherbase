@@ -11,6 +11,7 @@ import { useStepOptions, type Step } from '../lib/explore-steps'
 import { ChecklistSwitch } from './ChecklistView'
 import { GridEditView } from './GridEditView'
 import { DatasheetView } from './DatasheetView'
+import { PeekDrawer } from './PeekDrawer'
 
 export type Filter = [string, string, unknown]
 
@@ -95,6 +96,8 @@ export function ListView({
   // from overwriting a choice the user just made.
   const [view, setView] = useState<ListViewMode>('list')
   const viewTouched = useRef(false)
+  // List mode: the row currently side-peeked in the drawer.
+  const [peek, setPeek] = useState<string | null>(null)
   // UI-013: per-user saved settings (sort, hidden columns, filters).
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set())
   const [colPickerOpen, setColPickerOpen] = useState(false)
@@ -693,6 +696,7 @@ export function ListView({
                 settings={settings}
                 selected={selected.has(String(row.name))}
                 onToggleSelect={() => toggleRow(String(row.name))}
+                onPeek={() => setPeek(String(row.name))}
                 selectable={!isSourceReadOnly(meta.data)}
                 expandable={expandable}
                 childFields={childFields}
@@ -753,6 +757,17 @@ export function ListView({
           Next
         </button>
       </div>
+      {peek && (
+        <PeekDrawer
+          doctype={doctype}
+          name={peek}
+          onClose={() => {
+            setPeek(null)
+            // Edits made in the drawer must show in the list behind it.
+            void queryClient.invalidateQueries({ queryKey: ['list', doctype] })
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -766,6 +781,7 @@ function ListRow({
   settings,
   selected,
   onToggleSelect,
+  onPeek,
   selectable,
   expandable,
   childFields,
@@ -778,6 +794,9 @@ function ListRow({
   settings: Settings
   selected: boolean
   onToggleSelect: () => void
+  // List editing: a row click side-peeks the form (the name link still
+  // full-page navigates — it is visibly a link).
+  onPeek: () => void
   // Read-only sources have no bulk bar, so no selection either (EDS-13).
   selectable: boolean
   expandable: boolean
@@ -787,11 +806,14 @@ function ListRow({
 }) {
   return (
     <>
-      <tr className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]">
+      <tr
+        onClick={onPeek}
+        className="cursor-pointer border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]"
+      >
         {expandable && (
           <td className="pl-2">
             <button
-              onClick={onToggleExpand}
+              onClick={(e) => (e.stopPropagation(), onToggleExpand())}
               aria-label={expanded ? 'Collapse child rows' : 'Expand child rows'}
               aria-expanded={expanded}
               data-testid="row-expand"
@@ -804,7 +826,7 @@ function ListRow({
           </td>
         )}
         {selectable && (
-          <td className="px-3 py-2">
+          <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
             <input
               type="checkbox"
               data-testid="row-check"
@@ -820,6 +842,7 @@ function ListRow({
                 to="/admin/$doctype/$name"
                 search={{ prefill: undefined }}
                 params={{ doctype, name: String(row.name) }}
+                onClick={(e) => e.stopPropagation()}
                 className={`font-medium text-[var(--color-brand)] hover:underline ${
                   col.column_name === 'name' ? 'font-mono text-[13px]' : ''
                 }`}
