@@ -47,9 +47,9 @@ test.beforeAll(async ({ request }) => {
   // documents they own survive.)
   const existing = (await (
     await request.get(`/api/table/${encodeURIComponent(DT)}?limit=100`, { headers: H })
-  ).json()) as { data?: { name: string }[] }
+  ).json()) as { data?: { row_id: string }[] }
   for (const d of existing.data ?? [])
-    await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.name}`, { headers: H })
+    await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.row_id}`, { headers: H })
 
   // Each user creates their own ticket (owner = creator).
   const aTok = await token(request, ALICE, PWD)
