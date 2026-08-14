@@ -10,7 +10,7 @@ async function adminHeaders(request: APIRequestContext) {
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: {
       name: DT,
@@ -21,7 +21,7 @@ test.beforeAll(async ({ request }) => {
       ],
     },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { title: 'Widget', qty: 5 } })
 })
 
@@ -60,7 +60,7 @@ test.describe('UI-025: responsive Admin (mobile)', () => {
     // Pages + All tables; the table link is then on the All tables page).
     await page.getByTestId('all-tables-link').click()
     await expect(page).toHaveURL(/\/admin\/all-tables/)
-    await page.getByTestId(`doctype-nav`).getByText(DT, { exact: true }).click()
+    await page.getByTestId(`table-nav`).getByText(DT, { exact: true }).click()
     await expect(page).toHaveURL(new RegExp(`/admin/${encodeURIComponent(DT)}`))
     await expect(page.getByTestId('list-view')).toBeVisible()
     await expect(page.getByTestId('sidebar-backdrop')).toHaveCount(0)

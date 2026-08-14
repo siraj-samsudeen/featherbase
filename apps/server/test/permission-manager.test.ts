@@ -11,11 +11,11 @@ const ROLE = 'PM Srv Role'
 
 // Per-test world: the Table and the role, rolled back with the test.
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
 }
 
 describe('SET-003: permission manager endpoints', () => {

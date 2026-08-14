@@ -33,7 +33,7 @@ async function ensureFixtures(request: APIRequestContext) {
   ] as const) {
     const meta = await request.get(`/api/table/${encodeURIComponent(name)}:meta`, { headers: auth })
     if (meta.status() === 404) {
-      await request.post('/api/doctype', { headers: auth, data: { name, columns } })
+      await request.post('/api/table_def', { headers: auth, data: { name, columns } })
     }
   }
 
@@ -74,10 +74,10 @@ async function login(page: import('@playwright/test').Page) {
   await expect(page).toHaveURL(/\/admin/)
 }
 
-test('UI-002: one generic ListView renders two different DocTypes with sort + pagination', async ({ page }) => {
+test('UI-002: one generic ListView renders two different Tables with sort + pagination', async ({ page }) => {
   await login(page)
 
-  // --- DocType A: metadata columns, pagination
+  // --- Table A: metadata columns, pagination
   await page.goto(`/admin/${encodeURIComponent(DT_A)}`)
   await expect(page.getByTestId('col-title')).toContainText('Title')
   await expect(page.getByTestId('col-qty')).toContainText('Qty')
@@ -98,7 +98,7 @@ test('UI-002: one generic ListView renders two different DocTypes with sort + pa
   await page.getByTestId('col-qty').click()
   await expect(page.getByTestId('list-rows').locator('tr').first()).toContainText('item-29')
 
-  // --- DocType B: same component, entirely different columns
+  // --- Table B: same component, entirely different columns
   await page.goto(`/admin/${encodeURIComponent(DT_B)}`)
   await expect(page.getByTestId('col-city')).toContainText('City')
   await expect(page.getByTestId('col-active')).toContainText('Active')

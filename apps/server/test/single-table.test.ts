@@ -3,7 +3,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { getDoc, saveDoc } from '../src/document'
 import { getList } from '../src/query'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 // SET-001: Settings Tables (kind: 'settings') store one instance in the EAV
 // store, apply defaults, and never create a table.

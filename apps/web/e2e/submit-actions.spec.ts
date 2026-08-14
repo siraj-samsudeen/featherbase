@@ -11,7 +11,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const auth = { Authorization: `Bearer ${token}` }
   const meta = await request.get(`/api/table/${encodeURIComponent(DT)}:meta`, { headers: auth })
   if (meta.status() === 404) {
-    await request.post('/api/doctype', {
+    await request.post('/api/table_def', {
       headers: auth,
       data: {
         name: DT,

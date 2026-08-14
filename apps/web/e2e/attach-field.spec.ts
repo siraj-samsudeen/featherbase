@@ -17,7 +17,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const token = ((await login.json()) as { token: string }).token
   const auth = { Authorization: `Bearer ${token}` }
 
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers: auth,
     data: {
       name: DT,
@@ -28,7 +28,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
       ],
     },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
 
   const created = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: auth,

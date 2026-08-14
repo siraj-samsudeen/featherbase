@@ -76,7 +76,7 @@ test('#87: a filters URL applies when opened cold, not just when the app built i
 
   const meta = await request.get(`/api/table/${encodeURIComponent(DT_COLD)}:meta`, { headers: auth })
   if (meta.status() === 404) {
-    await request.post('/api/doctype', {
+    await request.post('/api/table_def', {
       headers: auth,
       data: {
         name: DT_COLD,

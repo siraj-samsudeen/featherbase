@@ -14,7 +14,7 @@ async function columns(table: string): Promise<Record<string, string>> {
 
 describe('META-003: Table save generates its physical table', () => {
   test('creates <name> with standard + column columns of correct types', async ({ admin }) => {
-    const res = await admin.fetch('/api/doctype', {
+    const res = await admin.fetch('/api/table_def', {
       method: 'POST',
       body: JSON.stringify({
         name: DT,
@@ -62,7 +62,7 @@ describe('META-003: Table save generates its physical table', () => {
   })
 
   test('child Tables (kind: sub_table) get parent linkage columns and index', async ({ admin }) => {
-    const res = await admin.fetch('/api/doctype', {
+    const res = await admin.fetch('/api/table_def', {
       method: 'POST',
       body: JSON.stringify({
         name: CHILD,
@@ -89,7 +89,7 @@ describe('META-003: Table save generates its physical table', () => {
   // by the test below, which fails DDL a way the name check cannot see.
   test('refuses a name already taken by a raw table, before any DDL', async ({ admin }) => {
     await sql.unsafe(`create table if not exists ddl_ghost (row_id text)`)
-    const res = await admin.fetch('/api/doctype', {
+    const res = await admin.fetch('/api/table_def', {
       method: 'POST',
       body: JSON.stringify({
         name: 'Ddl Ghost',
@@ -108,7 +108,7 @@ describe('META-003: Table save generates its physical table', () => {
     // through and the failure happens where we want it: inside the DDL, after
     // the table_def row has been written. Metadata must not survive it.
     await sql.unsafe(`create type ddl_ghost2 as (a int)`)
-    const res = await admin.fetch('/api/doctype', {
+    const res = await admin.fetch('/api/table_def', {
       method: 'POST',
       body: JSON.stringify({
         name: 'Ddl Ghost2',

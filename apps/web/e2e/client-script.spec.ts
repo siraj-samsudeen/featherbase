@@ -9,9 +9,9 @@ async function adminHeaders(request: APIRequestContext) {
   return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
 }
 
-async function makeDocType(request: APIRequestContext, name: string) {
+async function makeTable(request: APIRequestContext, name: string) {
   const headers = await adminHeaders(request)
-  const res = await request.post('/api/doctype', {
+  const res = await request.post('/api/table_def', {
     headers,
     data: {
       name,
@@ -21,22 +21,22 @@ async function makeDocType(request: APIRequestContext, name: string) {
       ],
     },
   })
-  if (![201, 409].includes(res.status())) throw new Error(`doctype ${name}: ${res.status()}`)
+  if (![201, 409].includes(res.status())) throw new Error(`table ${name}: ${res.status()}`)
 }
 
 async function makeClientScript(request: APIRequestContext, name: string, dt: string, script: string) {
   const headers = await adminHeaders(request)
   await request.delete(`/api/table/Client%20Script/${name}`, { headers })
-  const res = await request.post('/api/save_doc', {
+  const res = await request.post('/api/save_row', {
     headers,
-    data: { doctype: 'Client Script', doc: { row_id: name, ref_table: dt, script, enabled: true } },
+    data: { table: 'Client Script', row: { row_id: name, ref_table: dt, script, enabled: true } },
   })
   if (res.status() !== 201) throw new Error(`client script ${name}: ${res.status()} ${await res.text()}`)
 }
 
 test.beforeAll(async ({ request }) => {
-  await makeDocType(request, DT)
-  await makeDocType(request, DT_BAD)
+  await makeTable(request, DT)
+  await makeTable(request, DT_BAD)
   // Auto-fill total = qty * 10 whenever qty changes.
   await makeClientScript(
     request,

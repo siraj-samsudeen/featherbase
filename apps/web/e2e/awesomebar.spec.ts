@@ -4,14 +4,14 @@ const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Awesome DT'
 const DOC = 'zephyr-unique-doc'
 
-// UI-014: awesomebar surfaces DocTypes, documents, and "new X" actions;
+// UI-014: awesomebar surfaces Tables, documents, and "new X" actions;
 // Enter navigates to the top document hit's form.
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const token = ((await login.json()) as { token: string }).token
   const auth = { Authorization: `Bearer ${token}` }
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers: auth,
     data: {
       name: DT,
@@ -19,7 +19,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
       columns: [{ column_name: 'note', column_type: 'Data', in_list_view: true }],
     },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: auth,
     data: { row_id: DOC, note: 'searchable' },
@@ -53,7 +53,7 @@ test('UI-014: typing a doc name surfaces it and Enter opens its form', async ({ 
   await expect(page).toHaveURL(new RegExp(`${encodeURIComponent(DT)}/${DOC}`))
   await expect(page.getByTestId('form-view')).toBeVisible()
 
-  // "New X" action for a matched DocType.
+  // "New X" action for a matched Table.
   await page.goto('/admin')
   await bar.fill('Awesome')
   const newAction = page.getByTestId('awesomebar-new').first()

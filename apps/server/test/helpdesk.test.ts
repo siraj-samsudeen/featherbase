@@ -48,9 +48,9 @@ describe('HD Ticket: naming series + defaults', () => {
   test('the server script defaults raised_by to the creating user', async ({ createUser }) => {
     await installHelpdesk()
     const agent = await createUser({ roles: ['Support Agent'] })
-    const doc = await agent.post<{ raised_by: string }>('/api/save_doc', {
-      doctype: 'HD Ticket',
-      doc: { subject: 'Filed without raised_by' },
+    const doc = await agent.post<{ raised_by: string }>('/api/save_row', {
+      table: 'HD Ticket',
+      row: { subject: 'Filed without raised_by' },
     })
     expect(doc.raised_by).toBe(agent.user)
   })
@@ -105,7 +105,7 @@ describe('HD Ticket permissions: customers see only their own', () => {
   test('a user with no helpdesk role cannot create', async ({ client }) => {
     await installHelpdesk()
     await expect(
-      client.post('/api/save_doc', { doctype: 'HD Ticket', doc: { subject: 'nope' } }),
+      client.post('/api/save_row', { table: 'HD Ticket', row: { subject: 'nope' } }),
     ).rejects.toMatchObject({ status: 403 })
   })
 })

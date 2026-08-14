@@ -7,7 +7,7 @@
 // Numbering note: 0070/0071 were claimed by parallel PRs (#127, #137), and
 // 0072 landed unannounced with #152 (mysql engine) — hence 0073.
 import { sql } from '../src/db'
-import { tableName } from '../src/doctype-engine'
+import { tableName } from '../src/table-engine'
 import { invalidateMeta } from '../src/meta'
 
 const NEW_COLUMNS = [

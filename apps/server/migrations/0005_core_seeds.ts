@@ -1,7 +1,7 @@
 // META-014: core DocTypes + bootstrap users/roles, installed through the
 // engine itself so tables, validation, and children behave like any model.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 import { saveDoc } from '../src/document'
 
 async function ensureTable(def: Parameters<typeof createTable>[0] & { name: string }) {

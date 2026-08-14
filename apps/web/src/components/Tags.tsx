@@ -3,14 +3,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from '../lib/api'
 
 // UI-017: free-form tags on a row.
-export function Tags({ doctype, name }: { doctype: string; name: string }) {
+export function Tags({ table, name }: { table: string; name: string }) {
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const tags = useQuery({
-    queryKey: ['tags', doctype, name],
-    queryFn: () => api.get<{ tags: string[] }>(`/api/tags/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
+    queryKey: ['tags', table, name],
+    queryFn: () => api.get<{ tags: string[] }>(`/api/tags/${encodeURIComponent(table)}/${encodeURIComponent(name)}`),
   })
 
   async function add() {
@@ -18,9 +18,9 @@ export function Tags({ doctype, name }: { doctype: string; name: string }) {
     if (!tag) return
     setError(null)
     try {
-      await api.post('/api/tags', { doctype, row_id: name, tag })
+      await api.post('/api/tags', { table, row_id: name, tag })
       setDraft('')
-      await queryClient.invalidateQueries({ queryKey: ['tags', doctype, name] })
+      await queryClient.invalidateQueries({ queryKey: ['tags', table, name] })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Add tag failed')
     }
@@ -29,9 +29,9 @@ export function Tags({ doctype, name }: { doctype: string; name: string }) {
   async function remove(tag: string) {
     try {
       await api.delete(
-        `/api/tags/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`,
+        `/api/tags/${encodeURIComponent(table)}/${encodeURIComponent(name)}/${encodeURIComponent(tag)}`,
       )
-      await queryClient.invalidateQueries({ queryKey: ['tags', doctype, name] })
+      await queryClient.invalidateQueries({ queryKey: ['tags', table, name] })
     } catch {
       // ignore
     }

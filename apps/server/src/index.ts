@@ -8,7 +8,7 @@ import { config } from './config'
 import { sql } from './db'
 import { AppError, errorResponse } from './errors'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
-import { createTable, deleteTable, setIdPattern, updateTable } from './doctype-engine'
+import { createTable, deleteTable, setIdPattern, updateTable } from './table-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
@@ -57,7 +57,7 @@ import { parseFilters, runQueryReport } from './query-report'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps } from './apps'
-import { createSite, listSites, resolveSite, siteCreateDoctype, siteListDoctypes, siteCreateUser, siteListUsers } from './tenancy'
+import { createSite, listSites, resolveSite, siteCreateTableDef, siteListTableDefs, siteCreateUser, siteListUsers } from './tenancy'
 import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
 import checklists from './sample-apps/checklists'
@@ -74,7 +74,7 @@ await loadScriptReports()
 // CUST-001: re-apply custom fields so they survive a core re-seed.
 await reapplyCustomFields()
 // PLAT-001: register the apps this build ships, then re-wire the doc_events of
-// any that are already installed (their DocTypes persist in the DB).
+// any that are already installed (their Tables persist in the DB).
 registerApp(helloCrm)
 // Registered, NOT installed: a fresh deployment has zero helpdesk tables
 // until POST /api/install_app { name: 'helpdesk' } (PLAT-006, #78).
@@ -224,7 +224,7 @@ app.get('/private/files/:stored', (c) =>
 
 // WEB-002: public web-form config + submit (no session — anonymous forms).
 // Registered before the auth middleware. Only whitelisted fields of the
-// configured DocType are accepted; server validation still runs.
+// configured Table are accepted; server validation still runs.
 app.get('/api/web_form/:route', async (c) => {
   return c.json(await getWebFormConfig(c.req.param('route')))
 })
@@ -661,7 +661,7 @@ function rejectSystemClaim(body: Record<string, unknown>) {
     })
 }
 
-app.post('/api/doctype', async (c) => {
+app.post('/api/table_def', async (c) => {
   await assertSystemManager(who(c))
   const body = (await c.req.json()) as Record<string, unknown>
   rejectSystemClaim(body)
@@ -673,7 +673,7 @@ app.post('/api/doctype', async (c) => {
 })
 
 // NAM-001: change how a Table names new rows, without resending its schema.
-app.put('/api/doctype/:name/id_pattern', async (c) => {
+app.put('/api/table_def/:name/id_pattern', async (c) => {
   await assertSystemManager(who(c))
   const body = (await c.req.json()) as { id_pattern?: unknown }
   if (typeof body.id_pattern !== 'string')
@@ -682,13 +682,13 @@ app.put('/api/doctype/:name/id_pattern', async (c) => {
 })
 
 // DEL-R1/R2 (docs/specs/0003-table-deletion.md): delete a Table outright.
-app.delete('/api/doctype/:name', async (c) => {
+app.delete('/api/table_def/:name', async (c) => {
   await assertSystemManager(who(c))
   await deleteTable(c.req.param('name'), who(c))
   return c.json({ ok: true })
 })
 
-app.put('/api/doctype/:name', async (c) => {
+app.put('/api/table_def/:name', async (c) => {
   await assertSystemManager(who(c))
   const body = (await c.req.json()) as Record<string, unknown> & { drop_columns?: boolean }
   rejectSystemClaim(body)
@@ -696,26 +696,26 @@ app.put('/api/doctype/:name', async (c) => {
   return c.json(await updateTable(c.req.param('name'), def, { drop_columns }))
 })
 
-app.post('/api/save_doc', async (c) => {
-  const body = (await c.req.json()) as { doctype?: string; doc?: Record<string, unknown> }
-  if (!body.doctype || typeof body.doc !== 'object' || body.doc === null)
-    throw new AppError('ValidationError', 'Expected { doctype, doc }')
-  const hadRowId = Boolean(body.doc[ROW_KEY])
-  const saved = await saveDoc(body.doctype, body.doc, who(c))
-  publishDocEvent(body.doctype, String(saved.row_id), hadRowId ? 'updated' : 'created')
+app.post('/api/save_row', async (c) => {
+  const body = (await c.req.json()) as { table?: string; row?: Record<string, unknown> }
+  if (!body.table || typeof body.row !== 'object' || body.row === null)
+    throw new AppError('ValidationError', 'Expected { table, row }')
+  const hadRowId = Boolean(body.row[ROW_KEY])
+  const saved = await saveDoc(body.table, body.row, who(c))
+  publishDocEvent(body.table, String(saved.row_id), hadRowId ? 'updated' : 'created')
   return c.json(saved, 201)
 })
 
 // PRN-003: server-side PDF of any document / print format.
-app.get('/api/print/:doctype/:name', async (c) => {
+app.get('/api/print/:table/:name', async (c) => {
   const format = c.req.query('format')
   const letterHead = c.req.query('letter_head')
-  const doctype = c.req.param('doctype')
+  const table = c.req.param('table')
   const name = c.req.param('name')
-  const html = await renderPrintHtml(doctype, name, who(c), format, letterHead)
+  const html = await renderPrintHtml(table, name, who(c), format, letterHead)
   const pdf = await renderPdf(html)
   // PLAT-007: record the print/access.
-  await logAccess(who(c), 'print', { table: doctype, row_id: name, method: 'pdf' })
+  await logAccess(who(c), 'print', { table: table, row_id: name, method: 'pdf' })
   return c.body(new Uint8Array(pdf), 200, {
     'content-type': 'application/pdf',
     'content-disposition': `inline; filename="${name.replace(/[^\w.-]/g, '_')}.pdf"`,
@@ -724,15 +724,15 @@ app.get('/api/print/:doctype/:name', async (c) => {
 
 // PLAT-007: the client records a data export here (CSV/XLSX are built in the
 // browser, so the log is client-notified). Read permission is required on the
-// exported DocType — you can only log an export of data you could read.
+// exported Table — you can only log an export of data you could read.
 app.post('/api/access_log', async (c) => {
-  const { doctype, method } = (await c.req.json().catch(() => ({}))) as {
-    doctype?: string
+  const { table, method } = (await c.req.json().catch(() => ({}))) as {
+    table?: string
     method?: string
   }
-  if (!doctype) throw new AppError('ValidationError', 'Expected { doctype }')
-  await assertPermission(who(c), doctype, 'read')
-  await logAccess(who(c), 'export', { table: doctype, method: method ?? 'csv' })
+  if (!table) throw new AppError('ValidationError', 'Expected { table }')
+  await assertPermission(who(c), table, 'read')
+  await logAccess(who(c), 'export', { table: table, method: method ?? 'csv' })
   return c.json({ ok: true })
 })
 
@@ -750,9 +750,9 @@ app.post('/api/upload_file', async (c) => {
   // the storage object exists, so a refused upload leaves nothing behind.
   // Read, not write: own_rows_only portals grant create without write, and
   // their users legitimately attach to their own rows.
-  const refTable = typeof body.ref_doctype === 'string' && body.ref_doctype ? body.ref_doctype : null
+  const refTable = typeof body.ref_table === 'string' && body.ref_table ? body.ref_table : null
   const refName = typeof body.ref_name === 'string' && body.ref_name ? body.ref_name : null
-  // A ref_doctype with no ref_name attaches to the TABLE rather than to any
+  // A ref_table with no ref_name attaches to the TABLE rather than to any
   // one row (DEL-R7 registers such files so deleting the Table sweeps them),
   // so the Table's own read grant is what there is to check.
   if (refTable && refName) await getDoc(refTable, refName, who(c))
@@ -813,22 +813,22 @@ app.get('/api/signed_url', async (c) => {
 // chart is permission-scoped grouped counts. Both reuse the list query's
 // scoping so a dashboard can never show data the user couldn't list.
 app.post('/api/dashboard/count', async (c) => {
-  const { doctype, filters } = (await c.req.json().catch(() => ({}))) as {
-    doctype?: string
+  const { table, filters } = (await c.req.json().catch(() => ({}))) as {
+    table?: string
     filters?: [string, string, unknown][]
   }
-  if (!doctype) throw new AppError('ValidationError', 'Expected { doctype }')
-  return c.json({ count: await countDocs(doctype, filters ?? [], who(c)) })
+  if (!table) throw new AppError('ValidationError', 'Expected { table }')
+  return c.json({ count: await countDocs(table, filters ?? [], who(c)) })
 })
 
 app.post('/api/dashboard/chart', async (c) => {
-  const { doctype, group_by, filters } = (await c.req.json().catch(() => ({}))) as {
-    doctype?: string
+  const { table, group_by, filters } = (await c.req.json().catch(() => ({}))) as {
+    table?: string
     group_by?: string
     filters?: [string, string, unknown][]
   }
-  if (!doctype || !group_by) throw new AppError('ValidationError', 'Expected { doctype, group_by }')
-  return c.json({ data: await groupCount(doctype, group_by, filters ?? [], who(c)) })
+  if (!table || !group_by) throw new AppError('ValidationError', 'Expected { table, group_by }')
+  return c.json({ data: await groupCount(table, group_by, filters ?? [], who(c)) })
 })
 
 // RPT-006: a chart series derived from a saved report's rows (permission-scoped
@@ -861,33 +861,33 @@ app.post('/api/pin_chart_to_dashboard', async (c) => {
 // Permission live, so a change takes effect on the very next request.
 const PERM_FLAGS = ['can_read', 'can_write', 'can_create', 'can_delete', 'can_submit', 'can_cancel', 'can_amend'] as const
 
-app.get('/api/permissions/:doctype', async (c) => {
+app.get('/api/permissions/:table', async (c) => {
   await assertSystemManager(who(c))
-  const doctype = c.req.param('doctype')
+  const table = c.req.param('table')
   const roles = (await sql`select row_id from role order by row_id`).map((r) => r.row_id as string)
   const perms = await sql`
     select row_id, role, ${sql(PERM_FLAGS as unknown as string[])}
-    from permission where ref_table = ${doctype} and tier = 'basic' order by role`
-  return c.json({ doctype, roles, perms })
+    from permission where ref_table = ${table} and tier = 'basic' order by role`
+  return c.json({ table, roles, perms })
 })
 
-app.post('/api/permissions/:doctype', async (c) => {
+app.post('/api/permissions/:table', async (c) => {
   const user = who(c)
   await assertSystemManager(user)
-  const doctype = c.req.param('doctype')
+  const table = c.req.param('table')
   const body = (await c.req.json().catch(() => ({}))) as { role?: string } & Record<string, unknown>
   if (!body.role) throw new AppError('ValidationError', 'Expected { role }')
   const flags = Object.fromEntries(PERM_FLAGS.map((f) => [f, Boolean(body[f])]))
   const [existing] = await sql`
     select row_id, updated_at from permission
-    where ref_table = ${doctype} and role = ${body.role} and tier = 'basic'`
+    where ref_table = ${table} and role = ${body.role} and tier = 'basic'`
   if (existing)
     await saveDoc(
       'Permission',
       { row_id: existing.row_id as string, updated_at: existing.updated_at, ...flags },
       user,
     )
-  else await saveDoc('Permission', { ref_table: doctype, role: body.role, tier: 'basic', ...flags }, user)
+  else await saveDoc('Permission', { ref_table: table, role: body.role, tier: 'basic', ...flags }, user)
   return c.json({ ok: true })
 })
 
@@ -900,7 +900,7 @@ app.get('/api/query_report/:name', async (c) => {
     throw new AppError('ValidationError', `${report.row_id} is not a Query Report`)
   return c.json({
     row_id: report.row_id,
-    ref_doctype: report.ref_table ?? null,
+    ref_table: report.ref_table ?? null,
     filters: parseFilters(typeof report.query === 'string' ? report.query : ''),
   })
 })
@@ -928,17 +928,17 @@ app.get('/api/tenancy/sites', async (c) => {
   await assertSystemManager(who(c))
   return c.json({ sites: await listSites() })
 })
-app.post('/api/tenancy/doctype', async (c) => {
+app.post('/api/tenancy/table_def', async (c) => {
   await assertSystemManager(who(c))
   const site = await resolveSite(c.req.header('host'))
   const { name, columns } = (await c.req.json().catch(() => ({}))) as { name?: string; columns?: { column_name: string; column_type: string }[] }
   if (!name) throw new AppError('ValidationError', 'Expected { name }')
-  return c.json(await siteCreateDoctype(site, name, columns ?? []), 201)
+  return c.json(await siteCreateTableDef(site, name, columns ?? []), 201)
 })
-app.get('/api/tenancy/doctypes', async (c) => {
+app.get('/api/tenancy/table_defs', async (c) => {
   await assertSystemManager(who(c))
   const site = await resolveSite(c.req.header('host'))
-  return c.json({ site, doctypes: await siteListDoctypes(site) })
+  return c.json({ site, table_defs: await siteListTableDefs(site) })
 })
 app.post('/api/tenancy/user', async (c) => {
   await assertSystemManager(who(c))
@@ -954,13 +954,13 @@ app.get('/api/tenancy/users', async (c) => {
 })
 
 // PLAT-001: app management (System Manager only). Apps are code-defined; these
-// install/uninstall their DocTypes + doc_events and report installed state.
+// install/uninstall their Tables + doc_events and report installed state.
 app.get('/api/apps', async (c) => {
   await assertSystemManager(who(c))
   return c.json({ available: getAvailableApps(), installed: await listInstalledApps() })
 })
 // Accepts { name } for a code-registered app, or { manifest } — a declarative
-// manifest of DocTypes, roles and permissions installed as pure data (#55).
+// manifest of Tables, roles and permissions installed as pure data (#55).
 // System Manager only, and deliberately so: { manifest } lets the caller
 // define schema, so this endpoint is a create-arbitrary-tables surface.
 app.post('/api/install_app', async (c) => {
@@ -1001,11 +1001,11 @@ app.post('/api/run_script_report', async (c) => {
   return c.json(await runScriptReport(report, filters ?? {}, who(c)))
 })
 
-// CUST-005: export/import a DocType's customizations (Custom Fields +
+// CUST-005: export/import a Table's customizations (Custom Fields +
 // Property Setters) as JSON. System-Manager-only.
-app.get('/api/export_customizations/:doctype', async (c) => {
+app.get('/api/export_customizations/:table', async (c) => {
   await assertSystemManager(who(c))
-  return c.json(await exportCustomizations(c.req.param('doctype')))
+  return c.json(await exportCustomizations(c.req.param('table')))
 })
 
 app.post('/api/import_customizations', async (c) => {
@@ -1022,11 +1022,11 @@ app.post('/api/server_script/:method', async (c) => {
 
 // WF-002: the transitions available to the current user for a document,
 // plus its current state — drives the form's action buttons.
-app.get('/api/workflow/:doctype/:name', async (c) => {
-  const doctype = c.req.param('doctype')
-  const wf = await getActiveWorkflow(doctype)
+app.get('/api/workflow/:table/:name', async (c) => {
+  const table = c.req.param('table')
+  const wf = await getActiveWorkflow(table)
   if (!wf) return c.json({ workflow: null })
-  const doc = await getDoc(doctype, c.req.param('name'), who(c))
+  const doc = await getDoc(table, c.req.param('name'), who(c))
   const state = currentState(wf, doc)
   const roles = await getRoles(who(c))
   return c.json({
@@ -1036,20 +1036,20 @@ app.get('/api/workflow/:doctype/:name', async (c) => {
   })
 })
 
-// UI-013: per-user list/view settings. Stored per (user, doctype) and only
+// UI-013: per-user list/view settings. Stored per (user, table) and only
 // ever readable/writable by that user.
-app.get('/api/user_settings/:doctype', async (c) => {
+app.get('/api/user_settings/:table', async (c) => {
   const [row] = await sql`
     select settings from user_settings
-    where "user" = ${who(c)} and table_name = ${c.req.param('doctype')}`
+    where "user" = ${who(c)} and table_name = ${c.req.param('table')}`
   return c.json({ settings: row?.settings ?? null })
 })
 
-app.put('/api/user_settings/:doctype', async (c) => {
+app.put('/api/user_settings/:table', async (c) => {
   const settings = (await c.req.json()) as Record<string, unknown>
   await sql`
     insert into user_settings ("user", table_name, settings, updated_at)
-    values (${who(c)}, ${c.req.param('doctype')}, ${settings as unknown as string}, now())
+    values (${who(c)}, ${c.req.param('table')}, ${settings as unknown as string}, now())
     on conflict ("user", table_name) do update set settings = excluded.settings, updated_at = now()`
   return c.json({ ok: true })
 })
@@ -1057,53 +1057,53 @@ app.put('/api/user_settings/:doctype', async (c) => {
 // EML-006 / UI-017: assign a document to a user. Creates a ToDo in their
 // task list and notifies them (Notification Log + realtime user event).
 app.post('/api/assign', async (c) => {
-  const { doctype, row_id: name, assign_to, description } = (await c.req.json()) as {
-    doctype?: string
+  const { table, row_id: name, assign_to, description } = (await c.req.json()) as {
+    table?: string
     row_id?: string
     assign_to?: string
     description?: string
   }
-  if (!doctype || !name || !assign_to)
-    throw new AppError('ValidationError', 'Expected { doctype, row_id, assign_to }')
+  if (!table || !name || !assign_to)
+    throw new AppError('ValidationError', 'Expected { table, row_id, assign_to }')
   // The assigner must be able to read the document.
-  await getDoc(doctype, name, who(c))
+  await getDoc(table, name, who(c))
   const [target] = await sql`select row_id from "user" where row_id = ${assign_to}`
   if (!target) throw new AppError('NotFoundError', `User ${assign_to} not found`)
 
-  const todo = await createAssignment(doctype, name, assign_to, who(c), description)
+  const todo = await createAssignment(table, name, assign_to, who(c), description)
   return c.json({ todo }, 201)
 })
 
 // UI-017: free-form document tags. Readable/writable by anyone who can read
 // the document.
-app.get('/api/tags/:doctype/:name', async (c) => {
-  await getDoc(c.req.param('doctype'), c.req.param('name'), who(c))
+app.get('/api/tags/:table/:name', async (c) => {
+  await getDoc(c.req.param('table'), c.req.param('name'), who(c))
   const rows = await sql`
     select tag from tag_link
-    where ref_table = ${c.req.param('doctype')} and ref_name = ${c.req.param('name')}
+    where ref_table = ${c.req.param('table')} and ref_name = ${c.req.param('name')}
     order by tag`
   return c.json({ tags: rows.map((r) => r.tag as string) })
 })
 
 app.post('/api/tags', async (c) => {
-  const { doctype, row_id: name, tag } = (await c.req.json()) as {
-    doctype?: string
+  const { table, row_id: name, tag } = (await c.req.json()) as {
+    table?: string
     row_id?: string
     tag?: string
   }
-  if (!doctype || !name || !tag?.trim())
-    throw new AppError('ValidationError', 'Expected { doctype, row_id, tag }')
-  await getDoc(doctype, name, who(c))
+  if (!table || !name || !tag?.trim())
+    throw new AppError('ValidationError', 'Expected { table, row_id, tag }')
+  await getDoc(table, name, who(c))
   await sql`
-    insert into tag_link ${sql({ ref_table: doctype, ref_name: name, tag: tag.trim(), created_by: who(c) })}
+    insert into tag_link ${sql({ ref_table: table, ref_name: name, tag: tag.trim(), created_by: who(c) })}
     on conflict do nothing`
   return c.json({ ok: true }, 201)
 })
 
-app.delete('/api/tags/:doctype/:name/:tag', async (c) => {
-  await getDoc(c.req.param('doctype'), c.req.param('name'), who(c))
+app.delete('/api/tags/:table/:name/:tag', async (c) => {
+  await getDoc(c.req.param('table'), c.req.param('name'), who(c))
   await sql`
-    delete from tag_link where ref_table = ${c.req.param('doctype')}
+    delete from tag_link where ref_table = ${c.req.param('table')}
       and ref_name = ${c.req.param('name')} and tag = ${c.req.param('tag')}`
   return c.json({ ok: true })
 })
@@ -1124,7 +1124,7 @@ app.post('/api/queue_email', async (c) => {
     to?: string
     subject?: string
     body?: string
-    reference_doctype?: string
+    reference_table?: string
     reference_name?: string
     render?: boolean
     attach_pdf?: boolean
@@ -1135,7 +1135,7 @@ app.post('/api/queue_email', async (c) => {
     to: body.to,
     subject: body.subject ?? '',
     body: body.body ?? '',
-    ref_table: body.reference_doctype,
+    ref_table: body.reference_table,
     reference_name: body.reference_name,
     render: body.render,
     attach_pdf: body.attach_pdf,
@@ -1206,7 +1206,7 @@ function listArgsFromQuery(q: Record<string, string>) {
   }
 }
 
-// UI-014: awesomebar global search across readable DocTypes.
+// UI-014: awesomebar global search across readable Tables.
 app.get('/api/search', async (c) => {
   const q = c.req.query('q') ?? ''
   return c.json({ results: await globalSearch(q, who(c)) })

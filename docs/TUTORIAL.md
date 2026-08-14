@@ -34,7 +34,7 @@ input plus a column grid with **Column Name · Label · Column Type · Target ·
 Reqd · List**, an **+ Add column** row, and a **Create Table** button.
 Choices for a Choice column can be typed comma- or newline-separated; the
 builder normalizes them to the newline-separated form the engine expects
-before POSTing to `POST /api/doctype`.
+before POSTing to `POST /api/table_def`.
 
 Try it with a throwaway Table — name it `Note`, give it a `title` (Data,
 Reqd, List) and a `content` (Text) column, and click **Create Table**. You
@@ -60,7 +60,7 @@ TOKEN=$(curl -s http://localhost:8000/api/login \
 
 # Create the Table (System Manager only). id_pattern gives us a naming
 # series: TASK-0001, TASK-0002, ... (four # = four digits).
-curl -s http://localhost:8000/api/doctype \
+curl -s http://localhost:8000/api/table_def \
   -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{
     "name": "Task",
@@ -110,12 +110,12 @@ no Task-specific frontend code exists anywhere.
 Create a task: a new row lives at **`/admin/Task/new`** (the literal
 name `new` renders an empty `FormView` —
 `apps/web/src/components/FormView.tsx`). Fill in a title and save; the form
-POSTs to `/api/save_doc` and the id pattern assigns `TASK-0001`.
+POSTs to `/api/save_row` and the id pattern assigns `TASK-0001`.
 
 Create a few more. Then try the HTTP equivalent:
 
 ```bash
-curl -s http://localhost:8000/api/save_doc \
+curl -s http://localhost:8000/api/save_row \
   -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"doctype":"Task","doc":{"title":"Read ARCHITECTURE.md","due_date":"2026-08-01"}}'
 ```
@@ -152,7 +152,7 @@ Let's enforce a rule: a task's title must be at least five characters.
 `apps/server/src/server-scripts.ts` in a hardened `node:vm` sandbox inside
 the save transaction).
 
-Create one at `/admin/Server Script/new` (or via `save_doc`):
+Create one at `/admin/Server Script/new` (or via `save_row`):
 
 - **name**: `task-title-length` (Server Script uses prompt naming)
 - **script_type**: `Document Event`
@@ -204,7 +204,7 @@ import { test } from './pg-test'
 
 describe('Task tutorial', () => {
   test('creates tasks with series names and the stage default', async ({ admin }) => {
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: 'Tutorial Task',
       id_pattern: 'TUT-.####',
       columns: [
@@ -212,9 +212,9 @@ describe('Task tutorial', () => {
         { column_name: 'stage', column_type: 'Choice', choices: 'Open\nDone', default_value: 'Open' },
       ],
     })
-    const doc = await admin.post<{ name: string; stage: string }>('/api/save_doc', {
-      doctype: 'Tutorial Task',
-      doc: { title: 'Write the tutorial' },
+    const doc = await admin.post<{ name: string; stage: string }>('/api/save_row', {
+      table: 'Tutorial Task',
+      row: { title: 'Write the tutorial' },
     })
     expect(doc.name).toBe('TUT-0001')
     expect(doc.stage).toBe('Open')
@@ -230,7 +230,7 @@ pnpm --filter server test test/task-tutorial.test.ts
 
 Two things worth noticing. The Table is named `Tutorial Task`, not `Task`:
 the test's transaction rolls back, but it still *sees* committed state, so
-reusing the `Task` you created earlier would make `/api/doctype` answer 409.
+reusing the `Task` you created earlier would make `/api/table_def` answer 409.
 And asserting `TUT-0001` is safe precisely because the series counter row is
 created inside the rolled-back transaction — every run starts the series
 fresh.

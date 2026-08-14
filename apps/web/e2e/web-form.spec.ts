@@ -11,7 +11,7 @@ async function adminHeaders(request: APIRequestContext) {
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: {
       name: DT,
@@ -21,13 +21,13 @@ test.beforeAll(async ({ request }) => {
       ],
     },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   await request.delete('/api/table/Web%20Form/wf-e2e', { headers })
-  const wf = await request.post('/api/save_doc', {
+  const wf = await request.post('/api/save_row', {
     headers,
     data: {
-      doctype: 'Web Form',
-      doc: {
+      table: 'Web Form',
+      row: {
         row_id: 'wf-e2e',
         title: 'Contact E2E',
         route: ROUTE,

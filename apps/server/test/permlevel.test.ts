@@ -11,18 +11,18 @@ async function setup(
   admin: TestClient,
   createUser: (o?: { roles?: string[] }) => Promise<TestClient>,
 ) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'employee', column_type: 'Data' },
       { column_name: 'salary', column_type: 'Currency', tier: 'restricted' },
     ],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
   // basic-tier read+write only (no restricted-tier grant)
-  await admin.post('/api/save_doc', {
-    doctype: 'Permission',
-    doc: { ref_table: DT, role: ROLE, tier: 'basic', can_read: true, can_write: true, can_create: true },
+  await admin.post('/api/save_row', {
+    table: 'Permission',
+    row: { ref_table: DT, role: ROLE, tier: 'basic', can_read: true, can_write: true, can_create: true },
   })
   const user = await createUser({ roles: [ROLE] })
   // admin seeds a doc with a salary

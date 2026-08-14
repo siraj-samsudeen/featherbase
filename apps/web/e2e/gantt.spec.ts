@@ -12,7 +12,7 @@ let taskA = ''
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: {
       name: DT,
@@ -23,7 +23,7 @@ test.beforeAll(async ({ request }) => {
       ],
     },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   const existing = (await (
     await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=500`, { headers })
   ).json()) as { data: { row_id: string }[] }

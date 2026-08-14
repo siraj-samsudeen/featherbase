@@ -61,9 +61,9 @@ test('PLAT-006: a second OAuth sign-in links the same User (no duplicate)', asyn
   // rather than duplicating. It is created enabled on purpose: since #137 a
   // disabled account is refused, never re-enabled by signing in.
   const headers = await adminHeaders(request)
-  await request.post('/api/save_doc', {
+  await request.post('/api/save_row', {
     headers,
-    data: { doctype: 'User', doc: { row_id: EMAIL, email: EMAIL, full_name: 'Existing', enabled: true, roles: [] } },
+    data: { table: 'User', row: { row_id: EMAIL, email: EMAIL, full_name: 'Existing', enabled: true, roles: [] } },
   })
 
   await page.goto('/login')

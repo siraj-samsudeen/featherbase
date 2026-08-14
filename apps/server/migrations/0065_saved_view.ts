@@ -5,7 +5,7 @@
 // owner-scoped /api/saved_views endpoints, so the generic list/form
 // surfaces never expose one user's views to another.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'Saved View'`

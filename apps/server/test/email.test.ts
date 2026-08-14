@@ -107,7 +107,7 @@ describe('EML-005: template rendering', () => {
     'a queued template email is rendered with the actual field value in the sink',
     async () => {
       await setup()
-      const { createTable } = await import('../src/doctype-engine')
+      const { createTable } = await import('../src/table-engine')
       await createTable({
         name: 'Eml Ref',
         id_pattern: 'prompt',
@@ -139,7 +139,7 @@ describe('EML-003: PDF attachment', () => {
     'a queued email with attach_pdf delivers a PDF whose text matches the document',
     async () => {
       await setup()
-      const { createTable } = await import('../src/doctype-engine')
+      const { createTable } = await import('../src/table-engine')
       await createTable({
         name: 'Eml Pdf',
         id_pattern: 'prompt',

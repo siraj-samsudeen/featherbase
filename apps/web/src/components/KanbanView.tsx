@@ -10,15 +10,15 @@ type Row = Record<string, unknown>
 // drag-and-drop between columns. Dropping a card in a new column writes the
 // grouping column back to the row.
 export function KanbanView({
-  doctype,
+  table,
   groupBy,
   onGroupByChange,
 }: {
-  doctype: string
+  table: string
   groupBy?: string
   onGroupByChange?: (field: string | undefined) => void
 }) {
-  const meta = useMeta(doctype)
+  const meta = useMeta(table)
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState<{ row_id: string; from: string } | null>(null)
@@ -34,10 +34,10 @@ export function KanbanView({
   const titleColumn = meta.data?.title_column || 'row_id'
 
   const rows = useQuery({
-    queryKey: ['kanban', doctype, field],
+    queryKey: ['kanban', table, field],
     enabled: Boolean(meta.data && field),
     queryFn: () =>
-      listResource<Row>(doctype, {
+      listResource<Row>(table, {
         fields: [...new Set(['row_id', field!, titleColumn])],
         order_by: 'updated_at desc',
         limit_page_length: 500,
@@ -68,12 +68,12 @@ export function KanbanView({
     setError(null)
     // Optimistic: refetch after the write.
     try {
-      const doc = await api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
-      await api.patch(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`, {
+      const doc = await api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`)
+      await api.patch(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`, {
         [field!]: to,
         updated_at: doc.updated_at,
       })
-      await queryClient.invalidateQueries({ queryKey: ['kanban', doctype, field] })
+      await queryClient.invalidateQueries({ queryKey: ['kanban', table, field] })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Move failed')
     }
@@ -93,7 +93,7 @@ export function KanbanView({
     <div data-testid="kanban-view" onPointerUp={onPointerUp}>
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{doctype} — Kanban</h1>
+          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{table} — Kanban</h1>
           <span className="text-xs text-[var(--color-ink-muted)]" data-testid="kanban-total">
             {data.length} cards
           </span>
@@ -115,8 +115,8 @@ export function KanbanView({
             </select>
           </label>
           <RouterLink
-            to="/admin/$doctype"
-            params={{ doctype }}
+            to="/admin/$table"
+            params={{ table }}
             search={{ filters: undefined }}
             className="fc-btn"
             data-testid="kanban-to-list"
@@ -158,9 +158,9 @@ export function KanbanView({
                   }`}
                 >
                   <RouterLink
-                    to="/admin/$doctype/$name"
+                    to="/admin/$table/$name"
                     search={{ prefill: undefined }}
-                    params={{ doctype, name: String(row.row_id) }}
+                    params={{ table, name: String(row.row_id) }}
                     className="font-medium text-[var(--color-brand)] hover:underline"
                     onPointerDown={(e) => e.stopPropagation()}
                   >

@@ -112,7 +112,7 @@ exactly the earned buttons), never a bare zero-count.
 
 ### DEL-R2 — Deletion removes what creation wrote · `shape: contract`
 
-The deletion operation (`DELETE /api/doctype/:name`) reverses table
+The deletion operation (`DELETE /api/table_def/:name`) reverses table
 creation in one transaction: the Table's definition row, its column
 definitions, its physical table with **all rows**, and its own
 sub-table *rows* (children whose parent kind is the deleted Table).
@@ -293,7 +293,7 @@ additive (two owner-raised open questions and this section).
    sub-IDs the first time one refusal regresses alone.
 5. **"No implementation detail" vs contracts naming routes.** §11 bans
    routes from the spec body while the exemplar's C1 names its route.
-   Followed the exemplar (R2 names `DELETE /api/doctype/:name`) — a
+   Followed the exemplar (R2 names `DELETE /api/table_def/:name`) — a
    contract without its address isn't one. The framework should say so.
 6. **Text-addressed DSL verbs collide on nested affordances.** The
    dialog's confirm button ("Delete") sits under the page button

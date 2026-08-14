@@ -10,17 +10,17 @@ async function adminHeaders(request: APIRequestContext) {
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, columns: [{ column_name: 'amount', column_type: 'Int', in_list_view: true }] },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   await request.delete('/api/table/Server%20Script/ss-e2e-reject', { headers })
-  const s = await request.post('/api/save_doc', {
+  const s = await request.post('/api/save_row', {
     headers,
     data: {
-      doctype: 'Server Script',
-      doc: {
+      table: 'Server Script',
+      row: {
         row_id: 'ss-e2e-reject',
         script_type: 'Document Event',
         ref_table: DT,

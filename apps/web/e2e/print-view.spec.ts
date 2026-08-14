@@ -11,7 +11,7 @@ let docName = ''
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const headers = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-  const item = await request.post('/api/doctype', {
+  const item = await request.post('/api/table_def', {
     headers,
     data: {
       name: ITEM,
@@ -23,7 +23,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     },
   })
   if (![201, 409].includes(item.status())) throw new Error(`item: ${item.status()}`)
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: {
       name: DT,
@@ -34,14 +34,14 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
       ],
     },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   docName = 'prn-doc'
   await request.delete(`/api/table/${encodeURIComponent(DT)}/${docName}`, { headers })
-  const doc = await request.post('/api/save_doc', {
+  const doc = await request.post('/api/save_row', {
     headers,
     data: {
-      doctype: DT,
-      doc: {
+      table: DT,
+      row: {
         row_id: docName,
         customer: 'Wayne Enterprises',
         lines: [
@@ -51,7 +51,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
       },
     },
   })
-  if (doc.status() !== 201) throw new Error(`doc: ${doc.status()}`)
+  if (doc.status() !== 201) throw new Error(`row: ${doc.status()}`)
 })
 
 test('PRN-001: print view shows labels, values, and child tables with no chrome', async ({
@@ -70,7 +70,7 @@ test('PRN-001: print view shows labels, values, and child tables with no chrome'
 
   // No app chrome: navbar/sidebar/awesomebar absent.
   await expect(page.getByTestId('awesomebar')).toHaveCount(0)
-  await expect(page.getByTestId('doctype-nav')).toHaveCount(0)
+  await expect(page.getByTestId('table-nav')).toHaveCount(0)
 
   // Labels + values shown.
   await expect(page.getByTestId('print-view')).toBeVisible()

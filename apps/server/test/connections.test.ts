@@ -15,19 +15,19 @@ const LINE = 'Cnx Order Line'
 const ORDER = 'Cnx Order'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: EMP,
     id_pattern: 'prompt',
     columns: [{ column_name: 'dept', column_type: 'Data' }],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: ATT,
     columns: [
       { column_name: 'employee', column_type: 'Reference', reference_table: EMP },
       { column_name: 'att_status', column_type: 'Data' },
     ],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: LINE,
     kind: 'sub_table',
     columns: [
@@ -35,7 +35,7 @@ async function setup(admin: TestClient) {
       { column_name: 'qty', column_type: 'Int', default_value: '1' },
     ],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: ORDER,
     id_pattern: 'prompt',
     columns: [
@@ -74,17 +74,17 @@ const listWith = async (client: TestClient, table: string, filters: unknown[]) =
 describe('NAV-001: row connections', () => {
   test('direct backlinks carry counts and an equals filter', async ({ admin }) => {
     await setup(admin)
-    await admin.post('/api/save_doc', {
-      doctype: ATT,
-      doc: { employee: 'E-001', att_status: 'Present' },
+    await admin.post('/api/save_row', {
+      table: ATT,
+      row: { employee: 'E-001', att_status: 'Present' },
     })
-    await admin.post('/api/save_doc', {
-      doctype: ATT,
-      doc: { employee: 'E-001', att_status: 'Absent' },
+    await admin.post('/api/save_row', {
+      table: ATT,
+      row: { employee: 'E-001', att_status: 'Absent' },
     })
-    await admin.post('/api/save_doc', {
-      doctype: ATT,
-      doc: { employee: 'E-002', att_status: 'Present' },
+    await admin.post('/api/save_row', {
+      table: ATT,
+      row: { employee: 'E-002', att_status: 'Present' },
     })
 
     const cnx = await getConnections(admin, 'E-001')
@@ -101,17 +101,17 @@ describe('NAV-001: row connections', () => {
     admin,
   }) => {
     await setup(admin)
-    await admin.post('/api/save_doc', {
-      doctype: ORDER,
-      doc: { row_id: 'ORD-1', title: 'one', lines: [{ employee: 'E-001' }, { employee: 'E-001' }] },
+    await admin.post('/api/save_row', {
+      table: ORDER,
+      row: { row_id: 'ORD-1', title: 'one', lines: [{ employee: 'E-001' }, { employee: 'E-001' }] },
     })
-    await admin.post('/api/save_doc', {
-      doctype: ORDER,
-      doc: { row_id: 'ORD-2', title: 'two', lines: [{ employee: 'E-001' }] },
+    await admin.post('/api/save_row', {
+      table: ORDER,
+      row: { row_id: 'ORD-2', title: 'two', lines: [{ employee: 'E-001' }] },
     })
-    await admin.post('/api/save_doc', {
-      doctype: ORDER,
-      doc: { row_id: 'ORD-3', title: 'three', lines: [{ employee: 'E-002' }] },
+    await admin.post('/api/save_row', {
+      table: ORDER,
+      row: { row_id: 'ORD-3', title: 'three', lines: [{ employee: 'E-002' }] },
     })
 
     const cnx = await getConnections(admin, 'E-001')
@@ -151,9 +151,9 @@ describe('NAV-001: via-link permission scoping', () => {
   const ROLE = 'Cnx Role'
 
   async function grant(admin: TestClient, table: string, extra: Record<string, unknown> = {}) {
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: table, role: ROLE, can_read: true, ...extra },
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: table, role: ROLE, can_read: true, ...extra },
     })
   }
 
@@ -162,19 +162,19 @@ describe('NAV-001: via-link permission scoping', () => {
     createUser,
   }) => {
     await setup(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
     await grant(admin, EMP)
     await grant(admin, LINE, { can_create: true })
     await grant(admin, ORDER, { can_create: true, own_rows_only: true })
     const alice = await createUser({ roles: [ROLE] })
 
-    await alice.post('/api/save_doc', {
-      doctype: ORDER,
-      doc: { row_id: 'ORD-MINE', title: 'mine', lines: [{ employee: 'E-001' }] },
+    await alice.post('/api/save_row', {
+      table: ORDER,
+      row: { row_id: 'ORD-MINE', title: 'mine', lines: [{ employee: 'E-001' }] },
     })
-    await admin.post('/api/save_doc', {
-      doctype: ORDER,
-      doc: { row_id: 'ORD-THEIRS', title: 'theirs', lines: [{ employee: 'E-001' }] },
+    await admin.post('/api/save_row', {
+      table: ORDER,
+      row: { row_id: 'ORD-THEIRS', title: 'theirs', lines: [{ employee: 'E-001' }] },
     })
 
     const cnx = await getConnections(alice, 'E-001')
@@ -199,22 +199,22 @@ describe('NAV-001: via-link permission scoping', () => {
     createUser,
   }) => {
     await setup(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
     await grant(admin, EMP)
     await grant(admin, LINE)
     await grant(admin, ORDER)
     const user = await createUser({ roles: [ROLE] })
-    await admin.post('/api/save_doc', {
-      doctype: ORDER,
-      doc: { row_id: 'ORD-VISIBLE', title: 'v', lines: [{ employee: 'E-001' }] },
+    await admin.post('/api/save_row', {
+      table: ORDER,
+      row: { row_id: 'ORD-VISIBLE', title: 'v', lines: [{ employee: 'E-001' }] },
     })
-    await admin.post('/api/save_doc', {
-      doctype: ORDER,
-      doc: { row_id: 'ORD-HIDDEN', title: 'h', lines: [{ employee: 'E-001' }] },
+    await admin.post('/api/save_row', {
+      table: ORDER,
+      row: { row_id: 'ORD-HIDDEN', title: 'h', lines: [{ employee: 'E-001' }] },
     })
-    await admin.post('/api/save_doc', {
-      doctype: 'Data Scope',
-      doc: { user: user.user, allow_table: ORDER, for_value: 'ORD-VISIBLE' },
+    await admin.post('/api/save_row', {
+      table: 'Data Scope',
+      row: { user: user.user, allow_table: ORDER, for_value: 'ORD-VISIBLE' },
     })
 
     const cnx = await getConnections(user, 'E-001')
@@ -253,10 +253,10 @@ describe('NAV-001: via-link permission scoping', () => {
 describe('NAV-001: navigable tables', () => {
   test('filters by per-table read permission', async ({ admin, createUser }) => {
     await setup(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: 'Cnx Nav Role' } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: EMP, role: 'Cnx Nav Role', can_read: true },
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: 'Cnx Nav Role' } })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: EMP, role: 'Cnx Nav Role', can_read: true },
     })
     const user = await createUser({ roles: ['Cnx Nav Role'] })
 

@@ -1,7 +1,7 @@
 import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta, invalidateMeta } from './meta'
-import { pgType, tableName } from './doctype-engine'
+import { pgType, tableName } from './table-engine'
 
 // CUST-001: apply a Custom Field record to its target Table — add the
 // column (if the column_type has one) and a column_def row marked custom.

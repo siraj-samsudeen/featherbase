@@ -1,7 +1,7 @@
 import { sanitizeHeaders, prettifyLabel, tableNameFromFile } from 'shared'
 import { sql } from '../db'
 import { AppError } from '../errors'
-import { createTable } from '../doctype-engine'
+import { createTable } from '../table-engine'
 import { ensureHomePageForTable } from '../home-pages'
 import { invalidateMeta } from '../meta'
 import { isSensitiveColumn } from '../sensitive-columns'
@@ -119,7 +119,7 @@ export async function introspectSource(
 }
 
 // EDS-3 (review finding 10): a bound Table created directly through
-// POST /api/doctype gets the same checks reflection applies — the source
+// POST /api/table_def gets the same checks reflection applies — the source
 // must exist, the relation must be in its allowlist, and every mapped
 // column (plus the pk and modified column) must actually be there. Without
 // this, a hand-written definition persists happily and only fails at query

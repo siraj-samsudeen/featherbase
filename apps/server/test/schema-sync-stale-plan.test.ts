@@ -26,15 +26,15 @@ afterAll(cleanup)
 
 describe('META-004: schema sync does not leave stale prepared statements', () => {
   it('reads and writes keep working across repeated column additions', async () => {
-    const created = await areq('/api/doctype', {
+    const created = await areq('/api/table_def', {
       method: 'POST',
       body: JSON.stringify({ name: DT, columns: [{ column_name: 'a', column_type: 'Data' }] }),
     })
     expect(created.status).toBe(201)
     const doc = (await (
-      await areq('/api/save_doc', {
+      await areq('/api/save_row', {
         method: 'POST',
-        body: JSON.stringify({ doctype: DT, doc: { a: 'one' } }),
+        body: JSON.stringify({ table: DT, row: { a: 'one' } }),
       })
     ).json()) as { name: string; updated_at: string }
 
@@ -55,7 +55,7 @@ describe('META-004: schema sync does not leave stale prepared statements', () =>
 
       // ALTER the table via schema sync…
       columns.push({ column_name: `extra_${round}`, column_type: 'Data' })
-      const sync = await areq(`/api/doctype/${encodeURIComponent(DT)}`, {
+      const sync = await areq(`/api/table_def/${encodeURIComponent(DT)}`, {
         method: 'PUT',
         body: JSON.stringify({ columns }),
       })

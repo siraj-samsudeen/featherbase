@@ -6,16 +6,16 @@ import type { TestClient } from 'feather-testing-postgres'
 //
 // KNOWN BUG (discovered during the terminology rename, not fixed here — out
 // of scope for a test-only change): src/index.ts's /api/tags routes still
-// query/insert tag_link by its pre-rename column names (`ref_doctype`,
+// query/insert tag_link by its pre-rename column names (`ref_table`,
 // `owner`), but the physical table was renamed to `ref_table`/`created_by`
 // by migrations/0055_terminology_rename.sql. Every request below will 500
 // until those three routes are updated to the new column names.
 
 const DT = 'Tag Srv DT'
 
-// Each test builds its DocType + document inside its own sandbox transaction.
+// Each test builds its Table + document inside its own sandbox transaction.
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data' }],
@@ -29,7 +29,7 @@ describe('UI-017: tags', () => {
     for (const tag of ['urgent', 'finance']) {
       const res = await admin.fetch('/api/tags', {
         method: 'POST',
-        body: JSON.stringify({ doctype: DT, row_id: 't1', tag }),
+        body: JSON.stringify({ table: DT, row_id: 't1', tag }),
       })
       expect(res.status).toBe(201)
     }
@@ -39,7 +39,7 @@ describe('UI-017: tags', () => {
     // Duplicate is a no-op, not an error.
     const dup = await admin.fetch('/api/tags', {
       method: 'POST',
-      body: JSON.stringify({ doctype: DT, row_id: 't1', tag: 'urgent' }),
+      body: JSON.stringify({ table: DT, row_id: 't1', tag: 'urgent' }),
     })
     expect(dup.status).toBe(201)
     const after = await admin.get<{ tags: string[] }>(`/api/tags/${encodeURIComponent(DT)}/t1`)
@@ -57,7 +57,7 @@ describe('UI-017: tags', () => {
     await setup(admin)
     const res = await admin.fetch('/api/tags', {
       method: 'POST',
-      body: JSON.stringify({ doctype: DT, row_id: 'ghost', tag: 'x' }),
+      body: JSON.stringify({ table: DT, row_id: 'ghost', tag: 'x' }),
     })
     expect(res.status).toBe(404)
   })
@@ -66,7 +66,7 @@ describe('UI-017: tags', () => {
     await setup(admin)
     const res = await admin.fetch('/api/tags', {
       method: 'POST',
-      body: JSON.stringify({ doctype: DT, row_id: 't1', tag: '  ' }),
+      body: JSON.stringify({ table: DT, row_id: 't1', tag: '  ' }),
     })
     expect(res.status).toBe(417)
   })

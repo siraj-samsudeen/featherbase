@@ -3,7 +3,7 @@ import { api } from './api'
 
 // Relational navigation (#100): client hooks over the server's derived
 // reverse-reference map. `Connection` mirrors the :connections row action —
-// `filters` is ready to drop into /admin/$doctype?filters= as-is.
+// `filters` is ready to drop into /admin/$table?filters= as-is.
 
 export type Filter = [string, string, unknown]
 
@@ -21,24 +21,24 @@ export interface Backlink {
   via: string | null
 }
 
-export function useConnections(doctype: string, name: string, enabled = true) {
+export function useConnections(table: string, name: string, enabled = true) {
   return useQuery({
-    queryKey: ['connections', doctype, name],
-    enabled: enabled && Boolean(doctype) && Boolean(name) && name !== 'new',
+    queryKey: ['connections', table, name],
+    enabled: enabled && Boolean(table) && Boolean(name) && name !== 'new',
     queryFn: () =>
       api.get<{ connections: Connection[] }>(
-        `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}:connections`,
+        `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}:connections`,
       ),
   })
 }
 
-export function useBacklinks(doctype: string, enabled = true) {
+export function useBacklinks(table: string, enabled = true) {
   return useQuery({
-    queryKey: ['backlinks', doctype],
-    enabled: enabled && Boolean(doctype),
+    queryKey: ['backlinks', table],
+    enabled: enabled && Boolean(table),
     staleTime: 60_000,
     queryFn: () =>
-      api.get<{ backlinks: Backlink[] }>(`/api/table/${encodeURIComponent(doctype)}:backlinks`),
+      api.get<{ backlinks: Backlink[] }>(`/api/table/${encodeURIComponent(table)}:backlinks`),
   })
 }
 

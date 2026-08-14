@@ -1,7 +1,7 @@
 // PRN-002: Print Format — a per-Table template with {{ field }}
 // interpolation. `is_default` marks the format chosen when none is named.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'Print Format'`

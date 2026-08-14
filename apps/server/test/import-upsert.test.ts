@@ -20,7 +20,7 @@ const PATH = `/api/table/${encodeURIComponent(DT)}:import`
 const ROLE = 'Upsert Tester Role'
 
 async function setup(admin: TestClient, extra: Record<string, unknown> = {}) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     id_pattern: 'UPST-.###',
     columns: [
@@ -133,10 +133,10 @@ describe('UPS-R1: the import boundary learns update', () => {
   }) => {
     await setup(admin)
     await seed(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: DT, role: ROLE, can_read: true, can_create: true },
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: DT, role: ROLE, can_read: true, can_create: true },
     })
     const user = await createUser({ roles: [ROLE] })
     const before = await rowsByZone(admin)
@@ -167,10 +167,10 @@ describe('UPS-R1: the import boundary learns update', () => {
   }) => {
     await setup(admin)
     await seed(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: DT, role: ROLE, can_read: true, can_write: true },
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: DT, role: ROLE, can_read: true, can_write: true },
     })
     const user = await createUser({ roles: [ROLE] })
     const res = await user.fetch(PATH, {
@@ -194,10 +194,10 @@ describe('UPS-R1: the import boundary learns update', () => {
     createUser,
   }) => {
     await setup(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: {
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: {
         ref_table: DT,
         role: ROLE,
         can_read: true,

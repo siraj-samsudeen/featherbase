@@ -11,16 +11,16 @@ interface WorkflowStatus {
 // WF-002: current workflow state + transition buttons for the roles the
 // user holds. Server enforces the transition, so these buttons are just a
 // convenience over the :apply_workflow_action row action.
-export function WorkflowActions({ doctype, name }: { doctype: string; name: string }) {
+export function WorkflowActions({ table, name }: { table: string; name: string }) {
   const queryClient = useQueryClient()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const status = useQuery({
-    queryKey: ['workflow', doctype, name],
+    queryKey: ['workflow', table, name],
     queryFn: () =>
       api.get<WorkflowStatus>(
-        `/api/workflow/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
+        `/api/workflow/${encodeURIComponent(table)}/${encodeURIComponent(name)}`,
       ),
   })
 
@@ -31,12 +31,12 @@ export function WorkflowActions({ doctype, name }: { doctype: string; name: stri
     setError(null)
     try {
       await api.post(
-        `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}:apply_workflow_action`,
+        `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}:apply_workflow_action`,
         { action },
       )
-      await queryClient.invalidateQueries({ queryKey: ['workflow', doctype, name] })
-      await queryClient.invalidateQueries({ queryKey: ['doc', doctype, name] })
-      await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
+      await queryClient.invalidateQueries({ queryKey: ['workflow', table, name] })
+      await queryClient.invalidateQueries({ queryKey: ['doc', table, name] })
+      await queryClient.invalidateQueries({ queryKey: ['list', table] })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Transition failed')
     } finally {

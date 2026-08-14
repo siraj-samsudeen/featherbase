@@ -1,7 +1,7 @@
 // WEB-001: Web Pages — published documents that render as public,
 // server-rendered pages reachable at /web/<route> without a session.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'Web Page'`

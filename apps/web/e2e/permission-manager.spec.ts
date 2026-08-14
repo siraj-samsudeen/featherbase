@@ -20,12 +20,12 @@ let seedName: string
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
-  await request.post('/api/save_doc', { headers, data: { doctype: 'Role', doc: { row_id: ROLE } } })
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
+  await request.post('/api/save_row', { headers, data: { table: 'Role', row: { row_id: ROLE } } })
   // Clear any Permission rows left by earlier runs so exactly one row exists.
   const existing = (await (
     await request.get(
@@ -35,13 +35,13 @@ test.beforeAll(async ({ request }) => {
   ).json()) as { data: { row_id: string }[] }
   for (const p of existing.data) await request.delete(`/api/table/Permission/${p.row_id}`, { headers })
   // Start with read + write + create so the role's user can save.
-  await request.post('/api/save_doc', {
+  await request.post('/api/save_row', {
     headers,
-    data: { doctype: 'Permission', doc: { ref_table: DT, role: ROLE, can_read: true, can_write: true, can_create: true } },
+    data: { table: 'Permission', row: { ref_table: DT, role: ROLE, can_read: true, can_write: true, can_create: true } },
   })
-  await request.post('/api/save_doc', {
+  await request.post('/api/save_row', {
     headers,
-    data: { doctype: 'User', doc: { row_id: USER, email: USER, enabled: true, roles: [{ role: ROLE }] } },
+    data: { table: 'User', row: { row_id: USER, email: USER, enabled: true, roles: [{ role: ROLE }] } },
   })
   await request.post('/api/set_password', { headers, data: { user: USER, password: PWD } })
   // Seed a document the role's user will try to save (update).

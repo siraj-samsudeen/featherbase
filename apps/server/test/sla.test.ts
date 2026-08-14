@@ -24,7 +24,7 @@ async function nudgeDueJobs() {
 
 async function setup(admin: TestClient) {
   await loadJobs()
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
   await sql`insert into "user" ${sql({
     row_id: MGR, created_by: 'Administrator', updated_by: 'Administrator', email: MGR, enabled: true,
   })}`
@@ -32,7 +32,7 @@ async function setup(admin: TestClient) {
     row_id: 'sla-hr-1', created_by: 'Administrator', updated_by: 'Administrator',
     parent: MGR, parenttype: 'User', parentfield: 'roles', position: 1, role: ROLE,
   })}`
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },

@@ -38,7 +38,7 @@ async function ensureFixtures(request: APIRequestContext) {
   ]
   for (const [name, def] of defs) {
     const meta = await request.get(`/api/table/${encodeURIComponent(name)}:meta`, { headers: auth })
-    if (meta.status() === 404) await request.post('/api/doctype', { headers: auth, data: def })
+    if (meta.status() === 404) await request.post('/api/table_def', { headers: auth, data: def })
   }
   const cust = await request.post(`/api/table/${encodeURIComponent(CUST)}`, {
     headers: auth,

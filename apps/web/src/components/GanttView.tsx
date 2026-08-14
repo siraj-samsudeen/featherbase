@@ -24,8 +24,8 @@ function fromDayNum(n: number): string {
 // UI-022: Gantt view for Tables with a start and an end Date column. Each
 // row is a horizontal bar spanning [start, end]; dragging a bar's right
 // handle rewrites the end date.
-export function GanttView({ doctype }: { doctype: string }) {
-  const meta = useMeta(doctype)
+export function GanttView({ table }: { table: string }) {
+  const meta = useMeta(table)
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
   // Live resize state: which row, and the previewed end day.
@@ -40,10 +40,10 @@ export function GanttView({ doctype }: { doctype: string }) {
   const titleColumn = meta.data?.title_column || 'row_id'
 
   const rows = useQuery({
-    queryKey: ['gantt', doctype, startField, endField],
+    queryKey: ['gantt', table, startField, endField],
     enabled: Boolean(meta.data && startField && endField),
     queryFn: () =>
-      listResource<Row>(doctype, {
+      listResource<Row>(table, {
         fields: [...new Set(['row_id', startField!, endField!, titleColumn])],
         order_by: startField!,
         limit_page_length: 1000,
@@ -84,12 +84,12 @@ export function GanttView({ doctype }: { doctype: string }) {
     if (end === origEnd) return
     setError(null)
     try {
-      const doc = await api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
-      await api.patch(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`, {
+      const doc = await api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`)
+      await api.patch(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`, {
         [endField!]: fromDayNum(end),
         updated_at: doc.updated_at,
       })
-      await queryClient.invalidateQueries({ queryKey: ['gantt', doctype, startField, endField] })
+      await queryClient.invalidateQueries({ queryKey: ['gantt', table, startField, endField] })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Resize failed')
     }
@@ -110,8 +110,8 @@ export function GanttView({ doctype }: { doctype: string }) {
   return (
     <div data-testid="gantt-view" onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-[var(--color-ink)]">{doctype} — Gantt</h1>
-        <RouterLink to="/admin/$doctype" params={{ doctype }} search={{ filters: undefined }} className="fc-btn" data-testid="gantt-to-list">
+        <h1 className="text-xl font-semibold text-[var(--color-ink)]">{table} — Gantt</h1>
+        <RouterLink to="/admin/$table" params={{ table }} search={{ filters: undefined }} className="fc-btn" data-testid="gantt-to-list">
           List view
         </RouterLink>
       </div>
@@ -148,7 +148,7 @@ export function GanttView({ doctype }: { doctype: string }) {
               return (
                 <div key={b.row_id} className="flex items-center border-b border-[var(--color-border)]" data-testid={`gantt-row-${b.row_id}`}>
                   <div className="shrink-0 truncate px-2 py-1 text-xs text-[var(--color-ink)]" style={{ width: 200 }}>
-                    <RouterLink to="/admin/$doctype/$name" params={{ doctype, name: b.row_id }} search={{ prefill: undefined }} className="hover:underline">
+                    <RouterLink to="/admin/$table/$name" params={{ table, name: b.row_id }} search={{ prefill: undefined }} className="hover:underline">
                       {String(b.row[titleColumn] ?? b.row_id)}
                     </RouterLink>
                   </div>

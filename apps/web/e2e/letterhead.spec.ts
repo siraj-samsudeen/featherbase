@@ -13,7 +13,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const headers = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
 
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: {
       name: DT,
@@ -21,7 +21,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
       columns: [{ column_name: 'customer', column_type: 'Data' }],
     },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   docName = 'lh-doc'
   await request.delete(`/api/table/${encodeURIComponent(DT)}/${docName}`, { headers })
   await request.post(`/api/table/${encodeURIComponent(DT)}`, {
@@ -45,9 +45,9 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   ]) {
     const name = encodeURIComponent(lh.row_id)
     await request.delete(`/api/table/Letter%20Head/${name}`, { headers })
-    const res = await request.post('/api/save_doc', {
+    const res = await request.post('/api/save_row', {
       headers,
-      data: { doctype: 'Letter Head', doc: lh },
+      data: { table: 'Letter Head', row: lh },
     })
     if (res.status() !== 201) throw new Error(`letterhead ${lh.row_id}: ${res.status()}`)
   }

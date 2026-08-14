@@ -2,7 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { loadJobs } from '../src/jobs'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 import { saveDoc, submitDoc } from '../src/document'
 
 // EML-004: a rule 'on submit of <Table> where priority=High' fires exactly

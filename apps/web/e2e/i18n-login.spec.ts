@@ -17,9 +17,9 @@ test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
   // A user whose stored language is French.
   await request.delete(`/api/table/User/${encodeURIComponent(USER)}`, { headers })
-  await request.post('/api/save_doc', {
+  await request.post('/api/save_row', {
     headers,
-    data: { doctype: 'User', doc: { row_id: USER, email: USER, full_name: 'FR User', enabled: true, language: 'fr', roles: [{ role: 'System Manager' }] } },
+    data: { table: 'User', row: { row_id: USER, email: USER, full_name: 'FR User', enabled: true, language: 'fr', roles: [{ role: 'System Manager' }] } },
   })
   await request.post('/api/set_password', { headers, data: { user: USER, password: PWD } })
 
@@ -29,12 +29,12 @@ test.beforeAll(async ({ request }) => {
     ['Save', 'Enregistrer'],
   ])
 
-  // A DocType with a Date field, and a doc dated 9 March 2026.
-  const dt = await request.post('/api/doctype', {
+  // A Table with a Date field, and a doc dated 9 March 2026.
+  const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, columns: [{ column_name: 'due', column_type: 'Date', in_list_view: true }] },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { due: '2026-03-09' } })
   // NOTE: we don't set a specific System Settings date_format here — it's a
   // shared global other parallel tests mutate. We only assert the date is

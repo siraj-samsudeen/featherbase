@@ -64,9 +64,9 @@ describe('API-006: consistent error envelope', () => {
   })
 
   test('417 ValidationError with per-field messages', async ({ admin }) => {
-    const res = await admin.fetch('/api/save_doc', {
+    const res = await admin.fetch('/api/save_row', {
       method: 'POST',
-      body: JSON.stringify({ doctype: 'User', doc: {} }),
+      body: JSON.stringify({ table: 'User', row: {} }),
     })
     expect(res.status).toBe(417)
     const err = await envelope(res)
@@ -89,9 +89,9 @@ describe('API-006: consistent error envelope', () => {
   }) => {
     // A role-less probe user hitting the System-Manager-only Table route.
     const email = `envelope-probe-${Math.random().toString(36).slice(2, 8)}@x.com`
-    const mk = await admin.fetch('/api/save_doc', {
+    const mk = await admin.fetch('/api/save_row', {
       method: 'POST',
-      body: JSON.stringify({ doctype: 'User', doc: { row_id: email, email } }),
+      body: JSON.stringify({ table: 'User', row: { row_id: email, email } }),
     })
     expect(mk.status).toBe(201)
     await setUserPassword(email, 'probe-pw-12345')
@@ -101,7 +101,7 @@ describe('API-006: consistent error envelope', () => {
     })
     expect(login.status).toBe(200)
     const tok = ((await login.json()) as { token: string }).token
-    const res = await api.fetch('/api/doctype', {
+    const res = await api.fetch('/api/table_def', {
       method: 'POST',
       headers: { authorization: `Bearer ${tok}` },
       body: JSON.stringify({ row_id: 'Envelope Probe DT', columns: [] }),

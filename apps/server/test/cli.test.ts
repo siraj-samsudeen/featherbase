@@ -43,9 +43,9 @@ afterAll(async () => {
 })
 
 describe('PLAT-004: developer CLI', () => {
-  it('create-doctype builds a Table with parsed columns', async () => {
+  it('create-table builds a Table with parsed columns', async () => {
     const stdout = cli([
-      'create-doctype',
+      'create-table',
       '--name', DT,
       '--field', 'title:Data',
       '--field', 'stage:Choice:Open|Closed',

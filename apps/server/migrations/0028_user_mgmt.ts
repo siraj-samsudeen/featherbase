@@ -1,6 +1,6 @@
 // SET-002: user management — password-reset tokens and a profile avatar.
 import { sql } from '../src/db'
-import { pgType } from '../src/doctype-engine'
+import { pgType } from '../src/table-engine'
 
 export async function up() {
   // Short-lived, single-use password reset tokens (consumed on use).

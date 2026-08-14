@@ -10,18 +10,18 @@ interface ToDoRow {
 
 // EML-006 / UI-017: assign this row to a user. Creates a ToDo in their
 // list and notifies them.
-export function Assignments({ doctype, name }: { doctype: string; name: string }) {
+export function Assignments({ table, name }: { table: string; name: string }) {
   const queryClient = useQueryClient()
   const [assignTo, setAssignTo] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const todos = useQuery({
-    queryKey: ['assignments', doctype, name],
+    queryKey: ['assignments', table, name],
     queryFn: () =>
       listResource<ToDoRow>('ToDo', {
         filters: [
-          ['ref_table', '=', doctype],
+          ['ref_table', '=', table],
           ['reference_name', '=', name],
           ['todo_status', '=', 'Open'],
         ],
@@ -37,9 +37,9 @@ export function Assignments({ doctype, name }: { doctype: string; name: string }
     setBusy(true)
     setError(null)
     try {
-      await api.post('/api/assign', { doctype, row_id: name, assign_to: to })
+      await api.post('/api/assign', { table, row_id: name, assign_to: to })
       setAssignTo('')
-      await queryClient.invalidateQueries({ queryKey: ['assignments', doctype, name] })
+      await queryClient.invalidateQueries({ queryKey: ['assignments', table, name] })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Assign failed')
     } finally {

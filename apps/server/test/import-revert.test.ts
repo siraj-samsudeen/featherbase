@@ -21,7 +21,7 @@ const REVERT = `/api/table/${encodeURIComponent(DT)}:import-revert`
 const ROLE = 'Revert Tester Role'
 
 async function setup(admin: TestClient, extra: Record<string, unknown> = {}) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     id_pattern: 'RVT-.###',
     columns: [
@@ -239,9 +239,9 @@ describe('RVT-R4: edited-after detection and the override', () => {
     const runId = await seedAndRun(admin)
     // Someone edits Alpha after the import.
     const { Alpha } = await rowsByZone(admin)
-    await admin.post('/api/save_doc', {
-      doctype: DT,
-      doc: { row_id: Alpha.row_id, updated_at: Alpha.updated_at, pop: 99999 },
+    await admin.post('/api/save_row', {
+      table: DT,
+      row: { row_id: Alpha.row_id, updated_at: Alpha.updated_at, pop: 99999 },
     })
 
     const first = await admin.post<RevertRes>(REVERT, { run_id: runId })
@@ -297,10 +297,10 @@ describe('RVT-R6: whole-request permission refusal', () => {
   }) => {
     await setup(admin)
     const runId = await seedAndRun(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: DT, role: ROLE, can_read: true, can_write: true }, // no delete
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: DT, role: ROLE, can_read: true, can_write: true }, // no delete
     })
     const user = await createUser({ roles: [ROLE] })
     const before = await rowsByZone(admin)

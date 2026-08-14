@@ -28,7 +28,7 @@ test('NAM-001: build a Table with a naming series; rows are named from it', asyn
 
   await login(page)
   await page.goto('/admin/new-table')
-  await expect(page.getByTestId('doctype-builder')).toBeVisible()
+  await expect(page.getByTestId('table-builder')).toBeVisible()
 
   // Series is the default, and its prefix follows the Table name.
   await expect(page.getByTestId('dt-naming')).toHaveValue('series')
@@ -66,7 +66,7 @@ test('NAM-001: change an existing Table to a series from the list view', async (
   request,
 }) => {
   const auth = { Authorization: `Bearer ${await token(request)}` }
-  const created = await request.post('/api/doctype', {
+  const created = await request.post('/api/table_def', {
     headers: auth,
     data: { name: DT, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
@@ -74,7 +74,7 @@ test('NAM-001: change an existing Table to a series from the list view', async (
   expect([201, 409]).toContain(created.status())
 
   // Start from random ids, whatever earlier runs left behind.
-  await request.put(`/api/doctype/${encodeURIComponent(DT)}/id_pattern`, {
+  await request.put(`/api/table_def/${encodeURIComponent(DT)}/id_pattern`, {
     headers: auth,
     data: { id_pattern: 'hash' },
   })
@@ -96,7 +96,7 @@ test('NAM-001: change an existing Table to a series from the list view', async (
   expect(((await meta.json()) as { id_pattern: string }).id_pattern).toBe('EXISTING-.###')
 
   // A bad pattern is refused with the server's field-wise message.
-  const bad = await request.put(`/api/doctype/${encodeURIComponent(DT)}/id_pattern`, {
+  const bad = await request.put(`/api/table_def/${encodeURIComponent(DT)}/id_pattern`, {
     headers: auth,
     data: { id_pattern: 'EXISTING-' },
   })

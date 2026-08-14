@@ -10,7 +10,7 @@ import { runApiScript } from '../src/server-scripts'
 const DT = 'SS Srv Doc'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'amount', column_type: 'Int' },
@@ -22,14 +22,14 @@ async function setup(admin: TestClient) {
   })
 }
 
-async function makeScript(admin: TestClient, doc: Record<string, unknown>) {
-  await admin.post('/api/save_doc', { doctype: 'Server Script', doc })
+async function makeScript(admin: TestClient, row: Record<string, unknown>) {
+  await admin.post('/api/save_row', { table: 'Server Script', row })
 }
 
-function saveTarget(admin: TestClient, doc: Record<string, unknown>) {
-  return admin.fetch('/api/save_doc', {
+function saveTarget(admin: TestClient, row: Record<string, unknown>) {
+  return admin.fetch('/api/save_row', {
     method: 'POST',
-    body: JSON.stringify({ doctype: DT, doc }),
+    body: JSON.stringify({ table: DT, row }),
   })
 }
 
@@ -47,9 +47,9 @@ describe('CUST-004: server scripts', () => {
   test('can set a field (before_save event)', async ({ admin }) => {
     await setup(admin)
     await makeScript(admin, { row_id: 'ss-srv-set', script_type: 'Document Event', ref_table: DT, event: 'before_save', script: 'doc.size_label = doc.amount > 100 ? "big" : "small"', enabled: true })
-    const created = await admin.post<{ row_id: string }>('/api/save_doc', {
-      doctype: DT,
-      doc: { amount: 200 },
+    const created = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: DT,
+      row: { amount: 200 },
     })
     const [row] = await sql`select size_label from ss_srv_doc where row_id = ${created.row_id}`
     expect(row.size_label).toBe('big')

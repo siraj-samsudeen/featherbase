@@ -1,7 +1,7 @@
 import { sql } from '../db'
 import { registerJob } from '../jobs'
 import { getMeta } from '../meta'
-import { tableName } from '../doctype-engine'
+import { tableName } from '../table-engine'
 import { getActiveWorkflow, stateField } from '../workflow'
 import { queueEmail } from '../email'
 

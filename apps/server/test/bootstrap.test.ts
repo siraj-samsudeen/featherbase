@@ -35,7 +35,7 @@ describe('META-012: Table and Column are themselves Tables', () => {
 
   test('generic writes/deletes to Table/Column are refused', async ({ admin }) => {
     await expect(
-      admin.post('/api/save_doc', { doctype: 'Table', doc: { module: 'X' } }),
+      admin.post('/api/save_row', { table: 'Table', row: { module: 'X' } }),
     ).rejects.toMatchObject({ status: 417 })
     await expect(admin.delete('/api/table/Table/Column')).rejects.toMatchObject({
       status: 417,

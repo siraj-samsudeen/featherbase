@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { pgType } from '../src/doctype-engine'
+import { pgType } from '../src/table-engine'
 
 const DT = 'Engine Test Item'
 
@@ -37,7 +37,7 @@ describe('META-002: column_type -> Postgres column mapping', () => {
 
 describe('META-002: Table save validates column_types', () => {
   test('rejects an invalid column_type with a field-wise error', async ({ admin }) => {
-    const res = await admin.fetch('/api/doctype', {
+    const res = await admin.fetch('/api/table_def', {
       method: 'POST',
       body: JSON.stringify({
         name: 'Bad Type DT',
@@ -52,7 +52,7 @@ describe('META-002: Table save validates column_types', () => {
 
   test('rejects Choice/Reference/Sub-table columns without their target', async ({ admin }) => {
     await expect(
-      admin.post('/api/doctype', {
+      admin.post('/api/table_def', {
         name: 'Bad Options DT',
         columns: [{ column_name: 'stage', column_type: 'Reference' }],
       }),
@@ -64,7 +64,7 @@ describe('META-002: Table save validates column_types', () => {
 
   test('rejects reserved column names', async ({ admin }) => {
     await expect(
-      admin.post('/api/doctype', {
+      admin.post('/api/table_def', {
         name: 'Bad Reserved DT',
         columns: [{ column_name: 'created_by', column_type: 'Data' }],
       }),
@@ -79,7 +79,7 @@ describe('META-002: Table save validates column_types', () => {
         { column_name: 'stage', column_type: 'Choice', choices: 'Open\nClosed' },
       ],
     }
-    const res = await admin.fetch('/api/doctype', {
+    const res = await admin.fetch('/api/table_def', {
       method: 'POST',
       body: JSON.stringify(def),
     })
@@ -87,7 +87,7 @@ describe('META-002: Table save validates column_types', () => {
     const meta = await res.json()
     expect(meta.columns).toHaveLength(2)
 
-    const dup = await admin.fetch('/api/doctype', {
+    const dup = await admin.fetch('/api/table_def', {
       method: 'POST',
       body: JSON.stringify(def),
     })

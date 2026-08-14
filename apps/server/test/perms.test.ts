@@ -8,19 +8,19 @@ const ROLE = 'Perm Tester Role'
 // Each test builds its world inside its own rolled-back transaction: the
 // Table, the role, and one seeded row (as admin, for read tests).
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
   // seed one row as admin for read tests
-  await admin.post('/api/save_doc', { doctype: DT, doc: { title: 'seeded' } })
+  await admin.post('/api/save_row', { table: DT, row: { title: 'seeded' } })
 }
 
 async function grant(admin: TestClient, perms: Record<string, boolean>) {
-  const doc = await admin.post<{ row_id: string }>('/api/save_doc', {
-    doctype: 'Permission',
-    doc: { ref_table: DT, role: ROLE, ...perms },
+  const doc = await admin.post<{ row_id: string }>('/api/save_row', {
+    table: 'Permission',
+    row: { ref_table: DT, role: ROLE, ...perms },
   })
   return doc.row_id
 }
@@ -109,7 +109,7 @@ describe('PERM-002/003: Permission grants enforced server-side', () => {
   test('restricted users cannot create Tables', async ({ admin, createUser }) => {
     await setup(admin)
     const user = await createUser({ roles: [ROLE] })
-    const res = await user.fetch('/api/doctype', {
+    const res = await user.fetch('/api/table_def', {
       method: 'POST',
       body: JSON.stringify({ name: 'Hax DT', columns: [{ column_name: 'x', column_type: 'Data' }] }),
     })

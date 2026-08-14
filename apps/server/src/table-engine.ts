@@ -87,7 +87,7 @@ export const tableDefSchema = z.object({
   title_column: z.string().optional(),
   description: z.string().optional(),
   // #74: platform-table flag. Accepted here so migrations and seeds can set
-  // it through createTable; the public /api/doctype routes REJECT it — a
+  // it through createTable; the public /api/table_def routes REJECT it — a
   // user-created table can never claim system: true.
   system: z.boolean().optional(),
   // EDS-3: binding to an external Data Source. Set only at creation (BV3) —
@@ -126,7 +126,7 @@ export function validateIdPattern(pattern: string, columnNames: string[]): void 
 }
 
 // NAM-001: change only how new rows are named. Deliberately narrow — the full
-// PUT /api/doctype round-trip would have the client resend every column, and
+// PUT /api/table_def round-trip would have the client resend every column, and
 // an omission there silently rewrites the schema.
 export async function setIdPattern(name: string, pattern: string): Promise<TableMeta> {
   const meta = await getMeta(name)
@@ -423,7 +423,7 @@ export async function createTable(input: unknown): Promise<TableMeta> {
       })
   }
 
-  // EDS-3 (review finding 10): a binding written by hand (POST /api/doctype)
+  // EDS-3 (review finding 10): a binding written by hand (POST /api/table_def)
   // is checked against the live source — it must exist, be allowlisted, and
   // carry every mapped column — instead of persisting a Table that only
   // fails later at query time. Imported lazily: reflect.ts imports this

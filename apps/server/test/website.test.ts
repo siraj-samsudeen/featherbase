@@ -7,8 +7,8 @@ import type { TestClient } from 'feather-testing-postgres'
 // WEB-001: published Web Pages render publicly at /web/<route>; unpublished or
 // missing routes 404, and no session is required.
 
-async function makePage(admin: TestClient, doc: Record<string, unknown>) {
-  await admin.post('/api/save_doc', { doctype: 'Web Page', doc })
+async function makePage(admin: TestClient, row: Record<string, unknown>) {
+  await admin.post('/api/save_row', { table: 'Web Page', row })
 }
 
 // Each test creates its pages inside its own sandbox transaction.

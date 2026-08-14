@@ -1,7 +1,7 @@
 // EML-006 / UI-017: assignments. Assigning a document to a user creates a
 // ToDo (their task list) and notifies them.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'ToDo'`

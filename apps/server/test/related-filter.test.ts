@@ -12,7 +12,7 @@ const LINE = 'Rel Order Line'
 const ORDER = 'Rel Order'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: SUP,
     id_pattern: 'prompt',
     columns: [
@@ -21,12 +21,12 @@ async function setup(admin: TestClient) {
       { column_name: 'parent_sup', column_type: 'Reference', reference_table: SUP },
     ],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: PART,
     id_pattern: 'prompt',
     columns: [{ column_name: 'part_name', column_type: 'Data' }],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: LINE,
     kind: 'sub_table',
     columns: [
@@ -34,7 +34,7 @@ async function setup(admin: TestClient) {
       { column_name: 'qty', column_type: 'Int', default_value: '1' },
     ],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: ORDER,
     id_pattern: 'prompt',
     columns: [
@@ -47,20 +47,20 @@ async function setup(admin: TestClient) {
     ],
   })
   for (const [name, city] of [['S-A', 'Chennai'], ['S-B', 'Madurai']])
-    await admin.post('/api/save_doc', { doctype: SUP, doc: { row_id: name, city } })
+    await admin.post('/api/save_row', { table: SUP, row: { row_id: name, city } })
   for (const name of ['P-1', 'P-2'])
-    await admin.post('/api/save_doc', { doctype: PART, doc: { row_id: name, part_name: name } })
-  await admin.post('/api/save_doc', {
-    doctype: ORDER,
-    doc: { row_id: 'O-1', supplier: 'S-A', total: 100, lines: [{ part: 'P-1', qty: 2 }] },
+    await admin.post('/api/save_row', { table: PART, row: { row_id: name, part_name: name } })
+  await admin.post('/api/save_row', {
+    table: ORDER,
+    row: { row_id: 'O-1', supplier: 'S-A', total: 100, lines: [{ part: 'P-1', qty: 2 }] },
   })
-  await admin.post('/api/save_doc', {
-    doctype: ORDER,
-    doc: { row_id: 'O-2', supplier: 'S-A', total: 250, lines: [{ part: 'P-2' }] },
+  await admin.post('/api/save_row', {
+    table: ORDER,
+    row: { row_id: 'O-2', supplier: 'S-A', total: 250, lines: [{ part: 'P-2' }] },
   })
-  await admin.post('/api/save_doc', {
-    doctype: ORDER,
-    doc: { row_id: 'O-3', supplier: 'S-B', total: 40, lines: [{ part: 'P-1' }] },
+  await admin.post('/api/save_row', {
+    table: ORDER,
+    row: { row_id: 'O-3', supplier: 'S-B', total: 40, lines: [{ part: 'P-1' }] },
   })
 }
 
@@ -118,21 +118,21 @@ describe('NAV-002: related filters', () => {
   test('every hop applies the hopped table’s read scoping', async ({ admin, createUser }) => {
     await setup(admin)
     const ROLE = 'Rel Role'
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
     for (const dt of [ORDER, LINE])
-      await admin.post('/api/save_doc', {
-        doctype: 'Permission',
-        doc: { ref_table: dt, role: ROLE, can_read: true },
+      await admin.post('/api/save_row', {
+        table: 'Permission',
+        row: { ref_table: dt, role: ROLE, can_read: true },
       })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: SUP, role: ROLE, can_read: true },
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: SUP, role: ROLE, can_read: true },
     })
     const user = await createUser({ roles: [ROLE] })
     // Data Scope: user may only read supplier S-A
-    await admin.post('/api/save_doc', {
-      doctype: 'Data Scope',
-      doc: { user: user.user, allow_table: SUP, for_value: 'S-A' },
+    await admin.post('/api/save_row', {
+      table: 'Data Scope',
+      row: { user: user.user, allow_table: SUP, for_value: 'S-A' },
     })
     // "orders of ALL suppliers" through the relationship — S-B is invisible
     // to this user, so its order never surfaces through the hop
@@ -148,10 +148,10 @@ describe('NAV-002: related filters', () => {
   }) => {
     await setup(admin)
     const ROLE = 'Rel Narrow Role'
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: ORDER, role: ROLE, can_read: true },
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: ORDER, role: ROLE, can_read: true },
     })
     const user = await createUser({ roles: [ROLE] })
     await expect(
@@ -268,9 +268,9 @@ describe('NAV-002: related filters', () => {
   }) => {
     await setup(admin)
     // O-4 SELLS P-2 but only RETURNS P-1
-    await admin.post('/api/save_doc', {
-      doctype: ORDER,
-      doc: {
+    await admin.post('/api/save_row', {
+      table: ORDER,
+      row: {
         row_id: 'O-4',
         supplier: 'S-B',
         total: 10,

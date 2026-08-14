@@ -58,7 +58,7 @@ test('IMP-010: multi-sheet workbook — one sheet to a new Table, one mapped ont
   await deleteTableIfExists(request, token, NEW_DT)
 
   // Pre-create the existing target the renamed sheet must find.
-  const created = await request.post('/api/doctype', {
+  const created = await request.post('/api/table_def', {
     headers,
     data: {
       name: EXISTING_DT,

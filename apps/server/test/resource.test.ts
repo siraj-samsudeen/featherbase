@@ -5,7 +5,7 @@ import type { TestClient } from 'feather-testing-postgres'
 const DT = 'Rest Project'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data', reqd: true },
@@ -65,7 +65,7 @@ describe('API-001/API-002: generic REST resource', () => {
     ).toBe(404)
   })
 
-  test('404s on unknown doctype for every verb', async ({ admin }) => {
+  test('404s on unknown table for every verb', async ({ admin }) => {
     await setup(admin)
     expect((await admin.fetch('/api/table/Nope')).status).toBe(404)
     expect((await admin.fetch('/api/table/Nope/x')).status).toBe(404)

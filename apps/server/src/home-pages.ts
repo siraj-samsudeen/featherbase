@@ -7,7 +7,7 @@
 //     visibility and link permission-filtering are computed here, server-side,
 //     so the Admin UI stays generic (architecture invariant #3).
 //  2. ensureHomePageForTable(table, module) — auto-membership. Called from
-//     POST /api/doctype and from app installs so a table a user builds NEVER
+//     POST /api/table_def and from app installs so a table a user builds NEVER
 //     vanishes from navigation: its module's home page is created on demand
 //     and the table's link appended. Deliberately NOT called inside
 //     createTable itself — mid-chain migrations (0037–0057) create engine
@@ -25,7 +25,7 @@ import { getRoles, permissionScope } from './permissions'
 // Legacy UI-027 shortcut shape, kept working: [{ label, type, link_to }].
 export interface HomePageShortcut {
   label: string
-  type?: string // doctype | report | dashboard | url
+  type?: string // table | report | dashboard | url
   link_to: string
 }
 
@@ -165,7 +165,7 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
     for (const l of list) if (l.link_to) targets.add(l.link_to)
   for (const p of pages)
     for (const s of parseShortcuts(p.shortcuts))
-      if (!s.type || s.type === 'doctype') targets.add(s.link_to)
+      if (!s.type || s.type === 'table') targets.add(s.link_to)
   const existing = new Set<string>()
   if (targets.size > 0) {
     const rows = await sql`
@@ -215,7 +215,7 @@ export async function getVisibleHomePages(user: string): Promise<VisibleHomePage
     // filter, report/dashboard/url shortcuts pass through untouched.
     const shortcuts: HomePageShortcut[] = []
     for (const s of parseShortcuts(p.shortcuts)) {
-      if (!s.type || s.type === 'doctype') {
+      if (!s.type || s.type === 'table') {
         if (!(await canRead(s.link_to))) continue
       }
       shortcuts.push(s)

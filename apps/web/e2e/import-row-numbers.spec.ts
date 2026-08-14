@@ -48,7 +48,7 @@ test('#115: a blank row does not shift the blame — failures name the TRUE Exce
   await deleteTableIfExists(request, token, DT)
 
   // Pre-create the target so the sheet auto-matches onto an existing Table.
-  const created = await request.post('/api/doctype', {
+  const created = await request.post('/api/table_def', {
     headers,
     data: {
       name: DT,
@@ -92,6 +92,6 @@ test('#115: a blank row does not shift the blame — failures name the TRUE Exce
   await expect(page.getByTestId('iw-preview-row-0-2')).toContainText('a')
 
   // Teardown — self-cleaning via table deletion (spec 0003).
-  const del = await request.delete(`/api/doctype/${encodeURIComponent(DT)}`, { headers })
+  const del = await request.delete(`/api/table_def/${encodeURIComponent(DT)}`, { headers })
   expect(del.status()).toBe(200)
 })

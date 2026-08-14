@@ -106,14 +106,14 @@ function PeekPanel({
     onClose()
     if (frame.kind === 'record')
       navigate({
-        to: '/admin/$doctype/$name',
-        params: { doctype: frame.table, name: frame.name },
+        to: '/admin/$table/$name',
+        params: { table: frame.table, name: frame.name },
         search: { prefill: undefined },
       })
     else
       navigate({
-        to: '/admin/$doctype',
-        params: { doctype: frame.table },
+        to: '/admin/$table',
+        params: { table: frame.table },
         search: { filters: frame.filters.length ? JSON.stringify(frame.filters) : undefined },
       })
   }

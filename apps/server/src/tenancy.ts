@@ -93,7 +93,7 @@ function tableFor(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
 }
 
-export async function siteCreateDoctype(
+export async function siteCreateTableDef(
   site: string,
   name: string,
   columns: { column_name: string; column_type: string }[],
@@ -110,7 +110,7 @@ export async function siteCreateDoctype(
   return { name }
 }
 
-export async function siteListDoctypes(site: string): Promise<string[]> {
+export async function siteListTableDefs(site: string): Promise<string[]> {
   const c = siteClient(site)
   const rows = await c`select name from table_def order by name`
   return rows.map((r) => r.name as string)

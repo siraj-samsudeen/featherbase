@@ -1,7 +1,7 @@
 // PLAT-006: record which social provider (if any) a User authenticated with,
 // so an OAuth-created/linked account is identifiable. Idempotent.
 import { sql } from '../src/db'
-import { pgType } from '../src/doctype-engine'
+import { pgType } from '../src/table-engine'
 
 export async function up() {
   const [u] = await sql`select 1 from table_def where name = 'User'`

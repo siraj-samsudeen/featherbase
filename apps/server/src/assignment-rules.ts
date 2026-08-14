@@ -1,5 +1,5 @@
 import { sql } from './db'
-import { tableName } from './doctype-engine'
+import { tableName } from './table-engine'
 import { getMeta } from './meta'
 import { createAssignment } from './assign'
 import { evalCondition } from './server-scripts'

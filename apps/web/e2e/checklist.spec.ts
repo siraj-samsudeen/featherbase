@@ -40,11 +40,11 @@ test.beforeAll(async ({ request }) => {
   const template = ((await templates.json()) as { data: { row_id: string }[] }).data[0]?.row_id
   if (!template) throw new Error('no checklist template — the fixture should have installed one')
   const seed = async (section: string) => {
-    const r = await request.post('/api/save_doc', {
+    const r = await request.post('/api/save_row', {
       headers: H,
       data: {
-        doctype: 'Checklist Run',
-        doc: { template, store: 'ATK', section, team_leader: 'E2E TL' },
+        table: 'Checklist Run',
+        row: { template, store: 'ATK', section, team_leader: 'E2E TL' },
       },
     })
     if (r.status() !== 201) throw new Error(`seed run: ${r.status()} ${await r.text()}`)

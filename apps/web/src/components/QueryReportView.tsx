@@ -8,7 +8,7 @@ import { api, ApiError } from '../lib/api'
 
 interface QueryReportMeta {
   row_id: string
-  ref_doctype: string | null // wire key unchanged: GET /api/query_report/:name still returns `ref_doctype`
+  ref_table: string | null // GET /api/query_report/:name returns `ref_table`
   filters: string[]
 }
 interface RunResult {

@@ -39,9 +39,9 @@ test('discovery reaches a checklist in the third Sub-table, past two near-misses
     subTable('Third Sub Approval', [dataCol('approver'), checkCol('mandatory')]),
     subTable('Third Sub Step', [dataCol('item_label'), checkCol('done')]),
   ])
-    await admin.post('/api/doctype', child)
+    await admin.post('/api/table_def', child)
 
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: 'Third Sub Parent',
     module: 'Custom',
     title_column: 'run_title',
@@ -53,9 +53,9 @@ test('discovery reaches a checklist in the third Sub-table, past two near-misses
     ],
   })
 
-  const run = await admin.post<{ row_id: string }>('/api/save_doc', {
-    doctype: 'Third Sub Parent',
-    doc: {
+  const run = await admin.post<{ row_id: string }>('/api/save_row', {
+    table: 'Third Sub Parent',
+    row: {
       run_title: 'Runs from the third sub-table',
       approvals: [{ approver: 'not a checklist item' }],
       steps: [{ item_label: 'Unlock the shutter' }],

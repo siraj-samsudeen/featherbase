@@ -36,8 +36,8 @@ test('IMP-006: drop a CSV; inferred schema prefills the builder; create imports 
   await deleteTableIfExists(request, token, CSV_DT)
 
   await login(page)
-  await page.getByTestId('new-doctype-link').click()
-  await expect(page.getByTestId('doctype-builder')).toBeVisible()
+  await page.getByTestId('new-table-link').click()
+  await expect(page.getByTestId('table-builder')).toBeVisible()
 
   // A real drag-and-drop onto the dropzone (DataTransfer built in-page).
   const dataTransfer = await page.evaluateHandle((csv) => {
@@ -107,7 +107,7 @@ test('IMP-006: a real .xlsx imports the same way (via the file picker)', async (
   const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
 
   await login(page)
-  await page.getByTestId('new-doctype-link').click()
+  await page.getByTestId('new-table-link').click()
   await page.getByTestId('dt-file-input').setInputFiles({
     name: 'import inventory.xlsx',
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -133,7 +133,7 @@ test('IMP-006: a real .xlsx imports the same way (via the file picker)', async (
 
 test('IMP-006: a non-tabular file is refused with a message', async ({ page }) => {
   await login(page)
-  await page.getByTestId('new-doctype-link').click()
+  await page.getByTestId('new-table-link').click()
   await page.getByTestId('dt-file-input').setInputFiles({
     name: 'notes.txt',
     mimeType: 'text/plain',

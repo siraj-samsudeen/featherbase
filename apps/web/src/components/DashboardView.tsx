@@ -7,14 +7,14 @@ import { api, ApiError } from '../lib/api'
 type Filter = [string, string, unknown]
 interface CardCfg {
   label: string
-  doctype: string
+  table: string
   filters?: Filter[]
 }
 interface ChartCfg {
   label: string
   // A chart is driven EITHER by a Table + group_by (UI-026) OR by a saved
   // Report (RPT-006). Report-driven charts recompute from live report data.
-  doctype?: string
+  table?: string
   group_by?: string
   filters?: Filter[]
   report?: string
@@ -28,10 +28,10 @@ interface DashboardConfig {
 
 function NumberCard({ card }: { card: CardCfg }) {
   const q = useQuery({
-    queryKey: ['dash-count', card.doctype, card.filters, card.label],
+    queryKey: ['dash-count', card.table, card.filters, card.label],
     queryFn: () =>
       api.post<{ count: number }>('/api/dashboard/count', {
-        doctype: card.doctype,
+        table: card.table,
         filters: card.filters ?? [],
       }),
   })
@@ -47,7 +47,7 @@ function NumberCard({ card }: { card: CardCfg }) {
 
 function BarChart({ chart }: { chart: ChartCfg }) {
   const q = useQuery({
-    queryKey: ['dash-chart', chart.report, chart.doctype, chart.group_by, chart.label_field, chart.value_field, chart.filters, chart.label],
+    queryKey: ['dash-chart', chart.report, chart.table, chart.group_by, chart.label_field, chart.value_field, chart.filters, chart.label],
     queryFn: () =>
       chart.report
         ? api.post<{ data: { label: string; value: number }[] }>('/api/report_chart', {
@@ -57,7 +57,7 @@ function BarChart({ chart }: { chart: ChartCfg }) {
             group_by: chart.group_by,
           })
         : api.post<{ data: { label: string; value: number }[] }>('/api/dashboard/chart', {
-            doctype: chart.doctype,
+            table: chart.table,
             group_by: chart.group_by,
             filters: chart.filters ?? [],
           }),

@@ -26,7 +26,7 @@ import { clearControllers, registerController, runHooks } from '../src/controlle
 // role, and assignment defaults.
 
 async function makeDT(admin: TestClient, name: string) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name,
     columns: [
       { column_name: 'title', column_type: 'Data' },
@@ -40,7 +40,7 @@ async function makeDT(admin: TestClient, name: string) {
 }
 
 describe('app registry: install lifecycle', () => {
-  test('install/list/uninstall round-trip, including app-owned doctypes', async () => {
+  test('install/list/uninstall round-trip, including app-owned table_defs', async () => {
     const APP = `cov-app-${Date.now()}`
     const DT = `Cov App Note ${Date.now() % 100000}`
     registerApp({
@@ -83,13 +83,13 @@ describe('app registry: install lifecycle', () => {
 })
 
 describe('controllers: registry edges', () => {
-  test('clearControllers removes every controller for a doctype', async ({ admin }) => {
+  test('clearControllers removes every controller for a table', async ({ admin }) => {
     const DT = 'Cov Clear Note'
     await makeDT(admin, DT)
     const seen: string[] = []
     registerController({ table: DT, hooks: { validate: () => void seen.push('v') } })
     await runHooks('validate', {
-      doc: {},
+      row: {},
       meta: await getMeta(DT),
       user: 'Administrator',
       isNew: true,
@@ -98,7 +98,7 @@ describe('controllers: registry edges', () => {
     expect(seen).toEqual(['v'])
     clearControllers(DT)
     await runHooks('validate', {
-      doc: {},
+      row: {},
       meta: await getMeta(DT),
       user: 'Administrator',
       isNew: true,
@@ -127,15 +127,15 @@ describe('workflow: definition validation edges', () => {
     const DT = 'Cov WfDef Note'
     await makeDT(admin, DT)
     await expect(
-      admin.post('/api/save_doc', {
-        doctype: 'Workflow',
-        doc: { row_id: 'Cov Empty Flow', ref_table: DT, is_active: false, states: [], transitions: [] },
+      admin.post('/api/save_row', {
+        table: 'Workflow',
+        row: { row_id: 'Cov Empty Flow', ref_table: DT, is_active: false, states: [], transitions: [] },
       }),
     ).rejects.toMatchObject({ status: 417 })
     await expect(
-      admin.post('/api/save_doc', {
-        doctype: 'Workflow',
-        doc: {
+      admin.post('/api/save_row', {
+        table: 'Workflow',
+        row: {
           row_id: 'Cov From Ghost Flow',
           ref_table: DT,
           is_active: false,
@@ -153,9 +153,9 @@ describe('workflow: initDocState backfill', () => {
     await makeDT(admin, DT)
     const doc = await saveDoc(DT, { title: 'pre-workflow' }, 'Administrator')
     await sql`update cov_init_note set note_status = null where row_id = ${String(doc.row_id)}`
-    await admin.post('/api/save_doc', {
-      doctype: 'Workflow',
-      doc: {
+    await admin.post('/api/save_row', {
+      table: 'Workflow',
+      row: {
         row_id: 'Cov Init Flow',
         ref_table: DT,
         is_active: true,
@@ -179,9 +179,9 @@ describe('web form: field whitelist parsing', () => {
   }) => {
     const DT = 'Cov Webform Note'
     await makeDT(admin, DT)
-    await admin.post('/api/save_doc', {
-      doctype: 'Web Form',
-      doc: {
+    await admin.post('/api/save_row', {
+      table: 'Web Form',
+      row: {
         row_id: 'Cov WF Broken',
         title: 'Broken',
         route: 'cov-broken',
@@ -192,9 +192,9 @@ describe('web form: field whitelist parsing', () => {
     })
     expect((await getWebFormConfig('cov-broken')).columns).toEqual([])
 
-    await admin.post('/api/save_doc', {
-      doctype: 'Web Form',
-      doc: {
+    await admin.post('/api/save_row', {
+      table: 'Web Form',
+      row: {
         row_id: 'Cov WF Array',
         title: 'Array',
         route: 'cov-array',
@@ -206,9 +206,9 @@ describe('web form: field whitelist parsing', () => {
     const config = await getWebFormConfig('cov-array')
     expect(config.columns.map((f) => f.column_name)).toEqual(['title'])
 
-    await admin.post('/api/save_doc', {
-      doctype: 'Web Form',
-      doc: {
+    await admin.post('/api/save_row', {
+      table: 'Web Form',
+      row: {
         row_id: 'Cov WF Nofields',
         title: 'Nofields',
         route: 'cov-nofields',

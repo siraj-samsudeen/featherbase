@@ -17,22 +17,22 @@ const FLOW = 'Wf Notify Flow'
 // approver user (via the createUser fixture — its minted token replaces the
 // legacy password login), and workflow. Returns the approver's client.
 async function setup(admin: TestClient, createUser: CreateUserFn): Promise<TestClient> {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: APPROVER_ROLE } })
-  await admin.post('/api/save_doc', {
-    doctype: 'Permission',
-    doc: { ref_table: DT, role: APPROVER_ROLE, tier: 'basic', can_read: true, can_write: true },
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: APPROVER_ROLE } })
+  await admin.post('/api/save_row', {
+    table: 'Permission',
+    row: { ref_table: DT, role: APPROVER_ROLE, tier: 'basic', can_read: true, can_write: true },
   })
   const approver = await createUser({ email: APPROVER, roles: [APPROVER_ROLE] })
 
   // Draft --Submit(anyone)--> Pending --Approve(Approver)--> Approved.
-  await admin.post('/api/save_doc', {
-    doctype: 'Workflow',
-    doc: {
+  await admin.post('/api/save_row', {
+    table: 'Workflow',
+    row: {
       row_id: FLOW,
       ref_table: DT,
       is_active: true,

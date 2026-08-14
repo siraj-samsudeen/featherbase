@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { sql } from './db'
 import { AppError } from './errors'
-import { createTable, tableName } from './doctype-engine'
+import { createTable, tableName } from './table-engine'
 import { ensureHomePageForTable } from './home-pages'
 import { invalidateMeta, physicalRowKey } from './meta'
 import { saveDoc, deleteDoc } from './document'
@@ -404,7 +404,7 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
   for (const def of manifest.tables ?? []) {
     // App tables are user-space: they group under the app's own module in the
     // sidebar. `system` marks tables created by the migration chain and is
-    // rejected on POST /api/doctype — an app manifest gets the same refusal,
+    // rejected on POST /api/table_def — an app manifest gets the same refusal,
     // not a silent bypass.
     if ((def as { system?: unknown })?.system === true)
       throw new AppError(

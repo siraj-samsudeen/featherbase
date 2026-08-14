@@ -78,11 +78,11 @@ export function isSourceReadOnly(meta: TableMeta | undefined): boolean {
   return meta.source_writable !== true
 }
 
-export function useMeta(doctype: string, enabled = true) {
+export function useMeta(table: string, enabled = true) {
   return useQuery({
-    queryKey: ['meta', doctype],
-    enabled: enabled && Boolean(doctype),
-    queryFn: () => api.get<TableMeta>(`/api/table/${encodeURIComponent(doctype)}:meta`),
+    queryKey: ['meta', table],
+    enabled: enabled && Boolean(table),
+    queryFn: () => api.get<TableMeta>(`/api/table/${encodeURIComponent(table)}:meta`),
     staleTime: 60_000,
   })
 }

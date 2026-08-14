@@ -13,7 +13,7 @@ const DT = 'WF Srv Msg'
 // Each test builds the Table + both web forms inside its own sandbox
 // transaction.
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'full_name', column_type: 'Data', reqd: true },
@@ -25,9 +25,9 @@ async function setup(admin: TestClient) {
     ['wf-srv-pg', 'wf-srv', true],
     ['wf-srv-draft-pg', 'wf-srv-draft', false],
   ] as const) {
-    await admin.post('/api/save_doc', {
-      doctype: 'Web Form',
-      doc: {
+    await admin.post('/api/save_row', {
+      table: 'Web Form',
+      row: {
         row_id: name,
         title: 'Contact',
         route,

@@ -18,7 +18,7 @@ import { ROW_KEY, getMeta, physicalRowKey } from '../meta'
 import { assertDocPermission, permissionScope } from '../permissions'
 import { registerCollectionAction } from '../actions'
 import { sql } from '../db'
-import { tableName } from '../doctype-engine'
+import { tableName } from '../table-engine'
 import type { TouchedRow } from './collection-import'
 
 type SkipReason =

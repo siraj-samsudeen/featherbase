@@ -10,8 +10,8 @@ import { _getRootSql } from '../src/db'
 // sandbox isolation the second test would collide with the first's leftovers.
 const DT = 'Sandbox Probe'
 
-async function createProbeDoctype(admin: { post: (p: string, b?: unknown) => Promise<unknown> }) {
-  await admin.post('/api/doctype', {
+async function createProbeTable(admin: { post: (p: string, b?: unknown) => Promise<unknown> }) {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'title', label: 'Title', column_type: 'Data', reqd: true, in_list_view: true },
@@ -25,7 +25,7 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
     admin,
     seed,
   }) => {
-    await createProbeDoctype(admin)
+    await createProbeTable(admin)
     const doc = await seed(DT, { title: 'first', qty: 3 })
     expect(doc.row_id).toBeTruthy()
     const listed = await admin.get<{ data: { row_id: string }[] }>(
@@ -38,7 +38,7 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
     admin,
     seed,
   }) => {
-    await createProbeDoctype(admin)
+    await createProbeTable(admin)
     const doc = await seed(DT, { title: 'first', qty: 3 })
     expect(doc.row_id).toBeTruthy()
     const listed = await admin.get<{ data: { row_id: string }[] }>(
@@ -51,7 +51,7 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
     admin,
     seed,
   }) => {
-    await createProbeDoctype(admin)
+    await createProbeTable(admin)
     // Missing required title → the app's save transaction (a savepoint under
     // the sandbox) rolls back cleanly...
     await expect(seed(DT, { qty: 1 })).rejects.toMatchObject({ status: 417 })

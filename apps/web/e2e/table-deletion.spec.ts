@@ -29,7 +29,7 @@ test('DEL-J1: delete an unwanted Table — counted confirmation, then gone every
 
   // The residue an import leaves: the Table, rows through the import
   // contract, and the Import Log entry J1.5 checks for afterwards.
-  const created = await request.post('/api/doctype', {
+  const created = await request.post('/api/table_def', {
     headers,
     data: { name: DT, columns: [{ column_name: 'zone_name', column_type: 'Data' }] },
   })
@@ -85,8 +85,8 @@ test('DEL-J1: delete an unwanted Table — counted confirmation, then gone every
     .assertPath('/admin/all-tables')
     .assertHas('[data-testid="all-tables-page"]')
   await session.step('J1.3: the Table is gone from every module group', async ({ page }: { page: Page }) => {
-    await expect(page.getByTestId('doctype-nav')).toBeVisible()
-    await expect(page.getByTestId('doctype-nav').getByText(DT)).toHaveCount(0)
+    await expect(page.getByTestId('table-nav')).toBeVisible()
+    await expect(page.getByTestId('table-nav').getByText(DT)).toHaveCount(0)
   })
 
   // J1.4 — the direct URL answers with the tombstone (DEL-R9), never a
@@ -121,7 +121,7 @@ test('DEL-J2: refused while referenced — the refusal names the blocker; unbloc
     [DT, [{ column_name: 'zone_name', column_type: 'Data' }]],
     [REF, [{ column_name: 'zone', column_type: 'Reference', reference_table: DT }]],
   ] as const) {
-    const res = await request.post('/api/doctype', { headers, data: { name, columns } })
+    const res = await request.post('/api/table_def', { headers, data: { name, columns } })
     expect(res.status()).toBe(201)
   }
 
@@ -139,7 +139,7 @@ test('DEL-J2: refused while referenced — the refusal names the blocker; unbloc
   expect((await request.get(`/api/table/${ENC}:meta`, { headers })).status()).toBe(200)
 
   // J2.3′ — remove the blocker, retry: deletion now goes through as J1.3
-  const unblock = await request.delete(`/api/doctype/${encodeURIComponent(REF)}`, { headers })
+  const unblock = await request.delete(`/api/table_def/${encodeURIComponent(REF)}`, { headers })
   expect(unblock.status()).toBe(200)
   await session.step('J2.3′: retry the confirmation', async ({ page }: { page: Page }) => {
     await page.getByTestId('delete-table-confirm').click()

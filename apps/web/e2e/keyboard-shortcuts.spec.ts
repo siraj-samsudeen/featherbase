@@ -12,11 +12,11 @@ let docName: string
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { title: 'orig' } })
   docName = ((await doc.json()) as { row_id: string }).row_id
 })
@@ -39,7 +39,7 @@ test('UI-015: Ctrl+S saves the form', async ({ page }) => {
   await expect(page.getByTestId('form-banner')).toContainText('Saved')
 })
 
-// UI-015: Ctrl/Cmd+B opens a new document of the current DocType.
+// UI-015: Ctrl/Cmd+B opens a new document of the current Table.
 test('UI-015: Ctrl+B opens a new document', async ({ page }) => {
   await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}`)

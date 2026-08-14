@@ -19,7 +19,7 @@ const ROWS: [string, number][] = [
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: {
       name: DT,
@@ -29,7 +29,7 @@ test.beforeAll(async ({ request }) => {
       ],
     },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   const existing = (await (
     await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=500`, { headers })
   ).json()) as { data: { row_id: string }[] }
@@ -37,21 +37,21 @@ test.beforeAll(async ({ request }) => {
   for (const [region, amount] of ROWS)
     await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { region, amount } })
 
-  // A saved Report Builder report over the DocType.
+  // A saved Report Builder report over the Table.
   await request.delete(`/api/table/Report/${encodeURIComponent(REPORT)}`, { headers })
-  await request.post('/api/save_doc', {
+  await request.post('/api/save_row', {
     headers,
     data: {
-      doctype: 'Report',
-      doc: { row_id: REPORT, ref_table: DT, report_type: 'Report Builder', config: { columns: ['region', 'amount'], filters: [] } },
+      table: 'Report',
+      row: { row_id: REPORT, ref_table: DT, report_type: 'Report Builder', config: { columns: ['region', 'amount'], filters: [] } },
     },
   })
 
   // An empty dashboard to pin onto.
   await request.delete(`/api/table/Dashboard/${encodeURIComponent(DASH)}`, { headers })
-  await request.post('/api/save_doc', {
+  await request.post('/api/save_row', {
     headers,
-    data: { doctype: 'Dashboard', doc: { row_id: DASH, label: 'RC Board', config: { cards: [], charts: [] } } },
+    data: { table: 'Dashboard', row: { row_id: DASH, label: 'RC Board', config: { cards: [], charts: [] } } },
   })
 })
 

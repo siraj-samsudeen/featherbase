@@ -54,8 +54,8 @@ importers:
         specifier: ^4.9.0
         version: 4.9.0
       feather-testing-postgres:
-        specifier: github:siraj-samsudeen/feather-testing-postgres#310ad8ef0e4a5bd655e2d330df24812cc1d5bcef
-        version: https://codeload.github.com/siraj-samsudeen/feather-testing-postgres/tar.gz/310ad8ef0e4a5bd655e2d330df24812cc1d5bcef(@tanstack/react-query@5.101.2(react@19.2.7))(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@testing-library/dom@10.4.1)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@testing-library/user-event@14.6.1(@testing-library/dom@10.4.1))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@3.2.7(@types/node@26.1.1)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.23.1))
+        specifier: github:siraj-samsudeen/feather-testing-postgres#59b7b84
+        version: https://codeload.github.com/siraj-samsudeen/feather-testing-postgres/tar.gz/59b7b840d338e2d4b7cc6e3e4ab438f451de4240(@tanstack/react-query@5.101.2(react@19.2.7))(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@testing-library/dom@10.4.1)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@testing-library/user-event@14.6.1(@testing-library/dom@10.4.1))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@3.2.7(@types/node@26.1.1)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.23.1))
       pdf-parse:
         specifier: ^2.4.5
         version: 2.4.5
@@ -124,8 +124,8 @@ importers:
         specifier: ^0.2.0
         version: 0.2.0(@playwright/test@1.61.1)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@testing-library/user-event@14.6.1(@testing-library/dom@10.4.1))
       feather-testing-postgres:
-        specifier: github:siraj-samsudeen/feather-testing-postgres#310ad8ef0e4a5bd655e2d330df24812cc1d5bcef
-        version: https://codeload.github.com/siraj-samsudeen/feather-testing-postgres/tar.gz/310ad8ef0e4a5bd655e2d330df24812cc1d5bcef(@tanstack/react-query@5.101.2(react@19.2.7))(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@testing-library/dom@10.4.1)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@testing-library/user-event@14.6.1(@testing-library/dom@10.4.1))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@3.2.7(@types/node@26.1.1)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.23.1))
+        specifier: github:siraj-samsudeen/feather-testing-postgres#59b7b84
+        version: https://codeload.github.com/siraj-samsudeen/feather-testing-postgres/tar.gz/59b7b840d338e2d4b7cc6e3e4ab438f451de4240(@tanstack/react-query@5.101.2(react@19.2.7))(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@testing-library/dom@10.4.1)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@testing-library/user-event@14.6.1(@testing-library/dom@10.4.1))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@3.2.7(@types/node@26.1.1)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.23.1))
       jsdom:
         specifier: ^26.0.0
         version: 26.1.0
@@ -1362,8 +1362,8 @@ packages:
       '@testing-library/user-event':
         optional: true
 
-  feather-testing-postgres@https://codeload.github.com/siraj-samsudeen/feather-testing-postgres/tar.gz/310ad8ef0e4a5bd655e2d330df24812cc1d5bcef:
-    resolution: {tarball: https://codeload.github.com/siraj-samsudeen/feather-testing-postgres/tar.gz/310ad8ef0e4a5bd655e2d330df24812cc1d5bcef}
+  feather-testing-postgres@https://codeload.github.com/siraj-samsudeen/feather-testing-postgres/tar.gz/59b7b840d338e2d4b7cc6e3e4ab438f451de4240:
+    resolution: {tarball: https://codeload.github.com/siraj-samsudeen/feather-testing-postgres/tar.gz/59b7b840d338e2d4b7cc6e3e4ab438f451de4240}
     version: 0.1.0
     peerDependencies:
       '@tanstack/react-query': '>=5'
@@ -3067,7 +3067,7 @@ snapshots:
       '@testing-library/react': 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@testing-library/user-event': 14.6.1(@testing-library/dom@10.4.1)
 
-  feather-testing-postgres@https://codeload.github.com/siraj-samsudeen/feather-testing-postgres/tar.gz/310ad8ef0e4a5bd655e2d330df24812cc1d5bcef(@tanstack/react-query@5.101.2(react@19.2.7))(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@testing-library/dom@10.4.1)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@testing-library/user-event@14.6.1(@testing-library/dom@10.4.1))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@3.2.7(@types/node@26.1.1)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.23.1)):
+  feather-testing-postgres@https://codeload.github.com/siraj-samsudeen/feather-testing-postgres/tar.gz/59b7b840d338e2d4b7cc6e3e4ab438f451de4240(@tanstack/react-query@5.101.2(react@19.2.7))(@tanstack/react-router@1.170.18(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@testing-library/dom@10.4.1)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(@testing-library/user-event@14.6.1(@testing-library/dom@10.4.1))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(vitest@3.2.7(@types/node@26.1.1)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.23.1)):
     dependencies:
       vitest: 3.2.7(@types/node@26.1.1)(jiti@2.7.0)(jsdom@26.1.0)(lightningcss@1.32.0)(tsx@4.23.1)
     optionalDependencies:

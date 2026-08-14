@@ -12,13 +12,13 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const token = ((await login.json()) as { token: string }).token
   const auth = { Authorization: `Bearer ${token}` }
-  // Re-runs find the user already there — save_doc would then demand the
+  // Re-runs find the user already there — save_row would then demand the
   // optimistic-concurrency timestamp, so create only when missing.
   const exists = await request.get(`/api/table/User/${encodeURIComponent(USER)}`, { headers: auth })
   if (exists.status() === 404) {
-    const created = await request.post('/api/save_doc', {
+    const created = await request.post('/api/save_row', {
       headers: auth,
-      data: { doctype: 'User', doc: { row_id: USER, email: USER, full_name: 'Routine E2E', enabled: true } },
+      data: { table: 'User', row: { row_id: USER, email: USER, full_name: 'Routine E2E', enabled: true } },
     })
     if (created.status() !== 201) throw new Error(`user: ${created.status()}`)
   }

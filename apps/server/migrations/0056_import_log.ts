@@ -3,7 +3,7 @@
 // "what did that import just create?" is answerable from the Desk instead of
 // archaeology over created_at timestamps.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   // #74: createTable now writes table_def.system on insert. Fresh installs

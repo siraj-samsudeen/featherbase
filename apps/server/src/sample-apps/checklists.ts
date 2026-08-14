@@ -11,7 +11,7 @@
 // demo runs live in scripts/seed-checklists.ts.
 import type { AppManifest } from '../apps'
 import type { HookContext } from '../controllers'
-import { tableName } from '../doctype-engine'
+import { tableName } from '../table-engine'
 import { AppError } from '../errors'
 
 type ItemRow = Record<string, unknown>

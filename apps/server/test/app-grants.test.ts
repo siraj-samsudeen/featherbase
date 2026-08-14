@@ -54,7 +54,7 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
         where ref_table = ${DT} and role = ${ROLE} and tier = 'basic'`
       expect(perm).toMatchObject({ can_read: true, can_write: true, can_create: true, can_delete: false })
 
-      // A user holding only the app's role can insert and read its DocType…
+      // A user holding only the app's role can insert and read its Table…
       const user = await createUser({ roles: [ROLE] })
       const ins = await user.fetch(`/api/table/${encodeURIComponent(DT)}`, {
         method: 'POST',
@@ -76,7 +76,7 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
     }
   })
 
-  test('a grant may target a DocType the app does not own', async ({ createUser }) => {
+  test('a grant may target a Table the app does not own', async ({ createUser }) => {
     registerApp(
       manifest({
         permissions: [
@@ -99,10 +99,10 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
   }) => {
     // The role and a grant with the same identity exist BEFORE the install,
     // with flags the manifest disagrees with.
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
-    const pre = await admin.post<{ row_id: string }>('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: 'ToDo', role: ROLE, can_read: true },
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    const pre = await admin.post<{ row_id: string }>('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: 'ToDo', role: ROLE, can_read: true },
     })
     registerApp(
       manifest({

@@ -9,12 +9,12 @@ const ROW = 'Va Line'
 // Each test creates the Tables inside its own rolled-back transaction — the
 // naming series increments roll back with it.
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: ROW,
     kind: 'sub_table',
     columns: [{ column_name: 'item', column_type: 'Data' }],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     is_submittable: true,
     id_pattern: 'VAINV-.####',
@@ -31,14 +31,14 @@ describe('DOC-009: version history', () => {
     admin,
   }) => {
     await setup(admin)
-    const doc = await admin.post<Record<string, unknown>>('/api/save_doc', {
-      doctype: DT,
-      doc: { title: 'v1', amount: 10 },
+    const doc = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: DT,
+      row: { title: 'v1', amount: 10 },
     })
 
-    await admin.post('/api/save_doc', {
-      doctype: DT,
-      doc: { row_id: doc.row_id, updated_at: doc.updated_at, title: 'v2', amount: 25 },
+    await admin.post('/api/save_row', {
+      table: DT,
+      row: { row_id: doc.row_id, updated_at: doc.updated_at, title: 'v2', amount: 25 },
     })
     const versions = await sql`
       select data from version where ref_table = ${DT} and ref_name = ${String(doc.row_id)}
@@ -55,9 +55,9 @@ describe('DOC-009: version history', () => {
     const fresh = await admin.get<Record<string, unknown>>(
       `/api/table/${encodeURIComponent(DT)}/${doc.row_id}`,
     )
-    await admin.post('/api/save_doc', {
-      doctype: DT,
-      doc: { row_id: doc.row_id, updated_at: fresh.updated_at, title: 'v3' },
+    await admin.post('/api/save_row', {
+      table: DT,
+      row: { row_id: doc.row_id, updated_at: fresh.updated_at, title: 'v3' },
     })
     const after = await sql`
       select 1 from version where ref_table = ${DT} and ref_name = ${String(doc.row_id)}`
@@ -66,13 +66,13 @@ describe('DOC-009: version history', () => {
 
   test('a no-op save records no version', async ({ admin }) => {
     await setup(admin)
-    const doc = await admin.post<Record<string, unknown>>('/api/save_doc', {
-      doctype: DT,
-      doc: { title: 'same' },
+    const doc = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: DT,
+      row: { title: 'same' },
     })
-    await admin.post('/api/save_doc', {
-      doctype: DT,
-      doc: { row_id: doc.row_id, updated_at: doc.updated_at, title: 'same' },
+    await admin.post('/api/save_row', {
+      table: DT,
+      row: { row_id: doc.row_id, updated_at: doc.updated_at, title: 'same' },
     })
     const versions = await sql`
       select 1 from version where ref_name = ${String(doc.row_id)}`
@@ -83,9 +83,9 @@ describe('DOC-009: version history', () => {
 describe('DOC-008: amend cancelled documents', () => {
   test('amend copies columns+children with amended_from and NAME-n naming', async ({ admin }) => {
     await setup(admin)
-    const doc = await admin.post<Record<string, any>>('/api/save_doc', {
-      doctype: DT,
-      doc: { title: 'to amend', amount: 99, lines: [{ item: 'x' }, { item: 'y' }] },
+    const doc = await admin.post<Record<string, any>>('/api/save_row', {
+      table: DT,
+      row: { title: 'to amend', amount: 99, lines: [{ item: 'x' }, { item: 'y' }] },
     })
 
     // must be cancelled first
@@ -109,11 +109,11 @@ describe('DOC-008: amend cancelled documents', () => {
     expect(amended.lines[0].row_id).not.toBe(doc.lines[0].row_id)
 
     // amended doc is editable and resubmittable
-    const edit = await admin.fetch('/api/save_doc', {
+    const edit = await admin.fetch('/api/save_row', {
       method: 'POST',
       body: JSON.stringify({
-        doctype: DT,
-        doc: { row_id: amended.row_id, updated_at: amended.updated_at, amount: 120 },
+        table: DT,
+        row: { row_id: amended.row_id, updated_at: amended.updated_at, amount: 120 },
       }),
     })
     expect(edit.status).toBe(201)

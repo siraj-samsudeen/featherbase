@@ -20,7 +20,7 @@ test('UI-009 + META-013: missing reqd field errors inline via shared zod schema,
   await expect(page).toHaveURL(/\/admin/)
 
   let saveCalls = 0
-  await page.route('**/api/save_doc', async (route) => {
+  await page.route('**/api/save_row', async (route) => {
     saveCalls++
     await route.continue()
   })

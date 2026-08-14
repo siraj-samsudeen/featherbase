@@ -45,7 +45,7 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
 
   // Prior state: the Table Spreadsheet Import leaves behind — 8 typed rows,
   // series ids, an Import Log entry (the API import logs one).
-  await request.post('/api/doctype', {
+  await request.post('/api/table_def', {
     headers,
     data: {
       name: DT,
@@ -185,7 +185,7 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
   await snap(page, 'UPS-R5')
 
   // Teardown — self-cleaning via table deletion (spec 0003), no skip path.
-  const del = await request.delete(`/api/doctype/${encodeURIComponent(DT)}`, { headers })
+  const del = await request.delete(`/api/table_def/${encodeURIComponent(DT)}`, { headers })
   expect(del.status()).toBe(200)
 })
 
@@ -194,7 +194,7 @@ test('UPS-J2: the file’s codes become the ids', async ({ session, page, reques
   const headers = { Authorization: `Bearer ${token}` }
   await deleteTableIfExists(request, token, DT2)
 
-  await request.post('/api/doctype', {
+  await request.post('/api/table_def', {
     headers,
     data: {
       name: DT2,
@@ -282,6 +282,6 @@ test('UPS-J2: the file’s codes become the ids', async ({ session, page, reques
   expect(lima?.zone_name).toBe('Lima') // the resident row took the file's values
   expect(Number(lima?.population)).toBe(5200)
 
-  const del = await request.delete(`/api/doctype/${encodeURIComponent(DT2)}`, { headers })
+  const del = await request.delete(`/api/table_def/${encodeURIComponent(DT2)}`, { headers })
   expect(del.status()).toBe(200)
 })

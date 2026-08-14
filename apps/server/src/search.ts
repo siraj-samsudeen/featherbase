@@ -1,7 +1,7 @@
 import { sql } from './db'
 import { getMeta } from './meta'
 import { hasPermission } from './permissions'
-import { tableName } from './doctype-engine'
+import { tableName } from './table-engine'
 
 // UI-014: awesomebar global search. Matches row names (and the
 // Table's title_column) across every regular Table the user can read.

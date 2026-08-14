@@ -92,7 +92,7 @@ export interface TableMeta {
   description: string | null
   custom: boolean
   // #74: true for platform tables created by the migration chain. The Admin
-  // sidebar groups (never hides) these; POST/PUT /api/doctype reject it.
+  // sidebar groups (never hides) these; POST/PUT /api/table_def reject it.
   system: boolean
   // EDS-3: set when this Table is bound to an external Data Source. A bound
   // Table has no local physical table, no DDL, no RLS; reads and writes

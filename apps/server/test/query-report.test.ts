@@ -15,15 +15,15 @@ const REPORT = 'Rpt Srv Recent'
 // A role that can fully edit Report docs, a user holding only that role, and
 // the admin-authored query report — rebuilt per test inside the sandbox tx.
 async function setup(admin: TestClient) {
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
-  await admin.post('/api/save_doc', {
-    doctype: 'Permission',
-    doc: { ref_table: 'Report', role: ROLE, can_read: true, can_write: true, can_create: true },
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+  await admin.post('/api/save_row', {
+    table: 'Permission',
+    row: { ref_table: 'Report', role: ROLE, can_read: true, can_write: true, can_create: true },
   })
   // Admin authors a query report using a date filter placeholder.
-  await admin.post('/api/save_doc', {
-    doctype: 'Report',
-    doc: {
+  await admin.post('/api/save_row', {
+    table: 'Report',
+    row: {
       row_id: REPORT,
       ref_table: 'User',
       report_type: 'Query Report',
@@ -68,9 +68,9 @@ describe('RPT-004: query reports', () => {
 
   test('rejects non-SELECT SQL and blocks writes even if attempted', async ({ admin }) => {
     await setup(admin)
-    await admin.post('/api/save_doc', {
-      doctype: 'Report',
-      doc: {
+    await admin.post('/api/save_row', {
+      table: 'Report',
+      row: {
         row_id: 'Rpt Srv Evil',
         ref_table: 'User',
         report_type: 'Query Report',

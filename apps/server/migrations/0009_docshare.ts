@@ -1,7 +1,7 @@
 // PERM-008: Share grants a single user access to one specific document,
 // independent of roles.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'Share'`
