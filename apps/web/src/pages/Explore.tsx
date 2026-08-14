@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, listResource } from '../lib/api'
 import { listColumns, useMeta } from '../lib/meta'
 import { formatValue, useSettings, type Settings } from '../lib/settings'
-import { useBacklinks } from '../lib/connections'
+import { stepKey, useStepOptions, type Step } from '../lib/explore-steps'
 import { usePeek } from '../components/Peek'
 
 type Row = Record<string, unknown>
@@ -20,18 +20,6 @@ type Filter = [string, string, unknown]
 // come from :aggregate over the full filtered set, so panes are exact at
 // any scale. That also makes via-sub-table hops ("Purchase Orders · via
 // PO Line" from an Item root) real chain steps.
-
-interface Step {
-  mode: 'backlink' | 'child' | 'viabacklink'
-  table: string
-  // backlink: the Reference column on `table` pointing at the upstream table
-  // viabacklink: the Reference column on `via` pointing at the upstream table
-  // child: the upstream table's Sub-table COLUMN — one row table can back
-  //   several Sub-table columns, and the step must name which one (#106
-  //   review), both to disambiguate the picker and to filter parentfield
-  column: string
-  via?: string
-}
 
 const PANE_LIMIT = 100
 
@@ -77,9 +65,15 @@ function chainFilters(
 export function ExploreView({
   root,
   onRootChange,
+  initialChain = [],
+  initialSelect = [],
 }: {
   root: string | undefined
   onRootChange: (root: string) => void
+  // Entry-point deep links: pre-built chain steps and pane-1 preselection.
+  // Applied once at mount (the route keys this component on the params).
+  initialChain?: Step[]
+  initialSelect?: string[]
 }) {
   // Candidate roots come from the permission-filtered navigation endpoint —
   // NOT from reading the metadata `Table` table, which most roles cannot
@@ -91,8 +85,30 @@ export function ExploreView({
 
   const [step2, setStep2] = useState<Step | null>(null)
   const [step3, setStep3] = useState<Step | null>(null)
-  const [sel1, setSel1] = useState<Set<string>>(new Set())
+  const [sel1, setSel1] = useState<Set<string>>(() => new Set(initialSelect))
   const [sel2, setSel2] = useState<Set<string>>(new Set())
+
+  // A deep-linked chain applies stage by stage, each step resolved against
+  // the options the pickers themselves would offer — a stale URL naming a
+  // dropped column degrades to the panes that still resolve, never a blank
+  // page. `pending` drains front-first; a miss discards the rest.
+  const [pending, setPending] = useState<Step[]>(initialChain)
+  const rootOptions = useStepOptions(pending.length && !step2 ? root : undefined)
+  const step2Options = useStepOptions(pending.length && step2 ? step2.table : undefined)
+  useEffect(() => {
+    if (!pending.length) return
+    const stage = step2 ? step2Options : rootOptions
+    if (!stage.ready) return
+    const hit = stage.options.find((o) => o.key === stepKey(pending[0]))
+    if (!hit) return setPending([])
+    if (step2) {
+      setStep3(hit.step)
+      setPending([])
+    } else {
+      setStep2(hit.step)
+      setPending(pending.slice(1))
+    }
+  }, [pending, step2, rootOptions, step2Options])
 
   function changeRoot(next: string) {
     setStep2(null)
@@ -243,41 +259,14 @@ function StepPicker({
   onChange: (s: Step | null) => void
   testid: string
 }) {
-  const meta = useMeta(table)
-  const backlinks = useBacklinks(table)
-  const options: { key: string; label: string; step: Step }[] = []
-  for (const f of meta.data?.columns ?? [])
-    if (f.column_type === 'Sub-table' && f.row_table)
-      options.push({
-        // Keyed and filtered by the Sub-table COLUMN, not just the row
-        // table — two columns backed by the same row table are distinct
-        // steps (#106 review).
-        key: `child:${f.row_table}:${f.column_name}`,
-        label: `${f.row_table} (${f.label ?? f.column_name})`,
-        step: { mode: 'child', table: f.row_table, column: f.column_name },
-      })
-  for (const bl of backlinks.data?.backlinks ?? [])
-    options.push(
-      bl.via
-        ? {
-            key: `viabacklink:${bl.table}:${bl.column}:${bl.via}`,
-            label: `${bl.table} · via ${bl.via}`,
-            step: { mode: 'viabacklink', table: bl.table, column: bl.column, via: bl.via },
-          }
-        : {
-            key: `backlink:${bl.table}:${bl.column}`,
-            label: `${bl.table} · ${bl.column}`,
-            step: { mode: 'backlink', table: bl.table, column: bl.column },
-          },
-    )
-  const keyOf = (s: Step) => `${s.mode}:${s.table}:${s.column}${s.via ? `:${s.via}` : ''}`
+  const { options } = useStepOptions(table)
   return (
     <label className="flex flex-col gap-0.5">
       <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
         {label}
       </span>
       <select
-        value={value ? keyOf(value) : ''}
+        value={value ? stepKey(value) : ''}
         onChange={(e) => {
           const hit = options.find((o) => o.key === e.target.value)
           onChange(hit ? hit.step : null)

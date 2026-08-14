@@ -1,5 +1,43 @@
 # Progress Log
 
+## 2026-08-11 — Explore gets its front doors: chain/select deep links, split button, map hand-off
+
+The two entry points the owner picked from the mockup exploration
+(options B and C), plus the URL vocabulary that powers them:
+
+1. **`?chain=` and `?select=` on `/admin/explore`** — up to two step
+   objects pre-building step2/step3, and pane-1 row names arriving
+   preselected. Validated the #87 `parseFilters` way (malformed means
+   absent, never a throw); a chain resolves stage-by-stage against the
+   live meta/backlink options, so a stale URL degrades to the panes that
+   still resolve instead of blanking. Params initialize state only —
+   in-view clicks stay pure state, parity with `root`.
+2. **Option B** — an Explore split button in the ListView manager row:
+   main face opens the bare root; the chevron lists the table's
+   chainable dependents (capped at two, the pane limit) and deep-links
+   the chain.
+3. **Option C** — "Open in Explore" on the RelationMap header: root =
+   the mapped table, select = the mapped row, chain = first option out
+   of the root, then first option out of THAT table (two hops, because
+   pane 3 chains off pane 2's table — two siblings of the root can never
+   both resolve).
+
+The option-building logic left Explore's StepPicker for a shared seam,
+`apps/web/src/lib/explore-steps.ts` — one pure `stepOptions` +
+`useStepOptions` consumed by all three surfaces, with unit tests on the
+parsers. **Design finding for the owner:** checking two sibling
+dependents in the split button yields two panes, not three — a sibling
+cannot be pane 3 under the current chain model; the e2e pins the
+graceful degrade.
+
+**Verified:** isolated stack (scratch DB `featherbase_explore_entry`,
+ports 8012/5186, per the worktree-isolation recipe); new
+`e2e/explore.spec.ts` covers all four journeys (deep link renders three
+narrowed panes; malformed/stale chain degrades; split button; map
+hand-off) — 4/4 green, full web e2e 115+ green (two known-flaky specs,
+realtime RT-003 and UPS-J2, pass on re-run), vitest 64/64, typecheck
+clean. Web-only — no migrations, no server changes.
+
 ## 2026-08-11 — the VMS lists come alive: a stale sort and a leaked password column
 
 The owner reported reflected VMS tables rendering empty with a long

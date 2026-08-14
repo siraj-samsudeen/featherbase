@@ -5,6 +5,7 @@ import { api, listResource } from '../lib/api'
 import { NO_COLUMN_TYPES, listColumns, useMeta, type ColumnDef } from '../lib/meta'
 import { formatValue, useSettings } from '../lib/settings'
 import { connectionLabel, useConnections, type Connection } from '../lib/connections'
+import { useStepOptions } from '../lib/explore-steps'
 
 type Row = Record<string, unknown>
 
@@ -48,6 +49,17 @@ export function RelationMap({
   const settings = useSettings()
   const navigate = useNavigate()
   const [openGroup, setOpenGroup] = useState<number | null>(null)
+  // Option C of the Explore entry-point exploration: hand this row's
+  // neighborhood to the cross-filter Explore. The chain is the first step of
+  // the SAME option list Explore's pickers offer (the shared explore-steps
+  // seam), then the first step out of THAT table — two hops, because pane 3
+  // chains off pane 2's table, so a second sibling of the root could never
+  // resolve. `select` narrows pane 1 to the row being viewed.
+  const hop1 = useStepOptions(doctype)
+  const hop2 = useStepOptions(hop1.options[0]?.step.table)
+  const exploreChain = hop1.options.length
+    ? [hop1.options[0].step, ...(hop2.options.length ? [hop2.options[0].step] : [])]
+    : []
   const doc = useQuery({
     queryKey: ['doc', doctype, name],
     queryFn: () =>
@@ -144,6 +156,18 @@ export function RelationMap({
           className="fc-btn"
         >
           Open form ↗
+        </Link>
+        <Link
+          to="/admin/explore"
+          search={{
+            root: doctype,
+            chain: exploreChain.length ? JSON.stringify(exploreChain) : undefined,
+            select: JSON.stringify([name]),
+          }}
+          data-testid="map-open-explore"
+          className="fc-btn"
+        >
+          Open in Explore
         </Link>
       </div>
       {parsedTrail.length > 0 && (
