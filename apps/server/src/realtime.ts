@@ -1,6 +1,6 @@
 import type { Server } from 'node:http'
 import { WebSocketServer, type WebSocket } from 'ws'
-import { resolveToken, type SessionUser } from './auth'
+import { credentialFromCookieHeader, resolveToken, type SessionUser } from './auth'
 import { getRoles, hasPermission } from './permissions'
 
 // RT-001/002/003: server-side realtime over WebSockets (the local equivalent
@@ -97,16 +97,18 @@ export function publishUserEvent(user: string, event: string, payload?: unknown)
 }
 
 // Attach a WebSocket server to the shared HTTP server. Clients connect to
-// /ws?token=<jwt>, then send {subscribe:[channels]} / {unsubscribe:[...]}.
+// /ws carrying the `sid` session cookie, then send {subscribe:[channels]} /
+// {unsubscribe:[...]}.
 export function attachRealtime(server: Server): void {
   const wss = new WebSocketServer({ server, path: '/ws' })
   wss.on('connection', async (socket, req) => {
     try {
-      const url = new URL(req.url ?? '', 'http://localhost')
-      const token = url.searchParams.get('token')
-      // #137: the browser cannot set headers on a WebSocket, so this is
-      // URL-borne by necessity — session JWTs only, never an access token.
-      const user = await resolveToken(token ? `Bearer ${token}` : undefined, { fromUrl: true })
+      // #173: the browser cannot set headers on a WebSocket, which is why this
+      // was URL-borne. But the upgrade is an ordinary same-origin HTTP request,
+      // so the HttpOnly `sid` cookie is already on it — and a `?token=` in the
+      // socket URL lands in proxy logs like any other. A cross-site handshake
+      // carries no SameSite=Lax cookie, so this closes that door too.
+      const user = await resolveToken(credentialFromCookieHeader(req.headers.cookie))
       const client: Client = { socket, user, channels: new Set() }
       clients.add(client)
       // Personal channel is always subscribed.

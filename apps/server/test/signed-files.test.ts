@@ -54,7 +54,9 @@ describe('FILE-003: private files via signed URLs', () => {
   }) => {
     const { outsider, fileUrl } = await setup(admin, createUser)
     try {
-      const res = await api.fetch(`${fileUrl}?token=${outsider.token}`)
+      // #173: authenticated as the outsider (header credential), so a 403 here
+      // is the permission check refusing — not a missing session.
+      const res = await api.fetch(fileUrl, { headers: { cookie: `sid=${outsider.token}` } })
       expect(res.status).toBe(403)
     } finally {
       await deleteStored(fileUrl).catch(() => {})
