@@ -345,6 +345,42 @@ tables and walk the map against RDS. Note for that retest: tables reflected
 BEFORE this change carry no source_fk_* records, so they will not converge —
 delete and re-reflect them (order then no longer matters).
 
+## 2026-08-11 — Google SSO live on prod: rollout completed and verified
+
+The #127 email tier is now working end to end on
+`featherbase-rama.up.railway.app`. What landed where, and how it was proven:
+
+- **Google console** (owner): the featherbase redirect URI
+  `https://featherbase-rama.up.railway.app/api/oauth/google/callback` was
+  added to the shared `jeyarama-dashboards` Internal client — the same
+  client dash.jeyarama.com uses, which is what makes it single sign-on.
+- **Config**: `google_client_id` + `allowed_login_domains=jeyarama.com`
+  reached prod as System Settings singles PATCHed over the admin API — the
+  full manifest install stays blocked (#113 MotherDuck unreachable from
+  Railway, and `RAILWAY_CONTROL_URL` is no longer on the service), and the
+  checked-in `rama_dw` manifest fixture carries the same values, so a
+  future install is an idempotent no-op for these. Env on the service is
+  secrets/topology only: `GOOGLE_CLIENT_SECRET` (reference to
+  report-server's) and `SITE_URL`.
+- **Verified**: before config, both `/api/oauth/google/login` and the mock
+  consent route answered 401 on prod (mock hole confirmed closed after the
+  #127 merge). After config, login 302s to accounts.google.com with the
+  correct client id, the exact registered https `redirect_uri` (SITE_URL
+  path), `prompt=select_account`, and a PKCE S256 challenge; Google renders
+  the "continue to Jeyarama Dashboards" page — no `redirect_uri_mismatch`.
+  The owner then completed a real `siraj@jeyarama.com` sign-in and landed
+  in `/admin`; the user row was auto-provisioned exactly per design:
+  `social_login='google'`, enabled, no roles.
+- Filed on the way: #158 — the disabled-account refusal at the OAuth
+  callback is the deliberately generic "Invalid login credentials" rendered
+  as raw JSON; since Google has verified email ownership at that point, a
+  clear human-readable page there would be enumeration-safe. Owner's call.
+
+Next for SSO: role grants for provisioned users (a Rama `Viewer` role
+belongs in the `rama_dw` manifest, not the framework), #158 and #150 as
+ruled, and the floor tier (emp-code+PIN) which is designed separately —
+#127 is deliberately not extended in that direction.
+
 ## 2026-08-11 — #135: create-user refuses a duplicate instead of shadowing it
 
 Filed off the sweep below, then fixed. `feather create-user` handed the row
