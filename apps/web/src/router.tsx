@@ -15,6 +15,8 @@ import { AdminLayout } from './pages/AdminLayout'
 import { getToken } from './lib/api'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
+// PROTOTYPE — throwaway list-editing UX exploration (delete with its route hook).
+import { ListEditPrototype } from './components/ListEditPrototype'
 import { useMeta } from './lib/meta'
 import { ReportView } from './components/ReportView'
 import { QueryReportView } from './components/QueryReportView'
@@ -250,17 +252,28 @@ const importRoute = createRoute({
 const doctypeRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '$doctype',
-  validateSearch: (search: Record<string, unknown>) => ({
+  // PROTOTYPE — `variant` (optional) swaps in the list-editing UX
+  // exploration; remove with ListEditPrototype.
+  validateSearch: (search: Record<string, unknown>): { filters?: string; variant?: string } => ({
     filters: searchString(search.filters),
+    variant: searchString(search.variant),
   }),
   component: TableListPage,
 })
 
 function TableListPage() {
   const { doctype } = doctypeRoute.useParams()
-  const { filters } = doctypeRoute.useSearch()
+  const { filters, variant } = doctypeRoute.useSearch()
   const navigate = doctypeRoute.useNavigate()
   const meta = useMeta(doctype)
+  // PROTOTYPE — ?variant=a|b|c swaps in the list-editing UX exploration.
+  if (variant && process.env.NODE_ENV !== 'production') {
+    return (
+      <div data-testid="doctype-page">
+        <ListEditPrototype key={doctype} doctype={doctype} variant={variant} />
+      </div>
+    )
+  }
   // SET-001: a Settings Table has no list — open its one row directly.
   if (meta.data?.kind === 'settings') {
     return (
