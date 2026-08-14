@@ -153,28 +153,6 @@ app.post('/api/login', async (c) => {
   return c.json(session)
 })
 
-// Frappe-compatible login/logout: POST /api/method/login {usr, pwd} answers
-// with Frappe's shape and sets the sid cookie; logout clears it. Registered
-// as explicit routes so they take precedence over the generic RPC dispatcher.
-app.post('/api/method/login', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { usr?: string; pwd?: string }
-  const usr = body.usr ?? c.req.query('usr')
-  const pwd = body.pwd ?? c.req.query('pwd')
-  if (!usr || !pwd) throw new AppError('ValidationError', 'Expected { usr, pwd }')
-  const session = await login(usr, pwd)
-  setSidCookie(c, session.token)
-  return c.json({
-    message: 'Logged In',
-    home_page: '/admin',
-    full_name: session.user.full_name ?? session.user.row_id,
-  })
-})
-
-app.post('/api/method/logout', async (c) => {
-  deleteCookie(c, 'sid', { path: '/' })
-  return c.json({ message: '' })
-})
-
 // The SPA's sign-out. Public — it must clear the sid cookie even when the
 // bearer token is already gone or expired, otherwise the cookie survives as
 // a live credential and any token-less request after logout re-authenticates
