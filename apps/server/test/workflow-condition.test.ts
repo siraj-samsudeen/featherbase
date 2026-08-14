@@ -16,7 +16,7 @@ const FLOW = 'Cond Wf Flow'
 
 // Each test rebuilds the Table + workflow inside its own rolled-back tx.
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     id_pattern: 'prompt',
     columns: [
@@ -24,12 +24,12 @@ async function setup(admin: TestClient) {
       { column_name: 'amount', column_type: 'Int' },
     ],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
 
   // Draft can EITHER auto-approve (small amounts) OR need approval (large ones).
-  await admin.post('/api/save_doc', {
-    doctype: 'Workflow',
-    doc: {
+  await admin.post('/api/save_row', {
+    table: 'Workflow',
+    row: {
       row_id: FLOW,
       ref_table: DT,
       is_active: true,

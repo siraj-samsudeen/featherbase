@@ -108,7 +108,7 @@ describe('IMP-002: inferColumnType', () => {
 })
 
 describe('IMP-003: inferTableDef', () => {
-  test('builds a full doctype payload with labels from original headers', () => {
+  test('builds a full table payload with labels from original headers', () => {
     const def = inferTableDef(
       'Order',
       ['Customer Name', 'Qty', 'Unit Price', 'Ship Date', 'Notes'],

@@ -34,7 +34,7 @@ input plus a column grid with **Column Name · Label · Column Type · Target ·
 Reqd · List**, an **+ Add column** row, and a **Create Table** button.
 Choices for a Choice column can be typed comma- or newline-separated; the
 builder normalizes them to the newline-separated form the engine expects
-before POSTing to `POST /api/doctype`.
+before POSTing to `POST /api/table_def`.
 
 Try it with a throwaway Table — name it `Note`, give it a `title` (Data,
 Reqd, List) and a `content` (Text) column, and click **Create Table**. You
@@ -60,7 +60,7 @@ TOKEN=$(curl -s http://localhost:8000/api/login \
 
 # Create the Table (System Manager only). id_pattern gives us a naming
 # series: TASK-0001, TASK-0002, ... (four # = four digits).
-curl -s http://localhost:8000/api/doctype \
+curl -s http://localhost:8000/api/table_def \
   -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{
     "name": "Task",
@@ -204,7 +204,7 @@ import { test } from './pg-test'
 
 describe('Task tutorial', () => {
   test('creates tasks with series names and the stage default', async ({ admin }) => {
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: 'Tutorial Task',
       id_pattern: 'TUT-.####',
       columns: [
@@ -230,7 +230,7 @@ pnpm --filter server test test/task-tutorial.test.ts
 
 Two things worth noticing. The Table is named `Tutorial Task`, not `Task`:
 the test's transaction rolls back, but it still *sees* committed state, so
-reusing the `Task` you created earlier would make `/api/doctype` answer 409.
+reusing the `Task` you created earlier would make `/api/table_def` answer 409.
 And asserting `TUT-0001` is safe precisely because the series counter row is
 created inside the rolled-back transaction — every run starts the series
 fresh.

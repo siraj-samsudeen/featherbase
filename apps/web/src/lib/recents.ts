@@ -272,7 +272,7 @@ export function actionForLocation(
   }
   if (RESERVED.has(segs[0]) || pageKind) return null
 
-  const doctype = segs[0]
+  const table = segs[0]
   const filtersJson = typeof search.filters === 'string' ? search.filters : undefined
   if (segs.length === 1 || segs[1] === 'view') {
     const mode = segs[1] === 'view' ? segs[2] : undefined
@@ -280,8 +280,8 @@ export function actionForLocation(
     const href = filtersJson ? `${pathname}?filters=${encodeURIComponent(filtersJson)}` : pathname
     return {
       kind: 'list',
-      key: `list:${doctype}${mode ? `/${mode}` : ''}?${filtersJson ?? ''}`,
-      label: doctype,
+      key: `list:${table}${mode ? `/${mode}` : ''}?${filtersJson ?? ''}`,
+      label: table,
       sub,
       path: href,
     }
@@ -289,9 +289,9 @@ export function actionForLocation(
   if (segs.length === 2 && segs[1] !== 'new') {
     return {
       kind: 'row',
-      key: `row:${doctype}/${segs[1]}`,
+      key: `row:${table}/${segs[1]}`,
       label: segs[1],
-      sub: doctype,
+      sub: table,
       path: pathname,
     }
   }

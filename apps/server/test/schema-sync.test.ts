@@ -20,13 +20,13 @@ const baseColumns = [
 // The legacy suite mutated ONE Table across sequential tests; under the
 // sandbox each test rebuilds the state it needs, then rolls back.
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', { name: DT, columns: baseColumns })
+  await admin.post('/api/table_def', { name: DT, columns: baseColumns })
   for (const t of ['a', 'b'])
-    await admin.post('/api/save_doc', { doctype: DT, doc: { title: t, points: 1 } })
+    await admin.post('/api/save_row', { table: DT, row: { title: t, points: 1 } })
 }
 
 async function addSeverity(admin: TestClient) {
-  return admin.fetch(`/api/doctype/${encodeURIComponent(DT)}`, {
+  return admin.fetch(`/api/table_def/${encodeURIComponent(DT)}`, {
     method: 'PUT',
     body: JSON.stringify({
       columns: [...baseColumns, { column_name: 'severity', column_type: 'Choice', choices: 'Low\nHigh' }],
@@ -43,16 +43,16 @@ describe('META-004: schema sync', () => {
     const rows = await sql.unsafe(`select title, points from ${TABLE} order by title`)
     expect(rows.map((r) => [r.title, Number(r.points)])).toEqual([['a', 1], ['b', 1]])
     // new field usable immediately
-    const save = await admin.fetch('/api/save_doc', {
+    const save = await admin.fetch('/api/save_row', {
       method: 'POST',
-      body: JSON.stringify({ doctype: DT, doc: { title: 'c', severity: 'High' } }),
+      body: JSON.stringify({ table: DT, row: { title: 'c', severity: 'High' } }),
     })
     expect(save.status).toBe(201)
   })
 
   test('property edits (label, reqd) apply without touching the table', async ({ admin }) => {
     await setup(admin)
-    const res = await admin.fetch(`/api/doctype/${encodeURIComponent(DT)}`, {
+    const res = await admin.fetch(`/api/table_def/${encodeURIComponent(DT)}`, {
       method: 'PUT',
       body: JSON.stringify({
         columns: [
@@ -70,9 +70,9 @@ describe('META-004: schema sync', () => {
     expect(title.label).toBe('Headline')
     expect(title.reqd).toBe(true)
     // reqd now enforced
-    const bad = await admin.fetch('/api/save_doc', {
+    const bad = await admin.fetch('/api/save_row', {
       method: 'POST',
-      body: JSON.stringify({ doctype: DT, doc: { points: 5 } }),
+      body: JSON.stringify({ table: DT, row: { points: 5 } }),
     })
     expect(bad.status).toBe(417)
   })
@@ -81,7 +81,7 @@ describe('META-004: schema sync', () => {
     admin,
   }) => {
     await setup(admin)
-    const res = await admin.fetch(`/api/doctype/${encodeURIComponent(DT)}`, {
+    const res = await admin.fetch(`/api/table_def/${encodeURIComponent(DT)}`, {
       method: 'PUT',
       body: JSON.stringify({
         columns: [
@@ -103,7 +103,7 @@ describe('META-004: schema sync', () => {
   test('drop_columns flag really drops; column_type changes are rejected', async ({ admin }) => {
     await setup(admin)
     expect((await addSeverity(admin)).status).toBe(200)
-    const drop = await admin.fetch(`/api/doctype/${encodeURIComponent(DT)}`, {
+    const drop = await admin.fetch(`/api/table_def/${encodeURIComponent(DT)}`, {
       method: 'PUT',
       body: JSON.stringify({
         drop_columns: true,
@@ -113,7 +113,7 @@ describe('META-004: schema sync', () => {
     expect(drop.status).toBe(200)
     expect(await columns()).not.toContain('severity')
 
-    const badType = await admin.fetch(`/api/doctype/${encodeURIComponent(DT)}`, {
+    const badType = await admin.fetch(`/api/table_def/${encodeURIComponent(DT)}`, {
       method: 'PUT',
       body: JSON.stringify({
         columns: [{ column_name: 'title', column_type: 'Int' }],

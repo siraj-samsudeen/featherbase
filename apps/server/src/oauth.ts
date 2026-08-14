@@ -138,7 +138,7 @@ export function mockConsentHtml(state: string, redirectUri: string, email: strin
   const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string)
   // state + redirect_uri travel as hidden inputs — a GET form discards the
   // action URL's query string, so they must be part of the form body.
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Sign in with Google (dev)</title>
+  return `<!table html><html><head><meta charset="utf-8"><title>Sign in with Google (dev)</title>
     <style>body{font-family:system-ui;background:#f4f5f6;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
     .card{background:#fff;border:1px solid #d1d8dd;border-radius:10px;padding:28px;width:340px}
     h1{font-size:16px;margin:0 0 4px} p{color:#6c7680;font-size:13px;margin:0 0 16px}

@@ -53,7 +53,7 @@ test('RVT-J1: revert the bad run from the history strip — rehearse, skip-the-e
   await deleteTableIfExists(request, token, DT)
 
   // Prior state (residue-shaped): a Table with seeded rows, outside any run.
-  const created = await request.post('/api/doctype', {
+  const created = await request.post('/api/table_def', {
     headers,
     data: {
       name: DT,
@@ -146,6 +146,6 @@ test('RVT-J1: revert the bad run from the history strip — rehearse, skip-the-e
   expect(logs.data.some((l) => l.reverted_at)).toBe(true)
 
   // Teardown — self-cleaning via table deletion (spec 0003).
-  const del = await request.delete(`/api/doctype/${encodeURIComponent(DT)}`, { headers })
+  const del = await request.delete(`/api/table_def/${encodeURIComponent(DT)}`, { headers })
   expect(del.status()).toBe(200)
 })

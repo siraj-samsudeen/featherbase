@@ -24,7 +24,7 @@ async function post(path, body) {
 }
 
 // ---- tables ----
-await post('/api/doctype', {
+await post('/api/table_def', {
   name: 'Supplier', id_pattern: 'prompt', title_column: 'supplier_name',
   columns: [
     { column_name: 'supplier_name', column_type: 'Data', reqd: true, in_list_view: true },
@@ -32,14 +32,14 @@ await post('/api/doctype', {
     { column_name: 'state', column_type: 'Choice', choices: 'Active\nOn Hold', in_list_view: true, default_value: 'Active' },
   ],
 })
-await post('/api/doctype', {
+await post('/api/table_def', {
   name: 'Item', id_pattern: 'prompt', title_column: 'item_name',
   columns: [
     { column_name: 'item_name', column_type: 'Data', reqd: true, in_list_view: true },
     { column_name: 'uom', column_type: 'Data', in_list_view: true },
   ],
 })
-await post('/api/doctype', {
+await post('/api/table_def', {
   name: 'PO Line', kind: 'sub_table',
   columns: [
     { column_name: 'item', column_type: 'Reference', reference_table: 'Item', reqd: true, in_list_view: true },
@@ -48,7 +48,7 @@ await post('/api/doctype', {
     { column_name: 'amount', column_type: 'Currency', in_list_view: true },
   ],
 })
-await post('/api/doctype', {
+await post('/api/table_def', {
   name: 'Purchase Order', id_pattern: 'PO-.####',
   columns: [
     { column_name: 'supplier', column_type: 'Reference', reference_table: 'Supplier', reqd: true, in_list_view: true },
@@ -58,7 +58,7 @@ await post('/api/doctype', {
     { column_name: 'lines', column_type: 'Sub-table', row_table: 'PO Line' },
   ],
 })
-await post('/api/doctype', {
+await post('/api/table_def', {
   name: 'Employee', id_pattern: 'EMP-.###', title_column: 'full_name',
   columns: [
     { column_name: 'full_name', column_type: 'Data', reqd: true, in_list_view: true },
@@ -67,7 +67,7 @@ await post('/api/doctype', {
     { column_name: 'reports_to', column_type: 'Reference', reference_table: 'Employee' },
   ],
 })
-await post('/api/doctype', {
+await post('/api/table_def', {
   name: 'Attendance', id_pattern: 'ATT-.####',
   columns: [
     { column_name: 'employee', column_type: 'Reference', reference_table: 'Employee', reqd: true, in_list_view: true },
@@ -75,7 +75,7 @@ await post('/api/doctype', {
     { column_name: 'att_status', column_type: 'Choice', choices: 'Present\nAbsent\nHalf Day\nOn Leave', in_list_view: true },
   ],
 })
-await post('/api/doctype', {
+await post('/api/table_def', {
   name: 'Payroll Slip', id_pattern: 'SAL-.####',
   columns: [
     { column_name: 'employee', column_type: 'Reference', reference_table: 'Employee', reqd: true, in_list_view: true },
@@ -87,7 +87,7 @@ await post('/api/doctype', {
 })
 
 // ---- rows ----
-const save = (doctype, doc) => post('/api/save_doc', { doctype, doc })
+const save = (table, doc) => post('/api/save_row', { table, row })
 
 for (const [name, supplier_name, city, state] of [
   ['SUP-001', 'Acme Metals', 'Chennai', 'Active'],

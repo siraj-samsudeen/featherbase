@@ -100,7 +100,7 @@ export async function renderPrintHtml(
     ? `<footer class="letter-foot">${interpolate(lh.footer, row)}</footer>`
     : ''
 
-  return `<!doctype html><html><head><meta charset="utf-8"><style>
+  return `<!table html><html><head><meta charset="utf-8"><style>
     body{font-family:Inter,system-ui,sans-serif;color:#1c2126;padding:32px;font-size:13px}
     h1{font-size:22px;margin:0 0 2px} .docname{color:#6c7680;font-size:12px;margin:0 0 16px}
     dl{display:grid;grid-template-columns:1fr 1fr;gap:6px 32px}

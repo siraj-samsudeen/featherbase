@@ -18,26 +18,26 @@ test.beforeAll(async ({ request }) => {
   const admin = await token(request, 'Administrator', ADMIN_PWD)
   const H = { Authorization: `Bearer ${admin}` }
 
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers: H,
     data: { name: DT, columns: [{ column_name: 'subject', column_type: 'Data', in_list_view: true }] },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
 
-  await request.post('/api/save_doc', { headers: H, data: { doctype: 'Role', doc: { row_id: ROLE } } })
+  await request.post('/api/save_row', { headers: H, data: { table: 'Role', row: { row_id: ROLE } } })
   // own_rows_only grant: website users only ever see/created their own tickets.
-  await request.post('/api/save_doc', {
+  await request.post('/api/save_row', {
     headers: H,
     data: {
-      doctype: 'Permission',
-      doc: { ref_table: DT, role: ROLE, own_rows_only: true, can_read: true, can_write: true, can_create: true },
+      table: 'Permission',
+      row: { ref_table: DT, role: ROLE, own_rows_only: true, can_read: true, can_write: true, can_create: true },
     },
   })
   for (const u of [ALICE, BOB]) {
     await request.delete(`/api/table/User/${encodeURIComponent(u)}`, { headers: H })
-    await request.post('/api/save_doc', {
+    await request.post('/api/save_row', {
       headers: H,
-      data: { doctype: 'User', doc: { row_id: u, email: u, enabled: true, roles: [{ role: ROLE }] } },
+      data: { table: 'User', row: { row_id: u, email: u, enabled: true, roles: [{ role: ROLE }] } },
     })
     await request.post('/api/set_password', { headers: H, data: { user: u, password: PWD } })
   }

@@ -2,7 +2,7 @@
 //   cli migrate                       run pending migrations
 //   cli patches                       run pending patches
 //   cli seed                          (re)apply idempotent core seed data
-//   cli create-doctype --name "X" --field title:Data --field status:Select:Open|Closed [--single]
+//   cli create-table --name "X" --field title:Data --field status:Select:Open|Closed [--single]
 //   cli create-user <email> <password> [--full-name "Name"] [--roles "System Manager,All"]
 //   cli create-service-account <name> [--roles "System Manager"]
 //   cli issue-token <principal> [--label "..."] [--expires <days>]
@@ -10,7 +10,7 @@
 //   cli revoke-token <token-id>
 //   cli console                       REPL with the row API in scope
 import { sql } from './db'
-import { createTable } from './doctype-engine'
+import { createTable } from './table-engine'
 import { getDoc, saveDoc } from './document'
 import { getList } from './query'
 import { getMeta } from './meta'
@@ -51,7 +51,7 @@ function asArray(v: string | string[] | boolean | undefined): string[] {
 
 async function cmdCreateTable(flags: Record<string, string | string[] | boolean>) {
   const name = flags.name
-  if (typeof name !== 'string') throw new Error('create-doctype requires --name')
+  if (typeof name !== 'string') throw new Error('create-table requires --name')
   const columns = asArray(flags.field).map((spec) => {
     // column_name:ColumnType[:Opt1|Opt2]
     const [columnName, columnType, choices] = spec.split(':')
@@ -214,7 +214,7 @@ async function main() {
     case 'seed':
       await cmdSeed()
       break
-    case 'create-doctype':
+    case 'create-table':
       await cmdCreateTable(flags)
       break
     case 'create-user':
@@ -236,7 +236,7 @@ async function main() {
       await cmdConsole()
       break
     default:
-      console.log('usage: cli <migrate|patches|seed|create-doctype|create-user|create-service-account|issue-token|list-tokens|revoke-token|console> [...]')
+      console.log('usage: cli <migrate|patches|seed|create-table|create-user|create-service-account|issue-token|list-tokens|revoke-token|console> [...]')
       process.exitCode = cmd ? 1 : 0
   }
   await sql.end()

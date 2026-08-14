@@ -5,7 +5,7 @@ import { ROW_KEY, getMeta, type TableMeta } from '../meta'
 import { assertDocPermission, assertPermission, permissionScope } from '../permissions'
 import { registerCollectionAction } from '../actions'
 import { sql } from '../db'
-import { tableName } from '../doctype-engine'
+import { tableName } from '../table-engine'
 
 // IMP-005: bulk import — POST /api/table/:table:import { rows: [...] }.
 // The first real collection-action registrant (#61 left the registry empty on

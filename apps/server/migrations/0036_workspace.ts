@@ -12,7 +12,7 @@
 // final shape right here (the 0055 rewrite discipline), and 0060's rename
 // half is then a no-op.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 // Exported so 0060 can create the identical sub-tables/columns on upgraded
 // databases without a second copy of the definitions.

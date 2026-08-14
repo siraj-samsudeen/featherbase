@@ -3,7 +3,7 @@
 // `is_default` is applied. Both header and footer support the same
 // {{ field }} interpolation as Print Format templates.
 import { sql } from '../src/db'
-import { createTable, updateTable } from '../src/doctype-engine'
+import { createTable, updateTable } from '../src/table-engine'
 import { getMeta } from '../src/meta'
 
 export async function up() {

@@ -2,7 +2,7 @@
 // (data-URI) preview generated for image uploads. Idempotent: adds the column
 // and column_def only if missing.
 import { sql } from '../src/db'
-import { pgType } from '../src/doctype-engine'
+import { pgType } from '../src/table-engine'
 
 export async function up() {
   const [f] = await sql`select 1 from table_def where name = 'File'`

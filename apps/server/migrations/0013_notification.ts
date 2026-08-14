@@ -2,7 +2,7 @@
 // @mention in a comment). Kept generic so assignments (UI-017) and
 // workflow can reuse it.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'Notification Log'`

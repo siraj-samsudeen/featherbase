@@ -2,7 +2,7 @@
 // by a DocType + optional filters (and a group-by for charts). The layout is a
 // JSON config; cards/charts are computed on demand from live data.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'Dashboard'`

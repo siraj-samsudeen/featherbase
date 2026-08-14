@@ -7,8 +7,8 @@ import { NamingControl } from './NamingControl'
 
 // NAM-001: change how an existing Table names new rows. Rows already saved keep
 // the names they were given — a series only ever applies from here forward.
-export function TableNaming({ doctype }: { doctype: string }) {
-  const meta = useMeta(doctype)
+export function TableNaming({ table }: { table: string }) {
+  const meta = useMeta(table)
   const queryClient = useQueryClient()
   const [pattern, setPattern] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -24,10 +24,10 @@ export function TableNaming({ doctype }: { doctype: string }) {
     setSaving(true)
     setError(null)
     try {
-      await api.put(`/api/doctype/${encodeURIComponent(doctype)}/id_pattern`, {
+      await api.put(`/api/table_def/${encodeURIComponent(table)}/id_pattern`, {
         id_pattern: pattern,
       })
-      await queryClient.invalidateQueries({ queryKey: ['meta', doctype] })
+      await queryClient.invalidateQueries({ queryKey: ['meta', table] })
       setSaved(true)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Failed to save')
@@ -50,7 +50,7 @@ export function TableNaming({ doctype }: { doctype: string }) {
   return (
     <div data-testid="table-naming" className="max-w-2xl space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-[var(--color-ink)]">Naming — {doctype}</h1>
+        <h1 className="text-lg font-semibold text-[var(--color-ink)]">Naming — {table}</h1>
         <div className="flex items-center gap-3">
           {saved && !dirty && (
             <span className="text-sm text-green-700" data-testid="naming-saved">
@@ -82,7 +82,7 @@ export function TableNaming({ doctype }: { doctype: string }) {
             setPattern(p)
             setSaved(false)
           }}
-          defaultPrefix={seriesPrefix(doctype)}
+          defaultPrefix={seriesPrefix(table)}
           idPrefix="naming"
           columns={meta.data.columns
             .filter((c) => !NO_COLUMN_TYPES.has(c.column_type))

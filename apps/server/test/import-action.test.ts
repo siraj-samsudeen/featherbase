@@ -9,7 +9,7 @@ const DT = 'Import Target'
 const PATH = `/api/table/${encodeURIComponent(DT)}:import`
 
 async function setup(admin: TestClient, extra: Record<string, unknown> = {}) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data', reqd: true },
@@ -139,7 +139,7 @@ describe('IMP-005: bulk import', () => {
   })
 
   test('refuses settings and sub_table kinds', async ({ admin }) => {
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: 'Import Settings',
       kind: 'settings',
       columns: [{ column_name: 'title', column_type: 'Data' }],
@@ -150,7 +150,7 @@ describe('IMP-005: bulk import', () => {
     })
     expect(s.status).toBe(417)
 
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: 'Import Child',
       kind: 'sub_table',
       columns: [{ column_name: 'title', column_type: 'Data' }],

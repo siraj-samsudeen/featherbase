@@ -1,7 +1,7 @@
 // EML-004: Email Rules (Frappe "Notification") — fire an email on a
 // lifecycle event for documents of a DocType matching an optional condition.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'Email Rule'`

@@ -23,9 +23,9 @@ async function installHelpdesk() {
 
 test('list: an admin sees a freshly created ticket', async ({ admin }) => {
   await installHelpdesk()
-  const doc = await admin.post<{ name: string }>('/api/save_doc', {
-    doctype: 'HD Ticket',
-    doc: { subject: 'Rendered by the generic ListView' },
+  const doc = await admin.post<{ name: string }>('/api/save_row', {
+    table: 'HD Ticket',
+    row: { subject: 'Rendered by the generic ListView' },
   })
   await renderApp('/admin/HD%20Ticket', admin)
   expect(await screen.findByText(doc.row_id)).toBeInTheDocument()
@@ -37,9 +37,9 @@ test('list: a customer with no tickets sees an empty, permission-scoped list', a
   createUser,
 }) => {
   await installHelpdesk()
-  const other = await admin.post<{ name: string }>('/api/save_doc', {
-    doctype: 'HD Ticket',
-    doc: { subject: 'Someone else’s ticket' },
+  const other = await admin.post<{ name: string }>('/api/save_row', {
+    table: 'HD Ticket',
+    row: { subject: 'Someone else’s ticket' },
   })
   const customer = await createUser({ roles: ['Customer'] })
   await renderApp('/admin/HD%20Ticket', customer)
@@ -76,9 +76,9 @@ test('form: a dirty form with an empty required subject shows the field error', 
 
 test('workflow: Start from the ticket form moves the bound status field', async ({ admin }) => {
   await installHelpdesk()
-  const doc = await admin.post<{ name: string }>('/api/save_doc', {
-    doctype: 'HD Ticket',
-    doc: { subject: 'Workflow via the UI' },
+  const doc = await admin.post<{ name: string }>('/api/save_row', {
+    table: 'HD Ticket',
+    row: { subject: 'Workflow via the UI' },
   })
   const { session } = await renderSession(`/admin/HD%20Ticket/${doc.row_id}`, admin)
   await session.assertText(doc.row_id).clickButton('Start')

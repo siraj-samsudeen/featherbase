@@ -2,7 +2,7 @@
 // Access Log records data-access events (exports, prints). Both carry the user
 // and a timestamp (creation).
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [a] = await sql`select 1 from table_def where name = 'Activity Log'`

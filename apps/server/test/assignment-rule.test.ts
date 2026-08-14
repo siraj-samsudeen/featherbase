@@ -4,7 +4,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 
-// Assignment Rules: creations of the target DocType are auto-assigned
+// Assignment Rules: creations of the target Table are auto-assigned
 // round-robin across the rule's user pool (ToDo + notification), the picked
 // user lands in assign_to_field, and the condition gates the rule per-doc.
 
@@ -18,7 +18,7 @@ async function setup(admin: TestClient) {
     await sql`insert into "user" ${sql({
       row_id: u, created_by: 'Administrator', updated_by: 'Administrator', email: u, enabled: true,
     })}`
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },

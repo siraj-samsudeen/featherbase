@@ -12,7 +12,7 @@ interface CommentRow {
 // UI-018: a comment box on every row. Comments are Comment rows linked
 // by ref_table/ref_name; @mentions autocomplete from the user list and
 // render highlighted.
-export function Comments({ doctype, name }: { doctype: string; name: string }) {
+export function Comments({ table, name }: { table: string; name: string }) {
   const queryClient = useQueryClient()
   const me = getSessionUser()
   const [draft, setDraft] = useState('')
@@ -22,11 +22,11 @@ export function Comments({ doctype, name }: { doctype: string; name: string }) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const comments = useQuery({
-    queryKey: ['comments', doctype, name],
+    queryKey: ['comments', table, name],
     queryFn: () =>
       listResource<CommentRow>('Comment', {
         filters: [
-          ['ref_table', '=', doctype],
+          ['ref_table', '=', table],
           ['ref_name', '=', name],
         ],
         fields: ['row_id', 'content', 'created_by', 'created_at'],
@@ -81,12 +81,12 @@ export function Comments({ doctype, name }: { doctype: string; name: string }) {
     setPosting(true)
     setError(null)
     try {
-      await api.post('/api/save_doc', {
-        doctype: 'Comment',
-        doc: { ref_table: doctype, ref_name: name, content },
+      await api.post('/api/save_row', {
+        table: 'Comment',
+        row: { ref_table: table, ref_name: name, content },
       })
       setDraft('')
-      await queryClient.invalidateQueries({ queryKey: ['comments', doctype, name] })
+      await queryClient.invalidateQueries({ queryKey: ['comments', table, name] })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Comment failed')
     } finally {

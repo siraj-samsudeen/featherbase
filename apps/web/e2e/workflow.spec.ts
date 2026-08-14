@@ -14,21 +14,21 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const headers = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
 
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
 
-  await request.post('/api/save_doc', { headers, data: { doctype: 'Role', doc: { row_id: 'Wf Ui Approver' } } })
+  await request.post('/api/save_row', { headers, data: { table: 'Role', row: { row_id: 'Wf Ui Approver' } } })
 
   // Fresh workflow each run (delete old first so states/transitions are clean).
   await request.delete('/api/table/Workflow/Wf%20Ui%20Flow', { headers })
-  const wf = await request.post('/api/save_doc', {
+  const wf = await request.post('/api/save_row', {
     headers,
     data: {
-      doctype: 'Workflow',
-      doc: {
+      table: 'Workflow',
+      row: {
         row_id: 'Wf Ui Flow',
         ref_table: DT,
         is_active: true,
@@ -47,7 +47,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     headers,
     data: { row_id: DOC, title: 'Approve me' },
   })
-  if (doc.status() !== 201) throw new Error(`doc: ${doc.status()}`)
+  if (doc.status() !== 201) throw new Error(`row: ${doc.status()}`)
 })
 
 test('WF-002: Approve button transitions state and records the audit trail', async ({ page }) => {

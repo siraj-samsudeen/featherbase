@@ -17,7 +17,7 @@ function routeFor(s: HomePageShortcut): string {
       return `/admin/query-report/${encodeURIComponent(to)}`
     case 'url':
       return to
-    case 'doctype':
+    case 'table':
     default:
       return `/admin/${encodeURIComponent(to)}`
   }
@@ -74,8 +74,8 @@ export function HomePageView({ name }: { name: string }) {
                 {card.links.map((l) => (
                   <Link
                     key={l.link_to}
-                    to="/admin/$doctype"
-                    params={{ doctype: l.link_to }}
+                    to="/admin/$table"
+                    params={{ table: l.link_to }}
                     search={{ filters: undefined }}
                     data-testid={`home-link-${l.link_to}`}
                     className="block rounded px-1.5 py-1 text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)] hover:text-[var(--color-brand)]"
@@ -100,7 +100,7 @@ export function HomePageView({ name }: { name: string }) {
               className="fc-card p-4 text-left transition hover:border-[var(--color-brand)]"
             >
               <div className="text-sm font-medium text-[var(--color-ink)]">{s.label}</div>
-              <div className="mt-1 text-xs text-[var(--color-ink-muted)]">{s.type ?? 'doctype'}</div>
+              <div className="mt-1 text-xs text-[var(--color-ink-muted)]">{s.type ?? 'table'}</div>
             </button>
           ))}
         </div>

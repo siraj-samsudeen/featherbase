@@ -14,11 +14,11 @@ let docName = ''
 
 test.beforeAll(async ({ request }) => {
   const headers = await auth(request)
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   docName = 'cmt-doc-1'
   await request.delete(`/api/table/${encodeURIComponent(DT)}/${docName}`, { headers })
   // clear any prior comments

@@ -8,15 +8,15 @@ const FIELD_DT = 'Nm Country'
 const PROMPT_DT = 'Nm Category'
 
 async function makeDT(admin: TestClient, name: string, id_pattern: string) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name,
     id_pattern,
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
 }
 
-const save = (admin: TestClient, doctype: string, doc: Record<string, unknown>) =>
-  admin.post<{ row_id: string } & Record<string, unknown>>('/api/save_doc', { doctype, doc })
+const save = (admin: TestClient, table: string, row: Record<string, unknown>) =>
+  admin.post<{ row_id: string } & Record<string, unknown>>('/api/save_row', { table, row })
 
 describe('META-006: naming rules', () => {
   test('50 parallel series inserts produce distinct gapless sequential names', async ({

@@ -16,16 +16,16 @@ const DT = 'Wf Bind Ticket'
 const WF = 'Wf Bind Flow'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },
       { column_name: 'ticket_status', column_type: 'Choice', choices: 'Open\nClosed', default_value: 'Open' },
     ],
   })
-  await admin.post('/api/save_doc', {
-    doctype: 'Workflow',
-    doc: {
+  await admin.post('/api/save_row', {
+    table: 'Workflow',
+    row: {
       row_id: WF,
       ref_table: DT,
       is_active: true,
@@ -93,9 +93,9 @@ describe('Workflow state_field binding', () => {
   test('rejects a workflow that binds a nonexistent column', async ({ admin }) => {
     await setup(admin)
     await expect(
-      admin.post('/api/save_doc', {
-        doctype: 'Workflow',
-        doc: {
+      admin.post('/api/save_row', {
+        table: 'Workflow',
+        row: {
           row_id: WF + ' Bad',
           ref_table: DT,
           is_active: true,

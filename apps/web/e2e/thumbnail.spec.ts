@@ -48,7 +48,7 @@ function makePng(w: number, h: number): Buffer {
   return Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))])
 }
 
-// Isolated to its own DocType/doc so it never contends with the FILE-002
+// Isolated to its own Table/doc so it never contends with the FILE-002
 // attachments spec (which uses User/Guest) when specs run in parallel.
 const DT = 'Thumb E2E Doc'
 const DOC = 'thumb-e2e-1'
@@ -60,11 +60,11 @@ async function adminAuth(request: APIRequestContext) {
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminAuth(request)
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   await request.delete(`/api/table/${encodeURIComponent(DT)}/${DOC}`, { headers })
   await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { row_id: DOC, title: 'x' } })
 })

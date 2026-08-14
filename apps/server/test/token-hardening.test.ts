@@ -13,7 +13,7 @@ import {
 } from '../src/auth'
 import { findOrCreateGoogleUser } from '../src/oauth'
 import { requestPasswordReset, resetPassword } from '../src/password-reset'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 import { getServiceAccount } from '../src/service-accounts'
 
 // #137: review findings on the #131 access-token feature. Each case fails
@@ -61,9 +61,9 @@ describe('#137 P1: OAuth cannot revive a disabled principal', () => {
     void seed
     // A disabled human user stays disabled — OAuth used to flip it back on.
     const email = 'disabled-human@example.com'
-    await admin.post('/api/save_doc', {
-      doctype: 'User',
-      doc: { row_id: email, email, enabled: false },
+    await admin.post('/api/save_row', {
+      table: 'User',
+      row: { row_id: email, email, enabled: false },
     })
     await expect(findOrCreateGoogleUser(email, 'Disabled Human')).rejects.toMatchObject({
       type: 'AuthenticationError',
@@ -242,9 +242,9 @@ describe('#137 R2: OAuth refusals cannot be told apart', () => {
   test('a disabled user and a service account fail identically', async ({ admin, seed }) => {
     void seed
     const disabled = 'enum-disabled@example.com'
-    await admin.post('/api/save_doc', {
-      doctype: 'User',
-      doc: { row_id: disabled, email: disabled, enabled: false },
+    await admin.post('/api/save_row', {
+      table: 'User',
+      row: { row_id: disabled, email: disabled, enabled: false },
     })
     await serviceAccount(admin, 'svc-enum')
 
@@ -265,9 +265,9 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
     admin,
   }) => {
     const email = 'reset-then-service@example.com'
-    await admin.post('/api/save_doc', {
-      doctype: 'User',
-      doc: { row_id: email, email, enabled: true },
+    await admin.post('/api/save_row', {
+      table: 'User',
+      row: { row_id: email, email, enabled: true },
     })
     const token = await requestPasswordReset(email)
     expect(token).toBeTruthy()
@@ -289,9 +289,9 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
 
   test('a write that fails does not give the link back', async ({ admin }) => {
     const email = 'reset-burn@example.com'
-    await admin.post('/api/save_doc', {
-      doctype: 'User',
-      doc: { row_id: email, email, enabled: true },
+    await admin.post('/api/save_row', {
+      table: 'User',
+      row: { row_id: email, email, enabled: true },
     })
     const token = await requestPasswordReset(email)
 
@@ -320,9 +320,9 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
 
   test('a successful reset consumes the link, so it cannot be replayed', async ({ admin }) => {
     const email = 'reset-replay@example.com'
-    await admin.post('/api/save_doc', {
-      doctype: 'User',
-      doc: { row_id: email, email, enabled: true },
+    await admin.post('/api/save_row', {
+      table: 'User',
+      row: { row_id: email, email, enabled: true },
     })
     const token = await requestPasswordReset(email)
     await resetPassword(token as string, 'first-password-1')

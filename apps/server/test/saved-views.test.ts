@@ -37,24 +37,24 @@ describe('#101: /api/saved_views', () => {
 
   test('private views stay private; sharing opens them read-only', async ({ admin, api }) => {
     const DT = 'SV Share DT'
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: DT,
       id_pattern: 'prompt',
       columns: [{ column_name: 'title', column_type: 'Data' }],
     })
     // The second user needs read on the Table itself to see its views.
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: DT, role: 'All', tier: 'basic', can_read: true },
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: DT, role: 'All', tier: 'basic', can_read: true },
     })
     const created = await admin.post<{ row_id: string }>('/api/saved_views', {
       table: DT,
       label: 'Mine only',
       filters: FILTERS,
     })
-    await admin.post('/api/save_doc', {
-      doctype: 'User',
-      doc: { row_id: 'sv-user@x.com', email: 'sv-user@x.com', enabled: true },
+    await admin.post('/api/save_row', {
+      table: 'User',
+      row: { row_id: 'sv-user@x.com', email: 'sv-user@x.com', enabled: true },
     })
     const { token } = await issueSession('sv-user@x.com')
     const auth = { authorization: `Bearer ${token}` }
@@ -90,14 +90,14 @@ describe('#101: /api/saved_views', () => {
   // can neither browse its shared views nor publish chips for it.
   test('saved views respect Table read permission', async ({ admin, api }) => {
     const DT = 'SV Locked DT'
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: DT,
       id_pattern: 'prompt',
       columns: [{ column_name: 'title', column_type: 'Data' }],
     })
-    await admin.post('/api/save_doc', {
-      doctype: 'User',
-      doc: { row_id: 'sv-locked@x.com', email: 'sv-locked@x.com', enabled: true },
+    await admin.post('/api/save_row', {
+      table: 'User',
+      row: { row_id: 'sv-locked@x.com', email: 'sv-locked@x.com', enabled: true },
     })
     const { token } = await issueSession('sv-locked@x.com')
     const auth = { authorization: `Bearer ${token}` }
@@ -114,9 +114,9 @@ describe('#101: /api/saved_views', () => {
     expect(create.status).toBe(403)
 
     // Granting read opens both.
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: DT, role: 'All', tier: 'basic', can_read: true },
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: DT, role: 'All', tier: 'basic', can_read: true },
     })
     const listOk = await api.fetch(`/api/saved_views?table=${encodeURIComponent(DT)}`, {
       headers: auth,

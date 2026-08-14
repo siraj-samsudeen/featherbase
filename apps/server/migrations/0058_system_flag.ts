@@ -7,7 +7,7 @@
 // System section (grouping, never hiding — every table stays reachable, and
 // global search still spans them).
 //
-// user-created tables can never claim the flag: POST/PUT /api/doctype reject
+// user-created tables can never claim the flag: POST/PUT /api/table_def reject
 // system: true (index.ts); only migrations and seeds may set it through
 // createTable directly.
 import { sql } from '../src/db'
@@ -76,7 +76,7 @@ export async function up() {
   // refuses `system` as a selected field (query.ts assertColumn), and the
   // sidebar could not fetch it. Fresh installs get the identical row from
   // 0004_bootstrap.sql; write paths are safe either way — Table/Column rows
-  // are ENGINE_MANAGED (document.ts), so only /api/doctype can write them,
+  // are ENGINE_MANAGED (document.ts), so only /api/table_def can write them,
   // and those routes reject system: true.
   await sql`
     insert into column_def (parent, position, column_name, label, column_type)

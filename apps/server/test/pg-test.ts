@@ -16,7 +16,7 @@ export const test = createPgTest(
     app,
     sql,
     setDelegate: _setSqlDelegate,
-    // A test may create/alter DocTypes inside its transaction; after rollback
+    // A test may create/alter Tables inside its transaction; after rollback
     // the per-process meta cache would describe tables that no longer exist.
     onTeardown: () => {
       invalidateMeta()

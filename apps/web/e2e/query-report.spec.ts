@@ -11,11 +11,11 @@ async function adminHeaders(request: APIRequestContext) {
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
   await request.delete(`/api/table/Report/${encodeURIComponent(REPORT)}`, { headers })
-  const res = await request.post('/api/save_doc', {
+  const res = await request.post('/api/save_row', {
     headers,
     data: {
-      doctype: 'Report',
-      doc: {
+      table: 'Report',
+      row: {
         row_id: REPORT,
         ref_table: 'User',
         report_type: 'Query Report',
@@ -58,14 +58,14 @@ test('RPT-004: a non-System-Manager cannot author Query Report SQL', async ({ re
   const USER = 'e2e-rpt-editor@x.com'
   const PWD = 'rpteditor12345'
 
-  await request.post('/api/save_doc', { headers, data: { doctype: 'Role', doc: { row_id: ROLE } } })
-  await request.post('/api/save_doc', {
+  await request.post('/api/save_row', { headers, data: { table: 'Role', row: { row_id: ROLE } } })
+  await request.post('/api/save_row', {
     headers,
-    data: { doctype: 'Permission', doc: { ref_table: 'Report', role: ROLE, can_read: true, can_write: true, can_create: true } },
+    data: { table: 'Permission', row: { ref_table: 'Report', role: ROLE, can_read: true, can_write: true, can_create: true } },
   })
-  await request.post('/api/save_doc', {
+  await request.post('/api/save_row', {
     headers,
-    data: { doctype: 'User', doc: { row_id: USER, email: USER, enabled: true, roles: [{ role: ROLE }] } },
+    data: { table: 'User', row: { row_id: USER, email: USER, enabled: true, roles: [{ role: ROLE }] } },
   })
   await request.post('/api/set_password', { headers, data: { user: USER, password: PWD } })
 
@@ -73,18 +73,18 @@ test('RPT-004: a non-System-Manager cannot author Query Report SQL', async ({ re
   const userHeaders = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
 
   // Same role CAN create an ordinary report (proves it has base Report perms)…
-  const ok = await request.post('/api/save_doc', {
+  const ok = await request.post('/api/save_row', {
     headers: userHeaders,
-    data: { doctype: 'Report', doc: { row_id: 'E2E Editor Builder', ref_table: 'User', report_type: 'Report Builder' } },
+    data: { table: 'Report', row: { row_id: 'E2E Editor Builder', ref_table: 'User', report_type: 'Report Builder' } },
   })
   expect(ok.status()).toBe(201)
 
   // …but is blocked from authoring SQL.
-  const denied = await request.post('/api/save_doc', {
+  const denied = await request.post('/api/save_row', {
     headers: userHeaders,
     data: {
-      doctype: 'Report',
-      doc: { row_id: 'E2E Editor Evil', ref_table: 'User', report_type: 'Query Report', query: 'select row_id from "user"' },
+      table: 'Report',
+      row: { row_id: 'E2E Editor Evil', ref_table: 'User', report_type: 'Query Report', query: 'select row_id from "user"' },
     },
   })
   expect(denied.status()).toBe(403)

@@ -8,15 +8,15 @@ const ROLE = 'Own Role'
 // Per-test world: Table, role, the own_rows_only grant (read/write/create/
 // delete only on own docs), and two users — all rolled back with the test.
 async function setup(admin: TestClient, createUser: (o?: { roles?: string[] }) => Promise<TestClient>) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [{ column_name: 't', column_type: 'Data' }],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
   // own_rows_only grant: read/write/create/delete only on own docs
-  await admin.post('/api/save_doc', {
-    doctype: 'Permission',
-    doc: {
+  await admin.post('/api/save_row', {
+    table: 'Permission',
+    row: {
       ref_table: DT,
       role: ROLE,
       own_rows_only: true,
@@ -103,9 +103,9 @@ describe('PERM-007: own_rows_only permissions', () => {
       method: 'POST',
       body: JSON.stringify({ t: 'bob doc' }),
     })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: DT, role: ROLE, can_read: true },
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: DT, role: ROLE, can_read: true },
     })
     const list = (await (
       await alice.fetch(

@@ -12,19 +12,19 @@ const ROLE = 'Wf Owner Customer'
 const ROUTE = 'wfown-request'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [{ column_name: 'subject', column_type: 'Data', reqd: true }],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
   // The customer role holds NO create Permission — the web form is the only door.
-  await admin.post('/api/save_doc', {
-    doctype: 'Permission',
-    doc: { ref_table: DT, role: ROLE, own_rows_only: true, can_read: true },
+  await admin.post('/api/save_row', {
+    table: 'Permission',
+    row: { ref_table: DT, role: ROLE, own_rows_only: true, can_read: true },
   })
-  await admin.post('/api/save_doc', {
-    doctype: 'Web Form',
-    doc: {
+  await admin.post('/api/save_row', {
+    table: 'Web Form',
+    row: {
       row_id: 'WfOwn Request Form',
       title: 'Request',
       route: ROUTE,

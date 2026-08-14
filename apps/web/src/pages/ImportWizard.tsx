@@ -930,7 +930,7 @@ export function ImportWizard() {
         const sheet = sheets[i]
         let rows: CoercedRow[]
         if (plan.mode === 'new') {
-          await api.post('/api/doctype', {
+          await api.post('/api/table_def', {
             name: plan.table,
             id_pattern: planIdPattern(plan),
             columns: plan.inferred.columns
@@ -990,8 +990,8 @@ export function ImportWizard() {
       const active = plans.filter((p) => p.mode !== 'skip')
       if (active.length === 1) {
         navigate({
-          to: '/admin/$doctype',
-          params: { doctype: active[0].table },
+          to: '/admin/$table',
+          params: { table: active[0].table },
           search: { filters: undefined },
         })
       }
@@ -1524,8 +1524,8 @@ export function ImportWizard() {
                     ? `Updated ${plan.result.updated} and added ${plan.result.inserted} rows in `
                     : `Imported ${plan.result.inserted} rows into `}
                   <Link
-                    to="/admin/$doctype"
-                    params={{ doctype: plan.table }}
+                    to="/admin/$table"
+                    params={{ table: plan.table }}
                     search={{ filters: undefined }}
                     className="underline"
                   >
@@ -1560,8 +1560,8 @@ export function ImportWizard() {
         <p className="mt-2 text-sm text-green-700" data-testid="iw-done">
           Import complete.{' '}
           <Link
-            to="/admin/$doctype"
-            params={{ doctype: 'Import Log' }}
+            to="/admin/$table"
+            params={{ table: 'Import Log' }}
             search={{ filters: undefined }}
             className="underline"
             data-testid="iw-history-link"

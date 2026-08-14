@@ -17,7 +17,7 @@
 //     Builder grew its module field) land on a plain 'Home' page.
 import { randomUUID } from 'node:crypto'
 import { sql } from '../src/db'
-import { createTable, pgType, tableName } from '../src/doctype-engine'
+import { createTable, pgType, tableName } from '../src/table-engine'
 import { invalidateMeta } from '../src/meta'
 import { ensureHomePageForTable } from '../src/home-pages'
 import {

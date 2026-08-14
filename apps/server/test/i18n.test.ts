@@ -11,9 +11,9 @@ async function seedFrench(admin: TestClient) {
     ['Save', 'Enregistrer'],
     ['Priority', 'Priorité'],
   ]) {
-    await admin.post('/api/save_doc', {
-      doctype: 'Translation',
-      doc: { row_id: `t-fr-${src}`, language: 'fr', source_text: src, translated_text: tr },
+    await admin.post('/api/save_row', {
+      table: 'Translation',
+      row: { row_id: `t-fr-${src}`, language: 'fr', source_text: src, translated_text: tr },
     })
   }
 }
@@ -32,10 +32,10 @@ describe('I18N-001: translations', () => {
   test('a (language, source_text) collision names those fields, not `name`', async ({ admin }) => {
     await seedFrench(admin)
     await expect(
-      admin.post('/api/save_doc', {
-        doctype: 'Translation',
+      admin.post('/api/save_row', {
+        table: 'Translation',
         // A different primary key: only the (language, source_text) pair clashes.
-        doc: { row_id: 'other-name', language: 'fr', source_text: 'Save', translated_text: 'X' },
+        row: { row_id: 'other-name', language: 'fr', source_text: 'Save', translated_text: 'X' },
       }),
     ).rejects.toThrow(/Duplicate value for language, source_text/)
   })

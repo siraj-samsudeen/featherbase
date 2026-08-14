@@ -148,7 +148,7 @@ export function AdminLayout() {
   //   g then d    go to the Admin home
   useEffect(() => {
     let leader = 0 // timestamp of a recent 'g' press
-    function currentDoctype(): string | null {
+    function currentTable(): string | null {
       const m = /^\/admin\/([^/]+)/.exec(window.location.pathname)
       return m ? decodeURIComponent(m[1]) : null
     }
@@ -171,8 +171,8 @@ export function AdminLayout() {
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault()
-        const dt = currentDoctype()
-        if (dt && dt !== 'new-table') navigate({ to: '/admin/$doctype/$name', params: { doctype: dt, name: 'new' }, search: { prefill: undefined } })
+        const dt = currentTable()
+        if (dt && dt !== 'new-table') navigate({ to: '/admin/$table/$name', params: { table: dt, name: 'new' }, search: { prefill: undefined } })
         return
       }
       // Leader-key navigation only when not typing into a field.
@@ -288,7 +288,7 @@ export function AdminLayout() {
   function openDoc(hit: SearchHit) {
     recordSearch(search.trim())
     setSearch('')
-    navigate({ to: '/admin/$doctype/$name', params: { doctype: hit.table, name: hit.row_id }, search: { prefill: undefined } })
+    navigate({ to: '/admin/$table/$name', params: { table: hit.table, name: hit.row_id }, search: { prefill: undefined } })
   }
 
   // Enter opens the top match: an exactly-named Table's list first,
@@ -306,7 +306,7 @@ export function AdminLayout() {
     const dtHit = tables.data?.data.find((d) => d.row_id.toLowerCase() === q.toLowerCase())
     if (dtHit) {
       setSearch('')
-      navigate({ to: '/admin/$doctype', params: { doctype: dtHit.row_id }, search: { filters: undefined } })
+      navigate({ to: '/admin/$table', params: { table: dtHit.row_id }, search: { filters: undefined } })
       return
     }
     const doc = docHits.data?.results[0]
@@ -314,7 +314,7 @@ export function AdminLayout() {
       openDoc(doc)
       return
     }
-    navigate({ to: '/admin/$doctype', params: { doctype: q }, search: { filters: undefined } })
+    navigate({ to: '/admin/$table', params: { table: q }, search: { filters: undefined } })
   }
 
   const initials = (user?.full_name || user?.row_id || '?')
@@ -461,8 +461,8 @@ export function AdminLayout() {
               {suggestions.map((d) => (
                 <Link
                   key={d.row_id}
-                  to="/admin/$doctype"
-                  params={{ doctype: d.row_id }}
+                  to="/admin/$table"
+                  params={{ table: d.row_id }}
                   search={{ filters: undefined }}
                   onClick={() => setSearch('')}
                   className="block px-3 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
@@ -475,9 +475,9 @@ export function AdminLayout() {
               {suggestions.slice(0, 2).map((d) => (
                 <Link
                   key={`new-${d.row_id}`}
-                  to="/admin/$doctype/$name"
+                  to="/admin/$table/$name"
                   search={{ prefill: undefined }}
-                  params={{ doctype: d.row_id, name: 'new' }}
+                  params={{ table: d.row_id, name: 'new' }}
                   onClick={() => setSearch('')}
                   data-testid="awesomebar-new"
                   className="block px-3 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
@@ -662,7 +662,7 @@ export function AdminLayout() {
           <div className="px-3 pt-4">
             <Link
               to="/admin/new-table"
-              data-testid="new-doctype-link"
+              data-testid="new-table-link"
               className="fc-btn-primary w-full justify-center"
             >
               + New Table

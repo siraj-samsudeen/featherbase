@@ -14,20 +14,20 @@ const DT = 'Sec Doc Srv'
 const READER_ROLE = 'Sec Reader'
 
 async function setup(admin: TestClient, createUser: CreateUserFn) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
-  // A role that can read the doctype, and a document to attach the file to.
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: READER_ROLE } })
-  await admin.post('/api/save_doc', {
-    doctype: 'Permission',
-    doc: { ref_table: DT, role: READER_ROLE, can_read: true },
+  // A role that can read the table, and a document to attach the file to.
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: READER_ROLE } })
+  await admin.post('/api/save_row', {
+    table: 'Permission',
+    row: { ref_table: DT, role: READER_ROLE, can_read: true },
   })
   const docName = (
-    await admin.post<{ row_id: string }>('/api/save_doc', {
-      doctype: DT,
-      doc: { title: 'secret' },
+    await admin.post<{ row_id: string }>('/api/save_row', {
+      table: DT,
+      row: { title: 'secret' },
     })
   ).row_id
 
@@ -39,7 +39,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn) {
   const form = new FormData()
   form.append('file', new File(['classified'], 'sec.txt', { type: 'text/plain' }))
   form.append('is_private', '1')
-  form.append('ref_doctype', DT)
+  form.append('ref_table', DT)
   form.append('ref_name', docName)
   const up = await admin.fetch('/api/upload_file', { method: 'POST', body: form })
   const fileUrl = ((await up.json()) as { file_url: string }).file_url

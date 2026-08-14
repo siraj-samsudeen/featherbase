@@ -5,7 +5,7 @@
 // last time" suggestion. Converges existing databases; fresh installs get
 // the shape from the rewritten 0056.
 import { sql } from '../src/db'
-import { tableName } from '../src/doctype-engine'
+import { tableName } from '../src/table-engine'
 import { invalidateMeta } from '../src/meta'
 
 const NEW_COLUMNS = [

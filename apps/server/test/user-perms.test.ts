@@ -13,33 +13,33 @@ async function setup(
   admin: TestClient,
   createUser: (o?: { roles?: string[] }) => Promise<TestClient>,
 ) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: COMPANY,
     id_pattern: 'prompt',
     columns: [{ column_name: 'country', column_type: 'Data' }],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: PROJECT,
     columns: [
       { column_name: 'title', column_type: 'Data' },
       { column_name: 'company', column_type: 'Reference', reference_table: COMPANY },
     ],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
   for (const dt of [PROJECT, COMPANY])
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: dt, role: ROLE, can_read: true, can_write: true, can_create: true },
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: dt, role: ROLE, can_read: true, can_write: true, can_create: true },
     })
   const user = await createUser({ roles: [ROLE] })
   for (const c of ['Company A', 'Company B'])
-    await admin.post('/api/save_doc', { doctype: COMPANY, doc: { row_id: c } })
+    await admin.post('/api/save_row', { table: COMPANY, row: { row_id: c } })
   for (const [t, c] of [['pa', 'Company A'], ['pb', 'Company B']])
-    await admin.post('/api/save_doc', { doctype: PROJECT, doc: { title: t, company: c } })
+    await admin.post('/api/save_row', { table: PROJECT, row: { title: t, company: c } })
   // Restrict the user to Company A
-  await admin.post('/api/save_doc', {
-    doctype: 'Data Scope',
-    doc: { user: user.user, allow_table: COMPANY, for_value: 'Company A' },
+  await admin.post('/api/save_row', {
+    table: 'Data Scope',
+    row: { user: user.user, allow_table: COMPANY, for_value: 'Company A' },
   })
   return user
 }

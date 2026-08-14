@@ -38,7 +38,7 @@ async function cleanup() {
 
 beforeAll(async () => {
   await cleanup()
-  await areq('/api/doctype', {
+  await areq('/api/table_def', {
     method: 'POST',
     body: JSON.stringify({
       name: CHILD,
@@ -46,7 +46,7 @@ beforeAll(async () => {
       columns: [{ column_name: 'part', column_type: 'Data' }],
     }),
   })
-  await areq('/api/doctype', {
+  await areq('/api/table_def', {
     method: 'POST',
     body: JSON.stringify({
       name: DT,
@@ -56,38 +56,38 @@ beforeAll(async () => {
       ],
     }),
   })
-  await areq('/api/doctype', {
+  await areq('/api/table_def', {
     method: 'POST',
     body: JSON.stringify({ name: SECRET_DT, columns: [{ column_name: 'code', column_type: 'Data' }] }),
   })
-  await areq('/api/save_doc', {
+  await areq('/api/save_row', {
     method: 'POST',
-    body: JSON.stringify({ doctype: 'Role', doc: { row_id: ROLE } }),
+    body: JSON.stringify({ table: 'Role', row: { row_id: ROLE } }),
   })
-  await areq('/api/save_doc', {
+  await areq('/api/save_row', {
     method: 'POST',
     body: JSON.stringify({
-      doctype: 'User',
-      doc: { row_id: USER, email: USER, roles: [{ role: ROLE }] },
+      table: 'User',
+      row: { row_id: USER, email: USER, roles: [{ role: ROLE }] },
     }),
   })
-  await areq('/api/save_doc', {
+  await areq('/api/save_row', {
     method: 'POST',
     body: JSON.stringify({
-      doctype: 'Permission',
-      doc: { ref_table: DT, role: ROLE, tier: 'basic', can_read: true },
+      table: 'Permission',
+      row: { ref_table: DT, role: ROLE, tier: 'basic', can_read: true },
     }),
   })
-  await areq('/api/save_doc', {
+  await areq('/api/save_row', {
     method: 'POST',
     body: JSON.stringify({
-      doctype: DT,
-      doc: { title: 'w1', items: [{ part: 'p1' }, { part: 'p2' }] },
+      table: DT,
+      row: { title: 'w1', items: [{ part: 'p1' }, { part: 'p2' }] },
     }),
   })
-  await areq('/api/save_doc', {
+  await areq('/api/save_row', {
     method: 'POST',
-    body: JSON.stringify({ doctype: SECRET_DT, doc: { code: 's3cret' } }),
+    body: JSON.stringify({ table: SECRET_DT, row: { code: 's3cret' } }),
   })
 })
 

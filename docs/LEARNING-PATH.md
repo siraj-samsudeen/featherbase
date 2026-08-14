@@ -36,7 +36,7 @@ default off), `notes` (Text). No controller, no code. Over HTTP the
 definition looks like (see `docs/TUTORIAL.md` for the full walkthrough):
 
 ```bash
-curl -s http://localhost:8000/api/doctype \
+curl -s http://localhost:8000/api/table_def \
   -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"name":"Todo Item","columns":[
     {"column_name":"title","column_type":"Data","reqd":true,"in_list_view":true},

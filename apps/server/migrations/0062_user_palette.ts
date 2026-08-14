@@ -1,7 +1,7 @@
 // UI-025: per-user color palette (classic/ivory/graphite/indigo), the second
 // theming axis alongside light/dark. Mirrors 0035_user_theme.
 import { sql } from '../src/db'
-import { pgType } from '../src/doctype-engine'
+import { pgType } from '../src/table-engine'
 
 export async function up() {
   const type = pgType('Choice')

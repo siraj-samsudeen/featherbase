@@ -14,7 +14,7 @@ import { callMethod } from '../src/methods'
 const DT = 'Hook Parity Note'
 
 async function makeDT(admin: TestClient, opts: { submittable?: boolean } = {}) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     is_submittable: opts.submittable ?? false,
     columns: [{ column_name: 'title', column_type: 'Data' }],

@@ -17,7 +17,7 @@ export interface InferredTableDef {
   columns: InferredColumn[]
 }
 
-// Mirrors the server's STANDARD_COLUMNS (doctype-engine.ts): user columns can
+// Mirrors the server's STANDARD_COLUMNS (table-engine.ts): user columns can
 // never shadow these, so inferred names step aside with a numeric suffix.
 // #132: the row key is 'row_id'; 'name' is a legal user column again.
 const RESERVED_COLUMN_NAMES = new Set([
@@ -303,7 +303,7 @@ export function idPatternFor(tableName: string, digits = 3): string {
   return prefix ? `${prefix}.${'#'.repeat(digits)}` : 'hash'
 }
 
-// IMP-003: headers + parsed rows -> a ready POST /api/doctype payload.
+// IMP-003: headers + parsed rows -> a ready POST /api/table payload.
 // Original headers survive as labels; the first columns are flagged for the
 // list view so the imported Table is immediately browsable.
 export function inferTableDef(

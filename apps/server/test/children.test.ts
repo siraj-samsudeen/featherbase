@@ -10,7 +10,7 @@ const CTABLE = 'chd_item_row'
 const PTABLE = 'chd_order'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: CHILD,
     kind: 'sub_table',
     columns: [
@@ -18,7 +18,7 @@ async function setup(admin: TestClient) {
       { column_name: 'qty', column_type: 'Int', default_value: '1' },
     ],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: PARENT,
     columns: [
       { column_name: 'title', column_type: 'Data' },
@@ -27,14 +27,14 @@ async function setup(admin: TestClient) {
   })
 }
 
-const save = (admin: TestClient, doc: Record<string, unknown>) =>
-  admin.post<Record<string, any>>('/api/save_doc', { doctype: PARENT, doc })
+const save = (admin: TestClient, row: Record<string, unknown>) =>
+  admin.post<Record<string, any>>('/api/save_row', { table: PARENT, row })
 
 describe('META-007: child table linkage', () => {
   test('rejects a Sub-table column pointing at a non-child Table', async ({ admin }) => {
     await setup(admin)
     await expect(
-      admin.post('/api/doctype', {
+      admin.post('/api/table_def', {
         name: 'Chd Bad Parent',
         columns: [{ column_name: 'rows', column_type: 'Sub-table', row_table: PARENT }],
       }),
@@ -67,7 +67,7 @@ describe('META-007: child table linkage', () => {
   test('cannot save a child Table directly', async ({ admin }) => {
     await setup(admin)
     await expect(
-      admin.post('/api/save_doc', { doctype: CHILD, doc: { item: 'x' } }),
+      admin.post('/api/save_row', { table: CHILD, row: { item: 'x' } }),
     ).rejects.toMatchObject({
       status: 417,
       message: expect.stringMatching(/through its parent/),

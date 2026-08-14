@@ -1,7 +1,7 @@
 // I18N-001: translation catalog. Each row maps a source string to its
 // translation in a target language. t() looks these up at render time.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'Translation'`

@@ -29,7 +29,7 @@ describe('API-004: authentication', () => {
   })
 
   test('requests without a token are rejected; garbage tokens too', async ({ api }) => {
-    expect((await api.fetch('/api/table/DocType')).status).toBe(401)
+    expect((await api.fetch('/api/table/Table')).status).toBe(401)
     expect((await api.fetch('/api/whoami')).status).toBe(401)
     expect(
       (

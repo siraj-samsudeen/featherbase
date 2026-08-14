@@ -7,7 +7,7 @@ const DT = 'Val Test Ticket'
 const TABLE = 'val_test_ticket'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data', reqd: true },
@@ -18,8 +18,8 @@ async function setup(admin: TestClient) {
   })
 }
 
-const save = (admin: TestClient, doc: Record<string, unknown>) =>
-  admin.post<Record<string, unknown>>('/api/save_doc', { doctype: DT, doc })
+const save = (admin: TestClient, row: Record<string, unknown>) =>
+  admin.post<Record<string, unknown>>('/api/save_row', { table: DT, row })
 
 describe('DOC-011: field-wise validation errors', () => {
   test('returns BOTH errors keyed by column_name for a doubly-invalid payload', async ({

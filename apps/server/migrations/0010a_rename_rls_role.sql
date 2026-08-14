@@ -6,7 +6,7 @@
 -- already applied 0010 (which recorded it as applied and will not re-run it).
 --
 -- WHY THE `0010a` NAME: it has to run BEFORE 0011. The runner applies files in
--- name order, and `applyRls` in doctype-engine.ts grants to `app_client` on
+-- name order, and `applyRls` in table-engine.ts grants to `app_client` on
 -- every table it creates as soon as `fc_has_read()` exists. A database that
 -- stopped between 0010 and 0011 would otherwise reach 0011's createTable with
 -- the role still named `desk_client` and die with "role app_client does not

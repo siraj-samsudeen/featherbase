@@ -10,18 +10,18 @@ import type { TestClient } from 'feather-testing-postgres'
 const DT = 'Ps Target'
 
 async function makeDT(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }],
   })
 }
 
 async function addLabelSetter(admin: TestClient) {
-  return admin.fetch('/api/save_doc', {
+  return admin.fetch('/api/save_row', {
     method: 'POST',
     body: JSON.stringify({
-      doctype: 'Metadata Override',
-      doc: {
+      table: 'Metadata Override',
+      row: {
         row_id: `${DT}-title-label`,
         table_name: DT,
         column_name: 'title',
@@ -50,9 +50,9 @@ describe('CUST-002: metadata overrides', () => {
 
   test('coerces boolean properties (hidden/reqd)', async ({ admin }) => {
     await makeDT(admin)
-    await admin.post('/api/save_doc', {
-      doctype: 'Metadata Override',
-      doc: {
+    await admin.post('/api/save_row', {
+      table: 'Metadata Override',
+      row: {
         row_id: `${DT}-title-reqd`,
         table_name: DT,
         column_name: 'title',

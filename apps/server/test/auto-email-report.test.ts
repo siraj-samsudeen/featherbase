@@ -14,7 +14,7 @@ const AER = 'Aer Srv Schedule'
 const RECIP = 'aer-boss@x.com'
 
 // Runs at the start of each test, inside its sandbox transaction: clear any
-// committed leftovers (rolled back afterwards), then create the DocType,
+// committed leftovers (rolled back afterwards), then create the Table,
 // documents, Report, and schedule that legacy beforeAll used to set up once.
 async function setup(admin: TestClient) {
   await sql`delete from email_sink where subject like ${'Auto Email Report:%'}`
@@ -25,7 +25,7 @@ async function setup(admin: TestClient) {
   await sql`delete from table_def where name = ${DT}`
   await sql.unsafe('drop table if exists aer_srv_widget')
 
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     id_pattern: 'prompt',
     columns: [
@@ -45,10 +45,10 @@ async function setup(admin: TestClient) {
     qty: 3,
   })
 
-  // A Report Builder report over the DocType.
-  await admin.post('/api/save_doc', {
-    doctype: 'Report',
-    doc: {
+  // A Report Builder report over the Table.
+  await admin.post('/api/save_row', {
+    table: 'Report',
+    row: {
       row_id: REPORT,
       ref_table: DT,
       report_type: 'Report Builder',
@@ -56,9 +56,9 @@ async function setup(admin: TestClient) {
     },
   })
 
-  await admin.post('/api/save_doc', {
-    doctype: 'Auto Email Report',
-    doc: {
+  await admin.post('/api/save_row', {
+    table: 'Auto Email Report',
+    row: {
       row_id: AER,
       report: REPORT,
       recipients: RECIP,

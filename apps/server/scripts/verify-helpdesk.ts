@@ -73,7 +73,7 @@ async function workflowActions(user: string, name: string): Promise<string[]> {
 async function apply(user: string, name: string, action: string): Promise<Response> {
   return req(user, '/api/apply_workflow_action', {
     method: 'POST',
-    body: JSON.stringify({ doctype: 'HD Ticket', name, action }),
+    body: JSON.stringify({ table: 'HD Ticket', name, action }),
   })
 }
 
@@ -170,7 +170,7 @@ async function main() {
   console.log('\n5. Collaboration: comment + assignee ToDo')
   const comment = await req(agent, '/api/resource/Comment', {
     method: 'POST',
-    body: JSON.stringify({ ref_doctype: 'HD Ticket', ref_name: t2.name, content: 'Looking into the PDF renderer.' }),
+    body: JSON.stringify({ ref_table: 'HD Ticket', ref_name: t2.name, content: 'Looking into the PDF renderer.' }),
   })
   ok(comment.status === 201, 'agent comments on a ticket')
   const seen = await json<{ data: { content: string }[] }>(

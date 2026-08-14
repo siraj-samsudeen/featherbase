@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 
-// SET-001: a Single DocType opens straight into its form; saving persists;
+// SET-001: a Single Table opens straight into its form; saving persists;
 // there is exactly one record (no list).
 
 test('SET-001: System Settings opens as a form and saves persistently', async ({ page }) => {
@@ -12,7 +12,7 @@ test('SET-001: System Settings opens as a form and saves persistently', async ({
   await page.click('button[type=submit]')
   await page.waitForURL(/\/admin/)
 
-  // Navigating to the Single DocType shows its form (no list view).
+  // Navigating to the Single Table shows its form (no list view).
   await page.goto('/admin/System%20Settings')
   await expect(page.getByTestId('form-view')).toBeVisible()
   await expect(page.getByTestId('list-view')).toHaveCount(0)
@@ -30,7 +30,7 @@ test('SET-001: System Settings opens as a form and saves persistently', async ({
   await page.reload()
   await expect(page.locator('[data-field=app_name]')).toHaveValue(newName)
 
-  // Verify via the API that it is a single instance keyed by the doctype.
+  // Verify via the API that it is a single instance keyed by the table.
   const token = await page.evaluate(() => localStorage.getItem('fc_token'))
   const doc = (await (
     await page.request.get('/api/table/System%20Settings/System%20Settings', {

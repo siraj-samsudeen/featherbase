@@ -24,7 +24,7 @@ const COLUMNS = [
 ]
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     id_pattern: idPatternFor(DT),
     columns: [

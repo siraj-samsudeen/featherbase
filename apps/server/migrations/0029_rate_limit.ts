@@ -1,7 +1,7 @@
 // API-007: per-user API rate-limit budget (requests per window; 0 = global
 // default). Idempotent column_def + backing column on "user".
 import { sql } from '../src/db'
-import { pgType } from '../src/doctype-engine'
+import { pgType } from '../src/table-engine'
 
 export async function up() {
   const type = pgType('Int')

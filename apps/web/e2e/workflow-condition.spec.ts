@@ -13,7 +13,7 @@ async function headers(request: APIRequestContext) {
 
 test.beforeAll(async ({ request }) => {
   const H = await headers(request)
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers: H,
     data: {
       name: DT,
@@ -24,15 +24,15 @@ test.beforeAll(async ({ request }) => {
       ],
     },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
-  await request.post('/api/save_doc', { headers: H, data: { doctype: 'Role', doc: { row_id: 'Wf Cond Approver' } } })
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
+  await request.post('/api/save_row', { headers: H, data: { table: 'Role', row: { row_id: 'Wf Cond Approver' } } })
 
   await request.delete(`/api/table/Workflow/${encodeURIComponent(FLOW)}`, { headers: H })
-  const wf = await request.post('/api/save_doc', {
+  const wf = await request.post('/api/save_row', {
     headers: H,
     data: {
-      doctype: 'Workflow',
-      doc: {
+      table: 'Workflow',
+      row: {
         row_id: FLOW,
         ref_table: DT,
         is_active: true,

@@ -22,9 +22,9 @@ async function setup(admin: TestClient) {
       rows: [{ n: filters.n ?? 0, doubled: Number(filters.n ?? 0) * 2 }],
     }),
   })
-  await admin.post('/api/save_doc', {
-    doctype: 'Report',
-    doc: { row_id: REPORT, ref_table: 'User', report_type: 'Script Report', report_script: 'Srv Echo' },
+  await admin.post('/api/save_row', {
+    table: 'Report',
+    row: { row_id: REPORT, ref_table: 'User', report_type: 'Script Report', report_script: 'Srv Echo' },
   })
 }
 
@@ -45,11 +45,11 @@ describe('RPT-005: script reports', () => {
 
   test('loads file-based reports (the User Report sample) and scopes them', async ({ admin }) => {
     await setup(admin)
-    const built = await admin.fetch('/api/save_doc', {
+    const built = await admin.fetch('/api/save_row', {
       method: 'POST',
       body: JSON.stringify({
-        doctype: 'Report',
-        doc: { row_id: 'SR Srv Bad', ref_table: 'User', report_type: 'Script Report', report_script: 'User Report' },
+        table: 'Report',
+        row: { row_id: 'SR Srv Bad', ref_table: 'User', report_type: 'Script Report', report_script: 'User Report' },
       }),
     })
     expect(built.status).toBe(201)
@@ -60,11 +60,11 @@ describe('RPT-005: script reports', () => {
 
   test('rejects a Report that names an unregistered script', async ({ admin }) => {
     await setup(admin)
-    const res = await admin.fetch('/api/save_doc', {
+    const res = await admin.fetch('/api/save_row', {
       method: 'POST',
       body: JSON.stringify({
-        doctype: 'Report',
-        doc: { row_id: 'SR Srv Missing', ref_table: 'User', report_type: 'Script Report', report_script: 'No Such Report' },
+        table: 'Report',
+        row: { row_id: 'SR Srv Missing', ref_table: 'User', report_type: 'Script Report', report_script: 'No Such Report' },
       }),
     })
     expect(res.status).toBe(201)

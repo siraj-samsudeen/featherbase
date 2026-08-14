@@ -23,20 +23,20 @@ type Row = Record<string, unknown>
 //   the run list, and a Data column named `progress` ("5/8") fills the bars.
 //
 // Without a selected run it lists runs as date-grouped cards; selecting one
-// opens its items with whole-row tap targets. Every tick is one save_doc
+// opens its items with whole-row tap targets. Every tick is one save_row
 // call (the payload-authoritative child array), so the server hook chain
 // stamps timestamps, derives progress, and enforces submit gates — the view
 // renders whatever comes back, including the 417 message when a gate blocks.
 export function ChecklistView({
-  doctype,
+  table,
   run,
   onRunChange,
 }: {
-  doctype: string
+  table: string
   run?: string
   onRunChange?: (run: string | undefined) => void
 }) {
-  const meta = useMeta(doctype)
+  const meta = useMeta(table)
   const shape = useChecklistShape(meta.data)
   if (meta.isLoading || (shape.pending && !shape.binding))
     return <p className="text-sm text-gray-400">Loading…</p>
@@ -48,9 +48,9 @@ export function ChecklistView({
       </p>
     )
   return run ? (
-    <RunPane doctype={doctype} name={run} binding={shape.binding} onBack={() => onRunChange?.(undefined)} />
+    <RunPane table={table} name={run} binding={shape.binding} onBack={() => onRunChange?.(undefined)} />
   ) : (
-    <RunList doctype={doctype} binding={shape.binding} onOpen={(n) => onRunChange?.(n)} />
+    <RunList table={table} binding={shape.binding} onOpen={(n) => onRunChange?.(n)} />
   )
 }
 
@@ -58,13 +58,13 @@ export function ChecklistView({
 // has checklist shape, the same conditional pattern Kanban applies to
 // Choice columns (the check needs the row table's meta, hence a component
 // with hooks rather than an inline condition).
-export function ChecklistSwitch({ doctype, meta }: { doctype: string; meta?: TableMeta }) {
+export function ChecklistSwitch({ table, meta }: { table: string; meta?: TableMeta }) {
   const shape = useChecklistShape(meta)
   if (!shape.binding) return null
   return (
     <RouterLink
-      to="/admin/$doctype/view/checklist"
-      params={{ doctype }}
+      to="/admin/$table/view/checklist"
+      params={{ table }}
       search={{ run: undefined }}
       className="fc-btn"
       data-testid="open-checklist"
@@ -163,11 +163,11 @@ function dayLabel(iso: string): string {
 
 // ---------------------------------------------------------------- run list
 function RunList({
-  doctype,
+  table,
   binding,
   onOpen,
 }: {
-  doctype: string
+  table: string
   binding: Binding
   onOpen: (name: string) => void
 }) {
@@ -184,10 +184,10 @@ function RunList({
     ),
   ]
   const rows = useQuery({
-    queryKey: ['checklist-list', doctype],
+    queryKey: ['checklist-list', table],
     queryFn: () =>
       // order_by takes a single column; recency within a day sorts below.
-      listResource<Row>(doctype, {
+      listResource<Row>(table, {
         fields,
         order_by: binding.dateCol ? `${binding.dateCol} desc` : 'updated_at desc',
         limit_page_length: 100,
@@ -210,14 +210,14 @@ function RunList({
     <div data-testid="checklist-view" className="mx-auto flex max-w-xl flex-col gap-3">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{doctype}</h1>
+          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{table}</h1>
           <span className="text-xs text-[var(--color-ink-muted)]">{data.length} runs</span>
         </div>
         <div className="flex items-center gap-2">
           {!binding.readOnly && (
             <RouterLink
-              to="/admin/$doctype/$name"
-              params={{ doctype, name: 'new' }}
+              to="/admin/$table/$name"
+              params={{ table, name: 'new' }}
               search={{ prefill: undefined }}
               className="fc-btn fc-btn-primary"
               data-testid="checklist-new"
@@ -225,7 +225,7 @@ function RunList({
               + New
             </RouterLink>
           )}
-          <RouterLink to="/admin/$doctype" params={{ doctype }} search={{ filters: undefined }} className="fc-btn">
+          <RouterLink to="/admin/$table" params={{ table }} search={{ filters: undefined }} className="fc-btn">
             List
           </RouterLink>
         </div>
@@ -289,12 +289,12 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
 
 // ---------------------------------------------------------------- run pane
 function RunPane({
-  doctype,
+  table,
   name,
   binding,
   onBack,
 }: {
-  doctype: string
+  table: string
   name: string
   binding: Binding
   onBack: () => void
@@ -306,14 +306,14 @@ function RunPane({
   // Full-screen photo viewer: file_url of the photo being viewed, or null.
   const [viewer, setViewer] = useState<string | null>(null)
   const doc = useQuery({
-    queryKey: ['checklist-run', doctype, name],
-    queryFn: () => api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
+    queryKey: ['checklist-run', table, name],
+    queryFn: () => api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`),
   })
   const items = (doc.data?.[binding.itemsCol] as Row[] | undefined) ?? []
 
   // One query for every item's photos; grouped by the child row they hang on.
   const photos = useQuery({
-    queryKey: ['checklist-photos', doctype, name, items.length],
+    queryKey: ['checklist-photos', table, name, items.length],
     enabled: Boolean(binding.photoCol) && items.length > 0,
     queryFn: () =>
       listResource<Row>('File', {
@@ -338,12 +338,12 @@ function RunPane({
     setSaving(true)
     setError(null)
     try {
-      const saved = await api.post<Row>('/api/save_doc', {
-        doctype,
-        doc: { row_id: name, updated_at: doc.data.updated_at, [binding.itemsCol]: next, ...extra },
+      const saved = await api.post<Row>('/api/save_row', {
+        table,
+        row: { row_id: name, updated_at: doc.data.updated_at, [binding.itemsCol]: next, ...extra },
       })
-      queryClient.setQueryData(['checklist-run', doctype, name], saved)
-      queryClient.invalidateQueries({ queryKey: ['checklist-list', doctype] })
+      queryClient.setQueryData(['checklist-run', table, name], saved)
+      queryClient.invalidateQueries({ queryKey: ['checklist-list', table] })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Save failed')
     } finally {
@@ -621,7 +621,7 @@ function PhotoRow({
     try {
       const form = new FormData()
       form.append('file', file)
-      form.append('ref_doctype', childTable)
+      form.append('ref_table', childTable)
       form.append('ref_name', itemName)
       // Shop-floor photos are operational evidence, not public assets: stored
       // private, so reaching one costs a signed URL that the server only mints

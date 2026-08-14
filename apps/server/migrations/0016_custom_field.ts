@@ -3,7 +3,7 @@
 // a re-seed of core fixtures. Each custom field also materializes a column_def
 // row (marked custom) and a real column on the target table.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   // Mark generated columns as custom so a base re-seed can tell them apart.

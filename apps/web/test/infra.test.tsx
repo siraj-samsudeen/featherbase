@@ -11,7 +11,7 @@ test('the login page renders through the real route tree', async () => {
   expect(await screen.findByText('Sign in to your account')).toBeInTheDocument()
 })
 
-test('the Admin renders a DocType list with data seeded through the API', async ({
+test('the Admin renders a Table list with data seeded through the API', async ({
   admin,
   seed,
 }) => {
@@ -20,7 +20,7 @@ test('the Admin renders a DocType list with data seeded through the API', async 
     allocated_to: 'Administrator',
   })
   await renderApp('/admin/ToDo', admin)
-  expect(await screen.findByTestId('doctype-page')).toBeInTheDocument()
+  expect(await screen.findByTestId('table-page')).toBeInTheDocument()
   expect(await screen.findByText(doc.row_id)).toBeInTheDocument()
 })
 
@@ -37,7 +37,7 @@ test('the Session DSL drives the page', async ({ admin, seed }) => {
 test("previous test's seed rolled back — its ToDo is gone from the list", async ({ admin }) => {
   expect(leakedName).toBeTruthy()
   await renderApp('/admin/ToDo', admin)
-  await expect(screen.findByTestId('doctype-page')).resolves.toBeInTheDocument()
+  await expect(screen.findByTestId('table-page')).resolves.toBeInTheDocument()
   await new Promise((r) => setTimeout(r, 150))
   expect(screen.queryByText(leakedName)).not.toBeInTheDocument()
 })

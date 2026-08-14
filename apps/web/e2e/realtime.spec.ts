@@ -20,15 +20,15 @@ async function loginAs(page: Page, email: string, pwd: string) {
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminAuth(request)
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   // A second real user for the mention/notification test.
-  await request.post('/api/save_doc', {
+  await request.post('/api/save_row', {
     headers,
-    data: { doctype: 'User', doc: { row_id: OTHER_USER, email: OTHER_USER, full_name: 'RT User' } },
+    data: { table: 'User', row: { row_id: OTHER_USER, email: OTHER_USER, full_name: 'RT User' } },
   })
   const sp = await request.post('/api/set_password', { headers, data: { user: OTHER_USER, password: OTHER_PWD } })
   if (sp.status() !== 200) throw new Error(`set_password: ${sp.status()}`)

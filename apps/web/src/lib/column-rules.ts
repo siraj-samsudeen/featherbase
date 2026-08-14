@@ -1,5 +1,5 @@
 // #151: client-side column rules for the Table builder. These MIRROR the
-// server's authority in apps/server/src/doctype-engine.ts (columnSchema's
+// server's authority in apps/server/src/table-engine.ts (columnSchema's
 // snake_case regex + STANDARD_COLUMNS + validateDef) — the server still
 // validates everything; these exist so a fixable typo is caught at the
 // field instead of costing a submit round-trip. If the server rules change,

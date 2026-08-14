@@ -44,7 +44,7 @@ test('#173: a private attachment links without a token and serves on the cookie'
     multipart: {
       file: { name: 'secret.txt', mimeType: 'text/plain', buffer: Buffer.from(SECRET) },
       is_private: '1',
-      ref_doctype: 'User',
+      ref_table: 'User',
       ref_name: 'Guest',
     },
   })

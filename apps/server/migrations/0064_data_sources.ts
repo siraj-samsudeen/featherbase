@@ -1,7 +1,7 @@
 // EDS-1/EDS-3 (spec 0001, milestone M3): the Data Source registry and the
 // table_def/column_def binding fields for source-bound Tables.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 import { invalidateMeta } from '../src/meta'
 
 export async function up() {

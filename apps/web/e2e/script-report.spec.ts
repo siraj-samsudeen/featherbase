@@ -11,20 +11,20 @@ async function adminHeaders(request: APIRequestContext) {
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
   await request.delete(`/api/table/Report/${encodeURIComponent(REPORT)}`, { headers })
-  const res = await request.post('/api/save_doc', {
+  const res = await request.post('/api/save_row', {
     headers,
     data: {
-      doctype: 'Report',
-      doc: { row_id: REPORT, ref_table: 'User', report_type: 'Script Report', report_script: 'User Report' },
+      table: 'Report',
+      row: { row_id: REPORT, ref_table: 'User', report_type: 'Script Report', report_script: 'User Report' },
     },
   })
   if (res.status() !== 201) throw new Error(`create report: ${res.status()} ${await res.text()}`)
   // Ensure at least one disabled user exists so the filter has an effect.
   const u = 'sr-disabled@x.com'
   await request.delete(`/api/table/User/${encodeURIComponent(u)}`, { headers })
-  await request.post('/api/save_doc', {
+  await request.post('/api/save_row', {
     headers,
-    data: { doctype: 'User', doc: { row_id: u, email: u, full_name: 'SR Disabled', enabled: false } },
+    data: { table: 'User', row: { row_id: u, email: u, full_name: 'SR Disabled', enabled: false } },
   })
 })
 

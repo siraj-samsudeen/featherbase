@@ -34,32 +34,32 @@ function interpolate(template: string, doc: Row): string {
 }
 
 // PRN-001: clean, printable rendering of any row from its metadata —
-// no app chrome (navbar/sidebar). Rendered at /print/:doctype/:name so it
+// no app chrome (navbar/sidebar). Rendered at /print/:table/:name so it
 // sits outside the Admin layout. PRN-002: an optional named/default Print
 // Format template overrides the auto layout.
 export function PrintView({
-  doctype,
+  table,
   name,
   format,
   onFormatChange,
 }: {
-  doctype: string
+  table: string
   name: string
   format?: string
   onFormatChange?: (name: string | undefined) => void
 }) {
-  const meta = useMeta(doctype)
+  const meta = useMeta(table)
   const doc = useQuery({
-    queryKey: ['doc', doctype, name],
+    queryKey: ['doc', table, name],
     enabled: Boolean(meta.data),
     queryFn: () =>
-      api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
+      api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`),
   })
   const formats = useQuery({
-    queryKey: ['print-formats', doctype],
+    queryKey: ['print-formats', table],
     queryFn: () =>
       listResource<PrintFormat>('Print Format', {
-        filters: [['ref_table', '=', doctype]],
+        filters: [['ref_table', '=', table]],
         fields: ['row_id', 'is_default', 'template', 'letter_head'],
         order_by: 'row_id asc',
         limit_page_length: 100,
@@ -80,7 +80,7 @@ export function PrintView({
   if (meta.isLoading || doc.isLoading)
     return <p className="p-8 text-sm text-gray-500">Loading…</p>
   if (meta.isError || doc.isError)
-    return <p className="p-8 text-sm text-red-600">Cannot load {doctype} {name}</p>
+    return <p className="p-8 text-sm text-red-600">Cannot load {table} {name}</p>
 
   const m = meta.data!
   const d = doc.data!
@@ -117,7 +117,7 @@ export function PrintView({
     >
       <div className="mb-6 flex items-start justify-between border-b border-[var(--color-border-strong)] pb-4">
         <div>
-          <h1 className="text-2xl font-semibold">{doctype}</h1>
+          <h1 className="text-2xl font-semibold">{table}</h1>
           <p className="text-sm text-[var(--color-ink-muted)]" data-testid="print-docname">
             {name}
           </p>

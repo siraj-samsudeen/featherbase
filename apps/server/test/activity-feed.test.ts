@@ -25,18 +25,18 @@ describe('#101: GET /api/activity_feed', () => {
 
   test("'team' carries changes (Version) and logins, never read events", async ({ admin }) => {
     // A tracked edit writes a Version row (track_changes is the default).
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: 'Feed DT',
       id_pattern: 'prompt',
       columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }],
     })
-    const created = await admin.post<{ updated_at: string }>('/api/save_doc', {
-      doctype: 'Feed DT',
-      doc: { row_id: 'feed-row', title: 'v1' },
+    const created = await admin.post<{ updated_at: string }>('/api/save_row', {
+      table: 'Feed DT',
+      row: { row_id: 'feed-row', title: 'v1' },
     })
-    await admin.post('/api/save_doc', {
-      doctype: 'Feed DT',
-      doc: { row_id: 'feed-row', title: 'v2', updated_at: created.updated_at },
+    await admin.post('/api/save_row', {
+      table: 'Feed DT',
+      row: { row_id: 'feed-row', title: 'v2', updated_at: created.updated_at },
     })
     await logActivity('Administrator', 'login', { full_name: 'Administrator' })
     // A read event that must NOT surface in the team scope.
@@ -56,9 +56,9 @@ describe('#101: GET /api/activity_feed', () => {
   })
 
   test("'team' is refused without System Manager", async ({ admin, api }) => {
-    await admin.post('/api/save_doc', {
-      doctype: 'User',
-      doc: { row_id: 'feed-user@x.com', email: 'feed-user@x.com', enabled: true },
+    await admin.post('/api/save_row', {
+      table: 'User',
+      row: { row_id: 'feed-user@x.com', email: 'feed-user@x.com', enabled: true },
     })
     const { token } = await issueSession('feed-user@x.com')
     const res = await api.fetch('/api/activity_feed?scope=team', {

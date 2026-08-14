@@ -44,11 +44,11 @@ export async function seedTranslations(
       await request.delete(`/api/table/Translation/${encodeURIComponent(row.row_id)}`, { headers })
 
     const name = docName(language, source)
-    const res = await request.post('/api/save_doc', {
+    const res = await request.post('/api/save_row', {
       headers,
       data: {
-        doctype: 'Translation',
-        doc: { row_id: name, language, source_text: source, translated_text: translated },
+        table: 'Translation',
+        row: { row_id: name, language, source_text: source, translated_text: translated },
       },
     })
     // Checking this is the point: the old specs ignored the status, so a seed

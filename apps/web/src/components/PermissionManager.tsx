@@ -18,15 +18,15 @@ const FLAGS = [
 
 type Flags = Record<string, boolean>
 interface PermissionsResponse {
-  doctype: string
+  table: string
   roles: string[]
   perms: (Flags & { name: string; role: string })[]
 }
 
-export function PermissionManager({ doctype }: { doctype: string }) {
+export function PermissionManager({ table }: { table: string }) {
   const q = useQuery({
-    queryKey: ['permissions', doctype],
-    queryFn: () => api.get<PermissionsResponse>(`/api/permissions/${encodeURIComponent(doctype)}`),
+    queryKey: ['permissions', table],
+    queryFn: () => api.get<PermissionsResponse>(`/api/permissions/${encodeURIComponent(table)}`),
   })
   const [matrix, setMatrix] = useState<Record<string, Flags>>({})
   const [dirty, setDirty] = useState<Set<string>>(new Set())
@@ -57,7 +57,7 @@ export function PermissionManager({ doctype }: { doctype: string }) {
     setError(null)
     try {
       for (const role of dirty)
-        await api.post(`/api/permissions/${encodeURIComponent(doctype)}`, { role, ...matrix[role] })
+        await api.post(`/api/permissions/${encodeURIComponent(table)}`, { role, ...matrix[role] })
       setDirty(new Set())
       setSavedAt(Date.now())
     } catch (e) {
@@ -78,7 +78,7 @@ export function PermissionManager({ doctype }: { doctype: string }) {
   return (
     <div data-testid="permission-manager" className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-[var(--color-ink)]">Permissions — {doctype}</h1>
+        <h1 className="text-lg font-semibold text-[var(--color-ink)]">Permissions — {table}</h1>
         <div className="flex items-center gap-3">
           {savedAt > 0 && !dirty.size && (
             <span className="text-sm text-green-700" data-testid="perm-saved">

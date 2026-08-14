@@ -13,9 +13,9 @@ const USER = 'token-user@x.com'
 // The login flow itself is under test here, so the user is created in-test
 // (with a real password) rather than through the createUser fixture.
 async function makeUser(admin: TestClient) {
-  await admin.post('/api/save_doc', {
-    doctype: 'User',
-    doc: { row_id: USER, email: USER },
+  await admin.post('/api/save_row', {
+    table: 'User',
+    row: { row_id: USER, email: USER },
   })
   await setUserPassword(USER, 'tokenpw123')
 }

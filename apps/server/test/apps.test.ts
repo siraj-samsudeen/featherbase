@@ -7,9 +7,9 @@ import { sql } from '../src/db'
 import type { TestClient } from 'feather-testing-postgres'
 import type { AppManifest } from '../src/apps'
 
-// PLAT-001: an app installs its DocTypes + doc_events and uninstall tears the
-// DocTypes down. PLAT-002: an app's hook on a DocType it does NOT own fires
-// alongside that DocType's core controller.
+// PLAT-001: an app installs its Tables + doc_events and uninstall tears the
+// Tables down. PLAT-002: an app's hook on a Table it does NOT own fires
+// alongside that Table's core controller.
 
 const APP1 = 'test-note-app'
 const APP1_DT = 'App Test Note'
@@ -40,7 +40,7 @@ const noteApp: AppManifest = {
 
 const hookApp: AppManifest = {
   name: APP2,
-  // No DocTypes of its own — it only hooks a DocType owned by "core".
+  // No Tables of its own — it only hooks a Table owned by "core".
   doc_events: {
     [CORE_DT]: { after_save: () => { fired.push('app') } },
   },
@@ -63,7 +63,7 @@ async function unwire(app: string, dt: string) {
 }
 
 describe('PLAT-001: app install/uninstall', () => {
-  test('installing an app creates its DocType and wires its doc_event', async () => {
+  test('installing an app creates its Table and wires its doc_event', async () => {
     registerApps()
     try {
       const res = await installApp(APP1)
@@ -88,7 +88,7 @@ describe('PLAT-001: app install/uninstall', () => {
     }
   })
 
-  test('uninstalling removes the app’s DocTypes and its record', async () => {
+  test('uninstalling removes the app’s Tables and its record', async () => {
     registerApps()
     try {
       await installApp(APP1)
@@ -108,7 +108,7 @@ describe('PLAT-001: app install/uninstall', () => {
 })
 
 describe('PLAT-002: app doc_events fire alongside the core controller', () => {
-  test('an app hook on a foreign DocType runs with (not instead of) the core hook', async ({
+  test('an app hook on a foreign Table runs with (not instead of) the core hook', async ({
     admin,
   }: {
     admin: TestClient
@@ -116,14 +116,14 @@ describe('PLAT-002: app doc_events fire alongside the core controller', () => {
     registerApps()
     try {
       // A core controller owns CORE_DT and reacts to after_save.
-      await admin.post('/api/doctype', {
+      await admin.post('/api/table_def', {
         name: CORE_DT,
         id_pattern: 'prompt',
         columns: [{ column_name: 'title', column_type: 'Data' }],
       })
       registerController({ table: CORE_DT, hooks: { after_save: () => { fired.push('core') } } })
 
-      // The app hooks the same DocType without owning it.
+      // The app hooks the same Table without owning it.
       await installApp(APP2)
 
       fired.length = 0

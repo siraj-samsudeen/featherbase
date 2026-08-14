@@ -1,7 +1,7 @@
 // RPT-002: a saved report is a Report row — Table + the view
 // configuration (columns, group_by, filters) as JSON.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'Report'`

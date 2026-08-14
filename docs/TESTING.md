@@ -36,7 +36,7 @@ import { test } from './pg-test'   // NOT vitest's test — the sandboxed one
 
 describe('naming', () => {
   test('series names are sequential', async ({ admin }) => {
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: 'Nm Invoice',
       id_pattern: 'NMINV-.####',
       columns: [{ column_name: 'title', column_type: 'Data' }],

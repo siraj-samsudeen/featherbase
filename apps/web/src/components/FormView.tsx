@@ -25,25 +25,25 @@ type Row = Record<string, unknown>
 // `prefill` (#100) seeds a NEW row's initial values — how "+ New Attendance"
 // from an Employee's connections arrives with employee already set.
 export function FormView({
-  doctype,
+  table,
   name,
   prefill,
 }: {
-  doctype: string
+  table: string
   name: string
   prefill?: Row
 }) {
   const isNew = name === 'new'
-  const meta = useMeta(doctype)
+  const meta = useMeta(table)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { t } = useI18n()
 
   const doc = useQuery({
-    queryKey: ['doc', doctype, name],
+    queryKey: ['doc', table, name],
     enabled: Boolean(meta.data) && !isNew,
     queryFn: () =>
-      api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
+      api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`),
   })
 
   // #102 review: prefill seeds the INITIAL state synchronously, so the very
@@ -62,7 +62,7 @@ export function FormView({
 
   // CUST-003: client scripts registered for this Table. valuesRef mirrors the
   // live values so a script handler always sees current column values.
-  const clientScripts = useClientScripts(doctype)
+  const clientScripts = useClientScripts(table)
   const valuesRef = useRef<Row>({})
   valuesRef.current = values
   const onloadFired = useRef(false)
@@ -71,7 +71,7 @@ export function FormView({
   // The user's own save is suppressed via a short window (their save
   // triggers a local refetch already).
   const suppressStaleUntil = useRef(0)
-  useRealtime(isNew ? [] : [`doc:${doctype}:${name}`], (e) => {
+  useRealtime(isNew ? [] : [`row:${table}:${name}`], (e) => {
     if (e.event === 'updated' && Date.now() > suppressStaleUntil.current) setStaleBanner(true)
   })
 
@@ -114,7 +114,7 @@ export function FormView({
   if (meta.isLoading || (!isNew && doc.isLoading))
     return <p className="text-sm text-gray-400">Loading…</p>
   if (meta.isError || (!isNew && doc.isError))
-    return <p className="text-sm text-red-600">Cannot load {doctype} {name}</p>
+    return <p className="text-sm text-red-600">Cannot load {table} {name}</p>
 
   const m = meta.data!
   const dirty = JSON.stringify(values) !== JSON.stringify(baseline)
@@ -163,12 +163,12 @@ export function FormView({
     setBanner(null)
     try {
       const res = await api.post<Row>(
-        `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}:${action}`,
+        `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}:${action}`,
       )
-      await queryClient.invalidateQueries({ queryKey: ['doc', doctype] })
-      await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
+      await queryClient.invalidateQueries({ queryKey: ['doc', table] })
+      await queryClient.invalidateQueries({ queryKey: ['list', table] })
       if (action === 'amend') {
-        navigate({ to: '/admin/$doctype/$name', params: { doctype, name: String(res.row_id) }, search: { prefill: undefined } })
+        navigate({ to: '/admin/$table/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
       } else {
         setBanner('Done')
       }
@@ -183,12 +183,12 @@ export function FormView({
     setBanner(null)
     try {
       const res = await api.post<Row>(
-        `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}:rename`,
+        `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}:rename`,
         { new_name: renameValue },
       )
-      await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
+      await queryClient.invalidateQueries({ queryKey: ['list', table] })
       setRenaming(false)
-      navigate({ to: '/admin/$doctype/$name', params: { doctype, name: String(res.row_id) }, search: { prefill: undefined } })
+      navigate({ to: '/admin/$table/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
     } catch (err) {
       setBanner(err instanceof ApiError ? err.message : 'Rename failed')
     }
@@ -219,14 +219,14 @@ export function FormView({
         delete payload.row_id
       }
       suppressStaleUntil.current = Date.now() + 2000
-      const saved = await api.post<Row>('/api/save_doc', { doctype, doc: payload })
-      await queryClient.invalidateQueries({ queryKey: ['doc', doctype] })
-      await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
-      await queryClient.invalidateQueries({ queryKey: ['versions', doctype, name] })
+      const saved = await api.post<Row>('/api/save_row', { table, row: payload })
+      await queryClient.invalidateQueries({ queryKey: ['doc', table] })
+      await queryClient.invalidateQueries({ queryKey: ['list', table] })
+      await queryClient.invalidateQueries({ queryKey: ['versions', table, name] })
       if (isNew) {
         navigate({
-          to: '/admin/$doctype/$name',
-          params: { doctype, name: String(saved.row_id) },
+          to: '/admin/$table/$name',
+          params: { table, name: String(saved.row_id) },
           search: { prefill: undefined },
         })
       } else {
@@ -257,12 +257,12 @@ export function FormView({
         <RouterLink to="/admin" className="hover:underline">Admin</RouterLink>
         <span className="mx-1">/</span>
         <RouterLink
-          to="/admin/$doctype"
-          params={{ doctype }}
+          to="/admin/$table"
+          params={{ table }}
           search={{ filters: undefined }}
           className="hover:underline"
         >
-          {doctype}
+          {table}
         </RouterLink>
         <span className="mx-1">/</span>
         <span className="text-gray-700">{isNew ? 'New' : name}</span>
@@ -270,7 +270,7 @@ export function FormView({
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-[var(--color-ink)]">
-            {doctype}: {isNew ? 'New' : name}
+            {table}: {isNew ? 'New' : name}
           </h1>
           <span className="text-xs text-gray-500" data-testid="form-status">
             {dirty ? 'Not saved' : isNew ? 'New document' : 'Saved'}
@@ -286,7 +286,7 @@ export function FormView({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {doctype === 'Data Source' && !isNew && (
+          {table === 'Data Source' && !isNew && (
             <RouterLink
               to="/admin/source/$name"
               params={{ name }}
@@ -296,7 +296,7 @@ export function FormView({
               Browse &amp; Reflect
             </RouterLink>
           )}
-          {!isNew && <WorkflowActions doctype={doctype} name={name} />}
+          {!isNew && <WorkflowActions table={table} name={name} />}
           {submittable && (
             <span
               data-testid="status-badge"
@@ -313,8 +313,8 @@ export function FormView({
           )}
           {!isNew && (
             <RouterLink
-              to="/print/$doctype/$name"
-              params={{ doctype, name }}
+              to="/print/$table/$name"
+              params={{ table, name }}
               search={{ format: undefined }}
               data-testid="form-print"
               className="fc-btn"
@@ -325,8 +325,8 @@ export function FormView({
           {/* #100 pattern 6: walk this row's relational neighborhood. */}
           {!isNew && m.kind !== 'settings' && (
             <RouterLink
-              to="/admin/map/$doctype/$name"
-              params={{ doctype, name }}
+              to="/admin/map/$table/$name"
+              params={{ table, name }}
               search={{ trail: undefined }}
               data-testid="form-map"
               className="fc-btn"
@@ -431,7 +431,7 @@ export function FormView({
           </span>
           <button
             onClick={async () => {
-              await queryClient.invalidateQueries({ queryKey: ['doc', doctype, name] })
+              await queryClient.invalidateQueries({ queryKey: ['doc', table, name] })
               setStaleBanner(false)
             }}
             data-testid="stale-refresh"
@@ -474,16 +474,16 @@ export function FormView({
         </div>
         {!isNew && (
           <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-72">
-            <ConnectionsPanel doctype={doctype} name={name} />
-            <Assignments doctype={doctype} name={name} />
-            <Tags doctype={doctype} name={name} />
-            <Attachments doctype={doctype} name={name} />
-            <Comments doctype={doctype} name={name} />
-            <ActivityTimeline doctype={doctype} name={name} />
+            <ConnectionsPanel table={table} name={name} />
+            <Assignments table={table} name={name} />
+            <Tags table={table} name={name} />
+            <Attachments table={table} name={name} />
+            <Comments table={table} name={name} />
+            <ActivityTimeline table={table} name={name} />
           </aside>
         )}
       </div>
-      {!isNew && m.kind === 'table' && <RelatedTabs doctype={doctype} name={name} />}
+      {!isNew && m.kind === 'table' && <RelatedTabs table={table} name={name} />}
     </div>
   )
 }
@@ -653,7 +653,7 @@ function FieldControl({
           value={value}
           onChange={onChange}
           common={common}
-          refDoctype={meta.name}
+          refTable={meta.name}
           refName={typeof values.row_id === 'string' ? values.row_id : undefined}
         />,
       )
@@ -852,8 +852,8 @@ function LinkControl({
             onMouseDown={(e) => {
               e.preventDefault()
               navigate({
-                to: '/admin/$doctype/$name',
-                params: { doctype: target, name: String(value) },
+                to: '/admin/$table/$name',
+                params: { table: target, name: String(value) },
                 search: { prefill: undefined },
               })
             }}
@@ -889,8 +889,8 @@ function LinkControl({
             <p className="px-3 py-1.5 text-sm text-gray-400">No matches</p>
           )}
           <RouterLink
-            to="/admin/$doctype/$name"
-            params={{ doctype: target, name: 'new' }}
+            to="/admin/$table/$name"
+            params={{ table: target, name: 'new' }}
             search={{ prefill: undefined }}
             className="block border-t border-gray-100 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50"
             data-testid="link-create-new"
@@ -911,14 +911,14 @@ function AttachControl({
   value,
   onChange,
   common,
-  refDoctype,
+  refTable,
   refName,
 }: {
   field: ColumnDef
   value: unknown
   onChange: (value: unknown) => void
   common: Record<string, unknown>
-  refDoctype: string
+  refTable: string
   refName?: string
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -935,7 +935,7 @@ function AttachControl({
     try {
       const form = new FormData()
       form.append('file', file)
-      form.append('ref_doctype', refDoctype)
+      form.append('ref_table', refTable)
       if (refName) form.append('ref_name', refName)
       const res = await fetch('/api/upload_file', {
         method: 'POST',

@@ -14,7 +14,7 @@ const DASH = 'Rc Srv Dashboard'
 // Each test rebuilds the Table, rows, report, and dashboard inside its own
 // rolled-back transaction.
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     id_pattern: 'prompt',
     columns: [
@@ -30,13 +30,13 @@ async function setup(admin: TestClient) {
   for (const [name, region, amount] of rows)
     await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: name, region, amount })
 
-  await admin.post('/api/save_doc', {
-    doctype: 'Report',
-    doc: { row_id: REPORT, ref_table: DT, report_type: 'Report Builder', config: { columns: ['region', 'amount'], filters: [] } },
+  await admin.post('/api/save_row', {
+    table: 'Report',
+    row: { row_id: REPORT, ref_table: DT, report_type: 'Report Builder', config: { columns: ['region', 'amount'], filters: [] } },
   })
-  await admin.post('/api/save_doc', {
-    doctype: 'Dashboard',
-    doc: { row_id: DASH, label: 'RC Dash', config: { cards: [], charts: [] } },
+  await admin.post('/api/save_row', {
+    table: 'Dashboard',
+    row: { row_id: DASH, label: 'RC Dash', config: { cards: [], charts: [] } },
   })
 }
 

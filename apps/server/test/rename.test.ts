@@ -11,17 +11,17 @@ const ORDER = 'Rn Order'
 const ITEM = 'Rn Order Item'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: CUST,
     id_pattern: 'prompt',
     columns: [{ column_name: 'city', column_type: 'Data' }],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: ITEM,
     kind: 'sub_table',
     columns: [{ column_name: 'supplier', column_type: 'Reference', reference_table: CUST }],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: ORDER,
     id_pattern: 'prompt',
     columns: [
@@ -40,9 +40,9 @@ describe('DOC-012: rename document + cascade Link references', () => {
       row_id: 'Acme',
       city: 'NYC',
     })
-    await admin.post('/api/save_doc', {
-      doctype: ORDER,
-      doc: {
+    await admin.post('/api/save_row', {
+      table: ORDER,
+      row: {
         row_id: 'ORD-1',
         customer: 'Acme',
         lines: [{ supplier: 'Acme' }],

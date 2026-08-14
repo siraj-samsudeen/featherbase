@@ -49,7 +49,7 @@ const helpdesk: AppManifest = {
   // portal view of their OWN tickets only (creation happens through the web
   // form, which attributes the logged-in submitter — deliberately no
   // can_write, so the install's can_create-without-can_write warning is
-  // expected). The collab grants cover doctypes with no "All"-role defaults.
+  // expected). The collab grants cover tables with no "All"-role defaults.
   permissions: [
     { table: 'HD Ticket', role: 'Support Agent', can_read: true, can_write: true, can_create: true },
     { table: 'HD Ticket', role: 'Support Manager', can_read: true, can_write: true, can_create: true, can_delete: true },

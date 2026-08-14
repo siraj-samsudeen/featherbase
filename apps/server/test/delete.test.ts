@@ -8,17 +8,17 @@ const INVOICE = 'Del Invoice'
 const ROW = 'Del Line Row'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: CUSTOMER,
     id_pattern: 'prompt',
     columns: [{ column_name: 'city', column_type: 'Data' }],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: ROW,
     kind: 'sub_table',
     columns: [{ column_name: 'supplier', column_type: 'Reference', reference_table: CUSTOMER }],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: INVOICE,
     columns: [
       { column_name: 'customer', column_type: 'Reference', reference_table: CUSTOMER },
@@ -26,7 +26,7 @@ async function setup(admin: TestClient) {
     ],
   })
   for (const n of ['Acme', 'Globex', 'Initech', 'Umbrella'])
-    await admin.post('/api/save_doc', { doctype: CUSTOMER, doc: { row_id: n } })
+    await admin.post('/api/save_row', { table: CUSTOMER, row: { row_id: n } })
 }
 
 const docPath = (dt: string, name: string) =>
@@ -37,7 +37,7 @@ describe('DOC-006: delete with referential integrity', () => {
     admin,
   }) => {
     await setup(admin)
-    await admin.post('/api/save_doc', { doctype: INVOICE, doc: { customer: 'Acme' } })
+    await admin.post('/api/save_row', { table: INVOICE, row: { customer: 'Acme' } })
     await expect(admin.delete(docPath(CUSTOMER, 'Acme'))).rejects.toMatchObject({
       status: 417,
       message: expect.stringContaining(INVOICE),
@@ -48,9 +48,9 @@ describe('DOC-006: delete with referential integrity', () => {
     admin,
   }) => {
     await setup(admin)
-    const inv = await admin.post<Record<string, unknown>>('/api/save_doc', {
-      doctype: INVOICE,
-      doc: { lines: [{ supplier: 'Globex' }] },
+    const inv = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: INVOICE,
+      row: { lines: [{ supplier: 'Globex' }] },
     })
     await expect(admin.delete(docPath(CUSTOMER, 'Globex'))).rejects.toMatchObject({
       status: 417,
@@ -61,9 +61,9 @@ describe('DOC-006: delete with referential integrity', () => {
   test('deletes an unlinked doc, and its own child rows with it', async ({ admin }) => {
     await setup(admin)
     await admin.delete(docPath(CUSTOMER, 'Initech'))
-    const inv = await admin.post<Record<string, unknown>>('/api/save_doc', {
-      doctype: INVOICE,
-      doc: { lines: [{ supplier: 'Umbrella' }] },
+    const inv = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: INVOICE,
+      row: { lines: [{ supplier: 'Umbrella' }] },
     })
     // Unlink first by deleting the invoice, then the customer is deletable.
     await admin.delete(docPath(INVOICE, String(inv.row_id)))

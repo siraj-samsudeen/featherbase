@@ -18,24 +18,24 @@ async function setup(admin: TestClient) {
     await sql`insert into "user" ${sql({
       row_id: u, created_by: 'Administrator', updated_by: 'Administrator', email: u, enabled: true,
     })}`
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'subject', column_type: 'Data' },
       { column_name: 'customer', column_type: 'Reference', reference_table: 'User' },
     ],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
-  await admin.post('/api/save_doc', {
-    doctype: 'Permission',
-    doc: { ref_table: DT, role: ROLE, can_read: true },
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+  await admin.post('/api/save_row', {
+    table: 'Permission',
+    row: { ref_table: DT, role: ROLE, can_read: true },
   })
   for (const [subject, customer] of [
     ['for A', CUST_A],
     ['for B', CUST_B],
     ['unlinked', null],
   ] as const)
-    await admin.post('/api/save_doc', { doctype: DT, doc: { subject, customer } })
+    await admin.post('/api/save_row', { table: DT, row: { subject, customer } })
 }
 
 describe('PERM-005: NULL links pass Data Scope list narrowing', () => {
@@ -46,9 +46,9 @@ describe('PERM-005: NULL links pass Data Scope list narrowing', () => {
     await setup(admin)
     const agent = await createUser({ roles: [ROLE] })
     // Restrict the agent to customer A (User values).
-    await admin.post('/api/save_doc', {
-      doctype: 'Data Scope',
-      doc: { user: agent.user, allow_table: 'User', for_value: CUST_A },
+    await admin.post('/api/save_row', {
+      table: 'Data Scope',
+      row: { user: agent.user, allow_table: 'User', for_value: CUST_A },
     })
     const body = await agent.get<{ data: { subject: string }[]; total: number }>(
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(

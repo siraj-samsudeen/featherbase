@@ -2,7 +2,7 @@ import { createRequire } from 'node:module'
 import { describe, expect } from 'vitest'
 import { sql } from '../src/db'
 import { renderPdf, renderPrintHtml } from '../src/print'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 import { saveDoc } from '../src/document'
 import { test } from './pg-test'
 

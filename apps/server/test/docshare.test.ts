@@ -10,7 +10,7 @@ async function setup(
   admin: TestClient,
   createUser: (o?: { roles?: string[] }) => Promise<TestClient>,
 ) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [{ column_name: 'body', column_type: 'Data' }],
   })
@@ -25,9 +25,9 @@ async function setup(
 }
 
 async function share(admin: TestClient, user: TestClient, docName: string, perms: Record<string, boolean>) {
-  const doc = await admin.post<{ row_id: string }>('/api/save_doc', {
-    doctype: 'Share',
-    doc: { share_table: DT, share_name: docName, user: user.user, ...perms },
+  const doc = await admin.post<{ row_id: string }>('/api/save_row', {
+    table: 'Share',
+    row: { share_table: DT, share_name: docName, user: user.user, ...perms },
   })
   return String(doc.row_id)
 }

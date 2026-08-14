@@ -1,7 +1,7 @@
 // CUST-004: Server Scripts — sandboxed user scripts that run on document
 // lifecycle events (and, optionally, as callable API methods).
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'Server Script'`

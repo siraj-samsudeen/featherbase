@@ -2,7 +2,7 @@
 // instance and no generated table. Their column values live in an EAV store
 // (single_value), keyed by (table_name, field).
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   await sql`create table if not exists single_value (

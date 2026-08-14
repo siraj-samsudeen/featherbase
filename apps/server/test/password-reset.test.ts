@@ -11,8 +11,8 @@ import type { TestClient } from 'feather-testing-postgres'
 const USER = 'pwreset-srv@x.com'
 const DISABLED = 'pwreset-disabled@x.com'
 
-async function save(admin: TestClient, doc: Record<string, unknown>) {
-  await admin.post('/api/save_doc', { doctype: 'User', doc })
+async function save(admin: TestClient, row: Record<string, unknown>) {
+  await admin.post('/api/save_row', { table: 'User', row })
 }
 
 // Each test creates its accounts inside its own sandbox transaction.

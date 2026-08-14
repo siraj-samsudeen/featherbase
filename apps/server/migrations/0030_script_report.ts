@@ -2,7 +2,7 @@
 // server-side report function in `report_script`. Adds the field + column and
 // the new Choice option. Idempotent.
 import { sql } from '../src/db'
-import { pgType } from '../src/doctype-engine'
+import { pgType } from '../src/table-engine'
 
 export async function up() {
   const [rt] = await sql`select 1 from table_def where name = 'Report'`

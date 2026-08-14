@@ -7,7 +7,7 @@
 // through dedicated endpoints that scope to the caller — the table itself
 // carries no role permissions, so it never surfaces in ordinary list views.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'User Event'`

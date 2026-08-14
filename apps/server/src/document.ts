@@ -3,7 +3,7 @@ import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
-import { STANDARD_COLUMNS, tableName } from './doctype-engine'
+import { STANDARD_COLUMNS, tableName } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
 import { evaluateAssignmentRules } from './assignment-rules'
@@ -392,7 +392,7 @@ async function loadChildren(meta: TableMeta, row: RowValues): Promise<RowValues>
   return stripInternalColumns(meta, row)
 }
 
-// Table/Column writes must go through the doctype engine (runs DDL);
+// Table/Column writes must go through the table engine (runs DDL);
 // the generic row path would silently skip table changes.
 const ENGINE_MANAGED = new Set(['Table', 'Column'])
 

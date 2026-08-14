@@ -101,7 +101,7 @@ function initialView(): BuilderView {
 }
 
 // UI-011: build and edit Tables entirely from the Admin. Uses POST
-// /api/doctype (create) and PUT /api/doctype/:name (schema sync).
+// /api/table_def (create) and PUT /api/table_def/:name (schema sync).
 // IMP-006: dropping a CSV/Excel file infers the whole definition and
 // bulk-imports the file's rows via POST /api/table/:table:import.
 // #151: the column list has two views over one state — the grid (power
@@ -304,7 +304,7 @@ export function TableBuilder() {
           }
         }),
       }
-      await api.post('/api/doctype', payload)
+      await api.post('/api/table_def', payload)
 
       if (imported) {
         const importCols = kept.filter((c) => c.source_index !== null)
@@ -344,7 +344,7 @@ export function TableBuilder() {
       // #80: the new table auto-appears on its module's home page — refresh
       // the sidebar so that happens without a reload.
       await queryClient.invalidateQueries({ queryKey: ['home-pages'] })
-      navigate({ to: '/admin/$doctype', params: { doctype: name }, search: { filters: undefined } })
+      navigate({ to: '/admin/$table', params: { table: name }, search: { filters: undefined } })
     } catch (err) {
       setProgress(null)
       if (err instanceof ApiError && err.fields) {
@@ -385,7 +385,7 @@ export function TableBuilder() {
     }))
 
   return (
-    <div data-testid="doctype-builder" className="max-w-3xl">
+    <div data-testid="table-builder" className="max-w-3xl">
       <h1 className="mb-4 text-xl font-semibold text-[var(--color-ink)]">New Table</h1>
 
       <div

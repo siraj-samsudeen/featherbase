@@ -37,7 +37,7 @@ describe('findDuplicateMigrationPrefixes', () => {
   it('passes a list of files with unique prefixes', () => {
     const errors = findDuplicateMigrationPrefixes([
       '0001_init.sql',
-      '0002_doctype.sql',
+      '0002_table.sql',
       '0010_rls.sql',
       '0010a_rename_rls_role.sql',
     ])

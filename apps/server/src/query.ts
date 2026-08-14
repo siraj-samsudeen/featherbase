@@ -1,7 +1,7 @@
 import { sql } from './db'
 import { AppError } from './errors'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
-import { STANDARD_COLUMNS, tableName } from './doctype-engine'
+import { STANDARD_COLUMNS, tableName } from './table-engine'
 import { getUserPermissionMap, isBypassUser, permissionScope, permittedTiers } from './permissions'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'

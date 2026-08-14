@@ -8,11 +8,11 @@ async function adminHeaders(request: APIRequestContext) {
   return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
 }
 
-async function logCount(request: APIRequestContext, doctype: string, filters: unknown[]) {
+async function logCount(request: APIRequestContext, table: string, filters: unknown[]) {
   const headers = await adminHeaders(request)
   const res = (await (
     await request.get(
-      `/api/table/${encodeURIComponent(doctype)}?filters=${encodeURIComponent(JSON.stringify(filters))}&limit_page_length=1`,
+      `/api/table/${encodeURIComponent(table)}?filters=${encodeURIComponent(JSON.stringify(filters))}&limit_page_length=1`,
       { headers },
     )
   ).json()) as { total: number }
@@ -21,11 +21,11 @@ async function logCount(request: APIRequestContext, doctype: string, filters: un
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { title: 'row1' } })
 })
 

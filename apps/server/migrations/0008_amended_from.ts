@@ -1,7 +1,7 @@
 // DOC-008: backfill amended_from on submittable DocTypes created before the
 // engine auto-added it.
 import { sql } from '../src/db'
-import { tableName } from '../src/doctype-engine'
+import { tableName } from '../src/table-engine'
 import { invalidateMeta } from '../src/meta'
 
 export async function up() {

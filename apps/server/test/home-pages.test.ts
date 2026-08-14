@@ -29,7 +29,7 @@ const DT = 'HP Widget'
 const ROLE = 'HP Viewer Role'
 
 async function makeTable(admin: TestClient, name = DT, module = 'HP Mod') {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name,
     module,
     columns: [{ column_name: 'title', column_type: 'Data' }],
@@ -41,9 +41,9 @@ describe('GET /api/home_pages: role scoping', () => {
     admin,
     createUser,
   }) => {
-    await admin.post('/api/save_doc', {
-      doctype: 'Home Page',
-      doc: { row_id: 'hp-open', label: 'Open Page' },
+    await admin.post('/api/save_row', {
+      table: 'Home Page',
+      row: { row_id: 'hp-open', label: 'Open Page' },
     })
     const user = await createUser({ roles: [] })
     expect((await pages(user)).map((p) => p.row_id)).toContain('hp-open')
@@ -53,10 +53,10 @@ describe('GET /api/home_pages: role scoping', () => {
     admin,
     createUser,
   }) => {
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Home Page',
-      doc: { row_id: 'hp-scoped', label: 'Scoped Page', roles: [{ role: ROLE }] },
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', {
+      table: 'Home Page',
+      row: { row_id: 'hp-scoped', label: 'Scoped Page', roles: [{ role: ROLE }] },
     })
     const outsider = await createUser({ roles: [] })
     expect((await pages(outsider)).map((p) => p.row_id)).not.toContain('hp-scoped')
@@ -65,10 +65,10 @@ describe('GET /api/home_pages: role scoping', () => {
   })
 
   test('Administrator always sees every page, role-restricted or not', async ({ admin }) => {
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Home Page',
-      doc: { row_id: 'hp-scoped', label: 'Scoped Page', roles: [{ role: ROLE }] },
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', {
+      table: 'Home Page',
+      row: { row_id: 'hp-scoped', label: 'Scoped Page', roles: [{ role: ROLE }] },
     })
     const names = (await pages(admin)).map((p) => p.row_id)
     expect(names).toContain('hp-scoped')
@@ -89,14 +89,14 @@ describe('GET /api/home_pages: link permission filtering', () => {
     createUser,
   }) => {
     await makeTable(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: ROLE } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: DT, role: ROLE, can_read: true },
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: DT, role: ROLE, can_read: true },
     })
-    await admin.post('/api/save_doc', {
-      doctype: 'Home Page',
-      doc: {
+    await admin.post('/api/save_row', {
+      table: 'Home Page',
+      row: {
         row_id: 'hp-links',
         label: 'Links Page',
         links: [
@@ -121,9 +121,9 @@ describe('GET /api/home_pages: link permission filtering', () => {
     createUser,
   }) => {
     await makeTable(admin)
-    await admin.post('/api/save_doc', {
-      doctype: 'Home Page',
-      doc: {
+    await admin.post('/api/save_row', {
+      table: 'Home Page',
+      row: {
         row_id: 'hp-empty',
         label: 'Empty For Some',
         links: [
@@ -139,9 +139,9 @@ describe('GET /api/home_pages: link permission filtering', () => {
   })
 
   test('a link to a table that no longer exists is filtered, not broken', async ({ admin }) => {
-    await admin.post('/api/save_doc', {
-      doctype: 'Home Page',
-      doc: { row_id: 'hp-dead', label: 'Dead Link Page' },
+    await admin.post('/api/save_row', {
+      table: 'Home Page',
+      row: { row_id: 'hp-dead', label: 'Dead Link Page' },
     })
     // Simulate a table dropped after being linked (e.g. app uninstall) —
     // the Reference validation forbids saving this shape over the API.
@@ -159,18 +159,18 @@ describe('GET /api/home_pages: link permission filtering', () => {
     expect(page.cards).toEqual([])
   })
 
-  test('legacy doctype shortcuts get the same read filter; url/dashboard pass through', async ({
+  test('legacy table shortcuts get the same read filter; url/dashboard pass through', async ({
     admin,
     createUser,
   }) => {
     await makeTable(admin)
-    await admin.post('/api/save_doc', {
-      doctype: 'Home Page',
-      doc: {
+    await admin.post('/api/save_row', {
+      table: 'Home Page',
+      row: {
         row_id: 'hp-legacy',
         label: 'Legacy Page',
         shortcuts: JSON.stringify([
-          { label: 'Widgets', type: 'doctype', link_to: DT },
+          { label: 'Widgets', type: 'table', link_to: DT },
           { label: 'Docs', type: 'url', link_to: 'https://example.com' },
         ]),
       },
@@ -216,7 +216,7 @@ describe('auto-membership: a built table never vanishes from navigation', () => 
   })
 
   test('sub-tables get no navigation entry', async ({ admin }) => {
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: 'HP Child Row',
       module: 'Warehouse',
       kind: 'sub_table',

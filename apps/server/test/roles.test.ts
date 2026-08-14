@@ -8,9 +8,9 @@ const USER = 'roletest@x.com'
 // Each test creates the user inside its own rolled-back transaction — no
 // shared beforeAll state and no cleanup.
 async function makeUser(admin: TestClient) {
-  await admin.post('/api/save_doc', {
-    doctype: 'User',
-    doc: { row_id: USER, email: USER, enabled: true },
+  await admin.post('/api/save_row', {
+    table: 'User',
+    row: { row_id: USER, email: USER, enabled: true },
   })
 }
 
@@ -25,11 +25,11 @@ describe('PERM-001: role model', () => {
   }) => {
     await makeUser(admin)
     const doc = await admin.get<Record<string, unknown>>(`/api/table/User/${encodeURIComponent(USER)}`)
-    const assign = await admin.fetch('/api/save_doc', {
+    const assign = await admin.fetch('/api/save_row', {
       method: 'POST',
       body: JSON.stringify({
-        doctype: 'User',
-        doc: {
+        table: 'User',
+        row: {
           row_id: USER,
           updated_at: doc.updated_at,
           roles: [{ role: 'System Manager' }, { role: 'Guest' }],
@@ -42,11 +42,11 @@ describe('PERM-001: role model', () => {
     const doc2 = await admin.get<Record<string, unknown>>(
       `/api/table/User/${encodeURIComponent(USER)}`,
     )
-    const remove = await admin.fetch('/api/save_doc', {
+    const remove = await admin.fetch('/api/save_row', {
       method: 'POST',
       body: JSON.stringify({
-        doctype: 'User',
-        doc: { row_id: USER, updated_at: doc2.updated_at, roles: [{ role: 'Guest' }] },
+        table: 'User',
+        row: { row_id: USER, updated_at: doc2.updated_at, roles: [{ role: 'Guest' }] },
       }),
     })
     expect(remove.status).toBe(201)
@@ -57,9 +57,9 @@ describe('PERM-001: role model', () => {
     await makeUser(admin)
     const doc = await admin.get<Record<string, unknown>>(`/api/table/User/${encodeURIComponent(USER)}`)
     await expect(
-      admin.post('/api/save_doc', {
-        doctype: 'User',
-        doc: { row_id: USER, updated_at: doc.updated_at, roles: [{ role: 'Fake Role' }] },
+      admin.post('/api/save_row', {
+        table: 'User',
+        row: { row_id: USER, updated_at: doc.updated_at, roles: [{ role: 'Fake Role' }] },
       }),
     ).rejects.toMatchObject({ status: 417 })
   })

@@ -60,7 +60,7 @@ layer; HTML is always downstream.
    exclusive taxonomy — add supporting strategies where needed.
    - Rule-shaped: example table (business-signable, "Why?" column,
      `rejected` sentinel) **and** a one-sentence property.
-   - Contract-shaped: **name the address** (`DELETE /api/doctype/:name`)
+   - Contract-shaped: **name the address** (`DELETE /api/table_def/:name`)
      — a contract without its route isn't one; that is the contract's
      identity, not implementation detail. An example table is optional:
      where rows would only restate the rule, enumerate the behaviours

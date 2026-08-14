@@ -104,7 +104,7 @@ export interface ListResult<T = Record<string, unknown>> {
 }
 
 export function listResource<T = Record<string, unknown>>(
-  doctype: string,
+  table: string,
   params: {
     filters?: unknown[]
     fields?: string[]
@@ -121,5 +121,5 @@ export function listResource<T = Record<string, unknown>>(
   if (params.limit_page_length != null)
     qs.set('limit_page_length', String(params.limit_page_length))
   const suffix = qs.size ? `?${qs}` : ''
-  return api.get<ListResult<T>>(`/api/table/${encodeURIComponent(doctype)}${suffix}`)
+  return api.get<ListResult<T>>(`/api/table/${encodeURIComponent(table)}${suffix}`)
 }

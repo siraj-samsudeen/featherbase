@@ -2,7 +2,7 @@
 // they are queryable through the normal API/UI; a Job Execution logs each
 // attempt (JOB-002/003 audit trail).
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'Background Job'`

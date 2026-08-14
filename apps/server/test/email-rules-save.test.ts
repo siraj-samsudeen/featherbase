@@ -11,14 +11,14 @@ import { saveDoc } from '../src/document'
 //
 // The table's own lifecycle field is named `stage` (not `status`) because
 // `status` is now the reserved draft/submitted/cancelled column — a custom
-// column may not shadow it (doctype-engine's STANDARD_COLUMNS check).
+// column may not shadow it (table-engine's STANDARD_COLUMNS check).
 
 const DT = 'Eml Save Task'
 const SUBJ_CREATE = 'EmlSave created'
 const SUBJ_RESOLVED = 'EmlSave resolved'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },

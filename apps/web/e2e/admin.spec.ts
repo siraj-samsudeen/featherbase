@@ -24,7 +24,7 @@ test('UI-001: full login flow into the Admin shell', async ({ page }) => {
   // (grouped, never hidden).
   await expect(page.getByTestId('home-page-nav')).toBeVisible()
   await page.getByTestId('all-tables-link').click()
-  const nav = page.getByTestId('doctype-nav')
+  const nav = page.getByTestId('table-nav')
   await expect(page.getByTestId('system-group-toggle')).toBeVisible()
   await expect(nav.getByText('User', { exact: true })).toBeHidden()
   await expect(page.getByTestId('system-group-count')).not.toHaveText('0')
@@ -39,11 +39,11 @@ test('UI-001: full login flow into the Admin shell', async ({ page }) => {
   // Navigate to a Table page
   await nav.getByText('User', { exact: true }).click()
   await expect(page).toHaveURL(/\/admin\/User/)
-  await expect(page.getByTestId('doctype-page')).toContainText('User')
+  await expect(page.getByTestId('table-page')).toContainText('User')
 
   // Deep link survives reload (token persisted)
   await page.reload()
-  await expect(page.getByTestId('doctype-page')).toContainText('User')
+  await expect(page.getByTestId('table-page')).toContainText('User')
 
   // Logout (inside the avatar's account menu, #72) returns to login and
   // guards /admin

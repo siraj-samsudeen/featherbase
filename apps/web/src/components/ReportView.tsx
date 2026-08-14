@@ -22,15 +22,15 @@ interface ReportConfig {
 // RPT-002: the configuration can be saved as a named Report row and
 // restored via ?report=<name>.
 export function ReportView({
-  doctype,
+  table,
   report,
   onReportChange,
 }: {
-  doctype: string
+  table: string
   report?: string
   onReportChange?: (name: string | undefined) => void
 }) {
-  const meta = useMeta(doctype)
+  const meta = useMeta(table)
   const queryClient = useQueryClient()
 
   const available = useMemo(
@@ -55,10 +55,10 @@ export function ReportView({
 
   // RPT-002: saved reports for this Table.
   const savedReports = useQuery({
-    queryKey: ['saved-reports', doctype],
+    queryKey: ['saved-reports', table],
     queryFn: () =>
       listResource<{ row_id: string }>('Report', {
-        filters: [['ref_table', '=', doctype]],
+        filters: [['ref_table', '=', table]],
         fields: ['row_id'],
         order_by: 'row_id asc',
         limit_page_length: 100,
@@ -104,10 +104,10 @@ export function ReportView({
   }, [columns, groupBy])
 
   const rows = useQuery({
-    queryKey: ['report', doctype, fetchFields, groupBy, filters],
+    queryKey: ['report', table, fetchFields, groupBy, filters],
     enabled: Boolean(meta.data),
     queryFn: () =>
-      listResource<Row>(doctype, {
+      listResource<Row>(table, {
         fields: fetchFields,
         filters: filters.length ? filters : undefined,
         order_by: groupBy ? `${groupBy} asc` : 'updated_at desc',
@@ -119,11 +119,11 @@ export function ReportView({
     setSaveError(null)
     try {
       const config: ReportConfig = { columns, group_by: groupBy, filters }
-      await api.post('/api/save_doc', {
-        doctype: 'Report',
-        doc: { row_id: saveName, ref_table: doctype, config },
+      await api.post('/api/save_row', {
+        table: 'Report',
+        row: { row_id: saveName, ref_table: table, config },
       })
-      await queryClient.invalidateQueries({ queryKey: ['saved-reports', doctype] })
+      await queryClient.invalidateQueries({ queryKey: ['saved-reports', table] })
       setSaveOpen(false)
       onReportChange?.(saveName)
       setSaveName('')
@@ -150,7 +150,7 @@ export function ReportView({
   }
 
   if (meta.isLoading) return <p className="text-sm text-gray-400">Loading…</p>
-  if (meta.isError) return <p className="text-sm text-red-600">Cannot load {doctype}</p>
+  if (meta.isError) return <p className="text-sm text-red-600">Cannot load {table}</p>
 
   const numericCols = columns.filter((c) =>
     NUMERIC.has(available.find((f) => f.column_name === c)?.column_type ?? ''),
@@ -248,7 +248,7 @@ export function ReportView({
 
   // PLAT-007: record the export in the Access Log (fire-and-forget).
   function logExport(method: string) {
-    void api.post('/api/access_log', { doctype, method }).catch(() => {})
+    void api.post('/api/access_log', { table, method }).catch(() => {})
   }
 
   function exportCsv() {
@@ -259,7 +259,7 @@ export function ReportView({
     const csv = exportRows()
       .map((r) => r.map(quote).join(','))
       .join('\n')
-    download(new Blob([csv], { type: 'text/csv' }), `${doctype.toLowerCase().replace(/\s+/g, '-')}-report.csv`)
+    download(new Blob([csv], { type: 'text/csv' }), `${table.toLowerCase().replace(/\s+/g, '-')}-report.csv`)
     logExport('csv')
   }
 
@@ -273,7 +273,7 @@ export function ReportView({
       new Blob([buf], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       }),
-      `${doctype.toLowerCase().replace(/\s+/g, '-')}-report.xlsx`,
+      `${table.toLowerCase().replace(/\s+/g, '-')}-report.xlsx`,
     )
     logExport('xlsx')
   }
@@ -282,9 +282,9 @@ export function ReportView({
     <tr key={String(row.row_id)} className="border-t border-[var(--color-border)]" data-testid="report-row">
       <td className="px-3 py-1.5">
         <RouterLink
-          to="/admin/$doctype/$name"
+          to="/admin/$table/$name"
           search={{ prefill: undefined }}
-          params={{ doctype, name: String(row.row_id) }}
+          params={{ table, name: String(row.row_id) }}
           className="text-[var(--color-brand)] hover:underline"
         >
           {String(row.row_id)}
@@ -302,7 +302,7 @@ export function ReportView({
     <div data-testid="report-view">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{doctype} — Summary</h1>
+          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{table} — Summary</h1>
           <span className="text-xs text-[var(--color-ink-muted)]" data-testid="report-total">
             {rows.data?.total ?? 0} rows
           </span>
@@ -315,8 +315,8 @@ export function ReportView({
             XLSX
           </button>
           <RouterLink
-            to="/admin/$doctype"
-            params={{ doctype }}
+            to="/admin/$table"
+            params={{ table }}
             search={{ filters: undefined }}
             className="fc-btn"
             data-testid="report-to-list"

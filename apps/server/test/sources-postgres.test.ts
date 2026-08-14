@@ -426,7 +426,7 @@ describe('EDS-2: foreign keys reflect as References', () => {
     // earliest-created binding must win as the Reference target — names
     // chosen so the created_at tie-break (name asc) agrees.
     for (const name of ['Alpha Vehicle', 'Zeta Vehicle']) {
-      await admin.post('/api/doctype', {
+      await admin.post('/api/table_def', {
         name,
         data_source: 'ext-fixture',
         external_schema: 'ext_fixture',
