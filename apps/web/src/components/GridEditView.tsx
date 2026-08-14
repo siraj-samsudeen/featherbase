@@ -44,6 +44,11 @@ export function GridEditView({
   // event, where state set a line earlier is not yet readable. Re-renders
   // that repaint the dot always accompany the mutations (setRows / status).
   const dirty = useRef(new Set<string>())
+  // Latest rows, for handlers that run in the same event as a commit (a
+  // click into another cell fires the editor's blur-commit first — this
+  // render's `rows` doesn't have that edit yet).
+  const rowsRef = useRef(rows)
+  rowsRef.current = rows
 
   // Server truth flows in whenever no local edit is pending — a refetch
   // mid-edit must not clobber the user's typing.
@@ -81,6 +86,7 @@ export function GridEditView({
       if (draft !== String(rows[r][key] ?? '')) {
         currentRows = rows.map((row, i) => (i === r ? { ...row, [key]: draft } : row))
         setRows(currentRows)
+        rowsRef.current = currentRows
         dirty.current.add(String(rows[r].name))
       }
     }
@@ -169,7 +175,14 @@ export function GridEditView({
                   return (
                     <td
                       key={col.column_name}
-                      onClick={() => (setSel({ r, c }), setEditing(false), gridRef.current?.focus())}
+                      onClick={() => {
+                        // Clicking into another row is a row exit too — the
+                        // editor's blur-commit (if any) has already run.
+                        if (sel && sel.r !== r) saveRowData(rowsRef.current[sel.r])
+                        setSel({ r, c })
+                        setEditing(false)
+                        gridRef.current?.focus()
+                      }}
                       onDoubleClick={() => startEdit(r, c)}
                       data-testid={`grid-cell-${col.column_name}`}
                       className={`relative border-r border-[var(--color-border)] px-3 py-1.5 last:border-r-0 ${

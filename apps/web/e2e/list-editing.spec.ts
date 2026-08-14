@@ -133,6 +133,31 @@ test('grid: edit a cell, leave the row — the row autosaves via the server', as
   await page.getByTestId('view-toggle-list').click()
 })
 
+test('grid: leaving a row with a MOUSE CLICK also autosaves it', async ({ page }) => {
+  await signIn(page)
+  await page.goto(`/admin/${encodeURIComponent(DT)}`)
+  await page.getByTestId('view-toggle-grid').click()
+  await expect(page.getByTestId('grid-view')).toBeVisible()
+
+  const rows = await fetchRows(page)
+  const alphaName = rows.find((r) => r.title === 'alpha')!.name
+  const gammaName = rows.find((r) => r.title === 'gamma')!.name
+  const alphaRow = page.locator(`[data-row-name="${alphaName}"]`)
+
+  // Edit alpha's city, commit with Tab (stays in the row), then click a
+  // cell in gamma's row — leaving alpha by mouse is still a row exit.
+  await alphaRow.getByTestId('grid-cell-city').click()
+  await page.keyboard.press('Enter')
+  await page.getByTestId('grid-cell-editor').fill('Ooty')
+  await page.keyboard.press('Tab')
+  await page.locator(`[data-row-name="${gammaName}"]`).getByTestId('grid-cell-city').click()
+
+  await expect(alphaRow.getByTestId('row-saved')).toBeVisible()
+  expect((await fetchRows(page)).find((r) => r.title === 'alpha')?.city).toBe('Ooty')
+
+  await page.getByTestId('view-toggle-list').click()
+})
+
 test('datasheet: direct cell edit autosaves on row exit; ghost row creates', async ({ page }) => {
   await signIn(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}`)

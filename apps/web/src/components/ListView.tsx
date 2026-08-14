@@ -632,7 +632,10 @@ export function ListView({
           )}
         </div>
       )}
-      {view === 'grid' && meta.data ? (
+      {/* Render-site gate mirrors the toggle gate: even if a `view` value
+          leaks onto a read-only table (future call sites, writability
+          flipping mid-session), the editable bodies never mount. */}
+      {view === 'grid' && meta.data && !isSourceReadOnly(meta.data) ? (
         <GridEditView
           doctype={doctype}
           meta={meta.data}
@@ -641,7 +644,7 @@ export function ListView({
           settings={settings}
           onSaved={refresh}
         />
-      ) : view === 'sheet' && meta.data ? (
+      ) : view === 'sheet' && meta.data && !isSourceReadOnly(meta.data) ? (
         <DatasheetView
           doctype={doctype}
           meta={meta.data}
