@@ -22,11 +22,11 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
       items: [{ item: 'one', qty: 1 }, { item: 'two', qty: 2 }, { item: 'three', qty: 3 }],
     },
   })
-  docName = ((await created.json()) as { name: string }).name
+  docName = ((await created.json()) as { row_id: string }).row_id
 
   const metaS = await request.get(`/api/table/${encodeURIComponent(SEC_DT)}:meta`, { headers: auth })
   if (metaS.status() === 404) {
-    await request.post('/api/doctype', {
+    await request.post('/api/table_def', {
       headers: auth,
       data: {
         name: SEC_DT,
@@ -117,7 +117,7 @@ test('UI-016: breadcrumbs navigate and the title bar tracks saved state', async 
   await expect(page.getByTestId('form-banner')).toContainText('Saved')
   await expect(page.getByTestId('form-status')).toContainText('Saved')
 
-  // Breadcrumb doctype link returns to the list
+  // Breadcrumb table link returns to the list
   await crumbs.getByText(DT).click()
   await expect(page.getByTestId('list-view')).toBeVisible()
 })

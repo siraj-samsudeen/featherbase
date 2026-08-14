@@ -20,13 +20,13 @@ const controller: TableController = {
 
       // Only notify names that resolve to real users.
       const users = await stx`
-        select name from "user" where name in ${stx([...mentioned])}`
+        select row_id from "user" where row_id in ${stx([...mentioned])}`
       const notified: string[] = []
       for (const u of users) {
-        const target = u.name as string
+        const target = u.row_id as string
         await stx`
           insert into notification_log
-            (name, created_by, updated_by, for_user, subject, ref_table, ref_name, read)
+            (row_id, created_by, updated_by, for_user, subject, ref_table, ref_name, read)
           values (
             ${randomBytes(5).toString('hex')}, ${user}, ${user}, ${target},
             ${`${user} mentioned you in a comment`},

@@ -9,19 +9,19 @@ import type { TestClient } from 'feather-testing-postgres'
 const DT = 'Asg Srv DT'
 const ASSIGNEE = 'asg-srv@x.com'
 
-// Each test builds its DocType, assignee user, and document inside its own
+// Each test builds its Table, assignee user, and document inside its own
 // sandbox transaction.
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
-  await admin.post('/api/save_doc', {
-    doctype: 'User',
-    doc: { name: ASSIGNEE, email: ASSIGNEE },
+  await admin.post('/api/save_row', {
+    table: 'User',
+    row: { row_id: ASSIGNEE, email: ASSIGNEE },
   })
-  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { name: 'asg-1', title: 'x' })
+  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'asg-1', title: 'x' })
 }
 
 describe('EML-006: assignment', () => {
@@ -30,8 +30,8 @@ describe('EML-006: assignment', () => {
     const res = await admin.fetch('/api/assign', {
       method: 'POST',
       body: JSON.stringify({
-        doctype: DT,
-        name: 'asg-1',
+        table: DT,
+        row_id: 'asg-1',
         assign_to: ASSIGNEE,
         description: 'please handle',
       }),
@@ -56,16 +56,16 @@ describe('EML-006: assignment', () => {
     await setup(admin)
     const res = await admin.fetch('/api/assign', {
       method: 'POST',
-      body: JSON.stringify({ doctype: DT, name: 'asg-1', assign_to: 'ghost@x.com' }),
+      body: JSON.stringify({ table: DT, row_id: 'asg-1', assign_to: 'ghost@x.com' }),
     })
     expect(res.status).toBe(404)
   })
 
-  test('requires doctype, name, and assign_to', async ({ admin }) => {
+  test('requires table, name, and assign_to', async ({ admin }) => {
     await setup(admin)
     const res = await admin.fetch('/api/assign', {
       method: 'POST',
-      body: JSON.stringify({ doctype: DT }),
+      body: JSON.stringify({ table: DT }),
     })
     expect(res.status).toBe(417)
   })
@@ -75,7 +75,7 @@ describe('EML-006: assignment', () => {
     const res = await api.fetch('/api/assign', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ doctype: DT, name: 'asg-1', assign_to: ASSIGNEE }),
+      body: JSON.stringify({ table: DT, row_id: 'asg-1', assign_to: ASSIGNEE }),
     })
     expect(res.status).toBe(401)
   })

@@ -19,8 +19,8 @@ import { useQuery } from '@tanstack/react-query'
 // records (Employee, Customer) read as a 360° page. Zero configuration —
 // tabs appear for whatever points at the table.
 
-export function ConnectionsPanel({ doctype, name }: { doctype: string; name: string }) {
-  const cnx = useConnections(doctype, name)
+export function ConnectionsPanel({ table, name }: { table: string; name: string }) {
+  const cnx = useConnections(table, name)
   const peek = usePeek()
   if (!cnx.data?.connections.length) return null
   return (
@@ -34,8 +34,8 @@ export function ConnectionsPanel({ doctype, name }: { doctype: string; name: str
           className="flex items-center border-b border-[var(--color-border)] last:border-0"
         >
           <Link
-            to="/admin/$doctype"
-            params={{ doctype: c.table }}
+            to="/admin/$table"
+            params={{ table: c.table }}
             search={{ filters: JSON.stringify(c.filters) }}
             data-testid={`connection-${c.table}`}
             className="flex min-w-0 flex-1 items-center justify-between gap-2 px-4 py-2 text-sm hover:bg-[var(--color-subtle)]"
@@ -66,8 +66,8 @@ export function ConnectionsPanel({ doctype, name }: { doctype: string; name: str
           )}
           {!c.via && (
             <Link
-              to="/admin/$doctype/$name"
-              params={{ doctype: c.table, name: 'new' }}
+              to="/admin/$table/$name"
+              params={{ table: c.table, name: 'new' }}
               search={{ prefill: JSON.stringify({ [c.column]: name }) }}
               title={`New ${c.table} with ${c.column} = ${name}`}
               data-testid={`connection-new-${c.table}`}
@@ -82,8 +82,8 @@ export function ConnectionsPanel({ doctype, name }: { doctype: string; name: str
   )
 }
 
-export function RelatedTabs({ doctype, name }: { doctype: string; name: string }) {
-  const cnx = useConnections(doctype, name)
+export function RelatedTabs({ table, name }: { table: string; name: string }) {
+  const cnx = useConnections(table, name)
   const [open, setOpen] = useState<string | null>(null)
   const connections = cnx.data?.connections ?? []
   if (!connections.length) return null
@@ -165,17 +165,17 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={String(r.name)} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]">
+            <tr key={String(r.row_id)} className="border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]">
               {columns.map((c, i) => (
                 <td key={c.column_name} className="px-3 py-1.5">
                   {i === 0 ? (
                     <Link
-                      to="/admin/$doctype/$name"
+                      to="/admin/$table/$name"
                       search={{ prefill: undefined }}
-                      params={{ doctype: connection.table, name: String(r.name) }}
+                      params={{ table: connection.table, name: String(r.row_id) }}
                       className="font-medium text-[var(--color-brand)] hover:underline"
                     >
-                      {formatValue(c.column_type, r[c.column_name], settings) || String(r.name)}
+                      {formatValue(c.column_type, r[c.column_name], settings) || String(r.row_id)}
                     </Link>
                   ) : (
                     formatValue(c.column_type, r[c.column_name], settings) || '—'
@@ -200,8 +200,8 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
           </span>
         )}
         <Link
-          to="/admin/$doctype"
-          params={{ doctype: connection.table }}
+          to="/admin/$table"
+          params={{ table: connection.table }}
           search={{ filters: JSON.stringify(connection.filters) }}
           data-testid="embedded-open-list"
           className="font-medium text-[var(--color-brand)] hover:underline"
@@ -210,8 +210,8 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
         </Link>
         {!connection.via && (
           <Link
-            to="/admin/$doctype/$name"
-            params={{ doctype: connection.table, name: 'new' }}
+            to="/admin/$table/$name"
+            params={{ table: connection.table, name: 'new' }}
             search={{ prefill: JSON.stringify({ [connection.column]: owner }) }}
             data-testid="embedded-new"
             className="font-medium text-[var(--color-brand)] hover:underline"

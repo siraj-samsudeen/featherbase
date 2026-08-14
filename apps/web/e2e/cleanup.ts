@@ -15,6 +15,6 @@ export async function deleteTableIfExists(
   const enc = encodeURIComponent(name)
   const exists = await request.get(`/api/table/${enc}:meta`, { headers })
   if (exists.status() !== 200) return
-  const res = await request.delete(`/api/doctype/${enc}`, { headers })
+  const res = await request.delete(`/api/table_def/${enc}`, { headers })
   expect(res.status(), `pre-clean: deleting leftover Table ${name}`).toBe(200)
 }

@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser, listResource } from '../lib/api'
 
 interface CommentRow {
-  name: string
+  row_id: string
   content: string
   created_by: string
   created_at: string
@@ -12,7 +12,7 @@ interface CommentRow {
 // UI-018: a comment box on every row. Comments are Comment rows linked
 // by ref_table/ref_name; @mentions autocomplete from the user list and
 // render highlighted.
-export function Comments({ doctype, name }: { doctype: string; name: string }) {
+export function Comments({ table, name }: { table: string; name: string }) {
   const queryClient = useQueryClient()
   const me = getSessionUser()
   const [draft, setDraft] = useState('')
@@ -22,14 +22,14 @@ export function Comments({ doctype, name }: { doctype: string; name: string }) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const comments = useQuery({
-    queryKey: ['comments', doctype, name],
+    queryKey: ['comments', table, name],
     queryFn: () =>
       listResource<CommentRow>('Comment', {
         filters: [
-          ['ref_table', '=', doctype],
+          ['ref_table', '=', table],
           ['ref_name', '=', name],
         ],
-        fields: ['name', 'content', 'created_by', 'created_at'],
+        fields: ['row_id', 'content', 'created_by', 'created_at'],
         order_by: 'created_at asc',
         limit_page_length: 200,
       }),
@@ -40,9 +40,9 @@ export function Comments({ doctype, name }: { doctype: string; name: string }) {
     queryKey: ['mention-users'],
     enabled: mention !== null,
     queryFn: () =>
-      listResource<{ name: string }>('User', {
-        fields: ['name'],
-        order_by: 'name asc',
+      listResource<{ row_id: string }>('User', {
+        fields: ['row_id'],
+        order_by: 'row_id asc',
         limit_page_length: 500,
       }),
   })
@@ -50,7 +50,7 @@ export function Comments({ doctype, name }: { doctype: string; name: string }) {
     if (!mention) return []
     const q = mention.q.toLowerCase()
     return (users.data?.data ?? [])
-      .map((u) => u.name)
+      .map((u) => u.row_id)
       .filter((n) => n.toLowerCase().includes(q))
       .slice(0, 6)
   }, [mention, users.data])
@@ -81,12 +81,12 @@ export function Comments({ doctype, name }: { doctype: string; name: string }) {
     setPosting(true)
     setError(null)
     try {
-      await api.post('/api/save_doc', {
-        doctype: 'Comment',
-        doc: { ref_table: doctype, ref_name: name, content },
+      await api.post('/api/save_row', {
+        table: 'Comment',
+        row: { ref_table: table, ref_name: name, content },
       })
       setDraft('')
-      await queryClient.invalidateQueries({ queryKey: ['comments', doctype, name] })
+      await queryClient.invalidateQueries({ queryKey: ['comments', table, name] })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Comment failed')
     } finally {
@@ -122,7 +122,7 @@ export function Comments({ doctype, name }: { doctype: string; name: string }) {
           <p className="text-xs text-[var(--color-ink-faint)]">No comments yet</p>
         )}
         {comments.data?.data.map((c) => (
-          <div key={c.name} className="flex gap-2" data-testid="comment-item">
+          <div key={c.row_id} className="flex gap-2" data-testid="comment-item">
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-brand)] text-[10px] font-semibold text-white">
               {initials(c.created_by)}
             </span>
@@ -145,7 +145,7 @@ export function Comments({ doctype, name }: { doctype: string; name: string }) {
           value={draft}
           onChange={onChange}
           rows={2}
-          placeholder={`Comment as ${me?.name ?? 'you'}… use @ to mention`}
+          placeholder={`Comment as ${me?.row_id ?? 'you'}… use @ to mention`}
           className="fc-input resize-none"
           data-testid="comment-input"
         />

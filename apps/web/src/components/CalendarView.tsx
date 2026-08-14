@@ -14,11 +14,11 @@ function ymd(d: Date): string {
 
 // UI-021: month calendar for Tables with a Date column. Rows appear on
 // their date; dragging an event to another day writes the date column back.
-export function CalendarView({ doctype }: { doctype: string }) {
-  const meta = useMeta(doctype)
+export function CalendarView({ table }: { table: string }) {
+  const meta = useMeta(table)
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
-  const [dragging, setDragging] = useState<{ name: string; from: string } | null>(null)
+  const [dragging, setDragging] = useState<{ row_id: string; from: string } | null>(null)
   // Month being viewed (first of month). Defaults to the current month.
   const [view, setView] = useState(() => {
     const now = new Date()
@@ -30,14 +30,14 @@ export function CalendarView({ doctype }: { doctype: string }) {
     [meta.data],
   )
   const field = dateColumns[0]?.column_name
-  const titleColumn = meta.data?.title_column || 'name'
+  const titleColumn = meta.data?.title_column || 'row_id'
 
   const rows = useQuery({
-    queryKey: ['calendar', doctype, field],
+    queryKey: ['calendar', table, field],
     enabled: Boolean(meta.data && field),
     queryFn: () =>
-      listResource<Row>(doctype, {
-        fields: [...new Set(['name', field!, titleColumn])],
+      listResource<Row>(table, {
+        fields: [...new Set(['row_id', field!, titleColumn])],
         order_by: field!,
         limit_page_length: 1000,
       }),
@@ -73,12 +73,12 @@ export function CalendarView({ doctype }: { doctype: string }) {
     if (from === to) return
     setError(null)
     try {
-      const doc = await api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
-      await api.patch(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`, {
+      const doc = await api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`)
+      await api.patch(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`, {
         [field!]: to,
         updated_at: doc.updated_at,
       })
-      await queryClient.invalidateQueries({ queryKey: ['calendar', doctype, field] })
+      await queryClient.invalidateQueries({ queryKey: ['calendar', table, field] })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Move failed')
     }
@@ -91,7 +91,7 @@ export function CalendarView({ doctype }: { doctype: string }) {
     const to = cell?.getAttribute('data-date')
     const ev = dragging
     setDragging(null)
-    if (to) void moveEvent(ev.name, ev.from, to)
+    if (to) void moveEvent(ev.row_id, ev.from, to)
   }
 
   const monthLabel = view.toLocaleString('en-US', { month: 'long', year: 'numeric' })
@@ -101,14 +101,14 @@ export function CalendarView({ doctype }: { doctype: string }) {
     <div data-testid="calendar-view" onPointerUp={onPointerUp}>
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{doctype} — Calendar</h1>
+          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{table} — Calendar</h1>
           <div className="flex items-center gap-1">
             <button onClick={() => shiftMonth(-1)} className="fc-btn" data-testid="cal-prev">‹</button>
             <span className="min-w-40 text-center text-sm font-medium" data-testid="cal-month">{monthLabel}</span>
             <button onClick={() => shiftMonth(1)} className="fc-btn" data-testid="cal-next">›</button>
           </div>
         </div>
-        <RouterLink to="/admin/$doctype" params={{ doctype }} search={{ filters: undefined }} className="fc-btn" data-testid="cal-to-list">
+        <RouterLink to="/admin/$table" params={{ table }} search={{ filters: undefined }} className="fc-btn" data-testid="cal-to-list">
           List view
         </RouterLink>
       </div>
@@ -135,22 +135,22 @@ export function CalendarView({ doctype }: { doctype: string }) {
               <div className="flex flex-col gap-1">
                 {(byDate.get(key) ?? []).map((row) => (
                   <div
-                    key={String(row.name)}
+                    key={String(row.row_id)}
                     data-testid="cal-event"
-                    data-event={String(row.name)}
-                    onPointerDown={() => setDragging({ name: String(row.name), from: key })}
+                    data-event={String(row.row_id)}
+                    onPointerDown={() => setDragging({ row_id: String(row.row_id), from: key })}
                     className={`cursor-grab truncate rounded bg-[var(--color-brand-tint)] px-1 py-0.5 text-xs text-[var(--color-brand)] ${
-                      dragging?.name === row.name ? 'opacity-50' : ''
+                      dragging?.row_id === row.row_id ? 'opacity-50' : ''
                     }`}
                   >
                     <RouterLink
-                      to="/admin/$doctype/$name"
+                      to="/admin/$table/$name"
                       search={{ prefill: undefined }}
-                      params={{ doctype, name: String(row.name) }}
+                      params={{ table, name: String(row.row_id) }}
                       className="hover:underline"
                       onPointerDown={(e) => e.stopPropagation()}
                     >
-                      {String(row[titleColumn] ?? row.name)}
+                      {String(row[titleColumn] ?? row.row_id)}
                     </RouterLink>
                   </div>
                 ))}

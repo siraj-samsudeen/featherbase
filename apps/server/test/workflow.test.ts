@@ -12,7 +12,7 @@ const VIEWER = 'Wf Srv Viewer'
 const FLOW = 'Wf Srv Flow'
 
 const FLOW_DOC = {
-  name: FLOW,
+  row_id: FLOW,
   ref_table: DT,
   is_active: true,
   states: [
@@ -28,26 +28,26 @@ const FLOW_DOC = {
 
 // Each test rebuilds its world inside its own rolled-back transaction.
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     id_pattern: 'prompt',
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
   for (const r of [APPROVER, VIEWER])
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: r } })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: r } })
   // Viewer can read+write the doc but is NOT the approver.
-  await admin.post('/api/save_doc', {
-    doctype: 'Permission',
-    doc: { ref_table: DT, role: VIEWER, tier: 'basic', can_read: true, can_write: true },
+  await admin.post('/api/save_row', {
+    table: 'Permission',
+    row: { ref_table: DT, role: VIEWER, tier: 'basic', can_read: true, can_write: true },
   })
 }
 
 async function makeFlow(admin: TestClient) {
-  await admin.post('/api/save_doc', { doctype: 'Workflow', doc: FLOW_DOC })
+  await admin.post('/api/save_row', { table: 'Workflow', row: FLOW_DOC })
 }
 
 async function makeDoc(admin: TestClient) {
-  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { name: 'wf-srv-1', title: 'x' })
+  await admin.post(`/api/table/${encodeURIComponent(DT)}`, { row_id: 'wf-srv-1', title: 'x' })
 }
 
 // Replay of the WF-002 drive (Submit → Approve) without its assertions.
@@ -59,9 +59,9 @@ async function drive(admin: TestClient) {
 describe('WF-001: workflow definition', () => {
   test('persists and adds a workflow_state column to the target Table', async ({ admin }) => {
     await setup(admin)
-    const res = await admin.fetch('/api/save_doc', {
+    const res = await admin.fetch('/api/save_row', {
       method: 'POST',
-      body: JSON.stringify({ doctype: 'Workflow', doc: FLOW_DOC }),
+      body: JSON.stringify({ table: 'Workflow', row: FLOW_DOC }),
     })
     expect(res.status).toBe(201)
     const meta = await admin.get<{ columns: { column_name: string }[] }>(
@@ -73,10 +73,10 @@ describe('WF-001: workflow definition', () => {
   test('rejects transitions that reference undefined states', async ({ admin }) => {
     await setup(admin)
     await expect(
-      admin.post('/api/save_doc', {
-        doctype: 'Workflow',
-        doc: {
-          name: 'Wf Srv Orphan',
+      admin.post('/api/save_row', {
+        table: 'Workflow',
+        row: {
+          row_id: 'Wf Srv Orphan',
           ref_table: DT,
           is_active: false,
           states: [{ state: 'A', target_status: 'draft' }],

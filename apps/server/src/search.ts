@@ -1,7 +1,7 @@
 import { sql } from './db'
 import { getMeta } from './meta'
 import { hasPermission } from './permissions'
-import { tableName } from './doctype-engine'
+import { tableName } from './table-engine'
 
 // UI-014: awesomebar global search. Matches row names (and the
 // Table's title_column) across every regular Table the user can read.
@@ -9,7 +9,7 @@ import { tableName } from './doctype-engine'
 
 export interface SearchHit {
   table: string
-  name: string
+  row_id: string
   title: string
 }
 
@@ -34,20 +34,22 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
     if (!(await hasPermission(user, t.name as string, 'read'))) continue
     const meta = await getMeta(t.name as string)
     const title = meta.title_column
+    // The wire key is always `row_id`; `Table` alone stores it as `name`.
+    const key = sql(meta.row_key)
     const rows = title
       ? await sql`
-          select name, ${sql(title)} as title from ${sql(tableName(meta.name))}
-          where name ilike ${like} or ${sql(title)} ilike ${like}
+          select ${key} as row_id, ${sql(title)} as title from ${sql(tableName(meta.name))}
+          where ${key} ilike ${like} or ${sql(title)} ilike ${like}
           limit ${PER_TABLE}`
       : await sql`
-          select name, name as title from ${sql(tableName(meta.name))}
-          where name ilike ${like}
+          select ${key} as row_id, ${key} as title from ${sql(tableName(meta.name))}
+          where ${key} ilike ${like}
           limit ${PER_TABLE}`
     for (const row of rows) {
       hits.push({
         table: meta.name,
-        name: String(row.name),
-        title: String(row.title ?? row.name),
+        row_id: String(row.row_id),
+        title: String(row.title ?? row.row_id),
       })
       if (hits.length >= TOTAL_CAP) break
     }

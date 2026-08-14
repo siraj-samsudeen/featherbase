@@ -54,12 +54,12 @@ export async function importCustomizations(
 
   for (const f of bundle.custom_fields ?? []) {
     const [existing] = await sql`
-      select name from custom_field where dt = ${f.dt} and column_name = ${f.column_name}`
+      select row_id from custom_field where dt = ${f.dt} and column_name = ${f.column_name}`
     if (existing) continue // already present — idempotent
     await saveDoc(
       'Custom Field',
       {
-        name: `${f.dt}-${f.column_name}`,
+        row_id: `${f.dt}-${f.column_name}`,
         dt: f.dt,
         column_name: f.column_name,
         label: f.label ?? null,
@@ -78,14 +78,14 @@ export async function importCustomizations(
 
   for (const p of bundle.property_setters ?? []) {
     const [existing] = await sql`
-      select name from metadata_override
+      select row_id from metadata_override
       where table_name = ${p.table_name} and coalesce(column_name, '') = ${p.column_name ?? ''}
         and property = ${p.property}`
     if (existing) continue
     await saveDoc(
       'Metadata Override',
       {
-        name: `${p.table_name}-${p.column_name ?? ''}-${p.property}`,
+        row_id: `${p.table_name}-${p.column_name ?? ''}-${p.property}`,
         table_name: p.table_name,
         column_name: p.column_name ?? null,
         property: p.property,

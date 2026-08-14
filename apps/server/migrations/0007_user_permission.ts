@@ -1,7 +1,7 @@
 // PERM-005: Data Scope rows restrict a user to documents linked to
 // specific values (e.g. only Company A), including the target docs themselves.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'Data Scope'`

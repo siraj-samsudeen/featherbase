@@ -8,7 +8,7 @@ import { api } from './api'
 
 export interface HomePageShortcut {
   label: string
-  type?: string // doctype | report | dashboard | url
+  type?: string // table | report | dashboard | url
   link_to: string
 }
 
@@ -18,7 +18,7 @@ export interface HomePageCard {
 }
 
 export interface HomePage {
-  name: string
+  row_id: string
   label: string
   icon: string | null
   module: string | null

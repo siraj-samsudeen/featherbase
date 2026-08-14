@@ -11,16 +11,16 @@ describe('META-012: Table and Column are themselves Tables', () => {
   })
 
   test('GET /api/table/Table lists Tables including Table itself', async ({ admin }) => {
-    const body = await admin.get<{ data: { name: string; kind: string }[] }>(
+    const body = await admin.get<{ data: { row_id: string; kind: string }[] }>(
       `/api/table/Table?${new URLSearchParams({
-        filters: JSON.stringify([['name', 'in', ['Table', 'Column']]]),
-        fields: JSON.stringify(['name', 'kind']),
-        order_by: 'name asc',
+        filters: JSON.stringify([['row_id', 'in', ['Table', 'Column']]]),
+        fields: JSON.stringify(['row_id', 'kind']),
+        order_by: 'row_id asc',
       })}`,
     )
     expect(body.data).toEqual([
-      { name: 'Column', kind: 'sub_table' },
-      { name: 'Table', kind: 'table' },
+      { row_id: 'Column', kind: 'sub_table' },
+      { row_id: 'Table', kind: 'table' },
     ])
   })
 
@@ -35,7 +35,7 @@ describe('META-012: Table and Column are themselves Tables', () => {
 
   test('generic writes/deletes to Table/Column are refused', async ({ admin }) => {
     await expect(
-      admin.post('/api/save_doc', { doctype: 'Table', doc: { module: 'X' } }),
+      admin.post('/api/save_row', { table: 'Table', row: { module: 'X' } }),
     ).rejects.toMatchObject({ status: 417 })
     await expect(admin.delete('/api/table/Table/Column')).rejects.toMatchObject({
       status: 417,

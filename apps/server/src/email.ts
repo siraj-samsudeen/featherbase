@@ -60,7 +60,7 @@ export async function deliverToSink(msg: MailMessage): Promise<void> {
   const from = msg.from ?? (await defaultSender())
   await sql`
     insert into email_sink ${sql({
-      name: id(),
+      row_id: id(),
       created_by: 'Administrator',
       updated_by: 'Administrator',
       mail_from: from,
@@ -90,7 +90,7 @@ export async function queueEmail(msg: MailMessage): Promise<string> {
   const name = id()
   await sql`
     insert into email_queue ${sql({
-      name,
+      row_id: name,
       created_by: 'Administrator',
       updated_by: 'Administrator',
       sender: from,
@@ -120,7 +120,7 @@ registerJob('send_email', async (payload) => {
   // Claim the row: only deliver if still queued (idempotent under retries).
   const [row] = await sql`
     update email_queue set send_status = 'sent', updated_at = now()
-    where name = ${queueName} and send_status = 'queued'
+    where row_id = ${queueName} and send_status = 'queued'
     returning *`
   if (!row) return // already delivered or missing — no double-send
   try {
@@ -159,7 +159,7 @@ registerJob('send_email', async (payload) => {
     await sql`
       update email_queue set send_status = 'error', error = ${
         err instanceof Error ? err.message : String(err)
-      }, updated_at = now() where name = ${queueName}`
+      }, updated_at = now() where row_id = ${queueName}`
     throw err
   }
 })

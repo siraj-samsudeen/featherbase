@@ -2,7 +2,7 @@ import { createRequire } from 'node:module'
 import { describe, expect } from 'vitest'
 import { sql } from '../src/db'
 import { renderPdf, renderPrintHtml } from '../src/print'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 import { saveDoc } from '../src/document'
 import { test } from './pg-test'
 
@@ -36,13 +36,13 @@ async function setup() {
       { column_name: 'amount', column_type: 'Int' },
     ],
   })
-  await saveDoc(DT, { name: 'lh-1', company: 'Umbrella Corp', amount: 4200 }, 'Administrator')
+  await saveDoc(DT, { row_id: 'lh-1', company: 'Umbrella Corp', amount: 4200 }, 'Administrator')
 
   // Two letterheads; only Lh Corp is the default.
   await saveDoc(
     'Letter Head',
     {
-      name: 'Lh Corp',
+      row_id: 'Lh Corp',
       is_default: true,
       header_html: '<div>ACME GLOBAL — invoice for {{ company }}</div>',
       footer_html: '<div>Thank you for your business</div>',
@@ -52,7 +52,7 @@ async function setup() {
   await saveDoc(
     'Letter Head',
     {
-      name: 'Lh Branch',
+      row_id: 'Lh Branch',
       is_default: false,
       header_html: '<div>ACME BRANCH OFFICE</div>',
       footer_html: '<div>Branch footer line</div>',
@@ -91,7 +91,7 @@ describe('PRN-004: letterheads', () => {
   test('a Print Format can name the letterhead it prints with', async () => {
     await setup()
     await sql`
-      insert into print_format (name, created_by, updated_by, ref_table, is_default, letter_head, template)
+      insert into print_format (row_id, created_by, updated_by, ref_table, is_default, letter_head, template)
       values ('Lh Fmt', 'Administrator', 'Administrator', ${DT}, false, 'Lh Branch',
         '<h1>RECEIPT</h1><p>{{ company }}</p>')`
     const html = await renderPrintHtml(DT, 'lh-1', 'Administrator', 'Lh Fmt')

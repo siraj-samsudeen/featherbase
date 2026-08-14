@@ -10,7 +10,7 @@ const CTABLE = 'chd_item_row'
 const PTABLE = 'chd_order'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: CHILD,
     kind: 'sub_table',
     columns: [
@@ -18,7 +18,7 @@ async function setup(admin: TestClient) {
       { column_name: 'qty', column_type: 'Int', default_value: '1' },
     ],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: PARENT,
     columns: [
       { column_name: 'title', column_type: 'Data' },
@@ -27,14 +27,14 @@ async function setup(admin: TestClient) {
   })
 }
 
-const save = (admin: TestClient, doc: Record<string, unknown>) =>
-  admin.post<Record<string, any>>('/api/save_doc', { doctype: PARENT, doc })
+const save = (admin: TestClient, row: Record<string, unknown>) =>
+  admin.post<Record<string, any>>('/api/save_row', { table: PARENT, row })
 
 describe('META-007: child table linkage', () => {
   test('rejects a Sub-table column pointing at a non-child Table', async ({ admin }) => {
     await setup(admin)
     await expect(
-      admin.post('/api/doctype', {
+      admin.post('/api/table_def', {
         name: 'Chd Bad Parent',
         columns: [{ column_name: 'rows', column_type: 'Sub-table', row_table: PARENT }],
       }),
@@ -53,7 +53,7 @@ describe('META-007: child table linkage', () => {
     expect(doc.items).toHaveLength(3)
     const rows = await sql.unsafe(
       `select item, qty, parent, parenttype, parentfield, position from ${CTABLE}
-       where parent = '${doc.name}' order by position`,
+       where parent = '${doc.row_id}' order by position`,
     )
     expect(rows.map((r) => [r.item, Number(r.qty), r.position])).toEqual([
       ['apple', 2, 1],
@@ -67,7 +67,7 @@ describe('META-007: child table linkage', () => {
   test('cannot save a child Table directly', async ({ admin }) => {
     await setup(admin)
     await expect(
-      admin.post('/api/save_doc', { doctype: CHILD, doc: { item: 'x' } }),
+      admin.post('/api/save_row', { table: CHILD, row: { item: 'x' } }),
     ).rejects.toMatchObject({
       status: 417,
       message: expect.stringMatching(/through its parent/),
@@ -86,10 +86,10 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
     })
     const [rowA, , rowC] = doc.items
     const updated = await save(admin, {
-      name: doc.name,
+      row_id: doc.row_id,
       updated_at: doc.updated_at,
       items: [
-        { name: rowC.name, item: 'c-edited', qty: 9 },
+        { row_id: rowC.row_id, item: 'c-edited', qty: 9 },
         { item: 'd' },
       ],
     })
@@ -97,10 +97,10 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
       ['c-edited', 1],
       ['d', 2],
     ])
-    expect(updated.items[0].name).toBe(rowC.name)
-    expect(updated.items.some((r: any) => r.name === rowA.name)).toBe(false)
+    expect(updated.items[0].row_id).toBe(rowC.row_id)
+    expect(updated.items.some((r: any) => r.row_id === rowA.row_id)).toBe(false)
     const [{ count }] = await sql.unsafe(
-      `select count(*)::int as count from ${CTABLE} where parent='${doc.name}'`,
+      `select count(*)::int as count from ${CTABLE} where parent='${doc.row_id}'`,
     )
     expect(count).toBe(2)
   })
@@ -110,7 +110,7 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
     const doc = await save(admin, { title: 'before', items: [{ item: 'ok' }] })
     await expect(
       save(admin, {
-        name: doc.name,
+        row_id: doc.row_id,
         updated_at: doc.updated_at,
         title: 'after',
         items: [{ item: 'ok' }, { qty: 'boom' }],
@@ -122,10 +122,10 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
         'items.1.qty': expect.anything(),
       },
     })
-    const [row] = await sql.unsafe(`select title from ${PTABLE} where name='${doc.name}'`)
+    const [row] = await sql.unsafe(`select title from ${PTABLE} where row_id='${doc.row_id}'`)
     expect(row.title).toBe('before')
     const [{ count }] = await sql.unsafe(
-      `select count(*)::int as count from ${CTABLE} where parent='${doc.name}'`,
+      `select count(*)::int as count from ${CTABLE} where parent='${doc.row_id}'`,
     )
     expect(count).toBe(1)
   })
@@ -134,7 +134,7 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
     await setup(admin)
     const doc = await save(admin, { title: 'o3', items: [{ item: 'z' }, { item: 'y' }] })
     const read = await admin.get<Record<string, any>>(
-      `/api/table/${encodeURIComponent(PARENT)}/${doc.name}`,
+      `/api/table/${encodeURIComponent(PARENT)}/${doc.row_id}`,
     )
     expect(read.items.map((r: any) => r.item)).toEqual(['z', 'y'])
   })
@@ -164,7 +164,7 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
       // The update path re-picks from the hooked row too — but an absent key
       // still means "children untouched".
       const updated = await save(admin, {
-        name: doc.name,
+        row_id: doc.row_id,
         updated_at: doc.updated_at,
         title: 'hooked-2',
       })

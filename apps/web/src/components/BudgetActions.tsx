@@ -166,18 +166,18 @@ interface LineGovernance {
     lifecycle: string
     measure_columns: string[]
   } | null
-  pending: { name: string; change_type: string; reason: string; created_by: string }[]
+  pending: { row_id: string; change_type: string; reason: string; created_by: string }[]
 }
 
 // Spec 0007 M2 (BUD-J2's front door): on a row of a governed table, show
 // which book governs it, how many draft changes already touch it, and the
 // one-click path to proposing a change with this line pre-loaded.
-export function BudgetGovernance({ doctype, name }: { doctype: string; name: string }) {
+export function BudgetGovernance({ table, name }: { table: string; name: string }) {
   const query = useQuery({
-    queryKey: ['budget-line', doctype, name],
+    queryKey: ['budget-line', table, name],
     queryFn: () =>
       api.get<LineGovernance>(
-        `/api/budget/line/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
+        `/api/budget/line/${encodeURIComponent(table)}/${encodeURIComponent(name)}`,
       ),
   })
   const status = query.data
@@ -200,7 +200,7 @@ export function BudgetGovernance({ doctype, name }: { doctype: string; name: str
         <span
           className="fc-pill bg-[var(--color-subtle)] text-[var(--color-ink-muted)]"
           title={status.pending
-            .map((p) => `${p.name} (${p.change_type}, ${p.created_by}): ${p.reason}`)
+            .map((p) => `${p.row_id} (${p.change_type}, ${p.created_by}): ${p.reason}`)
             .join('\n')}
           data-testid="budget-pending-badge"
         >
@@ -208,8 +208,8 @@ export function BudgetGovernance({ doctype, name }: { doctype: string; name: str
         </span>
       )}
       <RouterLink
-        to="/admin/$doctype/$name"
-        params={{ doctype: 'Budget Change', name: 'new' }}
+        to="/admin/$table/$name"
+        params={{ table: 'Budget Change', name: 'new' }}
         search={{ prefill }}
         data-testid="budget-propose"
         className="fc-btn"

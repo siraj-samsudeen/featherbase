@@ -38,7 +38,7 @@ export function BudgetCompare({
 }) {
   const books = useQuery({
     queryKey: ['budget-compare-books'],
-    queryFn: () => listResource<Row>('Budget Book', { fields: ['name', 'lifecycle'] }),
+    queryFn: () => listResource<Row>('Budget Book', { fields: ['row_id', 'lifecycle'] }),
   })
   const versions = useQuery({
     queryKey: ['budget-compare-versions', book],
@@ -46,7 +46,7 @@ export function BudgetCompare({
     queryFn: () =>
       listResource<Row>('Budget Version', {
         filters: [['book', '=', book]],
-        fields: ['name', 'label', 'kind', 'created_at'],
+        fields: ['row_id', 'label', 'kind', 'created_at'],
         order_by: 'created_at asc',
       }),
   })
@@ -61,7 +61,7 @@ export function BudgetCompare({
 
   const versionOptions = [
     ...(versions.data?.data ?? []).map((v) => ({
-      value: String(v.name),
+      value: String(v.row_id),
       label: `${String(v.label)} (${String(v.kind)})`,
     })),
     { value: 'current', label: 'Current' },
@@ -81,8 +81,8 @@ export function BudgetCompare({
           >
             <option value="">Pick a book…</option>
             {(books.data?.data ?? []).map((b) => (
-              <option key={String(b.name)} value={String(b.name)}>
-                {String(b.name)} ({String(b.lifecycle)})
+              <option key={String(b.row_id)} value={String(b.row_id)}>
+                {String(b.row_id)} ({String(b.lifecycle)})
               </option>
             ))}
           </select>

@@ -3,7 +3,7 @@
 // Documents carry a `workflow_state` field; Workflow Action logs the audit
 // trail (who/when) for every applied transition.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'Workflow'`

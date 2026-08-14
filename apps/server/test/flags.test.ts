@@ -4,10 +4,10 @@ import type { TestClient } from 'feather-testing-postgres'
 
 const DT = 'Flag Test Asset'
 
-function save(admin: TestClient, doc: Record<string, unknown>) {
-  return admin.fetch('/api/save_doc', {
+function save(admin: TestClient, row: Record<string, unknown>) {
+  return admin.fetch('/api/save_row', {
     method: 'POST',
-    body: JSON.stringify({ doctype: DT, doc }),
+    body: JSON.stringify({ table: DT, row }),
   })
 }
 
@@ -15,7 +15,7 @@ function save(admin: TestClient, doc: Record<string, unknown>) {
 // is now the reserved draft/submitted/cancelled lifecycle column and a
 // custom column may not shadow it.
 async function makeDT(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data', reqd: true },
@@ -45,7 +45,7 @@ describe('META-010: field flags', () => {
     expect(doc.grade).toBe('system')
 
     const upd = (await (
-      await save(admin, { name: doc.name, updated_at: doc.updated_at, grade: 'hacked again', title: 'b2' })
+      await save(admin, { row_id: doc.row_id, updated_at: doc.updated_at, grade: 'hacked again', title: 'b2' })
     ).json()) as Record<string, unknown>
     expect(upd.title).toBe('b2')
     expect(upd.grade).toBe('system')

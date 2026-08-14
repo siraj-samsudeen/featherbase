@@ -14,7 +14,7 @@ export type Palette = (typeof PALETTES)[number]
 
 function storageKey(): string | null {
   const user = getSessionUser()
-  return user ? `fc_palette:${user.name}` : null
+  return user ? `fc_palette:${user.row_id}` : null
 }
 
 function isPalette(v: unknown): v is Palette {

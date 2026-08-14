@@ -106,14 +106,14 @@ function PeekPanel({
     onClose()
     if (frame.kind === 'record')
       navigate({
-        to: '/admin/$doctype/$name',
-        params: { doctype: frame.table, name: frame.name },
+        to: '/admin/$table/$name',
+        params: { table: frame.table, name: frame.name },
         search: { prefill: undefined },
       })
     else
       navigate({
-        to: '/admin/$doctype',
-        params: { doctype: frame.table },
+        to: '/admin/$table',
+        params: { table: frame.table },
         search: { filters: frame.filters.length ? JSON.stringify(frame.filters) : undefined },
       })
   }
@@ -306,7 +306,7 @@ function PeekChildGrid({
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={String(r.name ?? i)}>
+            <tr key={String(r.row_id ?? i)}>
               {cols.map((c) => (
                 <td key={c.column_name} className="border-b border-[var(--color-border)] py-1 pr-2 last:border-0">
                   {c.column_type === 'Reference' && c.reference_table && r[c.column_name] ? (
@@ -366,9 +366,9 @@ function PeekList({
         <tbody>
           {rows.map((r) => (
             <tr
-              key={String(r.name)}
+              key={String(r.row_id)}
               className="cursor-pointer border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]"
-              onClick={() => push({ kind: 'record', table, name: String(r.name) })}
+              onClick={() => push({ kind: 'record', table, name: String(r.row_id) })}
               data-testid="peek-list-row"
             >
               {columns.map((c, i) => (

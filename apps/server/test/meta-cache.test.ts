@@ -12,14 +12,14 @@ import type { TestClient } from 'feather-testing-postgres'
 const DT = 'Cache Probe DT'
 
 async function makeDT(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data', label: 'Old Label' }],
   })
 }
 
 describe('META-011: meta cache with invalidation', () => {
-  test('serves repeat lookups from cache — one DB load per doctype', async ({ admin }) => {
+  test('serves repeat lookups from cache — one DB load per table', async ({ admin }) => {
     await makeDT(admin)
     invalidateMeta(DT)
     const loadsBefore = metaCacheStats.loads
@@ -42,7 +42,7 @@ describe('META-011: meta cache with invalidation', () => {
     expect((await getMeta(DT)).columns[0].label).toBe('New Label')
   })
 
-  test('creating a DocType invalidates and serves fresh meta over HTTP', async ({ admin }) => {
+  test('creating a Table invalidates and serves fresh meta over HTTP', async ({ admin }) => {
     await makeDT(admin)
     // Warm the cache, mutate the row underneath, invalidate — HTTP must
     // serve the fresh label (replays the previous test's mutation as setup).

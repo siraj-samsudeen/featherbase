@@ -23,20 +23,20 @@ type Row = Record<string, unknown>
 //   the run list, and a Data column named `progress` ("5/8") fills the bars.
 //
 // Without a selected run it lists runs as date-grouped cards; selecting one
-// opens its items with whole-row tap targets. Every tick is one save_doc
+// opens its items with whole-row tap targets. Every tick is one save_row
 // call (the payload-authoritative child array), so the server hook chain
 // stamps timestamps, derives progress, and enforces submit gates — the view
 // renders whatever comes back, including the 417 message when a gate blocks.
 export function ChecklistView({
-  doctype,
+  table,
   run,
   onRunChange,
 }: {
-  doctype: string
+  table: string
   run?: string
   onRunChange?: (run: string | undefined) => void
 }) {
-  const meta = useMeta(doctype)
+  const meta = useMeta(table)
   const shape = useChecklistShape(meta.data)
   if (meta.isLoading || (shape.pending && !shape.binding))
     return <p className="text-sm text-gray-400">Loading…</p>
@@ -48,9 +48,9 @@ export function ChecklistView({
       </p>
     )
   return run ? (
-    <RunPane doctype={doctype} name={run} binding={shape.binding} onBack={() => onRunChange?.(undefined)} />
+    <RunPane table={table} name={run} binding={shape.binding} onBack={() => onRunChange?.(undefined)} />
   ) : (
-    <RunList doctype={doctype} binding={shape.binding} onOpen={(n) => onRunChange?.(n)} />
+    <RunList table={table} binding={shape.binding} onOpen={(n) => onRunChange?.(n)} />
   )
 }
 
@@ -58,13 +58,13 @@ export function ChecklistView({
 // has checklist shape, the same conditional pattern Kanban applies to
 // Choice columns (the check needs the row table's meta, hence a component
 // with hooks rather than an inline condition).
-export function ChecklistSwitch({ doctype, meta }: { doctype: string; meta?: TableMeta }) {
+export function ChecklistSwitch({ table, meta }: { table: string; meta?: TableMeta }) {
   const shape = useChecklistShape(meta)
   if (!shape.binding) return null
   return (
     <RouterLink
-      to="/admin/$doctype/view/checklist"
-      params={{ doctype }}
+      to="/admin/$table/view/checklist"
+      params={{ table }}
       search={{ run: undefined }}
       className="fc-btn"
       data-testid="open-checklist"
@@ -135,7 +135,7 @@ function useChecklistShape(meta: TableMeta | undefined): {
         mustCol: named('must_do', ['Check']),
         photoCol: named('photo_proof', ['Check']),
         noteCol: named('note', ['Data', 'Text']),
-        titleCol: meta.title_column || 'name',
+        titleCol: meta.title_column || 'row_id',
         statusCol: meta.columns.find((f) => f.column_type === 'Choice'),
         dateCol: meta.columns.find((f) => f.column_type === 'Date')?.column_name,
         progressCol: meta.columns.find(
@@ -163,18 +163,18 @@ function dayLabel(iso: string): string {
 
 // ---------------------------------------------------------------- run list
 function RunList({
-  doctype,
+  table,
   binding,
   onOpen,
 }: {
-  doctype: string
+  table: string
   binding: Binding
   onOpen: (name: string) => void
 }) {
   const fields = [
     ...new Set(
       [
-        'name',
+        'row_id',
         'updated_at',
         binding.titleCol,
         binding.statusCol?.column_name,
@@ -184,10 +184,10 @@ function RunList({
     ),
   ]
   const rows = useQuery({
-    queryKey: ['checklist-list', doctype],
+    queryKey: ['checklist-list', table],
     queryFn: () =>
       // order_by takes a single column; recency within a day sorts below.
-      listResource<Row>(doctype, {
+      listResource<Row>(table, {
         fields,
         order_by: binding.dateCol ? `${binding.dateCol} desc` : 'updated_at desc',
         limit_page_length: 100,
@@ -210,14 +210,14 @@ function RunList({
     <div data-testid="checklist-view" className="mx-auto flex max-w-xl flex-col gap-3">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{doctype}</h1>
+          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{table}</h1>
           <span className="text-xs text-[var(--color-ink-muted)]">{data.length} runs</span>
         </div>
         <div className="flex items-center gap-2">
           {!binding.readOnly && (
             <RouterLink
-              to="/admin/$doctype/$name"
-              params={{ doctype, name: 'new' }}
+              to="/admin/$table/$name"
+              params={{ table, name: 'new' }}
               search={{ prefill: undefined }}
               className="fc-btn fc-btn-primary"
               data-testid="checklist-new"
@@ -225,7 +225,7 @@ function RunList({
               + New
             </RouterLink>
           )}
-          <RouterLink to="/admin/$doctype" params={{ doctype }} search={{ filters: undefined }} className="fc-btn">
+          <RouterLink to="/admin/$table" params={{ table }} search={{ filters: undefined }} className="fc-btn">
             List
           </RouterLink>
         </div>
@@ -243,15 +243,15 @@ function RunList({
             const status = binding.statusCol ? String(row[binding.statusCol.column_name] ?? '') : ''
             return (
               <button
-                key={String(row.name)}
+                key={String(row.row_id)}
                 type="button"
-                onClick={() => onOpen(String(row.name))}
+                onClick={() => onOpen(String(row.row_id))}
                 className="fc-card flex w-full flex-col gap-2 p-3 text-left"
                 data-testid="checklist-run-card"
               >
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="font-semibold text-[var(--color-ink)]">
-                    {String(row[binding.titleCol] ?? row.name)}
+                    {String(row[binding.titleCol] ?? row.row_id)}
                   </span>
                   {status && <span className="fc-pill">{status}</span>}
                 </div>
@@ -289,12 +289,12 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
 
 // ---------------------------------------------------------------- run pane
 function RunPane({
-  doctype,
+  table,
   name,
   binding,
   onBack,
 }: {
-  doctype: string
+  table: string
   name: string
   binding: Binding
   onBack: () => void
@@ -306,22 +306,22 @@ function RunPane({
   // Full-screen photo viewer: file_url of the photo being viewed, or null.
   const [viewer, setViewer] = useState<string | null>(null)
   const doc = useQuery({
-    queryKey: ['checklist-run', doctype, name],
-    queryFn: () => api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
+    queryKey: ['checklist-run', table, name],
+    queryFn: () => api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`),
   })
   const items = (doc.data?.[binding.itemsCol] as Row[] | undefined) ?? []
 
   // One query for every item's photos; grouped by the child row they hang on.
   const photos = useQuery({
-    queryKey: ['checklist-photos', doctype, name, items.length],
+    queryKey: ['checklist-photos', table, name, items.length],
     enabled: Boolean(binding.photoCol) && items.length > 0,
     queryFn: () =>
       listResource<Row>('File', {
         filters: [
           ['ref_table', '=', binding.childTable],
-          ['ref_name', 'in', items.map((i) => String(i.name))],
+          ['ref_name', 'in', items.map((i) => String(i.row_id))],
         ],
-        fields: ['name', 'file_name', 'file_url', 'thumbnail_url', 'ref_name'],
+        fields: ['row_id', 'file_name', 'file_url', 'thumbnail_url', 'ref_name'],
         order_by: 'created_at asc',
         limit_page_length: 200,
       }),
@@ -338,12 +338,12 @@ function RunPane({
     setSaving(true)
     setError(null)
     try {
-      const saved = await api.post<Row>('/api/save_doc', {
-        doctype,
-        doc: { name, updated_at: doc.data.updated_at, [binding.itemsCol]: next, ...extra },
+      const saved = await api.post<Row>('/api/save_row', {
+        table,
+        row: { row_id: name, updated_at: doc.data.updated_at, [binding.itemsCol]: next, ...extra },
       })
-      queryClient.setQueryData(['checklist-run', doctype, name], saved)
-      queryClient.invalidateQueries({ queryKey: ['checklist-list', doctype] })
+      queryClient.setQueryData(['checklist-run', table, name], saved)
+      queryClient.invalidateQueries({ queryKey: ['checklist-list', table] })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Save failed')
     } finally {
@@ -354,7 +354,7 @@ function RunPane({
   const toggle = (itemName: string) =>
     saveItems(
       items.map((i) =>
-        String(i.name) === itemName ? { ...i, [binding.doneCol]: !i[binding.doneCol] } : i,
+        String(i.row_id) === itemName ? { ...i, [binding.doneCol]: !i[binding.doneCol] } : i,
       ),
     )
 
@@ -362,7 +362,7 @@ function RunPane({
     setNoteDraft(null)
     if (!binding.noteCol) return
     return saveItems(
-      items.map((i) => (String(i.name) === itemName ? { ...i, [binding.noteCol!]: text } : i)),
+      items.map((i) => (String(i.row_id) === itemName ? { ...i, [binding.noteCol!]: text } : i)),
     )
   }
 
@@ -424,7 +424,7 @@ function RunPane({
 
       <div className="fc-card divide-y divide-[var(--color-border)]" data-testid="checklist-items">
         {items.map((item) => {
-          const itemName = String(item.name)
+          const itemName = String(item.row_id)
           const done = Boolean(item[binding.doneCol])
           const note = binding.noteCol ? String(item[binding.noteCol] ?? '') : ''
           // Mockup-faithful layout: the whole tick row is the tap target,
@@ -621,7 +621,7 @@ function PhotoRow({
     try {
       const form = new FormData()
       form.append('file', file)
-      form.append('ref_doctype', childTable)
+      form.append('ref_table', childTable)
       form.append('ref_name', itemName)
       // Shop-floor photos are operational evidence, not public assets: stored
       // private, so reaching one costs a signed URL that the server only mints
@@ -644,7 +644,7 @@ function PhotoRow({
     <span className="flex flex-wrap items-center gap-2">
       {photos.map((p) => (
         <button
-          key={String(p.name)}
+          key={String(p.row_id)}
           type="button"
           onClick={() => onView(String(p.file_url))}
           aria-label={`View ${String(p.file_name)}`}

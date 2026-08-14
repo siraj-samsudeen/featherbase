@@ -146,10 +146,10 @@ export function checkUserPermissions(
   map: Map<string, Set<string>>,
 ) {
   const own = map.get(table)
-  if (own && row.name != null && !own.has(String(row.name)))
+  if (own && row.row_id != null && !own.has(String(row.row_id)))
     throw new AppError(
       'PermissionError',
-      `${table} ${String(row.name)} is outside your permitted values`,
+      `${table} ${String(row.row_id)} is outside your permitted values`,
     )
   for (const f of linkFields) {
     if (!f.reference_table) continue

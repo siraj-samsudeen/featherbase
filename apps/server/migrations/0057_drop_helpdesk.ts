@@ -18,8 +18,8 @@ export async function up() {
   if (!exists) return
 
   // Workflow + its sub-table rows and pending workflow actions.
-  await sql`delete from workflow_document_state where parent in (select name from workflow where ref_table = 'HD Ticket')`
-  await sql`delete from workflow_transition where parent in (select name from workflow where ref_table = 'HD Ticket')`
+  await sql`delete from workflow_document_state where parent in (select row_id from workflow where ref_table = 'HD Ticket')`
+  await sql`delete from workflow_transition where parent in (select row_id from workflow where ref_table = 'HD Ticket')`
   await sql`delete from workflow where ref_table = 'HD Ticket'`
   await sql`delete from workflow_action where ref_table = 'HD Ticket'`
 
@@ -28,17 +28,17 @@ export async function up() {
   // assignment rule if scripts/seed-helpdesk.ts ever created it here.
   await sql`delete from email_rule where ref_table = 'HD Ticket'`
   await sql`delete from server_script where ref_table = 'HD Ticket'`
-  await sql`delete from sla_priority where parent in (select name from service_level_agreement where ref_table = 'HD Ticket')`
+  await sql`delete from sla_priority where parent in (select row_id from service_level_agreement where ref_table = 'HD Ticket')`
   await sql`delete from service_level_agreement where ref_table = 'HD Ticket'`
   await sql`delete from web_form where ref_table = 'HD Ticket'`
-  await sql`delete from assignment_rule_user where parent in (select name from assignment_rule where ref_table = 'HD Ticket')`
+  await sql`delete from assignment_rule_user where parent in (select row_id from assignment_rule where ref_table = 'HD Ticket')`
   await sql`delete from assignment_rule where ref_table = 'HD Ticket'`
 
   // The demo email account was is_default. Deleting it may leave NO default
   // account — that is fine and intended: email.ts defaultSender() falls back
   // to the oldest account, then to no-reply@localhost. Never fabricate a
   // replacement default here.
-  await sql`delete from email_account where name = 'Helpdesk Notifications' and email_id = 'support@helpdesk.test'`
+  await sql`delete from email_account where row_id = 'Helpdesk Notifications' and email_id = 'support@helpdesk.test'`
 
   // Collab/system rows referencing HD Ticket rows.
   await sql`delete from todo where ref_table = 'HD Ticket'`
@@ -69,6 +69,6 @@ export async function up() {
       select 1 where exists (select 1 from has_role where role = ${role})
          or exists (select 1 from permission where role = ${role})
          or exists (select 1 from workflow_transition where allowed = ${role})`
-    if (!used) await sql`delete from role where name = ${role}`
+    if (!used) await sql`delete from role where row_id = ${role}`
   }
 }

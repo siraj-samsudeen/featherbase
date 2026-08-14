@@ -88,7 +88,7 @@ async function makeSource(
   const res = await admin.fetch('/api/table/Data%20Source', {
     method: 'POST',
     body: JSON.stringify({
-      name: 'ext-fixture',
+      row_id: 'ext-fixture',
       engine: 'postgres',
       url_env: EXT_URL_ENV,
       default_schema: 'ext_fixture',
@@ -116,14 +116,14 @@ describe('EDS-1: Data Source registry', () => {
   test('validates engine, url_env shape, and IV1 names', async ({ admin }) => {
     await expect(
       admin.post('/api/table/Data%20Source', {
-        name: 'Bad Name',
+        row_id: 'Bad Name',
         engine: 'postgres',
         url_env: EXT_URL_ENV,
       }),
     ).rejects.toMatchObject({ status: 417 })
     await expect(
       admin.post('/api/table/Data%20Source', {
-        name: 'pasted-secret',
+        row_id: 'pasted-secret',
         engine: 'postgres',
         url_env: 'postgres://user:pwd@host/db',
       }),
@@ -140,7 +140,7 @@ describe('EDS-1: Data Source registry', () => {
     )
     expect(ok.ok).toBe(true)
 
-    await makeSource(admin, { name: 'ext-unset', url_env: 'EXT_UNSET_URL' })
+    await makeSource(admin, { row_id: 'ext-unset', url_env: 'EXT_UNSET_URL' })
     const bad = await admin.post<{ ok: boolean; error: string }>(
       '/api/table/Data%20Source/ext-unset:test_connection',
       {},
@@ -196,13 +196,13 @@ describe('EDS-5: reading bound rows', () => {
     await makeSource(admin)
     await reflectTenant(admin)
     const list = (await admin.get(
-      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["name","slug","plan"]')}&order_by=slug asc`,
+      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["row_id","slug","plan"]')}&order_by=slug asc`,
     )) as { data: Record<string, unknown>[]; total: number }
     expect(list.total).toBe(2)
     expect(list.data.map((r) => r.slug)).toEqual(['acme', 'globex'])
 
     const filtered = (await admin.get(
-      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["name","slug"]')}&filters=${encodeURIComponent('[["plan","=","pro"]]')}`,
+      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["row_id","slug"]')}&filters=${encodeURIComponent('[["plan","=","pro"]]')}`,
     )) as { data: Record<string, unknown>[]; total: number }
     expect(filtered.total).toBe(1)
     expect(filtered.data[0].slug).toBe('acme')
@@ -212,7 +212,7 @@ describe('EDS-5: reading bound rows', () => {
     )) as { count: number }
     expect(count.count).toBe(1)
 
-    const name = String(filtered.data[0].name)
+    const name = String(filtered.data[0].row_id)
     const doc = (await admin.get(`/api/table/Ext%20Tenant/${name}`)) as Record<string, unknown>
     expect(doc.slug).toBe('acme')
     expect(doc.updated_at).toBeTruthy()
@@ -240,7 +240,7 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
       slug: 'initech',
       plan: 'pro',
     })
-    expect(String(created.name)).toMatch(/^[0-9a-f-]{36}$/)
+    expect(String(created.row_id)).toMatch(/^[0-9a-f-]{36}$/)
     const [row] = await cli`select slug, plan from ext_fixture.tenant where slug = 'initech'`
     expect(row.plan).toBe('pro')
   })
@@ -251,9 +251,9 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     await makeSource(admin)
     await reflectTenant(admin)
     const list = (await admin.get(
-      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["name","slug","updated_at"]')}&filters=${encodeURIComponent('[["slug","=","acme"]]')}`,
+      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["row_id","slug","updated_at"]')}&filters=${encodeURIComponent('[["slug","=","acme"]]')}`,
     )) as { data: Record<string, unknown>[] }
-    const { name, updated_at } = list.data[0]
+    const { row_id: name, updated_at } = list.data[0]
     const updated = await patchDoc<Record<string, unknown>>(
       admin,
       `/api/table/Ext%20Tenant/${String(name)}`,
@@ -270,9 +270,9 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     await makeSource(admin)
     await reflectTenant(admin)
     const list = (await admin.get(
-      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["name","updated_at"]')}&filters=${encodeURIComponent('[["slug","=","globex"]]')}`,
+      `/api/table/Ext%20Tenant?fields=${encodeURIComponent('["row_id","updated_at"]')}&filters=${encodeURIComponent('[["slug","=","globex"]]')}`,
     )) as { data: Record<string, unknown>[] }
-    const { name, updated_at } = list.data[0]
+    const { row_id: name, updated_at } = list.data[0]
     // The CLI writes directly, bumping updated_at.
     await cli`update ext_fixture.tenant set plan = 'pro', updated_at = now() where slug = 'globex'`
     await expect(
@@ -297,12 +297,12 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
     await admin.post('/api/table/Ext%20Tenant', { slug: 'doomed' })
     const list = (await admin.get(
       `/api/table/Ext%20Tenant?filters=${encodeURIComponent('[["slug","=","doomed"]]')}`,
-    )) as { data: { name: string }[] }
+    )) as { data: { row_id: string }[] }
     const loaded = (await admin.get(
-      `/api/table/Ext%20Tenant/${list.data[0].name}`,
+      `/api/table/Ext%20Tenant/${list.data[0].row_id}`,
     )) as Record<string, unknown>
     const res = await admin.fetch(
-      `/api/table/Ext%20Tenant/${list.data[0].name}?updated_at=${encodeURIComponent(String(loaded.updated_at))}`,
+      `/api/table/Ext%20Tenant/${list.data[0].row_id}?updated_at=${encodeURIComponent(String(loaded.updated_at))}`,
       { method: 'DELETE' },
     )
     expect(res.status).toBe(200)
@@ -313,9 +313,9 @@ describe('EDS-6/EDS-8: writing bound rows', () => {
   test('rename is rejected — the pk belongs to the source', async ({ admin }) => {
     await makeSource(admin)
     await reflectTenant(admin)
-    const list = (await admin.get('/api/table/Ext%20Tenant')) as { data: { name: string }[] }
+    const list = (await admin.get('/api/table/Ext%20Tenant')) as { data: { row_id: string }[] }
     await expect(
-      admin.post(`/api/table/Ext%20Tenant/${list.data[0].name}:rename`, { new_name: 'x' }),
+      admin.post(`/api/table/Ext%20Tenant/${list.data[0].row_id}:rename`, { new_name: 'x' }),
     ).rejects.toMatchObject({ status: 417 })
   })
 })
@@ -352,7 +352,7 @@ describe('EDS-7: read-only sources', () => {
 describe('EDS-11: source failure', () => {
   test('an unreachable source is a DataSourceError, never an empty list', async ({ admin }) => {
     process.env.EXT_DEAD_URL = 'postgres://nobody:nothing@127.0.0.1:59999/nope'
-    await makeSource(admin, { name: 'ext-dead', url_env: 'EXT_DEAD_URL' })
+    await makeSource(admin, { row_id: 'ext-dead', url_env: 'EXT_DEAD_URL' })
     const res = await admin.fetch('/api/table/Data%20Source/ext-dead:reflect', {
       method: 'POST',
       body: JSON.stringify({ schema: 'whatever', tables: ['x'] }),
@@ -426,7 +426,7 @@ describe('EDS-2: foreign keys reflect as References', () => {
     // earliest-created binding must win as the Reference target — names
     // chosen so the created_at tie-break (name asc) agrees.
     for (const name of ['Alpha Vehicle', 'Zeta Vehicle']) {
-      await admin.post('/api/doctype', {
+      await admin.post('/api/table_def', {
         name,
         data_source: 'ext-fixture',
         external_schema: 'ext_fixture',

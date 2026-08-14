@@ -76,7 +76,7 @@ test('#87: a filters URL applies when opened cold, not just when the app built i
 
   const meta = await request.get(`/api/table/${encodeURIComponent(DT_COLD)}:meta`, { headers: auth })
   if (meta.status() === 404) {
-    await request.post('/api/doctype', {
+    await request.post('/api/table_def', {
       headers: auth,
       data: {
         name: DT_COLD,
@@ -94,8 +94,8 @@ test('#87: a filters URL applies when opened cold, not just when the app built i
     `/api/table/${encodeURIComponent(DT_COLD)}?limit_page_length=500`,
     { headers: auth },
   )
-  for (const row of ((await existing.json()) as { data: { name: string }[] }).data) {
-    await request.delete(`/api/table/${encodeURIComponent(DT_COLD)}/${row.name}`, { headers: auth })
+  for (const row of ((await existing.json()) as { data: { row_id: string }[] }).data) {
+    await request.delete(`/api/table/${encodeURIComponent(DT_COLD)}/${row.row_id}`, { headers: auth })
   }
   for (let i = 0; i < 10; i++) {
     await request.post(`/api/table/${encodeURIComponent(DT_COLD)}`, {

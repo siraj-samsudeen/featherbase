@@ -28,7 +28,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const res = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   headers = { Authorization: `Bearer ${((await res.json()) as { token: string }).token}` }
 
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: {
       name: LINE,
@@ -45,14 +45,14 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     headers,
     data: { store: 'Adyar', subcategory: 'Juices', q1: 100, q2: 100 },
   })
-  lineName = ((await row.json()) as { name: string }).name
+  lineName = ((await row.json()) as { row_id: string }).row_id
 
-  const book = await request.post('/api/save_doc', {
+  const book = await request.post('/api/save_row', {
     headers,
     data: {
-      doctype: 'Budget Book',
-      doc: {
-        name: BOOK,
+      table: 'Budget Book',
+      row: {
+        row_id: BOOK,
         ref_table: LINE,
         fiscal_year: '2026',
         key_columns: [{ column_name: 'store' }, { column_name: 'subcategory' }],
@@ -68,7 +68,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 
 test.afterAll(async ({ request }: { request: APIRequestContext }) => {
   await request.post(`/api/table/${T('Budget Book')}/${T(BOOK)}:close`, { headers, data: {} })
-  await request.delete(`/api/doctype/${T(LINE)}`, { headers })
+  await request.delete(`/api/table_def/${T(LINE)}`, { headers })
 })
 
 test('M2: baseline button → governed pill → propose → submit → snapshot → compare', async ({

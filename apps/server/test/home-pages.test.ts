@@ -14,7 +14,7 @@ interface Card {
   links: { label: string; link_to: string }[]
 }
 interface Page {
-  name: string
+  row_id: string
   label: string
   module: string | null
   cards: Card[]
@@ -29,7 +29,7 @@ const DT = 'HP Widget'
 const ROLE = 'HP Viewer Role'
 
 async function makeTable(admin: TestClient, name = DT, module = 'HP Mod') {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name,
     module,
     columns: [{ column_name: 'title', column_type: 'Data' }],
@@ -41,43 +41,43 @@ describe('GET /api/home_pages: role scoping', () => {
     admin,
     createUser,
   }) => {
-    await admin.post('/api/save_doc', {
-      doctype: 'Home Page',
-      doc: { name: 'hp-open', label: 'Open Page' },
+    await admin.post('/api/save_row', {
+      table: 'Home Page',
+      row: { row_id: 'hp-open', label: 'Open Page' },
     })
     const user = await createUser({ roles: [] })
-    expect((await pages(user)).map((p) => p.name)).toContain('hp-open')
+    expect((await pages(user)).map((p) => p.row_id)).toContain('hp-open')
   })
 
   test('a role-restricted page is visible only to holders of one of its roles', async ({
     admin,
     createUser,
   }) => {
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Home Page',
-      doc: { name: 'hp-scoped', label: 'Scoped Page', roles: [{ role: ROLE }] },
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', {
+      table: 'Home Page',
+      row: { row_id: 'hp-scoped', label: 'Scoped Page', roles: [{ role: ROLE }] },
     })
     const outsider = await createUser({ roles: [] })
-    expect((await pages(outsider)).map((p) => p.name)).not.toContain('hp-scoped')
+    expect((await pages(outsider)).map((p) => p.row_id)).not.toContain('hp-scoped')
     const holder = await createUser({ roles: [ROLE] })
-    expect((await pages(holder)).map((p) => p.name)).toContain('hp-scoped')
+    expect((await pages(holder)).map((p) => p.row_id)).toContain('hp-scoped')
   })
 
   test('Administrator always sees every page, role-restricted or not', async ({ admin }) => {
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Home Page',
-      doc: { name: 'hp-scoped', label: 'Scoped Page', roles: [{ role: ROLE }] },
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', {
+      table: 'Home Page',
+      row: { row_id: 'hp-scoped', label: 'Scoped Page', roles: [{ role: ROLE }] },
     })
-    const names = (await pages(admin)).map((p) => p.name)
+    const names = (await pages(admin)).map((p) => p.row_id)
     expect(names).toContain('hp-scoped')
     expect(names).toContain('system')
   })
 
   test('pages come ordered: module pages before the System page', async ({ admin }) => {
     await makeTable(admin)
-    const names = (await pages(admin)).map((p) => p.name)
+    const names = (await pages(admin)).map((p) => p.row_id)
     expect(names.indexOf('hp-mod')).toBeGreaterThanOrEqual(0)
     expect(names.indexOf('hp-mod')).toBeLessThan(names.indexOf('system'))
   })
@@ -89,15 +89,15 @@ describe('GET /api/home_pages: link permission filtering', () => {
     createUser,
   }) => {
     await makeTable(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: DT, role: ROLE, can_read: true },
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: DT, role: ROLE, can_read: true },
     })
-    await admin.post('/api/save_doc', {
-      doctype: 'Home Page',
-      doc: {
-        name: 'hp-links',
+    await admin.post('/api/save_row', {
+      table: 'Home Page',
+      row: {
+        row_id: 'hp-links',
         label: 'Links Page',
         links: [
           { label: 'Stuff', type: 'Card Break' },
@@ -107,12 +107,12 @@ describe('GET /api/home_pages: link permission filtering', () => {
       },
     })
     const user = await createUser({ roles: [ROLE] })
-    const page = (await pages(user)).find((p) => p.name === 'hp-links')!
+    const page = (await pages(user)).find((p) => p.row_id === 'hp-links')!
     expect(page.cards).toEqual([
       { label: 'Stuff', links: [{ label: 'Widgets', link_to: DT }] },
     ])
     // Administrator sees both links.
-    const adminPage = (await pages(admin)).find((p) => p.name === 'hp-links')!
+    const adminPage = (await pages(admin)).find((p) => p.row_id === 'hp-links')!
     expect(adminPage.cards[0].links.map((l) => l.link_to)).toEqual([DT, 'User'])
   })
 
@@ -121,10 +121,10 @@ describe('GET /api/home_pages: link permission filtering', () => {
     createUser,
   }) => {
     await makeTable(admin)
-    await admin.post('/api/save_doc', {
-      doctype: 'Home Page',
-      doc: {
-        name: 'hp-empty',
+    await admin.post('/api/save_row', {
+      table: 'Home Page',
+      row: {
+        row_id: 'hp-empty',
         label: 'Empty For Some',
         links: [
           { label: 'Secret', type: 'Card Break' },
@@ -133,20 +133,20 @@ describe('GET /api/home_pages: link permission filtering', () => {
       },
     })
     const user = await createUser({ roles: [] })
-    const page = (await pages(user)).find((p) => p.name === 'hp-empty')
+    const page = (await pages(user)).find((p) => p.row_id === 'hp-empty')
     expect(page).toBeDefined()
     expect(page!.cards).toEqual([])
   })
 
   test('a link to a table that no longer exists is filtered, not broken', async ({ admin }) => {
-    await admin.post('/api/save_doc', {
-      doctype: 'Home Page',
-      doc: { name: 'hp-dead', label: 'Dead Link Page' },
+    await admin.post('/api/save_row', {
+      table: 'Home Page',
+      row: { row_id: 'hp-dead', label: 'Dead Link Page' },
     })
     // Simulate a table dropped after being linked (e.g. app uninstall) —
     // the Reference validation forbids saving this shape over the API.
     await sql`insert into home_page_link ${sql({
-      name: 'hp-dead-link',
+      row_id: 'hp-dead-link',
       parent: 'hp-dead',
       parenttype: 'Home Page',
       parentfield: 'links',
@@ -155,30 +155,30 @@ describe('GET /api/home_pages: link permission filtering', () => {
       type: 'Link',
       link_to: 'Ghost Table',
     })}`
-    const page = (await pages(admin)).find((p) => p.name === 'hp-dead')!
+    const page = (await pages(admin)).find((p) => p.row_id === 'hp-dead')!
     expect(page.cards).toEqual([])
   })
 
-  test('legacy doctype shortcuts get the same read filter; url/dashboard pass through', async ({
+  test('legacy table shortcuts get the same read filter; url/dashboard pass through', async ({
     admin,
     createUser,
   }) => {
     await makeTable(admin)
-    await admin.post('/api/save_doc', {
-      doctype: 'Home Page',
-      doc: {
-        name: 'hp-legacy',
+    await admin.post('/api/save_row', {
+      table: 'Home Page',
+      row: {
+        row_id: 'hp-legacy',
         label: 'Legacy Page',
         shortcuts: JSON.stringify([
-          { label: 'Widgets', type: 'doctype', link_to: DT },
+          { label: 'Widgets', type: 'table', link_to: DT },
           { label: 'Docs', type: 'url', link_to: 'https://example.com' },
         ]),
       },
     })
     const user = await createUser({ roles: [] })
-    const page = (await pages(user)).find((p) => p.name === 'hp-legacy')!
+    const page = (await pages(user)).find((p) => p.row_id === 'hp-legacy')!
     expect(page.shortcuts.map((s) => s.label)).toEqual(['Docs'])
-    const adminPage = (await pages(admin)).find((p) => p.name === 'hp-legacy')!
+    const adminPage = (await pages(admin)).find((p) => p.row_id === 'hp-legacy')!
     expect(adminPage.shortcuts.map((s) => s.label)).toEqual(['Widgets', 'Docs'])
   })
 })
@@ -190,7 +190,7 @@ describe('auto-membership: a built table never vanishes from navigation', () => 
     await makeTable(admin, 'HP Crate', 'Warehouse')
     const page = (await pages(admin)).find((p) => p.module === 'Warehouse')
     expect(page).toBeDefined()
-    expect(page!.name).toBe('warehouse')
+    expect(page!.row_id).toBe('warehouse')
     expect(page!.label).toBe('Warehouse')
     expect(page!.cards.flatMap((c) => c.links.map((l) => l.link_to))).toContain('HP Crate')
   })
@@ -209,14 +209,14 @@ describe('auto-membership: a built table never vanishes from navigation', () => 
 
   test("a user table filed under 'Core' lands on the 'Home' page", async ({ admin }) => {
     await makeTable(admin, 'HP Zone', 'Core')
-    const page = (await pages(admin)).find((p) => p.name === 'home')
+    const page = (await pages(admin)).find((p) => p.row_id === 'home')
     expect(page).toBeDefined()
     expect(page!.label).toBe('Home')
     expect(page!.cards.flatMap((c) => c.links.map((l) => l.link_to))).toContain('HP Zone')
   })
 
   test('sub-tables get no navigation entry', async ({ admin }) => {
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: 'HP Child Row',
       module: 'Warehouse',
       kind: 'sub_table',
@@ -237,15 +237,15 @@ describe('0060 seeds are idempotent', () => {
     const after = await pages(admin)
     const afterLinks = await sql`
       select count(*)::int as n from home_page_link where parent = 'system'`
-    expect(after.map((p) => p.name)).toEqual(before.map((p) => p.name))
+    expect(after.map((p) => p.row_id)).toEqual(before.map((p) => p.row_id))
     expect(Number(afterLinks[0].n)).toBe(Number(beforeLinks[0].n))
   })
 
   test('an emptied System page is reseeded with grouped cards', async ({ admin }) => {
     await sql`delete from home_page_link where parent = 'system'`
-    await sql`delete from home_page where name = 'system'`
+    await sql`delete from home_page where row_id = 'system'`
     await homePagesUp()
-    const system = (await pages(admin)).find((p) => p.name === 'system')!
+    const system = (await pages(admin)).find((p) => p.row_id === 'system')!
     expect(system.cards.map((c) => c.label)).toEqual([
       'Users & Access',
       'Automation',

@@ -11,17 +11,17 @@ const ORDER = 'Rn Order'
 const ITEM = 'Rn Order Item'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: CUST,
     id_pattern: 'prompt',
     columns: [{ column_name: 'city', column_type: 'Data' }],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: ITEM,
     kind: 'sub_table',
     columns: [{ column_name: 'supplier', column_type: 'Reference', reference_table: CUST }],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: ORDER,
     id_pattern: 'prompt',
     columns: [
@@ -37,27 +37,27 @@ describe('DOC-012: rename document + cascade Link references', () => {
   }) => {
     await setup(admin)
     await admin.post('/api/table/' + encodeURIComponent(CUST), {
-      name: 'Acme',
+      row_id: 'Acme',
       city: 'NYC',
     })
-    await admin.post('/api/save_doc', {
-      doctype: ORDER,
-      doc: {
-        name: 'ORD-1',
+    await admin.post('/api/save_row', {
+      table: ORDER,
+      row: {
+        row_id: 'ORD-1',
         customer: 'Acme',
         lines: [{ supplier: 'Acme' }],
       },
     })
 
-    const renamed = await admin.post<{ name: string }>(
+    const renamed = await admin.post<{ row_id: string }>(
       `/api/table/${encodeURIComponent(CUST)}/Acme:rename`,
       { new_name: 'Acme Corp' },
     )
-    expect(renamed.name).toBe('Acme Corp')
+    expect(renamed.row_id).toBe('Acme Corp')
 
     // Old name is gone, new name exists.
-    expect(await sql`select 1 from rn_customer where name = 'Acme'`).toHaveLength(0)
-    expect(await sql`select 1 from rn_customer where name = 'Acme Corp'`).toHaveLength(1)
+    expect(await sql`select 1 from rn_customer where row_id = 'Acme'`).toHaveLength(0)
+    expect(await sql`select 1 from rn_customer where row_id = 'Acme Corp'`).toHaveLength(1)
 
     // Parent Link field updated.
     const order = await admin.get<{ customer: string; lines: { supplier: string }[] }>(
@@ -72,18 +72,18 @@ describe('DOC-012: rename document + cascade Link references', () => {
     await setup(admin)
     // The colliding target must exist in THIS test's transaction.
     await admin.post('/api/table/' + encodeURIComponent(CUST), {
-      name: 'Acme Corp',
+      row_id: 'Acme Corp',
       city: 'NYC',
     })
     await admin.post('/api/table/' + encodeURIComponent(CUST), {
-      name: 'Globex',
+      row_id: 'Globex',
       city: 'LA',
     })
     await expect(
       admin.post(`/api/table/${encodeURIComponent(CUST)}/Globex:rename`, { new_name: 'Acme Corp' }),
     ).rejects.toMatchObject({ status: 409, type: 'ConflictError' })
     // Globex is untouched.
-    expect(await sql`select 1 from rn_customer where name = 'Globex'`).toHaveLength(1)
+    expect(await sql`select 1 from rn_customer where row_id = 'Globex'`).toHaveLength(1)
   })
 
   test('404s renaming a document that does not exist', async ({ admin }) => {

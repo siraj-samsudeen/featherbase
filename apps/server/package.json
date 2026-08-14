@@ -35,7 +35,7 @@
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^3.2.7",
     "fast-check": "^4.9.0",
-    "feather-testing-postgres": "git+https://github.com/siraj-samsudeen/feather-testing-postgres.git#310ad8ef0e4a5bd655e2d330df24812cc1d5bcef",
+    "feather-testing-postgres": "git+https://github.com/siraj-samsudeen/feather-testing-postgres.git#59b7b84",
     "pdf-parse": "^2.4.5",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"

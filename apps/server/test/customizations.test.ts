@@ -13,14 +13,14 @@ const DT = 'Cust5 Srv'
 // Per-test setup (the sandbox rolls everything back): the Table plus one
 // custom field and one metadata override.
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
-  await admin.post('/api/save_doc', {
-    doctype: 'Custom Field',
-    doc: {
-      name: `${DT}-priority`,
+  await admin.post('/api/save_row', {
+    table: 'Custom Field',
+    row: {
+      row_id: `${DT}-priority`,
       dt: DT,
       column_name: 'priority',
       label: 'Priority',
@@ -29,9 +29,9 @@ async function setup(admin: TestClient) {
       in_list_view: true,
     },
   })
-  await admin.post('/api/save_doc', {
-    doctype: 'Metadata Override',
-    doc: { name: `${DT}-title-reqd`, table_name: DT, column_name: 'title', property: 'reqd', value: '1' },
+  await admin.post('/api/save_row', {
+    table: 'Metadata Override',
+    row: { row_id: `${DT}-title-reqd`, table_name: DT, column_name: 'title', property: 'reqd', value: '1' },
   })
 }
 

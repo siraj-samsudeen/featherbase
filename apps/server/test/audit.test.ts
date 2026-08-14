@@ -13,9 +13,9 @@ const USER = 'audit-srv@x.com'
 // Real password + real /api/login — this suite is about the audit trail of
 // authentication itself, so no token-minting shortcut.
 async function setup(admin: TestClient) {
-  await admin.post('/api/save_doc', {
-    doctype: 'User',
-    doc: { name: USER, email: USER, enabled: true, roles: [{ role: 'System Manager' }] },
+  await admin.post('/api/save_row', {
+    table: 'User',
+    row: { row_id: USER, email: USER, enabled: true, roles: [{ role: 'System Manager' }] },
   })
   await setUserPassword(USER, 'auditpw12345')
 }
@@ -42,7 +42,7 @@ describe('PLAT-007: audit logs', () => {
     await setup(admin)
     const res = await admin.fetch('/api/access_log', {
       method: 'POST',
-      body: JSON.stringify({ doctype: 'User', method: 'csv' }),
+      body: JSON.stringify({ table: 'User', method: 'csv' }),
     })
     expect(res.status).toBe(200)
     const [row] = await sql`
@@ -52,19 +52,19 @@ describe('PLAT-007: audit logs', () => {
     expect(row.method).toBe('csv')
   })
 
-  test('rejects logging an export of a DocType the caller cannot read', async ({ admin, api }) => {
+  test('rejects logging an export of a Table the caller cannot read', async ({ admin, api }) => {
     await setup(admin)
-    // A fresh doctype with no grants: the audit user (System Manager) CAN read
+    // A fresh table with no grants: the audit user (System Manager) CAN read
     // everything, so use a genuinely unreadable target for a plain user.
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: 'Audit Sekret',
       columns: [{ column_name: 'x', column_type: 'Data' }],
     })
     // Downgrade check: a user with no System Manager role.
     const plain = 'audit-plain@x.com'
-    await admin.post('/api/save_doc', {
-      doctype: 'User',
-      doc: { name: plain, email: plain, enabled: true },
+    await admin.post('/api/save_row', {
+      table: 'User',
+      row: { row_id: plain, email: plain, enabled: true },
     })
     await setUserPassword(plain, 'plainpw12345')
     const login = await api.fetch('/api/login', {
@@ -75,7 +75,7 @@ describe('PLAT-007: audit logs', () => {
     const res = await api.fetch('/api/access_log', {
       method: 'POST',
       headers: { authorization: `Bearer ${token}` },
-      body: JSON.stringify({ doctype: 'Audit Sekret', method: 'csv' }),
+      body: JSON.stringify({ table: 'Audit Sekret', method: 'csv' }),
     })
     expect(res.status).toBe(403)
   })
@@ -83,7 +83,7 @@ describe('PLAT-007: audit logs', () => {
   test('logAccess/logActivity write directly with the user as owner', async ({ admin }) => {
     await setup(admin)
     await logActivity(USER, 'logout')
-    await logAccess(USER, 'print', { table: 'User', name: USER, method: 'pdf' })
+    await logAccess(USER, 'print', { table: 'User', row_id: USER, method: 'pdf' })
     const [a] = await sql`select created_by from activity_log where "user" = ${USER} and operation = 'logout' limit 1`
     const [b] = await sql`select created_by, reference_name from access_log where "user" = ${USER} and operation = 'print' limit 1`
     expect(a.created_by).toBe(USER)

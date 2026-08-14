@@ -24,7 +24,7 @@ async function createTable(
   name: string,
   columns: Record<string, unknown>[],
 ): Promise<void> {
-  const res = await request.post('/api/doctype', { headers: auth, data: { name, columns } })
+  const res = await request.post('/api/table_def', { headers: auth, data: { name, columns } })
   expect([200, 201], `creating fixture Table ${name}`).toContain(res.status())
 }
 
@@ -38,7 +38,7 @@ async function insert(
     data,
   })
   expect([200, 201], `inserting into ${table}`).toContain(res.status())
-  return ((await res.json()) as { name: string }).name
+  return ((await res.json()) as { row_id: string }).row_id
 }
 
 test.beforeAll(async ({ request }) => {

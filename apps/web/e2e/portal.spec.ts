@@ -18,26 +18,26 @@ test.beforeAll(async ({ request }) => {
   const admin = await token(request, 'Administrator', ADMIN_PWD)
   const H = { Authorization: `Bearer ${admin}` }
 
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers: H,
     data: { name: DT, columns: [{ column_name: 'subject', column_type: 'Data', in_list_view: true }] },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
 
-  await request.post('/api/save_doc', { headers: H, data: { doctype: 'Role', doc: { name: ROLE } } })
+  await request.post('/api/save_row', { headers: H, data: { table: 'Role', row: { row_id: ROLE } } })
   // own_rows_only grant: website users only ever see/created their own tickets.
-  await request.post('/api/save_doc', {
+  await request.post('/api/save_row', {
     headers: H,
     data: {
-      doctype: 'Permission',
-      doc: { ref_table: DT, role: ROLE, own_rows_only: true, can_read: true, can_write: true, can_create: true },
+      table: 'Permission',
+      row: { ref_table: DT, role: ROLE, own_rows_only: true, can_read: true, can_write: true, can_create: true },
     },
   })
   for (const u of [ALICE, BOB]) {
     await request.delete(`/api/table/User/${encodeURIComponent(u)}`, { headers: H })
-    await request.post('/api/save_doc', {
+    await request.post('/api/save_row', {
       headers: H,
-      data: { doctype: 'User', doc: { name: u, email: u, enabled: true, roles: [{ role: ROLE }] } },
+      data: { table: 'User', row: { row_id: u, email: u, enabled: true, roles: [{ role: ROLE }] } },
     })
     await request.post('/api/set_password', { headers: H, data: { user: u, password: PWD } })
   }
@@ -47,9 +47,9 @@ test.beforeAll(async ({ request }) => {
   // documents they own survive.)
   const existing = (await (
     await request.get(`/api/table/${encodeURIComponent(DT)}?limit=100`, { headers: H })
-  ).json()) as { data?: { name: string }[] }
+  ).json()) as { data?: { row_id: string }[] }
   for (const d of existing.data ?? [])
-    await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.name}`, { headers: H })
+    await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.row_id}`, { headers: H })
 
   // Each user creates their own ticket (owner = creator).
   const aTok = await token(request, ALICE, PWD)
@@ -62,7 +62,7 @@ test.beforeAll(async ({ request }) => {
     headers: { Authorization: `Bearer ${bTok}` },
     data: { subject: 'Bob billing question' },
   })
-  bobDoc = ((await b.json()) as { name: string }).name
+  bobDoc = ((await b.json()) as { row_id: string }).row_id
 })
 
 async function loginUI(page: import('@playwright/test').Page, usr: string) {

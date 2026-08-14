@@ -23,7 +23,7 @@ export async function evaluateEmailRules(
   if (!tableOk) return
 
   const rules = await sql`
-    select name, condition_field, condition_value, recipient, subject, message
+    select row_id, condition_field, condition_value, recipient, subject, message
     from email_rule
     where ref_table = ${table} and event = ${event} and enabled = true`
 
@@ -44,10 +44,10 @@ export async function evaluateEmailRules(
     if (!to) continue
     await queueEmail({
       to,
-      subject: (rule.subject as string) || `${table} ${String(row.name)} — ${event}`,
+      subject: (rule.subject as string) || `${table} ${String(row.row_id)} — ${event}`,
       body: (rule.message as string) || '',
       ref_table: table,
-      reference_name: String(row.name),
+      reference_name: String(row.row_id),
       render: true,
     })
   }

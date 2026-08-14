@@ -17,7 +17,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const token = ((await login.json()) as { token: string }).token
   const auth = { Authorization: `Bearer ${token}` }
 
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers: auth,
     data: {
       name: DT,
@@ -28,14 +28,14 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
       ],
     },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
 
   const created = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: auth,
     data: { title: 'attach fixture' },
   })
   if (created.status() !== 201) throw new Error(`doc: ${created.status()}`)
-  docName = ((await created.json()) as { name: string }).name
+  docName = ((await created.json()) as { row_id: string }).row_id
 })
 
 test('UI-023: Attach Image uploads, previews, persists the URL, and clears', async ({

@@ -11,13 +11,13 @@ let docName = ''
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const headers = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   docName = `sb-${Date.now()}`
-  const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { name: docName, title: 'sidebar doc' } })
+  const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { row_id: docName, title: 'sidebar doc' } })
   if (doc.status() !== 201) throw new Error(`doc: ${doc.status()}`)
 })
 

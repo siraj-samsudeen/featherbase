@@ -2,7 +2,7 @@
 //   cli migrate                       run pending migrations
 //   cli patches                       run pending patches
 //   cli seed                          (re)apply idempotent core seed data
-//   cli create-doctype --name "X" --field title:Data --field status:Select:Open|Closed [--single]
+//   cli create-table --name "X" --field title:Data --field status:Select:Open|Closed [--single]
 //   cli create-user <email> <password> [--full-name "Name"] [--roles "System Manager,All"]
 //   cli create-service-account <name> [--roles "System Manager"]
 //   cli issue-token <principal> [--label "..."] [--expires <days>]
@@ -10,7 +10,7 @@
 //   cli revoke-token <token-id>
 //   cli console                       REPL with the row API in scope
 import { sql } from './db'
-import { createTable } from './doctype-engine'
+import { createTable } from './table-engine'
 import { getDoc, saveDoc } from './document'
 import { getList } from './query'
 import { getMeta } from './meta'
@@ -51,7 +51,7 @@ function asArray(v: string | string[] | boolean | undefined): string[] {
 
 async function cmdCreateTable(flags: Record<string, string | string[] | boolean>) {
   const name = flags.name
-  if (typeof name !== 'string') throw new Error('create-doctype requires --name')
+  if (typeof name !== 'string') throw new Error('create-table requires --name')
   const columns = asArray(flags.field).map((spec) => {
     // column_name:ColumnType[:Opt1|Opt2]
     const [columnName, columnType, choices] = spec.split(':')
@@ -80,12 +80,12 @@ async function cmdCreateUser(
   // (email is unique): `administrator` must not shadow `Administrator` — the
   // same trap #131 closed for service accounts.
   const [existing] = await sql`
-    select name from "user" where lower(name) = lower(${email}) or lower(email) = lower(${email})`
-  if (existing) throw new Error(`User ${existing.name as string} already exists`)
+    select row_id from "user" where lower(row_id) = lower(${email}) or lower(email) = lower(${email})`
+  if (existing) throw new Error(`User ${existing.row_id as string} already exists`)
   await saveDoc(
     'User',
     {
-      name: email,
+      row_id: email,
       email,
       full_name: fullName,
       enabled: true,
@@ -107,7 +107,7 @@ async function cmdCreateServiceAccount(
   const roles = asArray(flags.roles).flatMap((r) => r.split(',')).map((r) => r.trim()).filter(Boolean)
   const account = await createServiceAccount(name, roles, 'Administrator')
   console.log(
-    `created service account ${account.name}${account.roles.length ? ` with roles: ${account.roles.join(', ')}` : ''}`,
+    `created service account ${account.row_id}${account.roles.length ? ` with roles: ${account.roles.join(', ')}` : ''}`,
   )
 }
 
@@ -214,7 +214,7 @@ async function main() {
     case 'seed':
       await cmdSeed()
       break
-    case 'create-doctype':
+    case 'create-table':
       await cmdCreateTable(flags)
       break
     case 'create-user':
@@ -236,7 +236,7 @@ async function main() {
       await cmdConsole()
       break
     default:
-      console.log('usage: cli <migrate|patches|seed|create-doctype|create-user|create-service-account|issue-token|list-tokens|revoke-token|console> [...]')
+      console.log('usage: cli <migrate|patches|seed|create-table|create-user|create-service-account|issue-token|list-tokens|revoke-token|console> [...]')
       process.exitCode = cmd ? 1 : 0
   }
   await sql.end()

@@ -1,7 +1,7 @@
 import { sql } from './db'
 import { AppError } from './errors'
-import { getMeta, type TableMeta } from './meta'
-import { STANDARD_COLUMNS, tableName } from './doctype-engine'
+import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
+import { STANDARD_COLUMNS, tableName } from './table-engine'
 import { getUserPermissionMap, isBypassUser, permissionScope, permittedTiers } from './permissions'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
@@ -154,6 +154,9 @@ async function scopedWhere(
     )
   const cols = columnSet(meta, await permittedTiers(user, table, 'read'))
   const tbl = tableName(table)
+  // Callers always speak the logical row key (`row_id`); only the SQL we emit
+  // uses the physical one, which differs for `Table` alone (see meta.ts).
+  const phys = (field: string) => (field === ROW_KEY ? meta.row_key : field)
 
   const filters = [...callerFilters]
   // Extra WHERE fragments that can't be expressed as plain [field, op, value]
@@ -178,7 +181,7 @@ async function scopedWhere(
     const upMap = await getUserPermissionMap(user)
     if (upMap.size) {
       const own = upMap.get(table)
-      if (own) filters.push(['name', 'in', [...own]])
+      if (own) filters.push([ROW_KEY, 'in', [...own]])
       for (const f of meta.columns) {
         if (f.column_type !== 'Reference' || !f.reference_table) continue
         const allowed = upMap.get(f.reference_table)
@@ -206,7 +209,8 @@ async function scopedWhere(
     return { frag: plainCond(field, op, value) }
   }
 
-  function plainCond(field: string, op: string, value: unknown): ReturnType<typeof sql> {
+  function plainCond(logicalField: string, op: string, value: unknown): ReturnType<typeof sql> {
+    const field = phys(logicalField)
     switch (op) {
       case '=': return sql`${sql(field)} = ${value as string}`
       case '!=': return sql`${sql(field)} is distinct from ${value as string}`
@@ -242,8 +246,8 @@ async function scopedWhere(
     const target = await scopedWhere(spec.table, user, spec.filters ?? [], relatedDepth + 1, hopBudget)
 
     if (spec.via) {
-      if (field !== 'name')
-        throw new AppError('ValidationError', `A via-related filter applies to 'name'`)
+      if (field !== ROW_KEY)
+        throw new AppError('ValidationError', `A via-related filter applies to '${ROW_KEY}'`)
       const owns = meta.columns.some(
         (f) => f.column_type === 'Sub-table' && f.row_table === spec.via,
       )
@@ -277,17 +281,20 @@ async function scopedWhere(
       // Depth-indexed alias: self-referential or repeated-table nesting
       // resolves by construction, not by lexical-scoping luck (#106 review).
       const v = sql(`v${relatedDepth}`)
-      const inTarget = sql`${v}.${sql(spec.column!)} in (select name from ${sql(target.table)} where ${target.where})`
+      const inTarget = sql`${v}.${sql(spec.column!)} in (select ${sql(target.meta.row_key)} from ${sql(target.table)} where ${target.where})`
+      // `parent` holds the OWNING row's id, so it joins against this table's
+      // own row key.
+      const owner = sql`${sql(tbl)}.${sql(meta.row_key)}`
       return {
         frag:
           spec.parentfield !== undefined
             ? sql`exists (
                 select 1 from ${sql(tableName(spec.via))} ${v}
-                where ${v}.parent = ${sql(tbl)}.name and ${v}.parenttype = ${meta.name}
+                where ${v}.parent = ${owner} and ${v}.parenttype = ${meta.name}
                   and ${v}.parentfield = ${spec.parentfield} and ${inTarget})`
             : sql`exists (
                 select 1 from ${sql(tableName(spec.via))} ${v}
-                where ${v}.parent = ${sql(tbl)}.name and ${v}.parenttype = ${meta.name}
+                where ${v}.parent = ${owner} and ${v}.parenttype = ${meta.name}
                   and ${inTarget})`,
       }
     }
@@ -304,7 +311,7 @@ async function scopedWhere(
       if (!owns)
         throw new AppError('ValidationError', `${spec.table} does not contain ${meta.name} rows`)
       return {
-        frag: sql`(parenttype = ${spec.table} and parent in (select name from ${sql(target.table)} where ${target.where}))`,
+        frag: sql`(parenttype = ${spec.table} and parent in (select ${sql(target.meta.row_key)} from ${sql(target.table)} where ${target.where}))`,
       }
     }
 
@@ -317,13 +324,13 @@ async function scopedWhere(
         `${meta.name}.${field} is not a Reference to ${spec.table}`,
       )
     return {
-      frag: sql`${sql(field)} in (select name from ${sql(target.table)} where ${target.where})`,
+      frag: sql`${sql(phys(field))} in (select ${sql(target.meta.row_key)} from ${sql(target.table)} where ${target.where})`,
     }
   }
 
   const allConds = [...conds, ...extraConds]
   const where = allConds.length ? allConds.reduce((acc, c) => sql`${acc} and ${c}`) : sql`true`
-  return { meta, table: tbl, cols, where }
+  return { meta, table: tbl, cols, where, phys }
 }
 
 // One OR-branch per Table that can own rows of this child Table: 'all' scope
@@ -352,7 +359,7 @@ async function parentScopeCond(
       scope === 'all'
         ? sql`parenttype = ${holder}`
         : sql`(parenttype = ${holder} and parent in (
-             select name from ${sql(tableName(holder))} where created_by = ${user}))`,
+             select ${sql(physicalRowKey(holder))} from ${sql(tableName(holder))} where created_by = ${user}))`,
     )
   }
   if (!branches.length) return { frag: sql`false` }
@@ -388,12 +395,12 @@ export async function groupCount(
 ): Promise<{ label: string; value: number }[]> {
   const boundMeta = await getMeta(table)
   if (isBound(boundMeta)) return boundGroupCount(boundMeta, field, filters, user)
-  const { cols, table: tbl, where } = await scopedWhere(table, user, filters)
+  const { cols, table: tbl, where, phys } = await scopedWhere(table, user, filters)
   assertColumn(cols, field, 'group_by')
   const rows = await sql`
-    select ${sql(field)}::text as label, count(*)::int as value
+    select ${sql(phys(field))}::text as label, count(*)::int as value
     from ${sql(tbl)} where ${where}
-    group by ${sql(field)}
+    group by ${sql(phys(field))}
     order by value desc, label asc`
   return rows.map((r) => ({ label: (r.label as string) ?? '', value: r.value as number }))
 }
@@ -445,10 +452,17 @@ export async function getList(table: string, args: ListArgs = {}, user = 'Admini
   // paging pushed down to the driver (spec EDS-5).
   const boundMeta = await getMeta(table)
   if (isBound(boundMeta)) return boundGetList(boundMeta, args, user)
-  const { meta, table: tbl, cols, where } = await scopedWhere(table, user, args.filters ?? [])
+  const { meta, table: tbl, cols, where, phys } = await scopedWhere(table, user, args.filters ?? [])
 
-  const fields = args.fields?.length ? args.fields : ['name']
+  const fields = args.fields?.length ? args.fields : [ROW_KEY]
   for (const f of fields) assertColumn(cols, f, 'selected')
+  // The wire format always names the key `row_id`; where the physical column
+  // differs (`Table`), alias it back so callers see one shape.
+  const selection = fields
+    .map((f) =>
+      phys(f) === f ? sql`${sql(f)}` : sql`${sql(phys(f))} as ${sql(f)}`,
+    )
+    .reduce((acc, frag) => sql`${acc}, ${frag}`)
 
   let orderField = meta.sort_column || 'updated_at'
   let orderDir = (meta.sort_order || 'desc').toLowerCase()
@@ -464,9 +478,9 @@ export async function getList(table: string, args: ListArgs = {}, user = 'Admini
   const offset = Math.max(args.limit_start ?? 0, 0)
 
   const rows = await sql`
-    select ${sql(fields)} from ${sql(tbl)}
+    select ${selection} from ${sql(tbl)}
     where ${where}
-    order by ${sql(orderField)} ${orderDir === 'desc' ? sql`desc` : sql`asc`}
+    order by ${sql(phys(orderField))} ${orderDir === 'desc' ? sql`desc` : sql`asc`}
     limit ${limit} offset ${offset}`
   const [{ count }] = await sql`
     select count(*)::int as count from ${sql(tbl)} where ${where}`

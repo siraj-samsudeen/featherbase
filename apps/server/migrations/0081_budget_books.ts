@@ -5,7 +5,7 @@
 // from then on every mutation of the bound table rides an approved Budget
 // Change. The engine never interprets the grain (BUD-R1).
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 // Guard per table, not per migration: a partially-failed earlier run must
 // converge, never conflict.

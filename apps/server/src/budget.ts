@@ -13,8 +13,8 @@
 import { randomBytes } from 'node:crypto'
 import type { sql as sqlType } from './db'
 import { AppError } from './errors'
-import { getMeta, invalidateMeta } from './meta'
-import { tableName } from './doctype-engine'
+import { getMeta, invalidateMeta, physicalRowKey } from './meta'
+import { tableName } from './table-engine'
 import { recordVersion, type RowValues } from './document'
 
 type Sql = typeof sqlType
@@ -70,7 +70,7 @@ function auditColumns(user: string, now: Date) {
 }
 
 async function withChildren(tx: Sql, row: RowValues): Promise<BookBinding> {
-  const parent = String(row.name)
+  const parent = String(row.row_id)
   const keys = await tx`
     select column_name from ${tx(tableName('Budget Book Key Column'))}
     where parent = ${parent} and parenttype = ${BOOK} order by position`
@@ -95,7 +95,7 @@ async function withChildren(tx: Sql, row: RowValues): Promise<BookBinding> {
 
 export async function loadBook(tx: Sql, name: string): Promise<BookBinding | null> {
   const [row] = await tx`
-    select * from ${tx(tableName(BOOK))} where name = ${name}`
+    select * from ${tx(tableName(BOOK))} where row_id = ${name}`
   return row ? withChildren(tx, row as RowValues) : null
 }
 
@@ -208,10 +208,10 @@ export async function snapshotBook(
     ...(book.ownerColumn ? [book.ownerColumn] : []),
   ]
   const rows = await tx`
-    select ${tx(['name', ...cols])} from ${tx(tableName(book.refTable))} order by name`
+    select ${tx(['row_id', ...cols])} from ${tx(tableName(book.refTable))} order by row_id`
   await tx`
     insert into ${tx(tableName('Budget Version'))} ${tx({
-      name: versionName,
+      row_id: versionName,
       ...auditColumns(user, now),
       book: book.name,
       label,
@@ -225,10 +225,10 @@ export async function snapshotBook(
     // column type returned (numeric columns arrive as strings).
     for (const m of book.measureColumns) data[m] = num((r as RowValues)[m])
     return {
-      name: newName(),
+      row_id: newName(),
       ...auditColumns(user, now),
       version: versionName,
-      ref_name: String((r as RowValues).name),
+      ref_name: String((r as RowValues).row_id),
       data: data as unknown as string,
     }
   })
@@ -240,7 +240,7 @@ export async function snapshotBook(
 
 async function lockedBookRow(tx: Sql, name: string): Promise<RowValues> {
   const [row] = await tx`
-    select * from ${tx(tableName(BOOK))} where name = ${name} for update`
+    select * from ${tx(tableName(BOOK))} where row_id = ${name} for update`
   if (!row) throw new AppError('NotFoundError', `${BOOK} ${name} not found`)
   return row as RowValues
 }
@@ -254,8 +254,8 @@ async function setLifecycle(
   const [after] = await tx`
     update ${tx(tableName(BOOK))}
     set lifecycle = ${to}, updated_at = ${new Date()}, updated_by = ${user}
-    where name = ${String(before.name)} returning *`
-  await recordVersion(tx, await getMeta(BOOK), String(before.name), before, after as RowValues, user)
+    where row_id = ${String(before.row_id)} returning *`
+  await recordVersion(tx, await getMeta(BOOK), String(before.row_id), before, after as RowValues, user)
 }
 
 // BUD-R2: working → active. Freezes the book: v0 written, governance on.
@@ -345,17 +345,17 @@ async function versionSide(
       ...(book.ownerColumn ? [book.ownerColumn] : []),
     ]
     const live = await db`
-      select ${db(['name', ...cols])} from ${db(tableName(book.refTable))}`
+      select ${db(['row_id', ...cols])} from ${db(tableName(book.refTable))}`
     for (const r of live) {
       const data: Record<string, unknown> = {}
       for (const c of cols) data[c] = (r as RowValues)[c] ?? null
-      rows.set(String((r as RowValues).name), data)
+      rows.set(String((r as RowValues).row_id), data)
     }
     return { label: 'Current', rows }
   }
   const [header] = await db`
     select * from ${db(tableName('Budget Version'))}
-    where name = ${version} and book = ${book.name}`
+    where row_id = ${version} and book = ${book.name}`
   if (!header)
     throw new AppError('NotFoundError', `Budget Version ${version} not found on ${book.name}`)
   const lines = await db`
@@ -423,7 +423,7 @@ export function parseNewLineKey(value: unknown): Record<string, unknown> {
 }
 
 export function keySignature(key: Record<string, unknown>, keyColumns: string[]): string {
-  return keyColumns.map((c) => JSON.stringify(key[c] ?? null)).join(' ')
+  return keyColumns.map((c) => JSON.stringify(key[c] ?? null)).join('\u0000')
 }
 
 function whereKey(tx: Sql, key: Record<string, unknown>) {
@@ -473,7 +473,7 @@ export async function applyChange(
   }
   const lockRow = async (ref: string): Promise<RowValues> => {
     const [row] = await tx`
-      select * from ${tx(boundTbl)} where name = ${ref} for update`
+      select * from ${tx(boundTbl)} where row_id = ${ref} for update`
     if (!row)
       throw new AppError('ValidationError', `${changeName}: ${book.refTable} ${ref} no longer exists`)
     return row as RowValues
@@ -481,7 +481,7 @@ export async function applyChange(
   const applyTo = async (ref: string, before: RowValues, sets: RowValues): Promise<void> => {
     const [after] = await tx`
       update ${tx(boundTbl)} set ${tx({ ...sets, updated_at: now, updated_by: user })}
-      where name = ${ref} returning *`
+      where row_id = ${ref} returning *`
     await recordVersion(tx, boundMeta, ref, before, after as RowValues, user)
   }
 
@@ -527,7 +527,8 @@ export async function applyChange(
         const f = byName.get(c)
         if (f?.column_type === 'Reference' && v != null && v !== '') {
           const [hit] = await tx`
-            select 1 from ${tx(tableName(f.reference_table!))} where name = ${String(v)}`
+            select 1 from ${tx(tableName(f.reference_table!))}
+            where ${tx(physicalRowKey(f.reference_table!))} = ${String(v)}`
           if (!hit)
             throw new AppError(
               'ValidationError',
@@ -539,7 +540,7 @@ export async function applyChange(
       for (const m of book.measureColumns) zeroed[m] = 0
       await tx`
         insert into ${tx(boundTbl)} ${tx({
-          name: newName(),
+          row_id: newName(),
           ...auditColumns(user, now),
           ...zeroed,
           ...g.key,

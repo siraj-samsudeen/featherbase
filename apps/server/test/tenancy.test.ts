@@ -5,7 +5,7 @@ import { app } from '../src/index'
 import { sql } from '../src/db'
 import { closeSiteClients, siteSchema } from '../src/tenancy'
 
-// PLAT-008: two sites on one Postgres are fully independent — their DocTypes
+// PLAT-008: two sites on one Postgres are fully independent — their Tables
 // and users live in separate schemas, resolved from the Host header, and a
 // request for one site never sees the other's data.
 
@@ -55,21 +55,21 @@ describe('PLAT-008: multi-tenancy (schema-per-site)', () => {
     }
 
     // Populate alpha via its host.
-    await req('/api/tenancy/doctype', 'alpha.localhost', { method: 'POST', body: JSON.stringify({ name: 'Widget', columns: [{ column_name: 'sku', column_type: 'Data' }] }) })
+    await req('/api/tenancy/table_def', 'alpha.localhost', { method: 'POST', body: JSON.stringify({ name: 'Widget', columns: [{ column_name: 'sku', column_type: 'Data' }] }) })
     await req('/api/tenancy/user', 'alpha.localhost', { method: 'POST', body: JSON.stringify({ email: 'ann@alpha.test' }) })
 
     // Populate beta via its host.
-    await req('/api/tenancy/doctype', 'beta.localhost', { method: 'POST', body: JSON.stringify({ name: 'Gadget', columns: [{ column_name: 'code', column_type: 'Data' }] }) })
+    await req('/api/tenancy/table_def', 'beta.localhost', { method: 'POST', body: JSON.stringify({ name: 'Gadget', columns: [{ column_name: 'code', column_type: 'Data' }] }) })
     await req('/api/tenancy/user', 'beta.localhost', { method: 'POST', body: JSON.stringify({ email: 'bob@beta.test' }) })
 
-    // DocTypes are isolated per site.
-    const aDocs = (await (await req('/api/tenancy/doctypes', 'alpha.localhost')).json()) as { site: string; doctypes: string[] }
-    const bDocs = (await (await req('/api/tenancy/doctypes', 'beta.localhost')).json()) as { site: string; doctypes: string[] }
+    // Tables are isolated per site.
+    const aDocs = (await (await req('/api/tenancy/table_defs', 'alpha.localhost')).json()) as { site: string; table_defs: string[] }
+    const bDocs = (await (await req('/api/tenancy/table_defs', 'beta.localhost')).json()) as { site: string; table_defs: string[] }
     expect(aDocs.site).toBe('alpha')
-    expect(aDocs.doctypes).toEqual(['Widget'])
-    expect(bDocs.doctypes).toEqual(['Gadget'])
-    expect(aDocs.doctypes).not.toContain('Gadget')
-    expect(bDocs.doctypes).not.toContain('Widget')
+    expect(aDocs.table_defs).toEqual(['Widget'])
+    expect(bDocs.table_defs).toEqual(['Gadget'])
+    expect(aDocs.table_defs).not.toContain('Gadget')
+    expect(bDocs.table_defs).not.toContain('Widget')
 
     // Users are isolated per site.
     const aUsers = (await (await req('/api/tenancy/users', 'alpha.localhost')).json()) as { users: string[] }
@@ -80,13 +80,13 @@ describe('PLAT-008: multi-tenancy (schema-per-site)', () => {
 
   it('resolves the site from the Host header (subdomain label too)', async () => {
     // A fully-qualified host with the site as the leading label still resolves.
-    const r = await req('/api/tenancy/doctypes', 'alpha.example.com', {})
+    const r = await req('/api/tenancy/table_defs', 'alpha.example.com', {})
     expect(r.status).toBe(200)
     expect(((await r.json()) as { site: string }).site).toBe('alpha')
   })
 
   it('rejects an unknown host (no cross-site fallback)', async () => {
-    const r = await req('/api/tenancy/doctypes', 'ghost.localhost', {})
+    const r = await req('/api/tenancy/table_defs', 'ghost.localhost', {})
     expect(r.status).toBe(404)
   })
 

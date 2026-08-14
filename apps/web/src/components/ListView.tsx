@@ -63,15 +63,15 @@ export function Indicator({ value }: { value: string }) {
 
 // UI-002/UI-003: ONE list component renders every Table from its metadata.
 export function ListView({
-  doctype,
+  table,
   filters = [],
   onFiltersChange,
 }: {
-  doctype: string
+  table: string
   filters?: Filter[]
   onFiltersChange?: (filters: Filter[]) => void
 }) {
-  const meta = useMeta(doctype)
+  const meta = useMeta(table)
   const settings = useSettings()
   const isSystemManager = useIsSystemManager()
   const queryClient = useQueryClient()
@@ -89,7 +89,7 @@ export function ListView({
   const [bulkError, setBulkError] = useState<string | null>(null)
   const filterKey = JSON.stringify(filters)
   useEffect(() => setStart(0), [filterKey])
-  useEffect(() => setSelected(new Set()), [filterKey, start, doctype])
+  useEffect(() => setSelected(new Set()), [filterKey, start, table])
   // DEL-J1 (docs/specs/0003-table-deletion.md): deleting the whole Table.
   // The confirmation must carry the LIVE row count, never a bare "sure?".
   const navigate = useNavigate()
@@ -97,19 +97,19 @@ export function ListView({
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const deleteCount = useQuery({
-    queryKey: ['delete-count', doctype],
+    queryKey: ['delete-count', table],
     enabled: confirmingDelete,
-    queryFn: () => api.post<{ count: number }>('/api/dashboard/count', { doctype }),
+    queryFn: () => api.post<{ count: number }>('/api/dashboard/count', { table }),
   })
   async function deleteTable() {
     setDeleteBusy(true)
     setDeleteError(null)
     try {
-      await api.delete(`/api/doctype/${encodeURIComponent(doctype)}`)
+      await api.delete(`/api/table_def/${encodeURIComponent(table)}`)
       // Drop this table's queries (refetching them would 404), then let the
       // rest of the app refetch what the sweep touched (nav, home pages).
       for (const key of ['meta', 'list', 'doc', 'delete-count'])
-        queryClient.removeQueries({ queryKey: [key, doctype] })
+        queryClient.removeQueries({ queryKey: [key, table] })
       await navigate({ to: '/admin/all-tables' })
       void queryClient.invalidateQueries()
     } catch (e) {
@@ -120,23 +120,23 @@ export function ListView({
   // #100 pattern 5 (Access subdatasheets): rows of tables with Sub-table
   // columns expand their child rows inline via a chevron.
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  useEffect(() => setExpanded(new Set()), [filterKey, start, doctype])
+  useEffect(() => setExpanded(new Set()), [filterKey, start, table])
 
   // RT-001: another session creating/updating/deleting a doc of this type
   // refreshes the list without a reload.
-  useRealtime([`list:${doctype}`], () => {
-    void queryClient.invalidateQueries({ queryKey: ['list', doctype] })
+  useRealtime([`list:${table}`], () => {
+    void queryClient.invalidateQueries({ queryKey: ['list', table] })
   })
 
   // UI-013: load this user's saved view settings (sort + hidden columns)
-  // once per DocType. Filters stay URL-driven (UI-003), so they're not
+  // once per Table. Filters stay URL-driven (UI-003), so they're not
   // persisted here — this covers the durable "customize a list" bits.
   useEffect(() => {
     let cancelled = false
     setSettingsLoaded(false)
     api
       .get<{ settings: { sort?: typeof sort; hiddenCols?: string[] } | null }>(
-        `/api/user_settings/${encodeURIComponent(doctype)}`,
+        `/api/user_settings/${encodeURIComponent(table)}`,
       )
       .then((res) => {
         if (cancelled) return
@@ -151,14 +151,14 @@ export function ListView({
     return () => {
       cancelled = true
     }
-    // Only re-run when the DocType changes.
+    // Only re-run when the Table changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doctype])
+  }, [table])
 
   // Persist settings whenever the user changes them (after the initial load).
   function persist(next: { sort?: typeof sort; hiddenCols?: Set<string> }) {
     if (!settingsLoaded) return
-    void api.put(`/api/user_settings/${encodeURIComponent(doctype)}`, {
+    void api.put(`/api/user_settings/${encodeURIComponent(table)}`, {
       sort: next.sort !== undefined ? next.sort : sort,
       hiddenCols: [...(next.hiddenCols ?? hiddenCols)],
     })
@@ -183,11 +183,11 @@ export function ListView({
       : undefined
 
   const list = useQuery({
-    queryKey: ['list', doctype, columns.map((c) => c.column_name), orderBy, start, filterKey],
+    queryKey: ['list', table, columns.map((c) => c.column_name), orderBy, start, filterKey],
     enabled: Boolean(meta.data),
     placeholderData: keepPreviousData,
     queryFn: () =>
-      listResource(doctype, {
+      listResource(table, {
         filters,
         fields: columns.map((c) => c.column_name),
         order_by: orderBy,
@@ -202,7 +202,7 @@ export function ListView({
   if (meta.isError)
     return (
       <p className="text-sm text-red-600" data-testid="list-error">
-        {meta.error instanceof ApiError ? meta.error.message : `Cannot load ${doctype}`}
+        {meta.error instanceof ApiError ? meta.error.message : `Cannot load ${table}`}
       </p>
     )
 
@@ -235,7 +235,7 @@ export function ListView({
   }
 
   // UI-012: bulk actions over the selected rows. Each row goes through the
-  // normal row lifecycle (delete_doc / save_doc) — no side-channel.
+  // normal row lifecycle (delete_doc / save_row) — no side-channel.
   const editableColumns = (meta.data?.columns ?? []).filter(
     (f) =>
       !NO_COLUMN_TYPES.has(f.column_type) &&
@@ -254,7 +254,7 @@ export function ListView({
   }
 
   async function refresh() {
-    await queryClient.invalidateQueries({ queryKey: ['list', doctype] })
+    await queryClient.invalidateQueries({ queryKey: ['list', table] })
     setSelected(new Set())
     setBulkError(null)
   }
@@ -272,13 +272,13 @@ export function ListView({
         let query = ''
         if (bound) {
           const doc = await api.get<Record<string, unknown>>(
-            `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
+            `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`,
           )
           if (doc.updated_at != null)
             query = `?updated_at=${encodeURIComponent(String(doc.updated_at))}`
         }
         await api.delete(
-          `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}${query}`,
+          `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}${query}`,
         )
       }
       await refresh()
@@ -303,9 +303,9 @@ export function ListView({
     try {
       for (const name of selected) {
         const doc = await api.get<Record<string, unknown>>(
-          `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
+          `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`,
         )
-        await api.patch(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`, {
+        await api.patch(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`, {
           [bulkField]: value,
           updated_at: doc.updated_at,
         })
@@ -327,9 +327,9 @@ export function ListView({
               Home
             </Link>
             {' / '}
-            {doctype}
+            {table}
           </div>
-          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{doctype}</h1>
+          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{table}</h1>
           <span className="text-xs text-[var(--color-ink-muted)]" data-testid="list-total">
             {total} total
           </span>
@@ -372,21 +372,21 @@ export function ListView({
             )}
           </div>
           <Link
-            to="/admin/$doctype/view/report"
-            params={{ doctype }}
+            to="/admin/$table/view/report"
+            params={{ table }}
             search={{ report: undefined }}
             className="fc-btn"
             data-testid="open-report"
           >
             Report
           </Link>
-          <ExploreSplitButton doctype={doctype} />
+          <ExploreSplitButton table={table} />
           {/* IMP-010: append rows to this Table from a CSV/Excel file —
               absent on read-only sources (EDS-13). */}
           {!isSourceReadOnly(meta.data) && (
             <Link
               to="/admin/import"
-              search={{ table: doctype }}
+              search={{ table: table }}
               className="fc-btn"
               data-testid="open-import"
             >
@@ -395,8 +395,8 @@ export function ListView({
           )}
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Choice') && (
             <Link
-              to="/admin/$doctype/view/kanban"
-              params={{ doctype }}
+              to="/admin/$table/view/kanban"
+              params={{ table }}
               search={{ group_by: undefined }}
               className="fc-btn"
               data-testid="open-kanban"
@@ -406,8 +406,8 @@ export function ListView({
           )}
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Date') && (
             <Link
-              to="/admin/$doctype/view/calendar"
-              params={{ doctype }}
+              to="/admin/$table/view/calendar"
+              params={{ table }}
               className="fc-btn"
               data-testid="open-calendar"
             >
@@ -417,8 +417,8 @@ export function ListView({
           {/* UI-022: Gantt needs two Date columns (start + end). */}
           {(meta.data?.columns ?? []).filter((f) => f.column_type === 'Date').length >= 2 && (
             <Link
-              to="/admin/$doctype/view/gantt"
-              params={{ doctype }}
+              to="/admin/$table/view/gantt"
+              params={{ table }}
               className="fc-btn"
               data-testid="open-gantt"
             >
@@ -427,21 +427,21 @@ export function ListView({
           )}
           {/* Checklist needs a Sub-table whose row table has a Check column —
               the component renders nothing when the shape is absent. */}
-          <ChecklistSwitch doctype={doctype} meta={meta.data} />
+          <ChecklistSwitch table={table} meta={meta.data} />
           {isSystemManager && (
             <>
               {/* NAM-001: change how new rows in this Table are named. */}
               <Link
-                to="/admin/naming/$doctype"
-                params={{ doctype }}
+                to="/admin/naming/$table"
+                params={{ table }}
                 className="fc-btn"
                 data-testid="open-naming"
               >
                 Naming
               </Link>
               <Link
-                to="/admin/permissions/$doctype"
-                params={{ doctype }}
+                to="/admin/permissions/$table"
+                params={{ table }}
                 className="fc-btn"
                 data-testid="open-permissions"
               >
@@ -480,7 +480,7 @@ export function ListView({
             onClick={(e) => e.stopPropagation()}
           >
             <h2 id="delete-table-title" className="mb-2 text-base font-semibold text-[var(--color-ink)]">
-              Delete {doctype}?
+              Delete {table}?
             </h2>
             <p className="mb-3 text-sm text-[var(--color-ink-muted)]" data-testid="delete-table-count">
               {deleteCount.data
@@ -515,8 +515,8 @@ export function ListView({
           </div>
         </div>
       )}
-      {onFiltersChange && <SavedViewsBar doctype={doctype} filters={filters} onApply={onFiltersChange} />}
-      {onFiltersChange && <RecentStrip doctype={doctype} onApply={onFiltersChange} />}
+      {onFiltersChange && <SavedViewsBar table={table} filters={filters} onApply={onFiltersChange} />}
+      {onFiltersChange && <RecentStrip table={table} onApply={onFiltersChange} />}
       {onFiltersChange && meta.data && (
         <>
           <StandardFilters meta={meta.data} filters={filters} onChange={onFiltersChange} />
@@ -591,10 +591,10 @@ export function ListView({
                   <input
                     type="checkbox"
                     data-testid="select-all"
-                    checked={rows.length > 0 && rows.every((r) => selected.has(String(r.name)))}
+                    checked={rows.length > 0 && rows.every((r) => selected.has(String(r.row_id)))}
                     onChange={(e) =>
                       setSelected(
-                        e.target.checked ? new Set(rows.map((r) => String(r.name))) : new Set(),
+                        e.target.checked ? new Set(rows.map((r) => String(r.row_id))) : new Set(),
                       )
                     }
                   />
@@ -618,22 +618,22 @@ export function ListView({
           <tbody data-testid="list-rows">
             {rows.map((row) => (
               <ListRow
-                key={String(row.name)}
+                key={String(row.row_id)}
                 row={row}
-                doctype={doctype}
+                table={table}
                 columns={columns}
                 settings={settings}
-                selected={selected.has(String(row.name))}
-                onToggleSelect={() => toggleRow(String(row.name))}
+                selected={selected.has(String(row.row_id))}
+                onToggleSelect={() => toggleRow(String(row.row_id))}
                 selectable={!isSourceReadOnly(meta.data)}
                 expandable={expandable}
                 childFields={childFields}
-                expanded={expanded.has(String(row.name))}
+                expanded={expanded.has(String(row.row_id))}
                 onToggleExpand={() =>
                   setExpanded((prev) => {
                     const next = new Set(prev)
-                    if (next.has(String(row.name))) next.delete(String(row.name))
-                    else next.add(String(row.name))
+                    if (next.has(String(row.row_id))) next.delete(String(row.row_id))
+                    else next.add(String(row.row_id))
                     return next
                   })
                 }
@@ -655,7 +655,7 @@ export function ListView({
                   {list.isError
                     ? list.error instanceof ApiError
                       ? list.error.message
-                      : `Cannot load rows for ${doctype}`
+                      : `Cannot load rows for ${table}`
                     : 'No rows'}
                 </td>
               </tr>
@@ -692,7 +692,7 @@ export function ListView({
 // chevron and the inline subgrid don't clutter the main table loop.
 function ListRow({
   row,
-  doctype,
+  table,
   columns,
   settings,
   selected,
@@ -704,7 +704,7 @@ function ListRow({
   onToggleExpand,
 }: {
   row: Record<string, unknown>
-  doctype: string
+  table: string
   columns: { column_name: string; label: string; column_type: string }[]
   settings: Settings
   selected: boolean
@@ -748,9 +748,9 @@ function ListRow({
           <td key={col.column_name} className="px-3 py-2">
             {i === 0 ? (
               <Link
-                to="/admin/$doctype/$name"
+                to="/admin/$table/$name"
                 search={{ prefill: undefined }}
-                params={{ doctype, name: String(row.name) }}
+                params={{ table, name: String(row.row_id) }}
                 className={`font-medium text-[var(--color-brand)] hover:underline ${
                   col.column_name === 'name' ? 'font-mono text-[13px]' : ''
                 }`}
@@ -777,7 +777,7 @@ function ListRow({
             colSpan={columns.length + 1 + (selectable ? 1 : 0)}
             className="border-b border-[var(--color-border)] bg-[var(--color-subtle)] py-3 pl-10 pr-4"
           >
-            <InlineChildren doctype={doctype} name={String(row.name)} childFields={childFields} />
+            <InlineChildren table={table} name={String(row.row_id)} childFields={childFields} />
           </td>
         </tr>
       )}
@@ -788,20 +788,20 @@ function ListRow({
 // The expanded row's content: every Sub-table column's rows, read-only,
 // fetched through the ordinary row GET (children arrive embedded).
 function InlineChildren({
-  doctype,
+  table,
   name,
   childFields,
 }: {
-  doctype: string
+  table: string
   name: string
   childFields: import('../lib/meta').ColumnDef[]
 }) {
   const settings = useSettings()
   const doc = useQuery({
-    queryKey: ['doc', doctype, name],
+    queryKey: ['doc', table, name],
     queryFn: () =>
       api.get<Record<string, unknown>>(
-        `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
+        `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`,
       ),
   })
   if (doc.isLoading) return <p className="text-xs text-[var(--color-ink-faint)]">Loading…</p>
@@ -852,14 +852,14 @@ function InlineChildGrid({
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={String(r.name ?? i)} className="border-b border-[var(--color-border)] last:border-0">
+            <tr key={String(r.row_id ?? i)} className="border-b border-[var(--color-border)] last:border-0">
               {cols.map((c) => (
                 <td key={c.column_name} className="px-3 py-1 text-[var(--color-ink)]">
                   {c.column_type === 'Reference' && c.reference_table && r[c.column_name] ? (
                     <Link
-                      to="/admin/$doctype/$name"
+                      to="/admin/$table/$name"
                       search={{ prefill: undefined }}
-                        params={{ doctype: c.reference_table, name: String(r[c.column_name]) }}
+                        params={{ table: c.reference_table, name: String(r[c.column_name]) }}
                       className="text-[var(--color-brand)] hover:underline"
                     >
                       {String(r[c.column_name])}
@@ -1020,7 +1020,7 @@ export function FilterBar({
       .filter((f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden)
       .map((f) => ({ fieldname: f.column_name, label: f.label ?? f.column_name })),
   ]
-  const [field, setField] = useState('name')
+  const [field, setField] = useState('row_id')
   const [op, setOp] = useState<string>('=')
   const [value, setValue] = useState('')
 
@@ -1104,20 +1104,20 @@ export function FilterBar({
 // whole filter set through the normal onFiltersChange pipeline (the filters
 // live in the URL, so this is just replaying a remembered list state).
 function RecentStrip({
-  doctype,
+  table,
   onApply,
 }: {
-  doctype: string
+  table: string
   onApply: (filters: Filter[]) => void
 }) {
   const user = getSessionUser()
-  const entries = user ? recentActions(user.name, 60) : []
-  const rows = entries.filter((e) => e.kind === 'row' && e.key.startsWith(`row:${doctype}/`)).slice(0, 4)
+  const entries = user ? recentActions(user.row_id, 60) : []
+  const rows = entries.filter((e) => e.kind === 'row' && e.key.startsWith(`row:${table}/`)).slice(0, 4)
   const views = entries
     .map((e) => {
-      if (e.kind !== 'list' || !e.key.startsWith(`list:${doctype}?`)) return null
+      if (e.kind !== 'list' || !e.key.startsWith(`list:${table}?`)) return null
       try {
-        const parsed = JSON.parse(e.key.slice(`list:${doctype}?`.length)) as Filter[]
+        const parsed = JSON.parse(e.key.slice(`list:${table}?`.length)) as Filter[]
         return Array.isArray(parsed) && parsed.length > 0 ? { entry: e, parsed } : null
       } catch {
         return null
@@ -1134,8 +1134,8 @@ function RecentStrip({
       {rows.map((r) => (
         <Link
           key={r.key}
-          to="/admin/$doctype/$name"
-          params={{ doctype, name: r.label }}
+          to="/admin/$table/$name"
+          params={{ table, name: r.label }}
           search={{ prefill: undefined }}
           data-testid="recent-strip-row"
           className="rounded-full border border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2.5 py-0.5 text-xs text-[var(--color-ink-muted)] hover:border-[var(--color-brand)] hover:text-[var(--color-brand)]"
@@ -1167,7 +1167,7 @@ const NUDGE_THRESHOLD = 3
 const NUDGE_WINDOW_MS = 7 * 86_400_000
 
 interface SavedViewRow {
-  name: string
+  row_id: string
   label: string
   filters: Filter[]
   shared: boolean
@@ -1175,11 +1175,11 @@ interface SavedViewRow {
 }
 
 function SavedViewsBar({
-  doctype,
+  table,
   filters,
   onApply,
 }: {
-  doctype: string
+  table: string
   filters: Filter[]
   onApply: (filters: Filter[]) => void
 }) {
@@ -1190,14 +1190,14 @@ function SavedViewsBar({
   const [nudgeName, setNudgeName] = useState('')
 
   const views = useQuery({
-    queryKey: ['saved-views', doctype],
+    queryKey: ['saved-views', table],
     enabled: Boolean(user),
-    queryFn: () => api.get<{ views: SavedViewRow[] }>(`/api/saved_views?table=${encodeURIComponent(doctype)}`),
+    queryFn: () => api.get<{ views: SavedViewRow[] }>(`/api/saved_views?table=${encodeURIComponent(table)}`),
   })
 
   const sig = filters.length > 0 ? JSON.stringify(filters) : ''
-  const countKey = user ? `fc-filter-count:${user.name}` : ''
-  const dismissKey = user ? `fc-nudge-dismissed:${user.name}` : ''
+  const countKey = user ? `fc-filter-count:${user.row_id}` : ''
+  const dismissKey = user ? `fc-nudge-dismissed:${user.row_id}` : ''
 
   // Every arrival at a non-empty filter state counts as one application.
   useEffect(() => {
@@ -1211,7 +1211,7 @@ function SavedViewsBar({
         string,
         { n: number; t: number }
       >
-      const k = `${doctype}|${sig}`
+      const k = `${table}|${sig}`
       const rec = store[k] ?? { n: 0, t: 0 }
       const now = Date.now()
       if (now - rec.t > NUDGE_WINDOW_MS) rec.n = 0
@@ -1231,7 +1231,7 @@ function SavedViewsBar({
       setApplyCount(0)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doctype, sig, user?.name])
+  }, [table, sig, user?.row_id])
 
   if (!user) return null
   const list = views.data?.views ?? []
@@ -1241,7 +1241,7 @@ function SavedViewsBar({
   try {
     dismissed = Boolean(
       (JSON.parse(localStorage.getItem(dismissKey) ?? '{}') as Record<string, boolean>)[
-        `${doctype}|${sig}`
+        `${table}|${sig}`
       ],
     )
   } catch {
@@ -1250,23 +1250,23 @@ function SavedViewsBar({
   const showNudge = Boolean(sig && applyCount >= NUDGE_THRESHOLD && !matching && !dismissed && !nudgeGone)
 
   async function saveView() {
-    const label = nudgeName.trim() || `${doctype} view`
-    await api.post('/api/saved_views', { table: doctype, label, filters })
+    const label = nudgeName.trim() || `${table} view`
+    await api.post('/api/saved_views', { table: table, label, filters })
     try {
       const store = JSON.parse(localStorage.getItem(countKey) ?? '{}') as Record<string, unknown>
-      delete store[`${doctype}|${sig}`]
+      delete store[`${table}|${sig}`]
       localStorage.setItem(countKey, JSON.stringify(store))
     } catch {
       /* ignore */
     }
     setNudgeGone(true)
-    void queryClient.invalidateQueries({ queryKey: ['saved-views', doctype] })
+    void queryClient.invalidateQueries({ queryKey: ['saved-views', table] })
   }
 
   function dismissNudge() {
     try {
       const store = JSON.parse(localStorage.getItem(dismissKey) ?? '{}') as Record<string, boolean>
-      store[`${doctype}|${sig}`] = true
+      store[`${table}|${sig}`] = true
       localStorage.setItem(dismissKey, JSON.stringify(store))
     } catch {
       /* ignore */
@@ -1287,7 +1287,7 @@ function SavedViewsBar({
             const active = JSON.stringify(v.filters) === sig
             return (
               <span
-                key={v.name}
+                key={v.row_id}
                 className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
                   active
                     ? 'bg-[var(--color-brand)] text-white'
@@ -1309,10 +1309,10 @@ function SavedViewsBar({
                     data-testid="saved-view-share"
                     title={v.shared ? 'Make private' : 'Share with everyone'}
                     onClick={async () => {
-                      await api.post(`/api/saved_views/${encodeURIComponent(v.name)}/share`, {
+                      await api.post(`/api/saved_views/${encodeURIComponent(v.row_id)}/share`, {
                         shared: !v.shared,
                       })
-                      void queryClient.invalidateQueries({ queryKey: ['saved-views', doctype] })
+                      void queryClient.invalidateQueries({ queryKey: ['saved-views', table] })
                     }}
                     className="rounded-full px-1 hover:bg-white/20"
                   >
@@ -1325,8 +1325,8 @@ function SavedViewsBar({
                     aria-label={`Delete view ${v.label}`}
                     data-testid="saved-view-delete"
                     onClick={async () => {
-                      await api.delete(`/api/saved_views/${encodeURIComponent(v.name)}`)
-                      void queryClient.invalidateQueries({ queryKey: ['saved-views', doctype] })
+                      await api.delete(`/api/saved_views/${encodeURIComponent(v.row_id)}`)
+                      void queryClient.invalidateQueries({ queryKey: ['saved-views', table] })
                     }}
                     className="rounded-full px-1 hover:bg-white/20"
                   >
@@ -1349,7 +1349,7 @@ function SavedViewsBar({
           <input
             value={nudgeName}
             onChange={(e) => setNudgeName(e.target.value)}
-            placeholder={`${doctype} view`}
+            placeholder={`${table} view`}
             data-testid="nudge-name"
             className="fc-input !w-44 !py-0.5 text-xs"
           />
@@ -1372,10 +1372,10 @@ function SavedViewsBar({
 // — to deep-link a pre-built chain. Selection is capped at two, the pane
 // limit, and kept in CHECK order because chain order is pane order. No
 // per-option row counts on purpose: each would cost a query.
-function ExploreSplitButton({ doctype }: { doctype: string }) {
+function ExploreSplitButton({ table }: { table: string }) {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
-  const { options } = useStepOptions(open ? doctype : undefined)
+  const { options } = useStepOptions(open ? table : undefined)
   const [picked, setPicked] = useState<string[]>([])
   const togglePick = (key: string) =>
     setPicked((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key].slice(0, 2)))
@@ -1383,7 +1383,7 @@ function ExploreSplitButton({ doctype }: { doctype: string }) {
     navigate({
       to: '/admin/explore',
       search: {
-        root: doctype,
+        root: table,
         chain: chain.length ? JSON.stringify(chain) : undefined,
         select: undefined,
       },

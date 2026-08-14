@@ -22,7 +22,7 @@ registerRowAction('test_connection', {
   description: 'Test a Data Source connection and stamp conn_status.',
   handler: async ({ table, name, user }) => {
     assertDataSource(table)
-    await assertSystemManager(user.name)
+    await assertSystemManager(user.row_id)
     return testSource(name)
   },
 })
@@ -32,7 +32,7 @@ registerRowAction('introspect', {
   description: 'List a Data Source’s tables and columns with proposed types.',
   handler: async ({ table, name, args, user }) => {
     assertDataSource(table)
-    await assertSystemManager(user.name)
+    await assertSystemManager(user.row_id)
     const schema = typeof args.schema === 'string' && args.schema ? args.schema : undefined
     const prefix = typeof args.prefix === 'string' && args.prefix ? args.prefix : undefined
     return introspectSource(name, schema, prefix)
@@ -44,7 +44,7 @@ registerRowAction('reflect', {
   description: 'Generate bound Tables from a Data Source’s tables.',
   handler: async ({ table, name, args, user }) => {
     assertDataSource(table)
-    await assertSystemManager(user.name)
+    await assertSystemManager(user.row_id)
     const tables = Array.isArray(args.tables) ? (args.tables as string[]).map(String) : []
     return reflectTables(name, {
       schema: typeof args.schema === 'string' && args.schema ? args.schema : undefined,

@@ -36,7 +36,7 @@ default off), `notes` (Text). No controller, no code. Over HTTP the
 definition looks like (see `docs/TUTORIAL.md` for the full walkthrough):
 
 ```bash
-curl -s http://localhost:8000/api/doctype \
+curl -s http://localhost:8000/api/table_def \
   -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d '{"name":"Todo Item","columns":[
     {"column_name":"title","column_type":"Data","reqd":true,"in_list_view":true},
@@ -45,7 +45,7 @@ curl -s http://localhost:8000/api/doctype \
 ```
 
 Then create, edit, complete, delete items — in the Admin, and over HTTP:
-`POST /api/save_doc`, `GET /api/table/Todo Item` (with a filter for
+`POST /api/save_row`, `GET /api/table/Todo Item` (with a filter for
 `done = 0`), `PATCH /api/table/Todo Item/:name` (echoing `updated_at` —
 optimistic locking), `DELETE`.
 

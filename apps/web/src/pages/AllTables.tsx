@@ -12,10 +12,10 @@ export function AllTablesPage() {
   const tables = useQuery({
     queryKey: ['tables'],
     queryFn: () =>
-      listResource<{ name: string; module: string; system: boolean }>('Table', {
+      listResource<{ row_id: string; module: string; system: boolean }>('Table', {
         filters: [['kind', '!=', 'sub_table']],
-        fields: ['name', 'module', 'system'],
-        order_by: 'name asc',
+        fields: ['row_id', 'module', 'system'],
+        order_by: 'row_id asc',
         limit_page_length: 200,
       }),
   })
@@ -40,8 +40,8 @@ export function AllTablesPage() {
     })
   }
 
-  const byModule = new Map<string, { name: string; module: string; system: boolean }[]>()
-  const systemTables: { name: string; module: string; system: boolean }[] = []
+  const byModule = new Map<string, { row_id: string; module: string; system: boolean }[]>()
+  const systemTables: { row_id: string; module: string; system: boolean }[] = []
   for (const dt of tables.data?.data ?? []) {
     if (dt.system) {
       systemTables.push(dt)
@@ -60,7 +60,7 @@ export function AllTablesPage() {
   return (
     <div className="max-w-3xl" data-testid="all-tables-page">
       <h1 className="mb-2 text-lg font-semibold text-[var(--color-ink)]">All tables</h1>
-      <nav className="fc-card px-3 py-2" data-testid="doctype-nav">
+      <nav className="fc-card px-3 py-2" data-testid="table-nav">
         {tables.isLoading && (
           <p className="px-2 py-1 text-xs text-[var(--color-ink-faint)]">Loading…</p>
         )}
@@ -71,14 +71,14 @@ export function AllTablesPage() {
             </div>
             {(byModule.get(mod) ?? []).map((dt) => (
               <Link
-                key={dt.name}
-                to="/admin/$doctype"
-                params={{ doctype: dt.name }}
+                key={dt.row_id}
+                to="/admin/$table"
+                params={{ table: dt.row_id }}
                 search={{ filters: undefined }}
                 className={linkClass}
                 activeProps={{ className: activeClass }}
               >
-                {dt.name}
+                {dt.row_id}
               </Link>
             ))}
           </div>
@@ -109,14 +109,14 @@ export function AllTablesPage() {
             {systemOpen &&
               systemTables.map((dt) => (
                 <Link
-                  key={dt.name}
-                  to="/admin/$doctype"
-                  params={{ doctype: dt.name }}
+                  key={dt.row_id}
+                  to="/admin/$table"
+                  params={{ table: dt.row_id }}
                   search={{ filters: undefined }}
                   className={linkClass}
                   activeProps={{ className: activeClass }}
                 >
-                  {dt.name}
+                  {dt.row_id}
                 </Link>
               ))}
           </>

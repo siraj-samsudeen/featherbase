@@ -29,8 +29,8 @@ async function as(user: string | null) {
 async function cleanup() {
   await sql`delete from permission where ref_table in (${DT}, ${SECRET_DT})`
   await sql`delete from has_role where parent = ${USER}`
-  await sql`delete from "user" where name = ${USER}`
-  await sql`delete from role where name = ${ROLE}`
+  await sql`delete from "user" where row_id = ${USER}`
+  await sql`delete from role where row_id = ${ROLE}`
   await sql`delete from table_def where name in (${DT}, ${CHILD}, ${SECRET_DT})`
   await sql`delete from column_def where parent in (${DT}, ${CHILD}, ${SECRET_DT})`
   await sql.unsafe('drop table if exists rls_vault, rls_vault_item, rls_hidden')
@@ -38,7 +38,7 @@ async function cleanup() {
 
 beforeAll(async () => {
   await cleanup()
-  await areq('/api/doctype', {
+  await areq('/api/table_def', {
     method: 'POST',
     body: JSON.stringify({
       name: CHILD,
@@ -46,7 +46,7 @@ beforeAll(async () => {
       columns: [{ column_name: 'part', column_type: 'Data' }],
     }),
   })
-  await areq('/api/doctype', {
+  await areq('/api/table_def', {
     method: 'POST',
     body: JSON.stringify({
       name: DT,
@@ -56,38 +56,38 @@ beforeAll(async () => {
       ],
     }),
   })
-  await areq('/api/doctype', {
+  await areq('/api/table_def', {
     method: 'POST',
     body: JSON.stringify({ name: SECRET_DT, columns: [{ column_name: 'code', column_type: 'Data' }] }),
   })
-  await areq('/api/save_doc', {
+  await areq('/api/save_row', {
     method: 'POST',
-    body: JSON.stringify({ doctype: 'Role', doc: { name: ROLE } }),
+    body: JSON.stringify({ table: 'Role', row: { row_id: ROLE } }),
   })
-  await areq('/api/save_doc', {
+  await areq('/api/save_row', {
     method: 'POST',
     body: JSON.stringify({
-      doctype: 'User',
-      doc: { name: USER, email: USER, roles: [{ role: ROLE }] },
+      table: 'User',
+      row: { row_id: USER, email: USER, roles: [{ role: ROLE }] },
     }),
   })
-  await areq('/api/save_doc', {
+  await areq('/api/save_row', {
     method: 'POST',
     body: JSON.stringify({
-      doctype: 'Permission',
-      doc: { ref_table: DT, role: ROLE, tier: 'basic', can_read: true },
+      table: 'Permission',
+      row: { ref_table: DT, role: ROLE, tier: 'basic', can_read: true },
     }),
   })
-  await areq('/api/save_doc', {
+  await areq('/api/save_row', {
     method: 'POST',
     body: JSON.stringify({
-      doctype: DT,
-      doc: { title: 'w1', items: [{ part: 'p1' }, { part: 'p2' }] },
+      table: DT,
+      row: { title: 'w1', items: [{ part: 'p1' }, { part: 'p2' }] },
     }),
   })
-  await areq('/api/save_doc', {
+  await areq('/api/save_row', {
     method: 'POST',
-    body: JSON.stringify({ doctype: SECRET_DT, doc: { code: 's3cret' } }),
+    body: JSON.stringify({ table: SECRET_DT, row: { code: 's3cret' } }),
   })
 })
 
@@ -125,7 +125,7 @@ describe('PERM-004: generated RLS for direct clients', () => {
   it('every direct write is denied, even on the permitted table', async () => {
     await as(USER)
     await expect(
-      direct`insert into rls_vault (name, title) values ('hack', 'x')`,
+      direct`insert into rls_vault (row_id, title) values ('hack', 'x')`,
     ).rejects.toThrow(/permission denied/)
     await expect(direct`update rls_vault set title = 'x'`).rejects.toThrow(
       /permission denied/,

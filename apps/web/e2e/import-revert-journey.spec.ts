@@ -36,11 +36,11 @@ async function zonePops(request: APIRequestContext, headers: Record<string, stri
   const res = (await (
     await request.get(
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
-        '["name","zone","pop"]',
+        '["row_id","zone","pop"]',
       )}&limit_page_length=100`,
       { headers },
     )
-  ).json()) as { data: { name: string; zone: string; pop: unknown }[] }
+  ).json()) as { data: { row_id: string; zone: string; pop: unknown }[] }
   return res.data
 }
 
@@ -53,7 +53,7 @@ test('RVT-J1: revert the bad run from the history strip — rehearse, skip-the-e
   await deleteTableIfExists(request, token, DT)
 
   // Prior state (residue-shaped): a Table with seeded rows, outside any run.
-  const created = await request.post('/api/doctype', {
+  const created = await request.post('/api/table_def', {
     headers,
     data: {
       name: DT,
@@ -98,7 +98,7 @@ test('RVT-J1: revert the bad run from the history strip — rehearse, skip-the-e
     headers,
     data: { key_column: 'zone', rows: [{ zone: 'Alpha', pop: 99999 }] },
   })
-  const alphaName = (await zonePops(request, headers)).find((r) => r.zone === 'Alpha')!.name
+  const alphaName = (await zonePops(request, headers)).find((r) => r.zone === 'Alpha')!.row_id
 
   // J1.1: back to the wizard with the Table preselected — the history strip
   // lists the run; rehearse shows counts before anything commits, the
@@ -146,6 +146,6 @@ test('RVT-J1: revert the bad run from the history strip — rehearse, skip-the-e
   expect(logs.data.some((l) => l.reverted_at)).toBe(true)
 
   // Teardown — self-cleaning via table deletion (spec 0003).
-  const del = await request.delete(`/api/doctype/${encodeURIComponent(DT)}`, { headers })
+  const del = await request.delete(`/api/table_def/${encodeURIComponent(DT)}`, { headers })
   expect(del.status()).toBe(200)
 })

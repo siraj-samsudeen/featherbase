@@ -13,7 +13,7 @@ const DT = 'Deletion Target'
 const ENC = encodeURIComponent(DT)
 
 async function makeTable(admin: TestClient, name = DT, extra: object[] = []) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name,
     columns: [{ column_name: 'title', column_type: 'Data' }, ...extra],
   })
@@ -32,7 +32,7 @@ describe('DEL-R1: who may delete', () => {
   }) => {
     await makeTable(admin)
     const user = await createUser()
-    await expect(user.delete(`/api/doctype/${ENC}`)).rejects.toMatchObject({
+    await expect(user.delete(`/api/table_def/${ENC}`)).rejects.toMatchObject({
       status: 403,
     })
     const meta = (await admin.get(`/api/table/${ENC}:meta`)) as { name: string }
@@ -45,7 +45,7 @@ describe('DEL-R2: deletion removes what creation wrote', () => {
   test('DEL-R2: def row, column defs, physical table + rows, and its own child rows go; the child Table stays', async ({
     admin,
   }) => {
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: 'Deletion Child',
       kind: 'sub_table',
       columns: [{ column_name: 'item', column_type: 'Data' }],
@@ -53,12 +53,12 @@ describe('DEL-R2: deletion removes what creation wrote', () => {
     await makeTable(admin, DT, [
       { column_name: 'lines', column_type: 'Sub-table', row_table: 'Deletion Child' },
     ])
-    await admin.post('/api/save_doc', {
-      doctype: DT,
-      doc: { title: 'one', lines: [{ item: 'a' }, { item: 'b' }] },
+    await admin.post('/api/save_row', {
+      table: DT,
+      row: { title: 'one', lines: [{ item: 'a' }, { item: 'b' }] },
     })
 
-    await admin.delete(`/api/doctype/${ENC}`)
+    await admin.delete(`/api/table_def/${ENC}`)
 
     await expect(admin.get(`/api/table/${ENC}:meta`)).rejects.toMatchObject({ status: 404 })
     const [defs] = await sql`select count(*)::int as n from column_def where parent = ${DT}`
@@ -75,16 +75,16 @@ describe('DEL-R2: deletion removes what creation wrote', () => {
   test('DEL-R2: a settings Table sheds metadata only; a nonexistent name 404s', async ({
     admin,
   }) => {
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: 'Deletion Settings',
       kind: 'settings',
       columns: [{ column_name: 'flag', column_type: 'Check' }],
     })
-    await admin.delete('/api/doctype/Deletion%20Settings')
+    await admin.delete('/api/table_def/Deletion%20Settings')
     await expect(admin.get('/api/table/Deletion%20Settings:meta')).rejects.toMatchObject({
       status: 404,
     })
-    await expect(admin.delete('/api/doctype/No%20Such%20Table')).rejects.toMatchObject({
+    await expect(admin.delete('/api/table_def/No%20Such%20Table')).rejects.toMatchObject({
       status: 404,
     })
   })
@@ -95,26 +95,26 @@ describe('DEL-R3: schema references block, and say who', () => {
     admin,
   }) => {
     await makeTable(admin)
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: 'Deletion Referrer',
       columns: [
         { column_name: 'zone', column_type: 'Reference', reference_table: DT },
       ],
     })
-    await expect(admin.delete(`/api/doctype/${ENC}`)).rejects.toMatchObject({
+    await expect(admin.delete(`/api/table_def/${ENC}`)).rejects.toMatchObject({
       status: 417,
       message: expect.stringContaining('Deletion Referrer.zone'),
     })
     // Unblock by deleting the referrer, then the delete goes through (DEL-J2).
-    await admin.delete('/api/doctype/Deletion%20Referrer')
-    await admin.delete(`/api/doctype/${ENC}`)
+    await admin.delete('/api/table_def/Deletion%20Referrer')
+    await admin.delete(`/api/table_def/${ENC}`)
     await expect(admin.get(`/api/table/${ENC}:meta`)).rejects.toMatchObject({ status: 404 })
   })
 
   test('DEL-R3: a Sub-table column blocks its row-storage Table; self-references never block', async ({
     admin,
   }) => {
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: 'Deletion Child',
       kind: 'sub_table',
       columns: [{ column_name: 'item', column_type: 'Data' }],
@@ -122,17 +122,17 @@ describe('DEL-R3: schema references block, and say who', () => {
     await makeTable(admin, DT, [
       { column_name: 'lines', column_type: 'Sub-table', row_table: 'Deletion Child' },
     ])
-    await expect(admin.delete('/api/doctype/Deletion%20Child')).rejects.toMatchObject({
+    await expect(admin.delete('/api/table_def/Deletion%20Child')).rejects.toMatchObject({
       status: 417,
       message: expect.stringContaining(`${DT}.lines`),
     })
     // A submittable Table references itself via amended_from — deletable.
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: 'Deletion Selfref',
       is_submittable: true,
       columns: [{ column_name: 'title', column_type: 'Data' }],
     })
-    await admin.delete('/api/doctype/Deletion%20Selfref')
+    await admin.delete('/api/table_def/Deletion%20Selfref')
     await expect(admin.get('/api/table/Deletion%20Selfref:meta')).rejects.toMatchObject({
       status: 404,
     })
@@ -140,7 +140,7 @@ describe('DEL-R3: schema references block, and say who', () => {
 
   test('DEL-R3: system tables are platform anatomy — refused', async ({ admin }) => {
     for (const name of ['User', 'Table', 'Column']) {
-      await expect(admin.delete(`/api/doctype/${name}`)).rejects.toMatchObject({
+      await expect(admin.delete(`/api/table_def/${name}`)).rejects.toMatchObject({
         status: 417,
         message: expect.stringContaining('system table'),
       })
@@ -155,15 +155,15 @@ describe('DEL-R4 + DEL-I1: the sidecar sweep', () => {
     await makeTable(admin)
     // Residue an import journey would leave: a permission row, an Import
     // Log entry, and the module home-page link created with the Table.
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: DT, role: 'All', can_read: true },
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: DT, role: 'All', can_read: true },
     })
-    await admin.post('/api/save_doc', {
-      doctype: 'Import Log',
-      doc: { ref_table: DT, file_name: 'zones.csv', inserted: 8, failed: 0 },
+    await admin.post('/api/save_row', {
+      table: 'Import Log',
+      row: { ref_table: DT, file_name: 'zones.csv', inserted: 8, failed: 0 },
     })
-    await admin.delete(`/api/doctype/${ENC}`)
+    await admin.delete(`/api/table_def/${ENC}`)
 
     const [perms] = await sql`select count(*)::int as n from permission where ref_table = ${DT}`
     const [logs] = await sql`select count(*)::int as n from import_log where ref_table = ${DT}`
@@ -198,7 +198,7 @@ describe('DEL-R4 + DEL-I1: the sidecar sweep', () => {
     admin,
   }) => {
     await makeTable(admin)
-    await admin.delete(`/api/doctype/${ENC}`)
+    await admin.delete(`/api/table_def/${ENC}`)
     const [line] = await sql`
       select "user", operation, ref_table from access_log
       where operation = 'delete_table' and ref_table = ${DT}`
@@ -211,7 +211,7 @@ describe('DEL-R9: a stale pointer gets a tombstone, not a shrug', () => {
     admin,
   }) => {
     await makeTable(admin)
-    await admin.delete(`/api/doctype/${ENC}`)
+    await admin.delete(`/api/table_def/${ENC}`)
     await expect(admin.get(`/api/table/${ENC}:meta`)).rejects.toMatchObject({
       status: 404,
       message: expect.stringMatching(
@@ -226,9 +226,9 @@ describe('DEL-R9: a stale pointer gets a tombstone, not a shrug', () => {
 
   test('DEL-R9: recreated and deleted again — the latest burial speaks', async ({ admin }) => {
     await makeTable(admin)
-    await admin.delete(`/api/doctype/${ENC}`)
+    await admin.delete(`/api/table_def/${ENC}`)
     await makeTable(admin)
-    await admin.delete(`/api/doctype/${ENC}`)
+    await admin.delete(`/api/table_def/${ENC}`)
     // Two delete_table lines exist; the tombstone is still singular.
     const [lines] = await sql`
       select count(*)::int as n from access_log
@@ -246,14 +246,14 @@ describe('DEL-I2: a refusal changes nothing', () => {
     admin,
   }) => {
     await makeTable(admin)
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: 'Deletion Referrer',
       columns: [{ column_name: 'zone', column_type: 'Reference', reference_table: DT }],
     })
-    await admin.post('/api/save_doc', { doctype: DT, doc: { title: 'keep me' } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: DT, role: 'All', can_read: true },
+    await admin.post('/api/save_row', { table: DT, row: { title: 'keep me' } })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: DT, role: 'All', can_read: true },
     })
     const counts = async () => {
       const [a] = await sql`select count(*)::int as n from deletion_target`
@@ -262,7 +262,7 @@ describe('DEL-I2: a refusal changes nothing', () => {
       return { rows: a.n, perms: b.n, cols: c.n }
     }
     const before = await counts()
-    await expect(admin.delete(`/api/doctype/${ENC}`)).rejects.toMatchObject({ status: 417 })
+    await expect(admin.delete(`/api/table_def/${ENC}`)).rejects.toMatchObject({ status: 417 })
     expect(await counts()).toEqual(before)
     expect(await physicalExists(DT)).toBe(true)
   })
@@ -270,27 +270,27 @@ describe('DEL-I2: a refusal changes nothing', () => {
 
 describe('DEL-R5: row-id series survive deletion', () => {
   test('DEL-R5: recreate the same Table — ids continue, never restart', async ({ admin }) => {
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: DT,
       id_pattern: 'DELTGT-.###',
       columns: [{ column_name: 'title', column_type: 'Data' }],
     })
-    const first = (await admin.post('/api/save_doc', {
-      doctype: DT,
-      doc: { title: 'a' },
+    const first = (await admin.post('/api/save_row', {
+      table: DT,
+      row: { title: 'a' },
     })) as { name: string }
-    await admin.delete(`/api/doctype/${ENC}`)
-    await admin.post('/api/doctype', {
+    await admin.delete(`/api/table_def/${ENC}`)
+    await admin.post('/api/table_def', {
       name: DT,
       id_pattern: 'DELTGT-.###',
       columns: [{ column_name: 'title', column_type: 'Data' }],
     })
-    const second = (await admin.post('/api/save_doc', {
-      doctype: DT,
-      doc: { title: 'b' },
+    const second = (await admin.post('/api/save_row', {
+      table: DT,
+      row: { title: 'b' },
     })) as { name: string }
     const num = (s: string) => Number(s.split('-').pop())
-    expect(num(second.name)).toBeGreaterThan(num(first.name))
+    expect(num(second.row_id)).toBeGreaterThan(num(first.row_id))
   })
 })
 
@@ -301,12 +301,12 @@ describe('DEL-R7: attachments', () => {
     await makeTable(admin)
     const form = new FormData()
     form.append('file', new File(['attached bytes'], 'note.txt', { type: 'text/plain' }))
-    form.append('ref_doctype', DT)
+    form.append('ref_table', DT)
     const res = await admin.fetch('/api/upload_file', { method: 'POST', body: form })
     expect(res.status).toBe(201)
     const doc = (await res.json()) as { file_url: string }
 
-    await admin.delete(`/api/doctype/${ENC}`)
+    await admin.delete(`/api/table_def/${ENC}`)
 
     const [reg] = await sql`select count(*)::int as n from file where ref_table = ${DT}`
     expect(reg.n).toBe(0)
@@ -330,7 +330,7 @@ describe('DEL-R6: a bound Table sheds its binding, never its source', () => {
   test('DEL-R6: the binding goes; the source file keeps its bytes', async ({ admin }) => {
     invalidateSources()
     await admin.post('/api/table/Data%20Source', {
-      name: 'del-fixture',
+      row_id: 'del-fixture',
       engine: 'csv-folder',
       root_path: dir,
       access: 'read_write',
@@ -343,7 +343,7 @@ describe('DEL-R6: a bound Table sheds its binding, never its source', () => {
     const { created } = (await res.json()) as { created: { name: string }[] }
     const bound = created[0].name
 
-    await admin.delete(`/api/doctype/${encodeURIComponent(bound)}`)
+    await admin.delete(`/api/table_def/${encodeURIComponent(bound)}`)
 
     await expect(admin.get(`/api/meta/${encodeURIComponent(bound)}`)).rejects.toMatchObject({
       status: 404,

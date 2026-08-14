@@ -7,12 +7,12 @@ const DT = 'Sbm Expense'
 const PLAIN = 'Sbm Plain'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     is_submittable: true,
     columns: [{ column_name: 'amount', column_type: 'Currency' }],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: PLAIN,
     columns: [{ column_name: 'x', column_type: 'Data' }],
   })
@@ -34,24 +34,24 @@ describe('DOC-007: submittable documents', () => {
       },
     })
     try {
-      const doc = await admin.post<Record<string, unknown>>('/api/save_doc', {
-        doctype: DT,
-        doc: { amount: 100 },
+      const doc = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: DT,
+        row: { amount: 100 },
       })
       expect(doc.status).toBe('draft')
 
       fired.length = 0
       const submitted = await admin.post<Record<string, unknown>>(
-        `/api/table/${encodeURIComponent(DT)}/${doc.name}:submit`,
+        `/api/table/${encodeURIComponent(DT)}/${doc.row_id}:submit`,
       )
       expect(submitted.status).toBe('submitted')
       expect(fired).toEqual(['on_submit'])
 
       // Immutable while submitted
       await expect(
-        admin.post('/api/save_doc', {
-          doctype: DT,
-          doc: { name: doc.name, updated_at: submitted.updated_at, amount: 999 },
+        admin.post('/api/save_row', {
+          table: DT,
+          row: { row_id: doc.row_id, updated_at: submitted.updated_at, amount: 999 },
         }),
       ).rejects.toMatchObject({
         status: 417,
@@ -60,25 +60,25 @@ describe('DOC-007: submittable documents', () => {
 
       // Cannot delete while submitted
       await expect(
-        admin.delete(`/api/table/${encodeURIComponent(DT)}/${doc.name}`),
+        admin.delete(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`),
       ).rejects.toMatchObject({ status: 417 })
 
       // Cannot double-submit
       await expect(
-        admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.name}:submit`),
+        admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}:submit`),
       ).rejects.toMatchObject({ status: 417 })
 
       const cancelled = await admin.post<Record<string, unknown>>(
-        `/api/table/${encodeURIComponent(DT)}/${doc.name}:cancel`,
+        `/api/table/${encodeURIComponent(DT)}/${doc.row_id}:cancel`,
       )
       expect(cancelled.status).toBe('cancelled')
       expect(fired).toEqual(['on_submit', 'on_cancel'])
 
       // Cancelled is terminal for edits
       await expect(
-        admin.post('/api/save_doc', {
-          doctype: DT,
-          doc: { name: doc.name, updated_at: cancelled.updated_at, amount: 5 },
+        admin.post('/api/save_row', {
+          table: DT,
+          row: { row_id: doc.row_id, updated_at: cancelled.updated_at, amount: 5 },
         }),
       ).rejects.toMatchObject({ status: 417 })
     } finally {
@@ -88,20 +88,20 @@ describe('DOC-007: submittable documents', () => {
 
   test('cannot cancel a draft; cannot submit a non-submittable Table', async ({ admin }) => {
     await setup(admin)
-    const doc = await admin.post<Record<string, unknown>>('/api/save_doc', {
-      doctype: DT,
-      doc: { amount: 1 },
+    const doc = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: DT,
+      row: { amount: 1 },
     })
     await expect(
-      admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.name}:cancel`),
+      admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}:cancel`),
     ).rejects.toMatchObject({ status: 417 })
 
-    const plain = await admin.post<Record<string, unknown>>('/api/save_doc', {
-      doctype: PLAIN,
-      doc: { x: 'a' },
+    const plain = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: PLAIN,
+      row: { x: 'a' },
     })
     await expect(
-      admin.post(`/api/table/${encodeURIComponent(PLAIN)}/${plain.name}:submit`),
+      admin.post(`/api/table/${encodeURIComponent(PLAIN)}/${plain.row_id}:submit`),
     ).rejects.toMatchObject({
       status: 417,
       message: expect.stringMatching(/not submittable/),

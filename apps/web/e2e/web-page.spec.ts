@@ -11,12 +11,12 @@ async function adminHeaders(request: APIRequestContext) {
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
   await request.delete('/api/table/Web%20Page/about-e2e-doc', { headers })
-  const res = await request.post('/api/save_doc', {
+  const res = await request.post('/api/save_row', {
     headers,
     data: {
-      doctype: 'Web Page',
-      doc: {
-        name: 'about-e2e-doc',
+      table: 'Web Page',
+      row: {
+        row_id: 'about-e2e-doc',
         title: 'About E2E',
         route: ROUTE,
         content: '<h1>About This Company</h1><p id="tagline">We ship features.</p>',
@@ -44,11 +44,11 @@ test('WEB-001: a published Web Page renders publicly without a session', async (
 test('WEB-001: an unpublished Web Page is not served', async ({ page, request }) => {
   const headers = await adminHeaders(request)
   await request.delete('/api/table/Web%20Page/draft-e2e-doc', { headers })
-  await request.post('/api/save_doc', {
+  await request.post('/api/save_row', {
     headers,
     data: {
-      doctype: 'Web Page',
-      doc: { name: 'draft-e2e-doc', title: 'Draft', route: 'draft-e2e', content: '<p>hidden</p>', published: false },
+      table: 'Web Page',
+      row: { row_id: 'draft-e2e-doc', title: 'Draft', route: 'draft-e2e', content: '<p>hidden</p>', published: false },
     },
   })
   const res = await request.get('/web/draft-e2e')

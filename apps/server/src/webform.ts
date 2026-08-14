@@ -26,7 +26,7 @@ export interface WebFormConfig {
 
 async function loadForm(route: string) {
   const [form] = await sql`
-    select name, title, route, ref_table, web_fields, published, success_message
+    select row_id, title, route, ref_table, web_fields, published, success_message
     from web_form where route = ${route}`
   if (!form || !form.published)
     throw new AppError('NotFoundError', `No published web form at ${route}`)
@@ -75,7 +75,7 @@ export async function submitWebForm(
   // name so it belongs to them (created_by) and shows up in their
   // own_rows_only portal.
   sessionUser?: string,
-): Promise<{ name: string; message: string }> {
+): Promise<{ row_id: string; message: string }> {
   const form = await loadForm(route)
   const allowed = new Set(columnNames(form.web_fields))
   // Accept ONLY whitelisted columns — a submitter can't set arbitrary columns.
@@ -91,7 +91,7 @@ export async function submitWebForm(
     skipPermissions: true,
   })
   return {
-    name: doc.name as string,
+    row_id: doc.row_id as string,
     message: (form.success_message as string) ?? 'Submitted.',
   }
 }

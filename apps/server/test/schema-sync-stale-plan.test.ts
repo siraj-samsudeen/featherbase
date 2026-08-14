@@ -26,15 +26,15 @@ afterAll(cleanup)
 
 describe('META-004: schema sync does not leave stale prepared statements', () => {
   it('reads and writes keep working across repeated column additions', async () => {
-    const created = await areq('/api/doctype', {
+    const created = await areq('/api/table_def', {
       method: 'POST',
       body: JSON.stringify({ name: DT, columns: [{ column_name: 'a', column_type: 'Data' }] }),
     })
     expect(created.status).toBe(201)
     const doc = (await (
-      await areq('/api/save_doc', {
+      await areq('/api/save_row', {
         method: 'POST',
-        body: JSON.stringify({ doctype: DT, doc: { a: 'one' } }),
+        body: JSON.stringify({ table: DT, row: { a: 'one' } }),
       })
     ).json()) as { name: string; updated_at: string }
 
@@ -42,10 +42,10 @@ describe('META-004: schema sync does not leave stale prepared statements', () =>
     for (let round = 1; round <= 3; round++) {
       // Warm every pooled connection with reads/updates on this table.
       let updated_at = (await (
-        await areq(`/api/table/${encodeURIComponent(DT)}/${doc.name}`)
+        await areq(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`)
       ).json() as { updated_at: string }).updated_at
       for (let i = 0; i < 5; i++) {
-        const upd = await areq(`/api/table/${encodeURIComponent(DT)}/${doc.name}`, {
+        const upd = await areq(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`, {
           method: 'PATCH',
           body: JSON.stringify({ a: `warm-${round}-${i}`, updated_at }),
         })
@@ -55,7 +55,7 @@ describe('META-004: schema sync does not leave stale prepared statements', () =>
 
       // ALTER the table via schema sync…
       columns.push({ column_name: `extra_${round}`, column_type: 'Data' })
-      const sync = await areq(`/api/doctype/${encodeURIComponent(DT)}`, {
+      const sync = await areq(`/api/table_def/${encodeURIComponent(DT)}`, {
         method: 'PUT',
         body: JSON.stringify({ columns }),
       })
@@ -63,9 +63,9 @@ describe('META-004: schema sync does not leave stale prepared statements', () =>
 
       // …then EVERY subsequent request must succeed (no per-connection 500).
       for (let i = 0; i < 10; i++) {
-        const read = await areq(`/api/table/${encodeURIComponent(DT)}/${doc.name}`)
+        const read = await areq(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`)
         expect(read.status).toBe(200)
-        const upd = await areq(`/api/table/${encodeURIComponent(DT)}/${doc.name}`, {
+        const upd = await areq(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}`, {
           method: 'PATCH',
           body: JSON.stringify({ a: `post-${round}-${i}`, updated_at }),
         })

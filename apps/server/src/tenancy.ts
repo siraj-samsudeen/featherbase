@@ -54,7 +54,7 @@ export async function siteMigrate(site: string): Promise<void> {
     create table if not exists column_def (
       id bigserial primary key, parent text not null, column_name text not null, column_type text not null);
     create table if not exists "user" (
-      name text primary key, email text unique, full_name text,
+      row_id text primary key, email text unique, full_name text,
       enabled boolean not null default true, created_at timestamptz not null default now());
   `)
 }
@@ -93,7 +93,7 @@ function tableFor(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
 }
 
-export async function siteCreateDoctype(
+export async function siteCreateTableDef(
   site: string,
   name: string,
   columns: { column_name: string; column_type: string }[],
@@ -105,26 +105,26 @@ export async function siteCreateDoctype(
     await tx`insert into table_def ${tx({ name, module: 'Site' })}`
     for (const f of columns) await tx`insert into column_def ${tx({ parent: name, column_name: f.column_name, column_type: f.column_type })}`
     const cols = columns.map((f) => `"${f.column_name.replace(/[^a-z0-9_]/gi, '_')}" text`).join(', ')
-    await tx.unsafe(`create table if not exists ${tableFor(name)} (name text primary key${cols ? ', ' + cols : ''})`)
+    await tx.unsafe(`create table if not exists ${tableFor(name)} (row_id text primary key${cols ? ', ' + cols : ''})`)
   })
   return { name }
 }
 
-export async function siteListDoctypes(site: string): Promise<string[]> {
+export async function siteListTableDefs(site: string): Promise<string[]> {
   const c = siteClient(site)
   const rows = await c`select name from table_def order by name`
   return rows.map((r) => r.name as string)
 }
 
-export async function siteCreateUser(site: string, email: string, fullName?: string): Promise<{ name: string }> {
+export async function siteCreateUser(site: string, email: string, fullName?: string): Promise<{ row_id: string }> {
   const c = siteClient(site)
-  await c`insert into "user" ${c({ name: email, email, full_name: fullName ?? email })}
-    on conflict (name) do nothing`
-  return { name: email }
+  await c`insert into "user" ${c({ row_id: email, email, full_name: fullName ?? email })}
+    on conflict (row_id) do nothing`
+  return { row_id: email }
 }
 
 export async function siteListUsers(site: string): Promise<string[]> {
   const c = siteClient(site)
-  const rows = await c`select name from "user" order by name`
-  return rows.map((r) => r.name as string)
+  const rows = await c`select row_id from "user" order by row_id`
+  return rows.map((r) => r.row_id as string)
 }

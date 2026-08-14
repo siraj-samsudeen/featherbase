@@ -14,7 +14,7 @@ import { callMethod } from '../src/methods'
 const DT = 'Hook Parity Note'
 
 async function makeDT(admin: TestClient, opts: { submittable?: boolean } = {}) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     is_submittable: opts.submittable ?? false,
     columns: [{ column_name: 'title', column_type: 'Data' }],
@@ -49,7 +49,7 @@ describe('Frappe lifecycle + app-contract parity', () => {
       seen.length = 0
       await saveDoc(
         DT,
-        { name: doc.name, updated_at: (doc.updated_at as Date).toISOString(), title: 'again' },
+        { row_id: doc.row_id, updated_at: (doc.updated_at as Date).toISOString(), title: 'again' },
         'Administrator',
       )
       expect(seen).toEqual(['before_validate', 'validate', 'on_update'])
@@ -79,15 +79,15 @@ describe('Frappe lifecycle + app-contract parity', () => {
       await installApp(APP)
       const ok = await saveDoc(DT, { title: 'fine' }, 'Administrator')
       seen.length = 0
-      await submitDoc(DT, String(ok.name), 'Administrator')
+      await submitDoc(DT, String(ok.row_id), 'Administrator')
       expect(seen).toEqual(['before_submit', 'on_update', 'on_submit'])
 
       const bad = await saveDoc(DT, { title: 'blocked' }, 'Administrator')
-      await expect(submitDoc(DT, String(bad.name), 'Administrator')).rejects.toThrow(
+      await expect(submitDoc(DT, String(bad.row_id), 'Administrator')).rejects.toThrow(
         'submission blocked',
       )
       const [row] = await sql`
-        select status from hook_parity_note where name = ${String(bad.name)}`
+        select status from hook_parity_note where row_id = ${String(bad.row_id)}`
       expect(row.status).toBe('draft') // the abort rolled the write back
     } finally {
       await uninstallApp(APP).catch(() => {})
@@ -107,7 +107,7 @@ describe('Frappe lifecycle + app-contract parity', () => {
     try {
       await installApp(APP)
       await saveDoc(DT, { title: 'a' }, 'Administrator')
-      await saveDoc('Role', { name: `Hookp Wild Role ${Date.now()}` }, 'Administrator')
+      await saveDoc('Role', { row_id: `Hookp Wild Role ${Date.now()}` }, 'Administrator')
       expect(audited).toContain(DT)
       expect(audited).toContain('Role')
     } finally {
@@ -136,18 +136,18 @@ describe('Frappe lifecycle + app-contract parity', () => {
 
   test('override_whitelisted_methods swaps an RPC handler and restores it on uninstall', async () => {
     const APP = `hookp-override-${Date.now()}`
-    const guest = { name: 'Guest', email: 'guest@x', full_name: 'Guest' }
+    const guest = { row_id: 'Guest', email: 'guest@x', full_name: 'Guest' }
     registerApp({
       name: APP,
-      override_whitelisted_methods: { 'frappe.ping': () => 'pong from app' },
+      override_whitelisted_methods: { public_info: () => 'overridden by app' },
     })
     try {
-      expect(await callMethod('frappe.ping', {}, guest)).toBe('pong')
+      expect(await callMethod('public_info', {}, guest)).toEqual({ product: 'Featherbase', public: true })
       await installApp(APP)
-      expect(await callMethod('frappe.ping', {}, guest)).toBe('pong from app')
+      expect(await callMethod('public_info', {}, guest)).toBe('overridden by app')
     } finally {
       await uninstallApp(APP).catch(() => {})
     }
-    expect(await callMethod('frappe.ping', {}, guest)).toBe('pong')
+    expect(await callMethod('public_info', {}, guest)).toEqual({ product: 'Featherbase', public: true })
   })
 })

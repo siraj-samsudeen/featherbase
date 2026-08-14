@@ -21,7 +21,7 @@ const REVERT = `/api/table/${encodeURIComponent(DT)}:import-revert`
 const ROLE = 'Revert Tester Role'
 
 async function setup(admin: TestClient, extra: Record<string, unknown> = {}) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     id_pattern: 'RVT-.###',
     columns: [
@@ -60,7 +60,7 @@ async function seedAndRun(admin: TestClient) {
 async function rowsByZone(admin: TestClient) {
   const list = await admin.get<{ data: Record<string, unknown>[] }>(
     `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
-      '["name","zone","pop","note","updated_at"]',
+      '["row_id","zone","pop","note","updated_at"]',
     )}&limit_page_length=100`,
   )
   return Object.fromEntries(list.data.map((r) => [String(r.zone), r]))
@@ -69,8 +69,8 @@ async function rowsByZone(admin: TestClient) {
 interface RevertRes {
   restored: number
   deleted: number
-  skipped: { name: string; reason: string }[]
-  failed: { name: string; message: string }[]
+  skipped: { row_id: string; reason: string }[]
+  failed: { row_id: string; message: string }[]
   dry_run?: boolean
 }
 
@@ -87,7 +87,7 @@ describe('RVT-R1: a run becomes addressable', () => {
     )
     expect(logs.data).toHaveLength(1)
     const touched = logs.data[0].touched as {
-      name: string
+      row_id: string
       action: string
       stamp: string
       version?: string
@@ -183,7 +183,7 @@ describe('RVT-R2/R3: the revert boundary restores and deletes', () => {
     const res = await admin.post<RevertRes>(REVERT, { run_id: runId })
     expect(res.restored).toBe(0)
     expect(res.skipped).toEqual([
-      { name: expect.stringMatching(/^RVT-/), reason: 'unchanged' },
+      { row_id: expect.stringMatching(/^RVT-/), reason: 'unchanged' },
     ])
   })
 
@@ -194,13 +194,13 @@ describe('RVT-R2/R3: the revert boundary restores and deletes', () => {
     // pure decision instead. Evidence: rule-tier only, on purpose.
     const stamp = '2026-08-11T00:00:00.000Z'
     const plan = planRevert(
-      [{ name: 'RVT-001', action: 'updated', stamp, version: 'v1' }],
+      [{ row_id: 'RVT-001', action: 'updated', stamp, version: 'v1' }],
       new Map([['RVT-001', { updated_at: new Date(stamp), created_by: 'x' }]]),
       new Set(),
       false, // track_changes off
     )
     expect(plan.restores).toEqual([])
-    expect(plan.skipped).toEqual([{ name: 'RVT-001', reason: 'no-version-trail' }])
+    expect(plan.skipped).toEqual([{ row_id: 'RVT-001', reason: 'no-version-trail' }])
   })
 
   test('RVT-R3/R4: an updated row deleted since — skipped: row-deleted', async ({ admin }) => {
@@ -208,13 +208,13 @@ describe('RVT-R2/R3: the revert boundary restores and deletes', () => {
     const runId = await seedAndRun(admin)
     const { Alpha } = await rowsByZone(admin)
     await admin.fetch(
-      `/api/table/${encodeURIComponent(DT)}/${encodeURIComponent(String(Alpha.name))}`,
+      `/api/table/${encodeURIComponent(DT)}/${encodeURIComponent(String(Alpha.row_id))}`,
       { method: 'DELETE' },
     )
     const res = await admin.post<RevertRes>(REVERT, { run_id: runId })
     expect(res.restored).toBe(0)
     expect(res.deleted).toBe(1) // Charlie still goes
-    expect(res.skipped).toEqual([{ name: String(Alpha.name), reason: 'row-deleted' }])
+    expect(res.skipped).toEqual([{ row_id: String(Alpha.row_id), reason: 'row-deleted' }])
   })
 
   test('RVT-R3: an inserted row already deleted — skipped: already-gone', async ({ admin }) => {
@@ -222,12 +222,12 @@ describe('RVT-R2/R3: the revert boundary restores and deletes', () => {
     const runId = newRunId()
     await admin.post(IMPORT, { rows: [{ zone: 'Echo', pop: 5 }], context: { run_id: runId } })
     const { Echo } = await rowsByZone(admin)
-    await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent(String(Echo.name))}`, {
+    await admin.fetch(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent(String(Echo.row_id))}`, {
       method: 'DELETE',
     })
     const res = await admin.post<RevertRes>(REVERT, { run_id: runId })
     expect(res.deleted).toBe(0)
-    expect(res.skipped).toEqual([{ name: String(Echo.name), reason: 'already-gone' }])
+    expect(res.skipped).toEqual([{ row_id: String(Echo.row_id), reason: 'already-gone' }])
   })
 })
 
@@ -239,20 +239,20 @@ describe('RVT-R4: edited-after detection and the override', () => {
     const runId = await seedAndRun(admin)
     // Someone edits Alpha after the import.
     const { Alpha } = await rowsByZone(admin)
-    await admin.post('/api/save_doc', {
-      doctype: DT,
-      doc: { name: Alpha.name, updated_at: Alpha.updated_at, pop: 99999 },
+    await admin.post('/api/save_row', {
+      table: DT,
+      row: { row_id: Alpha.row_id, updated_at: Alpha.updated_at, pop: 99999 },
     })
 
     const first = await admin.post<RevertRes>(REVERT, { run_id: runId })
     expect(first.restored).toBe(0)
     expect(first.deleted).toBe(1) // Charlie still goes
-    expect(first.skipped).toEqual([{ name: String(Alpha.name), reason: 'edited-after' }])
+    expect(first.skipped).toEqual([{ row_id: String(Alpha.row_id), reason: 'edited-after' }])
 
     // RVT-R5's escalation: override names exactly the skipped row.
     const second = await admin.post<RevertRes>(REVERT, {
       run_id: runId,
-      override: [String(Alpha.name)],
+      override: [String(Alpha.row_id)],
     })
     expect(second.restored).toBe(1)
     const after = await rowsByZone(admin)
@@ -297,10 +297,10 @@ describe('RVT-R6: whole-request permission refusal', () => {
   }) => {
     await setup(admin)
     const runId = await seedAndRun(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: DT, role: ROLE, can_read: true, can_write: true }, // no delete
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: DT, role: ROLE, can_read: true, can_write: true }, // no delete
     })
     const user = await createUser({ roles: [ROLE] })
     const before = await rowsByZone(admin)

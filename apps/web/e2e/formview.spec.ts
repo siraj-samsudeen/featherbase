@@ -38,11 +38,11 @@ async function ensureFixtures(request: APIRequestContext) {
   ]
   for (const [name, def] of defs) {
     const meta = await request.get(`/api/table/${encodeURIComponent(name)}:meta`, { headers: auth })
-    if (meta.status() === 404) await request.post('/api/doctype', { headers: auth, data: def })
+    if (meta.status() === 404) await request.post('/api/table_def', { headers: auth, data: def })
   }
   const cust = await request.post(`/api/table/${encodeURIComponent(CUST)}`, {
     headers: auth,
-    data: { name: 'Formco', city: 'Chennai' },
+    data: { row_id: 'Formco', city: 'Chennai' },
   })
   if (![201, 409].includes(cust.status())) throw new Error(`cust fixture: ${cust.status()}`)
   const created = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
@@ -59,7 +59,7 @@ async function ensureFixtures(request: APIRequestContext) {
     },
   })
   if (created.status() !== 201) throw new Error(`doc fixture: ${created.status()} ${await created.text()}`)
-  docName = ((await created.json()) as { name: string }).name
+  docName = ((await created.json()) as { row_id: string }).row_id
 }
 
 test.beforeAll(async ({ request }) => {

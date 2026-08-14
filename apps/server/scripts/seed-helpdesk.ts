@@ -53,29 +53,29 @@ async function login(key: string, usr: string, pwd: string) {
   tokens[key] = body.token as string
 }
 
-async function exists(doctype: string, name: string): Promise<boolean> {
+async function exists(table: string, name: string): Promise<boolean> {
   // /api/table is the one Table-scoped surface (#61) — /api/resource is gone.
   const res = await req(
     'admin',
-    `/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`,
+    `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`,
   )
   return res.ok
 }
 
-async function ensureDoc(doctype: string, doc: Record<string, unknown>, key?: string) {
+async function ensureDoc(table: string, row: Record<string, unknown>, key?: string) {
   const name = key ?? String(doc.name)
-  if (await exists(doctype, name)) {
-    console.log(`  = ${doctype} ${name} (exists)`)
+  if (await exists(table, name)) {
+    console.log(`  = ${table} ${name} (exists)`)
     return
   }
   await must(
-    await req('admin', '/api/save_doc', {
+    await req('admin', '/api/save_row', {
       method: 'POST',
-      body: JSON.stringify({ doctype, doc }),
+      body: JSON.stringify({ table, row }),
     }),
-    `${doctype} ${name}`,
+    `${table} ${name}`,
   )
-  console.log(`  + ${doctype} ${name}`)
+  console.log(`  + ${table} ${name}`)
 }
 
 async function main() {

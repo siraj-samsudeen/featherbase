@@ -20,15 +20,15 @@ async function loginAs(page: Page, email: string, pwd: string) {
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminAuth(request)
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   // A second real user for the mention/notification test.
-  await request.post('/api/save_doc', {
+  await request.post('/api/save_row', {
     headers,
-    data: { doctype: 'User', doc: { name: OTHER_USER, email: OTHER_USER, full_name: 'RT User' } },
+    data: { table: 'User', row: { row_id: OTHER_USER, email: OTHER_USER, full_name: 'RT User' } },
   })
   const sp = await request.post('/api/set_password', { headers, data: { user: OTHER_USER, password: OTHER_PWD } })
   if (sp.status() !== 200) throw new Error(`set_password: ${sp.status()}`)
@@ -38,9 +38,9 @@ test.beforeAll(async ({ request }) => {
       `/api/table/Notification%20Log?filters=${encodeURIComponent(JSON.stringify([['for_user', '=', OTHER_USER]]))}&limit_page_length=200`,
       { headers },
     )
-  ).json()) as { data: { name: string }[] }
+  ).json()) as { data: { row_id: string }[] }
   for (const n of notifs.data)
-    await request.delete(`/api/table/Notification%20Log/${n.name}`, { headers })
+    await request.delete(`/api/table/Notification%20Log/${n.row_id}`, { headers })
 })
 
 test('RT-001: a doc created in one session appears in another session list', async ({ browser }) => {
@@ -65,7 +65,7 @@ test('RT-001: a doc created in one session appears in another session list', asy
   const token = await a.evaluate(() => localStorage.getItem('fc_token'))
   const res = await a.request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: { Authorization: `Bearer ${token}` },
-    data: { name: uniq, title: uniq },
+    data: { row_id: uniq, title: uniq },
   })
   expect(res.status()).toBe(201)
 
@@ -87,7 +87,7 @@ test('RT-002: saving a doc in one session shows a refresh banner in another', as
   const docName = `rt-doc-${Date.now()}`
   await a.request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: { Authorization: `Bearer ${tokenA}` },
-    data: { name: docName, title: 'before' },
+    data: { row_id: docName, title: 'before' },
   })
   await a.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await b.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
@@ -134,7 +134,7 @@ test('RT-003: an @mention pops the mentioned user unread count live', async ({ b
   const docName = `rt-mention-${Date.now()}`
   await a.request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: { Authorization: `Bearer ${tokenA}` },
-    data: { name: docName, title: 'discuss' },
+    data: { row_id: docName, title: 'discuss' },
   })
   await a.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   // Trailing space closes the @mention autocomplete so it doesn't overlay

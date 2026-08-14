@@ -4,7 +4,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 
-// Assignment Rules: creations of the target DocType are auto-assigned
+// Assignment Rules: creations of the target Table are auto-assigned
 // round-robin across the rule's user pool (ToDo + notification), the picked
 // user lands in assign_to_field, and the condition gates the rule per-doc.
 
@@ -16,9 +16,9 @@ const A2 = 'asg-agent2@x.com'
 async function setup(admin: TestClient) {
   for (const u of [A1, A2])
     await sql`insert into "user" ${sql({
-      name: u, created_by: 'Administrator', updated_by: 'Administrator', email: u, enabled: true,
+      row_id: u, created_by: 'Administrator', updated_by: 'Administrator', email: u, enabled: true,
     })}`
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },
@@ -27,7 +27,7 @@ async function setup(admin: TestClient) {
     ],
   })
   await saveDoc('Assignment Rule', {
-    name: RULE,
+    row_id: RULE,
     ref_table: DT,
     assign_condition: "doc.priority === 'High'",
     assign_to_field: 'agent',
@@ -48,29 +48,29 @@ describe('Assignment Rules: round-robin auto-assignment', () => {
     const d1 = await saveDoc(DT, { title: 'one' }, 'Administrator')
     const d2 = await saveDoc(DT, { title: 'two' }, 'Administrator')
     const d3 = await saveDoc(DT, { title: 'three' }, 'Administrator')
-    expect(await assignee(String(d1.name))).toBe(A1)
-    expect(await assignee(String(d2.name))).toBe(A2)
-    expect(await assignee(String(d3.name))).toBe(A1)
+    expect(await assignee(String(d1.row_id))).toBe(A1)
+    expect(await assignee(String(d2.row_id))).toBe(A2)
+    expect(await assignee(String(d3.row_id))).toBe(A1)
     // assign_to_field stamped the pool user into the document itself.
-    const [row] = await sql`select agent from asg_rule_ticket where name = ${String(d2.name)}`
+    const [row] = await sql`select agent from asg_rule_ticket where row_id = ${String(d2.row_id)}`
     expect(row.agent).toBe(A2)
     // The assignee got a notification.
     const [note] = await sql`
       select for_user from notification_log
-      where ref_table = ${DT} and ref_name = ${String(d1.name)}`
+      where ref_table = ${DT} and ref_name = ${String(d1.row_id)}`
     expect(note.for_user).toBe(A1)
   })
 
   test('skips documents that fail the condition', async ({ admin }) => {
     await setup(admin)
     const low = await saveDoc(DT, { title: 'low', priority: 'Low' }, 'Administrator')
-    expect(await assignee(String(low.name))).toBeUndefined()
+    expect(await assignee(String(low.row_id))).toBeUndefined()
   })
 
   test('a disabled rule never assigns', async ({ admin }) => {
     await setup(admin)
-    await sql`update assignment_rule set disabled = true where name = ${RULE}`
+    await sql`update assignment_rule set disabled = true where row_id = ${RULE}`
     const doc = await saveDoc(DT, { title: 'off' }, 'Administrator')
-    expect(await assignee(String(doc.name))).toBeUndefined()
+    expect(await assignee(String(doc.row_id))).toBeUndefined()
   })
 })

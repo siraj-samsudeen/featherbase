@@ -30,7 +30,7 @@ test(`UPS-H1: updating ${N} rows demands the number typed back`, async ({ page, 
   const headers = { Authorization: `Bearer ${token}` }
   await deleteTableIfExists(request, token, DT)
 
-  await request.post('/api/doctype', {
+  await request.post('/api/table_def', {
     headers,
     data: {
       name: DT,
@@ -99,6 +99,6 @@ test(`UPS-H1: updating ${N} rows demands the number typed back`, async ({ page, 
   expect(after.data.every((r) => Number(r.pop) >= 1000)).toBe(true)
 
   // Teardown — self-cleaning via table deletion (spec 0003).
-  const del = await request.delete(`/api/doctype/${encodeURIComponent(DT)}`, { headers })
+  const del = await request.delete(`/api/table_def/${encodeURIComponent(DT)}`, { headers })
   expect(del.status()).toBe(200)
 })

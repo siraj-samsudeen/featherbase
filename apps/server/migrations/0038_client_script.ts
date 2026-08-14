@@ -1,7 +1,7 @@
 // CUST-003: Client Scripts — user JS that hooks into form events in the Desk
 // (onload, field change, before save). Runs in the browser.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'Client Script'`

@@ -1,7 +1,7 @@
 // META-014: core DocTypes + bootstrap users/roles, installed through the
 // engine itself so tables, validation, and children behave like any model.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 import { saveDoc } from '../src/document'
 
 async function ensureTable(def: Parameters<typeof createTable>[0] & { name: string }) {
@@ -12,7 +12,7 @@ async function ensureTable(def: Parameters<typeof createTable>[0] & { name: stri
 async function ensureRow(table: string, doc: Record<string, unknown>) {
   const physical = table.toLowerCase().replace(/\s+/g, '_')
   const [exists] = await sql`
-    select 1 from ${sql(physical)} where name = ${String(doc.name)}`
+    select 1 from ${sql(physical)} where row_id = ${String(doc.row_id)}`
   if (!exists) await saveDoc(table, doc)
 }
 
@@ -99,17 +99,17 @@ export async function up() {
   })
 
   for (const role of ['System Manager', 'All', 'Guest'])
-    await ensureRow('Role', { name: role })
+    await ensureRow('Role', { row_id: role })
 
   await ensureRow('User', {
-    name: 'Administrator',
+    row_id: 'Administrator',
     email: 'admin@example.com',
     full_name: 'Administrator',
     enabled: true,
     roles: [{ role: 'System Manager' }],
   })
   await ensureRow('User', {
-    name: 'Guest',
+    row_id: 'Guest',
     email: 'guest@example.com',
     full_name: 'Guest',
     enabled: true,

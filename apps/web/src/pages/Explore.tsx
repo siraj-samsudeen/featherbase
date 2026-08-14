@@ -43,9 +43,9 @@ function chainFilters(
     if (step.mode === 'viabacklink')
       return [
         [
-          'name',
+          'row_id',
           'related',
-          { via: step.via, column: step.column, table: upstreamTable, filters: [['name', 'in', names]] },
+          { via: step.via, column: step.column, table: upstreamTable, filters: [['row_id', 'in', names]] },
         ],
       ]
     return [[step.column, 'in', names]]
@@ -58,7 +58,7 @@ function chainFilters(
       ['parent', 'related', spec],
     ]
   if (step.mode === 'viabacklink')
-    return [['name', 'related', { via: step.via, column: step.column, ...spec }]]
+    return [['row_id', 'related', { via: step.via, column: step.column, ...spec }]]
   return [[step.column, 'related', spec]]
 }
 
@@ -396,15 +396,15 @@ function Pane({
       <div className="max-h-[420px] overflow-y-auto">
         {rows.map((r) => (
           <PaneRow
-            key={String(r.name)}
+            key={String(r.row_id)}
             row={r}
             columns={displayColumns}
             settings={settings}
-            selected={selected.has(String(r.name))}
-            onToggle={() => onToggle(String(r.name))}
+            selected={selected.has(String(r.row_id))}
+            onToggle={() => onToggle(String(r.row_id))}
             onPeek={
               peek.available
-                ? () => peek.push({ kind: 'record', table, name: String(r.name) })
+                ? () => peek.push({ kind: 'record', table, name: String(r.row_id) })
                 : undefined
             }
           />
@@ -460,7 +460,7 @@ function PaneRow({
     >
       <div className="flex items-center justify-between gap-2">
         <span className="truncate text-sm font-medium text-[var(--color-ink)]">
-          {formatValue(first.column_type, row[first.column_name], settings) || String(row.name)}
+          {formatValue(first.column_type, row[first.column_name], settings) || String(row.row_id)}
         </span>
         {onPeek && (
           <button

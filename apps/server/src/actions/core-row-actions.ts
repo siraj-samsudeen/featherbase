@@ -13,19 +13,19 @@ import { sql } from '../db'
 registerRowAction('submit', {
   effect: 'write',
   description: 'Submit a draft row (only if its Table is_submittable).',
-  handler: ({ table, name, user }) => submitDoc(table, name, user.name),
+  handler: ({ table, name, user }) => submitDoc(table, name, user.row_id),
 })
 
 registerRowAction('cancel', {
   effect: 'write',
   description: 'Cancel a submitted row.',
-  handler: ({ table, name, user }) => cancelDoc(table, name, user.name),
+  handler: ({ table, name, user }) => cancelDoc(table, name, user.row_id),
 })
 
 registerRowAction('amend', {
   effect: 'write',
   description: 'Create an editable copy of a cancelled row (amended_from).',
-  handler: ({ table, name, user }) => amendDoc(table, name, user.name),
+  handler: ({ table, name, user }) => amendDoc(table, name, user.row_id),
 })
 
 registerRowAction('apply_workflow_action', {
@@ -35,7 +35,7 @@ registerRowAction('apply_workflow_action', {
     const action = args.action
     if (typeof action !== 'string' || !action)
       throw new AppError('ValidationError', 'Expected { action }')
-    return applyWorkflowAction(table, name, action, user.name)
+    return applyWorkflowAction(table, name, action, user.row_id)
   },
 })
 
@@ -48,13 +48,13 @@ registerRowAction('rename', {
       throw new AppError('ValidationError', 'Expected { new_name }')
     // Spec 0007 BUD-R3 (audit bug #3): renameDoc runs no lifecycle hooks, so
     // the budget write-lock cannot see it — and a rename would orphan every
-    // budget_version_line pointing at the old name. Gate it here.
+    // budget_version_line pointing at the old row id. Gate it here.
     const book = await activeBookFor(sql, table)
     if (book)
       throw new AppError(
         'ValidationError',
         `${book.name} is active — rows of a governed budget cannot be renamed`,
       )
-    return renameDoc(table, name, newName, user.name)
+    return renameDoc(table, name, newName, user.row_id)
   },
 })

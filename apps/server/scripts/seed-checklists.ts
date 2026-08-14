@@ -77,11 +77,11 @@ async function main() {
   }
 
   type Run = { name: string; updated_at: string; items: Record<string, unknown>[] }
-  const save = async (doc: Record<string, unknown>) =>
+  const save = async (row: Record<string, unknown>) =>
     json<Run>(
-      await req('/api/save_doc', {
+      await req('/api/save_row', {
         method: 'POST',
-        body: JSON.stringify({ doctype: 'Checklist Run', doc }),
+        body: JSON.stringify({ table: 'Checklist Run', row }),
       }),
     )
 

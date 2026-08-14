@@ -122,28 +122,28 @@ function OAuthCallbackRouteComponent() {
 // rows (own_rows_only-scoped by the API). Lives outside the Admin shell.
 const portalListRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/portal/$doctype',
+  path: '/portal/$table',
   beforeLoad: () => {
     if (!getToken()) throw redirect({ to: '/login' })
   },
   component: PortalListRouteComponent,
 })
 function PortalListRouteComponent() {
-  const { doctype } = portalListRoute.useParams()
-  return <PortalListPage key={doctype} doctype={doctype} />
+  const { table } = portalListRoute.useParams()
+  return <PortalListPage key={table} table={table} />
 }
 
 const portalDocRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/portal/$doctype/$name',
+  path: '/portal/$table/$name',
   beforeLoad: () => {
     if (!getToken()) throw redirect({ to: '/login' })
   },
   component: PortalDocRouteComponent,
 })
 function PortalDocRouteComponent() {
-  const { doctype, name } = portalDocRoute.useParams()
-  return <PortalRowPage key={`${doctype}/${name}`} doctype={doctype} name={name} />
+  const { table, name } = portalDocRoute.useParams()
+  return <PortalRowPage key={`${table}/${name}`} table={table} name={name} />
 }
 
 // SET-002: public password-reset page (target of the emailed link).
@@ -168,7 +168,7 @@ const adminRoute = createRoute({
 // PRN-001: print view lives OUTSIDE the Admin layout — no navbar/sidebar.
 const printRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/print/$doctype/$name',
+  path: '/print/$table/$name',
   validateSearch: (search: Record<string, unknown>) => ({
     format: searchString(search.format),
   }),
@@ -179,13 +179,13 @@ const printRoute = createRoute({
 })
 
 function PrintPage() {
-  const { doctype, name } = printRoute.useParams()
+  const { table, name } = printRoute.useParams()
   const { format } = printRoute.useSearch()
   const navigate = printRoute.useNavigate()
   return (
     <PrintView
-      key={`${doctype}/${name}`}
-      doctype={doctype}
+      key={`${table}/${name}`}
+      table={table}
       name={name}
       format={format}
       onFormatChange={(f) => navigate({ search: { format: f }, replace: true })}
@@ -206,7 +206,7 @@ function AdminIndexPage() {
   const pages = useHomePages()
   const first = pages.data?.pages[0]
   useEffect(() => {
-    if (first) void navigate({ to: '/admin/home/$name', params: { name: first.name }, replace: true })
+    if (first) void navigate({ to: '/admin/home/$name', params: { name: first.row_id }, replace: true })
   }, [first, navigate])
   if (!pages.data) return null
   if (first) return null
@@ -221,18 +221,18 @@ function AdminIndexPage() {
   )
 }
 
-// UI-011: Table builder route (before $doctype so 'new-table' matches).
+// UI-011: Table builder route (before $table so 'new-table' matches).
 const newTableRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'new-table',
   component: () => (
-    <div data-testid="doctype-page">
+    <div data-testid="table-page">
       <TableBuilder />
     </div>
   ),
 })
 
-// IMP-010: Import wizard route (before $doctype so 'import' matches).
+// IMP-010: Import wizard route (before $table so 'import' matches).
 const importRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'import',
@@ -240,7 +240,7 @@ const importRoute = createRoute({
     table: searchString(search.table),
   }),
   component: () => (
-    <div data-testid="doctype-page">
+    <div data-testid="table-page">
       <ImportWizard />
     </div>
   ),
@@ -248,9 +248,9 @@ const importRoute = createRoute({
 
 // UI-002/UI-003: the generic ListView renders every Table; filters are
 // URL state so they survive reloads and are shareable.
-const doctypeRoute = createRoute({
+const tableRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$doctype',
+  path: '$table',
   validateSearch: (search: Record<string, unknown>) => ({
     filters: searchString(search.filters),
   }),
@@ -258,24 +258,24 @@ const doctypeRoute = createRoute({
 })
 
 function TableListPage() {
-  const { doctype } = doctypeRoute.useParams()
-  const { filters } = doctypeRoute.useSearch()
-  const navigate = doctypeRoute.useNavigate()
-  const meta = useMeta(doctype)
+  const { table } = tableRoute.useParams()
+  const { filters } = tableRoute.useSearch()
+  const navigate = tableRoute.useNavigate()
+  const meta = useMeta(table)
   // SET-001: a Settings Table has no list — open its one row directly.
   if (meta.data?.kind === 'settings') {
     return (
-      <div data-testid="doctype-page">
-        <FormView key={doctype} doctype={doctype} name={doctype} />
+      <div data-testid="table-page">
+        <FormView key={table} table={table} name={table} />
       </div>
     )
   }
   const parsed = parseFilters(filters)
   return (
-    <div data-testid="doctype-page">
+    <div data-testid="table-page">
       <ListView
-        key={doctype}
-        doctype={doctype}
+        key={table}
+        table={table}
         filters={parsed}
         onFiltersChange={(next) =>
           navigate({
@@ -290,10 +290,10 @@ function TableListPage() {
 
 // RPT-001: report view — column picker + group-by with totals, generic
 // over every Table. Three segments, so it never collides with
-// $doctype/$name.
+// $table/$name.
 const reportRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$doctype/view/report',
+  path: '$table/view/report',
   validateSearch: (search: Record<string, unknown>) => ({
     report: searchString(search.report),
   }),
@@ -301,14 +301,14 @@ const reportRoute = createRoute({
 })
 
 function ReportPage() {
-  const { doctype } = reportRoute.useParams()
+  const { table } = reportRoute.useParams()
   const { report } = reportRoute.useSearch()
   const navigate = reportRoute.useNavigate()
   return (
-    <div data-testid="doctype-page">
+    <div data-testid="table-page">
       <ReportView
-        key={doctype}
-        doctype={doctype}
+        key={table}
+        table={table}
         report={report}
         onReportChange={(name) => navigate({ search: { report: name }, replace: true })}
       />
@@ -319,7 +319,7 @@ function ReportPage() {
 // UI-020: Kanban board view.
 const kanbanRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$doctype/view/kanban',
+  path: '$table/view/kanban',
   validateSearch: (search: Record<string, unknown>) => ({
     group_by: searchString(search.group_by),
   }),
@@ -327,14 +327,14 @@ const kanbanRoute = createRoute({
 })
 
 function KanbanPage() {
-  const { doctype } = kanbanRoute.useParams()
+  const { table } = kanbanRoute.useParams()
   const { group_by } = kanbanRoute.useSearch()
   const navigate = kanbanRoute.useNavigate()
   return (
-    <div data-testid="doctype-page">
+    <div data-testid="table-page">
       <KanbanView
-        key={doctype}
-        doctype={doctype}
+        key={table}
+        table={table}
         groupBy={group_by}
         onGroupByChange={(f) => navigate({ search: { group_by: f }, replace: true })}
       />
@@ -345,15 +345,15 @@ function KanbanPage() {
 // UI-021: Calendar view.
 const calendarRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$doctype/view/calendar',
+  path: '$table/view/calendar',
   component: CalendarPage,
 })
 
 function CalendarPage() {
-  const { doctype } = calendarRoute.useParams()
+  const { table } = calendarRoute.useParams()
   return (
-    <div data-testid="doctype-page">
-      <CalendarView key={doctype} doctype={doctype} />
+    <div data-testid="table-page">
+      <CalendarView key={table} table={table} />
     </div>
   )
 }
@@ -361,15 +361,15 @@ function CalendarPage() {
 // UI-022: Gantt view.
 const ganttRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$doctype/view/gantt',
+  path: '$table/view/gantt',
   component: GanttPage,
 })
 
 function GanttPage() {
-  const { doctype } = ganttRoute.useParams()
+  const { table } = ganttRoute.useParams()
   return (
-    <div data-testid="doctype-page">
-      <GanttView key={doctype} doctype={doctype} />
+    <div data-testid="table-page">
+      <GanttView key={table} table={table} />
     </div>
   )
 }
@@ -378,7 +378,7 @@ function GanttPage() {
 // (a Sub-table column whose row table carries a Check column).
 const checklistRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$doctype/view/checklist',
+  path: '$table/view/checklist',
   validateSearch: (search: Record<string, unknown>) => ({
     run: searchString(search.run),
   }),
@@ -386,14 +386,14 @@ const checklistRoute = createRoute({
 })
 
 function ChecklistPage() {
-  const { doctype } = checklistRoute.useParams()
+  const { table } = checklistRoute.useParams()
   const { run } = checklistRoute.useSearch()
   const navigate = checklistRoute.useNavigate()
   return (
-    <div data-testid="doctype-page">
+    <div data-testid="table-page">
       <ChecklistView
-        key={doctype}
-        doctype={doctype}
+        key={table}
+        table={table}
         run={run}
         // Push, don't replace: the phone's back button should return from a
         // run to the run list.
@@ -404,7 +404,7 @@ function ChecklistPage() {
 }
 
 // RPT-004: a SQL Report renders its own SQL-driven results (static first
-// segment, so it wins over $doctype/$name).
+// segment, so it wins over $table/$name).
 const queryReportRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'query-report/$name',
@@ -414,7 +414,7 @@ const queryReportRoute = createRoute({
 function QueryReportPage() {
   const { name } = queryReportRoute.useParams()
   return (
-    <div data-testid="doctype-page">
+    <div data-testid="table-page">
       <QueryReportView key={name} name={name} />
     </div>
   )
@@ -430,7 +430,7 @@ const scriptReportRoute = createRoute({
 function ScriptReportPage() {
   const { name } = scriptReportRoute.useParams()
   return (
-    <div data-testid="doctype-page">
+    <div data-testid="table-page">
       <ScriptReportView key={name} name={name} />
     </div>
   )
@@ -461,14 +461,14 @@ const homePageRoute = createRoute({
 function HomePagePage() {
   const { name } = homePageRoute.useParams()
   return (
-    <div data-testid="doctype-page">
+    <div data-testid="table-page">
       <HomePageView key={name} name={name} />
     </div>
   )
 }
 
 // #80: every table stays reachable — the sidebar's All tables entry shows
-// the grouped table list (static segment, before $doctype).
+// the grouped table list (static segment, before $table).
 const allTablesRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'all-tables',
@@ -487,7 +487,7 @@ const prototypeConnectSourceRoute = createRoute({
 })
 
 // EDS-2: the Data Source browser — introspect and reflect external tables
-// (static segment, before $doctype).
+// (static segment, before $table).
 const sourceBrowserRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'source/$name',
@@ -497,7 +497,7 @@ const sourceBrowserRoute = createRoute({
 function SourceBrowserPage() {
   const { name } = sourceBrowserRoute.useParams()
   return (
-    <div data-testid="doctype-page">
+    <div data-testid="table-page">
       <SourceBrowser key={name} name={name} />
     </div>
   )
@@ -513,7 +513,7 @@ const dashboardRoute = createRoute({
 function DashboardPage() {
   const { name } = dashboardRoute.useParams()
   return (
-    <div data-testid="doctype-page">
+    <div data-testid="table-page">
       <DashboardView key={name} name={name} />
     </div>
   )
@@ -522,15 +522,15 @@ function DashboardPage() {
 // NAM-001: id-pattern editor for an existing Table (static first segment).
 const namingRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: 'naming/$doctype',
+  path: 'naming/$table',
   component: NamingPage,
 })
 
 function NamingPage() {
-  const { doctype } = namingRoute.useParams()
+  const { table } = namingRoute.useParams()
   return (
-    <div data-testid="doctype-page">
-      <TableNaming key={doctype} doctype={doctype} />
+    <div data-testid="table-page">
+      <TableNaming key={table} table={table} />
     </div>
   )
 }
@@ -538,15 +538,15 @@ function NamingPage() {
 // SET-003: role & permission manager for a Table (static first segment).
 const permissionsRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: 'permissions/$doctype',
+  path: 'permissions/$table',
   component: PermissionsPage,
 })
 
 function PermissionsPage() {
-  const { doctype } = permissionsRoute.useParams()
+  const { table } = permissionsRoute.useParams()
   return (
-    <div data-testid="doctype-page">
-      <PermissionManager key={doctype} doctype={doctype} />
+    <div data-testid="table-page">
+      <PermissionManager key={table} table={table} />
     </div>
   )
 }
@@ -570,7 +570,7 @@ function parsePrefill(raw: string | undefined): Record<string, unknown> | undefi
 // UI-004/UI-005: the generic FormView renders and saves every Table.
 const docRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: '$doctype/$name',
+  path: '$table/$name',
   validateSearch: (search: Record<string, unknown>) => ({
     prefill: searchString(search.prefill),
   }),
@@ -578,7 +578,7 @@ const docRoute = createRoute({
 })
 
 function TableFormPage() {
-  const { doctype, name } = docRoute.useParams()
+  const { table, name } = docRoute.useParams()
   const { prefill } = docRoute.useSearch()
   // #102 review: the raw prefill string is part of the key — navigating
   // from one ?prefill= URL to another (or clearing it, e.g. Ctrl/Cmd+B)
@@ -588,8 +588,8 @@ function TableFormPage() {
   return (
     <div data-testid="doc-page">
       <FormView
-        key={`${doctype}/${name}/${prefill ?? ''}`}
-        doctype={doctype}
+        key={`${table}/${name}/${prefill ?? ''}`}
+        table={table}
         name={name}
         prefill={parsedPrefill}
       />
@@ -597,9 +597,7 @@ function TableFormPage() {
   )
 }
 
-// #100 pattern 4: cross-filter Explore — pane chains over reference links,
-// where clicking rows IS the filter (static segment, before $doctype).
-// Spec 0007 M2: the Budget compare view (static segment, before $doctype).
+// Spec 0007 M2: the Budget compare view (static segment, before $table).
 const budgetCompareRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'budget-compare',
@@ -631,6 +629,8 @@ function BudgetComparePage() {
   )
 }
 
+// #100 pattern 4: cross-filter Explore — pane chains over reference links,
+// where clicking rows IS the filter (static segment, before $table).
 const exploreRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'explore',
@@ -649,7 +649,7 @@ function ExplorePage() {
   const { root, chain, select } = exploreRoute.useSearch()
   const navigate = exploreRoute.useNavigate()
   return (
-    <div data-testid="doctype-page">
+    <div data-testid="table-page">
       {/* Params initialize state, they are not two-way bound — in-view step
           and selection changes stay pure state (#87 keeps root shareable;
           the chain/select params exist for the entry points). The key
@@ -676,7 +676,7 @@ function ExplorePage() {
 // graph. `trail` carries the hop history (static first segment).
 const mapRoute = createRoute({
   getParentRoute: () => adminRoute,
-  path: 'map/$doctype/$name',
+  path: 'map/$table/$name',
   validateSearch: (search: Record<string, unknown>) => ({
     trail: searchString(search.trail),
   }),
@@ -684,11 +684,11 @@ const mapRoute = createRoute({
 })
 
 function MapPage() {
-  const { doctype, name } = mapRoute.useParams()
+  const { table, name } = mapRoute.useParams()
   const { trail } = mapRoute.useSearch()
   return (
-    <div data-testid="doctype-page">
-      <RelationMap key={`${doctype}/${name}`} doctype={doctype} name={name} trail={trail} />
+    <div data-testid="table-page">
+      <RelationMap key={`${table}/${name}`} table={table} name={name} trail={trail} />
     </div>
   )
 }
@@ -702,5 +702,5 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, exploreRoute, budgetCompareRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, doctypeRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, exploreRoute, budgetCompareRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, tableRoute, docRoute]),
 ])

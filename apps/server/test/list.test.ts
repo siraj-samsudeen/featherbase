@@ -7,7 +7,7 @@ const DT = 'List Test Item'
 // The Table's own two-value field is named `stage` (not `status`) — `status`
 // is now the reserved draft/submitted/cancelled lifecycle column.
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },
@@ -21,7 +21,7 @@ async function setup(admin: TestClient) {
     ['gamma', 'Closed', 3],
     ['delta', 'Closed', 9],
   ]) {
-    await admin.post('/api/save_doc', { doctype: DT, doc: { title, stage, qty } })
+    await admin.post('/api/save_row', { table: DT, row: { title, stage, qty } })
   }
 }
 
@@ -34,7 +34,7 @@ describe('DOC-010: get_list with filters, fields, order_by, pagination', () => {
     const body = await admin.get<{ total: number; data: { title: string }[] }>(
       listPath({
         filters: JSON.stringify([['stage', '=', 'Open']]),
-        fields: JSON.stringify(['name', 'title', 'qty']),
+        fields: JSON.stringify(['row_id', 'title', 'qty']),
       }),
     )
     expect(body.total).toBe(2)
@@ -89,7 +89,7 @@ describe('DOC-010: get_list with filters, fields, order_by, pagination', () => {
       status: 417,
     })
     await expect(
-      admin.get(listPath({ order_by: 'qty; drop table doctype' })),
+      admin.get(listPath({ order_by: 'qty; drop table table' })),
     ).rejects.toMatchObject({ status: 417 })
     await expect(
       admin.get(listPath({ filters: JSON.stringify([['qty', '~', 1]]) })),

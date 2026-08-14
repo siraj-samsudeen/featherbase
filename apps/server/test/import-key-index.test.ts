@@ -12,7 +12,7 @@ const DT = 'Index Demand Target'
 const PATH = `/api/table/${encodeURIComponent(DT)}:import`
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     id_pattern: 'IDX-.###',
     columns: [
@@ -56,10 +56,10 @@ describe('#145: index-on-demand on the match key', () => {
   test('a Row ID key needs no index — the primary key serves it', async ({ admin }) => {
     await setup(admin)
     const res = await admin.post<{ inserted: number }>(PATH, {
-      rows: [{ name: 'IDX-CUSTOM', zone: 'Alpha', pop: 1 }],
+      rows: [{ row_id: 'IDX-CUSTOM', zone: 'Alpha', pop: 1 }],
     })
     expect(res.inserted).toBe(1)
-    await admin.post(PATH, { key_column: 'name', rows: [{ name: 'IDX-CUSTOM', pop: 2 }] })
+    await admin.post(PATH, { key_column: 'row_id', rows: [{ row_id: 'IDX-CUSTOM', pop: 2 }] })
     expect(await keyIndexes()).toEqual([])
   })
 })

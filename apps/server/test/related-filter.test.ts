@@ -12,7 +12,7 @@ const LINE = 'Rel Order Line'
 const ORDER = 'Rel Order'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: SUP,
     id_pattern: 'prompt',
     columns: [
@@ -21,12 +21,12 @@ async function setup(admin: TestClient) {
       { column_name: 'parent_sup', column_type: 'Reference', reference_table: SUP },
     ],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: PART,
     id_pattern: 'prompt',
     columns: [{ column_name: 'part_name', column_type: 'Data' }],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: LINE,
     kind: 'sub_table',
     columns: [
@@ -34,7 +34,7 @@ async function setup(admin: TestClient) {
       { column_name: 'qty', column_type: 'Int', default_value: '1' },
     ],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: ORDER,
     id_pattern: 'prompt',
     columns: [
@@ -47,28 +47,28 @@ async function setup(admin: TestClient) {
     ],
   })
   for (const [name, city] of [['S-A', 'Chennai'], ['S-B', 'Madurai']])
-    await admin.post('/api/save_doc', { doctype: SUP, doc: { name, city } })
+    await admin.post('/api/save_row', { table: SUP, row: { row_id: name, city } })
   for (const name of ['P-1', 'P-2'])
-    await admin.post('/api/save_doc', { doctype: PART, doc: { name, part_name: name } })
-  await admin.post('/api/save_doc', {
-    doctype: ORDER,
-    doc: { name: 'O-1', supplier: 'S-A', total: 100, lines: [{ part: 'P-1', qty: 2 }] },
+    await admin.post('/api/save_row', { table: PART, row: { row_id: name, part_name: name } })
+  await admin.post('/api/save_row', {
+    table: ORDER,
+    row: { row_id: 'O-1', supplier: 'S-A', total: 100, lines: [{ part: 'P-1', qty: 2 }] },
   })
-  await admin.post('/api/save_doc', {
-    doctype: ORDER,
-    doc: { name: 'O-2', supplier: 'S-A', total: 250, lines: [{ part: 'P-2' }] },
+  await admin.post('/api/save_row', {
+    table: ORDER,
+    row: { row_id: 'O-2', supplier: 'S-A', total: 250, lines: [{ part: 'P-2' }] },
   })
-  await admin.post('/api/save_doc', {
-    doctype: ORDER,
-    doc: { name: 'O-3', supplier: 'S-B', total: 40, lines: [{ part: 'P-1' }] },
+  await admin.post('/api/save_row', {
+    table: ORDER,
+    row: { row_id: 'O-3', supplier: 'S-B', total: 40, lines: [{ part: 'P-1' }] },
   })
 }
 
 const list = async (client: TestClient, table: string, filters: unknown[]) => {
-  const res = await client.get<{ data: { name: string }[]; total: number }>(
-    `/api/table/${encodeURIComponent(table)}?filters=${encodeURIComponent(JSON.stringify(filters))}&fields=${encodeURIComponent('["name"]')}&order_by=${encodeURIComponent('name asc')}`,
+  const res = await client.get<{ data: { row_id: string }[]; total: number }>(
+    `/api/table/${encodeURIComponent(table)}?filters=${encodeURIComponent(JSON.stringify(filters))}&fields=${encodeURIComponent('["row_id"]')}&order_by=${encodeURIComponent('row_id asc')}`,
   )
-  return { names: res.data.map((r) => r.name), total: res.total }
+  return { names: res.data.map((r) => r.row_id), total: res.total }
 }
 
 describe('NAV-002: related filters', () => {
@@ -83,7 +83,7 @@ describe('NAV-002: related filters', () => {
   test('via sub-table: rows containing a child that points at the target', async ({ admin }) => {
     await setup(admin)
     const { names } = await list(admin, ORDER, [
-      ['name', 'related', { via: LINE, column: 'part', table: PART, filters: [['name', '=', 'P-1']] }],
+      ['row_id', 'related', { via: LINE, column: 'part', table: PART, filters: [['row_id', '=', 'P-1']] }],
     ])
     expect(names).toEqual(['O-1', 'O-3'])
   })
@@ -118,21 +118,21 @@ describe('NAV-002: related filters', () => {
   test('every hop applies the hopped table’s read scoping', async ({ admin, createUser }) => {
     await setup(admin)
     const ROLE = 'Rel Role'
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
     for (const dt of [ORDER, LINE])
-      await admin.post('/api/save_doc', {
-        doctype: 'Permission',
-        doc: { ref_table: dt, role: ROLE, can_read: true },
+      await admin.post('/api/save_row', {
+        table: 'Permission',
+        row: { ref_table: dt, role: ROLE, can_read: true },
       })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: SUP, role: ROLE, can_read: true },
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: SUP, role: ROLE, can_read: true },
     })
     const user = await createUser({ roles: [ROLE] })
     // Data Scope: user may only read supplier S-A
-    await admin.post('/api/save_doc', {
-      doctype: 'Data Scope',
-      doc: { user: user.user, allow_table: SUP, for_value: 'S-A' },
+    await admin.post('/api/save_row', {
+      table: 'Data Scope',
+      row: { user: user.user, allow_table: SUP, for_value: 'S-A' },
     })
     // "orders of ALL suppliers" through the relationship — S-B is invisible
     // to this user, so its order never surfaces through the hop
@@ -148,10 +148,10 @@ describe('NAV-002: related filters', () => {
   }) => {
     await setup(admin)
     const ROLE = 'Rel Narrow Role'
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: ORDER, role: ROLE, can_read: true },
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: ORDER, role: ROLE, can_read: true },
     })
     const user = await createUser({ roles: [ROLE] })
     await expect(
@@ -167,7 +167,7 @@ describe('NAV-002: related filters', () => {
     await bad([['supplier', 'related', {}]]) // no table
     await bad([['total', 'related', { table: SUP }]]) // not a Reference column
     await bad([['supplier', 'related', { table: PART }]]) // wrong target
-    await bad([['name', 'related', { via: LINE, column: 'qty', table: PART }]]) // via col not a Reference
+    await bad([['row_id', 'related', { via: LINE, column: 'qty', table: PART }]]) // via col not a Reference
 
     // depth cap: a 4th nested hop is rejected (3 is the maximum)
     const supHop = (filters: unknown[]) => ({ table: SUP, filters })
@@ -259,7 +259,7 @@ describe('NAV-002: related filters', () => {
       list(admin, ORDER, [['supplier', 'related', { table: SUP, column: 'city' }]]),
     ).rejects.toMatchObject({ status: 417 })
     await expect(
-      list(admin, ORDER, [['name', 'related', { table: PART, via: LINE }]]),
+      list(admin, ORDER, [['row_id', 'related', { table: PART, via: LINE }]]),
     ).rejects.toMatchObject({ status: 417 })
   })
 
@@ -268,10 +268,10 @@ describe('NAV-002: related filters', () => {
   }) => {
     await setup(admin)
     // O-4 SELLS P-2 but only RETURNS P-1
-    await admin.post('/api/save_doc', {
-      doctype: ORDER,
-      doc: {
-        name: 'O-4',
+    await admin.post('/api/save_row', {
+      table: ORDER,
+      row: {
+        row_id: 'O-4',
         supplier: 'S-B',
         total: 10,
         lines: [{ part: 'P-2' }],
@@ -283,27 +283,27 @@ describe('NAV-002: related filters', () => {
     const linesOnly = await list(admin, LINE, [
       ['parenttype', '=', ORDER],
       ['parentfield', '=', 'lines'],
-      ['parent', 'related', { table: ORDER, filters: [['name', '=', 'O-4']] }],
+      ['parent', 'related', { table: ORDER, filters: [['row_id', '=', 'O-4']] }],
     ])
     expect(linesOnly.total).toBe(1)
 
     // via hop WITHOUT parentfield: any field counts → O-4 contains P-1 (returns)
     const anyField = await list(admin, ORDER, [
-      ['name', 'related', { via: LINE, column: 'part', table: PART, filters: [['name', '=', 'P-1']] }],
+      ['row_id', 'related', { via: LINE, column: 'part', table: PART, filters: [['row_id', '=', 'P-1']] }],
     ])
     expect(anyField.names).toContain('O-4')
 
     // via hop WITH parentfield 'lines': O-4 does NOT sell P-1 → excluded
     const soldOnly = await list(admin, ORDER, [
       [
-        'name',
+        'row_id',
         'related',
         {
           via: LINE,
           column: 'part',
           table: PART,
           parentfield: 'lines',
-          filters: [['name', '=', 'P-1']],
+          filters: [['row_id', '=', 'P-1']],
         },
       ],
     ])
@@ -312,7 +312,7 @@ describe('NAV-002: related filters', () => {
     // parentfield must name a real Sub-table column of the via table
     await expect(
       list(admin, ORDER, [
-        ['name', 'related', { via: LINE, column: 'part', table: PART, parentfield: 'supplier' }],
+        ['row_id', 'related', { via: LINE, column: 'part', table: PART, parentfield: 'supplier' }],
       ]),
     ).rejects.toMatchObject({ status: 417 })
     // and never travels without via

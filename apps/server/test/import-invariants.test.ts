@@ -24,7 +24,7 @@ const COLUMNS = [
 ]
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     id_pattern: idPatternFor(DT),
     columns: [
@@ -154,10 +154,10 @@ describe('IMP-I3: rehearsal writes nothing', () => {
       rows: [{ title: 'real', qty: 1 }],
     })
     expect(real.inserted).toBe(1)
-    const list = await admin.get<{ data: { name: string }[] }>(
-      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name"]')}`,
+    const list = await admin.get<{ data: { row_id: string }[] }>(
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["row_id"]')}`,
     )
     expect(list.data).toHaveLength(1)
-    expect(list.data[0].name).toMatch(/(^|\D)0*1$/)
+    expect(list.data[0].row_id).toMatch(/(^|\D)0*1$/)
   })
 })

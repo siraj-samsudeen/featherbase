@@ -1,13 +1,15 @@
 import { z } from 'zod'
 import { sql } from './db'
 import { AppError } from './errors'
-import { COLUMN_TYPE_VALUES, type TableMeta, getMeta, invalidateMeta } from './meta'
+import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
 import { logAccess } from './audit'
 import { deleteStored } from './storage'
 
 // Columns every generated table has (META-005); user columns cannot shadow them.
+// #132: `name` left this list when the primary key became `row_id`, so a user
+// Table may now carry the most natural column name there is.
 export const STANDARD_COLUMNS = [
-  'name',
+  ROW_KEY,
   'created_by',
   'created_at',
   'updated_at',
@@ -85,7 +87,7 @@ export const tableDefSchema = z.object({
   title_column: z.string().optional(),
   description: z.string().optional(),
   // #74: platform-table flag. Accepted here so migrations and seeds can set
-  // it through createTable; the public /api/doctype routes REJECT it — a
+  // it through createTable; the public /api/table_def routes REJECT it — a
   // user-created table can never claim system: true.
   system: z.boolean().optional(),
   // EDS-3: binding to an external Data Source. Set only at creation (BV3) —
@@ -124,7 +126,7 @@ export function validateIdPattern(pattern: string, columnNames: string[]): void 
 }
 
 // NAM-001: change only how new rows are named. Deliberately narrow — the full
-// PUT /api/doctype round-trip would have the client resend every column, and
+// PUT /api/table_def round-trip would have the client resend every column, and
 // an omission there silently rewrites the schema.
 export async function setIdPattern(name: string, pattern: string): Promise<TableMeta> {
   const meta = await getMeta(name)
@@ -192,7 +194,7 @@ export function tableName(table: string): string {
 function createTableDDL(def: TableDef): string | null {
   if (def.kind === 'settings') return null
   const cols: string[] = [
-    `"name" varchar(140) primary key`,
+    `"${ROW_KEY}" varchar(140) primary key`,
     `"created_by" varchar(140) not null default 'Administrator'`,
     `"created_at" timestamptz not null default now()`,
     `"updated_at" timestamptz not null default now()`,
@@ -421,7 +423,7 @@ export async function createTable(input: unknown): Promise<TableMeta> {
       })
   }
 
-  // EDS-3 (review finding 10): a binding written by hand (POST /api/doctype)
+  // EDS-3 (review finding 10): a binding written by hand (POST /api/table_def)
   // is checked against the live source — it must exist, be allowlisted, and
   // carry every mapped column — instead of persisting a Table that only
   // fails later at query time. Imported lazily: reflect.ts imports this

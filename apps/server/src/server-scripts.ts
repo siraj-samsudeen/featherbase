@@ -127,10 +127,10 @@ export async function runDocEventScripts(
     select 1 from information_schema.tables where table_name = 'server_script'`
   if (!ok) return
   const scripts = await db`
-    select name, script from server_script
+    select row_id, script from server_script
     where script_type = 'Document Event' and ref_table = ${table}
       and event = ${event} and enabled = true`
-  for (const s of scripts) runRowScript(s.script as string, row, s.name as string)
+  for (const s of scripts) runRowScript(s.script as string, row, s.row_id as string)
 }
 
 // CUST-004 (API scripts): run a named API server script. The script assigns
@@ -143,10 +143,10 @@ export async function runApiScript(
     select 1 from information_schema.tables where table_name = 'server_script'`
   if (!ok) throw new AppError('NotFoundError', `No such server script: ${method}`)
   const [s] = await sql`
-    select name, script from server_script
+    select row_id, script from server_script
     where script_type = 'API' and api_method = ${method} and enabled = true`
   if (!s) throw new AppError('NotFoundError', `No such server script: ${method}`)
 
-  const { resultJson } = run(s.script as string, 'api', JSON.stringify(args ?? {}), s.name as string)
+  const { resultJson } = run(s.script as string, 'api', JSON.stringify(args ?? {}), s.row_id as string)
   return resultJson ? (JSON.parse(resultJson) as unknown) : null
 }

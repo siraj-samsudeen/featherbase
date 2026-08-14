@@ -2,7 +2,7 @@
 // list of recipients on a cadence. The scheduler ticks daily and delivers the
 // ones that are due; each delivery attaches the rendered report (CSV/HTML).
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'Auto Email Report'`

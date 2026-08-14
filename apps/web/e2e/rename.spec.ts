@@ -15,7 +15,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     [CUST, [{ column_name: 'city', column_type: 'Data' }]],
     [ORDER, [{ column_name: 'customer', column_type: 'Reference', reference_table: CUST, in_list_view: true }]],
   ] as [string, unknown[]][]) {
-    const res = await request.post('/api/doctype', {
+    const res = await request.post('/api/table_def', {
       headers: auth,
       data: { name, id_pattern: 'prompt', columns },
     })
@@ -26,12 +26,12 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   await request.delete(`/api/table/${encodeURIComponent(CUST)}/NewCo`, { headers: auth })
   const c = await request.post(`/api/table/${encodeURIComponent(CUST)}`, {
     headers: auth,
-    data: { name: 'OldCo', city: 'X' },
+    data: { row_id: 'OldCo', city: 'X' },
   })
   if (c.status() !== 201) throw new Error(`cust: ${c.status()}`)
   const o = await request.post(`/api/table/${encodeURIComponent(ORDER)}`, {
     headers: auth,
-    data: { name: 'RN-ORD', customer: 'OldCo' },
+    data: { row_id: 'RN-ORD', customer: 'OldCo' },
   })
   if (o.status() !== 201) throw new Error(`order: ${o.status()}`)
 })

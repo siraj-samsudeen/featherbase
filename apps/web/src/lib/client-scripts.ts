@@ -3,7 +3,7 @@ import { listResource } from './api'
 
 // CUST-003: Client Scripts. Enabled scripts for a Table are fetched and
 // evaluated in the browser. Each script registers form-event handlers via a
-// minimal `frappe.ui.form.on(doctype, handlers)` API — kept Frappe-shaped
+// minimal `frappe.ui.form.on(table, handlers)` API — kept Frappe-shaped
 // deliberately, since existing Client Scripts are authored against it. The
 // FormView calls the matching handler on onload / field change / before_save.
 // A script error is caught and reported — it never crashes the Admin.
@@ -24,7 +24,7 @@ export interface CompiledScripts {
 }
 
 // Build the `frappe` API a script sees and evaluate every script against it.
-export function compileClientScripts(doctype: string, scripts: string[]): CompiledScripts {
+export function compileClientScripts(table: string, scripts: string[]): CompiledScripts {
   const handlers: HandlerMap = {}
   const errors: string[] = []
 
@@ -32,7 +32,7 @@ export function compileClientScripts(doctype: string, scripts: string[]): Compil
     ui: {
       form: {
         on(dt: string, map: HandlerMap) {
-          if (dt !== doctype) return
+          if (dt !== table) return
           for (const [key, fn] of Object.entries(map)) {
             if (typeof fn === 'function') handlers[key] = fn
           }
@@ -54,20 +54,20 @@ export function compileClientScripts(doctype: string, scripts: string[]): Compil
   return { handlers, errors }
 }
 
-export function useClientScripts(doctype: string): CompiledScripts {
+export function useClientScripts(table: string): CompiledScripts {
   const q = useQuery({
-    queryKey: ['client-scripts', doctype],
+    queryKey: ['client-scripts', table],
     queryFn: () =>
       listResource<{ name: string; script: string }>('Client Script', {
         filters: [
-          ['ref_table', '=', doctype],
+          ['ref_table', '=', table],
           ['enabled', '=', true],
         ],
-        fields: ['name', 'script'],
+        fields: ['row_id', 'script'],
         limit_page_length: 50,
       }),
     staleTime: 30_000,
   })
   const scripts = (q.data?.data ?? []).map((r) => r.script).filter(Boolean)
-  return compileClientScripts(doctype, scripts)
+  return compileClientScripts(table, scripts)
 }

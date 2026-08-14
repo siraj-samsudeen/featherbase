@@ -54,12 +54,18 @@ describe('IMP-001: sanitizeHeaders', () => {
   })
 
   test('reserved standard columns step aside', () => {
-    expect(sanitizeHeaders(['name', 'status', 'parent', 'title'])).toEqual([
-      'name_1',
+    expect(sanitizeHeaders(['row_id', 'status', 'parent', 'title'])).toEqual([
+      'row_id_1',
       'status_1',
       'parent_1',
       'title',
     ])
+  })
+
+  // #132: the row key is `row_id`, so `name` is an ordinary header again —
+  // the whole point of the rename (Student.name, Customer.name).
+  test('a header called name is no longer reserved', () => {
+    expect(sanitizeHeaders(['name', 'title'])).toEqual(['name', 'title'])
   })
 })
 
@@ -102,7 +108,7 @@ describe('IMP-002: inferColumnType', () => {
 })
 
 describe('IMP-003: inferTableDef', () => {
-  test('builds a full doctype payload with labels from original headers', () => {
+  test('builds a full table payload with labels from original headers', () => {
     const def = inferTableDef(
       'Order',
       ['Customer Name', 'Qty', 'Unit Price', 'Ship Date', 'Notes'],

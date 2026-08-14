@@ -7,7 +7,7 @@ const DT = 'Val Test Ticket'
 const TABLE = 'val_test_ticket'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data', reqd: true },
@@ -18,8 +18,8 @@ async function setup(admin: TestClient) {
   })
 }
 
-const save = (admin: TestClient, doc: Record<string, unknown>) =>
-  admin.post<Record<string, unknown>>('/api/save_doc', { doctype: DT, doc })
+const save = (admin: TestClient, row: Record<string, unknown>) =>
+  admin.post<Record<string, unknown>>('/api/save_row', { table: DT, row })
 
 describe('DOC-011: field-wise validation errors', () => {
   test('returns BOTH errors keyed by column_name for a doubly-invalid payload', async ({
@@ -46,7 +46,7 @@ describe('DOC-011: field-wise validation errors', () => {
     })
     const ok = await save(admin, { title: 'works', qty: '7', severity: 'High', due: '2026-08-01' })
     expect(ok.qty).toBe('7')
-    const [row] = await sql.unsafe(`select qty from ${TABLE} where name='${ok.name}'`)
+    const [row] = await sql.unsafe(`select qty from ${TABLE} where row_id='${ok.row_id}'`)
     expect(Number(row.qty)).toBe(7)
   })
 })
@@ -68,9 +68,9 @@ describe('META-009: Choice validates against choices', () => {
     await setup(admin)
     const doc = await save(admin, { title: 'u' })
     await expect(
-      save(admin, { name: doc.name, updated_at: doc.updated_at, severity: 'Nope' }),
+      save(admin, { row_id: doc.row_id, updated_at: doc.updated_at, severity: 'Nope' }),
     ).rejects.toMatchObject({ status: 417 })
-    const updated = await save(admin, { name: doc.name, updated_at: doc.updated_at, severity: 'High' })
+    const updated = await save(admin, { row_id: doc.row_id, updated_at: doc.updated_at, severity: 'High' })
     // update must not demand reqd columns it isn't changing
     expect(updated.title).toBe('u')
   })

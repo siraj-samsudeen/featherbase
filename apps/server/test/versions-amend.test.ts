@@ -9,12 +9,12 @@ const ROW = 'Va Line'
 // Each test creates the Tables inside its own rolled-back transaction — the
 // naming series increments roll back with it.
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: ROW,
     kind: 'sub_table',
     columns: [{ column_name: 'item', column_type: 'Data' }],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     is_submittable: true,
     id_pattern: 'VAINV-.####',
@@ -31,17 +31,17 @@ describe('DOC-009: version history', () => {
     admin,
   }) => {
     await setup(admin)
-    const doc = await admin.post<Record<string, unknown>>('/api/save_doc', {
-      doctype: DT,
-      doc: { title: 'v1', amount: 10 },
+    const doc = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: DT,
+      row: { title: 'v1', amount: 10 },
     })
 
-    await admin.post('/api/save_doc', {
-      doctype: DT,
-      doc: { name: doc.name, updated_at: doc.updated_at, title: 'v2', amount: 25 },
+    await admin.post('/api/save_row', {
+      table: DT,
+      row: { row_id: doc.row_id, updated_at: doc.updated_at, title: 'v2', amount: 25 },
     })
     const versions = await sql`
-      select data from version where ref_table = ${DT} and ref_name = ${String(doc.name)}
+      select data from version where ref_table = ${DT} and ref_name = ${String(doc.row_id)}
       order by created_at`
     expect(versions).toHaveLength(1)
     const changed = (versions[0].data as { changed: [string, unknown, unknown][] }).changed
@@ -53,29 +53,29 @@ describe('DOC-009: version history', () => {
 
     // second save -> second version
     const fresh = await admin.get<Record<string, unknown>>(
-      `/api/table/${encodeURIComponent(DT)}/${doc.name}`,
+      `/api/table/${encodeURIComponent(DT)}/${doc.row_id}`,
     )
-    await admin.post('/api/save_doc', {
-      doctype: DT,
-      doc: { name: doc.name, updated_at: fresh.updated_at, title: 'v3' },
+    await admin.post('/api/save_row', {
+      table: DT,
+      row: { row_id: doc.row_id, updated_at: fresh.updated_at, title: 'v3' },
     })
     const after = await sql`
-      select 1 from version where ref_table = ${DT} and ref_name = ${String(doc.name)}`
+      select 1 from version where ref_table = ${DT} and ref_name = ${String(doc.row_id)}`
     expect(after).toHaveLength(2)
   })
 
   test('a no-op save records no version', async ({ admin }) => {
     await setup(admin)
-    const doc = await admin.post<Record<string, unknown>>('/api/save_doc', {
-      doctype: DT,
-      doc: { title: 'same' },
+    const doc = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: DT,
+      row: { title: 'same' },
     })
-    await admin.post('/api/save_doc', {
-      doctype: DT,
-      doc: { name: doc.name, updated_at: doc.updated_at, title: 'same' },
+    await admin.post('/api/save_row', {
+      table: DT,
+      row: { row_id: doc.row_id, updated_at: doc.updated_at, title: 'same' },
     })
     const versions = await sql`
-      select 1 from version where ref_name = ${String(doc.name)}`
+      select 1 from version where ref_name = ${String(doc.row_id)}`
     expect(versions).toHaveLength(0)
   })
 })
@@ -83,50 +83,50 @@ describe('DOC-009: version history', () => {
 describe('DOC-008: amend cancelled documents', () => {
   test('amend copies columns+children with amended_from and NAME-n naming', async ({ admin }) => {
     await setup(admin)
-    const doc = await admin.post<Record<string, any>>('/api/save_doc', {
-      doctype: DT,
-      doc: { title: 'to amend', amount: 99, lines: [{ item: 'x' }, { item: 'y' }] },
+    const doc = await admin.post<Record<string, any>>('/api/save_row', {
+      table: DT,
+      row: { title: 'to amend', amount: 99, lines: [{ item: 'x' }, { item: 'y' }] },
     })
 
     // must be cancelled first
     await expect(
-      admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.name}:amend`),
+      admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}:amend`),
     ).rejects.toMatchObject({ status: 417 })
-    await admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.name}:submit`)
+    await admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}:submit`)
     await expect(
-      admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.name}:amend`),
+      admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}:amend`),
     ).rejects.toMatchObject({ status: 417 })
-    await admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.name}:cancel`)
+    await admin.post(`/api/table/${encodeURIComponent(DT)}/${doc.row_id}:cancel`)
 
     const amended = await admin.post<Record<string, any>>(
-      `/api/table/${encodeURIComponent(DT)}/${doc.name}:amend`,
+      `/api/table/${encodeURIComponent(DT)}/${doc.row_id}:amend`,
     )
-    expect(amended.name).toBe(`${doc.name}-1`)
-    expect(amended.amended_from).toBe(doc.name)
+    expect(amended.row_id).toBe(`${doc.row_id}-1`)
+    expect(amended.amended_from).toBe(doc.row_id)
     expect(amended.status).toBe('draft')
     expect(amended.title).toBe('to amend')
     expect(amended.lines.map((r: any) => r.item)).toEqual(['x', 'y'])
-    expect(amended.lines[0].name).not.toBe(doc.lines[0].name)
+    expect(amended.lines[0].row_id).not.toBe(doc.lines[0].row_id)
 
     // amended doc is editable and resubmittable
-    const edit = await admin.fetch('/api/save_doc', {
+    const edit = await admin.fetch('/api/save_row', {
       method: 'POST',
       body: JSON.stringify({
-        doctype: DT,
-        doc: { name: amended.name, updated_at: amended.updated_at, amount: 120 },
+        table: DT,
+        row: { row_id: amended.row_id, updated_at: amended.updated_at, amount: 120 },
       }),
     })
     expect(edit.status).toBe(201)
     const resubmit = await admin.fetch(
-      `/api/table/${encodeURIComponent(DT)}/${amended.name}:submit`,
+      `/api/table/${encodeURIComponent(DT)}/${amended.row_id}:submit`,
       { method: 'POST' },
     )
     expect(resubmit.status).toBe(200)
 
     // amending the same cancelled doc again derives NAME-2
     const second = await admin.post<Record<string, unknown>>(
-      `/api/table/${encodeURIComponent(DT)}/${doc.name}:amend`,
+      `/api/table/${encodeURIComponent(DT)}/${doc.row_id}:amend`,
     )
-    expect(second.name).toBe(`${doc.name}-2`)
+    expect(second.row_id).toBe(`${doc.row_id}-2`)
   })
 })

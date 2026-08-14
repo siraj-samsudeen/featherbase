@@ -12,7 +12,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const token = ((await login.json()) as { token: string }).token
   const auth = { Authorization: `Bearer ${token}` }
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers: auth,
     data: {
       name: DT,
@@ -23,12 +23,12 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
       ],
     },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   const listed = (await (
     await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, { headers: auth })
-  ).json()) as { data: { name: string }[] }
+  ).json()) as { data: { row_id: string }[] }
   for (const row of listed.data)
-    await request.delete(`/api/table/${encodeURIComponent(DT)}/${row.name}`, { headers: auth })
+    await request.delete(`/api/table/${encodeURIComponent(DT)}/${row.row_id}`, { headers: auth })
   for (const [title, stage, qty] of [
     ['alpha', 'Open', 1],
     ['bravo', 'Open', 2],

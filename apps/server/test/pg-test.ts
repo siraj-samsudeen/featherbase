@@ -16,7 +16,7 @@ export const test = createPgTest(
     app,
     sql,
     setDelegate: _setSqlDelegate,
-    // A test may create/alter DocTypes inside its transaction; after rollback
+    // A test may create/alter Tables inside its transaction; after rollback
     // the per-process meta cache would describe tables that no longer exist.
     onTeardown: () => {
       invalidateMeta()
@@ -29,7 +29,7 @@ export const test = createPgTest(
       const doc = await saveDoc(
         'User',
         {
-          name: email,
+          row_id: email,
           email,
           full_name: fullName ?? email.split('@')[0],
           enabled: true,
@@ -37,7 +37,7 @@ export const test = createPgTest(
         },
         'Administrator',
       )
-      return String(doc.name)
+      return String(doc.row_id)
     },
   },
   { defaultRoles: ['All'] },

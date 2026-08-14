@@ -12,7 +12,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const token = ((await login.json()) as { token: string }).token
   const auth = { Authorization: `Bearer ${token}` }
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers: auth,
     data: {
       name: DT,
@@ -20,10 +20,10 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
       columns: [{ column_name: 'note', column_type: 'Data', in_list_view: true }],
     },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   const doc = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: auth,
-    data: { name: DOC, note: 'searchable' },
+    data: { row_id: DOC, note: 'searchable' },
   })
   if (![201, 409].includes(doc.status())) throw new Error(`doc: ${doc.status()}`)
 })
@@ -42,7 +42,7 @@ test('#101: an empty command bar lists recent visits and replays them', async ({
   // Build a trail: a filtered list, then a row.
   const filters = encodeURIComponent(JSON.stringify([['note', '=', 'searchable']]))
   await page.goto(`/admin/${encodeURIComponent(DT)}?filters=${filters}`)
-  await expect(page.getByTestId('doctype-page')).toBeVisible()
+  await expect(page.getByTestId('table-page')).toBeVisible()
   await page.goto(`/admin/${encodeURIComponent(DT)}/${DOC}`)
   await expect(page.getByTestId('form-view')).toBeVisible()
   await page.goto('/admin')
@@ -58,7 +58,7 @@ test('#101: an empty command bar lists recent visits and replays them', async ({
   // Clicking the list entry replays the URL, filters included.
   await recents.nth(1).click()
   await expect(page).toHaveURL(/filters=/)
-  await expect(page.getByTestId('doctype-page')).toBeVisible()
+  await expect(page.getByTestId('table-page')).toBeVisible()
 
   // Keyboard: ArrowDown moves the selection, Enter replays it. After the
   // list revisit the order is [list, row], so the second entry is the row.
@@ -75,7 +75,7 @@ test('#101 P2: the sidebar and the per-table strip replay the trail', async ({ p
   await login(page)
   const filters = encodeURIComponent(JSON.stringify([['note', '=', 'searchable']]))
   await page.goto(`/admin/${encodeURIComponent(DT)}?filters=${filters}`)
-  await expect(page.getByTestId('doctype-page')).toBeVisible()
+  await expect(page.getByTestId('table-page')).toBeVisible()
   await page.goto(`/admin/${encodeURIComponent(DT)}/${DOC}`)
   await expect(page.getByTestId('form-view')).toBeVisible()
 
@@ -90,7 +90,7 @@ test('#101 P2: the sidebar and the per-table strip replay the trail', async ({ p
     .first()
     .click()
   await expect(page).toHaveURL(/filters=/)
-  await expect(page.getByTestId('doctype-page')).toBeVisible()
+  await expect(page.getByTestId('table-page')).toBeVisible()
 
   // The strip above the grid shows this table's recent row + filter set.
   await page.goto(`/admin/${encodeURIComponent(DT)}`)

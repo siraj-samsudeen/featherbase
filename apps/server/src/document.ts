@@ -2,8 +2,8 @@ import { randomBytes } from 'node:crypto'
 import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
-import { getMeta, type TableMeta } from './meta'
-import { STANDARD_COLUMNS, tableName } from './doctype-engine'
+import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
+import { STANDARD_COLUMNS, tableName } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
 import { evaluateAssignmentRules } from './assignment-rules'
@@ -71,40 +71,40 @@ export type RowValues = Record<string, unknown>
 
 const NO_COLUMN_TYPES = new Set(['Sub-table', 'Section Break', 'Column Break'])
 
-function hashName(): string {
+function hashRowId(): string {
   return randomBytes(5).toString('hex')
 }
 
-// META-006: resolve a new row's name from the Table's id_pattern rule.
+// META-006: resolve a new row's id from the Table's id_pattern rule.
 // Series counters use INSERT ... ON CONFLICT DO UPDATE inside the save
-// transaction: concurrent savers serialize on the counter row, so names are
+// transaction: concurrent savers serialize on the counter row, so ids are
 // unique and sequential; a rolled-back save also rolls back the increment.
-async function resolveName(
+async function resolveRowId(
   tx: typeof sql,
   meta: TableMeta,
   values: RowValues,
 ): Promise<string> {
-  // DOC-008: amended rows carry a pre-derived NAME-n.
-  if (values.amended_from != null && values.name)
-    return String(values.name)
+  // DOC-008: amended rows carry a pre-derived ROWID-n.
+  if (values.amended_from != null && values[ROW_KEY])
+    return String(values[ROW_KEY])
   const rule = meta.id_pattern || 'hash'
   // UPS-R4 (spec 0004): a caller may supply the row's id outright — the
-  // file's own reference codes become names, verbatim, and the series is
+  // file's own reference codes become row ids, verbatim, and the series is
   // NOT consumed for them (IMP-R6: the pattern is the promise, so unsupplied
-  // rows simply continue the series). 'prompt' keeps its required-name error
+  // rows simply continue the series). 'prompt' keeps its required-id error
   // and 'field:' keeps naming from its declared column.
   if (rule !== 'prompt' && !rule.startsWith('field:')) {
-    const supplied = String(values.name ?? '').trim()
+    const supplied = String(values[ROW_KEY] ?? '').trim()
     if (supplied) return supplied
   }
-  if (rule === 'hash') return hashName()
+  if (rule === 'hash') return hashRowId()
   if (rule === 'prompt') {
-    const name = String(values.name ?? '').trim()
-    if (!name)
-      throw new AppError('ValidationError', `${meta.name} requires a name`, {
-        name: 'Name is required',
+    const rowId = String(values[ROW_KEY] ?? '').trim()
+    if (!rowId)
+      throw new AppError('ValidationError', `${meta.name} requires a Row ID`, {
+        [ROW_KEY]: 'Row ID is required',
       })
-    return name
+    return rowId
   }
   if (rule.startsWith('field:')) {
     const columnName = rule.slice('field:'.length)
@@ -148,7 +148,7 @@ function pickFieldValues(meta: TableMeta, values: RowValues): RowValues {
     out[key] = value ?? null
   }
   if (Object.keys(errors).length)
-    throw new AppError('ValidationError', 'Unknown fields', errors)
+    throw new AppError('ValidationError', `Unknown fields: ${Object.keys(errors).join(', ')}`, errors)
   return out
 }
 
@@ -192,7 +192,7 @@ function mapDbError(meta: TableMeta, err: unknown): never {
       ? detailCols.split(', ').map((c) => c.replace(/^"|"$/g, ''))
       : e.constraint_name?.startsWith(prefix) && e.constraint_name.endsWith('_uq')
         ? [e.constraint_name.slice(prefix.length, -'_uq'.length)]
-        : ['name']
+        : [ROW_KEY]
     const label = fields.join(', ')
     throw new AppError('ValidationError', `Duplicate value for ${label}`, {
       ...Object.fromEntries(fields.map((f) => [f, `${label} must be unique`])),
@@ -224,7 +224,8 @@ async function validateLinks(
       continue
     }
     const [row] = await tx`
-      select 1 from ${tx(tableName(target))} where name = ${String(value)}`
+      select 1 from ${tx(tableName(target))}
+      where ${tx(physicalRowKey(target))} = ${String(value)}`
     if (!row)
       errors[prefix + f.column_name] = `${target} ${String(value)} does not exist`
   }
@@ -256,13 +257,14 @@ async function assertUserPermissions(
 // refuses that shape), so the parent always has a physical row to judge.
 async function assertParentReadable(row: RowValues, user: string) {
   const parentType = row.parenttype ? String(row.parenttype) : ''
-  const parentName = row.parent ? String(row.parent) : ''
+  const parentRowId = row.parent ? String(row.parent) : ''
   // An orphan has no parent to defer to; the child's own grant governs.
-  if (!parentType || !parentName) return
-  if (await isSharedWith(user, parentType, parentName, 'read')) return
+  if (!parentType || !parentRowId) return
+  if (await isSharedWith(user, parentType, parentRowId, 'read')) return
   const parentMeta = await getMeta(parentType)
   const [parent] = await sql`
-    select * from ${sql(tableName(parentType))} where name = ${parentName}`
+    select * from ${sql(tableName(parentType))}
+    where ${sql(parentMeta.row_key)} = ${parentRowId}`
   if (!parent) return
   await assertPermission(user, parentType, 'read')
   await assertDocPermission(user, parentType, 'read', String(parent.created_by))
@@ -289,22 +291,24 @@ function pickChildInputs(meta: TableMeta, values: RowValues) {
 async function saveChildren(
   tx: typeof sql,
   parentMeta: TableMeta,
-  parentName: string,
+  parentRowId: string,
   input: { columnName: string; childTable: string; rows: RowValues[] },
   user: string,
 ) {
   const childMeta = await getMeta(input.childTable)
   const table = tableName(childMeta.name)
+  const childKey = childMeta.row_key
   const existing = await tx`
-    select name from ${tx(table)}
-    where parent = ${parentName} and parenttype = ${parentMeta.name}
+    select ${tx(childKey)} from ${tx(table)}
+    where parent = ${parentRowId} and parenttype = ${parentMeta.name}
       and parentfield = ${input.columnName}`
-  const existingNames = new Set(existing.map((r) => r.name as string))
+  const existingIds = new Set(existing.map((r) => r[childKey] as string))
   const keep = new Set<string>()
   const errors: Record<string, string> = {}
 
   for (const [i, row] of input.rows.entries()) {
-    const isExisting = row.name != null && existingNames.has(String(row.name))
+    const rowId = row[ROW_KEY]
+    const isExisting = rowId != null && existingIds.has(String(rowId))
     let fieldValues: RowValues
     try {
       fieldValues = validateValues(
@@ -322,23 +326,23 @@ async function saveChildren(
     await validateLinks(tx, childMeta, fieldValues, `${input.columnName}.${i}.`)
     const now = new Date()
     if (isExisting) {
-      keep.add(String(row.name))
+      keep.add(String(rowId))
       await tx`update ${tx(table)} set ${tx({
         ...fieldValues,
         position: i + 1,
         updated_at: now,
         updated_by: user,
-      })} where name = ${String(row.name)}`
+      })} where ${tx(childKey)} = ${String(rowId)}`
     } else {
       await tx`insert into ${tx(table)} ${tx({
-        name: hashName(),
+        [childKey]: hashRowId(),
         created_by: user,
         updated_by: user,
         created_at: now,
         updated_at: now,
         status: 'draft',
         position: i + 1,
-        parent: parentName,
+        parent: parentRowId,
         parenttype: parentMeta.name,
         parentfield: input.columnName,
         ...fieldValues,
@@ -349,9 +353,9 @@ async function saveChildren(
     throw new AppError('ValidationError', `Invalid child rows for ${input.columnName}`, errors)
 
   // Rows omitted from the payload are deleted — the payload is authoritative.
-  const remove = [...existingNames].filter((n) => !keep.has(n))
+  const remove = [...existingIds].filter((n) => !keep.has(n))
   if (remove.length)
-    await tx`delete from ${tx(table)} where name in ${tx(remove)}`
+    await tx`delete from ${tx(table)} where ${tx(childKey)} in ${tx(remove)}`
 }
 
 // Credential columns that must NEVER be serialized, even though some are
@@ -364,6 +368,10 @@ async function saveChildren(
 function stripInternalColumns(meta: TableMeta, row: RowValues): RowValues {
   const known = new Set<string>(['table', ...STANDARD_COLUMNS, ...meta.columns.map((f) => f.column_name)])
   const out: RowValues = {}
+  // #132: the single physical→wire crossing. Storage may key the row under a
+  // different column (only `Table` does, see meta.ts); everything above this
+  // line — API responses, the Desk, tests — sees `row_id` and nothing else.
+  if (meta.row_key !== ROW_KEY && meta.row_key in row) out[ROW_KEY] = row[meta.row_key]
   for (const [k, v] of Object.entries(row))
     if (known.has(k) && !SENSITIVE_COLUMNS.has(k)) out[k] = v
   return out
@@ -375,7 +383,8 @@ async function loadChildren(meta: TableMeta, row: RowValues): Promise<RowValues>
     const childMeta = await getMeta(f.row_table!)
     const rows = await sql`
       select * from ${sql(tableName(f.row_table!))}
-      where parent = ${String(row.name)} and parenttype = ${meta.name}
+      where parent = ${String(row[meta.row_key] ?? row[ROW_KEY])}
+        and parenttype = ${meta.name}
         and parentfield = ${f.column_name}
       order by position`
     row[f.column_name] = rows.map((r) => stripInternalColumns(childMeta, r as RowValues))
@@ -383,7 +392,7 @@ async function loadChildren(meta: TableMeta, row: RowValues): Promise<RowValues>
   return stripInternalColumns(meta, row)
 }
 
-// Table/Column writes must go through the doctype engine (runs DDL);
+// Table/Column writes must go through the table engine (runs DDL);
 // the generic row path would silently skip table changes.
 const ENGINE_MANAGED = new Set(['Table', 'Column'])
 
@@ -399,15 +408,16 @@ export async function checkRowForInsert(meta: TableMeta, values: RowValues): Pro
       `${meta.name} is bound to data source ${meta.data_source}; bulk import is not supported on bound Tables yet`,
     )
   validateValues(meta, applyDefaults(meta, pickFieldValues(meta, values)), 'insert')
-  const name = String(values.name ?? '').trim()
-  if (meta.id_pattern === 'prompt' && !name)
-    throw new AppError('ValidationError', `${meta.name} requires a name`, {
-      name: 'Name is required',
+  const rowId = String(values[ROW_KEY] ?? '').trim()
+  if (meta.id_pattern === 'prompt' && !rowId)
+    throw new AppError('ValidationError', `${meta.name} requires a Row ID`, {
+      [ROW_KEY]: 'Row ID is required',
     })
-  if (name) {
+  if (rowId) {
     const [exists] = await sql`
-      select 1 from ${sql(tableName(meta.name))} where name = ${name}`
-    if (exists) throw new AppError('ConflictError', `${meta.name} ${name} already exists`)
+      select 1 from ${sql(tableName(meta.name))}
+      where ${sql(meta.row_key)} = ${rowId}`
+    if (exists) throw new AppError('ConflictError', `${meta.name} ${rowId} already exists`)
   }
 }
 
@@ -448,20 +458,21 @@ export async function saveDoc(
       'ValidationError',
       `${table} is a child Table; save it through its parent`,
     )
-  if (values.name != null && values.name !== '') {
+  if (values[ROW_KEY] != null && values[ROW_KEY] !== '') {
     const [exists] = await sql`
-      select 1 from ${sql(tableName(table))} where name = ${String(values.name)}`
+      select 1 from ${sql(tableName(table))}
+      where ${sql(meta.row_key)} = ${String(values[ROW_KEY])}`
     if (exists) {
       if (mode === 'insert')
-        throw new AppError('ConflictError', `${table} ${values.name} already exists`)
-      return updateDoc(meta, String(values.name), values, user)
+        throw new AppError('ConflictError', `${table} ${values[ROW_KEY]} already exists`)
+      return updateDoc(meta, String(values[ROW_KEY]), values, user)
     }
     // In upsert mode an unknown name on a generated-id Table is almost
     // certainly a mistyped update — refuse it. Insert mode is different:
     // the caller is explicitly creating, so the supplied id is intent
     // (UPS-R4) and resolveName adopts it verbatim.
     if (meta.id_pattern !== 'prompt' && values.amended_from == null && mode !== 'insert')
-      throw new AppError('NotFoundError', `${table} ${values.name} not found`)
+      throw new AppError('NotFoundError', `${table} ${values[ROW_KEY]} not found`)
   }
   if (!opts.skipPermissions) {
     await assertPermission(user, table, 'create')
@@ -493,10 +504,10 @@ export async function saveDoc(
   const [saved] = await sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
-      const name = await resolveName(stx, meta, values)
+      const rowId = await resolveRowId(stx, meta, values)
       const now = new Date()
       const row: RowValues = {
-        name,
+        [ROW_KEY]: rowId,
         created_by: user,
         updated_by: user,
         created_at: now,
@@ -521,7 +532,7 @@ export async function saveDoc(
       const finalChildInputs = pickChildInputs(meta, row)
       const dbRow = {
         ...columnValues(meta, row),
-        name: String(row.name),
+        [meta.row_key]: String(row[ROW_KEY]),
         created_by: row.created_by,
         updated_by: row.updated_by,
         created_at: row.created_at,
@@ -532,7 +543,7 @@ export async function saveDoc(
       await validateLinks(stx, meta, dbRow)
       const inserted = await tx`insert into ${tx(tbl)} ${tx(dbRow as unknown as Record<string, never>)} returning *`
       for (const input of finalChildInputs)
-        await saveChildren(stx, meta, name, input, user)
+        await saveChildren(stx, meta, rowId, input, user)
       ctx.row = { ...(inserted[0] as RowValues) }
       await runHooks('after_insert', ctx)
       await runHooks('after_save', ctx)
@@ -568,7 +579,7 @@ async function saveBoundDoc(
 ): Promise<RowValues> {
   const ctx = await writableContext(meta)
   const providedName =
-    values.name == null || values.name === '' ? null : String(values.name)
+    values[ROW_KEY] == null || values[ROW_KEY] === '' ? null : String(values[ROW_KEY])
   // Authorization BEFORE any statement reaches the source, and through the
   // bound gate: an own_rows grant can never authorize a table with no owner
   // column (review finding 1). insert-mode (or no name) is a create; a
@@ -593,7 +604,7 @@ async function saveBoundDoc(
     applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))),
     'insert',
   )
-  const row: RowValues = { name: providedName, status: 'draft', ...fieldValues }
+  const row: RowValues = { [ROW_KEY]: providedName, status: 'draft', ...fieldValues }
   const hctx: HookContext = { row, meta, user, isNew: true, tx: sql }
   await runHooks('before_insert', hctx)
   await runHooks('before_validate', hctx)
@@ -727,11 +738,11 @@ async function updateDoc(
       const sf = stateField(wf)
       if (sf in fieldValues) {
         const [current] = await sql`
-          select ${sql(sf)} as v from ${sql(table)} where name = ${name}`
+          select ${sql(sf)} as v from ${sql(table)} where ${sql(meta.row_key)} = ${name}`
         if (current && String(fieldValues[sf] ?? '') !== String(current.v ?? ''))
           throw new AppError(
             'ValidationError',
-            `${sf} is controlled by workflow "${wf.name}" — use a workflow action to change it`,
+            `${sf} is controlled by workflow "${wf.row_id}" — use a workflow action to change it`,
           )
       }
     }
@@ -743,7 +754,7 @@ async function updateDoc(
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
       const [existing] = await tx`
-        select * from ${tx(table)} where name = ${name} for update`
+        select * from ${tx(table)} where ${tx(meta.row_key)} = ${name} for update`
       if (!existing)
         throw new AppError('NotFoundError', `${meta.name} ${name} not found`)
       previous = { ...(existing as RowValues) }
@@ -792,7 +803,7 @@ async function updateDoc(
       }
       await validateLinks(stx, meta, dbRow)
       const [updated] = await tx`
-        update ${tx(table)} set ${tx(dbRow)} where name = ${name} returning *`
+        update ${tx(table)} set ${tx(dbRow)} where ${tx(meta.row_key)} = ${name} returning *`
       // Re-picked from the hooked row, as on insert. An absent key still
       // means "children untouched": the physical row spread into ctx.row
       // carries no Sub-table columns, so the key exists only if the payload
@@ -850,7 +861,7 @@ export async function recordVersion(
   if (!changed.length) return
   const now = new Date()
   await tx`insert into version ${tx({
-    name: hashName(),
+    [ROW_KEY]: hashRowId(),
     created_by: user,
     updated_by: user,
     created_at: now,
@@ -886,14 +897,14 @@ async function setStatus(
     if (wf?.states.length)
       throw new AppError(
         'ValidationError',
-        `${table} status is governed by workflow "${wf.name}" — use its actions instead of :${event === 'on_submit' ? 'submit' : 'cancel'}`,
+        `${table} status is governed by workflow "${wf.row_id}" — use its actions instead of :${event === 'on_submit' ? 'submit' : 'cancel'}`,
       )
   }
   const tbl = tableName(table)
   const [saved] = await sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     const [existing] = await tx`
-      select * from ${tx(tbl)} where name = ${name} for update`
+      select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
       throw new AppError('NotFoundError', `${table} ${name} not found`)
     await assertDocPermission(
@@ -918,7 +929,7 @@ async function setStatus(
     const [updated] = await tx`
       update ${tx(tbl)} set status = ${to}, updated_at = ${new Date()},
         updated_by = ${user}
-      where name = ${name} returning *`
+      where ${tx(meta.row_key)} = ${name} returning *`
     const ctx: HookContext = {
       row: updated as RowValues,
       old: existing as RowValues,
@@ -965,9 +976,9 @@ export async function amendDoc(
   const [{ count }] = await sql`
     select count(*)::int as count from ${sql(tableName(table))}
     where amended_from = ${name}`
-  const newName = `${name}-${(count as number) + 1}`
+  const newRowId = `${name}-${(count as number) + 1}`
 
-  const values: RowValues = { name: newName, amended_from: name }
+  const values: RowValues = { [ROW_KEY]: newRowId, amended_from: name }
   for (const f of meta.columns) {
     if (f.column_name === 'amended_from') continue
     if (f.column_type === 'Section Break' || f.column_type === 'Column Break') continue
@@ -1000,7 +1011,7 @@ export async function deleteDoc(
   await sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     const [existing] = await tx`
-      select * from ${tx(tableName(table))} where name = ${name} for update`
+      select * from ${tx(tableName(table))} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
       throw new AppError('NotFoundError', `${table} ${name} not found`)
     await assertDocPermission(user, table, 'delete', String(existing.created_by))
@@ -1020,16 +1031,17 @@ export async function deleteDoc(
       const [parentMeta] = await tx`
         select kind from table_def where name = ${parentTable}`
       if (!parentMeta || parentMeta.kind === 'settings') continue
+      const parentKey = physicalRowKey(parentTable)
       const refCols = parentMeta.kind === 'sub_table'
-        ? ['name', 'parent', 'parenttype']
-        : ['name']
+        ? [parentKey, 'parent', 'parenttype']
+        : [parentKey]
       const [ref] = await tx`
         select ${tx(refCols)} from ${tx(tableName(parentTable))}
         where ${tx(lf.column_name as string)} = ${name} limit 1`
       if (ref) {
         const holder = parentMeta.kind === 'sub_table'
           ? `${ref.parenttype as string} ${ref.parent as string}`
-          : `${parentTable} ${ref.name as string}`
+          : `${parentTable} ${ref[parentKey] as string}`
         throw new AppError(
           'ValidationError',
           `Cannot delete ${table} ${name}: it is linked from ${holder}`,
@@ -1053,13 +1065,13 @@ export async function deleteDoc(
         delete from ${tx(tableName(f.row_table!))}
         where parent = ${name} and parenttype = ${table}`
     }
-    await tx`delete from ${tx(tableName(table))} where name = ${name}`
+    await tx`delete from ${tx(tableName(table))} where ${tx(meta.row_key)} = ${name}`
   })
   // Post-commit: caches keyed on this row (e.g. a Data Source's pool and
   // the meta of Tables bound to it) may only be dropped once the delete is
   // actually visible to other connections.
   await runHooks('after_commit', {
-    row: { name },
+    row: { [ROW_KEY]: name },
     meta,
     user,
     isNew: false,
@@ -1101,13 +1113,14 @@ async function deleteBoundDoc(
     const [pm] = await sql`
       select kind, data_source from table_def where name = ${parentTable}`
     if (!pm || pm.kind === 'settings' || pm.data_source) continue
+    const parentKey = physicalRowKey(parentTable)
     const [ref] = await sql`
-      select name from ${sql(tableName(parentTable))}
+      select ${sql(parentKey)} from ${sql(tableName(parentTable))}
       where ${sql(lf.column_name as string)} = ${name} limit 1`
     if (ref)
       throw new AppError(
         'ValidationError',
-        `Cannot delete ${meta.name} ${name}: it is linked from ${parentTable} ${ref.name as string}`,
+        `Cannot delete ${meta.name} ${name}: it is linked from ${parentTable} ${ref[parentKey] as string}`,
       )
   }
   const hctx: HookContext = {
@@ -1146,21 +1159,21 @@ export async function renameDoc(
       `${table} is bound to data source ${meta.data_source}; its primary keys belong to the source and cannot be renamed here`,
     )
   const target = newName.trim()
-  if (!target) throw new AppError('ValidationError', 'New name is required', { name: 'Required' })
+  if (!target) throw new AppError('ValidationError', 'A new Row ID is required', { [ROW_KEY]: 'Required' })
   if (target === oldName) return getDoc(table, oldName, user)
 
   await sql.begin(async (tx) => {
     const tbl = tableName(table)
     const [existing] = await tx`
-      select * from ${tx(tbl)} where name = ${oldName} for update`
+      select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${oldName} for update`
     if (!existing) throw new AppError('NotFoundError', `${table} ${oldName} not found`)
     await assertDocPermission(user, table, 'write', String(existing.created_by))
     await assertUserPermissions(user, meta, existing as RowValues)
-    const [clash] = await tx`select 1 from ${tx(tbl)} where name = ${target}`
+    const [clash] = await tx`select 1 from ${tx(tbl)} where ${tx(meta.row_key)} = ${target}`
     if (clash) throw new AppError('ConflictError', `${table} ${target} already exists`)
 
     // Rename the row itself.
-    await tx`update ${tx(tbl)} set name = ${target}, updated_at = now() where name = ${oldName}`
+    await tx`update ${tx(tbl)} set ${tx(meta.row_key)} = ${target}, updated_at = now() where ${tx(meta.row_key)} = ${oldName}`
 
     // Re-point this row's own child rows to the new parent name.
     for (const f of meta.columns) {
@@ -1216,7 +1229,7 @@ export async function getDoc(
     return { table, ...filterReadFields(meta.columns, tiers, doc) }
   }
   const [row] = await sql`
-    select * from ${sql(tableName(table))} where name = ${name}`
+    select * from ${sql(tableName(table))} where ${sql(meta.row_key)} = ${name}`
   if (!row) throw new AppError('NotFoundError', `${table} ${name} not found`)
   // PERM-008: a direct share grants read even without role permission.
   const shared = await isSharedWith(user, table, name, 'read')
@@ -1240,7 +1253,13 @@ async function getSingle(meta: TableMeta, user: string): Promise<RowValues> {
   await assertPermission(user, meta.name, 'read')
   const rows = await sql`select field, value from single_value where table_name = ${meta.name}`
   const stored = new Map(rows.map((r) => [r.field as string, r.value as string | null]))
-  const row: RowValues = { table: meta.name, name: meta.name, created_by: 'Administrator', status: 'draft' }
+  // A Settings Table holds exactly one row, and its Row ID is the Table name.
+  const row: RowValues = {
+    table: meta.name,
+    [ROW_KEY]: meta.name,
+    created_by: 'Administrator',
+    status: 'draft',
+  }
   for (const f of meta.columns) {
     if (NO_COLUMN_TYPES.has(f.column_type)) continue
     const raw = stored.has(f.column_name) ? (stored.get(f.column_name) ?? null) : (f.default_value ?? null)

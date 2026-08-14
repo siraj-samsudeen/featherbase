@@ -1,3 +1,4 @@
+import { ROW_KEY } from '../meta'
 import type { ScriptReport } from '../script-report'
 import { getList } from '../query'
 
@@ -14,11 +15,11 @@ const report: ScriptReport = {
     else if (filters.enabled === 'No') f.push(['enabled', '=', false])
     const res = await getList(
       'User',
-      { fields: ['name', 'full_name', 'enabled'], filters: f, limit_page_length: 500 },
+      { fields: [ROW_KEY, 'full_name', 'enabled'], filters: f, limit_page_length: 500 },
       user,
     )
     return {
-      columns: ['name', 'full_name', 'enabled'],
+      columns: [ROW_KEY, 'full_name', 'enabled'],
       rows: res.data as Record<string, unknown>[],
     }
   },

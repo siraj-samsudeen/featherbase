@@ -366,7 +366,7 @@ document agents don't read):
 - **Implementation detail** — no schemas or component names in the spec
   body; those live in code, `design.md`, and ADRs (feather-spec's
   product-vs-tech lens). **One carve-out (trial #1):** a contract-shaped
-  rule names its address (`DELETE /api/doctype/:name`) — the route is the
+  rule names its address (`DELETE /api/table_def/:name`) — the route is the
   contract's identity, not implementation detail.
 - **Status woven into the spec body** — the spec says what *should* be
   true; the matrix says what *is proven*, stamped with when.

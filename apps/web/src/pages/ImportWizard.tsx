@@ -111,14 +111,14 @@ interface ImportTarget {
 }
 
 async function fetchTargets(): Promise<ImportTarget[]> {
-  const list = await listResource<{ name: string }>('Table', {
+  const list = await listResource<{ row_id: string }>('Table', {
     filters: [['kind', '=', 'table']],
-    fields: ['name'],
-    order_by: 'name asc',
+    fields: ['row_id'],
+    order_by: 'row_id asc',
     limit_page_length: 500,
   })
   const metas = await Promise.all(
-    list.data.map((t) => api.get<TableMeta>(`/api/table/${encodeURIComponent(t.name)}:meta`)),
+    list.data.map((t) => api.get<TableMeta>(`/api/table/${encodeURIComponent(t.row_id)}:meta`)),
   )
   return metas.map((m) => ({ name: m.name, columns: mappableColumns(m) }))
 }
@@ -454,8 +454,8 @@ const SKIP_WORDS: Record<string, string> = {
 interface RevertReport {
   restored: number
   deleted: number
-  skipped: { name: string; reason: string }[]
-  failed: { name: string; message: string }[]
+  skipped: { row_id: string; reason: string }[]
+  failed: { row_id: string; message: string }[]
 }
 
 function RevertControl({ i, table, runId }: { i: number | string; table: string; runId: string }) {
@@ -481,7 +481,7 @@ function RevertControl({ i, table, runId }: { i: number | string; table: string;
   }
 
   const skips = (r: RevertReport) =>
-    r.skipped.map((s) => `${s.name} (${SKIP_WORDS[s.reason] ?? s.reason})`).join(', ')
+    r.skipped.map((s) => `${s.row_id} (${SKIP_WORDS[s.reason] ?? s.reason})`).join(', ')
 
   if (outcome) {
     const editedAfter = outcome.skipped.filter((s) => s.reason === 'edited-after')
@@ -491,7 +491,7 @@ function RevertControl({ i, table, runId }: { i: number | string; table: string;
           Reverted: {outcome.restored} restored, {outcome.deleted} deleted
           {outcome.skipped.length > 0 && `; skipped ${skips(outcome)}`}
           {outcome.failed.length > 0 &&
-            `; failed ${outcome.failed.map((f) => `${f.name}: ${f.message}`).join('; ')}`}
+            `; failed ${outcome.failed.map((f) => `${f.row_id}: ${f.message}`).join('; ')}`}
         </span>
         {editedAfter.length > 0 && (
           <button
@@ -499,7 +499,7 @@ function RevertControl({ i, table, runId }: { i: number | string; table: string;
             data-testid={`iw-revert-override-${i}`}
             disabled={busy}
             onClick={async () => {
-              const r = await call({ override: editedAfter.map((s) => s.name) })
+              const r = await call({ override: editedAfter.map((s) => s.row_id) })
               if (r) setOutcome(r)
             }}
           >
@@ -930,7 +930,7 @@ export function ImportWizard() {
         const sheet = sheets[i]
         let rows: CoercedRow[]
         if (plan.mode === 'new') {
-          await api.post('/api/doctype', {
+          await api.post('/api/table_def', {
             name: plan.table,
             id_pattern: planIdPattern(plan),
             columns: plan.inferred.columns
@@ -990,8 +990,8 @@ export function ImportWizard() {
       const active = plans.filter((p) => p.mode !== 'skip')
       if (active.length === 1) {
         navigate({
-          to: '/admin/$doctype',
-          params: { doctype: active[0].table },
+          to: '/admin/$table',
+          params: { table: active[0].table },
           search: { filters: undefined },
         })
       }
@@ -1357,7 +1357,7 @@ export function ImportWizard() {
                                 target — the file's own codes become the ids,
                                 verbatim; the series continues for rows the
                                 file leaves blank. */}
-                            <option value="name">Row ID</option>
+                            <option value="row_id">Row ID</option>
                             {/* Label AND real column name: labels preserve
                                 however the source file spelled its headers,
                                 so the snake_case identity disambiguates. */}
@@ -1390,7 +1390,7 @@ export function ImportWizard() {
                     ),
                   ]
                   const keyLabel = (col: string) => {
-                    if (col === 'name') return 'Row ID'
+                    if (col === 'row_id') return 'Row ID'
                     const c = targetCols.find((tc) => tc.column_name === col)
                     return c?.label && c.label !== c.column_name
                       ? `${c.label} · ${c.column_name}`
@@ -1400,7 +1400,7 @@ export function ImportWizard() {
                   // on Zone Name, as last time" (UPS-J1.2), not the select's
                   // disambiguated idiom.
                   const friendly = (col: string) =>
-                    col === 'name'
+                    col === 'row_id'
                       ? 'Row ID'
                       : (targetCols.find((tc) => tc.column_name === col)?.label ?? col)
                   return (
@@ -1524,8 +1524,8 @@ export function ImportWizard() {
                     ? `Updated ${plan.result.updated} and added ${plan.result.inserted} rows in `
                     : `Imported ${plan.result.inserted} rows into `}
                   <Link
-                    to="/admin/$doctype"
-                    params={{ doctype: plan.table }}
+                    to="/admin/$table"
+                    params={{ table: plan.table }}
                     search={{ filters: undefined }}
                     className="underline"
                   >
@@ -1560,8 +1560,8 @@ export function ImportWizard() {
         <p className="mt-2 text-sm text-green-700" data-testid="iw-done">
           Import complete.{' '}
           <Link
-            to="/admin/$doctype"
-            params={{ doctype: 'Import Log' }}
+            to="/admin/$table"
+            params={{ table: 'Import Log' }}
             search={{ filters: undefined }}
             className="underline"
             data-testid="iw-history-link"

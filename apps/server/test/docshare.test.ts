@@ -10,7 +10,7 @@ async function setup(
   admin: TestClient,
   createUser: (o?: { roles?: string[] }) => Promise<TestClient>,
 ) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [{ column_name: 'body', column_type: 'Data' }],
   })
@@ -21,15 +21,15 @@ async function setup(
       body: JSON.stringify({ body: 'secret memo' }),
     })
   ).json()) as Record<string, unknown>
-  return { user, docName: String(doc.name) }
+  return { user, docName: String(doc.row_id) }
 }
 
 async function share(admin: TestClient, user: TestClient, docName: string, perms: Record<string, boolean>) {
-  const doc = await admin.post<{ name: string }>('/api/save_doc', {
-    doctype: 'Share',
-    doc: { share_table: DT, share_name: docName, user: user.user, ...perms },
+  const doc = await admin.post<{ row_id: string }>('/api/save_row', {
+    table: 'Share',
+    row: { share_table: DT, share_name: docName, user: user.user, ...perms },
   })
-  return String(doc.name)
+  return String(doc.row_id)
 }
 
 describe('PERM-008: Share', () => {

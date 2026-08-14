@@ -11,7 +11,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const auth = { Authorization: `Bearer ${token}` }
   const meta = await request.get(`/api/table/${encodeURIComponent(DT)}:meta`, { headers: auth })
   if (meta.status() === 404) {
-    await request.post('/api/doctype', {
+    await request.post('/api/table_def', {
       headers: auth,
       data: {
         name: DT,
@@ -36,7 +36,7 @@ test('UI-010: draft shows Submit; submitted shows Cancel + locks fields; cancell
     headers: { Authorization: `Bearer ${token}` },
     data: { title: 'action doc' },
   })
-  const docName = ((await created.json()) as { name: string }).name
+  const docName = ((await created.json()) as { row_id: string }).row_id
 
   await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)

@@ -8,14 +8,14 @@ test.beforeAll(async ({ request }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const token = ((await login.json()) as { token: string }).token
   // Best-effort cleanup so the create path is exercised fresh each run.
-  await request.fetch(`/api/doctype/${encodeURIComponent(NEW_DT)}`, {
+  await request.fetch(`/api/table_def/${encodeURIComponent(NEW_DT)}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   }).catch(() => {})
 })
 
-test('UI-011: create a DocType with 5 fields from the Admin; list+form work immediately', async ({ page, request }) => {
-  // Clean any prior copy directly (no delete-DocType endpoint yet)
+test('UI-011: create a Table with 5 fields from the Admin; list+form work immediately', async ({ page, request }) => {
+  // Clean any prior copy directly (no delete-Table endpoint yet)
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const token = ((await login.json()) as { token: string }).token
   const exists = await request.get(`/api/table/${encodeURIComponent(NEW_DT)}:meta`, {
@@ -30,8 +30,8 @@ test('UI-011: create a DocType with 5 fields from the Admin; list+form work imme
   await expect(page).toHaveURL(/\/admin/)
 
   // Enter the builder from the sidebar
-  await page.getByTestId('new-doctype-link').click()
-  await expect(page.getByTestId('doctype-builder')).toBeVisible()
+  await page.getByTestId('new-table-link').click()
+  await expect(page.getByTestId('table-builder')).toBeVisible()
   await page.getByTestId('dt-name').fill(NEW_DT)
 
   // NAM-002 contract: the row id is column one — a locked row above the
@@ -63,7 +63,7 @@ test('UI-011: create a DocType with 5 fields from the Admin; list+form work imme
   }
 
   await page.getByTestId('dt-create').click()
-  // Lands on the new DocType's (empty) list view
+  // Lands on the new Table's (empty) list view
   await expect(page).toHaveURL(new RegExp(`/admin/Builder%20Widget`))
   await expect(page.getByTestId('list-view')).toBeVisible()
   await expect(page.getByTestId('col-title')).toContainText('Title')
@@ -119,8 +119,8 @@ test('#128: a blank row above a bad column does not shift the blame', async ({ p
   await page.click('button[type=submit]')
   await expect(page).toHaveURL(/\/admin/)
 
-  await page.getByTestId('new-doctype-link').click()
-  await expect(page.getByTestId('doctype-builder')).toBeVisible()
+  await page.getByTestId('new-table-link').click()
+  await expect(page.getByTestId('table-builder')).toBeVisible()
   // Never created: the definition is refused at validation, before any DDL.
   await page.getByTestId('dt-name').fill('Offset Probe')
 

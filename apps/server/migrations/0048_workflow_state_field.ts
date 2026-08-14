@@ -3,7 +3,7 @@
 // keeps the auto-added `workflow_state` field. Idempotent: adds the column +
 // column_def only if missing.
 import { sql } from '../src/db'
-import { pgType } from '../src/doctype-engine'
+import { pgType } from '../src/table-engine'
 
 export async function up() {
   const [dt] = await sql`select 1 from table_def where name = 'Workflow'`

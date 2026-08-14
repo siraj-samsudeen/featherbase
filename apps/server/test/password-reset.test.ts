@@ -11,15 +11,15 @@ import type { TestClient } from 'feather-testing-postgres'
 const USER = 'pwreset-srv@x.com'
 const DISABLED = 'pwreset-disabled@x.com'
 
-async function save(admin: TestClient, doc: Record<string, unknown>) {
-  await admin.post('/api/save_doc', { doctype: 'User', doc })
+async function save(admin: TestClient, row: Record<string, unknown>) {
+  await admin.post('/api/save_row', { table: 'User', row })
 }
 
 // Each test creates its accounts inside its own sandbox transaction.
 async function setup(admin: TestClient) {
-  await save(admin, { name: USER, email: USER, full_name: 'Reset Me', enabled: true })
+  await save(admin, { row_id: USER, email: USER, full_name: 'Reset Me', enabled: true })
   await admin.post('/api/set_password', { user: USER, password: 'origpw123' })
-  await save(admin, { name: DISABLED, email: DISABLED, full_name: 'No Login', enabled: false })
+  await save(admin, { row_id: DISABLED, email: DISABLED, full_name: 'No Login', enabled: false })
 }
 
 describe('SET-002: password reset', () => {

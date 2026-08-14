@@ -1,5 +1,5 @@
 // #151: the builder's client-side column rules — the mirror of the server's
-// columnSchema/validateDef. If these drift from doctype-engine.ts, fix the
+// columnSchema/validateDef. If these drift from table-engine.ts, fix the
 // drift, don't relax the test.
 import { describe, expect, it } from 'vitest'
 import { blankColumn, checkColumn, slugify } from '../src/lib/column-rules'

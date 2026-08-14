@@ -138,7 +138,7 @@ export function mockConsentHtml(state: string, redirectUri: string, email: strin
   const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string)
   // state + redirect_uri travel as hidden inputs — a GET form discards the
   // action URL's query string, so they must be part of the form body.
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Sign in with Google (dev)</title>
+  return `<!table html><html><head><meta charset="utf-8"><title>Sign in with Google (dev)</title>
     <style>body{font-family:system-ui;background:#f4f5f6;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
     .card{background:#fff;border:1px solid #d1d8dd;border-radius:10px;padding:28px;width:340px}
     h1{font-size:16px;margin:0 0 4px} p{color:#6c7680;font-size:13px;margin:0 0 16px}
@@ -297,11 +297,11 @@ async function domainAdmitted(email: string): Promise<boolean> {
 // create one, mark it as a Google login, and return its name.
 export async function findOrCreateGoogleUser(email: string, name: string): Promise<string> {
   const [existing] = await sql`
-    select name, enabled, user_type from "user"
-    where lower(email) = ${email} or lower(name) = ${email} limit 1`
+    select row_id, enabled, user_type from "user"
+    where lower(email) = ${email} or lower(row_id) = ${email} limit 1`
   let userName: string
   if (existing) {
-    userName = existing.name as string
+    userName = existing.row_id as string
     // #137: a disabled principal stays disabled. This used to flip `enabled`
     // back on ("ensure it can sign in") BEFORE issueSession got a say — so an
     // OAuth round trip undid an administrator's disable, and every access
@@ -321,12 +321,12 @@ export async function findOrCreateGoogleUser(email: string, name: string): Promi
       throw new AppError('AuthenticationError', 'Access not provisioned for this account. Contact IT.')
     const created = await saveDoc(
       'User',
-      { name: email, email, full_name: name || email, enabled: true, roles: [] },
+      { row_id: email, email, full_name: name || email, enabled: true, roles: [] },
       'Administrator',
     )
-    userName = String(created.name)
+    userName = String(created.row_id)
   }
   // social_login is read_only (system-managed) → set it with a direct write.
-  await sql`update "user" set social_login = 'google' where name = ${userName}`
+  await sql`update "user" set social_login = 'google' where row_id = ${userName}`
   return userName
 }

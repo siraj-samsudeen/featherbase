@@ -29,33 +29,33 @@ async function install(admin: TestClient) {
     // demo's lanes. (Finding for the owner: the platform does not enforce
     // one-active-workflow-per-table.)
     await sql`update workflow set is_active = false
-      where ref_table = 'Budget Change' and name <> 'Budget Approval'`
+      where ref_table = 'Budget Change' and row_id <> 'Budget Approval'`
     // Factory policy fields and over_doa-based conditions (an older live
     // install predates them).
     await sql`update budget_book set doa_amount = 300000, escalation_dir = 'decrease'
-      where name = 'Sales Budget 2026'`
+      where row_id = 'Sales Budget 2026'`
     await sql`update budget_book set doa_amount = 500000, escalation_dir = 'increase'
-      where name = 'Opex Budget 2026'`
+      where row_id = 'Opex Budget 2026'`
     await sql`update workflow_transition set condition = '!doc.over_doa'
       where parent = 'Budget Approval' and state = 'Pending' and action = 'Approve'`
     await sql`update workflow_transition set condition = 'doc.over_doa'
       where parent = 'Budget Approval' and action = 'Send to CFO'`
     await sql`delete from budget_change_line
-      where parent in (select name from budget_change where book = any(${BOOKS}))`
+      where parent in (select row_id from budget_change where book = any(${BOOKS}))`
     await sql`delete from budget_change where book = any(${BOOKS})`
     await sql`delete from budget_version_line
-      where version in (select name from budget_version where book = any(${BOOKS}))`
+      where version in (select row_id from budget_version where book = any(${BOOKS}))`
     await sql`delete from budget_version where book = any(${BOOKS})`
-    await sql`update budget_book set lifecycle = 'working' where name = any(${BOOKS})`
-    await sql`update sales_budget_line set apr = 120000 where name = 'SBL-ADY-JUICES'`
+    await sql`update budget_book set lifecycle = 'working' where row_id = any(${BOOKS})`
+    await sql`update sales_budget_line set apr = 120000 where row_id = 'SBL-ADY-JUICES'`
     await sql`update opex_budget_line set q1 = 950000, q2 = 950000, q3 = 950000, q4 = 950000
-      where name = 'OBL-ADY-ELEC'`
+      where row_id = 'OBL-ADY-ELEC'`
     await sql`update opex_budget_line set q1 = 600000, q2 = 600000, q3 = 600000, q4 = 600000
-      where name = 'OBL-ADY-REPAIR'`
+      where row_id = 'OBL-ADY-REPAIR'`
     await sql`update opex_budget_line set q1 = 400000, q2 = 400000, q3 = 400000, q4 = 400000
-      where name = 'OBL-IT-SOFT'`
+      where row_id = 'OBL-IT-SOFT'`
     await sql`update opex_budget_line set q1 = 2500000, q2 = 2500000, q3 = 2500000, q4 = 2500000
-      where name = 'OBL-IT-SAL'`
+      where row_id = 'OBL-IT-SAL'`
     return
   }
   expect([200, 201]).toContain(res.status)
@@ -110,7 +110,7 @@ describe('budget-books-demo: the scenario world installs and its lanes work', ()
       change_type: 'revise',
       lines: [{ line_ref: 'SBL-ADY-JUICES', measure_column: 'apr', proposed_value: 95000 }],
     })
-    const name = String(change.name)
+    const name = String(change.row_id)
     // The requester cannot self-approve (no Budget Owner role)…
     await expect(wfAction(requester, name, 'Self-approve')).rejects.toMatchObject({ status: 403 })
     // …but can submit for approval.
@@ -138,7 +138,7 @@ describe('budget-books-demo: the scenario world installs and its lanes work', ()
       lines: [{ line_ref: 'OBL-IT-SOFT', measure_column: 'q3', proposed_value: 550000 }],
     })
     expect(change.crosses_owner).toBe(false)
-    await wfAction(owner, String(change.name), 'Self-approve')
+    await wfAction(owner, String(change.row_id), 'Self-approve')
     const line = await admin.get<Record<string, unknown>>(
       `/api/table/${T('Opex Budget Line')}/OBL-IT-SOFT`,
     )
@@ -166,7 +166,7 @@ describe('budget-books-demo: the scenario world installs and its lanes work', ()
     })
     expect(change.crosses_owner).toBe(true)
     // Condition gates are not bypassed even by Administrator.
-    await expect(wfAction(admin, String(change.name), 'Self-approve')).rejects.toMatchObject({
+    await expect(wfAction(admin, String(change.row_id), 'Self-approve')).rejects.toMatchObject({
       status: 417,
     })
   })
@@ -186,7 +186,7 @@ describe('budget-books-demo: the scenario world installs and its lanes work', ()
       change_type: 'revise',
       lines: [{ line_ref: 'OBL-ADY-ELEC', measure_column: 'q3', proposed_value: 1750000 }],
     })
-    const name = String(change.name)
+    const name = String(change.row_id)
     await wfAction(requester, name, 'Submit for approval')
     // The small-delta Approve's condition fails — even for the approver.
     await expect(wfAction(approver, name, 'Approve')).rejects.toMatchObject({ status: 417 })
@@ -209,22 +209,22 @@ describe('budget-books-demo: the scenario world installs and its lanes work', ()
     // Governance status: active book + the pending draft on this row.
     const gov = await admin.get<{
       book: { name: string; lifecycle: string } | null
-      pending: { name: string }[]
+      pending: { row_id: string }[]
     }>(`/api/budget/line/${T('Opex Budget Line')}/OBL-IT-SOFT`)
     expect(gov.book?.name).toBe('Opex Budget 2026')
-    expect(gov.pending.map((p) => p.name)).toContain(String(draft.name))
+    expect(gov.pending.map((p) => p.row_id)).toContain(String(draft.row_id))
     // Apply one change, then compare v0 → current. BUD-R11: the demo
     // workflow owns the gate, so approval rides a transition (the change is
     // single-owner, so Self-approve's condition holds; admin bypasses the
     // role, not the condition).
-    await wfAction(admin, String(draft.name), 'Self-approve')
+    await wfAction(admin, String(draft.row_id), 'Self-approve')
     const [v0] = await sql`
-      select name from budget_version where book = 'Opex Budget 2026' and kind = 'baseline'`
+      select row_id from budget_version where book = 'Opex Budget 2026' and kind = 'baseline'`
     const cmp = await admin.get<{
       lines: { ref_name: string; status: string; measures: Record<string, { from: number | null; to: number | null }> }[]
       unchanged: number
     }>(
-      `/api/budget/compare/${T('Opex Budget 2026')}?from=${String(v0.name)}&to=current`,
+      `/api/budget/compare/${T('Opex Budget 2026')}?from=${String(v0.row_id)}&to=current`,
     )
     expect(cmp.lines).toHaveLength(1)
     expect(cmp.lines[0].ref_name).toBe('OBL-IT-SOFT')

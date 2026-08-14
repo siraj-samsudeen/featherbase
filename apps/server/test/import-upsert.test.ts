@@ -20,7 +20,7 @@ const PATH = `/api/table/${encodeURIComponent(DT)}:import`
 const ROLE = 'Upsert Tester Role'
 
 async function setup(admin: TestClient, extra: Record<string, unknown> = {}) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     id_pattern: 'UPST-.###',
     columns: [
@@ -45,7 +45,7 @@ async function seed(admin: TestClient) {
 async function rowsByZone(admin: TestClient) {
   const list = await admin.get<{ data: Record<string, unknown>[] }>(
     `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
-      '["name","zone","pop","note","stage","updated_by","updated_at"]',
+      '["row_id","zone","pop","note","stage","updated_by","updated_at"]',
     )}&order_by=${encodeURIComponent('zone asc')}&limit_page_length=100`,
   )
   return Object.fromEntries(list.data.map((r) => [String(r.zone), r]))
@@ -117,7 +117,7 @@ describe('UPS-R1: the import boundary learns update', () => {
       `/api/table/Version?fields=${encodeURIComponent('["data"]')}&filters=${encodeURIComponent(
         JSON.stringify([
           ['ref_table', '=', DT],
-          ['ref_name', '=', String(before.Alpha.name)],
+          ['ref_name', '=', String(before.Alpha.row_id)],
         ]),
       )}`,
     )
@@ -133,10 +133,10 @@ describe('UPS-R1: the import boundary learns update', () => {
   }) => {
     await setup(admin)
     await seed(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: DT, role: ROLE, can_read: true, can_create: true },
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: DT, role: ROLE, can_read: true, can_create: true },
     })
     const user = await createUser({ roles: [ROLE] })
     const before = await rowsByZone(admin)
@@ -167,10 +167,10 @@ describe('UPS-R1: the import boundary learns update', () => {
   }) => {
     await setup(admin)
     await seed(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: DT, role: ROLE, can_read: true, can_write: true },
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: DT, role: ROLE, can_read: true, can_write: true },
     })
     const user = await createUser({ roles: [ROLE] })
     const res = await user.fetch(PATH, {
@@ -194,10 +194,10 @@ describe('UPS-R1: the import boundary learns update', () => {
     createUser,
   }) => {
     await setup(admin)
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: {
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: {
         ref_table: DT,
         role: ROLE,
         can_read: true,
@@ -451,7 +451,7 @@ describe('UPS-R3: what an update touches', () => {
     const before = await rowsByZone(admin)
     const res = await admin.post<{ updated: number; failed: { message: string }[] }>(PATH, {
       key_column: 'zone',
-      rows: [{ zone: 'Alpha', name: 'SMUGGLED-ID', pop: 1 }],
+      rows: [{ zone: 'Alpha', row_id: 'SMUGGLED-ID', pop: 1 }],
     })
     expect(res.updated).toBe(0)
     expect(res.failed).toHaveLength(1)
@@ -509,38 +509,38 @@ describe('UPS-R4: the file’s own codes as ids', () => {
     await setup(admin)
     const res = await admin.post<{ inserted: number; failed: unknown[] }>(PATH, {
       rows: [
-        { name: 'Z-07/A x', zone: 'Coded' }, // charset: verbatim incl. slash+space
-        { name: 'REF-002', zone: 'Coded2' },
+        { row_id: 'Z-07/A x', zone: 'Coded' }, // charset: verbatim incl. slash+space
+        { row_id: 'REF-002', zone: 'Coded2' },
         { zone: 'Series' }, // unsupplied — the series continues for it
       ],
     })
     expect(res.inserted).toBe(3)
     expect(res.failed).toEqual([])
     const byZone = await rowsByZone(admin)
-    expect(byZone.Coded.name).toBe('Z-07/A x')
-    expect(byZone.Coded2.name).toBe('REF-002')
+    expect(byZone.Coded.row_id).toBe('Z-07/A x')
+    expect(byZone.Coded2.row_id).toBe('REF-002')
     // IMP-R6: the pattern is the promise — and the two supplied ids burned
     // nothing, so the first series row is the FIRST of its series.
-    expect(byZone.Series.name).toBe('UPST-001')
+    expect(byZone.Series.row_id).toBe('UPST-001')
   })
 
   test('UPS-R4: on append without a key a colliding code fails by its row; as the match key it updates (UPS-J2 branch)', async ({
     admin,
   }) => {
     await setup(admin)
-    await admin.post(PATH, { rows: [{ name: 'REF-001', zone: 'First', pop: 1 }] })
+    await admin.post(PATH, { rows: [{ row_id: 'REF-001', zone: 'First', pop: 1 }] })
 
     const collide = await admin.post<{ inserted: number; failed: { index: number; message: string }[] }>(
       PATH,
-      { rows: [{ name: 'REF-001', zone: 'Second' }, { name: 'REF-003', zone: 'Third' }] },
+      { rows: [{ row_id: 'REF-001', zone: 'Second' }, { row_id: 'REF-003', zone: 'Third' }] },
     )
     expect(collide.inserted).toBe(1)
     expect(collide.failed.map((f) => f.index)).toEqual([0])
     expect(collide.failed[0].message).toContain('already exists')
 
     const upsert = await admin.post<{ updated: number; inserted: number }>(PATH, {
-      key_column: 'name',
-      rows: [{ name: 'REF-001', pop: 42 }],
+      key_column: 'row_id',
+      rows: [{ row_id: 'REF-001', pop: 42 }],
     })
     expect(upsert.updated).toBe(1)
     expect(upsert.inserted).toBe(0)

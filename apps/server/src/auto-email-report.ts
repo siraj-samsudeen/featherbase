@@ -1,3 +1,4 @@
+import { ROW_KEY } from './meta'
 import { sql } from './db'
 import { AppError } from './errors'
 import { getDoc } from './document'
@@ -26,7 +27,7 @@ export async function runReportRows(reportName: string, user: string): Promise<R
   const cfg = (report.config as { columns?: string[]; filters?: [string, string, unknown][]; group_by?: string } | null) ?? {}
   const refTable = String(report.ref_table ?? '')
   if (!refTable) throw new AppError('ValidationError', `${reportName} has no ref_table`)
-  const columns = [...new Set(['name', ...(cfg.columns ?? [])])]
+  const columns = [...new Set([ROW_KEY, ...(cfg.columns ?? [])])]
   const { data } = await getList(
     refTable,
     { fields: columns, filters: cfg.filters ?? [], limit_page_length: 500 },
@@ -104,7 +105,7 @@ export async function deliverAutoEmailReport(
     })
   }
 
-  await sql`update auto_email_report set last_sent = now(), updated_at = now() where name = ${name}`
+  await sql`update auto_email_report set last_sent = now(), updated_at = now() where row_id = ${name}`
   return { recipients: recipients.length, rows: rows.length }
 }
 
@@ -120,15 +121,15 @@ const CADENCE_MS: Record<string, number> = {
 // list of report-config names delivered. Called by the daily scheduled job and
 // exposed for a manual "run now" trigger.
 export async function runDueAutoEmailReports(now = new Date()): Promise<string[]> {
-  const rows = await sql<{ name: string; frequency: string; last_sent: Date | null }[]>`
-    select name, frequency, last_sent from auto_email_report where enabled = true`
+  const rows = await sql<{ row_id: string; frequency: string; last_sent: Date | null }[]>`
+    select row_id, frequency, last_sent from auto_email_report where enabled = true`
   const delivered: string[] = []
   for (const r of rows) {
     const gap = CADENCE_MS[r.frequency] ?? CADENCE_MS.Daily
     const due = !r.last_sent || now.getTime() - new Date(r.last_sent).getTime() >= gap
     if (!due) continue
-    await deliverAutoEmailReport(r.name)
-    delivered.push(r.name)
+    await deliverAutoEmailReport(r.row_id as string)
+    delivered.push(r.row_id as string)
   }
   return delivered
 }

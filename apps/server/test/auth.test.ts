@@ -13,9 +13,9 @@ describe('API-004: authentication', () => {
       json({ usr: 'Administrator', pwd: process.env.ADMIN_PASSWORD ?? 'admin' }),
     )
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { token: string; user: { name: string } }
+    const body = (await res.json()) as { token: string; user: { row_id: string } }
     expect(body.token.split('.')).toHaveLength(3)
-    expect(body.user.name).toBe('Administrator')
+    expect(body.user.row_id).toBe('Administrator')
   })
 
   test('login also works by email; wrong password is 401', async ({ api }) => {
@@ -29,7 +29,7 @@ describe('API-004: authentication', () => {
   })
 
   test('requests without a token are rejected; garbage tokens too', async ({ api }) => {
-    expect((await api.fetch('/api/table/DocType')).status).toBe(401)
+    expect((await api.fetch('/api/table/Table')).status).toBe(401)
     expect((await api.fetch('/api/whoami')).status).toBe(401)
     expect(
       (
@@ -41,8 +41,8 @@ describe('API-004: authentication', () => {
   })
 
   test('a valid token resolves the correct user and stamps ownership', async ({ admin }) => {
-    const me = await admin.get<{ name: string }>('/api/whoami')
-    expect(me.name).toBe('Administrator')
+    const me = await admin.get<{ row_id: string }>('/api/whoami')
+    expect(me.row_id).toBe('Administrator')
   })
 
   test('ping stays public', async ({ api }) => {

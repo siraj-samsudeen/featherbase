@@ -9,15 +9,15 @@ const DT = 'Ps Ui Target'
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const headers = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   await request.delete(`/api/table/${encodeURIComponent(DT)}/ps-doc`, { headers })
   await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
-    data: { name: 'ps-doc', title: 'hi' },
+    data: { row_id: 'ps-doc', title: 'hi' },
   })
   // Clean any prior setter.
   await request.delete(`/api/table/Metadata%20Override/${encodeURIComponent(`${DT}-title-label`)}`, { headers })
@@ -39,11 +39,11 @@ test('CUST-002: a label override shows in the form and reverts when removed', as
   await expect(label.first()).toBeVisible()
 
   // Add a Property Setter via the API (Customize-Form mechanism).
-  const ps = await request.post('/api/save_doc', {
+  const ps = await request.post('/api/save_row', {
     headers,
     data: {
-      doctype: 'Metadata Override',
-      doc: { name: `${DT}-title-label`, table_name: DT, column_name: 'title', property: 'label', value: 'Headline' },
+      table: 'Metadata Override',
+      row: { row_id: `${DT}-title-label`, table_name: DT, column_name: 'title', property: 'label', value: 'Headline' },
     },
   })
   expect([200, 201]).toContain(ps.status())

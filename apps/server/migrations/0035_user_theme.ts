@@ -1,6 +1,6 @@
 // UI-024: per-user theme preference (light/dark).
 import { sql } from '../src/db'
-import { pgType } from '../src/doctype-engine'
+import { pgType } from '../src/table-engine'
 
 export async function up() {
   const type = pgType('Choice')

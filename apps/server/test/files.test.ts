@@ -12,8 +12,8 @@ import type { TestClient } from 'feather-testing-postgres'
 // objects are real disk files — each test deletes what it uploaded in a
 // finally block (deleteStored is defensive about already-removed objects).
 //
-// NOTE: the multipart form field names (`ref_doctype`, `ref_name`) are wire
-// format and unchanged — /api/upload_file reads `body.ref_doctype` off the
+// NOTE: the multipart form field names (`ref_table`, `ref_name`) are wire
+// format and unchanged — /api/upload_file reads `body.ref_table` off the
 // form and maps it onto the File doc's `ref_table` column.
 
 async function upload(
@@ -50,7 +50,7 @@ describe('FILE-001: file upload + storage', () => {
       expect(doc.file_url).toMatch(/^\/files\/[0-9a-f]{16}_hello\.txt$/)
       expect(doc.is_private).toBe(false)
 
-      const [row] = await sql`select name from file where file_url = ${doc.file_url as string}`
+      const [row] = await sql`select row_id from file where file_url = ${doc.file_url as string}`
       expect(row).toBeDefined()
 
       const served = await api.fetch(doc.file_url as string)
@@ -104,11 +104,11 @@ describe('FILE-001: file upload + storage', () => {
     const [{ n: before }] = await sql`select count(*)::int as n from file`
 
     const row = await upload(stranger, 'x.txt', 'x', 'text/plain', {
-      ref_doctype: 'User',
+      ref_table: 'User',
       ref_name: 'Administrator',
     })
     expect(row.status).toBe(403)
-    const table = await upload(stranger, 'x.txt', 'x', 'text/plain', { ref_doctype: 'User' })
+    const table = await upload(stranger, 'x.txt', 'x', 'text/plain', { ref_table: 'User' })
     expect(table.status).toBe(403)
 
     // Refused before storage: nothing was registered on the way out.
@@ -132,7 +132,7 @@ describe('FILE-001: file upload + storage', () => {
     const uploaded: string[] = []
     try {
       const res = await upload(admin, 'attach.txt', 'attached', 'text/plain', {
-        ref_doctype: 'User',
+        ref_table: 'User',
         ref_name: 'Administrator',
       })
       expect(res.status).toBe(201)
@@ -153,7 +153,7 @@ describe('FILE-002: attachments listing + delete cleanup', () => {
   }) => {
     const uploaded: string[] = []
     try {
-      const target = { ref_doctype: 'User', ref_name: 'Guest' }
+      const target = { ref_table: 'User', ref_name: 'Guest' }
       const a = (await (await upload(admin, 'att-a.txt', 'AAA', 'text/plain', target)).json()) as
         Record<string, unknown>
       const b = (await (await upload(admin, 'att-b.txt', 'BBB', 'text/plain', target)).json()) as
@@ -164,14 +164,14 @@ describe('FILE-002: attachments listing + delete cleanup', () => {
         ['ref_table', '=', 'User'],
         ['ref_name', '=', 'Guest'],
       ])
-      const fields = encodeURIComponent(JSON.stringify(['name', 'file_name', 'file_url']))
+      const fields = encodeURIComponent(JSON.stringify(['row_id', 'file_name', 'file_url']))
       const listed = await admin.get<{ data: { file_name: string }[] }>(
         `/api/table/File?filters=${encodeURIComponent(filters)}&fields=${fields}`,
       )
       expect(listed.data.map((f) => f.file_name).sort()).toEqual(['att-a.txt', 'att-b.txt'])
 
       // Delete one File doc: the storage object must go with it…
-      await admin.delete(`/api/table/File/${a.name}`)
+      await admin.delete(`/api/table/File/${a.row_id}`)
       expect((await api.fetch(a.file_url as string)).status).toBe(404)
 
       // …while the other file is untouched.

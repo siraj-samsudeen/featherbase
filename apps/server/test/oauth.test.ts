@@ -91,14 +91,14 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     // file URLs carry the literal token).
     const redeemed = await redeem(api, handoffCode(res), sidCookie(res))
     expect(redeemed.status).toBe(200)
-    const session = (await redeemed.json()) as { token: string; user: { name: string } }
-    expect(session.user.name).toBe('new.person@gmail.com')
+    const session = (await redeemed.json()) as { token: string; user: { row_id: string } }
+    expect(session.user.row_id).toBe('new.person@gmail.com')
     // The token is a real session: it authenticates as that user.
     const whoami = await api.fetch('/api/whoami', {
       headers: { authorization: `Bearer ${session.token}` },
     })
     expect(whoami.status).toBe(200)
-    expect(((await whoami.json()) as { name: string }).name).toBe('new.person@gmail.com')
+    expect(((await whoami.json()) as { row_id: string }).row_id).toBe('new.person@gmail.com')
 
     const [user] = await sql`
       select social_login, enabled from "user" where email = 'new.person@gmail.com'`
@@ -149,7 +149,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   test('an existing user signs in even off-domain (provisioned deliberately)', async ({ api }) => {
     await saveDoc(
       'User',
-      { name: 'contractor@outside.io', email: 'contractor@outside.io', enabled: true, roles: [] },
+      { row_id: 'contractor@outside.io', email: 'contractor@outside.io', enabled: true, roles: [] },
       'Administrator',
     )
     await setAllowedDomains('jeyarama.com')
@@ -201,7 +201,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
       else process.env.ALLOW_MOCK_OAUTH = prev
     }
     // Nothing was provisioned by any of it.
-    const [row] = await sql`select 1 from "user" where name = 'Administrator' and social_login = 'google'`
+    const [row] = await sql`select 1 from "user" where row_id = 'Administrator' and social_login = 'google'`
     expect(row).toBeUndefined()
   })
 
@@ -315,7 +315,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     const approveTo = (redirect_uri: string) =>
       api.fetch(
         '/api/oauth/mock/approve?' +
-          new URLSearchParams({ state, redirect_uri, email: 'Administrator', name: 'x' }).toString(),
+          new URLSearchParams({ state, redirect_uri, email: 'Administrator', row_id: 'x' }).toString(),
         { headers: { cookie } },
       )
 

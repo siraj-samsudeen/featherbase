@@ -20,7 +20,7 @@ function PortalShell({ children }: { children: React.ReactNode }) {
           <span className="text-sm font-semibold text-[var(--color-ink)]">Portal</span>
         </div>
         <div className="flex items-center gap-3 text-xs text-[var(--color-ink-muted)]">
-          <span data-testid="portal-user">{user?.full_name || user?.name}</span>
+          <span data-testid="portal-user">{user?.full_name || user?.row_id}</span>
           <button
             data-testid="portal-logout"
             onClick={() => {
@@ -38,20 +38,20 @@ function PortalShell({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function PortalListPage({ doctype }: { doctype: string }) {
-  const meta = useMeta(doctype)
+export function PortalListPage({ table }: { table: string }) {
+  const meta = useMeta(table)
   const listColumns = (meta.data?.columns ?? []).filter(
     (c) => c.in_list_view && !NO_COLUMN_TYPES.has(c.column_type) && c.column_type !== 'Sub-table',
   )
   const columns = listColumns.length ? listColumns.map((c) => c.column_name) : []
 
   const rows = useQuery({
-    queryKey: ['portal-list', doctype, columns],
+    queryKey: ['portal-list', table, columns],
     enabled: Boolean(meta.data),
     queryFn: () =>
       // The API scopes this to the caller's own rows via own_rows_only.
-      listResource<Row>(doctype, {
-        fields: [...new Set(['name', ...columns])],
+      listResource<Row>(table, {
+        fields: [...new Set(['row_id', ...columns])],
         order_by: 'updated_at desc',
         limit_page_length: 200,
       }),
@@ -63,9 +63,9 @@ export function PortalListPage({ doctype }: { doctype: string }) {
   return (
     <PortalShell>
       <h1 className="mb-4 text-xl font-semibold text-[var(--color-ink)]" data-testid="portal-title">
-        My {doctype}
+        My {table}
       </h1>
-      {meta.isError && <p className="text-sm text-red-600" data-testid="portal-error">Cannot load {doctype}</p>}
+      {meta.isError && <p className="text-sm text-red-600" data-testid="portal-error">Cannot load {table}</p>}
       <div className="fc-card overflow-x-auto">
         <table className="w-full text-sm" data-testid="portal-list">
           <thead className="bg-[var(--color-subtle)] text-left text-xs text-[var(--color-ink-muted)]">
@@ -78,14 +78,14 @@ export function PortalListPage({ doctype }: { doctype: string }) {
           </thead>
           <tbody>
             {rows.data?.data.map((row) => (
-              <tr key={String(row.name)} className="border-t border-[var(--color-border)]" data-testid="portal-row">
+              <tr key={String(row.row_id)} className="border-t border-[var(--color-border)]" data-testid="portal-row">
                 <td className="px-3 py-1.5">
                   <Link
-                    to="/portal/$doctype/$name"
-                    params={{ doctype, name: String(row.name) }}
+                    to="/portal/$table/$name"
+                    params={{ table, name: String(row.row_id) }}
                     className="text-[var(--color-brand)] hover:underline"
                   >
-                    {String(row.name)}
+                    {String(row.row_id)}
                   </Link>
                 </td>
                 {columns.map((c) => (
@@ -105,12 +105,12 @@ export function PortalListPage({ doctype }: { doctype: string }) {
   )
 }
 
-export function PortalRowPage({ doctype, name }: { doctype: string; name: string }) {
-  const meta = useMeta(doctype)
+export function PortalRowPage({ table, name }: { table: string; name: string }) {
+  const meta = useMeta(table)
   const doc = useQuery({
     retry: false,
-    queryKey: ['portal-doc', doctype, name],
-    queryFn: () => api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
+    queryKey: ['portal-doc', table, name],
+    queryFn: () => api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`),
   })
 
   const forbidden = doc.error instanceof ApiError && (doc.error.status === 403 || doc.error.status === 404)
@@ -121,8 +121,8 @@ export function PortalRowPage({ doctype, name }: { doctype: string; name: string
 
   return (
     <PortalShell>
-      <Link to="/portal/$doctype" params={{ doctype }} className="mb-4 inline-block text-sm text-[var(--color-brand)] hover:underline">
-        ← Back to my {doctype}
+      <Link to="/portal/$table" params={{ table }} className="mb-4 inline-block text-sm text-[var(--color-brand)] hover:underline">
+        ← Back to my {table}
       </Link>
       {forbidden ? (
         <div className="fc-card p-6 text-center" data-testid="portal-forbidden">

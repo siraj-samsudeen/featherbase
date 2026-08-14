@@ -13,10 +13,10 @@ const FIELD = 'srv_custom_tag'
 // The legacy suite chained state across tests; under the sandbox each test
 // replays the steps it depends on (create the field, set the value) itself.
 async function addCustomField(admin: TestClient) {
-  await admin.post('/api/save_doc', {
-    doctype: 'Custom Field',
-    doc: {
-      name: `User-${FIELD}`,
+  await admin.post('/api/save_row', {
+    table: 'Custom Field',
+    row: {
+      row_id: `User-${FIELD}`,
       dt: 'User',
       column_name: FIELD,
       label: 'Custom Tag',
@@ -38,12 +38,12 @@ describe('CUST-001: custom fields', () => {
   test('adds a field to User that appears in meta and round-trips through the API', async ({
     admin,
   }) => {
-    const res = await admin.fetch('/api/save_doc', {
+    const res = await admin.fetch('/api/save_row', {
       method: 'POST',
       body: JSON.stringify({
-        doctype: 'Custom Field',
-        doc: {
-          name: `User-${FIELD}`,
+        table: 'Custom Field',
+        row: {
+          row_id: `User-${FIELD}`,
           dt: 'User',
           column_name: FIELD,
           label: 'Custom Tag',
@@ -67,7 +67,7 @@ describe('CUST-001: custom fields', () => {
     })
     expect(upd.status).toBe(200)
     const read = await admin.get<Record<string, unknown>>(
-      `/api/table/User/Administrator?fields=${encodeURIComponent(JSON.stringify(['name', FIELD]))}`,
+      `/api/table/User/Administrator?fields=${encodeURIComponent(JSON.stringify(['row_id', FIELD]))}`,
     )
     expect(read[FIELD]).toBe('vip')
   })
@@ -108,7 +108,7 @@ describe('CUST-001: custom fields', () => {
     invalidateMeta('User')
     expect((await getMeta('User')).columns.some((f) => f.column_name === FIELD)).toBe(false)
     // Column still present with data (non-destructive).
-    const [row] = await sql.unsafe(`select ${FIELD} from "user" where name = 'Administrator'`)
+    const [row] = await sql.unsafe(`select ${FIELD} from "user" where row_id = 'Administrator'`)
     expect(row[FIELD]).toBe('vip')
   })
 })

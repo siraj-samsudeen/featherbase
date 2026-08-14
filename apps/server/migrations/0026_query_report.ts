@@ -2,7 +2,7 @@
 // report_type (Report Builder | Query Report) and the query text. Idempotent:
 // only inserts column_defs that are missing.
 import { sql } from '../src/db'
-import { pgType } from '../src/doctype-engine'
+import { pgType } from '../src/table-engine'
 
 const NEW_COLUMNS = [
   { column_name: 'report_type', column_type: 'Choice', label: 'Report Type', choices: 'Report Builder\nQuery Report', default_value: 'Report Builder' },

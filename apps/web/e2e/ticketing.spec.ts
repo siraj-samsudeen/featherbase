@@ -37,12 +37,12 @@ let name = ''
 test.beforeAll(async ({ request }) => {
   await ensureHelpdeskStructure(request)
   const H = { Authorization: `Bearer ${await token(request)}` }
-  const r = await request.post('/api/save_doc', {
+  const r = await request.post('/api/save_row', {
     headers: H,
-    data: { doctype: 'HD Ticket', doc: { subject: SUBJECT } },
+    data: { table: 'HD Ticket', row: { subject: SUBJECT } },
   })
   if (r.status() !== 201) throw new Error(`seed ticket: ${r.status()} ${await r.text()}`)
-  name = ((await r.json()) as { name: string }).name
+  name = ((await r.json()) as { row_id: string }).row_id
 })
 
 test.afterAll(async ({ request }) => {

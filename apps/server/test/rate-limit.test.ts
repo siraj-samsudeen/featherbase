@@ -14,10 +14,10 @@ const BUDGET = 3
 // Each test creates the budgeted user inside its own sandbox transaction.
 // The harness clears rate-limit windows + budget caches after every test.
 async function setup(admin: TestClient) {
-  await admin.post('/api/save_doc', {
-    doctype: 'User',
-    doc: {
-      name: USER,
+  await admin.post('/api/save_row', {
+    table: 'User',
+    row: {
+      row_id: USER,
       email: USER,
       enabled: true,
       api_rate_limit: BUDGET,

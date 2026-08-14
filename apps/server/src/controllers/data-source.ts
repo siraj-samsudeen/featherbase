@@ -18,7 +18,7 @@ const controller: TableController = {
       // write/create on Data Source could otherwise repoint connection env
       // vars, roots, access mode and allowlists (review finding 9).
       await assertSystemManager(user)
-      const name = String(row.name ?? '')
+      const name = String(row.row_id ?? '')
       if (!/^[a-z][a-z0-9-]*$/.test(name))
         throw new AppError('ValidationError', 'Invalid data source name', {
           name: 'Use lowercase letters, digits and hyphens, starting with a letter',
@@ -56,18 +56,18 @@ const controller: TableController = {
     // still-committed OLD row — so a source flipped to read_only could stay
     // writable indefinitely. after_commit runs once the new row is visible.
     after_commit: async ({ row }) => {
-      invalidateSources(String(row.name))
+      invalidateSources(String(row.row_id))
       // Bound Tables cache source_access/source_engine/source_writable.
       invalidateMeta()
     },
     on_trash: async ({ row, tx, user }) => {
       await assertSystemManager(user)
       const bound = await tx`
-        select name from table_def where data_source = ${String(row.name)} limit 1`
+        select name from table_def where data_source = ${String(row.row_id)} limit 1`
       if (bound.length)
         throw new AppError(
           'ValidationError',
-          `Data source ${row.name} still has bound Tables (e.g. ${bound[0].name}); delete them first`,
+          `Data source ${row.row_id} still has bound Tables (e.g. ${bound[0].name}); delete them first`,
         )
       // Cache drop happens in after_commit, not here.
     },

@@ -64,7 +64,7 @@ const BOUND = 'Sec Account'
 async function bindAccount(admin: TestClient, access = 'read_write'): Promise<void> {
   invalidateSources()
   await admin.post('/api/table/Data%20Source', {
-    name: 'sec-fixture',
+    row_id: 'sec-fixture',
     engine: 'postgres',
     url_env: EXT_URL_ENV,
     default_schema: 'sec_fixture',
@@ -85,10 +85,10 @@ async function userWith(
   perm: Record<string, unknown>,
 ): Promise<TestClient> {
   const role = 'Sec Role'
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: role } })
-  await admin.post('/api/save_doc', {
-    doctype: 'Permission',
-    doc: { ref_table: BOUND, role, ...perm },
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: role } })
+  await admin.post('/api/save_row', {
+    table: 'Permission',
+    row: { ref_table: BOUND, role, ...perm },
   })
   return createUser({ roles: [role] })
 }
@@ -145,15 +145,15 @@ describe('finding 1: bound tables honor own-rows and Data Scope rules', () => {
     await bindAccount(admin)
     const user = await userWith(admin, createUser, { can_read: true })
     // Restrict the user to ACC-A of the bound Table itself.
-    await admin.post('/api/save_doc', {
-      doctype: 'Data Scope',
-      doc: { user: user.user, allow_table: BOUND, for_value: 'ACC-A' },
+    await admin.post('/api/save_row', {
+      table: 'Data Scope',
+      row: { user: user.user, allow_table: BOUND, for_value: 'ACC-A' },
     })
     const list = (await user.get(
-      `/api/table/${encodeURIComponent(BOUND)}?fields=${encodeURIComponent('["name","label"]')}`,
-    )) as { data: { name: string }[]; total: number }
+      `/api/table/${encodeURIComponent(BOUND)}?fields=${encodeURIComponent('["row_id","label"]')}`,
+    )) as { data: { row_id: string }[]; total: number }
     expect(list.total).toBe(1)
-    expect(list.data[0].name).toBe('ACC-A')
+    expect(list.data[0].row_id).toBe('ACC-A')
 
     const count = (await user.get(`/api/table/${encodeURIComponent(BOUND)}:count`)) as {
       count: number
@@ -184,7 +184,7 @@ describe('finding 2: credential-named source columns never surface', () => {
     expect(meta.columns.map((c) => c.column_name)).not.toContain('api_key')
 
     const list = (await admin.get(
-      `/api/table/${encodeURIComponent(BOUND)}?fields=${encodeURIComponent('["name","label"]')}`,
+      `/api/table/${encodeURIComponent(BOUND)}?fields=${encodeURIComponent('["row_id","label"]')}`,
     )) as { data: Record<string, unknown>[] }
     expect(JSON.stringify(list)).not.toContain('sk-alpha-secret')
 
@@ -252,7 +252,7 @@ describe('finding 4: same-named tables in two schemas', () => {
   }) => {
     invalidateSources()
     await admin.post('/api/table/Data%20Source', {
-      name: 'sec-fixture',
+      row_id: 'sec-fixture',
       engine: 'postgres',
       url_env: EXT_URL_ENV,
       access: 'read_only',
@@ -277,10 +277,10 @@ describe('finding 4: same-named tables in two schemas', () => {
     >
     expect(meta.external_schema).toBe('sec_archive')
     const list = (await admin.get(
-      `/api/table/${encodeURIComponent(name)}?fields=${encodeURIComponent('["name"]')}`,
-    )) as { data: { name: string }[]; total: number }
+      `/api/table/${encodeURIComponent(name)}?fields=${encodeURIComponent('["row_id"]')}`,
+    )) as { data: { row_id: string }[]; total: number }
     expect(list.total).toBe(1)
-    expect(list.data[0].name).toBe('OLD-1')
+    expect(list.data[0].row_id).toBe('OLD-1')
   })
 
   test('a same-named PK constraint on another table does not corrupt pk detection', async ({
@@ -293,7 +293,7 @@ describe('finding 4: same-named tables in two schemas', () => {
     try {
       invalidateSources()
       await admin.post('/api/table/Data%20Source', {
-        name: 'sec-fixture',
+        row_id: 'sec-fixture',
         engine: 'postgres',
         url_env: EXT_URL_ENV,
         access: 'read_only',
@@ -318,13 +318,13 @@ describe('re-review findings', () => {
   }) => {
     await bindAccount(admin)
     // A Reference column the Data Scope restricts: region → Sec Region.
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: 'Sec Region',
       id_pattern: 'prompt',
       columns: [{ column_name: 'label', column_type: 'Data' }],
     })
     for (const r of ['north', 'south'])
-      await admin.post('/api/save_doc', { doctype: 'Sec Region', doc: { name: r } })
+      await admin.post('/api/save_row', { table: 'Sec Region', row: { row_id: r } })
     // Re-point the bound Table's region column at it.
     const meta = (await admin.get(`/api/table/${encodeURIComponent(BOUND)}:meta`)) as {
       columns: { column_name: string; column_type: string; source_column: string | null }[]
@@ -338,9 +338,9 @@ describe('re-review findings', () => {
       can_read: true,
       can_write: true,
     })
-    await admin.post('/api/save_doc', {
-      doctype: 'Data Scope',
-      doc: { user: user.user, allow_table: 'Sec Region', for_value: 'north' },
+    await admin.post('/api/save_row', {
+      table: 'Data Scope',
+      row: { user: user.user, allow_table: 'Sec Region', for_value: 'north' },
     })
     expect(meta.columns.some((c) => c.column_name === 'region')).toBe(true)
 
@@ -373,7 +373,7 @@ describe('re-review findings', () => {
     const enc = encodeURIComponent(BOUND)
 
     await expect(
-      user.get(`/api/table/${enc}?fields=${encodeURIComponent('["name","region"]')}`),
+      user.get(`/api/table/${enc}?fields=${encodeURIComponent('["row_id","region"]')}`),
     ).rejects.toMatchObject({ status: 417 })
     await expect(
       user.get(`/api/table/${enc}?filters=${encodeURIComponent('[["region","=","north"]]')}`),
@@ -394,7 +394,7 @@ describe('re-review findings', () => {
   }) => {
     invalidateSources()
     await admin.post('/api/table/Data%20Source', {
-      name: 'sec-fixture',
+      row_id: 'sec-fixture',
       engine: 'postgres',
       url_env: EXT_URL_ENV,
       default_schema: 'sec_fixture',
@@ -418,10 +418,10 @@ describe('re-review findings', () => {
     createUser,
   }) => {
     const role = 'Sec Src Role'
-    await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: role } })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: {
+    await admin.post('/api/save_row', { table: 'Role', row: { row_id: role } })
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: {
         ref_table: 'Data Source',
         role,
         can_read: true,
@@ -433,7 +433,7 @@ describe('re-review findings', () => {
     const user = await createUser({ roles: [role] })
     await expect(
       user.post('/api/table/Data%20Source', {
-        name: 'rogue-source',
+        row_id: 'rogue-source',
         engine: 'postgres',
         url_env: EXT_URL_ENV,
         access: 'read_write',
@@ -447,7 +447,7 @@ describe('re-review findings', () => {
     await bindAccount(admin)
     // Creation-time: the hand-written binding is refused outright.
     await expect(
-      admin.post('/api/doctype', {
+      admin.post('/api/table_def', {
         name: 'Sec Modleak',
         data_source: 'sec-fixture',
         external_schema: 'sec_fixture',
@@ -464,7 +464,7 @@ describe('re-review findings', () => {
     const enc = encodeURIComponent(BOUND)
     await expect(admin.get(`/api/table/${enc}/ACC-A`)).rejects.toMatchObject({ status: 417 })
     await expect(
-      admin.get(`/api/table/${enc}?fields=${encodeURIComponent('["name","label"]')}`),
+      admin.get(`/api/table/${enc}?fields=${encodeURIComponent('["row_id","label"]')}`),
     ).rejects.toMatchObject({ status: 417 })
   })
 
@@ -490,7 +490,7 @@ describe('re-review findings', () => {
   test('finding 10: a hand-written binding is validated against the source', async ({ admin }) => {
     invalidateSources()
     await admin.post('/api/table/Data%20Source', {
-      name: 'sec-fixture',
+      row_id: 'sec-fixture',
       engine: 'postgres',
       url_env: EXT_URL_ENV,
       default_schema: 'sec_fixture',
@@ -498,7 +498,7 @@ describe('re-review findings', () => {
     })
     // A column that does not exist on the relation.
     await expect(
-      admin.post('/api/doctype', {
+      admin.post('/api/table_def', {
         name: 'Sec Handwritten',
         data_source: 'sec-fixture',
         external_schema: 'sec_fixture',
@@ -509,7 +509,7 @@ describe('re-review findings', () => {
     ).rejects.toMatchObject({ status: 417 })
     // A relation that does not exist at all.
     await expect(
-      admin.post('/api/doctype', {
+      admin.post('/api/table_def', {
         name: 'Sec Ghost',
         data_source: 'sec-fixture',
         external_schema: 'sec_fixture',
@@ -520,7 +520,7 @@ describe('re-review findings', () => {
     ).rejects.toMatchObject({ status: 417 })
     // An unknown data source.
     await expect(
-      admin.post('/api/doctype', {
+      admin.post('/api/table_def', {
         name: 'Sec Nosource',
         data_source: 'does-not-exist',
         external_table: 'account',
@@ -537,10 +537,10 @@ describe('round 3: global search survives bound Tables', () => {
     // Before the fix this threw 42P01 (no physical table) and the whole
     // typeahead died the moment any Table was reflected.
     const res = (await admin.get('/api/search?q=Alpha')) as {
-      results: { doctype: string }[]
+      results: { table: string }[]
     }
     expect(Array.isArray(res.results)).toBe(true)
-    expect(res.results.every((r) => r.doctype !== BOUND)).toBe(true)
+    expect(res.results.every((r) => r.table !== BOUND)).toBe(true)
   })
 })
 
@@ -550,7 +550,7 @@ describe('main-merge interactions: related filters and :aggregate vs bound Table
   }) => {
     await bindAccount(admin)
     // A native table whose Reference points at the bound one.
-    await admin.post('/api/doctype', {
+    await admin.post('/api/table_def', {
       name: 'Sec Native Ref',
       columns: [
         { column_name: 'title', column_type: 'Data' },

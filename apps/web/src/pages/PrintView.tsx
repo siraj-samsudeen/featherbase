@@ -6,7 +6,7 @@ import { NO_COLUMN_TYPES, useMeta, type ColumnDef, type TableMeta } from '../lib
 type Row = Record<string, unknown>
 
 interface PrintFormat {
-  name: string
+  row_id: string
   is_default: boolean
   template: string
   letter_head?: string | null
@@ -16,7 +16,7 @@ interface PrintFormat {
 // ordinary Table. It is applied to any printed row — the one marked
 // is_default, one named on the Print Format, or one chosen here.
 interface LetterHead {
-  name: string
+  row_id: string
   is_default: boolean
   header_html: string
   footer_html: string
@@ -34,34 +34,34 @@ function interpolate(template: string, doc: Row): string {
 }
 
 // PRN-001: clean, printable rendering of any row from its metadata —
-// no app chrome (navbar/sidebar). Rendered at /print/:doctype/:name so it
+// no app chrome (navbar/sidebar). Rendered at /print/:table/:name so it
 // sits outside the Admin layout. PRN-002: an optional named/default Print
 // Format template overrides the auto layout.
 export function PrintView({
-  doctype,
+  table,
   name,
   format,
   onFormatChange,
 }: {
-  doctype: string
+  table: string
   name: string
   format?: string
   onFormatChange?: (name: string | undefined) => void
 }) {
-  const meta = useMeta(doctype)
+  const meta = useMeta(table)
   const doc = useQuery({
-    queryKey: ['doc', doctype, name],
+    queryKey: ['doc', table, name],
     enabled: Boolean(meta.data),
     queryFn: () =>
-      api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
+      api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`),
   })
   const formats = useQuery({
-    queryKey: ['print-formats', doctype],
+    queryKey: ['print-formats', table],
     queryFn: () =>
       listResource<PrintFormat>('Print Format', {
-        filters: [['ref_table', '=', doctype]],
-        fields: ['name', 'is_default', 'template', 'letter_head'],
-        order_by: 'name asc',
+        filters: [['ref_table', '=', table]],
+        fields: ['row_id', 'is_default', 'template', 'letter_head'],
+        order_by: 'row_id asc',
         limit_page_length: 100,
       }),
   })
@@ -69,8 +69,8 @@ export function PrintView({
     queryKey: ['letter-heads'],
     queryFn: () =>
       listResource<LetterHead>('Letter Head', {
-        fields: ['name', 'is_default', 'header_html', 'footer_html'],
-        order_by: 'name asc',
+        fields: ['row_id', 'is_default', 'header_html', 'footer_html'],
+        order_by: 'row_id asc',
         limit_page_length: 100,
       }),
   })
@@ -80,7 +80,7 @@ export function PrintView({
   if (meta.isLoading || doc.isLoading)
     return <p className="p-8 text-sm text-gray-500">Loading…</p>
   if (meta.isError || doc.isError)
-    return <p className="p-8 text-sm text-red-600">Cannot load {doctype} {name}</p>
+    return <p className="p-8 text-sm text-red-600">Cannot load {table} {name}</p>
 
   const m = meta.data!
   const d = doc.data!
@@ -91,7 +91,7 @@ export function PrintView({
   const active =
     format === 'standard'
       ? undefined
-      : (format && formatList.find((f) => f.name === format)) ||
+      : (format && formatList.find((f) => f.row_id === format)) ||
         (format === undefined ? formatList.find((f) => f.is_default) : undefined)
   const fmt = (v: unknown) => {
     if (v == null || v === '') return '—'
@@ -107,7 +107,7 @@ export function PrintView({
       ? undefined
       : lhList.find(
           (l) =>
-            l.name === (letterHeadChoice ?? active?.letter_head ?? undefined),
+            l.row_id === (letterHeadChoice ?? active?.letter_head ?? undefined),
         ) ?? (letterHeadChoice === undefined ? lhList.find((l) => l.is_default) : undefined)
 
   return (
@@ -117,7 +117,7 @@ export function PrintView({
     >
       <div className="mb-6 flex items-start justify-between border-b border-[var(--color-border-strong)] pb-4">
         <div>
-          <h1 className="text-2xl font-semibold">{doctype}</h1>
+          <h1 className="text-2xl font-semibold">{table}</h1>
           <p className="text-sm text-[var(--color-ink-muted)]" data-testid="print-docname">
             {name}
           </p>
@@ -125,15 +125,15 @@ export function PrintView({
         <div className="flex items-center gap-2 print:hidden">
           {formatList.length > 0 && (
             <select
-              value={active?.name ?? 'standard'}
+              value={active?.row_id ?? 'standard'}
               onChange={(e) => onFormatChange?.(e.target.value)}
               className="fc-input w-44"
               data-testid="print-format-picker"
             >
               <option value="standard">Standard (auto)</option>
               {formatList.map((f) => (
-                <option key={f.name} value={f.name}>
-                  {f.name}
+                <option key={f.row_id} value={f.row_id}>
+                  {f.row_id}
                   {f.is_default ? ' (default)' : ''}
                 </option>
               ))}
@@ -151,8 +151,8 @@ export function PrintView({
               <option value="auto">Letterhead: default</option>
               <option value="none">No letterhead</option>
               {lhList.map((l) => (
-                <option key={l.name} value={l.name}>
-                  {l.name}
+                <option key={l.row_id} value={l.row_id}>
+                  {l.row_id}
                   {l.is_default ? ' (default)' : ''}
                 </option>
               ))}
@@ -175,7 +175,7 @@ export function PrintView({
       {active ? (
         <div
           data-testid="print-format-body"
-          data-format={active.name}
+          data-format={active.row_id}
           dangerouslySetInnerHTML={{ __html: interpolate(active.template ?? '', d) }}
         />
       ) : (
@@ -264,7 +264,7 @@ function AutoLayout({
 
 // Sub-table rows carry framework columns; only show meaningful ones in print.
 const HIDDEN_CHILD_COLS = new Set([
-  'name',
+  'row_id',
   'created_by',
   'created_at',
   'updated_at',

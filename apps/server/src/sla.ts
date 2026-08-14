@@ -15,7 +15,7 @@ export interface SlaPriorityRow {
 }
 
 export interface ActiveSla {
-  name: string
+  row_id: string
   ref_table: string
   priority_field: string
   fulfilled_states: string[]
@@ -30,17 +30,17 @@ export async function getActiveSla(table: string): Promise<ActiveSla | null> {
     where table_name = 'service_level_agreement'`
   if (!tableOk) return null
   const [sla] = await sql`
-    select name, ref_table, priority_field, fulfilled_states, escalation_role
+    select row_id, ref_table, priority_field, fulfilled_states, escalation_role
     from service_level_agreement
     where ref_table = ${table} and enabled = true
     order by updated_at desc limit 1`
   if (!sla) return null
   const rows = await sql<SlaPriorityRow[]>`
     select priority, response_hours, resolution_hours from sla_priority
-    where parent = ${sla.name as string} and parenttype = 'Service Level Agreement'
+    where parent = ${sla.row_id as string} and parenttype = 'Service Level Agreement'
     order by position`
   return {
-    name: sla.name as string,
+    row_id: sla.row_id as string,
     ref_table: sla.ref_table as string,
     priority_field: ((sla.priority_field as string) || 'priority').trim(),
     fulfilled_states: String(sla.fulfilled_states ?? '')

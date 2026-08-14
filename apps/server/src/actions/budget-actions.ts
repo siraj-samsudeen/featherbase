@@ -21,8 +21,8 @@ registerRowAction('baseline', {
     'Freeze a working Budget Book: writes the v0 baseline snapshot and activates governance (Budget Book only).',
   handler: async ({ table, name, user }) => {
     onlyBooks(table, 'baseline')
-    await assertPermission(user.name, BOOK, 'write')
-    return sql.begin((tx) => baselineBook(tx as unknown as typeof sql, name, user.name))
+    await assertPermission(user.row_id, BOOK, 'write')
+    return sql.begin((tx) => baselineBook(tx as unknown as typeof sql, name, user.row_id))
   },
 })
 
@@ -32,8 +32,8 @@ registerRowAction('close', {
     'Close an active Budget Book at cycle end: governance ends, snapshots and the Version trail remain the history (Budget Book only).',
   handler: async ({ table, name, user }) => {
     onlyBooks(table, 'close')
-    await assertPermission(user.name, BOOK, 'write')
-    return sql.begin((tx) => closeBook(tx as unknown as typeof sql, name, user.name))
+    await assertPermission(user.row_id, BOOK, 'write')
+    return sql.begin((tx) => closeBook(tx as unknown as typeof sql, name, user.row_id))
   },
 })
 
@@ -48,9 +48,9 @@ registerRowAction('snapshot', {
     const kind = args.kind ?? 'adhoc'
     if (kind !== 'reforecast' && kind !== 'adhoc')
       throw new AppError('ValidationError', 'kind must be "reforecast" or "adhoc"')
-    await assertPermission(user.name, BOOK, 'write')
+    await assertPermission(user.row_id, BOOK, 'write')
     return sql.begin((tx) =>
-      snapshotActiveBook(tx as unknown as typeof sql, name, label, kind, user.name),
+      snapshotActiveBook(tx as unknown as typeof sql, name, label, kind, user.row_id),
     )
   },
 })

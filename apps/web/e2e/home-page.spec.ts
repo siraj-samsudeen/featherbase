@@ -12,26 +12,26 @@ async function adminHeaders(request: APIRequestContext) {
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   await request.delete(`/api/table/Dashboard/${DASH}`, { headers })
-  await request.post('/api/save_doc', {
+  await request.post('/api/save_row', {
     headers,
-    data: { doctype: 'Dashboard', doc: { name: DASH, label: 'WS Board', config: JSON.stringify({ cards: [{ label: 'All', doctype: DT }] }) } },
+    data: { table: 'Dashboard', row: { row_id: DASH, label: 'WS Board', config: JSON.stringify({ cards: [{ label: 'All', table: DT }] }) } },
   })
   await request.delete(`/api/table/Home Page/${WS}`, { headers })
-  const ws = await request.post('/api/save_doc', {
+  const ws = await request.post('/api/save_row', {
     headers,
     data: {
-      doctype: 'Home Page',
-      doc: {
-        name: WS,
+      table: 'Home Page',
+      row: {
+        row_id: WS,
         label: 'Sales',
         shortcuts: JSON.stringify([
-          { label: 'Tasks', type: 'doctype', link_to: DT },
+          { label: 'Tasks', type: 'table', link_to: DT },
           { label: 'Board', type: 'dashboard', link_to: DASH },
         ]),
       },
@@ -96,10 +96,10 @@ test('#80: sidebar flip — landing, System page cards, All tables', async ({ pa
   await expect(page.getByTestId('list-view')).toBeVisible()
 
   // The sidebar holds NO direct table links — tables live behind All tables.
-  await expect(page.getByTestId('admin-sidebar').getByTestId('doctype-nav')).toHaveCount(0)
+  await expect(page.getByTestId('admin-sidebar').getByTestId('table-nav')).toHaveCount(0)
   await page.getByTestId('all-tables-link').click()
   await expect(page).toHaveURL(/\/admin\/all-tables/)
-  const nav = page.getByTestId('doctype-nav')
+  const nav = page.getByTestId('table-nav')
   // User tables grouped by module; the created table is reachable.
   await expect(nav.getByText(DT, { exact: true })).toBeVisible()
   // System group collapsed with a count; expanding surfaces engine tables.

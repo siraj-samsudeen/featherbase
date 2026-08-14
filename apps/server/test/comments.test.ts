@@ -7,11 +7,11 @@ import { test } from './pg-test'
 
 describe('UI-018: comment @mention notifications', () => {
   test('notifies mentioned real users and ignores unknown handles', async ({ admin }) => {
-    const res = await admin.fetch('/api/save_doc', {
+    const res = await admin.fetch('/api/save_row', {
       method: 'POST',
       body: JSON.stringify({
-        doctype: 'Comment',
-        doc: {
+        table: 'Comment',
+        row: {
           ref_table: 'User',
           ref_name: 'cmt-srv-doc',
           content: 'hi @Administrator and @Guest, cc @ghost-user',
@@ -32,11 +32,11 @@ describe('UI-018: comment @mention notifications', () => {
 
   test('a comment with no mentions creates no notifications', async ({ admin }) => {
     const before = (await sql`select count(*)::int as c from notification_log`)[0].c as number
-    const res = await admin.fetch('/api/save_doc', {
+    const res = await admin.fetch('/api/save_row', {
       method: 'POST',
       body: JSON.stringify({
-        doctype: 'Comment',
-        doc: { ref_table: 'User', ref_name: 'cmt-srv-doc', content: 'no mentions here' },
+        table: 'Comment',
+        row: { ref_table: 'User', ref_name: 'cmt-srv-doc', content: 'no mentions here' },
       }),
     })
     expect(res.status).toBe(201)

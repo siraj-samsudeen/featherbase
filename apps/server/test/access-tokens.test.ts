@@ -13,9 +13,9 @@ const USER = 'token-user@x.com'
 // The login flow itself is under test here, so the user is created in-test
 // (with a real password) rather than through the createUser fixture.
 async function makeUser(admin: TestClient) {
-  await admin.post('/api/save_doc', {
-    doctype: 'User',
-    doc: { name: USER, email: USER },
+  await admin.post('/api/save_row', {
+    table: 'User',
+    row: { row_id: USER, email: USER },
   })
   await setUserPassword(USER, 'tokenpw123')
 }
@@ -50,7 +50,7 @@ describe('#131: access tokens', () => {
       headers: { authorization: `Bearer ${tok.token}` },
     })
     expect(who.status).toBe(200)
-    expect(((await who.json()) as { name: string }).name).toBe(USER)
+    expect(((await who.json()) as { row_id: string }).row_id).toBe(USER)
 
     // Use stamps last_used_at.
     const [row] = await sql`select last_used_at from access_token where id = ${tok.id}`
@@ -170,11 +170,11 @@ describe('#131: service accounts', () => {
     admin,
     api,
   }) => {
-    const created = await admin.post<{ name: string; roles: string[]; enabled: boolean }>(
+    const created = await admin.post<{ row_id: string; roles: string[]; enabled: boolean }>(
       '/api/service_accounts',
-      { name: 'svc-test-bot', roles: ['System Manager'] },
+      { row_id: 'svc-test-bot', roles: ['System Manager'] },
     )
-    expect(created.name).toBe('svc-test-bot')
+    expect(created.row_id).toBe('svc-test-bot')
     expect(created.roles).toContain('System Manager')
 
     // No password login, ever — even after someone tries to set one.
@@ -225,28 +225,28 @@ describe('#131: service accounts', () => {
   }) => {
     const plain = await createUser({ email: 'plain-user@x.com' })
     await expect(
-      plain.post('/api/service_accounts', { name: 'svc-nope' }),
+      plain.post('/api/service_accounts', { row_id: 'svc-nope' }),
     ).rejects.toMatchObject({ status: 403 })
     await expect(plain.get('/api/service_accounts')).rejects.toMatchObject({ status: 403 })
 
     await expect(
-      admin.post('/api/service_accounts', { name: 'Not A Slug!' }),
+      admin.post('/api/service_accounts', { row_id: 'Not A Slug!' }),
     ).rejects.toMatchObject({ status: 417 })
 
     // Existing names (human users included) cannot be claimed, even by case.
     await expect(
-      admin.post('/api/service_accounts', { name: 'administrator' }),
+      admin.post('/api/service_accounts', { row_id: 'administrator' }),
     ).rejects.toMatchObject({ status: 409 })
     void api
   })
 
   test('deleting a service account cascades its tokens away', async ({ admin, api }) => {
-    await admin.post('/api/service_accounts', { name: 'svc-doomed' })
+    await admin.post('/api/service_accounts', { row_id: 'svc-doomed' })
     const issued = await admin.post<{ token: string; id: string }>('/api/access_tokens', {
       label: 'doomed token',
       owner: 'svc-doomed',
     })
-    await sql`delete from "user" where name = ${'svc-doomed'}`
+    await sql`delete from "user" where row_id = ${'svc-doomed'}`
     const [gone] = await sql`select 1 from access_token where id = ${issued.id}`
     expect(gone).toBeUndefined()
     const res = await api.fetch('/api/whoami', {

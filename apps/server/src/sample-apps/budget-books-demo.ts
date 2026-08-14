@@ -79,36 +79,36 @@ const manifest: AppManifest = {
     {
       table: 'User',
       rows: [
-        { name: PRIYA, email: PRIYA, full_name: 'Priya (Team Leader, Adyar Beverages)', enabled: true, roles: [{ role: 'Budget Requester' }] },
-        { name: MEENA, email: MEENA, full_name: 'Meena (Category Head)', enabled: true, roles: [{ role: 'Budget Approver' }] },
-        { name: ARUN, email: ARUN, full_name: 'Arun (IT Head, Budget Owner)', enabled: true, roles: [{ role: 'Budget Owner' }] },
-        { name: CFO, email: CFO, full_name: 'CFO', enabled: true, roles: [{ role: 'CFO' }] },
+        { row_id: PRIYA, email: PRIYA, full_name: 'Priya (Team Leader, Adyar Beverages)', enabled: true, roles: [{ role: 'Budget Requester' }] },
+        { row_id: MEENA, email: MEENA, full_name: 'Meena (Category Head)', enabled: true, roles: [{ role: 'Budget Approver' }] },
+        { row_id: ARUN, email: ARUN, full_name: 'Arun (IT Head, Budget Owner)', enabled: true, roles: [{ role: 'Budget Owner' }] },
+        { row_id: CFO, email: CFO, full_name: 'CFO', enabled: true, roles: [{ role: 'CFO' }] },
       ],
     },
     {
       table: 'Sales Budget Line',
       rows: [
-        { name: 'SBL-ADY-JUICES', store: 'Adyar', category: 'Beverages', subcategory: 'Juices', owner_user: PRIYA, ...months({ jan: 110000, feb: 110000, mar: 115000, apr: 120000, may: 120000, jun: 125000 }) },
-        { name: 'SBL-ADY-CARB', store: 'Adyar', category: 'Beverages', subcategory: 'Carbonated', owner_user: PRIYA, ...months({ jan: 180000, feb: 180000, mar: 185000, apr: 190000, may: 195000, jun: 200000 }) },
-        { name: 'SBL-ADY-SNACKS', store: 'Adyar', category: 'Snacks', subcategory: 'Namkeen', owner_user: PRIYA, ...months({ jan: 60000, feb: 60000, mar: 65000, apr: 65000, may: 70000, jun: 70000 }) },
-        { name: 'SBL-BN-JUICES', store: 'Besant Nagar', category: 'Beverages', subcategory: 'Juices', owner_user: ARUN, ...months({ jan: 90000, feb: 90000, mar: 95000, apr: 95000, may: 100000, jun: 100000 }) },
-        { name: 'SBL-BN-CARB', store: 'Besant Nagar', category: 'Beverages', subcategory: 'Carbonated', owner_user: ARUN, ...months({ jan: 150000, feb: 150000, mar: 155000, apr: 160000, may: 160000, jun: 165000 }) },
+        { row_id: 'SBL-ADY-JUICES', store: 'Adyar', category: 'Beverages', subcategory: 'Juices', owner_user: PRIYA, ...months({ jan: 110000, feb: 110000, mar: 115000, apr: 120000, may: 120000, jun: 125000 }) },
+        { row_id: 'SBL-ADY-CARB', store: 'Adyar', category: 'Beverages', subcategory: 'Carbonated', owner_user: PRIYA, ...months({ jan: 180000, feb: 180000, mar: 185000, apr: 190000, may: 195000, jun: 200000 }) },
+        { row_id: 'SBL-ADY-SNACKS', store: 'Adyar', category: 'Snacks', subcategory: 'Namkeen', owner_user: PRIYA, ...months({ jan: 60000, feb: 60000, mar: 65000, apr: 65000, may: 70000, jun: 70000 }) },
+        { row_id: 'SBL-BN-JUICES', store: 'Besant Nagar', category: 'Beverages', subcategory: 'Juices', owner_user: ARUN, ...months({ jan: 90000, feb: 90000, mar: 95000, apr: 95000, may: 100000, jun: 100000 }) },
+        { row_id: 'SBL-BN-CARB', store: 'Besant Nagar', category: 'Beverages', subcategory: 'Carbonated', owner_user: ARUN, ...months({ jan: 150000, feb: 150000, mar: 155000, apr: 160000, may: 160000, jun: 165000 }) },
       ],
     },
     {
       table: 'Opex Budget Line',
       rows: [
-        { name: 'OBL-ADY-ELEC', cost_center: 'Adyar Store Ops', gl_account: 'Electricity', owner_user: MEENA, q1: 950000, q2: 950000, q3: 950000, q4: 950000 },
-        { name: 'OBL-ADY-REPAIR', cost_center: 'Adyar Store Ops', gl_account: 'Repairs & Maintenance', owner_user: MEENA, q1: 600000, q2: 600000, q3: 600000, q4: 600000 },
-        { name: 'OBL-IT-SOFT', cost_center: 'Head Office IT', gl_account: 'Software Subscriptions', owner_user: ARUN, q1: 400000, q2: 400000, q3: 400000, q4: 400000 },
-        { name: 'OBL-IT-SAL', cost_center: 'Head Office IT', gl_account: 'Salaries', owner_user: ARUN, q1: 2500000, q2: 2500000, q3: 2500000, q4: 2500000 },
+        { row_id: 'OBL-ADY-ELEC', cost_center: 'Adyar Store Ops', gl_account: 'Electricity', owner_user: MEENA, q1: 950000, q2: 950000, q3: 950000, q4: 950000 },
+        { row_id: 'OBL-ADY-REPAIR', cost_center: 'Adyar Store Ops', gl_account: 'Repairs & Maintenance', owner_user: MEENA, q1: 600000, q2: 600000, q3: 600000, q4: 600000 },
+        { row_id: 'OBL-IT-SOFT', cost_center: 'Head Office IT', gl_account: 'Software Subscriptions', owner_user: ARUN, q1: 400000, q2: 400000, q3: 400000, q4: 400000 },
+        { row_id: 'OBL-IT-SAL', cost_center: 'Head Office IT', gl_account: 'Salaries', owner_user: ARUN, q1: 2500000, q2: 2500000, q3: 2500000, q4: 2500000 },
       ],
     },
     {
       table: 'Budget Book',
       rows: [
         {
-          name: 'Sales Budget 2026',
+          row_id: 'Sales Budget 2026',
           ref_table: 'Sales Budget Line',
           fiscal_year: '2026',
           owner_column: 'owner_user',
@@ -120,7 +120,7 @@ const manifest: AppManifest = {
           measure_columns: MONTHS.map((m) => ({ column_name: m, period_label: m.toUpperCase() })),
         },
         {
-          name: 'Opex Budget 2026',
+          row_id: 'Opex Budget 2026',
           ref_table: 'Opex Budget Line',
           fiscal_year: '2026',
           owner_column: 'owner_user',
@@ -136,7 +136,7 @@ const manifest: AppManifest = {
       table: 'Workflow',
       rows: [
         {
-          name: 'Budget Approval',
+          row_id: 'Budget Approval',
           ref_table: 'Budget Change',
           is_active: true,
           states: [
@@ -172,7 +172,7 @@ const manifest: AppManifest = {
         // "approved without review, flagged to management" visibility from
         // the design's §6.2.
         {
-          name: 'Budget Demo CFO Flag',
+          row_id: 'Budget Demo CFO Flag',
           ref_table: 'Budget Change',
           event: 'on_submit',
           recipient: CFO,

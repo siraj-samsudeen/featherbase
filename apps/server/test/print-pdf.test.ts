@@ -2,7 +2,7 @@ import { createRequire } from 'node:module'
 import { describe, expect } from 'vitest'
 import { sql } from '../src/db'
 import { renderPdf, renderPrintHtml } from '../src/print'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 import { saveDoc } from '../src/document'
 import { test } from './pg-test'
 
@@ -33,7 +33,7 @@ async function setup() {
       { column_name: 'amount', column_type: 'Int' },
     ],
   })
-  await saveDoc(DT, { name: 'srv-1', customer: 'Umbrella Corp', amount: 9876 }, 'Administrator')
+  await saveDoc(DT, { row_id: 'srv-1', customer: 'Umbrella Corp', amount: 9876 }, 'Administrator')
 }
 
 describe('PRN-003: server-side PDF', () => {
@@ -48,7 +48,7 @@ describe('PRN-003: server-side PDF', () => {
   test('a Print Format template is interpolated into the PDF', async () => {
     await setup()
     await sql`
-      insert into print_format (name, created_by, updated_by, ref_table, is_default, template)
+      insert into print_format (row_id, created_by, updated_by, ref_table, is_default, template)
       values ('Pdf Srv Format', 'Administrator', 'Administrator', ${DT}, false,
         '<h1>RECEIPT</h1><p>Paid by {{ customer }} — {{ amount }} USD</p>')`
     const html = await renderPrintHtml(DT, 'srv-1', 'Administrator', 'Pdf Srv Format')

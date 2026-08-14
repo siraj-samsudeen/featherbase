@@ -11,7 +11,7 @@ const STAGES = ['Open', 'Open', 'Open', 'Closed', 'Closed', 'Pending']
 
 // Each test rebuilds the Table + rows inside its own rolled-back tx.
 async function setup(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },
@@ -19,7 +19,7 @@ async function setup(admin: TestClient) {
     ],
   })
   for (const stage of STAGES)
-    await admin.post('/api/save_doc', { doctype: DT, doc: { title: 't', stage } })
+    await admin.post('/api/save_row', { table: DT, row: { title: 't', stage } })
 }
 
 describe('UI-026: dashboard aggregates', () => {

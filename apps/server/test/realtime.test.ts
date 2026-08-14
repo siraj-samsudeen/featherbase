@@ -20,12 +20,12 @@ describe('realtime event bus', () => {
     expect(events).toContainEqual({
       channel: 'list:Task',
       event: 'created',
-      payload: { table: 'Task', name: 'TASK-1' },
+      payload: { table: 'Task', row_id: 'TASK-1' },
     })
     expect(events).toContainEqual({
-      channel: 'doc:Task:TASK-1',
+      channel: 'row:Task:TASK-1',
       event: 'created',
-      payload: { table: 'Task', name: 'TASK-1' },
+      payload: { table: 'Task', row_id: 'TASK-1' },
     })
   })
 
@@ -49,8 +49,8 @@ describe('realtime event bus', () => {
 })
 
 describe('RT channel authorization (eval #9 fix)', () => {
-  const admin: SessionUser = { name: 'Administrator', email: 'a@x.com', full_name: 'Admin' }
-  const guest: SessionUser = { name: 'Guest', email: 'g@x.com', full_name: 'Guest' }
+  const admin: SessionUser = { row_id: 'Administrator', email: 'a@x.com', full_name: 'Admin' }
+  const guest: SessionUser = { row_id: 'Guest', email: 'g@x.com', full_name: 'Guest' }
 
   test('a user may only subscribe to their own personal channel', async () => {
     expect(await canSubscribe(guest, 'user:Guest')).toBe(true)
@@ -59,18 +59,18 @@ describe('RT channel authorization (eval #9 fix)', () => {
 
   test('Administrator (read-all) may subscribe to any list/doc channel', async () => {
     expect(await canSubscribe(admin, 'list:User')).toBe(true)
-    expect(await canSubscribe(admin, 'doc:User:Administrator')).toBe(true)
+    expect(await canSubscribe(admin, 'row:User:Administrator')).toBe(true)
   })
 
   test('a user without read permission cannot subscribe to that Table channel', async () => {
     // Guest has no Permission on User → cannot watch its list/doc channels.
     expect(await canSubscribe(guest, 'list:User')).toBe(false)
-    expect(await canSubscribe(guest, 'doc:User:Administrator')).toBe(false)
+    expect(await canSubscribe(guest, 'row:User:Administrator')).toBe(false)
   })
 
   test('rejects unknown channel shapes', async () => {
     expect(await canSubscribe(admin, 'system')).toBe(false)
     expect(await canSubscribe(admin, 'evil:*')).toBe(false)
-    expect(await canSubscribe(admin, 'doc:')).toBe(false)
+    expect(await canSubscribe(admin, 'row:')).toBe(false)
   })
 })

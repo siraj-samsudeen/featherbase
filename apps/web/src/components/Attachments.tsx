@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, getToken, listResource } from '../lib/api'
 
 interface FileRow {
-  name: string
+  row_id: string
   file_name: string
   file_url: string
   is_private: boolean
@@ -14,21 +14,21 @@ interface FileRow {
 // FILE-002: attachments panel — File rows linked to this row via
 // ref_table/ref_name. Upload goes through /api/upload_file; deleting the
 // File row also removes the storage object (server on_trash hook).
-export function Attachments({ doctype, name }: { doctype: string; name: string }) {
+export function Attachments({ table, name }: { table: string; name: string }) {
   const queryClient = useQueryClient()
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const files = useQuery({
-    queryKey: ['attachments', doctype, name],
+    queryKey: ['attachments', table, name],
     queryFn: () =>
       listResource<FileRow>('File', {
         filters: [
-          ['ref_table', '=', doctype],
+          ['ref_table', '=', table],
           ['ref_name', '=', name],
         ],
-        fields: ['name', 'file_name', 'file_url', 'is_private', 'thumbnail_url'],
+        fields: ['row_id', 'file_name', 'file_url', 'is_private', 'thumbnail_url'],
         order_by: 'created_at asc',
         limit_page_length: 100,
       }),
@@ -40,7 +40,7 @@ export function Attachments({ doctype, name }: { doctype: string; name: string }
     try {
       const form = new FormData()
       form.append('file', file)
-      form.append('ref_doctype', doctype)
+      form.append('ref_table', table)
       form.append('ref_name', name)
       const res = await fetch('/api/upload_file', {
         method: 'POST',
@@ -53,7 +53,7 @@ export function Attachments({ doctype, name }: { doctype: string; name: string }
         }
         throw new Error(body.error?.message ?? `Upload failed (${res.status})`)
       }
-      await queryClient.invalidateQueries({ queryKey: ['attachments', doctype, name] })
+      await queryClient.invalidateQueries({ queryKey: ['attachments', table, name] })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')
     } finally {
@@ -66,7 +66,7 @@ export function Attachments({ doctype, name }: { doctype: string; name: string }
     setError(null)
     try {
       await api.delete(`/api/table/File/${encodeURIComponent(fileDoc)}`)
-      await queryClient.invalidateQueries({ queryKey: ['attachments', doctype, name] })
+      await queryClient.invalidateQueries({ queryKey: ['attachments', table, name] })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Delete failed')
     }
@@ -112,7 +112,7 @@ export function Attachments({ doctype, name }: { doctype: string; name: string }
       <ul className="space-y-1">
         {files.data?.data.map((f) => (
           <li
-            key={f.name}
+            key={f.row_id}
             className="group flex items-center justify-between gap-2 text-sm"
             data-testid="attachment-row"
           >
@@ -134,7 +134,7 @@ export function Attachments({ doctype, name }: { doctype: string; name: string }
             </a>
             <button
               aria-label={`Remove ${f.file_name}`}
-              onClick={() => remove(f.name)}
+              onClick={() => remove(f.row_id)}
               data-testid="attachment-delete"
               className="text-[var(--color-ink-faint)] opacity-0 transition group-hover:opacity-100 hover:text-[var(--color-danger)]"
             >

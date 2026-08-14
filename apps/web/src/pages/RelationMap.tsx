@@ -20,7 +20,7 @@ type Row = Record<string, unknown>
 interface ForwardNode {
   label: string
   table: string
-  name: string
+  row_id: string
 }
 interface GroupNode {
   kind: 'child' | 'cnx'
@@ -36,16 +36,16 @@ const GAP = 16
 const W = 900
 
 export function RelationMap({
-  doctype,
+  table,
   name,
   trail,
 }: {
-  doctype: string
+  table: string
   name: string
   trail?: string
 }) {
-  const meta = useMeta(doctype)
-  const cnx = useConnections(doctype, name)
+  const meta = useMeta(table)
+  const cnx = useConnections(table, name)
   const settings = useSettings()
   const navigate = useNavigate()
   const [openGroup, setOpenGroup] = useState<number | null>(null)
@@ -55,21 +55,21 @@ export function RelationMap({
   // seam), then the first step out of THAT table — two hops, because pane 3
   // chains off pane 2's table, so a second sibling of the root could never
   // resolve. `select` narrows pane 1 to the row being viewed.
-  const hop1 = useStepOptions(doctype)
+  const hop1 = useStepOptions(table)
   const hop2 = useStepOptions(hop1.options[0]?.step.table)
   const exploreChain = hop1.options.length
     ? [hop1.options[0].step, ...(hop2.options.length ? [hop2.options[0].step] : [])]
     : []
   const doc = useQuery({
-    queryKey: ['doc', doctype, name],
+    queryKey: ['doc', table, name],
     queryFn: () =>
-      api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`),
+      api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`),
   })
 
   if (meta.isLoading || doc.isLoading)
     return <p className="text-sm text-[var(--color-ink-faint)]">Loading…</p>
   if (meta.isError || doc.isError)
-    return <p className="text-sm text-[var(--color-danger)]">Cannot load {doctype} {name}</p>
+    return <p className="text-sm text-[var(--color-danger)]">Cannot load {table} {name}</p>
 
   const m = meta.data!
   const d = doc.data!
@@ -78,13 +78,13 @@ export function RelationMap({
 
   const forward: ForwardNode[] = []
   if (m.kind === 'sub_table' && typeof d.parenttype === 'string' && typeof d.parent === 'string')
-    forward.push({ label: 'parent', table: d.parenttype, name: d.parent })
+    forward.push({ label: 'parent', table: d.parenttype, row_id: d.parent })
   for (const f of m.columns)
     if (f.column_type === 'Reference' && f.reference_table && d[f.column_name])
       forward.push({
         label: f.label ?? f.column_name,
         table: f.reference_table,
-        name: String(d[f.column_name]),
+        row_id: String(d[f.column_name]),
       })
 
   const groups: GroupNode[] = []
@@ -106,19 +106,19 @@ export function RelationMap({
   const nodeY = (i: number) => 20 + i * (NODE_H + GAP)
 
   function hop(table: string, rowName: string) {
-    const nextTrail = [...parsedTrail, [doctype, name] as [string, string]].slice(-8)
+    const nextTrail = [...parsedTrail, [table, name] as [string, string]].slice(-8)
     setOpenGroup(null)
     navigate({
-      to: '/admin/map/$doctype/$name',
-      params: { doctype: table, name: rowName },
+      to: '/admin/map/$table/$name',
+      params: { table: table, name: rowName },
       search: { trail: JSON.stringify(nextTrail) },
     })
   }
   function backTo(i: number) {
     const [t, n] = parsedTrail[i]
     navigate({
-      to: '/admin/map/$doctype/$name',
-      params: { doctype: t, name: n },
+      to: '/admin/map/$table/$name',
+      params: { table: t, name: n },
       search: {
         trail: parsedTrail.length > 1 ? JSON.stringify(parsedTrail.slice(0, i)) : undefined,
       },
@@ -133,12 +133,12 @@ export function RelationMap({
         <Link to="/admin" className="hover:text-[var(--color-ink)]">Home</Link>
         {' / '}
         <Link
-          to="/admin/$doctype"
-          params={{ doctype }}
+          to="/admin/$table"
+          params={{ table }}
           search={{ filters: undefined }}
           className="hover:text-[var(--color-ink)]"
         >
-          {doctype}
+          {table}
         </Link>
         {' / '}
         Map
@@ -147,10 +147,10 @@ export function RelationMap({
         <h1 className="text-xl font-semibold text-[var(--color-ink)]">
           {String(d[m.title_column ?? ''] ?? name)}
         </h1>
-        <span className="text-xs text-[var(--color-ink-faint)]">{doctype} · {name}</span>
+        <span className="text-xs text-[var(--color-ink-faint)]">{table} · {name}</span>
         <Link
-          to="/admin/$doctype/$name"
-          params={{ doctype, name }}
+          to="/admin/$table/$name"
+          params={{ table, name }}
           search={{ prefill: undefined }}
           data-testid="map-open-form"
           className="fc-btn"
@@ -160,7 +160,7 @@ export function RelationMap({
         <Link
           to="/admin/explore"
           search={{
-            root: doctype,
+            root: table,
             chain: exploreChain.length ? JSON.stringify(exploreChain) : undefined,
             select: JSON.stringify([name]),
           }}
@@ -193,7 +193,7 @@ export function RelationMap({
           viewBox={`0 0 ${W} ${H}`}
           className="block h-auto w-full min-w-[700px]"
           role="img"
-          aria-label={`Relationship map for ${doctype} ${name}`}
+          aria-label={`Relationship map for ${table} ${name}`}
           data-testid="map-svg"
         >
           {/* edges */}
@@ -255,14 +255,14 @@ export function RelationMap({
               {truncate(String(d[m.title_column ?? ''] ?? name), 28)}
             </text>
             <text x={352} y={cy + 35} fontSize={10.5} fill="var(--color-ink-muted)">
-              {truncate(doctype, 30)}
+              {truncate(table, 30)}
             </text>
           </g>
           {/* forward reference nodes */}
           {forward.map((f, i) => (
             <g
               key={`fn-${i}`}
-              onClick={() => hop(f.table, f.name)}
+              onClick={() => hop(f.table, f.row_id)}
               className="cursor-pointer"
               data-testid={`map-forward-${f.table}`}
             >
@@ -277,7 +277,7 @@ export function RelationMap({
                 className="hover:stroke-[var(--color-brand)]"
               />
               <text x={52} y={nodeY(i) + 20} fontSize={12.5} fontWeight={600} fill="var(--color-ink)">
-                {truncate(f.name, 20)}
+                {truncate(f.row_id, 20)}
               </text>
               <text x={52} y={nodeY(i) + 35} fontSize={10.5} fill="var(--color-ink-muted)">
                 {truncate(f.table, 24)}
@@ -456,8 +456,8 @@ function SimpleRowsTable({
       <tbody>
         {rows.map((r, i) => (
           <tr
-            key={String(r.name ?? i)}
-            onClick={() => r.name && onPick(String(r.name))}
+            key={String(r.row_id ?? i)}
+            onClick={() => r.row_id && onPick(String(r.row_id))}
             data-testid="map-row"
             className="cursor-pointer border-b border-[var(--color-border)] last:border-0 hover:bg-[var(--color-subtle)]"
           >

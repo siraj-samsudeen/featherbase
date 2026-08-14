@@ -8,7 +8,7 @@ import { getRoles, hasPermission } from './permissions'
 //
 // Channels:
 //   list:<Table>    — a row of that Table was created/updated/deleted
-//   doc:<Table>:<name> — that specific row changed
+//   row:<Table>:<name> — that specific row changed
 //   user:<name>       — a personal event (e.g. a new notification)
 //
 // The lifecycle emits events via publish(); connected clients receive the
@@ -41,23 +41,23 @@ const clients = new Set<Client>()
 
 // A user may only subscribe to:
 //   user:<their own name>            — personal events
-//   list:<Table> / doc:<Table>:* — only Tables they can READ
+//   list:<Table> / row:<Table>:* — only Tables they can READ
 // Any other channel request is rejected, preventing cross-user/cross-
 // permission eavesdropping over the socket.
 export async function canSubscribe(user: SessionUser, channel: string): Promise<boolean> {
-  if (channel.startsWith('user:')) return channel === `user:${user.name}`
+  if (channel.startsWith('user:')) return channel === `user:${user.row_id}`
   // #101 Phase 4 (PR #104 review): the team-feed invalidation ping. Gated
   // like the feed endpoint itself (System Manager), and published with NO
   // payload — the data always flows through /api/activity_feed.
-  if (channel === 'feed') return (await getRoles(user.name)).includes('System Manager')
-  if (channel.startsWith('list:')) return hasPermission(user.name, channel.slice(5), 'read')
-  if (channel.startsWith('doc:')) {
-    // doc:<Table>:<name> — Table may itself contain ':' only in theory;
+  if (channel === 'feed') return (await getRoles(user.row_id)).includes('System Manager')
+  if (channel.startsWith('list:')) return hasPermission(user.row_id, channel.slice(5), 'read')
+  if (channel.startsWith('row:')) {
+    // row:<Table>:<name> — Table may itself contain ':' only in theory;
     // split on the first ':' after the prefix.
     const rest = channel.slice(4)
     const table = rest.slice(0, rest.lastIndexOf(':'))
     if (!table) return false
-    return hasPermission(user.name, table, 'read')
+    return hasPermission(user.row_id, table, 'read')
   }
   return false
 }
@@ -80,11 +80,11 @@ export function publish(channel: string, event: string, payload?: unknown): void
 // Convenience emitters for the row lifecycle.
 export function publishDocEvent(
   table: string,
-  name: string,
+  rowId: string,
   event: 'created' | 'updated' | 'deleted',
 ): void {
-  publish(`list:${table}`, event, { table, name })
-  publish(`doc:${table}:${name}`, event, { table, name })
+  publish(`list:${table}`, event, { table, row_id: rowId })
+  publish(`row:${table}:${rowId}`, event, { table, row_id: rowId })
   // #101 Phase 4: an invalidation ping for the (System Manager-only) team
   // feed. Deliberately payload-free — the subscriber may not have read
   // permission on this particular Table, and the feed data itself always
@@ -112,8 +112,8 @@ export function attachRealtime(server: Server): void {
       const client: Client = { socket, user, channels: new Set() }
       clients.add(client)
       // Personal channel is always subscribed.
-      client.channels.add(`user:${user.name}`)
-      socket.send(JSON.stringify({ channel: 'system', event: 'ready', payload: { user: user.name } }))
+      client.channels.add(`user:${user.row_id}`)
+      socket.send(JSON.stringify({ channel: 'system', event: 'ready', payload: { user: user.row_id } }))
 
       socket.on('message', (raw) => {
         void (async () => {

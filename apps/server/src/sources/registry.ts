@@ -46,7 +46,7 @@ function parseAllowlist(raw: unknown): string[] | null {
 export async function getSource(name: string): Promise<SourceConfig> {
   const cached = cache.get(name)
   if (cached) return cached
-  const [row] = await sql`select * from data_source where name = ${name}`
+  const [row] = await sql`select * from data_source where row_id = ${name}`
   if (!row) throw new AppError('NotFoundError', `Data Source ${name} not found`)
   const engine = String(row.engine) as SourceEngine
   if (!(engine in DRIVERS))
@@ -106,13 +106,13 @@ export async function testSource(name: string): Promise<{ ok: boolean; error?: s
   try {
     await driver.test(cfg)
     await sql`update data_source set conn_status = 'ok', last_checked_at = ${new Date()},
-      last_error = null where name = ${name}`
+      last_error = null where row_id = ${name}`
     return { ok: true }
   } catch (err) {
     // Never echo a connection string: driver errors can embed the URL.
     const message = scrubSecrets(cfg, err instanceof Error ? err.message : String(err))
     await sql`update data_source set conn_status = 'error', last_checked_at = ${new Date()},
-      last_error = ${message} where name = ${name}`
+      last_error = ${message} where row_id = ${name}`
     return { ok: false, error: message }
   }
 }

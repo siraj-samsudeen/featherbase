@@ -9,19 +9,19 @@ const FIELD = 'priority_note'
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const headers = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
 
   // Add the custom field (idempotent across runs).
   await request.delete(`/api/table/Custom%20Field/${encodeURIComponent(`${DT}-${FIELD}`)}`, { headers })
-  const cf = await request.post('/api/save_doc', {
+  const cf = await request.post('/api/save_row', {
     headers,
     data: {
-      doctype: 'Custom Field',
-      doc: { name: `${DT}-${FIELD}`, dt: DT, column_name: FIELD, label: 'Priority Note', column_type: 'Data', in_list_view: true },
+      table: 'Custom Field',
+      row: { row_id: `${DT}-${FIELD}`, dt: DT, column_name: FIELD, label: 'Priority Note', column_type: 'Data', in_list_view: true },
     },
   })
   if (![201, 200].includes(cf.status())) throw new Error(`custom field: ${cf.status()}`)
@@ -29,7 +29,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   await request.delete(`/api/table/${encodeURIComponent(DT)}/cf-doc`, { headers })
   await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
-    data: { name: 'cf-doc', title: 'has custom', [FIELD]: 'urgent' },
+    data: { row_id: 'cf-doc', title: 'has custom', [FIELD]: 'urgent' },
   })
 })
 

@@ -18,11 +18,11 @@ async function setLang(request: APIRequestContext, language: string) {
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, columns: [{ column_name: 'priority', label: 'Priority', column_type: 'Data', in_list_view: true }] },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   // Seed a French catalog: two chrome strings + one field label.
   seeded = await seedTranslations(request, headers, 'fr', [
     ['Save', 'Enregistrer'],

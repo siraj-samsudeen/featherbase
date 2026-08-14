@@ -9,7 +9,7 @@ import { sql } from './db'
 // metadata auto-layout — then Chromium turns it into a PDF.
 
 const FRAMEWORK_CHILD_COLS = new Set([
-  'name', 'created_by', 'created_at', 'updated_at', 'updated_by', 'status', 'position',
+  'row_id', 'created_by', 'created_at', 'updated_at', 'updated_by', 'status', 'position',
   'parent', 'parenttype', 'parentfield',
 ])
 
@@ -52,17 +52,17 @@ async function resolveLetterHead(
   let name = letterHead
   if (!name && format && format !== 'standard') {
     const [pf] = await sql`
-      select letter_head from print_format where name = ${format} and ref_table = ${table}`
+      select letter_head from print_format where row_id = ${format} and ref_table = ${table}`
     if (pf?.letter_head) name = String(pf.letter_head)
   }
   if (!name) {
     const [def] = await sql`
-      select name from letter_head where is_default = true limit 1`
-    if (def?.name) name = String(def.name)
+      select row_id from letter_head where is_default = true limit 1`
+    if (def?.row_id) name = String(def.row_id)
   }
   if (!name) return null
   const [lh] = await sql`
-    select header_html, footer_html from letter_head where name = ${name}`
+    select header_html, footer_html from letter_head where row_id = ${name}`
   if (!lh) return null
   return { header: String(lh.header_html ?? ''), footer: String(lh.footer_html ?? '') }
 }
@@ -81,7 +81,7 @@ export async function renderPrintHtml(
   let body: string
   if (format && format !== 'standard') {
     const [pf] = await sql`
-      select template from print_format where name = ${format} and ref_table = ${table}`
+      select template from print_format where row_id = ${format} and ref_table = ${table}`
     body = pf ? interpolate(String(pf.template ?? ''), row) : ''
   } else if (format === undefined) {
     const [def] = await sql`
@@ -100,7 +100,7 @@ export async function renderPrintHtml(
     ? `<footer class="letter-foot">${interpolate(lh.footer, row)}</footer>`
     : ''
 
-  return `<!doctype html><html><head><meta charset="utf-8"><style>
+  return `<!table html><html><head><meta charset="utf-8"><style>
     body{font-family:Inter,system-ui,sans-serif;color:#1c2126;padding:32px;font-size:13px}
     h1{font-size:22px;margin:0 0 2px} .docname{color:#6c7680;font-size:12px;margin:0 0 16px}
     dl{display:grid;grid-template-columns:1fr 1fr;gap:6px 32px}
@@ -132,7 +132,7 @@ function autoLayout(meta: Awaited<ReturnType<typeof getMeta>>, row: Row): string
       return `<h2>${esc(tf.label ?? tf.column_name)}</h2><table><thead><tr>${head}</tr></thead><tbody>${bodyRows}</tbody></table>`
     })
     .join('')
-  return `<h1>${esc(meta.name)}</h1><p class="docname">${esc(String(row.name))}</p><dl>${rows}</dl>${tableHtml}`
+  return `<h1>${esc(meta.name)}</h1><p class="docname">${esc(String(row.row_id))}</p><dl>${rows}</dl>${tableHtml}`
 }
 
 // Per-platform layout of a Playwright browser bundle, relative to its

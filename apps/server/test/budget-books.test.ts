@@ -14,7 +14,7 @@ const T = encodeURIComponent
 const CHANGE_PATH = `/api/table/${T('Budget Change')}`
 
 async function makeLineTable(admin: TestClient) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: LINE,
     columns: [
       { column_name: 'store', column_type: 'Data' },
@@ -43,7 +43,7 @@ async function makeRows(admin: TestClient): Promise<Record<string, Row>> {
 }
 
 const BOOK_DOC = {
-  name: BOOK,
+  row_id: BOOK,
   ref_table: LINE,
   fiscal_year: '2026',
   owner_column: 'owner',
@@ -57,7 +57,7 @@ const BOOK_DOC = {
 }
 
 async function makeBook(admin: TestClient, doc: Row = {}): Promise<Row> {
-  return admin.post<Row>('/api/save_doc', { doctype: 'Budget Book', doc: { ...BOOK_DOC, ...doc } })
+  return admin.post<Row>('/api/save_row', { table: 'Budget Book', row: { ...BOOK_DOC, ...doc } })
 }
 
 async function baseline(admin: TestClient, book = BOOK): Promise<Row> {
@@ -104,22 +104,22 @@ describe('BUD-R1: a book declares its binding', () => {
     await makeLineTable(admin)
     // measure must be numeric
     await expect(
-      makeBook(admin, { name: 'Bad 1', measure_columns: [{ column_name: 'store' }] }),
+      makeBook(admin, { row_id: 'Bad 1', measure_columns: [{ column_name: 'store' }] }),
     ).rejects.toMatchObject({ status: 417 })
     // key column must exist
     await expect(
-      makeBook(admin, { name: 'Bad 2', key_columns: [{ column_name: 'ghost' }] }),
+      makeBook(admin, { row_id: 'Bad 2', key_columns: [{ column_name: 'ghost' }] }),
     ).rejects.toMatchObject({ status: 417 })
     // ref_table must exist
-    await expect(makeBook(admin, { name: 'Bad 3', ref_table: 'No Such Table' })).rejects.toMatchObject(
+    await expect(makeBook(admin, { row_id: 'Bad 3', ref_table: 'No Such Table' })).rejects.toMatchObject(
       { status: 417 },
     )
     // the engine cannot govern itself
-    await expect(makeBook(admin, { name: 'Bad 4', ref_table: 'Budget Change' })).rejects.toMatchObject(
+    await expect(makeBook(admin, { row_id: 'Bad 4', ref_table: 'Budget Change' })).rejects.toMatchObject(
       { status: 417 },
     )
     // at least one of each declaration
-    await expect(makeBook(admin, { name: 'Bad 5', key_columns: [] })).rejects.toMatchObject({
+    await expect(makeBook(admin, { row_id: 'Bad 5', key_columns: [] })).rejects.toMatchObject({
       status: 417,
     })
   })
@@ -127,7 +127,7 @@ describe('BUD-R1: a book declares its binding', () => {
   test('BUD-R1: at most one non-closed book per bound table', async ({ admin }) => {
     await makeLineTable(admin)
     await makeBook(admin)
-    await expect(makeBook(admin, { name: 'Second Book' })).rejects.toMatchObject({ status: 417 })
+    await expect(makeBook(admin, { row_id: 'Second Book' })).rejects.toMatchObject({ status: 417 })
   })
 })
 
@@ -142,9 +142,9 @@ describe('BUD-R2: lifecycle working → active → closed', () => {
     expect(version.kind).toBe('baseline')
     expect(version.label).toBe('v0')
     const lines = await sql`
-      select * from budget_version_line where version = ${String(version.name)} order by ref_name`
+      select * from budget_version_line where version = ${String(version.row_id)} order by ref_name`
     expect(lines).toHaveLength(3)
-    const aBev = lines.find((l) => l.ref_name === rows.aBev.name)!
+    const aBev = lines.find((l) => l.ref_name === rows.aBev.row_id)!
     const data = aBev.data as Row
     // BUD-R10: every declared key, measure, and owner value — nothing else.
     expect(data).toEqual({
@@ -190,7 +190,7 @@ describe('BUD-R2: lifecycle working → active → closed', () => {
 describe('BUD-R3: an active book locks its table', () => {
   test('BUD-R3: working books impose nothing', async ({ admin }) => {
     const rows = await setup(admin)
-    const updated = await patchDoc(admin, `/api/table/${T(LINE)}/${T(String(rows.aBev.name))}`, {
+    const updated = await patchDoc(admin, `/api/table/${T(LINE)}/${T(String(rows.aBev.row_id))}`, {
       updated_at: rows.aBev.updated_at,
       q1: 999,
     })
@@ -201,7 +201,7 @@ describe('BUD-R3: an active book locks its table', () => {
     admin,
   }) => {
     const rows = await activeSetup(admin)
-    const name = String(rows.aBev.name)
+    const name = String(rows.aBev.row_id)
     const fresh = await getRow(admin, LINE, name)
     // measure
     await expect(
@@ -248,20 +248,20 @@ describe('BUD-R3: an active book locks its table', () => {
     admin,
   }) => {
     const rows = await activeSetup(admin)
-    const name = String(rows.aBev.name)
+    const name = String(rows.aBev.row_id)
     // A rename would orphan every budget_version_line pointing at this row.
     await expect(
       admin.post(`/api/table/${T(LINE)}/${T(name)}:rename`, { new_name: 'sneaky-rename' }),
     ).rejects.toMatchObject({ status: 417 })
     const still = await getRow(admin, LINE, name)
-    expect(still.name).toBe(name)
+    expect(still.row_id).toBe(name)
   })
 
   test('BUD-R3/Q3: closing releases the lock', async ({ admin }) => {
     const rows = await activeSetup(admin)
     await admin.post(`/api/table/${T('Budget Book')}/${T(BOOK)}:close`, {})
-    const fresh = await getRow(admin, LINE, String(rows.aBev.name))
-    const updated = await patchDoc(admin, `/api/table/${T(LINE)}/${T(String(rows.aBev.name))}`, {
+    const fresh = await getRow(admin, LINE, String(rows.aBev.row_id))
+    const updated = await patchDoc(admin, `/api/table/${T(LINE)}/${T(String(rows.aBev.row_id))}`, {
       updated_at: fresh.updated_at,
       q1: 123,
     })
@@ -276,8 +276,8 @@ describe('BUD-R4: a change computes its own facts', () => {
       book: BOOK,
       change_type: 'revise',
       lines: [
-        { line_ref: rows.aBev.name, measure_column: 'q1', proposed_value: 150 },
-        { line_ref: rows.aBev.name, measure_column: 'q2', proposed_value: 80 },
+        { line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 150 },
+        { line_ref: rows.aBev.row_id, measure_column: 'q2', proposed_value: 80 },
       ],
     })
     const lines = change.lines as Row[]
@@ -294,8 +294,8 @@ describe('BUD-R4: a change computes its own facts', () => {
       book: BOOK,
       change_type: 'revise',
       lines: [
-        { line_ref: rows.aBev.name, measure_column: 'q1', proposed_value: 150 },
-        { line_ref: rows.bBev.name, measure_column: 'q1', proposed_value: 150 },
+        { line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 150 },
+        { line_ref: rows.bBev.row_id, measure_column: 'q1', proposed_value: 150 },
       ],
     })
     expect(change.crosses_owner).toBe(true)
@@ -314,14 +314,14 @@ describe('BUD-R4: a change computes its own facts', () => {
     await expect(
       makeChange(admin, {
         book: BOOK,
-        lines: [{ line_ref: rows.aBev.name, measure_column: 'q9', proposed_value: 1 }],
+        lines: [{ line_ref: rows.aBev.row_id, measure_column: 'q9', proposed_value: 1 }],
       }),
     ).rejects.toMatchObject({ status: 417 })
     // a proposal proposes a number
     await expect(
       makeChange(admin, {
         book: BOOK,
-        lines: [{ line_ref: rows.aBev.name, measure_column: 'q1' }],
+        lines: [{ line_ref: rows.aBev.row_id, measure_column: 'q1' }],
       }),
     ).rejects.toMatchObject({ status: 417 })
     // no lines at all
@@ -340,14 +340,14 @@ describe('BUD-R4: a change computes its own facts', () => {
     const up = await makeChange(admin, {
       book: BOOK,
       change_type: 'revise',
-      lines: [{ line_ref: rows.bBev.name, measure_column: 'q1', proposed_value: 350 }],
+      lines: [{ line_ref: rows.bBev.row_id, measure_column: 'q1', proposed_value: 350 }],
     })
     expect(Number(up.total_delta)).toBe(150)
     expect(up.over_doa).toBe(true)
     const down = await makeChange(admin, {
       book: BOOK,
       change_type: 'revise',
-      lines: [{ line_ref: rows.bBev.name, measure_column: 'q2', proposed_value: 20 }],
+      lines: [{ line_ref: rows.bBev.row_id, measure_column: 'q2', proposed_value: 20 }],
     })
     expect(Number(down.total_delta)).toBe(-180)
     expect(down.over_doa).toBe(false)
@@ -358,7 +358,7 @@ describe('BUD-R4: a change computes its own facts', () => {
     await expect(
       makeChange(admin, {
         book: BOOK,
-        lines: [{ line_ref: rows.aBev.name, measure_column: 'q1', proposed_value: 1 }],
+        lines: [{ line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 1 }],
       }),
     ).rejects.toMatchObject({ status: 417 })
   })
@@ -371,19 +371,19 @@ describe('BUD-R5: approval applies, atomically, through the front door', () => {
       book: BOOK,
       change_type: 'revise',
       lines: [
-        { line_ref: rows.aBev.name, measure_column: 'q1', proposed_value: 150 },
-        { line_ref: rows.aBev.name, measure_column: 'q2', proposed_value: 80 },
+        { line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 150 },
+        { line_ref: rows.aBev.row_id, measure_column: 'q2', proposed_value: 80 },
       ],
     })
-    const submitted = await submit(admin, String(change.name))
+    const submitted = await submit(admin, String(change.row_id))
     expect(submitted.status).toBe('submitted')
-    const line = await getRow(admin, LINE, String(rows.aBev.name))
+    const line = await getRow(admin, LINE, String(rows.aBev.row_id))
     expect(Number(line.q1)).toBe(150)
     expect(Number(line.q2)).toBe(80)
     expect(Number(line.q3)).toBe(100)
     // one Version entry diffing exactly the applied measures
     const versions = await sql`
-      select data from version where ref_table = ${LINE} and ref_name = ${String(rows.aBev.name)}`
+      select data from version where ref_table = ${LINE} and ref_name = ${String(rows.aBev.row_id)}`
     expect(versions).toHaveLength(1)
     const changed = (versions[0].data as { changed: [string, unknown, unknown][] }).changed
     const cols = changed.map(([c]) => c).sort()
@@ -398,23 +398,23 @@ describe('BUD-R5: approval applies, atomically, through the front door', () => {
       book: BOOK,
       change_type: 'revise',
       lines: [
-        { line_ref: rows.aBev.name, measure_column: 'q1', proposed_value: 111 },
-        { line_ref: rows.bBev.name, measure_column: 'q1', proposed_value: 222 },
+        { line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 111 },
+        { line_ref: rows.bBev.row_id, measure_column: 'q1', proposed_value: 222 },
       ],
     })
     // Another change wins the race on aBev.q1 …
     const winner = await makeChange(admin, {
       book: BOOK,
       change_type: 'revise',
-      lines: [{ line_ref: rows.aBev.name, measure_column: 'q1', proposed_value: 400 }],
+      lines: [{ line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 400 }],
     })
-    await submit(admin, String(winner.name))
+    await submit(admin, String(winner.row_id))
     // … so the stale one is refused whole-request.
-    await expect(submit(admin, String(stale.name))).rejects.toMatchObject({ status: 409 })
+    await expect(submit(admin, String(stale.row_id))).rejects.toMatchObject({ status: 409 })
     // Nothing applied, status untouched (BUD-I2).
-    const untouched = await getRow(admin, LINE, String(rows.bBev.name))
+    const untouched = await getRow(admin, LINE, String(rows.bBev.row_id))
     expect(Number(untouched.q1)).toBe(200)
-    const changeAfter = await getRow(admin, 'Budget Change', String(stale.name))
+    const changeAfter = await getRow(admin, 'Budget Change', String(stale.row_id))
     expect(changeAfter.status).toBe('draft')
   })
 
@@ -422,10 +422,10 @@ describe('BUD-R5: approval applies, atomically, through the front door', () => {
     admin,
   }) => {
     const rows = await activeSetup(admin)
-    await admin.post('/api/save_doc', {
-      doctype: 'Workflow',
-      doc: {
-        name: 'Bb Fast Lane',
+    await admin.post('/api/save_row', {
+      table: 'Workflow',
+      row: {
+        row_id: 'Bb Fast Lane',
         ref_table: 'Budget Change',
         is_active: true,
         states: [
@@ -440,19 +440,19 @@ describe('BUD-R5: approval applies, atomically, through the front door', () => {
     const change = await makeChange(admin, {
       book: BOOK,
       change_type: 'revise',
-      lines: [{ line_ref: rows.aBev.name, measure_column: 'q1', proposed_value: 175 }],
+      lines: [{ line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 175 }],
     })
-    await admin.post(`${CHANGE_PATH}/${T(String(change.name))}:apply_workflow_action`, {
+    await admin.post(`${CHANGE_PATH}/${T(String(change.row_id))}:apply_workflow_action`, {
       action: 'Self-Approve',
     })
     // Applied exactly as a direct submit would have (BUD-R5's convergence).
-    const line = await getRow(admin, LINE, String(rows.aBev.name))
+    const line = await getRow(admin, LINE, String(rows.aBev.row_id))
     expect(Number(line.q1)).toBe(175)
-    const after = await getRow(admin, 'Budget Change', String(change.name))
+    const after = await getRow(admin, 'Budget Change', String(change.row_id))
     expect(after.status).toBe('submitted')
     // The shortcut is on the record.
     const actions = await sql`
-      select * from workflow_action where ref_table = 'Budget Change' and ref_name = ${String(change.name)}`
+      select * from workflow_action where ref_table = 'Budget Change' and ref_name = ${String(change.row_id)}`
     expect(actions).toHaveLength(1)
     expect(actions[0].to_state).toBe('Approved')
   })
@@ -461,10 +461,10 @@ describe('BUD-R5: approval applies, atomically, through the front door', () => {
     admin,
   }) => {
     const rows = await activeSetup(admin)
-    await admin.post('/api/save_doc', {
-      doctype: 'Workflow',
-      doc: {
-        name: 'Bb Gate Flow',
+    await admin.post('/api/save_row', {
+      table: 'Workflow',
+      row: {
+        row_id: 'Bb Gate Flow',
         ref_table: 'Budget Change',
         is_active: true,
         states: [
@@ -477,11 +477,11 @@ describe('BUD-R5: approval applies, atomically, through the front door', () => {
     const change = await makeChange(admin, {
       book: BOOK,
       change_type: 'revise',
-      lines: [{ line_ref: rows.aBev.name, measure_column: 'q1', proposed_value: 175 }],
+      lines: [{ line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 175 }],
     })
     // Even as Administrator: the direct action names the workflow and refuses.
-    await expect(submit(admin, String(change.name))).rejects.toMatchObject({ status: 417 })
-    const line = await getRow(admin, LINE, String(rows.aBev.name))
+    await expect(submit(admin, String(change.row_id))).rejects.toMatchObject({ status: 417 })
+    const line = await getRow(admin, LINE, String(rows.aBev.row_id))
     expect(Number(line.q1)).toBe(100)
   })
 })
@@ -496,8 +496,8 @@ describe('BUD-R6: a transfer nets to zero', () => {
         book: BOOK,
         change_type: 'transfer',
         lines: [
-          { line_ref: rows.aBev.name, measure_column: 'q1', proposed_value: 50 },
-          { line_ref: rows.bBev.name, measure_column: 'q1', proposed_value: 230 },
+          { line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 50 },
+          { line_ref: rows.bBev.row_id, measure_column: 'q1', proposed_value: 230 },
         ],
       }),
     ).rejects.toMatchObject({ status: 417 })
@@ -506,7 +506,7 @@ describe('BUD-R6: a transfer nets to zero', () => {
       makeChange(admin, {
         book: BOOK,
         change_type: 'transfer',
-        lines: [{ line_ref: rows.aBev.name, measure_column: 'q1', proposed_value: 50 }],
+        lines: [{ line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 50 }],
       }),
     ).rejects.toMatchObject({ status: 417 })
     const grandBefore = await sql`
@@ -516,13 +516,13 @@ describe('BUD-R6: a transfer nets to zero', () => {
       book: BOOK,
       change_type: 'transfer',
       lines: [
-        { line_ref: rows.aBev.name, measure_column: 'q1', proposed_value: 50 },
-        { line_ref: rows.bBev.name, measure_column: 'q1', proposed_value: 230 },
-        { line_ref: rows.aSnk.name, measure_column: 'q2', proposed_value: 40 },
+        { line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 50 },
+        { line_ref: rows.bBev.row_id, measure_column: 'q1', proposed_value: 230 },
+        { line_ref: rows.aSnk.row_id, measure_column: 'q2', proposed_value: 40 },
       ],
     })
     expect(Number(ok.total_delta)).toBe(0)
-    await submit(admin, String(ok.name))
+    await submit(admin, String(ok.row_id))
     const grandAfter = await sql`
       select sum(q1 + q2 + q3 + q4) as total from ${sql('bb_line')}`
     expect(Number(grandAfter[0].total)).toBe(Number(grandBefore[0].total))
@@ -595,7 +595,7 @@ describe('BUD-R7: a new line arrives complete and unique', () => {
       ],
     })
     expect(Number(change.total_delta)).toBe(135)
-    await submit(admin, String(change.name))
+    await submit(admin, String(change.row_id))
     const [born] = await sql`
       select * from ${sql('bb_line')} where store = 'Adyar' and subcategory = 'Millet Snacks'`
     expect(born).toBeTruthy()
@@ -611,7 +611,7 @@ describe('BUD-R8: discontinue zeroes forward, never deletes', () => {
     admin,
   }) => {
     const rows = await activeSetup(admin)
-    const name = String(rows.aSnk.name)
+    const name = String(rows.aSnk.row_id)
     const change = await makeChange(admin, {
       book: BOOK,
       change_type: 'discontinue',
@@ -620,7 +620,7 @@ describe('BUD-R8: discontinue zeroes forward, never deletes', () => {
     })
     // snapped: q3+q4 = 30+40
     expect(Number(change.total_delta)).toBe(-70)
-    await submit(admin, String(change.name))
+    await submit(admin, String(change.row_id))
     const line = await getRow(admin, LINE, name)
     expect(Number(line.q1)).toBe(10)
     expect(Number(line.q2)).toBe(20)
@@ -633,7 +633,7 @@ describe('BUD-R8: discontinue zeroes forward, never deletes', () => {
       change_type: 'revise',
       lines: [{ line_ref: name, measure_column: 'q4', proposed_value: 25 }],
     })
-    await submit(admin, String(revive.name))
+    await submit(admin, String(revive.row_id))
     const after = await getRow(admin, LINE, name)
     expect(Number(after.q4)).toBe(25)
     expect(after.budget_discontinued).toBe(false)
@@ -643,14 +643,14 @@ describe('BUD-R8: discontinue zeroes forward, never deletes', () => {
     admin,
   }) => {
     const rows = await activeSetup(admin)
-    const name = String(rows.aSnk.name)
+    const name = String(rows.aSnk.row_id)
     const first = await makeChange(admin, {
       book: BOOK,
       change_type: 'discontinue',
       effective_from: 'q3',
       lines: [{ line_ref: name }],
     })
-    await submit(admin, String(first.name))
+    await submit(admin, String(first.row_id))
     // The earlier periods are the wind-down yardstick — re-zeroing them via
     // a second discontinue is refused at draft time.
     await expect(
@@ -675,7 +675,7 @@ describe('BUD-R8: discontinue zeroes forward, never deletes', () => {
         book: BOOK,
         change_type: 'discontinue',
         effective_from: 'q9',
-        lines: [{ line_ref: rows.aSnk.name }],
+        lines: [{ line_ref: rows.aSnk.row_id }],
       }),
     ).rejects.toMatchObject({ status: 417 })
     await expect(
@@ -683,7 +683,7 @@ describe('BUD-R8: discontinue zeroes forward, never deletes', () => {
         book: BOOK,
         change_type: 'revise',
         effective_from: 'q3',
-        lines: [{ line_ref: rows.aSnk.name, measure_column: 'q1', proposed_value: 5 }],
+        lines: [{ line_ref: rows.aSnk.row_id, measure_column: 'q1', proposed_value: 5 }],
       }),
     ).rejects.toMatchObject({ status: 417 })
   })
@@ -695,13 +695,13 @@ describe('BUD-R9: applied changes are history', () => {
     const change = await makeChange(admin, {
       book: BOOK,
       change_type: 'revise',
-      lines: [{ line_ref: rows.aBev.name, measure_column: 'q1', proposed_value: 150 }],
+      lines: [{ line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 150 }],
     })
-    await submit(admin, String(change.name))
+    await submit(admin, String(change.row_id))
     await expect(
-      admin.post(`${CHANGE_PATH}/${T(String(change.name))}:cancel`, {}),
+      admin.post(`${CHANGE_PATH}/${T(String(change.row_id))}:cancel`, {}),
     ).rejects.toMatchObject({ status: 417 })
-    const after = await getRow(admin, 'Budget Change', String(change.name))
+    const after = await getRow(admin, 'Budget Change', String(change.row_id))
     expect(after.status).toBe('submitted')
   })
 })
@@ -716,14 +716,14 @@ describe('BUD-I1: the ledger reconciles', () => {
       {
         book: BOOK,
         change_type: 'revise',
-        lines: [{ line_ref: rows.aBev.name, measure_column: 'q1', proposed_value: 150 }],
+        lines: [{ line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 150 }],
       },
       {
         book: BOOK,
         change_type: 'transfer',
         lines: [
-          { line_ref: rows.aBev.name, measure_column: 'q2', proposed_value: 60 },
-          { line_ref: rows.bBev.name, measure_column: 'q2', proposed_value: 240 },
+          { line_ref: rows.aBev.row_id, measure_column: 'q2', proposed_value: 60 },
+          { line_ref: rows.bBev.row_id, measure_column: 'q2', proposed_value: 240 },
         ],
       },
       {
@@ -741,17 +741,17 @@ describe('BUD-I1: the ledger reconciles', () => {
         book: BOOK,
         change_type: 'discontinue',
         effective_from: 'q4',
-        lines: [{ line_ref: rows.aSnk.name }],
+        lines: [{ line_ref: rows.aSnk.row_id }],
       },
     ] as Row[]) {
       const change = await makeChange(admin, doc)
-      await submit(admin, String(change.name))
+      await submit(admin, String(change.row_id))
     }
 
     // v0 totals per ref_name
-    const [version] = await sql`select name from budget_version where book = ${BOOK}`
+    const [version] = await sql`select row_id from budget_version where book = ${BOOK}`
     const v0 = await sql`
-      select ref_name, data from budget_version_line where version = ${String(version.name)}`
+      select ref_name, data from budget_version_line where version = ${String(version.row_id)}`
     const v0Total = new Map<string, number>()
     for (const l of v0) {
       const d = l.data as Record<string, unknown>
@@ -764,7 +764,7 @@ describe('BUD-I1: the ledger reconciles', () => {
     const applied = await sql`
       select l.line_ref, l.new_line_key, l.delta
       from budget_change_line l
-      join budget_change c on c.name = l.parent
+      join budget_change c on c.row_id = l.parent
       where c.book = ${BOOK} and c.status = 'submitted'`
     const deltaByRef = new Map<string, number>()
     let bornDelta = 0
@@ -776,9 +776,9 @@ describe('BUD-I1: the ledger reconciles', () => {
     }
     // live totals
     const live = await sql`
-      select name, store, subcategory, q1 + q2 + q3 + q4 as total from ${sql('bb_line')}`
+      select row_id, store, subcategory, q1 + q2 + q3 + q4 as total from ${sql('bb_line')}`
     for (const row of live) {
-      const name = String(row.name)
+      const name = String(row.row_id)
       if (v0Total.has(name)) {
         expect(Number(row.total)).toBe(v0Total.get(name)! + (deltaByRef.get(name) ?? 0))
       } else {

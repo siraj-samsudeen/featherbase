@@ -20,7 +20,7 @@ interface Token {
 }
 
 interface ServiceAccount {
-  name: string
+  row_id: string
   full_name: string | null
   enabled: boolean
   created_at: string
@@ -59,7 +59,7 @@ function when(iso: string | null): string {
 
 export function AccessTokens() {
   const isSM = useIsSystemManager()
-  const me = getSessionUser()?.name
+  const me = getSessionUser()?.row_id
   const qc = useQueryClient()
 
   const tokens = useQuery({
@@ -125,7 +125,7 @@ export function AccessTokens() {
   // Owner choices for System Managers: yourself plus every service account.
   const ownerChoices = [
     ...(me ? [me] : []),
-    ...(accounts.data?.service_accounts.map((a) => a.name) ?? []),
+    ...(accounts.data?.service_accounts.map((a) => a.row_id) ?? []),
   ]
 
   const rows = tokens.data?.tokens ?? []
@@ -336,11 +336,11 @@ function ServiceAccounts({
 
   const roleList = useQuery({
     queryKey: ['roles-all'],
-    queryFn: () => listResource<{ name: string }>('Role', { fields: ['name'], order_by: 'name asc' }),
+    queryFn: () => listResource<{ row_id: string }>('Role', { fields: ['row_id'], order_by: 'row_id asc' }),
   })
 
   const create = useMutation({
-    mutationFn: () => api.post('/api/service_accounts', { name: name.trim(), roles }),
+    mutationFn: () => api.post('/api/service_accounts', { row_id: name.trim(), roles }),
     onSuccess: () => {
       setName('')
       setRoles([])
@@ -390,20 +390,20 @@ function ServiceAccounts({
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1">
           {(roleList.data?.data ?? [])
-            .filter((r) => r.name !== 'All')
+            .filter((r) => r.row_id !== 'All')
             .map((r) => (
-              <label key={r.name} className="flex items-center gap-1.5 text-sm text-[var(--color-ink)]">
+              <label key={r.row_id} className="flex items-center gap-1.5 text-sm text-[var(--color-ink)]">
                 <input
                   type="checkbox"
-                  checked={roles.includes(r.name)}
-                  data-testid={`sa-role-${r.name}`}
+                  checked={roles.includes(r.row_id)}
+                  data-testid={`sa-role-${r.row_id}`}
                   onChange={(e) =>
                     setRoles((prev) =>
-                      e.target.checked ? [...prev, r.name] : prev.filter((x) => x !== r.name),
+                      e.target.checked ? [...prev, r.row_id] : prev.filter((x) => x !== r.row_id),
                     )
                   }
                 />
-                {r.name}
+                {r.row_id}
               </label>
             ))}
         </div>
@@ -423,8 +423,8 @@ function ServiceAccounts({
           </thead>
           <tbody data-testid="sa-rows">
             {accounts.map((a) => (
-              <tr key={a.name} className="border-b border-[var(--color-border)] last:border-0" data-testid={`sa-${a.name}`}>
-                <td className="px-3 py-2 font-medium text-[var(--color-ink)]">{a.name}</td>
+              <tr key={a.row_id} className="border-b border-[var(--color-border)] last:border-0" data-testid={`sa-${a.row_id}`}>
+                <td className="px-3 py-2 font-medium text-[var(--color-ink)]">{a.row_id}</td>
                 <td className="px-3 py-2">
                   <span className="flex flex-wrap gap-1">
                     {a.roles.filter((r) => r !== 'All').map((r) => (
@@ -435,21 +435,21 @@ function ServiceAccounts({
                 <td className="px-3 py-2 text-[var(--color-ink-muted)]">{a.token_count}</td>
                 <td
                   className={`px-3 py-2 ${a.enabled ? 'text-[var(--color-good)]' : 'text-[var(--color-danger)]'}`}
-                  data-testid={`sa-status-${a.name}`}
+                  data-testid={`sa-status-${a.row_id}`}
                 >
                   {a.enabled ? 'enabled' : 'disabled'}
                 </td>
                 <td className="space-x-2 px-3 py-2 text-right whitespace-nowrap">
                   {a.enabled && (
-                    <button className="fc-btn" data-testid={`sa-issue-${a.name}`} onClick={() => onIssueToken(a.name)}>
+                    <button className="fc-btn" data-testid={`sa-issue-${a.row_id}`} onClick={() => onIssueToken(a.row_id)}>
                       Issue token
                     </button>
                   )}
                   <button
                     className="fc-btn"
-                    data-testid={`sa-toggle-${a.name}`}
+                    data-testid={`sa-toggle-${a.row_id}`}
                     disabled={setEnabled.isPending}
-                    onClick={() => setEnabled.mutate({ account: a.name, enabled: !a.enabled })}
+                    onClick={() => setEnabled.mutate({ account: a.row_id, enabled: !a.enabled })}
                   >
                     {a.enabled ? 'Disable' : 'Enable'}
                   </button>

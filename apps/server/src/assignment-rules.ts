@@ -1,5 +1,5 @@
 import { sql } from './db'
-import { tableName } from './doctype-engine'
+import { tableName } from './table-engine'
 import { getMeta } from './meta'
 import { createAssignment } from './assign'
 import { evalCondition } from './server-scripts'
@@ -21,16 +21,16 @@ export async function evaluateAssignmentRules(
   if (!tableOk) return
 
   const rules = await sql`
-    select name, assign_condition, assign_to_field, last_user, description
+    select row_id, assign_condition, assign_to_field, last_user, description
     from assignment_rule
     where ref_table = ${table} and disabled = false`
 
   for (const rule of rules) {
-    if (!evalCondition(rule.assign_condition as string | null, row, `assignment rule ${rule.name}`))
+    if (!evalCondition(rule.assign_condition as string | null, row, `assignment rule ${rule.row_id}`))
       continue
     const pool = await sql`
       select "user" from assignment_rule_user
-      where parent = ${rule.name as string} and parenttype = 'Assignment Rule'
+      where parent = ${rule.row_id as string} and parenttype = 'Assignment Rule'
       order by position`
     const users = pool.map((r) => r.user as string).filter(Boolean)
     if (!users.length) continue
@@ -41,13 +41,13 @@ export async function evaluateAssignmentRules(
 
     await createAssignment(
       table,
-      String(row.name),
+      String(row.row_id),
       next,
       'Administrator',
-      (rule.description as string | null) || `Auto-assigned ${table} ${String(row.name)}`,
+      (rule.description as string | null) || `Auto-assigned ${table} ${String(row.row_id)}`,
     )
     await sql`
-      update assignment_rule set last_user = ${next} where name = ${rule.name as string}`
+      update assignment_rule set last_user = ${next} where row_id = ${rule.row_id as string}`
 
     const field = (rule.assign_to_field as string | null)?.trim()
     if (field) {
@@ -57,7 +57,7 @@ export async function evaluateAssignmentRules(
       if (meta.columns.some((f) => f.column_name === field)) {
         await sql`
           update ${sql(tableName(table))} set ${sql(field)} = ${next}
-          where name = ${String(row.name)}`
+          where ${sql(meta.row_key)} = ${String(row.row_id)}`
         row[field] = next
       }
     }

@@ -8,15 +8,15 @@ const ROLE = 'Own Role'
 // Per-test world: Table, role, the own_rows_only grant (read/write/create/
 // delete only on own docs), and two users — all rolled back with the test.
 async function setup(admin: TestClient, createUser: (o?: { roles?: string[] }) => Promise<TestClient>) {
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [{ column_name: 't', column_type: 'Data' }],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: ROLE } })
+  await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
   // own_rows_only grant: read/write/create/delete only on own docs
-  await admin.post('/api/save_doc', {
-    doctype: 'Permission',
-    doc: {
+  await admin.post('/api/save_row', {
+    table: 'Permission',
+    row: {
       ref_table: DT,
       role: ROLE,
       own_rows_only: true,
@@ -53,18 +53,18 @@ describe('PERM-007: own_rows_only permissions', () => {
     // List: alice sees exactly her one doc
     const list = (await (
       await alice.fetch(
-        `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","created_by"]')}`,
+        `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["row_id","created_by"]')}`,
       )
     ).json()) as { data: { created_by: string }[]; total: number }
     expect(list.total).toBe(1)
     expect(list.data[0].created_by).toBe(alice.user)
 
     // Detail: own doc 200, other's 403
-    expect((await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.name}`)).status).toBe(200)
+    expect((await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.row_id}`)).status).toBe(200)
     const bobList = (await (
-      await bob.fetch(`/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name"]')}`)
-    ).json()) as { data: { name: string }[] }
-    const bobDoc = bobList.data[0].name
+      await bob.fetch(`/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["row_id"]')}`)
+    ).json()) as { data: { row_id: string }[] }
+    const bobDoc = bobList.data[0].row_id
     expect((await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${bobDoc}`)).status).toBe(403)
 
     // Write/delete on other's doc 403; on own doc allowed
@@ -81,18 +81,18 @@ describe('PERM-007: own_rows_only permissions', () => {
         .status,
     ).toBe(403)
     const own = (await (
-      await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.name}`)
+      await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.row_id}`)
     ).json()) as Record<string, unknown>
     expect(
       (
-        await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.name}`, {
+        await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.row_id}`, {
           method: 'PATCH',
           body: JSON.stringify({ updated_at: own.updated_at, t: 'mine v2' }),
         })
       ).status,
     ).toBe(200)
     expect(
-      (await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.name}`, { method: 'DELETE' }))
+      (await alice.fetch(`/api/table/${encodeURIComponent(DT)}/${mine.row_id}`, { method: 'DELETE' }))
         .status,
     ).toBe(200)
   })
@@ -103,13 +103,13 @@ describe('PERM-007: own_rows_only permissions', () => {
       method: 'POST',
       body: JSON.stringify({ t: 'bob doc' }),
     })
-    await admin.post('/api/save_doc', {
-      doctype: 'Permission',
-      doc: { ref_table: DT, role: ROLE, can_read: true },
+    await admin.post('/api/save_row', {
+      table: 'Permission',
+      row: { ref_table: DT, role: ROLE, can_read: true },
     })
     const list = (await (
       await alice.fetch(
-        `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["name","created_by"]')}`,
+        `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["row_id","created_by"]')}`,
       )
     ).json()) as { total: number }
     expect(list.total).toBeGreaterThanOrEqual(1) // sees bob's doc now too

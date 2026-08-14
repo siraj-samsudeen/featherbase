@@ -28,8 +28,8 @@ async function cleanup(request: APIRequestContext) {
   )
   const listed = (await (
     await request.get(`/api/table/File?filters=${filters}`, { headers: auth })
-  ).json()) as { data: { name: string }[] }
-  for (const f of listed.data) await request.delete(`/api/table/File/${f.name}`, { headers: auth })
+  ).json()) as { data: { row_id: string }[] }
+  for (const f of listed.data) await request.delete(`/api/table/File/${f.row_id}`, { headers: auth })
 }
 
 test.beforeEach(async ({ request }) => cleanup(request))
@@ -44,7 +44,7 @@ test('#173: a private attachment links without a token and serves on the cookie'
     multipart: {
       file: { name: 'secret.txt', mimeType: 'text/plain', buffer: Buffer.from(SECRET) },
       is_private: '1',
-      ref_doctype: 'User',
+      ref_table: 'User',
       ref_name: 'Guest',
     },
   })

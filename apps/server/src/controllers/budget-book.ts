@@ -1,6 +1,6 @@
 import { AppError } from '../errors'
 import type { HookContext, TableController } from '../controllers'
-import { tableName } from '../doctype-engine'
+import { tableName } from '../table-engine'
 import type { RowValues } from '../document'
 import { BOOK, validateBinding } from '../budget'
 
@@ -23,7 +23,7 @@ async function childColumns(
   if (ctx.isNew) return []
   const rows = await ctx.tx`
     select column_name from ${ctx.tx(tableName(childTable))}
-    where parent = ${String(ctx.row.name)} and parenttype = ${BOOK} order by position`
+    where parent = ${String(ctx.row.row_id)} and parenttype = ${BOOK} order by position`
   return rows.map((r) => String(r.column_name))
 }
 
@@ -44,7 +44,7 @@ const controller: TableController = {
         if (String(old!.lifecycle) !== 'working')
           throw new AppError(
             'ValidationError',
-            `${String(row.name)} is ${String(old!.lifecycle)} — a book's definition is frozen once baselined`,
+            `${String(row.row_id)} is ${String(old!.lifecycle)} — a book's definition is frozen once baselined`,
           )
       }
       await validateBinding({
@@ -56,20 +56,20 @@ const controller: TableController = {
       // BUD-R1: at most one non-closed book per bound table — the write-lock
       // must never be ambiguous.
       const [dupe] = await tx`
-        select name from ${tx(tableName(BOOK))}
+        select row_id from ${tx(tableName(BOOK))}
         where ref_table = ${String(row.ref_table)} and lifecycle <> 'closed'
-          and name <> ${String(row.name ?? '')} limit 1`
+          and row_id <> ${String(row.row_id ?? '')} limit 1`
       if (dupe)
         throw new AppError(
           'ValidationError',
-          `${String(row.ref_table)} is already governed by ${String(dupe.name)} — close it first`,
+          `${String(row.ref_table)} is already governed by ${String(dupe.row_id)} — close it first`,
         )
     },
     on_trash: ({ row }) => {
       if (String(row.lifecycle) === 'active')
         throw new AppError(
           'ValidationError',
-          `${String(row.name)} is active and cannot be deleted — close it first`,
+          `${String(row.row_id)} is active and cannot be deleted — close it first`,
         )
     },
   },

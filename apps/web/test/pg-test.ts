@@ -33,7 +33,7 @@ export const test = createPgTest(
       const doc = await saveDoc(
         'User',
         {
-          name: email,
+          row_id: email,
           email,
           full_name: fullName ?? email.split('@')[0],
           enabled: true,
@@ -41,7 +41,7 @@ export const test = createPgTest(
         },
         'Administrator',
       )
-      return String(doc.name)
+      return String(doc.row_id)
     },
   },
   { defaultRoles: ['All'] },
@@ -58,7 +58,7 @@ export function renderApp(path: string, as: TestClient, opts: Opts = {}) {
   return baseRenderApp(path, {
     routeTree,
     token: as.token,
-    user: as.user ? { name: as.user } : undefined,
+    user: as.user ? { row_id: as.user } : undefined,
     ...opts,
   })
 }
@@ -68,7 +68,7 @@ export function renderSession(path: string, as: TestClient, opts: Opts = {}) {
   return baseRenderSession(path, {
     routeTree,
     token: as.token,
-    user: as.user ? { name: as.user } : undefined,
+    user: as.user ? { row_id: as.user } : undefined,
     ...opts,
   })
 }

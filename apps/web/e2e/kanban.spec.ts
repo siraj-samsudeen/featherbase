@@ -9,7 +9,7 @@ const DT = 'Kb DT'
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const headers = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: {
       name: DT,
@@ -20,11 +20,11 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
       ],
     },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   // Fresh dataset.
-  const listed = (await (await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, { headers })).json()) as { data: { name: string }[] }
-  for (const r of listed.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${r.name}`, { headers })
-  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { name: 'card-a', title: 'Card A', stage: 'Todo' } })
+  const listed = (await (await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, { headers })).json()) as { data: { row_id: string }[] }
+  for (const r of listed.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${r.row_id}`, { headers })
+  await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { row_id: 'card-a', title: 'Card A', stage: 'Todo' } })
 })
 
 test('UI-020: dragging a card to another column updates its field in the DB', async ({ page }) => {

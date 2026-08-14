@@ -10,18 +10,18 @@ type Row = Record<string, unknown>
 // drag-and-drop between columns. Dropping a card in a new column writes the
 // grouping column back to the row.
 export function KanbanView({
-  doctype,
+  table,
   groupBy,
   onGroupByChange,
 }: {
-  doctype: string
+  table: string
   groupBy?: string
   onGroupByChange?: (field: string | undefined) => void
 }) {
-  const meta = useMeta(doctype)
+  const meta = useMeta(table)
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
-  const [dragging, setDragging] = useState<{ name: string; from: string } | null>(null)
+  const [dragging, setDragging] = useState<{ row_id: string; from: string } | null>(null)
 
   const choiceColumns = useMemo(
     () => (meta.data?.columns ?? []).filter((f) => f.column_type === 'Choice'),
@@ -31,14 +31,14 @@ export function KanbanView({
     ? groupBy
     : choiceColumns[0]?.column_name
 
-  const titleColumn = meta.data?.title_column || 'name'
+  const titleColumn = meta.data?.title_column || 'row_id'
 
   const rows = useQuery({
-    queryKey: ['kanban', doctype, field],
+    queryKey: ['kanban', table, field],
     enabled: Boolean(meta.data && field),
     queryFn: () =>
-      listResource<Row>(doctype, {
-        fields: [...new Set(['name', field!, titleColumn])],
+      listResource<Row>(table, {
+        fields: [...new Set(['row_id', field!, titleColumn])],
         order_by: 'updated_at desc',
         limit_page_length: 500,
       }),
@@ -68,12 +68,12 @@ export function KanbanView({
     setError(null)
     // Optimistic: refetch after the write.
     try {
-      const doc = await api.get<Row>(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`)
-      await api.patch(`/api/table/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`, {
+      const doc = await api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`)
+      await api.patch(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`, {
         [field!]: to,
         updated_at: doc.updated_at,
       })
-      await queryClient.invalidateQueries({ queryKey: ['kanban', doctype, field] })
+      await queryClient.invalidateQueries({ queryKey: ['kanban', table, field] })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Move failed')
     }
@@ -86,14 +86,14 @@ export function KanbanView({
     const to = colEl?.getAttribute('data-column')
     const card = dragging
     setDragging(null)
-    if (to) void moveCard(card.name, card.from, to)
+    if (to) void moveCard(card.row_id, card.from, to)
   }
 
   return (
     <div data-testid="kanban-view" onPointerUp={onPointerUp}>
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{doctype} — Kanban</h1>
+          <h1 className="text-xl font-semibold text-[var(--color-ink)]">{table} — Kanban</h1>
           <span className="text-xs text-[var(--color-ink-muted)]" data-testid="kanban-total">
             {data.length} cards
           </span>
@@ -115,8 +115,8 @@ export function KanbanView({
             </select>
           </label>
           <RouterLink
-            to="/admin/$doctype"
-            params={{ doctype }}
+            to="/admin/$table"
+            params={{ table }}
             search={{ filters: undefined }}
             className="fc-btn"
             data-testid="kanban-to-list"
@@ -149,22 +149,22 @@ export function KanbanView({
             <div className="flex flex-col gap-2">
               {byColumn.get(col)!.map((row) => (
                 <div
-                  key={String(row.name)}
+                  key={String(row.row_id)}
                   data-testid="kanban-card"
-                  data-card={String(row.name)}
-                  onPointerDown={() => setDragging({ name: String(row.name), from: col })}
+                  data-card={String(row.row_id)}
+                  onPointerDown={() => setDragging({ row_id: String(row.row_id), from: col })}
                   className={`cursor-grab rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-sm shadow-sm ${
-                    dragging?.name === row.name ? 'opacity-50' : ''
+                    dragging?.row_id === row.row_id ? 'opacity-50' : ''
                   }`}
                 >
                   <RouterLink
-                    to="/admin/$doctype/$name"
+                    to="/admin/$table/$name"
                     search={{ prefill: undefined }}
-                    params={{ doctype, name: String(row.name) }}
+                    params={{ table, name: String(row.row_id) }}
                     className="font-medium text-[var(--color-brand)] hover:underline"
                     onPointerDown={(e) => e.stopPropagation()}
                   >
-                    {String(row[titleColumn] ?? row.name)}
+                    {String(row[titleColumn] ?? row.row_id)}
                   </RouterLink>
                 </div>
               ))}

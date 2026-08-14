@@ -1,7 +1,7 @@
 import type { Sql } from 'postgres'
 import { sql } from './db'
 
-// PLAT-003: ordered, recorded patches. Distinct from the doctype-seed
+// PLAT-003: ordered, recorded patches. Distinct from the table-seed
 // migrations (which need the engine's own transactions): a patch is a one-off
 // schema/data change that must run EXACTLY ONCE per database, in order, each
 // inside a single transaction so a failure rolls back both its changes and its

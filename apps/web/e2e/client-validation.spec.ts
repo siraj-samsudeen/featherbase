@@ -11,7 +11,7 @@ test('UI-009 + META-013: missing reqd field errors inline via shared zod schema,
     { headers: { Authorization: `Bearer ${token}` } },
   )
   test.skip(list.status() === 404, 'run formview.spec first to create fixtures')
-  const docName = ((await list.json()) as { data: { name: string }[] }).data[0].name
+  const docName = ((await list.json()) as { data: { row_id: string }[] }).data[0].row_id
 
   await page.goto('/login')
   await page.fill('input[name=email]', 'Administrator')
@@ -20,7 +20,7 @@ test('UI-009 + META-013: missing reqd field errors inline via shared zod schema,
   await expect(page).toHaveURL(/\/admin/)
 
   let saveCalls = 0
-  await page.route('**/api/save_doc', async (route) => {
+  await page.route('**/api/save_row', async (route) => {
     saveCalls++
     await route.continue()
   })

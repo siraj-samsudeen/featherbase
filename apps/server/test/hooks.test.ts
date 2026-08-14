@@ -8,15 +8,15 @@ import { AppError } from '../src/errors'
 const DT = 'Hook Chain Probe'
 const FILE_DT = 'Hook File Demo'
 
-async function makeDoctypes(admin: TestClient) {
-  await admin.post('/api/doctype', {
+async function makeTables(admin: TestClient) {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },
       { column_name: 'computed', column_type: 'Data' },
     ],
   })
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: FILE_DT,
     columns: [
       { column_name: 'title', column_type: 'Data' },
@@ -50,19 +50,19 @@ function registerProbe(events: string[]) {
 
 describe('DOC-003: lifecycle hook chain', () => {
   test('runs the full chain in order on insert and persists hook mutations', async ({ admin }) => {
-    await makeDoctypes(admin)
+    await makeTables(admin)
     const events: string[] = []
     registerProbe(events)
     try {
-      const doc = await admin.post<Record<string, unknown>>('/api/save_doc', {
-        doctype: DT,
-        doc: { title: 'abc' },
+      const doc = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: DT,
+        row: { title: 'abc' },
       })
       expect(events).toEqual(['before_insert', 'validate', 'before_save', 'after_insert', 'after_save'])
       expect(doc.title).toBe('ABC')
       expect(doc.computed).toBe('ABC:new')
       const [row] = await sql.unsafe(
-        `select title, computed from hook_chain_probe where name='${doc.name}'`,
+        `select title, computed from hook_chain_probe where row_id='${doc.row_id}'`,
       )
       expect(row).toMatchObject({ title: 'ABC', computed: 'ABC:new' })
     } finally {
@@ -73,18 +73,18 @@ describe('DOC-003: lifecycle hook chain', () => {
   test('runs validate/before_save/after_save on update with old doc available', async ({
     admin,
   }) => {
-    await makeDoctypes(admin)
+    await makeTables(admin)
     const events: string[] = []
     registerProbe(events)
     try {
-      const doc = await admin.post<Record<string, unknown>>('/api/save_doc', {
-        doctype: DT,
-        doc: { title: 'x' },
+      const doc = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: DT,
+        row: { title: 'x' },
       })
       events.length = 0
-      const upd = await admin.post<Record<string, unknown>>('/api/save_doc', {
-        doctype: DT,
-        doc: { name: doc.name, updated_at: doc.updated_at, title: 'y' },
+      const upd = await admin.post<Record<string, unknown>>('/api/save_row', {
+        table: DT,
+        row: { row_id: doc.row_id, updated_at: doc.updated_at, title: 'y' },
       })
       expect(events).toEqual(['validate', 'before_save', 'after_save'])
       expect(upd.computed).toBe('Y:upd')
@@ -94,12 +94,12 @@ describe('DOC-003: lifecycle hook chain', () => {
   })
 
   test('a validate error aborts the entire transaction — no row inserted', async ({ admin }) => {
-    await makeDoctypes(admin)
+    await makeTables(admin)
     const events: string[] = []
     registerProbe(events)
     try {
       await expect(
-        admin.post('/api/save_doc', { doctype: DT, doc: { title: 'explode' } }),
+        admin.post('/api/save_row', { table: DT, row: { title: 'explode' } }),
       ).rejects.toMatchObject({ status: 417 })
       const [{ count }] = await sql.unsafe(
         `select count(*)::int as count from hook_chain_probe where title='explode' or title='EXPLODE'`,
@@ -111,10 +111,10 @@ describe('DOC-003: lifecycle hook chain', () => {
   })
 
   test('Tables without controllers still save', async ({ admin }) => {
-    await makeDoctypes(admin)
-    const res = await admin.fetch('/api/save_doc', {
+    await makeTables(admin)
+    const res = await admin.fetch('/api/save_row', {
       method: 'POST',
-      body: JSON.stringify({ doctype: FILE_DT, doc: { title: 'No Hooks Needed' } }),
+      body: JSON.stringify({ table: FILE_DT, row: { title: 'No Hooks Needed' } }),
     })
     expect(res.status).toBe(201)
   })
@@ -122,14 +122,14 @@ describe('DOC-003: lifecycle hook chain', () => {
 
 describe('DOC-004: file-based controller registry', () => {
   test('the controllers/hook_file_demo.ts file is loaded and its hooks fire', async ({ admin }) => {
-    await makeDoctypes(admin)
-    const doc = await admin.post<Record<string, unknown>>('/api/save_doc', {
-      doctype: FILE_DT,
-      doc: { title: 'Hello World' },
+    await makeTables(admin)
+    const doc = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: FILE_DT,
+      row: { title: 'Hello World' },
     })
     expect(doc.slug).toBe('hello-world')
     await expect(
-      admin.post('/api/save_doc', { doctype: FILE_DT, doc: { title: 'forbidden' } }),
+      admin.post('/api/save_row', { table: FILE_DT, row: { title: 'forbidden' } }),
     ).rejects.toMatchObject({ status: 417, fields: { title: expect.anything() } })
   })
 })

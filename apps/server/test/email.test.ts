@@ -26,13 +26,13 @@ async function setup() {
   await loadJobs()
   await sql`delete from email_sink`
   await sql`delete from email_queue`
-  await sql`delete from email_account where name = ${ACCOUNT}`
+  await sql`delete from email_account where row_id = ${ACCOUNT}`
   await sql`delete from column_def where parent in ('Eml Ref', 'Eml Pdf')`
   await sql`delete from table_def where name in ('Eml Ref', 'Eml Pdf')`
   await sql.unsafe('drop table if exists eml_ref, eml_pdf')
   await sql`
     insert into email_account ${sql({
-      name: ACCOUNT,
+      row_id: ACCOUNT,
       created_by: 'Administrator',
       updated_by: 'Administrator',
       email_id: 'sender@frappe.test',
@@ -70,13 +70,13 @@ describe('EML-002: queued email delivery', () => {
     const name = await queueEmail({ to: 'q@x.com', subject: 'Queued Subject', body: 'hi' })
 
     // Initially queued, not yet delivered.
-    const [before] = await sql`select send_status from email_queue where name = ${name}`
+    const [before] = await sql`select send_status from email_queue where row_id = ${name}`
     expect(before.send_status).toBe('queued')
     expect(await sql`select count(*)::int as c from email_sink`).toEqual([{ c: 0 }])
 
     await drainDueJobs()
 
-    const [after] = await sql`select send_status from email_queue where name = ${name}`
+    const [after] = await sql`select send_status from email_queue where row_id = ${name}`
     expect(after.send_status).toBe('sent')
 
     const sink = await sql`select mail_to, subject from email_sink where subject = 'Queued Subject'`
@@ -107,14 +107,14 @@ describe('EML-005: template rendering', () => {
     'a queued template email is rendered with the actual field value in the sink',
     async () => {
       await setup()
-      const { createTable } = await import('../src/doctype-engine')
+      const { createTable } = await import('../src/table-engine')
       await createTable({
         name: 'Eml Ref',
         id_pattern: 'prompt',
         columns: [{ column_name: 'subject', column_type: 'Data' }],
       })
       const { saveDoc } = await import('../src/document')
-      await saveDoc('Eml Ref', { name: 'ref-1', subject: 'Quarterly Numbers' }, 'Administrator')
+      await saveDoc('Eml Ref', { row_id: 'ref-1', subject: 'Quarterly Numbers' }, 'Administrator')
 
       await queueEmail({
         to: 'r@x.com',
@@ -139,14 +139,14 @@ describe('EML-003: PDF attachment', () => {
     'a queued email with attach_pdf delivers a PDF whose text matches the document',
     async () => {
       await setup()
-      const { createTable } = await import('../src/doctype-engine')
+      const { createTable } = await import('../src/table-engine')
       await createTable({
         name: 'Eml Pdf',
         id_pattern: 'prompt',
         columns: [{ column_name: 'customer', column_type: 'Data' }],
       })
       const { saveDoc } = await import('../src/document')
-      await saveDoc('Eml Pdf', { name: 'inv-1', customer: 'Wonka Industries' }, 'Administrator')
+      await saveDoc('Eml Pdf', { row_id: 'inv-1', customer: 'Wonka Industries' }, 'Administrator')
 
       await queueEmail({
         to: 'billing@x.com',

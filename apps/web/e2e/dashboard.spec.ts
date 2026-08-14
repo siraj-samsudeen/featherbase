@@ -14,7 +14,7 @@ const STATUSES = ['Open', 'Open', 'Open', 'Closed', 'Closed', 'Pending']
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: {
       name: DT,
@@ -24,30 +24,30 @@ test.beforeAll(async ({ request }) => {
       ],
     },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   // Clear any docs from a prior run so the counts are exact.
   const existing = (await (
     await request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=500`, { headers })
-  ).json()) as { data: { name: string }[] }
-  for (const d of existing.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.name}`, { headers })
+  ).json()) as { data: { row_id: string }[] }
+  for (const d of existing.data) await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.row_id}`, { headers })
 
   for (const stage of STATUSES)
     await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { title: 't', stage } })
 
   await request.delete(`/api/table/Dashboard/${encodeURIComponent(DASH)}`, { headers })
-  const dash = await request.post('/api/save_doc', {
+  const dash = await request.post('/api/save_row', {
     headers,
     data: {
-      doctype: 'Dashboard',
-      doc: {
-        name: DASH,
+      table: 'Dashboard',
+      row: {
+        row_id: DASH,
         label: 'E2E Board',
         config: JSON.stringify({
           cards: [
-            { label: 'All Tasks', doctype: DT },
-            { label: 'Open Tasks', doctype: DT, filters: [['stage', '=', 'Open']] },
+            { label: 'All Tasks', table: DT },
+            { label: 'Open Tasks', table: DT, filters: [['stage', '=', 'Open']] },
           ],
-          charts: [{ label: 'By Status', doctype: DT, group_by: 'stage' }],
+          charts: [{ label: 'By Status', table: DT, group_by: 'stage' }],
         }),
       },
     },

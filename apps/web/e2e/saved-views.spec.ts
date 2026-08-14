@@ -13,7 +13,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const token = ((await login.json()) as { token: string }).token
   const auth = { Authorization: `Bearer ${token}` }
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers: auth,
     data: {
       name: DT,
@@ -21,18 +21,18 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
       columns: [{ column_name: 'note', column_type: 'Data', in_list_view: true }],
     },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: auth,
-    data: { name: DOC, note: 'hot' },
+    data: { row_id: DOC, note: 'hot' },
   })
   // Re-runs must start clean: drop Administrator's leftover views for DT.
   const existing = await request.get(`/api/saved_views?table=${encodeURIComponent(DT)}`, {
     headers: auth,
   })
-  for (const v of ((await existing.json()) as { views: Array<{ name: string; mine: boolean }> })
+  for (const v of ((await existing.json()) as { views: Array<{ row_id: string; mine: boolean }> })
     .views) {
-    if (v.mine) await request.delete(`/api/saved_views/${v.name}`, { headers: auth })
+    if (v.mine) await request.delete(`/api/saved_views/${v.row_id}`, { headers: auth })
   }
 })
 
@@ -54,7 +54,7 @@ test('#101 P6: three applications trigger the nudge; the saved view lives as a c
   // outside the client's same-arrival dedup window.)
   for (let i = 0; i < 2; i++) {
     await page.goto(listUrl)
-    await expect(page.getByTestId('doctype-page')).toBeVisible()
+    await expect(page.getByTestId('table-page')).toBeVisible()
     await expect(page.getByTestId('filter-nudge')).toHaveCount(0)
     await page.waitForTimeout(600)
   }
@@ -76,7 +76,7 @@ test('#101 P6: three applications trigger the nudge; the saved view lives as a c
   await page.goto(`/admin/${encodeURIComponent(DT)}`)
   await chip.click()
   await expect(page).toHaveURL(/filters=/)
-  await expect(page.getByTestId('doctype-page')).toContainText(DOC)
+  await expect(page.getByTestId('table-page')).toContainText(DOC)
 
   // Share it (control shows on the active own chip), then delete it.
   await page.getByTestId('saved-view-share').click()
@@ -91,7 +91,7 @@ test('#101 P6: "Not now" silences the nudge for that filter set', async ({ page 
   const listUrl = `/admin/${encodeURIComponent(DT)}?filters=${otherFilters}`
   for (let i = 0; i < 3; i++) {
     await page.goto(listUrl)
-    await expect(page.getByTestId('doctype-page')).toBeVisible()
+    await expect(page.getByTestId('table-page')).toBeVisible()
     await page.waitForTimeout(600) // arrivals inside the dedup window count once
   }
   await expect(page.getByTestId('filter-nudge')).toBeVisible()
@@ -99,6 +99,6 @@ test('#101 P6: "Not now" silences the nudge for that filter set', async ({ page 
   await expect(page.getByTestId('filter-nudge')).toHaveCount(0)
   // A fourth application stays quiet — the dismissal is remembered.
   await page.goto(listUrl)
-  await expect(page.getByTestId('doctype-page')).toBeVisible()
+  await expect(page.getByTestId('table-page')).toBeVisible()
   await expect(page.getByTestId('filter-nudge')).toHaveCount(0)
 })

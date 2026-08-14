@@ -20,13 +20,13 @@ type Entry =
 // UI-019: activity timeline interleaving comments and versions (edits with
 // their column diff) chronologically. Workflow actions join here once WF
 // lands — they are recorded as versions/comments too.
-export function ActivityTimeline({ doctype, name }: { doctype: string; name: string }) {
+export function ActivityTimeline({ table, name }: { table: string; name: string }) {
   const comments = useQuery({
-    queryKey: ['comments', doctype, name],
+    queryKey: ['comments', table, name],
     queryFn: () =>
       listResource<CommentRow>('Comment', {
         filters: [
-          ['ref_table', '=', doctype],
+          ['ref_table', '=', table],
           ['ref_name', '=', name],
         ],
         fields: ['content', 'created_by', 'created_at'],
@@ -35,11 +35,11 @@ export function ActivityTimeline({ doctype, name }: { doctype: string; name: str
       }),
   })
   const versions = useQuery({
-    queryKey: ['versions', doctype, name],
+    queryKey: ['versions', table, name],
     queryFn: () =>
       listResource<VersionRow>('Version', {
         filters: [
-          ['ref_table', '=', doctype],
+          ['ref_table', '=', table],
           ['ref_name', '=', name],
         ],
         fields: ['created_by', 'created_at', 'data'],

@@ -3,7 +3,7 @@ import { expect, test, type APIRequestContext } from '@playwright/test'
 const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Pf DT'
 
-// PRN-002: two formats for one DocType produce visibly different output;
+// PRN-002: two formats for one Table produce visibly different output;
 // the default format is respected when none is named.
 
 let docName = ''
@@ -11,7 +11,7 @@ let docName = ''
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const headers = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-  const dt = await request.post('/api/doctype', {
+  const dt = await request.post('/api/table_def', {
     headers,
     data: {
       name: DT,
@@ -22,33 +22,33 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
       ],
     },
   })
-  if (![201, 409].includes(dt.status())) throw new Error(`doctype: ${dt.status()}`)
+  if (![201, 409].includes(dt.status())) throw new Error(`table: ${dt.status()}`)
   docName = 'pf-doc'
   await request.delete(`/api/table/${encodeURIComponent(DT)}/${docName}`, { headers })
   await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers,
-    data: { name: docName, customer: 'Stark Industries', amount: 500 },
+    data: { row_id: docName, customer: 'Stark Industries', amount: 500 },
   })
 
   // Two formats: an "Invoice" default and a terse "Receipt".
   for (const fmt of [
     {
-      name: 'Pf Invoice',
+      row_id: 'Pf Invoice',
       ref_table: DT,
       is_default: true,
       template:
         '<div data-testid="tpl-invoice"><h2>INVOICE</h2><p>Bill to: {{ customer }}</p><p>Total: {{ amount }}</p></div>',
     },
     {
-      name: 'Pf Receipt',
+      row_id: 'Pf Receipt',
       ref_table: DT,
       is_default: false,
       template: '<div data-testid="tpl-receipt">RECEIPT — {{ customer }} paid {{ amount }}</div>',
     },
   ]) {
-    await request.delete(`/api/table/Print%20Format/${encodeURIComponent(fmt.name)}`, { headers })
+    await request.delete(`/api/table/Print%20Format/${encodeURIComponent(fmt.row_id)}`, { headers })
     const res = await request.post('/api/table/Print%20Format', { headers, data: fmt })
-    if (res.status() !== 201) throw new Error(`format ${fmt.name}: ${res.status()}`)
+    if (res.status() !== 201) throw new Error(`format ${fmt.row_id}: ${res.status()}`)
   }
 })
 

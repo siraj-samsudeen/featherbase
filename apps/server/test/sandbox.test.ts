@@ -10,8 +10,8 @@ import { _getRootSql } from '../src/db'
 // sandbox isolation the second test would collide with the first's leftovers.
 const DT = 'Sandbox Probe'
 
-async function createProbeDoctype(admin: { post: (p: string, b?: unknown) => Promise<unknown> }) {
-  await admin.post('/api/doctype', {
+async function createProbeTable(admin: { post: (p: string, b?: unknown) => Promise<unknown> }) {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [
       { column_name: 'title', label: 'Title', column_type: 'Data', reqd: true, in_list_view: true },
@@ -25,10 +25,10 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
     admin,
     seed,
   }) => {
-    await createProbeDoctype(admin)
+    await createProbeTable(admin)
     const doc = await seed(DT, { title: 'first', qty: 3 })
-    expect(doc.name).toBeTruthy()
-    const listed = await admin.get<{ data: { name: string }[] }>(
+    expect(doc.row_id).toBeTruthy()
+    const listed = await admin.get<{ data: { row_id: string }[] }>(
       `/api/table/${encodeURIComponent(DT)}`,
     )
     expect(listed.data).toHaveLength(1)
@@ -38,10 +38,10 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
     admin,
     seed,
   }) => {
-    await createProbeDoctype(admin)
+    await createProbeTable(admin)
     const doc = await seed(DT, { title: 'first', qty: 3 })
-    expect(doc.name).toBeTruthy()
-    const listed = await admin.get<{ data: { name: string }[] }>(
+    expect(doc.row_id).toBeTruthy()
+    const listed = await admin.get<{ data: { row_id: string }[] }>(
       `/api/table/${encodeURIComponent(DT)}`,
     )
     expect(listed.data).toHaveLength(1)
@@ -51,22 +51,22 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
     admin,
     seed,
   }) => {
-    await createProbeDoctype(admin)
+    await createProbeTable(admin)
     // Missing required title → the app's save transaction (a savepoint under
     // the sandbox) rolls back cleanly...
     await expect(seed(DT, { qty: 1 })).rejects.toMatchObject({ status: 417 })
     // ...and the sandbox connection is still usable afterwards.
     const doc = await seed(DT, { title: 'after failure', qty: 2 })
-    expect(doc.name).toBeTruthy()
+    expect(doc.row_id).toBeTruthy()
   })
 
   test('users created in a test are sandboxed too', async ({ client, admin }) => {
     expect(client.user).toMatch(/@feather\.test/)
-    const who = await client.get<{ name: string }>('/api/whoami')
-    expect(who.name).toBe(client.user)
+    const who = await client.get<{ row_id: string }>('/api/whoami')
+    expect(who.row_id).toBe(client.user)
     // Visible inside the sandbox:
-    const listed = await admin.get<{ data: { name: string }[] }>(
-      `/api/table/User?filters=${encodeURIComponent(JSON.stringify([['name', '=', client.user]]))}`,
+    const listed = await admin.get<{ data: { row_id: string }[] }>(
+      `/api/table/User?filters=${encodeURIComponent(JSON.stringify([['row_id', '=', client.user]]))}`,
     )
     expect(listed.data).toHaveLength(1)
   })
@@ -79,8 +79,8 @@ afterAll(async () => {
     select exists(select 1 from information_schema.tables where table_name = 'sandbox_probe')
   `
   expect(exists).toBe(false)
-  const leftoverUsers = await root<{ name: string }[]>`
-    select name from "user" where name like '%@feather.test'
+  const leftoverUsers = await root<{ row_id: string }[]>`
+    select row_id from "user" where row_id like '%@feather.test'
   `
   expect(leftoverUsers).toHaveLength(0)
 })

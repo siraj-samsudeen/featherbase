@@ -65,21 +65,21 @@ afterAll(async () => {
   await new Promise<void>((r) => server.close(() => r()))
 })
 
-// Each test creates the DocType in its own transaction and starts with an
+// Each test creates the Table in its own transaction and starts with an
 // empty capture, so tests don't cross-fire each other's webhooks.
 async function setup(admin: TestClient) {
   received.length = 0
   failuresLeft.clear()
-  await admin.post('/api/doctype', {
+  await admin.post('/api/table_def', {
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
 }
 
-async function makeDoc(admin: TestClient): Promise<{ name: string; updated_at: string }> {
-  return await admin.post<{ name: string; updated_at: string }>('/api/save_doc', {
-    doctype: DT,
-    doc: { title: 'v1' },
+async function makeDoc(admin: TestClient): Promise<{ row_id: string; updated_at: string }> {
+  return await admin.post<{ row_id: string; updated_at: string }>('/api/save_row', {
+    table: DT,
+    row: { title: 'v1' },
   })
 }
 
@@ -110,23 +110,23 @@ async function waitForHits(pred: (r: Received) => boolean, want: number, ms = 50
 describe('PLAT-005: webhooks', () => {
   test('on_update posts the doc JSON with a valid signature', async ({ admin }) => {
     await setup(admin)
-    await admin.post('/api/save_doc', {
-      doctype: 'Webhook',
-      doc: { webhook_table: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/hook`, webhook_secret: SECRET, enabled: true },
+    await admin.post('/api/save_row', {
+      table: 'Webhook',
+      row: { webhook_table: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/hook`, webhook_secret: SECRET, enabled: true },
     })
 
     const doc = await makeDoc(admin)
     // Updating fires on_update.
-    await admin.post('/api/save_doc', {
-      doctype: DT,
-      doc: { name: doc.name, updated_at: doc.updated_at, title: 'v2' },
+    await admin.post('/api/save_row', {
+      table: DT,
+      row: { row_id: doc.row_id, updated_at: doc.updated_at, title: 'v2' },
     })
 
-    const hits = await waitForHits((r) => r.path === '/hook' && JSON.parse(r.body).name === doc.name, 1)
+    const hits = await waitForHits((r) => r.path === '/hook' && JSON.parse(r.body).row_id === doc.row_id, 1)
     expect(hits.length).toBe(1)
     const hit = hits[0]
     expect(hit.event).toBe('on_update')
-    const payload = JSON.parse(hit.body) as { name: string; title: string }
+    const payload = JSON.parse(hit.body) as { row_id: string; title: string }
     expect(payload.title).toBe('v2')
     // The signature verifies against the exact body with the shared secret.
     expect(hit.signature).toBe(createHmac('sha256', SECRET).update(hit.body).digest('hex'))
@@ -135,20 +135,20 @@ describe('PLAT-005: webhooks', () => {
   test('retries delivery when the receiver fails, until it succeeds', async ({ admin }) => {
     await setup(admin)
     failuresLeft.set('/retry', 1) // fail once, then succeed
-    await admin.post('/api/save_doc', {
-      doctype: 'Webhook',
-      doc: { webhook_table: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/retry`, webhook_secret: SECRET, enabled: true },
+    await admin.post('/api/save_row', {
+      table: 'Webhook',
+      row: { webhook_table: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/retry`, webhook_secret: SECRET, enabled: true },
     })
 
     const doc = await makeDoc(admin)
-    await admin.post('/api/save_doc', {
-      doctype: DT,
-      doc: { name: doc.name, updated_at: doc.updated_at, title: 'v2' },
+    await admin.post('/api/save_row', {
+      table: DT,
+      row: { row_id: doc.row_id, updated_at: doc.updated_at, title: 'v2' },
     })
 
     // Two hits to /retry: the first 500'd, the retry succeeded.
     const retryHits = await waitForHits(
-      (r) => r.path === '/retry' && JSON.parse(r.body).name === doc.name,
+      (r) => r.path === '/retry' && JSON.parse(r.body).row_id === doc.row_id,
       2,
     )
     expect(retryHits.length).toBe(2)
@@ -157,9 +157,9 @@ describe('PLAT-005: webhooks', () => {
   test('does not fire for events a webhook is not subscribed to', async ({ admin }) => {
     await setup(admin)
     // An on_update webhook exists; creating a doc (after_insert) must not hit it.
-    await admin.post('/api/save_doc', {
-      doctype: 'Webhook',
-      doc: { webhook_table: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/nomatch`, webhook_secret: SECRET, enabled: true },
+    await admin.post('/api/save_row', {
+      table: 'Webhook',
+      row: { webhook_table: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/nomatch`, webhook_secret: SECRET, enabled: true },
     })
     await makeDoc(admin) // after_insert only
     await drainDueJobs()

@@ -2,7 +2,7 @@
 // hidden, reqd, …) without editing the base definition. They are applied as
 // an overlay when metadata loads, so the base column_def rows stay untouched.
 import { sql } from '../src/db'
-import { createTable } from '../src/doctype-engine'
+import { createTable } from '../src/table-engine'
 
 export async function up() {
   const [exists] = await sql`select 1 from table_def where name = 'Property Setter'`
