@@ -29,7 +29,7 @@ type SkipReason =
   | 'no-version-trail'
 
 interface Skip {
-  name: string
+  row_id: string
   reason: SkipReason
 }
 
@@ -58,20 +58,20 @@ export function planRevert(
 ): Plan {
   const plan: Plan = { restores: [], deletes: [], skipped: [] }
   for (const t of recorded) {
-    const cur = current.get(t.name)
+    const cur = current.get(t.row_id)
     if (t.action === 'inserted') {
-      if (!cur) plan.skipped.push({ name: t.name, reason: 'already-gone' })
-      else if (stampMatches(t, cur) || override.has(t.name))
+      if (!cur) plan.skipped.push({ row_id: t.row_id, reason: 'already-gone' })
+      else if (stampMatches(t, cur) || override.has(t.row_id))
         plan.deletes.push({ touched: t, current: cur })
-      else plan.skipped.push({ name: t.name, reason: 'edited-after' })
+      else plan.skipped.push({ row_id: t.row_id, reason: 'edited-after' })
       continue
     }
     // action === 'updated'
-    if (!cur) plan.skipped.push({ name: t.name, reason: 'row-deleted' })
-    else if (!stampMatches(t, cur) && !override.has(t.name))
-      plan.skipped.push({ name: t.name, reason: 'edited-after' })
-    else if (!trackChanges) plan.skipped.push({ name: t.name, reason: 'no-version-trail' })
-    else if (!t.version) plan.skipped.push({ name: t.name, reason: 'unchanged' })
+    if (!cur) plan.skipped.push({ row_id: t.row_id, reason: 'row-deleted' })
+    else if (!stampMatches(t, cur) && !override.has(t.row_id))
+      plan.skipped.push({ row_id: t.row_id, reason: 'edited-after' })
+    else if (!trackChanges) plan.skipped.push({ row_id: t.row_id, reason: 'no-version-trail' })
+    else if (!t.version) plan.skipped.push({ row_id: t.row_id, reason: 'unchanged' })
     else plan.restores.push({ touched: t, current: cur })
   }
   return plan
@@ -135,7 +135,7 @@ registerCollectionAction('import-revert', {
         `Import run ${runId} recorded no written rows (runs from before revert existed cannot be reverted)`,
       )
 
-    const known = new Set(recorded.map((t) => t.name))
+    const known = new Set(recorded.map((t) => t.row_id))
     const override = new Set(overrideArg as string[])
     for (const name of override)
       if (!known.has(name))
@@ -175,7 +175,7 @@ registerCollectionAction('import-revert', {
 
     let restored = 0
     let deleted = 0
-    const failed: { name: string; message: string }[] = []
+    const failed: { row_id: string; message: string }[] = []
     for (const r of plan.restores) {
       const data = beforeByVersion.get(r.touched.version!) as
         | { changed?: [string, unknown, unknown][] }
@@ -183,10 +183,10 @@ registerCollectionAction('import-revert', {
       if (!data?.changed) {
         // The version row vanished (it is a normal table row) — without
         // before-values a restore would fabricate data.
-        plan.skipped.push({ name: r.touched.name, reason: 'no-version-trail' })
+        plan.skipped.push({ row_id: r.touched.row_id, reason: 'no-version-trail' })
         continue
       }
-      const values: Record<string, unknown> = { [ROW_KEY]: r.touched.name }
+      const values: Record<string, unknown> = { [ROW_KEY]: r.touched.row_id }
       for (const [col, before] of data.changed) values[col] = before
       // The optimistic-concurrency stamp updateDoc demands — the row we
       // planned against, as ISO so milliseconds survive (spec 0004 lesson).
@@ -195,17 +195,17 @@ registerCollectionAction('import-revert', {
         await saveDoc(table, values, user.row_id, 'upsert')
         restored++
       } catch (err) {
-        failed.push({ name: r.touched.name, message: err instanceof Error ? err.message : String(err) })
+        failed.push({ row_id: r.touched.row_id, message: err instanceof Error ? err.message : String(err) })
       }
     }
     for (const d of plan.deletes) {
       try {
-        await deleteDoc(table, d.touched.name, user.row_id, {
+        await deleteDoc(table, d.touched.row_id, user.row_id, {
           expectUpdatedAt: d.current.updated_at.toISOString(),
         })
         deleted++
       } catch (err) {
-        failed.push({ name: d.touched.name, message: err instanceof Error ? err.message : String(err) })
+        failed.push({ row_id: d.touched.row_id, message: err instanceof Error ? err.message : String(err) })
       }
     }
 
