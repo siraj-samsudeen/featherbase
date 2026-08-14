@@ -140,7 +140,10 @@ are created inside the test transaction.
 `ref_table` (must exist, `kind: 'table'`, not externally bound in M1)
 and declares ≥1 key column and ≥1 measure column, all existing on the
 bound table; measures must be numeric (`Int`, `Float`, `Currency`);
-`owner_column`, when named, must exist. At most one **non-closed** book
+`owner_column`, when named, must exist. A book may also declare its
+**policy**: `doa_amount` and `escalation_dir`
+(`increase`/`decrease`/`any`) — consumed by R4's `over_doa` fact so a
+single workflow condition serves every book. At most one **non-closed** book
 may bind a given table at a time — the write-lock must never be
 ambiguous. Violations refuse the book save whole-request.
 
@@ -160,11 +163,14 @@ edits.
 ### BUD-R3 — Active books lock their table · `shape: contract`
 
 While a book is `active`, the bound table refuses direct row inserts,
-deletes, and any update that touches a declared column (key, measure,
-owner) — whole-write, naming the book. Updates to undeclared columns
-(notes, attachments) pass. `working` books impose nothing. Closing a
-book releases the lock (the snapshots and Version trail remain the
-durable history — Q3 asks the owner to ratify this release).
+deletes, **renames**, and any update that touches a declared column
+(key, measure, owner) — whole-write, naming the book. Rename is guarded
+at its action (renameDoc runs no lifecycle hooks — audit bug #3): a
+renamed row would orphan every `budget_version_line` pointing at its old
+name. Updates to undeclared columns (notes, attachments) pass. `working`
+books impose nothing. Closing a book releases the lock (the snapshots
+and Version trail remain the durable history — Q3 asks the owner to
+ratify this release).
 
 **Property:** for every bound row and every declared column, a direct
 write while active is refused and the row is byte-identical after.
@@ -174,10 +180,11 @@ write while active is refused and the row is byte-identical after.
 A draft change belongs to an **active** book (drafts against `working`
 or `closed` books are refused — a working book is edited directly). On
 every save the engine snaps each line's `current_value` from the live
-bound row, computes `delta = proposed − current`, `total_delta`, and
-`crosses_owner` (true when the referenced lines' owner-column values,
-plus the actor for `new_line`s, span more than one owner; always false
-when the book declares no owner column). Lines must reference existing
+bound row, computes `delta = proposed − current`, `total_delta`,
+`crosses_owner` (true when the referenced lines' owner-column values
+span more than one owner; always false when the book declares no owner
+column), and `over_doa` (against the book's `doa_amount` in the book's
+`escalation_dir`; false when no threshold is set). Lines must reference existing
 bound rows (except `new_line`) and declared measure columns. A change
 holds at most `MAX_CHANGE_LINES` lines.
 
@@ -259,6 +266,7 @@ Reinstatement is a later `revise` that clears the flag.
 | 1 | q3 | 10,20,30,40 | 10,20,0,0 | forward periods zeroed |
 | 2 | q1 | 10,20,30,40 | 0,0,0,0 | immediate discontinuation |
 | 3 | q9 | — | rejected | not a declared measure |
+| 4 | any, line already discontinued | 10,20,0,0 | rejected | the standing periods are the wind-down yardstick — reinstate first (audit bug #2) |
 
 ### BUD-R9 — Applied changes are history · `shape: contract`
 
@@ -266,6 +274,17 @@ Reinstatement is a later `revise` that clears the flag.
 platform's cancel would strand applied values with a cancelled paper
 trail. The road back is a new opposite change. Draft changes delete
 freely.
+
+### BUD-R11 — An attached workflow owns the gate · `shape: contract`
+
+When an active Workflow governs a table, the plain `:submit` and
+`:cancel` row actions are refused **for everyone**, naming the workflow
+— otherwise one generic action would sidestep every role- and
+condition-gated lane the workflow defines (found live by the 2026-08-14
+audit: a change over the DOA threshold submitted straight past the CFO
+lane). The generic form hides its Submit/Cancel/Amend buttons on
+workflow-governed tables; transitions are the only path through the
+status change. Platform-wide, not budget-specific.
 
 ### BUD-R10 — The snapshot is the whole book · `shape: invariant`
 
@@ -310,6 +329,15 @@ ride a lane computed from stale facts. Accepted for M1 (owner changes on
 an active book's rows are themselves locked by R3 when `owner_column` is
 declared); revisit if owner edits are ever exempted.
 
+### BUD-H3 — Two active workflows, one table
+
+The platform does not prevent a second `is_active` Workflow on the same
+table; `getActiveWorkflow` silently picks the newest. Any app or session
+that activates its own workflow on `Budget Change` shadows the
+governing lanes (this bit twice on 2026-08-14: an audit session's
+workflow displaced the demo's). Whether the platform should enforce
+one-active-per-table is the owner's call.
+
 ## Open questions
 
 - **Q1** — overlapping pending changes on one line: block at submit, or
@@ -320,3 +348,11 @@ declared); revisit if owner edits are ever exempted.
 - **Q3** — R3 releases the write-lock when a book closes (snapshots stay
   as history). Ratify or keep closed books locking forever? *Arbiter:
   owner.*
+- **Q4** — cross-owner transfers (design §6): the engine computes
+  `crosses_owner` and the demo workflow uses it to block the fast lane
+  and flag the approval — but "the counterparty owner must approve"
+  needs per-owner routing the workflow model cannot express per-row
+  today. Enforce deeper, or is block-fast-lane + flag enough? *Arbiter:
+  owner.*
+- **Q5** — enforce one active Workflow per table platform-wide (BUD-H3)?
+  *Arbiter: owner.*

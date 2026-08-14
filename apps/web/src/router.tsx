@@ -26,6 +26,7 @@ import { HomePageView } from './components/HomePageView'
 import { useHomePages } from './lib/home-pages'
 import { JobMonitor } from './components/JobMonitor'
 import { AccessTokens } from './pages/AccessTokens'
+import { BudgetCompare } from './pages/BudgetCompare'
 import { KanbanView } from './components/KanbanView'
 import { CalendarView } from './components/CalendarView'
 import { GanttView } from './components/GanttView'
@@ -598,6 +599,38 @@ function TableFormPage() {
 
 // #100 pattern 4: cross-filter Explore — pane chains over reference links,
 // where clicking rows IS the filter (static segment, before $doctype).
+// Spec 0007 M2: the Budget compare view (static segment, before $doctype).
+const budgetCompareRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'budget-compare',
+  validateSearch: (search: Record<string, unknown>) => ({
+    book: searchString(search.book),
+    from: searchString(search.from),
+    to: searchString(search.to),
+  }),
+  component: BudgetComparePage,
+})
+
+function BudgetComparePage() {
+  const { book, from, to } = budgetCompareRoute.useSearch()
+  const navigate = budgetCompareRoute.useNavigate()
+  return (
+    <div data-testid="doctype-page">
+      <BudgetCompare
+        book={book}
+        from={from}
+        to={to}
+        onPick={(next) =>
+          navigate({
+            search: { book: next.book, from: next.from, to: next.to },
+            replace: true,
+          })
+        }
+      />
+    </div>
+  )
+}
+
 const exploreRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: 'explore',
@@ -669,5 +702,5 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, doctypeRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, exploreRoute, budgetCompareRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, doctypeRoute, docRoute]),
 ])

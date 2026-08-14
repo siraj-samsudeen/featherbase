@@ -1,5 +1,71 @@
 # Progress Log
 
+## 2026-08-14 (later) — Budget Books M2: audit, three bug fixes, the browser can now walk every scenario
+
+A fresh-context Sonnet audit drove M1 against every scenario in the
+design document (three grains, adversarial pass). All spec'd rules held;
+it found three real bugs, all fixed this session:
+
+1. **BUD-R11 (audit bug #1, the big one):** the plain `:submit` action
+   sidestepped every workflow lane — a change over the CFO threshold
+   submitted straight past it. Now `setStatus` refuses `:submit`/
+   `:cancel` for everyone on a workflow-governed table, naming the
+   workflow, and FormView hides the generic buttons there.
+2. **Audit bug #2:** re-discontinuing an already-discontinued line
+   silently re-zeroed the standing wind-down periods. Refused at draft
+   and at apply.
+3. **Audit bug #3:** `:rename` runs no lifecycle hooks, so it bypassed
+   the write-lock and orphaned `budget_version_line.ref_name`. Gated at
+   the rename action for actively-governed tables.
+
+Plus the M2 surface, so the whole scenario list is browser-walkable:
+
+- **Book lifecycle buttons** (Baseline…/Snapshot…/Close… with inline
+  confirms) + lifecycle pill on the Budget Book form.
+- **Governed pill, pending-changes badge, and "Propose change"** on any
+  governed row form (new `/api/budget/line/:table/:name`), prefilling a
+  draft Budget Change via the existing `?prefill=` route param.
+- **Compare view** at `/admin/budget-compare` (new
+  `/api/budget/compare/:book?from&to`, `current` sentinel for the live
+  table) — pickers, added/removed/changed lines, per-measure deltas.
+- **Book policy fields** `doa_amount` + `escalation_dir`; the engine
+  computes `over_doa` on every change so ONE workflow condition
+  (`doc.over_doa`) serves every book. Workflow-driven submits now also
+  fire on_submit Email Rules (the fast-lane CFO flag depends on it).
+- **`budget-books-demo` sample app** — the scenario world as pure data:
+  two differently-shaped working books (monthly sales 3-key,
+  quarterly opex 2-key), four demo users/roles, the three-lane Budget
+  Approval workflow (fast lane gated `!doc.crosses_owner`, DOA lane on
+  `doc.over_doa`), and the CFO flag Email Rule. Installed on this dev
+  DB — owner: open "Sales Budget 2026"/"Opex Budget 2026" and start at
+  Baseline.
+
+**Verified:** server vitest 755 passing (33 budget tests across
+`budget-books.test.ts` + new `budget-demo.test.ts`, which installs the
+app in the sandbox and drives all three lanes incl. condition-gated
+refusals and the flag email in `email_queue`); browser e2e
+`budget-ui.spec.ts` walks baseline button → governed pill → propose
+(prefilled grid) → approve → pending badge → snapshot → compare, plus
+the M1 spec and a formview/workflow/submit regression slice — all
+green. Known env failure (`sources-csv` chmod-as-root) unchanged.
+
+**Gotchas:**
+- The sandbox suites share the dev DB, so an installed demo app's ACTIVE
+  workflow on Budget Change would refuse the engine suite's direct
+  `:submit` — `budget-books.test.ts` deactivates Budget Change workflows
+  inside its transaction; `budget-demo.test.ts` resets the demo to
+  factory state on 409.
+- Two sessions activating workflows on the same table shadow each other
+  (newest wins) — bit twice today; spec BUD-H3/Q5 asks the owner
+  whether the platform should enforce one-active-per-table.
+- Postgres and the dev servers died mid-session (container hiccup);
+  `./init.sh` recovered everything.
+- Owner actions: features.json entry (owner-only), spec Q3/Q4/Q5.
+
+**Next:** M3 — import-as-proposal (upsert dry-run diff materialized as a
+draft Budget Change), and set passwords on the demo users if you want to
+walk the lanes as each persona rather than as Administrator.
+
 ## 2026-08-14 — Budget Books M1: grain-agnostic budget versioning + approval engine
 
 Spec 0007 (`docs/specs/0007-budget-books.md`, evidence CSV alongside),

@@ -109,8 +109,12 @@ test('BUD-J2: the change form shows computed facts, submits, and the line shows 
   await expect(page.getByTestId('status-badge')).toContainText('Draft')
   await expect(page.locator('[data-field=total_delta]')).toHaveValue('-20')
 
-  // J2.2 — approve with the generic Submit button (UI-010).
-  await page.getByTestId('form-submit').click()
+  // J2.2 — approve. On a DB carrying the demo app, its workflow governs
+  // Budget Change (BUD-R11 hides the generic Submit and the fast-lane
+  // transition is the way through); otherwise the generic Submit applies.
+  const fastLane = page.getByTestId('workflow-action-Self-approve')
+  if (await fastLane.count()) await fastLane.click()
+  else await page.getByTestId('form-submit').click()
   await expect(page.getByTestId('status-badge')).toContainText('Submitted')
 
   // J2.2 — the bound line carries the applied value.

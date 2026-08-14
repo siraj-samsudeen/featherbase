@@ -1,21 +1,25 @@
 id,shape,strategy,static_link,verdict,issue,stamped
-BUD-J1,sequence,api,apps/server/test/budget-books.test.ts,rule-tier only — walked over HTTP against the live server (login → build → iterate → baseline → lock → close) this session; repeatable coverage is the server suite; no browser walk (FormView has no generic row-action button yet — M2),,2026-08-14
-BUD-J2,sequence,browser walk,apps/web/e2e/budget-books.spec.ts,conditionally-proven — draft seeded via API; form rendering of computed facts + generic Submit + applied value + timeline diff + R3 refusal all walked in the browser,,2026-08-14
-BUD-J3,sequence,api,apps/server/test/budget-books.test.ts,proven — workflow Draft→Approved (target submitted) applies identically to :submit and logs the Workflow Action,,2026-08-14
+BUD-J1,sequence,api,apps/server/test/budget-books.test.ts; apps/web/e2e/budget-ui.spec.ts,"proven — baseline via the form button, lock refusal, propose entry all walked in the browser (M2); build/iterate remains import-tier",,2026-08-14
+BUD-J2,sequence,browser walk,apps/web/e2e/budget-books.spec.ts; apps/web/e2e/budget-ui.spec.ts,"proven — governed pill → Propose change (prefilled) → typed proposal → workflow approve → applied value + timeline diff + pending badge, all in the browser",,2026-08-14
+BUD-J3,sequence,api,apps/server/test/budget-books.test.ts; apps/server/test/budget-demo.test.ts,"proven — fast lane applies + flags the CFO via Email Rule on the workflow-driven submit; blocked when crossing owners (condition, unbypassable)",,2026-08-14
 BUD-R1,contract,properties,apps/server/test/budget-books.test.ts,proven — conforming declaration saves working; non-numeric measure / ghost key / missing table / self-binding / empty declarations / second non-closed book all refused,,2026-08-14
 BUD-R2,contract,api,apps/server/test/budget-books.test.ts,proven — baseline only from working (writes v0); close only from active; no reopening; direct lifecycle save is inert (read_only strip + controller guard),,2026-08-14
-BUD-R3,contract,properties,apps/server/test/budget-books.test.ts,proven — declared columns/inserts/deletes refused whole-write naming the book; undeclared column passes; working imposes nothing; close releases (Q3),,2026-08-14
-BUD-R4,rule,properties,apps/server/test/budget-books.test.ts,proven — snap/delta/total_delta/crosses_owner computed on save; missing row / undeclared measure / empty proposal / no lines / working book all refused,,2026-08-14
+BUD-R3,contract,properties,apps/server/test/budget-books.test.ts,proven — declared columns/inserts/deletes/renames refused whole-write naming the book; undeclared column passes; working imposes nothing; close releases (Q3),,2026-08-14
+BUD-R4,rule,properties,apps/server/test/budget-books.test.ts,proven — snap/delta/total_delta/crosses_owner/over_doa computed on save (over_doa direction-aware per book policy); bad refs/measures/proposals refused,,2026-08-14
 BUD-R5,contract,api,apps/server/test/budget-books.test.ts,proven — submit applies with per-row Version diffs of exactly the touched measures; workflow path converges; stale snapshot refuses whole approval (409),,2026-08-14
 BUD-R6,rule,properties,apps/server/test/budget-books.test.ts,proven — non-zero and single-ended transfers refused; three-way zero net applies with grand total preserved,,2026-08-14
 BUD-R7,rule,properties,apps/server/test/budget-books.test.ts,proven — half key / colliding key / duplicate cell refused; born row carries proposed measures with absent ones 0,,2026-08-14
-BUD-R8,rule,properties,apps/server/test/budget-books.test.ts,proven — forward periods zero from effective_from; earlier stand; flag sets; revise reinstates; bad/misplaced effective_from refused,,2026-08-14
+BUD-R8,rule,properties,apps/server/test/budget-books.test.ts,proven — forward zeroed from effective_from; earlier stand; flag sets; revise reinstates; re-discontinue of a discontinued line refused (audit bug #2 fixed),,2026-08-14
 BUD-R9,contract,api,apps/server/test/budget-books.test.ts,proven — cancel of an applied change refused (417); status stays submitted,,2026-08-14
 BUD-R10,invariant,reconciliation,apps/server/test/budget-books.test.ts,proven — v0 line data equals exactly the declared key+measure+owner values and nothing else,,2026-08-14
+BUD-R11,contract,api,apps/server/test/budget-books.test.ts; apps/server/test/budget-demo.test.ts,"proven — plain :submit/:cancel refused for everyone on workflow-governed tables, naming the workflow (audit bug #1 fixed); FormView hides the generic buttons",,2026-08-14
 BUD-I1,invariant,reconciliation,apps/server/test/budget-books.test.ts,proven — after revise+transfer+new_line+discontinue: every row's Σmeasures = v0 Σ + Σ applied deltas; born rows reconcile from 0,,2026-08-14
 BUD-I2,invariant,api,apps/server/test/budget-books.test.ts,proven — a stale line refuses the whole approval: sibling lines unapplied and the change still draft; apply shares the submit transaction by construction,,2026-08-14
 BUD-H1,hazard,api,apps/server/test/budget-books.test.ts,proven — workflow.ts now runs the submit/cancel hook chain transactionally on status-changing transitions; the BUD-J3 test pins the seam,,2026-08-14
 BUD-H2,hazard,none,,open — accepted for M1: owner edits on active books are themselves locked by R3 when owner_column is declared,,2026-08-14
+BUD-H3,hazard,none,,"open — platform allows multiple active workflows per table, newest wins (bit twice on 2026-08-14); enforcement is Q5",,2026-08-14
 Q1,question,none,,open — deferred by owner 2026-08-14 (R5's stale-snapshot refusal is the interim guard),,2026-08-14
 Q2,question,none,,open — deferred by owner 2026-08-14,,2026-08-14
 Q3,question,none,,open — awaiting owner ratification: closing a book releases the write-lock (asserted as current behaviour in the R3 test),,2026-08-14
+Q4,question,none,,open — cross-owner counterparty approval beyond block-fast-lane + flag; arbiter: owner,,2026-08-14
+Q5,question,none,,open — enforce one active workflow per table? arbiter: owner,,2026-08-14

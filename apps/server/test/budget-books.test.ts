@@ -68,6 +68,10 @@ async function setup(admin: TestClient) {
   await makeLineTable(admin)
   const rows = await makeRows(admin)
   await makeBook(admin)
+  // The dev database may carry an installed demo app whose ACTIVE workflow
+  // governs Budget Change — which (BUD-R11) would refuse this suite's
+  // direct :submit calls. Neutralize inside the sandbox transaction.
+  await sql`update workflow set is_active = false where ref_table = 'Budget Change'`
   return rows
 }
 
@@ -240,6 +244,19 @@ describe('BUD-R3: an active book locks its table', () => {
     expect(after.store).toBe('Adyar')
   })
 
+  test('BUD-R3: renaming a governed row is refused (renameDoc runs no hooks)', async ({
+    admin,
+  }) => {
+    const rows = await activeSetup(admin)
+    const name = String(rows.aBev.name)
+    // A rename would orphan every budget_version_line pointing at this row.
+    await expect(
+      admin.post(`/api/table/${T(LINE)}/${T(name)}:rename`, { new_name: 'sneaky-rename' }),
+    ).rejects.toMatchObject({ status: 417 })
+    const still = await getRow(admin, LINE, name)
+    expect(still.name).toBe(name)
+  })
+
   test('BUD-R3/Q3: closing releases the lock', async ({ admin }) => {
     const rows = await activeSetup(admin)
     await admin.post(`/api/table/${T('Budget Book')}/${T(BOOK)}:close`, {})
@@ -311,6 +328,29 @@ describe('BUD-R4: a change computes its own facts', () => {
     await expect(makeChange(admin, { book: BOOK, lines: [] })).rejects.toMatchObject({
       status: 417,
     })
+  })
+
+  test('BUD-R4: over_doa is computed from the book policy, direction-aware', async ({ admin }) => {
+    await makeLineTable(admin)
+    const rows = await makeRows(admin)
+    // Escalates INCREASES over 100 — an even bigger decrease stays under DOA.
+    await makeBook(admin, { doa_amount: 100, escalation_dir: 'increase' })
+    await sql`update workflow set is_active = false where ref_table = 'Budget Change'`
+    await baseline(admin)
+    const up = await makeChange(admin, {
+      book: BOOK,
+      change_type: 'revise',
+      lines: [{ line_ref: rows.bBev.name, measure_column: 'q1', proposed_value: 350 }],
+    })
+    expect(Number(up.total_delta)).toBe(150)
+    expect(up.over_doa).toBe(true)
+    const down = await makeChange(admin, {
+      book: BOOK,
+      change_type: 'revise',
+      lines: [{ line_ref: rows.bBev.name, measure_column: 'q2', proposed_value: 20 }],
+    })
+    expect(Number(down.total_delta)).toBe(-180)
+    expect(down.over_doa).toBe(false)
   })
 
   test('BUD-R4: a working book takes no changes (it is edited directly)', async ({ admin }) => {
@@ -415,6 +455,34 @@ describe('BUD-R5: approval applies, atomically, through the front door', () => {
       select * from workflow_action where ref_table = 'Budget Change' and ref_name = ${String(change.name)}`
     expect(actions).toHaveLength(1)
     expect(actions[0].to_state).toBe('Approved')
+  })
+
+  test('BUD-R11: an attached workflow owns the gate — plain :submit is refused for everyone', async ({
+    admin,
+  }) => {
+    const rows = await activeSetup(admin)
+    await admin.post('/api/save_doc', {
+      doctype: 'Workflow',
+      doc: {
+        name: 'Bb Gate Flow',
+        ref_table: 'Budget Change',
+        is_active: true,
+        states: [
+          { state: 'Draft', target_status: 'draft' },
+          { state: 'Approved', target_status: 'submitted' },
+        ],
+        transitions: [{ state: 'Draft', action: 'Approve', next_state: 'Approved', allowed: 'All' }],
+      },
+    })
+    const change = await makeChange(admin, {
+      book: BOOK,
+      change_type: 'revise',
+      lines: [{ line_ref: rows.aBev.name, measure_column: 'q1', proposed_value: 175 }],
+    })
+    // Even as Administrator: the direct action names the workflow and refuses.
+    await expect(submit(admin, String(change.name))).rejects.toMatchObject({ status: 417 })
+    const line = await getRow(admin, LINE, String(rows.aBev.name))
+    expect(Number(line.q1)).toBe(100)
   })
 })
 
@@ -569,6 +637,33 @@ describe('BUD-R8: discontinue zeroes forward, never deletes', () => {
     const after = await getRow(admin, LINE, name)
     expect(Number(after.q4)).toBe(25)
     expect(after.budget_discontinued).toBe(false)
+  })
+
+  test('BUD-R8: a second discontinue on an already-discontinued line is refused', async ({
+    admin,
+  }) => {
+    const rows = await activeSetup(admin)
+    const name = String(rows.aSnk.name)
+    const first = await makeChange(admin, {
+      book: BOOK,
+      change_type: 'discontinue',
+      effective_from: 'q3',
+      lines: [{ line_ref: name }],
+    })
+    await submit(admin, String(first.name))
+    // The earlier periods are the wind-down yardstick — re-zeroing them via
+    // a second discontinue is refused at draft time.
+    await expect(
+      makeChange(admin, {
+        book: BOOK,
+        change_type: 'discontinue',
+        effective_from: 'q1',
+        lines: [{ line_ref: name }],
+      }),
+    ).rejects.toMatchObject({ status: 417 })
+    const line = await getRow(admin, LINE, name)
+    expect(Number(line.q1)).toBe(10)
+    expect(Number(line.q2)).toBe(20)
   })
 
   test('BUD-R8: effective_from must be a declared measure, and only on discontinue', async ({

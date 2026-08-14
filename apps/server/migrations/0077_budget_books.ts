@@ -58,6 +58,11 @@ export async function up() {
       // Optional: which bound column names a line's owner (BUD-R4
       // crosses_owner; absent → crosses_owner is always false).
       { column_name: 'owner_column', column_type: 'Data' },
+      // Book policy (design §6): the DOA threshold and which direction of
+      // change escalates. The engine computes the FACT (over_doa on each
+      // change); workflows consume it — one condition works for every book.
+      { column_name: 'doa_amount', column_type: 'Currency' },
+      { column_name: 'escalation_dir', column_type: 'Choice', choices: 'increase\ndecrease\nany', default_value: 'any' },
       { column_name: 'key_columns', column_type: 'Sub-table', row_table: 'Budget Book Key Column' },
       { column_name: 'measure_columns', column_type: 'Sub-table', row_table: 'Budget Book Measure Column' },
     ],
@@ -102,6 +107,9 @@ export async function up() {
       { column_name: 'effective_from', column_type: 'Data' },
       { column_name: 'total_delta', column_type: 'Float', read_only: true, in_list_view: true },
       { column_name: 'crosses_owner', column_type: 'Check', read_only: true },
+      // Computed against the book's DOA policy on every save — the fact a
+      // workflow's escalation condition reads (`doc.over_doa`).
+      { column_name: 'over_doa', column_type: 'Check', read_only: true },
       { column_name: 'lines', column_type: 'Sub-table', row_table: 'Budget Change Line' },
     ],
   })
@@ -139,4 +147,41 @@ export async function up() {
   // tables before system: true was part of the definitions.
   await sql`update table_def set system = true
     where name = any(${ENGINE_TABLES}) and system = false`
+
+  // Converge databases created before the policy columns joined the
+  // definitions above (same-branch iteration; fresh installs get them from
+  // createTable).
+  await ensureColumn('Budget Book', 'doa_amount', 'numeric(21,9)', {
+    column_type: 'Currency', label: 'DOA Amount',
+  })
+  await ensureColumn('Budget Book', 'escalation_dir', 'text', {
+    column_type: 'Choice', label: 'Escalation Dir', choices: 'increase\ndecrease\nany', default_value: 'any',
+  })
+  await ensureColumn('Budget Change', 'over_doa', 'boolean', {
+    column_type: 'Check', label: 'Over DOA', read_only: true, default_value: '0',
+  })
+}
+
+async function ensureColumn(
+  table: string,
+  column: string,
+  pgType: string,
+  def: Record<string, unknown>,
+) {
+  const [exists] = await sql`
+    select 1 from column_def where parent = ${table} and column_name = ${column}`
+  if (exists) return
+  const physical = table.toLowerCase().replace(/ /g, '_')
+  const defaultSql = pgType === 'boolean' ? ' not null default false' : ''
+  await sql.unsafe(
+    `alter table "${physical}" add column if not exists "${column}" ${pgType}${defaultSql}`,
+  )
+  const [{ n }] = await sql`
+    select count(*)::int as n from column_def where parent = ${table}`
+  await sql`insert into column_def ${sql({
+    parent: table,
+    position: Number(n) + 1,
+    column_name: column,
+    ...def,
+  })}`
 }

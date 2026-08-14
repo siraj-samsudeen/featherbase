@@ -212,13 +212,14 @@ export async function applyWorkflowAction(
   // 'submitted' without its on-submit obligations (e.g. a Budget Change
   // would flip approved without applying).
   const meta = await getMeta(table)
+  let statusEvent: 'submit' | 'cancel' | null = null
   await sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     const [existing] = await tx`
       select * from ${tx(tableName(table))} where name = ${name} for update`
     if (!existing) throw new AppError('NotFoundError', `${table} ${name} not found`)
     const fromStatus = String(existing.status ?? 'draft')
-    const statusEvent =
+    statusEvent =
       fromStatus === status ? null : status === 'submitted' ? 'submit' : status === 'cancelled' ? 'cancel' : null
     const preCtx = {
       row: { ...(existing as Record<string, unknown>) },
@@ -263,6 +264,12 @@ export async function applyWorkflowAction(
   // Rules (e.g. "email the requester when status becomes Resolved") fire on
   // it, and list subscribers get the update over realtime.
   await evaluateEmailRules('on_save', table, result, row)
+  // BUD-H1 continued: a transition that submitted/cancelled the row is that
+  // lifecycle event for Email Rules too — the same rules setStatus fires
+  // (e.g. "notify the CFO on every approved Budget Change" must fire on the
+  // fast lane, which is exactly the path that skips setStatus).
+  if (statusEvent === 'submit') await evaluateEmailRules('on_submit', table, result)
+  else if (statusEvent === 'cancel') await evaluateEmailRules('on_cancel', table, result)
   publishDocEvent(table, name, 'updated')
   return result
 }

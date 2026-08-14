@@ -37,7 +37,19 @@ export interface BookBinding {
   ownerColumn: string | null
   keyColumns: string[]
   measureColumns: string[]
+  // Book policy (design §6): the DOA threshold and which delta direction
+  // escalates. The engine computes over_doa from these on every change save.
+  doaAmount: number | null
+  escalationDir: 'increase' | 'decrease' | 'any'
   row: RowValues
+}
+
+// The escalation fact a workflow condition consumes (`doc.over_doa`).
+export function overDoa(book: BookBinding, totalDelta: number): boolean {
+  if (book.doaAmount == null || book.doaAmount <= 0) return false
+  if (book.escalationDir === 'increase') return totalDelta > book.doaAmount
+  if (book.escalationDir === 'decrease') return -totalDelta > book.doaAmount
+  return Math.abs(totalDelta) > book.doaAmount
 }
 
 function newName(): string {
@@ -72,6 +84,11 @@ async function withChildren(tx: Sql, row: RowValues): Promise<BookBinding> {
     ownerColumn: row.owner_column ? String(row.owner_column) : null,
     keyColumns: keys.map((k) => String(k.column_name)),
     measureColumns: measures.map((m) => String(m.column_name)),
+    doaAmount: row.doa_amount == null ? null : Number(row.doa_amount),
+    escalationDir:
+      row.escalation_dir === 'increase' || row.escalation_dir === 'decrease'
+        ? row.escalation_dir
+        : 'any',
     row,
   }
 }
@@ -303,6 +320,101 @@ export async function snapshotActiveBook(
   return { book: name, ...snap }
 }
 
+// Spec 0007 M2 — the compare view's arithmetic. Diffs two snapshots of a
+// book (or a snapshot against the live table, via the 'current' sentinel):
+// one entry per row that differs, measures as {from, to} pairs.
+export interface CompareLine {
+  ref_name: string
+  key: Record<string, unknown>
+  status: 'added' | 'removed' | 'changed'
+  measures: Record<string, { from: number | null; to: number | null }>
+}
+
+export const CURRENT_VERSION = 'current'
+
+async function versionSide(
+  db: Sql,
+  book: BookBinding,
+  version: string,
+): Promise<{ label: string; rows: Map<string, Record<string, unknown>> }> {
+  const rows = new Map<string, Record<string, unknown>>()
+  if (version === CURRENT_VERSION) {
+    const cols = [
+      ...book.keyColumns,
+      ...book.measureColumns,
+      ...(book.ownerColumn ? [book.ownerColumn] : []),
+    ]
+    const live = await db`
+      select ${db(['name', ...cols])} from ${db(tableName(book.refTable))}`
+    for (const r of live) {
+      const data: Record<string, unknown> = {}
+      for (const c of cols) data[c] = (r as RowValues)[c] ?? null
+      rows.set(String((r as RowValues).name), data)
+    }
+    return { label: 'Current', rows }
+  }
+  const [header] = await db`
+    select * from ${db(tableName('Budget Version'))}
+    where name = ${version} and book = ${book.name}`
+  if (!header)
+    throw new AppError('NotFoundError', `Budget Version ${version} not found on ${book.name}`)
+  const lines = await db`
+    select ref_name, data from ${db(tableName('Budget Version Line'))}
+    where version = ${version}`
+  for (const l of lines) rows.set(String(l.ref_name), (l.data ?? {}) as Record<string, unknown>)
+  return { label: String((header as RowValues).label), rows }
+}
+
+export async function compareVersions(
+  db: Sql,
+  bookName: string,
+  from: string,
+  to: string,
+): Promise<{
+  book: string
+  from_label: string
+  to_label: string
+  measure_columns: string[]
+  lines: CompareLine[]
+  unchanged: number
+}> {
+  const book = await loadBook(db, bookName)
+  if (!book) throw new AppError('NotFoundError', `${BOOK} ${bookName} not found`)
+  const a = await versionSide(db, book, from)
+  const b = await versionSide(db, book, to)
+  const lines: CompareLine[] = []
+  let unchanged = 0
+  const names = new Set([...a.rows.keys(), ...b.rows.keys()])
+  for (const ref of names) {
+    const fromRow = a.rows.get(ref)
+    const toRow = b.rows.get(ref)
+    const keySource = toRow ?? fromRow ?? {}
+    const key: Record<string, unknown> = {}
+    for (const c of book.keyColumns) key[c] = keySource[c] ?? null
+    const measures: CompareLine['measures'] = {}
+    let differs = false
+    for (const m of book.measureColumns) {
+      const f = fromRow ? num(fromRow[m]) : null
+      const t = toRow ? num(toRow[m]) : null
+      if (f !== t) differs = true
+      measures[m] = { from: f, to: t }
+    }
+    if (!fromRow) lines.push({ ref_name: ref, key, status: 'added', measures })
+    else if (!toRow) lines.push({ ref_name: ref, key, status: 'removed', measures })
+    else if (differs) lines.push({ ref_name: ref, key, status: 'changed', measures })
+    else unchanged++
+  }
+  lines.sort((x, y) => (x.ref_name < y.ref_name ? -1 : 1))
+  return {
+    book: book.name,
+    from_label: a.label,
+    to_label: b.label,
+    measure_columns: book.measureColumns,
+    lines,
+    unchanged,
+  }
+}
+
 export function parseNewLineKey(value: unknown): Record<string, unknown> {
   const raw = typeof value === 'string' && value !== '' ? JSON.parse(value) : value
   if (raw == null || typeof raw !== 'object' || Array.isArray(raw))
@@ -446,6 +558,13 @@ export async function applyChange(
     for (const l of lines) {
       const ref = String(l.line_ref)
       const before = await lockRow(ref)
+      // BUD-R8 (audit bug #2): never re-zero an already-discontinued line —
+      // its remaining periods are the wind-down yardstick.
+      if (before[DISCONTINUED_FLAG] === true)
+        throw new AppError(
+          'ValidationError',
+          `${changeName}: ${ref} is already discontinued — reinstate it with a revise first`,
+        )
       const liveSum = zeroCols.reduce((s, c) => s + num(before[c]), 0)
       if (liveSum !== num(l.current_value)) stale(ref, `Σ(${effective}…)`, liveSum, num(l.current_value))
       const sets: RowValues = {}
