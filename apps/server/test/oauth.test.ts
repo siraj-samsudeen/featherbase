@@ -91,14 +91,14 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     // file URLs carry the literal token).
     const redeemed = await redeem(api, handoffCode(res), sidCookie(res))
     expect(redeemed.status).toBe(200)
-    const session = (await redeemed.json()) as { token: string; user: { name: string } }
-    expect(session.user.name).toBe('new.person@gmail.com')
+    const session = (await redeemed.json()) as { token: string; user: { row_id: string } }
+    expect(session.user.row_id).toBe('new.person@gmail.com')
     // The token is a real session: it authenticates as that user.
     const whoami = await api.fetch('/api/whoami', {
       headers: { authorization: `Bearer ${session.token}` },
     })
     expect(whoami.status).toBe(200)
-    expect(((await whoami.json()) as { name: string }).name).toBe('new.person@gmail.com')
+    expect(((await whoami.json()) as { row_id: string }).row_id).toBe('new.person@gmail.com')
 
     const [user] = await sql`
       select social_login, enabled from "user" where email = 'new.person@gmail.com'`

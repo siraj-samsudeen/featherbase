@@ -1,5 +1,58 @@
 # Progress Log
 
+## 2026-08-14 — #132 catches up with main: the rename meets four months of newer code
+
+The `row_id` branch had drifted 48 commits behind. Merging main in (rather
+than replaying 32 commits) left only three conflicts, but the textual merge
+was the easy half: everything main had built *after* the fork was still
+written against `name`, and a clean merge says nothing about that.
+
+**Migration renumbered `0073_row_id.ts` → `0077_row_id.ts`** (announced, per
+the standing rule). Main's `0073_import_revert_log.ts` had claimed the same
+number, and #149's new guard — which grandfathers the old 0064/0069 pairs but
+refuses any *new* collision — made the merged tree refuse to boot. 0077 also
+happens to be the correct order: 0074–0076 were written pre-rename, so they
+should run first and let the rename convert the result.
+
+**The stale-`name` sweep.** Two classes, and only one of them is loud:
+
+1. *Typed* — `user.name` on `SessionUser` in the revert action. `tsc` caught
+   these immediately.
+2. *Untyped* — reads off `Record<string, unknown>` rows, which the compiler
+   cannot see through: `saved.name`, `{ name: r.touched.name }` as the values
+   handed to `saveDoc`, and raw SQL (`select name … from version`,
+   `where name = …` on `import_log`). Empirically confirmed against the
+   migrated database that `import_log`, `version`, `user` and `role` all carry
+   `row_id` and no `name` — so these were silent `undefined`s, not type errors.
+
+`ensureKeyIndex` deserves its own line: it guarded with a hardcoded
+`keyColumn === 'name'`, now `ROW_KEY`. Left alone it would have created a
+redundant index on the primary key — and, worse, *skipped* the index for a
+user column legitimately called `name`, which is exactly the thing #132
+exists to make possible.
+
+**`TouchedRow.name` was deliberately NOT renamed.** It is a field of the
+import log's JSON payload, not a physical column, and the revert API surfaces
+it in `skipped`/`failed`. The reads *from database rows* were the bug; the
+payload's own vocabulary is a separate question and stays the owner's call.
+
+Test-side, the fix was propagating a convention the branch had already ruled
+(`doc: { row_id: … }`, `post<{ row_id: string }>`), not inventing one — with
+the one trap that `name: DT` in an `/api/doctype` payload is the *Table's*
+natural key and stays `name`.
+
+**Verified end-to-end**, isolated scratch DBs throughout: server 725 passed /
+0 failed, web unit 64/64, both typechecks clean; `./init.sh` boots and smoke
+passes; full e2e on a *pristine* database 117 passed, with the known-flaky
+UPS-J2 green on re-run. Two findings worth recording: `portal.spec.ts` is not
+idempotent across e2e runs (it asserts a row *count*, and e2e writes real rows
+— it failed only after I had run the suite four times, and its actual scoping
+assertion never failed), and web tests must be pointed at the migrated DB or
+they silently exercise the default one.
+
+**Next:** the revert UI still renders `TouchedRow.name` — worth a ruling on
+whether that payload field follows the rename. Otherwise #132 is ready.
+
 ## 2026-08-11 — Explore gets its front doors: chain/select deep links, split button, map hand-off
 
 The two entry points the owner picked from the mockup exploration

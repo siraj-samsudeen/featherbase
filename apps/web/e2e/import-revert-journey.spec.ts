@@ -36,11 +36,11 @@ async function zonePops(request: APIRequestContext, headers: Record<string, stri
   const res = (await (
     await request.get(
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
-        '["name","zone","pop"]',
+        '["row_id","zone","pop"]',
       )}&limit_page_length=100`,
       { headers },
     )
-  ).json()) as { data: { name: string; zone: string; pop: unknown }[] }
+  ).json()) as { data: { row_id: string; zone: string; pop: unknown }[] }
   return res.data
 }
 
@@ -98,7 +98,7 @@ test('RVT-J1: revert the bad run from the history strip — rehearse, skip-the-e
     headers,
     data: { key_column: 'zone', rows: [{ zone: 'Alpha', pop: 99999 }] },
   })
-  const alphaName = (await zonePops(request, headers)).find((r) => r.zone === 'Alpha')!.name
+  const alphaName = (await zonePops(request, headers)).find((r) => r.zone === 'Alpha')!.row_id
 
   // J1.1: back to the wizard with the Table preselected — the history strip
   // lists the run; rehearse shows counts before anything commits, the

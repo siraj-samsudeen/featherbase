@@ -38,7 +38,7 @@ async function insert(
     data,
   })
   expect([200, 201], `inserting into ${table}`).toContain(res.status())
-  return ((await res.json()) as { name: string }).name
+  return ((await res.json()) as { row_id: string }).row_id
 }
 
 test.beforeAll(async ({ request }) => {

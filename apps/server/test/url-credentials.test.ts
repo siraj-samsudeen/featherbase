@@ -25,17 +25,17 @@ async function setup(admin: TestClient, createUser: CreateUserFn) {
     name: DT,
     columns: [{ column_name: 'title', column_type: 'Data' }],
   })
-  await admin.post('/api/save_doc', { doctype: 'Role', doc: { name: READER_ROLE } })
+  await admin.post('/api/save_doc', { doctype: 'Role', doc: { row_id: READER_ROLE } })
   await admin.post('/api/save_doc', {
     doctype: 'Permission',
     doc: { ref_table: DT, role: READER_ROLE, can_read: true },
   })
   const docName = (
-    await admin.post<{ name: string }>('/api/save_doc', {
+    await admin.post<{ row_id: string }>('/api/save_doc', {
       doctype: DT,
       doc: { title: 'secret' },
     })
-  ).name
+  ).row_id
 
   const reader = await createUser({ roles: [READER_ROLE] })
   const outsider = await createUser({ roles: [] })

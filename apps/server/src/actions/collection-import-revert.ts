@@ -14,7 +14,7 @@
 // recovery path).
 import { AppError } from '../errors'
 import { deleteDoc, saveDoc } from '../document'
-import { getMeta } from '../meta'
+import { ROW_KEY, getMeta, physicalRowKey } from '../meta'
 import { assertDocPermission, permissionScope } from '../permissions'
 import { registerCollectionAction } from '../actions'
 import { sql } from '../db'
@@ -122,7 +122,7 @@ registerCollectionAction('import-revert', {
 
     // RVT-R2: resolve the run across ALL its parts.
     const parts = await sql`
-      select name, touched from ${sql(tableName('Import Log'))}
+      select row_id, touched from ${sql(tableName('Import Log'))}
       where ref_table = ${table} and run_id = ${runId}`
     if (!parts.length)
       throw new AppError('NotFoundError', `No import run ${runId} on ${table}`)
@@ -144,17 +144,18 @@ registerCollectionAction('import-revert', {
     // Current state of every recorded row, in one read.
     const names = [...known]
     const rows = await sql`
-      select name, updated_at, created_by from ${sql(tableName(table))}
-      where name = any(${names})`
+      select ${sql(physicalRowKey(table))} as row_id, updated_at, created_by
+      from ${sql(tableName(table))}
+      where ${sql(physicalRowKey(table))} = any(${names})`
     const current = new Map<string, CurrentRow>(
       rows.map((r) => [
-        String(r.name),
+        String(r.row_id),
         { updated_at: r.updated_at as Date, created_by: String(r.created_by) },
       ]),
     )
 
     const plan = planRevert(recorded, current, override, meta.track_changes)
-    await assertRevertPermitted(user.name, table, plan)
+    await assertRevertPermitted(user.row_id, table, plan)
 
     if (args.dry_run)
       return {
@@ -168,9 +169,9 @@ registerCollectionAction('import-revert', {
     // Before-values for every restore, in one read.
     const versionIds = plan.restores.map((r) => r.touched.version!)
     const versions = versionIds.length
-      ? await sql`select name, data from version where name = any(${versionIds})`
+      ? await sql`select row_id, data from version where row_id = any(${versionIds})`
       : []
-    const beforeByVersion = new Map(versions.map((v) => [String(v.name), v.data]))
+    const beforeByVersion = new Map(versions.map((v) => [String(v.row_id), v.data]))
 
     let restored = 0
     let deleted = 0
@@ -185,13 +186,13 @@ registerCollectionAction('import-revert', {
         plan.skipped.push({ name: r.touched.name, reason: 'no-version-trail' })
         continue
       }
-      const values: Record<string, unknown> = { name: r.touched.name }
+      const values: Record<string, unknown> = { [ROW_KEY]: r.touched.name }
       for (const [col, before] of data.changed) values[col] = before
       // The optimistic-concurrency stamp updateDoc demands — the row we
       // planned against, as ISO so milliseconds survive (spec 0004 lesson).
       values.updated_at = r.current.updated_at.toISOString()
       try {
-        await saveDoc(table, values, user.name, 'upsert')
+        await saveDoc(table, values, user.row_id, 'upsert')
         restored++
       } catch (err) {
         failed.push({ name: r.touched.name, message: err instanceof Error ? err.message : String(err) })
@@ -199,7 +200,7 @@ registerCollectionAction('import-revert', {
     }
     for (const d of plan.deletes) {
       try {
-        await deleteDoc(table, d.touched.name, user.name, {
+        await deleteDoc(table, d.touched.name, user.row_id, {
           expectUpdatedAt: d.current.updated_at.toISOString(),
         })
         deleted++
@@ -214,7 +215,7 @@ registerCollectionAction('import-revert', {
     for (const p of parts)
       await sql`
         update ${sql(tableName('Import Log'))}
-        set reverted_at = ${now} where name = ${String(p.name)}`.catch(() => {})
+        set reverted_at = ${now} where row_id = ${String(p.row_id)}`.catch(() => {})
 
     return { restored, deleted, skipped: plan.skipped, failed }
   },
