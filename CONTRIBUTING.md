@@ -34,14 +34,23 @@ heavily commented):
 3. **Migrations + patches** — `pnpm --filter server migrate` then
    `pnpm --filter server patches`. Migrations live in
    `apps/server/migrations/` (numbered SQL and TS files).
-4. **App servers** — kills stale listeners on ports **8000** (API) and
-   **5173** (web) by port, starts both dev servers (logs at
-   `/tmp/featherbase-server.log` and `/tmp/featherbase-web.log`), waits for
-   both to answer, and asserts the answering PIDs are the ones it started —
-   so another checkout's stack can't masquerade as yours.
+4. **App servers** — kills stale listeners on ports **`$API_PORT`**
+   (default 8000) and **`$WEB_PORT`** (default 5173) by port, starts both
+   dev servers (logs at `/tmp/featherbase-server-<API_PORT>.log` and
+   `/tmp/featherbase-web-<WEB_PORT>.log`), waits for both to answer, and
+   asserts the answering PIDs are the ones it started — so another
+   checkout's stack can't masquerade as yours.
 5. **Smoke test** — `pnpm smoke` (server smoke + the web `e2e/smoke.spec.ts`).
 
 Re-running `./init.sh` is safe and mostly a no-op once things are up.
+
+Parallel checkouts (git worktrees) each boot their own isolated stack —
+init.sh only ever kills the ports it was given, never a sibling's:
+
+```bash
+WEB_PORT=5183 API_PORT=8010 \
+DATABASE_URL=postgres://$(whoami)@127.0.0.1:5432/featherbase_<topic> ./init.sh
+```
 
 **Log in** at http://localhost:5173 as `Administrator` / `admin`. The
 default password is set by `apps/server/migrations/0006_admin_password.ts`;
