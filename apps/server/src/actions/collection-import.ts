@@ -352,7 +352,7 @@ registerCollectionAction('import', {
           const saved = await saveDoc(table, row as Record<string, unknown>, user.row_id, 'insert')
           inserted++
           touched.push({
-            name: String(saved[ROW_KEY]),
+            row_id: String(saved[ROW_KEY]),
             action: 'inserted',
             stamp: stampOf(saved.updated_at),
           })
@@ -376,7 +376,7 @@ registerCollectionAction('import', {
 // update produced (its before-values are the revert's restore source); an
 // insert has none, and a no-op update deliberately records none.
 export interface TouchedRow {
-  name: string
+  row_id: string
   action: 'updated' | 'inserted'
   stamp: string
   version?: string
@@ -391,13 +391,13 @@ const stampOf = (v: unknown): string =>
 // version — RVT-R3's `skipped: unchanged` at revert time.
 async function touchedUpdate(table: string, saved: Record<string, unknown>, runStart: Date): Promise<TouchedRow> {
   const entry: TouchedRow = {
-    name: String(saved[ROW_KEY]),
+    row_id: String(saved[ROW_KEY]),
     action: 'updated',
     stamp: stampOf(saved.updated_at),
   }
   const [v] = await sql`
     select row_id, created_at from version
-    where ref_table = ${table} and ref_name = ${entry.name}
+    where ref_table = ${table} and ref_name = ${entry.row_id}
     order by created_at desc limit 1`
   if (v && (v.created_at as Date).getTime() >= runStart.getTime()) entry.version = String(v.row_id)
   return entry

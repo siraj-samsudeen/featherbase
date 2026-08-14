@@ -1,5 +1,45 @@
 # Progress Log
 
+## 2026-08-14 — the import log's payload says `row_id` too (owner ruling)
+
+The previous entry left `TouchedRow.name` alone and asked for a ruling. The
+ruling: **fix it.** Minor inconsistencies compound, and with no production
+install there is nothing to protect.
+
+So the row id is now spelled `row_id` in the revert API's three payloads —
+`TouchedRow`, `Skip`, and revert's `failed[]` — and in the wizard that renders
+them. Two look-alikes were deliberately left as `name`: import's `FailedRow`
+(keyed by `index`, never a row id) and SourceBrowser's `created[]`, whose
+`name` is a *Table's* natural key — the standing `table_def` exemption.
+
+**Migration `0078_touched_row_id.ts`** (number announced). A column rename
+cannot reach a key inside a `jsonb` document, so existing `import_log.touched`
+payloads still said `name`. Wiping the log was authorised; rewriting it is
+barely longer and keeps already-recorded runs revertable, so it rewrites.
+Idempotent by construction — it only touches elements still carrying `name`,
+verified by re-running the statement against converted data (`UPDATE 0`).
+
+**Verified** on a pristine database: server 724 passed, web 64/64, both
+typechecks clean, and the revert journey green end-to-end. The rewrite was
+proven against a database holding the *old* shape, not a synthetic one.
+
+**Two pre-existing defects found while verifying, neither caused here:**
+
+1. `token-hardening` asserts ten engine-owned raw tables exist, but
+   `patch_log` is created lazily by `patches.ts` (`create table if not
+   exists`), not by a migration. On a fresh database the assertion sees nine
+   and fails unless `patches.test.ts` happened to run first. Confirmed on
+   `main` with a fresh DB, with none of this change applied.
+2. The e2e suite accumulates rows across runs, and specs fail in a rotating,
+   order-dependent way once it does (`user-perm-null-link`,
+   `checklist-binding`, `UPS-J1`/`UPS-J2` all failed on a reused database and
+   passed on a clean one). #183 fixed three cleanup blocks; the underlying
+   problem is that e2e has no reset at all.
+
+**Next:** those two, and the test/dev database separation they both point at
+— today `DATABASE_URL` defaults to the *dev* database, so omitting it silently
+tests against dev.
+
 ## 2026-08-14 — #132 catches up with main: the rename meets four months of newer code
 
 The `row_id` branch had drifted 48 commits behind. Merging main in (rather

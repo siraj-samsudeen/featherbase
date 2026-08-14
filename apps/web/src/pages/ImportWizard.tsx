@@ -454,8 +454,8 @@ const SKIP_WORDS: Record<string, string> = {
 interface RevertReport {
   restored: number
   deleted: number
-  skipped: { name: string; reason: string }[]
-  failed: { name: string; message: string }[]
+  skipped: { row_id: string; reason: string }[]
+  failed: { row_id: string; message: string }[]
 }
 
 function RevertControl({ i, table, runId }: { i: number | string; table: string; runId: string }) {
@@ -481,7 +481,7 @@ function RevertControl({ i, table, runId }: { i: number | string; table: string;
   }
 
   const skips = (r: RevertReport) =>
-    r.skipped.map((s) => `${s.name} (${SKIP_WORDS[s.reason] ?? s.reason})`).join(', ')
+    r.skipped.map((s) => `${s.row_id} (${SKIP_WORDS[s.reason] ?? s.reason})`).join(', ')
 
   if (outcome) {
     const editedAfter = outcome.skipped.filter((s) => s.reason === 'edited-after')
@@ -491,7 +491,7 @@ function RevertControl({ i, table, runId }: { i: number | string; table: string;
           Reverted: {outcome.restored} restored, {outcome.deleted} deleted
           {outcome.skipped.length > 0 && `; skipped ${skips(outcome)}`}
           {outcome.failed.length > 0 &&
-            `; failed ${outcome.failed.map((f) => `${f.name}: ${f.message}`).join('; ')}`}
+            `; failed ${outcome.failed.map((f) => `${f.row_id}: ${f.message}`).join('; ')}`}
         </span>
         {editedAfter.length > 0 && (
           <button
@@ -499,7 +499,7 @@ function RevertControl({ i, table, runId }: { i: number | string; table: string;
             data-testid={`iw-revert-override-${i}`}
             disabled={busy}
             onClick={async () => {
-              const r = await call({ override: editedAfter.map((s) => s.name) })
+              const r = await call({ override: editedAfter.map((s) => s.row_id) })
               if (r) setOutcome(r)
             }}
           >
