@@ -64,29 +64,32 @@ describe('API-003: RPC for whitelisted server methods', () => {
   test('rejects GET on a write-effect method with 405, even with valid args', async ({
     admin,
   }) => {
-    await admin.post('/api/doctype', {
-      name: 'Rpc Verb Guard',
-      columns: [{ column_name: 'title', column_type: 'Data' }],
-    })
-    const doc = await admin.post<{ row_id: string }>('/api/table/Rpc%20Verb%20Guard', {
-      title: 'still here',
-    })
-    const res = await admin.fetch(
-      `/api/method/frappe.client.delete?doctype=Rpc Verb Guard&name=${doc.row_id}`,
-    )
+    const before = await admin.fetch('/api/method/_test_write_count')
+    const started = ((await before.json()) as { message: { writes: number } }).message.writes
+
+    const res = await admin.fetch('/api/method/_test_write?any=arg')
     expect(res.status).toBe(405)
     expect(((await res.json()) as { error: { type: string } }).error.type).toBe(
       'MethodNotAllowedError',
     )
-    // The row must still exist — the GET must not have deleted it.
-    const stillThere = await admin.fetch(
-      `/api/table/Rpc%20Verb%20Guard/${encodeURIComponent(doc.row_id)}`,
+
+    // The refusal must come BEFORE the handler: a 405 alone cannot tell a
+    // rejected call from one that mutated and then errored.
+    const after = await admin.fetch('/api/method/_test_write_count')
+    expect(((await after.json()) as { message: { writes: number } }).message.writes).toBe(started)
+
+    // ...and the same method over POST does run, so the guard is about the
+    // verb, not a broken method.
+    const posted = await admin.fetch('/api/method/_test_write', { method: 'POST' })
+    expect(posted.status).toBe(200)
+    const done = await admin.fetch('/api/method/_test_write_count')
+    expect(((await done.json()) as { message: { writes: number } }).message.writes).toBe(
+      started + 1,
     )
-    expect(stillThere.status).toBe(200)
   })
 
   test('a read-effect method still answers GET', async ({ admin }) => {
-    const res = await admin.fetch('/api/method/frappe.client.get_count?doctype=User')
+    const res = await admin.fetch('/api/method/count_docs?table=User')
     expect(res.status).toBe(200)
   })
 })

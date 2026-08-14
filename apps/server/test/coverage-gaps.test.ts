@@ -290,23 +290,4 @@ describe('assignment + RPC edges', () => {
       where ref_table = ${DT} and reference_name = ${String(doc.row_id)}`
     expect(todo.description).toBe(`Assigned ${DT} ${String(doc.row_id)}`)
   })
-
-  test('frappe.client.get_value resolves filters arrays and returns null on no match', async ({
-    admin,
-  }) => {
-    const DT = 'Cov Value Note'
-    await makeDT(admin, DT)
-    await admin.post('/api/save_doc', { doctype: DT, doc: { title: 'target', note_status: 'Done' } })
-    const hit = await admin.post<{ message: { note_status: string } }>(
-      '/api/method/frappe.client.get_value',
-      { doctype: DT, filters: [['title', '=', 'target']], fieldname: 'note_status' },
-    )
-    expect(hit.message.note_status).toBe('Done')
-    const miss = await admin.post<{ message: null }>('/api/method/frappe.client.get_value', {
-      doctype: DT,
-      filters: [['title', '=', 'absent']],
-      fieldname: 'note_status',
-    })
-    expect(miss.message).toBeNull()
-  })
 })

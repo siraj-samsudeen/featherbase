@@ -273,8 +273,11 @@ a goal going forward. Concretely, this project no longer:
 - Shapes login/session responses to match Frappe's `{ message, home_page,
   full_name }` convention.
 - Carries `exc_type` in error bodies.
-- Dispatches a `frappe.client.*` RPC namespace or Frappe's dotted
-  `/api/method/:path` method-call convention.
+- Dispatches a `frappe.client.*` RPC namespace, or any other dotted
+  Frappe method namespace. (The `/api/method/:path` dispatcher itself
+  stays — it is this project's own whitelisted-method surface, API-003,
+  serving plainly-named methods like `ping` and `count_docs`. What was
+  removed is Frappe's *vocabulary* on top of it, not RPC as a feature.)
 - Exposes a `/api/resource/:doctype[/:name]` REST shape — the equivalent
   surface is the `/api/table/:table[/:name]` action registry described
   above (tracked in #61).

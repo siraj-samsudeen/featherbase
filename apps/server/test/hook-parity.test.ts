@@ -139,15 +139,15 @@ describe('Frappe lifecycle + app-contract parity', () => {
     const guest = { row_id: 'Guest', email: 'guest@x', full_name: 'Guest' }
     registerApp({
       name: APP,
-      override_whitelisted_methods: { 'frappe.ping': () => 'pong from app' },
+      override_whitelisted_methods: { public_info: () => 'overridden by app' },
     })
     try {
-      expect(await callMethod('frappe.ping', {}, guest)).toBe('pong')
+      expect(await callMethod('public_info', {}, guest)).toEqual({ product: 'Featherbase', public: true })
       await installApp(APP)
-      expect(await callMethod('frappe.ping', {}, guest)).toBe('pong from app')
+      expect(await callMethod('public_info', {}, guest)).toBe('overridden by app')
     } finally {
       await uninstallApp(APP).catch(() => {})
     }
-    expect(await callMethod('frappe.ping', {}, guest)).toBe('pong')
+    expect(await callMethod('public_info', {}, guest)).toEqual({ product: 'Featherbase', public: true })
   })
 })
