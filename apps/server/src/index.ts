@@ -31,6 +31,7 @@ import {
 } from './actions'
 import './actions/core-row-actions'
 import './actions/collection-import'
+import './actions/budget-actions'
 import './actions/collection-import-revert'
 import './actions/source-actions'
 import './actions/row-connections'

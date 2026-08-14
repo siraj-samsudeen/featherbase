@@ -5,6 +5,7 @@ import { getMeta, invalidateMeta } from './meta'
 import { tableName } from './doctype-engine'
 import { getRoles } from './permissions'
 import { getDoc } from './document'
+import { runHooks } from './controllers'
 import { queueEmail } from './email'
 import { evaluateEmailRules } from './email-rules'
 import { publishDocEvent } from './realtime'
@@ -203,23 +204,53 @@ export async function applyWorkflowAction(
 
   // Persist via a direct update (bypasses the submitted-row write lock — a
   // workflow legitimately moves a submitted row between states/statuses).
-  await sql`
-    update ${sql(tableName(table))}
-    set ${sql(field)} = ${transition.next_state}, status = ${status}, updated_at = now()
-    where name = ${name}`
+  // One transaction with the audit row, and — spec 0007 BUD-H1 — a
+  // transition that CHANGES the row's status is that status change: the
+  // same submit/cancel controller hooks setStatus runs fire here too, in
+  // the same order (before_* pre-write and able to abort the transition,
+  // on_* post-write). Without this, a workflow-approved row would reach
+  // 'submitted' without its on-submit obligations (e.g. a Budget Change
+  // would flip approved without applying).
+  const meta = await getMeta(table)
+  await sql.begin(async (tx) => {
+    const stx = tx as unknown as typeof sql
+    const [existing] = await tx`
+      select * from ${tx(tableName(table))} where name = ${name} for update`
+    if (!existing) throw new AppError('NotFoundError', `${table} ${name} not found`)
+    const fromStatus = String(existing.status ?? 'draft')
+    const statusEvent =
+      fromStatus === status ? null : status === 'submitted' ? 'submit' : status === 'cancelled' ? 'cancel' : null
+    const preCtx = {
+      row: { ...(existing as Record<string, unknown>) },
+      old: existing as Record<string, unknown>,
+      meta,
+      user,
+      isNew: false,
+      tx: stx,
+    }
+    if (statusEvent === 'submit') await runHooks('before_submit', preCtx)
+    else if (statusEvent === 'cancel') await runHooks('before_cancel', preCtx)
+    const [updated] = await tx`
+      update ${tx(tableName(table))}
+      set ${tx(field)} = ${transition.next_state}, status = ${status}, updated_at = now()
+      where name = ${name} returning *`
+    const postCtx = { ...preCtx, row: updated as Record<string, unknown> }
+    if (statusEvent === 'submit') await runHooks('on_submit', postCtx)
+    else if (statusEvent === 'cancel') await runHooks('on_cancel', postCtx)
 
-  await sql`
-    insert into workflow_action ${sql({
-      name: randomBytes(5).toString('hex'),
-      created_by: user,
-      updated_by: user,
-      ref_table: table,
-      ref_name: name,
-      action,
-      from_state: from,
-      to_state: transition.next_state,
-      actor: user,
-    })}`
+    await tx`
+      insert into workflow_action ${tx({
+        name: randomBytes(5).toString('hex'),
+        created_by: user,
+        updated_by: user,
+        ref_table: table,
+        ref_name: name,
+        action,
+        from_state: from,
+        to_state: transition.next_state,
+        actor: user,
+      })}`
+  })
 
   // WF-004: entering a state that still has outgoing transitions means the
   // row is now pending someone's action. Email every user who could take

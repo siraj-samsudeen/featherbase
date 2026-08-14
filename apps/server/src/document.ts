@@ -825,10 +825,12 @@ async function updateDoc(
 }
 
 // DOC-009: record a field-level diff in the Version Table on every
-// tracked update. Runs inside the save transaction.
+// tracked update. Runs inside the save transaction. Exported for the one
+// other writer that mutates rows inside a caller-owned transaction with the
+// full trail intact: the Budget engine's apply path (spec 0007, BUD-R5).
 const UNVERSIONED = new Set(['Version', 'Table', 'Column'])
 
-async function recordVersion(
+export async function recordVersion(
   tx: typeof sql,
   meta: TableMeta,
   name: string,

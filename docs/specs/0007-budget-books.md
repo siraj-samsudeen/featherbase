@@ -225,18 +225,20 @@ measures is identical before and after.
 ### BUD-R7 — A new line arrives complete and unique · `shape: rule`
 
 A `new_line` line carries no `line_ref`; its `new_line_key` JSON must
-supply **every** key column, and the key must not collide with an
-existing bound row (nor another line in the same change). On approval
-the engine inserts the row with the change's proposed measures (absent
-measures default to 0). The born row's provenance is the change itself
-(platform Version covers updates only — by design).
+supply **every** key column (and nothing else), and the key must not
+collide with an existing bound row. Lines sharing one key are one birth
+carrying several measures; the (key, measure) cell must be unique within
+the change. On approval the engine inserts one row per distinct key with
+the proposed measures (absent measures default to 0). The born row's
+provenance is the change itself (platform Version covers updates only —
+by design).
 
 | # | new_line_key | collides? | outcome | Why? |
 |---|---|---|---|---|
 | 1 | {store, subcategory} complete | no | applied; row exists with proposed measures, others 0 | the plain path |
 | 2 | {store} only | — | rejected | half a key is no identity |
 | 3 | complete | yes, existing row | rejected | that line already has a budget — revise it |
-| 4 | two lines, same key, one change | self | rejected | one birth per identity |
+| 4 | two lines, same key + same measure | self | rejected | one proposal per cell |
 
 ### BUD-R8 — Discontinue zeroes forward, never deletes · `shape: rule`
 
@@ -272,11 +274,13 @@ value at snapshot time. Undeclared columns are deliberately absent.
 
 ### BUD-I1 — The ledger reconciles
 
-For every bound row present at baseline and every measure: **current
-value = v0 value + Σ (applied change deltas for that row and measure)**.
-Rows born from `new_line` changes reconcile from 0 at their birth
-change. Verified by whole-run arithmetic over `budget_version_line`,
-applied `budget_change_line`s, and the live table.
+For every bound row present at baseline: **Σ current measures =
+Σ v0 measures + Σ (applied change-line deltas for that row)** — row
+totals, because a discontinue line's delta is deliberately one lump over
+its zeroed span. Rows born from `new_line` changes reconcile from 0 at
+their birth change. Verified by whole-run arithmetic over
+`budget_version_line`, applied `budget_change_line`s, and the live
+table.
 
 ### BUD-I2 — No half-applied change
 

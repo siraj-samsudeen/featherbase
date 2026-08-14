@@ -14,11 +14,17 @@ async function ensure(def: Parameters<typeof createTable>[0] & { name: string })
   if (!exists) await createTable(def)
 }
 
+const ENGINE_TABLES = [
+  'Budget Book', 'Budget Book Key Column', 'Budget Book Measure Column',
+  'Budget Change', 'Budget Change Line', 'Budget Version', 'Budget Version Line',
+]
+
 export async function up() {
   // Child: the bound table's identity columns — opaque to the engine.
   await ensure({
     name: 'Budget Book Key Column',
     module: 'Core',
+    system: true,
     kind: 'sub_table',
     columns: [
       { column_name: 'column_name', column_type: 'Data', reqd: true, in_list_view: true },
@@ -30,6 +36,7 @@ export async function up() {
   await ensure({
     name: 'Budget Book Measure Column',
     module: 'Core',
+    system: true,
     kind: 'sub_table',
     columns: [
       { column_name: 'column_name', column_type: 'Data', reqd: true, in_list_view: true },
@@ -40,6 +47,7 @@ export async function up() {
   await ensure({
     name: 'Budget Book',
     module: 'Core',
+    system: true,
     id_pattern: 'prompt',
     columns: [
       { column_name: 'ref_table', column_type: 'Reference', reference_table: 'Table', reqd: true, in_list_view: true },
@@ -60,13 +68,18 @@ export async function up() {
   await ensure({
     name: 'Budget Change Line',
     module: 'Core',
+    system: true,
     kind: 'sub_table',
     columns: [
       { column_name: 'line_ref', column_type: 'Data', in_list_view: true },
       { column_name: 'measure_column', column_type: 'Data', in_list_view: true },
-      { column_name: 'current_value', column_type: 'Float', read_only: true, in_list_view: true },
+      // current_value and delta are engine-computed on every save (the
+      // budget-change controller overwrites whatever the client sent), but
+      // deliberately NOT read_only: the save lifecycle strips read_only
+      // values from child-row writes, which would drop the computed snap.
+      { column_name: 'current_value', column_type: 'Float', in_list_view: true },
       { column_name: 'proposed_value', column_type: 'Float', in_list_view: true },
-      { column_name: 'delta', column_type: 'Float', read_only: true, in_list_view: true },
+      { column_name: 'delta', column_type: 'Float', in_list_view: true },
       // new_line only: the complete key of the row to be born (BUD-R7).
       { column_name: 'new_line_key', column_type: 'JSON' },
     ],
@@ -78,6 +91,7 @@ export async function up() {
   await ensure({
     name: 'Budget Change',
     module: 'Core',
+    system: true,
     is_submittable: true,
     id_pattern: 'BCR-.####',
     columns: [
@@ -97,6 +111,7 @@ export async function up() {
   await ensure({
     name: 'Budget Version',
     module: 'Core',
+    system: true,
     columns: [
       { column_name: 'book', column_type: 'Reference', reference_table: 'Budget Book', reqd: true, in_list_view: true },
       { column_name: 'label', column_type: 'Data', reqd: true, in_list_view: true },
@@ -112,10 +127,16 @@ export async function up() {
   await ensure({
     name: 'Budget Version Line',
     module: 'Core',
+    system: true,
     columns: [
       { column_name: 'version', column_type: 'Reference', reference_table: 'Budget Version', reqd: true, in_list_view: true },
       { column_name: 'ref_name', column_type: 'Data', reqd: true, in_list_view: true },
       { column_name: 'data', column_type: 'JSON' },
     ],
   })
+
+  // Converge databases where an earlier run of this migration created the
+  // tables before system: true was part of the definitions.
+  await sql`update table_def set system = true
+    where name = any(${ENGINE_TABLES}) and system = false`
 }
