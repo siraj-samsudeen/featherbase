@@ -35,9 +35,6 @@ test.describe.configure({ mode: 'serial' })
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminHeaders(request)
-  // Start clean: a prior run may have left this user disabled, and save_row
-  // won't re-enable it without an updated_at stamp. Delete, then create fresh.
-  await request.delete(`/api/table/User/${encodeURIComponent(USER)}`, { headers })
   const created = await request.post('/api/save_row', {
     headers,
     data: { table: 'User', row: { row_id: USER, email: USER, full_name: 'Set2 E2E', enabled: true } },
