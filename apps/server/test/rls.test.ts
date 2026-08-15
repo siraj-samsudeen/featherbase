@@ -4,6 +4,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import postgres from 'postgres'
 import { sql } from '../src/db'
+import { config } from '../src/config'
 import { areq } from './helpers'
 
 // PERM-004: generated RLS. A direct client (the app_client PG role — the
@@ -17,10 +18,22 @@ const SECRET_DT = 'RLS Hidden'
 const ROLE = 'RLS Vault Reader'
 const USER = 'rls-vault@x.com'
 
-const direct = postgres(
-  process.env.RLS_TEST_URL ?? 'postgres://app_client:app_client@127.0.0.1:5432/featherbase',
-  { max: 1, onnotice: () => {} },
-)
+// This suite connects as the unprivileged `app_client` role, so it needs its
+// own URL — but it must reach the SAME database as the rest of the run. The
+// default used to name `featherbase` outright, which meant an unset
+// RLS_TEST_URL quietly pointed the RLS suite at the DEVELOPMENT database even
+// once everything else had moved to `featherbase_test`. Deriving it from
+// config.databaseUrl keeps the two in step by construction: only the
+// credentials are swapped, never the target.
+function appClientUrl(): string {
+  if (process.env.RLS_TEST_URL) return process.env.RLS_TEST_URL
+  const url = new URL(config.databaseUrl)
+  url.username = 'app_client'
+  url.password = 'app_client'
+  return url.toString()
+}
+
+const direct = postgres(appClientUrl(), { max: 1, onnotice: () => {} })
 
 async function as(user: string | null) {
   await direct`select set_config('app.user', ${user ?? ''}, false)`

@@ -107,6 +107,29 @@ fi
 pnpm --filter server migrate
 pnpm --filter server patches
 
+# --- 3b. The TEST database, which is a different database -------------------
+# The suites default to `featherbase_test`, never the database this dev server
+# uses (apps/server/src/config.ts derives the name from NODE_ENV, and Vitest
+# sets NODE_ENV=test itself). That separation is the point: it makes running
+# tests against your own working data take a deliberate act rather than a
+# forgotten variable. Creating and migrating it here keeps `pnpm test` working
+# straight after a clone.
+#
+# Skipped when DATABASE_URL names something other than the default database —
+# at that point the developer is steering deliberately and we should not invent
+# a second database next to theirs.
+if command -v psql >/dev/null && [ "${DB_NAME:-}" = featherbase ]; then
+  TEST_DB="${DB_NAME}_test"
+  if [ "$(psql "$DATABASE_URL" -tAc "select 1 from pg_database where datname='$TEST_DB'")" != 1 ]; then
+    echo "--> creating test database '$TEST_DB'"
+    psql "$DATABASE_URL" -tAc "create database \"$TEST_DB\" owner \"$DB_USER\"" >/dev/null
+  fi
+  TEST_DATABASE_URL="$(node -e "const u=new URL(process.argv[1]);u.pathname='/'+process.argv[2];process.stdout.write(u.toString())" "$DATABASE_URL" "$TEST_DB")"
+  # NODE_ENV=test so the migrator stamps it as the test database; the stamp is
+  # what later refuses a test run pointed at a development database.
+  NODE_ENV=test DATABASE_URL="$TEST_DATABASE_URL" pnpm --filter server migrate
+fi
+
 # --- 4. App servers (idempotent: kill stale, start fresh, wait for health) --
 # The mock Google provider is opt-in and nothing else: it mints a session for
 # any typed email, so it stays off unless a developer machine says otherwise.

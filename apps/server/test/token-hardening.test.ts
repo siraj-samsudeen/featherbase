@@ -340,18 +340,21 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
 
 describe('#137 R2: the reserved set covers every engine-owned raw table', () => {
   test('no user Table may compile onto a raw platform table', async () => {
-    // The first cut listed three names by hand; the database has ten such
+    // The first cut listed three names by hand; the database has eleven such
     // tables. Deriving the set means this list is a witness, not a duplicate
     // of the implementation — a new raw table is covered the day it lands.
+    // (`internal_metadata` joined in 0081; `patch_log` only became reliable
+    // here in 0079, which stopped it being created lazily on first use.)
     const raw = (
       await sql`
         select t.table_name from information_schema.tables t
         where t.table_schema = current_schema()
-          and t.table_name in ('access_token','installed_app','migration','password_reset',
-                               'patch_log','series','single_value','site','tag_link','user_settings')
+          and t.table_name in ('access_token','installed_app','internal_metadata','migration',
+                               'password_reset','patch_log','series','single_value','site',
+                               'tag_link','user_settings')
         order by 1`
     ).map((r) => r.table_name as string)
-    expect(raw.length).toBe(10)
+    expect(raw.length).toBe(11)
 
     for (const physical of raw) {
       // 'single_value' -> 'Single Value': the inverse of tableName().

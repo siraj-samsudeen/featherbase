@@ -37,6 +37,19 @@ jobs:
       # sources-mysql.test.ts runs only when this is set (checkouts without a
       # MySQL skip it); CI provides one so the mysql driver is exercised.
       MYSQL_TEST_URL: mysql://root@127.0.0.1:3306
+      # Every database records the environment that migrated it, and a run
+      # whose environment disagrees is refused (src/db-environment.ts). The
+      # migrate step below and the suites must therefore agree, and Vitest
+      # sets NODE_ENV=test for the suites on its own — so the MIGRATION is
+      # what needs telling. Without this it would stamp 'development' and the
+      # very next step would (correctly) refuse to run against it.
+      #
+      # The service database is named `featherbase` rather than
+      # `featherbase_test`, which does not matter here: this container is
+      # created for this job and destroyed with it, so it IS the test
+      # database. The name-based separation exists to protect a developer's
+      # long-lived machine, where the two live side by side.
+      NODE_ENV: test
     services:
       postgres:
         image: postgres:17
