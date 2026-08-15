@@ -1,5 +1,63 @@
 # Progress Log
 
+## 2026-08-15 — e2e brings its own database, and drops it first
+
+The last of the four. e2e writes are real commits outside any sandbox, so
+rows survived into the next run; specs papered over it with hand-rolled
+`beforeAll` cleanup, which is invisible when it breaks — #132 renamed the
+field three of them deleted by, so they deleted nothing and leaked silently
+until #183 caught it four runs later.
+
+`pnpm --filter web e2e` now sets `E2E_ISOLATED=1`, and Playwright owns the
+whole stack: it drops and recreates `featherbase_e2e`, migrates and patches
+it, starts the API and web servers on their own ports (8020/5193,
+overridable), and tears them down after. The reset runs as part of the API's
+start command, so ordering is guaranteed by construction — the database
+cannot be dropped after the server has connected to it.
+
+Two things fall out beyond repeatability:
+
+- **The developer's database stops being collateral.** e2e used to drive the
+  dev server, committing its fixtures into the database being used for actual
+  work. It never had any business being there.
+- **The reset is safe to automate**, because yesterday's environment stamp
+  exists: it refuses to drop anything whose name does not end in `_e2e`, or
+  which is stamped for an environment other than `test`. Without that, a
+  mistyped `DATABASE_URL` points a `drop database` at real data.
+
+**The count was wrong, and smaller.** The research put 57 specs on
+hand-rolled cleanup; the real number is **nine**, and only **six** were
+cross-run cleanup made redundant here (access-tokens, dashboard, palette,
+portal, saved-views, user-management). The rest are not the same thing:
+`private-file-cookie` cleans *between tests within* a run, which a per-run
+reset does not replace, and `timeline` uses a fresh random name per run —
+namespacing, not cleanup. Both left alone.
+
+**A trap worth recording:** setting `NODE_ENV=test` for the e2e server made
+it migrate, print nothing and never bind. `src/index.ts` skips starting the
+HTTP listener entirely under that value, because the vitest suites import the
+app in-process instead. The stack uses `FEATHERBASE_ENV=test` — yesterday's
+escape hatch, which gives the test *environment* (so the migrator stamps the
+database correctly) without the `NODE_ENV` side effect.
+
+CI's e2e job loses its migrate and boot steps, and its server-log step:
+Playwright does all three now, and pipes the server's output into its own.
+
+**Verified:** two consecutive full runs, **118 passed** each, zero failures —
+the property that did not hold before. After removing the six cleanup blocks,
+117 passed with one failure.
+
+**Not fixed, and not caused here: `UPS-J2` is a real flake.** It failed on a
+brand-new database during the rename work too, and the trace shows
+`iw-result-0` never rendering at all — the import UI not finishing in time,
+not stale state. A per-run reset cannot help that; it passed twice and failed
+twice under identical conditions. Worth its own issue.
+
+**Next:** the design docs still in DocType prose (`docs/specs/0001`, `0002`,
+`data-and-admin-topology`, `execution-plan`, ADR 0007), and the owner ruling
+on the Client Script API (`frm.doc` / `frappe.ui.form.on`) — the same
+question already settled for `frappe-client.ts`.
+
 ## 2026-08-15 — the test database is a different database, and says so
 
 `DATABASE_URL` defaulted to `featherbase` for *every* environment, so

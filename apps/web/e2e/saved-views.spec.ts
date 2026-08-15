@@ -26,14 +26,6 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     headers: auth,
     data: { row_id: DOC, note: 'hot' },
   })
-  // Re-runs must start clean: drop Administrator's leftover views for DT.
-  const existing = await request.get(`/api/saved_views?table=${encodeURIComponent(DT)}`, {
-    headers: auth,
-  })
-  for (const v of ((await existing.json()) as { views: Array<{ row_id: string; mine: boolean }> })
-    .views) {
-    if (v.mine) await request.delete(`/api/saved_views/${v.row_id}`, { headers: auth })
-  }
 })
 
 async function login(page: Page) {

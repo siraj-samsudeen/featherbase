@@ -8,13 +8,6 @@ async function adminHeaders(request: APIRequestContext) {
   return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
 }
 
-// Each run reuses the dev database — sweep this spec's principal (tokens
-// cascade with the user row) so reruns start clean.
-test.beforeAll(async ({ request }) => {
-  const headers = await adminHeaders(request)
-  await request.delete(`/api/table/User/${SVC}`, { headers }).catch(() => {})
-})
-
 // #131: the access-tokens screen — create a service account, issue it a
 // token through the show-once modal, prove the secret authenticates, revoke.
 test('#131: service account + token lifecycle through the Admin screen', async ({
