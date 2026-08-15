@@ -1,5 +1,51 @@
 # Progress Log
 
+## 2026-08-15 — the test database is a different database, and says so
+
+`DATABASE_URL` defaulted to `featherbase` for *every* environment, so
+**omitting it** is what pointed a test run at the developer's own database.
+The default was backwards, and it cost a real debugging session: thirteen
+failures that looked like thirteen bugs and were one stale database.
+
+Three defences, in the order they fire — the shape Rails, Phoenix and Django
+all converge on:
+
+1. **Separate by name.** `config.ts` derives the database from the
+   environment (`featherbase` / `featherbase_test`), and Vitest sets
+   `NODE_ENV=test` itself, so the suites land on the test database with
+   nothing configured. Reaching the dev database now takes a deliberate act,
+   not a forgotten variable. `init.sh` creates and migrates it.
+2. **Migrate, then insist.** `global-setup.ts` runs migrations before the
+   suite (Phoenix's `mix test` and Django's `--keepdb` both fix it forward)
+   and only then asserts nothing is pending, naming the files if any are.
+3. **The stamp** (`internal_metadata.environment`, migration `0081`, number
+   announced). Naming cannot catch a *wrong* `DATABASE_URL` — a stale export,
+   a typo. Only the database knows what it is, so it records which
+   environment migrated it and refuses a mismatch, Rails'
+   `EnvironmentMismatchError`. The refusal prints the target with credentials
+   stripped and offers `DISABLE_DATABASE_ENVIRONMENT_CHECK=1`.
+
+Proved by pointing a run at the dev database: one sentence naming both
+environments and the database, instead of thirteen phantom bugs.
+
+**Found while doing it:** `rls.test.ts` hardcoded `featherbase` as its
+`RLS_TEST_URL` fallback — the same bug, one layer down, and it would have
+survived the rename above. It now derives from `config.databaseUrl` and swaps
+only the credentials, so it cannot drift from the rest of the run again.
+
+`internal_metadata` is created by a migration, not lazily — the rule 0079 set
+for `patch_log`. token-hardening's reserved-table witness covers it (ten → eleven).
+
+**Verified** with *no environment variables at all*, which is the point:
+server **725 passed**, web **64/64**, typecheck clean, and `./init.sh` with
+the test database deleted recreates, migrates and stamps it, then boots green.
+
+**Next:** the per-run e2e reset — the last of the four. The 57 hand-rolled
+cleanup blocks stay until then; #183 fixed the three that were silently
+deleting nothing, but the class survives while e2e has no reset at all. The
+stamp landing here is what makes an automated reset safe to ship: without it,
+a mistyped variable points a `drop database` at a developer's own data.
+
 ## 2026-08-14 (later) — Budget Books M2: audit, three bug fixes, the browser can now walk every scenario
 
 A fresh-context Sonnet audit drove M1 against every scenario in the
@@ -72,7 +118,9 @@ Spec 0007 (`docs/specs/0007-budget-books.md`, evidence CSV alongside),
 designed with the owner in the "Budget Books" simulation document and
 built in one pass:
 
-1. **Migration 0077** — six system tables: `Budget Book` (binds any
+1. **Migration 0082** (numbered 0077 when written; renumbered twice as
+   main's `0077_row_id` and `0081_internal_metadata` landed) — six
+   system tables: `Budget Book` (binds any
    plain table; declares key/measure/owner columns via sub-tables),
    `Budget Change` (submittable, `BCR-.####`, four types: revise /
    transfer / new_line / discontinue), `Budget Version` (+ `Budget
