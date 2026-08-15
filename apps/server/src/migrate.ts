@@ -6,8 +6,31 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { sql } from './db'
 import { invalidateMeta } from './meta'
+import { assertDatabaseEnvironment, stampEnvironment } from './db-environment'
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
+
+// The migration files on disk, in the order they apply.
+function migrationFiles(): string[] {
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.sql') || f.endsWith('.ts'))
+    .sort()
+}
+
+/**
+ * Migrations present on disk but not recorded in this database.
+ *
+ * Separated from running them so a caller can ASK without acting — the check
+ * that turns "a wall of confusing failures" into one sentence naming the
+ * files. Rails calls the equivalent `needs_migration?`; Prisma exposes it as
+ * `migrate status` exiting non-zero.
+ */
+export async function pendingMigrations(): Promise<string[]> {
+  const [present] = await sql`select to_regclass('migration') as reg`
+  if (!present?.reg) return migrationFiles()
+  const applied = new Set((await sql`select name from migration`).map((r) => r.name as string))
+  return migrationFiles().filter((f) => !applied.has(f))
+}
 
 // migrations/ is numbered by hand — nothing stops two files from claiming the
 // same number. Both apply silently (whichever sorts first "wins" the slot,
@@ -54,6 +77,10 @@ export function findDuplicateMigrationPrefixes(files: string[]): string[] {
 // Runs pending migrations. Does NOT close the DB connection — the caller owns
 // its lifecycle (the CLI keeps it open for the rest of the command).
 export async function runMigrations() {
+  // Before writing anything: is this database ours to migrate? An unstamped
+  // (brand-new) database passes and is claimed below; one belonging to
+  // another environment stops the run here, before any DDL.
+  await assertDatabaseEnvironment()
   await sql`create table if not exists migration (
     name text primary key,
     applied_at timestamptz not null default now()
@@ -61,9 +88,7 @@ export async function runMigrations() {
   const applied = new Set(
     (await sql`select name from migration`).map((r) => r.name as string),
   )
-  const files = readdirSync(dir)
-    .filter((f) => f.endsWith('.sql') || f.endsWith('.ts'))
-    .sort()
+  const files = migrationFiles()
   const duplicatePrefixErrors = findDuplicateMigrationPrefixes(files)
   if (duplicatePrefixErrors.length > 0) {
     throw new Error(`duplicate migration numbers:\n${duplicatePrefixErrors.join('\n')}`)
@@ -91,6 +116,9 @@ export async function runMigrations() {
     invalidateMeta()
     console.log(`applied ${file}`)
   }
+  // Claim (or re-affirm) the database for this environment. Re-stamping every
+  // run keeps databases created before 0081 correct too.
+  await stampEnvironment()
   console.log(`migrations up to date (${files.length} total)`)
 }
 

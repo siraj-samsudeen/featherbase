@@ -1,4 +1,5 @@
-// Vitest globalSetup: empty the tables that outlive a test run, once, before
+// Vitest globalSetup: prove the run is pointed at the right database and that
+// it is up to date, then empty the tables that outlive a run — once, before
 // the run starts.
 //
 // Every test body is transaction-isolated by the feather-testing-postgres
@@ -30,12 +31,43 @@
 // files, which is also why both suites set `fileParallelism: false`. This
 // closes the same hole at run scope.
 
+// Before any of that, two questions the run should answer in one sentence
+// rather than in a hundred confusing assertion failures:
+//
+//   WHICH database is this? The test default is `featherbase_test`, but an
+//     explicit DATABASE_URL overrides it, and a stale one exported in the
+//     shell is easy not to notice. Every database records the environment it
+//     belongs to (src/db-environment.ts), so a dev database reached from a
+//     test run is caught here — not thirteen files later, where it reads as
+//     thirteen real bugs.
+//
+//   IS IT UP TO DATE? A database a migration behind fails in whatever test
+//     happens to touch the new column first. Phoenix's `mix test` migrates on
+//     every run and Django's `--keepdb` does the same; Rails loads the schema
+//     and only then raises if anything is still pending. We follow that: fix
+//     it forward by migrating, then assert nothing is left — the assertion is
+//     the backstop for a migration that cannot apply, not the primary path.
 import postgres from 'postgres'
 import { config } from '../src/config'
 
 const SHARED_TABLES = ['background_job', 'user_event']
 
 export async function setup() {
+  // Uses the app's own connection, since runMigrations and the environment
+  // check both run against `src/db`'s pool.
+  const { assertDatabaseEnvironment } = await import('../src/db-environment')
+  const { runMigrations, pendingMigrations } = await import('../src/migrate')
+  const { sql: appSql } = await import('../src/db')
+
+  await assertDatabaseEnvironment()
+  await runMigrations()
+  const pending = await pendingMigrations()
+  if (pending.length > 0)
+    throw new Error(
+      `Refusing to run: ${pending.length} migration(s) did not apply:\n  ${pending.join('\n  ')}`,
+    )
+  await appSql.end({ timeout: 5 }).catch(() => {})
+
   const sql = postgres(config.databaseUrl, { onnotice: () => {}, prepare: false })
   try {
     for (const table of SHARED_TABLES) {

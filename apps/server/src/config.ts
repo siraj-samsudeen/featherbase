@@ -23,11 +23,34 @@ function loadDotEnv() {
 }
 loadDotEnv()
 
+// Which environment this process is running as. Vitest sets NODE_ENV=test
+// itself, so the test suites land on 'test' without configuring anything.
+// FEATHERBASE_ENV wins when set, for the cases NODE_ENV cannot express.
+export const environment = (
+  process.env.FEATHERBASE_ENV ??
+  process.env.NODE_ENV ??
+  'development'
+).trim()
+
+// The default database is derived from the environment, never shared across
+// them. Rails (`app_development` / `app_test`), Phoenix (`app_dev` /
+// `app_test`) and Django (a `test_` prefix) all separate the two BY NAME, so
+// that running tests against the development database takes a deliberate act
+// rather than a forgotten variable.
+//
+// This project used to default both to `featherbase`, which made OMITTING
+// DATABASE_URL the thing that pointed a test run at the developer's own
+// database — the default was backwards. An explicit DATABASE_URL still wins,
+// and the environment stamp (src/db-environment.ts) catches the case where
+// that explicit value is wrong.
+const defaultDatabase = environment === 'test' ? 'featherbase_test' : 'featherbase'
+
 export const config = {
   port: Number(process.env.PORT ?? 8000),
+  environment,
   databaseUrl:
     process.env.DATABASE_URL ??
-    'postgres://postgres:postgres@127.0.0.1:5432/featherbase',
+    `postgres://postgres:postgres@127.0.0.1:5432/${defaultDatabase}`,
   // API-008: origins allowed to call the API cross-origin (the Admin dev
   // server by default; comma-separated WEB_ORIGINS overrides).
   allowedOrigins: (
