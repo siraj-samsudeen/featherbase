@@ -149,41 +149,11 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm --filter web exec playwright install --with-deps chromium
 
-      # Creates the schema, the Administrator login (password 'admin' by
-      # default — what the e2e specs use), and the app_client role. The
-      # e2e specs create the documents they assert on.
-      - name: Migrate and patch database
-        run: |
-          pnpm --filter server migrate
-          pnpm --filter server patches
-
-      # Mirrors init.sh: both dev servers in the background, then wait for
-      # :8000 (API health) and :5173 (vite, which proxies /api to :8000).
-      # Output goes to files so the step's stdout closes and the processes
-      # survive into the next step.
-      - name: Boot API and web servers
-        run: |
-          pnpm --filter server dev > /tmp/featherbase-server.log 2>&1 &
-          pnpm --filter web dev > /tmp/featherbase-web.log 2>&1 &
-          for i in $(seq 1 60); do
-            curl -sf http://localhost:8000/api/ping >/dev/null 2>&1 && break
-            if [ "$i" = 60 ]; then
-              echo "!! server failed to boot"
-              cat /tmp/featherbase-server.log
-              exit 1
-            fi
-            sleep 1
-          done
-          for i in $(seq 1 60); do
-            curl -sf http://localhost:5173 >/dev/null 2>&1 && break
-            if [ "$i" = 60 ]; then
-              echo "!! web failed to boot"
-              cat /tmp/featherbase-web.log
-              exit 1
-            fi
-            sleep 1
-          done
-          echo "server :8000 and web :5173 are up"
+      # No migrate step and no boot step: in isolated mode
+      # (E2E_ISOLATED=1, set by the `e2e` script) Playwright owns the whole
+      # stack. It resets its own database, migrates and patches it, then
+      # starts the API and web servers on their own ports and tears them down
+      # after. Booting a second stack here would only race with that one.
 
       # playwright.config.ts pins workers: 1 (specs share one server and
       # database) — keep it. The trace flag is CI-only so failures leave
@@ -191,13 +161,10 @@ jobs:
       - name: Run e2e suite
         run: pnpm --filter web e2e --trace retain-on-failure
 
-      - name: Show server logs on failure
-        if: failure()
-        run: |
-          echo "=== server log (last 200 lines) ==="
-          tail -n 200 /tmp/featherbase-server.log || true
-          echo "=== web log (last 200 lines) ==="
-          tail -n 200 /tmp/featherbase-web.log || true
+      # No server-log step: Playwright pipes the API server's stdout/stderr
+      # into its own output (webServer stdout: 'pipe'), so a boot failure is
+      # already in the log above. The old step tailed /tmp files that this job
+      # no longer creates.
 
       - name: Upload Playwright artifacts
         if: failure()

@@ -120,8 +120,6 @@ test('UI-025: a second user in the same tab does not inherit the first user’s 
   const USER_B = 'palette-e2e@x.com'
   const token = await adminToken(request)
   const headers = { Authorization: `Bearer ${token}` }
-  // Start clean (same pattern as user-management.spec.ts).
-  await request.delete(`/api/table/User/${encodeURIComponent(USER_B)}`, { headers })
   const created = await request.post('/api/save_row', {
     headers,
     data: { table: 'User', row: { row_id: USER_B, email: USER_B, full_name: 'Palette E2E', enabled: true } },

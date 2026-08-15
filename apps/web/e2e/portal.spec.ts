@@ -42,15 +42,6 @@ test.beforeAll(async ({ request }) => {
     await request.post('/api/set_password', { headers: H, data: { user: u, password: PWD } })
   }
 
-  // Clear tickets left by an earlier run — the row-count assertion below only
-  // holds if Alice owns exactly one. (The users are recreated above, but the
-  // documents they own survive.)
-  const existing = (await (
-    await request.get(`/api/table/${encodeURIComponent(DT)}?limit=100`, { headers: H })
-  ).json()) as { data?: { row_id: string }[] }
-  for (const d of existing.data ?? [])
-    await request.delete(`/api/table/${encodeURIComponent(DT)}/${d.row_id}`, { headers: H })
-
   // Each user creates their own ticket (owner = creator).
   const aTok = await token(request, ALICE, PWD)
   await request.post(`/api/table/${encodeURIComponent(DT)}`, {
