@@ -32,6 +32,7 @@ import {
 import './actions/core-row-actions'
 import './actions/collection-import'
 import './actions/budget-actions'
+import './actions/budget-import'
 import { activeBookFor, compareVersions } from './budget'
 import './actions/collection-import-revert'
 import './actions/source-actions'

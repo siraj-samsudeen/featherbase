@@ -1,5 +1,45 @@
 # Progress Log
 
+## 2026-08-17 — Budget Books M3: import-as-proposal (`:import_proposal`)
+
+The August-reforecast gap closed: a mid-year overwrite file no longer
+has to be retyped into change forms. Spec 0007 gains BUD-J4 + BUD-R12
+(owner authorized in-session; owner ruling same day: rows missing from
+the file stay untouched by default, discontinuable by explicit option).
+
+- **`POST /api/table/:table:import_proposal { rows, reason, dry_run?,
+  missing_rows?, effective_from? }`** (`actions/budget-import.ts`) —
+  requires an active book on the table; matches file rows by the book's
+  own declared key columns (zero call-side configuration); diffs only
+  declared measure cells; materializes draft Budget Changes: changed
+  cells → `revise`, unmatched rows → `new_line`, and with
+  `missing_rows: 'discontinue'` + `effective_from` → `discontinue`
+  (already-wound-down rows skipped). Absent rows/cells are silence, not
+  zero — partial monthly files are first-class. Undeclared columns are
+  ignored and named. Refuses WHOLE on malformed input (missing key
+  cell, duplicate key, non-numeric measure, empty reason); >200-line
+  diffs chunk into multiple drafts keeping one row's cells together;
+  a mid-materialization race compensates by deleting the run's drafts.
+- Nothing touches the bound table at import time — the drafts are
+  ordinary drafts (controller re-snaps, workflow lanes gate, each
+  approves independently, "in part" = edit the draft before approving).
+- The write-lock refusals now point at `:import_proposal` (J4.1).
+- `MAX_ROWS` exported from `collection-import.ts` (shared cap).
+
+**Verified:** vitest 11/11 new (`test/budget-import.test.ts`, titles
+quote spec IDs), full server suite 768 passing (known chmod-as-root
+env failure unchanged); live HTTP walk of the owner's actual scenario
+on the dev server (original import → baseline → August file with a
+revision + a new row + a dropped row → 3 drafts BCR-0040/41/42 →
+Self-approve lane → compare v0→current shows exactly the file's diff);
+budget e2e slice 2/2 in CI's isolated mode. Evidence CSV updated
+(J4, R12 proven, stamped 2026-08-17).
+
+**Next:** import-wizard UI integration (detect the governed table and
+offer "import as proposals" in the browser — today the action is
+API-tier and drafts are reviewed/approved in the existing M2 UI), and
+the owner's Q1–Q5 stand open. Owner action: features.json entry.
+
 ## 2026-08-15 — e2e brings its own database, and drops it first
 
 The last of the four. e2e writes are real commits outside any sandbox, so

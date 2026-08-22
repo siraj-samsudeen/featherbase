@@ -1,12 +1,14 @@
-# Feature: Budget Books (M1 — engine)
+# Feature: Budget Books
 
 **IDs:** `BUD-J*` journeys · `BUD-R*` rules · `BUD-I*` invariants ·
 `BUD-H*` hazards · `Q*` questions
 **Evidence:** `docs/specs/evidence/budget-books.csv` (never status in this file)
 **Provenance:** owner design session 2026-08-14 (the "Budget Books"
 simulation document and its resolved decisions §6); build authorized
-same day. M2 (compare view, propose-change button, pending badge) and
-M3 (import-as-proposal) are out of this spec's scope.
+same day. M2 (compare view, propose-change button, pending badge) is
+UI over R2/R4/R10 and adds no rules. M3 (import-as-proposal, J4/R12)
+authorized 2026-08-17, with the owner's same-day ruling on missing
+rows: untouched by default, discontinuable by explicit option.
 
 ## The job
 
@@ -100,6 +102,24 @@ a Workflow Action row records who took the shortcut. *(→ R5, H1)*
 **Isolation strategy:** server-tier in the sandbox; the workflow rows
 are created inside the test transaction.
 
+## BUD-J4 — The August reforecast: a file becomes proposals *(shape: sequence, api tier)*
+
+The job: "Finance sends the mid-year overwrite as the same spreadsheet
+shape as the original. I can't just re-import it — the book is active —
+but I also can't retype four hundred cells into change forms."
+
+| # | Where / do | Must observably see | Rules |
+|---|---|---|---|
+| J4.1 | `POST /api/table/:table:import` with the August rows (the old habit) | Refused rows naming the book **and pointing at `:import_proposal`** | R3 |
+| J4.2 | `POST /api/table/:table:import_proposal { rows, reason, dry_run: true }` | The would-be drafts reported — changed cells, new rows, unchanged count, ignored columns — and **nothing written** | R12 |
+| J4.3 | Same call without `dry_run` | Draft Budget Changes exist (revise / new_line as the diff demands), each line already snapped and delta'd; nothing applied to the bound table | R12, R4 |
+| J4.4 | The drafts in the generic FormView | Reviewable and editable like any hand-made draft — delete a line, adjust a value; approval rides the same lanes as J2/J3 | R4, R5, R11 |
+| J4.5 | Approve; open Compare v0 → current | The bound table equals the August file where it spoke, stands untouched where it was silent, and the compare lists exactly the diff | R5, I1 |
+
+**Isolation strategy:** server-tier in the SQL sandbox (the action takes
+JSON rows — workbook parsing is the import wizard's client-side job and
+is out of M3's scope); unique table/book names per run.
+
 ## Closure sweep
 
 - **actors & permissions:** book creation/baseline require write on
@@ -170,7 +190,8 @@ renamed row would orphan every `budget_version_line` pointing at its old
 name. Updates to undeclared columns (notes, attachments) pass. `working`
 books impose nothing. Closing a book releases the lock (the snapshots
 and Version trail remain the durable history — Q3 asks the owner to
-ratify this release).
+ratify this release). The refusal names the road that is open: bulk
+writes to a governed table are told to use `:import_proposal` (R12).
 
 **Property:** for every bound row and every declared column, a direct
 write while active is refused and the row is byte-identical after.
@@ -285,6 +306,62 @@ audit: a change over the DOA threshold submitted straight past the CFO
 lane). The generic form hides its Submit/Cancel/Amend buttons on
 workflow-governed tables; transitions are the only path through the
 status change. Platform-wide, not budget-specific.
+
+### BUD-R12 — Import-as-proposal: a file diffs into drafts · `shape: contract`
+
+`POST /api/table/:table:import_proposal
+{ rows, reason, dry_run?, missing_rows?, effective_from? }` — the bulk
+road onto a governed table. The table must be bound by an **active**
+book (otherwise refused, pointing at plain `:import` — a working book
+imports freely). Rows match live rows by the book's **declared key
+columns** — no key configuration in the call; the book already knows
+its grain.
+
+The diff, cell by cell over declared measures:
+
+- a matched row's measure **present** in the file and numerically
+  different → a `revise` line; equal → nothing; **absent → nothing**
+  (partial files are first-class: silence is not zero);
+- an unmatched file row → `new_line` lines for each present measure;
+- a live row absent from the file → **nothing by default**
+  (`missing_rows: 'keep'`); with `missing_rows: 'discontinue'` (and a
+  required `effective_from` measure) → one `discontinue` line per
+  missing row, already-discontinued rows skipped. Dropping only *some*
+  missing rows is not a mode: the draft is editable — delete the lines
+  to keep, approve the rest (owner ruling 2026-08-17);
+- file columns neither key nor declared measure are ignored and named
+  in the response, never written.
+
+The materialization: one draft Budget Change per change_type present in
+the diff (`revise` / `new_line` / `discontinue` — the header owns the
+type, so a mixed file yields up to three), each carrying the call's
+`reason`, each chunked at `MAX_CHANGE_LINES` keeping one row's cells in
+one draft. Every draft is an ordinary draft: R4 re-snaps it, R5/R11
+gate it, each approves **independently** — the response names them all
+so the reviewer sees the set. Nothing touches the bound table at import
+time. A zero-diff file creates nothing and says so. `dry_run: true`
+computes the same report and writes nothing.
+
+The run refuses **whole** (no partial materialization) when: any row
+misses a key-column value, two rows share a key signature, a present
+measure value is non-numeric, `rows` exceeds the import cap
+(`MAX_ROWS = 10 000`), or `reason` is empty — a proposal is one
+deliberate act, not a best-effort trickle.
+
+| # | file row | live row | outcome | Why? |
+|---|---|---|---|---|
+| 1 | q2=80 | q2=100 | revise line, delta −20 | the plain diff |
+| 2 | q2=100 | q2=100 | no line | equality is not a change |
+| 3 | (q2 absent) | q2=100 | no line | a partial file is silent, not zero |
+| 4 | key unmatched, q1=50 | — | new_line line(s) | the file speaks a new row whole |
+| 5 | — | row absent from file | no line (default) | silence never discontinues |
+| 6 | — | absent, `missing_rows: 'discontinue'` | discontinue line from `effective_from` | dropping is explicit, and still zeroes-forward (R8) |
+| 7 | two rows, same key | — | run refused | one file, one voice per row |
+
+**Property:** for any file and any book, approving every materialized
+draft makes the bound table's declared measures equal the file's where
+the file spoke and leaves them untouched where it was silent — and
+`dry_run` followed by the real call reports the identical diff.
 
 ### BUD-R10 — The snapshot is the whole book · `shape: invariant`
 

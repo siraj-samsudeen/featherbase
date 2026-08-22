@@ -28,13 +28,13 @@ const controller: TableController = {
       if (ctx.isNew)
         throw new AppError(
           'ValidationError',
-          `${book.name} is active — new ${ctx.meta.name} rows are born through a Budget Change (new_line)`,
+          `${book.name} is active — new ${ctx.meta.name} rows are born through a Budget Change (new_line); a whole file goes through :import_proposal`,
         )
       for (const c of declaredColumns(book)) {
         if (norm(ctx.row[c]) !== norm(ctx.old?.[c]))
           throw new AppError(
             'ValidationError',
-            `${book.name} is active — changes to "${c}" go through a Budget Change`,
+            `${book.name} is active — changes to "${c}" go through a Budget Change; a whole file goes through :import_proposal`,
           )
       }
     },

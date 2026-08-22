@@ -18,7 +18,7 @@ import { tableName } from '../table-engine'
 // saveDoc's update lifecycle (hooks, validation, versioning — never raw SQL);
 // the response and the Import Log carry updated / inserted / failed as
 // separate counts. Absent `key_column`, insert-only semantics byte-for-byte.
-const MAX_ROWS = 10_000
+export const MAX_ROWS = 10_000
 // ADR 0008: failures kept in the Import Log's error summary (Q3 owns 'more').
 const LOG_ERROR_SAMPLE = 20
 
