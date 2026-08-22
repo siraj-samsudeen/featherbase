@@ -31,6 +31,9 @@ import {
 } from './actions'
 import './actions/core-row-actions'
 import './actions/collection-import'
+import './actions/budget-actions'
+import './actions/budget-import'
+import { activeBookFor, compareVersions } from './budget'
 import './actions/collection-import-revert'
 import './actions/source-actions'
 import './actions/row-connections'
@@ -61,6 +64,7 @@ import { createSite, listSites, resolveSite, siteCreateTableDef, siteListTableDe
 import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
 import checklists from './sample-apps/checklists'
+import budgetBooksDemo from './sample-apps/budget-books-demo'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
@@ -82,6 +86,9 @@ registerApp(helpdesk)
 // Same discipline: checklist tables exist only after
 // POST /api/install_app { name: 'checklists' }.
 registerApp(checklists)
+// Spec 0007: the Budget Books scenario world (two books, three approval
+// lanes, CFO flag rule) — POST /api/install_app { name: 'budget-books-demo' }.
+registerApp(budgetBooksDemo)
 await loadInstalledApps()
 
 type Env = { Variables: { user: SessionUser } }
@@ -1034,6 +1041,44 @@ app.get('/api/workflow/:table/:name', async (c) => {
     state,
     actions: availableActions(wf, state, roles, doc).map((t) => ({ action: t.action, next_state: t.next_state })),
   })
+})
+
+// Spec 0007 M2: governance status for a row form — which active Budget Book
+// governs this table, and the pending draft changes touching this row.
+// Drives the "Governed by …" pill, the pending badge, and Propose change.
+app.get('/api/budget/line/:table/:row_id', async (c) => {
+  const table = c.req.param('table')
+  const book = await activeBookFor(sql, table)
+  if (!book) return c.json({ book: null, pending: [] })
+  await assertPermission(who(c), table, 'read')
+  const pending = await sql`
+    select distinct c.row_id, c.change_type, c.reason, c.created_by
+    from budget_change c
+    join budget_change_line l on l.parent = c.row_id
+    where c.book = ${book.name} and c.status = 'draft'
+      and l.line_ref = ${c.req.param('row_id')}
+    order by c.row_id`
+  return c.json({
+    book: {
+      name: book.name,
+      lifecycle: book.lifecycle,
+      key_columns: book.keyColumns,
+      measure_columns: book.measureColumns,
+      owner_column: book.ownerColumn,
+    },
+    pending,
+  })
+})
+
+// Spec 0007 M2: the compare view — two snapshots of a book (or a snapshot
+// vs the live table via ?to=current), one entry per differing line.
+app.get('/api/budget/compare/:book', async (c) => {
+  await assertPermission(who(c), 'Budget Book', 'read')
+  const from = c.req.query('from')
+  const to = c.req.query('to')
+  if (!from || !to)
+    throw new AppError('ValidationError', 'Expected ?from=<version|current>&to=<version|current>')
+  return c.json(await compareVersions(sql, c.req.param('book'), from, to))
 })
 
 // UI-013: per-user list/view settings. Stored per (user, table) and only

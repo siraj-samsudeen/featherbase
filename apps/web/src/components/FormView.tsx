@@ -15,6 +15,7 @@ import { Tags } from './Tags'
 import { Comments } from './Comments'
 import { ActivityTimeline } from './ActivityTimeline'
 import { WorkflowActions } from './WorkflowActions'
+import { BudgetActions, BudgetGovernance } from './BudgetActions'
 import { ConnectionsPanel, RelatedTabs } from './ConnectionsPanel'
 import { usePeek } from './Peek'
 
@@ -45,6 +46,20 @@ export function FormView({
     queryFn: () =>
       api.get<Row>(`/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`),
   })
+
+  // BUD-R11: an attached Workflow owns the status gate — the server refuses
+  // plain :submit/:cancel on a workflow-governed table, so the generic
+  // buttons hide and WorkflowActions' transitions are the only way through.
+  // Same query key as WorkflowActions: react-query dedupes the request.
+  const wfStatus = useQuery({
+    queryKey: ['workflow', table, name],
+    enabled: !isNew,
+    queryFn: () =>
+      api.get<{ workflow: string | null }>(
+        `/api/workflow/${encodeURIComponent(table)}/${encodeURIComponent(name)}`,
+      ),
+  })
+  const workflowGoverned = Boolean(wfStatus.data?.workflow)
 
   // #102 review: prefill seeds the INITIAL state synchronously, so the very
   // first render (and any client-script `onload` in the first effect flush)
@@ -296,6 +311,12 @@ export function FormView({
               Browse &amp; Reflect
             </RouterLink>
           )}
+          {table === 'Budget Book' && !isNew && (
+            <BudgetActions name={name} lifecycle={String((values as Row).lifecycle ?? '')} />
+          )}
+          {!isNew && m.kind === 'table' && table !== 'Budget Book' && (
+            <BudgetGovernance table={table} name={name} />
+          )}
           {!isNew && <WorkflowActions table={table} name={name} />}
           {submittable && (
             <span
@@ -373,7 +394,7 @@ export function FormView({
               {saving ? t('Saving…') : t('Save')}
             </button>
           )}
-          {submittable && status === 'draft' && !dirty && (
+          {submittable && !workflowGoverned && status === 'draft' && !dirty && (
             <button
               onClick={() => runAction('submit')}
               data-testid="form-submit"
@@ -382,7 +403,7 @@ export function FormView({
               Submit
             </button>
           )}
-          {submittable && status === 'submitted' && (
+          {submittable && !workflowGoverned && status === 'submitted' && (
             <button
               onClick={() => runAction('cancel')}
               data-testid="form-cancel"
@@ -391,7 +412,7 @@ export function FormView({
               Cancel
             </button>
           )}
-          {submittable && status === 'cancelled' && (
+          {submittable && !workflowGoverned && status === 'cancelled' && (
             <button
               onClick={() => runAction('amend')}
               data-testid="form-amend"

@@ -836,10 +836,12 @@ async function updateDoc(
 }
 
 // DOC-009: record a field-level diff in the Version Table on every
-// tracked update. Runs inside the save transaction.
+// tracked update. Runs inside the save transaction. Exported for the one
+// other writer that mutates rows inside a caller-owned transaction with the
+// full trail intact: the Budget engine's apply path (spec 0007, BUD-R5).
 const UNVERSIONED = new Set(['Version', 'Table', 'Column'])
 
-async function recordVersion(
+export async function recordVersion(
   tx: typeof sql,
   meta: TableMeta,
   name: string,
@@ -886,6 +888,18 @@ async function setStatus(
   const meta = await getMeta(table)
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
+  // Spec 0007 BUD-R11 (audit finding): an attached Workflow owns the status
+  // gate. The plain :submit/:cancel actions would sidestep every role- and
+  // condition-gated lane the workflow defines — refused for everyone;
+  // approval rides the workflow's own transitions.
+  {
+    const wf = await getActiveWorkflow(table)
+    if (wf?.states.length)
+      throw new AppError(
+        'ValidationError',
+        `${table} status is governed by workflow "${wf.row_id}" — use its actions instead of :${event === 'on_submit' ? 'submit' : 'cancel'}`,
+      )
+  }
   const tbl = tableName(table)
   const [saved] = await sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql

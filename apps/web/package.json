@@ -31,7 +31,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",
     "feather-testing-core": "^0.2.0",
-    "feather-testing-postgres": "github:siraj-samsudeen/feather-testing-postgres#59b7b84",
+    "feather-testing-postgres": "git+https://github.com/siraj-samsudeen/feather-testing-postgres.git#59b7b84",
     "jsdom": "^26.0.0",
     "postgres": "^3.4.5",
     "server": "workspace:*",

@@ -1,5 +1,45 @@
 # Progress Log
 
+## 2026-08-17 — Budget Books M3: import-as-proposal (`:import_proposal`)
+
+The August-reforecast gap closed: a mid-year overwrite file no longer
+has to be retyped into change forms. Spec 0007 gains BUD-J4 + BUD-R12
+(owner authorized in-session; owner ruling same day: rows missing from
+the file stay untouched by default, discontinuable by explicit option).
+
+- **`POST /api/table/:table:import_proposal { rows, reason, dry_run?,
+  missing_rows?, effective_from? }`** (`actions/budget-import.ts`) —
+  requires an active book on the table; matches file rows by the book's
+  own declared key columns (zero call-side configuration); diffs only
+  declared measure cells; materializes draft Budget Changes: changed
+  cells → `revise`, unmatched rows → `new_line`, and with
+  `missing_rows: 'discontinue'` + `effective_from` → `discontinue`
+  (already-wound-down rows skipped). Absent rows/cells are silence, not
+  zero — partial monthly files are first-class. Undeclared columns are
+  ignored and named. Refuses WHOLE on malformed input (missing key
+  cell, duplicate key, non-numeric measure, empty reason); >200-line
+  diffs chunk into multiple drafts keeping one row's cells together;
+  a mid-materialization race compensates by deleting the run's drafts.
+- Nothing touches the bound table at import time — the drafts are
+  ordinary drafts (controller re-snaps, workflow lanes gate, each
+  approves independently, "in part" = edit the draft before approving).
+- The write-lock refusals now point at `:import_proposal` (J4.1).
+- `MAX_ROWS` exported from `collection-import.ts` (shared cap).
+
+**Verified:** vitest 11/11 new (`test/budget-import.test.ts`, titles
+quote spec IDs), full server suite 768 passing (known chmod-as-root
+env failure unchanged); live HTTP walk of the owner's actual scenario
+on the dev server (original import → baseline → August file with a
+revision + a new row + a dropped row → 3 drafts BCR-0040/41/42 →
+Self-approve lane → compare v0→current shows exactly the file's diff);
+budget e2e slice 2/2 in CI's isolated mode. Evidence CSV updated
+(J4, R12 proven, stamped 2026-08-17).
+
+**Next:** import-wizard UI integration (detect the governed table and
+offer "import as proposals" in the browser — today the action is
+API-tier and drafts are reviewed/approved in the existing M2 UI), and
+the owner's Q1–Q5 stand open. Owner action: features.json entry.
+
 ## 2026-08-15 — e2e brings its own database, and drops it first
 
 The last of the four. e2e writes are real commits outside any sandbox, so
@@ -104,6 +144,139 @@ deleting nothing, but the class survives while e2e has no reset at all. The
 stamp landing here is what makes an automated reset safe to ship: without it,
 a mistyped variable points a `drop database` at a developer's own data.
 
+## 2026-08-14 (later) — Budget Books M2: audit, three bug fixes, the browser can now walk every scenario
+
+A fresh-context Sonnet audit drove M1 against every scenario in the
+design document (three grains, adversarial pass). All spec'd rules held;
+it found three real bugs, all fixed this session:
+
+1. **BUD-R11 (audit bug #1, the big one):** the plain `:submit` action
+   sidestepped every workflow lane — a change over the CFO threshold
+   submitted straight past it. Now `setStatus` refuses `:submit`/
+   `:cancel` for everyone on a workflow-governed table, naming the
+   workflow, and FormView hides the generic buttons there.
+2. **Audit bug #2:** re-discontinuing an already-discontinued line
+   silently re-zeroed the standing wind-down periods. Refused at draft
+   and at apply.
+3. **Audit bug #3:** `:rename` runs no lifecycle hooks, so it bypassed
+   the write-lock and orphaned `budget_version_line.ref_name`. Gated at
+   the rename action for actively-governed tables.
+
+Plus the M2 surface, so the whole scenario list is browser-walkable:
+
+- **Book lifecycle buttons** (Baseline…/Snapshot…/Close… with inline
+  confirms) + lifecycle pill on the Budget Book form.
+- **Governed pill, pending-changes badge, and "Propose change"** on any
+  governed row form (new `/api/budget/line/:table/:name`), prefilling a
+  draft Budget Change via the existing `?prefill=` route param.
+- **Compare view** at `/admin/budget-compare` (new
+  `/api/budget/compare/:book?from&to`, `current` sentinel for the live
+  table) — pickers, added/removed/changed lines, per-measure deltas.
+- **Book policy fields** `doa_amount` + `escalation_dir`; the engine
+  computes `over_doa` on every change so ONE workflow condition
+  (`doc.over_doa`) serves every book. Workflow-driven submits now also
+  fire on_submit Email Rules (the fast-lane CFO flag depends on it).
+- **`budget-books-demo` sample app** — the scenario world as pure data:
+  two differently-shaped working books (monthly sales 3-key,
+  quarterly opex 2-key), four demo users/roles, the three-lane Budget
+  Approval workflow (fast lane gated `!doc.crosses_owner`, DOA lane on
+  `doc.over_doa`), and the CFO flag Email Rule. Installed on this dev
+  DB — owner: open "Sales Budget 2026"/"Opex Budget 2026" and start at
+  Baseline.
+
+**Verified:** server vitest 755 passing (33 budget tests across
+`budget-books.test.ts` + new `budget-demo.test.ts`, which installs the
+app in the sandbox and drives all three lanes incl. condition-gated
+refusals and the flag email in `email_queue`); browser e2e
+`budget-ui.spec.ts` walks baseline button → governed pill → propose
+(prefilled grid) → approve → pending badge → snapshot → compare, plus
+the M1 spec and a formview/workflow/submit regression slice — all
+green. Known env failure (`sources-csv` chmod-as-root) unchanged.
+
+**Gotchas:**
+- The sandbox suites share the dev DB, so an installed demo app's ACTIVE
+  workflow on Budget Change would refuse the engine suite's direct
+  `:submit` — `budget-books.test.ts` deactivates Budget Change workflows
+  inside its transaction; `budget-demo.test.ts` resets the demo to
+  factory state on 409.
+- Two sessions activating workflows on the same table shadow each other
+  (newest wins) — bit twice today; spec BUD-H3/Q5 asks the owner
+  whether the platform should enforce one-active-per-table.
+- Postgres and the dev servers died mid-session (container hiccup);
+  `./init.sh` recovered everything.
+- Owner actions: features.json entry (owner-only), spec Q3/Q4/Q5.
+
+**Next:** M3 — import-as-proposal (upsert dry-run diff materialized as a
+draft Budget Change), and set passwords on the demo users if you want to
+walk the lanes as each persona rather than as Administrator.
+
+## 2026-08-14 — Budget Books M1: grain-agnostic budget versioning + approval engine
+
+Spec 0007 (`docs/specs/0007-budget-books.md`, evidence CSV alongside),
+designed with the owner in the "Budget Books" simulation document and
+built in one pass:
+
+1. **Migration 0082** (numbered 0077 when written; renumbered twice as
+   main's `0077_row_id` and `0081_internal_metadata` landed) — six
+   system tables: `Budget Book` (binds any
+   plain table; declares key/measure/owner columns via sub-tables),
+   `Budget Change` (submittable, `BCR-.####`, four types: revise /
+   transfer / new_line / discontinue), `Budget Version` (+ `Budget
+   Version Line`, plain table, JSON line data).
+2. **`src/budget.ts`** — binding validation, lifecycle (`working →
+   :baseline → active → :close → closed`), v0 + named snapshots,
+   `applyChange` (locks each bound row, re-verifies the snapped current
+   value, writes through `recordVersion` — now exported from
+   document.ts).
+3. **Controllers** — `budget-book` (R1 declaration + frozen-once-
+   baselined), `budget-change` (computes snap/delta/total_delta/
+   crosses_owner on every save; validates per type; applies in
+   `before_submit`; refuses cancel), `budget-lock` (wildcard: active
+   books refuse inserts/deletes and any write to a declared column,
+   whole-write, naming the book; undeclared columns stay editable).
+4. **Workflow seam (BUD-H1)** — `applyWorkflowAction` now wraps the
+   state write in a transaction and runs the same before/on
+   submit|cancel hooks `setStatus` runs. Without this a
+   workflow-approved change would flip to submitted without applying.
+   No pre-existing controller used those hooks, so nothing else changes
+   behaviour.
+
+**Verified:** vitest 23/23 new (`test/budget-books.test.ts`, titles
+quote spec IDs) and full server suite 745 passing; live-server HTTP
+walk of J1+J2+R6/R7/R8 21/21 (script, this session); browser e2e
+`apps/web/e2e/budget-books.spec.ts` (form shows computed facts →
+generic Submit → line updated → timeline Version diff → R3 refusal
+naming the book) plus workflow/submit-actions/smoke e2e re-run green.
+A clickable demo remains in the dev DB: book "Demo Beverages 2026" over
+"Demo Budget Line".
+
+**Gotchas:**
+- The save lifecycle strips `read_only` values from **child-row**
+  writes (`pickFieldValues`), which would silently drop the engine's
+  computed `current_value`/`delta` on Budget Change Lines — those two
+  columns are deliberately writable; the controller overwrites whatever
+  the client sends. Parent-row computed fields (`total_delta`,
+  `crosses_owner`, book `lifecycle`) keep `read_only` (columnValues
+  preserves hook-set values there).
+- `ValidationError` maps to **HTTP 417** (Frappe convention) — refusal
+  tests must expect 417, not 400; `ConflictError` (stale snapshot) is
+  409.
+- `test/sources-csv.test.ts` "failed write never poisons the parse
+  cache" fails in this container because it runs as **root** (chmod
+  0o555 doesn't stop root) — pre-existing, unrelated.
+- `feather-testing-postgres` is now pinned `git+https://…#310ad8e`
+  (same commit): the `github:` shorthand fetches codeload tarballs,
+  which egress-restricted environments block; git fetch works
+  everywhere. Still move to `^0.2.0` once it publishes.
+- Owner action needed: a `harness/features.json` entry for this
+  capability (agent-immutable by hard rule), plus Q3 in the spec
+  (does closing a book release the write-lock? currently: yes).
+
+**Next:** M2 UI — generic row-action buttons in FormView (so
+`:baseline`/`:close`/`:snapshot` are clickable, closing BUD-J1's
+browser-tier gap), a "Propose change" button + pending-change badge on
+governed line forms, and the version compare page. Then M3: import-as-
+proposal (upsert dry-run diff → draft Budget Change).
 ## 2026-08-14 — DocType leaves the wire: `/api/table_def`, `/api/save_row`, `{ table, row }`
 
 The July 2026 rename reached the vocabulary but stopped at the API. Owner
@@ -252,7 +425,6 @@ they silently exercise the default one.
 
 **Next:** the revert UI still renders `TouchedRow.name` — worth a ruling on
 whether that payload field follows the rename. Otherwise #132 is ready.
-
 ## 2026-08-11 — Explore gets its front doors: chain/select deep links, split button, map hand-off
 
 The two entry points the owner picked from the mockup exploration
