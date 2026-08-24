@@ -7344,3 +7344,22 @@ what was done, how it was verified, what to pick up next, gotchas.
   to scaffold the monorepo, Supabase local config, and `init.sh`, then start
   on `META-001`.
 - Gotchas: none yet.
+
+## 2026-08-24 — the client catches up with row_id (#132 merge debt paid)
+
+PR #174 freed `name` and reserved `row_id` on the server, but the client's
+mirror of those rules — declared as merge debt on PR #175 — was never
+updated. Two live defects on main: the builder flagged a column named
+"Name" with a false "reserved" error (defeating exactly what #132
+shipped), and ListView's add-filter picker offered a "Name" field that no
+longer exists while defaulting to a `row_id` it didn't offer.
+
+Paid: `column-rules.ts` RESERVED swaps `'name'` → `'row_id'` with the
+message now simply "Taken: every row already has a built-in Row ID"; the
+filter picker's key option is `row_id` / "Row ID". Unit tests updated the
+requirement-changed way (#132 is the authorization): `name` passing clean
+is the new affirmative case, `row_id` reserved with the `employee_row_id`
+table-prefixed fix.
+
+**Verified:** web typecheck clean; web units 65/65; CI (unit + e2e with
+its own database, post-#191) green on the PR. Closes the loop on #132.
