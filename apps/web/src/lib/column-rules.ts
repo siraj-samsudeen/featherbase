@@ -3,13 +3,13 @@
 // snake_case regex + STANDARD_COLUMNS + validateDef) — the server still
 // validates everything; these exist so a fixable typo is caught at the
 // field instead of costing a submit round-trip. If the server rules change,
-// change them here in the same commit (#132's row_id rename will retire
-// 'name' from this list and reserve 'row_id' instead).
+// change them here in the same commit — this list last converged when
+// #132's row_id rename (PR #174) freed 'name' and reserved 'row_id'.
 
 export const SNAKE = /^[a-z][a-z0-9_]{0,63}$/
 
 export const RESERVED = [
-  'name',
+  'row_id',
   'created_by',
   'created_at',
   'updated_at',
@@ -84,8 +84,8 @@ export function checkColumn(
         : undefined
     return {
       error:
-        name === 'name'
-          ? 'Taken by the row’s ID (still stored as “name” — #132)'
+        name === 'row_id'
+          ? 'Taken: every row already has a built-in Row ID'
           : `“${name}” is a built-in column every table gets`,
       fix,
     }
