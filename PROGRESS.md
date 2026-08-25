@@ -1,5 +1,75 @@
 # Progress Log
 
+## 2026-08-25 — MotherDuck was never unreachable: the image had no CA certificates
+
+#113 has said "MotherDuck is unreachable from Railway containers" since
+03-Aug. It was wrong, and the way it was wrong is worth keeping.
+
+**The image ships no CA bundle.** `apps/server/Dockerfile` builds on
+`node:22-slim`, which carries no `/etc/ssl/certs` at all, and nothing
+installed one. Node hid it completely — Node's TLS uses a compiled-in trust
+store, so every HTTPS call the server made worked. The MotherDuck extension
+does not: it speaks gRPC through a statically linked C-core that reads its
+roots from a PEM file on disk. With no file, the handshake fails with
+`Could not get default pem root certs` — and **gRPC reports a trust failure
+as `UNAVAILABLE`**, the status that means "could not reach the server".
+
+That single mislabel cost three weeks. Every instinct it triggered was
+wrong: it looked like Railway networking, MotherDuck support reasonably
+suggested gRPC blocking, and "works from my laptop" fit perfectly — laptops
+have system CA certs.
+
+**What actually proved it**, all from inside the running prod container:
+
+- A real gRPC call to the failing RPC itself,
+  `/buenavista.buenavista.BuenaVista/CreateSLT`, reached MotherDuck's Envoy
+  edge and answered `grpc-status: 16 / "Jwt is missing"` — the correct reply
+  to a deliberately token-less request. Outbound gRPC from Railway is fine.
+- Plain TLS to the same host negotiated `ALPN=h2` with `authorized=true`,
+  on Node's bundled roots.
+- `ls /etc/ssl/certs` → no such directory. `find / -name ca-certificates.crt`
+  → nothing.
+- Writing Node's 145 root certificates to a PEM and setting
+  `GRPC_DEFAULT_SSL_ROOTS_FILE_PATH`, changing nothing else: `MD_CONNECT_OK`,
+  and 15 MotherDuck databases enumerated.
+
+Fixed on both levels, deliberately. The Dockerfile installs
+`ca-certificates`, which is the honest fix and covers every future TLS client
+in the image. The duckdb driver also fills the gap at runtime from
+`tls.rootCertificates` when no system bundle is present — Featherbase is a
+product other people deploy, and a base image we do not control should not be
+able to reproduce this. An operator-set roots path always wins, and a host
+that already has a bundle is left alone.
+
+**Second fix, found while proving the first (#195).** `postgresDriver.introspect`
+joined `information_schema` on schema + table and dropped `table_catalog` —
+two-thirds of a three-part key. On PostgreSQL that is a no-op, because a
+connection sees one database and the column is constant; it has been correct
+by accident. Against an engine reachable over the Postgres wire that attaches
+several catalogs into one session it becomes a partial cross product.
+Measured on MotherDuck's Postgres endpoint, which attaches 15 databases each
+with a `main` schema, every column came back **13 times** — and since
+introspect feeds reflection, that is a corrupted Table definition raised as
+nothing. All three joins now carry the catalog.
+
+The regression test for that one pins the invariant (one entry per relation,
+one per column) rather than the bug: PostgreSQL structurally cannot reproduce
+a multi-catalog session, so the fan-out evidence lives in #195, measured
+against MotherDuck. Said plainly rather than dressed up as a passing repro.
+
+Verified: `pnpm --filter server typecheck` clean; full server suite 729
+passed / 15 skipped / 0 failed.
+
+Next: the fix unblocks installing the MotherDuck half of the Rama manifest
+(data-warehouse#1750) — but that install has two blockers of its own,
+unrelated to certificates: it declares `gold.main.{access_grants,
+budget_store_month, category, date}`, and `access_grants`/`budget_store_month`
+do not exist there while `category`/`date` are broken legacy views. Filed as
+data-warehouse#2631, which found 14 of 16 views in `gold.main` are orphans of
+that repo's #1074 schema move. The manifest needs repointing at the subject
+schemas before #1750 can pass.
+
+
 ## 2026-08-15 — e2e brings its own database, and drops it first
 
 The last of the four. e2e writes are real commits outside any sandbox, so

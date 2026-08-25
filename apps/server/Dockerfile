@@ -33,6 +33,17 @@ RUN pnpm --filter web build
 # ---- Stage 2: the server image ---------------------------------------------
 FROM node:22-slim
 WORKDIR /app
+# CA certificates (#194). node:22-slim ships none — /etc/ssl/certs does not
+# exist — and Node hides that, because its TLS uses a compiled-in trust store.
+# Anything else in the image that speaks TLS reads roots from disk instead: the
+# MotherDuck extension's statically linked gRPC core is the one that bit us,
+# failing with "Could not get default pem root certs" and surfacing it as
+# UNAVAILABLE, which reads as a network outage (#113). The driver can fill this
+# gap at runtime from Node's roots, but an image that simply has the bundle is
+# the honest fix — and it covers every future TLS client, not just DuckDB's.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 # PDF printing resolves Chromium from CHROMIUM_PATH / PLAYWRIGHT_BROWSERS_PATH
 # at runtime; never download browsers into the image.

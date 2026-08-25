@@ -2,12 +2,13 @@
 // fixture is a local .duckdb file (same driver code path as MotherDuck's
 // md: URLs, minus the network); the live MotherDuck warehouse is exercised
 // manually, not from the suite.
-import { afterAll, beforeAll, describe, expect } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from './pg-test'
 import { invalidateSources } from '../src/sources/registry'
+import { ensureGrpcCaRoots, resetGrpcCaRootsForTest } from '../src/sources/duckdb-driver'
 
 const DUCK_URL_ENV = 'DUCK_FIXTURE_URL'
 let dir: string
@@ -98,5 +99,50 @@ describe('M3: duckdb read-only source', () => {
     })
     const del = await admin.fetch(`/api/table/${enc}/KKL`, { method: 'DELETE' })
     expect(del.status).toBe(403)
+  })
+})
+
+// #194: the MotherDuck extension's gRPC core reads trust roots from a PEM on
+// disk, and a slim base image ships none — the failure surfaces as UNAVAILABLE
+// (a network-shaped error) rather than as a certificate problem, which is what
+// made #113 look like a Railway outage for three weeks. The driver fills that
+// gap from Node's own roots, and must leave a working host alone.
+describe('#194: gRPC trust roots when the image ships no CA bundle', () => {
+  const ENV = 'GRPC_DEFAULT_SSL_ROOTS_FILE_PATH'
+  let saved: string | undefined
+
+  beforeEach(() => {
+    saved = process.env[ENV]
+    delete process.env[ENV]
+    resetGrpcCaRootsForTest()
+  })
+
+  afterEach(() => {
+    if (saved === undefined) delete process.env[ENV]
+    else process.env[ENV] = saved
+    resetGrpcCaRootsForTest()
+  })
+
+  it('materialises Node roots when no system bundle exists', () => {
+    const file = ensureGrpcCaRoots([])
+    expect(file).toBeTruthy()
+    expect(process.env[ENV]).toBe(file)
+    const pem = readFileSync(file!, 'utf8')
+    expect(pem).toContain('BEGIN CERTIFICATE')
+    // Node ships a real root set; a bundle with one cert would mean we wrote
+    // something degenerate and called it a trust store.
+    expect(pem.match(/BEGIN CERTIFICATE/g)!.length).toBeGreaterThan(50)
+  })
+
+  it('leaves a host that already has a system bundle untouched', () => {
+    // The fixture .duckdb file stands in for "a path that exists".
+    expect(ensureGrpcCaRoots([path.join(dir, 'warehouse.duckdb')])).toBeNull()
+    expect(process.env[ENV]).toBeUndefined()
+  })
+
+  it('never overrides an operator-set roots path', () => {
+    process.env[ENV] = '/operator/chosen/roots.pem'
+    expect(ensureGrpcCaRoots([])).toBeNull()
+    expect(process.env[ENV]).toBe('/operator/chosen/roots.pem')
   })
 })
