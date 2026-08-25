@@ -1,3 +1,7 @@
+import { existsSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { rootCertificates } from 'node:tls'
 import { AppError } from '../errors'
 import type {
   Binding,
@@ -47,12 +51,69 @@ function requireUrl(cfg: SourceConfig): string {
   return value
 }
 
+// #194: the MotherDuck extension talks gRPC through a statically linked
+// C-core, and that core reads its trust roots from a PEM file on disk — it
+// cannot see Node's compiled-in store. A slim base image ships no CA bundle
+// at all (node:22-slim has no /etc/ssl/certs), so the TLS handshake fails
+// with "Could not get default pem root certs" and gRPC reports that trust
+// failure as UNAVAILABLE — indistinguishable from the server being
+// unreachable. That mislabel sent #113 chasing a Railway networking problem
+// for three weeks while Node's own HTTPS worked fine beside it.
+//
+// Node always carries the roots, so when no system bundle exists we
+// materialise them once and point gRPC at the file. An operator-set
+// GRPC_DEFAULT_SSL_ROOTS_FILE_PATH always wins, and a present system bundle
+// is left alone — this only fills a genuine gap.
+const SYSTEM_CA_BUNDLES = [
+  '/etc/ssl/certs/ca-certificates.crt', // Debian, Ubuntu, Alpine
+  '/etc/pki/tls/certs/ca-bundle.crt', // RHEL, Fedora
+  '/etc/ssl/ca-bundle.pem', // SUSE
+  '/etc/ssl/cert.pem', // macOS, BSD
+]
+
+let caRootsChecked = false
+
+// `candidates` is a test seam: the real system-bundle paths differ per OS, so
+// a test that must exercise the missing-bundle branch passes an empty list
+// rather than depending on the host it runs on.
+export function ensureGrpcCaRoots(candidates: string[] = SYSTEM_CA_BUNDLES): string | null {
+  if (caRootsChecked) return process.env.GRPC_DEFAULT_SSL_ROOTS_FILE_PATH ?? null
+  caRootsChecked = true
+  if (process.env.GRPC_DEFAULT_SSL_ROOTS_FILE_PATH) return null
+  if (candidates.some((p) => existsSync(p))) return null
+  const pem = rootCertificates.join('\n')
+  // No roots to offer is not something we can improve on — let the driver
+  // fail with the engine's own error rather than write an empty bundle,
+  // which would turn a trust gap into a silently empty trust store.
+  if (!pem) return null
+  const file = join(tmpdir(), 'featherbase-grpc-roots.pem')
+  try {
+    writeFileSync(file, pem, { mode: 0o600 })
+  } catch {
+    // A read-only tmpdir is not worth failing the connection over: without
+    // the file the engine raises its own error, which is what would have
+    // happened anyway.
+    return null
+  }
+  process.env.GRPC_DEFAULT_SSL_ROOTS_FILE_PATH = file
+  return file
+}
+
+// Test seam: reset the once-per-process guard so a test can exercise both
+// the gap-filling and the leave-it-alone paths.
+export function resetGrpcCaRootsForTest(): void {
+  caRootsChecked = false
+}
+
 async function instanceFor(cfg: SourceConfig): Promise<InstanceEntry> {
   const url = requireUrl(cfg)
   const cached = await instances.get(cfg.name)?.catch(() => null)
   if (cached && cached.url === url) return cached
   const entry = (async () => {
     const { DuckDBInstance } = await loadDuckdb()
+    // Before the first connect: a MotherDuck URL opens a gRPC channel during
+    // extension init, and that handshake needs trust roots on disk (#194).
+    ensureGrpcCaRoots()
     const instance = await DuckDBInstance.create(url)
     return { instance, url }
   })()

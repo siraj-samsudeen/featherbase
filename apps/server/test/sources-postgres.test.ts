@@ -167,6 +167,41 @@ describe('EDS-2/EDS-3: introspection and reflection', () => {
     expect(tag.reason).toMatch(/single-column primary key/)
   })
 
+  // #195: introspect joins information_schema on catalog + schema + table. Drop
+  // the catalog and the join becomes a partial cross product on any engine that
+  // attaches several catalogs into one session, repeating every column once per
+  // catalog — a corrupted Table definition, raised as nothing.
+  //
+  // PostgreSQL cannot reproduce that: a connection sees exactly one database, so
+  // table_catalog is constant and the bug is unreachable here. What this pins is
+  // the invariant the fix protects — one entry per relation, one per column —
+  // so a future rewrite of this query cannot quietly start duplicating. The
+  // multi-catalog evidence itself is measured against MotherDuck in #195.
+  test('introspect returns each relation and column exactly once', async ({ admin }) => {
+    await makeSource(admin)
+    const res = (await admin.get(
+      '/api/table/Data%20Source/ext-fixture:introspect?schema=ext_fixture',
+    )) as { tables: { schema: string; table: string; columns: { name: string }[] }[] }
+
+    const relations = res.tables.map((t) => `${t.schema}.${t.table}`)
+    expect(relations).toEqual([...new Set(relations)])
+    expect(relations).toContain('ext_fixture.tenant')
+
+    for (const t of res.tables) {
+      const names = t.columns.map((c) => c.name)
+      expect(names, `${t.schema}.${t.table} repeats a column`).toEqual([...new Set(names)])
+    }
+    // Spot-check a known shape, so "no duplicates" can't pass on an empty read.
+    const tenant = res.tables.find((t) => t.table === 'tenant')!
+    expect(tenant.columns.map((c) => c.name)).toEqual([
+      'id',
+      'slug',
+      'plan',
+      'internal_notes',
+      'updated_at',
+    ])
+  })
+
   test('reflect creates a bound Table with NO physical table and no RLS (BV1)', async ({
     admin,
   }) => {

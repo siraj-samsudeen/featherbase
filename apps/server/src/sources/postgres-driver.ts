@@ -144,6 +144,15 @@ export const postgresDriver: SourceDriver = {
 
   async introspect(cfg, schema?): Promise<IntrospectedTable[]> {
     const schemaFilter = schema ?? cfg.default_schema
+    // information_schema keys a relation on catalog + schema + table, and all
+    // three joins below carry the catalog (#195). On PostgreSQL itself that
+    // predicate is a no-op — a connection sees one database, so table_catalog
+    // is a constant column — but an engine reachable over the Postgres wire
+    // that attaches SEVERAL catalogs into one session (MotherDuck: 15, each
+    // with its own `main` schema) turns a catalog-blind join into a partial
+    // cross product, returning every column once per matching catalog. That
+    // is a silent wrong answer, not an error: introspect feeds reflection, so
+    // the duplicates become a corrupted Table definition with nothing raised.
     const rows = await run(
       cfg,
       `select c.table_schema, c.table_name, c.column_name, c.data_type,
@@ -153,11 +162,14 @@ export const postgresDriver: SourceDriver = {
               pk.pk_size
        from information_schema.columns c
        join information_schema.tables t
-         on t.table_schema = c.table_schema and t.table_name = c.table_name
+         on t.table_catalog = c.table_catalog
+        and t.table_schema = c.table_schema and t.table_name = c.table_name
         and t.table_type = 'BASE TABLE'
        left join (
-         select kcu.table_schema, kcu.table_name, kcu.column_name,
-                count(*) over (partition by kcu.table_schema, kcu.table_name) as pk_size
+         select kcu.table_catalog, kcu.table_schema, kcu.table_name, kcu.column_name,
+                count(*) over (
+                  partition by kcu.table_catalog, kcu.table_schema, kcu.table_name
+                ) as pk_size
          from information_schema.table_constraints tc
          join information_schema.key_column_usage kcu
            on kcu.constraint_catalog = tc.constraint_catalog
@@ -166,7 +178,8 @@ export const postgresDriver: SourceDriver = {
           and kcu.table_schema = tc.table_schema
           and kcu.table_name = tc.table_name
          where tc.constraint_type = 'PRIMARY KEY'
-       ) pk on pk.table_schema = c.table_schema and pk.table_name = c.table_name
+       ) pk on pk.table_catalog = c.table_catalog
+          and pk.table_schema = c.table_schema and pk.table_name = c.table_name
           and pk.column_name = c.column_name
        where c.table_schema not in ('pg_catalog', 'information_schema')
          and ($1::text is null or c.table_schema = $1)
