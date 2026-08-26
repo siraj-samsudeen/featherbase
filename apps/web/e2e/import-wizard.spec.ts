@@ -86,6 +86,12 @@ test('IMP-010: multi-sheet workbook — one sheet to a new Table, one mapped ont
 
   await expect(page.getByTestId('iw-file-name')).toContainText('2 sheets')
 
+  // #199/#200: a workbook opens on the overview with nothing selected. Both
+  // sheets are wanted here, so take them both and go on to the columns.
+  await expect(page.getByTestId('iw-ov-count')).toHaveText('0 of 2 sheets selected')
+  await page.getByTestId('iw-ov-master').check()
+  await page.getByTestId('iw-ov-continue').click()
+
   // Sheet 1 defaulted to a new Table named from the sheet, Choice detected.
   await expect(page.getByTestId('iw-target-0')).toHaveValue('New Table…')
   await expect(page.getByTestId('iw-new-name-0')).toHaveValue('Orders')
@@ -162,7 +168,7 @@ test('IMP-010: multi-sheet workbook — one sheet to a new Table, one mapped ont
   expect(status?.choices).toBe('Closed\nOpen')
 })
 
-test('IMP-013: skip a sheet, drop a column, and drive the target picker', async ({
+test('IMP-013: leave a sheet out, drop a column, and drive the target picker', async ({
   page,
   request,
 }) => {
@@ -192,17 +198,20 @@ test('IMP-013: skip a sheet, drop a column, and drive the target picker', async 
     buffer,
   })
 
-  // Skip sheet 2 through the picker.
-  await page.getByTestId('iw-target-1').click()
-  await page.getByTestId('iw-target-skip-1').click()
-  await expect(page.getByTestId('iw-target-1')).toHaveValue('Skip this sheet')
-  await expect(page.getByTestId('iw-skipped-1')).toBeVisible()
+  // #200: a sheet is excluded by not choosing it on the overview. The target
+  // picker no longer carries a skip of its own — one act, one place.
+  await expect(page.getByTestId('iw-overview')).toBeVisible()
+  await page.getByTestId('iw-ov-sheet-0').check()
+  await expect(page.getByTestId('iw-ov-tally')).toContainText('1 left out')
+  await page.getByTestId('iw-ov-continue').click()
+  // The sheet left behind is absent from the column step entirely.
+  await expect(page.getByTestId('iw-sheet-1')).toHaveCount(0)
 
-  // The picker searches and pins actions: filter to nonsense still shows New/Skip.
+  // The picker searches and pins its action: filtering to nonsense still
+  // leaves "New Table…" reachable without a scroll-back.
   await page.getByTestId('iw-target-0').click()
   await page.getByTestId('iw-target-search-0').fill('zzzznope')
   await expect(page.getByTestId('iw-target-new-0')).toBeVisible()
-  await expect(page.getByTestId('iw-target-skip-0')).toBeVisible()
   await page.keyboard.press('Escape')
 
   // Drop the middle column of sheet 1.
@@ -216,7 +225,7 @@ test('IMP-013: skip a sheet, drop a column, and drive the target picker', async 
   // Single active sheet: lands on the new Table's list.
   await expect(page).toHaveURL(new RegExp('/admin/Wizard%20Keep'))
 
-  // pick_b was excluded; the skipped sheet created nothing.
+  // pick_b was excluded; the sheet left off the overview created nothing.
   const meta = (await (
     await request.get(`/api/table/${encodeURIComponent('Wizard Keep')}:meta`, { headers })
   ).json()) as { columns: { column_name: string }[] }

@@ -17,6 +17,7 @@ import {
   type TableMatchQuality,
 } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
+import { ImportOverview } from '../components/ImportOverview'
 import { NamingControl } from '../components/NamingControl'
 import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import {
@@ -42,6 +43,9 @@ interface MappableColumn {
 }
 
 interface SheetPlan {
+  // 'skip' means "parked — not selected on the overview". It is set ONLY by
+  // the selection in step one (#200): leaving a sheet unselected is the one
+  // way to exclude it, so the target picker has no skip of its own.
   mode: 'new' | 'existing' | 'skip'
   // mode new: the Table name to create; mode existing: the target Table.
   table: string
@@ -169,8 +173,7 @@ function TargetPicker({
   const bestNames = new Set(ranked.map((r) => r.t.name))
   const rest = targets.filter((t) => t.name.toLowerCase().includes(f) && !bestNames.has(t.name))
 
-  const display =
-    plan.mode === 'new' ? 'New Table…' : plan.mode === 'skip' ? 'Skip this sheet' : plan.table
+  const display = plan.mode === 'new' ? 'New Table…' : plan.table
 
   function pick(value: string) {
     onPick(value)
@@ -214,9 +217,6 @@ function TargetPicker({
           />
           <button type="button" onClick={() => pick('__new__')} data-testid={`iw-target-new-${i}`} className={optionClass}>
             <span className="text-[var(--color-brand)]">+</span> New Table…
-          </button>
-          <button type="button" onClick={() => pick('__skip__')} data-testid={`iw-target-skip-${i}`} className={optionClass}>
-            <span className="text-gray-400">⊘</span> Skip this sheet
           </button>
           {bestMatches.length > 0 && (
             <>
@@ -649,6 +649,18 @@ export function ImportWizard() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  // #199: the wizard is two steps now. 'overview' answers "what is in this
+  // file?"; 'columns' is the existing per-sheet work, over the chosen sheets
+  // only. A CSV (one sheet) skips the overview — there is nothing to choose.
+  const [stage, setStage] = useState<'overview' | 'columns'>('overview')
+  // #200: which sheets are in. Empty on load, on purpose — including
+  // everything by default is what created eleven unwanted Tables.
+  const [selected, setSelected] = useState<boolean[]>([])
+  const [ovRefused, setOvRefused] = useState(false)
+  // The plan each sheet had when the file was read. Deselecting a sheet parks
+  // it as 'skip'; reselecting must restore the target that was worked out for
+  // it, not a blank one.
+  const natural = useRef<SheetPlan[]>([])
   // UPS-H1's typed confirmation: set when a click-time dry run counted more
   // than CONFIRM_UPDATES_OVER updates; cleared by any plan change.
   const [confirmUpdates, setConfirmUpdates] = useState<{ total: number; typed: string } | null>(
@@ -733,7 +745,15 @@ export function ImportWizard() {
             result: null,
           } satisfies SheetPlan
         })
-      setPlans(newPlans)
+      // #200: remember what was worked out, then park every sheet. A single
+      // sheet (any CSV) has nothing to choose, so it stays selected and the
+      // overview is skipped entirely.
+      natural.current = newPlans
+      const only = parsed.length === 1
+      setSelected(parsed.map(() => only))
+      setStage(only ? 'columns' : 'overview')
+      setOvRefused(false)
+      setPlans(only ? newPlans : newPlans.map((p) => ({ ...p, mode: 'skip' as const })))
       // UPS-R5: for sheets that landed on an existing Table, offer back that
       // Table's remembered match key — visibly, never silently.
       newPlans.forEach((p, i) => {
@@ -744,12 +764,32 @@ export function ImportWizard() {
     }
   }
 
-  function retarget(i: number, value: string) {
-    const sheet = sheets[i]
-    if (value === '__skip__') {
-      setPlan(i, { mode: 'skip' })
+  // #200: selecting a sheet restores the target worked out at load; clearing
+  // it parks the sheet as 'skip', which every downstream step already honours.
+  function applySelection(next: boolean[]) {
+    setSelected(next)
+    setOvRefused(false)
+    setPlans((ps) =>
+      ps.map((p, i) =>
+        next[i]
+          ? p.mode === 'skip'
+            ? { ...(natural.current[i] ?? p), check: null, result: null }
+            : p
+          : { ...p, mode: 'skip' as const, check: null, result: null },
+      ),
+    )
+  }
+
+  function leaveOverview() {
+    if (!selected.some(Boolean)) {
+      setOvRefused(true)
       return
     }
+    setStage('columns')
+  }
+
+  function retarget(i: number, value: string) {
+    const sheet = sheets[i]
     if (value === '__new__') {
       const fallback =
         (sheets.length === 1 ? tableNameFromFile(fileName ?? '') : tableNameFromFile(sheet.sheetName)) ||
@@ -1051,9 +1091,43 @@ export function ImportWizard() {
 
       {search.table && sheets.length === 0 && <RunHistory table={search.table} />}
 
-      {sheets.map((sheet, i) => {
+      {/* #199: the overview owns the whole screen while it is up — showing
+          column grids underneath it would be the wall of controls it exists
+          to replace. */}
+      {stage === 'overview' && sheets.length > 0 && (
+        <ImportOverview
+          fileName={fileName ?? ''}
+          sheets={sheets}
+          selected={selected}
+          onSelect={applySelection}
+          onContinue={leaveOverview}
+          refused={ovRefused}
+        />
+      )}
+
+      {stage === 'columns' && sheets.length > 1 && !done && (
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setStage('overview')}
+            data-testid="iw-back-to-overview"
+            className="fc-btn py-1"
+          >
+            ← Choose sheets
+          </button>
+          <span className="text-xs text-gray-500" data-testid="iw-chosen-count">
+            {selected.filter(Boolean).length} of {sheets.length} sheets selected
+          </span>
+        </div>
+      )}
+
+      {stage === 'columns' && sheets.map((sheet, i) => {
         const plan = plans[i]
         if (!plan) return null
+        // #200: unselected sheets are not shown here at all. Leaving them
+        // alone on the overview is how they are excluded, so a card saying
+        // "this sheet will not be imported" is noise now.
+        if (plan.mode === 'skip') return null
         const targetCols = targets.data?.find((t) => t.name === plan.table)?.columns ?? []
         const mappedCount = plan.mapping.filter((m, idx) => m && plan.include[idx]).length
         return (
@@ -1095,11 +1169,7 @@ export function ImportWizard() {
               </div>
             </div>
 
-            {plan.mode === 'skip' ? (
-              <p className="text-sm text-gray-400" data-testid={`iw-skipped-${i}`}>
-                This sheet will not be imported.
-              </p>
-            ) : plan.mode === 'new' ? (
+            {plan.mode === 'new' ? (
               <>
                 {plan.similar && (
                   <div
@@ -1476,13 +1546,11 @@ export function ImportWizard() {
               </>
             )}
 
-            {plan.mode !== 'skip' && (
-              <SheetPreview
-                i={i}
-                sheet={sheet}
-                failed={plan.result?.failed ?? plan.check?.failed ?? null}
-              />
-            )}
+            <SheetPreview
+              i={i}
+              sheet={sheet}
+              failed={plan.result?.failed ?? plan.check?.failed ?? null}
+            />
 
             {plan.check && (
               <div className="mt-2 text-sm" data-testid={`iw-check-${i}`}>
@@ -1571,8 +1639,8 @@ export function ImportWizard() {
         </p>
       )}
 
-      {sheets.length > 0 && !done && (
-        <div className="mt-4 flex items-center gap-2">
+      {stage === 'columns' && sheets.length > 0 && !done && (
+        <div className="sticky bottom-0 z-10 mt-4 flex items-center gap-2 rounded-t-[var(--radius-card)] border-t border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2 py-3 shadow-[0_-6px_16px_rgba(25,39,52,0.09)]">
           {plans.some((p) => p.mode === 'existing') && (
             <button
               onClick={runCheck}
