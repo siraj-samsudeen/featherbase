@@ -5,6 +5,8 @@ export {
   inferChoices,
   inferColumnType,
   inferTableDef,
+  mergeSheetHeaders,
+  mergeSheetRows,
   idPatternFor,
   namesShareToken,
   seriesPrefix,
@@ -18,6 +20,7 @@ export {
   type CoercedRow,
   type InferredColumn,
   type InferredTableDef,
+  type MergedColumn,
   type MappingTarget,
   type TableMatchQuality,
 } from './import'

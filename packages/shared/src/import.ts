@@ -407,3 +407,89 @@ function toLocalIso(d: Date): string {
   const pad = (n: number, w = 2) => String(n).padStart(w, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
+
+// #201 (issue #197): several sheets of the same shape become one Table, so
+// their headers have to be reconciled into one column set.
+//
+// The folding rule is `sanitizeColumnName` — the SAME normalizer
+// `autoMapColumns` already matches on, deliberately reused rather than
+// duplicated. It folds case, spaces, underscores, hyphens and punctuation,
+// so "Floor", "FLOOR" and "floor " are one column: exactly the class of
+// difference a person cannot see on screen.
+//
+// Nothing beyond folding is guessed (owner decision, 2026-08-26). A header
+// with no folded twin stays its own column, and combining it with another is
+// the user's explicit act — "Glor" is never quietly assumed to mean "Floor".
+export interface MergedColumn {
+  // The folded key — what makes two spellings the same column.
+  key: string
+  // The first raw header seen for this key, normalized into a human label.
+  label: string
+  // Every distinct raw spelling folded into this column, in the order the
+  // sheets were given. More than one means the UI has something to disclose.
+  spellings: string[]
+  // Per input sheet (by position), the column index feeding this column, or
+  // -1 when that sheet has no such column. Projecting a member sheet's row
+  // into the merged shape reads exactly this.
+  from: number[]
+}
+
+export function mergeSheetHeaders(sheetHeaders: string[][]): MergedColumn[] {
+  const merged: MergedColumn[] = []
+  const byKey = new Map<string, MergedColumn>()
+
+  sheetHeaders.forEach((headers, sheetIndex) => {
+    // Two headers in ONE sheet that fold together (a sheet carrying both
+    // "Floor" and "floor") are not one column — the sheet really has two,
+    // and merging them would silently drop one. Keep them apart.
+    const usedHere = new Set<string>()
+    headers.forEach((raw, columnIndex) => {
+      const folded = sanitizeColumnName(raw)
+      // A blank header is not evidence of anything: two sheets' blank first
+      // columns are not the same column, so each gets a key of its own.
+      let key = folded || ` blank:${sheetIndex}:${columnIndex}`
+      if (usedHere.has(key)) {
+        let n = 2
+        while (usedHere.has(`${key} ${n}`)) n++
+        key = `${key} ${n}`
+      }
+      usedHere.add(key)
+
+      let column = byKey.get(key)
+      if (!column) {
+        column = {
+          key,
+          label: prettifyLabel(raw) || prettifyLabel(folded) || `Column ${columnIndex + 1}`,
+          spellings: [],
+          from: sheetHeaders.map(() => -1),
+        }
+        byKey.set(key, column)
+        merged.push(column)
+      }
+      if (raw !== '' && !column.spellings.includes(raw)) column.spellings.push(raw)
+      column.from[sheetIndex] = columnIndex
+    })
+  })
+
+  return merged
+}
+
+// The merged column set as one "virtual sheet": every member's rows projected
+// onto the shared shape, which inferTableDef and coerceRows then consume
+// unchanged. Type inference therefore runs over the union of all members'
+// values, so two sheets disagreeing on whether a column is Int or Data
+// resolve ONCE, before the Table is created.
+export function mergeSheetRows(columns: MergedColumn[], sheetRows: unknown[][][]): unknown[][] {
+  const out: unknown[][] = []
+  sheetRows.forEach((rows, sheetIndex) => {
+    for (const row of rows) {
+      out.push(
+        columns.map((c) => {
+          const at = c.from[sheetIndex]
+          return at === -1 ? null : row[at]
+        }),
+      )
+    }
+  })
+  return out
+}

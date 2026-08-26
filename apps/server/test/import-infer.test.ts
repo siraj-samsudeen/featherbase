@@ -6,6 +6,8 @@ import {
   inferColumnType,
   idPatternFor,
   inferTableDef,
+  mergeSheetHeaders,
+  mergeSheetRows,
   namesShareToken,
   seriesPrefix,
   prettifyLabel,
@@ -333,5 +335,96 @@ describe('IMP-004: coerceRows', () => {
     expect(coerceRows(columns, [['', null, '', undefined], ['C']])).toEqual([
       { values: { title: 'C' }, sourceIndex: 1 },
     ])
+  })
+})
+
+// #201 (issue #197): merging several sheets into one Table. The folding rule
+// is sanitizeColumnName — reused, not reinvented — and nothing beyond folding
+// is ever guessed.
+describe('mergeSheetHeaders', () => {
+  test('case, spaces and underscores fold into one column', () => {
+    const merged = mergeSheetHeaders([
+      ['Zone', 'Floor', 'SKU Count'],
+      ['Zone', 'FLOOR', 'SKU_Count'],
+      ['zone', 'Floor ', 'sku count'],
+    ])
+    expect(merged.map((c) => c.key)).toEqual(['zone', 'floor', 'sku_count'])
+    // Every raw spelling is kept, so the UI can disclose what it folded —
+    // a trailing space is invisible on screen and must still be explainable.
+    expect(merged[1].spellings).toEqual(['Floor', 'FLOOR', 'Floor '])
+    expect(merged[1].from).toEqual([1, 1, 1])
+  })
+
+  test('a name with no folded twin stays its own column — nothing is guessed', () => {
+    // 'Glor' is one letter from 'Floor'. Featherbase does not propose that
+    // (owner decision): combining them is the user's explicit act.
+    const merged = mergeSheetHeaders([
+      ['Zone', 'Floor'],
+      ['Zone', 'Glor'],
+    ])
+    expect(merged.map((c) => c.key)).toEqual(['zone', 'floor', 'glor'])
+    expect(merged[1].from).toEqual([1, -1]) // floor: sheet 1 only
+    expect(merged[2].from).toEqual([-1, 1]) // glor: sheet 2 only
+  })
+
+  test('a column only one sheet has is kept, and the others report -1', () => {
+    const merged = mergeSheetHeaders([['A', 'B'], ['A']])
+    expect(merged.map((c) => c.key)).toEqual(['a', 'b'])
+    expect(merged[1].from).toEqual([1, -1])
+  })
+
+  test('two headers folding together WITHIN one sheet stay two columns', () => {
+    // The sheet really has two columns; folding them would drop one.
+    const merged = mergeSheetHeaders([['Floor', 'floor']])
+    expect(merged).toHaveLength(2)
+    expect(merged[0].from).toEqual([0])
+    expect(merged[1].from).toEqual([1])
+  })
+
+  test('blank headers in different sheets are not the same column', () => {
+    const merged = mergeSheetHeaders([
+      ['', 'A'],
+      ['', 'A'],
+    ])
+    expect(merged.filter((c) => c.key === 'a')).toHaveLength(1)
+    expect(merged).toHaveLength(3) // one 'a', plus a separate blank per sheet
+  })
+
+  test('the label comes from the first spelling seen, normalized', () => {
+    const merged = mergeSheetHeaders([['sku_count'], ['SKU Count']])
+    expect(merged[0].label).toBe('Sku Count')
+  })
+})
+
+describe('mergeSheetRows', () => {
+  test('rows are projected onto the merged shape, absent columns as null', () => {
+    const columns = mergeSheetHeaders([
+      ['Zone', 'Floor'],
+      ['Zone', 'Remarks'],
+    ])
+    expect(mergeSheetRows(columns, [[['Fresh', 'Ground']], [['Dairy', 'relaid']]])).toEqual([
+      ['Fresh', 'Ground', null],
+      ['Dairy', null, 'relaid'],
+    ])
+  })
+
+  test('every member sheet contributes its rows, in sheet order', () => {
+    const columns = mergeSheetHeaders([['A'], ['A']])
+    expect(mergeSheetRows(columns, [[[1], [2]], [[3]]])).toEqual([[1], [2], [3]])
+  })
+
+  test('inference sees every member, so a disagreement resolves once', () => {
+    // Sheet 1 alone would read as Int; sheet 2's codes make the column Data.
+    const columns = mergeSheetHeaders([['Code'], ['Code']])
+    const rows = mergeSheetRows(columns, [
+      [[1], [2], [3]],
+      [['A-1'], ['A-2'], ['A-3']],
+    ])
+    const def = inferTableDef(
+      'T',
+      columns.map((c) => c.label),
+      rows,
+    )
+    expect(def.columns[0].column_type).toBe('Data')
   })
 })
