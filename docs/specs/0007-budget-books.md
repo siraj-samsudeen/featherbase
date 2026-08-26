@@ -116,9 +116,11 @@ but I also can't retype four hundred cells into change forms."
 | J4.4 | The drafts in the generic FormView | Reviewable and editable like any hand-made draft — delete a line, adjust a value; approval rides the same lanes as J2/J3 | R4, R5, R11 |
 | J4.5 | Approve; open Compare v0 → current | The bound table equals the August file where it spoke, stands untouched where it was silent, and the compare lists exactly the diff | R5, I1 |
 
-**Isolation strategy:** server-tier in the SQL sandbox (the action takes
-JSON rows — workbook parsing is the import wizard's client-side job and
-is out of M3's scope); unique table/book names per run.
+**Isolation strategy:** server-tier in the SQL sandbox for the rules;
+the browser tier drops a real CSV on the Import wizard, whose governed
+path (banner naming the book, required reason, preview, draft links —
+the plain import controls absent) is the J4 walk as a typical user
+sees it. Unique table/book names per run.
 
 ## Closure sweep
 

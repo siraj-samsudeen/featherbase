@@ -1,5 +1,40 @@
 # Progress Log
 
+## 2026-08-22 — Budget Books M3 UI: the wizard speaks proposal
+
+The last non-browser step is gone: a typical user can now walk the whole
+August-reforecast scenario without an API call. When an Import wizard
+sheet targets a table governed by an ACTIVE Budget Book, the sheet's
+import flow becomes the proposal flow:
+
+- **`BudgetProposalPanel`** (new component) replaces the Match-key/
+  upsert controls: a banner names the governing book, a required reason
+  gates both buttons, **Preview proposals** shows the diff (changed
+  cells / new rows / discontinued / unchanged / ignored columns) via
+  `dry_run`, **Create draft changes** materializes and links each draft
+  (`/admin/Budget Change/...`), with an opt-in "discontinue rows
+  missing from the file" + effective-from measure select.
+- The column-mapping grid stays (it translates file headers → column
+  names); Check/Import buttons exclude governed sheets — hidden
+  entirely when every sheet is governed. Governance detection is a
+  Budget Book list query per target; a reader without that grant falls
+  back to plain import, whose refusals name `:import_proposal`.
+
+**Gotcha caught by the e2e:** `CoercedRow` wraps `{ values,
+sourceIndex }` — `sendImportRun` unwraps `.values` before posting, and
+the proposal call must do the same; sending the wrappers raw made every
+row "miss" its key columns.
+
+**Verified:** new e2e `budget-import-ui.spec.ts` — login → drop a real
+CSV on the wizard (governed target pinned via ?table=) → banner names
+the book, plain-import controls absent → reason + discontinue-missing →
+preview counts → 3 linked drafts → approve the revise draft in the
+generic FormView → the bound row shows the applied value. Full import
+e2e family (7 specs) + budget slice re-run green in CI's isolated mode;
+web typecheck clean; server untouched this round.
+
+**Next:** owner decisions Q1–Q5; features.json entry (owner-only).
+
 ## 2026-08-17 — Budget Books M3: import-as-proposal (`:import_proposal`)
 
 The August-reforecast gap closed: a mid-year overwrite file no longer

@@ -28,6 +28,11 @@ import {
   type ParsedSheet,
 } from '../lib/parse-file'
 import { sendImportRun, type ImportUpsertArgs } from '../lib/import-run'
+import {
+  BudgetProposalPanel,
+  governingBookFor,
+  type GoverningBook,
+} from '../components/BudgetProposalImport'
 
 // IMP-010: the Import wizard. Drop a CSV or a whole workbook; every sheet
 // gets a target — a new Table (inferred, like the builder) or an existing
@@ -663,6 +668,30 @@ export function ImportWizard() {
     staleTime: 60_000,
   })
 
+  // BUD-J4 (spec 0007): which existing-mode targets are governed by an
+  // active Budget Book. A governed sheet leaves the plain import path
+  // entirely — its rows become draft Budget Changes via the proposal panel.
+  const existingTargets = [...new Set(plans.filter((p) => p.mode === 'existing').map((p) => p.table))]
+    .sort()
+    .join('·')
+  const governed = useQuery({
+    queryKey: ['iw-governed', existingTargets],
+    enabled: existingTargets.length > 0,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const out: Record<string, GoverningBook> = {}
+      await Promise.all(
+        existingTargets.split('·').map(async (t) => {
+          const book = await governingBookFor(t)
+          if (book) out[t] = book
+        }),
+      )
+      return out
+    },
+  })
+  const governedBook = (plan: SheetPlan): GoverningBook | null =>
+    plan.mode === 'existing' ? (governed.data?.[plan.table] ?? null) : null
+
   function setPlan(i: number, patch: Partial<SheetPlan>) {
     setPlans((ps) => ps.map((p, j) => (j === i ? { ...p, ...patch, check: null, result: null } : p)))
     // A changed plan invalidates a pending typed confirmation — its total
@@ -869,7 +898,7 @@ export function ImportWizard() {
     setBusy('Checking…')
     try {
       for (const [i, plan] of plans.entries()) {
-        if (plan.mode !== 'existing') continue
+        if (plan.mode !== 'existing' || governedBook(plan)) continue
         const rows = mappedRows(sheets[i], plan)
         // IMP-I1 disclosure: data rows with nothing in any MAPPED column are
         // sent nowhere — say so instead of letting the counts quietly
@@ -907,7 +936,7 @@ export function ImportWizard() {
       if (!confirmed) {
         let updates = 0
         for (const [i, plan] of plans.entries()) {
-          if (plan.mode !== 'existing' || !plan.key) continue
+          if (plan.mode !== 'existing' || !plan.key || governedBook(plan)) continue
           const rows = mappedRows(sheets[i], plan)
           if (!rows.length) continue
           const report = await sendImportRun({
@@ -926,7 +955,7 @@ export function ImportWizard() {
       }
       setConfirmUpdates(null)
       for (const [i, plan] of plans.entries()) {
-        if (plan.mode === 'skip') continue
+        if (plan.mode === 'skip' || governedBook(plan)) continue
         const sheet = sheets[i]
         let rows: CoercedRow[]
         if (plan.mode === 'new') {
@@ -1054,6 +1083,7 @@ export function ImportWizard() {
       {sheets.map((sheet, i) => {
         const plan = plans[i]
         if (!plan) return null
+        const gov = governedBook(plan)
         const targetCols = targets.data?.find((t) => t.name === plan.table)?.columns ?? []
         const mappedCount = plan.mapping.filter((m, idx) => m && plan.include[idx]).length
         return (
@@ -1265,6 +1295,16 @@ export function ImportWizard() {
               </>
             ) : (
               <>
+                {gov && (
+                  <div
+                    className="mb-1 rounded bg-blue-50 px-2 py-1 text-xs text-blue-800"
+                    data-testid={`iw-gov-banner-${i}`}
+                  >
+                    <strong>{gov.name}</strong> governs this table — this file will become{' '}
+                    <em>draft Budget Changes</em> to review and approve, not direct writes. Rows
+                    match by the book&apos;s key columns; only its declared measures are compared.
+                  </div>
+                )}
                 {plan.auto_matched && (
                   <div
                     className="mb-1 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800"
@@ -1376,12 +1416,26 @@ export function ImportWizard() {
                   </tbody>
                 </table>
 
+                {/* BUD-J4: a governed target swaps the whole import flow for
+                    the proposal flow — no match key, no upsert; the mapping
+                    above still translates the file's headers to columns. */}
+                {gov ? (
+                  <BudgetProposalPanel
+                    i={i}
+                    table={plan.table}
+                    book={gov}
+                    // CoercedRow wraps { values, sourceIndex }; the proposal
+                    // call takes the flat objects (same unwrap sendImportRun
+                    // does before posting).
+                    rows={mappedRows(sheet, plan).map((r) => r.values)}
+                  />
+                ) : null}
                 {/* UPS-J1.2/J1.3: the Match key control — a real labelled,
                     keyboard-reachable control in the mapping step. Default
                     none: append-always stays the default; upsert is opt-in
                     per run. The empty-cells choice (UPS-R3) appears only
                     once a key is set, defaulting to keep. */}
-                {(() => {
+                {gov ? null : (() => {
                   const keyOptions = [
                     ...new Set(
                       plan.mapping.filter(
@@ -1571,9 +1625,9 @@ export function ImportWizard() {
         </p>
       )}
 
-      {sheets.length > 0 && !done && (
+      {sheets.length > 0 && !done && plans.some((p) => p.mode !== 'skip' && !governedBook(p)) && (
         <div className="mt-4 flex items-center gap-2">
-          {plans.some((p) => p.mode === 'existing') && (
+          {plans.some((p) => p.mode === 'existing' && !governedBook(p)) && (
             <button
               onClick={runCheck}
               disabled={!!busy}
@@ -1609,14 +1663,22 @@ export function ImportWizard() {
           )}
           <button
             onClick={() => void runImport()}
-            disabled={!!busy || !!confirmUpdates || plans.every((p) => p.mode === 'skip')}
+            disabled={
+              !!busy ||
+              !!confirmUpdates ||
+              plans.every((p) => p.mode === 'skip' || governedBook(p))
+            }
             data-testid="iw-import"
             className="fc-btn-primary disabled:opacity-40"
           >
             {anyChecked && blockingProblems > 0
               ? `Import anyway (skip ${blockingProblems} bad rows)`
               : `Import ${sheets.reduce(
-                  (n, s, si) => n + (plans[si]?.mode === 'skip' ? 0 : countDataRows(s.rows)),
+                  (n, s, si) =>
+                    n +
+                    (!plans[si] || plans[si].mode === 'skip' || governedBook(plans[si])
+                      ? 0
+                      : countDataRows(s.rows)),
                   0,
                 )} rows`}
           </button>
