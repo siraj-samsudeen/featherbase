@@ -17,6 +17,11 @@ import { countDataRows, type ParsedSheet } from '../lib/parse-file'
 
 const SHAPE_HINT_COLUMNS = 6 // headers named inline before eliding the rest
 
+// #201: what happens to the sheets that are ticked. 'separate' is one Table
+// each (the wizard's only behaviour before this); 'merge' is one Table for all
+// of them, which is what eleven sheets of the same shape actually wanted.
+export type GroupMode = 'separate' | 'merge'
+
 export interface OverviewProps {
   fileName: string
   sheets: ParsedSheet[]
@@ -24,6 +29,10 @@ export interface OverviewProps {
   onSelect: (next: boolean[]) => void
   onContinue: () => void
   refused: boolean
+  mode: GroupMode
+  onMode: (mode: GroupMode) => void
+  mergeName: string
+  onMergeName: (name: string) => void
 }
 
 function shapeHint(headers: string[]): string {
@@ -158,6 +167,10 @@ export function ImportOverview({
   onSelect,
   onContinue,
   refused,
+  mode,
+  onMode,
+  mergeName,
+  onMergeName,
 }: OverviewProps) {
   const entries = sheets.map((sheet, index) => ({ sheet, index }))
   const visible = entries.filter((e) => e.sheet.visibility === 'visible')
@@ -217,12 +230,90 @@ export function ImportOverview({
       {/* The action bar follows the list down: a 17-row list must not put its
           own controls below the fold. */}
       <div className="sticky bottom-0 rounded-b-[var(--radius-card)] border-t border-[var(--color-border-strong)] bg-[var(--color-surface)] shadow-[0_-6px_16px_rgba(25,39,52,0.09)]">
+        {/* #201: the merge is a choice made out loud, not a control to hunt
+            for. It appears the moment anything is ticked, and asks the only
+            question left: one Table each, or one Table for all of them? */}
+        {chosen > 0 && (
+          <div className="border-b border-[var(--color-border)] px-3 py-3" data-testid="iw-ov-decide">
+            <div className="mb-2 text-sm font-semibold text-[var(--color-ink)]">
+              {chosen} sheet{chosen === 1 ? '' : 's'} selected — how should{' '}
+              {chosen === 1 ? 'it be' : 'they be'} imported?
+            </div>
+            <label
+              className={`mb-2 flex cursor-pointer items-start gap-2 rounded-[var(--radius-control)] border p-2 ${
+                mode === 'separate' || chosen < 2
+                  ? 'border-[var(--color-brand)] ring-2 ring-[var(--color-brand)]/20'
+                  : 'border-[var(--color-border-strong)]'
+              }`}
+            >
+              <input
+                type="radio"
+                name="iw-ov-mode"
+                checked={mode === 'separate' || chosen < 2}
+                onChange={() => onMode('separate')}
+                data-testid="iw-ov-mode-separate"
+                className="mt-1 accent-[var(--color-brand)]"
+              />
+              <span>
+                <span className="block text-sm font-medium text-[var(--color-ink)]">
+                  As {chosen} separate Table{chosen === 1 ? '' : 's'}
+                </span>
+                <span className="block text-xs text-[var(--color-ink-muted)]">
+                  One Table per sheet, named after the sheet.
+                </span>
+              </span>
+            </label>
+            <label
+              className={`flex cursor-pointer items-start gap-2 rounded-[var(--radius-control)] border p-2 ${
+                mode === 'merge' && chosen >= 2
+                  ? 'border-[var(--color-brand)] ring-2 ring-[var(--color-brand)]/20'
+                  : 'border-[var(--color-border-strong)]'
+              } ${chosen < 2 ? 'opacity-50' : ''}`}
+            >
+              <input
+                type="radio"
+                name="iw-ov-mode"
+                checked={mode === 'merge' && chosen >= 2}
+                disabled={chosen < 2}
+                onChange={() => onMode('merge')}
+                data-testid="iw-ov-mode-merge"
+                className="mt-1 accent-[var(--color-brand)]"
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-[var(--color-ink)]">
+                  Merged into one Table
+                </span>
+                <span className="block text-xs text-[var(--color-ink-muted)]">
+                  {chosen < 2
+                    ? 'Select two or more sheets to merge them.'
+                    : `All ${chosenRows.toLocaleString()} rows go into a single Table. Columns are matched by name, ignoring case, spaces and punctuation.`}
+                </span>
+                {mode === 'merge' && chosen >= 2 && (
+                  <span className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="fc-label m-0">Table name</span>
+                    <input
+                      value={mergeName}
+                      onChange={(e) => onMergeName(e.target.value)}
+                      data-testid="iw-ov-merge-name"
+                      className="fc-input w-56 py-1"
+                    />
+                  </span>
+                )}
+              </span>
+            </label>
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-3 border-b border-[var(--color-border)] bg-[var(--color-subtle)] px-3 py-2 text-xs text-[var(--color-ink-muted)] tabular-nums">
           <span data-testid="iw-ov-tally">
             <strong className="text-[var(--color-ink)]">{chosen}</strong> selected ·{' '}
             <strong className="text-[var(--color-ink)]">{chosenRows.toLocaleString()}</strong> rows
             will be imported ·{' '}
-            <strong className="text-[var(--color-ink)]">{sheets.length - chosen}</strong> left out
+            <strong className="text-[var(--color-ink)]">{sheets.length - chosen}</strong> left out ·{' '}
+            <strong className="text-[var(--color-ink)]">
+              {mode === 'merge' && chosen >= 2 ? 1 : chosen}
+            </strong>{' '}
+            {mode === 'merge' && chosen >= 2 ? 'Table' : `Table${chosen === 1 ? '' : 's'}`}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2 px-3 py-3">

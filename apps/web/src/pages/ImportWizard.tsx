@@ -7,6 +7,8 @@ import {
   autoMapColumns,
   coerceRows,
   inferTableDef,
+  mergeSheetHeaders,
+  mergeSheetRows,
   scoreTableMatch,
   seriesPrefix,
   shouldAutoMatch,
@@ -17,7 +19,7 @@ import {
   type TableMatchQuality,
 } from 'shared'
 import { ApiError, api, listResource } from '../lib/api'
-import { ImportOverview } from '../components/ImportOverview'
+import { ImportOverview, type GroupMode } from '../components/ImportOverview'
 import { NamingControl } from '../components/NamingControl'
 import { COLUMN_TYPES, NO_COLUMN_TYPES, type TableMeta } from '../lib/meta'
 import {
@@ -47,6 +49,12 @@ interface SheetPlan {
   // the selection in step one (#200): leaving a sheet unselected is the one
   // way to exclude it, so the target picker has no skip of its own.
   mode: 'new' | 'existing' | 'skip'
+  // #201: a merge group. `members` lists the sheet indices this plan speaks
+  // for, itself first — [i] for an ordinary sheet, [i, j, k] for a group's
+  // lead. `groupedInto` is set on the followers and names their lead, which
+  // is how the column step knows to render one card instead of three.
+  members: number[]
+  groupedInto: number | null
   // mode new: the Table name to create; mode existing: the target Table.
   table: string
   // Per file column, new-Table mode: import this column at all? (Existing
@@ -87,13 +95,15 @@ interface SheetPlan {
     updated: number
     inserted: number
     skipped: number
-    failed: { sourceIndex: number; message: string }[]
+    // #201: a merge group's rows come from several sheets, so a failure has
+    // to say WHICH — a row number is only true against its own sheet.
+    failed: { sheetIndex: number; sourceIndex: number; message: string }[]
   } | null
   result: {
     updated: number
     inserted: number
     skipped: number
-    failed: { sourceIndex: number; message: string }[]
+    failed: { sheetIndex: number; sourceIndex: number; message: string }[]
     // RVT-R1: the run identity this import was recorded under — what the
     // revert control addresses.
     run_id: string
@@ -363,10 +373,14 @@ function SheetPreview({
   i,
   sheet,
   failed,
+  label,
 }: {
-  i: number
+  i: number | string
   sheet: ParsedSheet
   failed: { sourceIndex: number; message: string }[] | null
+  // #201: which member sheet this preview is of, when the target is a merge
+  // group. Null for an ordinary single-sheet target.
+  label?: string | null
 }) {
   const byRow = new Map((failed ?? []).map((f) => [f.sourceIndex, f.message]))
   const rows = sheet.rows.map((cells, si) => ({ cells, si }))
@@ -401,7 +415,7 @@ function SheetPreview({
   return (
     <details className="mt-2" data-testid={`iw-sheet-preview-${i}`} open={problemCol}>
       <summary className="cursor-pointer text-xs text-gray-500">
-        Preview — row numbers match your spreadsheet
+        {label ? `Preview "${label}"` : 'Preview'} — row numbers match your spreadsheet
       </summary>
       <div className="mt-1 max-h-64 overflow-auto rounded border border-gray-100">
         <table className="w-full text-xs">
@@ -657,6 +671,8 @@ export function ImportWizard() {
   // everything by default is what created eleven unwanted Tables.
   const [selected, setSelected] = useState<boolean[]>([])
   const [ovRefused, setOvRefused] = useState(false)
+  const [groupMode, setGroupMode] = useState<GroupMode>('separate')
+  const [mergeName, setMergeName] = useState('')
   // The plan each sheet had when the file was read. Deselecting a sheet parks
   // it as 'skip'; reselecting must restore the target that was worked out for
   // it, not a blank one.
@@ -743,13 +759,23 @@ export function ImportWizard() {
             suggested: null,
             check: null,
             result: null,
+            members: [] as number[], // filled below, once the index is known
+            groupedInto: null as number | null,
           } satisfies SheetPlan
         })
       // #200: remember what was worked out, then park every sheet. A single
       // sheet (any CSV) has nothing to choose, so it stays selected and the
       // overview is skipped entirely.
+      // Every sheet starts as its own target; grouping is opt-in on the
+      // overview. Done here rather than in the map above because a plan's
+      // members are stated in sheet indices.
+      newPlans.forEach((p, i) => {
+        p.members = [i]
+      })
       natural.current = newPlans
       const only = parsed.length === 1
+      setGroupMode('separate')
+      setMergeName(tableNameFromFile(file.name) || 'Imported Table')
       setSelected(parsed.map(() => only))
       setStage(only ? 'columns' : 'overview')
       setOvRefused(false)
@@ -773,17 +799,90 @@ export function ImportWizard() {
       ps.map((p, i) =>
         next[i]
           ? p.mode === 'skip'
-            ? { ...(natural.current[i] ?? p), check: null, result: null }
-            : p
-          : { ...p, mode: 'skip' as const, check: null, result: null },
+            ? { ...(natural.current[i] ?? p), check: null, result: null, members: [i], groupedInto: null }
+            : { ...p, check: null, result: null, members: [i], groupedInto: null }
+          : { ...p, mode: 'skip' as const, check: null, result: null, members: [i], groupedInto: null },
       ),
     )
   }
 
+  // #201: the merged column set for a group — every member's headers folded
+  // together and their rows projected onto the result. One sheet's group is
+  // just that sheet, so this is the single path both cases take.
+  function mergedColumnsFor(members: number[]) {
+    return mergeSheetHeaders(members.map((m) => sheets[m].headers))
+  }
+
+  // A group behaves like one sheet from here on: same shape, so the grid, the
+  // mapping, the type inference and the coercion all read it unchanged.
+  function effectiveSheet(plan: SheetPlan, i: number): ParsedSheet {
+    if (plan.members.length < 2) return sheets[i]
+    const cols = mergedColumnsFor(plan.members)
+    return {
+      sheetName: plan.table,
+      headers: cols.map((c) => c.label),
+      rows: mergeSheetRows(cols, plan.members.map((m) => sheets[m].rows)),
+      headerExcelRow: 1,
+      visibility: 'visible',
+    }
+  }
+
+  // One member's rows projected onto the GROUP's column order, so they line
+  // up with plan.inferred.columns — while keeping the member's own name and
+  // headerExcelRow, which is what makes a failed row's number true (#115).
+  function memberSheet(plan: SheetPlan, m: number): ParsedSheet {
+    if (plan.members.length < 2) return sheets[m]
+    const cols = mergedColumnsFor(plan.members)
+    return {
+      sheetName: sheets[m].sheetName,
+      headers: cols.map((c) => c.label),
+      rows: mergeSheetRows(
+        cols,
+        plan.members.map((mm) => (mm === m ? sheets[mm].rows : [])),
+      ),
+      headerExcelRow: sheets[m].headerExcelRow,
+      visibility: sheets[m].visibility,
+    }
+  }
+
   function leaveOverview() {
-    if (!selected.some(Boolean)) {
+    const chosen = selected.flatMap((on, i) => (on ? [i] : []))
+    if (!chosen.length) {
       setOvRefused(true)
       return
+    }
+    // #201: fold the chosen sheets into one target, or leave them as one
+    // target each. The lead is the first chosen sheet; the rest point at it.
+    if (groupMode === 'merge' && chosen.length >= 2) {
+      const lead = chosen[0]
+      const name = mergeName.trim() || 'Imported Table'
+      const cols = mergedColumnsFor(chosen)
+      const rows = mergeSheetRows(cols, chosen.map((m) => sheets[m].rows))
+      const inferred = inferTableDef(name, cols.map((c) => c.label), rows)
+      setPlans((ps) =>
+        ps.map((p, i) =>
+          i === lead
+            ? {
+                ...p,
+                mode: 'new' as const,
+                table: name,
+                members: chosen,
+                groupedInto: null,
+                inferred,
+                include: inferred.columns.map(() => true),
+                auto_matched: false,
+                similar: null,
+                mapping: [],
+                key: null,
+                suggested: null,
+                check: null,
+                result: null,
+              }
+            : chosen.includes(i)
+              ? { ...p, groupedInto: lead, members: [i], check: null, result: null }
+              : p,
+        ),
+      )
     }
     setStage('columns')
   }
@@ -909,25 +1008,30 @@ export function ImportWizard() {
     setBusy('Checking…')
     try {
       for (const [i, plan] of plans.entries()) {
-        if (plan.mode !== 'existing') continue
-        const rows = mappedRows(sheets[i], plan)
-        // IMP-I1 disclosure: data rows with nothing in any MAPPED column are
-        // sent nowhere — say so instead of letting the counts quietly
-        // disagree with the file.
-        const skipped = countDataRows(sheets[i].rows) - rows.length
-        if (!rows.length) {
-          setPlan(i, { check: { valid: 0, updated: 0, inserted: 0, skipped, failed: [] } })
-          continue
+        if (plan.mode !== 'existing' || plan.groupedInto !== null) continue
+        // #201: rehearse member by member, exactly as the import will send
+        // them, so a reported row number is true against its own sheet.
+        const totals = { valid: 0, updated: 0, inserted: 0, skipped: 0 }
+        const failed: { sheetIndex: number; sourceIndex: number; message: string }[] = []
+        for (const m of plan.members) {
+          const rows = mappedRows(memberSheet(plan, m), plan)
+          // IMP-I1 disclosure: data rows with nothing in any MAPPED column
+          // are sent nowhere — say so instead of letting the counts quietly
+          // disagree with the file.
+          totals.skipped += countDataRows(sheets[m].rows) - rows.length
+          if (!rows.length) continue
+          const report = await sendImportRun({
+            table: plan.table,
+            rows,
+            dryRun: true,
+            upsert: upsertArgs(plan),
+          })
+          totals.valid += report.valid
+          totals.updated += report.updated
+          totals.inserted += report.inserted
+          failed.push(...report.failed.map((f) => ({ ...f, sheetIndex: m })))
         }
-        const report = await sendImportRun({
-          table: plan.table,
-          rows,
-          dryRun: true,
-          upsert: upsertArgs(plan),
-        })
-        setPlans((ps) =>
-          ps.map((p, j) => (j === i ? { ...p, check: { ...report, skipped } } : p)),
-        )
+        setPlans((ps) => ps.map((p, j) => (j === i ? { ...p, check: { ...totals, failed } } : p)))
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Check failed')
@@ -947,8 +1051,8 @@ export function ImportWizard() {
       if (!confirmed) {
         let updates = 0
         for (const [i, plan] of plans.entries()) {
-          if (plan.mode !== 'existing' || !plan.key) continue
-          const rows = mappedRows(sheets[i], plan)
+          if (plan.mode !== 'existing' || !plan.key || plan.groupedInto !== null) continue
+          const rows = mappedRows(effectiveSheet(plan, i), plan)
           if (!rows.length) continue
           const report = await sendImportRun({
             table: plan.table,
@@ -966,9 +1070,7 @@ export function ImportWizard() {
       }
       setConfirmUpdates(null)
       for (const [i, plan] of plans.entries()) {
-        if (plan.mode === 'skip') continue
-        const sheet = sheets[i]
-        let rows: CoercedRow[]
+        if (plan.mode === 'skip' || plan.groupedInto !== null) continue
         if (plan.mode === 'new') {
           await api.post('/api/table_def', {
             name: plan.table,
@@ -983,43 +1085,52 @@ export function ImportWizard() {
                 in_list_view: c.in_list_view,
               })),
           })
-          rows = newTableRows(sheet, plan)
-        } else {
-          rows = mappedRows(sheet, plan)
         }
-        const skipped = countDataRows(sheet.rows) - rows.length
-        // RVT-R1: one identity per sheet's run, shared by its parts — the
-        // handle the revert control addresses.
+        // RVT-R1: one identity for the whole target, shared by its parts —
+        // the handle the revert control addresses. #201: for a merge group
+        // that means one run_id across every member sheet, so reverting
+        // takes back all of them together.
         const runId = crypto.randomUUID()
-        const report = await sendImportRun({
-          table: plan.table,
-          rows,
-          upsert: plan.mode === 'existing' ? upsertArgs(plan) : null,
-          // IMP-011: recorded in the Import Log alongside the counts.
-          context: (part, parts) => ({
-            file_name: fileName ?? undefined,
-            sheet_name: sheet.sheetName,
-            table_created: plan.mode === 'new' && part === 1,
-            part,
-            parts,
-            run_id: runId,
-          }),
-          onChunk: ({ from, to, total }) =>
-            setBusy(`${plan.table}: importing rows ${from}–${to} of ${total}…`),
-        })
+        // #201: send a part PER MEMBER SHEET rather than one blended batch.
+        // The Import Log already records sheet_name per part, and a failed
+        // row's number is only true against the sheet it came from — both
+        // are lost the moment members are concatenated.
+        const total = { updated: 0, inserted: 0, skipped: 0 }
+        const failed: { sheetIndex: number; sourceIndex: number; message: string }[] = []
+        for (const [memberOrder, m] of plan.members.entries()) {
+          const sheet = sheets[m]
+          const rows =
+            plan.mode === 'new'
+              ? newTableRows(memberSheet(plan, m), plan)
+              : mappedRows(memberSheet(plan, m), plan)
+          total.skipped += countDataRows(sheet.rows) - rows.length
+          if (!rows.length) continue
+          const report = await sendImportRun({
+            table: plan.table,
+            rows,
+            upsert: plan.mode === 'existing' ? upsertArgs(plan) : null,
+            // IMP-011: recorded in the Import Log alongside the counts.
+            context: (part, parts) => ({
+              file_name: fileName ?? undefined,
+              sheet_name: sheet.sheetName,
+              table_created: plan.mode === 'new' && memberOrder === 0 && part === 1,
+              part,
+              parts,
+              run_id: runId,
+            }),
+            onChunk: ({ from, to, total: n }) =>
+              setBusy(
+                `${plan.table}${plan.members.length > 1 ? ` · ${sheet.sheetName}` : ''}: importing rows ${from}–${to} of ${n}…`,
+              ),
+          })
+          total.updated += report.updated
+          total.inserted += report.inserted
+          failed.push(...report.failed.map((f) => ({ ...f, sheetIndex: m })))
+        }
         setPlans((ps) =>
           ps.map((p, j) =>
             j === i
-              ? {
-                  ...p,
-                  result: {
-                    updated: report.updated,
-                    inserted: report.inserted,
-                    skipped,
-                    failed: report.failed,
-                    run_id: runId,
-                  },
-                }
+              ? { ...p, result: { ...total, failed, run_id: runId } }
               : p,
           ),
         )
@@ -1027,8 +1138,13 @@ export function ImportWizard() {
       await queryClient.invalidateQueries({ queryKey: ['tables'] })
       await queryClient.invalidateQueries({ queryKey: ['import-targets'] })
       setDone(true)
-      const active = plans.filter((p) => p.mode !== 'skip')
-      if (active.length === 1) {
+      const active = plans.filter((p) => p.mode !== 'skip' && p.groupedInto === null)
+      // Auto-navigation exists because a lone sheet leaves nothing else to
+      // look at. #201: a merge group is one target but many sheets, and its
+      // result is a per-sheet summary with ONE revert control for the whole
+      // group — jumping to the list view would destroy the only place either
+      // can be read, which is the complaint this work started from.
+      if (active.length === 1 && active[0].members.length === 1) {
         navigate({
           to: '/admin/$table',
           params: { table: active[0].table },
@@ -1102,6 +1218,10 @@ export function ImportWizard() {
           onSelect={applySelection}
           onContinue={leaveOverview}
           refused={ovRefused}
+          mode={groupMode}
+          onMode={setGroupMode}
+          mergeName={mergeName}
+          onMergeName={setMergeName}
         />
       )}
 
@@ -1121,13 +1241,27 @@ export function ImportWizard() {
         </div>
       )}
 
-      {stage === 'columns' && sheets.map((sheet, i) => {
+      {stage === 'columns' && sheets.map((rawSheet, i) => {
         const plan = plans[i]
         if (!plan) return null
         // #200: unselected sheets are not shown here at all. Leaving them
         // alone on the overview is how they are excluded, so a card saying
         // "this sheet will not be imported" is noise now.
         if (plan.mode === 'skip') return null
+        // #201: a merge group renders ONCE, on its lead. The followers'
+        // columns are already folded into the lead's merged set.
+        if (plan.groupedInto !== null) return null
+        // From here the card speaks for the whole target: for a group that is
+        // the merged column set and every member's rows, so the grid, the
+        // mapping and the preview all read one shape.
+        const merged = plan.members.length > 1
+        const sheet = merged ? effectiveSheet(plan, i) : rawSheet
+        // A failed row's number is only true against the sheet it came from.
+        const failLabel = (f: { sheetIndex: number; sourceIndex: number; message: string }) => {
+          const from = sheets[f.sheetIndex] ?? rawSheet
+          const where = merged ? `${from.sheetName} row` : 'row'
+          return `${where} ${excelRow(f.sourceIndex, from.headerExcelRow)}: ${f.message}`
+        }
         const targetCols = targets.data?.find((t) => t.name === plan.table)?.columns ?? []
         const mappedCount = plan.mapping.filter((m, idx) => m && plan.include[idx]).length
         return (
@@ -1137,10 +1271,27 @@ export function ImportWizard() {
                   Table — say so, since sheet and Table often share a name
                   and the Table's own count sits beside the picker. */}
               <div className="text-sm font-semibold text-[var(--color-ink)]">
-                Sheet "{sheet.sheetName}"{' '}
-                <span className="font-normal text-gray-500">
-                  — {countDataRows(sheet.rows)} rows, {sheet.headers.length} columns in the file
-                </span>
+                {merged ? (
+                  <>
+                    <span
+                      className="fc-pill bg-[var(--color-brand-tint)] text-[var(--color-brand-dark)]"
+                      data-testid={`iw-group-${i}`}
+                    >
+                      {plan.members.length} sheets → one Table
+                    </span>{' '}
+                    <span className="font-normal text-gray-500">
+                      — {plan.members.reduce((n, m) => n + countDataRows(sheets[m].rows), 0)} rows,{' '}
+                      {sheet.headers.length} columns combined
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Sheet "{sheet.sheetName}"{' '}
+                    <span className="font-normal text-gray-500">
+                      — {countDataRows(sheet.rows)} rows, {sheet.headers.length} columns in the file
+                    </span>
+                  </>
+                )}
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <span className="fc-label m-0">Import into</span>
@@ -1168,6 +1319,34 @@ export function ImportWizard() {
                 )}
               </div>
             </div>
+
+            {merged && (
+              <div
+                className="mb-2 rounded bg-[var(--color-subtle)] px-2 py-1 text-xs text-[var(--color-ink-muted)]"
+                data-testid={`iw-group-members-${i}`}
+              >
+                {plan.members.map((m, k) => {
+                  // Column names are folded (case, spaces, punctuation), so a
+                  // sheet is only "missing" a column when nothing it has folds
+                  // to it — and then its rows leave that column empty. Say so
+                  // here rather than letting blanks appear unexplained.
+                  const cols = mergedColumnsFor(plan.members)
+                  const absent = cols.filter((c) => c.from[k] === -1)
+                  return (
+                    <span key={m} className="mr-3 inline-block">
+                      {sheets[m].sheetName}{' '}
+                      <span className="tabular-nums">({countDataRows(sheets[m].rows)} rows)</span>
+                      {absent.length > 0 && (
+                        <span className="text-[var(--color-warn)]">
+                          {' '}
+                          — no {absent.map((c) => c.label).join(', ')}
+                        </span>
+                      )}
+                    </span>
+                  )
+                })}
+              </div>
+            )}
 
             {plan.mode === 'new' ? (
               <>
@@ -1546,11 +1725,22 @@ export function ImportWizard() {
               </>
             )}
 
-            <SheetPreview
-              i={i}
-              sheet={sheet}
-              failed={plan.result?.failed ?? plan.check?.failed ?? null}
-            />
+            {/* #115: row numbers are only true against the sheet they came
+                from, so a group previews member by member rather than showing
+                one blended table with invented numbering. */}
+            {(merged ? plan.members : [i]).map((m) => (
+              <SheetPreview
+                key={m}
+                i={merged ? `${i}-${m}` : i}
+                label={merged ? sheets[m].sheetName : null}
+                sheet={merged ? memberSheet(plan, m) : sheet}
+                failed={
+                  (plan.result?.failed ?? plan.check?.failed ?? null)?.filter(
+                    (f) => f.sheetIndex === m,
+                  ) ?? null
+                }
+              />
+            ))}
 
             {plan.check && (
               <div className="mt-2 text-sm" data-testid={`iw-check-${i}`}>
@@ -1570,7 +1760,7 @@ export function ImportWizard() {
                     , {plan.check.failed.length} with problems:{' '}
                     {plan.check.failed
                       .slice(0, ERRORS_ON_SCREEN)
-                      .map((f) => `row ${excelRow(f.sourceIndex, sheet.headerExcelRow)}: ${f.message}`)
+                      .map(failLabel)
                       .join('; ')}
                     {plan.check.failed.length > 5 && ` … and ${plan.check.failed.length - 5} more`}
                   </span>
@@ -1600,10 +1790,7 @@ export function ImportWizard() {
                     {plan.table}
                   </Link>
                   {plan.result.failed.length > 0 &&
-                    `; ${plan.result.failed.length} failed (first: row ${excelRow(
-                      plan.result.failed[0].sourceIndex,
-                      sheet.headerExcelRow,
-                    )}: ${plan.result.failed[0].message})`}
+                    `; ${plan.result.failed.length} failed (first: ${failLabel(plan.result.failed[0])})`}
                   {plan.result.skipped > 0 &&
                     ` (${plan.result.skipped} rows had no data in the imported columns and were skipped)`}
                 </span>
