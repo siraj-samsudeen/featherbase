@@ -1,5 +1,104 @@
 # Progress Log
 
+## 2026-08-26 — the import wizard asks what is in the file first
+
+Owner report: importing a workbook of ~17 sheets (11 visible, 6–7 hidden) put
+**every sheet, with its full column grid, on one screen**, with everything
+selected by default. It made eleven Tables nobody wanted, there was no way to
+send same-shaped sheets into one Table, a failure on sheet 2 lost sheet 1's
+work, and nothing showed which Tables came from which file.
+
+The whole workflow is mapped as **[#197](https://github.com/siraj-samsudeen/featherbase/issues/197)**
+with twelve sub-issues (#198–#209) in three parts. **Part A (#198–#201) is
+built**; B and C are not.
+
+**The design was reviewed as an interactive mockup before any code**, and
+three rounds of owner feedback changed it materially — worth recording,
+because each one was a modelling error the mockup caught cheaply:
+
+1. The merge action was a disabled button nobody would find. It became an
+   explicit either/or that appears the moment anything is ticked.
+2. The reconciliation screen only let the owner ratify the system's guesses.
+   There was no path for "these two are the same thing and you could never
+   work that out" — `Store Code` and `Store Name`. User-driven combining is
+   now a first-class action (specced, not yet built — see below).
+3. The decision applied to the whole selection, so a 17-sheet workbook could
+   only produce one answer. Targets have to accumulate.
+
+### What shipped
+
+- **#198 — a parsed sheet knows whether the workbook was hiding it.**
+  `ParsedSheet.visibility`, from `wb.Workbook.Sheets`. `very-hidden` stays
+  distinct from `hidden` (only VBA can set it, so it is a stronger statement
+  of intent). Read by index in `SheetNames`, **not** by position in the
+  output — an all-blank sheet is dropped, so indexing as sheets are pushed
+  would shift every visibility after the gap by one.
+- **#199/#200 — a file overview before the columns.** Sheets only; visible
+  first, hidden below in a collapsed section; **nothing selected by default**,
+  which is the direct fix for the eleven Tables. Individual / per-group /
+  tri-state-master selection, a sticky action bar, and a refusal in words
+  when nothing is chosen. A CSV skips the step entirely.
+- **#201 — several sheets can become one Table.** `mergeSheetHeaders` folds
+  with **`sanitizeColumnName`, the normalizer `autoMapColumns` already uses**
+  — reused, not reinvented — so `Floor` / `FLOOR` / `floor ` are one column.
+
+### Decisions the owner made, and where they live
+
+- **Q1 — merging sheets with differing headers is allowed**, reconciled per
+  sheet rather than refused. Recorded on #201.
+- **Q5 — no fuzzy guessing.** Case, spaces, underscores and punctuation fold
+  silently; nothing beyond that is ever guessed, so `Glor` is never assumed to
+  mean `Floor`. It stays its own column until the user says otherwise.
+- **Q2 (resume) and Q3 (batch delete semantics) are still open** on #197.
+
+### Gotchas worth keeping
+
+- **A merge group imports member by member, never as one blended batch.**
+  Two things die on concatenation: the Import Log's per-sheet `sheet_name`,
+  and row-number truth (#115) — a failed row's number is only true against
+  its own sheet. Failures now carry a sheet index and read "Store 003 row 14".
+  One `run_id` still spans the group, so one revert takes all of it back, and
+  `table_created` is stamped once rather than once per member.
+- **Auto-navigation after import now requires a single-*sheet* target.** It
+  existed because a lone sheet leaves nothing to look at. A merge group is one
+  target but many sheets, and jumping to the list view destroyed its per-sheet
+  result and its revert control — the owner's original complaint, reproduced
+  by the new feature.
+- **"Skip this sheet" is gone from the target picker.** Leaving a sheet
+  unselected is the one way to exclude it; two mechanisms for one act is what
+  the redesign removes. `mode: 'skip'` survives as the internal parked state.
+- **`pnpm install` cannot fetch `github:owner/repo#sha` everywhere.** pnpm
+  resolves that shorthand to codeload.github.com, which some egress policies
+  block with a bare 403. Both `package.json`s now use `git+https://`, same
+  repo and commit. They still move back to a version range together when the
+  harness publishes.
+- **Two test failures in this environment are not this work's**, and both were
+  established rather than assumed: e2e `UPS-J1` reproduces identically on main
+  (117/1 there, 125/1 here) — the harness resolves `Check` by accessible name
+  and the sidebar's "Checklist Run" matches the same substring, so strict mode
+  refuses the locator; worth its own issue. And server `sources-csv`'s "a
+  failed write never poisons the parse cache" chmods a directory read-only to
+  force a failure, but this container runs as uid 0 and root ignores directory
+  permissions. Environmental — CI runs non-root.
+- **Chromium:** this image ships build 1194 while `@playwright/test` resolves
+  to one wanting 1228, so run e2e with
+  `CHROMIUM_PATH=/opt/pw-browsers/chromium` — the escape hatch CLAUDE.md
+  already documents. Do not run `playwright install`.
+- **Run e2e as `pnpm --filter web e2e`, never `playwright test` directly.**
+  Only the former sets `E2E_ISOLATED=1`; the bare command drives the
+  developer's own database, which cost a confusing debugging round here.
+
+**Verified:** web 68 unit / 125 e2e passed, server 733 passed, both typechecks
+clean, `./init.sh` boots and smoke passes. Draft PR
+[#210](https://github.com/siraj-samsudeen/featherbase/pull/210).
+
+**Next:** the user-driven column combine — ticking two columns of the merged
+set and declaring them one, with sample values shown and a rule for sheets
+that carry both. It is the part of the mockup the owner pushed hardest on and
+the one piece of #201's design not yet built; it needs its own ticket under
+#197. Then Part B: the stepper (#202), the failing sheet that abandons the run
+(#203), and resume (#204, gated on Q2).
+
 ## 2026-08-15 — e2e brings its own database, and drops it first
 
 The last of the four. e2e writes are real commits outside any sandbox, so
