@@ -199,10 +199,14 @@ test('choosing separate still makes one Table per sheet', async ({ page, request
   await expect(page.getByTestId('iw-ov-tally')).toContainText('2 Tables')
   await page.getByTestId('iw-ov-continue').click()
 
-  // Two cards, no group pill.
+  // Two targets, walked one at a time (#202), and no group pill on either.
+  await expect(page.getByTestId('iw-step-of')).toContainText('Table 1 of 2')
   await expect(page.getByTestId('iw-sheet-0')).toBeVisible()
-  await expect(page.getByTestId('iw-sheet-1')).toBeVisible()
+  await expect(page.getByTestId('iw-sheet-1')).toHaveCount(0)
   await expect(page.getByTestId('iw-group-0')).toHaveCount(0)
+  await page.getByTestId('iw-next').click()
+  await expect(page.getByTestId('iw-sheet-1')).toBeVisible()
+  await expect(page.getByTestId('iw-sheet-0')).toHaveCount(0)
 
   await page.getByTestId('iw-import').click()
   await expect(page.getByTestId('iw-result-0')).toContainText('Imported 2 rows')

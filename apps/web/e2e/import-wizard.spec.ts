@@ -110,6 +110,14 @@ test('IMP-010: multi-sheet workbook — one sheet to a new Table, one mapped ont
   // Rename the new Table so re-runs and other specs can't collide.
   await page.getByTestId('iw-new-name-0').fill(NEW_DT)
 
+  // #202: one target at a time. Sheet 2's card is a step away, and the
+  // stepper says where we are.
+  await expect(page.getByTestId('iw-step-of')).toContainText('Table 1 of 2')
+  await expect(page.getByTestId('iw-sheet-1')).toHaveCount(0)
+  await page.getByTestId('iw-next').click()
+  await expect(page.getByTestId('iw-step-of')).toContainText('Table 2 of 2')
+  await expect(page.getByTestId('iw-sheet-0')).toHaveCount(0)
+
   // Sheet 2: the junk-named sheet was matched to Wizard Stock by columns —
   // and says so out loud (IMP-011: an unnoticed auto-match must not quietly
   // route rows into a lookalike Table).
@@ -117,7 +125,8 @@ test('IMP-010: multi-sheet workbook — one sheet to a new Table, one mapped ont
   await expect(page.getByTestId('iw-auto-matched-1')).toContainText(EXISTING_DT)
   await expect(page.getByTestId('iw-mapped-count-1')).toContainText('3 of 3')
 
-  // Dry-run: the bad Int row is caught before anything is written.
+  // Dry-run: the bad Int row is caught before anything is written. #202
+  // scopes it to the target on screen, which is this one.
   await page.getByTestId('iw-check').click()
   await expect(page.getByTestId('iw-check-1')).toContainText('2 rows ready, 1 with problems')
   await expect(page.getByTestId('iw-check-1')).toContainText('row 3')
@@ -126,9 +135,11 @@ test('IMP-010: multi-sheet workbook — one sheet to a new Table, one mapped ont
   ).json()) as { count: number }
   expect(mid.count).toBe(before.count) // dry run wrote nothing
 
-  // Import (skipping the bad row), both sheets land.
+  // Import (skipping the bad row), both sheets land — the bulk button takes
+  // every target that has not landed yet, from whichever step you are on.
   await page.getByTestId('iw-import').click()
   await expect(page.getByTestId('iw-done')).toBeVisible()
+  // #202: both results are readable at once, outside the one card on screen.
   await expect(page.getByTestId('iw-result-0')).toContainText(`Imported 6 rows into ${NEW_DT}`)
   await expect(page.getByTestId('iw-result-1')).toContainText(
     `Imported 2 rows into ${EXISTING_DT}`,

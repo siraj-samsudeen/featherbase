@@ -677,7 +677,11 @@ export function ImportWizard() {
   // #203: what the whole run did — stated whenever it STOPS, not only when
   // every target succeeded, so a partial failure still reports and still
   // shows the way on.
-  const [runOutcome, setRunOutcome] = useState<{ imported: number; failed: string[] } | null>(null)
+  const [runOutcome, setRunOutcome] = useState<{
+    imported: number
+    failed: string[]
+    remaining: number
+  } | null>(null)
   // #199: the wizard is two steps now. 'overview' answers "what is in this
   // file?"; 'columns' is the existing per-sheet work, over the chosen sheets
   // only. A CSV (one sheet) skips the overview — there is nothing to choose.
@@ -693,15 +697,25 @@ export function ImportWizard() {
   const [combineRule, setCombineRule] = useState<'first' | 'join'>('first')
   const [groupMode, setGroupMode] = useState<GroupMode>('separate')
   const [mergeName, setMergeName] = useState('')
+  // #202: which target the column step is showing. Eleven cards stacked on
+  // one screen is the wall this redesign started from, and it also left
+  // nowhere to come back TO after looking at imported rows. Holds a PLAN
+  // index rather than a position, so deselecting an earlier sheet cannot
+  // silently slide the user onto a different target.
+  const [current, setCurrent] = useState(0)
   // The plan each sheet had when the file was read. Deselecting a sheet parks
   // it as 'skip'; reselecting must restore the target that was worked out for
   // it, not a blank one.
   const natural = useRef<SheetPlan[]>([])
   // UPS-H1's typed confirmation: set when a click-time dry run counted more
   // than CONFIRM_UPDATES_OVER updates; cleared by any plan change.
-  const [confirmUpdates, setConfirmUpdates] = useState<{ total: number; typed: string } | null>(
-    null,
-  )
+  // #202: `only` remembers the scope the confirmation was computed for — a
+  // per-target run must not be confirmed into a run of everything.
+  const [confirmUpdates, setConfirmUpdates] = useState<{
+    total: number
+    typed: string
+    only?: number
+  } | null>(null)
 
   // Every importable Table with its mappable columns — the mapping targets
   // and the corpus the rename-tolerant suggestions score against.
@@ -932,6 +946,10 @@ export function ImportWizard() {
       )
     }
     setStage('columns')
+    // Start at the first target every time the overview is left, so
+    // "← Choose sheets", change the selection, continue lands somewhere that
+    // exists rather than on a card that is now skipped.
+    setCurrent(chosen[0])
   }
 
   function retarget(i: number, value: string) {
@@ -1050,11 +1068,14 @@ export function ImportWizard() {
     }
   }
 
-  async function runCheck() {
+  // #202: `only` scopes a rehearsal to one target — you check what you are
+  // looking at. Omitted, it still rehearses every mapped target.
+  async function runCheck(only?: number) {
     setError(null)
     setBusy('Checking…')
     try {
       for (const [i, plan] of plans.entries()) {
+        if (only !== undefined && i !== only) continue
         if (plan.mode !== 'existing' || plan.groupedInto !== null) continue
         // #201: rehearse member by member, exactly as the import will send
         // them, so a reported row number is true against its own sheet.
@@ -1087,10 +1108,15 @@ export function ImportWizard() {
     }
   }
 
-  async function runImport(confirmed = false) {
+  // #202: `only` imports a single target, so an eleven-sheet workbook is a
+  // sequence of small commits rather than one all-or-nothing run. Omitted, it
+  // imports every target that has not landed yet.
+  async function runImport(confirmed = false, only?: number) {
     setError(null)
     setRunOutcome(null)
-    setPlans((ps) => ps.map((p) => ({ ...p, failure: null })))
+    setPlans((ps) =>
+      ps.map((p, j) => (only === undefined || j === only ? { ...p, failure: null } : p)),
+    )
     setBusy('Importing…')
     try {
       // UPS-H1: a run about to update more than CONFIRM_UPDATES_OVER rows
@@ -1100,6 +1126,7 @@ export function ImportWizard() {
       if (!confirmed) {
         let updates = 0
         for (const [i, plan] of plans.entries()) {
+          if (only !== undefined && i !== only) continue
           if (plan.mode !== 'existing' || !plan.key || plan.groupedInto !== null) continue
           const rows = mappedRows(effectiveSheet(plan, i), plan)
           if (!rows.length) continue
@@ -1112,7 +1139,7 @@ export function ImportWizard() {
           updates += report.updated
         }
         if (updates > CONFIRM_UPDATES_OVER) {
-          setConfirmUpdates({ total: updates, typed: '' })
+          setConfirmUpdates({ total: updates, typed: '', only })
           setBusy(null)
           return
         }
@@ -1124,8 +1151,14 @@ export function ImportWizard() {
       // link to the Import Log. Each target now fails on its own.
       let imported = 0
       const failedTargets: string[] = []
+      const ran: number[] = []
       for (const [i, plan] of plans.entries()) {
         if (plan.mode === 'skip' || plan.groupedInto !== null) continue
+        if (only !== undefined && i !== only) continue
+        // #202: a bulk run picks up where the stepper left off. Re-importing
+        // a target that already landed would duplicate its rows, and the
+        // result on screen is the user's evidence that it did land.
+        if (only === undefined && plan.result) continue
         try {
         if (plan.mode === 'new') {
           await api.post('/api/table_def', {
@@ -1191,6 +1224,7 @@ export function ImportWizard() {
           ),
         )
         imported += 1
+        ran.push(i)
         } catch (err) {
           // Recorded, named, and the run continues. A target that threw is
           // not the same as one that imported nothing, so it says which.
@@ -1201,13 +1235,31 @@ export function ImportWizard() {
           )
         }
       }
-      setRunOutcome({ imported, failed: failedTargets })
       await queryClient.invalidateQueries({ queryKey: ['tables'] })
       await queryClient.invalidateQueries({ queryKey: ['import-targets'] })
       // #203: `done` retires the Import button, so it must not latch on a
       // partial failure — the whole point is that the run can be fixed and
       // tried again without starting over.
-      setDone(failedTargets.length === 0)
+      // #202: and it must not latch on a per-target run either. Targets 2..n
+      // are still to come; `plans` here predates this run, so what landed in
+      // it is `ran` rather than anything readable off a plan.
+      const landed = (j: number) => ran.includes(j) || Boolean(plans[j]?.result)
+      const activeIndexes = plans.flatMap((p, j) =>
+        p.mode !== 'skip' && p.groupedInto === null ? [j] : [],
+      )
+      const stillToGo = activeIndexes.filter((j) => !landed(j)).length
+      // #202: "Import complete." after target 1 of 3 would be a lie. The run
+      // still always reports when it STOPS (#203) — it just reports what it
+      // actually did and what is left.
+      setRunOutcome({ imported, failed: failedTargets, remaining: stillToGo })
+      setDone(failedTargets.length === 0 && activeIndexes.every(landed))
+      // #202: walk on to the first target still waiting. Staying put after a
+      // per-target import would make the next one a hunt; jumping past
+      // something unimported would skip it silently.
+      if (only !== undefined && !failedTargets.length) {
+        const next = activeIndexes.find((j) => !landed(j))
+        if (next !== undefined) setCurrent(next)
+      }
       const active = plans.filter((p) => p.mode !== 'skip' && p.groupedInto === null)
       // Auto-navigation exists because a lone sheet leaves nothing else to
       // look at. #201: a merge group is one target but many sheets, and its
@@ -1229,8 +1281,49 @@ export function ImportWizard() {
     }
   }
 
+  // #202: the targets the column step walks — a chosen sheet, or a merge
+  // group standing for several. Followers and skipped sheets are not targets.
+  const targetIndexes = plans.flatMap((p, i) =>
+    p.mode !== 'skip' && p.groupedInto === null ? [i] : [],
+  )
+  // `current` can name a sheet that has since been deselected or folded into
+  // a group; falling back to the first target keeps the step renderable
+  // rather than blank.
+  const currentPos = targetIndexes.indexOf(current)
+  const activePos = currentPos === -1 ? 0 : currentPos
+  const activeTarget = targetIndexes[activePos] ?? -1
+  const activePlan = plans[activeTarget]
+  const landedCount = targetIndexes.filter((i) => plans[i]?.result).length
   const anyChecked = plans.some((p) => p.check)
   const blockingProblems = plans.reduce((n, p) => n + (p.check?.failed.length ?? 0), 0)
+
+  // What a step is called. A group is named by the Table it will become —
+  // no one member's sheet name speaks for it.
+  function targetLabel(i: number): string {
+    const plan = plans[i]
+    if (!plan) return ''
+    if (plan.members.length > 1) return plan.table || 'Merged Table'
+    return sheets[i]?.sheetName || plan.table
+  }
+
+  // Rows this one target will send, for its own Import button.
+  function targetRows(i: number): number {
+    const plan = plans[i]
+    if (!plan) return 0
+    return plan.members.reduce((n, m) => n + countDataRows(sheets[m]?.rows ?? []), 0)
+  }
+
+  // A failed row's number is only true against the sheet it came from, so a
+  // group says which sheet.
+  function failLabel(
+    plan: SheetPlan,
+    f: { sheetIndex: number; sourceIndex: number; message: string },
+  ): string {
+    const from = sheets[f.sheetIndex]
+    if (!from) return f.message
+    const where = plan.members.length > 1 ? `${from.sheetName} row` : 'row'
+    return `${where} ${excelRow(f.sourceIndex, from.headerExcelRow)}: ${f.message}`
+  }
 
   return (
     <div data-testid="import-wizard" className="max-w-4xl">
@@ -1313,19 +1406,98 @@ export function ImportWizard() {
         />
       )}
 
-      {stage === 'columns' && sheets.length > 1 && !done && (
-        <div className="mb-3 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setStage('overview')}
-            data-testid="iw-back-to-overview"
-            className="fc-btn py-1"
-          >
-            ← Choose sheets
-          </button>
-          <span className="text-xs text-gray-500" data-testid="iw-chosen-count">
+      {/* #202: one target at a time, and always say where you are in the
+          sequence. The complaint that started this was eleven sheets on one
+          screen; a stepper is only an improvement if it never leaves you
+          wondering how many are left. */}
+      {stage === 'columns' && targetIndexes.length > 0 && (
+        <div className="fc-card mb-3 p-3" data-testid="iw-stepper">
+          <div className="flex flex-wrap items-center gap-3">
+            {sheets.length > 1 && !done && (
+              <button
+                type="button"
+                onClick={() => setStage('overview')}
+                data-testid="iw-back-to-overview"
+                className="fc-btn py-1"
+              >
+                ← Choose sheets
+              </button>
+            )}
+            <span
+              className="text-sm font-semibold text-[var(--color-ink)]"
+              data-testid="iw-step-of"
+            >
+              {targetIndexes.length > 1
+                ? `Table ${activePos + 1} of ${targetIndexes.length}`
+                : 'One Table'}
+              {' — '}
+              {targetLabel(activeTarget)}
+            </span>
+            <span className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                className="fc-btn py-1 disabled:opacity-40"
+                data-testid="iw-prev"
+                disabled={activePos === 0}
+                onClick={() => setCurrent(targetIndexes[activePos - 1])}
+              >
+                ← Previous
+              </button>
+              <button
+                type="button"
+                /* Emphasised once this target has landed: its result is read,
+                   and moving on is the only thing left to do here. */
+                className={`${activePlan?.result ? 'fc-btn-primary' : 'fc-btn'} py-1 disabled:opacity-40`}
+                data-testid="iw-next"
+                disabled={activePos >= targetIndexes.length - 1}
+                onClick={() => setCurrent(targetIndexes[activePos + 1])}
+              >
+                Next →
+              </button>
+            </span>
+          </div>
+
+          {/* The whole sequence at a glance, and a way to jump. Decided
+              targets are marked, so "which of these eleven have I done?" is
+              answered without stepping through them. */}
+          {targetIndexes.length > 1 && (
+            <div className="mt-2 flex flex-wrap gap-1" data-testid="iw-step-strip">
+              {targetIndexes.map((i, n) => {
+                const plan = plans[i]
+                const state = plan.result ? 'done' : plan.failure ? 'failed' : 'todo'
+                const tone =
+                  state === 'done'
+                    ? 'border-green-600 text-green-800'
+                    : state === 'failed'
+                      ? 'border-[var(--color-danger)] text-[var(--color-danger)]'
+                      : 'border-[var(--color-border)] text-gray-600'
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setCurrent(i)}
+                    data-testid={`iw-step-${i}`}
+                    data-state={state}
+                    aria-current={i === activeTarget ? 'step' : undefined}
+                    className={`rounded border px-2 py-0.5 text-xs ${tone} ${
+                      i === activeTarget
+                        ? 'bg-[var(--color-brand-tint)] font-semibold'
+                        : 'bg-[var(--color-surface)]'
+                    }`}
+                  >
+                    {state === 'done' ? '✓ ' : state === 'failed' ? '✗ ' : ''}
+                    {n + 1}. {targetLabel(i)}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          <p className="mt-2 text-xs text-gray-500" data-testid="iw-chosen-count">
             {selected.filter(Boolean).length} of {sheets.length} sheets selected
-          </span>
+            {targetIndexes.length > 1 &&
+              ` — ${landedCount} of ${targetIndexes.length} Tables imported`}
+          </p>
         </div>
       )}
 
@@ -1339,6 +1511,10 @@ export function ImportWizard() {
         // #201: a merge group renders ONCE, on its lead. The followers'
         // columns are already folded into the lead's merged set.
         if (plan.groupedInto !== null) return null
+        // #202: and only the step being walked. Everything else is reachable
+        // from the strip above; results live below, so leaving a card does
+        // not hide what it did.
+        if (i !== activeTarget) return null
         // From here the card speaks for the whole target: for a group that is
         // the merged column set and every member's rows, so the grid, the
         // mapping and the preview all read one shape.
@@ -1350,12 +1526,6 @@ export function ImportWizard() {
         const pickedKeys = groupColumns
           .map((c) => c.key)
           .filter((k) => combinePick[`${i}:${k}`])
-        // A failed row's number is only true against the sheet it came from.
-        const failLabel = (f: { sheetIndex: number; sourceIndex: number; message: string }) => {
-          const from = sheets[f.sheetIndex] ?? rawSheet
-          const where = merged ? `${from.sheetName} row` : 'row'
-          return `${where} ${excelRow(f.sourceIndex, from.headerExcelRow)}: ${f.message}`
-        }
         const targetCols = targets.data?.find((t) => t.name === plan.table)?.columns ?? []
         const mappedCount = plan.mapping.filter((m, idx) => m && plan.include[idx]).length
         return (
@@ -2032,7 +2202,7 @@ export function ImportWizard() {
                     , {plan.check.failed.length} with problems:{' '}
                     {plan.check.failed
                       .slice(0, ERRORS_ON_SCREEN)
-                      .map(failLabel)
+                      .map((f) => failLabel(plan, f))
                       .join('; ')}
                     {plan.check.failed.length > 5 && ` … and ${plan.check.failed.length - 5} more`}
                   </span>
@@ -2045,41 +2215,72 @@ export function ImportWizard() {
                 )}
               </div>
             )}
-            {plan.failure && (
-              <div
-                className="mt-2 rounded bg-[var(--color-danger-tint)] px-2 py-1 text-sm text-[var(--color-danger)]"
-                data-testid={`iw-failure-${i}`}
-              >
-                ✗ {plan.table} failed — {plan.failure}
-              </div>
-            )}
-            {plan.result && (
-              <div className="mt-2 text-sm" data-testid={`iw-result-${i}`}>
-                {/* UPS-J1.5: completion reports updated / inserted / failed
-                    as separate counts — never one blended number. */}
-                <span className={plan.result.failed.length ? 'text-red-600' : 'text-green-700'}>
-                  {plan.result.updated > 0
-                    ? `Updated ${plan.result.updated} and added ${plan.result.inserted} rows in `
-                    : `Imported ${plan.result.inserted} rows into `}
-                  <Link
-                    to="/admin/$table"
-                    params={{ table: plan.table }}
-                    search={{ filters: undefined }}
-                    className="underline"
-                  >
-                    {plan.table}
-                  </Link>
-                  {plan.result.failed.length > 0 &&
-                    `; ${plan.result.failed.length} failed (first: ${failLabel(plan.result.failed[0])})`}
-                  {plan.result.skipped > 0 &&
-                    ` (${plan.result.skipped} rows had no data in the imported columns and were skipped)`}
-                </span>
-                <RevertControl i={i} table={plan.table} runId={plan.result.run_id} />
-              </div>
-            )}
           </div>
         )
       })}
+
+      {/* #202: what this run has done so far, OUTSIDE the card that did it.
+          Stepping to the next target must not hide the result of the last
+          one — losing sight of a finished import is the complaint this work
+          started from, and with one card on screen the card is the wrong
+          place to keep it. */}
+      {stage === 'columns' && targetIndexes.some((i) => plans[i]?.result || plans[i]?.failure) && (
+        <div className="fc-card mb-4 p-3" data-testid="iw-results">
+          <div className="fc-label mb-1">This import</div>
+          {targetIndexes.map((i) => {
+            const plan = plans[i]
+            if (!plan.result && !plan.failure) return null
+            return (
+              <div key={i} className="border-t border-[var(--color-border)] py-2 first:border-t-0">
+                {plan.failure && (
+                  <div
+                    className="rounded bg-[var(--color-danger-tint)] px-2 py-1 text-sm text-[var(--color-danger)]"
+                    data-testid={`iw-failure-${i}`}
+                  >
+                    ✗ {plan.table} failed — {plan.failure}{' '}
+                    <button
+                      type="button"
+                      className="underline"
+                      data-testid={`iw-failure-goto-${i}`}
+                      onClick={() => setCurrent(i)}
+                    >
+                      Fix it
+                    </button>
+                  </div>
+                )}
+                {plan.result && (
+                  <div className="text-sm" data-testid={`iw-result-${i}`}>
+                    {/* UPS-J1.5: completion reports updated / inserted /
+                        failed as separate counts — never one blended
+                        number. */}
+                    <span className={plan.result.failed.length ? 'text-red-600' : 'text-green-700'}>
+                      {plan.result.updated > 0
+                        ? `Updated ${plan.result.updated} and added ${plan.result.inserted} rows in `
+                        : `Imported ${plan.result.inserted} rows into `}
+                      <Link
+                        to="/admin/$table"
+                        params={{ table: plan.table }}
+                        search={{ filters: undefined }}
+                        className="underline"
+                      >
+                        {plan.table}
+                      </Link>
+                      {plan.result.failed.length > 0 &&
+                        `; ${plan.result.failed.length} failed (first: ${failLabel(
+                          plan,
+                          plan.result.failed[0],
+                        )})`}
+                      {plan.result.skipped > 0 &&
+                        ` (${plan.result.skipped} rows had no data in the imported columns and were skipped)`}
+                    </span>
+                    <RevertControl i={i} table={plan.table} runId={plan.result.run_id} />
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {busy && (
         <p className="mt-2 text-sm text-gray-500" data-testid="iw-progress">
@@ -2096,17 +2297,21 @@ export function ImportWizard() {
           className={`mt-2 text-sm ${runOutcome.failed.length ? 'text-[var(--color-danger)]' : 'text-green-700'}`}
           data-testid="iw-done"
         >
-          {runOutcome.failed.length === 0
-            ? 'Import complete.'
-            : `Imported ${runOutcome.imported}; ${runOutcome.failed.length} failed: ${runOutcome.failed.join(', ')}.`}
+          {runOutcome.failed.length > 0
+            ? `Imported ${runOutcome.imported}; ${runOutcome.failed.length} failed: ${runOutcome.failed.join(', ')}.`
+            : runOutcome.remaining > 0
+              ? `Imported ${runOutcome.imported}; ${runOutcome.remaining} still to import.`
+              : 'Import complete.'}
         </p>
       )}
 
       {stage === 'columns' && sheets.length > 0 && !done && (
         <div className="sticky bottom-0 z-10 mt-4 flex items-center gap-2 rounded-t-[var(--radius-card)] border-t border-[var(--color-border-strong)] bg-[var(--color-surface)] px-2 py-3 shadow-[0_-6px_16px_rgba(25,39,52,0.09)]">
-          {plans.some((p) => p.mode === 'existing') && (
+          {/* #202: check what is on screen. Rehearsing targets you cannot
+              see puts their report somewhere you are not looking. */}
+          {activePlan?.mode === 'existing' && (
             <button
-              onClick={runCheck}
+              onClick={() => void runCheck(activeTarget)}
               disabled={!!busy}
               data-testid="iw-check"
               className="fc-btn disabled:opacity-40"
@@ -2132,24 +2337,51 @@ export function ImportWizard() {
                 className="fc-btn-primary py-0.5 disabled:opacity-40"
                 data-testid="iw-confirm-go"
                 disabled={!!busy || confirmUpdates.typed.trim() !== String(confirmUpdates.total)}
-                onClick={() => void runImport(true)}
+                onClick={() => void runImport(true, confirmUpdates.only)}
               >
                 Update {confirmUpdates.total} rows
               </button>
             </span>
           )}
+          {/* #202: import THIS target, then step on. The owner asked to
+              "import and then go to that screen where the row is imported"
+              mid-flow — which needs a commit per target, not one run at the
+              end of eleven. */}
+          {targetIndexes.length > 1 &&
+            activeTarget !== -1 &&
+            (activePlan?.result ? (
+              <span className="text-sm text-green-700" data-testid="iw-import-one-done">
+                ✓ {activePlan.table} imported
+              </span>
+            ) : (
+              <button
+                onClick={() => void runImport(false, activeTarget)}
+                disabled={!!busy || !!confirmUpdates}
+                data-testid="iw-import-one"
+                className="fc-btn-primary disabled:opacity-40"
+              >
+                {`Import ${targetRows(activeTarget)} rows into ${activePlan?.table || 'this Table'}`}
+              </button>
+            ))}
           <button
             onClick={() => void runImport()}
-            disabled={!!busy || !!confirmUpdates || plans.every((p) => p.mode === 'skip')}
+            disabled={
+              !!busy ||
+              !!confirmUpdates ||
+              plans.every((p) => p.mode === 'skip') ||
+              targetIndexes.every((i) => plans[i]?.result)
+            }
             data-testid="iw-import"
-            className="fc-btn-primary disabled:opacity-40"
+            className={`${targetIndexes.length > 1 ? 'fc-btn' : 'fc-btn-primary'} disabled:opacity-40`}
           >
             {anyChecked && blockingProblems > 0
               ? `Import anyway (skip ${blockingProblems} bad rows)`
-              : `Import ${sheets.reduce(
-                  (n, s, si) => n + (plans[si]?.mode === 'skip' ? 0 : countDataRows(s.rows)),
-                  0,
-                )} rows`}
+              : targetIndexes.length > 1
+                ? `Import the remaining ${targetIndexes.filter((i) => !plans[i]?.result).length} Tables`
+                : `Import ${sheets.reduce(
+                    (n, s, si) => n + (plans[si]?.mode === 'skip' ? 0 : countDataRows(s.rows)),
+                    0,
+                  )} rows`}
           </button>
         </div>
       )}

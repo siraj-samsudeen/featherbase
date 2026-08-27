@@ -44,6 +44,16 @@ function workbook(): Buffer {
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
 }
 
+// #202: the column step walks one target at a time, so naming all three
+// means stepping between them.
+async function nameThree(page: Page) {
+  await page.getByTestId('iw-new-name-0').fill(FIRST)
+  await page.getByTestId('iw-next').click()
+  await page.getByTestId('iw-new-name-1').fill('Partial Second')
+  await page.getByTestId('iw-next').click()
+  await page.getByTestId('iw-new-name-2').fill(THIRD)
+}
+
 test.beforeEach(async ({ request }) => {
   const token = await adminToken(request)
   for (const n of [FIRST, THIRD, 'One', 'Two', 'Three']) await deleteTableIfExists(request, token, n)
@@ -77,9 +87,7 @@ test('a failing target does not abandon the rest of the run', async ({ page, req
   await page.getByTestId('iw-ov-master').check()
   await page.getByTestId('iw-ov-continue').click()
 
-  await page.getByTestId('iw-new-name-0').fill(FIRST)
-  await page.getByTestId('iw-new-name-1').fill('Partial Second')
-  await page.getByTestId('iw-new-name-2').fill(THIRD)
+  await nameThree(page)
   await page.getByTestId('iw-import').click()
 
   // Target 1 imported and its result SURVIVES the later failure.
@@ -125,9 +133,7 @@ test('the committed result stays revertable after a later failure', async ({ pag
   })
   await page.getByTestId('iw-ov-master').check()
   await page.getByTestId('iw-ov-continue').click()
-  await page.getByTestId('iw-new-name-0').fill(FIRST)
-  await page.getByTestId('iw-new-name-1').fill('Partial Second')
-  await page.getByTestId('iw-new-name-2').fill(THIRD)
+  await nameThree(page)
   await page.getByTestId('iw-import').click()
 
   await expect(page.getByTestId('iw-result-0')).toContainText('Imported 2 rows')
