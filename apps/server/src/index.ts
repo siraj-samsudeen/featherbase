@@ -14,6 +14,7 @@ import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { getAccessToken, issueAccessToken, listAccessTokens, login, resolveToken, revokeAccessToken, setUserPassword, issueSession, type SessionUser } from './auth'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled } from './service-accounts'
+import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
@@ -402,6 +403,24 @@ app.post('/api/oauth/session', async (c) => {
   return c.json(redeemHandoffCode(code, getCookie(c, 'sid')))
 })
 
+// A dev-preview deployment's click-through sign-in (see preview.ts). Public
+// by nature — the key IS the credential — and 404 when previews are off or
+// the key is wrong, so the route neither advertises itself nor tells a
+// guesser they were close.
+//
+// The session token does not travel in this redirect. #150 removed 7-day
+// JWTs from URLs (they land in history, in the Referer of the next request,
+// and in every proxy log); this reuses the same one-time handoff code and the
+// SPA's existing /oauth-callback page, so there is no second way in and no
+// new client code.
+app.get('/preview', async (c) => {
+  const config = previewLogin()
+  if (!config || !previewKeyMatches(c.req.query('key'), config.key)) return c.notFound()
+  const session = await issueSession(config.user)
+  setSidCookie(c, session.token)
+  return c.redirect(`/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
+})
+
 // ---- API-004: everything below requires a valid session --------------------
 
 app.use('/api/*', async (c, next) => {
@@ -425,6 +444,9 @@ app.get('/api/whoami', async (c) => {
     theme: (row?.theme as string) || 'light',
     palette: (row?.palette as string) || 'classic',
     language: (row?.language as string) || 'en',
+    // A preview deployment says so in the UI: anyone handed the link should
+    // know the data is disposable and that they are signed in as someone.
+    preview: previewLogin() !== null,
   })
 })
 
@@ -1404,6 +1426,9 @@ if (process.env.NODE_ENV !== 'test') {
   const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
     console.log(`server listening on :${info.port}`)
   })
+  // An auth bypass nobody noticed being enabled is the failure mode worth a
+  // log line: say once whether preview sign-in is live, or why it was refused.
+  announcePreviewLogin()
   // RT-001/002/003: attach the realtime WebSocket server to the HTTP server.
   attachRealtime(server as unknown as import('node:http').Server)
   // JOB-001: run the background worker in-process (tests drive the queue

@@ -17,6 +17,11 @@ export default defineConfig({
       '/files': `http://localhost:${apiPort}`,
       '/private/files': `http://localhost:${apiPort}`,
       '/web': `http://localhost:${apiPort}`,
+      // The dev-preview sign-in link. In production one container answers
+      // both the SPA and the API, so this path needs no help; in dev the
+      // vite server would otherwise serve index.html for it and the redirect
+      // that establishes the session would never happen.
+      '/preview': `http://localhost:${apiPort}`,
       '/ws': { target: `ws://localhost:${apiPort}`, ws: true },
     },
   },
