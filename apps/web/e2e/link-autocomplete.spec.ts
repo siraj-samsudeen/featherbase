@@ -2,6 +2,7 @@ import { expect, test, type APIRequestContext } from '@playwright/test'
 
 const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'UI Form A'
+const ROW = 'UI Form Row'
 const CUST = 'UI Form Cust'
 
 let docName = ''
@@ -10,8 +11,40 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const token = ((await login.json()) as { token: string }).token
   const auth = { Authorization: `Bearer ${token}` }
-  const meta = await request.get(`/api/table/${encodeURIComponent(DT)}:meta`, { headers: auth })
-  test.skip(meta.status() === 404, 'run formview.spec first to create fixtures')
+
+  // Owns the DT/ROW/CUST fixtures rather than borrowing formview.spec's,
+  // matching that spec's table shape exactly (DT's Sub-table column
+  // references ROW, its Reference column references CUST, so both must
+  // exist before DT does). Idempotent in either direction via the :meta
+  // 404 check.
+  const defs: [string, Record<string, unknown>][] = [
+    [CUST, { name: CUST, id_pattern: 'prompt', columns: [{ column_name: 'city', column_type: 'Data' }] }],
+    [ROW, {
+      name: ROW,
+      kind: 'sub_table',
+      columns: [
+        { column_name: 'item', column_type: 'Data', label: 'Item' },
+        { column_name: 'qty', column_type: 'Int', label: 'Qty' },
+      ],
+    }],
+    [DT, {
+      name: DT,
+      columns: [
+        { column_name: 'title', column_type: 'Data', label: 'Title', reqd: true },
+        { column_name: 'qty', column_type: 'Int', label: 'Qty' },
+        { column_name: 'done', column_type: 'Check', label: 'Done' },
+        { column_name: 'stage', column_type: 'Choice', label: 'Status', choices: 'Open\nClosed' },
+        { column_name: 'due', column_type: 'Date', label: 'Due' },
+        { column_name: 'customer', column_type: 'Reference', label: 'Customer', reference_table: CUST },
+        { column_name: 'notes', column_type: 'Text', label: 'Notes' },
+        { column_name: 'items', column_type: 'Sub-table', label: 'Items', row_table: ROW },
+      ],
+    }],
+  ]
+  for (const [name, def] of defs) {
+    const metaDef = await request.get(`/api/table/${encodeURIComponent(name)}:meta`, { headers: auth })
+    if (metaDef.status() === 404) await request.post('/api/table_def', { headers: auth, data: def })
+  }
 
   for (const c of ['Globex Ltd', 'Acme Ltd']) {
     const res = await request.post(`/api/table/${encodeURIComponent(CUST)}`, {
