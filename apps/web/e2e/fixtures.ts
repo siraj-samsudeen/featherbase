@@ -92,6 +92,24 @@ export async function loginAs(
   await page.waitForURL(landing)
 }
 
+/**
+ * Wait until this page's realtime socket holds a SERVER-ACKNOWLEDGED
+ * subscription to `channel`.
+ *
+ * A subscribe frame is asynchronous: an event published before the server
+ * has authorized and recorded the channel is simply missed. The realtime
+ * client mirrors the channels the server acked onto
+ * `<html data-realtime-channels>` (#224), so a spec that is about to make
+ * *another* session publish can wait on that fact instead of sleeping a
+ * second and hoping.
+ */
+export async function waitForRealtime(page: Page, channel: string): Promise<void> {
+  await page.waitForFunction((ch) => {
+    const raw = document.documentElement.dataset.realtimeChannels
+    return !!raw && (JSON.parse(raw) as string[]).includes(ch)
+  }, channel)
+}
+
 interface AuthWorkerFixtures {
   /** Path to the storageState captured by signing in once per worker. */
   adminStorageState: string
