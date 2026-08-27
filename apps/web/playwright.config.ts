@@ -70,6 +70,9 @@ export default defineConfig({
   use: {
     baseURL,
     launchOptions: chromiumPath ? { executablePath: chromiumPath } : {},
+    // Retain screenshots and traces on failure so CI failures leave something to examine.
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
   },
   webServer: isolated
     ? [

@@ -7,11 +7,18 @@ const NEW_DT = 'Builder Widget'
 test.beforeAll(async ({ request }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const token = ((await login.json()) as { token: string }).token
-  // Best-effort cleanup so the create path is exercised fresh each run.
-  await request.fetch(`/api/table_def/${encodeURIComponent(NEW_DT)}`, {
-    method: 'DELETE',
+  // Pre-clean leftovers so the create path is exercised fresh each run.
+  // Cleanup failures surface loudly rather than skip quietly.
+  const enc = encodeURIComponent(NEW_DT)
+  const exists = await request.get(`/api/table/${enc}:meta`, {
     headers: { Authorization: `Bearer ${token}` },
-  }).catch(() => {})
+  })
+  if (exists.status() === 200) {
+    const res = await request.delete(`/api/table_def/${enc}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    expect(res.status(), `pre-clean: deleting leftover Table ${NEW_DT}`).toBe(200)
+  }
 })
 
 test('UI-011: create a Table with 5 fields from the Admin; list+form work immediately', async ({ page, request }) => {
