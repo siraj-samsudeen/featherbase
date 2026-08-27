@@ -1,6 +1,39 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { app } from '../src/index'
 import { sql } from '../src/db'
-import { areq } from './helpers'
+
+// NOT sandbox-migrated (see below), so this file authenticates directly
+// against the real app instead of using the pg-test fixtures. All API routes
+// require a session (API-004); authenticate once as Administrator and reuse
+// the token.
+let cached: string | undefined
+
+async function token(): Promise<string> {
+  if (!cached) {
+    const res = await app.request('/api/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        usr: 'Administrator',
+        pwd: process.env.ADMIN_PASSWORD ?? 'admin',
+      }),
+    })
+    if (res.status !== 200) throw new Error(`test login failed: ${res.status}`)
+    cached = ((await res.json()) as { token: string }).token
+  }
+  return cached
+}
+
+async function areq(path: string, init: RequestInit = {}) {
+  return app.request(path, {
+    ...init,
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${await token()}`,
+      ...((init.headers as Record<string, string>) ?? {}),
+    },
+  })
+}
 
 // META-004 regression (evaluator pass #6): after a schema sync ALTERs a
 // table, warm pooled connections used to 500 once each with PG 0A000

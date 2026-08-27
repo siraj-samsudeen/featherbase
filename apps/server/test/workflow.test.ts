@@ -2,6 +2,8 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
+import { saveDoc } from '../src/document'
+import { initDocState } from '../src/workflow'
 
 // WF-001/002/003: workflow definition, execution, and server-side role
 // enforcement.
@@ -145,5 +147,69 @@ describe('WF-002/003: execution + server-side enforcement', () => {
     await expect(
       admin.post(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent('wf-srv-1')}:apply_workflow_action`, { action: 'Submit' }),
     ).rejects.toMatchObject({ status: 417 })
+  })
+})
+
+// Moved from coverage-gaps.test.ts (#221): workflow definition edges and the
+// initDocState backfill for pre-existing documents.
+describe('workflow: definition validation edges', () => {
+  test('a workflow with no states and a transition FROM an unknown state are rejected', async ({
+    admin,
+  }) => {
+    const DT = 'Cov WfDef Note'
+    await admin.post('/api/table_def', {
+      name: DT,
+      columns: [{ column_name: 'title', column_type: 'Data' }],
+    })
+    await expect(
+      admin.post('/api/save_row', {
+        table: 'Workflow',
+        row: { row_id: 'Cov Empty Flow', ref_table: DT, is_active: false, states: [], transitions: [] },
+      }),
+    ).rejects.toMatchObject({ status: 417 })
+    await expect(
+      admin.post('/api/save_row', {
+        table: 'Workflow',
+        row: {
+          row_id: 'Cov From Ghost Flow',
+          ref_table: DT,
+          is_active: false,
+          states: [{ state: 'A', target_status: 'draft' }],
+          transitions: [{ state: 'Ghost', action: 'Go', next_state: 'A', allowed: 'System Manager' }],
+        },
+      }),
+    ).rejects.toMatchObject({ status: 417 })
+  })
+})
+
+describe('workflow: initDocState backfill', () => {
+  test('existing docs without a state are pointed at the initial state', async ({ admin }) => {
+    const DT = 'Cov Init Note'
+    await admin.post('/api/table_def', {
+      name: DT,
+      columns: [
+        { column_name: 'title', column_type: 'Data' },
+        { column_name: 'note_status', column_type: 'Choice', choices: 'Open\nDone', default_value: 'Open' },
+      ],
+    })
+    const doc = await saveDoc(DT, { title: 'pre-workflow' }, 'Administrator')
+    await sql`update cov_init_note set note_status = null where row_id = ${String(doc.row_id)}`
+    await admin.post('/api/save_row', {
+      table: 'Workflow',
+      row: {
+        row_id: 'Cov Init Flow',
+        ref_table: DT,
+        is_active: true,
+        state_field: 'note_status',
+        states: [
+          { state: 'Open', target_status: 'draft' },
+          { state: 'Done', target_status: 'draft' },
+        ],
+        transitions: [{ state: 'Open', action: 'Finish', next_state: 'Done', allowed: 'System Manager' }],
+      },
+    })
+    await initDocState(DT)
+    const [row] = await sql`select note_status from cov_init_note where row_id = ${String(doc.row_id)}`
+    expect(row.note_status).toBe('Open')
   })
 })
