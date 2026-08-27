@@ -4,9 +4,15 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
-    "test": "echo 'covered by server tests'"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
   }
 }
