@@ -58,6 +58,9 @@ interface SheetPlan {
   // is how the column step knows to render one card instead of three.
   members: number[]
   groupedInto: number | null
+  // #203: this target's own failure, if it threw. Kept per target so one
+  // sheet's problem cannot erase another's result.
+  failure: string | null
   // #211: columns the USER declared to be one, which folding could never
   // work out — `Store Code` and `Store Name` are the same store to them and
   // to nothing else. Applied on top of the folded set, so the column grid,
@@ -671,6 +674,10 @@ export function ImportWizard() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  // #203: what the whole run did — stated whenever it STOPS, not only when
+  // every target succeeded, so a partial failure still reports and still
+  // shows the way on.
+  const [runOutcome, setRunOutcome] = useState<{ imported: number; failed: string[] } | null>(null)
   // #199: the wizard is two steps now. 'overview' answers "what is in this
   // file?"; 'columns' is the existing per-sheet work, over the chosen sheets
   // only. A CSV (one sheet) skips the overview — there is nothing to choose.
@@ -705,7 +712,9 @@ export function ImportWizard() {
   })
 
   function setPlan(i: number, patch: Partial<SheetPlan>) {
-    setPlans((ps) => ps.map((p, j) => (j === i ? { ...p, ...patch, check: null, result: null } : p)))
+    setPlans((ps) =>
+      ps.map((p, j) => (j === i ? { ...p, ...patch, check: null, result: null, failure: null } : p)),
+    )
     // A changed plan invalidates a pending typed confirmation — its total
     // was computed for the previous mapping/key.
     setConfirmUpdates(null)
@@ -775,6 +784,7 @@ export function ImportWizard() {
             members: [] as number[], // filled below, once the index is known
             groupedInto: null as number | null,
             combines: [] as ColumnCombine[],
+            failure: null as string | null,
           } satisfies SheetPlan
         })
       // #200: remember what was worked out, then park every sheet. A single
@@ -904,6 +914,7 @@ export function ImportWizard() {
                 members: chosen,
                 groupedInto: null,
                 combines: [],
+                failure: null,
                 inferred,
                 include: inferred.columns.map(() => true),
                 auto_matched: false,
@@ -1078,6 +1089,8 @@ export function ImportWizard() {
 
   async function runImport(confirmed = false) {
     setError(null)
+    setRunOutcome(null)
+    setPlans((ps) => ps.map((p) => ({ ...p, failure: null })))
     setBusy('Importing…')
     try {
       // UPS-H1: a run about to update more than CONFIRM_UPDATES_OVER rows
@@ -1105,8 +1118,15 @@ export function ImportWizard() {
         }
       }
       setConfirmUpdates(null)
+      // #203: a target's failure belongs to THAT target. The loop used to sit
+      // inside one try, so a throw on sheet 2 left sheets 3..n unattempted and
+      // unreported, and skipped the completion block — taking with it the only
+      // link to the Import Log. Each target now fails on its own.
+      let imported = 0
+      const failedTargets: string[] = []
       for (const [i, plan] of plans.entries()) {
         if (plan.mode === 'skip' || plan.groupedInto !== null) continue
+        try {
         if (plan.mode === 'new') {
           await api.post('/api/table_def', {
             name: plan.table,
@@ -1170,17 +1190,32 @@ export function ImportWizard() {
               : p,
           ),
         )
+        imported += 1
+        } catch (err) {
+          // Recorded, named, and the run continues. A target that threw is
+          // not the same as one that imported nothing, so it says which.
+          failedTargets.push(plan.table)
+          const message = err instanceof ApiError ? err.message : 'Import failed'
+          setPlans((ps) =>
+            ps.map((p, j) => (j === i ? { ...p, failure: message } : p)),
+          )
+        }
       }
+      setRunOutcome({ imported, failed: failedTargets })
       await queryClient.invalidateQueries({ queryKey: ['tables'] })
       await queryClient.invalidateQueries({ queryKey: ['import-targets'] })
-      setDone(true)
+      // #203: `done` retires the Import button, so it must not latch on a
+      // partial failure — the whole point is that the run can be fixed and
+      // tried again without starting over.
+      setDone(failedTargets.length === 0)
       const active = plans.filter((p) => p.mode !== 'skip' && p.groupedInto === null)
       // Auto-navigation exists because a lone sheet leaves nothing else to
       // look at. #201: a merge group is one target but many sheets, and its
       // result is a per-sheet summary with ONE revert control for the whole
       // group — jumping to the list view would destroy the only place either
       // can be read, which is the complaint this work started from.
-      if (active.length === 1 && active[0].members.length === 1) {
+      // #203: and never navigate away from a failure the user has not read.
+      if (!failedTargets.length && active.length === 1 && active[0].members.length === 1) {
         navigate({
           to: '/admin/$table',
           params: { table: active[0].table },
@@ -1242,6 +1277,23 @@ export function ImportWizard() {
       </div>
 
       {search.table && sheets.length === 0 && <RunHistory table={search.table} />}
+
+      {/* #205: the only link to the Import Log used to live inside the
+          completion block, which renders only when NOTHING failed — so the
+          one situation where the log matters most was the one that hid it.
+          It is present from the moment a file is loaded, and after. */}
+      <p className="mb-3 text-xs text-gray-500">
+        <Link
+          to="/admin/$table"
+          params={{ table: 'Import Log' }}
+          search={{ filters: undefined }}
+          className="underline"
+          data-testid="iw-history-link"
+        >
+          View import history
+        </Link>
+        {' — every import that has run, with what it created and how to undo it.'}
+      </p>
 
       {/* #199: the overview owns the whole screen while it is up — showing
           column grids underneath it would be the wall of controls it exists
@@ -1993,6 +2045,14 @@ export function ImportWizard() {
                 )}
               </div>
             )}
+            {plan.failure && (
+              <div
+                className="mt-2 rounded bg-[var(--color-danger-tint)] px-2 py-1 text-sm text-[var(--color-danger)]"
+                data-testid={`iw-failure-${i}`}
+              >
+                ✗ {plan.table} failed — {plan.failure}
+              </div>
+            )}
             {plan.result && (
               <div className="mt-2 text-sm" data-testid={`iw-result-${i}`}>
                 {/* UPS-J1.5: completion reports updated / inserted / failed
@@ -2031,18 +2091,14 @@ export function ImportWizard() {
           {error}
         </p>
       )}
-      {done && (
-        <p className="mt-2 text-sm text-green-700" data-testid="iw-done">
-          Import complete.{' '}
-          <Link
-            to="/admin/$table"
-            params={{ table: 'Import Log' }}
-            search={{ filters: undefined }}
-            className="underline"
-            data-testid="iw-history-link"
-          >
-            View import history
-          </Link>
+      {runOutcome && (
+        <p
+          className={`mt-2 text-sm ${runOutcome.failed.length ? 'text-[var(--color-danger)]' : 'text-green-700'}`}
+          data-testid="iw-done"
+        >
+          {runOutcome.failed.length === 0
+            ? 'Import complete.'
+            : `Imported ${runOutcome.imported}; ${runOutcome.failed.length} failed: ${runOutcome.failed.join(', ')}.`}
         </p>
       )}
 
