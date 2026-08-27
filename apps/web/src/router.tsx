@@ -35,6 +35,7 @@ import { TableBuilder } from './pages/TableBuilder'
 import { ImportWizard } from './pages/ImportWizard'
 import { ImportBatches } from './pages/ImportBatches'
 import { ColumnEditor } from './pages/ColumnEditor'
+import { TableMerge } from './pages/TableMerge'
 import { AllTablesPage } from './pages/AllTables'
 import SourceBrowser from './pages/SourceBrowser'
 import { PrototypeConnectSourcePage } from './pages/PrototypeConnectSource'
@@ -267,6 +268,17 @@ const columnsRoute = createRoute({
   component: () => (
     <div data-testid="table-page">
       <ColumnEditor />
+    </div>
+  ),
+})
+
+// #208: merge this Table's rows into another, column by column.
+const mergeRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: '$table/merge',
+  component: () => (
+    <div data-testid="table-page">
+      <TableMerge />
     </div>
   ),
 })
@@ -695,5 +707,5 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, tableRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, tableRoute, docRoute]),
 ])
