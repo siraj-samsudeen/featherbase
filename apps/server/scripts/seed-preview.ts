@@ -1,8 +1,9 @@
 // Seed a dev-preview deployment: the named user the /preview link signs in
 // as, plus a little data so the app is not an empty shell on arrival.
 //
-// Idempotent by construction — it runs on every deploy of the preview
-// service, so a second run must converge rather than fail or duplicate.
+// Idempotent by construction, and gated: it runs in the pre-deploy step of
+// EVERY environment, so it must converge on a second run and do nothing at
+// all where preview sign-in is not configured.
 //
 // The user is deliberately NOT Administrator. Administrator is break-glass
 // (#130) and preview.ts refuses to hand it out; a preview should show the app
@@ -16,16 +17,14 @@ import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { setUserPassword } from '../src/auth'
 import { createTable } from '../src/table-engine'
+import { previewLogin } from '../src/preview'
 
-const EMAIL = process.env.PREVIEW_LOGIN_USER?.trim() || 'preview@featherbase.dev'
 const FULL_NAME = process.env.PREVIEW_USER_NAME?.trim() || 'Preview Visitor'
 
-async function ensureUser(): Promise<void> {
-  if (EMAIL === 'Administrator') throw new Error('PREVIEW_LOGIN_USER must not be Administrator')
-
+async function ensureUser(email: string): Promise<void> {
   const [existing] = await sql`
     select row_id, enabled from "user"
-    where lower(row_id) = lower(${EMAIL}) or lower(email) = lower(${EMAIL})`
+    where lower(row_id) = lower(${email}) or lower(email) = lower(${email})`
 
   if (existing) {
     // Converge rather than recreate: a re-deploy must not reset a session or
@@ -38,8 +37,8 @@ async function ensureUser(): Promise<void> {
   await saveDoc(
     'User',
     {
-      row_id: EMAIL,
-      email: EMAIL,
+      row_id: email,
+      email,
       full_name: FULL_NAME,
       enabled: true,
       roles: [{ role: 'System Manager' }, { role: 'All' }],
@@ -51,8 +50,8 @@ async function ensureUser(): Promise<void> {
   // it a random one anyway: an account with no password at all is a different
   // and worse thing to leave lying around, and login() already refuses a
   // password-less account.
-  await setUserPassword(EMAIL, randomBytes(24).toString('base64url'))
-  console.log(`created preview user ${EMAIL} (System Manager, not Administrator)`)
+  await setUserPassword(email, randomBytes(24).toString('base64url'))
+  console.log(`created preview user ${email} (System Manager, not Administrator)`)
 }
 
 // A Table the import wizard can be pointed at, so "import into an existing
@@ -80,7 +79,21 @@ async function ensureDemoTable(): Promise<void> {
 }
 
 async function main() {
-  await ensureUser()
+  // Gated on the SAME resolution the /preview route uses, because this now
+  // runs on every deploy of every environment (see railway.json). A
+  // deployment that is not a preview must not grow a preview account: that
+  // account exists to be signed into by anyone holding a link, so creating
+  // one where no link can work is pure attack surface for no benefit.
+  //
+  // Deliberately not "default the email and seed anyway" — a default here
+  // would put preview@featherbase.dev into production the first time someone
+  // wires this release step up.
+  const config = previewLogin()
+  if (!config) {
+    console.log('preview sign-in is not configured here — nothing to seed')
+    return
+  }
+  await ensureUser(config.user)
   await ensureDemoTable()
   console.log('preview seed complete')
 }

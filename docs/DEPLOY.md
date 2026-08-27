@@ -91,13 +91,18 @@ to the API on the same origin, so a separate host must reverse-proxy `/api`
 to that host's origin. Prefer the single-origin image above unless you have
 a reason not to.
 
-## Dev-preview deployments
+## Preview deployments
 
-A second service tracking a `dev-preview` branch, with its own Postgres, so
-in-progress work can be clicked rather than described. Sign-in is one link,
-as an ordinary named user rather than Administrator. Two extra variables
-(`PREVIEW_LOGIN_KEY`, `PREVIEW_LOGIN_USER`) switch it on; without them the
-route 404s and nothing changes. Full runbook: [PREVIEW.md](PREVIEW.md).
+In-progress work that can be clicked rather than described. Sign-in is one
+link, as an ordinary named user rather than Administrator. Two extra
+variables (`PREVIEW_LOGIN_KEY`, `PREVIEW_LOGIN_USER`) switch it on; without
+them the route 404s, the deploy-time seed does nothing, and nothing else
+changes.
+
+Railway PR environments give every pull request its own copy with its own
+empty database, which is the usual route; a service tracking a `dev-preview`
+branch gives a stable always-on URL. Full runbook:
+[PREVIEW.md](PREVIEW.md).
 
 ## Automation credentials (#131)
 
