@@ -7,6 +7,8 @@ import {
   autoMapColumns,
   coerceRows,
   inferTableDef,
+  applyColumnCombines,
+  combineOverlap,
   mergeSheetHeaders,
   mergeSheetRows,
   scoreTableMatch,
@@ -15,6 +17,7 @@ import {
   tableMatchQuality,
   tableNameFromFile,
   type CoercedRow,
+  type ColumnCombine,
   type InferredTableDef,
   type TableMatchQuality,
 } from 'shared'
@@ -55,6 +58,11 @@ interface SheetPlan {
   // is how the column step knows to render one card instead of three.
   members: number[]
   groupedInto: number | null
+  // #211: columns the USER declared to be one, which folding could never
+  // work out — `Store Code` and `Store Name` are the same store to them and
+  // to nothing else. Applied on top of the folded set, so the column grid,
+  // the inference and the projection all see the result.
+  combines: ColumnCombine[]
   // mode new: the Table name to create; mode existing: the target Table.
   table: string
   // Per file column, new-Table mode: import this column at all? (Existing
@@ -671,6 +679,11 @@ export function ImportWizard() {
   // everything by default is what created eleven unwanted Tables.
   const [selected, setSelected] = useState<boolean[]>([])
   const [ovRefused, setOvRefused] = useState(false)
+  // #211: which columns are ticked for combining, keyed `${target}:${key}`
+  // so two cards cannot collide. UI-only — the decision lands in the plan.
+  const [combinePick, setCombinePick] = useState<Record<string, boolean>>({})
+  const [combineName, setCombineName] = useState('')
+  const [combineRule, setCombineRule] = useState<'first' | 'join'>('first')
   const [groupMode, setGroupMode] = useState<GroupMode>('separate')
   const [mergeName, setMergeName] = useState('')
   // The plan each sheet had when the file was read. Deselecting a sheet parks
@@ -761,6 +774,7 @@ export function ImportWizard() {
             result: null,
             members: [] as number[], // filled below, once the index is known
             groupedInto: null as number | null,
+            combines: [] as ColumnCombine[],
           } satisfies SheetPlan
         })
       // #200: remember what was worked out, then park every sheet. A single
@@ -809,15 +823,18 @@ export function ImportWizard() {
   // #201: the merged column set for a group — every member's headers folded
   // together and their rows projected onto the result. One sheet's group is
   // just that sheet, so this is the single path both cases take.
-  function mergedColumnsFor(members: number[]) {
-    return mergeSheetHeaders(members.map((m) => sheets[m].headers))
+  function mergedColumnsFor(plan: SheetPlan) {
+    return applyColumnCombines(
+      mergeSheetHeaders(plan.members.map((m) => sheets[m].headers)),
+      plan.combines,
+    )
   }
 
   // A group behaves like one sheet from here on: same shape, so the grid, the
   // mapping, the type inference and the coercion all read it unchanged.
   function effectiveSheet(plan: SheetPlan, i: number): ParsedSheet {
     if (plan.members.length < 2) return sheets[i]
-    const cols = mergedColumnsFor(plan.members)
+    const cols = mergedColumnsFor(plan)
     return {
       sheetName: plan.table,
       headers: cols.map((c) => c.label),
@@ -832,7 +849,7 @@ export function ImportWizard() {
   // headerExcelRow, which is what makes a failed row's number true (#115).
   function memberSheet(plan: SheetPlan, m: number): ParsedSheet {
     if (plan.members.length < 2) return sheets[m]
-    const cols = mergedColumnsFor(plan.members)
+    const cols = mergedColumnsFor(plan)
     return {
       sheetName: sheets[m].sheetName,
       headers: cols.map((c) => c.label),
@@ -843,6 +860,24 @@ export function ImportWizard() {
       headerExcelRow: sheets[m].headerExcelRow,
       visibility: sheets[m].visibility,
     }
+  }
+
+  // #211: changing a combine changes the column SET, so the inferred
+  // definition and the include flags are rebuilt from it. Type inference runs
+  // over the combined values — a column made of `Store Code` and
+  // `Store Name` is Data even where each source alone might have read as
+  // something narrower.
+  function setCombines(i: number, combines: ColumnCombine[]) {
+    setPlans((ps) =>
+      ps.map((p, j) => {
+        if (j !== i) return p
+        const next = { ...p, combines }
+        const cols = mergedColumnsFor(next)
+        const rows = mergeSheetRows(cols, next.members.map((m) => sheets[m].rows))
+        const inferred = inferTableDef(next.table, cols.map((c) => c.label), rows)
+        return { ...next, inferred, include: inferred.columns.map(() => true), check: null, result: null }
+      }),
+    )
   }
 
   function leaveOverview() {
@@ -856,7 +891,7 @@ export function ImportWizard() {
     if (groupMode === 'merge' && chosen.length >= 2) {
       const lead = chosen[0]
       const name = mergeName.trim() || 'Imported Table'
-      const cols = mergedColumnsFor(chosen)
+      const cols = mergeSheetHeaders(chosen.map((m) => sheets[m].headers))
       const rows = mergeSheetRows(cols, chosen.map((m) => sheets[m].rows))
       const inferred = inferTableDef(name, cols.map((c) => c.label), rows)
       setPlans((ps) =>
@@ -868,6 +903,7 @@ export function ImportWizard() {
                 table: name,
                 members: chosen,
                 groupedInto: null,
+                combines: [],
                 inferred,
                 include: inferred.columns.map(() => true),
                 auto_matched: false,
@@ -1256,6 +1292,12 @@ export function ImportWizard() {
         // mapping and the preview all read one shape.
         const merged = plan.members.length > 1
         const sheet = merged ? effectiveSheet(plan, i) : rawSheet
+        // Index-aligned with plan.inferred.columns: the grid's row N is this
+        // merged column, and combines are expressed in its key.
+        const groupColumns = merged ? mergedColumnsFor(plan) : []
+        const pickedKeys = groupColumns
+          .map((c) => c.key)
+          .filter((k) => combinePick[`${i}:${k}`])
         // A failed row's number is only true against the sheet it came from.
         const failLabel = (f: { sheetIndex: number; sourceIndex: number; message: string }) => {
           const from = sheets[f.sheetIndex] ?? rawSheet
@@ -1330,7 +1372,7 @@ export function ImportWizard() {
                   // sheet is only "missing" a column when nothing it has folds
                   // to it — and then its rows leave that column empty. Say so
                   // here rather than letting blanks appear unexplained.
-                  const cols = mergedColumnsFor(plan.members)
+                  const cols = mergedColumnsFor(plan)
                   const absent = cols.filter((c) => c.from[k] === -1)
                   return (
                     <span key={m} className="mr-3 inline-block">
@@ -1380,6 +1422,11 @@ export function ImportWizard() {
                 <table className="w-full text-sm" data-testid={`iw-new-grid-${i}`}>
                   <thead className="bg-gray-50 text-left text-xs text-gray-600">
                     <tr>
+                      {merged && (
+                        <th className="px-2 py-1" title="Tick two to combine them">
+                          Join
+                        </th>
+                      )}
                       <th className="px-2 py-1">Use</th>
                       <th className="px-2 py-1">File column</th>
                       <th className="px-2 py-1">Label</th>
@@ -1397,6 +1444,7 @@ export function ImportWizard() {
                       className="border-t border-gray-100 bg-blue-50/60"
                       data-testid={`iw-row-id-${i}`}
                     >
+                      {merged && <td />}
                       <td className="px-2 py-1 text-center text-gray-400" title="always present">
                         🔒
                       </td>
@@ -1430,6 +1478,22 @@ export function ImportWizard() {
                         data-columnrow=""
                         className={`border-t border-gray-100 ${plan.include[ci] ? '' : 'opacity-40'}`}
                       >
+                        {merged && (
+                          <td className="px-2 py-1 text-center">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(combinePick[`${i}:${groupColumns[ci]?.key ?? ci}`])}
+                              onChange={(e) =>
+                                setCombinePick((prev) => ({
+                                  ...prev,
+                                  [`${i}:${groupColumns[ci]?.key ?? ci}`]: e.target.checked,
+                                }))
+                              }
+                              data-testid={`iw-combine-pick-${i}-${ci}`}
+                              aria-label={`Combine ${c.label || c.column_name}`}
+                            />
+                          </td>
+                        )}
                         <td className="px-2 py-1 text-center">
                           <input
                             type="checkbox"
@@ -1511,6 +1575,162 @@ export function ImportWizard() {
                     ))}
                   </tbody>
                 </table>
+
+                {/* #211: the user's own column knowledge, which folding could
+                    never supply. Two ticks and a name; the sample values are
+                    there so "are these the same thing?" is answered rather
+                    than guessed. */}
+                {merged && (
+                  <div className="mt-2" data-testid={`iw-combine-${i}`}>
+                    {groupColumns.some((c) => c.combinedKeys) && (
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        {groupColumns
+                          .filter((c) => c.combinedKeys)
+                          .map((c) => (
+                            <span
+                              key={c.key}
+                              className="fc-pill bg-[var(--color-brand-tint)] text-[var(--color-brand-dark)]"
+                              data-testid={`iw-combined-${i}-${c.label}`}
+                            >
+                              {c.label} — combined by you
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setCombines(
+                                    i,
+                                    plan.combines.filter(
+                                      (x) => x.keys.join('+') !== (c.combinedKeys ?? []).join('+'),
+                                    ),
+                                  )
+                                }
+                                data-testid={`iw-uncombine-${i}`}
+                                className="ml-1 underline"
+                              >
+                                undo
+                              </button>
+                            </span>
+                          ))}
+                      </div>
+                    )}
+
+                    {pickedKeys.length >= 2 ? (
+                      (() => {
+                        const overlap = combineOverlap(groupColumns, pickedKeys)
+                        const names = pickedKeys.map(
+                          (k) => groupColumns.find((c) => c.key === k)?.label ?? k,
+                        )
+                        return (
+                          <div className="rounded border border-[var(--color-border-strong)] bg-[var(--color-subtle)] p-2">
+                            <div className="mb-1 text-sm font-medium text-[var(--color-ink)]">
+                              Combine {names.join(' + ')} into one column
+                            </div>
+                            {/* Sample values: the reason to believe, or not. */}
+                            <div className="mb-2 text-xs text-[var(--color-ink-muted)]">
+                              {pickedKeys.map((k) => {
+                                const col = groupColumns.find((c) => c.key === k)
+                                const from = col?.from.findIndex((x) => x !== -1) ?? -1
+                                const sample =
+                                  from >= 0 && col
+                                    ? sheets[plan.members[from]].rows
+                                        .map((r) => r[col.from[from]])
+                                        .filter((v) => v != null && String(v).trim() !== '')
+                                        .slice(0, 4)
+                                        .map((v) => String(v))
+                                        .join(' · ')
+                                    : ''
+                                return (
+                                  <div key={k} data-testid={`iw-combine-sample-${i}-${k}`}>
+                                    <strong>{col?.label ?? k}</strong>: {sample || '(no values)'}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                            {overlap.length > 0 ? (
+                              <div className="mb-2" data-testid={`iw-combine-overlap-${i}`}>
+                                <div className="mb-1 rounded bg-[var(--color-warn-tint)] px-2 py-1 text-xs text-[var(--color-warn)]">
+                                  {overlap.map((sh) => sheets[plan.members[sh]].sheetName).join(', ')}{' '}
+                                  {overlap.length === 1 ? 'has' : 'have'} more than one of these.
+                                  Those rows need a rule.
+                                </div>
+                                <label className="mr-3 text-xs">
+                                  <input
+                                    type="radio"
+                                    name={`iw-combine-rule-${i}`}
+                                    checked={combineRule === 'first'}
+                                    onChange={() => setCombineRule('first')}
+                                    data-testid={`iw-combine-rule-first-${i}`}
+                                    className="mr-1 accent-[var(--color-brand)]"
+                                  />
+                                  Use {names[0]}, falling back to {names[1]}
+                                </label>
+                                <label className="text-xs">
+                                  <input
+                                    type="radio"
+                                    name={`iw-combine-rule-${i}`}
+                                    checked={combineRule === 'join'}
+                                    onChange={() => setCombineRule('join')}
+                                    data-testid={`iw-combine-rule-join-${i}`}
+                                    className="mr-1 accent-[var(--color-brand)]"
+                                  />
+                                  Join them
+                                </label>
+                              </div>
+                            ) : (
+                              <div
+                                className="mb-2 rounded bg-[var(--color-good-tint)] px-2 py-1 text-xs text-[var(--color-good)]"
+                                data-testid={`iw-combine-no-overlap-${i}`}
+                              >
+                                No sheet has more than one of these, so every row takes whichever
+                                it has. Nothing to resolve.
+                              </div>
+                            )}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="fc-label m-0">New column name</span>
+                              <input
+                                value={combineName || names[0]}
+                                onChange={(e) => setCombineName(e.target.value)}
+                                data-testid={`iw-combine-name-${i}`}
+                                className="fc-input w-48 py-1"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCombines(i, [
+                                    ...plan.combines,
+                                    {
+                                      name: (combineName || names[0]).trim(),
+                                      keys: pickedKeys,
+                                      rule: overlap.length ? combineRule : 'first',
+                                    },
+                                  ])
+                                  setCombinePick({})
+                                  setCombineName('')
+                                }}
+                                data-testid={`iw-combine-go-${i}`}
+                                className="fc-btn-primary py-1"
+                              >
+                                Combine
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setCombinePick({})}
+                                className="fc-btn py-1"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })()
+                    ) : (
+                      <p className="text-xs text-[var(--color-ink-faint)]">
+                        Tick two columns in the <strong>Join</strong> column to declare them one —
+                        for names Featherbase cannot match on its own, like a store code and a
+                        store name.
+                      </p>
+                    )}
+                  </div>
+                )}
               </>
             ) : (
               <>

@@ -5,6 +5,9 @@ export {
   inferChoices,
   inferColumnType,
   inferTableDef,
+  applyColumnCombines,
+  combineOverlap,
+  COMBINE_JOIN_SEPARATOR,
   mergeSheetHeaders,
   mergeSheetRows,
   idPatternFor,
@@ -21,6 +24,7 @@ export {
   type InferredColumn,
   type InferredTableDef,
   type MergedColumn,
+  type ColumnCombine,
   type MappingTarget,
   type TableMatchQuality,
 } from './import'
