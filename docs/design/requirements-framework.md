@@ -412,10 +412,11 @@ other verbs. Until it ships, 0.2.0's `step(name, fn)` escape hatch can
 host an interim capture (`step('snap IMP-J1.4', ({ page }) =>
 page.screenshot(...))`) without leaving the chain.
 
-Exemplar: [`docs/manual/spreadsheet-import.md`](../manual/spreadsheet-import.md)
-— hand-rendered once to fix the target output; the generator that derives
-it from the spec's journey tables is adoption work, built only after the
-format survives review.
+Exemplar: [`docs/manual/spreadsheet-import.html`](../manual/spreadsheet-import.html)
+— hand-rendered once to fix the target output (now an interactive HTML
+field guide, same slot contract); the generator that derives it from the
+spec's journey tables is adoption work, built only after the format
+survives review.
 
 ---
 

@@ -1,0 +1,1196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spreadsheet Import Field Guide</title>
+<!--
+  This page IS the manual (it replaced spreadsheet-import.md). Open it from
+  a local server so the relative links work, e.g. from the repo root:
+    python3 -m http.server 4317 -d docs/manual
+  then http://localhost:4317/spreadsheet-import.html
+
+  Slot contract (unchanged): every screenshot lives at shots/<step-id>.png.
+  While a slot's PNG does not exist, the mono sketch beside it is shown.
+  Running a journey's e2e test with SNAP=1 writes real screenshots into the
+  slots; this page picks them up with no build step. Slots are declared as
+  `slot: <id> -> shots/<id>.png` comments, same as the old markdown.
+
+  Your ticks and matrix entries live in this browser's localStorage only —
+  use “Copy session as Markdown” to take findings with you.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root {
+  --ground: #f5f7f5;
+  --surface: #ffffff;
+  --surface-2: #eef2ee;
+  --ink: #22312a;
+  --muted: #5d6c64;
+  --faint: #8b978f;
+  --line: #dde4df;
+  --line-strong: #c3cec7;
+  --accent: #1e7a5a;
+  --accent-soft: #e2f0e9;
+  --accent-ink: #14513c;
+  --amber-ink: #8a5a0b;
+  --amber-soft: #f8efdd;
+  --fail-ink: #a63c2c;
+  --fail-soft: #f8e6e1;
+  --sketch-ink: #4a5a52;
+  --shadow: 0 1px 2px rgba(34, 49, 42, .06), 0 8px 24px rgba(34, 49, 42, .07);
+  --display: "Bricolage Grotesque", "Avenir Next", "Trebuchet MS", sans-serif;
+  --body: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #131916;
+    --surface: #1b221e;
+    --surface-2: #202924;
+    --ink: #e4eae5;
+    --muted: #9aa8a0;
+    --faint: #74827a;
+    --line: #2b352f;
+    --line-strong: #3c4841;
+    --accent: #52c093;
+    --accent-soft: #1d3a2e;
+    --accent-ink: #7fd6b2;
+    --amber-ink: #e0aa54;
+    --amber-soft: #3a2f1a;
+    --fail-ink: #e08a76;
+    --fail-soft: #3f241e;
+    --sketch-ink: #aebbb2;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #131916;
+  --surface: #1b221e;
+  --surface-2: #202924;
+  --ink: #e4eae5;
+  --muted: #9aa8a0;
+  --faint: #74827a;
+  --line: #2b352f;
+  --line-strong: #3c4841;
+  --accent: #52c093;
+  --accent-soft: #1d3a2e;
+  --accent-ink: #7fd6b2;
+  --amber-ink: #e0aa54;
+  --amber-soft: #3a2f1a;
+  --fail-ink: #e08a76;
+  --fail-soft: #3f241e;
+  --sketch-ink: #aebbb2;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 2rem; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  * { transition: none !important; animation: none !important; }
+}
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr);
+  max-width: 1180px;
+  margin: 0 auto;
+  gap: 2.5rem;
+  padding: 0 1.5rem;
+}
+
+/* ---------- rail ---------- */
+.rail {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100dvh;
+  overflow-y: auto;
+  padding: 2.2rem 0 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
+}
+.brand { font-family: var(--display); }
+.brand .eyebrow {
+  display: block;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: .3rem;
+}
+.brand .name { font-size: 1.15rem; font-weight: 700; line-height: 1.25; }
+.toc { display: flex; flex-direction: column; gap: .12rem; font-family: var(--display); }
+.toc a {
+  display: flex;
+  align-items: baseline;
+  gap: .55rem;
+  padding: .34rem .6rem;
+  border-radius: 7px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: .84rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.toc a:hover { background: var(--surface-2); color: var(--ink); }
+.toc .part {
+  margin-top: .8rem;
+  padding: 0 .6rem;
+  font-size: .66rem;
+  font-weight: 600;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.toc .jnum {
+  font-family: var(--mono);
+  font-size: .7rem;
+  color: var(--faint);
+  min-width: 1.1em;
+}
+.toc .prog {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: .66rem;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.toc .prog.done { color: var(--accent); font-weight: 600; }
+.rail-tools {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1.1rem;
+}
+.switch {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  font-family: var(--display);
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.switch input { position: absolute; opacity: 0; }
+.switch .track {
+  flex: none;
+  width: 30px; height: 17px;
+  border-radius: 999px;
+  background: var(--line-strong);
+  position: relative;
+  transition: background .15s;
+}
+.switch .track::after {
+  content: "";
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 13px; height: 13px;
+  border-radius: 50%;
+  background: var(--surface);
+  transition: transform .15s;
+}
+.switch input:checked + .track { background: var(--amber-ink); }
+.switch input:checked + .track::after { transform: translateX(13px); }
+.switch input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- main column ---------- */
+main { padding: 2.6rem 0 5rem; max-width: 46rem; }
+header.hero { margin-bottom: 2.6rem; }
+h1 {
+  font-family: var(--display);
+  font-size: clamp(1.9rem, 4vw, 2.6rem);
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -.015em;
+  margin: 0 0 .9rem;
+  text-wrap: balance;
+}
+.hero p.lede { font-size: 1.13rem; color: var(--muted); margin: 0 0 1.2rem; max-width: 40rem; }
+h2 {
+  font-family: var(--display);
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  line-height: 1.2;
+  margin: 3.2rem 0 1rem;
+  text-wrap: balance;
+}
+h2 .partno {
+  display: block;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: .35rem;
+}
+h3 { font-family: var(--display); font-size: 1.08rem; font-weight: 700; margin: 1.8rem 0 .6rem; }
+p { margin: 0 0 1rem; }
+a { color: var(--accent-ink); text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent); text-underline-offset: 2px; }
+a:hover { text-decoration-color: var(--accent); }
+strong { font-weight: 600; }
+code, .mono { font-family: var(--mono); font-size: .86em; }
+code {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: .06em .32em;
+}
+ul { padding-left: 1.2rem; margin: 0 0 1rem; }
+li { margin-bottom: .45rem; }
+
+.chip {
+  display: inline-block;
+  font-family: var(--display);
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  padding: .1rem .5rem .14rem;
+  border-radius: 999px;
+  vertical-align: .12em;
+  white-space: nowrap;
+}
+.chip.c210 { background: var(--amber-soft); color: var(--amber-ink); }
+.chip.witnessed { background: var(--accent-soft); color: var(--accent-ink); }
+.chip.unwitnessed { background: var(--surface-2); color: var(--muted); border: 1px dashed var(--line-strong); }
+
+/* pipeline diagram */
+.pipeline {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 1.1rem 1.2rem;
+  overflow-x: auto;
+  margin: 0 0 1.2rem;
+}
+.pipeline pre {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: .78rem;
+  line-height: 1.55;
+  color: var(--sketch-ink);
+}
+.pipeline .hl { color: var(--accent-ink); font-weight: 600; }
+.pipeline .amber { color: var(--amber-ink); font-weight: 600; }
+
+/* tables */
+.tablewrap { overflow-x: auto; margin: 0 0 1.3rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
+table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+th {
+  font-family: var(--display);
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: left;
+  padding: .6rem .85rem;
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--surface-2);
+}
+td { padding: .55rem .85rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+td .mono { font-size: .78rem; color: var(--accent-ink); }
+
+/* journey sections */
+section.journey {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 1.6rem 1.8rem 1.2rem;
+  margin: 0 0 1.6rem;
+}
+section.journey h2 { margin: 0 0 .3rem; font-size: 1.3rem; }
+.jmeta { font-size: .85rem; color: var(--muted); font-style: italic; margin-bottom: .3rem; }
+.jsetup {
+  font-family: var(--display);
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: .5rem .8rem;
+  margin: .8rem 0 1.1rem;
+}
+.jsetup b { color: var(--ink); }
+
+.step { display: grid; grid-template-columns: 1.55rem 1fr; gap: .7rem; padding: .75rem 0; border-top: 1px solid var(--line); }
+.step:first-of-type { border-top: none; }
+.step > input[type="checkbox"] {
+  appearance: none;
+  margin: .2rem 0 0;
+  width: 1.15rem; height: 1.15rem;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  cursor: pointer;
+  position: relative;
+  flex: none;
+}
+.step > input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
+.step > input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute; inset: 2px 3px 4px;
+  border: solid var(--surface);
+  border-width: 0 2px 2px 0;
+  transform: rotate(40deg) translate(1px, -1px);
+}
+.step > input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.step.checked .stepbody > .steptitle { color: var(--muted); }
+.steptitle { font-weight: 600; font-family: var(--display); font-size: .95rem; cursor: pointer; }
+.stepbody p { font-size: .98rem; margin: .35rem 0 .6rem; }
+.stepbody p:last-child { margin-bottom: .2rem; }
+.see {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 8px 8px 0;
+  padding: .5rem .8rem;
+  font-size: .92rem;
+  margin: .5rem 0 .6rem;
+}
+.see b { font-family: var(--display); font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: var(--accent-ink); display: block; margin-bottom: .15rem; }
+
+.why {
+  border-top: 1px dashed var(--line-strong);
+  margin-top: 1rem;
+  padding: .85rem .2rem .2rem;
+  font-size: .95rem;
+  color: var(--muted);
+}
+.why b { font-family: var(--display); font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: var(--amber-ink); display: block; margin-bottom: .25rem; }
+
+/* shots and sketches */
+figure.shot { margin: .6rem 0 .4rem; }
+figure.shot img {
+  max-width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  cursor: zoom-in;
+  display: block;
+}
+figure.shot figcaption { font-size: .78rem; color: var(--faint); font-family: var(--mono); margin-top: .3rem; }
+.sketch {
+  background: var(--surface-2);
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  padding: .7rem .9rem;
+  overflow-x: auto;
+  margin: .5rem 0;
+}
+.sketch pre { margin: 0; font-family: var(--mono); font-size: .74rem; line-height: 1.5; color: var(--sketch-ink); }
+.sketch .slotname { font-family: var(--mono); font-size: .7rem; color: var(--faint); display: block; margin-bottom: .35rem; }
+
+dialog.lightbox { border: none; border-radius: 10px; padding: 0; background: transparent; max-width: min(96vw, 1280px); }
+dialog.lightbox img { width: 100%; display: block; border-radius: 10px; cursor: zoom-out; }
+dialog.lightbox::backdrop { background: rgba(10, 16, 13, .82); }
+
+/* #210 dimming */
+body.main-only .j210 { opacity: .38; }
+body.main-only section.journey.needs210 { opacity: .38; }
+body.main-only .j210 .see, body.main-only section.journey.needs210 .see { border-left-color: var(--line-strong); }
+
+/* matrix */
+.matrix select, .matrix input[type="text"] {
+  font-family: var(--display);
+  font-size: .84rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: .3rem .45rem;
+  width: 100%;
+}
+.matrix select:focus-visible, .matrix input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.matrix td { vertical-align: middle; }
+.matrix .datecell { font-family: var(--mono); font-size: .76rem; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.matrix tr.r-pass select { color: var(--accent-ink); background: var(--accent-soft); border-color: transparent; font-weight: 600; }
+.matrix tr.r-fail select { color: var(--fail-ink); background: var(--fail-soft); border-color: transparent; font-weight: 600; }
+.matrix tr.r-confused select { color: var(--amber-ink); background: var(--amber-soft); border-color: transparent; font-weight: 600; }
+.btnrow { display: flex; gap: .7rem; align-items: center; flex-wrap: wrap; margin: 1rem 0; }
+button.btn {
+  font-family: var(--display);
+  font-size: .84rem;
+  font-weight: 600;
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: .5rem .95rem;
+  cursor: pointer;
+}
+button.btn:hover { border-color: var(--accent); }
+button.btn.quiet { background: var(--surface-2); color: var(--muted); }
+button.btn.quiet:hover { border-color: var(--line-strong); color: var(--ink); }
+button.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#copynote { font-family: var(--display); font-size: .8rem; color: var(--accent-ink); }
+
+footer.colophon {
+  margin-top: 3rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1.2rem;
+  font-size: .88rem;
+  color: var(--muted);
+}
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 1fr; gap: 0; }
+  .rail { position: static; height: auto; padding-bottom: 0; }
+  .toc { display: none; }
+  .rail-tools { border-top: none; padding-top: 0; margin-top: .4rem; }
+  main { padding-top: 1rem; }
+  section.journey { padding: 1.2rem 1.1rem 1rem; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<nav class="rail" aria-label="Contents">
+  <div class="brand">
+    <span class="eyebrow">Featherbase · Manual</span>
+    <span class="name">Spreadsheet Import Field&nbsp;Guide</span>
+  </div>
+  <div class="toc" id="toc">
+    <span class="part">Ground</span>
+    <a href="#model"><span class="jnum">·</span> The mental model</a>
+    <a href="#fixtures"><span class="jnum">·</span> The fixture catalog</a>
+    <span class="part">Journeys</span>
+    <a href="#j1"><span class="jnum">1</span> First import <span class="prog" data-prog="j1"></span></a>
+    <a href="#j2"><span class="jnum">2</span> Sheets kept separate <span class="prog" data-prog="j2"></span></a>
+    <a href="#j3"><span class="jnum">3</span> Merged into one Table <span class="prog" data-prog="j3"></span></a>
+    <a href="#j4"><span class="jnum">4</span> Append &amp; upsert <span class="prog" data-prog="j4"></span></a>
+    <a href="#j5"><span class="jnum">5</span> Things going wrong <span class="prog" data-prog="j5"></span></a>
+    <a href="#j6"><span class="jnum">6</span> Walking away, coming back <span class="prog" data-prog="j6"></span></a>
+    <a href="#j7"><span class="jnum">7</span> Log, revert, reshaping <span class="prog" data-prog="j7"></span></a>
+    <span class="part">Record</span>
+    <a href="#matrix"><span class="jnum">·</span> The tracking matrix</a>
+  </div>
+  <div class="rail-tools">
+    <label class="switch" title="Dim every step that needs PR #210">
+      <input type="checkbox" id="mainonly">
+      <span class="track"></span>
+      Testing on main — dim #210
+    </label>
+    <label class="switch" title="Untick every step and clear the matrix">
+      <input type="checkbox" id="resetproxy" style="display:none">
+      <span style="display:none"></span>
+    </label>
+    <button class="btn quiet" id="resetbtn" type="button">Reset this session</button>
+  </div>
+</nav>
+
+<main>
+<header class="hero">
+  <h1>Spreadsheet Import Field&nbsp;Guide</h1>
+  <p class="lede">Two jobs at once: it teaches the whole import pipeline
+  end-to-end, and it is the script for testing it by hand. Work through the
+  journeys in order — later ones assume the state earlier ones created, so
+  front-to-back <em>is</em> the education.</p>
+  <p>Steps tagged <span class="chip c210">#210</span> arrive with
+  <a href="https://github.com/siraj-samsudeen/featherbase/pull/210">PR&nbsp;#210</a>
+  (the multi-sheet workflow) and are not on <code>main</code> yet — test them
+  on the PR's preview environment or its checked-out branch. A step with a
+  screenshot was <span class="chip witnessed">witnessed</span> in a real
+  browser on the commit that captured it; a
+  <span class="chip unwitnessed">sketch</span> means that step has not been —
+  proving it is exactly what a testing session is for.</p>
+  <p><strong>Setup.</strong> <code>./init.sh</code>, sign in, click
+  <strong>Import Data</strong> in the sidebar. Every file you need is in
+  <a href="fixtures/">fixtures/</a>. Your ticks and matrix entries stay in
+  this browser only; export them from the matrix at the end.</p>
+</header>
+
+<!-- ============================ PART 1 ============================ -->
+<h2 id="model"><span class="partno">Part 1</span>The mental model</h2>
+
+<p>One screen (<code>/admin/import</code>) does everything up to the commit,
+and it all happens <strong>in your browser</strong> — the file is parsed
+locally, decisions are made locally, and only the final rows travel to the
+server:</p>
+
+<div class="pipeline"><pre>
+ drop file ──▶ parse in browser ──▶ <span class="amber">sheet overview            #210</span>
+                                    <span class="amber">(tick sheets; separate or merged)</span>
+                  ┌─────────────────────┘
+                  ▼  <span class="amber">one target at a time                  #210</span>
+           target choice ──▶ column mapping ──▶ dry-run  ──▶ <span class="hl">import</span>
+           (new / existing     (types inferred,   rehearsal    (chunks of
+            / skip)             all editable)     (no writes)   500 rows)
+                                                                  │
+                <span class="amber">Past imports</span> ◀── <span class="hl">Import Log</span> ◀──────────────────────┘
+                <span class="amber">(#210: one entry per file, revert the lot)</span>
+</pre></div>
+
+<p>Everything after the commit is bookkeeping in your favour: every run
+writes an <strong>Import Log</strong> entry recording exactly which rows it
+touched, and revert replays that list in reverse.</p>
+
+<h3>Deliberate limits — design decisions, not bugs</h3>
+<ul>
+  <li><strong>Flat columns only.</strong> The wizard never maps into
+  sub-tables (<code>docs/specs/0005-import-revert.md</code>), which is also
+  why revert never has child rows to worry about.</li>
+  <li><strong>Permission is all-or-nothing per run.</strong> If you may not
+  write one of the rows, the whole request is refused — no partial silent
+  success.</li>
+  <li><strong>Nothing is ever silent.</strong> Appending to an existing Table
+  is always disclosed; a partial Table match is only ever a
+  <em>suggestion</em>; rows blank in every mapped column are counted as
+  <code>skipped</code>, not quietly dropped.</li>
+  <li><strong>Type failures differ by target.</strong> On a brand-new Table
+  an odd value simply widens the inferred column to plain text. On a column
+  whose type is already fixed, that row fails — reported by its spreadsheet
+  row number — and the rest import anyway.</li>
+</ul>
+
+<p>Inference thresholds (why a column becomes a Choice or stays text) are
+named constants documented in
+<a href="../adr/0008-import-inference-thresholds.md">ADR&nbsp;0008</a>: a
+choice list needs ≥&nbsp;6 samples resolving to 2–8 options at roughly 3×
+density; an integer longer than 15 digits stays text; anything over 140
+characters becomes long text.</p>
+
+<!-- ============================ PART 2 ============================ -->
+<h2 id="fixtures"><span class="partno">Part 2</span>The fixture catalog</h2>
+
+<p>Each file is engineered to provoke exactly one behaviour. Don't hand-craft
+spreadsheets mid-session — reach in here. (All generated by
+<a href="fixtures/make-fixtures.mjs">make-fixtures.mjs</a>; edit that and
+re-run it rather than hand-editing the files.)</p>
+
+<div class="tablewrap"><table>
+  <thead><tr><th>File</th><th>Shape</th><th>What it exists to provoke</th></tr></thead>
+  <tbody>
+    <tr><td><a href="fixtures/zones.csv" download><span class="mono">zones.csv</span></a></td>
+        <td>8 rows, 6 columns, every inferable type</td>
+        <td>The clean happy path: Choice (North/South), Int, Float, Date, Check</td></tr>
+    <tr><td><a href="fixtures/zones-updates.csv" download><span class="mono">zones-updates.csv</span></a></td>
+        <td>6 rows against Zones</td>
+        <td>Upsert: 3 updates, 2 inserts, one blank cell (keep vs clear), one in-file duplicate key (Alpha twice)</td></tr>
+    <tr><td><a href="fixtures/zones-messy.csv" download><span class="mono">zones-messy.csv</span></a></td>
+        <td>7 rows, deliberately broken</td>
+        <td>Bad int (<code>twelve thousand</code>), bad date, a fully blank row, <code>maybe</code> in a yes/no column</td></tr>
+    <tr><td><a href="fixtures/zones-large.csv" download><span class="mono">zones-large.csv</span></a></td>
+        <td>1,200 rows</td>
+        <td>Chunked sending (500 rows per request) and progress reporting</td></tr>
+    <tr><td><a href="fixtures/store-sections.xlsx" download><span class="mono">store-sections.xlsx</span></a></td>
+        <td>6 sheets, one hidden</td>
+        <td>The whole <span class="chip c210">#210</span> overview: same-shaped sheets to merge, header folding, a non-folding name to combine by hand, a both-columns overlap sheet, an odd-shaped Summary, a hidden Scratch</td></tr>
+  </tbody>
+</table></div>
+
+<p>The workbook's sheets, so you know what “correct” looks like before you
+drop it:</p>
+
+<div class="tablewrap"><table>
+  <thead><tr><th>Sheet</th><th>Headers</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td>Anna Nagar</td><td class="mono">Section, Items, Monthly Sales</td><td>merge member</td></tr>
+    <tr><td>T Nagar</td><td class="mono">section, items, monthly_sales</td><td>folds into the same columns</td></tr>
+    <tr><td>Velachery</td><td class="mono">Section, Items, <b>Sales</b></td><td>folding can't pair <code>Sales</code> — you combine it manually</td></tr>
+    <tr><td>Adyar</td><td class="mono">Section, Items, <b>Sales, Monthly Sales</b></td><td>carries both — forces the <code>first</code> / <code>join</code> rule</td></tr>
+    <tr><td>Summary</td><td class="mono">Store, Total Sales</td><td>different shape; belongs alone</td></tr>
+    <tr><td>Scratch</td><td class="mono">scratch, notes</td><td><b>hidden</b> — should appear collapsed, unticked</td></tr>
+  </tbody>
+</table></div>
+
+<!-- ============================ JOURNEY 1 ============================ -->
+<section class="journey" id="j1" data-j="j1">
+  <h2><span class="partno">Journey 1</span>First import: one CSV becomes a new Table <span class="chip witnessed">witnessed</span></h2>
+  <p class="jmeta">Pinned by <code>apps/web/e2e/import-journey.spec.ts</code>; screenshots captured 2026-08-05.</p>
+  <div class="jsetup">Fixture: <b>zones.csv</b> · Starting state: <b>no Zones Table exists</b></div>
+
+  <div class="step"><input type="checkbox" id="j1s1"><div class="stepbody">
+    <label class="steptitle" for="j1s1">1 · Open the import screen</label>
+    <p>Click <strong>Import Data</strong> — an empty drop area.</p>
+    <!-- slot: IMP-J1.1 -> shots/IMP-J1.1.png -->
+    <figure class="shot"><img src="shots/IMP-J1.1.png" alt="The import screen with an empty drop area" loading="lazy"><figcaption>IMP-J1.1</figcaption></figure>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j1s2"><div class="stepbody">
+    <label class="steptitle" for="j1s2">2 · Drop zones.csv</label>
+    <p>Featherbase reads it immediately and shows what it found — <em>these
+    counts describe your file</em>; nothing has been imported yet. Try
+    dropping a PDF first: it is refused by name (<em>notes.pdf: not a CSV or
+    Excel file</em>) and nothing changes.</p>
+    <!-- slot: IMP-J1.2 -> shots/IMP-J1.2.png -->
+    <figure class="shot"><img src="shots/IMP-J1.2.png" alt="One card: 8 rows, 6 columns in the file" loading="lazy"><figcaption>IMP-J1.2</figcaption></figure>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j1s3"><div class="stepbody">
+    <label class="steptitle" for="j1s3">3 · Check the target</label>
+    <p>With no matching Table anywhere, it reads <strong>New Table…</strong>
+    with a name derived from the file — <code>zones.csv</code> becomes
+    <strong>Zones</strong>. Rename it if you like.</p>
+    <!-- slot: IMP-J1.3 -> shots/IMP-J1.3.png -->
+    <figure class="shot"><img src="shots/IMP-J1.3.png" alt="New Table…, name prefilled Zones" loading="lazy"><figcaption>IMP-J1.3</figcaption></figure>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j1s4"><div class="stepbody">
+    <label class="steptitle" for="j1s4">4 · Review the columns</label>
+    <p>A type was guessed for every column from its values; every row of the
+    grid is editable and any column can be dropped.</p>
+    <!-- slot: IMP-J1.4 -> shots/IMP-J1.4.png -->
+    <figure class="shot"><img src="shots/IMP-J1.4.png" alt="The inferred column grid" loading="lazy"><figcaption>IMP-J1.4</figcaption></figure>
+    <div class="see"><b>You should see</b> Region became a <strong>Choice</strong>
+    (exactly North, South), Population <strong>Int</strong>, Area Sq Km
+    <strong>Float</strong>, Opened On <strong>Date</strong>, Is Active
+    <strong>Check</strong>.</div>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j1s5"><div class="stepbody">
+    <label class="steptitle" for="j1s5">5 · Check the Row ID</label>
+    <p>A locked row previews the id series named after your Table —
+    <code>ZONES-###</code>. Rename the Table and the series follows.</p>
+    <!-- slot: IMP-J1.5 -> shots/IMP-J1.5.png -->
+    <figure class="shot"><img src="shots/IMP-J1.5.png" alt="The locked Row ID row" loading="lazy"><figcaption>IMP-J1.5</figcaption></figure>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j1s6"><div class="stepbody">
+    <label class="steptitle" for="j1s6">6 · Import</label>
+    <p>The button already counted your file: <strong>Import 8 rows</strong>.</p>
+    <!-- slot: IMP-J1.6 -> shots/IMP-J1.6.png -->
+    <figure class="shot"><img src="shots/IMP-J1.6.png" alt="The button knows the count" loading="lazy"><figcaption>IMP-J1.6</figcaption></figure>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j1s7"><div class="stepbody">
+    <label class="steptitle" for="j1s7">7 · Land in the data</label>
+    <p>A single-sheet import navigates you straight to the new Table's
+    list — eight rows, each with its <code>ZONES-…</code> id.</p>
+    <!-- slot: IMP-J1.7 -> shots/IMP-J1.7.png -->
+    <figure class="shot"><img src="shots/IMP-J1.7.png" alt="The Zones list" loading="lazy"><figcaption>IMP-J1.7</figcaption></figure>
+    <div class="see"><b>You should see</b> Open a row: Region is a dropdown
+    offering exactly North and South, Is Active a real tick box, Opened On
+    still the calendar day from the file whatever timezone the server runs
+    in.</div>
+  </div></div>
+
+  <div class="why"><b>Why it works this way</b>Inference is generous but
+  never binding: every guess is shown and editable <em>before</em> anything
+  is written, and the Row ID row is locked because ids are the one thing an
+  import must never improvise.</div>
+</section>
+
+<!-- ============================ JOURNEY 2 ============================ -->
+<section class="journey needs210" id="j2" data-j="j2">
+  <h2><span class="partno">Journey 2</span>A workbook of many sheets, kept separate <span class="chip c210">#210</span> <span class="chip unwitnessed">sketches</span></h2>
+  <p class="jmeta">Sourced from PR #210 (#198–#201). Not yet witnessed on <code>main</code>.</p>
+  <div class="jsetup">Fixture: <b>store-sections.xlsx</b> · Starting state: <b>after Journey 1</b></div>
+
+  <div class="step"><input type="checkbox" id="j2s1"><div class="stepbody">
+    <label class="steptitle" for="j2s1">1 · Drop the workbook</label>
+    <p>You land on a <strong>sheet overview</strong>, not a wall of column
+    grids. One line per sheet: name, row count, column count, and the first
+    few headers as a shape hint.</p>
+    <!-- slot: IMP-J2.1 -> shots/IMP-J2.1.png -->
+    <div class="sketch"><span class="slotname">slot IMP-J2.1 — sketch until snapped</span><pre>
+☐ Anna Nagar   4 rows · 3 cols   Section, Items, Monthly Sales
+☐ T Nagar      3 rows · 3 cols   section, items, monthly_sales
+☐ Velachery    3 rows · 3 cols   Section, Items, Sales
+☐ Adyar        3 rows · 4 cols   Section, Items, Sales, …
+☐ Summary      4 rows · 2 cols   Store, Total Sales
+▸ Hidden sheets (1)</pre></div>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j2s2"><div class="stepbody">
+    <label class="steptitle" for="j2s2">2 · Nothing is ticked</label>
+    <p>This is the point — the old wizard included every sheet by default,
+    and one seventeen-sheet workbook once created eleven Tables nobody asked
+    for.</p>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j2s3"><div class="stepbody">
+    <label class="steptitle" for="j2s3">3 · Hidden stays hidden</label>
+    <p><code>Scratch</code> sits below in its own collapsed section.
+    (<code>very hidden</code> sheets — settable only from VBA — are labelled
+    distinctly if you ever meet one.)</p>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j2s4"><div class="stepbody">
+    <label class="steptitle" for="j2s4">4 · Tick Summary only, import it</label>
+    <p>Continue with just <code>Summary</code>: one target on screen, exactly
+    like Journey 1's steps 3–6. Import it.</p>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j2s5"><div class="stepbody">
+    <label class="steptitle" for="j2s5">5 · Now tick the four section sheets</label>
+    <p>With two or more ticked, the overview asks outright:
+    <strong>separate Tables, or merged into one?</strong> Choose
+    <em>separate</em> this time and continue.</p>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j2s6"><div class="stepbody">
+    <label class="steptitle" for="j2s6">6 · Walk the targets one at a time</label>
+    <p>“Table 2 of 4”, Previous/Next, and a strip showing every target —
+    done, failed, or pending — clickable to jump. Import the first target
+    alone (“Import 4 rows into Anna Nagar”), click through to its rows, come
+    back.</p>
+    <!-- slot: IMP-J2.6 -> shots/IMP-J2.6.png -->
+    <div class="see"><b>You should see</b> Everything is where you left it,
+    and the bulk button now reads “Import the remaining N Tables” — it skips
+    what already landed.</div>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j2s7"><div class="stepbody">
+    <label class="steptitle" for="j2s7">7 · Results live below the card</label>
+    <p>In a “This import” panel — with one card on screen, the card that made
+    a result is the wrong place to keep it.</p>
+  </div></div>
+
+  <div class="why"><b>Why it works this way</b>Importing per target as you
+  walk means a seventeen-sheet file never becomes an all-or-nothing gamble;
+  each sheet is a decision you actually made.</div>
+</section>
+
+<!-- ============================ JOURNEY 3 ============================ -->
+<section class="journey needs210" id="j3" data-j="j3">
+  <h2><span class="partno">Journey 3</span>Same-shaped sheets merged into one Table <span class="chip c210">#210</span> <span class="chip unwitnessed">sketches</span></h2>
+  <p class="jmeta">Sourced from PR #210 (#200, #201, #211). Not yet witnessed.</p>
+  <div class="jsetup">Fixture: <b>store-sections.xlsx</b> again · Starting state: <b>delete the Tables Journey 2 created</b> (or use Past imports → revert, Journey 6)</div>
+
+  <div class="step"><input type="checkbox" id="j3s1"><div class="stepbody">
+    <label class="steptitle" for="j3s1">1 · Tick the four section sheets, choose Merged</label>
+    <p>Anna Nagar, T Nagar, Velachery and Adyar → <strong>Merged into one
+    Table</strong>, named <em>Store Sections</em>.</p>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j3s2"><div class="stepbody">
+    <label class="steptitle" for="j3s2">2 · Watch the folding</label>
+    <p><code>Monthly Sales</code> and <code>monthly_sales</code> become one
+    column — folding covers case, spaces, underscores and punctuation
+    <em>only</em>.</p>
+    <!-- slot: IMP-J3.2 -> shots/IMP-J3.2.png -->
+    <div class="see"><b>You should see</b> <code>Sales</code> (Velachery)
+    stays a separate column: beyond folding, nothing is guessed.</div>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j3s3"><div class="stepbody">
+    <label class="steptitle" for="j3s3">3 · Combine by hand</label>
+    <p>Tick <code>Sales</code> and <code>Monthly Sales</code>, name the
+    result (say, <code>Monthly Sales</code>), combine. The panel shows
+    <strong>sample values</strong> from each — that's how you confirm they
+    really are the same thing, which is exactly what folding could never
+    know.</p>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j3s4"><div class="stepbody">
+    <label class="steptitle" for="j3s4">4 · The overlap is named, not resolved silently</label>
+    <p>Adyar carries <em>both</em> columns, so a rule is required before you
+    can continue:</p>
+    <ul>
+      <li><strong><code>first</code></strong> — priority with fallback: the
+      winner's value is taken, but a blank in the winner does not blank a row
+      the other could answer. (Check Adyar's rows: Produce has only
+      <code>Sales</code>, Dairy only <code>Monthly Sales</code>, Bakery
+      both.)</li>
+      <li><strong><code>join</code></strong> — both values, joined.</li>
+    </ul>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j3s5"><div class="stepbody">
+    <label class="steptitle" for="j3s5">5 · Import the group</label>
+    <p>It imports <strong>member by member</strong>, never as one blended
+    batch — the Import Log keeps one part per sheet under a shared
+    <code>run_id</code>. Provenance survives; one revert takes back the whole
+    group.</p>
+  </div></div>
+
+  <div class="why"><b>Why it works this way</b><code>Store Code</code>
+  (STR-009) and <code>Store Name</code> (Anna Nagar) look nothing alike,
+  which is why nothing auto-proposes combinations, and why a sheet carrying
+  both members of a pair is treated as the data-loss case it is.</div>
+</section>
+
+<!-- ============================ JOURNEY 4 ============================ -->
+<section class="journey" id="j4" data-j="j4">
+  <h2><span class="partno">Journey 4</span>Into an existing Table: append and upsert <span class="chip witnessed">witnessed</span></h2>
+  <p class="jmeta">Pinned by <code>import-upsert-journey.spec.ts</code> and <code>import-typed-confirmation.spec.ts</code> on <code>main</code>.</p>
+  <div class="jsetup">Fixture: <b>zones-updates.csv</b> · Starting state: <b>the Zones Table from Journey 1</b></div>
+
+  <div class="step"><input type="checkbox" id="j4s1"><div class="stepbody">
+    <label class="steptitle" for="j4s1">1 · Drop it</label>
+    <p>The matching Table is <strong>already selected</strong> — its columns
+    match well enough (score ≥ 0.6 covering ≥ 80% of the file's columns) to
+    auto-match — with a visible notice that rows will be <strong>added</strong>
+    to it. Weaker matches (≥ 0.3) appear only as suggestions, at most three,
+    never applied for you. A Table's own <strong>Import</strong> button
+    pre-selects that Table.</p>
+    <!-- slot: IMP-J4.1 -> shots/IMP-J4.1.png -->
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j4s2"><div class="stepbody">
+    <label class="steptitle" for="j4s2">2 · Choose a key column</label>
+    <p><code>Zone Name</code> — turning append into upsert. (The Row ID
+    itself can also serve as the key.)</p>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j4s3"><div class="stepbody">
+    <label class="steptitle" for="j4s3">3 · Rehearse</label>
+    <p>The dry run validates every row and reports
+    valid / inserted / updated / failed — plus <code>skipped</code> for rows
+    blank in every mapped column — <strong>without writing anything</strong>.</p>
+    <!-- slot: IMP-J4.3 -> shots/IMP-J4.3.png -->
+    <div class="see"><b>You should see</b> 2 inserts (India, Juliet),
+    3 updates, and the duplicate Alpha row <strong>failed</strong> — a key
+    appearing twice in one file is failed up front, because split across
+    request chunks it would otherwise become a silent update.</div>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j4s4"><div class="stepbody">
+    <label class="steptitle" for="j4s4">4 · Decide about blank cells</label>
+    <p>Delta's Population is empty: choose whether blanks
+    <strong>keep</strong> the existing value or <strong>clear</strong> it.
+    Verify afterwards on the Delta row.</p>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j4s5"><div class="stepbody">
+    <label class="steptitle" for="j4s5">5 · The typed confirmation</label>
+    <p>More than 20 rows about to be <em>updated</em> makes the import button
+    demand you type the number back. To see it, import
+    <code>zones-large.csv</code> into its own Table twice with a key — the
+    second pass is 1,200 updates.</p>
+    <!-- slot: IMP-J4.5 -> shots/IMP-J4.5.png -->
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j4s6"><div class="stepbody">
+    <label class="steptitle" for="j4s6">6 · Import, then check the invariants</label>
+    <div class="see"><b>You should see</b> Existing rows kept their Row IDs
+    (an upsert may never change one), and the Import Log entry records the
+    run with its counts and choices.</div>
+  </div></div>
+
+  <div class="why"><b>Why it works this way</b>Updates are the destructive
+  half of upsert: everything before the write is reversible reading, so
+  that's where all the friction lives.</div>
+</section>
+
+<!-- ============================ JOURNEY 5 ============================ -->
+<section class="journey" id="j5" data-j="j5">
+  <h2><span class="partno">Journey 5</span>Things going wrong <span class="chip witnessed">mostly witnessed</span></h2>
+  <p class="jmeta">Row numbering and per-row failure pinned by <code>import-row-numbers.spec.ts</code> and <code>import-file.spec.ts</code>; per-target isolation is <span class="chip c210">#210</span> (#203, #205).</p>
+  <div class="jsetup">Fixture: <b>zones-messy.csv</b></div>
+
+  <div class="step"><input type="checkbox" id="j5s1"><div class="stepbody">
+    <label class="steptitle" for="j5s1">1 · Into a brand-new Table first</label>
+    <p>Nothing fails — the odd values just widen their columns (Population
+    infers as text because of <code>twelve thousand</code>). Delete the Table
+    afterwards.</p>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j5s2"><div class="stepbody">
+    <label class="steptitle" for="j5s2">2 · Now into the existing Zones Table</label>
+    <p>Its types are fixed, so the bad rows fail <strong>by their
+    spreadsheet row number</strong> — the number you'd see in Excel, header
+    row accounted for — while the good rows (Kilo, November, Papa) import
+    anyway.</p>
+    <!-- slot: IMP-J5.2 -> shots/IMP-J5.2.png -->
+    <div class="see"><b>You should see</b> Five failures on screen; the rest
+    live in the Import Log.</div>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j5s3"><div class="stepbody">
+    <label class="steptitle" for="j5s3">3 · The blank row</label>
+    <p>Row 5 in the file is reported as <code>skipped</code> — not an error,
+    and not silently dropped.</p>
+  </div></div>
+
+  <div class="step j210"><input type="checkbox" id="j5s4"><div class="stepbody">
+    <label class="steptitle" for="j5s4">4 · One target failing doesn't take the run down <span class="chip c210">#210</span></label>
+    <p>In a multi-sheet walk, a target that throws fails <em>alone</em>: the
+    others still run, the run reports whenever it stops, and the
+    <strong>Import Log link sits permanently under the dropzone</strong> — it
+    used to vanish in exactly the crash that made it matter.</p>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j5s5"><div class="stepbody">
+    <label class="steptitle" for="j5s5">5 · zones-large.csv into a new Table</label>
+    <p>Watch the progress advance in chunks — 500 rows per request, 3
+    requests.</p>
+  </div></div>
+
+  <div class="why"><b>Why it works this way</b>Errors are named in
+  <em>your</em> coordinates (Excel row numbers), and a fixed-type column
+  failing a row beats a fixed-type column silently mangling one.</div>
+</section>
+
+<!-- ============================ JOURNEY 6 ============================ -->
+<section class="journey needs210" id="j6" data-j="j6">
+  <h2><span class="partno">Journey 6</span>Walking away and coming back <span class="chip c210">#210</span> <span class="chip unwitnessed">sketches</span></h2>
+  <p class="jmeta">Sourced from PR #210 (#204). Not yet witnessed.</p>
+  <div class="jsetup">Fixture: <b>store-sections.xlsx</b>, mid-Journey-3</div>
+
+  <div class="step"><input type="checkbox" id="j6s1"><div class="stepbody">
+    <label class="steptitle" for="j6s1">1 · Leave mid-wizard</label>
+    <p>Navigate to any Table, then return to Import Data. Your decisions
+    (ticks, merge choice, names, column edits) and the file's rows are both
+    restored; you continue where you stopped.</p>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j6s2"><div class="stepbody">
+    <label class="steptitle" for="j6s2">2 · The rows are the half allowed to fail</label>
+    <p>They're kept in sessionStorage, and a very large workbook doesn't fit.
+    When that happens you are told <strong>before you leave</strong>, not on
+    return: decisions survive, and you're asked for the file again.</p>
+  </div></div>
+
+  <div class="step"><input type="checkbox" id="j6s3"><div class="stepbody">
+    <label class="steptitle" for="j6s3">3 · Re-drop is verified, not trusted</label>
+    <p>The saved plan addresses sheets by position, so the re-dropped file
+    must match by name, sheet names, headers and row counts before the plan
+    is applied.</p>
+    <div class="see"><b>You should see</b> Re-drop <code>zones.csv</code>
+    instead: the plan must refuse it.</div>
+  </div></div>
+
+  <div class="why"><b>Why it works this way</b>Silently applying a saved plan
+  to a different file would import the wrong data with full confidence; the
+  plan is only as good as the file it was made against.</div>
+</section>
+
+<!-- ============================ JOURNEY 7 ============================ -->
+<section class="journey" id="j7" data-j="j7">
+  <h2><span class="partno">Journey 7</span>Afterwards: the log, revert, and reshaping <span class="chip witnessed">partly witnessed</span></h2>
+  <p class="jmeta">Revert pinned by <code>import-revert-journey.spec.ts</code> on <code>main</code>; Past imports, column rename and Table merge are <span class="chip c210">#210</span> (#206–#209).</p>
+
+  <div class="step"><input type="checkbox" id="j7s1"><div class="stepbody">
+    <label class="steptitle" for="j7s1">1 · Revert a run</label>
+    <p>From the import history, revert first <strong>rehearses</strong> —
+    showing exactly what would be taken back — then does it.</p>
+    <!-- slot: IMP-J7.1 -> shots/IMP-J7.1.png -->
+    <div class="see"><b>You should see</b> Rows <strong>edited since the
+    import</strong> are skipped and named by Row ID (their version stamp no
+    longer matches), as are rows already deleted; an explicit override list
+    can force the edited ones.</div>
+  </div></div>
+
+  <div class="step j210"><input type="checkbox" id="j7s2"><div class="stepbody">
+    <label class="steptitle" for="j7s2">2 · Past imports <span class="chip c210">#210</span></label>
+    <p>The sidebar page shows each file-level import: which Tables it
+    <strong>created</strong> and which it merely <strong>added to</strong>,
+    with one action to delete everything it created — and <em>only</em> what
+    it created, because a Table that only received rows is undone by the
+    per-run revert, not deletion.</p>
+  </div></div>
+
+  <div class="step j210"><input type="checkbox" id="j7s3"><div class="stepbody">
+    <label class="steptitle" for="j7s3">3 · Reshape a populated Table <span class="chip c210">#210</span></label>
+    <p>Add a column, relabel one, and <strong>rename</strong> one on a Table
+    that already has rows — then check the data survived the rename. (This
+    needed real server work: column matching is by name, so a rename used to
+    read as delete-plus-add and orphan the data.)</p>
+  </div></div>
+
+  <div class="step j210"><input type="checkbox" id="j7s4"><div class="stepbody">
+    <label class="steptitle" for="j7s4">4 · Merge one Table into another <span class="chip c210">#210</span></label>
+    <p>A post-hoc merge <em>is</em> an import whose source is a Table instead
+    of a file — so it gets chunking, per-row failures, an Import Log entry
+    and revert for free. Folding pairs what it can; <code>Glor</code> and
+    <code>Floor</code> stay apart until you say otherwise.</p>
+  </div></div>
+
+  <div class="why"><b>Why it works this way</b>Every write path funnels
+  through the same import machinery, so “can I undo this?” has one answer
+  everywhere.</div>
+</section>
+
+<!-- ============================ MATRIX ============================ -->
+<h2 id="matrix"><span class="partno">Part 4</span>The tracking matrix</h2>
+
+<p>Record each journey as you finish it. <strong>Confused is a first-class
+outcome</strong> — for this feature it's the more valuable one. Entries stay
+in this browser; “Copy session as Markdown” takes your ticks and this table
+with you into an issue or a commit message.</p>
+
+<div class="tablewrap matrix"><table id="matrixtable">
+  <thead><tr><th>#</th><th>Journey</th><th>Needs #210</th><th style="min-width:8.5rem">Result</th><th style="min-width:14rem">Notes</th><th>Date</th></tr></thead>
+  <tbody>
+    <tr data-j="j1"><td>1</td><td>First import → new Table</td><td>no</td><td><select><option value="">—</option><option>pass</option><option>fail</option><option>confused</option></select></td><td><input type="text" placeholder="what you saw…"></td><td class="datecell"></td></tr>
+    <tr data-j="j2"><td>2</td><td>Workbook, sheets kept separate</td><td>yes</td><td><select><option value="">—</option><option>pass</option><option>fail</option><option>confused</option></select></td><td><input type="text" placeholder="what you saw…"></td><td class="datecell"></td></tr>
+    <tr data-j="j3"><td>3</td><td>Sheets merged into one Table</td><td>yes</td><td><select><option value="">—</option><option>pass</option><option>fail</option><option>confused</option></select></td><td><input type="text" placeholder="what you saw…"></td><td class="datecell"></td></tr>
+    <tr data-j="j4"><td>4</td><td>Append and upsert</td><td>no</td><td><select><option value="">—</option><option>pass</option><option>fail</option><option>confused</option></select></td><td><input type="text" placeholder="what you saw…"></td><td class="datecell"></td></tr>
+    <tr data-j="j5"><td>5</td><td>Things going wrong</td><td>partly</td><td><select><option value="">—</option><option>pass</option><option>fail</option><option>confused</option></select></td><td><input type="text" placeholder="what you saw…"></td><td class="datecell"></td></tr>
+    <tr data-j="j6"><td>6</td><td>Walking away and coming back</td><td>yes</td><td><select><option value="">—</option><option>pass</option><option>fail</option><option>confused</option></select></td><td><input type="text" placeholder="what you saw…"></td><td class="datecell"></td></tr>
+    <tr data-j="j7"><td>7</td><td>Log, revert, reshaping</td><td>partly</td><td><select><option value="">—</option><option>pass</option><option>fail</option><option>confused</option></select></td><td><input type="text" placeholder="what you saw…"></td><td class="datecell"></td></tr>
+  </tbody>
+</table></div>
+
+<div class="btnrow">
+  <button class="btn" id="copybtn" type="button">Copy session as Markdown</button>
+  <span id="copynote" role="status"></span>
+</div>
+
+<footer class="colophon">
+  <p>Screenshots are produced by the journey tests:
+  <code>SNAP=1 pnpm exec playwright test e2e/import-journey.spec.ts</code>
+  fills Journey 1's slots today; new slots fill as #210's journey tests gain
+  <code>snap()</code> calls, and this page picks them up with no build step.
+  Deeper reading: <code>docs/specs/0004-import-upsert.md</code>,
+  <code>docs/specs/0005-import-revert.md</code>,
+  <a href="../adr/0008-import-inference-thresholds.md">ADR&nbsp;0008</a>.</p>
+</footer>
+</main>
+</div>
+
+<dialog class="lightbox" id="lightbox"><img alt="" id="lightboximg"></dialog>
+
+<script>
+(function () {
+  'use strict'
+  var KEY = 'fb-import-field-guide-v1'
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || {} } catch (e) { return {} }
+  }
+  function save(state) {
+    try { localStorage.setItem(KEY, JSON.stringify(state)) } catch (e) { /* private window etc. */ }
+  }
+  var state = load()
+  state.steps = state.steps || {}
+  state.matrix = state.matrix || {}
+
+  var journeyNames = {
+    j1: 'First import → new Table', j2: 'Workbook, sheets kept separate',
+    j3: 'Sheets merged into one Table', j4: 'Append and upsert',
+    j5: 'Things going wrong', j6: 'Walking away and coming back',
+    j7: 'Log, revert, reshaping'
+  }
+
+  // ---- step checkboxes ----
+  var boxes = document.querySelectorAll('.step > input[type="checkbox"]')
+  function refreshProgress() {
+    Object.keys(journeyNames).forEach(function (j) {
+      var section = document.querySelector('section[data-j="' + j + '"]')
+      if (!section) return
+      var all = section.querySelectorAll('.step > input[type="checkbox"]')
+      var done = section.querySelectorAll('.step > input[type="checkbox"]:checked')
+      var el = document.querySelector('[data-prog="' + j + '"]')
+      if (el) {
+        el.textContent = done.length ? done.length + '/' + all.length : ''
+        el.classList.toggle('done', done.length === all.length && all.length > 0)
+      }
+    })
+  }
+  boxes.forEach(function (box) {
+    if (state.steps[box.id]) box.checked = true
+    box.closest('.step').classList.toggle('checked', box.checked)
+    box.addEventListener('change', function () {
+      state.steps[box.id] = box.checked
+      box.closest('.step').classList.toggle('checked', box.checked)
+      save(state); refreshProgress()
+    })
+  })
+
+  // ---- matrix ----
+  var rows = document.querySelectorAll('#matrixtable tbody tr')
+  function paintRow(tr, result) {
+    tr.className = result ? 'r-' + result : ''
+  }
+  rows.forEach(function (tr) {
+    var j = tr.getAttribute('data-j')
+    var sel = tr.querySelector('select')
+    var note = tr.querySelector('input[type="text"]')
+    var date = tr.querySelector('.datecell')
+    var m = state.matrix[j] || {}
+    if (m.result) sel.value = m.result
+    if (m.note) note.value = m.note
+    date.textContent = m.date || ''
+    paintRow(tr, m.result)
+    function update(stampDate) {
+      var entry = state.matrix[j] = state.matrix[j] || {}
+      entry.result = sel.value
+      entry.note = note.value
+      if (stampDate && sel.value) entry.date = new Date().toISOString().slice(0, 10)
+      if (!sel.value) entry.date = ''
+      date.textContent = entry.date || ''
+      paintRow(tr, entry.result)
+      save(state)
+    }
+    sel.addEventListener('change', function () { update(true) })
+    note.addEventListener('input', function () { update(false) })
+  })
+
+  // ---- copy as markdown ----
+  document.getElementById('copybtn').addEventListener('click', function () {
+    var lines = ['# Import field-guide session — ' + new Date().toISOString().slice(0, 10), '',
+      '| # | Journey | Result | Date | Notes |', '|---|---|---|---|---|']
+    var i = 0
+    Object.keys(journeyNames).forEach(function (j) {
+      i++
+      var m = state.matrix[j] || {}
+      var section = document.querySelector('section[data-j="' + j + '"]')
+      var all = section ? section.querySelectorAll('.step > input').length : 0
+      var done = section ? section.querySelectorAll('.step > input:checked').length : 0
+      lines.push('| ' + i + ' | ' + journeyNames[j] + ' (' + done + '/' + all + ' steps) | '
+        + (m.result || '—') + ' | ' + (m.date || '') + ' | ' + (m.note || '').replace(/\|/g, '\\|') + ' |')
+    })
+    var note = document.getElementById('copynote')
+    navigator.clipboard.writeText(lines.join('\n')).then(function () {
+      note.textContent = 'Copied.'
+      setTimeout(function () { note.textContent = '' }, 2500)
+    }, function () {
+      note.textContent = 'Clipboard refused — select and copy the table by hand.'
+    })
+  })
+
+  // ---- #210 dimming ----
+  var mainonly = document.getElementById('mainonly')
+  mainonly.checked = !!state.mainOnly
+  document.body.classList.toggle('main-only', mainonly.checked)
+  mainonly.addEventListener('change', function () {
+    state.mainOnly = mainonly.checked
+    document.body.classList.toggle('main-only', mainonly.checked)
+    save(state)
+  })
+
+  // ---- reset ----
+  document.getElementById('resetbtn').addEventListener('click', function () {
+    if (!confirm('Untick every step and clear the matrix?')) return
+    state = { steps: {}, matrix: {}, mainOnly: mainonly.checked }
+    save(state)
+    boxes.forEach(function (b) { b.checked = false; b.closest('.step').classList.remove('checked') })
+    rows.forEach(function (tr) {
+      tr.querySelector('select').value = ''
+      tr.querySelector('input[type="text"]').value = ''
+      tr.querySelector('.datecell').textContent = ''
+      tr.className = ''
+    })
+    refreshProgress()
+  })
+
+  // ---- lightbox ----
+  var lb = document.getElementById('lightbox')
+  var lbimg = document.getElementById('lightboximg')
+  document.querySelectorAll('figure.shot img').forEach(function (img) {
+    // A slot whose PNG is missing hides itself; the sketch (if any) remains.
+    img.addEventListener('error', function () { img.closest('figure').style.display = 'none' })
+    img.addEventListener('click', function () {
+      lbimg.src = img.src
+      lbimg.alt = img.alt
+      lb.showModal()
+    })
+  })
+  lb.addEventListener('click', function () { lb.close() })
+
+  refreshProgress()
+})()
+</script>
+</body>
+</html>
