@@ -42,9 +42,26 @@ test('list: a customer with no tickets sees an empty, permission-scoped list', a
     row: { subject: 'Someone else’s ticket' },
   })
   const customer = await createUser({ roles: ['Customer'] })
+  // Positive control: own_rows_only scoping (HD Ticket / Customer) means a
+  // ticket the customer creates themselves IS visible to them. `list-view`
+  // mounts (and 'No rows' renders into it) before the list query even
+  // fires — meta.data gates the whole page, but the rows fetch is a second,
+  // later query, and its "no rows yet" and "loaded, truly empty" states
+  // render identically. Waiting on the customer's own ticket instead proves
+  // the list query has actually resolved with this customer's scoped data
+  // — not just that the container mounted — before we assert the other
+  // customer's ticket is absent.
+  //
+  // Customer carries can_create without can_write (the app's real shape —
+  // creation is meant to happen through the Web Form, see helpdesk.ts), so
+  // fields get stripped on a raw /api/save_row insert; go through the
+  // installed "New Ticket" web form instead, exactly like a real customer
+  // would, which creates the row in the logged-in submitter's name.
+  const mine = await customer.post<{ row_id: string }>('/api/web_form/new-ticket', {
+    values: { subject: 'My own ticket, scoped visible' },
+  })
   await renderApp('/admin/HD%20Ticket', customer)
-  await screen.findByTestId('list-view')
-  await new Promise((r) => setTimeout(r, 150))
+  expect(await screen.findByText(mine.row_id)).toBeInTheDocument()
   expect(screen.queryByText(other.row_id)).not.toBeInTheDocument()
 })
 

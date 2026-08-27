@@ -36,19 +36,64 @@ async function login(page: Page) {
   await page.waitForURL(/\/admin/)
 }
 
+// SavedViewsBar (apps/web/src/components/ListView.tsx) counts "the same
+// filter set applied 3+ times inside a week" itself, entirely client-side:
+// on every mount it reads a `{ n, t }` record out of
+// `localStorage['fc-filter-count:<user>']`, keyed by `table|JSON.stringify(filters)`,
+// and only bumps `n` — the thing NUDGE_THRESHOLD compares against — when the
+// new arrival is more than its inline same-arrival window past the last one
+// (`now - rec.t > 500`, ListView.tsx). Below the nudge threshold that update
+// has no DOM or network footprint at all — nothing renders differently for
+// applyCount 1 vs 2, and no request fires — so there is no UI/network signal
+// to wait on. What *is* observable is the mechanism's own state: the record
+// this code just wrote to localStorage. Rather than guess how long 500ms
+// plus test/navigation jitter needs padding to, poll that record directly
+// until it has actually aged past the dedup window, so each `page.goto` in
+// the loops below is guaranteed to land as a genuinely new "arrival" instead
+// of assuming a fixed sleep did the job.
+const SAME_ARRIVAL_WINDOW_MS = 500 // duplicated from ListView.tsx's `now - rec.t > 500`
+
+async function waitPastDedupWindow(page: Page, table: string, filters: unknown): Promise<void> {
+  const key = `${table}|${JSON.stringify(filters)}`
+  await expect
+    .poll(
+      () =>
+        page.evaluate((k) => {
+          for (let i = 0; i < localStorage.length; i++) {
+            const storageKey = localStorage.key(i)
+            if (!storageKey?.startsWith('fc-filter-count:')) continue
+            const store = JSON.parse(localStorage.getItem(storageKey) ?? '{}') as Record<
+              string,
+              { n: number; t: number }
+            >
+            const rec = store[k]
+            if (rec) return Date.now() - rec.t
+          }
+          return 0
+        }, key),
+      {
+        message: `waiting for the "${key}" same-arrival dedup window to elapse`,
+        timeout: 5000,
+      },
+    )
+    .toBeGreaterThan(SAME_ARRIVAL_WINDOW_MS)
+}
+
 test('#101 P6: three applications trigger the nudge; the saved view lives as a chip', async ({
   page,
 }) => {
   await login(page)
   const listUrl = `/admin/${encodeURIComponent(DT)}?filters=${FILTERS}`
 
-  // First two arrivals: no nudge yet. (The 600ms pause keeps each arrival
-  // outside the client's same-arrival dedup window.)
+  // First two arrivals: no nudge yet. Waiting past the dedup window (see
+  // waitPastDedupWindow) between them keeps each one a distinct arrival
+  // instead of collapsing into the client's same-arrival dedup.
+  const filters = [['note', '=', 'hot']]
   for (let i = 0; i < 2; i++) {
     await page.goto(listUrl)
     await expect(page.getByTestId('table-page')).toBeVisible()
     await expect(page.getByTestId('filter-nudge')).toHaveCount(0)
-    await page.waitForTimeout(600)
+    await waitPastDedupWindow(page, DT, filters)
   }
 
   // Third: the nudge offers to name the habit.
@@ -79,12 +124,15 @@ test('#101 P6: three applications trigger the nudge; the saved view lives as a c
 
 test('#101 P6: "Not now" silences the nudge for that filter set', async ({ page }) => {
   await login(page)
-  const otherFilters = encodeURIComponent(JSON.stringify([['note', '=', 'cold']]))
+  const coldFilters = [['note', '=', 'cold']]
+  const otherFilters = encodeURIComponent(JSON.stringify(coldFilters))
   const listUrl = `/admin/${encodeURIComponent(DT)}?filters=${otherFilters}`
   for (let i = 0; i < 3; i++) {
     await page.goto(listUrl)
     await expect(page.getByTestId('table-page')).toBeVisible()
-    await page.waitForTimeout(600) // arrivals inside the dedup window count once
+    // Arrivals inside the dedup window count once — wait past it (see
+    // waitPastDedupWindow) so each of these three is a distinct arrival.
+    await waitPastDedupWindow(page, DT, coldFilters)
   }
   await expect(page.getByTestId('filter-nudge')).toBeVisible()
   await page.getByTestId('nudge-dismiss').click()
