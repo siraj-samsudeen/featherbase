@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { deleteTableIfExists } from './cleanup'
 
 const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 // Unique-ish but stable name so re-runs are idempotent (delete first via API).
@@ -8,17 +9,7 @@ test.beforeAll(async ({ request }) => {
   const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
   const token = ((await login.json()) as { token: string }).token
   // Pre-clean leftovers so the create path is exercised fresh each run.
-  // Cleanup failures surface loudly rather than skip quietly.
-  const enc = encodeURIComponent(NEW_DT)
-  const exists = await request.get(`/api/table/${enc}:meta`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  if (exists.status() === 200) {
-    const res = await request.delete(`/api/table_def/${enc}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    expect(res.status(), `pre-clean: deleting leftover Table ${NEW_DT}`).toBe(200)
-  }
+  await deleteTableIfExists(request, token, NEW_DT)
 })
 
 test('UI-011: create a Table with 5 fields from the Admin; list+form work immediately', async ({ page, request }) => {
