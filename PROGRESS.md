@@ -1,5 +1,117 @@
 # Progress Log
 
+## 2026-08-27 — the whole import redesign, and a dev preview per pull request
+
+Finished #197 — the remaining eight tickets (#202–#209, #211) on top of the
+2026-08-26 Part A entry. Twelve of twelve now built. Owner directive was
+"everything, A through C".
+
+### What shipped
+
+- **#211 — combining columns folding could never join.** A merge group's grid
+  gains a Join column: tick two, name the result, combine. Sample values are
+  the feature, not decoration — `Store Code` (STR-009) and `Store Name` (Anna
+  Nagar) look nothing alike, which is exactly why nothing proposes it (Q5) and
+  why the values must be visible to answer "same thing?". A sheet carrying
+  BOTH is the data-loss case, so it is never resolved silently: the overlap is
+  named with its sheets and a rule is required — `first` (priority WITH
+  fallback, so a blank in the winner does not blank a row the other could
+  answer) or `join`.
+- **#203/#205 — a failing sheet stops taking the whole run with it.** The loop
+  sat inside one try, so a throw on target 2 left 3..n unattempted AND
+  unreported, skipped `setDone`, and hid the only link to the Import Log —
+  the one situation where the log matters most. Each target now fails on its
+  own; the run reports whenever it STOPS, not only when everything succeeded;
+  the log link moved out of the completion block entirely.
+- **#202 — the column step walks one Table at a time.** One target on screen,
+  "Table 2 of 11", Previous/Next, and a strip of every target marked done or
+  failed and clickable to jump. **Import happens per target**, and the bulk
+  button skips whatever already landed. Results moved OUT of the card that
+  made them into a "This import" panel — with one card on screen the card is
+  the wrong place to keep a result, since stepping on would hide it.
+- **#204 — the wizard's work survives leaving the page.** Two sessionStorage
+  keys: decisions (small, written often, debounced) and the file's rows
+  (large, written once). The rows are the half allowed to fail — a big
+  workbook does not fit, and the answer is to keep every decision and ask for
+  the file again, announced BEFORE you leave rather than discovered on
+  return. Saved plans address sheets by index, so a re-drop must match name,
+  sheet names, headers and row counts before they are applied.
+- **#206/#207 — an import is one thing you did, and undone as one.**
+  `batch_id` on the Import Log, minted per file read and carried by every part
+  of every target; `GET /api/import/batches` rolls the parts back up into the
+  act. A "Past imports" page shows which Tables each import created and which
+  it added to, with one action to delete everything it created — and only
+  what it created, because a Table that merely received rows is undone by the
+  per-run revert.
+- **#209 — columns after the rows are in.** Add, relabel, and rename in place.
+  The rename needed real server work: PUT /api/table_def matches columns BY
+  name, so a changed name reads as delete-plus-add and silently orphans the
+  data. `renameColumn` does the real DDL and carries the unique constraint's
+  own name, `title_column`, and a `field:<column>` id pattern with it.
+- **#208 — merging one Table into another.** A post-hoc merge is an import
+  whose source is a Table rather than a file, so it goes through
+  `sendImportRun` — which is what gives it chunking, per-row failures, an
+  Import Log entry, a batch, and revert, all for free. Folding pairs what it
+  can; `Glor` and `Floor` stay apart until the user says otherwise.
+
+### Dev previews
+
+Railway PR environments are enabled on the **Feather-Base Dev** project
+(bot-authored PRs included), so every pull request now brings its own running
+copy with its own empty database. `/preview?key=…` signs you in as an
+ordinary named user — never Administrator, refused outright — using the
+one-time handoff code so no JWT rides a URL.
+
+Two things worth not rediscovering:
+
+- **`SITE_URL` must be `https://${{RAILWAY_PUBLIC_DOMAIN}}` in the base
+  environment.** A PR environment inherits variables verbatim, so a literal
+  domain there mints links pointing at the wrong host.
+- **The preview seed runs in the pre-deploy step of EVERY environment**, so
+  it is gated on the same resolution the `/preview` route uses. Where preview
+  sign-in is not configured it says so and does nothing — otherwise the first
+  deploy of this release step would put a shareable-link account into
+  production.
+
+Full runbook: `docs/PREVIEW.md`.
+
+### Gotchas
+
+- **A debounced save is lost precisely when it matters.** Leaving the page is
+  when the snapshot must land and when its timer is about to be cleared. It is
+  flushed on unmount and `pagehide`, and a late timer checks it is still the
+  live snapshot — without that, a timer fired after a finished run's
+  `clearSession()` resurrected a session that was over. That cost a real
+  debugging round.
+- **The meta this server returns could not be sent back to it.** Every unset
+  optional came back `null` and the schema took only `string | undefined`, so
+  read-modify-write — the natural shape of a column editor — was rejected on
+  every one of them. Null and absent mean the same thing; the schema now says
+  so once.
+- **Dropping a file must clear the screen first.** Parsing is async, so a
+  restored grid stayed live and clickable for as long as the read took, and
+  edits made in that window were thrown away when the parse landed.
+- **Int columns are bigint and reach the client as strings.** `+=` over log
+  counts concatenated ("0"+"1"+"2" = "012") rather than adding.
+- Deleting a Table sweeps the Import Log rows pointing at it (DEL-R4), so a
+  batch whose Tables all went is itself gone from the next fetch. The
+  delete-batch confirmation is therefore reported by the PAGE, not the card.
+
+**Verified:** web 155 e2e / 94 unit passed, server 779 passed, both typechecks
+clean. Two failures, neither this work's and both established: e2e `UPS-J1`
+reproduces on main ([#212](https://github.com/siraj-samsudeen/featherbase/issues/212)
+— `feather-testing-core`'s `clickButton` substring-matches, so `Check`
+collides with the sidebar's `Checklist Run`), and server `sources-csv`'s
+parse-cache test chmods a directory read-only in a container running as uid 0,
+where root ignores directory permissions. Draft PR
+[#210](https://github.com/siraj-samsudeen/featherbase/pull/210).
+
+**Next:** #212 is the only thing left open from this stretch, and it is a
+harness fix in `feather-testing-postgres`/`feather-testing-core` rather than
+here — `clickButton` needs an exact-match option. Beyond that, the import
+work is done end to end; the natural next thread is whatever
+`docs/design/execution-plan.md` puts after M-import.
+
 ## 2026-08-26 — the import wizard asks what is in the file first
 
 Owner report: importing a workbook of ~17 sheets (11 visible, 6–7 hidden) put
