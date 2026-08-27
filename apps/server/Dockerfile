@@ -19,6 +19,14 @@ FROM node:22-slim AS web-build
 WORKDIR /app
 RUN corepack enable
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+# feather-testing-postgres (a web devDependency) is a git dependency; pnpm
+# records GitHub git URLs in the git@github.com: form and this image has no
+# SSH key. The slim base also lacks git itself. Install git for this build
+# stage only and fetch the public repo anonymously over https. The final
+# server stage installs --prod (no dev deps), so it needs neither.
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/* \
+    && git config --global url."https://github.com/".insteadOf "git@github.com:"
 
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY apps/server/package.json apps/server/

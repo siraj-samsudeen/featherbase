@@ -88,6 +88,12 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # feather-testing-postgres is a git dependency; pnpm records GitHub
+      # git URLs in the git@github.com: form and this runner has no SSH key.
+      # The repo is public — fetch it anonymously over https instead.
+      - name: Fetch GitHub git deps over https
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -142,6 +148,10 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+
+      # Same SSH→https rewrite as the unit job — see the comment there.
+      - name: Fetch GitHub git deps over https
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
