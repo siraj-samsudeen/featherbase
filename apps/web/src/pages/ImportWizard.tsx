@@ -34,6 +34,16 @@ import {
   type ParsedSheet,
 } from '../lib/parse-file'
 import { sendImportRun, type ImportUpsertArgs } from '../lib/import-run'
+import {
+  clearSession,
+  loadDecisions,
+  loadSheets,
+  sameShape,
+  saveDecisions,
+  saveSheets,
+  shapeOf,
+  type ImportDecisions,
+} from '../lib/import-session'
 
 // IMP-010: the Import wizard. Drop a CSV or a whole workbook; every sheet
 // gets a target — a new Table (inferred, like the builder) or an existing
@@ -703,6 +713,13 @@ export function ImportWizard() {
   // index rather than a position, so deselecting an earlier sheet cannot
   // silently slide the user onto a different target.
   const [current, setCurrent] = useState(0)
+  // #204: decisions came back but the file's rows did not — too big for
+  // sessionStorage, or a fresh tab. Everything the user DECIDED is intact;
+  // only the data needs dropping again.
+  const [needsFile, setNeedsFile] = useState<ImportDecisions<SheetPlan> | null>(null)
+  // Whether this file's rows are being kept. Said up front, because
+  // discovering it on return is exactly the surprise #204 exists to remove.
+  const [dataKept, setDataKept] = useState(true)
   // The plan each sheet had when the file was read. Deselecting a sheet parks
   // it as 'skip'; reselecting must restore the target that was worked out for
   // it, not a blank one.
@@ -725,6 +742,123 @@ export function ImportWizard() {
     staleTime: 60_000,
   })
 
+  // #204: come back to what was left. Runs once — a later render must not
+  // stamp saved state back over work done since.
+  const restored = useRef(false)
+  useEffect(() => {
+    if (restored.current) return
+    restored.current = true
+    const saved = loadDecisions<SheetPlan>()
+    if (!saved) return
+    setFileName(saved.fileName)
+    setPlans(saved.plans)
+    // An entry written by an older build may lack it; the plans themselves
+    // are a safe stand-in for "what this sheet was worked out to be".
+    natural.current = Array.isArray(saved.natural) ? saved.natural : saved.plans
+    setSelected(saved.selected)
+    setStage(saved.stage)
+    setCurrent(saved.current)
+    setGroupMode(saved.groupMode)
+    setMergeName(saved.mergeName)
+    setRunOutcome(saved.outcome)
+    setDone(saved.done)
+    const rows = loadSheets(saved.fileName)
+    if (rows) setSheets(rows)
+    // No rows: the decisions stand and the file is asked for again, rather
+    // than eleven Tables' worth of naming being thrown away because the data
+    // was too big to carry.
+    else setNeedsFile(saved)
+  }, [])
+
+  // Saved on a delay, because plans change on every keystroke in a column
+  // name and a write per character is how this would come to feel broken.
+  // The delay is why `pending` exists: leaving the page is precisely when the
+  // save matters and precisely when a pending timer is about to be thrown
+  // away, so the snapshot is always available to flush immediately.
+  const pending = useRef<ImportDecisions<SheetPlan> | null>(null)
+  useEffect(() => {
+    // A finished run has nothing to resume, and resuming it would be actively
+    // wrong: coming back to /admin/import is how you start the NEXT import,
+    // and it is where the run-history strip lives. Only unfinished work is
+    // worth carrying.
+    // Nothing on screen — mid-load, or just cleared — is nothing to save.
+    if (!fileName || done || (sheets.length === 0 && !needsFile)) {
+      pending.current = null
+      return
+    }
+    const snapshot: ImportDecisions<SheetPlan> = {
+      fileName,
+      stage,
+      selected,
+      plans,
+      natural: natural.current,
+      current,
+      groupMode,
+      mergeName,
+      outcome: runOutcome,
+      done,
+      // While waiting for the file, `sheets` is empty — the saved shape is
+      // what a re-drop is checked against, so it must not be overwritten
+      // with the shape of nothing.
+      shape: needsFile ? needsFile.shape : shapeOf(sheets),
+    }
+    pending.current = snapshot
+    const timer = setTimeout(() => {
+      // Only if this is still the live snapshot. A run that finishes clears
+      // the session and nulls `pending`, but a timer scheduled a moment
+      // earlier is already in flight — without this guard it lands AFTER the
+      // clear and resurrects a session that is over.
+      if (pending.current === snapshot) saveDecisions(snapshot)
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [
+    fileName,
+    stage,
+    selected,
+    plans,
+    current,
+    groupMode,
+    mergeName,
+    runOutcome,
+    done,
+    sheets,
+    needsFile,
+  ])
+
+  // Write it out for real whenever this page is being left — a route change
+  // (unmount), a reload, or the tab going away. Without this the debounce
+  // would swallow the last edit in exactly the case #204 is about: clicking
+  // through to the rows you just imported.
+  useEffect(() => {
+    const flush = () => {
+      if (pending.current) saveDecisions(pending.current)
+    }
+    window.addEventListener('pagehide', flush)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      flush()
+    }
+  }, [])
+
+  function startOver() {
+    // Before clearing: a queued snapshot would otherwise be flushed back on
+    // the way out and undo this.
+    pending.current = null
+    clearSession()
+    setNeedsFile(null)
+    setDataKept(true)
+    setFileName(null)
+    setSheets([])
+    setPlans([])
+    setSelected([])
+    setStage('overview')
+    setCurrent(0)
+    setRunOutcome(null)
+    setDone(false)
+    setError(null)
+    natural.current = []
+  }
+
   function setPlan(i: number, patch: Partial<SheetPlan>) {
     setPlans((ps) =>
       ps.map((p, j) => (j === i ? { ...p, ...patch, check: null, result: null, failure: null } : p)),
@@ -741,6 +875,14 @@ export function ImportWizard() {
       setError(`${file.name}: not a CSV or Excel file`)
       return
     }
+    // #204: whatever was on screen is about to be replaced, and parsing is
+    // async — so clear it NOW rather than leaving a restored grid live and
+    // clickable for the moment it takes to read the file. Editing something
+    // that is about to be thrown away is worse than a blank pause.
+    const resumeFrom = needsFile
+    setSheets([])
+    setPlans([])
+    setNeedsFile(null)
     try {
       const parsed = await parseWorkbook(file)
       // A drop can beat the targets query; suggestions need the real corpus.
@@ -750,6 +892,26 @@ export function ImportWizard() {
       })
       setFileName(file.name)
       setSheets(parsed)
+      // #204: the rows are kept if they fit. If they do not, say so now —
+      // finding out on return that the file must be dropped again is the
+      // surprise, not the dropping.
+      setDataKept(saveSheets(file.name, parsed))
+      // The same file, dropped again to carry on. Plans address sheets by
+      // INDEX, so this must be the same workbook before they are applied —
+      // otherwise a saved mapping would quietly point at another sheet's
+      // columns. Name, sheet names, headers and row counts all have to match.
+      if (resumeFrom && sameShape(resumeFrom.shape, shapeOf(parsed))) {
+        setPlans(resumeFrom.plans)
+        natural.current = resumeFrom.natural
+        setSelected(resumeFrom.selected)
+        setStage(resumeFrom.stage)
+        setCurrent(resumeFrom.current)
+        setGroupMode(resumeFrom.groupMode)
+        setMergeName(resumeFrom.mergeName)
+        setRunOutcome(resumeFrom.outcome)
+        setDone(resumeFrom.done)
+        return
+      }
       const newPlans = parsed.map((sheet) => {
           const newName =
             (parsed.length === 1 ? tableNameFromFile(file.name) : tableNameFromFile(sheet.sheetName)) ||
@@ -1252,7 +1414,14 @@ export function ImportWizard() {
       // still always reports when it STOPS (#203) — it just reports what it
       // actually did and what is left.
       setRunOutcome({ imported, failed: failedTargets, remaining: stillToGo })
-      setDone(failedTargets.length === 0 && activeIndexes.every(landed))
+      const finished = failedTargets.length === 0 && activeIndexes.every(landed)
+      setDone(finished)
+      // #204: and drop the saved session with it, so the next visit is a
+      // clean wizard rather than a re-run of one that is over.
+      if (finished) {
+        pending.current = null
+        clearSession()
+      }
       // #202: walk on to the first target still waiting. Staying put after a
       // per-target import would make the next one a hunt; jumping past
       // something unimported would skip it silently.
@@ -1349,7 +1518,11 @@ export function ImportWizard() {
             : 'border-[var(--color-hairline-strong,#d1d8dd)] text-gray-500 hover:border-[var(--color-brand)]'
         }`}
       >
-        {fileName ? (
+        {fileName && needsFile ? (
+          <span data-testid="iw-file-name">
+            Drop <strong>{fileName}</strong> again to carry on
+          </span>
+        ) : fileName ? (
           <span data-testid="iw-file-name">
             <strong>{fileName}</strong> — {sheets.length} sheet{sheets.length === 1 ? '' : 's'}
           </span>
@@ -1368,6 +1541,54 @@ export function ImportWizard() {
           }}
         />
       </div>
+
+      {/* #204: what was decided outlived the page; the rows did not. Say
+          exactly what is being held and what is needed, because a wizard that
+          simply reopens empty is what sent the owner here. */}
+      {needsFile && (
+        <div
+          className="mb-3 rounded border border-[var(--color-brand)] bg-[var(--color-brand-tint)] px-3 py-2 text-sm"
+          data-testid="iw-resume"
+        >
+          <strong>Your work on {needsFile.fileName} is saved.</strong>{' '}
+          {needsFile.plans.filter((p) => p.mode !== 'skip' && p.groupedInto === null).length} Tables
+          planned
+          {needsFile.plans.some((p) => p.result) &&
+            `, ${needsFile.plans.filter((p) => p.result).length} already imported`}
+          . The file itself is not kept in the browser — drop the same file above and it picks up
+          where you left off.
+          <button
+            type="button"
+            className="ml-2 underline"
+            data-testid="iw-start-over"
+            onClick={startOver}
+          >
+            Start over instead
+          </button>
+        </div>
+      )}
+
+      {/* Said BEFORE leaving the page, not discovered on returning to it. */}
+      {!dataKept && sheets.length > 0 && (
+        <p className="mb-3 text-xs text-gray-500" data-testid="iw-too-big">
+          This workbook is too large to keep in the browser. Your choices are saved, but if you
+          leave this page you will need to drop the file again.
+        </p>
+      )}
+
+      {fileName && !needsFile && (
+        <p className="mb-3 text-xs text-gray-500">
+          <button
+            type="button"
+            className="underline"
+            data-testid="iw-start-over"
+            onClick={startOver}
+          >
+            Start over
+          </button>
+          {' — forget this file and every choice made about it.'}
+        </p>
+      )}
 
       {search.table && sheets.length === 0 && <RunHistory table={search.table} />}
 
@@ -1410,7 +1631,7 @@ export function ImportWizard() {
           sequence. The complaint that started this was eleven sheets on one
           screen; a stepper is only an improvement if it never leaves you
           wondering how many are left. */}
-      {stage === 'columns' && targetIndexes.length > 0 && (
+      {stage === 'columns' && sheets.length > 0 && targetIndexes.length > 0 && (
         <div className="fc-card mb-3 p-3" data-testid="iw-stepper">
           <div className="flex flex-wrap items-center gap-3">
             {sheets.length > 1 && !done && (
