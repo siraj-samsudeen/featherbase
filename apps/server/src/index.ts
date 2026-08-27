@@ -8,7 +8,7 @@ import { config } from './config'
 import { sql } from './db'
 import { AppError, errorResponse } from './errors'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
-import { createTable, deleteTable, setIdPattern, updateTable } from './table-engine'
+import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } from './table-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
@@ -730,6 +730,17 @@ app.delete('/api/table_def/:name', async (c) => {
   await assertSystemManager(who(c))
   await deleteTable(c.req.param('name'), who(c))
   return c.json({ ok: true })
+})
+
+// #209 (issue #197): rename a column in place, keeping its data. PUT
+// /api/table_def/:name matches columns BY NAME, so a changed name there reads
+// as delete-plus-add and silently orphans the rows — hence its own route.
+app.post('/api/table_def/:name/rename_column', async (c) => {
+  await assertSystemManager(who(c))
+  const body = (await c.req.json()) as { from?: unknown; to?: unknown }
+  if (typeof body.from !== 'string' || typeof body.to !== 'string')
+    throw new AppError('ValidationError', 'Expected { from, to }')
+  return c.json(await renameColumn(c.req.param('name'), body.from, body.to, who(c)))
 })
 
 app.put('/api/table_def/:name', async (c) => {

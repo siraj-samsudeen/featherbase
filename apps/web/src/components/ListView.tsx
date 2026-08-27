@@ -393,6 +393,19 @@ export function ListView({
               Import
             </Link>
           )}
+          {/* #209: add a column, or fix a misspelled one, without rebuilding
+              the Table. Absent on system Tables (their columns are the
+              platform's) and on bound ones (their storage is the source's). */}
+          {!meta.data?.system && !meta.data?.data_source && (
+            <Link
+              to="/admin/$table/columns"
+              params={{ table }}
+              className="fc-btn"
+              data-testid="open-columns"
+            >
+              Columns
+            </Link>
+          )}
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Choice') && (
             <Link
               to="/admin/$table/view/kanban"

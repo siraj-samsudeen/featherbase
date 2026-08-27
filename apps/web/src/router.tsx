@@ -34,6 +34,7 @@ import { PrintView } from './pages/PrintView'
 import { TableBuilder } from './pages/TableBuilder'
 import { ImportWizard } from './pages/ImportWizard'
 import { ImportBatches } from './pages/ImportBatches'
+import { ColumnEditor } from './pages/ColumnEditor'
 import { AllTablesPage } from './pages/AllTables'
 import SourceBrowser from './pages/SourceBrowser'
 import { PrototypeConnectSourcePage } from './pages/PrototypeConnectSource'
@@ -253,6 +254,19 @@ const importBatchesRoute = createRoute({
   component: () => (
     <div data-testid="table-page">
       <ImportBatches />
+    </div>
+  ),
+})
+
+// #209: change a Table's columns after its rows are in. A child of $table
+// rather than a sibling: the columns belong to that Table, and the URL says
+// so.
+const columnsRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: '$table/columns',
+  component: () => (
+    <div data-testid="table-page">
+      <ColumnEditor />
     </div>
   ),
 })
@@ -681,5 +695,5 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, tableRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, tableRoute, docRoute]),
 ])

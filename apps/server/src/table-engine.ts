@@ -49,55 +49,66 @@ export function pgType(columnType: string): string | null {
   return PG_TYPES[columnType]
 }
 
+// #209 (issue #197): the meta this server RETURNS carries `null` for every
+// unset optional. A client that reads a Table, changes one column and sends
+// it back — the natural shape of a column editor — was rejected on every one
+// of them ("Expected string, received null"), which made read-modify-write
+// impossible without the client scrubbing nulls it did not put there. Null
+// and absent mean the same thing here, so say so once.
+const optionalString = z
+  .string()
+  .nullish()
+  .transform((v) => v ?? undefined)
+
 const columnSchema = z.object({
   column_name: z
     .string()
     .regex(/^[a-z][a-z0-9_]{0,63}$/, 'column_name must be snake_case'),
-  label: z.string().optional(),
+  label: optionalString,
   column_type: z.enum(COLUMN_TYPE_VALUES),
   // Type-specific target, replacing the old overloaded "options" key:
   // Reference -> target table name, Choice -> newline/comma list of choices,
   // Sub-table -> the sub-table's Table name.
-  reference_table: z.string().optional(),
-  choices: z.string().optional(),
-  row_table: z.string().optional(),
-  reqd: z.boolean().optional(),
-  unique: z.boolean().optional(),
-  default_value: z.string().optional(),
-  read_only: z.boolean().optional(),
-  hidden: z.boolean().optional(),
-  in_list_view: z.boolean().optional(),
-  tier: z.enum(['basic', 'restricted']).optional(),
+  reference_table: optionalString,
+  choices: optionalString,
+  row_table: optionalString,
+  reqd: z.boolean().nullish().transform((v) => v ?? undefined),
+  unique: z.boolean().nullish().transform((v) => v ?? undefined),
+  default_value: optionalString,
+  read_only: z.boolean().nullish().transform((v) => v ?? undefined),
+  hidden: z.boolean().nullish().transform((v) => v ?? undefined),
+  in_list_view: z.boolean().nullish().transform((v) => v ?? undefined),
+  tier: z.enum(['basic', 'restricted']).nullish().transform((v) => v ?? undefined),
   // EDS-3: true column name on a bound Table's source when the legal
   // column_name had to differ (reserved word, illegal characters).
-  source_column: z.string().optional(),
+  source_column: optionalString,
 })
 
 export const tableDefSchema = z.object({
   name: z
     .string()
     .regex(/^[A-Za-z][A-Za-z0-9 ]{0,60}$/, 'invalid Table name'),
-  module: z.string().optional(),
+  module: optionalString,
   // Replaces the old istable/issingle booleans: 'table' = normal collection,
   // 'sub_table' = rows only ever nested inside a parent row, 'settings' = a
   // single-row Settings Table (no list, no collection table).
-  kind: z.enum(['table', 'sub_table', 'settings']).optional(),
-  is_submittable: z.boolean().optional(),
-  id_pattern: z.string().optional(),
-  title_column: z.string().optional(),
-  description: z.string().optional(),
+  kind: z.enum(['table', 'sub_table', 'settings']).nullish().transform((v) => v ?? undefined),
+  is_submittable: z.boolean().nullish().transform((v) => v ?? undefined),
+  id_pattern: optionalString,
+  title_column: optionalString,
+  description: optionalString,
   // #74: platform-table flag. Accepted here so migrations and seeds can set
   // it through createTable; the public /api/table_def routes REJECT it — a
   // user-created table can never claim system: true.
-  system: z.boolean().optional(),
+  system: z.boolean().nullish().transform((v) => v ?? undefined),
   // EDS-3: binding to an external Data Source. Set only at creation (BV3) —
   // updateTable never touches these. A bound Table gets no DDL and no RLS
   // (BV1): its rows live on the source.
-  data_source: z.string().optional(),
-  external_schema: z.string().optional(),
-  external_table: z.string().optional(),
-  external_pk: z.string().optional(),
-  external_modified: z.string().optional(),
+  data_source: optionalString,
+  external_schema: optionalString,
+  external_table: optionalString,
+  external_pk: optionalString,
+  external_modified: optionalString,
   columns: z.array(columnSchema).min(1),
 })
 
@@ -585,4 +596,83 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
   // garbage, not a leak (files are only served through the registry).
   for (const f of files)
     if (f.file_url) await deleteStored(f.file_url).catch(() => {})
+}
+
+// #209 (issue #197): rename a column in place, keeping its data.
+//
+// "In one of the things floor was spelled with a G, Glor." The mistake is in
+// the NAME, and the rows underneath it are fine — so the fix has to be a
+// rename, not a new column beside the old one.
+//
+// updateTable cannot do this: it matches columns by `column_name`, so a
+// changed name reads as "delete that one, add this one" — the old physical
+// column is orphaned with its data and the new one arrives empty. That is a
+// silent data loss, which is why this is its own operation with its own DDL.
+export async function renameColumn(
+  table: string,
+  from: string,
+  to: string,
+  user = 'Administrator',
+): Promise<TableMeta> {
+  const meta = await getMeta(table)
+  if (meta.system)
+    throw new AppError('ValidationError', `${meta.name} is a system table and cannot be changed`)
+  // BV1: a bound Table's storage belongs to the source. Renaming its column
+  // here would rename nothing real and desynchronise the binding.
+  if (meta.data_source)
+    throw new AppError(
+      'ValidationError',
+      `${meta.name} is bound to a data source; rename the column at the source`,
+    )
+
+  // Checked BEFORE "no such column": a standard column is not absent, it is
+  // off limits, and saying so is the useful answer.
+  if ((STANDARD_COLUMNS as readonly string[]).includes(from))
+    throw new AppError('ValidationError', `${from} is a standard column and cannot be renamed`)
+  const column = meta.columns.find((c) => c.column_name === from)
+  if (!column) throw new AppError('NotFoundError', `${meta.name} has no column ${from}`)
+
+  const target = to.trim()
+  if (target === from) return meta
+  if (!/^[a-z][a-z0-9_]{0,63}$/.test(target))
+    throw new AppError('ValidationError', 'column_name must be snake_case', { to: 'snake_case' })
+  if ((STANDARD_COLUMNS as readonly string[]).includes(target))
+    throw new AppError('ValidationError', `${target} is a standard column name`)
+  if (meta.columns.some((c) => c.column_name === target))
+    throw new AppError('ValidationError', `${meta.name} already has a column ${target}`)
+
+  const physical = tableName(meta.name)
+  const hasStorage = pgType(column.column_type) !== null && meta.kind !== 'settings'
+
+  await sql.begin(async (tx) => {
+    if (hasStorage)
+      await tx.unsafe(`alter table "${physical}" rename column "${from}" to "${target}"`)
+    await tx`update column_def set column_name = ${target}
+      where parent = ${meta.name} and column_name = ${from}`
+    // A unique constraint carries the old name in its own name. Postgres
+    // renames the column inside it but not the constraint, so the next
+    // updateTable — which builds that name from the column — would fail to
+    // find it. Rename it to match.
+    if (column.unique && hasStorage)
+      await tx.unsafe(
+        `alter table "${physical}" rename constraint "${physical}_${from}_uq" to "${physical}_${target}_uq"`,
+      )
+    // The two places this Table names its own column. Left stale, the id
+    // pattern would stop resolving and the list would lose its title.
+    if (meta.title_column === from)
+      await tx`update table_def set title_column = ${target} where name = ${meta.name}`
+    // `field:<column>` is the one id pattern that names a column (see
+    // document.ts). Left stale it stops resolving, and every new row fails
+    // with "Naming field glor is required" for a column that is gone.
+    if (meta.id_pattern === `field:${from}`)
+      await tx`update table_def set id_pattern = ${`field:${target}`} where name = ${meta.name}`
+    await tx`update table_def set updated_at = ${new Date()} where name = ${meta.name}`
+  })
+
+  invalidateMeta(meta.name)
+  await logAccess(user, `rename_column ${from} -> ${target}`, {
+    table: 'Table',
+    row_id: meta.name,
+  }).catch(() => {})
+  return getMeta(meta.name)
 }
