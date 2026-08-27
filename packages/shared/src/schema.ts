@@ -79,7 +79,7 @@ export function tableSchemaToZod(columns: ColumnDef[]) {
       emptyToUndefined,
       f.reqd
         ? base
-        : base.optional().nullable(),
+        : base.optional(),
     )
   }
   return z.object(shape)
