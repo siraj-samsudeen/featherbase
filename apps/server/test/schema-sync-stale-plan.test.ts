@@ -69,7 +69,7 @@ describe('META-004: schema sync does not leave stale prepared statements', () =>
         method: 'POST',
         body: JSON.stringify({ table: DT, row: { a: 'one' } }),
       })
-    ).json()) as { name: string; updated_at: string }
+    ).json()) as { row_id: string; updated_at: string }
 
     const columns = [{ column_name: 'a', column_type: 'Data' }]
     for (let round = 1; round <= 3; round++) {

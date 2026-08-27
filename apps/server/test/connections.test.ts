@@ -65,7 +65,7 @@ const getConnections = async (client: TestClient, name: string) => {
 // Evaluate a connection's filters through the ordinary list API — proves the
 // filter both round-trips and stays inside the caller's read scope.
 const listWith = async (client: TestClient, table: string, filters: unknown[]) => {
-  const res = await client.get<{ data: { name: string }[] }>(
+  const res = await client.get<{ data: { row_id: string }[] }>(
     `/api/table/${encodeURIComponent(table)}?filters=${encodeURIComponent(JSON.stringify(filters))}&limit_page_length=500`,
   )
   return res.data.map((r) => r.row_id)

@@ -35,8 +35,12 @@ describe('Frappe lifecycle + app-contract parity', () => {
             // Frappe's canonical use: normalise before validation runs.
             if (typeof row.title === 'string') row.title = row.title.trim()
           },
-          validate: () => seen.push('validate'),
-          on_update: () => seen.push('on_update'),
+          validate: () => {
+            seen.push('validate')
+          },
+          on_update: () => {
+            seen.push('on_update')
+          },
         },
       },
     })
@@ -70,8 +74,12 @@ describe('Frappe lifecycle + app-contract parity', () => {
             seen.push('before_submit')
             if (row.title === 'blocked') throw new Error('submission blocked')
           },
-          on_update: () => seen.push('on_update'),
-          on_submit: () => seen.push('on_submit'),
+          on_update: () => {
+            seen.push('on_update')
+          },
+          on_submit: () => {
+            seen.push('on_submit')
+          },
         },
       },
     })

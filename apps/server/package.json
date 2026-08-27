@@ -16,7 +16,7 @@
     "verify:helpdesk": "tsx scripts/verify-helpdesk.ts",
     "test": "vitest run",
     "test:smoke": "tsx src/smoke.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
     "e2e:reset": "tsx scripts/reset-e2e-db.ts",
     "e2e:serve": "tsx scripts/reset-e2e-db.ts && tsx src/migrate.ts && tsx src/run-patches.ts && tsx watch src/index.ts"
   },
