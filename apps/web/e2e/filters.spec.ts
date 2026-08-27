@@ -1,58 +1,17 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
-
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
-const DT_A = 'UI List A'
+import { test, expect, adminAuth, adminToken, bearer } from './fixtures'
+import { ensureListTableA, LIST_DT_A as DT_A } from './fixtures-ui'
 
 // Owns its fixture rather than borrowing listview.spec's: this spec sorts
 // before listview.spec alphabetically, so under an isolated fresh DB
 // (pnpm --filter web e2e) it would self-skip on every run. The assertions
-// below depend on the exact row count (30, with qty 0..29), so this
-// reproduces listview.spec's DT_A fill-to-30 logic exactly — idempotent in
-// either direction: whichever spec runs first fills the table, the other
-// finds totalA already at 30 and adds nothing.
-async function ensureFixtures(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
-  const auth = { Authorization: `Bearer ${token}` }
-
-  const meta = await request.get(`/api/table/${encodeURIComponent(DT_A)}:meta`, { headers: auth })
-  if (meta.status() === 404) {
-    await request.post('/api/table_def', {
-      headers: auth,
-      data: {
-        name: DT_A,
-        columns: [
-          { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true },
-          { column_name: 'qty', column_type: 'Int', label: 'Qty', in_list_view: true },
-        ],
-      },
-    })
-  }
-
-  const listA = await request.get(
-    `/api/table/${encodeURIComponent(DT_A)}?limit_page_length=1`,
-    { headers: auth },
-  )
-  const totalA = ((await listA.json()) as { total: number }).total
-  for (let i = totalA; i < 30; i++) {
-    await request.post(`/api/table/${encodeURIComponent(DT_A)}`, {
-      headers: auth,
-      data: { title: `item-${String(i).padStart(2, '0')}`, qty: i },
-    })
-  }
-}
-
+// below depend on the exact row count (30, with qty 0..29), so both specs
+// call the one shared builder in ./fixtures-ui — idempotent in either
+// direction: whichever runs first fills the Table, the other finds it full.
 test.beforeAll(async ({ request }) => {
-  await ensureFixtures(request)
+  await ensureListTableA(request, await adminAuth(request))
 })
 
 test('UI-003: filters narrow results, persist in the URL across reload, and are removable', async ({ page }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-
   await page.goto(`/admin/${encodeURIComponent(DT_A)}`)
   await expect(page.getByTestId('list-total')).toContainText('30 total')
 
@@ -105,9 +64,8 @@ test('#87: a filters URL applies when opened cold, not just when the app built i
   page,
   request,
 }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
-  const auth = { Authorization: `Bearer ${token}` }
+  const token = await adminToken(request)
+  const auth = bearer(token)
 
   const meta = await request.get(`/api/table/${encodeURIComponent(DT_COLD)}:meta`, { headers: auth })
   if (meta.status() === 404) {
@@ -138,12 +96,6 @@ test('#87: a filters URL applies when opened cold, not just when the app built i
       data: { title: `cold-${i}`, qty: i },
     })
   }
-
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
 
   // Typed by hand, never built by the app: qty >= 7 -> 3 of the 10 rows.
   // Filters are [field, op, value] triples (see `parsed` in router.tsx).

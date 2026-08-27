@@ -1,17 +1,11 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth, type Page } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'KB E2E Doc'
-
-async function adminHeaders(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
 
 let docName: string
 
 test.beforeAll(async ({ request }) => {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
@@ -21,17 +15,8 @@ test.beforeAll(async ({ request }) => {
   docName = ((await doc.json()) as { row_id: string }).row_id
 })
 
-async function login(page: import('@playwright/test').Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
-
 // UI-015: Ctrl/Cmd+S saves the current form.
 test('UI-015: Ctrl+S saves the form', async ({ page }) => {
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await expect(page.getByTestId('form-view')).toBeVisible()
   await page.locator('[data-field=title]').fill(`kb-${Date.now()}`)
@@ -41,7 +26,6 @@ test('UI-015: Ctrl+S saves the form', async ({ page }) => {
 
 // UI-015: Ctrl/Cmd+B opens a new document of the current Table.
 test('UI-015: Ctrl+B opens a new document', async ({ page }) => {
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}`)
   await expect(page.getByTestId('list-view')).toBeVisible()
   await page.keyboard.press('Control+b')
@@ -51,7 +35,6 @@ test('UI-015: Ctrl+B opens a new document', async ({ page }) => {
 
 // UI-015: the "g then d" leader sequence navigates to the Admin home.
 test('UI-015: g then d navigates to the Admin home', async ({ page }) => {
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await expect(page.getByTestId('form-view')).toBeVisible()
   await page.locator('body').click() // ensure focus is not in an input

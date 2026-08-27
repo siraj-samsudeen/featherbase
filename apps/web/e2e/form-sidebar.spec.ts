@@ -1,6 +1,5 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Sb DT'
 
 // UI-017: form sidebar — assign a user, add a tag, attach a file; all persist
@@ -9,8 +8,7 @@ const DT = 'Sb DT'
 let docName = ''
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const headers = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
+  const headers = await adminAuth(request)
   const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
@@ -22,12 +20,6 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 })
 
 test('UI-017: assignments, tags, and attachments persist across reload', async ({ page }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
 
   // Assign a user.

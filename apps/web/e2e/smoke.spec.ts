@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { anonymousTest as test, expect } from './fixtures'
 
 test('app boots: root redirects to login and the form renders', async ({ page }) => {
   await page.goto('/')

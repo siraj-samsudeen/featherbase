@@ -1,19 +1,13 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Cmt DT'
 
 // UI-018: threaded comment box on every document with @mentions.
 
-async function auth(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
-
 let docName = ''
 
 test.beforeAll(async ({ request }) => {
-  const headers = await auth(request)
+  const headers = await adminAuth(request)
   const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data' }] },
@@ -41,12 +35,6 @@ test.beforeAll(async ({ request }) => {
 })
 
 test('UI-018: post comments with an @mention; they persist and render', async ({ page }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await expect(page.getByTestId('comments-panel')).toContainText('No comments yet')
 

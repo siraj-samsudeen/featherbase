@@ -1,18 +1,7 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
-
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
+import { test, expect, adminToken, type APIRequestContext } from './fixtures'
 
 async function serverTheme(request: APIRequestContext): Promise<string> {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
+  const token = await adminToken(request)
   const who = (await (await request.get('/api/whoami', { headers: { Authorization: `Bearer ${token}` } })).json()) as {
     theme?: string
   }
@@ -21,20 +10,18 @@ async function serverTheme(request: APIRequestContext): Promise<string> {
 
 // Ensure the account starts (and ends) in light mode so this test is isolated.
 test.beforeEach(async ({ request }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
+  const token = await adminToken(request)
   await request.post('/api/set_theme', { headers: { Authorization: `Bearer ${token}` }, data: { theme: 'light' } })
 })
 test.afterEach(async ({ request }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
+  const token = await adminToken(request)
   await request.post('/api/set_theme', { headers: { Authorization: `Bearer ${token}` }, data: { theme: 'light' } })
 })
 
 // UI-024: toggling dark mode re-skins the UI and the preference persists
 // per-user (server-side), surviving a reload.
 test('UI-024: dark mode toggles, persists across reload, and is stored per-user', async ({ page, request }) => {
-  await login(page)
+  await page.goto('/admin')
   const html = page.locator('html')
 
   // Starts light.

@@ -1,21 +1,17 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { anonymousTest as test, expect, ADMIN_PWD, loginAs, tokenFor } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Portal E2E Ticket'
 const ROLE = 'Portal E2E User'
 const ALICE = 'portal-alice@x.com'
 const BOB = 'portal-bob@x.com'
 const PWD = 'portalpw12345'
-
-async function token(request: APIRequestContext, usr: string, pwd: string) {
-  const r = await request.post('/api/login', { data: { usr, pwd } })
-  return ((await r.json()) as { token: string }).token
-}
+// A website user lands wherever their role allows — /admin or the portal.
+const LANDING = /\/(admin|portal)/
 
 let bobDoc = ''
 
 test.beforeAll(async ({ request }) => {
-  const admin = await token(request, 'Administrator', ADMIN_PWD)
+  const admin = await tokenFor(request, 'Administrator', ADMIN_PWD)
   const H = { Authorization: `Bearer ${admin}` }
 
   const dt = await request.post('/api/table_def', {
@@ -43,12 +39,12 @@ test.beforeAll(async ({ request }) => {
   }
 
   // Each user creates their own ticket (owner = creator).
-  const aTok = await token(request, ALICE, PWD)
+  const aTok = await tokenFor(request, ALICE, PWD)
   await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: { Authorization: `Bearer ${aTok}` },
     data: { subject: 'Alice cannot log in' },
   })
-  const bTok = await token(request, BOB, PWD)
+  const bTok = await tokenFor(request, BOB, PWD)
   const b = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
     headers: { Authorization: `Bearer ${bTok}` },
     data: { subject: 'Bob billing question' },
@@ -56,16 +52,8 @@ test.beforeAll(async ({ request }) => {
   bobDoc = ((await b.json()) as { row_id: string }).row_id
 })
 
-async function loginUI(page: import('@playwright/test').Page, usr: string) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', usr)
-  await page.fill('input[name=password]', PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/(admin|portal)/)
-}
-
 test('WEB-003: portal user sees only their own documents', async ({ page }) => {
-  await loginUI(page, ALICE)
+  await loginAs(page, ALICE, PWD, LANDING)
   await page.goto(`/portal/${encodeURIComponent(DT)}`)
 
   await expect(page.getByTestId('portal-title')).toContainText(DT)
@@ -77,7 +65,7 @@ test('WEB-003: portal user sees only their own documents', async ({ page }) => {
 })
 
 test("WEB-003: opening another user's document returns 403", async ({ page }) => {
-  await loginUI(page, ALICE)
+  await loginAs(page, ALICE, PWD, LANDING)
   // Directly navigate to Bob's ticket — the API denies it (if_owner).
   await page.goto(`/portal/${encodeURIComponent(DT)}/${encodeURIComponent(bobDoc)}`)
   await expect(page.getByTestId('portal-forbidden')).toBeVisible()
@@ -85,7 +73,7 @@ test("WEB-003: opening another user's document returns 403", async ({ page }) =>
 })
 
 test('WEB-003: the owner CAN open their own document', async ({ page }) => {
-  await loginUI(page, BOB)
+  await loginAs(page, BOB, PWD, LANDING)
   await page.goto(`/portal/${encodeURIComponent(DT)}/${encodeURIComponent(bobDoc)}`)
   await expect(page.getByTestId('portal-doc')).toBeVisible()
   await expect(page.getByTestId('portal-field-subject')).toContainText('Bob billing question')

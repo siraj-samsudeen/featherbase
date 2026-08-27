@@ -1,6 +1,5 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminToken, bearer, type APIRequestContext, type Page } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'SavedView DT'
 const DOC = 'sv-target-row'
 const FILTERS = encodeURIComponent(JSON.stringify([['note', '=', 'hot']]))
@@ -10,9 +9,8 @@ const FILTERS = encodeURIComponent(JSON.stringify([['note', '=', 'hot']]))
 // whole set, can be shared, and can be deleted.
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
-  const auth = { Authorization: `Bearer ${token}` }
+  const token = await adminToken(request)
+  const auth = bearer(token)
   const dt = await request.post('/api/table_def', {
     headers: auth,
     data: {
@@ -27,14 +25,6 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
     data: { row_id: DOC, note: 'hot' },
   })
 })
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
 
 // SavedViewsBar (apps/web/src/components/ListView.tsx) counts "the same
 // filter set applied 3+ times inside a week" itself, entirely client-side:
@@ -82,7 +72,6 @@ async function waitPastDedupWindow(page: Page, table: string, filters: unknown):
 test('#101 P6: three applications trigger the nudge; the saved view lives as a chip', async ({
   page,
 }) => {
-  await login(page)
   const listUrl = `/admin/${encodeURIComponent(DT)}?filters=${FILTERS}`
 
   // First two arrivals: no nudge yet. Waiting past the dedup window (see
@@ -123,7 +112,6 @@ test('#101 P6: three applications trigger the nudge; the saved view lives as a c
 })
 
 test('#101 P6: "Not now" silences the nudge for that filter set', async ({ page }) => {
-  await login(page)
   const coldFilters = [['note', '=', 'cold']]
   const otherFilters = encodeURIComponent(JSON.stringify(coldFilters))
   const listUrl = `/admin/${encodeURIComponent(DT)}?filters=${otherFilters}`

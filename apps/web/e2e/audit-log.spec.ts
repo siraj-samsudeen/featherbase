@@ -1,15 +1,9 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminAuth, loginAs, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Audit E2E Item'
 
-async function adminHeaders(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
-
 async function logCount(request: APIRequestContext, table: string, filters: unknown[]) {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   const res = (await (
     await request.get(
       `/api/table/${encodeURIComponent(table)}?filters=${encodeURIComponent(JSON.stringify(filters))}&limit_page_length=1`,
@@ -20,7 +14,7 @@ async function logCount(request: APIRequestContext, table: string, filters: unkn
 }
 
 test.beforeAll(async ({ request }) => {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
@@ -29,23 +23,16 @@ test.beforeAll(async ({ request }) => {
   await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { title: 'row1' } })
 })
 
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
-
 // PLAT-007: a login and a CSV export each produce an audit log row.
 test('PLAT-007: login writes an Activity Log row', async ({ page, request }) => {
   const before = await logCount(request, 'Activity Log', [['operation', '=', 'login']])
-  await login(page) // this login should append a row
+  // The subject of this test IS the login, so it signs in for real rather
+  // than riding the suite's stored session.
+  await loginAs(page)
   await expect.poll(() => logCount(request, 'Activity Log', [['operation', '=', 'login']])).toBeGreaterThan(before)
 })
 
 test('PLAT-007: a CSV export writes an Access Log row', async ({ page, request }) => {
-  await login(page)
   const before = await logCount(request, 'Access Log', [
     ['operation', '=', 'export'],
     ['ref_table', '=', DT],

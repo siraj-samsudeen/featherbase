@@ -1,22 +1,8 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { anonymousTest as test, expect, ADMIN_PWD, adminAuth, loginAs } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Asg DT'
 const ASSIGNEE = 'asg-user@x.com'
 const ASSIGNEE_PWD = 'asgpw12345'
-
-async function adminAuth(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
-
-async function loginAs(page: Page, email: string, pwd: string) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', email)
-  await page.fill('input[name=password]', pwd)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
 
 let docName = ''
 

@@ -1,31 +1,24 @@
-import { expect, test } from '@playwright/test'
+import { test, expect, adminToken } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 // Unique-ish but stable name so re-runs are idempotent (delete first via API).
 const NEW_DT = 'Builder Widget'
 
 test.beforeAll(async ({ request }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
+  const token = await adminToken(request)
   // Pre-clean leftovers so the create path is exercised fresh each run.
   await deleteTableIfExists(request, token, NEW_DT)
 })
 
 test('UI-011: create a Table with 5 fields from the Admin; list+form work immediately', async ({ page, request }) => {
   // Clean any prior copy directly (no delete-Table endpoint yet)
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
+  const token = await adminToken(request)
   const exists = await request.get(`/api/table/${encodeURIComponent(NEW_DT)}:meta`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   test.skip(exists.status() === 200, 'Builder Widget already exists in this DB; skipping create path')
 
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
+  await page.goto('/admin')
 
   // Enter the builder from the sidebar
   await page.getByTestId('new-table-link').click()
@@ -111,12 +104,7 @@ test('UI-011: create a Table with 5 fields from the Admin; list+form work immedi
 // SECOND row on screen — the same off-by-a-blank-row class of bug #115 fixed
 // for imported rows. A blank row above a bad column is the witness.
 test('#128: a blank row above a bad column does not shift the blame', async ({ page }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-
+  await page.goto('/admin')
   await page.getByTestId('new-table-link').click()
   await expect(page.getByTestId('table-builder')).toBeVisible()
   // Never created: the definition is refused at validation, before any DDL.

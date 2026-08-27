@@ -1,6 +1,5 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminToken, bearer, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const CUST = 'UI Rn Cust'
 const ORDER = 'UI Rn Order'
 
@@ -8,9 +7,8 @@ const ORDER = 'UI Rn Order'
 // old name now points at the new name.
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
-  const auth = { Authorization: `Bearer ${token}` }
+  const token = await adminToken(request)
+  const auth = bearer(token)
   for (const [name, columns] of [
     [CUST, [{ column_name: 'city', column_type: 'Data' }]],
     [ORDER, [{ column_name: 'customer', column_type: 'Reference', reference_table: CUST, in_list_view: true }]],
@@ -37,12 +35,6 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 })
 
 test('DOC-012: rename from the form cascades to linking documents', async ({ page }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   await page.goto(`/admin/${encodeURIComponent(CUST)}/OldCo`)
   await page.getByTestId('form-rename').click()
   await page.getByTestId('rename-input').fill('NewCo')

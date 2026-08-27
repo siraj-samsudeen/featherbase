@@ -1,14 +1,12 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminToken, bearer, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'UI Sub Order'
 
 let token = ''
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  token = ((await login.json()) as { token: string }).token
-  const auth = { Authorization: `Bearer ${token}` }
+  token = await adminToken(request)
+  const auth = bearer(token)
   const meta = await request.get(`/api/table/${encodeURIComponent(DT)}:meta`, { headers: auth })
   if (meta.status() === 404) {
     await request.post('/api/table_def', {
@@ -22,14 +20,6 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   }
 })
 
-async function login(page: import('@playwright/test').Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
-
 test('UI-010: draft shows Submit; submitted shows Cancel + locks fields; cancelled shows Amend', async ({ page, request }) => {
   // fresh draft
   const created = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
@@ -38,7 +28,6 @@ test('UI-010: draft shows Submit; submitted shows Cancel + locks fields; cancell
   })
   const docName = ((await created.json()) as { row_id: string }).row_id
 
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await expect(page.getByTestId('form-view')).toBeVisible()
 

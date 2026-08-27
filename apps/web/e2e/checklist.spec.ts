@@ -1,18 +1,9 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
-
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
-
-async function token(request: APIRequestContext) {
-  const r = await request.post('/api/login', {
-    data: { usr: 'Administrator', pwd: ADMIN_PWD },
-  })
-  return ((await r.json()) as { token: string }).token
-}
+import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
 // The checklists sample app installs through the real endpoint, exactly like
 // the helpdesk spec. Idempotent: an existing structure is left as-is.
 async function ensureChecklistStructure(request: APIRequestContext) {
-  const H = { Authorization: `Bearer ${await token(request)}` }
+  const H = await adminAuth(request)
   const has = await request.get('/api/table/Checklist%20Run:meta', { headers: H })
   if (has.ok()) return
   const r = await request.post('/api/install_app', {
@@ -32,7 +23,7 @@ let openRunName = ''
 // items; the spec only supplies the scope.
 test.beforeAll(async ({ request }) => {
   await ensureChecklistStructure(request)
-  const H = { Authorization: `Bearer ${await token(request)}` }
+  const H = await adminAuth(request)
   const templates = await request.get(
     '/api/table/Checklist%20Template?fields=%5B%22row_id%22%5D&limit_page_length=1',
     { headers: H },
@@ -55,22 +46,12 @@ test.beforeAll(async ({ request }) => {
 })
 
 test.afterAll(async ({ request }) => {
-  const H = { Authorization: `Bearer ${await token(request)}` }
+  const H = await adminAuth(request)
   for (const name of [runName, openRunName])
     if (name) await request.delete(`/api/table/Checklist%20Run/${name}`, { headers: H })
 })
 
-async function login(page: import('@playwright/test').Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
-
 test('checklist view: list → run → tick → submit gate → submit', async ({ page }) => {
-  await login(page)
-
   // The switcher appears on the run list because the Table has checklist
   // shape — and is absent from a Table that lacks it.
   await page.goto('/admin/Checklist%20Run')
@@ -112,7 +93,6 @@ test('checklist view: list → run → tick → submit gate → submit', async (
 })
 
 test('a photo_proof item takes a camera upload and shows its thumbnail', async ({ page }) => {
-  await login(page)
   await page.goto(`/admin/Checklist%20Run/view/checklist?run=${openRunName}`)
   await expect(page.getByTestId('checklist-run-view')).toBeVisible()
 
@@ -139,7 +119,6 @@ test.describe('mobile width', () => {
   test.use({ viewport: { width: 375, height: 720 } })
 
   test('the run list and items stay usable at phone width', async ({ page }) => {
-    await login(page)
     await page.goto('/admin/Checklist%20Run/view/checklist')
     await expect(page.getByTestId('checklist-view')).toBeVisible()
     await page.goto(`/admin/Checklist%20Run/view/checklist?run=${openRunName}`)

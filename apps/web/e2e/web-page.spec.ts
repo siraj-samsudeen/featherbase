@@ -1,15 +1,9 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { anonymousTest as test, expect, adminAuth, type Page } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const ROUTE = 'about-e2e'
 
-async function adminHeaders(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
-
 test.beforeAll(async ({ request }) => {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   await request.delete('/api/table/Web%20Page/about-e2e-doc', { headers })
   const res = await request.post('/api/save_row', {
     headers,
@@ -42,7 +36,7 @@ test('WEB-001: a published Web Page renders publicly without a session', async (
 
 // WEB-001: an unpublished Web Page is not reachable.
 test('WEB-001: an unpublished Web Page is not served', async ({ page, request }) => {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   await request.delete('/api/table/Web%20Page/draft-e2e-doc', { headers })
   await request.post('/api/save_row', {
     headers,

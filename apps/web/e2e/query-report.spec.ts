@@ -1,15 +1,9 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth, bearer, tokenFor } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const REPORT = 'E2E Recent Users'
 
-async function adminHeaders(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
-
 test.beforeAll(async ({ request }) => {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   await request.delete(`/api/table/Report/${encodeURIComponent(REPORT)}`, { headers })
   const res = await request.post('/api/save_row', {
     headers,
@@ -28,12 +22,6 @@ test.beforeAll(async ({ request }) => {
 
 // RPT-004: a Query Report with a date filter runs and renders.
 test('RPT-004: a SQL report with a date filter runs and renders', async ({ page }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   await page.goto(`/admin/query-report/${encodeURIComponent(REPORT)}`)
   await expect(page.getByTestId('query-report-title')).toHaveText(REPORT)
   await expect(page.getByTestId('filter-from_date')).toBeVisible()
@@ -53,7 +41,7 @@ test('RPT-004: a SQL report with a date filter runs and renders', async ({ page 
 // RPT-004: non-privileged users cannot author SQL. A Report-editor role that is
 // not System Manager is rejected when it tries to create a Query Report.
 test('RPT-004: a non-System-Manager cannot author Query Report SQL', async ({ request }) => {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   const ROLE = 'E2E Rpt Editor'
   const USER = 'e2e-rpt-editor@x.com'
   const PWD = 'rpteditor12345'
@@ -69,8 +57,7 @@ test('RPT-004: a non-System-Manager cannot author Query Report SQL', async ({ re
   })
   await request.post('/api/set_password', { headers, data: { user: USER, password: PWD } })
 
-  const login = await request.post('/api/login', { data: { usr: USER, pwd: PWD } })
-  const userHeaders = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
+  const userHeaders = bearer(await tokenFor(request, USER, PWD))
 
   // Same role CAN create an ordinary report (proves it has base Report perms)…
   const ok = await request.post('/api/save_row', {

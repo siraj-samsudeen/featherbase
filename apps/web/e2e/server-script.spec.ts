@@ -1,15 +1,9 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'SS E2E Form'
 
-async function adminHeaders(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
-
 test.beforeAll(async ({ request }) => {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, columns: [{ column_name: 'amount', column_type: 'Int', in_list_view: true }] },
@@ -36,12 +30,6 @@ test.beforeAll(async ({ request }) => {
 // CUST-004: a server script rejecting a save surfaces the error in the form
 // (without crashing the Admin), and a valid save goes through.
 test('CUST-004: a rejecting server script blocks the save in the form UI', async ({ page }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   await page.goto(`/admin/${encodeURIComponent(DT)}/new`)
   await expect(page.getByTestId('form-view')).toBeVisible()
 

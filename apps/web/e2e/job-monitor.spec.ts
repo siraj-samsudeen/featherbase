@@ -1,16 +1,9 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
-
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
-
-async function adminHeaders(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
+import { test, expect, adminAuth } from './fixtures'
 
 let jobName: string
 
 test.beforeAll(async ({ request }) => {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   // Seed a failed job (a no-op ping_job that will succeed when retried).
   const res = await request.post('/api/table/Background%20Job', {
     headers,
@@ -21,12 +14,6 @@ test.beforeAll(async ({ request }) => {
 
 // JOB-004: a failed job appears in the monitor; clicking Retry re-runs it.
 test('JOB-004: a failed job can be retried from the Admin', async ({ page }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   await page.goto('/admin/jobs')
   await expect(page.getByTestId('job-monitor')).toBeVisible()
 

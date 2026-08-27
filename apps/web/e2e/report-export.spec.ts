@@ -1,17 +1,15 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminToken, bearer, type APIRequestContext } from './fixtures'
 import { readFileSync } from 'node:fs'
 import * as XLSX from 'xlsx'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'RPT Export Task'
 
 // RPT-003: downloaded CSV (and XLSX) match the on-screen rows including
 // grouping order.
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
-  const auth = { Authorization: `Bearer ${token}` }
+  const token = await adminToken(request)
+  const auth = bearer(token)
   const dt = await request.post('/api/table_def', {
     headers: auth,
     data: {
@@ -44,12 +42,6 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('RPT-003: CSV and XLSX downloads match on-screen rows and grouping order', async ({
   page,
 }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   await page.goto(`/admin/${encodeURIComponent(DT)}/view/report`)
   await expect(page.getByTestId('report-row')).toHaveCount(3)
   await page.getByTestId('report-groupby').selectOption('stage')

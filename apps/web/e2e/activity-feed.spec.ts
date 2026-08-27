@@ -1,6 +1,5 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminToken, bearer, type APIRequestContext, type Page } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Feed E2E DT'
 const DOC = 'feed-e2e-row'
 
@@ -8,9 +7,8 @@ const DOC = 'feed-e2e-row'
 // trail; "Team" (System Manager only) shows changes, never reads.
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
-  const auth = { Authorization: `Bearer ${token}` }
+  const token = await adminToken(request)
+  const auth = bearer(token)
   const dt = await request.post('/api/table_def', {
     headers: auth,
     data: {
@@ -27,22 +25,13 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   if (![201, 409, 417].includes(created.status())) throw new Error(`row: ${created.status()}`)
 })
 
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
-
 test('#101 P4: my trail and the team changes surface on the Home Page', async ({
   page,
   request,
 }) => {
   // Make the edit NOW, so it is the newest Version and cannot fall outside
   // the team feed's window however many specs ran before this one.
-  const auth = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await auth.json()) as { token: string }).token
+  const token = await adminToken(request)
   const row = await request.get(
     `/api/table/${encodeURIComponent(DT)}/${encodeURIComponent(DOC)}`,
     { headers: { Authorization: `Bearer ${token}` } },
@@ -57,8 +46,6 @@ test('#101 P4: my trail and the team changes surface on the Home Page', async ({
   })
   if (edited.status() !== 200 && edited.status() !== 201)
     throw new Error(`edit: ${edited.status()}`)
-
-  await login(page)
 
   // Generate a read event, then land on the Home Page.
   await page.goto(`/admin/${encodeURIComponent(DT)}/${DOC}`)

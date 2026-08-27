@@ -1,15 +1,9 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const REPORT = 'E2E User SR'
 
-async function adminHeaders(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
-
 test.beforeAll(async ({ request }) => {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   await request.delete(`/api/table/Report/${encodeURIComponent(REPORT)}`, { headers })
   const res = await request.post('/api/save_row', {
     headers,
@@ -30,12 +24,6 @@ test.beforeAll(async ({ request }) => {
 
 // RPT-005: a registered script report renders its filter controls and data.
 test('RPT-005: script report renders filter controls and data', async ({ page }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   await page.goto(`/admin/script-report/${encodeURIComponent(REPORT)}`)
   await expect(page.getByTestId('script-report-title')).toHaveText(REPORT)
 

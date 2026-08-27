@@ -1,20 +1,6 @@
-import { expect, test } from '@playwright/test'
+import { test, expect, adminAuth } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Naming Demo'
-
-async function login(page: import('@playwright/test').Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
-
-async function token(request: import('@playwright/test').APIRequestContext) {
-  const res = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await res.json()) as { token: string }).token
-}
 
 // NAM-001: the builder derives a series from the Table name, the digit count is
 // selectable down to a bare 1/2/3, and the pattern reaches the server.
@@ -22,11 +8,10 @@ test('NAM-001: build a Table with a naming series; rows are named from it', asyn
   page,
   request,
 }) => {
-  const auth = { Authorization: `Bearer ${await token(request)}` }
+  const auth = await adminAuth(request)
   const exists = await request.get(`/api/table/${encodeURIComponent(DT)}:meta`, { headers: auth })
   test.skip(exists.status() === 200, `${DT} already exists in this DB; skipping the create path`)
 
-  await login(page)
   await page.goto('/admin/new-table')
   await expect(page.getByTestId('table-builder')).toBeVisible()
 
@@ -65,7 +50,7 @@ test('NAM-001: change an existing Table to a series from the list view', async (
   page,
   request,
 }) => {
-  const auth = { Authorization: `Bearer ${await token(request)}` }
+  const auth = await adminAuth(request)
   const created = await request.post('/api/table_def', {
     headers: auth,
     data: { name: DT, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
@@ -79,7 +64,6 @@ test('NAM-001: change an existing Table to a series from the list view', async (
     data: { id_pattern: 'hash' },
   })
 
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}`)
   await page.getByTestId('open-naming').click()
   await expect(page.getByTestId('table-naming')).toBeVisible()
