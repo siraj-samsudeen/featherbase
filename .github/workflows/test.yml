@@ -88,6 +88,19 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      - name: Refuse scp-style git URLs in the lockfile
+        # These resolve fine on a dev machine that rewrites ssh->https, so the
+        # bad URL is committed by someone for whom it works. Runners have no
+        # SSH key and die in `pnpm install` with "Permission denied
+        # (publickey)" before any test runs. Checked with grep so it fails
+        # BEFORE the install it would break. Same rule as `pnpm lint:lockfile`.
+        run: |
+          if grep -nE '\bgit@[[:alnum:].-]+:' pnpm-lock.yaml; then
+            echo "::error::pnpm-lock.yaml records an scp-style git URL; rewrite it to the https clone URL"
+            exit 1
+          fi
+          echo "pnpm-lock.yaml: no scp-style git URLs"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -142,6 +155,19 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+
+      - name: Refuse scp-style git URLs in the lockfile
+        # These resolve fine on a dev machine that rewrites ssh->https, so the
+        # bad URL is committed by someone for whom it works. Runners have no
+        # SSH key and die in `pnpm install` with "Permission denied
+        # (publickey)" before any test runs. Checked with grep so it fails
+        # BEFORE the install it would break. Same rule as `pnpm lint:lockfile`.
+        run: |
+          if grep -nE '\bgit@[[:alnum:].-]+:' pnpm-lock.yaml; then
+            echo "::error::pnpm-lock.yaml records an scp-style git URL; rewrite it to the https clone URL"
+            exit 1
+          fi
+          echo "pnpm-lock.yaml: no scp-style git URLs"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
