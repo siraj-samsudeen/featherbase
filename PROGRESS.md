@@ -1,5 +1,57 @@
 # Progress Log
 
+## 2026-08-27 — Test-suite audit and remediation (#214, PR #227)
+
+A full audit of all three suites (121 server files / 680 tests, 78 e2e
+specs, 10 web files), then a remediation round driven through the #214
+tracker — one sub-issue per finding, one commit per sub-issue, each
+implemented by a delegated agent and reviewed before landing. The audit's
+verdict: quality high (sandbox discipline real, assertions strong, zero
+mocks/snapshots), organization diverged from our own framework — DSL
+adoption 3/78 e2e specs, pyramid inverted, conventions forked.
+
+Landed on PR #227 (CI green at every head):
+
+- **#215** — `client-validation` and `filters` self-skipped on *every*
+  isolated run (they sort before the specs that created their fixtures) —
+  green-by-skip since their creation. All four coupled specs now own their
+  fixtures; CI's isolated run executes them for the first time.
+- **#216** — one shared auth story for e2e: worker-scoped `storageState`
+  fixture in `e2e/fixtures.ts` (real UI login once per worker), `loginAs`
+  replacing 71 hand-rolled logins, shared UI fixture builders in
+  `e2e/fixtures-ui.ts`. Net −840 LOC; full isolated suite 120/120 and ~17%
+  faster. Which `test` a spec imports is now its auth story
+  (`test`/`anonymousTest`/`journeyTest`).
+- **#217/#219** — Playwright keeps trace+screenshot on failure; the five
+  arbitrary sleeps became condition waits with positive controls (the one
+  honest exception, saved-views' dedup window, polls the real localStorage
+  record with the constant traced to ListView.tsx).
+- **#218/#220** — `pg-test` binding deduped into `pg-test-shared.ts`
+  (fixing the web teardown's missing `invalidateSources()`), and the
+  emergent per-file builders promoted into `test/fixtures.ts`
+  (`makeTable`, `grantRole`, `expectApiError`); 9 exemplar files migrated,
+  error assertions strictly stronger.
+- **#221/#222** — `coverage-gaps.test.ts` dissolved into topic files,
+  `helpers.ts` retired, `email-rules-save` merged (test count 680
+  unchanged, moves verbatim); `packages/shared` got its first real vitest
+  project — 22 tests pinning `tableSchemaToZod`/`zodFieldErrors`, three
+  discovered behaviors pinned as-is for the owner's ruling (see #214).
+- **Infra:** the harness pin now fetches via `git+https` (codeload
+  tarballs are proxy-blocked in remote sessions); CI and the Dockerfile's
+  web-build stage rewrite `git@github.com:` to anonymous https.
+
+**Gotchas recorded:** `tsc --noEmit` never sees `test/` dirs (both
+tsconfigs include only `src`) — test-file type errors are invisible to
+every current command. The DSL's `clickButton` can collide with sidebar
+"frequent" chips (ordering-dependent, #228). The Railway PR preview fails
+in ~15s pre-build for reasons only its dashboard can show (noted on #227).
+
+Next: owner decisions on #223 (pyramid epic: shrink e2e to ~12–15 DSL
+journeys, grow the component layer) and #226 (ratify the real naming
+convention, decide the coverage tenet); #224 (realtime subscribed signal)
+is ready for an agent session; #225 (Session DSL forked between harness
+repos) belongs to the `feather-testing-*` repos.
+
 ## 2026-08-15 — e2e brings its own database, and drops it first
 
 The last of the four. e2e writes are real commits outside any sandbox, so
