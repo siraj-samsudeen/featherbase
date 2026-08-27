@@ -1,5 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
+import { makeTable } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 
 const CUSTOMER = 'Lnk Customer'
@@ -7,17 +8,13 @@ const TICKET = 'Lnk Ticket'
 const ROW = 'Lnk Alloc Row'
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
-    name: CUSTOMER,
-    id_pattern: 'prompt',
-    columns: [{ column_name: 'city', column_type: 'Data' }],
-  })
-  await admin.post('/api/table_def', {
+  await makeTable(admin, { name: CUSTOMER, id_pattern: 'prompt', columns: ['city'] })
+  await makeTable(admin, {
     name: ROW,
     kind: 'sub_table',
     columns: [{ column_name: 'customer', column_type: 'Reference', reference_table: CUSTOMER }],
   })
-  await admin.post('/api/table_def', {
+  await makeTable(admin, {
     name: TICKET,
     columns: [
       { column_name: 'customer', column_type: 'Reference', reference_table: CUSTOMER },
