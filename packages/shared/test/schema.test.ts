@@ -39,14 +39,15 @@ describe('tableSchemaToZod: column type mapping', () => {
     if (!over.success) expect(over.error.issues[0].message).toBe('integer out of range')
   })
 
-  // Discovered behaviour, pinned as-is: a non-numeric string coerces to NaN
-  // before the gte/lte bounds run, so it fails with zod's generic coercion
-  // message rather than the custom 'integer out of range' text.
-  it('reports a coercion failure, not the bounds message, for a non-numeric Int', () => {
+  // #229: a non-numeric string coerces to NaN before the gte/lte bounds run,
+  // so it fails at the invalid_type check rather than the bounds checks —
+  // that check now carries a human message naming the expectation, matching
+  // the 'integer out of range' message the bounds use.
+  it('reports a human message naming the expectation for a non-numeric Int', () => {
     const s = tableSchemaToZod([col('n', 'Int')])
     const r = s.safeParse({ n: 'not-a-number' })
     expect(r.success).toBe(false)
-    if (!r.success) expect(r.error.issues[0].message).toBe('Expected number, received nan')
+    if (!r.success) expect(r.error.issues[0].message).toBe('must be a whole number')
   })
 
   it('coerces Float and Currency from numeric strings with no integer constraint', () => {
@@ -196,7 +197,7 @@ describe('zodFieldErrors', () => {
     if (!r.success)
       expect(zodFieldErrors(r.error)).toEqual({
         a: 'Required',
-        n: 'Expected number, received nan',
+        n: 'must be a whole number',
       })
   })
 

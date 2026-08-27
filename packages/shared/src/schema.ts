@@ -30,7 +30,7 @@ function baseSchema(f: ColumnDef): z.ZodTypeAny {
       return z.string()
     case 'Int':
       return z.coerce
-        .number()
+        .number({ invalid_type_error: 'must be a whole number' })
         .int()
         .gte(Number.MIN_SAFE_INTEGER, 'integer out of range')
         .lte(Number.MAX_SAFE_INTEGER, 'integer out of range')
