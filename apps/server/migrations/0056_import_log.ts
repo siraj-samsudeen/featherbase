@@ -40,6 +40,11 @@ export async function up() {
       // part wrote, and when the run was reverted. Existing databases
       // converge in 0073.
       { column_name: 'run_id', column_type: 'Data' },
+      // #206 (issue #197): the FILE-import this run belongs to. run_id is
+      // per target (what a revert addresses); batch_id ties every target of
+      // one dropped file together, which is what "delete the eleven Tables
+      // that import created" needs. Existing databases converge in 0082.
+      { column_name: 'batch_id', column_type: 'Data' },
       { column_name: 'touched', column_type: 'JSON', hidden: true },
       { column_name: 'reverted_at', column_type: 'Datetime', in_list_view: true },
     ],

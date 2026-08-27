@@ -473,6 +473,8 @@ async function writeImportLog(
       // RVT-R1: the run identity (wizard-minted, shared across parts) and
       // this part's written rows. A run without a run_id is not revertable.
       run_id: str(ctx.run_id),
+      // #206: the file-import all of this run's targets belong to.
+      batch_id: str(ctx.batch_id),
       touched: touched.length ? touched : undefined,
     },
     user,

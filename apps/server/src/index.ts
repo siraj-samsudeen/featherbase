@@ -14,6 +14,7 @@ import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { getAccessToken, issueAccessToken, listAccessTokens, login, resolveToken, revokeAccessToken, setUserPassword, issueSession, type SessionUser } from './auth'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled } from './service-accounts'
+import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
@@ -701,6 +702,27 @@ app.put('/api/table_def/:name/id_pattern', async (c) => {
   if (typeof body.id_pattern !== 'string')
     throw new AppError('ValidationError', 'Expected { id_pattern }')
   return c.json(await setIdPattern(c.req.param('name'), body.id_pattern))
+})
+
+// #206 (issue #197): the file-imports that have run, each rolled up from its
+// Import Log parts — which Tables it created, which it added to, and what
+// landed. Any signed-in reader; the log itself is the authority on detail.
+app.get('/api/import/batches', async (c) => {
+  who(c)
+  const limit = Number(c.req.query('limit') ?? '')
+  return c.json({ batches: await listBatches(Number.isFinite(limit) ? limit : undefined) })
+})
+
+app.get('/api/import/batches/:id', async (c) => {
+  who(c)
+  return c.json(await getBatch(c.req.param('id')))
+})
+
+// #207: delete every Table one import CREATED. Only the created ones — a
+// Table that merely received rows is undone by the per-run revert, which is
+// offered separately and does not destroy data the import never made.
+app.post('/api/import/batches/:id/delete_tables', async (c) => {
+  return c.json(await deleteBatchTables(c.req.param('id'), who(c)))
 })
 
 // DEL-R1/R2 (docs/specs/0003-table-deletion.md): delete a Table outright.

@@ -33,6 +33,7 @@ import { ChecklistView } from './components/ChecklistView'
 import { PrintView } from './pages/PrintView'
 import { TableBuilder } from './pages/TableBuilder'
 import { ImportWizard } from './pages/ImportWizard'
+import { ImportBatches } from './pages/ImportBatches'
 import { AllTablesPage } from './pages/AllTables'
 import SourceBrowser from './pages/SourceBrowser'
 import { PrototypeConnectSourcePage } from './pages/PrototypeConnectSource'
@@ -241,6 +242,17 @@ const importRoute = createRoute({
   component: () => (
     <div data-testid="table-page">
       <ImportWizard />
+    </div>
+  ),
+})
+
+// #206: what each file-import did, as one act. Before $table, like 'import'.
+const importBatchesRoute = createRoute({
+  getParentRoute: () => adminRoute,
+  path: 'imports',
+  component: () => (
+    <div data-testid="table-page">
+      <ImportBatches />
     </div>
   ),
 })
@@ -669,5 +681,5 @@ export const routeTree = rootRoute.addChildren([
   portalListRoute,
   portalDocRoute,
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, tableRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, tableRoute, docRoute]),
 ])

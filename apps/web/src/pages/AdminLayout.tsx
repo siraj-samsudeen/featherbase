@@ -692,6 +692,15 @@ export function AdminLayout() {
             >
               Import Data
             </Link>
+            {/* #206: an import is a thing you did, not just rows that
+                appeared — so it has a place to be found again. */}
+            <Link
+              to="/admin/imports"
+              data-testid="past-imports-link"
+              className="mt-1 block text-center text-xs text-[var(--color-ink-faint)] underline"
+            >
+              Past imports
+            </Link>
           </div>
           {/* #80: the sidebar is Home Pages only (Frappe parity). Every
               table stays reachable through the All tables entry below —

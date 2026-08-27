@@ -717,6 +717,9 @@ export function ImportWizard() {
   // sessionStorage, or a fresh tab. Everything the user DECIDED is intact;
   // only the data needs dropping again.
   const [needsFile, setNeedsFile] = useState<ImportDecisions<SheetPlan> | null>(null)
+  // #206: minted once per file read and carried by every part of every
+  // target, so "which Tables came from that import?" has an answer.
+  const [batchId, setBatchId] = useState('')
   // Whether this file's rows are being kept. Said up front, because
   // discovering it on return is exactly the surprise #204 exists to remove.
   const [dataKept, setDataKept] = useState(true)
@@ -758,6 +761,7 @@ export function ImportWizard() {
     setSelected(saved.selected)
     setStage(saved.stage)
     setCurrent(saved.current)
+    setBatchId(saved.batchId)
     setGroupMode(saved.groupMode)
     setMergeName(saved.mergeName)
     setRunOutcome(saved.outcome)
@@ -788,6 +792,7 @@ export function ImportWizard() {
     }
     const snapshot: ImportDecisions<SheetPlan> = {
       fileName,
+      batchId,
       stage,
       selected,
       plans,
@@ -813,6 +818,7 @@ export function ImportWizard() {
     return () => clearTimeout(timer)
   }, [
     fileName,
+    batchId,
     stage,
     selected,
     plans,
@@ -853,6 +859,7 @@ export function ImportWizard() {
     setSelected([])
     setStage('overview')
     setCurrent(0)
+    setBatchId('')
     setRunOutcome(null)
     setDone(false)
     setError(null)
@@ -896,6 +903,9 @@ export function ImportWizard() {
       // finding out on return that the file must be dropped again is the
       // surprise, not the dropping.
       setDataKept(saveSheets(file.name, parsed))
+      // #206: a fresh read is a fresh batch. The resume path below puts the
+      // original one back, so continuing an import stays ONE batch.
+      setBatchId(crypto.randomUUID())
       // The same file, dropped again to carry on. Plans address sheets by
       // INDEX, so this must be the same workbook before they are applied —
       // otherwise a saved mapping would quietly point at another sheet's
@@ -906,6 +916,7 @@ export function ImportWizard() {
         setSelected(resumeFrom.selected)
         setStage(resumeFrom.stage)
         setCurrent(resumeFrom.current)
+        setBatchId(resumeFrom.batchId)
         setGroupMode(resumeFrom.groupMode)
         setMergeName(resumeFrom.mergeName)
         setRunOutcome(resumeFrom.outcome)
@@ -1368,6 +1379,7 @@ export function ImportWizard() {
               part,
               parts,
               run_id: runId,
+              batch_id: batchId,
             }),
             onChunk: ({ from, to, total: n }) =>
               setBusy(
@@ -1606,7 +1618,13 @@ export function ImportWizard() {
         >
           View import history
         </Link>
-        {' — every import that has run, with what it created and how to undo it.'}
+        {' — every import that has run, with what it created and how to undo it. '}
+        {/* #206: the log is run-by-run; this is import-by-import, which is
+            what "which Tables came from that file?" actually asks. */}
+        <Link to="/admin/imports" className="underline" data-testid="iw-batches-link">
+          Past imports
+        </Link>
+        {' — grouped by the file they came from.'}
       </p>
 
       {/* #199: the overview owns the whole screen while it is up — showing

@@ -38,6 +38,12 @@ export interface SheetShape {
 
 export interface ImportDecisions<Plan> {
   fileName: string
+  /**
+   * #206: the file-import's identity, shared by every target's every part.
+   * Persisted with the decisions so a resumed import stays ONE batch — the
+   * whole point is that the eleven Tables came from one thing the user did.
+   */
+  batchId: string
   stage: 'overview' | 'columns'
   selected: boolean[]
   plans: Plan[]
