@@ -1,5 +1,8 @@
 # Feature: Virtual DocTypes — controller-supplied storage
 
+**Evidence mode:** excluded — EARS-form spec, not yet retrofitted to the
+journeys-and-rules form that carries `> evidence:` verdicts.
+
 Status: **Proposed** — not implemented. Written 2026-07-26.
 Decision record: `docs/adr/0007-app-and-database-topology.md`.
 Background: `docs/research/frappe-multi-app-and-multi-db.md` (Frappe's

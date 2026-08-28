@@ -234,7 +234,8 @@ including rows named in `override`.
   versioned (R2's full lifecycle), so the version history UI remains the
   recovery path; the rehearsal names every row before commit.
 
-  > evidence: proven via RVT-R4, RVT-R5, RVT-J1 — closed. The override
+  > evidence: proven via RVT-R4, RVT-J1 — closed (R5 carries no test
+  > title of its own; it rides the same two, see its verdict). The override
   > exists only as a second explicit act over named rows; each destroyed
   > edit is versioned (the overridden edit was recoverable in the
   > trail); the rehearsal names every row before commit.

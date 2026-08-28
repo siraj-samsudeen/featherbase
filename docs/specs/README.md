@@ -1,5 +1,8 @@
 # Specs
 
+**Evidence mode:** excluded — an index of the specs, carrying no obligations
+of its own.
+
 Requirements for work that is **agreed but not yet built**. Once a spec is
 implemented and verified end-to-end, it stays here as the contract the code was
 written against; `PROGRESS.md` records when that happened.
