@@ -1,6 +1,5 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Lh DT'
 
 // PRN-004: a Letter Head's header/footer is applied to the print view — the
@@ -10,8 +9,7 @@ const DT = 'Lh DT'
 let docName = ''
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const headers = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
+  const headers = await adminAuth(request)
 
   const dt = await request.post('/api/table_def', {
     headers,
@@ -54,12 +52,6 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 })
 
 test('PRN-004: default letterhead applied, switchable, and suppressible', async ({ page }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   // No choice → the default (Head Office) header/footer appear, interpolated.
   await page.goto(`/print/${encodeURIComponent(DT)}/${docName}`)
   await expect(page.getByTestId('letter-head-header')).toBeVisible()

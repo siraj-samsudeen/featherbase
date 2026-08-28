@@ -1,7 +1,8 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
+import { createUserWithRole, expectApiError, makeTable, type TableRef } from './fixtures'
 import { sql } from '../src/db'
-import type { TestClient } from 'feather-testing-postgres'
+import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 
 const COMPANY = 'Up Company'
 const PROJECT = 'Up Project'
@@ -11,27 +12,24 @@ const ROLE = 'Up Role'
 // projects, and a user restricted to Company A — all rolled back afterwards.
 async function setup(
   admin: TestClient,
-  createUser: (o?: { roles?: string[] }) => Promise<TestClient>,
-) {
-  await admin.post('/api/table_def', {
+  createUser: CreateUserFn,
+): Promise<{ user: TestClient; company: TableRef; project: TableRef }> {
+  const company = await makeTable(admin, {
     name: COMPANY,
     id_pattern: 'prompt',
-    columns: [{ column_name: 'country', column_type: 'Data' }],
+    columns: ['country'],
   })
-  await admin.post('/api/table_def', {
+  const project = await makeTable(admin, {
     name: PROJECT,
-    columns: [
-      { column_name: 'title', column_type: 'Data' },
-      { column_name: 'company', column_type: 'Reference', reference_table: COMPANY },
-    ],
+    columns: ['title', { column_name: 'company', column_type: 'Reference', reference_table: COMPANY }],
   })
-  await admin.post('/api/save_row', { table: 'Role', row: { row_id: ROLE } })
-  for (const dt of [PROJECT, COMPANY])
-    await admin.post('/api/save_row', {
-      table: 'Permission',
-      row: { ref_table: dt, role: ROLE, can_read: true, can_write: true, can_create: true },
-    })
-  const user = await createUser({ roles: [ROLE] })
+  const user = await createUserWithRole(admin, createUser, {
+    role: ROLE,
+    table: [PROJECT, COMPANY],
+    can_read: true,
+    can_write: true,
+    can_create: true,
+  })
   for (const c of ['Company A', 'Company B'])
     await admin.post('/api/save_row', { table: COMPANY, row: { row_id: c } })
   for (const [t, c] of [['pa', 'Company A'], ['pb', 'Company B']])
@@ -41,14 +39,14 @@ async function setup(
     table: 'Data Scope',
     row: { user: user.user, allow_table: COMPANY, for_value: 'Company A' },
   })
-  return user
+  return { user, company, project }
 }
 
 describe('PERM-005: Data Scopes', () => {
   test('lists exclude documents linked to non-permitted values', async ({ admin, createUser }) => {
-    const user = await setup(admin, createUser)
+    const { user, project } = await setup(admin, createUser)
     const res = await user.get<{ data: { title: string; company: string }[]; total: number }>(
-      `/api/table/${encodeURIComponent(PROJECT)}?fields=${encodeURIComponent('["title","company"]')}`,
+      project.listUrl({ fields: ['title', 'company'] }),
     )
     expect(res.total).toBe(1)
     expect(res.data[0]).toMatchObject({ title: 'pa', company: 'Company A' })
@@ -58,10 +56,8 @@ describe('PERM-005: Data Scopes', () => {
     admin,
     createUser,
   }) => {
-    const user = await setup(admin, createUser)
-    const res = await user.get<{ data: { row_id: string }[]; total: number }>(
-      `/api/table/${encodeURIComponent(COMPANY)}`,
-    )
+    const { user, company } = await setup(admin, createUser)
+    const res = await user.get<{ data: { row_id: string }[]; total: number }>(company.url)
     expect(res.total).toBe(1)
     expect(res.data[0].row_id).toBe('Company A')
   })
@@ -70,24 +66,22 @@ describe('PERM-005: Data Scopes', () => {
     admin,
     createUser,
   }) => {
-    const user = await setup(admin, createUser)
+    const { user, company, project } = await setup(admin, createUser)
     const pb = await sql.unsafe(`select row_id from up_project where title='pb'`)
-    expect((await user.fetch(`/api/table/${encodeURIComponent(PROJECT)}/${pb[0].row_id}`)).status).toBe(403)
-    expect((await user.fetch(`/api/table/${encodeURIComponent(COMPANY)}/Company%20B`)).status).toBe(403)
-    expect((await user.fetch(`/api/table/${encodeURIComponent(COMPANY)}/Company%20A`)).status).toBe(200)
+    await expectApiError(user.get(project.rowUrl(String(pb[0].row_id))), { status: 403 })
+    await expectApiError(user.get(company.rowUrl('Company B')), { status: 403 })
+    expect((await user.fetch(company.rowUrl('Company A'))).status).toBe(200)
   })
 
   test('creating/updating docs pointing at non-permitted values is rejected', async ({
     admin,
     createUser,
   }) => {
-    const user = await setup(admin, createUser)
-    const bad = await user.fetch(`/api/table/${encodeURIComponent(PROJECT)}`, {
-      method: 'POST',
-      body: JSON.stringify({ title: 'nope', company: 'Company B' }),
+    const { user, project } = await setup(admin, createUser)
+    await expectApiError(user.post(project.url, { title: 'nope', company: 'Company B' }), {
+      status: 403,
     })
-    expect(bad.status).toBe(403)
-    const ok = await user.fetch(`/api/table/${encodeURIComponent(PROJECT)}`, {
+    const ok = await user.fetch(project.url, {
       method: 'POST',
       body: JSON.stringify({ title: 'fine', company: 'Company A' }),
     })
@@ -95,8 +89,8 @@ describe('PERM-005: Data Scopes', () => {
   })
 
   test('admins are unaffected', async ({ admin, createUser }) => {
-    await setup(admin, createUser)
-    const res = await admin.get<{ total: number }>(`/api/table/${encodeURIComponent(PROJECT)}`)
+    const { project } = await setup(admin, createUser)
+    const res = await admin.get<{ total: number }>(project.url)
     expect(res.total).toBeGreaterThanOrEqual(2)
   })
 })

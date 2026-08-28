@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminToken, type APIRequestContext } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
 
@@ -9,21 +9,7 @@ import { deleteTableIfExists } from './cleanup'
 // first, the edited row skipped and NAMED, the run's insert deleted, then
 // the "revert these N anyway" escalation as a second explicit act.
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Revert Journey Zones'
-
-async function adminToken(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await login.json()) as { token: string }).token
-}
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
 
 function xlsxOf(rows: unknown[][]) {
   const ws = XLSX.utils.aoa_to_sheet(rows)
@@ -74,8 +60,9 @@ test('RVT-J1: revert the bad run from the history strip — rehearse, skip-the-e
     },
   })
 
+  await page.goto('/admin')
+
   // The run under test: upsert the corrected file through the wizard.
-  await login(page)
   await page.getByTestId('import-data-link').click()
   await page.getByTestId('iw-file-input').setInputFiles({
     name: 'corrected.xlsx',

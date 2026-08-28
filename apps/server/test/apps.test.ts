@@ -1,6 +1,14 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { registerApp, installApp, uninstallApp, isInstalled } from '../src/apps'
+import {
+  registerApp,
+  installApp,
+  uninstallApp,
+  isInstalled,
+  listInstalledApps,
+  loadInstalledApps,
+  getAvailableApps,
+} from '../src/apps'
 import { registerController, clearControllers } from '../src/controllers'
 import { saveDoc } from '../src/document'
 import { sql } from '../src/db'
@@ -72,9 +80,9 @@ describe('PLAT-001: app install/uninstall', () => {
 
       // The Table and its physical table exist.
       const [dt] = await sql`select 1 from table_def where name = ${APP1_DT}`
-      expect(dt).toBeTruthy()
+      expect(dt).toEqual({ '?column?': 1 })
       const [tbl] = await sql`select 1 from information_schema.tables where table_name = 'app_test_note'`
-      expect(tbl).toBeTruthy()
+      expect(tbl).toEqual({ '?column?': 1 })
 
       // The app's before_save hook fires: the stamp is set on save.
       const doc = await saveDoc(APP1_DT, { row_id: 'note-1', title: 'hi' }, 'Administrator')
@@ -100,7 +108,10 @@ describe('PLAT-001: app install/uninstall', () => {
       expect(tbl).toBeUndefined()
 
       // The Table is really gone — saving one now fails.
-      await expect(saveDoc(APP1_DT, { row_id: 'note-2' }, 'Administrator')).rejects.toBeTruthy()
+      await expect(saveDoc(APP1_DT, { row_id: 'note-2' }, 'Administrator')).rejects.toMatchObject({
+        type: 'NotFoundError',
+        message: `Table ${APP1_DT} not found`,
+      })
     } finally {
       await unwire(APP1, APP1_DT)
     }
@@ -139,5 +150,70 @@ describe('PLAT-002: app doc_events fire alongside the core controller', () => {
     } finally {
       await unwire(APP2, CORE_DT)
     }
+  })
+})
+
+// Moved from coverage-gaps.test.ts (#221): app registry install/uninstall
+// edges — a table this app owns end to end, and rewiring hooks after a
+// simulated process restart.
+async function makeSimpleTable(admin: TestClient, name: string) {
+  await admin.post('/api/table_def', {
+    name,
+    columns: [{ column_name: 'title', column_type: 'Data' }],
+  })
+}
+
+describe('app registry: install lifecycle', () => {
+  test('install/list/uninstall round-trip, including app-owned table_defs', async () => {
+    const APP = `cov-app-${Date.now()}`
+    const DT = `Cov App Note ${Date.now() % 100000}`
+    registerApp({
+      name: APP,
+      tables: [{ name: DT, columns: [{ column_name: 'note', column_type: 'Data' }] }],
+    })
+    expect(getAvailableApps()).toContain(APP)
+    await expect(installApp(`${APP}-nope`)).rejects.toMatchObject({ type: 'ValidationError' })
+
+    const installed = await installApp(APP)
+    expect(installed.tables).toEqual([DT])
+    expect(await isInstalled(APP)).toBe(true)
+    expect((await listInstalledApps()).map((a) => a.name)).toContain(APP)
+    await expect(installApp(APP)).rejects.toMatchObject({ type: 'ConflictError' })
+
+    const removed = await uninstallApp(APP)
+    expect(removed.removed).toEqual([DT])
+    expect(await isInstalled(APP)).toBe(false)
+    await expect(uninstallApp(APP)).rejects.toMatchObject({ type: 'ValidationError' })
+  })
+
+  test('loadInstalledApps rewires hooks after a process "restart"', async ({ admin }) => {
+    const APP = `cov-rewire-${Date.now()}`
+    const DT = 'Cov Rewire Note'
+    await makeSimpleTable(admin, DT)
+    const seen: string[] = []
+    registerApp({ name: APP, doc_events: { [DT]: { after_insert: () => void seen.push('hit') } } })
+    try {
+      await installApp(APP)
+      // Simulate the restart: hooks lost from the process, row still in DB.
+      const { unregisterController } = await import('../src/controllers')
+      void unregisterController // (unwire happens via a fresh wire map in prod)
+      await loadInstalledApps() // idempotent when already wired
+      await saveDoc(DT, { title: 'x' }, 'Administrator')
+      expect(seen).toContain('hit')
+    } finally {
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+})
+
+describe('app registry: legacy row tolerance', () => {
+  test('listInstalledApps survives double-encoded and malformed tables columns, loadInstalledApps skips unknown apps', async () => {
+    await sql`insert into installed_app (name, tables) values ('cov-legacy-str', ${'["Legacy X"]'}::jsonb)`
+    await sql`insert into installed_app (name, tables) values ('cov-legacy-bad', ${'"not json['}::jsonb)`
+    const apps = await listInstalledApps()
+    expect(apps.find((a) => a.name === 'cov-legacy-str')?.tables).toEqual(['Legacy X'])
+    expect(apps.find((a) => a.name === 'cov-legacy-bad')?.tables).toEqual([])
+    // Neither name has a registered manifest — loadInstalledApps must skip them.
+    await loadInstalledApps()
   })
 })

@@ -1,6 +1,5 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { anonymousTest as test, expect, adminToken, bearer, loginAs, tokenFor, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const USER = 'routine-e2e@x.com'
 const PWD = 'routinepw123'
 const DAY = 86_400_000
@@ -9,9 +8,8 @@ const DAY = 86_400_000
 // user so the seeded multi-day trail never pollutes Administrator's feed.
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
-  const auth = { Authorization: `Bearer ${token}` }
+  const token = await adminToken(request)
+  const auth = bearer(token)
   // Re-runs find the user already there — save_row would then demand the
   // optimistic-concurrency timestamp, so create only when missing.
   const exists = await request.get(`/api/table/User/${encodeURIComponent(USER)}`, { headers: auth })
@@ -26,8 +24,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 
   // Seed the habit AS that user: two list destinations on 5 distinct days,
   // all inside the server's 7-day timestamp trust window.
-  const uLogin = await request.post('/api/login', { data: { usr: USER, pwd: PWD } })
-  const uToken = ((await uLogin.json()) as { token: string }).token
+  const uToken = await tokenFor(request, USER, PWD)
   const now = Date.now()
   const events = []
   for (let d = 1; d <= 5; d++) {
@@ -55,16 +52,8 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   if (posted.status() !== 200) throw new Error(`seed events: ${posted.status()}`)
 })
 
-async function login(page: Page, usr: string, pwd: string) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', usr)
-  await page.fill('input[name=password]', pwd)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
-
 test('#101 P5: a detected routine can be pinned and survives reloads', async ({ page }) => {
-  await login(page, USER, PWD)
+  await loginAs(page, USER, PWD)
 
   const card = page.getByTestId('routine-card')
   await expect(card).toBeVisible()

@@ -94,7 +94,7 @@ describe('RPT-004: query reports', () => {
     // The author role CAN create an ordinary (non-SQL) report…
     await expect(
       saveDoc('Report', { row_id: 'Rpt Srv Builder', ref_table: 'User', report_type: 'Report Builder' }, AUTHOR),
-    ).resolves.toBeTruthy()
+    ).resolves.toMatchObject({ row_id: 'Rpt Srv Builder', report_type: 'Report Builder' })
 
     // …but CANNOT create a Query Report with SQL…
     await expect(

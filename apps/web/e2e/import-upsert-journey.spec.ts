@@ -1,5 +1,4 @@
-import type { APIRequestContext } from '@playwright/test'
-import { test, expect, signIn, snap } from './fixtures'
+import { journeyTest as test, expect, adminToken, signIn, snap } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
 // UPS-J1 + UPS-J2 — the upsert journeys of docs/specs/0004-import-upsert.md,
@@ -14,12 +13,6 @@ import { deleteTableIfExists } from './cleanup'
 
 const DT = 'Upsert Journey Zones'
 const DT2 = 'Upsert Journey Coded Zones'
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
-
-async function adminToken(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await login.json()) as { token: string }).token
-}
 
 // The zones.csv rows, typed as the wizard's first import would have landed
 // them (the residue of IMP-J1, seeded at the contract tier).

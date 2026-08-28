@@ -161,7 +161,7 @@ describe('EML-003: PDF attachment', () => {
       const [sink] = await sql`
       select attachment_names, attachment_b64 from email_sink order by created_at desc limit 1`
       expect(sink.attachment_names).toBe('inv-1.pdf')
-      expect(sink.attachment_b64).toBeTruthy()
+      expect(sink.attachment_b64).toMatch(/^[A-Za-z0-9+/]+=*$/)
 
       const pdf = Buffer.from(sink.attachment_b64 as string, 'base64')
       expect(pdf.subarray(0, 5).toString()).toBe('%PDF-')

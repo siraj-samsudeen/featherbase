@@ -1,17 +1,9 @@
-import { expect, test } from '@playwright/test'
-
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
+import { test, expect } from './fixtures'
 
 // SET-001: a Single Table opens straight into its form; saving persists;
 // there is exactly one record (no list).
 
 test('SET-001: System Settings opens as a form and saves persistently', async ({ page }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   // Navigating to the Single Table shows its form (no list view).
   await page.goto('/admin/System%20Settings')
   await expect(page.getByTestId('form-view')).toBeVisible()

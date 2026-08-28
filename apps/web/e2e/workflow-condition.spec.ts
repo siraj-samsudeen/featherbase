@@ -1,18 +1,12 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Wf Cond Ui Task'
 const FLOW = 'Wf Cond Ui Flow'
 const BIG = `wfc-big-${Math.random().toString(36).slice(2, 7)}`
 const SMALL = `wfc-small-${Math.random().toString(36).slice(2, 7)}`
 
-async function headers(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
-
 test.beforeAll(async ({ request }) => {
-  const H = await headers(request)
+  const H = await adminAuth(request)
   const dt = await request.post('/api/table_def', {
     headers: H,
     data: {
@@ -54,17 +48,7 @@ test.beforeAll(async ({ request }) => {
   await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers: H, data: { row_id: SMALL, title: 'small', amount: 500 } })
 })
 
-async function login(page: import('@playwright/test').Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
-
 test('conditional transitions: the form shows only the action whose condition holds', async ({ page }) => {
-  await login(page)
-
   // Big document (amount 5000): only "Approve" is offered.
   await page.goto(`/admin/${encodeURIComponent(DT)}/${BIG}`)
   await expect(page.getByTestId('workflow-actions')).toBeVisible()
@@ -82,7 +66,6 @@ test('conditional transitions: the form shows only the action whose condition ho
 })
 
 test('the workflow builder grid exposes the Condition column', async ({ page }) => {
-  await login(page)
   await page.goto(`/admin/Workflow/${encodeURIComponent(FLOW)}`)
   await expect(page.getByTestId('form-view')).toBeVisible()
   // The transitions child grid renders an editable Condition column carrying

@@ -1,15 +1,13 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminToken, bearer, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'RPT Task'
 
 // RPT-001: report view — group a list by a Select field; group rows show
 // correct counts and sums; column picker toggles columns.
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
-  const auth = { Authorization: `Bearer ${token}` }
+  const token = await adminToken(request)
+  const auth = bearer(token)
 
   const dt = await request.post('/api/table_def', {
     headers: auth,
@@ -56,12 +54,6 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('RPT-001: group by Select shows correct counts and sums; column picker works', async ({
   page,
 }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   // Enter through the list view's Report button.
   await page.goto(`/admin/${encodeURIComponent(DT)}`)
   await page.getByTestId('open-report').click()

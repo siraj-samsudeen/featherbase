@@ -1,24 +1,18 @@
-import { expect, test } from '@playwright/test'
+import { test, expect, adminAuth } from './fixtures'
+import { ensureFormFixtures, FORM_DT as DT } from './fixtures-ui'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
-const DT = 'UI Form A' // fixtures from formview.spec (idempotent creators)
+// Owns its fixtures rather than borrowing formview.spec's: this spec sorts
+// before formview.spec alphabetically, so under an isolated fresh DB
+// (pnpm --filter web e2e) it would self-skip on every run. The builder is
+// shared (./fixtures-ui) so both specs create the identical Table shape,
+// idempotently, whichever of them runs first.
+let docName = ''
 
-test('UI-009 + META-013: missing reqd field errors inline via shared zod schema, with NO network call', async ({ page, request }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
-  const list = await request.get(
-    `/api/table/${encodeURIComponent(DT)}?limit_page_length=1&order_by=created_at desc`,
-    { headers: { Authorization: `Bearer ${token}` } },
-  )
-  test.skip(list.status() === 404, 'run formview.spec first to create fixtures')
-  const docName = ((await list.json()) as { data: { row_id: string }[] }).data[0].row_id
+test.beforeAll(async ({ request }) => {
+  docName = await ensureFormFixtures(request, await adminAuth(request))
+})
 
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-
+test('UI-009 + META-013: missing reqd field errors inline via shared zod schema, with NO network call', async ({ page }) => {
   let saveCalls = 0
   await page.route('**/api/save_row', async (route) => {
     saveCalls++

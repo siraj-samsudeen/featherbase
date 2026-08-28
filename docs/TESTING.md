@@ -17,14 +17,25 @@ the full production path (routes → auth → permissions → lifecycle → SQL)
 gets exercised.
 
 The binding of the harness to this app is
-`apps/server/test/pg-test.ts`. It hands `createPgTest` the app, the `sql`
-client, and a delegate hook (`_setSqlDelegate` in `apps/server/src/db.ts`)
-that routes the app's queries through the test's transaction. It also wires:
+`apps/server/test/pg-test-shared.ts` — the one place that calls
+`createPgTest`, wiring the app, the `sql` client, and a delegate hook
+(`_setSqlDelegate` in `apps/server/src/db.ts`) that routes the app's queries
+through the test's transaction. It also wires:
 
 - `mintToken` / `insertUser` — fixtures like `admin` come pre-authenticated.
-- `onTeardown` — invalidates the per-process metadata cache and resets the
-  rate limiter, because a test may have created Tables whose physical tables
-  no longer exist after rollback.
+- `onTeardown` — invalidates the per-process metadata cache and Data Source
+  registry, and resets the rate limiter, because a test may have created
+  Tables (or Data Sources) whose physical backing no longer exists after
+  rollback.
+
+`apps/server/test/pg-test.ts` re-exports that `test` fixture — plus `expect`
+and `patchDoc`, the PATCH-aware error-envelope helper from `./fixtures.ts` —
+so the server suite has one place to import from.
+`apps/web/test/pg-test.ts` imports the same fixture from `pg-test-shared`
+directly, across the workspace boundary via the `server` package, rather
+than copy-pasting it: the two bindings used to be copies and drifted (the
+web one was missing `invalidateSources()`, leaking a stale Data Source
+cache into the next test — #218).
 
 ## Writing a test
 
@@ -62,6 +73,20 @@ sandbox *sees committed state*: a name that collides with seeded data (a
 Table that a migration created, say) will 409 — pick names that don't
 exist in the real schema.
 
+Most setup doesn't need to be hand-rolled per file — `apps/server/test/fixtures.ts`
+is the standard toolkit. `makeTable(admin, def)` creates a Table, expanding
+the column shorthand (`'qty:Int'`), and hands back its URL handles (list,
+meta, row, def). `grantRole(admin, { role, table, ...perms })` makes the
+Role → Permission dance idempotent (the Role is only created if missing, so
+widening an existing Role with a further Permission row just works).
+`createUserWithRole` layers a fixture user on top of a grant. `expectApiError
+(call, { status, ... })` asserts a failed request's error envelope whether
+the call threw (a `TestClient` method) or resolved to a non-ok `Response` (a
+raw `client.fetch`) — the one place ~170 `.rejects.toMatchObject({ status,
+type })`-shaped assertions agree on the shape. Reach for these before
+writing a new per-file `setup()`; 22 files had their own before this module
+existed (#220), and the shapes had drifted apart.
+
 ## Running tests
 
 ```bash
@@ -69,13 +94,20 @@ pnpm test                                        # everything (all workspaces)
 pnpm --filter server test                        # server suite
 pnpm --filter server test test/naming.test.ts    # one file
 pnpm --filter web test                           # web component suite
-pnpm --filter web e2e                            # Playwright e2e (stack must be running)
-pnpm smoke                                       # server + web smoke tests
+pnpm --filter web e2e                            # Playwright e2e (spins up its own isolated stack)
+pnpm smoke                                       # server + web smoke tests (web half needs ./init.sh running)
 pnpm --filter server typecheck
+pnpm --filter web typecheck
 ```
 
 `pnpm --filter server test` is `vitest run`, so anything after it is a
 vitest filter — a path runs that file.
+
+`typecheck` runs `tsc` twice: once against `tsconfig.json` (`src` only), once
+against `tsconfig.test.json`, which extends it and widens `include` to the
+test directories (`test`, and for web also `e2e`, plus the Vite/Playwright
+configs). A type error in a test file fails typecheck exactly like one in
+`src`.
 
 ## Why `fileParallelism: false`
 
@@ -117,12 +149,47 @@ Admin UI's realtime client doesn't try to open real connections under jsdom. Use
 this layer when the behavior under test is React-side: rendering from
 metadata, form interaction logic, query invalidation.
 
-**3. Playwright e2e** — `apps/web/e2e/*.spec.ts`, run with
-`pnpm --filter web e2e` against the live stack (`baseURL`
-`http://localhost:5173`, so run `./init.sh` first; `pnpm smoke` runs just
-`e2e/smoke.spec.ts`). These are **not** sandboxed — they commit real data
-through a real browser. Use this layer only for things the other two can't
-see: routing, focus/keyboard behavior, realtime updates, visual flows.
+**3. Playwright e2e** — `apps/web/e2e/*.spec.ts`. These are **not**
+sandboxed — they commit real data through a real browser. Use this layer
+only for things the other two can't see: routing, focus/keyboard behavior,
+realtime updates, visual flows.
+
+Which `test` a spec imports from `e2e/fixtures.ts` *is* its auth story.
+Plain `test` is already signed in as Administrator, from a `storageState`
+captured once per worker by driving the real login form — no `/login` round
+trip per spec — and is the right import for the majority of specs, whose
+subject is something *behind* the login. `anonymousTest` starts signed out,
+for specs whose subject is the login surface itself, an identity other than
+Administrator, or a page that must be reached with no session at all.
+`journeyTest` is the `feather-testing-core` DSL entry point; those specs
+walk the sign-in as a step of the journey they narrate, so they deliberately
+don't reuse the stored session. Shared UI fixture builders (`ensureTable`,
+the FormView Table trio, `fillRows`) live in `e2e/fixtures-ui.ts` — every
+spec still creates its own fixtures idempotently in its own `beforeAll`;
+what's shared is the *definition*, so the Table shapes can't drift apart
+across specs (#215/#216).
+
+`pnpm --filter web e2e` sets `E2E_ISOLATED=1`: Playwright brings up its own
+database and its own API/web ports (default 8020/5193, overridable),
+resetting the database first and tearing the stack down after — so a spec's
+real commits land in a disposable database, not whatever's running for
+development. `pnpm smoke` (just `e2e/smoke.spec.ts`) does not set that flag;
+it drives whatever stack is already up at `http://localhost:5173`, which is
+why `./init.sh` runs it as its own boot check — run `./init.sh` first to use
+`pnpm smoke` standalone.
+
+A spec waiting on a realtime update waits for the server's acknowledgment,
+not a timer: `waitForRealtime(page, channel)` polls
+`<html data-realtime-channels>` until the channel appears there, because the
+realtime client only mirrors a subscription onto that attribute once the
+server has authorized and recorded it (#224) — a subscribe frame is
+asynchronous, so an event published before that moment is simply missed.
+
+**`packages/shared`** has its own Vitest project
+(`packages/shared/vitest.config.ts`) alongside these three, for pure,
+I/O-free functions — no database, no `globalSetup`, no `fileParallelism`
+restriction. It's the one suite free to run fully parallel, and stays that
+way only as long as it stays free of database access.
 
 One deliberate exception in the server suite:
 `apps/server/test/rls.test.ts` is *not* sandbox-isolated either. It verifies
@@ -133,6 +200,69 @@ itself. It connects to
 `postgres://app_client:app_client@127.0.0.1:5432/featherbase` by default;
 override with `RLS_TEST_URL` (the role is created by
 `apps/server/migrations/0010_rls.sql`).
+
+## House conventions (ratified 2026-08-28, #226)
+
+**Naming.** Spec-sentence style is the standard: a name may encode the
+example table directly, the way `import-upsert.test.ts` does —
+`'UPS-R2 examples: one match updates · none inserts · empty fails ·
+file-dup fails both · multi-match fails with count'` — with a spec-tier
+file prefixing the rule ID it verifies. Plain behavior tests outside the
+spec tier stay verb-first with no "should" (`'series names are
+sequential'`), as before. This supersedes the <8-word cap in
+`docs/research/feather-testing-study.md`: that number was inherited
+verbatim from `feather-testing-convex`'s philosophy doc and never fit a
+suite whose spec-tier names carry a rule ID and a collapsed example table.
+
+**Assertion precision.** `toBeTruthy()` / `toBeDefined()` stay banned —
+assert the actual shape: `toMatch` against an id pattern, `toEqual` against
+a structure, `toMatchObject` against an error envelope (`expectApiError` in
+`fixtures.ts` exists so call sites don't hand-roll that last one). This is
+the standard now, not an aspiration to grow into — a sweep of the
+remaining pre-ruling instances is in flight, and each one is a defect
+against this rule, not a style call to revisit.
+
+**Every non-sandboxed test file says why, in a header comment.** This
+codifies a practice the suite already follows consistently, not a new one.
+`apps/server/test/rls.test.ts` is the exemplar: its header states, in the
+first lines, that it verifies native Postgres RLS through a second
+connection that can never see the sandbox's uncommitted transaction, so the
+test commits for real and cleans up after itself.
+
+**Coverage.** 100% line coverage is the ratified target, enforced as a CI
+ratchet rather than a gate sprung at 100% from day one: the threshold sits
+at the measured baseline and only rises, one commit at a time, until it
+reaches 100%.
+
+The wiring is v8 coverage in each of the three Vitest configs, collected by
+`pnpm test:coverage` (per package, or `pnpm -r test:coverage` from the root)
+and never by the plain `pnpm test` — day-to-day runs stay uninstrumented.
+Each config scopes collection to its own package's `src/`. The e2e suite is
+excluded by construction: Playwright drives a live stack from a separate
+process, so nothing it exercises is attributable to these numbers. The
+server's `migrations/` and `patches/` are excluded for the same reason —
+a separate `tsx src/migrate.ts` process applies them before the suite
+starts — and because a shipped migration is append-only history that no
+test can retroactively cover.
+
+The ratchet itself is `coverage.thresholds` in each `vitest.config.ts`;
+that is the single place the numbers live, and the CI `unit` job runs the
+coverage scripts so a suite that drops below its floor fails the build.
+Baselines measured 2026-08-28, each rounded down to the whole percent:
+
+| Package | Lines / statements | Functions | Threshold set |
+|---|---|---|---|
+| `apps/server` | 86.64% | 91.18% | lines 86, functions 91 |
+| `apps/web` | 29.64% | 40.52% | lines 29, functions 39 |
+| `packages/shared` | 21.30% | 85.71% | lines 21, functions 85 |
+
+Two caveats on those figures. The server number is a *floor*, not the truth:
+`sources-mysql.test.ts` skips itself when `MYSQL_TEST_URL` is unset, so a
+developer checkout leaves `src/sources/mysql-driver.ts` (359 lines) at 6%
+while CI, which sets the variable, covers it — raise the server threshold to
+whatever the first green CI run reports. And coverage is per package, so a
+`packages/shared` module driven only from the server and web suites reads as
+uncovered here; `src/import.ts` alone is the whole of shared's gap.
 
 ## Ground rules
 

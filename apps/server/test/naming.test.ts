@@ -1,5 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
+import { makeTable } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 
@@ -7,13 +8,8 @@ const SERIES_DT = 'Nm Invoice'
 const FIELD_DT = 'Nm Country'
 const PROMPT_DT = 'Nm Category'
 
-async function makeDT(admin: TestClient, name: string, id_pattern: string) {
-  await admin.post('/api/table_def', {
-    name,
-    id_pattern,
-    columns: [{ column_name: 'title', column_type: 'Data' }],
-  })
-}
+const makeDT = (admin: TestClient, name: string, id_pattern: string) =>
+  makeTable(admin, { name, id_pattern, columns: ['title'] })
 
 const save = (admin: TestClient, table: string, row: Record<string, unknown>) =>
   admin.post<{ row_id: string } & Record<string, unknown>>('/api/save_row', { table, row })

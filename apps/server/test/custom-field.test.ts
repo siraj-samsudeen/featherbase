@@ -56,7 +56,7 @@ describe('CUST-001: custom fields', () => {
 
     const meta = await getMeta('User')
     const f = meta.columns.find((x) => x.column_name === FIELD)
-    expect(f).toBeDefined()
+    expect(f).toMatchObject({ column_name: FIELD, label: 'Custom Tag', column_type: 'Data' })
     expect((f as { custom?: boolean }).custom).toBe(true)
 
     // Writable + readable via the generic API.
@@ -78,7 +78,7 @@ describe('CUST-001: custom fields', () => {
 
     // The Custom Field record is the source of truth.
     const [rec] = await sql`select 1 from custom_field where column_name = ${FIELD}`
-    expect(rec).toBeDefined()
+    expect(rec).toEqual({ '?column?': 1 })
 
     // Simulate a re-seed that rewrote User's base column_defs, dropping the
     // custom one — the column/value stay.

@@ -1,14 +1,12 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { anonymousTest as test, expect, adminAuth, loginAs, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Ls DT'
 
 // UI-013: customize a list (hide a column, set a sort), log out and back in,
 // the settings are restored.
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const headers = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
+  const headers = await adminAuth(request)
   const dt = await request.post('/api/table_def', {
     headers,
     data: {
@@ -33,16 +31,8 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   }
 })
 
-async function login(page: import('@playwright/test').Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
-
 test('UI-013: list customizations persist across logout/login', async ({ page }) => {
-  await login(page)
+  await loginAs(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}`)
 
   // Baseline: City column visible.
@@ -63,7 +53,7 @@ test('UI-013: list customizations persist across logout/login', async ({ page })
   await page.getByTestId('session-user').click() // logout lives in the account menu (#72)
   await page.getByTestId('logout').click()
   await expect(page).toHaveURL(/\/login/)
-  await login(page)
+  await loginAs(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}`)
 
   // Restored: City still hidden, sort still ascending by rank (bravo first).

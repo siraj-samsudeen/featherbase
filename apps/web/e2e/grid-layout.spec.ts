@@ -1,58 +1,37 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth } from './fixtures'
+import { createFormRow, ensureFormTables, ensureTable, FORM_DT as DT } from './fixtures-ui'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
-const DT = 'UI Form A'
 const SEC_DT = 'UI Section DT'
 
-let token = ''
+let auth: { Authorization: string }
 let docName = ''
 
-test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  token = ((await login.json()) as { token: string }).token
-  const auth = { Authorization: `Bearer ${token}` }
+test.beforeAll(async ({ request }) => {
+  auth = await adminAuth(request)
 
-  const metaA = await request.get(`/api/table/${encodeURIComponent(DT)}:meta`, { headers: auth })
-  test.skip(metaA.status() === 404, 'run formview.spec first')
-
-  const created = await request.post(`/api/table/${encodeURIComponent(DT)}`, {
-    headers: auth,
-    data: {
-      title: 'grid fixture',
-      items: [{ item: 'one', qty: 1 }, { item: 'two', qty: 2 }, { item: 'three', qty: 3 }],
-    },
+  // Owns the FormView Tables rather than borrowing formview.spec's; the
+  // shared builder in ./fixtures-ui keeps the shapes identical and
+  // idempotent whichever spec runs first.
+  await ensureFormTables(request, auth)
+  docName = await createFormRow(request, auth, {
+    title: 'grid fixture',
+    items: [{ item: 'one', qty: 1 }, { item: 'two', qty: 2 }, { item: 'three', qty: 3 }],
   })
-  docName = ((await created.json()) as { row_id: string }).row_id
 
-  const metaS = await request.get(`/api/table/${encodeURIComponent(SEC_DT)}:meta`, { headers: auth })
-  if (metaS.status() === 404) {
-    await request.post('/api/table_def', {
-      headers: auth,
-      data: {
-        name: SEC_DT,
-        columns: [
-          { column_name: 'a1', column_type: 'Data', label: 'A One' },
-          { column_name: 'a2', column_type: 'Data', label: 'A Two' },
-          { column_name: 'sec_b', column_type: 'Section Break', label: 'Details' },
-          { column_name: 'b1', column_type: 'Data', label: 'B One' },
-          { column_name: 'col_b', column_type: 'Column Break' },
-          { column_name: 'b2', column_type: 'Data', label: 'B Two' },
-        ],
-      },
-    })
-  }
+  await ensureTable(request, auth, {
+    name: SEC_DT,
+    columns: [
+      { column_name: 'a1', column_type: 'Data', label: 'A One' },
+      { column_name: 'a2', column_type: 'Data', label: 'A Two' },
+      { column_name: 'sec_b', column_type: 'Section Break', label: 'Details' },
+      { column_name: 'b1', column_type: 'Data', label: 'B One' },
+      { column_name: 'col_b', column_type: 'Column Break' },
+      { column_name: 'b2', column_type: 'Data', label: 'B Two' },
+    ],
+  })
 })
 
-async function login(page: import('@playwright/test').Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
-
 test('UI-007: child grid add/edit/delete/reorder round-trips through save', async ({ page, request }) => {
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   const grid = page.getByTestId('table-items')
   await expect(grid.locator('tbody tr')).toHaveCount(3)
@@ -74,10 +53,7 @@ test('UI-007: child grid add/edit/delete/reorder round-trips through save', asyn
   await expect(page.getByTestId('form-banner')).toContainText('Saved')
 
   // DB reflects content and order exactly
-  const res = await request.get(
-    `/api/table/${encodeURIComponent(DT)}/${docName}`,
-    { headers: { Authorization: `Bearer ${token}` } },
-  )
+  const res = await request.get(`/api/table/${encodeURIComponent(DT)}/${docName}`, { headers: auth })
   const doc = (await res.json()) as { items: { item: string; qty: string; position: number }[] }
   expect(doc.items.map((r) => [r.item, Number(r.qty), r.position])).toEqual([
     ['one', 1, 1],
@@ -87,7 +63,6 @@ test('UI-007: child grid add/edit/delete/reorder round-trips through save', asyn
 })
 
 test('UI-008: Section and Column Breaks produce grouped sections in metadata order', async ({ page }) => {
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(SEC_DT)}/new`)
   await expect(page.getByTestId('form-view')).toBeVisible()
 
@@ -102,7 +77,6 @@ test('UI-008: Section and Column Breaks produce grouped sections in metadata ord
 })
 
 test('UI-016: breadcrumbs navigate and the title bar tracks saved state', async ({ page }) => {
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
 
   const crumbs = page.getByTestId('breadcrumbs')

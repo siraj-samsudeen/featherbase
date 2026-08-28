@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
 // #173: a private file link must carry no credential. The browser is already
 // sending the HttpOnly `sid` cookie on a same-origin request, so the link is
@@ -8,18 +8,10 @@ import { expect, test, type APIRequestContext } from '@playwright/test'
 // other browser coverage: this spec creates the private file over the API and
 // then exercises the link the form renders for it.
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const SECRET = 'classified attachment body'
 
-async function adminToken(request: APIRequestContext): Promise<string> {
-  const login = await request.post('/api/login', {
-    data: { usr: 'Administrator', pwd: ADMIN_PWD },
-  })
-  return ((await login.json()) as { token: string }).token
-}
-
 async function cleanup(request: APIRequestContext) {
-  const auth = { Authorization: `Bearer ${await adminToken(request)}` }
+  const auth = await adminAuth(request)
   const filters = encodeURIComponent(
     JSON.stringify([
       ['ref_table', '=', 'User'],
@@ -40,7 +32,7 @@ test('#173: a private attachment links without a token and serves on the cookie'
   request,
 }) => {
   const uploaded = await request.post('/api/upload_file', {
-    headers: { Authorization: `Bearer ${await adminToken(request)}` },
+    headers: await adminAuth(request),
     multipart: {
       file: { name: 'secret.txt', mimeType: 'text/plain', buffer: Buffer.from(SECRET) },
       is_private: '1',
@@ -50,12 +42,6 @@ test('#173: a private attachment links without a token and serves on the cookie'
   })
   const { file_url } = (await uploaded.json()) as { file_url: string }
   expect(file_url).toMatch(/^\/private\/files\//)
-
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
 
   await page.goto('/admin/User/Guest')
   const row = page.getByTestId('attachment-row').filter({ hasText: 'secret.txt' })

@@ -174,3 +174,45 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
     }
   })
 })
+
+describe('#231: a reqd Sub-table column is not enforced anywhere on save', () => {
+  // tableSchemaToZod (packages/shared/src/schema.ts) drops Sub-table columns
+  // from its shape entirely — NO_VALUE_TYPES includes 'Sub-table' — so a
+  // `reqd: true` Sub-table column never reaches zod's required-field check.
+  // Nothing downstream fills that gap either: pickChildInputs (document.ts)
+  // only emits an entry when the payload key is present at all (`raw ===
+  // undefined` short-circuits it, with no look at meta.reqd), and when it IS
+  // present as `[]`, saveChildren's `for (const [i, row] of input.rows...)`
+  // loop simply does nothing — zero rows in, zero rows out, zero errors. No
+  // other check in saveDoc/updateDoc consults `reqd` for a Sub-table column.
+  // This pins the CURRENT accepting behaviour as discovered, not yet
+  // classified defect-or-accepted by the owner (CLAUDE.md "no expectation
+  // laundering" / requirements-framework: a discovered behaviour is not a
+  // requirement until ratified, filed, or raised as an open question).
+  test('a row saves 201 with the reqd Sub-table entirely absent from the payload', async ({
+    admin,
+  }) => {
+    await admin.post('/api/table_def', {
+      name: 'Rq231 Item',
+      kind: 'sub_table',
+      columns: [{ column_name: 'item', column_type: 'Data', reqd: true }],
+    })
+    await admin.post('/api/table_def', {
+      name: 'Rq231 Order',
+      columns: [
+        { column_name: 'title', column_type: 'Data' },
+        { column_name: 'items', column_type: 'Sub-table', row_table: 'Rq231 Item', reqd: true },
+      ],
+    })
+    const doc = await admin.post<Record<string, any>>('/api/save_row', {
+      table: 'Rq231 Order',
+      row: { title: 'no items key at all' },
+    })
+    expect(doc.row_id).toMatch(/^[0-9a-f]{10}$/)
+    expect(doc.items).toEqual([])
+    const [{ count }] = await sql.unsafe(
+      `select count(*)::int as count from rq231_item where parent = '${doc.row_id}'`,
+    )
+    expect(count).toBe(0)
+  })
+})

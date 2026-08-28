@@ -29,6 +29,38 @@ export default defineConfig({
         inline: ['feather-testing-postgres'],
       },
     },
+    // Collected only by `pnpm test:coverage`, never by the default `pnpm test`.
+    //
+    // Scope is the app's own `src/`, test files excluded. `main.tsx` is the
+    // Vite entry point — it mounts the router into a real DOM document and is
+    // exercised by the browser, never by jsdom — so it is out of scope here.
+    //
+    // The e2e suite is excluded by design: Playwright drives a live stack in a
+    // separate browser process, so the screens it covers cannot be credited
+    // here. That is why this number is the lowest of the three packages — much
+    // of `pages/` is currently only reached through e2e.
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/main.tsx'],
+      reporter: ['text', 'json-summary'],
+      // Without this a single failing test suppresses the report entirely
+      // (v8's default), which hides the numbers exactly when they are most
+      // useful for diagnosing what a broken run stopped exercising.
+      reportOnFailure: true,
+      // Ratchet toward 100% (#226 ruling): only raise, never lower.
+      // Measured 2026-08-28: lines/statements 29.64% then 29.63% across two
+      // runs, functions 40.52% then 40.12%, rounded DOWN to the whole
+      // percent. Lines are stable to a hundredth of a point; the function
+      // count is not (component tests take different render branches run to
+      // run), so its threshold sits a further point below the floor rather
+      // than a hundredth above it, where it would flake.
+      thresholds: {
+        lines: 29,
+        statements: 29,
+        functions: 39,
+      },
+    },
   },
   resolve: {
     // The testing library and the app must share one React instance.

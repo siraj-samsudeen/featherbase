@@ -1,17 +1,11 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth, type Page } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'WS E2E Task'
 const DASH = 'ws-e2e-board'
 const WS = 'ws-e2e'
 
-async function adminHeaders(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
-
 test.beforeAll(async ({ request }) => {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
@@ -40,18 +34,10 @@ test.beforeAll(async ({ request }) => {
   if (ws.status() !== 201) throw new Error(`home page: ${ws.status()} ${await ws.text()}`)
 })
 
-async function login(page: import('@playwright/test').Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
-
 // UI-027: a home page (Workspace) lists its shortcuts; clicking navigates
 // correctly.
 test('UI-027: home page lists shortcuts and they navigate', async ({ page }) => {
-  await login(page)
+  await page.goto('/admin')
 
   // Reachable from the sidebar's Home Pages list.
   await expect(page.getByTestId(`home-page-link-${WS}`)).toBeVisible()
@@ -78,7 +64,7 @@ test('UI-027: home page lists shortcuts and they navigate', async ({ page }) => 
 // page; the System page's cards open Table lists; and the All tables entry
 // keeps every table reachable.
 test('#80: sidebar flip — landing, System page cards, All tables', async ({ page }) => {
-  await login(page)
+  await page.goto('/admin')
 
   // /admin redirects to the first visible home page.
   await expect(page).toHaveURL(/\/admin\/home\//)

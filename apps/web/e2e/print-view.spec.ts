@@ -1,6 +1,5 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Prn DT'
 const ITEM = 'Prn Item'
 
@@ -9,8 +8,7 @@ const ITEM = 'Prn Item'
 let docName = ''
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const headers = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
+  const headers = await adminAuth(request)
   const item = await request.post('/api/table_def', {
     headers,
     data: {
@@ -57,12 +55,6 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('PRN-001: print view shows labels, values, and child tables with no chrome', async ({
   page,
 }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   // Reach print view via the form's Print button.
   await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await page.getByTestId('form-print').click()
