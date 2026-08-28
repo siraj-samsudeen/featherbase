@@ -1,5 +1,16 @@
 # Testing
 
+## Where does a new test go?
+
+- **Server integration** — sandboxed HTTP against the in-process app. Almost
+  everything belongs here; reach for it first.
+- **Web component** — jsdom + the *real* in-process server, never a mock
+  layer. Reach here only when the behavior is React-side.
+- **E2E** — only for what a browser alone can witness: routing,
+  focus/keyboard behavior, realtime updates, file drop.
+
+See [The three layers](#the-three-layers) below for the full picture.
+
 Featherbase tests hit a **real Postgres** — no mocks, no fixture files, no
 cleanup code. The trick that makes this fast and safe is the SQL Sandbox
 model, borrowed from Phoenix/Ecto and packaged as
