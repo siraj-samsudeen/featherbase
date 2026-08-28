@@ -88,6 +88,21 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # The spec/test join table, re-derived rather than curated: every
+      # obligation in docs/specs (and the framework's worked example) carries
+      # an `> evidence:` verdict, and this re-checks each claim against the
+      # test titles that are supposed to back it. Zero dependencies, no
+      # database, well under a second — so it runs before `pnpm install`,
+      # where a broken linkage costs nothing to discover.
+      #
+      # The checker's own mutation tests run first (node's built-in runner,
+      # also dependency-free): each one flips a single thing a contributor
+      # could flip — a deleted `**IDs:**` line, a test turned `.skip`, an
+      # issue number moved into a comment — and asserts the checker catches
+      # it. A green linkage check means nothing if the checker cannot fail.
+      - name: Check spec evidence linkage
+        run: node --test tools/*.test.mjs && node tools/check-evidence.mjs
+
       # feather-testing-postgres is a git dependency; pnpm records GitHub
       # git URLs in the git@github.com: form and this runner has no SSH key.
       # The repo is public — fetch it anonymously over https instead.

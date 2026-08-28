@@ -1,24 +1,31 @@
 #!/usr/bin/env node
 /**
  * Featherbase Explorer — static site builder.
- * Zero dependencies. Reads harness/features.json, scans tests & src for
- * feature-ID mentions, renders the curated markdown library, and emits:
- *   site/index.html     — full standalone page (GitHub Pages / local file)
- *   site/artifact.html  — body fragment (Claude artifact publishing)
- * Run: node site/build.mjs   (from the repo root or site/)
+ * Frozen alongside the rest of docs/archive/harness-2026/ (issue #236): the
+ * site never had a working public deploy, so this only matters for opening
+ * the archived index.html locally. Zero dependencies. Reads the archived
+ * feature inventory, scans tests & src for feature-ID mentions, renders the
+ * curated markdown library, and emits:
+ *   index.html     — full standalone page (open locally)
+ *   artifact.html  — body fragment (Claude artifact publishing)
+ * Run: node docs/archive/harness-2026/site/build.mjs   (from the repo root)
  */
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const HERE = dirname(fileURLToPath(import.meta.url)); // .../docs/archive/harness-2026/site
+const ROOT = join(HERE, '../../../..'); // repo root — this script now lives 4 levels down
 const REPO = 'https://github.com/siraj-samsudeen/featherbase';
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 
 /* ------------------------------------------------------------------ *
  * 1. Features + code/test scan
  * ------------------------------------------------------------------ */
-const harness = JSON.parse(read('harness/features.json'));
+// The feature inventory is frozen history (docs/archive/harness-2026/README.md):
+// self-attested statuses from the 2026-07 build, kept because the IDs are still
+// cited in tests and PROGRESS. Nothing writes it any more.
+const harness = JSON.parse(read('docs/archive/harness-2026/harness/features.json'));
 const features = harness.features.map(f => ({ ...f, tests: [], src: [] }));
 const byId = Object.fromEntries(features.map(f => [f.id, f]));
 
@@ -243,7 +250,7 @@ const manifest = [
   ['Research', 'frappe-architecture', 'Frappe architecture study (v17)', 'docs/research/frappe-architecture.md'],
   ['Research', 'multi-app-1', 'Frappe: multi-app & multi-DB (note 1)', 'docs/research/frappe-multi-app-multi-db.md'],
   ['Research', 'multi-app-2', 'Frappe: multi-app & multi-DB (note 2)', 'docs/research/frappe-multi-app-and-multi-db.md'],
-  ['Log & harness', 'harness', 'The agent harness — how this was built', 'harness/README.md'],
+  ['Log & harness', 'harness', 'The agent harness — how this was built (archived)', 'docs/archive/harness-2026/README.md'],
   ['Log & harness', 'progress', 'Progress log — every session, newest first', 'PROGRESS.md'],
 ];
 if (existsSync(join(ROOT, 'CONTRIBUTING.md'))) manifest.splice(6, 0, ['Start here', 'contributing', 'Contributing — prerequisites & commands', 'CONTRIBUTING.md']);
@@ -297,8 +304,8 @@ const data = {
   cats, docs, axes, lifecycle, milestones, learnSlug: 'learning-path',
 };
 const dataJson = JSON.stringify(data).replace(/</g, '\\u003c');
-const css = readFileSync(join(ROOT, 'site/style.css'), 'utf8');
-const js = readFileSync(join(ROOT, 'site/app.js'), 'utf8');
+const css = readFileSync(join(HERE, 'style.css'), 'utf8');
+const js = readFileSync(join(HERE, 'app.js'), 'utf8');
 
 const nav = `
 <header class="topbar"><div class="topbar-inner">
@@ -327,8 +334,8 @@ const full = `<!doctype html>
 ${body}
 </html>`;
 
-writeFileSync(join(ROOT, 'site/index.html'), full);
-writeFileSync(join(ROOT, 'site/artifact.html'), body);
+writeFileSync(join(HERE, 'index.html'), full);
+writeFileSync(join(HERE, 'artifact.html'), body);
 const kb = (s) => Math.round(Buffer.byteLength(s) / 1024);
 console.log(`site/index.html      ${kb(full)} KB`);
 console.log(`site/artifact.html   ${kb(body)} KB`);

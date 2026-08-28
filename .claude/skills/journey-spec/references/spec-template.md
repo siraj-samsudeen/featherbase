@@ -2,7 +2,8 @@
 
 **IDs:** `<FEAT>-J*` journeys · `<FEAT>-R*` rules · `<FEAT>-I*` invariants
 · `<FEAT>-H*` hazards · `Q*` questions
-**Evidence:** `docs/specs/evidence/<feature>.csv` (never status in this file)
+**Evidence:** a `> evidence:` verdict under each obligation below;
+linkage checked by `tools/check-evidence.mjs`
 
 ## The job
 <FEAT>-J1 — "<the user's own words for job A>."
@@ -16,6 +17,9 @@ behind, reusing its fixture>
 lives in the rules' properties.
 
 ## <FEAT>-J1 — <title> *(shape: sequence)*
+
+> evidence: gap — spec'd, not yet built
+
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
 | J1.1 | … | … | R1 |
@@ -33,6 +37,9 @@ scale: … · observability: … · compound hazards: …
 
 ## The rules
 ### <FEAT>-R1 — <name> · `shape: rule`
+
+> evidence: gap — spec'd, not yet built
+
 **Property:** <one sentence quantified over the whole input space>
 | Input | → | Why? |
 |---|---|---|
@@ -48,8 +55,12 @@ Anchors: <example table>
 ### Invariants
 - **<FEAT>-I1 — <name>.** <whole-run arithmetic>
 
+  > evidence: gap — spec'd, not yet built
+
 ### Hazards
 - **<FEAT>-H1 — <name>.** <compound risk no single rule owns>
+
+  > evidence: gap — mitigations not yet built
 
 ## Open questions *(arbiter: <name>)*
 | # | Question | Blocked on |

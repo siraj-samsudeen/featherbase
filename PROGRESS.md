@@ -1,5 +1,82 @@
 # Progress Log
 
+## 2026-08-28 — The checker learns to distrust (#239 review response)
+
+The owner's review of #239 asked the only question that matters — can a
+future contributor make an unsupported claim look green? — and answered
+it three ways: delete a spec's `**IDs:**` line and 14 verdicts vanish
+silently; flip a proving test to `.skip` and it still proves; flip a
+pin's `it.fails` to `it.skip` (or just mention `#110` in a comment) and
+the pin still counts. All three closed, each with the owner's exact
+mutation committed as a test:
+
+- **Participation is declared and checked.** Every doc under
+  `docs/specs/` carries `**IDs:**` or `**Evidence mode:** excluded — <reason>`
+  (0001/0002/README now say so explicitly); a doc with neither fails the
+  run naming the file, and any doc under watched trees carrying verdicts
+  must declare.
+- **Only executable declarations prove.** Modifier allowlist (skip/todo/
+  skipIf/runIf and anything unknown disqualify), real parent-suite
+  exclusion with honest failure on an unbalanced scan, and `.fails` can
+  never satisfy `proven`. The fixture found a fourth dress of the lie —
+  a skipped test's *suite* title standing as proof — closed too.
+- **Pins join to their expected-failure test.** `pinned #N` requires an
+  executable `it.fails`/`test.fails` whose title carries both the ID and
+  `#N`; the three real pins were retitled to be findable (titles only).
+- 35 mutation tests in `tools/check-evidence.test.mjs` (node:test, zero
+  deps, 158ms) run in CI before the checker itself.
+
+Also: the Railway mystery died — every preview build had failed since the
+bot arrived because the web-build Docker stage installed git under
+`--no-install-recommends`, which omits ca-certificates; git rewrote SSH to
+HTTPS and then couldn't verify GitHub's certificate. Owner-diagnosed;
+one-word fix on #227, cascaded through the stack; all three previews
+reached SUCCESS for the first time.
+
+Gotcha for the record: `node --test tools/` fails on Node 22 (loads the
+directory as a module) — the glob `node --test tools/*.test.mjs` is the
+form CI and package.json use.
+
+
+## 2026-08-28 — Documents become checks (#235, #236, #237)
+
+The document-set rule the owner ratified — judgment in the spec, mechanics
+in one living doc, history in append-only logs, relationships checked by
+CI — applied to its own house, on `claude/docs-to-checks` (stacked on
+batch 1):
+
+- **The 2026 build harness retired** (#236): `harness/` →
+  `docs/archive/harness-2026/` with a tombstone; its features.json
+  statuses were self-attested and its evaluation protocol was never wired
+  up. CLAUDE.md loses the features.json protocol, gains the document-set
+  section and the accepting-delegated-work rule (a report is a claim —
+  re-run the verification). Open question flagged for the owner: the
+  public Pages Explorer still renders the frozen feature board.
+- **Evidence CSVs mechanized away** (#235): all FIVE hand-maintained
+  matrices (not one — four more hid in docs/specs/evidence/) became
+  `> evidence:` verdict lines in the specs that own the IDs, checked by
+  `tools/check-evidence.mjs` (73ms, zero deps, in CI): 78 verdicts across
+  5 specs, title-joined to 197 test files, `via` aliases carrying the
+  unfinished join-key migration visibly. Six stale verdicts corrected
+  against the tree (three "not yet built" features had shipped); one
+  false "proven" (RVT-R5) surfaced by the checker itself and migrated
+  honestly.
+- **Organization** (#237): the where-does-a-test-go decision tree tops
+  TESTING.md; the 8-file `import-*` prefix family became
+  `test/import/` — a move the CSVs' path links used to forbid and the
+  title-joining checker now makes safe, which is the whole point.
+
+Verified: check-evidence green; server suite 726 passed (known
+container-only sources-csv chmod case red locally, green in CI); both
+typechecks; site build. In the harness repos the same session landed
+feather-testing-core PR #7 (until()/raw()/attachFile/pressKey/hover/
+assertDownload + the eslint plugin whose rules found and fixed 11 weak
+assertions in the library's own tests, v0.4.0) and the postgres PR #4
+pin bump to ^0.4.0.
+
+Next: owner merges the stacked PRs (#227 → #233 → this) and releases the
+harness chain (#225 checklist); then #238 adopts the lint plugin here.
+
 ## 2026-08-28 — Test pyramid, batch 1: delete, push down, and fix #228 (#223)
 
 First batch of the owner-ratified partition in #223 (deletions included).

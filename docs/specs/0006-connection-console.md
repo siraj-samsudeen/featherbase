@@ -2,7 +2,8 @@
 
 **IDs:** `CONN-J*` journeys · `CONN-R*` rules · `CONN-I*` invariants ·
 `CONN-H*` hazards · `Q*` questions
-**Evidence:** `docs/specs/evidence/connection-console.csv` (never status in this file)
+**Evidence:** a `> evidence:` verdict under each obligation below;
+linkage checked by `tools/check-evidence.mjs`
 **Provenance:** owner session 2026-08-11 (VMS/MySQL connection attempt).
 The owner ratified five requirements after a three-variant UI prototype
 (branch `claude/vms-database-connection-test-e19799`; the "connection
@@ -38,6 +39,11 @@ CSV folder are out of scope here (different credential shapes, CONN-R3).
 
 ## CONN-J1 — Connect VMS, diagnose, reflect *(shape: sequence)*
 
+> evidence: gap — spec'd 2026-08-11; nothing implements the journey. The
+> three-variant UI prototype on branch
+> `claude/vms-database-connection-test-e19799` is a mock and is not
+> evidence.
+
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
 | J1.1 | Admin, "Connect a data source", signed in as System Manager | One page: engine selector, source name, credential form, and a **Live checks** panel listing the five phases, all pending | R3, R4 |
@@ -63,6 +69,8 @@ host, wrong password), never by mutating shared state. A skip is never
 a pass.
 
 ## CONN-J2 — Broken source: see it, fix it, prove it *(deltas from J1 only)*
+
+> evidence: gap — spec'd 2026-08-11; depends on R8.
 
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
@@ -103,6 +111,10 @@ its own MySQL user; the source under test is journey-owned.
 ## The rules
 
 ### CONN-R1 — Typed credentials, stored encrypted, write-only · `shape: contract`
+
+> evidence: gap — encrypted credential storage is not built; `CREDENTIALS_KEY`
+> does not exist yet.
+
 The Data Source row gains discrete connection fields (host, port,
 database, user) and an encrypted password. `POST /api/table/Data Source`
 and `POST /api/table/Data Source/:name` accept a plaintext `password`
@@ -115,6 +127,10 @@ now under Advanced — R7), it wins and the password field is disabled.
 stored password in any encoding.
 
 ### CONN-R2 — URL and fields are two views of one state · `shape: rule`
+
+> evidence: gap — the sync behaviour was demonstrated in the prototype only; no
+> production code and no tests.
+
 **Property:** parse(render(fields)) = fields for every field edit, and
 render(parse(url)) masks exactly the password segment — pasting a URL
 containing the mask sentinel never overwrites the stored secret.
@@ -126,6 +142,9 @@ containing the mask sentinel never overwrites the stored secret.
 | Paste `http://example.com` | fields unchanged, no error while typing | not a DB URL |
 
 ### CONN-R3 — The engine selector drives the form · `shape: rule`
+
+> evidence: gap — the engine-driven form was demonstrated in the prototype only.
+
 Selecting an engine sets the URL scheme, swaps the default port
 (3306 ↔ 5432) only when the current port is a default, and swaps the
 credential form for engines whose credentials are not host-shaped
@@ -137,6 +156,10 @@ credential form for engines whose credentials are not host-shaped
 | → DuckDB | host/port/database/user/password form replaced | different credential shape |
 
 ### CONN-R4 — Phased test with inline diagnosis · `shape: contract`
+
+> evidence: gap — `test_connection` returns a single ok/error today, carrying a
+> raw driver message.
+
 `POST /api/table/Data Source/:name:test_connection` returns per-phase
 results — resolve DNS · reach the port · negotiate TLS · authenticate ·
 check read access — each `ok`/`failed`/`skipped`, the first failure
@@ -150,6 +173,9 @@ Behaviours: a timeout explicitly states the password was not yet
 checked; `conn_status` and `last_checked_at` are stamped on every run.
 
 ### CONN-R5 — Database dropdown after authentication · `shape: contract`
+
+> evidence: gap — no database-listing action exists.
+
 Once host/user/password authenticate, the Database field becomes a
 dropdown of databases the connected user can read (MySQL:
 `SHOW DATABASES` minus system schemas; Postgres: catalog equivalent),
@@ -158,6 +184,9 @@ preselected; free-text entry remains possible (a database the user
 cannot list may still be readable).
 
 ### CONN-R6 — Success verifies grants, not promises · `shape: contract`
+
+> evidence: gap — no grants inspection exists.
+
 A fully-successful test also reports the user's effective privileges on
 the target database (MySQL: `SHOW GRANTS`). SELECT-only → stated as
 "read-only enforced by the database". Any write privilege while the
@@ -167,12 +196,21 @@ already in the Data Source description). The `access` flag's behaviour
 itself is unchanged (→ I2).
 
 ### CONN-R7 — Advanced disclosure · `shape: rule`
+
+> evidence: gap — the fields exist on the Data Source table, but the generic form
+> shows them flat.
+
 Pool max, statement timeout, table allowlist, and `url_env` mode live in
 a collapsed **Advanced** section — present on every engine, closed by
 default, never required for the first connection.
 *(none — an example table would only restate the enumeration.)*
 
 ### CONN-R8 — A saved source keeps its health visible · `shape: rule`
+
+> evidence: gap — `conn_status` and `last_checked_at` are stamped today, but there
+> is no failing-since, no failing phase, no affected-tables count, and
+> no re-test surface.
+
 The saved source surfaces `conn_status`, last successful check, and — on
 failure — failing-since, the failing phase, and the count of reflected
 Tables affected. **Re-test** re-opens the J1 console against the saved
@@ -187,9 +225,15 @@ non-decreasing and always reflects the most recent test run.
   plaintext password appears in no API response, no error message, no
   log line, and no client-side state beyond the field the user typed
   into; every rendered URL masks it.
+
+  > evidence: gap — holds trivially today only because no password is
+  > ever stored.
+
 - **CONN-I2 — grants inform, access enforces.** R6's grant report never
   changes write behaviour: a `read_only` source refuses writes
   identically whether the database user could write or not.
+
+  > evidence: gap — assertable only once R6 exists.
 
 ### Hazards
 - **CONN-H1 — public-login deployments.** On an instance with a known
@@ -198,11 +242,18 @@ non-decreasing and always reflects the most recent test run.
   attach real sources there — standing owner rule), but the connect page
   must at least state that saved sources are readable by every System
   Manager.
+
+  > evidence: gap — the mitigation in force is the standing owner rule
+  > (no real sources on public-login instances); the UI notice is not
+  > built.
+
 - **CONN-H2 — master-key loss.** `CREDENTIALS_KEY` lost or rotated
   without re-encryption makes every stored password undecryptable. The
   failure must be explicit at connect time ("credential cannot be
   decrypted — re-enter the password"), never a silent auth failure
   attributed to the database. *(→ Q1)*
+
+  > evidence: gap — awaiting Q1.
 
 ## Open questions *(arbiter: Siraj)*
 

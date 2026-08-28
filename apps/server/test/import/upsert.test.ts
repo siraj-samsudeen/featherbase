@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import fc from 'fast-check'
-import { test } from './pg-test'
+import { test } from '../pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 
 // Spec 0004 (import upsert) — the contract, rule, and invariant layers.
