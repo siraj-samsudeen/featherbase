@@ -1,5 +1,44 @@
 # Progress Log
 
+## 2026-08-28 — Documents become checks (#235, #236, #237)
+
+The document-set rule the owner ratified — judgment in the spec, mechanics
+in one living doc, history in append-only logs, relationships checked by
+CI — applied to its own house, on `claude/docs-to-checks` (stacked on
+batch 1):
+
+- **The 2026 build harness retired** (#236): `harness/` → 
+  `docs/archive/harness-2026/` with a tombstone; its features.json
+  statuses were self-attested and its evaluation protocol was never wired
+  up. CLAUDE.md loses the features.json protocol, gains the document-set
+  section and the accepting-delegated-work rule (a report is a claim —
+  re-run the verification). Open question flagged for the owner: the
+  public Pages Explorer still renders the frozen feature board.
+- **Evidence CSVs mechanized away** (#235): all FIVE hand-maintained
+  matrices (not one — four more hid in docs/specs/evidence/) became
+  `> evidence:` verdict lines in the specs that own the IDs, checked by
+  `tools/check-evidence.mjs` (73ms, zero deps, in CI): 78 verdicts across
+  5 specs, title-joined to 197 test files, `via` aliases carrying the
+  unfinished join-key migration visibly. Six stale verdicts corrected
+  against the tree (three "not yet built" features had shipped); one
+  false "proven" (RVT-R5) surfaced by the checker itself and migrated
+  honestly.
+- **Organization** (#237): the where-does-a-test-go decision tree tops
+  TESTING.md; the 8-file `import-*` prefix family became
+  `test/import/` — a move the CSVs' path links used to forbid and the
+  title-joining checker now makes safe, which is the whole point.
+
+Verified: check-evidence green; server suite 726 passed (known
+container-only sources-csv chmod case red locally, green in CI); both
+typechecks; site build. In the harness repos the same session landed
+feather-testing-core PR #7 (until()/raw()/attachFile/pressKey/hover/
+assertDownload + the eslint plugin whose rules found and fixed 11 weak
+assertions in the library's own tests, v0.4.0) and the postgres PR #4
+pin bump to ^0.4.0.
+
+Next: owner merges the stacked PRs (#227 → #233 → this) and releases the
+harness chain (#225 checklist); then #238 adopts the lint plugin here.
+
 ## 2026-08-28 — Test pyramid, batch 1: delete, push down, and fix #228 (#223)
 
 First batch of the owner-ratified partition in #223 (deletions included).
