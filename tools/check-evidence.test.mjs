@@ -24,7 +24,7 @@ import { checkEvidence, parseTestFile, idsInTitle } from './check-evidence.mjs'
 // ------------------------------------------------------------------ harness
 
 /** Write `files` into a throwaway tree and run the checker over it. */
-function run(files) {
+function run(files, resultFiles = []) {
   const root = mkdtempSync(join(tmpdir(), 'check-evidence-'))
   try {
     for (const [rel, content] of Object.entries(files)) {
@@ -37,6 +37,7 @@ function run(files) {
       requiredSpecDirs: ['specs'],
       watchedSpecDirs: ['design'],
       testDirs: ['tests'],
+      resultFiles,
     })
   } finally {
     rmSync(root, { recursive: true, force: true })
@@ -104,6 +105,63 @@ const base = () => ({ 'specs/0001-fixtures.md': SPEC, 'tests/fixtures.test.ts': 
 /** The base tree with one file replaced. */
 const withFile = (rel, content) => ({ ...base(), [rel]: content })
 
+function vitestResult(assertions) {
+  return JSON.stringify({
+    testResults: [{ name: 'tests/fixtures.test.ts', assertionResults: assertions }],
+  })
+}
+
+function playwrightResult(status = 'passed', idOnSuite = false, expectedStatus = 'passed') {
+  return JSON.stringify({
+    suites: [
+      {
+        title: 'fixtures.spec.ts',
+        suites: [
+          {
+            title: idOnSuite ? 'FIX-J1: the journey' : 'the journey',
+            specs: [
+              {
+                title: idOnSuite ? 'the walk end to end' : 'FIX-J1: the walk end to end',
+                tests: [{ projectName: 'chromium', expectedStatus, results: [{ status }] }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  })
+}
+
+const RUNTIME_FILES = ['results/vitest.json', 'results/playwright.json']
+
+function withRuntime({
+  journey = 'passed',
+  includeJourney = true,
+  rule = 'passed',
+  idOnSuite = false,
+  journeyExpectedStatus = 'passed',
+} = {}) {
+  const files = {
+    ...base(),
+    'results/vitest.json': vitestResult([
+      {
+        ancestorTitles: [],
+        title: 'FIX-901: the naming property',
+        status: rule,
+      },
+    ]),
+  }
+  if (includeJourney) {
+    files['results/playwright.json'] = playwrightResult(
+      journey,
+      idOnSuite,
+      journeyExpectedStatus,
+    )
+  }
+  else files['results/playwright.json'] = JSON.stringify({ suites: [] })
+  return files
+}
+
 // ------------------------------------------------------------------- (f) ok
 
 test('(f) the happy path passes, and counts what it saw', () => {
@@ -115,6 +173,79 @@ test('(f) the happy path passes, and counts what it saw', () => {
   assert.equal(result.byStatus.get('proven'), 2)
   assert.equal(result.byStatus.get('pinned'), 1)
   assert.equal(result.byStatus.get('gap'), 1)
+})
+
+// ------------------------------------------- runtime execution evidence (#241)
+
+test('runtime results accept a passed proof across combined runner reports', () => {
+  const result = run(withRuntime(), RUNTIME_FILES)
+  assertPasses(result)
+  assert.equal(result.runtimeTests, 2)
+  assert.equal(result.resultFiles, 2)
+})
+
+test('a dynamically skipped proof fails runtime evidence', () => {
+  const result = run(withRuntime({ journey: 'skipped' }), RUNTIME_FILES)
+  assertFails(result, 'FIX-J1 is marked "proven"', 'every matching concrete test was skipped')
+})
+
+test('a missing or runner-excluded proof fails runtime evidence', () => {
+  const result = run(withRuntime({ includeJourney: false }), RUNTIME_FILES)
+  assertFails(result, 'FIX-J1 is marked "proven"', 'no concrete test', 'combined runtime results')
+})
+
+test('an ID on a suite title propagates to its executed descendant', () => {
+  // The concrete Playwright spec title carries no ID. Its parent suite does,
+  // so the executed leaf is the runtime evidence for FIX-J1.
+  const result = run(withRuntime({ idOnSuite: true }), RUNTIME_FILES)
+  assertPasses(result)
+})
+
+test('a failed test still counts as executed; its runner remains responsible for red', () => {
+  const result = run(withRuntime({ journey: 'failed', rule: 'failed' }), RUNTIME_FILES)
+  assertPasses(result)
+})
+
+test('a Playwright expected failure is not runtime proof', () => {
+  const result = run(
+    withRuntime({ journey: 'failed', journeyExpectedStatus: 'failed' }),
+    RUNTIME_FILES,
+  )
+  assertFails(result, 'FIX-J1 is marked "proven"', 'no concrete test')
+})
+
+test('an expected-failure child cannot counterfeit runtime proof for its suite ID', () => {
+  const tests = TESTS.replace(
+    "  test('FIX-J1: the walk end to end', () => {})",
+    "  test('FIX-J1: the walk end to end', () => {})\n" +
+      "  test.fails('FIX-J1.pin: known broken edge', () => {})",
+  )
+  const files = {
+    ...base(),
+    'tests/fixtures.test.ts': tests,
+    'results/vitest.json': vitestResult([
+      {
+        ancestorTitles: ['FIX-J1: the journey'],
+        title: 'FIX-J1: the walk end to end',
+        status: 'skipped',
+      },
+      {
+        ancestorTitles: ['FIX-J1: the journey'],
+        title: 'FIX-J1.pin: known broken edge',
+        // Vitest inverts `.fails`: the assertion's expected failure reports
+        // as passed, while the suite stays green.
+        status: 'passed',
+      },
+      {
+        ancestorTitles: [],
+        title: 'FIX-901: the naming property',
+        status: 'passed',
+      },
+    ]),
+    'results/playwright.json': JSON.stringify({ suites: [] }),
+  }
+  const result = run(files, RUNTIME_FILES)
+  assertFails(result, 'FIX-J1 is marked "proven"', 'every matching concrete test was skipped')
 })
 
 // ------------------------------------------- (a) a declared ID with no verdict

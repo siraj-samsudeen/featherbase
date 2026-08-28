@@ -21,7 +21,11 @@ history at [`docs/archive/harness-2026/`](../archive/harness-2026/README.md)
 journeys-and-rules form carry a `> evidence: proven | rule-tier | gap |
 pinned #N — <note>` line under every journey, rule, invariant and hazard,
 and `node tools/check-evidence.mjs` (`pnpm check:evidence`, and a CI step)
-re-derives the linkage against the test titles that back it. The
+re-derives the linkage against the test titles that back it. That local mode
+stays dependency-free; after Vitest and Playwright finish, CI supplies their
+combined JSON reports with `--results` and additionally requires every
+`proven`/`rule-tier` obligation to have a matching concrete test that actually
+executed. The
 hand-maintained `evidence/*.csv` matrices this replaced were retired
 2026-08-28 (issue #235).
 
