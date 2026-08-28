@@ -232,9 +232,37 @@ test commits for real and cleans up after itself.
 **Coverage.** 100% line coverage is the ratified target, enforced as a CI
 ratchet rather than a gate sprung at 100% from day one: the threshold sits
 at the measured baseline and only rises, one commit at a time, until it
-reaches 100%. The wiring — coverage collection plus the ratchet check in
-CI — lands separately from this policy; none of the Vitest configs collect
-coverage yet.
+reaches 100%.
+
+The wiring is v8 coverage in each of the three Vitest configs, collected by
+`pnpm test:coverage` (per package, or `pnpm -r test:coverage` from the root)
+and never by the plain `pnpm test` — day-to-day runs stay uninstrumented.
+Each config scopes collection to its own package's `src/`. The e2e suite is
+excluded by construction: Playwright drives a live stack from a separate
+process, so nothing it exercises is attributable to these numbers. The
+server's `migrations/` and `patches/` are excluded for the same reason —
+a separate `tsx src/migrate.ts` process applies them before the suite
+starts — and because a shipped migration is append-only history that no
+test can retroactively cover.
+
+The ratchet itself is `coverage.thresholds` in each `vitest.config.ts`;
+that is the single place the numbers live, and the CI `unit` job runs the
+coverage scripts so a suite that drops below its floor fails the build.
+Baselines measured 2026-08-28, each rounded down to the whole percent:
+
+| Package | Lines / statements | Functions | Threshold set |
+|---|---|---|---|
+| `apps/server` | 86.64% | 91.18% | lines 86, functions 91 |
+| `apps/web` | 29.64% | 40.52% | lines 29, functions 39 |
+| `packages/shared` | 21.30% | 85.71% | lines 21, functions 85 |
+
+Two caveats on those figures. The server number is a *floor*, not the truth:
+`sources-mysql.test.ts` skips itself when `MYSQL_TEST_URL` is unset, so a
+developer checkout leaves `src/sources/mysql-driver.ts` (359 lines) at 6%
+while CI, which sets the variable, covers it — raise the server threshold to
+whatever the first green CI run reports. And coverage is per package, so a
+`packages/shared` module driven only from the server and web suites reads as
+uncovered here; `src/import.ts` alone is the whole of shared's gap.
 
 ## Ground rules
 

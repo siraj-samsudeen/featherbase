@@ -119,8 +119,16 @@ jobs:
       # server in-process against the service database. Their configs pin
       # fileParallelism: false and a shared globalSetup that empties
       # tab_background_job — do not parallelize around them here.
-      - name: Run unit and component suites
-        run: pnpm -r test
+      #
+      # `test:coverage` REPLACES the plain `pnpm -r test` rather than being
+      # added beside it: instrumenting the suites once costs about 15% of wall
+      # clock (measured back to back — server 133s→153s, web 18s→22s, shared
+      # under a second either way), where running them twice would cost 100%.
+      # Each config carries a `coverage.thresholds` floor that only ever rises
+      # (#226); Vitest exits non-zero when a suite falls below its floor, so a
+      # coverage regression fails this job exactly like a failing test does.
+      - name: Run unit and component suites with coverage
+        run: pnpm -r test:coverage
 
   e2e:
     runs-on: ubuntu-latest
