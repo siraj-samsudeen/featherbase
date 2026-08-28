@@ -1,5 +1,93 @@
 # Progress Log
 
+## 2026-08-28 — Test pyramid, batch 1: delete, push down, and fix #228 (#223)
+
+First batch of the owner-ratified partition in #223 (deletions included).
+Three commits on `claude/test-pyramid-batch-1`, branched off #227's head so
+the PR diff shows only this batch.
+
+**e2e 78 -> 60 spec files; web component suite 10 -> 17 files, 66 -> 92
+tests.**
+
+**Commit 1 — 13 thin duplicate specs deleted, one trimmed.** Each was read
+against its same-topic server test before deleting; the disposition list is
+in the commit body. All 13 asserted only what `apps/server/test` already
+owns, over a "the button exists" veneer — `audit-log`, `activity-feed`,
+`assign`, `single-table`, `rename`, `server-script`, `script-report`,
+`query-report`, `job-monitor`, `job-progress`, `letterhead`,
+`workflow-condition`, `permission-manager`.
+
+Two exceptions the gate caught. `access-tokens` was skipped by instruction
+(its show-once modal folds into a journey in a later batch). And
+`naming-series` was **trimmed, not deleted**: its builder half is genuinely
+client-only and uncovered anywhere else — the prefix derived from the Table
+name, `namingPreview()`'s digit-count string, and the composed pattern
+reaching the server — and it is the cited evidence for `IMP-R6.shape` in
+`docs/design/evidence/spreadsheet-import.csv`. Its `PUT
+:name/id_pattern` 417 case also stayed, because the server suite does not
+test that endpoint at all. **Gap for a later batch: move that 417 into
+`apps/server/test`, then the trimmed spec can lose it.**
+
+**Commit 2 — seven specs pushed down to the component layer.** `dark-mode`,
+`client-validation`, `list-settings`, `i18n`, `comments`, `home-recall`,
+`checklist`. New files: `theme`, `client-validation`, `list-settings`,
+`i18n-rendering`, `comments`, `home-recall` tests, plus three run-lifecycle
+tests added to `checklist-binding`. Five e2e specs deleted outright; two
+kept as trimmed specs holding only what a browser adds — `dark-mode` keeps
+"does the canvas actually repaint" (jsdom loads no stylesheet), `checklist`
+keeps the photo upload (image decoding) and phone-width layout (box model).
+
+The push-down also retired two cleanup burdens that only existed because e2e
+commits: `i18n`'s Translation rows are unique on (language, source_text) and
+poisoned the *server* suite's `i18n.test.ts` if a run died before its
+`afterAll`; `comments` carried 20 lines of "delete what the last run left".
+Rollback does both now.
+
+**Gotcha worth remembering — the fire-and-forget write.** The Admin sends
+several writes as `void api.post(...)`: the theme toggle, `setLanguage`, and
+ListView's settings PUT. A component test that returns while one is in
+flight lets it execute *after* its sandbox transaction closed, so it commits
+for real — the next test then starts against a dark, French, or pre-sorted
+Admin, and the failure surfaces somewhere unrelated. Hit this twice while
+writing these tests (it is why `theme.test.tsx` first went red in the full
+run but green alone). The fix is to end such a test by polling the server
+until it reports the new value, so the write lands inside the transaction.
+`docs/TESTING.md` now states the rule and the layer-2/layer-3 dividing line.
+
+Coverage ratchet raised, floors only rising: web lines/statements 29 -> 33,
+functions 39 -> 45 (measured twice at 33.33/33.35 and 45.92/46.32, rounded
+down). `docs/TESTING.md`'s baseline table updated with the before/after.
+
+**Commit 3 — #228 fixed app-side.** The sidebar's Recent/Frequent rows were
+buttons named after whatever the operator last visited, so a chip reading
+"Checklist Run — checklist" matched an import-wizard lookup for a button
+named "Check" and failed `UPS-J1` — ordering-dependent, hence flake-shaped.
+They are anchors now: every sidebar row is a destination (searches are
+filtered out upstream), so `link` is the honest role and a button lookup can
+never reach it. Modified clicks fall through, so middle-click and
+open-in-new-tab work for the first time.
+`apps/web/test/sidebar-recall-roles.test.tsx` pins it and fails against the
+previous markup. Scope is the sidebar only — the command bar's `RecentRow`
+lives in a popup that exists only while the bar is focused. The DSL half
+(exact-name matching in `clickButton`) lands separately in
+`feather-testing-core`.
+
+**Verified.** `pnpm --filter web test` 92/92 green (17 files).
+`CHROMIUM_PATH=/opt/pw-browsers/chromium pnpm e2e` (isolated stack) 98
+passed in 3.5m across 60 spec files. `pnpm --filter server test` 726 passed
+/ 1 failed / 15 skipped — the single failure is the known container-only
+`sources-csv` "round 3" (chmod is a no-op as root), untouched by this batch.
+Both typechecks clean. `pnpm --filter web test:coverage` green against the
+raised floors, and the test database carries zero leaked `user_settings`
+rows or non-null `user.theme` / `user.language` after a full run.
+
+**Next.** Batch 2 of #223: the remaining push-down candidates (`recents`,
+`filters` mechanics, `form-sidebar`, `grid-layout`, `custom-field`,
+`property-setter`, `report-view`/`export`, `link-autocomplete`), and the
+promotion of the keeper specs into DSL journeys. Fold `access-tokens`'
+show-once modal into an admin journey there, and move the `id_pattern` 417
+into the server suite.
+
 ## 2026-08-27 — Test-suite audit and remediation (#214, PR #227)
 
 A full audit of all three suites (121 server files / 680 tests, 78 e2e

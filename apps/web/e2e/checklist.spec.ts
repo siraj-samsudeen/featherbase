@@ -1,5 +1,12 @@
 import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
+// The browser-only half of the checklist surface. The run lifecycle — the
+// switcher, ticking, the must-do gate, and a submitted run going final — is a
+// component test now (apps/web/test/checklist-binding.test.tsx, #223 batch 1).
+// What is left here needs a real browser: a camera upload whose thumbnail the
+// server generates and the browser decodes, and the phone-width layout, which
+// is a box-model question jsdom has no answer to.
+//
 // The checklists sample app installs through the real endpoint, exactly like
 // the helpdesk spec. Idempotent: an existing structure is left as-is.
 async function ensureChecklistStructure(request: APIRequestContext) {
@@ -13,10 +20,7 @@ async function ensureChecklistStructure(request: APIRequestContext) {
   if (r.status() !== 201) throw new Error(`install checklists: ${r.status()} ${await r.text()}`)
 }
 
-// TWO runs: the first spec submits its run, and a submitted run is final —
-// its controls are gone — so the photo and mobile specs get their own, opened
-// by name rather than by "whichever card sorts first".
-let runName = ''
+// One run, left open: both tests below need editable controls.
 let openRunName = ''
 
 // Seed off the app's fixture template. The template-snapshot hook fills the
@@ -30,66 +34,20 @@ test.beforeAll(async ({ request }) => {
   )
   const template = ((await templates.json()) as { data: { row_id: string }[] }).data[0]?.row_id
   if (!template) throw new Error('no checklist template — the fixture should have installed one')
-  const seed = async (section: string) => {
-    const r = await request.post('/api/save_row', {
-      headers: H,
-      data: {
-        table: 'Checklist Run',
-        row: { template, store: 'ATK', section, team_leader: 'E2E TL' },
-      },
-    })
-    if (r.status() !== 201) throw new Error(`seed run: ${r.status()} ${await r.text()}`)
-    return ((await r.json()) as { row_id: string }).row_id
-  }
-  runName = await seed('Kurti')
-  openRunName = await seed('Denim')
+  const r = await request.post('/api/save_row', {
+    headers: H,
+    data: {
+      table: 'Checklist Run',
+      row: { template, store: 'ATK', section: 'Denim', team_leader: 'E2E TL' },
+    },
+  })
+  if (r.status() !== 201) throw new Error(`seed run: ${r.status()} ${await r.text()}`)
+  openRunName = ((await r.json()) as { row_id: string }).row_id
 })
 
 test.afterAll(async ({ request }) => {
   const H = await adminAuth(request)
-  for (const name of [runName, openRunName])
-    if (name) await request.delete(`/api/table/Checklist%20Run/${name}`, { headers: H })
-})
-
-test('checklist view: list → run → tick → submit gate → submit', async ({ page }) => {
-  // The switcher appears on the run list because the Table has checklist
-  // shape — and is absent from a Table that lacks it.
-  await page.goto('/admin/Checklist%20Run')
-  await page.getByTestId('open-checklist').click()
-  await expect(page.getByTestId('checklist-view')).toBeVisible()
-
-  // Open the seeded run from its date-grouped card.
-  await page.getByTestId('checklist-run-card').filter({ hasText: 'Kurti' }).first().click()
-  await expect(page.getByTestId('checklist-run-view')).toBeVisible()
-  await expect(page.getByTestId('checklist-item')).toHaveCount(8)
-  await expect(page.getByTestId('checklist-progress')).toHaveText('0/8')
-
-  // Tap-to-tick: the row saves immediately, progress and the stamp follow.
-  await page.getByTestId('checklist-item').first().getByRole('checkbox').click()
-  await expect(page.getByTestId('checklist-progress')).toHaveText('1/8')
-  await expect(page.getByTestId('checklist-item').first()).toContainText('✓')
-
-  // Submit while must-do items are open: the server-side gate refuses and
-  // its message surfaces verbatim.
-  await page.getByTestId('checklist-submit').click()
-  await expect(page.getByTestId('checklist-error')).toContainText('must-do')
-
-  // Tick the remaining must-do items (indexes 1, 2, 5, 7 of the fixture;
-  // 0 is already done), then submit for real.
-  for (const i of [1, 2, 5, 7]) {
-    await page.getByTestId('checklist-item').nth(i).getByRole('checkbox').click()
-    await expect(page.getByTestId('checklist-progress')).toHaveText(`${[1, 2, 5, 7].indexOf(i) + 2}/8`)
-  }
-  await page.getByTestId('checklist-submit').click()
-  await expect(page.getByText(`${runName} · Submitted`)).toBeVisible()
-
-  // A submitted run is final: the surface says so and stops offering edits,
-  // matching the server, which refuses every later write.
-  await expect(page.getByTestId('checklist-locked')).toBeVisible()
-  await expect(page.getByTestId('checklist-item').first().getByRole('checkbox')).toBeDisabled()
-  await expect(page.getByTestId('checklist-submit')).toHaveCount(0)
-  await expect(page.getByTestId('checklist-photo-add')).toHaveCount(0)
-  await expect(page.getByTestId('checklist-add-note')).toHaveCount(0)
+  if (openRunName) await request.delete(`/api/table/Checklist%20Run/${openRunName}`, { headers: H })
 })
 
 test('a photo_proof item takes a camera upload and shows its thumbnail', async ({ page }) => {

@@ -12,10 +12,10 @@
 //   import { anonymousTest as test } from './fixtures'
 //       Signed out. The spec drives `/login` itself with `loginAs()` below.
 //       Correct when the login surface IS the subject (smoke, admin,
-//       account-menu, i18n-login, oauth, palette, list-settings,
-//       user-management), when the identity that matters is NOT Administrator
-//       (home-recall, portal, assign, realtime), or when the page under test
-//       must be reached with no session at all (web-page, web-form).
+//       account-menu, i18n-login, oauth, palette, user-management), when the
+//       identity that matters is NOT Administrator (portal, realtime), or
+//       when the page under test must be reached with no session at all
+//       (web-page, web-form).
 //
 //   import { journeyTest as test } from './fixtures'
 //       The feather-testing DSL (framework Part I §6: journeys compile to

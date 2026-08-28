@@ -49,16 +49,18 @@ export default defineConfig({
       // useful for diagnosing what a broken run stopped exercising.
       reportOnFailure: true,
       // Ratchet toward 100% (#226 ruling): only raise, never lower.
-      // Measured 2026-08-28: lines/statements 29.64% then 29.63% across two
-      // runs, functions 40.52% then 40.12%, rounded DOWN to the whole
-      // percent. Lines are stable to a hundredth of a point; the function
-      // count is not (component tests take different render branches run to
-      // run), so its threshold sits a further point below the floor rather
-      // than a hundredth above it, where it would flake.
+      // Re-measured 2026-08-28 after #223 batch 1 moved seven e2e specs down
+      // to this layer: lines/statements 33.33% then 33.35% across two runs,
+      // functions 45.92% then 46.32%, rounded DOWN to the whole percent.
+      // (The pre-batch floor was lines 29, functions 39.) Lines are stable to
+      // a hundredth of a point; the function count is not (component tests
+      // take different render branches run to run), so its threshold sits a
+      // further point below the floor rather than a hundredth above it,
+      // where it would flake.
       thresholds: {
-        lines: 29,
-        statements: 29,
-        functions: 39,
+        lines: 33,
+        statements: 33,
+        functions: 45,
       },
     },
   },
