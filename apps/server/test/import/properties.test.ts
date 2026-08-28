@@ -73,7 +73,7 @@ describe('IMP-R1 properties: column naming', () => {
   // "always a valid, unique set" contract is violated. When #110 is fixed
   // this test fails on purpose: flip it to a plain `it` (and fold the
   // boundary into the distinctness property above) in the same change.
-  it.fails('IMP-R1: outputs stay distinct AT the truncation boundary (pins #110)', () => {
+  it.fails('IMP-R1.uniq-boundary: outputs stay distinct AT the truncation boundary (pins #110)', () => {
     const h63 = 'h'.repeat(63)
     expect(new Set(sanitizeHeaders([h63, h63])).size).toBe(2)
     const h70 = 'x'.repeat(70)
@@ -172,7 +172,7 @@ describe('IMP-R2 properties: type inference', () => {
   // ('007') infer Int and the padding is destroyed silently on import.
   // Spec (IMP-R2 example table): digit strings with a leading zero are
   // content → Data. Fixing #111 makes this fail on purpose — flip to `it`.
-  it.fails('IMP-R2: leading-zero codes are content, not quantities (pins #111)', () => {
+  it.fails('IMP-R2.leading-zero: leading-zero codes are content, not quantities (pins #111)', () => {
     expect(inferColumnType(['007', '012', '350'])).toBe('Data')
   })
 
@@ -180,7 +180,7 @@ describe('IMP-R2 properties: type inference', () => {
   // but the values then fall through to the UNBOUNDED FLOAT_RE and infer
   // Float — '…67' becomes '…68'. Spec: 16+ digit identifiers → Data.
   // Fixing #112 makes this fail on purpose — flip to `it`.
-  it.fails('IMP-R2: 16+ digit identifiers must not lose precision (pins #112)', () => {
+  it.fails('IMP-R2.16-digit: 16+ digit identifiers must not lose precision (pins #112)', () => {
     expect(inferColumnType(['12345678901234567', '98765432109876543'])).toBe('Data')
   })
 })

@@ -1,5 +1,42 @@
 # Progress Log
 
+## 2026-08-28 — The checker learns to distrust (#239 review response)
+
+The owner's review of #239 asked the only question that matters — can a
+future contributor make an unsupported claim look green? — and answered
+it three ways: delete a spec's `**IDs:**` line and 14 verdicts vanish
+silently; flip a proving test to `.skip` and it still proves; flip a
+pin's `it.fails` to `it.skip` (or just mention `#110` in a comment) and
+the pin still counts. All three closed, each with the owner's exact
+mutation committed as a test:
+
+- **Participation is declared and checked.** Every doc under
+  `docs/specs/` carries `**IDs:**` or `**Evidence mode:** excluded — <reason>`
+  (0001/0002/README now say so explicitly); a doc with neither fails the
+  run naming the file, and any doc under watched trees carrying verdicts
+  must declare.
+- **Only executable declarations prove.** Modifier allowlist (skip/todo/
+  skipIf/runIf and anything unknown disqualify), real parent-suite
+  exclusion with honest failure on an unbalanced scan, and `.fails` can
+  never satisfy `proven`. The fixture found a fourth dress of the lie —
+  a skipped test's *suite* title standing as proof — closed too.
+- **Pins join to their expected-failure test.** `pinned #N` requires an
+  executable `it.fails`/`test.fails` whose title carries both the ID and
+  `#N`; the three real pins were retitled to be findable (titles only).
+- 35 mutation tests in `tools/check-evidence.test.mjs` (node:test, zero
+  deps, 158ms) run in CI before the checker itself.
+
+Also: the Railway mystery died — every preview build had failed since the
+bot arrived because the web-build Docker stage installed git under
+`--no-install-recommends`, which omits ca-certificates; git rewrote SSH to
+HTTPS and then couldn't verify GitHub's certificate. Owner-diagnosed;
+one-word fix on #227, cascaded through the stack; all three previews
+reached SUCCESS for the first time.
+
+Gotcha for the record: `node --test tools/` fails on Node 22 (loads the
+directory as a module) — the glob `node --test tools/*.test.mjs` is the
+form CI and package.json use.
+
 ## 2026-08-28 — A required Sub-table column is now enforced on save (#231)
 
 The owner ruled the #231 discovery a **defect**: `reqd: true` on a Sub-table
@@ -56,7 +93,7 @@ in one living doc, history in append-only logs, relationships checked by
 CI — applied to its own house, on `claude/docs-to-checks` (stacked on
 batch 1):
 
-- **The 2026 build harness retired** (#236): `harness/` → 
+- **The 2026 build harness retired** (#236): `harness/` →
   `docs/archive/harness-2026/` with a tombstone; its features.json
   statuses were self-attested and its evaluation protocol was never wired
   up. CLAUDE.md loses the features.json protocol, gains the document-set
