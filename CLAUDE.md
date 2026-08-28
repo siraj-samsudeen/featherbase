@@ -192,6 +192,16 @@ once per run, outside any sandbox transaction. It complements
    `PROGRESS.md` (what was done, how it was verified, what to pick up next, any
    gotchas), and commit. Leave the working tree clean.
 
+### Accepting delegated work
+
+When you coordinate and someone else — a sub-session, a task chip, another
+agent — hands back finished work, run its stated verification commands
+yourself before you accept it. A report is a claim, not evidence: the agent
+that wrote the code is the worst-placed party to certify it, and a committed
+"done" has twice failed its own typecheck on rerun. Read the report for what
+to check and where; get the verdict from the commands. If the report names no
+command, that is the first finding.
+
 ## Hard rules
 
 - **Nothing is `done` on an agent's word.** A claim is finished when a
