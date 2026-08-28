@@ -50,12 +50,44 @@ boolean became a row that has to cite something.
 - **Feature IDs** (`META-001`, `DOC-003`, `UI-002`, …) are still cited in
   test names, code comments and `PROGRESS.md`. They remain readable handles
   into this file. Nothing regenerates them and nothing checks them.
-- **`site/`** — the published Explorer still reads `features.json` from this
-  archive to render its feature board. It is the one live consumer; see the
-  note in `site/README.md`.
-- **`PROGRESS.md`** and the generated `site/*.html` dumps of it are dated
-  records that mention `harness/` paths in the past tense. Those are history
-  and were deliberately left alone.
+- **`PROGRESS.md`** and the generated `site/*.html` dumps of it (see below,
+  now at `docs/archive/harness-2026/site/*.html`) are dated records that
+  mention `harness/` paths in the past tense. Those are history and were
+  deliberately left alone.
+
+## The Explorer (`site/`), retired 2026-08-28
+
+`site/` was a single-file, zero-dependency static viewer: a feature board
+rendered from `harness/features.json` (the same self-attested inventory
+above, cross-linked to the tests and source files that mention each ID) plus
+the design docs, ADRs and specs as a browsable library. `site/build.mjs`
+generated it; `.github/workflows/pages.yml` was meant to build and publish
+it to GitHub Pages on every push to `main` touching `site/**`, `docs/**` or
+`PROGRESS.md`, self-provisioning Pages via `actions/configure-pages`'s
+`enablement: true` step.
+
+**It never worked.** Pages was never enabled on the repository, so every one
+of the workflow's 56 runs between 2026-07 and 2026-08-24 failed (one was
+cancelled) — verified 2026-08-28, the Pages URL still 404s. The Explorer was
+never publicly visible; the only audience it ever reached was whoever
+republished `site/artifact.html` by hand as a Claude artifact. Its Features
+tab also renders the same self-attested board this README already retires
+above, so the site had no independent reason to keep running even if the
+workflow had worked.
+
+**Owner ruling (2026-08-28, issue #236):** retire both, archived beside the
+data the site renders. `site/` moved here wholesale (`git mv site
+docs/archive/harness-2026/site`) and `.github/workflows/pages.yml` was
+deleted outright — nothing links to it and it never succeeded once, so
+there is no working state to preserve.
+
+`site/build.mjs` still runs — `node docs/archive/harness-2026/site/build.mjs`
+from the repo root regenerates `index.html` and `artifact.html` in place, so
+the build isn't frozen the way `run.sh` below is (its `ROOT` was fixed up
+for the new depth). Nothing about output changed; verified 2026-08-28 with a
+clean re-run. The archived `site/index.html` still opens directly from disk
+for anyone curious what the original build looked like — see
+`site/README.md` for details.
 
 ## Running it
 

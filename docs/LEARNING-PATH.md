@@ -83,7 +83,8 @@ debounced typeahead).
 deleting a referenced project fails naming the blocker; renaming the
 project updates every item's `project` value.
 *Questions:* how does the engine know what references what? (Read
-`validateLinks` in `document.ts` — the Explorer links it from DOC-006.)
+`validateLinks` in `document.ts` — DOC-006 in the archived feature
+inventory, `docs/archive/harness-2026/`, once cross-linked it there.)
 What would a dangling reference cost you in a system without this?
 
 ## Stage 3 — Subtasks: the Sub-table (half a day)

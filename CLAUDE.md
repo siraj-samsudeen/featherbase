@@ -14,7 +14,8 @@ The project was developed under the working name `frappe-clone` and became
 Featherbase in July 2026. That name now survives only where it is a dated
 record of the past, and every one of those is deliberate — do not sweep them:
 
-- dated `PROGRESS.md` entries, and the generated `site/*.html` dumps of them;
+- dated `PROGRESS.md` entries, and the generated
+  `docs/archive/harness-2026/site/*.html` dumps of them;
 - `docs/adr/0006-stack-react-hono-postgres.md`, which records the working name
   as part of the decision it documents;
 - `docs/research/frappe-architecture.md`, where `frappe_clone` is a
