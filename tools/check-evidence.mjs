@@ -16,10 +16,12 @@
 //
 // This script re-derives the linkage from the two artifacts that already
 // have to be correct — the spec headings and the test titles — and fails
-// when a claim in one is not backed by the other. It reads no database and
-// runs no tests; it is a linkage check, never execution evidence.
+// when a claim in one is not backed by the other. With no result files it
+// reads no database and runs no tests: the default remains a dependency-free
+// linkage check. CI adds `--results` after every suite has run, which upgrades
+// proven/rule-tier claims into execution evidence for that commit.
 //
-// Usage: node tools/check-evidence.mjs [--quiet]
+// Usage: node tools/check-evidence.mjs [--quiet] [--results <json...>]
 // Tests: node --test tools/*.test.mjs   (tools/check-evidence.test.mjs)
 //
 // ---------------------------------------------------------------------------
@@ -602,6 +604,7 @@ export function collectTests(root, testDirs) {
   /** id -> array of declarations carrying it */
   const index = new Map()
   const errors = []
+  const declarations = []
   let files = 0
 
   for (const dir of testDirs) {
@@ -612,6 +615,7 @@ export function collectTests(root, testDirs) {
       const rel = relative(root, path)
       const { decls, errors: fileErrors } = parseTestFile(rel, text)
       errors.push(...fileErrors)
+      declarations.push(...decls)
       for (const decl of decls) {
         for (const id of idsInTitle(decl.title)) {
           if (!index.has(id)) index.set(id, [])
@@ -620,7 +624,134 @@ export function collectTests(root, testDirs) {
       }
     }
   }
-  return { index, errors, files }
+  return { index, errors, files, declarations }
+}
+
+// ------------------------------------------------------- runtime test results
+
+const VITEST_EXECUTED = new Set(['passed', 'failed'])
+const VITEST_NOT_EXECUTED = new Set(['pending', 'skipped', 'todo', 'disabled'])
+const PLAYWRIGHT_EXECUTED = new Set(['passed', 'failed', 'timedOut'])
+const PLAYWRIGHT_NOT_EXECUTED = new Set(['skipped', 'interrupted'])
+
+function runtimeRecord(source, file, leafTitle, title, status, executed, expectedFailure = false) {
+  return {
+    source,
+    file,
+    leafTitle,
+    title,
+    status,
+    executed,
+    expectedFailure,
+    ids: idsInTitle(title),
+  }
+}
+
+/** Normalize Vitest's Jest-compatible JSON report into concrete test leaves. */
+export function parseVitestResults(source, report) {
+  const records = []
+  const errors = []
+  if (!Array.isArray(report.testResults)) {
+    return { records, errors: [`${source} is not a Vitest JSON report (missing testResults)`] }
+  }
+  for (const file of report.testResults) {
+    if (!Array.isArray(file.assertionResults)) continue
+    for (const assertion of file.assertionResults) {
+      const ancestors = Array.isArray(assertion.ancestorTitles) ? assertion.ancestorTitles : []
+      const title = [...ancestors, assertion.title].filter((x) => typeof x === 'string').join(' ')
+      const status = assertion.status
+      if (!VITEST_EXECUTED.has(status) && !VITEST_NOT_EXECUTED.has(status)) {
+        errors.push(
+          `${source}: Vitest test ${JSON.stringify(title)} has unknown status ` +
+            JSON.stringify(status),
+        )
+        continue
+      }
+      records.push(
+        runtimeRecord(source, file.name ?? '', assertion.title ?? '', title, status,
+          VITEST_EXECUTED.has(status)),
+      )
+    }
+  }
+  return { records, errors }
+}
+
+/** Normalize Playwright's nested suites/specs JSON into concrete project tests. */
+export function parsePlaywrightResults(source, report) {
+  const records = []
+  const errors = []
+  if (!Array.isArray(report.suites)) {
+    return { records, errors: [`${source} is not a Playwright JSON report (missing suites)`] }
+  }
+
+  function visit(suite, ancestors) {
+    const titles = suite.title ? [...ancestors, suite.title] : ancestors
+    for (const spec of suite.specs ?? []) {
+      const title = [...titles, spec.title].filter((x) => typeof x === 'string').join(' ')
+      for (const projectTest of spec.tests ?? []) {
+        const statuses = (projectTest.results ?? []).map((r) => r.status)
+        const unknown = statuses.find(
+          (s) => !PLAYWRIGHT_EXECUTED.has(s) && !PLAYWRIGHT_NOT_EXECUTED.has(s),
+        )
+        if (unknown !== undefined) {
+          errors.push(
+            `${source}: Playwright test ${JSON.stringify(title)} has unknown ` +
+              `status ${JSON.stringify(unknown)}`,
+          )
+          continue
+        }
+        const executed = statuses.some((s) => PLAYWRIGHT_EXECUTED.has(s))
+        records.push(runtimeRecord(
+          source,
+          spec.file ?? suite.file ?? '',
+          spec.title ?? '',
+          title,
+          statuses.length ? statuses.join('/') : 'unreported',
+          executed,
+          projectTest.expectedStatus !== undefined && projectTest.expectedStatus !== 'passed',
+        ))
+      }
+    }
+    for (const child of suite.suites ?? []) visit(child, titles)
+  }
+
+  for (const suite of report.suites) visit(suite, [])
+  return { records, errors }
+}
+
+/** Read and combine Vitest and Playwright JSON result files. */
+export function collectRuntimeResults(root, resultFiles, declarations = []) {
+  const records = []
+  const errors = []
+  for (const resultFile of resultFiles) {
+    const path = resolve(root, resultFile)
+    let report
+    try {
+      report = JSON.parse(readFileSync(path, 'utf8'))
+    } catch (error) {
+      errors.push(`${resultFile}: cannot read test results: ${error.message}`)
+      continue
+    }
+    const parsed = Array.isArray(report.testResults)
+      ? parseVitestResults(resultFile, report)
+      : parsePlaywrightResults(resultFile, report)
+    records.push(...parsed.records)
+    errors.push(...parsed.errors)
+  }
+
+  // Playwright exposes expectedStatus in its JSON. Vitest does not, so join
+  // each concrete Vitest leaf back to the static declaration by file+title.
+  // A duplicate plain/.fails title is conservatively treated as expected-
+  // failure: ambiguous runtime evidence must not make a proof green.
+  const expectedVitest = declarations.filter((d) => !d.suite && d.expectedFailure)
+  for (const record of records) {
+    if (record.expectedFailure || !record.file) continue
+    const runtimeFile = resolve(root, record.file)
+    record.expectedFailure = expectedVitest.some(
+      (decl) => resolve(root, decl.file) === runtimeFile && decl.title === record.leafTitle,
+    )
+  }
+  return { records, errors }
 }
 
 // -------------------------------------------------------------------- check
@@ -634,6 +765,7 @@ export function checkEvidence({
   requiredSpecDirs = REQUIRED_SPEC_DIRS,
   watchedSpecDirs = WATCHED_SPEC_DIRS,
   testDirs = TEST_DIRS,
+  resultFiles = [],
 } = {}) {
   const failures = []
   const warnings = []
@@ -721,8 +853,15 @@ export function checkEvidence({
     if (spec) specs.push(spec)
   }
 
-  const { index, errors: testErrors, files: testFiles } = collectTests(root, testDirs)
+  const {
+    index,
+    errors: testErrors,
+    files: testFiles,
+    declarations,
+  } = collectTests(root, testDirs)
   failures.push(...testErrors)
+  const runtime = collectRuntimeResults(root, resultFiles, declarations)
+  failures.push(...runtime.errors)
 
   const byStatus = new Map()
   const specIds = new Set()
@@ -786,6 +925,29 @@ export function checkEvidence({
             `"via <ID>", or migrate the verdict to gap.`,
         )
       }
+      if (resultFiles.length > 0 && MUST_LINK.has(v.status)) {
+        const runtimeHits = runtime.records.filter(
+          (record) =>
+            !record.expectedFailure && joins.some((joinId) => record.ids.has(joinId)),
+        )
+        if (runtimeHits.length === 0) {
+          failures.push(
+            `${spec.file}:${v.line}  ${v.id} is marked "${v.status}" but no ` +
+              `concrete test carrying ${joins.join(' or ')} was reported by the ` +
+              `combined runtime results. Check runner inclusion/report uploads, or ` +
+              `migrate the verdict to gap.`,
+          )
+        } else if (!runtimeHits.some((record) => record.executed)) {
+          failures.push(
+            `${spec.file}:${v.line}  ${v.id} is marked "${v.status}" but every ` +
+              `matching concrete test was skipped or unreported at runtime: ` +
+              runtimeHits
+                .map((record) => `${record.source} (${record.status}: ${record.title})`)
+                .join(', ') +
+              `. At least one matching test must execute.`,
+          )
+        }
+      }
       if (MUST_EXPLAIN.has(v.status) && !v.note) {
         failures.push(
           `${spec.file}:${v.line}  ${v.id} is marked "${v.status}" with no reason — ` +
@@ -842,14 +1004,40 @@ export function checkEvidence({
   }
 
   const total = [...byStatus.values()].reduce((a, b) => a + b, 0)
-  return { failures, warnings, byStatus, total, specs, testFiles }
+  return {
+    failures,
+    warnings,
+    byStatus,
+    total,
+    specs,
+    testFiles,
+    runtimeTests: runtime.records.length,
+    resultFiles: resultFiles.length,
+  }
 }
 
 // ---------------------------------------------------------------------- cli
 
 export function main(argv = process.argv) {
   const quiet = argv.includes('--quiet')
-  const { failures, warnings, byStatus, total, specs, testFiles } = checkEvidence()
+  const resultsAt = argv.indexOf('--results')
+  const resultFiles =
+    resultsAt === -1
+      ? []
+      : argv.slice(resultsAt + 1).filter((arg) => !arg.startsWith('--'))
+  if (resultsAt !== -1 && resultFiles.length === 0) {
+    console.error('evidence check FAILED — --results requires at least one JSON result file')
+    return 1
+  }
+  const {
+    failures,
+    warnings,
+    byStatus,
+    total,
+    specs,
+    testFiles,
+    runtimeTests,
+  } = checkEvidence({ resultFiles })
 
   const tally = [...byStatus.entries()]
     .sort()
@@ -873,7 +1061,8 @@ export function main(argv = process.argv) {
 
   console.log(
     `evidence check passed — ${total} verdicts across ${specs.length} specs ` +
-      `(${tally}); ${testFiles} test files scanned.`,
+      `(${tally}); ${testFiles} test files scanned` +
+      (resultFiles.length ? `; ${runtimeTests} runtime tests checked.` : '.'),
   )
   return 0
 }

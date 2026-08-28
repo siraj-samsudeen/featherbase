@@ -285,14 +285,19 @@ headings and the test titles on every run. Grammar and status vocabulary:
 Three integrity mechanisms survive the move, now enforced rather than
 asserted. **The test title is the join key** (a test named `IMP-R1: …`
 links itself; CI failures name the requirement at risk) — this is
-**static traceability**, a claim of linkage, never execution evidence:
-that a test exists and names the rule is all it proves, and a `proven`
-verdict with no such title now fails the build. **Freshness is derived,
-not stamped** — the verdict's date is its commit's, and there is no
-unstamped-row hypothesis left to keep honest. And **skip ≠ pass** (every
-journey test states its isolation strategy; a skipped test reports as
-distinct from a passing one — which is why the import journeys stopped
-self-skipping once table deletion shipped).
+**static traceability** in the dependency-free local mode: that a test
+exists and names the rule is all that pass proves, and a `proven` verdict
+with no such title fails the build. CI then runs the checker again with the
+combined Vitest and Playwright JSON reports (`--results <json...>`). For
+every `proven` or `rule-tier` verdict, at least one matching concrete test
+must appear as executed; no runtime match, or matches that are all skipped,
+fails. IDs on suite titles flow to their executed descendants. A failed test
+counts as executed for this check because its runner already makes the build
+red. **Freshness is derived, not stamped** — the verdict's date is its
+commit's, and there is no unstamped-row hypothesis left to keep honest. And
+**skip ≠ pass** (every journey test states its isolation strategy; a skipped
+test reports as distinct from a passing one — which is why the import journeys
+stopped self-skipping once table deletion shipped).
 
 There is **no automatic precedence between artifacts** — approved
 requirements and decisions define intended behaviour; code is the current

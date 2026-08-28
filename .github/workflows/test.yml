@@ -143,7 +143,31 @@ jobs:
       # (#226); Vitest exits non-zero when a suite falls below its floor, so a
       # coverage regression fails this job exactly like a failing test does.
       - name: Run unit and component suites with coverage
-        run: pnpm -r test:coverage
+        run: >-
+          pnpm -r test:coverage
+          --reporter=default
+          --reporter=json
+          --outputFile.json=test-results/vitest.json
+
+      # One JSON report per workspace, kept separate because each Vitest
+      # process owns its own config and result tree. The final evidence job
+      # consumes all three together with Playwright's report.
+      - name: Stage Vitest evidence reports
+        if: always()
+        run: |
+          mkdir -p evidence-results
+          test ! -f apps/server/test-results/vitest.json || cp apps/server/test-results/vitest.json evidence-results/vitest-server.json
+          test ! -f apps/web/test-results/vitest.json || cp apps/web/test-results/vitest.json evidence-results/vitest-web.json
+          test ! -f packages/shared/test-results/vitest.json || cp packages/shared/test-results/vitest.json evidence-results/vitest-shared.json
+
+      - name: Upload Vitest evidence reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-evidence-results
+          path: evidence-results/
+          if-no-files-found: warn
+          retention-days: 7
 
   e2e:
     runs-on: ubuntu-latest
@@ -192,7 +216,20 @@ jobs:
       # database) — keep it. The trace flag is CI-only so failures leave
       # something inspectable in test-results/ for the artifact below.
       - name: Run e2e suite
-        run: pnpm --filter web e2e --trace retain-on-failure
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ github.workspace }}/evidence-results/playwright.json
+        run: |
+          mkdir -p evidence-results
+          pnpm --filter web e2e --trace retain-on-failure --reporter=list,json
+
+      - name: Upload Playwright evidence report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-evidence-results
+          path: evidence-results/playwright.json
+          if-no-files-found: warn
+          retention-days: 7
 
       # No server-log step: Playwright pipes the API server's stdout/stderr
       # into its own output (webServer stdout: 'pipe'), so a boot failure is
@@ -209,3 +246,33 @@ jobs:
             apps/web/playwright-report/
           if-no-files-found: ignore
           retention-days: 7
+
+  # Static linkage runs before install in `unit`; this second pass adds the
+  # fact that a concrete matching test actually executed on this commit. It
+  # waits for both runner families because evidence may live at either tier.
+  evidence-runtime:
+    needs: [unit, e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Vitest evidence reports
+        uses: actions/download-artifact@v4
+        with:
+          name: vitest-evidence-results
+          path: runtime-results/vitest
+
+      - name: Download Playwright evidence report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-evidence-results
+          path: runtime-results/playwright
+
+      - name: Check spec runtime evidence
+        run: >-
+          node tools/check-evidence.mjs --results
+          runtime-results/vitest/vitest-server.json
+          runtime-results/vitest/vitest-web.json
+          runtime-results/vitest/vitest-shared.json
+          runtime-results/playwright/playwright.json
