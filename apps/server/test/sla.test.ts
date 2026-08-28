@@ -4,6 +4,8 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { enqueue, loadJobs, drainJobs } from '../src/jobs'
 import { saveDoc } from '../src/document'
+import { applySla, getActiveSla } from '../src/sla'
+import { getMeta } from '../src/meta'
 
 // Service Level Agreements: deadline stamping on insert (per-priority windows)
 // and the check_sla escalation sweep (Overdue + email to the escalation role).
@@ -126,5 +128,79 @@ describe('SLA: deadline stamping + escalation', () => {
       select count(*)::int as c from email_queue
       where ref_table = ${DT} and reference_name = ${String(doc.row_id)}`
     expect(again[0].c).toBe(1)
+  })
+})
+
+// Moved from coverage-gaps.test.ts (#221): applySla's no-match paths (no
+// active policy, a disabled policy, an unmatched priority) and escalation
+// with no escalation role configured. Exercises applySla directly (a
+// deliberate exception to the HTTP-first idiom) since the point is the
+// SLA-stamping function's edge paths, not the save request around it.
+async function makeSlaTable(admin: TestClient, name: string) {
+  await admin.post('/api/table_def', {
+    name,
+    columns: [
+      { column_name: 'title', column_type: 'Data' },
+      { column_name: 'priority', column_type: 'Choice', choices: 'Low\nHigh', default_value: 'Low' },
+      { column_name: 'response_by', column_type: 'Datetime' },
+      { column_name: 'resolution_by', column_type: 'Datetime' },
+      { column_name: 'sla_status', column_type: 'Data' },
+    ],
+  })
+}
+
+describe('SLA: non-matching paths', () => {
+  test('no active SLA, disabled SLA, and unmatched priority all leave values alone', async ({
+    admin,
+  }) => {
+    const DT = 'Cov Sla Note'
+    await makeSlaTable(admin, DT)
+    expect(await getActiveSla(DT)).toBeNull()
+
+    await saveDoc('Service Level Agreement', {
+      row_id: 'Cov Sla Off',
+      ref_table: DT,
+      enabled: false,
+      priorities: [{ priority: 'High', response_hours: 1, resolution_hours: 2 }],
+    })
+    const values: Record<string, unknown> = { title: 'x', priority: 'High' }
+    await applySla(await getMeta(DT), values)
+    expect(values.response_by).toBeUndefined() // disabled SLA never stamps
+
+    await sql`update service_level_agreement set enabled = true where row_id = 'Cov Sla Off'`
+    const unmatched: Record<string, unknown> = { title: 'y', priority: 'Low' } // no Low row
+    await applySla(await getMeta(DT), unmatched)
+    expect(unmatched.response_by).toBeUndefined()
+
+    const matched: Record<string, unknown> = { title: 'z', priority: 'High' }
+    await applySla(await getMeta(DT), matched)
+    expect(matched.response_by).toBeInstanceOf(Date)
+    expect(matched.sla_status).toBe('On Track')
+  })
+
+  test('escalation without an escalation role flips Overdue but sends no email', async ({
+    admin,
+  }) => {
+    await loadJobs()
+    const DT = 'Cov Sla NoRole'
+    await makeSlaTable(admin, DT)
+    await saveDoc('Service Level Agreement', {
+      row_id: 'Cov Sla NoRole Policy',
+      ref_table: DT,
+      enabled: true,
+      fulfilled_states: '',
+      priorities: [{ priority: 'High', response_hours: 1, resolution_hours: 1 }],
+    })
+    const doc = await saveDoc(DT, { title: 'late', priority: 'High' }, 'Administrator')
+    await sql`update cov_sla_norole set resolution_by = now() - interval '1 hour'
+      where row_id = ${String(doc.row_id)}`
+    await enqueue('check_sla', {})
+    await nudgeDueJobs()
+    await drainJobs()
+    const [row] = await sql`select sla_status from cov_sla_norole where row_id = ${String(doc.row_id)}`
+    expect(row.sla_status).toBe('Overdue')
+    const mails = await sql`
+      select 1 from email_queue where ref_table = ${DT}`
+    expect(mails.length).toBe(0)
   })
 })

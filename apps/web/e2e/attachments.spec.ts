@@ -1,14 +1,11 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
-
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
+import { test, expect, adminToken, bearer, type APIRequestContext } from './fixtures'
 
 // FILE-002: attach two files to a document via the form sidebar; both are
 // listed; deleting one removes its storage object too.
 
 async function cleanup(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
-  const auth = { Authorization: `Bearer ${token}` }
+  const token = await adminToken(request)
+  const auth = bearer(token)
   const filters = encodeURIComponent(
     JSON.stringify([
       ['ref_table', '=', 'User'],
@@ -28,12 +25,6 @@ test.afterEach(async ({ request }) => cleanup(request))
 test('FILE-002: attach two files, both listed, delete one cleans up storage', async ({
   page,
 }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   await page.goto('/admin/User/Guest')
   await expect(page.getByTestId('attachments-panel')).toBeVisible()
   await expect(page.getByTestId('attachments-panel')).toContainText('No attachments')

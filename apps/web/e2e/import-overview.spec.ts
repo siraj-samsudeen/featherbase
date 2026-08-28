@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminToken, type APIRequestContext, type Page } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
 
@@ -6,21 +6,7 @@ import { deleteTableIfExists } from './cleanup'
 // sheets — no column grids — with the sheets the workbook was hiding in their
 // own collapsed section, and NOTHING selected until the user says so.
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const PICKED_DT = 'Overview Picked'
-
-async function adminToken(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await login.json()) as { token: string }).token
-}
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
 
 // Two visible sheets and two the workbook hides — one ordinary, one very
 // hidden, which only VBA can set and which the overview names distinctly.
@@ -87,7 +73,7 @@ async function dropWorkbook(page: Page) {
 test('the overview lists sheets only, sections the hidden ones, and starts empty', async ({
   page,
 }) => {
-  await login(page)
+  await page.goto('/admin')
   await dropWorkbook(page)
 
   // Sheets only — none of the column grids the wizard used to open on.
@@ -116,7 +102,7 @@ test('the overview lists sheets only, sections the hidden ones, and starts empty
 test('group toggles act on their own section, and the master reports tri-state', async ({
   page,
 }) => {
-  await login(page)
+  await page.goto('/admin')
   await dropWorkbook(page)
 
   // "Select all visible" must leave the hidden sheets alone.
@@ -154,7 +140,7 @@ test('only the chosen sheet reaches the column step, and importing it leaves the
   request,
 }) => {
   const token = await adminToken(request)
-  await login(page)
+  await page.goto('/admin')
   await dropWorkbook(page)
 
   // One sheet of four.
@@ -188,7 +174,7 @@ test('only the chosen sheet reaches the column step, and importing it leaves the
 })
 
 test('going back to the overview keeps the choices already made', async ({ page }) => {
-  await login(page)
+  await page.goto('/admin')
   await dropWorkbook(page)
 
   await page.getByTestId('iw-ov-sheet-0').check()
@@ -205,7 +191,7 @@ test('going back to the overview keeps the choices already made', async ({ page 
 })
 
 test('a CSV has nothing to choose, so the overview never appears', async ({ page }) => {
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('import-data-link').click()
   await page.getByTestId('iw-file-input').setInputFiles({
     name: 'single.csv',

@@ -1,14 +1,12 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Ps Ui Target'
 
 // CUST-002: override a field label; the form shows the new label; the base
 // definition is unchanged (restored when the setter is removed).
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const headers = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
+  const headers = await adminAuth(request)
   const dt = await request.post('/api/table_def', {
     headers,
     data: { name: DT, id_pattern: 'prompt', columns: [{ column_name: 'title', column_type: 'Data', label: 'Title' }] },
@@ -24,14 +22,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 })
 
 test('CUST-002: a label override shows in the form and reverts when removed', async ({ page, request }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const headers = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
+  const headers = await adminAuth(request)
 
   // Base label.
   await page.goto(`/admin/${encodeURIComponent(DT)}/ps-doc`)

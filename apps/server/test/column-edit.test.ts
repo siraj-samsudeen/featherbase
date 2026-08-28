@@ -1,5 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
+import { expectApiError, makeTable, tableRef } from './fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 
 // #209 (issue #197): changing a Table's columns AFTER the rows are in it.
@@ -14,6 +15,7 @@ import type { TestClient } from 'feather-testing-postgres'
 // new one arrives empty. That silent loss is why the rename is its own thing.
 
 const DT = 'Column Edit Zones'
+const T = tableRef(DT)
 
 interface Meta {
   name: string
@@ -23,7 +25,7 @@ interface Meta {
 }
 
 async function setup(admin: TestClient, extra: Record<string, unknown> = {}) {
-  await admin.post('/api/table_def', {
+  await makeTable(admin, {
     name: DT,
     columns: [
       { column_name: 'glor', label: 'Glor', column_type: 'Data' },
@@ -35,19 +37,17 @@ async function setup(admin: TestClient, extra: Record<string, unknown> = {}) {
   await admin.post('/api/save_row', { table: DT, row: { glor: 'Mezzanine', pop: 7 } })
 }
 
-const meta = (admin: TestClient) => admin.get<Meta>(`/api/table/${encodeURIComponent(DT)}:meta`)
+const meta = (admin: TestClient) => admin.get<Meta>(T.metaUrl)
 
 async function rows(admin: TestClient, fields = ['row_id', 'glor', 'pop']) {
   const list = await admin.get<{ data: Record<string, unknown>[] }>(
-    `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
-      JSON.stringify(fields),
-    )}&limit_page_length=50&order_by=${encodeURIComponent('pop asc')}`,
+    T.listUrl({ fields, limit_page_length: 50, order_by: 'pop asc' }),
   )
   return list.data
 }
 
 const rename = (admin: TestClient, from: string, to: string) =>
-  admin.post<Meta>(`/api/table_def/${encodeURIComponent(DT)}/rename_column`, { from, to })
+  admin.post<Meta>(`${T.defUrl}/rename_column`, { from, to })
 
 describe('#209: renaming a column keeps its rows', () => {
   test('the values move with the name', async ({ admin }) => {
@@ -102,27 +102,27 @@ describe('#209: renaming a column keeps its rows', () => {
   })
 
   test('a unique column keeps its constraint under the new name', async ({ admin }) => {
-    await admin.post('/api/table_def', {
+    await makeTable(admin, {
       name: DT,
       columns: [{ column_name: 'glor', column_type: 'Data', unique: true }],
     })
     await admin.post('/api/save_row', { table: DT, row: { glor: 'Ground' } })
     await rename(admin, 'glor', 'floor')
-    // Still unique — a rename must not quietly drop the guarantee.
-    await expect(
-      admin.post('/api/save_row', { table: DT, row: { floor: 'Ground' } }),
-    ).rejects.toBeDefined()
+    // Still unique — a rename must not quietly drop the guarantee. The
+    // violation is reported against the NEW name, which is what proves the
+    // constraint travelled rather than merely surviving under the old one.
+    await expectApiError(admin.post('/api/save_row', { table: DT, row: { floor: 'Ground' } }), {
+      status: 417,
+      fields: { floor: expect.stringContaining('unique') },
+    })
   })
 
   test('a non-System-Manager cannot rename a column', async ({ admin, createUser }) => {
     await setup(admin)
     const user = await createUser({ roles: [] })
-    await expect(
-      user.post(`/api/table_def/${encodeURIComponent(DT)}/rename_column`, {
-        from: 'glor',
-        to: 'floor',
-      }),
-    ).rejects.toMatchObject({ status: 403 })
+    await expectApiError(user.post(`${T.defUrl}/rename_column`, { from: 'glor', to: 'floor' }), {
+      status: 403,
+    })
     expect((await meta(admin)).columns.map((c) => c.column_name)).toContain('glor')
   })
 })
@@ -131,7 +131,7 @@ describe('#209: adding a column after the rows are in', () => {
   test('a new column appears empty, and the existing rows survive', async ({ admin }) => {
     await setup(admin)
     const before = await meta(admin)
-    await admin.put(`/api/table_def/${encodeURIComponent(DT)}`, {
+    await admin.put(T.defUrl, {
       ...before,
       columns: [...before.columns, { column_name: 'aisle', label: 'Aisle', column_type: 'Data' }],
     })
@@ -151,7 +151,7 @@ describe('#209: adding a column after the rows are in', () => {
   test('a label can be changed without touching the data', async ({ admin }) => {
     await setup(admin)
     const before = await meta(admin)
-    await admin.put(`/api/table_def/${encodeURIComponent(DT)}`, {
+    await admin.put(T.defUrl, {
       ...before,
       columns: before.columns.map((c) => (c.column_name === 'glor' ? { ...c, label: 'Floor' } : c)),
     })

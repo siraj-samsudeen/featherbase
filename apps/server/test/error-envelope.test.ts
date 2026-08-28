@@ -9,7 +9,7 @@ import { setUserPassword } from '../src/auth'
 async function envelope(res: Response) {
   expect(res.headers.get('content-type')).toContain('application/json')
   const body = (await res.json()) as { error: { type: string; message: string; fields?: unknown } }
-  expect(body.error).toBeDefined()
+  expect(body.error).toMatchObject({ type: expect.any(String), message: expect.any(String) })
   expect(typeof body.error.type).toBe('string')
   expect(typeof body.error.message).toBe('string')
   return body.error

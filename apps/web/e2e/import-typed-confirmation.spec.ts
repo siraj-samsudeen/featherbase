@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminToken } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
 
@@ -8,22 +8,8 @@ import { deleteTableIfExists } from './cleanup'
 // 25 is not. Small runs stay friction-free — the existing UPS journey (8
 // rows, no prompt) is the other half of this proof.
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Confirm Guard Zones'
 const N = 25 // > CONFIRM_UPDATES_OVER
-
-async function adminToken(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await login.json()) as { token: string }).token
-}
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
 
 test(`UPS-H1: updating ${N} rows demands the number typed back`, async ({ page, request }) => {
   const token = await adminToken(request)
@@ -54,7 +40,7 @@ test(`UPS-H1: updating ${N} rows demands the number typed back`, async ({ page, 
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Zones')
 
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('import-data-link').click()
   await page.getByTestId('iw-file-input').setInputFiles({
     name: 'mass-update.xlsx',

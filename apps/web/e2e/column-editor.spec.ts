@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminToken, type APIRequestContext, type Page } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
 // #209 (issue #197): "after importing I want to add a certain column but
@@ -10,21 +10,7 @@ import { deleteTableIfExists } from './cleanup'
 // the PUT route matches columns by name, so a changed name reads as
 // delete-plus-add and orphans the rows.
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Column Editor Zones'
-
-async function adminToken(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await login.json()) as { token: string }).token
-}
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
 
 async function seed(request: APIRequestContext, token: string) {
   const headers = { Authorization: `Bearer ${token}` }
@@ -59,7 +45,6 @@ test.afterEach(async ({ request }) => {
 
 test('a misspelled column is renamed, and its rows come with it', async ({ page, request }) => {
   const token = await adminToken(request)
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}`)
 
   // Reachable from the Table it belongs to.
@@ -84,7 +69,6 @@ test('a misspelled column is renamed, and its rows come with it', async ({ page,
 })
 
 test('a rename that collides is refused, in place, with the reason', async ({ page }) => {
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}/columns`)
   await page.getByTestId('ce-rename-glor').click()
   await page.getByTestId('ce-rename-input-glor').fill('pop')
@@ -98,7 +82,6 @@ test('a rename that collides is refused, in place, with the reason', async ({ pa
 
 test('a column is added to a Table that already has rows', async ({ page, request }) => {
   const token = await adminToken(request)
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}/columns`)
 
   // The machine name follows the label until it is claimed.
@@ -123,7 +106,6 @@ test('a column is added to a Table that already has rows', async ({ page, reques
 })
 
 test('a name the server would reject is caught before the round trip', async ({ page }) => {
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}/columns`)
 
   await page.getByTestId('ce-add-label').fill('Glor')
@@ -143,7 +125,6 @@ test('a name the server would reject is caught before the round trip', async ({ 
 
 test('a label is changed without touching the column or its data', async ({ page, request }) => {
   const token = await adminToken(request)
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}/columns`)
 
   await page.getByTestId('ce-label-glor').fill('Floor')
@@ -160,7 +141,6 @@ test('a label is changed without touching the column or its data', async ({ page
 })
 
 test('a system Table refuses the whole editor', async ({ page }) => {
-  await login(page)
   await page.goto('/admin/Import%20Log/columns')
   await expect(page.getByTestId('ce-system')).toContainText('system Table')
   await expect(page.getByTestId('ce-add')).toHaveCount(0)

@@ -134,7 +134,7 @@ describe('GET /api/home_pages: link permission filtering', () => {
     })
     const user = await createUser({ roles: [] })
     const page = (await pages(user)).find((p) => p.row_id === 'hp-empty')
-    expect(page).toBeDefined()
+    expect(page).toMatchObject({ row_id: 'hp-empty', label: 'Empty For Some' })
     expect(page!.cards).toEqual([])
   })
 
@@ -189,7 +189,7 @@ describe('auto-membership: a built table never vanishes from navigation', () => 
   }) => {
     await makeTable(admin, 'HP Crate', 'Warehouse')
     const page = (await pages(admin)).find((p) => p.module === 'Warehouse')
-    expect(page).toBeDefined()
+    expect(page).toMatchObject({ module: 'Warehouse' })
     expect(page!.row_id).toBe('warehouse')
     expect(page!.label).toBe('Warehouse')
     expect(page!.cards.flatMap((c) => c.links.map((l) => l.link_to))).toContain('HP Crate')
@@ -210,7 +210,7 @@ describe('auto-membership: a built table never vanishes from navigation', () => 
   test("a user table filed under 'Core' lands on the 'Home' page", async ({ admin }) => {
     await makeTable(admin, 'HP Zone', 'Core')
     const page = (await pages(admin)).find((p) => p.row_id === 'home')
-    expect(page).toBeDefined()
+    expect(page).toMatchObject({ row_id: 'home' })
     expect(page!.label).toBe('Home')
     expect(page!.cards.flatMap((c) => c.links.map((l) => l.link_to))).toContain('HP Zone')
   })

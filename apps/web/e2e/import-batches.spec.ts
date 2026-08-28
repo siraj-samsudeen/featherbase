@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminToken, type APIRequestContext, type Page } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
 
@@ -9,24 +9,10 @@ import { deleteTableIfExists } from './cleanup'
 // The Import Log always held the facts — a row per part per target. What it
 // could not say is that eleven Tables were ONE thing the user did.
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const ONE = 'Batch Sheet One'
 const TWO = 'Batch Sheet Two'
 const THREE = 'Batch Sheet Three'
 const EXISTING = 'Batch Preexisting Table'
-
-async function adminToken(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await login.json()) as { token: string }).token
-}
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
 
 function workbook(): Buffer {
   const wb = XLSX.utils.book_new()
@@ -60,7 +46,7 @@ test.beforeEach(async ({ request }) => {
 
 test('three sheets become one import, and go away together', async ({ page, request }) => {
   const token = await adminToken(request)
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('import-data-link').click()
   await page.getByTestId('iw-file-input').setInputFiles({
     name: 'batch fixture.xlsx',
@@ -130,7 +116,7 @@ test('a Table that only received rows is never deleted with the batch', async ({
     data: { table: EXISTING, row: { bch_alpha: 'pre-existing', bch_note: 'mine' } },
   })
 
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('import-data-link').click()
   await page.getByTestId('iw-file-input').setInputFiles({
     name: 'batch mixed.xlsx',
@@ -176,7 +162,7 @@ test('a Table that only received rows is never deleted with the batch', async ({
 
 test('a merge group is one Table in the import, not one per sheet', async ({ page, request }) => {
   const token = await adminToken(request)
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('import-data-link').click()
   await page.getByTestId('iw-file-input').setInputFiles({
     name: 'batch merged.xlsx',

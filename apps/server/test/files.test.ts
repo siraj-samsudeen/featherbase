@@ -51,7 +51,7 @@ describe('FILE-001: file upload + storage', () => {
       expect(doc.is_private).toBe(false)
 
       const [row] = await sql`select row_id from file where file_url = ${doc.file_url as string}`
-      expect(row).toBeDefined()
+      expect(row).toEqual({ row_id: expect.stringMatching(/^[0-9a-f]{10}$/) })
 
       const served = await api.fetch(doc.file_url as string)
       expect(served.status).toBe(200)

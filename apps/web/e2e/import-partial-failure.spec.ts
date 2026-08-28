@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminToken, type APIRequestContext, type Page } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
 
@@ -11,22 +11,8 @@ import { deleteTableIfExists } from './cleanup'
 // 3..n unattempted and skipped the completion block — which held the sole
 // link to the log.
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const FIRST = 'Partial First'
 const THIRD = 'Partial Third'
-
-async function adminToken(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await login.json()) as { token: string }).token
-}
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
 
 function workbook(): Buffer {
   const wb = XLSX.utils.book_new()
@@ -62,7 +48,7 @@ test.beforeEach(async ({ request }) => {
 test('a failing target does not abandon the rest of the run', async ({ page, request }) => {
   const token = await adminToken(request)
   const headers = { Authorization: `Bearer ${token}` }
-  await login(page)
+  await page.goto('/admin')
 
   // Make the SECOND target fail at the server, the way a real one would:
   // refuse only its create call. The first and third must be untouched.
@@ -112,7 +98,7 @@ test('a failing target does not abandon the rest of the run', async ({ page, req
 
 test('the committed result stays revertable after a later failure', async ({ page, request }) => {
   const token = await adminToken(request)
-  await login(page)
+  await page.goto('/admin')
   await page.route('**/api/table_def', async (route) => {
     const body = route.request().postDataJSON() as { name?: string }
     if (body?.name === 'Partial Second') {
@@ -145,7 +131,7 @@ test('the committed result stays revertable after a later failure', async ({ pag
 })
 
 test('the Import Log is reachable before a run, and after one fails', async ({ page }) => {
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('import-data-link').click()
 
   // #205: present immediately — not gated behind a clean run, which is when

@@ -1,5 +1,5 @@
-import type { APIRequestContext, Page } from '@playwright/test'
-import { test, expect, signIn } from './fixtures'
+import type { Page } from '@playwright/test'
+import { journeyTest as test, expect, adminToken, signIn } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
 // DEL-J1 / DEL-J2 — docs/specs/0003-table-deletion.md, in the feather-testing
@@ -10,12 +10,6 @@ import { deleteTableIfExists } from './cleanup'
 const DT = 'Journey Delete Zones'
 const REF = 'Journey Delete Bookings'
 const ENC = encodeURIComponent(DT)
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
-
-async function adminToken(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await login.json()) as { token: string }).token
-}
 
 test('DEL-J1: delete an unwanted Table — counted confirmation, then gone everywhere', async ({
   session,

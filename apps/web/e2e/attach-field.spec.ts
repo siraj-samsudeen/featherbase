@@ -1,6 +1,5 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminToken, bearer, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'UI Attach DT'
 
 // UI-023: Attach and Attach Image fields — upload, preview, clearing.
@@ -13,9 +12,8 @@ const PNG = Buffer.from(
 let docName = ''
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
-  const auth = { Authorization: `Bearer ${token}` }
+  const token = await adminToken(request)
+  const auth = bearer(token)
 
   const dt = await request.post('/api/table_def', {
     headers: auth,
@@ -41,12 +39,6 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('UI-023: Attach Image uploads, previews, persists the URL, and clears', async ({
   page,
 }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await expect(page.getByTestId('attach-btn-photo')).toBeVisible()
 

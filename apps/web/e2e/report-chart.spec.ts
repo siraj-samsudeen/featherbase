@@ -1,14 +1,8 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Rc E2E Sale'
 const REPORT = 'Rc E2E Report'
 const DASH = 'Rc E2E Board'
-
-async function adminHeaders(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
 
 // Known data: North 100, South 50, North 25 → grouped by region: North 2, South 1.
 const ROWS: [string, number][] = [
@@ -18,7 +12,7 @@ const ROWS: [string, number][] = [
 ]
 
 test.beforeAll(async ({ request }) => {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   const dt = await request.post('/api/table_def', {
     headers,
     data: {
@@ -55,17 +49,7 @@ test.beforeAll(async ({ request }) => {
   })
 })
 
-async function login(page: import('@playwright/test').Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
-
 test('RPT-006: chart reflects report data and pinning shows it on the dashboard', async ({ page }) => {
-  await login(page)
-
   // Open the saved report; group by region so the chart shows per-region counts.
   await page.goto(`/admin/${encodeURIComponent(DT)}/view/report?report=${encodeURIComponent(REPORT)}`)
   await expect(page.getByTestId('report-view')).toBeVisible()

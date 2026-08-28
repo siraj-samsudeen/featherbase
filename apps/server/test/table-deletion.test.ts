@@ -1,5 +1,6 @@
 // Table deletion — docs/specs/0003-table-deletion.md. Test titles quote
-// spec IDs (static traceability); the evidence CSV carries the verdicts.
+// spec IDs (static traceability); the spec's own `> evidence:` lines carry
+// the verdicts, and tools/check-evidence.mjs joins the two.
 import { afterAll, beforeAll, describe, expect } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -278,7 +279,7 @@ describe('DEL-R5: row-id series survive deletion', () => {
     const first = (await admin.post('/api/save_row', {
       table: DT,
       row: { title: 'a' },
-    })) as { name: string }
+    })) as { row_id: string }
     await admin.delete(`/api/table_def/${ENC}`)
     await admin.post('/api/table_def', {
       name: DT,
@@ -288,7 +289,7 @@ describe('DEL-R5: row-id series survive deletion', () => {
     const second = (await admin.post('/api/save_row', {
       table: DT,
       row: { title: 'b' },
-    })) as { name: string }
+    })) as { row_id: string }
     const num = (s: string) => Number(s.split('-').pop())
     expect(num(second.row_id)).toBeGreaterThan(num(first.row_id))
   })

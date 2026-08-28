@@ -29,6 +29,9 @@ const SHEETS = [
 function decisions(over: Partial<Parameters<typeof saveDecisions<{ table: string }>>[0]> = {}) {
   return {
     fileName: 'chain.xlsx',
+    // #206: the file-import's identity travels with the decisions, so a
+    // resumed import stays ONE batch.
+    batchId: 'batch-1',
     stage: 'columns' as const,
     selected: [true, true],
     plans: [{ table: 'One' }, { table: 'Two' }],

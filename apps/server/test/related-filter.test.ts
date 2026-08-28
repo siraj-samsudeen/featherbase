@@ -202,7 +202,10 @@ describe('NAV-002: related filters', () => {
         },
       ],
     ]
-    await expect(list(admin, LINE, ok)).resolves.toBeDefined()
+    await expect(list(admin, LINE, ok)).resolves.toEqual({
+      names: expect.any(Array),
+      total: expect.any(Number),
+    })
   })
 
   test(':aggregate returns true scoped count and an EXACT sum over related filters', async ({
@@ -250,7 +253,10 @@ describe('NAV-002: related filters', () => {
       message: expect.stringMatching(/hops per request/),
     })
     // 16 sibling hops is fine
-    await expect(list(admin, ORDER, wide.slice(0, 16))).resolves.toBeDefined()
+    await expect(list(admin, ORDER, wide.slice(0, 16))).resolves.toEqual({
+      names: expect.any(Array),
+      total: expect.any(Number),
+    })
   })
 
   test('a lone column (or lone via) in a spec is rejected, not ignored', async ({ admin }) => {

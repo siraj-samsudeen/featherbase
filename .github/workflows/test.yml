@@ -88,18 +88,26 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Refuse scp-style git URLs in the lockfile
-        # These resolve fine on a dev machine that rewrites ssh->https, so the
-        # bad URL is committed by someone for whom it works. Runners have no
-        # SSH key and die in `pnpm install` with "Permission denied
-        # (publickey)" before any test runs. Checked with grep so it fails
-        # BEFORE the install it would break. Same rule as `pnpm lint:lockfile`.
-        run: |
-          if grep -nE '\bgit@[[:alnum:].-]+:' pnpm-lock.yaml; then
-            echo "::error::pnpm-lock.yaml records an scp-style git URL; rewrite it to the https clone URL"
-            exit 1
-          fi
-          echo "pnpm-lock.yaml: no scp-style git URLs"
+      # The spec/test join table, re-derived rather than curated: every
+      # obligation in docs/specs (and the framework's worked example) carries
+      # an `> evidence:` verdict, and this re-checks each claim against the
+      # test titles that are supposed to back it. Zero dependencies, no
+      # database, well under a second — so it runs before `pnpm install`,
+      # where a broken linkage costs nothing to discover.
+      #
+      # The checker's own mutation tests run first (node's built-in runner,
+      # also dependency-free): each one flips a single thing a contributor
+      # could flip — a deleted `**IDs:**` line, a test turned `.skip`, an
+      # issue number moved into a comment — and asserts the checker catches
+      # it. A green linkage check means nothing if the checker cannot fail.
+      - name: Check spec evidence linkage
+        run: node --test tools/*.test.mjs && node tools/check-evidence.mjs
+
+      # feather-testing-postgres is a git dependency; pnpm records GitHub
+      # git URLs in the git@github.com: form and this runner has no SSH key.
+      # The repo is public — fetch it anonymously over https instead.
+      - name: Fetch GitHub git deps over https
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -126,8 +134,16 @@ jobs:
       # server in-process against the service database. Their configs pin
       # fileParallelism: false and a shared globalSetup that empties
       # tab_background_job — do not parallelize around them here.
-      - name: Run unit and component suites
-        run: pnpm -r test
+      #
+      # `test:coverage` REPLACES the plain `pnpm -r test` rather than being
+      # added beside it: instrumenting the suites once costs about 15% of wall
+      # clock (measured back to back — server 133s→153s, web 18s→22s, shared
+      # under a second either way), where running them twice would cost 100%.
+      # Each config carries a `coverage.thresholds` floor that only ever rises
+      # (#226); Vitest exits non-zero when a suite falls below its floor, so a
+      # coverage regression fails this job exactly like a failing test does.
+      - name: Run unit and component suites with coverage
+        run: pnpm -r test:coverage
 
   e2e:
     runs-on: ubuntu-latest
@@ -156,18 +172,9 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Refuse scp-style git URLs in the lockfile
-        # These resolve fine on a dev machine that rewrites ssh->https, so the
-        # bad URL is committed by someone for whom it works. Runners have no
-        # SSH key and die in `pnpm install` with "Permission denied
-        # (publickey)" before any test runs. Checked with grep so it fails
-        # BEFORE the install it would break. Same rule as `pnpm lint:lockfile`.
-        run: |
-          if grep -nE '\bgit@[[:alnum:].-]+:' pnpm-lock.yaml; then
-            echo "::error::pnpm-lock.yaml records an scp-style git URL; rewrite it to the https clone URL"
-            exit 1
-          fi
-          echo "pnpm-lock.yaml: no scp-style git URLs"
+      # Same SSH→https rewrite as the unit job — see the comment there.
+      - name: Fetch GitHub git deps over https
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

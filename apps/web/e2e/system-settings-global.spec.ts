@@ -1,15 +1,9 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Set4 Item'
 
-async function adminHeaders(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
-
 async function setSettings(request: APIRequestContext, row: Record<string, unknown>) {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   const res = await request.post('/api/save_row', { headers, data: { table: 'System Settings', row } })
   if (res.status() !== 201) throw new Error(`save settings: ${res.status()}`)
 }
@@ -17,7 +11,7 @@ async function setSettings(request: APIRequestContext, row: Record<string, unkno
 test.describe.configure({ mode: 'serial' })
 
 test.beforeAll(async ({ request }) => {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   // A Table with a Date and a Currency field, both shown in the list.
   const dt = await request.post('/api/table_def', {
     headers,
@@ -49,12 +43,6 @@ test.afterAll(async ({ request }) => {
 // format and currency precision flow into list cells and form previews, and
 // changing the setting re-renders without any per-Table code.
 test('SET-004: date format and currency precision render globally', async ({ page }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   // List: the Date cell honors dd-mm-yyyy and the Currency cell honors
   // precision 2 with the USD symbol.
   await page.goto(`/admin/${encodeURIComponent(DT)}`)

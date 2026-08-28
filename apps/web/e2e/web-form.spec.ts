@@ -1,16 +1,10 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { anonymousTest as test, expect, adminAuth } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'WF E2E Msg'
 const ROUTE = 'contact-e2e'
 
-async function adminHeaders(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
-
 test.beforeAll(async ({ request }) => {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   const dt = await request.post('/api/table_def', {
     headers,
     data: {
@@ -59,7 +53,7 @@ test('WEB-002: anonymous web form submit creates a document', async ({ page, con
   await expect(page.getByTestId('web-form-success')).toBeVisible()
 
   // The doc really exists (checked as admin).
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   const filters = encodeURIComponent(JSON.stringify([['full_name', '=', unique]]))
   const list = (await (
     await request.get(`/api/table/${encodeURIComponent(DT)}?filters=${filters}`, { headers })

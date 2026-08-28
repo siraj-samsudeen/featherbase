@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminToken, type APIRequestContext, type Page } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
 
@@ -9,23 +9,9 @@ import { deleteTableIfExists } from './cleanup'
 // and then go to that screen where the row is imported" and come back to,
 // because there was no *here* to come back to.
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const ONE = 'Step One'
 const TWO = 'Step Two'
 const THREE = 'Step Three'
-
-async function adminToken(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await login.json()) as { token: string }).token
-}
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
 
 function workbook(): Buffer {
   const wb = XLSX.utils.book_new()
@@ -70,7 +56,7 @@ test.beforeEach(async ({ request }) => {
 })
 
 test('three sheets are three steps, not three stacked cards', async ({ page }) => {
-  await login(page)
+  await page.goto('/admin')
   await openColumns(page)
 
   await expect(page.getByTestId('iw-step-of')).toContainText('Table 1 of 3')
@@ -103,7 +89,7 @@ test('a step is edited, imported on its own, and the next two are untouched', as
   request,
 }) => {
   const token = await adminToken(request)
-  await login(page)
+  await page.goto('/admin')
   await openColumns(page)
 
   await page.getByTestId('iw-new-name-0').fill(ONE)
@@ -137,7 +123,7 @@ test('a finished import stays readable while you work on the next sheet', async 
   request,
 }) => {
   const token = await adminToken(request)
-  await login(page)
+  await page.goto('/admin')
   await openColumns(page)
 
   await page.getByTestId('iw-new-name-0').fill(ONE)
@@ -166,7 +152,7 @@ test('the bulk button finishes the rest without re-importing what landed', async
   request,
 }) => {
   const token = await adminToken(request)
-  await login(page)
+  await page.goto('/admin')
   await openColumns(page)
 
   await page.getByTestId('iw-new-name-0').fill(ONE)

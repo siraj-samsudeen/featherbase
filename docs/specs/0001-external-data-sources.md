@@ -1,5 +1,8 @@
 # Feature: External Data Sources — DocTypes bound to existing Postgres tables
 
+**Evidence mode:** excluded — EARS-form spec, not yet retrofitted to the
+journeys-and-rules form that carries `> evidence:` verdicts.
+
 Status: **Partially implemented** (2026-07-31, hardened 2026-08-02 after the
 PR #103 review) — EDS-1..8, 11 (modified-mode concurrency only), 13, plus
 duckdb and csv-folder drivers beyond this spec's scope; see the 2026-07-31

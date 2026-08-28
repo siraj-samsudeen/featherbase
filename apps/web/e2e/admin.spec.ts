@@ -1,6 +1,4 @@
-import { expect, test } from '@playwright/test'
-
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
+import { anonymousTest as test, expect, ADMIN_PWD } from './fixtures'
 
 test('UI-001: full login flow into the Admin shell', async ({ page }) => {
   await page.goto('/')

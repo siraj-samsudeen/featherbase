@@ -1,10 +1,9 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminToken } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
 
 // IMP-006: drag & drop a CSV/Excel file -> inferred Table + imported rows.
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const CSV_DT = 'Import Sales' // from "import sales.csv"
 const XLSX_DT = 'Import Inventory' // from "import inventory.xlsx"
 
@@ -15,19 +14,6 @@ const CSV = [
   'Chandra,1,3.25,2026-02-10,yes',
 ].join('\n')
 
-async function adminToken(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await login.json()) as { token: string }).token
-}
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
-
 test('IMP-006: drop a CSV; inferred schema prefills the builder; create imports the rows', async ({
   page,
   request,
@@ -35,7 +21,7 @@ test('IMP-006: drop a CSV; inferred schema prefills the builder; create imports 
   const token = await adminToken(request)
   await deleteTableIfExists(request, token, CSV_DT)
 
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('new-table-link').click()
   await expect(page.getByTestId('table-builder')).toBeVisible()
 
@@ -106,7 +92,7 @@ test('IMP-006: a real .xlsx imports the same way (via the file picker)', async (
   XLSX.utils.book_append_sheet(wb, ws, 'Stock')
   const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
 
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('new-table-link').click()
   await page.getByTestId('dt-file-input').setInputFiles({
     name: 'import inventory.xlsx',
@@ -132,7 +118,7 @@ test('IMP-006: a real .xlsx imports the same way (via the file picker)', async (
 })
 
 test('IMP-006: a non-tabular file is refused with a message', async ({ page }) => {
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('new-table-link').click()
   await page.getByTestId('dt-file-input').setInputFiles({
     name: 'notes.txt',

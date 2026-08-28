@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminToken, type APIRequestContext } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
 // The Explore entry points: `chain` + `select` deep-link params on the
@@ -10,7 +10,6 @@ import { deleteTableIfExists } from './cleanup'
 //   EX Vehicle ← EX Accident.vehicle ← EX Claim.accident
 //   EX Vehicle ← EX Service.vehicle
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const VEHICLE = 'EX Vehicle'
 const ACCIDENT = 'EX Accident'
 const SERVICE = 'EX Service'
@@ -42,8 +41,7 @@ async function insert(
 }
 
 test.beforeAll(async ({ request }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
+  const token = await adminToken(request)
   auth = { Authorization: `Bearer ${token}` }
 
   // Pre-clean in reference order (DEL-R3: referenced tables refuse deletion).
@@ -73,18 +71,9 @@ test.beforeAll(async ({ request }) => {
   await insert(request, CLAIM, { title: 'Claim rear bump', accident: a1 })
 })
 
-async function signIn(page: Page): Promise<void> {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
-
 test('a root+chain+select URL renders three panes, pane 1 preselected, downstream narrowed', async ({
   page,
 }) => {
-  await signIn(page)
   const chain = encodeURIComponent(
     JSON.stringify([
       { mode: 'backlink', table: ACCIDENT, column: 'vehicle' },
@@ -114,8 +103,6 @@ test('a root+chain+select URL renders three panes, pane 1 preselected, downstrea
 test('a malformed or stale chain degrades to the plain root, never a blank page', async ({
   page,
 }) => {
-  await signIn(page)
-
   // malformed JSON: ignored outright
   await page.goto(`/admin/explore?root=${encodeURIComponent(VEHICLE)}&chain=not-json`)
   await expect(page.getByTestId('explore-pane1-count')).toHaveText('2')
@@ -137,7 +124,6 @@ test('a malformed or stale chain degrades to the plain root, never a blank page'
 test('ListView split button: pick dependents, Open lands on a chained Explore', async ({
   page,
 }) => {
-  await signIn(page)
   await page.goto(`/admin/${encodeURIComponent(VEHICLE)}`)
 
   // main face: bare Explore rooted at the table
@@ -167,7 +153,6 @@ test('ListView split button: pick dependents, Open lands on a chained Explore', 
 test('RelationMap: Open in Explore materializes the neighborhood narrowed to the row', async ({
   page,
 }) => {
-  await signIn(page)
   await page.goto(`/admin/map/${encodeURIComponent(VEHICLE)}/${encodeURIComponent(v1)}`)
   await page.getByTestId('map-open-explore').click()
 

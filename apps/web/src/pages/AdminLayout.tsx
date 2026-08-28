@@ -805,6 +805,17 @@ export function AdminLayout() {
 // client-side confirm check, then a success state.
 // #101 Phase 2: one sidebar recall row — label over sub-label, truncated to
 // the rail's width, ★-marked when it comes from the Frequent ranking.
+//
+// It is an anchor, not a button, and that is a correctness fix rather than a
+// style choice (#228). Every sidebar row is a *destination* — the searches
+// that merely refill the command bar are filtered out before they get here —
+// so `link` is the honest role, and it buys real href behaviour
+// (middle-click, open-in-new-tab) for free. As a button it also sat in the
+// same role/name space as the page's own buttons, and its name is whatever
+// row the operator last visited: a chip reading "Checklist Run — checklist"
+// collided with the import wizard's Check button and broke an unrelated
+// journey depending only on which spec had run before it. A link cannot
+// collide with a button however the trail is worded.
 function SidebarRecentRow({
   entry,
   frequent,
@@ -815,9 +826,14 @@ function SidebarRecentRow({
   onOpen: (entry: RecentEntry) => void
 }) {
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(entry)}
+    <a
+      href={entry.path}
+      onClick={(e) => {
+        // Let the browser handle the modified clicks it handles better.
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+        e.preventDefault()
+        onOpen(entry)
+      }}
       data-testid={frequent ? 'sidebar-frequent' : 'sidebar-recent'}
       title={entry.sub ? `${entry.label} — ${entry.sub}` : entry.label}
       className="block w-full rounded-md px-2 py-1 text-left hover:bg-[var(--color-subtle)]"
@@ -829,7 +845,7 @@ function SidebarRecentRow({
       {entry.sub && (
         <span className="block truncate text-[11px] text-[var(--color-ink-faint)]">{entry.sub}</span>
       )}
-    </button>
+    </a>
   )
 }
 

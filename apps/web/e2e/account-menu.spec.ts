@@ -2,9 +2,8 @@
 // out. The full loop: change the password from the modal, log out, verify the
 // old password is rejected and the new one signs in.
 
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { anonymousTest as test, expect, ADMIN_PWD, loginAs, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const TEMP_PWD = 'acct-72-temp-password'
 
 // Whatever happened (pass or fail, before or after the in-test change),
@@ -29,11 +28,7 @@ test.afterEach(async ({ request }) => {
 })
 
 test('ACCT-001: avatar menu changes the password end-to-end', async ({ page }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
+  await loginAs(page)
 
   // The avatar opens the account menu; Escape closes it.
   await page.getByTestId('session-user').click()

@@ -1,6 +1,16 @@
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { describe, expect } from 'vitest'
+import WebSocket from 'ws'
 import { test } from './pg-test'
-import { canSubscribe, onEvent, publishDocEvent, publishUserEvent, type RealtimeEvent } from '../src/realtime'
+import {
+  attachRealtime,
+  canSubscribe,
+  onEvent,
+  publishDocEvent,
+  publishUserEvent,
+  type RealtimeEvent,
+} from '../src/realtime'
 import type { SessionUser } from '../src/auth'
 
 // RT-001/002/003 (server side): the lifecycle publishes the right channel
@@ -72,5 +82,51 @@ describe('RT channel authorization (eval #9 fix)', () => {
     expect(await canSubscribe(admin, 'system')).toBe(false)
     expect(await canSubscribe(admin, 'evil:*')).toBe(false)
     expect(await canSubscribe(admin, 'row:')).toBe(false)
+  })
+})
+
+// #224: a subscribe frame is asynchronous, so a client (and the e2e suite)
+// needs to be TOLD when its subscription is live rather than guess with a
+// sleep. This is the only test that drives the socket end of realtime — the
+// rest of the file talks to the in-process bus.
+describe('subscription acknowledgment', () => {
+  test('the server acks the channels it registered, and only those', async ({ admin }) => {
+    const server = createServer()
+    attachRealtime(server)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const { port } = server.address() as AddressInfo
+    // The socket authenticates off the `sid` cookie, exactly as the browser's
+    // same-origin upgrade does (#173).
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+      headers: { cookie: `sid=${admin.token}` },
+    })
+    const frames: RealtimeEvent[] = []
+    socket.on('message', (raw) => frames.push(JSON.parse(String(raw)) as RealtimeEvent))
+    const frame = async (event: string): Promise<RealtimeEvent> => {
+      const deadline = Date.now() + 5_000
+      for (;;) {
+        const hit = frames.find((f) => f.event === event)
+        if (hit) return hit
+        if (Date.now() > deadline)
+          throw new Error(`no '${event}' frame arrived; saw ${JSON.stringify(frames)}`)
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+    }
+
+    try {
+      await frame('ready')
+      // 'user:Guest' is somebody else's personal channel — refused, and so
+      // absent from the ack: the ack reports what is live, not what was asked.
+      socket.send(JSON.stringify({ subscribe: ['list:User', 'user:Guest'] }))
+      expect(await frame('subscribed')).toEqual({
+        channel: 'system',
+        event: 'subscribed',
+        payload: { channels: ['list:User'] },
+      })
+    } finally {
+      socket.terminate()
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
   })
 })

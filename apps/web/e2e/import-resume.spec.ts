@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminToken, type APIRequestContext, type Page } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
 
@@ -12,22 +12,8 @@ import { deleteTableIfExists } from './cleanup'
 // route. Going to look at what you just imported destroyed the work of
 // planning the rest.
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const ONE = 'Resume One'
 const TWO = 'Resume Two'
-
-async function adminToken(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await login.json()) as { token: string }).token
-}
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
 
 function workbook(): Buffer {
   const wb = XLSX.utils.book_new()
@@ -63,7 +49,7 @@ test('going to look at the imported rows and coming back resumes everything', as
   request,
 }) => {
   const token = await adminToken(request)
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('import-data-link').click()
   await dropWorkbook(page)
   await page.getByTestId('iw-ov-master').check()
@@ -105,7 +91,7 @@ test('going to look at the imported rows and coming back resumes everything', as
 
 test('a full page reload resumes too', async ({ page, request }) => {
   const token = await adminToken(request)
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('import-data-link').click()
   await dropWorkbook(page)
   await page.getByTestId('iw-ov-master').check()
@@ -132,7 +118,7 @@ test('a finished import is not resumed — coming back starts the next one', asy
   request,
 }) => {
   const token = await adminToken(request)
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('import-data-link').click()
   await dropWorkbook(page)
   // Two sheets, so the run does not auto-navigate to a lone new Table's list
@@ -158,7 +144,7 @@ test('a finished import is not resumed — coming back starts the next one', asy
 })
 
 test('starting over forgets the file and every choice about it', async ({ page }) => {
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('import-data-link').click()
   await dropWorkbook(page)
   await page.getByTestId('iw-ov-master').check()
@@ -177,7 +163,7 @@ test('starting over forgets the file and every choice about it', async ({ page }
 })
 
 test('when the rows do not fit, the decisions still do', async ({ page }) => {
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('import-data-link').click()
 
   // Simulate the big-workbook case: refuse to store the rows, which is what

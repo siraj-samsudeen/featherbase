@@ -1,20 +1,14 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { anonymousTest as test, expect, adminAuth, loginAs } from './fixtures'
 import { clearTranslations, seedTranslations } from './translations'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'I18n2 E2E Doc'
 
 let seeded: string[] = []
 const USER = 'i18n2-fr@x.com'
 const PWD = 'i18n2pw12345'
 
-async function adminHeaders(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
-
 test.beforeAll(async ({ request }) => {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   // A user whose stored language is French.
   await request.delete(`/api/table/User/${encodeURIComponent(USER)}`, { headers })
   await request.post('/api/save_row', {
@@ -44,17 +38,13 @@ test.beforeAll(async ({ request }) => {
 // These rows are committed, so leaving them behind would fail the sandboxed
 // server suite on its next run. See ./translations.ts.
 test.afterAll(async ({ request }) => {
-  await clearTranslations(request, await adminHeaders(request), seeded)
+  await clearTranslations(request, await adminAuth(request), seeded)
 })
 
 // I18N-002: a user's stored language is applied on a fresh login (no manual
 // switch), and dates render in the System-Settings-configured format.
 test('I18N-002: stored language applied on login + configured date format', async ({ page }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', USER)
-  await page.fill('input[name=password]', PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
+  await loginAs(page, USER, PWD)
 
   // The French preference is applied straight after login — chrome is French
   // without touching the language switcher.

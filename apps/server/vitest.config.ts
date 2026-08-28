@@ -24,5 +24,40 @@ export default defineConfig({
         inline: ['feather-testing-postgres'],
       },
     },
+    // Collected only by `pnpm test:coverage` (vitest run --coverage), never by
+    // the default `pnpm test` — day-to-day runs stay fast.
+    //
+    // Scope is `src/` and nothing else. `migrations/` and `patches/` sit
+    // outside it by construction: they are applied once by a separate `tsx
+    // src/migrate.ts` process before the suite starts, so no test process ever
+    // loads them and they would report a permanent, unfixable 0%. They are
+    // also append-only history — a shipped migration is never edited — so
+    // "cover it with a test" is not a thing one can do to them.
+    //
+    // The e2e suite is out of scope too: it drives a live stack over HTTP from
+    // a separate Playwright process, so nothing it exercises is attributable
+    // here. Coverage numbers below therefore describe the unit suite alone.
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts'],
+      reporter: ['text', 'json-summary'],
+      // Without this a single failing test suppresses the report entirely
+      // (v8's default), which hides the numbers exactly when they are most
+      // useful for diagnosing what a broken run stopped exercising.
+      reportOnFailure: true,
+      // Ratchet toward 100% (#226 ruling): only raise, never lower.
+      //
+      // Measured 2026-08-28 on a developer checkout: lines/statements 86.64%,
+      // functions 91.18%, then rounded DOWN to the whole percent. That local
+      // run is a FLOOR, not the true figure — `sources-mysql.test.ts` skips
+      // itself without MYSQL_TEST_URL, leaving `src/sources/mysql-driver.ts`
+      // (359 lines) at 6%, and CI does set that variable. Raise these to the
+      // number the first green CI run reports.
+      thresholds: {
+        lines: 86,
+        statements: 86,
+        functions: 91,
+      },
+    },
   },
 })

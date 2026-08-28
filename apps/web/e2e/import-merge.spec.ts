@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminToken, type APIRequestContext, type Page } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
 
@@ -6,21 +6,7 @@ import { deleteTableIfExists } from './cleanup'
 // The reported case: eleven sheets of section data, one per supermarket in a
 // chain, which the wizard could only turn into eleven Tables.
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const MERGED_DT = 'Merge Sections'
-
-async function adminToken(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await login.json()) as { token: string }).token
-}
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
 
 // Three store sheets that are "the same shape" the way real workbooks are:
 // store 2 shouts its header, store 3 uses an underscore and has a trailing
@@ -68,7 +54,7 @@ test('three sheets merge into one Table, folding the spellings apart from case a
 }) => {
   const token = await adminToken(request)
   const headers = { Authorization: `Bearer ${token}` }
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('import-data-link').click()
   await page.getByTestId('iw-file-input').setInputFiles({
     name: 'chain sections.xlsx',
@@ -138,7 +124,7 @@ test('a merged run is logged per sheet under one run id, so reverting takes back
 }) => {
   const token = await adminToken(request)
   const headers = { Authorization: `Bearer ${token}` }
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('import-data-link').click()
   await page.getByTestId('iw-file-input').setInputFiles({
     name: 'chain sections.xlsx',
@@ -186,7 +172,7 @@ test('a merged run is logged per sheet under one run id, so reverting takes back
 test('choosing separate still makes one Table per sheet', async ({ page, request }) => {
   const token = await adminToken(request)
   const headers = { Authorization: `Bearer ${token}` }
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('import-data-link').click()
   await page.getByTestId('iw-file-input').setInputFiles({
     name: 'chain sections.xlsx',

@@ -98,7 +98,8 @@ export function publishUserEvent(user: string, event: string, payload?: unknown)
 
 // Attach a WebSocket server to the shared HTTP server. Clients connect to
 // /ws carrying the `sid` session cookie, then send {subscribe:[channels]} /
-// {unsubscribe:[...]}.
+// {unsubscribe:[...]}. The server answers a subscribe frame with
+// {channel:'system', event:'subscribed', payload:{channels:[...registered]}}.
 export function attachRealtime(server: Server): void {
   const wss = new WebSocketServer({ server, path: '/ws' })
   wss.on('connection', async (socket, req) => {
@@ -122,11 +123,30 @@ export function attachRealtime(server: Server): void {
               subscribe?: string[]
               unsubscribe?: string[]
             }
+            const registered: string[] = []
             for (const ch of msg.subscribe ?? []) {
               // Authorize each subscription; silently drop unpermitted ones.
-              if (await canSubscribe(client.user, ch)) client.channels.add(ch)
+              if (await canSubscribe(client.user, ch)) {
+                client.channels.add(ch)
+                registered.push(ch)
+              }
             }
             for (const ch of msg.unsubscribe ?? []) client.channels.delete(ch)
+            // #224: acknowledge what was actually registered. A subscribe
+            // frame is asynchronous — until the server has authorized and
+            // recorded the channel, an event published on it is missed — so
+            // without this the only way to know a subscription is live is to
+            // guess with a sleep. Unpermitted channels are absent from the
+            // ack rather than reported, keeping the existing "silently drop"
+            // behaviour; a client that ignores the frame is unaffected.
+            if (registered.length && socket.readyState === socket.OPEN)
+              socket.send(
+                JSON.stringify({
+                  channel: 'system',
+                  event: 'subscribed',
+                  payload: { channels: registered },
+                }),
+              )
           } catch {
             // ignore malformed frames
           }

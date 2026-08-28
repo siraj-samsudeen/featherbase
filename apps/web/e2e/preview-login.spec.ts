@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { anonymousTest as test, expect } from './fixtures'
 
 // The dev-preview click-through link, exercised the way it is actually used:
 // paste a URL into a fresh browser and expect to be inside the app, as an
@@ -39,7 +39,7 @@ test.describe('preview sign-in', () => {
     await expect(page).toHaveURL(/\/admin/, { timeout: 15_000 })
 
     const token = await page.evaluate(() => localStorage.getItem('fc_token'))
-    expect(token).toBeTruthy()
+    expect(token).toMatch(/^[\w-]+\.[\w-]+\.[\w-]+$/)
     for (const url of urls) expect(url).not.toContain(token as string)
     // The handoff code is what travelled instead.
     expect(urls.some((u) => u.includes('/oauth-callback?code='))).toBe(true)

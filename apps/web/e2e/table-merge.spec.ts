@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminToken, type APIRequestContext, type Page } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
 // #208 (issue #197): "suppose I imported two things and then I realized they
@@ -10,22 +10,8 @@ import { deleteTableIfExists } from './cleanup'
 // FOLD to the same thing pair themselves; the rest is the user's to say, and
 // the screen exists so they can.
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const SRC = 'Merge Source Zones'
 const DST = 'Merge Target Zones'
-
-async function adminToken(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await login.json()) as { token: string }).token
-}
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
 
 async function seed(request: APIRequestContext, token: string) {
   const headers = { Authorization: `Bearer ${token}` }
@@ -81,7 +67,6 @@ test.afterEach(async ({ request }) => {
 })
 
 test('folding pairs what it can, and refuses to guess the rest', async ({ page }) => {
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(SRC)}`)
   await page.getByTestId('open-merge').click()
   await expect(page.getByTestId('table-merge')).toBeVisible()
@@ -103,7 +88,6 @@ test('folding pairs what it can, and refuses to guess the rest', async ({ page }
 
 test('the user pairs Glor with Floor, and every row lands', async ({ page, request }) => {
   const token = await adminToken(request)
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(SRC)}/merge`)
   await page.getByTestId('tm-target').selectOption(DST)
 
@@ -139,7 +123,6 @@ test('the user pairs Glor with Floor, and every row lands', async ({ page, reque
 
 test('a column left behind is left behind, and nothing else moves', async ({ page, request }) => {
   const token = await adminToken(request)
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(SRC)}/merge`)
   await page.getByTestId('tm-target').selectOption(DST)
   // Deliberately drop pop.
@@ -159,7 +142,6 @@ test('a column left behind is left behind, and nothing else moves', async ({ pag
 })
 
 test('a merge is an import, so it appears in the history and can be undone', async ({ page }) => {
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(SRC)}/merge`)
   await page.getByTestId('tm-target').selectOption(DST)
   await page.getByTestId('tm-map-glor').selectOption('floor')
@@ -181,7 +163,6 @@ test('a merge is an import, so it appears in the history and can be undone', asy
 })
 
 test('nothing can be merged until a target and a column are chosen', async ({ page }) => {
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(SRC)}/merge`)
   await expect(page.getByTestId('tm-go')).toBeDisabled()
 

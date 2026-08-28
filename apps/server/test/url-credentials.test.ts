@@ -77,7 +77,7 @@ describe('#173: private files authenticate from the sid cookie', () => {
       // The exact link the SPA used to render. #137 already refused a long-lived
       // access token here; a session JWT leaks through the same channels and is
       // refused for the same reason.
-      const res = await api.fetch(`${fileUrl}?token=${encodeURIComponent(reader.token)}`)
+      const res = await api.fetch(`${fileUrl}?token=${encodeURIComponent(reader.token!)}`)
       expect(res.status).toBe(401)
     } finally {
       await deleteStored(fileUrl).catch(() => {})
@@ -137,7 +137,7 @@ describe('#173: the realtime WebSocket authenticates from the sid cookie', () =>
     // The WebSocket URL is as loggable as any other: it appears in proxy access
     // logs and in the browser's own network history.
     expect(
-      await handshake(`/ws?token=${encodeURIComponent(admin.token)}`),
+      await handshake(`/ws?token=${encodeURIComponent(admin.token!)}`),
     ).toEqual({ closeCode: 4001 })
   })
 })

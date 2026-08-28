@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminToken, type APIRequestContext, type Page } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
 
@@ -9,21 +9,7 @@ import { deleteTableIfExists } from './cleanup'
 // which is exactly why nothing should propose it (Q5 — no guessing) and why
 // the user must be able to say it themselves.
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Combine Sections'
-
-async function adminToken(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await login.json()) as { token: string }).token
-}
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
 
 // Two sheets naming the same real-world thing differently, and no sheet
 // carrying both — the common case, where there is nothing to resolve.
@@ -70,7 +56,7 @@ test.beforeEach(async ({ request }) => {
 })
 
 test('folding leaves the two store columns apart — nothing is guessed', async ({ page }) => {
-  await login(page)
+  await page.goto('/admin')
   await openMergedGroup(page)
 
   // Three columns, because `Cmb Store Code` and `Cmb Store Name` fold to
@@ -87,7 +73,7 @@ test('folding leaves the two store columns apart — nothing is guessed', async 
 test('the user combines them, and every row lands in one column', async ({ page, request }) => {
   const token = await adminToken(request)
   const headers = { Authorization: `Bearer ${token}` }
-  await login(page)
+  await page.goto('/admin')
   await openMergedGroup(page)
 
   // Tick the two store columns (rows 0 and 2 of the grid).
@@ -128,7 +114,7 @@ test('the user combines them, and every row lands in one column', async ({ page,
 })
 
 test('a combine can be undone, and the columns come back', async ({ page }) => {
-  await login(page)
+  await page.goto('/admin')
   await openMergedGroup(page)
 
   await page.getByTestId('iw-combine-pick-0-0').check()
@@ -145,7 +131,7 @@ test('a combine can be undone, and the columns come back', async ({ page }) => {
 test('a sheet holding BOTH columns must be given a rule', async ({ page, request }) => {
   const token = await adminToken(request)
   const headers = { Authorization: `Bearer ${token}` }
-  await login(page)
+  await page.goto('/admin')
 
   // Sheet 1 carries both. Silently picking one would be a data-loss bug.
   const wb = XLSX.utils.book_new()

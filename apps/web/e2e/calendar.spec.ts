@@ -1,6 +1,5 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Cal DT'
 
 // UI-021: docs appear on their dates; dragging an event updates the date
@@ -13,8 +12,7 @@ const DAY_FROM = `${monthPrefix}-10`
 const DAY_TO = `${monthPrefix}-20`
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const headers = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
+  const headers = await adminAuth(request)
   const dt = await request.post('/api/table_def', {
     headers,
     data: {
@@ -33,12 +31,6 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 })
 
 test('UI-021: events appear on their date and dragging updates the date field', async ({ page }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   await page.goto(`/admin/${encodeURIComponent(DT)}`)
   await page.getByTestId('open-calendar').click()
   await expect(page.getByTestId('calendar-view')).toBeVisible()

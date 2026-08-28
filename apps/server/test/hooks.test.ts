@@ -2,8 +2,9 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
-import { clearControllers, registerController } from '../src/controllers'
+import { clearControllers, registerController, runHooks } from '../src/controllers'
 import { AppError } from '../src/errors'
+import { getMeta } from '../src/meta'
 
 const DT = 'Hook Chain Probe'
 const FILE_DT = 'Hook File Demo'
@@ -131,5 +132,38 @@ describe('DOC-004: file-based controller registry', () => {
     await expect(
       admin.post('/api/save_row', { table: FILE_DT, row: { title: 'forbidden' } }),
     ).rejects.toMatchObject({ status: 417, fields: { title: expect.anything() } })
+  })
+})
+
+// Moved from coverage-gaps.test.ts (#221): clearControllers must remove every
+// controller registered for a table. Exercises registerController/runHooks
+// directly (a deliberate exception to the HTTP-first idiom) since the point
+// is the in-process registry, not a request.
+describe('controllers: registry edges', () => {
+  test('clearControllers removes every controller for a table', async ({ admin }) => {
+    const DT = 'Cov Clear Note'
+    await admin.post('/api/table_def', {
+      name: DT,
+      columns: [{ column_name: 'title', column_type: 'Data' }],
+    })
+    const seen: string[] = []
+    registerController({ table: DT, hooks: { validate: () => void seen.push('v') } })
+    await runHooks('validate', {
+      row: {},
+      meta: await getMeta(DT),
+      user: 'Administrator',
+      isNew: true,
+      tx: sql,
+    })
+    expect(seen).toEqual(['v'])
+    clearControllers(DT)
+    await runHooks('validate', {
+      row: {},
+      meta: await getMeta(DT),
+      user: 'Administrator',
+      isNew: true,
+      tx: sql,
+    })
+    expect(seen).toEqual(['v'])
   })
 })
