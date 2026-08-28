@@ -116,7 +116,7 @@ describe('NAV-001: row connections', () => {
 
     const cnx = await getConnections(admin, 'E-001')
     const ord = cnx.find((c) => c.table === ORDER)
-    expect(ord).toBeDefined()
+    expect(ord).toMatchObject({ table: ORDER })
     expect(ord).toMatchObject({ column: 'employee', via: LINE, count: 2 })
     // NAV-002: a compact relationship filter, not a name list
     const [field, op, spec] = ord!.filters[0]

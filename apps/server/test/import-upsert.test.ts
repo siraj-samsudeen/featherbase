@@ -124,7 +124,7 @@ describe('UPS-R1: the import boundary learns update', () => {
     // The version trail records the prior value — UPS-H1's recovery path.
     expect(versions.data.length).toBe(1)
     const changed = versions.data[0].data.changed as [string, unknown, unknown][]
-    expect(changed.find(([col]) => col === 'pop')).toBeTruthy()
+    expect(changed.find(([col]) => col === 'pop')).toEqual(['pop', '12000', '99'])
   })
 
   test('UPS-R1: create-only caller mixing updates in is refused whole — nothing written', async ({

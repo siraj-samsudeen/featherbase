@@ -26,12 +26,12 @@ describe('SET-002: password reset', () => {
   test('mails a reset link with a token and resets the password', async ({ admin }) => {
     await setup(admin)
     const token = await requestPasswordReset(USER)
-    expect(token).toBeTruthy()
+    expect(token).toMatch(/^[0-9a-f]{48}$/)
 
     // The link landed in the sink and contains the key.
     const [mail] =
       await sql`select body from email_sink where mail_to = ${USER} order by created_at desc limit 1`
-    expect(mail).toBeDefined()
+    expect(mail).toEqual({ body: expect.any(String) })
     expect(String(mail.body)).toContain(`key=${token}`)
 
     // Reset works; the new password logs in and the old one does not.

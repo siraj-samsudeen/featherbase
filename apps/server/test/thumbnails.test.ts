@@ -69,7 +69,7 @@ describe('FILE-004: thumbnails', () => {
   test('downscales a large image, preserving aspect ratio, capped at 128px', async () => {
     const png = await makePng(300, 200) // 3:2, larger than the 128 cap
     const thumb = await makeThumbnailDataUrl(png, 'image/png', 128)
-    expect(thumb).toBeTruthy()
+    expect(thumb).toMatch(/^data:image\/jpeg;base64,/)
     expect(thumb!.startsWith('data:image/jpeg;base64,')).toBe(true)
 
     const { w, h } = await measure(thumb!)
@@ -107,7 +107,7 @@ describe('FILE-004: thumbnails', () => {
     expect(before.isConnected()).toBe(false)
 
     const thumb = await makeThumbnailDataUrl(png, 'image/png', 128)
-    expect(thumb).toBeTruthy()
+    expect(thumb).toMatch(/^data:image\/jpeg;base64,/)
     expect(thumb!.startsWith('data:image/jpeg;base64,')).toBe(true)
     expect((await getBrowser()).isConnected()).toBe(true)
   }, 30_000)

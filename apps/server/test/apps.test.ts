@@ -80,9 +80,9 @@ describe('PLAT-001: app install/uninstall', () => {
 
       // The Table and its physical table exist.
       const [dt] = await sql`select 1 from table_def where name = ${APP1_DT}`
-      expect(dt).toBeTruthy()
+      expect(dt).toEqual({ '?column?': 1 })
       const [tbl] = await sql`select 1 from information_schema.tables where table_name = 'app_test_note'`
-      expect(tbl).toBeTruthy()
+      expect(tbl).toEqual({ '?column?': 1 })
 
       // The app's before_save hook fires: the stamp is set on save.
       const doc = await saveDoc(APP1_DT, { row_id: 'note-1', title: 'hi' }, 'Administrator')
@@ -108,7 +108,10 @@ describe('PLAT-001: app install/uninstall', () => {
       expect(tbl).toBeUndefined()
 
       // The Table is really gone — saving one now fails.
-      await expect(saveDoc(APP1_DT, { row_id: 'note-2' }, 'Administrator')).rejects.toBeTruthy()
+      await expect(saveDoc(APP1_DT, { row_id: 'note-2' }, 'Administrator')).rejects.toMatchObject({
+        type: 'NotFoundError',
+        message: `Table ${APP1_DT} not found`,
+      })
     } finally {
       await unwire(APP1, APP1_DT)
     }

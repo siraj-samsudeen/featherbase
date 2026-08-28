@@ -94,7 +94,7 @@ describe('RVT-R1: a run becomes addressable', () => {
     }[]
     expect(touched).toHaveLength(2)
     const byAction = Object.fromEntries(touched.map((t) => [t.action, t]))
-    expect(byAction.updated.version).toBeTruthy() // the update changed pop
+    expect(byAction.updated.version).toMatch(/^[0-9a-f]{10}$/) // the update changed pop
     expect(Date.parse(byAction.updated.stamp)).not.toBeNaN()
     expect(byAction.inserted.version).toBeUndefined()
   })
@@ -144,7 +144,7 @@ describe('RVT-R2/R3: the revert boundary restores and deletes', () => {
         '["reverted_at"]',
       )}&filters=${encodeURIComponent(JSON.stringify([['run_id', '=', runId]]))}`,
     )
-    expect(logs.data[0].reverted_at).toBeTruthy()
+    expect(Date.parse(logs.data[0].reverted_at as string)).not.toBeNaN()
   })
 
   test('RVT-R2: dry_run reports the plan and writes nothing', async ({ admin }) => {

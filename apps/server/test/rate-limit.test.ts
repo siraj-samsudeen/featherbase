@@ -51,7 +51,7 @@ describe('API-007: rate limiting', () => {
     const limited = await api.fetch('/api/whoami', { headers: auth })
     expect(limited.status).toBe(429)
     const retry = limited.headers.get('retry-after')
-    expect(retry).toBeTruthy()
+    expect(retry).toMatch(/^\d+$/)
     expect(Number(retry)).toBeGreaterThan(0)
     const body = (await limited.json()) as { error: { type: string } }
     expect(body.error.type).toBe('RateLimitError')

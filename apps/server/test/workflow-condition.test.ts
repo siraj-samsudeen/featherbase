@@ -98,6 +98,8 @@ describe('conditional workflow transitions', () => {
     const out = await applyWorkflowAction(DT, 'big', 'Approve', 'Administrator')
     expect(out.workflow_state).toBe('Approved')
     // And the wrong branch is refused for the big doc.
-    await expect(applyWorkflowAction(DT, 'big', 'Auto Approve', 'Administrator')).rejects.toBeTruthy()
+    await expect(
+      applyWorkflowAction(DT, 'big', 'Auto Approve', 'Administrator'),
+    ).rejects.toMatchObject({ type: 'ValidationError' })
   })
 })

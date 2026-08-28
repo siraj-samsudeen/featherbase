@@ -53,7 +53,7 @@ describe('PLAT-004: developer CLI', () => {
     expect(stdout).toContain(`created Table ${DT}`)
 
     const [dt] = await sql`select name from table_def where name = ${DT}`
-    expect(dt).toBeDefined()
+    expect(dt).toEqual({ name: DT })
     const columns = await sql`select column_name, column_type, choices from column_def where parent = ${DT} order by position`
     expect(columns.map((f) => f.column_name)).toEqual(['title', 'stage'])
     const status = columns.find((f) => f.column_name === 'stage')

@@ -143,7 +143,7 @@ describe('checklists app: template → run lifecycle', () => {
       })
       expect(ticked.progress).toBe('1/8')
       expect((ticked.items as Row[])[0].done).toBe(true)
-      expect((ticked.items as Row[])[0].done_at).toBeTruthy()
+      expect(Date.parse((ticked.items as Row[])[0].done_at as string)).not.toBeNaN()
       expect((ticked.items as Row[])[1].done_at).toBeFalsy()
 
       const unticked = await admin.post<Row>('/api/save_row', {

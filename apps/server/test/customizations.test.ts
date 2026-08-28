@@ -63,12 +63,12 @@ describe('CUST-005: export/import customizations', () => {
     expect(counts).toEqual({ custom_fields: 1, property_setters: 1 })
     meta = await getMeta(DT)
     const priority = meta.columns.find((f) => f.column_name === 'priority')
-    expect(priority).toBeTruthy()
+    expect(priority).toMatchObject({ column_name: 'priority', column_type: 'Choice', label: 'Priority' })
     expect(priority?.choices).toBe('Low\nHigh')
     expect(meta.columns.find((f) => f.column_name === 'title')?.reqd).toBe(true)
     // The backing column exists again.
     const [col] = await sql`select 1 from information_schema.columns where table_name = 'cust5_srv' and column_name = 'priority'`
-    expect(col).toBeDefined()
+    expect(col).toEqual({ '?column?': 1 })
   })
 
   test('is idempotent — re-importing creates nothing new', async ({ admin }) => {

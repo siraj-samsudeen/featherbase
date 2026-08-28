@@ -38,7 +38,7 @@ test("previous test's seed rolled back — its ToDo is gone from the list", asyn
   admin,
   seed,
 }) => {
-  expect(leakedName).toBeTruthy()
+  expect(leakedName).toMatch(/^[0-9a-f]{10}$/)
   // Positive control: seed a ToDo inside THIS test's own sandbox (rolled
   // back like every other test's, so it doesn't leak into a later test) and
   // wait for it to render. `table-page` mounts — and the list's still-empty

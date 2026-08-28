@@ -33,7 +33,7 @@ describe('PLAT-007: audit logs', () => {
     const [row] = await sql`
       select "user", operation, created_at from activity_log
       where "user" = ${USER} and operation = 'login' order by created_at desc limit 1`
-    expect(row).toBeDefined()
+    expect(row).toMatchObject({ operation: 'login' })
     expect(row.user).toBe(USER)
     expect(new Date(row.created_at as string).getTime()).toBeGreaterThanOrEqual(before.getTime() - 1000)
   })

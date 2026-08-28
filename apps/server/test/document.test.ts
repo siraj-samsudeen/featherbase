@@ -16,10 +16,10 @@ describe('DOC-001: save_row inserts through the Document engine', () => {
       table: DT,
       row: { title: 'hello', qty: 3 },
     })
-    expect(doc.row_id).toBeTruthy()
+    expect(doc.row_id).toMatch(/^[0-9a-f]{10}$/)
     expect(doc.created_by).toBe('Administrator')
-    expect(doc.created_at).toBeTruthy()
-    expect(doc.updated_at).toBeTruthy()
+    expect(Date.parse(doc.created_at as string)).not.toBeNaN()
+    expect(doc.updated_at).toBe(doc.created_at) // same stamp on insert
     expect(doc.status).toBe('draft')
     expect(doc.title).toBe('hello')
     expect(doc.qty).toBe('3')

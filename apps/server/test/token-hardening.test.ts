@@ -272,7 +272,7 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
       row: { row_id: email, email, enabled: true },
     })
     const token = await requestPasswordReset(email)
-    expect(token).toBeTruthy()
+    expect(token).toMatch(/^[0-9a-f]{48}$/)
 
     // The principal becomes a service account between the request and the
     // click, so setUserPassword now refuses.

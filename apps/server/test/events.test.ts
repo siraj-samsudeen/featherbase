@@ -31,7 +31,7 @@ describe('#101: POST /api/events + GET /api/events/summary', () => {
     )
     const a = summary.entries.find((e) => e.key === 'row:X/A')
     const l = summary.entries.find((e) => e.key === 'list:X?')
-    expect(a).toBeDefined()
+    expect(a).toMatchObject({ key: 'row:X/A', kind: 'row' })
     expect(l).toMatchObject({ kind: 'list', sub: 'status = Open' })
     const visits = a!.visits as number[]
     expect(visits).toHaveLength(2)
@@ -100,7 +100,7 @@ describe('#101: POST /api/events + GET /api/events/summary', () => {
       '/api/events/summary',
     )
     const entry = summary.entries.find((e) => e.key === longKey)!
-    expect(entry).toBeDefined()
+    expect(entry).toMatchObject({ key: longKey })
     expect(entry.path.length).toBeGreaterThan(900)
   })
 

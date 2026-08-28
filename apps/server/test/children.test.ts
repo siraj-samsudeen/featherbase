@@ -208,7 +208,7 @@ describe('#231: a reqd Sub-table column is not enforced anywhere on save', () =>
       table: 'Rq231 Order',
       row: { title: 'no items key at all' },
     })
-    expect(doc.row_id).toBeTruthy()
+    expect(doc.row_id).toMatch(/^[0-9a-f]{10}$/)
     expect(doc.items).toEqual([])
     const [{ count }] = await sql.unsafe(
       `select count(*)::int as count from rq231_item where parent = '${doc.row_id}'`,
