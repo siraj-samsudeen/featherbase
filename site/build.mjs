@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Featherbase Explorer — static site builder.
- * Zero dependencies. Reads harness/features.json, scans tests & src for
+ * Zero dependencies. Reads the archived feature inventory, scans tests & src for
  * feature-ID mentions, renders the curated markdown library, and emits:
  *   site/index.html     — full standalone page (GitHub Pages / local file)
  *   site/artifact.html  — body fragment (Claude artifact publishing)
@@ -18,7 +18,10 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 /* ------------------------------------------------------------------ *
  * 1. Features + code/test scan
  * ------------------------------------------------------------------ */
-const harness = JSON.parse(read('harness/features.json'));
+// The feature inventory is frozen history (docs/archive/harness-2026/README.md):
+// self-attested statuses from the 2026-07 build, kept because the IDs are still
+// cited in tests and PROGRESS. Nothing writes it any more.
+const harness = JSON.parse(read('docs/archive/harness-2026/harness/features.json'));
 const features = harness.features.map(f => ({ ...f, tests: [], src: [] }));
 const byId = Object.fromEntries(features.map(f => [f.id, f]));
 
@@ -243,7 +246,7 @@ const manifest = [
   ['Research', 'frappe-architecture', 'Frappe architecture study (v17)', 'docs/research/frappe-architecture.md'],
   ['Research', 'multi-app-1', 'Frappe: multi-app & multi-DB (note 1)', 'docs/research/frappe-multi-app-multi-db.md'],
   ['Research', 'multi-app-2', 'Frappe: multi-app & multi-DB (note 2)', 'docs/research/frappe-multi-app-and-multi-db.md'],
-  ['Log & harness', 'harness', 'The agent harness — how this was built', 'harness/README.md'],
+  ['Log & harness', 'harness', 'The agent harness — how this was built (archived)', 'docs/archive/harness-2026/README.md'],
   ['Log & harness', 'progress', 'Progress log — every session, newest first', 'PROGRESS.md'],
 ];
 if (existsSync(join(ROOT, 'CONTRIBUTING.md'))) manifest.splice(6, 0, ['Start here', 'contributing', 'Contributing — prerequisites & commands', 'CONTRIBUTING.md']);

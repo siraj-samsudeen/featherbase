@@ -125,16 +125,18 @@ flip `status`), the CLAUDE.md session protocol, PROGRESS handoffs,
 adversarial evaluator prompt that re-drives recently-passed features
 and flips false claims back to `failing`, looped by `run.sh`.
 
-**features.json is frozen by hard rule and stays frozen** — new work
-does not extend it. The milestone specs in `docs/specs/` are the
-*successor artifact*, replicating the harness mechanics at the next
-level: capability IDs (EDS-1 style) play the role of feature IDs, each
-EARS criterion + example table is the `verify` field, the spec's
-definition-of-done is the evaluator's checklist, and the CLAUDE.md
-session protocol continues unchanged. What the harness proved — an
-immutable spec agents cannot reword, per-item end-to-end verification,
-one item per session, adversarial re-checking — is exactly what §1
-carries forward; only the file moved.
+**That harness is retired** — archived 2026-08-28 (issue #236) at
+`docs/archive/harness-2026/`, statuses and all, because they were
+self-attested by the sessions that wrote the code. The capability specs
+in `docs/specs/` are the *successor artifact*, replicating the harness
+mechanics at the next level: capability IDs (EDS-1 style) play the role
+of feature IDs, each EARS criterion + example table is the `verify`
+field, the spec's definition-of-done is the evaluator's checklist, and
+its evidence matrix makes every verdict name the proof behind it — the
+part the harness only asked for on trust. What the harness proved — a
+spec agents cannot reword, per-item end-to-end verification, one item
+per session, adversarial re-checking — is exactly what §1 carries
+forward.
 
 ## 4. The agent workflow per milestone
 

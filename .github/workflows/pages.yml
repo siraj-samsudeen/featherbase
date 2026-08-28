@@ -3,7 +3,7 @@ name: Deploy Explorer to GitHub Pages
 on:
   push:
     branches: [main]
-    paths: ['site/**', 'docs/**', 'harness/features.json', 'PROGRESS.md']
+    paths: ['site/**', 'docs/**', 'PROGRESS.md']
   workflow_dispatch:
 
 permissions:

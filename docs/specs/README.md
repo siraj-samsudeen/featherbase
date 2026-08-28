@@ -10,8 +10,9 @@ user capability, each group carrying a concrete example table. Capability IDs
 (`EDS-1`, `VDT-3`) are the traceability handle: use them in commits, bugs and
 review comments.
 
-These IDs are deliberately **not** in `harness/features.json` — that file is
-frozen except for `status` flips (see `CLAUDE.md`).
+These IDs replace the old harness feature IDs. That inventory is frozen
+history at [`docs/archive/harness-2026/`](../archive/harness-2026/README.md)
+(retired 2026-08-28, issue #236); nothing here extends it.
 
 | Spec | Status | Summary |
 |---|---|---|
