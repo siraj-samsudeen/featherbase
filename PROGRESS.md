@@ -7,7 +7,7 @@ in one living doc, history in append-only logs, relationships checked by
 CI — applied to its own house, on `claude/docs-to-checks` (stacked on
 batch 1):
 
-- **The 2026 build harness retired** (#236): `harness/` → 
+- **The 2026 build harness retired** (#236): `harness/` →
   `docs/archive/harness-2026/` with a tombstone; its features.json
   statuses were self-attested and its evaluation protocol was never wired
   up. CLAUDE.md loses the features.json protocol, gains the document-set
