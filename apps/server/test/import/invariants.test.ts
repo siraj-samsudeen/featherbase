@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { test } from './pg-test'
+import { test } from '../pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { coerceRows, idPatternFor } from 'shared'
 

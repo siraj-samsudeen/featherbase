@@ -1,5 +1,5 @@
 import { describe, expect } from 'vitest'
-import { test } from './pg-test'
+import { test } from '../pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 
 // IMP-005: POST /api/table/:table:import — the bulk-import collection action.

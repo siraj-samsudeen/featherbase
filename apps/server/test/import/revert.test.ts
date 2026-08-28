@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
-import { test } from './pg-test'
+import { test } from '../pg-test'
 import type { TestClient } from 'feather-testing-postgres'
-import { planRevert } from '../src/actions/collection-import-revert'
+import { planRevert } from '../../src/actions/collection-import-revert'
 
 // Spec 0005 (import revert) — the contract, rule, and invariant layers.
 // RVT-R1: a run becomes addressable (run_id + touched rows in the log).

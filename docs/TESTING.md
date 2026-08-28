@@ -234,7 +234,7 @@ override with `RLS_TEST_URL` (the role is created by
 ## House conventions (ratified 2026-08-28, #226)
 
 **Naming.** Spec-sentence style is the standard: a name may encode the
-example table directly, the way `import-upsert.test.ts` does —
+example table directly, the way `import/upsert.test.ts` does —
 `'UPS-R2 examples: one match updates · none inserts · empty fails ·
 file-dup fails both · multi-match fails with count'` — with a spec-tier
 file prefixing the rule ID it verifies. Plain behavior tests outside the

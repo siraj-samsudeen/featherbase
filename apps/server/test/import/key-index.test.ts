@@ -1,7 +1,7 @@
 import { describe, expect } from 'vitest'
-import { test } from './pg-test'
+import { test } from '../pg-test'
 import type { TestClient } from 'feather-testing-postgres'
-import { sql } from '../src/db'
+import { sql } from '../../src/db'
 
 // #145 (ruled 2026-08-11): the match key gets an expression index on
 // (key::text) — the exact cast resolveRows compares with — the first time
