@@ -128,7 +128,12 @@ describe('tableSchemaToZod: layout columns', () => {
     ])
     expect(Object.keys(s.shape)).toEqual(['a'])
     // a value for a dropped column is accepted and simply ignored, even
-    // though the source Sub-table column was marked required
+    // though the source Sub-table column was marked required. #231 (defect,
+    // ruled 2026-08-28) did NOT move that rule here: the server strips
+    // Sub-table columns from the payload before this schema sees them, so
+    // `reqd` on a Sub-table column is enforced in the save path itself —
+    // assertRequiredChildren in apps/server/src/document.ts, pinned in
+    // apps/server/test/children.test.ts. This layer stays value-only.
     expect(s.safeParse({ items: 'whatever', a: 'x' })).toMatchObject({ success: true, data: { a: 'x' } })
   })
 })
