@@ -32,6 +32,11 @@ by this file.
 
 ## DEL-J1 — Delete an unwanted Table *(shape: sequence)*
 
+> evidence: proven — the full browser walk including the cancel branch,
+> the absent affordance on system tables, and the J1.4 tombstone;
+> self-cleaning by construction, no skip path.
+
+
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
 | J1.1 | The unwanted Table's list view, signed in as a System Manager | The manager button row contains **Delete Table** alongside Naming and Permissions, styled as the destructive action | R1 |
@@ -54,6 +59,10 @@ ends by deleting it, so re-runs meet a clean database. No skip path
 exists; this journey is the one that retires the import journeys' skips.
 
 ## DEL-J2 — Refused, unblocked, deleted *(deltas from J1 only)*
+
+> evidence: proven — the refusal is named in the dialog, the blocker is
+> removed through the API, and the retry succeeds.
+
 
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
@@ -104,6 +113,12 @@ referent — the refusal path itself proves teardown order matters.
 
 ### DEL-R1 — Who may delete · `shape: contract`
 
+> evidence: proven — a non-manager is refused whole-request and the
+> Table survives; the manager affordance renders. Caveat: affordance
+> *absence* is witnessed for system tables only, not yet for a
+> signed-in non-manager.
+
+
 Deleting a Table requires the same authority as creating one: System
 Manager. Refusal is whole-request — nothing partial, nothing logged as
 done. The UI affordance renders only for managers; its absence for
@@ -111,6 +126,12 @@ others is asserted as a positive complement (the button row contains
 exactly the earned buttons), never a bare zero-count.
 
 ### DEL-R2 — Deletion removes what creation wrote · `shape: contract`
+
+> evidence: proven — def row, column defs, physical table and its rows,
+> and its own child rows all go while the child Table's definition
+> stays; a `settings` Table sheds metadata only; a nonexistent name
+> 404s.
+
 
 The deletion operation (`DELETE /api/table_def/:name`) reverses table
 creation in one transaction: the Table's definition row, its column
@@ -128,6 +149,11 @@ referenced).
 | nonexistent name | rejected — not found | everything |
 
 ### DEL-R3 — Schema references block, and say who · `shape: rule`
+
+> evidence: proven — a Reference column blocks even with zero rows and
+> names `Table.column`; a Sub-table column blocks its row-storage
+> Table; self-references never block; system tables are refused.
+
 
 The reverse-lookup that blocks row deletion (DOC-006) applies one level
 up: if any *other* Table's schema targets this one — a Reference column
@@ -151,6 +177,11 @@ iff some Table Y ≠ X has a column with `reference_table = X` or
 
 ### DEL-R4 — The sidecar sweep · `shape: rule`
 
+> evidence: proven — Permission rows, Import Log entries and the
+> home-page link are swept while the Access Log's plain text survives,
+> over a property loop across every declared Reference → Table column.
+
+
 Everything that points at the Table through a live pointer goes with it,
 in the same transaction. "Live pointer" is defined by metadata, not by a
 hand-kept list: every column anywhere declared as `Reference → Table`
@@ -173,6 +204,10 @@ are untouched.
 
 ### DEL-R5 — Row-id series survive · `shape: rule`
 
+> evidence: proven — recreate the same Table and the ids continue past
+> the first run's, never restarting.
+
+
 Cross-ref IMP-R6: the pattern is the promise, not the number. Deleting a
 Table burns nothing and resets nothing — recreate a Table with the same
 name and its ids continue from wherever the global counter stands.
@@ -187,6 +222,10 @@ name, issued ids never repeat.
 
 ### DEL-R6 — A bound Table sheds its binding, never its source · `shape: contract`
 
+> evidence: proven — the csv-folder binding is dropped and the source
+> file stays byte-identical.
+
+
 Deleting a Table bound to an external Data Source removes the binding
 (definition + column defs + sidecars) and issues **no DDL against the
 source** — BV1 holds at deletion exactly as at creation. Because the
@@ -194,6 +233,10 @@ operation is local-only, it succeeds even when the source is
 unreachable.
 
 ### DEL-R7 — Attachments · `shape: rule`
+
+> evidence: proven — File registry rows sweep with the Table and the
+> stored bytes are gone.
+
 
 File registry rows referencing the Table are swept by R4 — which alone
 makes the bytes unreachable, since files are only ever served through a
@@ -203,11 +246,20 @@ not a data leak.
 
 ### DEL-R8 — The deletion is logged, in text · `shape: contract`
 
+> evidence: proven — the `delete_table` Access Log line is present after
+> the sweep that deliberately cannot reach it.
+
+
 Every successful deletion writes an Access Log entry — who, which
 table, when — using plain-text columns, so the record outlives its
 subject (R4 deliberately cannot reach it).
 
 ### DEL-R9 — A stale pointer gets a tombstone, not a shrug · `shape: contract`
+
+> evidence: proven — a deleted Table names who and when, a never-created
+> name stays plain, and a double burial answers with the latest;
+> witnessed in the browser at J1.4.
+
 
 *Graduated from Q2, decided by the arbiter 2026-08-04.* Asking for a
 Table that was deleted answers with the deletion itself: the not-found
@@ -232,9 +284,16 @@ Recents entries themselves are localStorage and age out on their own.
   physical table for X exists. The count of rows in every *other*
   physical table changes only by its declared pointer rows (R4) and
   child rows (R2).
+
+  > evidence: proven — zero dangling rows across every declared pointer
+  > column, zero `column_def` rows, and no physical table.
+
 - **DEL-I2 — a refusal changes nothing.** Any refused or failed
   deletion leaves every table, row count, and sidecar exactly as
   before — the operation is one transaction with no partial outcome.
+
+  > evidence: proven — every row count is identical after a blocked
+  > delete, and the UI's cancel branch leaves the list untouched.
 
 ### Hazards
 
@@ -247,6 +306,10 @@ Recents entries themselves are localStorage and age out on their own.
   Residual risk accepted at this project stage; revisit at first
   deployment. *(Typed-name confirmation was considered and declined —
   Q1, ruled 2026-08-05: the counted dialog IS the confirmation rule.)*
+
+  > evidence: proven via DEL-R1, DEL-J1, DEL-R8, DEL-R9 — every named
+  > mitigation is built and witnessed. The residual risk itself is
+  > accepted, not closed, until first deployment.
 
 ## Open questions *(arbiter: Siraj)*
 

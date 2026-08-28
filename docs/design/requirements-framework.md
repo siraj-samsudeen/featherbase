@@ -421,6 +421,9 @@ format survives review.
 
 # Part II — Worked example: Spreadsheet Import
 
+**IDs:** `IMP-J*` journeys · `IMP-R*` rules · `IMP-I*` invariants ·
+`IMP-H*` hazards · `C1` the import boundary · `Q*` questions
+
 ## The jobs
 
 **IMP-J1 — "I have a spreadsheet and no table yet."** The file becomes a
@@ -459,6 +462,16 @@ boundaries, not in this file.
 
 ## IMP-J1 — First import: file to new Table
 
+> evidence: proven via IMP-006 — the DSL walk creates the typed Table
+> from `zones.csv`
+> end to end; the drop, `.xlsx` and wrong-kind-refusal steps are
+> additionally witnessed by `IMP-006`. Hermetic since table deletion
+> (spec 0003): the create path pre-cleans through the deletion capability
+> instead of self-skipping, so it runs green on a used database, and the
+> walk still proves R7's notice when a matching Table already exists.
+> Caveat: J1.6's bad-cell branch on a fixed-type column is rule-tier only
+> — never witnessed in a browser (see IMP-R8).
+
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
 | J1.1 | Anywhere — click **Import Data** in the sidebar | The import screen with an empty drop area | |
@@ -490,6 +503,11 @@ the create path runs on every database, used or fresh.
 
 ## IMP-J2 — Append: file to existing Table *(deltas from J1 only)*
 
+> evidence: proven via IMP-010, IMP-013 — the append walk with the
+> target notice, the rehearsal before commit, and the target picker.
+> Gap at J2.3″: the added-rows notice disappears when the user picks the
+> Table by hand (see IMP-R7).
+
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
 | J2.3′ | Read the target | The matching Table **already selected**, with a visible notice naming it and saying rows will be **added** — never silently | R7 |
@@ -502,6 +520,11 @@ wizard with that Table preselected (→ R7).
 
 ## IMP-J3 — A multi-sheet workbook *(a loop, not extra steps)*
 
+> evidence: proven via IMP-010, IMP-013 — the per-sheet loop walked in
+> the browser (one sheet to a new Table, one onto an existing Table),
+> plus skip-a-sheet and drop-a-column. The empty-sheet skip is
+> unasserted.
+
 For **each populated sheet, independently**: its own card, target, and
 column grid — J1/J2 apply per card. An empty sheet is skipped without
 comment. The user can skip any sheet and drop any column. Any whole-file
@@ -511,6 +534,16 @@ results, never evaluate a whole-file predicate (see H2).
 ## The rules
 
 ### IMP-R1 — Column naming · `shape: rule`
+
+> evidence: proven via IMP-001 — property tests over the whole header
+> space: output
+> length always equals input length, every name is a valid identifier of
+> ≤ 63 chars and never reserved, and names stay distinct below the
+> truncation boundary.
+>
+> evidence IMP-R1.uniq-boundary: pinned #110 — AT the truncation
+> boundary three identical 62+-char headers still collapse to one name;
+> the uniqueness property is pinned expected-failing there.
 
 **Property:** for any header list, the output is the same length, every
 name is a valid identifier of ≤ 63 chars, and **all names are distinct**.
@@ -531,6 +564,19 @@ Examples (agreement):
 > the first randomised run. Issue pending (see matrix).
 
 ### IMP-R2 — Type inference · `shape: rule` (ordering is part of the rule)
+
+> evidence: proven via IMP-002 — the ordering table proven by example
+> and by property: totality (any column yields exactly one known type),
+> order-independence, the Int/Float/Check/Text boundaries, an entirely
+> empty column falling back to Data, and a Date that keeps its calendar
+> day in every server timezone.
+>
+> evidence IMP-R2.leading-zero: pinned #111 — a leading-zero code column
+> still infers Int and destroys the padding.
+>
+> evidence IMP-R2.16-digit: pinned #112 — 16+ digit identifiers fall
+> through `INT_SAFE_DIGITS` to the unbounded float pattern and lose
+> precision.
 
 Tested **in this order**:
 
@@ -557,12 +603,22 @@ Tested **in this order**:
 > states the intended behaviour; the matrix records the gap and the pending
 > issues.
 
-**R2.7 — ordering guard.** *Is Active* clears the R3 promotion bar exactly
-as *Region* does; it stays Check **only because the yes/no test runs before
-the repetition test**. Consistency-testable even though R3 itself is
+**IMP-R2.7 — ordering guard.** *Is Active* clears the R3 promotion bar
+exactly as *Region* does; it stays Check **only because the yes/no test runs
+before the repetition test**. Consistency-testable even though R3 itself is
 judgement-shaped.
 
+> evidence: proven via IMP-R2 — yes/no in any casing infers Check and
+> wins before Choice could, asserted as a property.
+
 ### IMP-R3 — Choice promotion · `shape: judgement`
+
+> evidence: rule-tier via IMP-008 — the agreement anchors proven at the
+> unit tier (a repeated small set reads as choices, sorted; too few
+> samples, too many distinct values, near-unique values, long or
+> multiline values all decline; a qualifying Data column becomes a
+> Choice column). No labelled corpus scores the judgement and
+> consistency is untested; the thresholds are named constants (ADR 0008).
 
 A short-text column becomes a fixed choice list when its values repeat
 enough to read as a category. The thresholds (minimum sample count, allowed
@@ -580,16 +636,34 @@ any threshold change. Agreement anchors:
 
 ### IMP-R4 — Labels keep the file's wording · `shape: rule`
 
+> evidence: proven via IMP-012, IMP-003 — `prettifyLabel` keeps the
+> file's wording lightly tidied while only the database name is
+> sanitized, and `inferTableDef` carries the original headers through as
+> labels.
+
 Only the database name is sanitized; the label stays the file's words,
 lightly tidied — *Area Sq Km*, never *area_sq_km*. First four columns show
 in the list view by default; a default, not a judgement.
 
 ### IMP-R5 — Table naming · `shape: rule`
 
+> evidence: proven via IMP-003 — `tableNameFromFile` derives **Zones**
+> from `zones.csv`; the wizard's edit-before-import is walked in IMP-J1.
+
 `zones.csv` → **Zones**, editable before import; everything downstream
 follows the *final* name (→ R6).
 
 ### IMP-R6 — Row identity · `shape: rule`
+
+> evidence IMP-R6.shape: proven via IMP-003, IMP-J1, NAM-001 —
+> `inferTableDef` defaults an imported Table to a readable series, the
+> browser walk asserts the id *shape* and never a value, and the builder
+> derives the prefix and the digit-count preview from the Table name.
+>
+> evidence IMP-R6.follows-final-name: gap #114 — the wizard's rename does
+> not re-derive the series, so ids keep the parse-time prefix. Per the
+> polarity rule the journey asserts only the neutral shape and makes NO
+> evidence claim for this half until #114 is fixed.
 
 | Table name | Series shape |
 |---|---|
@@ -601,6 +675,15 @@ survives Table deletion; verify the shape, never a value. *(The file's own
 reference numbers → Q4.)*
 
 ### IMP-R7 — Target matching · `shape: judgement`
+
+> evidence: rule-tier via IMP-009, IMP-012, IMP-010 — the behavioural
+> anchors proven at the unit tier (perfect score with weak coverage and
+> no name overlap ⇒ no auto-match; full coverage auto-matches under a
+> junk sheet name; matching names rescue a weak-coverage match) plus the
+> list-view entry variant in the browser. No labelled corpus scores the
+> judgement; thresholds are named constants (ADR 0008). Gap at J2.3″:
+> the added-rows notice disappears when the user picks the target by
+> hand.
 
 Match scoring and coverage thresholds are named-constant bets (§4).
 The behavioural anchors are firm:
@@ -614,6 +697,12 @@ The behavioural anchors are firm:
 
 ### IMP-R8 — Cell coercion · `shape: rule`
 
+> evidence: rule-tier via IMP-004, IMP-005 — coercion per column type,
+> empty cells absent rather than zero or empty string, fully blank rows
+> dropped, and a bad row failing by index while the good rows still
+> land, all proven below the browser. Never witnessed in a browser: the
+> J1.6 bad-cell branch on a fixed-type column.
+
 | The incoming cell / row | → |
 |---|---|
 | Clean | Coerced to the column type; dates keep their calendar day in every timezone |
@@ -622,6 +711,15 @@ The behavioural anchors are firm:
 | Empty cell in a normal row | Absent — not zero, not empty string |
 
 ### IMP-R9 — Rehearsal · `shape: contract`
+
+> evidence: gap — the *boundary's* `dry_run` is proven (IMP-005:
+> validates every row, writes nothing, flags existing-name conflicts and
+> in-file duplicates, still requires create permission), but R9's two
+> standing obligations are unmet. The first-time journey offers no
+> rehearsal, so J1 commits blind. And the wizard chunks its dry runs, so
+> a duplicate at rows 10 and 550 is scoped per chunk rather than
+> file-wide — reported from reading the code, never re-executed;
+> upsert's pre-chunk duplicate gate (UPS-R2) closes the keyed case only.
 
 Validate a file against the target with zero writes: same per-row error
 report as a real run, no rows, no history entry (→ I3). Must exist on
@@ -632,6 +730,12 @@ suspected defect).
 
 ### IMP-R10 — The import record · `shape: contract`
 
+> evidence: proven via IMP-005 — every real run writes its Import Log
+> row (target, file, counts, table-created) and dry runs write none; a
+> run without context still logs bare counts; import requires create
+> permission and refusal is whole-request. Caveat: "any abort still
+> writes the record of what already landed" is unproven — see IMP-H2.
+
 Every real run writes **one** history entry (→ I2): target, file name,
 inserted, failed, whether the Table was created. Rehearsals write nothing.
 Import requires the same permission as creating rows by hand; refusal is
@@ -639,6 +743,14 @@ whole-request, and **any abort still writes the record of what already
 landed** (→ H2).
 
 ### C1 — The import boundary · `shape: contract`
+
+> evidence: proven via IMP-005 — insert semantics through the full
+> lifecycle, `dry_run`, whole-request 403 with nothing inserted,
+> argument validation, malformed rows reported rather than crashed on,
+> settings and sub-table kinds refused, and registration as a write
+> effect (GET refused). Caveat: rehearsal scope is per request, so the
+> wizard's chunked dry runs cannot see a file-wide duplicate — see
+> IMP-R9.
 
 `POST /api/table/:table:import` has consumers beyond the wizard, so its
 behaviours are requirements independent of any screen: insert semantics;
@@ -650,6 +762,10 @@ sub-table kinds are refused; the operation is registered as a write effect
 
 ### IMP-R11 — Header-only files create the empty Table · `shape: contract`
 
+> evidence: gap — decided 2026-08-04, not yet built: a header-only file
+> must create the empty Table with its inferred columns and log the run
+> with 0 inserted.
+
 *Decided 2026-08-04 (was Q1).* A file with headers and zero data rows
 creates the Table with its inferred columns and no rows — schema-first
 template workflows are legitimate. The Import Log records the run with
@@ -657,39 +773,63 @@ template workflows are legitimate. The Import Log records the run with
 
 ### IMP-R12 — Re-import is an upsert on a user-mapped key · `shape: contract`
 
+> evidence: proven via UPS-R1, UPS-R2 — built and walked as
+> [spec 0004](../specs/0004-import-upsert.md) on 2026-08-05, which
+> carries the rule-by-rule evidence; the match key is user-mapped, the
+> row identifier is mappable, and the log records updated / inserted /
+> failed separately.
+
 *Decided 2026-08-04 (was Q2 + Q4).* In the mapping step the user may mark
 one file column as the **match key** — including mapping it onto the row
 identifier, which the engine already accepts for direct sends. On import,
 rows matching an existing key **update**; the rest insert; the log records
 updated/inserted/failed separately. "I'll just import the corrected file
-again" then does what everyone expects. *Not yet built.*
+again" then does what everyone expects.
 
 ### IMP-R13 — An import can be undone · `shape: contract`
+
+> evidence: proven via RVT-R1, RVT-R2 — built and walked run-scoped as
+> [spec 0005](../specs/0005-import-revert.md) on 2026-08-11: the log
+> records the rows each run wrote, and a run's entry offers a one-click
+> reverse that deletes the inserts and restores the updates by replaying
+> the version trail. An undo wider than one import run stays a framework
+> ambition with no evidence claim.
 
 *Decided 2026-08-04 (was Q5).* The Import Log records the **ids of the
 rows each run inserted**, and a run's history entry offers a one-click
 reverse that deletes exactly those rows — and, for R12 upsert runs,
 **restores updated rows by replaying the version trail** (Q4 of spec
 0004, ruled 2026-08-05).
-Closes the wrong-table trap directly. *Not yet built.*
+Closes the wrong-table trap directly.
 
 ### Invariants · `shape: invariant`
 
 - **IMP-I1 — reconciliation.** For every run: rows in file = inserted +
   failed + dropped-blank, and every failure names the **true spreadsheet
   row** — a blank row above an error must not shift the blame onto an
-  innocent neighbour. *(Re-executed 2026-08-03: the arithmetic holds; the
-  row-number half is a confirmed defect — #115, pinned.)*
+  innocent neighbour.
+
+  > evidence: proven — both halves. The arithmetic closes on a mixed
+  > run, and the row-number half is no longer a defect: #115 was fixed
+  > (`coerceRows` carries each survivor's source index) and its
+  > expected-failing pin flipped to a plain test in the fixing change.
+
 - **IMP-I2 — a chunked run reconciles.** The review demanded "one run, one
   record" and called per-chunk log rows a defect; the log schema's
   `part`/`parts` columns show they are design intent, so the storage
   invariant is restated with evidence: **one log row per part, every part
   present exactly once, and the parts' sums equal the run's totals.**
   Presenting a run as a single history entry is a UI grouping concern.
-  *(Proven 2026-08-03.)*
+
+  > evidence: proven — one log row per part, every part present exactly
+  > once, and the parts' sums equal the run's totals.
+
 - **IMP-I3 — rehearsal writes nothing.** No rows, no history, no series
   ids burned — the first real row after a rehearsal is the first of its
-  series. *(All three proven 2026-08-03.)*
+  series.
+
+  > evidence: proven — all three halves: no rows, no history entry, and
+  > no series ids burned.
 
 ### Hazards
 
@@ -697,15 +837,28 @@ Closes the wrong-table trap directly. *Not yet built.*
   be neither stopped nor undone, and re-running the corrected file
   duplicates everything. *Resolution decided 2026-08-04:* R12 (upsert)
   + R13 (undo) + table deletion (hermeticity decision) disarm all three
-  legs. The hazard stays listed until they are built and proven.
+  legs.
+
+  > evidence: proven via DEL-J1, UPS-J1, RVT-J1 — all three legs are
+  > disarmed and each is walked in its own spec: table deletion
+  > (0003, 2026-08-04), upsert (0004 / IMP-R12, 2026-08-05) and
+  > run-scoped revert (0005 / IMP-R13, 2026-08-11). Kept in the register
+  > as the compound this feature must not re-acquire.
+
 - **IMP-H2 — abort without a record.** A permission failure mid-import is
   reported to leave already-inserted rows behind with **no history entry**
   — the one failure mode guaranteed to strand rows is the one guaranteed to
-  hide them. *(Reported; not yet re-executed.)*
+  hide them.
+
+  > evidence: gap — reported from reading the code, never re-executed.
+
 - **IMP-H3 — whole-file predicates over per-sheet behaviour.** Any control
   that validates or summarises must aggregate per-sheet results; a
   whole-file predicate silently skips one sheet's problems in a mixed
   workbook. Distinct cause and fix from H2 — split on review feedback.
+
+  > evidence: gap — reported, never re-executed; distinct cause and fix
+  > from H2.
 
 ## Open questions *(arbiter: Siraj)*
 

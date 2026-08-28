@@ -30,6 +30,17 @@ UPS-R2's example table and property, not in the files.
 
 ## UPS-J1 — Re-import the corrected file *(shape: sequence)*
 
+> evidence: proven — the full walk: list-view entry preselects, the key
+> control is labelled and keyboard-reachable, preview counts appear
+> before commit, the empty-cells choice appears only with a key and
+> defaults to keep, rehearse writes nothing, completion counts are
+> separate, the Table is still 8 rows with ids kept, the log carries
+> updated / inserted, and R5's suggestion returns on re-entry. Caveat:
+> J1.4's per-**row** actions are witnessed at the contract tier
+> (`dry_run`'s `actions[]`) — the wizard shows action counts plus
+> per-row failures, not a per-row action list.
+
+
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
 | J1.1 | The existing Table's list view → **Import** | The wizard with the Table preselected (IMP-R7's entry variant, unchanged) | |
@@ -53,6 +64,13 @@ setup imports `zones.csv` under a journey-owned name, the journey upserts
 `zones-v2.csv`, teardown deletes the Table. No skip path.
 
 ## UPS-J2 — The file's codes become the ids *(deltas from the import journeys)*
+
+> evidence: proven — the append path: Row ID accepts the mapping, REF
+> codes land verbatim, a collision fails named by its true row, and the
+> series continues for the code-less row; the branch's second half turns
+> the collision into an in-place update with Row ID as the match key.
+> The create path (`field:` naming) pre-existed and was not re-walked.
+
 
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
@@ -94,6 +112,14 @@ as match key: it is an update — that is UPS-J1.
 
 ### UPS-R1 — The import boundary learns update · `shape: contract`
 
+> evidence: proven — keyless runs stay byte-for-byte; keyed runs count
+> separately in the response and the log; updates are versioned through
+> the full lifecycle; whole-request refusal for create-only, write-only
+> and own-rows callers, evaluated per matched row before any write;
+> action-aware `dry_run` writes and logs nothing; argument validation
+> covers a bad key, orphan `empty_cells`, and `clear` without `columns`.
+
+
 `POST /api/table/:table:import` gains an optional `key_column`. Enumerated
 behaviours (no example table — the rows would restate the rule):
 
@@ -109,6 +135,14 @@ behaviours (no example table — the rows would restate the rule):
 
 ### UPS-R2 — Match resolution · `shape: rule`
 
+> evidence: proven — the example table row for row, plus a fast-check
+> property over hostile files via `dry_run` (pointwise and arithmetic).
+> Resolution is against the database, not the chunk, proven across two
+> requests; the wizard's pre-chunk duplicate gate is proven by an
+> exhaustive 1024-file sweep (fast-check in web is blocked on the
+> git-dep lockfile, so the sweep is deterministic instead).
+
+
 **Property:** for any file and database state, every non-blank file row
 resolves to exactly one action, and
 `|file| = updated + inserted + failed + dropped-blank` (extends IMP-I1).
@@ -122,6 +156,14 @@ resolves to exactly one action, and
 | matches multiple existing rows | **failed**, named, with the match count *(ruled 2026-08-05)* | updating N rows from one line is H1's mass-overwrite in miniature |
 
 ### UPS-R3 — What an update touches · `shape: rule`
+
+> evidence: proven — examples: unmapped columns survive, new values
+> land, empty+keep survives, empty+clear clears (never-mapped columns
+> stay out of reach); a model-based property over mapped/absent ×
+> keep/clear; an id change via upsert is refused loudly, naming the row.
+> Note: `clear` required a `columns` request argument (the run's mapped
+> set) that the spec never enumerated — flagged in the retrospective.
+
 
 Only **mapped** columns change; unmapped database columns are untouched.
 Within a mapped column, empty-cell semantics are the **importing user's
@@ -141,6 +183,11 @@ updates that row; changing an id via upsert does not exist.
 
 ### UPS-R4 — The file's own codes as ids · `shape: contract`
 
+> evidence: proven — supplied ids land verbatim (charset including
+> slash and space), the series is not consumed, mixing continues the
+> series, and the collision branches both ways.
+
+
 The mapping step may target the **Row ID** (the engine already accepts
 explicit ids for direct sends — this closes the wizard's gap, was Q4 of
 the import spec). Ids arrive verbatim (subject to the id charset the
@@ -150,6 +197,13 @@ allowed — the series simply continues for unsupplied rows (IMP-R6: the
 pattern is the promise).
 
 ### UPS-R5 — The key is remembered as a suggestion · `shape: contract`
+
+> evidence: proven — a keyed run stores `key_column` and `empty_cells`
+> in its log rows while a keyless run stores nothing and does not erase
+> the memory; the wizard pre-fills the newest keyed pair as a visible
+> suggestion, confirmed in a fresh visit; with no Import Log read grant
+> there is no suggestion, and it fails soft.
+
 
 *Ruled 2026-08-05 (was Q5).* The match key (and the empty-cells choice)
 used on a Table's last import is stored per Table and **pre-filled as a
@@ -161,12 +215,31 @@ with no key chosen stores nothing.
 
 - **UPS-I1 — reconciliation, extended.** `|file| = updated + inserted +
   failed + dropped-blank`, every failure named by true spreadsheet row
-  (inherits #115's fix when it lands).
+  (inherits IMP-I1's row numbering).
+
+  > evidence: proven at request scope — `|request| = updated + inserted
+  > + failed` with failures named by index, mixed-action runs included;
+  > dropped-blank stays a wizard-tier term (`coerceRows`). True
+  > spreadsheet-row naming now holds outright: #115 was fixed and its
+  > pin flipped (see IMP-I1).
+
 - **UPS-I2 — an upsert never deletes.** Database rows absent from the
   file are untouched, always; there is no "sync" mode.
+
+  > evidence: proven — the row count is unchanged and absent rows are
+  > byte-identical (`updated_at` included) after a partial-file upsert;
+  > no sync mode exists.
+
 - **UPS-I3 — idempotence.** Importing the same file with the same key
   twice leaves the database identical to once (second run: all matched,
   zero inserted, zero value changes).
+
+  > evidence: proven — the second identical run matches everything,
+  > inserts nothing, fails nothing, leaves values identical, and records
+  > NOTHING in the version trail (`recordVersion` skips no-op updates),
+  > so zero value changes is proven structurally. Concurrent upserts
+  > serialize on the row lock — engine behaviour, witnessed rather than
+  > re-specified.
 
 ### Hazards
 
@@ -181,6 +254,14 @@ with no key chosen stores nothing.
   `CONFIRM_UPDATES_OVER` (20) rows** demands the number be **typed
   back** before the import proceeds: the preview count is passive and
   easy to click past; typing 1,200 is not.
+
+  > evidence: proven — closed 2026-08-11. The fourth mitigation shipped
+  > as [spec 0005](0005-import-revert.md)'s run-scoped revert (RVT-H1);
+  > the general IMP-R13 undo remains a framework concern, but this
+  > hazard's import-run scope is fully disarmed. The typed-back
+  > confirmation above `CONFIRM_UPDATES_OVER` is walked in the browser:
+  > the guard blocks with the seeded values intact, a wrong number keeps
+  > it disabled, and the exact number proceeds.
 
 ## Open questions *(arbiter: Siraj)*
 
