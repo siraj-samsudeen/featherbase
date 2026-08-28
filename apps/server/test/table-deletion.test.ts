@@ -1,5 +1,6 @@
 // Table deletion — docs/specs/0003-table-deletion.md. Test titles quote
-// spec IDs (static traceability); the evidence CSV carries the verdicts.
+// spec IDs (static traceability); the spec's own `> evidence:` lines carry
+// the verdicts, and tools/check-evidence.mjs joins the two.
 import { afterAll, beforeAll, describe, expect } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

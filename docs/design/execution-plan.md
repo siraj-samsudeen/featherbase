@@ -132,8 +132,9 @@ in `docs/specs/` are the *successor artifact*, replicating the harness
 mechanics at the next level: capability IDs (EDS-1 style) play the role
 of feature IDs, each EARS criterion + example table is the `verify`
 field, the spec's definition-of-done is the evaluator's checklist, and
-its evidence matrix makes every verdict name the proof behind it — the
-part the harness only asked for on trust. What the harness proved — a
+its evidence verdicts make every claim name the proof behind it — checked
+in CI by `tools/check-evidence.mjs` rather than taken on trust, which is
+the part the harness only ever asked for. What the harness proved — a
 spec agents cannot reword, per-item end-to-end verification, one item
 per session, adversarial re-checking — is exactly what §1 carries
 forward.

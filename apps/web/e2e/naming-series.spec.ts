@@ -7,7 +7,7 @@ const DT = 'Naming Demo'
 // builder's own derivation — the prefix it composes from the Table name, the
 // preview it renders for a digit count, and the fact that the pattern the UI
 // composed is the one that reaches the server. Cited as evidence for
-// IMP-R6.shape in docs/design/evidence/spreadsheet-import.csv.
+// IMP-R6.shape in docs/design/requirements-framework.md (Part II).
 
 test('NAM-001: the builder derives the series prefix and preview from the Table name', async ({
   page,

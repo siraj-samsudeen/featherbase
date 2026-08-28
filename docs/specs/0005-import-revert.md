@@ -2,7 +2,8 @@
 
 **IDs:** `RVT-J*` journeys · `RVT-R*` rules · `RVT-I*` invariants ·
 `RVT-H*` hazards · `Q*` questions
-**Evidence:** `docs/specs/evidence/import-revert.csv` (never status in this file)
+**Evidence:** a `> evidence:` verdict under each obligation below;
+linkage checked by `tools/check-evidence.mjs`
 **Provenance:** owner decision 2026-08-11 — UPS-H1's fourth mitigation
 ("undo covers updates via the version trail"), pulled forward for the
 first real-data deployment. Three rulings made 2026-08-11, before
@@ -42,7 +43,6 @@ names that outcome rather than pretending.
 > completion-panel variant renders the SAME `RevertControl` but was not
 > separately walked — single-sheet imports auto-navigate away, which is
 > the ratified IMP/UPS walk.
-
 
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
@@ -97,7 +97,6 @@ variant, reverts, teardown deletes the Table. No skip path.
 > version row was born in that request); dry runs record nothing, so
 > IMP-I3 is intact.
 
-
 The import boundary (`POST /api/table/:table:import`) learns to record,
 per part row in the Import Log:
 
@@ -115,7 +114,6 @@ log rows have none and are simply not revertable — no backfill.
 > evidence: proven — `dry_run` reports the plan and writes nothing; an
 > unknown `run_id` 404s; an override naming an unwritten row 417s;
 > resolution spans all of a run's parts; `reverted_at` is recorded.
-
 
 `POST /api/table/:table:import-revert` with `{ run_id }`, plus optional
 `{ dry_run: true }` and `{ override: [row ids] }`. Behaviours:
@@ -141,7 +139,6 @@ log rows have none and are simply not revertable — no backfill.
 > today, so that state is unreachable end to end and is proven against
 > the exported pure `planRevert`; flagged as a discovered gap in the PR.
 
-
 **Property:** after reverting an unedited-since run on a `track_changes`
 Table, every updated row's mapped columns equal their pre-import values,
 and columns the import never touched are untouched.
@@ -161,7 +158,6 @@ and columns the import never touched are untouched.
 > destroyed edit is itself versioned; the concurrent-edit window is
 > closed by `expectUpdatedAt` / `updated_at` optimistic stamps at write
 > time.
-
 
 *Ruled 2026-08-11.* A touched row's recorded `updated_at` stamp is
 compared to its current value: equal → the import was the last writer,
@@ -185,7 +181,6 @@ revert proceeds; different → someone edited after the import →
 > proof rides inside the browser walk and RVT-R4's override case rather
 > than a test of its own.
 
-
 The wizard's completion report offers "Revert these K anyway" ONLY after
 a revert reported skips, listing the K rows by id and reason; choosing it
 issues a second `:import-revert` with `override` naming exactly those
@@ -197,7 +192,6 @@ rows. There is no "force everything" flag on the first pass.
 > deletes is refused whole (403) with nothing written, the restorable
 > rows included; write-scope restores are exercised throughout by admin
 > runs.
-
 
 Restores check **write** per row; deletes of inserted rows check
 **delete**; own-rows scoping applies per row (against the row's current

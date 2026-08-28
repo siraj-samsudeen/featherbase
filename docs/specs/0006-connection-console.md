@@ -2,7 +2,8 @@
 
 **IDs:** `CONN-J*` journeys · `CONN-R*` rules · `CONN-I*` invariants ·
 `CONN-H*` hazards · `Q*` questions
-**Evidence:** `docs/specs/evidence/connection-console.csv` (never status in this file)
+**Evidence:** a `> evidence:` verdict under each obligation below;
+linkage checked by `tools/check-evidence.mjs`
 **Provenance:** owner session 2026-08-11 (VMS/MySQL connection attempt).
 The owner ratified five requirements after a three-variant UI prototype
 (branch `claude/vms-database-connection-test-e19799`; the "connection
@@ -43,7 +44,6 @@ CSV folder are out of scope here (different credential shapes, CONN-R3).
 > `claude/vms-database-connection-test-e19799` is a mock and is not
 > evidence.
 
-
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
 | J1.1 | Admin, "Connect a data source", signed in as System Manager | One page: engine selector, source name, credential form, and a **Live checks** panel listing the five phases, all pending | R3, R4 |
@@ -71,7 +71,6 @@ a pass.
 ## CONN-J2 — Broken source: see it, fix it, prove it *(deltas from J1 only)*
 
 > evidence: gap — spec'd 2026-08-11; depends on R8.
-
 
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|

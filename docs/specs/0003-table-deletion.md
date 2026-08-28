@@ -2,7 +2,8 @@
 
 **IDs:** `DEL-J*` journeys · `DEL-R*` rules · `DEL-I*` invariants ·
 `DEL-H*` hazards · `Q*` questions
-**Evidence:** `docs/specs/evidence/table-deletion.csv` (never status in this file)
+**Evidence:** a `> evidence:` verdict under each obligation below;
+linkage checked by `tools/check-evidence.mjs`
 **Provenance:** owner decision 2026-08-04 (hermeticity, adoption item 9 in
 `docs/design/requirements-framework.md`); GitHub issue #118. First
 greenfield trial of the journey-spec framework.
@@ -36,7 +37,6 @@ by this file.
 > the absent affordance on system tables, and the J1.4 tombstone;
 > self-cleaning by construction, no skip path.
 
-
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
 | J1.1 | The unwanted Table's list view, signed in as a System Manager | The manager button row contains **Delete Table** alongside Naming and Permissions, styled as the destructive action | R1 |
@@ -62,7 +62,6 @@ exists; this journey is the one that retires the import journeys' skips.
 
 > evidence: proven — the refusal is named in the dialog, the blocker is
 > removed through the API, and the retry succeeds.
-
 
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
@@ -118,7 +117,6 @@ referent — the refusal path itself proves teardown order matters.
 > *absence* is witnessed for system tables only, not yet for a
 > signed-in non-manager.
 
-
 Deleting a Table requires the same authority as creating one: System
 Manager. Refusal is whole-request — nothing partial, nothing logged as
 done. The UI affordance renders only for managers; its absence for
@@ -131,7 +129,6 @@ exactly the earned buttons), never a bare zero-count.
 > and its own child rows all go while the child Table's definition
 > stays; a `settings` Table sheds metadata only; a nonexistent name
 > 404s.
-
 
 The deletion operation (`DELETE /api/table_def/:name`) reverses table
 creation in one transaction: the Table's definition row, its column
@@ -153,7 +150,6 @@ referenced).
 > evidence: proven — a Reference column blocks even with zero rows and
 > names `Table.column`; a Sub-table column blocks its row-storage
 > Table; self-references never block; system tables are refused.
-
 
 The reverse-lookup that blocks row deletion (DOC-006) applies one level
 up: if any *other* Table's schema targets this one — a Reference column
@@ -181,7 +177,6 @@ iff some Table Y ≠ X has a column with `reference_table = X` or
 > home-page link are swept while the Access Log's plain text survives,
 > over a property loop across every declared Reference → Table column.
 
-
 Everything that points at the Table through a live pointer goes with it,
 in the same transaction. "Live pointer" is defined by metadata, not by a
 hand-kept list: every column anywhere declared as `Reference → Table`
@@ -207,7 +202,6 @@ are untouched.
 > evidence: proven — recreate the same Table and the ids continue past
 > the first run's, never restarting.
 
-
 Cross-ref IMP-R6: the pattern is the promise, not the number. Deleting a
 Table burns nothing and resets nothing — recreate a Table with the same
 name and its ids continue from wherever the global counter stands.
@@ -225,7 +219,6 @@ name, issued ids never repeat.
 > evidence: proven — the csv-folder binding is dropped and the source
 > file stays byte-identical.
 
-
 Deleting a Table bound to an external Data Source removes the binding
 (definition + column defs + sidecars) and issues **no DDL against the
 source** — BV1 holds at deletion exactly as at creation. Because the
@@ -236,7 +229,6 @@ unreachable.
 
 > evidence: proven — File registry rows sweep with the Table and the
 > stored bytes are gone.
-
 
 File registry rows referencing the Table are swept by R4 — which alone
 makes the bytes unreachable, since files are only ever served through a
@@ -249,7 +241,6 @@ not a data leak.
 > evidence: proven — the `delete_table` Access Log line is present after
 > the sweep that deliberately cannot reach it.
 
-
 Every successful deletion writes an Access Log entry — who, which
 table, when — using plain-text columns, so the record outlives its
 subject (R4 deliberately cannot reach it).
@@ -259,7 +250,6 @@ subject (R4 deliberately cannot reach it).
 > evidence: proven — a deleted Table names who and when, a never-created
 > name stays plain, and a double burial answers with the latest;
 > witnessed in the browser at J1.4.
-
 
 *Graduated from Q2, decided by the arbiter 2026-08-04.* Asking for a
 Table that was deleted answers with the deletion itself: the not-found

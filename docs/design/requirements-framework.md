@@ -58,7 +58,7 @@ may need supporting strategies beside its primary one.
 > **Why this is not academic.** Applying the shapes lens to this one feature
 > surfaced eight defects in code whose every inventory entry reads
 > `passing`. Three were re-confirmed by direct execution while writing this
-> document (Part II, coverage matrix). None is a sequence defect; browser
+> document — see Part II's verdicts. None is a sequence defect; browser
 > tests are an inefficient, incomplete way to explore these input spaces —
 > property and boundary tests are the right primary evidence.
 
@@ -236,7 +236,7 @@ edges.
 > `assertHas` count — and is now documented in the DSL's own README). And
 > the same vocabulary has an RTL adapter, so a sequence can be exercised at
 > the integration tier without rewriting — a cheaper path for promoting
-> "never witnessed in a browser" matrix rows. The verbs this document
+> "never witnessed in a browser" verdicts. The verbs this document
 > originally flagged as missing shipped upstream in 0.2.0 — `upload(label,
 > path)` for file inputs, `dropFile(selector, path)` for drop areas, and
 > the form-state assertion family, making J1.3 and J1.8 fully expressible.
@@ -261,25 +261,47 @@ register, no row owns them and no review sees them.
 answered, the answer graduates into a rule or step and the question is
 removed (feather-spec's protocol).
 
-**Coverage matrix** — the only overlay, never woven into the spec body.
-Rows are journeys, rules, invariants, hazards, questions; columns are
-shape, proof (tier + file), and verdict. Three integrity mechanisms:
-**the test title is the join key** (a test named `IMP-R1: …` links itself;
-CI failures name the requirement at risk) — this is **static
-traceability**, a claim of linkage, never execution evidence: whether the
-test ran, passed, or skipped is stamped separately; **staleness stamps** (the matrix
-states the commit it was verified against — an unstamped row is a
-hypothesis. There is **no
-automatic precedence between artifacts** — approved requirements and
-decisions define intended behaviour; code is the current implementation;
-tests are verification claims; execution results are evidence; an observed
-undocumented behaviour is a finding. When artifacts disagree, an agent
-classifies the discrepancy — implementation defect, incorrect test, stale
-requirement, unresolved product decision, or environmental failure — and
-never lets code or tests silently overrule approved intent); and **skip ≠ pass** (every
+**Evidence verdict** — one line per obligation, sitting under the
+obligation it judges:
+
+```markdown
+> evidence: proven — <what was executed>
+> evidence: rule-tier — <what the specified tier never witnessed>
+> evidence: gap — <what is missing>
+> evidence: pinned #110 — <the defect the expected-failing test pins>
+> evidence: proven via IMP-010 — <when the proving title doesn't quote the ID>
+```
+
+This layer was a CSV beside the spec until 2026-08-28 (issue #235). It
+was a join table between specs and tests, and §8's *derive, don't
+maintain* applies to it as much as to anything else: its file-path links
+made moving a test a breaking change, and its date stamps drifted while
+the code moved underneath them. So the judgment came into the spec —
+where a reader is already standing — and the **linkage became a CI
+check**, `tools/check-evidence.mjs`, which re-derives it from the spec
+headings and the test titles on every run. Grammar and status vocabulary:
+`.claude/skills/journey-spec/references/evidence-schema.md`.
+
+Three integrity mechanisms survive the move, now enforced rather than
+asserted. **The test title is the join key** (a test named `IMP-R1: …`
+links itself; CI failures name the requirement at risk) — this is
+**static traceability**, a claim of linkage, never execution evidence:
+that a test exists and names the rule is all it proves, and a `proven`
+verdict with no such title now fails the build. **Freshness is derived,
+not stamped** — the verdict's date is its commit's, and there is no
+unstamped-row hypothesis left to keep honest. And **skip ≠ pass** (every
 journey test states its isolation strategy; a skipped test reports as
-distinct from a passing one — this feature's golden-path e2e currently
-skips itself on any database that has run it once, and reads green).
+distinct from a passing one — which is why the import journeys stopped
+self-skipping once table deletion shipped).
+
+There is **no automatic precedence between artifacts** — approved
+requirements and decisions define intended behaviour; code is the current
+implementation; tests are verification claims; execution results are
+evidence; an observed undocumented behaviour is a finding. When artifacts
+disagree, an agent classifies the discrepancy — implementation defect,
+incorrect test, stale requirement, unresolved product decision, or
+environmental failure — and never lets code or tests silently overrule
+approved intent.
 
 ## 7. Lenses, not seats
 
@@ -293,11 +315,11 @@ paths* over the same document:
 | Reader | Reads | Gets |
 |---|---|---|
 | **Business owner** | Job, fixture, journeys (skipping branches), example tables | Sign-off in minutes, in their own vocabulary |
-| **Product manager** | Journey list, open questions, hazards, matrix | What's undecided and who owes the answer; proven vs claimed |
+| **Product manager** | Journey list, open questions, hazards, evidence verdicts | What's undecided and who owes the answer; proven vs claimed |
 | **Developer** | Rules with shapes, contracts, invariants | Unambiguous decisions; which test layer proves each |
 | **Author agent** | Rules + journeys + fixture | What to build and where the new test goes |
 | **Reviewer agent** | Negative space, polarity tags, hazards | A statement of what must *not* be true — independent of the author's tests. An agent judging its own tests passes them; the reviewer needs the opposite document, which is the structural argument for keeping spec and tests separate |
-| **QA / test architect** | Shape tags, coverage policy, matrix | Whether the suite proves anything — adequacy, not counts |
+| **QA / test architect** | Shape tags, coverage policy, evidence verdicts | Whether the suite proves anything — adequacy, not counts |
 | **Domain SME** | Judgement rules, thresholds, corpus | The bets nobody else can make |
 | **Decision owner** | Open questions naming them | Resolution — the one contribution that unblocks everything else |
 
@@ -321,7 +343,9 @@ not a review), security (a scoped gate at file parsing and permissions).
   a requirement — it has three fates (ratified, filed as a defect, raised as
   an open question) and choosing is a human act.
 - **Derive, don't maintain.** Every trace link comes from an artifact that
-  already has to be correct: test titles, the generated matrix, git diffs.
+  already has to be correct: test titles, spec headings, git diffs. The
+  evidence layer is the standing example — a hand-kept CSV of links and
+  stamps, replaced by a checker that re-derives both (§6).
   Hand-maintained sidecars rot.
 
 ## 9. What "coverage" may honestly mean
@@ -369,7 +393,8 @@ document agents don't read):
   rule names its address (`DELETE /api/table_def/:name`) — the route is the
   contract's identity, not implementation detail.
 - **Status woven into the spec body** — the spec says what *should* be
-  true; the matrix says what *is proven*, stamped with when.
+  true; the `> evidence:` verdict says what *is proven*, and git says
+  when.
 - **Hand-written "actual" columns** — actual is the test run's output.
 - **Restatements** — the journey is told once; everything else is a delta.
 - **Committee seats and published percentages** — §7 and §9.
@@ -393,13 +418,14 @@ what makes one document serve the whole lifecycle:
 - **Freshness is derived, not maintained.** Screenshots are produced only
   by a passing journey test, so a missing or stale shot means the walk has
   not been proven on this commit — the same staleness discipline as the
-  matrix (§6). Shots are committed, so a PR that changes the UI shows
+  evidence verdicts (§6). Shots are committed, so a PR that changes the
+  UI shows
   screenshot diffs next to code diffs: change-impact for the eyes.
 
 Both standing rules survive intact. The direction rule (§8): test runs
 supply *assets only* — prose flows spec → manual, never test → spec. The
 lens rule (§7): the manual is the **end-user lens** rendered from the
-journeys — imperative voice, no rule IDs, no gaps, no matrix — while the
+journeys — imperative voice, no rule IDs, no gaps, no verdicts — while the
 spec keeps its other audiences.
 
 Caveats priced in up front: fixed viewport and theme per snap; dynamic
@@ -561,7 +587,7 @@ Examples (agreement):
 
 > The last row is a live defect: today all three collapse to one name —
 > confirmed by execution 2026-08-03; the uniqueness property catches it on
-> the first randomised run. Issue pending (see matrix).
+> the first randomised run — pinned #110 (see R1's verdict).
 
 ### IMP-R2 — Type inference · `shape: rule` (ordering is part of the rule)
 
@@ -600,8 +626,8 @@ Tested **in this order**:
 
 > Both rows are live defects today (Int and Float respectively; both
 > confirmed by execution 2026-08-03, precision loss observable). The spec
-> states the intended behaviour; the matrix records the gap and the pending
-> issues.
+> states the intended behaviour; R2's verdicts record the pins (#111,
+> #112).
 
 **IMP-R2.7 — ordering guard.** *Is Active* clears the R3 promotion bar
 exactly as *Region* does; it stays Check **only because the yes/no test runs
@@ -725,8 +751,8 @@ Validate a file against the target with zero writes: same per-row error
 report as a real run, no rows, no history entry (→ I3). Must exist on
 **both** journeys — the first-time user (J1) is exactly the one who commits
 blind. Rehearsal must evaluate the **whole file** in one scope: a duplicate
-at rows 10 and 550 is one conflict, not two clean chunks (→ matrix,
-suspected defect).
+at rows 10 and 550 is one conflict, not two clean chunks (→ R9's
+verdict, a standing gap).
 
 ### IMP-R10 — The import record · `shape: contract`
 
@@ -872,32 +898,30 @@ Q5 → R13 (undo via row-identity logging). Per the change protocol, the
 answers now live as rules and the questions are removed; only Q3 remains
 open.
 
-## Coverage matrix
+## Reading the evidence
 
-**Verified against:** worktree at `ea821f8`, 2026-08-03. Tiers: `unit`
-(pure logic) · `server` (real HTTP + Postgres) · `e2e` (Playwright).
-Current tests carry legacy `IMP-001…013` titles; the join-key migration is
-adoption item 1. Verdicts: **proven** · **conditionally proven** (passes,
-but see caveat) · **rule tier only** (never witnessed in a browser) ·
-**gap** (spec'd, nothing implements or asserts it) · **defect** (spec
-violated by shipped code; three executed here, issues being filed) ·
-**reported** (review's finding from reading or executing code, not
-independently re-run here) · **open**.
+Each obligation above carries its own `> evidence:` verdict (§6), and
+`node tools/check-evidence.mjs` re-derives the linkage on every CI run.
+There is no separate matrix to keep in step and no stamp to go stale:
+run the checker for the tally, `git log -L` a verdict line for its
+history.
 
-The matrix's canonical home is
-[`evidence/spreadsheet-import.csv`](evidence/spreadsheet-import.csv) —
-one row per obligation with shape, strategy, static link, verdict, issue,
-and stamp. CSV because this layer is genuinely tabular, diffable, and is
-the exact shape that later lands as rows in Featherbase itself
-(dog-fooding); this document keeps only the reading:
+What the verdicts add up to is still a sentence, not a count of green
+rows. Today: three defects pinned expected-failing (#110–#112); one
+known gap with no evidence claim at all (#114, R6's follows-the-final-
+name half); two judgement rules with anchors but no labelled corpus
+(R3, R7) and one rule never witnessed in a browser (R8); R9's rehearsal
+missing from the first-time journey and scoped per chunk rather than
+per file; H2 and H3 reported from reading the code and never
+re-executed; R11 decided and unbuilt. Everything else in the feature is
+proven, including all three invariants and the two rules (R12, R13) that
+shipped as specs 0004 and 0005.
 
-**Reading the matrix (2026-08-03):** three defects pinned expected-failing
-(#110–#112) plus one known-gap with no evidence claim (#114) and one
-pinned invariant (#115); two invariants and a chunk-run reconciliation
-proven; three *reported* claims still awaiting re-execution (H2, H3,
-cross-chunk rehearsal scope); two gaps; one conditionally-proven golden
-path; two judgement rules without a corpus; five open questions. That
-sentence — not a count of green rows — is the feature's true state.
+Some proofs still join through legacy `IMP-001…013` test titles rather
+than quoting the rule ID; those verdicts name the joining title with
+`via`, so the linkage is checked rather than assumed. Renaming those
+tests to the rule IDs would let the `via` clauses go — a cleanup the
+checker will keep honest either way.
 
 ---
 
@@ -913,8 +937,12 @@ sentence — not a count of green rows — is the feature's true state.
    complement), then add absence assertions for the named gaps, polarity-
    tagged.
 4. **Promote the ID scanner into CI** — and align its grammar with the IDs
-   actually in use (it currently requires exactly three digits, which makes
-   `EDS-1`-style IDs invisible to the only trace tool the repo owns).
+   actually in use (the original required exactly three digits, which made
+   `EDS-1`-style IDs invisible to the only trace tool the repo owned).
+   **Landed 2026-08-28 (#235):** `tools/check-evidence.mjs` runs in the
+   unit job and reads the IDs the specs actually declare, failing a
+   `proven` verdict whose test title has gone missing and warning on a
+   test ID no spec owns.
 5. **The two agent rules into `CLAUDE.md`** (§10).
 
 ## 2. Next — where the defects actually live
@@ -987,7 +1015,7 @@ product cannot host its own spec before the product is trustworthy).
 
 Before the format is declared adopted, write the **author's walkthrough**:
 one trivial requirement traced through every artifact it touches — spec
-row, test title, matrix row, CI check. Cost of adoption is dominated by the
+row, test title, evidence verdict, CI check. Cost of adoption is dominated by the
 first hour; this is that hour, written down.
 
 ## 6. Relationship to feather-spec (the skill)
@@ -1018,12 +1046,13 @@ structural layer by default (minimal mode governs), coverage percentages.
   the owner arbitrates and all representations are updated together —
   never a silent tiebreak in either direction.
 - **A question is answered** → it graduates into a rule or step, gains
-  tests and a matrix row; the document's history is the decision log.
+  tests and an evidence verdict; the document's history is the decision log.
 
 ## 8. Scaling smells
 
 A feature with six journeys is two features. A rule no step references is
 dead behaviour or a missing journey. A fixture that cannot feed a new rule
-is extended deliberately, never worked around inside one test. A matrix row
-without a stamp is a hypothesis. A skip that reads green is a lie with a
+is extended deliberately, never worked around inside one test. An
+obligation with no evidence verdict is a hypothesis, and a `proven`
+verdict no test title backs is a claim. A skip that reads green is a lie with a
 timestamp.

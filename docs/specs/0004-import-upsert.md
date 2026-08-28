@@ -2,7 +2,8 @@
 
 **IDs:** `UPS-J*` journeys · `UPS-R*` rules · `UPS-I*` invariants ·
 `UPS-H*` hazards · `Q*` questions
-**Evidence:** `docs/specs/evidence/import-upsert.csv` (never status in this file)
+**Evidence:** a `> evidence:` verdict under each obligation below;
+linkage checked by `tools/check-evidence.mjs`
 **Provenance:** owner decision 2026-08-04 — IMP-R12 (graduated from the
 import spec's Q2 + Q4). Second greenfield trial of the journey-spec
 framework. Spec authored before any code; **all five open questions
@@ -40,7 +41,6 @@ UPS-R2's example table and property, not in the files.
 > (`dry_run`'s `actions[]`) — the wizard shows action counts plus
 > per-row failures, not a per-row action list.
 
-
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
 | J1.1 | The existing Table's list view → **Import** | The wizard with the Table preselected (IMP-R7's entry variant, unchanged) | |
@@ -70,7 +70,6 @@ setup imports `zones.csv` under a journey-owned name, the journey upserts
 > series continues for the code-less row; the branch's second half turns
 > the collision into an in-place update with Row ID as the match key.
 > The create path (`field:` naming) pre-existed and was not re-walked.
-
 
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
@@ -119,7 +118,6 @@ as match key: it is an update — that is UPS-J1.
 > action-aware `dry_run` writes and logs nothing; argument validation
 > covers a bad key, orphan `empty_cells`, and `clear` without `columns`.
 
-
 `POST /api/table/:table:import` gains an optional `key_column`. Enumerated
 behaviours (no example table — the rows would restate the rule):
 
@@ -142,7 +140,6 @@ behaviours (no example table — the rows would restate the rule):
 > exhaustive 1024-file sweep (fast-check in web is blocked on the
 > git-dep lockfile, so the sweep is deterministic instead).
 
-
 **Property:** for any file and database state, every non-blank file row
 resolves to exactly one action, and
 `|file| = updated + inserted + failed + dropped-blank` (extends IMP-I1).
@@ -163,7 +160,6 @@ resolves to exactly one action, and
 > keep/clear; an id change via upsert is refused loudly, naming the row.
 > Note: `clear` required a `columns` request argument (the run's mapped
 > set) that the spec never enumerated — flagged in the retrospective.
-
 
 Only **mapped** columns change; unmapped database columns are untouched.
 Within a mapped column, empty-cell semantics are the **importing user's
@@ -187,7 +183,6 @@ updates that row; changing an id via upsert does not exist.
 > slash and space), the series is not consumed, mixing continues the
 > series, and the collision branches both ways.
 
-
 The mapping step may target the **Row ID** (the engine already accepts
 explicit ids for direct sends — this closes the wizard's gap, was Q4 of
 the import spec). Ids arrive verbatim (subject to the id charset the
@@ -203,7 +198,6 @@ pattern is the promise).
 > the memory; the wizard pre-fills the newest keyed pair as a visible
 > suggestion, confirmed in a fresh visit; with no Import Log read grant
 > there is no suggestion, and it fails soft.
-
 
 *Ruled 2026-08-05 (was Q5).* The match key (and the empty-cells choice)
 used on a Table's last import is stored per Table and **pre-filled as a
