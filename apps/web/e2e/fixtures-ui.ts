@@ -35,7 +35,7 @@ export async function ensureTable(
 // ---------------------------------------------------------------------------
 // The FormView trio: a parent Table exercising every column type, its
 // sub-table, and the Table its Reference column points at. Shared by
-// formview, client-validation, grid-layout and link-autocomplete.
+// formview, grid-layout and link-autocomplete.
 // ---------------------------------------------------------------------------
 
 export const FORM_DT = 'UI Form A'

@@ -154,6 +154,25 @@ sandboxed — they commit real data through a real browser. Use this layer
 only for things the other two can't see: routing, focus/keyboard behavior,
 realtime updates, visual flows.
 
+The dividing line between layers 2 and 3 is not "is it UI" — it is *what
+the browser adds*. A rendered stylesheet, real layout and box model, image
+decoding, genuine focus and key handling, the URL bar, two sessions at once:
+those need layer 3. Rendering from metadata, form logic, query invalidation,
+what got sent to the server and what didn't: those are layer 2, where the
+sandbox rolls the data back and the whole test runs in milliseconds. #223 is
+the standing effort to move the misfiled ones down.
+
+**A component test must not leave a request in flight when it ends.** The
+Admin fires several writes as `void api.post(...)` — the theme toggle,
+`setLanguage`, ListView's settings PUT. A test that returns while one is
+outstanding lets it execute *after* its sandbox transaction closed, which
+commits it for real: the next test then starts against a dark, French, or
+pre-sorted Admin, and the failure surfaces somewhere else entirely. End such
+a test by waiting for the round trip — poll the server until it reports the
+new value — so the write lands inside the transaction that rollback undoes.
+`apps/web/test/theme.test.tsx` and `list-settings.test.tsx` both carry the
+helper and the reasoning.
+
 Which `test` a spec imports from `e2e/fixtures.ts` *is* its auth story.
 Plain `test` is already signed in as Administrator, from a `storageState`
 captured once per worker by driving the real login form — no `/login` round
@@ -253,8 +272,14 @@ Baselines measured 2026-08-28, each rounded down to the whole percent:
 | Package | Lines / statements | Functions | Threshold set |
 |---|---|---|---|
 | `apps/server` | 86.64% | 91.18% | lines 86, functions 91 |
-| `apps/web` | 29.64% | 40.52% | lines 29, functions 39 |
+| `apps/web` | 33.33% | 45.92% | lines 33, functions 45 |
 | `packages/shared` | 21.30% | 85.71% | lines 21, functions 85 |
+
+The web row was re-measured on 2026-08-28 after #223's first batch moved
+seven e2e specs down to the component layer; it stood at lines 29.64% /
+functions 40.52% (thresholds 29 / 39) before that. Growing this layer is how
+the number moves — the ratchet rises as a side effect of rebalancing the
+pyramid, not as separate work.
 
 Two caveats on those figures. The server number is a *floor*, not the truth:
 `sources-mysql.test.ts` skips itself when `MYSQL_TEST_URL` is unset, so a
