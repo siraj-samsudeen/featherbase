@@ -22,9 +22,11 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 # feather-testing-postgres (a web devDependency) is a git dependency; pnpm
 # records GitHub git URLs in the git@github.com: form and this image has no
 # SSH key. The slim base also lacks git itself. Install git for this build
-# stage only and fetch the public repo anonymously over https. The final
-# server stage installs --prod (no dev deps), so it needs neither.
-RUN apt-get update && apt-get install -y --no-install-recommends git \
+# stage only and fetch the public repo anonymously over https. ca-certificates
+# is required too: --no-install-recommends omits it, and pnpm's git fetch
+# needs TLS verification against a real CA bundle. The final server stage
+# installs --prod (no dev deps), so it needs neither.
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && git config --global url."https://github.com/".insteadOf "git@github.com:"
 
