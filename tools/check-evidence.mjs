@@ -20,7 +20,7 @@
 // runs no tests; it is a linkage check, never execution evidence.
 //
 // Usage: node tools/check-evidence.mjs [--quiet]
-// Tests: node --test tools/   (tools/check-evidence.test.mjs)
+// Tests: node --test tools/*.test.mjs   (tools/check-evidence.test.mjs)
 //
 // ---------------------------------------------------------------------------
 // THE PARTICIPATION CONTRACT (owner review of PR #239, 2026-08-28)
