@@ -2,6 +2,7 @@
   "name": "featherbase",
   "private": true,
   "scripts": {
+    "check:evidence": "node tools/check-evidence.mjs",
     "smoke": "pnpm --filter server test:smoke && pnpm --filter web smoke",
     "test": "pnpm -r test",
     "test:coverage": "pnpm -r test:coverage",
