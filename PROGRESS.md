@@ -37,6 +37,54 @@ Gotcha for the record: `node --test tools/` fails on Node 22 (loads the
 directory as a module) — the glob `node --test tools/*.test.mjs` is the
 form CI and package.json use.
 
+## 2026-08-28 — A required Sub-table column is now enforced on save (#231)
+
+The owner ruled the #231 discovery a **defect**: `reqd: true` on a Sub-table
+column meant nothing on save — a row was accepted with the column absent and
+with `[]`. It now means what it means on a scalar column.
+
+- **Enforcement point: `assertRequiredChildren` in
+  `apps/server/src/document.ts`**, beside the children handling that owns the
+  arrays — called from `saveDoc` (insert), `updateDoc` (update) and
+  `checkRowForInsert` (the import dry run, which has to agree with the real
+  import since that inserts through `saveDoc`). *Not* the schema layer:
+  `tableSchemaToZod` drops Sub-table columns from its shape AND
+  `pickFieldValues` strips them from the payload before `validateValues` ever
+  runs, so a rule in `packages/shared` would fire on every save unless child
+  arrays were threaded through the whole scalar pipeline — defaults, tier
+  stripping, the null backfill, dbRow construction — only to be filtered out
+  again. The shared schema is unchanged; its pin now says why, citing #231.
+  Consequence: no client-side pre-check, and none was built — the server
+  guarantee is the requirement, and FormView already renders a field-keyed
+  error under the grid (`error={errors[f.column_name]}` →
+  `data-testid="error-<column>"`), so the round trip renders with no client
+  change.
+- **Semantics mirror scalar `reqd` exactly.** Create: absent or `[]` →
+  violation. Update: absent key = untouched (no error, the partial-update
+  rule); key present as `[]` = the caller clearing a required grid = refused.
+  A present non-array still falls through to `pickChildInputs`' shape error.
+- **Error shape is the scalar shape**, not a new one: `AppError`
+  `ValidationError` → 417, `message: "Invalid values for <Table>"`,
+  `fields: { <column>: "Required" }`.
+- **Pin flipped** (CLAUDE.md pin protocol): the #231 pin in
+  `apps/server/test/children.test.ts` asserted the accepting behaviour; it now
+  asserts rejection and covers create-absent, create-empty, create-with-rows,
+  update-absent-untouched, update-empty-rejected, and a non-reqd Sub-table
+  still saving empty.
+
+Verified: `pnpm --filter server test test/children.test.ts` 13 passed;
+`test/validation.test.ts` 4 passed; full server suite 731 passed / 1 failed
+(the known container-only sources-csv "round 3" chmod case, red before this
+change too); `pnpm --filter shared test` 22 passed; `pnpm --filter web test`
+92 passed; `node tools/check-evidence.mjs` green (78 verdicts, unchanged —
+no spec IDs move here); both typechecks clean. End-to-end against the running
+stack: empty reqd Sub-table → 417 `{"lines":"Required"}`, key absent → the
+same 417, with a row → 201; partial update without the key → 201 with the
+child row intact; update with `[]` → 417.
+
+Next: #231 can be closed on merge. This branch stacks on
+`claude/docs-to-checks`; the rest of that queue and the harness release
+checklist (#225) are unchanged.
 
 ## 2026-08-28 — Documents become checks (#235, #236, #237)
 
