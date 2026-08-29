@@ -90,10 +90,15 @@ async function ensureHomePageColumns() {
     const [exists] = await sql`
       select 1 from column_def where parent = 'Home Page' and column_name = ${col.column_name}`
     if (exists) continue
+    // Mechanical typing only: no current HOME_PAGE_COLUMNS entry declares
+    // `label` (the union has none), so this cast changes nothing at
+    // runtime — it just gives TS an optional string instead of narrowing
+    // `col.label` to `{}` on the always-taken false branch below.
+    const labelOverride = (col as { label?: string }).label
     await sql`insert into column_def ${sql({
       parent: 'Home Page',
       column_name: col.column_name,
-      label: 'label' in col && col.label ? col.label : col.column_name,
+      label: 'label' in col && labelOverride ? labelOverride : col.column_name,
       column_type: col.column_type,
       row_table: 'row_table' in col ? col.row_table : null,
       reqd: 'reqd' in col ? Boolean(col.reqd) : false,

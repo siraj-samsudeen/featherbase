@@ -43,7 +43,7 @@ describe('API-008: CORS + security headers', () => {
   test('sets security headers on every response', async ({ api }) => {
     const res = await api.fetch('/api/ping')
     expect(res.headers.get('x-content-type-options')).toBe('nosniff')
-    expect(res.headers.get('x-frame-options')).toBeTruthy()
-    expect(res.headers.get('referrer-policy')).toBeTruthy()
+    expect(res.headers.get('x-frame-options')).toBe('SAMEORIGIN')
+    expect(res.headers.get('referrer-policy')).toBe('no-referrer')
   })
 })

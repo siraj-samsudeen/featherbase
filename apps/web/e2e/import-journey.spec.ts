@@ -1,5 +1,4 @@
-import type { APIRequestContext } from '@playwright/test'
-import { test, expect, signIn, snap } from './fixtures'
+import { journeyTest as test, expect, adminToken, signIn, snap } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
 // IMP-J1 — the first-import golden path of
@@ -15,12 +14,6 @@ import { deleteTableIfExists } from './cleanup'
 // pre-cleaned through the deletion capability instead of self-skipping.
 
 const DT = 'Journey Zones'
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
-
-async function adminToken(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await login.json()) as { token: string }).token
-}
 
 test('IMP-J1: first import creates a typed Table from zones.csv', async ({
   session,

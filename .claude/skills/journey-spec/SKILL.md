@@ -4,10 +4,10 @@ description: >
   Author or retrofit a Featherbase feature spec in the journeys-and-rules
   form: narrative journeys with step triples, shape-tagged rules with
   example tables and properties, invariants, hazards, open questions with
-  a named arbiter, and a CSV evidence matrix. Use when writing
-  requirements for a new feature, recovering a spec from shipped
-  behaviour, or updating spec/evidence after building. Full rationale:
-  docs/design/requirements-framework.md.
+  a named arbiter, and a one-line evidence verdict per obligation. Use
+  when writing requirements for a new feature, recovering a spec from
+  shipped behaviour, or updating spec/evidence after building. Full
+  rationale: docs/design/requirements-framework.md.
 ---
 
 # Journey-Spec
@@ -23,14 +23,18 @@ One feature produces:
 
 | Artifact | Format | Why this format |
 |---|---|---|
-| `docs/specs/NNNN-<feature>.md` | Markdown | Narrative + tables — what humans sign and agents author. Never HTML. |
-| `docs/specs/evidence/<feature>.csv` | CSV | Genuinely tabular, diffable, and the exact shape that later lands as rows in Featherbase itself (dog-fooding). One row per obligation. |
+| `docs/specs/NNNN-<feature>.md` | Markdown | Narrative + tables + the evidence verdicts — what humans sign and agents author. Never HTML. |
 | Fixture files | Real files (`e2e/fixtures/*.csv` + a `.claims.md`) | The agreement dataset the tests literally load. |
-| Review artifact | HTML, **generated** | A view rendered from the md + CSV, never a source. Regenerate on change; today an agent renders it from the template of the existing artifact; later Featherbase renders it from the same rows. |
+| Review artifact | HTML, **generated** | A view rendered from the markdown, never a source. Regenerate on change. |
 
 HTML is a presentation format, not a source format: verbose to edit,
-hostile to diffs. Markdown carries prose; CSV carries the enumerable
-layer; HTML is always downstream.
+hostile to diffs. Markdown carries the spec; HTML is always downstream.
+
+**Evidence is not a separate artifact.** It was a CSV beside the spec
+until 2026-08-28 (issue #235); a join table between specs and tests
+should be derived and checked, not curated. Each obligation now carries a
+one-line verdict in the spec, and `tools/check-evidence.mjs` re-derives
+the linkage on every CI run.
 
 ## Authoring steps
 
@@ -72,9 +76,12 @@ layer; HTML is always downstream.
      cross-cutting ones in an ADR (precedent: ADR 0008).
 6. **Invariants and hazards.** Whole-run arithmetic; compound risks no
    single rule owns get hazard IDs.
-7. **Evidence CSV** — schema in `references/evidence-schema.md`. Test
-   titles quote spec IDs (static traceability: a linkage claim, never
-   execution evidence); verdicts and stamps carry the execution truth.
+7. **Evidence verdicts** — grammar in `references/evidence-schema.md`.
+   One `> evidence: proven | rule-tier | gap | pinned #N — <note>` line
+   under each journey, rule, invariant and hazard. Test titles quote spec
+   IDs (static traceability: a linkage claim, never execution evidence);
+   where the proving title does not, name it with `via <ID>`. Run
+   `pnpm check:evidence` before you call the spec updated.
 8. **Tests from the spec.** Journeys give the browser test its skeleton
    (feather-testing-core chains; the author still owns setup, isolation,
    waits, adequacy). Properties/boundaries prove rules; reconciliation
@@ -105,14 +112,16 @@ layer; HTML is always downstream.
 - **IDs**: `FEAT-J1`/`FEAT-R3`/`FEAT-I1`/`FEAT-H1`/`Q1`; steps positional;
   a clause needing independent citation gets a stable sub-ID at that
   moment (`R2.7` precedent) — never pre-exploded.
-- **Spec stays timeless; evidence stays stamped.** Status never appears
-  in the spec body; every evidence row carries its stamp; an unstamped
-  row is a hypothesis.
+- **The spec body stays timeless; the verdict line carries the status.**
+   Prose says what *should* be true and never what is done; the one
+   `> evidence:` line per obligation says what is proven, and git dates
+   it — never stamp a date by hand.
 
 ## Change protocol
 
 Behaviour changes on purpose → the requirement changes first, the new
 expectation demonstrably fails against the old implementation, then the
 code changes. A test failing with no spec edit is a regression. An
-answered question graduates into a rule or step. Update the evidence CSV
-in the same change as the tests it describes.
+answered question graduates into a rule or step. Update the evidence
+verdict in the same change as the tests it describes, and let
+`pnpm check:evidence` confirm the linkage.

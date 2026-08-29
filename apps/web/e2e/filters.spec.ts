@@ -1,23 +1,17 @@
-import { expect, test } from '@playwright/test'
+import { test, expect, adminAuth, adminToken, bearer } from './fixtures'
+import { ensureListTableA, LIST_DT_A as DT_A } from './fixtures-ui'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
-const DT_A = 'UI List A' // fixtures created by listview.spec (idempotent)
+// Owns its fixture rather than borrowing listview.spec's: this spec sorts
+// before listview.spec alphabetically, so under an isolated fresh DB
+// (pnpm --filter web e2e) it would self-skip on every run. The assertions
+// below depend on the exact row count (30, with qty 0..29), so both specs
+// call the one shared builder in ./fixtures-ui — idempotent in either
+// direction: whichever runs first fills the Table, the other finds it full.
+test.beforeAll(async ({ request }) => {
+  await ensureListTableA(request, await adminAuth(request))
+})
 
-test('UI-003: filters narrow results, persist in the URL across reload, and are removable', async ({ page, request }) => {
-  // Ensure fixtures exist (listview.spec setup is idempotent; replicate minimal check)
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
-  const listA = await request.get(`/api/table/${encodeURIComponent(DT_A)}?limit_page_length=1`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
-  test.skip(listA.status() === 404, 'run listview.spec first to create fixtures')
-
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-
+test('UI-003: filters narrow results, persist in the URL across reload, and are removable', async ({ page }) => {
   await page.goto(`/admin/${encodeURIComponent(DT_A)}`)
   await expect(page.getByTestId('list-total')).toContainText('30 total')
 
@@ -70,9 +64,8 @@ test('#87: a filters URL applies when opened cold, not just when the app built i
   page,
   request,
 }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
-  const auth = { Authorization: `Bearer ${token}` }
+  const token = await adminToken(request)
+  const auth = bearer(token)
 
   const meta = await request.get(`/api/table/${encodeURIComponent(DT_COLD)}:meta`, { headers: auth })
   if (meta.status() === 404) {
@@ -103,12 +96,6 @@ test('#87: a filters URL applies when opened cold, not just when the app built i
       data: { title: `cold-${i}`, qty: i },
     })
   }
-
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
 
   // Typed by hand, never built by the app: qty >= 7 -> 3 of the 10 rows.
   // Filters are [field, op, value] triples (see `parsed` in router.tsx).

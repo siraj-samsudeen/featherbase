@@ -10,9 +10,12 @@
 >
 > **Vocabulary note:** the harness feature IDs (META-*, DOC-*, …) were
 > written in the original Frappe-era vocabulary — DocType/Doc/Field — and
-> `harness/features.json` is frozen by rule. The codebase now says
-> **Table / Row / Column** (see `docs/GLOSSARY.md`). Read feature titles
-> with that mapping in mind; this path uses the new words.
+> the inventory is frozen history at
+> `docs/archive/harness-2026/harness/features.json` (retired 2026-08-28,
+> issue #236; its statuses were self-attested by the building sessions).
+> The codebase now says **Table / Row / Column** (see `docs/GLOSSARY.md`).
+> Read feature titles with that mapping in mind; this path uses the new
+> words, and the IDs are handles for reading, not a status board.
 
 **Ground rule:** build everything twice — once through the Admin UI, once
 through raw HTTP (`curl` or the browser console) — because the UI is
@@ -80,7 +83,8 @@ debounced typeahead).
 deleting a referenced project fails naming the blocker; renaming the
 project updates every item's `project` value.
 *Questions:* how does the engine know what references what? (Read
-`validateLinks` in `document.ts` — the Explorer links it from DOC-006.)
+`validateLinks` in `document.ts` — DOC-006 in the archived feature
+inventory, `docs/archive/harness-2026/`, once cross-linked it there.)
 What would a dangling reference cost you in a system without this?
 
 ## Stage 3 — Subtasks: the Sub-table (half a day)

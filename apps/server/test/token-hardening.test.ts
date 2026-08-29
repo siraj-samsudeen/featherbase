@@ -120,9 +120,9 @@ describe('#137 P2: "active" means the token actually authenticates', () => {
     )
     await sql`update access_token set expires_at = now() - interval '1 minute' where id = ${expiring.id}`
 
-    const [account] = (await admin.get<{ service_accounts: { token_count: number }[] }>(
+    const [account] = (await admin.get<{ service_accounts: { row_id: string; token_count: number }[] }>(
       '/api/service_accounts',
-    )).service_accounts.filter((a) => (a as { name: string }).row_id === 'svc-count-test')
+    )).service_accounts.filter((a) => a.row_id === 'svc-count-test')
     expect(account.token_count).toBe(1) // not 2 — the expired one cannot authenticate
 
     // A token whose owner is disabled is not "active" either.
@@ -255,6 +255,8 @@ describe('#137 R2: OAuth refusals cannot be told apart', () => {
     // and learn whether it exists and in what state — the enumeration oracle
     // requestPasswordReset() already avoids by returning a silent null.
     expect(a).toBeInstanceOf(Error)
+    expect(b).toBeInstanceOf(Error)
+    if (!(a instanceof Error) || !(b instanceof Error)) throw new Error('unreachable')
     expect(a.message).toBe(b.message)
     expect((a as { type?: string }).type).toBe((b as { type?: string }).type)
   })
@@ -270,7 +272,7 @@ describe('#137 R2: a reset link is single-use, and a failed write still burns it
       row: { row_id: email, email, enabled: true },
     })
     const token = await requestPasswordReset(email)
-    expect(token).toBeTruthy()
+    expect(token).toMatch(/^[0-9a-f]{48}$/)
 
     // The principal becomes a service account between the request and the
     // click, so setUserPassword now refuses.

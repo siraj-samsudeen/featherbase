@@ -48,7 +48,7 @@ describe('PLAT-004: manifest-declared roles and permissions', () => {
       expect(res.perms).toHaveLength(1)
 
       const [role] = await sql`select 1 from role where row_id = ${ROLE}`
-      expect(role).toBeTruthy()
+      expect(role).toEqual({ '?column?': 1 })
       const [perm] = await sql`
         select can_read, can_write, can_create, can_delete from permission
         where ref_table = ${DT} and role = ${ROLE} and tier = 'basic'`

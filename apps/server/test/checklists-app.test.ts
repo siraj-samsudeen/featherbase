@@ -143,7 +143,7 @@ describe('checklists app: template → run lifecycle', () => {
       })
       expect(ticked.progress).toBe('1/8')
       expect((ticked.items as Row[])[0].done).toBe(true)
-      expect((ticked.items as Row[])[0].done_at).toBeTruthy()
+      expect(Date.parse((ticked.items as Row[])[0].done_at as string)).not.toBeNaN()
       expect((ticked.items as Row[])[1].done_at).toBeFalsy()
 
       const unticked = await admin.post<Row>('/api/save_row', {
@@ -377,6 +377,7 @@ describe('checklists app: template → run lifecycle', () => {
   // own_rows_only on the parent is only worth as much as the paths AROUND it:
   // the child rows, the photos hanging off them, and the upload that binds a
   // file to one.
+  // CI timeouts (runs 33074061518, 33137882308 on 2026-08-27/28): this is the suite's heaviest test (two users, child rows, photo uploads, file uploads). Timeout raised from default 5s to 15s; assertions unchanged.
   test("a team leader cannot reach another leader's items, photos or uploads", async ({
     createUser,
   }) => {
@@ -433,5 +434,5 @@ describe('checklists app: template → run lifecycle', () => {
       for (const url of uploaded) await deleteStored(url).catch(() => {})
       await unwire()
     }
-  })
+  }, 15_000)
 })

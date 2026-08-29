@@ -118,7 +118,7 @@ describe('PLAT-005: declarative app install over the API', () => {
       await loadInstalledApps()
       expect(await isInstalled(APP)).toBe(true)
       const [dt] = await sql`select 1 from table_def where name = ${DT}`
-      expect(dt).toBeTruthy()
+      expect(dt).toEqual({ '?column?': 1 })
 
       // And uninstall still works with no code present.
       const user = await createUser({ roles: [ROLE] })

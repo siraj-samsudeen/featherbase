@@ -1,6 +1,5 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Pf DT'
 
 // PRN-002: two formats for one Table produce visibly different output;
@@ -9,8 +8,7 @@ const DT = 'Pf DT'
 let docName = ''
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const headers = { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
+  const headers = await adminAuth(request)
   const dt = await request.post('/api/table_def', {
     headers,
     data: {
@@ -55,12 +53,6 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('PRN-002: default format respected; a second format renders differently', async ({
   page,
 }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   // No format named → the default (Invoice) is used, interpolated.
   await page.goto(`/print/${encodeURIComponent(DT)}/${docName}`)
   await expect(page.getByTestId('print-format-body')).toHaveAttribute('data-format', 'Pf Invoice')

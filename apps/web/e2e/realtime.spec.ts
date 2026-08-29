@@ -1,22 +1,15 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import {
+  anonymousTest as test,
+  expect,
+  ADMIN_PWD,
+  adminAuth,
+  loginAs,
+  waitForRealtime,
+} from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Rt DT'
 const OTHER_USER = 'rt-user@x.com'
 const OTHER_PWD = 'rtpw12345'
-
-async function adminAuth(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
-
-async function loginAs(page: Page, email: string, pwd: string) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', email)
-  await page.fill('input[name=password]', pwd)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
 
 test.beforeAll(async ({ request }) => {
   const headers = await adminAuth(request)
@@ -57,7 +50,7 @@ test('RT-001: a doc created in one session appears in another session list', asy
   await a.goto(`/admin/${encodeURIComponent(DT)}`)
   await b.goto(`/admin/${encodeURIComponent(DT)}`)
   await expect(b.getByTestId('list-total')).toBeVisible()
-  await b.waitForTimeout(1000)
+  await waitForRealtime(b, `list:${DT}`)
   const uniq = `rt-live-${Date.now()}`
 
   // A creates a doc via the API (its own session); B's list should update
@@ -95,9 +88,9 @@ test('RT-002: saving a doc in one session shows a refresh banner in another', as
   await expect(b.getByTestId('form-view')).toBeVisible()
   // No banner initially.
   await expect(b.getByTestId('stale-banner')).toHaveCount(0)
-  // Give B's realtime socket time to subscribe to the doc channel before A
-  // saves (otherwise, under parallel load, the event can be missed).
-  await b.waitForTimeout(1000)
+  // B's subscription to the row channel must be live before A saves,
+  // otherwise the event is published to nobody.
+  await waitForRealtime(b, `row:${DT}:${docName}`)
 
   // A edits + saves; B gets the refresh banner without reloading.
   await a.locator('[data-field=title]').fill('after')
@@ -124,10 +117,10 @@ test('RT-003: an @mention pops the mentioned user unread count live', async ({ b
   await loginAs(a, 'Administrator', ADMIN_PWD)
   await loginAs(b, OTHER_USER, OTHER_PWD)
 
-  // B sits in the Admin; wait for its realtime socket to connect.
+  // B sits in the Admin; wait for its personal channel to be live.
   await b.goto('/admin')
   await expect(b.getByTestId('session-user')).toBeVisible()
-  await b.waitForTimeout(1000)
+  await waitForRealtime(b, `user:${OTHER_USER}`)
   const startCount = await b.getByTestId('unread-count').count() // 0 badge if none
 
   const tokenA = await a.evaluate(() => localStorage.getItem('fc_token'))

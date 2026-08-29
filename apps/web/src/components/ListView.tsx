@@ -1015,7 +1015,7 @@ export function FilterBar({
   onChange: (filters: Filter[]) => void
 }) {
   const fields = [
-    { fieldname: 'name', label: 'Name' },
+    { fieldname: 'row_id', label: 'Row ID' },
     ...meta.columns
       .filter((f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden)
       .map((f) => ({ fieldname: f.column_name, label: f.label ?? f.column_name })),

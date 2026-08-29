@@ -1,14 +1,6 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const SUBJECT = 'E2E: helpdesk renders in the generic Admin'
-
-async function token(request: APIRequestContext) {
-  const r = await request.post('/api/login', {
-    data: { usr: 'Administrator', pwd: ADMIN_PWD },
-  })
-  return ((await r.json()) as { token: string }).token
-}
 
 // The Helpdesk is a registered installable app now (PLAT-006, #78), so the
 // spec installs it through the real endpoint — POST /api/install_app
@@ -17,7 +9,7 @@ async function token(request: APIRequestContext) {
 // previous run) is left as-is; a later `POST /api/uninstall_app` can remove
 // the footprint wholesale.
 async function ensureHelpdeskStructure(request: APIRequestContext) {
-  const H = { Authorization: `Bearer ${await token(request)}` }
+  const H = await adminAuth(request)
   const has = await request.get('/api/table/HD%20Ticket:meta', { headers: H })
   if (has.ok()) return
 
@@ -36,7 +28,7 @@ let name = ''
 // removes it afterwards so no ticket outlives the run.
 test.beforeAll(async ({ request }) => {
   await ensureHelpdeskStructure(request)
-  const H = { Authorization: `Bearer ${await token(request)}` }
+  const H = await adminAuth(request)
   const r = await request.post('/api/save_row', {
     headers: H,
     data: { table: 'HD Ticket', row: { subject: SUBJECT } },
@@ -47,19 +39,13 @@ test.beforeAll(async ({ request }) => {
 
 test.afterAll(async ({ request }) => {
   if (!name) return
-  const H = { Authorization: `Bearer ${await token(request)}` }
+  const H = await adminAuth(request)
   await request.delete(`/api/table/HD%20Ticket/${name}`, { headers: H })
 })
 
 test('helpdesk: a ticket renders in the Admin and opens with workflow actions', async ({
   page,
 }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-
   await page.goto('/admin/HD%20Ticket')
   await expect(page.getByText(name)).toBeVisible()
   await expect(page.getByText(SUBJECT)).toBeVisible()

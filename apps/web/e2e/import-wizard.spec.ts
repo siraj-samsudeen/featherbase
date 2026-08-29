@@ -1,26 +1,12 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminToken } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
 
 // IMP-010: the Import wizard — multi-sheet workbooks, rename-tolerant
 // existing-Table suggestions, column mapping, dry-run, Choice detection.
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const NEW_DT = 'Wizard Orders' // created by the wizard from sheet 1
 const EXISTING_DT = 'Wizard Stock' // pre-created; sheet 2 must find it despite its junk name
-
-async function adminToken(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await login.json()) as { token: string }).token
-}
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
 
 function workbook() {
   // Sheet 1: headers are unique to this spec so no existing Table can match
@@ -74,7 +60,7 @@ test('IMP-010: multi-sheet workbook — one sheet to a new Table, one mapped ont
     await request.get(`/api/table/${encodeURIComponent(EXISTING_DT)}:count`, { headers })
   ).json()) as { count: number }
 
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('import-data-link').click()
   await expect(page.getByTestId('import-wizard')).toBeVisible()
 
@@ -184,7 +170,7 @@ test('IMP-013: skip a sheet, drop a column, and drive the target picker', async 
   XLSX.utils.book_append_sheet(wb, drop, 'Wizard Drop')
   const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
 
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('import-data-link').click()
   await page.getByTestId('iw-file-input').setInputFiles({
     name: 'pick and skip.xlsx',
@@ -247,7 +233,6 @@ test('IMP-010: the list view Import button preselects that Table as the target',
     await request.get(`/api/table/${encodeURIComponent(EXISTING_DT)}:count`, { headers })
   ).json()) as { count: number }
 
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(EXISTING_DT)}`)
   await page.getByTestId('open-import').click()
   await expect(page.getByTestId('import-wizard')).toBeVisible()

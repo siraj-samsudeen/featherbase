@@ -345,7 +345,7 @@ describe.skipIf(!MYSQL_URL)('mysql: reading bound rows', () => {
     const name = String(filtered.data[0].row_id)
     const doc = (await admin.get(`/api/table/Ext%20Tenant/${name}`)) as Record<string, unknown>
     expect(doc.slug).toBe('acme')
-    expect(doc.updated_at).toBeTruthy()
+    expect(Date.parse(doc.updated_at as string)).not.toBeNaN()
     expect(doc.status).toBe('draft')
   })
 })

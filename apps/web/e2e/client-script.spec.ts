@@ -1,16 +1,10 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'CS E2E Order'
 const DT_BAD = 'CS E2E Bad'
 
-async function adminHeaders(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
-
 async function makeTable(request: APIRequestContext, name: string) {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   const res = await request.post('/api/table_def', {
     headers,
     data: {
@@ -25,7 +19,7 @@ async function makeTable(request: APIRequestContext, name: string) {
 }
 
 async function makeClientScript(request: APIRequestContext, name: string, dt: string, script: string) {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   await request.delete(`/api/table/Client%20Script/${name}`, { headers })
   const res = await request.post('/api/save_row', {
     headers,
@@ -48,17 +42,8 @@ test.beforeAll(async ({ request }) => {
   await makeClientScript(request, 'cs-e2e-broken', DT_BAD, `throw new Error('boom in client script')`)
 })
 
-async function login(page: import('@playwright/test').Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
-
 // CUST-003: a client script auto-fills a field on change.
 test('CUST-003: a client script auto-fills a field on change', async ({ page }) => {
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}/new`)
   await expect(page.getByTestId('form-view')).toBeVisible()
 
@@ -75,7 +60,6 @@ test('CUST-003: a client script auto-fills a field on change', async ({ page }) 
 
 // CUST-003: a broken client script surfaces an error but does not crash the Admin.
 test('CUST-003: a broken client script surfaces an error without crashing', async ({ page }) => {
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT_BAD)}/new`)
 
   // The form still renders and the error is shown.

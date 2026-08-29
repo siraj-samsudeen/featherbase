@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminToken } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
 
@@ -7,21 +7,7 @@ import { deleteTableIfExists } from './cleanup'
 // before the fix, the wizard would have named row 5 for a defect the user
 // sees at row 6 in Excel, and they'd go fix an innocent neighbour.
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Row Number Truth'
-
-async function adminToken(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await login.json()) as { token: string }).token
-}
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
 
 function workbook() {
   // The sheet is laid out so the numbers below are Excel's own:
@@ -60,7 +46,7 @@ test('#115: a blank row does not shift the blame — failures name the TRUE Exce
   })
   expect(created.status()).toBe(201)
 
-  await login(page)
+  await page.goto('/admin')
   await page.getByTestId('import-data-link').click()
   await expect(page.getByTestId('import-wizard')).toBeVisible()
 

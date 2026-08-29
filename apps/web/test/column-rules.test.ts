@@ -45,14 +45,19 @@ describe('checkColumn', () => {
     expect(v?.error).toMatch(/built-in/)
     expect(v?.fix).toBe('employee_status')
   })
-  it('names the row id when the column is "name" (#132 vocabulary)', () => {
-    const v = checkColumn(col('name'), [], 'Employee')
-    expect(v?.error).toMatch(/row’s ID/)
-    expect(v?.fix).toBe('employee_name')
+  // #132 / PR #174: the physical row key is row_id now, so `name` is the
+  // affirmative case the whole rename exists for — it must pass clean.
+  it('accepts a plain "name" column (#132: no longer reserved)', () => {
+    expect(checkColumn(col('name'), [], 'Employee')).toBeNull()
+  })
+  it('reserves "row_id" and says the Row ID owns it', () => {
+    const v = checkColumn(col('row_id'), [], 'Employee')
+    expect(v?.error).toMatch(/Row ID/)
+    expect(v?.fix).toBe('employee_row_id')
   })
   it('withholds the reserved fix when it would collide with a sibling', () => {
-    const taken = col('employee_name')
-    const v = checkColumn(col('name'), [taken, col('name')], 'Employee')
+    const taken = col('employee_row_id')
+    const v = checkColumn(col('row_id'), [taken, col('row_id')], 'Employee')
     expect(v?.fix).toBeUndefined()
   })
   it('flags duplicates', () => {

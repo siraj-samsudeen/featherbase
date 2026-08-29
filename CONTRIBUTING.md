@@ -100,7 +100,6 @@ A few hard rules worth knowing before your first PR:
   dotted `/api/method/<path>` RPC naming) for compatibility's sake.
 - New UI must inherit the Admin look — the design tokens and `.fc-*`
   component classes (rules at the top of `PROGRESS.md`).
-- Don't edit entries in `harness/features.json` beyond flipping a `status`.
 - `feather-testing-postgres` lives in its own repo; fix it there and bump
   the dependency, never vendor it back in.
 

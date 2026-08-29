@@ -56,8 +56,8 @@ test('Change password submits to /api/set_password and the new password logs in'
   await screen.findByTestId('change-password-done')
   // …and the change is real: the server now accepts the new password and
   // rejects the migration default.
-  expect(await login(admin.user, 'rotated-pw-72!')).toBe(200)
-  expect(await login(admin.user, process.env.ADMIN_PASSWORD ?? 'admin')).toBe(401)
+  expect(await login(admin.user!, 'rotated-pw-72!')).toBe(200)
+  expect(await login(admin.user!, process.env.ADMIN_PASSWORD ?? 'admin')).toBe(401)
 
   // Done closes the modal.
   await userEvent.click(screen.getByTestId('change-password-close'))
@@ -83,7 +83,7 @@ test('a mismatched confirmation blocks the submit', async ({ admin }) => {
   // password does not log in.
   expect(screen.getByTestId('change-password-form')).toBeInTheDocument()
   expect(screen.queryByTestId('change-password-done')).not.toBeInTheDocument()
-  expect(await login(admin.user, 'one-password')).toBe(401)
+  expect(await login(admin.user!, 'one-password')).toBe(401)
 
   // Escape closes the modal.
   fireEvent.keyDown(document, { key: 'Escape' })

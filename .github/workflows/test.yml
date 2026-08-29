@@ -88,6 +88,27 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # The spec/test join table, re-derived rather than curated: every
+      # obligation in docs/specs (and the framework's worked example) carries
+      # an `> evidence:` verdict, and this re-checks each claim against the
+      # test titles that are supposed to back it. Zero dependencies, no
+      # database, well under a second — so it runs before `pnpm install`,
+      # where a broken linkage costs nothing to discover.
+      #
+      # The checker's own mutation tests run first (node's built-in runner,
+      # also dependency-free): each one flips a single thing a contributor
+      # could flip — a deleted `**IDs:**` line, a test turned `.skip`, an
+      # issue number moved into a comment — and asserts the checker catches
+      # it. A green linkage check means nothing if the checker cannot fail.
+      - name: Check spec evidence linkage
+        run: node --test tools/*.test.mjs && node tools/check-evidence.mjs
+
+      # feather-testing-postgres is a git dependency; pnpm records GitHub
+      # git URLs in the git@github.com: form and this runner has no SSH key.
+      # The repo is public — fetch it anonymously over https instead.
+      - name: Fetch GitHub git deps over https
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -113,8 +134,40 @@ jobs:
       # server in-process against the service database. Their configs pin
       # fileParallelism: false and a shared globalSetup that empties
       # tab_background_job — do not parallelize around them here.
-      - name: Run unit and component suites
-        run: pnpm -r test
+      #
+      # `test:coverage` REPLACES the plain `pnpm -r test` rather than being
+      # added beside it: instrumenting the suites once costs about 15% of wall
+      # clock (measured back to back — server 133s→153s, web 18s→22s, shared
+      # under a second either way), where running them twice would cost 100%.
+      # Each config carries a `coverage.thresholds` floor that only ever rises
+      # (#226); Vitest exits non-zero when a suite falls below its floor, so a
+      # coverage regression fails this job exactly like a failing test does.
+      - name: Run unit and component suites with coverage
+        run: >-
+          pnpm -r test:coverage
+          --reporter=default
+          --reporter=json
+          --outputFile.json=test-results/vitest.json
+
+      # One JSON report per workspace, kept separate because each Vitest
+      # process owns its own config and result tree. The final evidence job
+      # consumes all three together with Playwright's report.
+      - name: Stage Vitest evidence reports
+        if: always()
+        run: |
+          mkdir -p evidence-results
+          test ! -f apps/server/test-results/vitest.json || cp apps/server/test-results/vitest.json evidence-results/vitest-server.json
+          test ! -f apps/web/test-results/vitest.json || cp apps/web/test-results/vitest.json evidence-results/vitest-web.json
+          test ! -f packages/shared/test-results/vitest.json || cp packages/shared/test-results/vitest.json evidence-results/vitest-shared.json
+
+      - name: Upload Vitest evidence reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-evidence-results
+          path: evidence-results/
+          if-no-files-found: warn
+          retention-days: 7
 
   e2e:
     runs-on: ubuntu-latest
@@ -143,6 +196,10 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # Same SSH→https rewrite as the unit job — see the comment there.
+      - name: Fetch GitHub git deps over https
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -159,7 +216,20 @@ jobs:
       # database) — keep it. The trace flag is CI-only so failures leave
       # something inspectable in test-results/ for the artifact below.
       - name: Run e2e suite
-        run: pnpm --filter web e2e --trace retain-on-failure
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ github.workspace }}/evidence-results/playwright.json
+        run: |
+          mkdir -p evidence-results
+          pnpm --filter web e2e --trace retain-on-failure --reporter=list,json
+
+      - name: Upload Playwright evidence report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-evidence-results
+          path: evidence-results/playwright.json
+          if-no-files-found: warn
+          retention-days: 7
 
       # No server-log step: Playwright pipes the API server's stdout/stderr
       # into its own output (webServer stdout: 'pipe'), so a boot failure is
@@ -176,3 +246,33 @@ jobs:
             apps/web/playwright-report/
           if-no-files-found: ignore
           retention-days: 7
+
+  # Static linkage runs before install in `unit`; this second pass adds the
+  # fact that a concrete matching test actually executed on this commit. It
+  # waits for both runner families because evidence may live at either tier.
+  evidence-runtime:
+    needs: [unit, e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Vitest evidence reports
+        uses: actions/download-artifact@v4
+        with:
+          name: vitest-evidence-results
+          path: runtime-results/vitest
+
+      - name: Download Playwright evidence report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-evidence-results
+          path: runtime-results/playwright
+
+      - name: Check spec runtime evidence
+        run: >-
+          node tools/check-evidence.mjs --results
+          runtime-results/vitest/vitest-server.json
+          runtime-results/vitest/vitest-web.json
+          runtime-results/vitest/vitest-shared.json
+          runtime-results/playwright/playwright.json
