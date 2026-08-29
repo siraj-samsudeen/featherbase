@@ -2,7 +2,8 @@
 
 **IDs:** `BUD-J*` journeys · `BUD-R*` rules · `BUD-I*` invariants ·
 `BUD-H*` hazards · `Q*` questions
-**Evidence:** `docs/specs/evidence/budget-books.csv` (never status in this file)
+**Evidence:** a `> evidence:` verdict under each obligation below;
+linkage checked by `tools/check-evidence.mjs`
 **Provenance:** owner design session 2026-08-14 (the "Budget Books"
 simulation document and its resolved decisions §6); build authorized
 same day. M2 (compare view, propose-change button, pending badge) is
@@ -46,9 +47,11 @@ same code with zero per-book logic.
 measures = q1…q4, owners split between two users (`priya`, `arun`) so
 one dataset exercises same-owner and cross-owner walks. Quarterly on
 purpose: the engine must not assume twelve months. Seeded inline by the
-tests; it graduates to a shared file fixture
-(`apps/web/e2e/fixtures/beverages-budget.csv` + `.claims.md`) when the
-M3 import-as-proposal journey needs an actual workbook to upload.
+tests, including J4's overwrite file — which the import-as-proposal
+journey builds in-test rather than reading from
+`apps/web/e2e/fixtures/`, because the file's *content is the variable
+under test* (a changed cell, a new row, an absent row) and a shared
+fixture would fix exactly what each case needs to vary.
 
 **Limits, stated on purpose:** the dataset exercises one grain
 (2 key columns) and one period shape (4 quarters). Grain-agnosticism is
@@ -56,6 +59,11 @@ proven by BUD-R1's property (any key/measure declaration over any
 table), not by a second dataset.
 
 ## BUD-J1 — Build, iterate, baseline *(shape: sequence)*
+
+> evidence: proven — the browser walk: the Baseline button turns the
+> lifecycle pill active, the governed line then advertises its book and
+> refuses a direct measure edit by name, and Snapshot/Compare read the
+> trail back. Journey-owned unique names per run; no skip path.
 
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
@@ -77,6 +85,11 @@ suffix is what keeps reruns independent. No skip path.
 
 ## BUD-J2 — Propose, approve, applied *(deltas from J1's active book)*
 
+> evidence: proven — the browser walk: a draft renders its computed
+> facts in the generic FormView, approval applies it, the bound row shows
+> the value with the Version diff on its timeline, and the lock refusal
+> names the book.
+
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
 | J2.1 | `budget_change` form (generic FormView) | Create draft: book, type `revise`, required reason, one line (row ref, measure `q2`, proposed value); on save the line shows the **snapped current value** and the computed delta | R4 |
@@ -93,6 +106,10 @@ server-tier coverage runs in the SQL-sandbox transaction.
 
 ## BUD-J3 — Fast lane, still flagged *(shape: sequence, api tier)*
 
+> evidence: proven — a workflow transition whose target status is
+> submitted applies the change exactly as :submit does, and records the
+> Workflow Action that names who took the shortcut.
+
 A Workflow on `budget_change` (data, not engine code) gives the owner
 role a Draft → Approved transition whose target status is `submitted`.
 Applying it as the line's owner: the change applies exactly as J2.2–J2.3
@@ -103,6 +120,13 @@ a Workflow Action row records who took the shortcut. *(→ R5, H1)*
 are created inside the test transaction.
 
 ## BUD-J4 — The August reforecast: a file becomes proposals *(shape: sequence, api tier)*
+
+> evidence: proven — api tier: the old-habit :import fails its rows
+> pointing at :import_proposal, dry_run reports the diff and writes
+> nothing, the real call drafts revise/new_line, and approval makes the
+> table match the file where it spoke. Browser tier: the wizard shows the
+> governed banner, hides the plain-import controls, gates on a reason,
+> previews, and links the drafts it created.
 
 The job: "Finance sends the mid-year overwrite as the same spreadsheet
 shape as the original. I can't just re-import it — the book is active —
@@ -158,6 +182,11 @@ sees it. Unique table/book names per run.
 
 ### BUD-R1 — A book declares its binding · `shape: contract`
 
+> evidence: proven — a conforming declaration saves as working; a
+> non-numeric measure, a ghost key column, a missing ref_table, the engine
+> binding itself, an empty declaration and a second non-closed book are
+> each refused.
+
 `POST /api/table/budget_book` (generated CRUD). A book names a
 `ref_table` (must exist, `kind: 'table'`, not externally bound in M1)
 and declares ≥1 key column and ≥1 measure column, all existing on the
@@ -175,6 +204,10 @@ the book saves with status `working`.
 
 ### BUD-R2 — Lifecycle: working → active → closed · `shape: contract`
 
+> evidence: proven — baseline only from working (writing v0), close only
+> from active, no reopening, and a direct lifecycle save leaves the book
+> working.
+
 `POST /api/table/budget_book/:name:baseline` — only from `working`:
 writes the v0 snapshot (R10) and sets `active`. Refused on `active` or
 `closed` books.
@@ -183,6 +216,11 @@ action reopens a book; status is engine-written, read-only to direct
 edits.
 
 ### BUD-R3 — Active books lock their table · `shape: contract`
+
+> evidence: proven — declared columns, inserts, deletes and renames are
+> each refused whole-write naming the book while an undeclared column
+> still edits; a working book imposes nothing and closing releases the
+> lock (the behaviour Q3 asks the owner to ratify).
 
 While a book is `active`, the bound table refuses direct row inserts,
 deletes, **renames**, and any update that touches a declared column
@@ -199,6 +237,11 @@ writes to a governed table are told to use `:import_proposal` (R12).
 write while active is refused and the row is byte-identical after.
 
 ### BUD-R4 — A change computes its own facts · `shape: rule`
+
+> evidence: proven — snapped current values, per-line deltas,
+> total_delta, crosses_owner and a direction-aware over_doa are computed on
+> every save; a missing row, an undeclared measure, a valueless proposal
+> and a working book are refused.
 
 A draft change belongs to an **active** book (drafts against `working`
 or `closed` books are refused — a working book is edited directly). On
@@ -224,6 +267,10 @@ holds at most `MAX_CHANGE_LINES` lines.
 
 ### BUD-R5 — Approval applies, atomically, through the front door · `shape: contract`
 
+> evidence: proven — submit applies every line with one Version entry
+> per row diffing exactly the touched measures; the workflow path converges
+> on the same apply; a stale snapshot refuses the whole approval.
+
 `POST /api/table/budget_change/:name:submit` — and equally any Workflow
 transition whose target status is `submitted` — applies every line to
 the bound table **in the same transaction as the status change**, via
@@ -241,6 +288,10 @@ Behaviours (no example table — rows would restate the rule):
 
 ### BUD-R6 — A transfer nets to zero · `shape: rule`
 
+> evidence: proven — a non-zero net and a single-ended transfer are
+> refused; a three-way zero net applies and the book's grand total is
+> identical before and after.
+
 A `transfer` change is refused at save and at approval unless its line
 deltas sum to exactly zero across the change (overall, not per-period —
 owner decision 2026-08-14).
@@ -256,6 +307,10 @@ owner decision 2026-08-14).
 measures is identical before and after.
 
 ### BUD-R7 — A new line arrives complete and unique · `shape: rule`
+
+> evidence: proven — half a key, a colliding key and a duplicated
+> (key, measure) cell are refused; on approval the row is born carrying the
+> proposed measures with absent ones at 0.
 
 A `new_line` line carries no `line_ref`; its `new_line_key` JSON must
 supply **every** key column (and nothing else), and the key must not
@@ -275,6 +330,11 @@ by design).
 
 ### BUD-R8 — Discontinue zeroes forward, never deletes · `shape: rule`
 
+> evidence: proven — measures from effective_from zero while earlier
+> ones stand and the flag sets, a revise reinstates and clears it, a second
+> discontinue is refused, and effective_from must name a declared measure
+> on a discontinue change only.
+
 A `discontinue` change names an `effective_from` measure column; its
 lines carry `line_ref` only. On approval, every measure from
 `effective_from` onward (declaration order) is set to 0 and the
@@ -293,12 +353,18 @@ Reinstatement is a later `revise` that clears the flag.
 
 ### BUD-R9 — Applied changes are history · `shape: contract`
 
+> evidence: proven — cancel of an applied change is refused and the
+> status stays submitted.
+
 `:cancel` and `:amend` on a `submitted` budget_change are refused — the
 platform's cancel would strand applied values with a cancelled paper
 trail. The road back is a new opposite change. Draft changes delete
 freely.
 
 ### BUD-R11 — An attached workflow owns the gate · `shape: contract`
+
+> evidence: proven — a workflow-governed table refuses plain :submit
+> for everyone, naming the workflow, and the bound row is untouched.
 
 When an active Workflow governs a table, the plain `:submit` and
 `:cancel` row actions are refused **for everyone**, naming the workflow
@@ -310,6 +376,13 @@ workflow-governed tables; transitions are the only path through the
 status change. Platform-wide, not budget-specific.
 
 ### BUD-R12 — Import-as-proposal: a file diffs into drafts · `shape: contract`
+
+> evidence: proven — the key-matched diff (an equal cell, an absent cell
+> and an absent row are each silence), both missing_rows modes with
+> already-discontinued rows skipped, dry_run parity, undeclared columns
+> ignored and named, refuse-whole on a missing key cell / duplicate key /
+> non-numeric measure / empty reason, the no-active-book refusal, and a
+> 204-line diff chunking 200 + 4 without splitting a row.
 
 `POST /api/table/:table:import_proposal
 { rows, reason, dry_run?, missing_rows?, effective_from? }` — the bulk
@@ -367,6 +440,9 @@ the file spoke and leaves them untouched where it was silent — and
 
 ### BUD-R10 — The snapshot is the whole book · `shape: invariant`
 
+> evidence: proven — a v0 line's data holds exactly the declared key,
+> measure and owner values and nothing else.
+
 v0 (and every later snapshot) holds one `budget_version_line` per bound
 row, its `data` JSON carrying every declared key, measure, and owner
 value at snapshot time. Undeclared columns are deliberately absent.
@@ -374,6 +450,10 @@ value at snapshot time. Undeclared columns are deliberately absent.
 ## Invariants
 
 ### BUD-I1 — The ledger reconciles
+
+> evidence: proven — whole-run arithmetic after an applied revise,
+> transfer, new_line and discontinue: every row's current Σmeasures equals
+> its v0 Σ plus its applied deltas, and a born row reconciles from 0.
 
 For every bound row present at baseline: **Σ current measures =
 Σ v0 measures + Σ (applied change-line deltas for that row)** — row
@@ -385,6 +465,9 @@ table.
 
 ### BUD-I2 — No half-applied change
 
+> evidence: proven — a stale line refuses the whole approval: the
+> sibling line is unapplied and the change is still draft.
+
 At any commit point, a budget_change is either `draft`/`cancelled`-shaped
 (no line applied) or `submitted` (every line applied). A mid-apply
 failure rolls the status back with the values.
@@ -392,6 +475,10 @@ failure rolls the status back with the values.
 ## Hazards
 
 ### BUD-H1 — The workflow side door
+
+> evidence: proven — applyWorkflowAction runs the submit hook chain
+> inside the status-change transaction, so a workflow approval applies;
+> BUD-J3's test pins the seam.
 
 `applyWorkflowAction` writes status via direct UPDATE, bypassing the
 submittable write-lock and (as shipped) controller hooks. If the engine
@@ -402,6 +489,11 @@ to workflow internals must keep that seam.
 
 ### BUD-H2 — Owner drift between draft and approval
 
+> evidence: gap — no test: accepted for now rather than covered. While
+> owner_column is declared, R3 locks owner edits on an active book, so the
+> drift needs an owner-column exemption that does not exist yet; revisit if
+> one is ever added.
+
 `crosses_owner` is computed at save; workflow role gates evaluate at
 action time. A line whose owner changes between draft and approval can
 ride a lane computed from stale facts. Accepted for M1 (owner changes on
@@ -409,6 +501,12 @@ an active book's rows are themselves locked by R3 when `owner_column` is
 declared); revisit if owner edits are ever exempted.
 
 ### BUD-H3 — Two active workflows, one table
+
+> evidence: gap — no test: the hazard is a platform property (multiple
+> active Workflows on one table, newest silently wins), not budget
+> behaviour, and pinning it would assert a rule nobody has ratified.
+> Q5 puts the enforcement question to the owner; both budget suites
+> defend themselves by deactivating stray workflows in-transaction.
 
 The platform does not prevent a second `is_active` Workflow on the same
 table; `getActiveWorkflow` silently picks the newest. Any app or session

@@ -58,9 +58,12 @@ export default defineConfig({
       // further point below the floor rather than a hundredth above it,
       // where it would flake.
       thresholds: {
-        lines: 33,
-        statements: 33,
-        functions: 45,
+        // Ratcheted 2026-08-28 → 33/45, then 2026-09-01 → 37/47 when the
+        // Import wizard's governed (budget-proposal) branch gained component
+        // coverage: measured 37.59% lines / 47.33% functions, rounded down.
+        lines: 37,
+        statements: 37,
+        functions: 47,
       },
     },
   },

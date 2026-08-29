@@ -1,16 +1,22 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectApiError, makeTable, tableRef } from './fixtures'
 import { sql } from '../src/db'
 
-// Spec 0007, BUD-J4 + BUD-R12 (M3): import-as-proposal. Titles quote spec
-// IDs — static traceability for docs/specs/evidence/budget-books.csv.
+// Spec 0007, BUD-J4 + BUD-R12 (M3): import-as-proposal — a whole overwrite
+// file diffed against a governed table into draft Budget Changes. Titles
+// quote spec IDs; the `> evidence:` verdicts in
+// docs/specs/0007-budget-books.md join to them (tools/check-evidence.mjs).
+// The browser tier of J4 is apps/web/e2e/budget-import-ui.spec.ts.
 
 const LINE = 'Bp Line'
 const BOOK = 'Bp 2026'
-const T = encodeURIComponent
-const IMPORT = `/api/table/${T(LINE)}:import`
-const PROPOSAL = `/api/table/${T(LINE)}:import_proposal`
+const lineRef = tableRef(LINE)
+const bookRef = tableRef('Budget Book')
+const changeRef = tableRef('Budget Change')
+const IMPORT = `${lineRef.url}:import`
+const PROPOSAL = `${lineRef.url}:import_proposal`
 
 type Row = Record<string, unknown>
 
@@ -27,17 +33,17 @@ interface ProposalResult {
 }
 
 async function setup(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await makeTable(admin, {
     name: LINE,
     columns: [
-      { column_name: 'store', column_type: 'Data' },
-      { column_name: 'subcategory', column_type: 'Data' },
-      { column_name: 'owner', column_type: 'Data' },
-      { column_name: 'notes', column_type: 'Data' },
-      { column_name: 'q1', column_type: 'Currency' },
-      { column_name: 'q2', column_type: 'Currency' },
-      { column_name: 'q3', column_type: 'Currency' },
-      { column_name: 'q4', column_type: 'Currency' },
+      'store',
+      'subcategory',
+      'owner',
+      'notes',
+      'q1:Currency',
+      'q2:Currency',
+      'q3:Currency',
+      'q4:Currency',
     ],
   })
   const rows: Record<string, Row> = {}
@@ -46,7 +52,7 @@ async function setup(admin: TestClient) {
     aSnk: { store: 'Adyar', subcategory: 'Snacks', owner: 'priya', q1: 10, q2: 20, q3: 30, q4: 40 },
     bBev: { store: 'Besant Nagar', subcategory: 'Beverages', owner: 'arun', q1: 200, q2: 200, q3: 200, q4: 200 },
   }))
-    rows[key] = await admin.post<Row>(`/api/table/${T(LINE)}`, doc)
+    rows[key] = await admin.post<Row>(lineRef.url, doc)
   await admin.post('/api/save_row', {
     table: 'Budget Book',
     row: {
@@ -64,7 +70,7 @@ async function setup(admin: TestClient) {
     },
   })
   await sql`update workflow set is_active = false where ref_table = 'Budget Change'`
-  await admin.post(`/api/table/${T('Budget Book')}/${T(BOOK)}:baseline`, {})
+  await admin.post(`${bookRef.rowUrl(BOOK)}:baseline`, {})
   return rows
 }
 
@@ -74,15 +80,15 @@ async function propose(admin: TestClient, body: Row): Promise<ProposalResult> {
 
 async function submitAll(admin: TestClient, res: ProposalResult) {
   for (const c of res.changes)
-    await admin.post(`/api/table/${T('Budget Change')}/${T(String(c.row_id))}:submit`, {})
+    await admin.post(`${changeRef.rowUrl(String(c.row_id))}:submit`, {})
 }
 
 async function getRow(admin: TestClient, name: string): Promise<Row> {
-  return admin.get<Row>(`/api/table/${T(LINE)}/${T(name)}`)
+  return admin.get<Row>(lineRef.rowUrl(name))
 }
 
 describe('BUD-J4: the August reforecast — a file becomes proposals', () => {
-  test('BUD-J4.1 (R3): plain :import on a governed table fails its rows pointing at :import_proposal', async ({
+  test('BUD-J4: plain :import on a governed table fails its rows pointing at :import_proposal (step J4.1)', async ({
     admin,
   }) => {
     const rows = await setup(admin)
@@ -99,7 +105,7 @@ describe('BUD-J4: the August reforecast — a file becomes proposals', () => {
     expect(res.failed[0].message).toContain('import_proposal')
   })
 
-  test('BUD-J4.3/J4.5 (R12): a partial file becomes a revise draft; approval makes the table match the file where it spoke', async ({
+  test('BUD-J4: a partial file becomes a revise draft, and approval makes the table match the file where it spoke (steps J4.3, J4.5)', async ({
     admin,
   }) => {
     const rows = await setup(admin)
@@ -123,7 +129,7 @@ describe('BUD-J4: the August reforecast — a file becomes proposals', () => {
     // Nothing applied at import time (J4.3): the draft is a draft.
     expect(Number((await getRow(admin, String(rows.aBev.row_id))).q2)).toBe(100)
     const draft = await admin.get<Row>(
-      `/api/table/${T('Budget Change')}/${T(String(res.changes[0].row_id))}`,
+      changeRef.rowUrl(String(res.changes[0].row_id)),
     )
     expect(draft.status).toBe('draft')
     expect(Number(draft.total_delta)).toBe(-20)
@@ -164,7 +170,6 @@ describe('BUD-J4: the August reforecast — a file becomes proposals', () => {
     await submitAll(admin, res)
     const [born] = await sql`
       select * from ${sql('bp_line')} where store = 'Velachery' and subcategory = 'Beverages'`
-    expect(born).toBeTruthy()
     expect(Number(born.q1)).toBe(50)
     expect(Number(born.q2)).toBe(60)
     expect(Number(born.q3 ?? 0)).toBe(0) // absent measures born at 0 (R7)
@@ -197,8 +202,6 @@ describe('BUD-J4: the August reforecast — a file becomes proposals', () => {
       effective_from: 'q3',
     })
     expect(res.discontinued_rows).toBe(1)
-    const disc = res.changes.find((c) => c.change_type === 'discontinue')!
-    expect(disc).toBeTruthy()
     await submitAll(admin, res)
     const bBev = await getRow(admin, String(rows.bBev.row_id))
     expect(Number(bBev.q2)).toBe(200) // before effective_from stands (R8)
@@ -216,10 +219,10 @@ describe('BUD-J4: the August reforecast — a file becomes proposals', () => {
       effective_from: 'q3',
     })
     expect(again.discontinued_rows).toBe(0)
-    expect(again.changes.find((c) => c.change_type === 'discontinue')).toBeUndefined()
+    expect(again.changes.map((c) => c.change_type)).not.toContain('discontinue')
   })
 
-  test('BUD-J4.2 (R12): dry_run reports the identical diff and writes nothing', async ({
+  test('BUD-J4: dry_run reports the identical diff and writes nothing (step J4.2)', async ({
     admin,
   }) => {
     await setup(admin)
@@ -278,10 +281,7 @@ describe('BUD-J4: the August reforecast — a file becomes proposals', () => {
       ],
     ]
     for (const [body, msg] of cases) {
-      await expect(propose(admin, body)).rejects.toMatchObject({
-        status: 417,
-        message: expect.stringMatching(msg),
-      })
+      await expectApiError(propose(admin, body), { status: 417, message: expect.stringMatching(msg) })
     }
     const [{ count }] = await sql`
       select count(*)::int as count from budget_change where book = ${BOOK}`
@@ -298,10 +298,7 @@ describe('BUD-J4: the August reforecast — a file becomes proposals', () => {
         { column_name: 'q1', column_type: 'Currency' },
       ],
     })
-    await expect(propose(admin, { rows: [{ store: 'Adyar', q1: 10 }] })).rejects.toMatchObject({
-      status: 417,
-      message: expect.stringMatching(/not governed by an active Budget Book/),
-    })
+    await expectApiError(propose(admin, { rows: [{ store: 'Adyar', q1: 10 }] }), { status: 417, message: expect.stringMatching(/not governed by an active Budget Book/) })
   })
 
   test('BUD-R12: a diff wider than MAX_CHANGE_LINES chunks into several drafts, one row never split', async ({

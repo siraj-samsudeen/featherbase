@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
 // Spec 0007 (Budget Books), BUD-J2 at the browser tier: a proposed Budget
 // Change renders its computed facts in the generic FormView, approves via
@@ -10,29 +10,17 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 // self-clean; teardown closes the book and deletes the line table, and the
 // unique suffix keeps a crashed run from blocking the next.
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const SFX = Math.random().toString(36).slice(2, 8)
 const LINE = `Bgt Ui Line ${SFX}`
 const BOOK = `Bgt Ui 2026 ${SFX}`
 const T = encodeURIComponent
 
-let token = ''
 let headers: Record<string, string> = {}
 let lineName = ''
 let changeName = ''
 
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
-
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const res = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  token = ((await res.json()) as { token: string }).token
-  headers = { Authorization: `Bearer ${token}` }
+  headers = await adminAuth(request)
 
   const dt = await request.post('/api/table_def', {
     headers,
@@ -101,8 +89,6 @@ test.afterAll(async ({ request }: { request: APIRequestContext }) => {
 test('BUD-J2: the change form shows computed facts, submits, and the line shows value + trail', async ({
   page,
 }) => {
-  await login(page)
-
   // J2.1 — the draft renders its computed facts in the generic FormView.
   await page.goto(`/admin/${T('Budget Change')}/${T(changeName)}`)
   await expect(page.getByTestId('form-view')).toBeVisible()

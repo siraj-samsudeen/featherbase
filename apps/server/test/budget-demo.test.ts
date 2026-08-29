@@ -1,6 +1,7 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectApiError, tableRef } from './fixtures'
 import { sql } from '../src/db'
 
 // Spec 0007: the budget-books-demo sample app is the scenario world from
@@ -8,8 +9,11 @@ import { sql } from '../src/db'
 // the three approval lanes (standard, fast-lane-with-flag, DOA→CFO)
 // end-to-end, plus the M2 governance/compare endpoints.
 
-const T = encodeURIComponent
-const CHANGE = `/api/table/${T('Budget Change')}`
+const changeRef = tableRef('Budget Change')
+const bookRef = tableRef('Budget Book')
+const salesRef = tableRef('Sales Budget Line')
+const opexRef = tableRef('Opex Budget Line')
+const CHANGE = changeRef.url
 
 const BOOKS = ['Sales Budget 2026', 'Opex Budget 2026']
 
@@ -63,7 +67,7 @@ async function install(admin: TestClient) {
 
 async function baseline(admin: TestClient, book: string) {
   return admin.post<Record<string, unknown>>(
-    `/api/table/${T('Budget Book')}/${T(book)}:baseline`,
+    `${bookRef.rowUrl(book)}:baseline`,
     {},
   )
 }
@@ -74,7 +78,7 @@ async function makeChange(admin: TestClient, doc: Record<string, unknown>) {
 
 async function wfAction(client: TestClient, name: string, action: string) {
   return client.post<Record<string, unknown>>(
-    `${CHANGE}/${T(name)}:apply_workflow_action`,
+    `${changeRef.rowUrl(name)}:apply_workflow_action`,
     { action },
   )
 }
@@ -83,11 +87,11 @@ describe('budget-books-demo: the scenario world installs and its lanes work', ()
   test('install seeds two working books over differently-shaped tables', async ({ admin }) => {
     await install(admin)
     const sales = await admin.get<Record<string, unknown>>(
-      `/api/table/${T('Budget Book')}/${T('Sales Budget 2026')}`,
+      bookRef.rowUrl('Sales Budget 2026'),
     )
     expect(sales.lifecycle).toBe('working')
     const opex = await admin.get<Record<string, unknown>>(
-      `/api/table/${T('Budget Book')}/${T('Opex Budget 2026')}`,
+      bookRef.rowUrl('Opex Budget 2026'),
     )
     expect(opex.lifecycle).toBe('working')
     const res = await baseline(admin, 'Sales Budget 2026')
@@ -112,16 +116,16 @@ describe('budget-books-demo: the scenario world installs and its lanes work', ()
     })
     const name = String(change.row_id)
     // The requester cannot self-approve (no Budget Owner role)…
-    await expect(wfAction(requester, name, 'Self-approve')).rejects.toMatchObject({ status: 403 })
+    await expectApiError(wfAction(requester, name, 'Self-approve'), { status: 403, type: 'PermissionError' })
     // …but can submit for approval.
     await wfAction(requester, name, 'Submit for approval')
     // Within ±5,00,000 the approver's Approve lands it (condition holds).
     await wfAction(approver, name, 'Approve')
     const line = await admin.get<Record<string, unknown>>(
-      `/api/table/${T('Sales Budget Line')}/SBL-ADY-JUICES`,
+      salesRef.rowUrl('SBL-ADY-JUICES'),
     )
     expect(Number(line.apr)).toBe(95000)
-    const after = await admin.get<Record<string, unknown>>(`${CHANGE}/${T(name)}`)
+    const after = await admin.get<Record<string, unknown>>(changeRef.rowUrl(name))
     expect(after.status).toBe('submitted')
   })
 
@@ -140,7 +144,7 @@ describe('budget-books-demo: the scenario world installs and its lanes work', ()
     expect(change.crosses_owner).toBe(false)
     await wfAction(owner, String(change.row_id), 'Self-approve')
     const line = await admin.get<Record<string, unknown>>(
-      `/api/table/${T('Opex Budget Line')}/OBL-IT-SOFT`,
+      opexRef.rowUrl('OBL-IT-SOFT'),
     )
     expect(Number(line.q3)).toBe(550000)
     // The flag: the Email Rule fired on the workflow-driven submit, queueing
@@ -166,9 +170,7 @@ describe('budget-books-demo: the scenario world installs and its lanes work', ()
     })
     expect(change.crosses_owner).toBe(true)
     // Condition gates are not bypassed even by Administrator.
-    await expect(wfAction(admin, String(change.row_id), 'Self-approve')).rejects.toMatchObject({
-      status: 417,
-    })
+    await expectApiError(wfAction(admin, String(change.row_id), 'Self-approve'), { status: 417, type: 'ValidationError' })
   })
 
   test('DOA lane: over ±5,00,000 the approver can only escalate; the CFO lands it', async ({
@@ -189,11 +191,11 @@ describe('budget-books-demo: the scenario world installs and its lanes work', ()
     const name = String(change.row_id)
     await wfAction(requester, name, 'Submit for approval')
     // The small-delta Approve's condition fails — even for the approver.
-    await expect(wfAction(approver, name, 'Approve')).rejects.toMatchObject({ status: 417 })
+    await expectApiError(wfAction(approver, name, 'Approve'), { status: 417, type: 'ValidationError' })
     await wfAction(approver, name, 'Send to CFO')
     await wfAction(cfo, name, 'Approve')
     const line = await admin.get<Record<string, unknown>>(
-      `/api/table/${T('Opex Budget Line')}/OBL-ADY-ELEC`,
+      opexRef.rowUrl('OBL-ADY-ELEC'),
     )
     expect(Number(line.q3)).toBe(1750000)
   })
@@ -210,7 +212,7 @@ describe('budget-books-demo: the scenario world installs and its lanes work', ()
     const gov = await admin.get<{
       book: { name: string; lifecycle: string } | null
       pending: { row_id: string }[]
-    }>(`/api/budget/line/${T('Opex Budget Line')}/OBL-IT-SOFT`)
+    }>(`/api/budget/line/${encodeURIComponent('Opex Budget Line')}/OBL-IT-SOFT`)
     expect(gov.book?.name).toBe('Opex Budget 2026')
     expect(gov.pending.map((p) => p.row_id)).toContain(String(draft.row_id))
     // Apply one change, then compare v0 → current. BUD-R11: the demo
@@ -224,7 +226,7 @@ describe('budget-books-demo: the scenario world installs and its lanes work', ()
       lines: { ref_name: string; status: string; measures: Record<string, { from: number | null; to: number | null }> }[]
       unchanged: number
     }>(
-      `/api/budget/compare/${T('Opex Budget 2026')}?from=${String(v0.row_id)}&to=current`,
+      `/api/budget/compare/${encodeURIComponent('Opex Budget 2026')}?from=${String(v0.row_id)}&to=current`,
     )
     expect(cmp.lines).toHaveLength(1)
     expect(cmp.lines[0].ref_name).toBe('OBL-IT-SOFT')

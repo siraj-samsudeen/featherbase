@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
 // Spec 0007 M2 in the browser: the Baseline button (BUD-J1.4's gap), the
 // governed pill + pending badge + Propose change flow, the Snapshot button,
@@ -7,7 +7,6 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 // Isolation: journey-owned unique names; teardown closes the book and
 // deletes the line table (applied changes are permanent by design).
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const SFX = Math.random().toString(36).slice(2, 8)
 const LINE = `Bgt M2 Line ${SFX}`
 const BOOK = `Bgt M2 2026 ${SFX}`
@@ -16,17 +15,8 @@ const T = encodeURIComponent
 let headers: Record<string, string> = {}
 let lineName = ''
 
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
-
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const res = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  headers = { Authorization: `Bearer ${((await res.json()) as { token: string }).token}` }
+  headers = await adminAuth(request)
 
   const dt = await request.post('/api/table_def', {
     headers,
@@ -71,12 +61,10 @@ test.afterAll(async ({ request }: { request: APIRequestContext }) => {
   await request.delete(`/api/table_def/${T(LINE)}`, { headers })
 })
 
-test('M2: baseline button → governed pill → propose → submit → snapshot → compare', async ({
+test('BUD-J1: the Baseline button freezes the book, the governed line offers the way in, and Snapshot/Compare read the trail', async ({
   page,
   request,
 }) => {
-  await login(page)
-
   // J1.4 in the browser: the Baseline button freezes the book.
   await page.goto(`/admin/${T('Budget Book')}/${T(BOOK)}`)
   await expect(page.getByTestId('budget-lifecycle')).toHaveText('working')

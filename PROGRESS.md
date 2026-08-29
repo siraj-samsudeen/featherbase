@@ -1,5 +1,54 @@
 # Progress Log
 
+## 2026-08-29 — Budget Books joins the new test system (#227/#233/#239/#240)
+
+The branch predated the test-system overhaul; this brings it across and
+pays the conventions rather than working around them.
+
+- **Fixtures, not per-file setup.** The three server suites now build
+  through `test/fixtures.ts` — `makeTable` with the `'q1:Currency'`
+  shorthand, `tableRef` for URL handles (the `T = encodeURIComponent`
+  spelling is gone), and `expectApiError` for all 36 refusal assertions,
+  each now naming its error `type` as well as its status. That last one
+  deleted a hand-rolled throw-on-not-ok wrapper around a raw DELETE
+  `fetch` — precisely the case `expectApiError` was built for.
+- **Banned assertions gone.** Four `toBeTruthy`/`toBeUndefined` sites
+  now assert the actual shape (`expect(Number(born.q1)).toBe(50)`,
+  `expect(types).not.toContain('discontinue')`).
+- **E2E auth centralized.** All three budget specs drop their local
+  `login()` copies for the pre-authed `test` + `adminAuth` from
+  `e2e/fixtures.ts`.
+- **Evidence moved into the spec.** `docs/specs/evidence/budget-books.csv`
+  is deleted; 21 `> evidence:` verdicts now sit under their obligations
+  in `docs/specs/0007-budget-books.md`. Test titles were adjusted where
+  they minted IDs no spec declares (`BUD-R3/Q3` read as a phantom
+  `BUD-Q3`; `BUD-J4.1` as a sub-ID) — the step numbers stayed as prose.
+  BUD-H2 and BUD-H3 are recorded as `gap` with the reason, not dressed
+  up as covered.
+- **Coverage: added tests, did not lower the floor.** The M3 wizard UI
+  had pushed web coverage to 32.3%, under its 33 floor. New component
+  suite `apps/web/test/budget-import-wizard.test.tsx` (5 tests) drives
+  the governed branch at layer 2 — where it belongs: it renders from
+  server state, gates on the reason, and asserts *what was not sent*
+  (drafts exist, the bound table is untouched). Web coverage 32.3% →
+  **37.59%**, `ImportWizard.tsx` 1.77% → 42.61%; the ratchet rises to
+  37 lines / 47 functions.
+
+**Gotchas:** jsdom's `File` has no `arrayBuffer()`, which `parseWorkbook`
+calls — the test fills that environment gap in its own file builder
+rather than reshaping the code under test. And the governed panel only
+mounts once the Budget Book query resolves, so the shared opener waits
+on it instead of racing the branch.
+
+**Verified:** server 775 passed (the one failure is the documented
+container-only `sources-csv` chmod-as-root case, which passes in CI),
+web 97, shared 22, e2e **101 passed**; both typechecks clean; and the
+full CI evidence gate reproduced locally, including the runtime pass —
+`check-evidence --results` over all four report files: *99 verdicts
+across 6 specs, 1011 runtime tests checked*, zero warnings.
+
+**Next:** owner decisions Q1–Q5 in spec 0007 remain open.
+
 ## 2026-08-28 — Runtime results close the last proof escape hatch (#241)
 
 The evidence checker now has two deliberately separate modes. Its default

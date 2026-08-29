@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
 // Spec 0007, BUD-J4 at the browser tier (M3 UI): a typical user drops the
 // August overwrite on the Import wizard; the governed target swaps the
@@ -8,7 +8,6 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 // Isolation: journey-owned unique names; teardown closes the book and
 // deletes the line table (applied changes are permanent by design).
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const SFX = Math.random().toString(36).slice(2, 8)
 const LINE = `Bgt Wiz Line ${SFX}`
 const BOOK = `Bgt Wiz 2026 ${SFX}`
@@ -17,17 +16,8 @@ const T = encodeURIComponent
 let headers: Record<string, string> = {}
 let bevRowId = ''
 
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
-
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const res = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  headers = { Authorization: `Bearer ${((await res.json()) as { token: string }).token}` }
+  headers = await adminAuth(request)
 
   const dt = await request.post('/api/table_def', {
     headers,
@@ -83,8 +73,6 @@ test.afterAll(async ({ request }: { request: APIRequestContext }) => {
 test('BUD-J4 in the wizard: drop the August file → governed panel → preview → drafts → approve', async ({
   page,
 }) => {
-  await login(page)
-
   // The wizard, opened from the governed table (the ?table= pin).
   await page.goto(`/admin/import?table=${T(LINE)}`)
   // The August file: one changed cell (Beverages q2 100→80), one new row,

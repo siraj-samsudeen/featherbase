@@ -1,30 +1,34 @@
 import { describe, expect } from 'vitest'
-import { test } from './pg-test'
+import { test, patchDoc } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
-import { patchDoc } from './pg-test'
+import { expectApiError, makeTable, tableRef } from './fixtures'
 import { sql } from '../src/db'
 
-// Spec 0007 (Budget Books, M1): the grain-agnostic budget engine.
-// Titles quote spec IDs — static traceability for
-// docs/specs/evidence/budget-books.csv.
+// Spec 0007 (Budget Books) — the grain-agnostic budget engine: binding,
+// lifecycle, the write-lock, and every change_type through approval.
+// Titles quote spec IDs; the `> evidence:` verdicts in
+// docs/specs/0007-budget-books.md join to them, checked by
+// tools/check-evidence.mjs. The import-as-proposal tier (BUD-J4/R12) lives
+// in ./budget-import.test.ts; the sample-app lanes in ./budget-demo.test.ts.
 
 const LINE = 'Bb Line'
 const BOOK = 'Bb 2026'
-const T = encodeURIComponent
-const CHANGE_PATH = `/api/table/${T('Budget Change')}`
+const lineRef = tableRef(LINE)
+const bookRef = tableRef('Budget Book')
+const changeRef = tableRef('Budget Change')
 
 async function makeLineTable(admin: TestClient) {
-  await admin.post('/api/table_def', {
+  await makeTable(admin, {
     name: LINE,
     columns: [
-      { column_name: 'store', column_type: 'Data' },
-      { column_name: 'subcategory', column_type: 'Data' },
-      { column_name: 'owner', column_type: 'Data' },
-      { column_name: 'notes', column_type: 'Data' },
-      { column_name: 'q1', column_type: 'Currency' },
-      { column_name: 'q2', column_type: 'Currency' },
-      { column_name: 'q3', column_type: 'Currency' },
-      { column_name: 'q4', column_type: 'Currency' },
+      'store',
+      'subcategory',
+      'owner',
+      'notes',
+      'q1:Currency',
+      'q2:Currency',
+      'q3:Currency',
+      'q4:Currency',
     ],
   })
 }
@@ -38,7 +42,7 @@ async function makeRows(admin: TestClient): Promise<Record<string, Row>> {
     aSnk: { store: 'Adyar', subcategory: 'Snacks', owner: 'priya', q1: 10, q2: 20, q3: 30, q4: 40 },
     bBev: { store: 'Besant Nagar', subcategory: 'Beverages', owner: 'arun', q1: 200, q2: 200, q3: 200, q4: 200 },
   }))
-    rows[key] = await admin.post<Row>(`/api/table/${T(LINE)}`, doc)
+    rows[key] = await admin.post<Row>(lineRef.url, doc)
   return rows
 }
 
@@ -60,8 +64,8 @@ async function makeBook(admin: TestClient, doc: Row = {}): Promise<Row> {
   return admin.post<Row>('/api/save_row', { table: 'Budget Book', row: { ...BOOK_DOC, ...doc } })
 }
 
-async function baseline(admin: TestClient, book = BOOK): Promise<Row> {
-  return admin.post<Row>(`/api/table/${T('Budget Book')}/${T(book)}:baseline`, {})
+async function baseline(admin: TestClient, name = BOOK): Promise<Row> {
+  return admin.post<Row>(`${bookRef.rowUrl(name)}:baseline`, {})
 }
 
 async function setup(admin: TestClient) {
@@ -82,15 +86,15 @@ async function activeSetup(admin: TestClient) {
 }
 
 async function makeChange(admin: TestClient, doc: Row): Promise<Row> {
-  return admin.post<Row>(CHANGE_PATH, { reason: 'test reason', ...doc })
+  return admin.post<Row>(changeRef.url, { reason: 'test reason', ...doc })
 }
 
 async function submit(admin: TestClient, name: string): Promise<Row> {
-  return admin.post<Row>(`${CHANGE_PATH}/${T(name)}:submit`, {})
+  return admin.post<Row>(`${changeRef.rowUrl(name)}:submit`, {})
 }
 
 async function getRow(admin: TestClient, table: string, name: string): Promise<Row> {
-  return admin.get<Row>(`/api/table/${T(table)}/${T(name)}`)
+  return admin.get<Row>(tableRef(table).rowUrl(name))
 }
 
 describe('BUD-R1: a book declares its binding', () => {
@@ -103,31 +107,21 @@ describe('BUD-R1: a book declares its binding', () => {
   test('BUD-R1: violations are refused naming the broken clause', async ({ admin }) => {
     await makeLineTable(admin)
     // measure must be numeric
-    await expect(
-      makeBook(admin, { row_id: 'Bad 1', measure_columns: [{ column_name: 'store' }] }),
-    ).rejects.toMatchObject({ status: 417 })
+    await expectApiError(makeBook(admin, { row_id: 'Bad 1', measure_columns: [{ column_name: 'store' }] }), { status: 417, type: 'ValidationError' })
     // key column must exist
-    await expect(
-      makeBook(admin, { row_id: 'Bad 2', key_columns: [{ column_name: 'ghost' }] }),
-    ).rejects.toMatchObject({ status: 417 })
+    await expectApiError(makeBook(admin, { row_id: 'Bad 2', key_columns: [{ column_name: 'ghost' }] }), { status: 417, type: 'ValidationError' })
     // ref_table must exist
-    await expect(makeBook(admin, { row_id: 'Bad 3', ref_table: 'No Such Table' })).rejects.toMatchObject(
-      { status: 417 },
-    )
+    await expectApiError(makeBook(admin, { row_id: 'Bad 3', ref_table: 'No Such Table' }), { status: 417, type: 'ValidationError' })
     // the engine cannot govern itself
-    await expect(makeBook(admin, { row_id: 'Bad 4', ref_table: 'Budget Change' })).rejects.toMatchObject(
-      { status: 417 },
-    )
+    await expectApiError(makeBook(admin, { row_id: 'Bad 4', ref_table: 'Budget Change' }), { status: 417, type: 'ValidationError' })
     // at least one of each declaration
-    await expect(makeBook(admin, { row_id: 'Bad 5', key_columns: [] })).rejects.toMatchObject({
-      status: 417,
-    })
+    await expectApiError(makeBook(admin, { row_id: 'Bad 5', key_columns: [] }), { status: 417, type: 'ValidationError' })
   })
 
   test('BUD-R1: at most one non-closed book per bound table', async ({ admin }) => {
     await makeLineTable(admin)
     await makeBook(admin)
-    await expect(makeBook(admin, { row_id: 'Second Book' })).rejects.toMatchObject({ status: 417 })
+    await expectApiError(makeBook(admin, { row_id: 'Second Book' }), { status: 417, type: 'ValidationError' })
   })
 })
 
@@ -163,13 +157,11 @@ describe('BUD-R2: lifecycle working → active → closed', () => {
   }) => {
     await setup(admin)
     await baseline(admin)
-    await expect(baseline(admin)).rejects.toMatchObject({ status: 417 })
-    const closed = await admin.post<Row>(`/api/table/${T('Budget Book')}/${T(BOOK)}:close`, {})
+    await expectApiError(baseline(admin), { status: 417, type: 'ValidationError' })
+    const closed = await admin.post<Row>(`${bookRef.rowUrl(BOOK)}:close`, {})
     expect(closed.lifecycle).toBe('closed')
-    await expect(
-      admin.post(`/api/table/${T('Budget Book')}/${T(BOOK)}:close`, {}),
-    ).rejects.toMatchObject({ status: 417 })
-    await expect(baseline(admin)).rejects.toMatchObject({ status: 417 })
+    await expectApiError(admin.post(`${bookRef.rowUrl(BOOK)}:close`, {}), { status: 417, type: 'ValidationError' })
+    await expectApiError(baseline(admin), { status: 417, type: 'ValidationError' })
   })
 
   test('BUD-R2: lifecycle never moves through a direct save', async ({ admin }) => {
@@ -178,7 +170,7 @@ describe('BUD-R2: lifecycle working → active → closed', () => {
     // lifecycle is read_only: the save lifecycle drops the client value on
     // the floor (and the controller refuses any change that does get
     // through) — either way, the book must still be working afterwards.
-    await patchDoc(admin, `/api/table/${T('Budget Book')}/${T(BOOK)}`, {
+    await patchDoc(admin, bookRef.rowUrl(BOOK), {
       updated_at: book.updated_at,
       lifecycle: 'active',
     }).catch(() => undefined)
@@ -190,7 +182,7 @@ describe('BUD-R2: lifecycle working → active → closed', () => {
 describe('BUD-R3: an active book locks its table', () => {
   test('BUD-R3: working books impose nothing', async ({ admin }) => {
     const rows = await setup(admin)
-    const updated = await patchDoc(admin, `/api/table/${T(LINE)}/${T(String(rows.aBev.row_id))}`, {
+    const updated = await patchDoc(admin, lineRef.rowUrl(String(rows.aBev.row_id)), {
       updated_at: rows.aBev.updated_at,
       q1: 999,
     })
@@ -204,40 +196,31 @@ describe('BUD-R3: an active book locks its table', () => {
     const name = String(rows.aBev.row_id)
     const fresh = await getRow(admin, LINE, name)
     // measure
-    await expect(
-      patchDoc(admin, `/api/table/${T(LINE)}/${T(name)}`, { updated_at: fresh.updated_at, q1: 1 }),
-    ).rejects.toMatchObject({ status: 417 })
+    await expectApiError(patchDoc(admin, lineRef.rowUrl(name), { updated_at: fresh.updated_at, q1: 1 }), { status: 417, type: 'ValidationError' })
     // key
-    await expect(
-      patchDoc(admin, `/api/table/${T(LINE)}/${T(name)}`, {
+    await expectApiError(patchDoc(admin, lineRef.rowUrl(name), {
         updated_at: fresh.updated_at,
         store: 'Elsewhere',
-      }),
-    ).rejects.toMatchObject({ status: 417 })
+      }), { status: 417, type: 'ValidationError' })
     // owner
-    await expect(
-      patchDoc(admin, `/api/table/${T(LINE)}/${T(name)}`, {
+    await expectApiError(patchDoc(admin, lineRef.rowUrl(name), {
         updated_at: fresh.updated_at,
         owner: 'meena',
-      }),
-    ).rejects.toMatchObject({ status: 417 })
+      }), { status: 417, type: 'ValidationError' })
     // undeclared column still edits
-    const noted = await patchDoc(admin, `/api/table/${T(LINE)}/${T(name)}`, {
+    const noted = await patchDoc(admin, lineRef.rowUrl(name), {
       updated_at: fresh.updated_at,
       notes: 'still editable',
     })
     expect(noted.notes).toBe('still editable')
     // insert
-    await expect(
-      admin.post(`/api/table/${T(LINE)}`, { store: 'New', subcategory: 'New', q1: 1 }),
-    ).rejects.toMatchObject({ status: 417 })
-    // delete
-    await expect(
-      admin.fetch(`/api/table/${T(LINE)}/${T(name)}`, { method: 'DELETE' }).then((r) => {
-        if (!r.ok) throw Object.assign(new Error('refused'), { status: r.status })
-        return r
-      }),
-    ).rejects.toMatchObject({ status: 417 })
+    await expectApiError(admin.post(lineRef.url, { store: 'New', subcategory: 'New', q1: 1 }), { status: 417, type: 'ValidationError' })
+    // delete — a raw fetch, which expectApiError reads the envelope off
+    // directly (no hand-rolled throw-on-not-ok wrapper needed).
+    await expectApiError(admin.fetch(lineRef.rowUrl(name), { method: 'DELETE' }), {
+      status: 417,
+      type: 'ValidationError',
+    })
     // the row survived, byte-identical on declared columns
     const after = await getRow(admin, LINE, name)
     expect(Number(after.q1)).toBe(100)
@@ -250,18 +233,16 @@ describe('BUD-R3: an active book locks its table', () => {
     const rows = await activeSetup(admin)
     const name = String(rows.aBev.row_id)
     // A rename would orphan every budget_version_line pointing at this row.
-    await expect(
-      admin.post(`/api/table/${T(LINE)}/${T(name)}:rename`, { new_name: 'sneaky-rename' }),
-    ).rejects.toMatchObject({ status: 417 })
+    await expectApiError(admin.post(`${lineRef.rowUrl(name)}:rename`, { new_name: 'sneaky-rename' }), { status: 417, type: 'ValidationError' })
     const still = await getRow(admin, LINE, name)
     expect(still.row_id).toBe(name)
   })
 
-  test('BUD-R3/Q3: closing releases the lock', async ({ admin }) => {
+  test('BUD-R3: closing the book releases the lock on its table', async ({ admin }) => {
     const rows = await activeSetup(admin)
-    await admin.post(`/api/table/${T('Budget Book')}/${T(BOOK)}:close`, {})
+    await admin.post(`${bookRef.rowUrl(BOOK)}:close`, {})
     const fresh = await getRow(admin, LINE, String(rows.aBev.row_id))
-    const updated = await patchDoc(admin, `/api/table/${T(LINE)}/${T(String(rows.aBev.row_id))}`, {
+    const updated = await patchDoc(admin, lineRef.rowUrl(String(rows.aBev.row_id)), {
       updated_at: fresh.updated_at,
       q1: 123,
     })
@@ -304,30 +285,22 @@ describe('BUD-R4: a change computes its own facts', () => {
   test('BUD-R4: a change must point at reality', async ({ admin }) => {
     const rows = await activeSetup(admin)
     // missing row
-    await expect(
-      makeChange(admin, {
+    await expectApiError(makeChange(admin, {
         book: BOOK,
         lines: [{ line_ref: 'no-such-row', measure_column: 'q1', proposed_value: 1 }],
-      }),
-    ).rejects.toMatchObject({ status: 417 })
+      }), { status: 417, type: 'ValidationError' })
     // undeclared measure
-    await expect(
-      makeChange(admin, {
+    await expectApiError(makeChange(admin, {
         book: BOOK,
         lines: [{ line_ref: rows.aBev.row_id, measure_column: 'q9', proposed_value: 1 }],
-      }),
-    ).rejects.toMatchObject({ status: 417 })
+      }), { status: 417, type: 'ValidationError' })
     // a proposal proposes a number
-    await expect(
-      makeChange(admin, {
+    await expectApiError(makeChange(admin, {
         book: BOOK,
         lines: [{ line_ref: rows.aBev.row_id, measure_column: 'q1' }],
-      }),
-    ).rejects.toMatchObject({ status: 417 })
+      }), { status: 417, type: 'ValidationError' })
     // no lines at all
-    await expect(makeChange(admin, { book: BOOK, lines: [] })).rejects.toMatchObject({
-      status: 417,
-    })
+    await expectApiError(makeChange(admin, { book: BOOK, lines: [] }), { status: 417, type: 'ValidationError' })
   })
 
   test('BUD-R4: over_doa is computed from the book policy, direction-aware', async ({ admin }) => {
@@ -355,12 +328,10 @@ describe('BUD-R4: a change computes its own facts', () => {
 
   test('BUD-R4: a working book takes no changes (it is edited directly)', async ({ admin }) => {
     const rows = await setup(admin)
-    await expect(
-      makeChange(admin, {
+    await expectApiError(makeChange(admin, {
         book: BOOK,
         lines: [{ line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 1 }],
-      }),
-    ).rejects.toMatchObject({ status: 417 })
+      }), { status: 417, type: 'ValidationError' })
   })
 })
 
@@ -410,7 +381,7 @@ describe('BUD-R5: approval applies, atomically, through the front door', () => {
     })
     await submit(admin, String(winner.row_id))
     // … so the stale one is refused whole-request.
-    await expect(submit(admin, String(stale.row_id))).rejects.toMatchObject({ status: 409 })
+    await expectApiError(submit(admin, String(stale.row_id)), { status: 409, type: 'ConflictError' })
     // Nothing applied, status untouched (BUD-I2).
     const untouched = await getRow(admin, LINE, String(rows.bBev.row_id))
     expect(Number(untouched.q1)).toBe(200)
@@ -442,7 +413,7 @@ describe('BUD-R5: approval applies, atomically, through the front door', () => {
       change_type: 'revise',
       lines: [{ line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 175 }],
     })
-    await admin.post(`${CHANGE_PATH}/${T(String(change.row_id))}:apply_workflow_action`, {
+    await admin.post(`${changeRef.rowUrl(String(change.row_id))}:apply_workflow_action`, {
       action: 'Self-Approve',
     })
     // Applied exactly as a direct submit would have (BUD-R5's convergence).
@@ -480,7 +451,7 @@ describe('BUD-R5: approval applies, atomically, through the front door', () => {
       lines: [{ line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 175 }],
     })
     // Even as Administrator: the direct action names the workflow and refuses.
-    await expect(submit(admin, String(change.row_id))).rejects.toMatchObject({ status: 417 })
+    await expectApiError(submit(admin, String(change.row_id)), { status: 417, type: 'ValidationError' })
     const line = await getRow(admin, LINE, String(rows.aBev.row_id))
     expect(Number(line.q1)).toBe(100)
   })
@@ -491,24 +462,20 @@ describe('BUD-R6: a transfer nets to zero', () => {
     admin,
   }) => {
     const rows = await activeSetup(admin)
-    await expect(
-      makeChange(admin, {
+    await expectApiError(makeChange(admin, {
         book: BOOK,
         change_type: 'transfer',
         lines: [
           { line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 50 },
           { line_ref: rows.bBev.row_id, measure_column: 'q1', proposed_value: 230 },
         ],
-      }),
-    ).rejects.toMatchObject({ status: 417 })
+      }), { status: 417, type: 'ValidationError' })
     // single-ended
-    await expect(
-      makeChange(admin, {
+    await expectApiError(makeChange(admin, {
         book: BOOK,
         change_type: 'transfer',
         lines: [{ line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 50 }],
-      }),
-    ).rejects.toMatchObject({ status: 417 })
+      }), { status: 417, type: 'ValidationError' })
     const grandBefore = await sql`
       select sum(q1 + q2 + q3 + q4) as total from ${sql('bb_line')}`
     // −50 on aBev.q1, +30 bBev.q1, +20 aSnk.q2 — a three-way zero net
@@ -534,15 +501,12 @@ describe('BUD-R7: a new line arrives complete and unique', () => {
     admin,
   }) => {
     await activeSetup(admin)
-    await expect(
-      makeChange(admin, {
+    await expectApiError(makeChange(admin, {
         book: BOOK,
         change_type: 'new_line',
         lines: [{ new_line_key: { store: 'Adyar' }, measure_column: 'q1', proposed_value: 10 }],
-      }),
-    ).rejects.toMatchObject({ status: 417 })
-    await expect(
-      makeChange(admin, {
+      }), { status: 417, type: 'ValidationError' })
+    await expectApiError(makeChange(admin, {
         book: BOOK,
         change_type: 'new_line',
         lines: [
@@ -552,10 +516,8 @@ describe('BUD-R7: a new line arrives complete and unique', () => {
             proposed_value: 10,
           },
         ],
-      }),
-    ).rejects.toMatchObject({ status: 417 })
-    await expect(
-      makeChange(admin, {
+      }), { status: 417, type: 'ValidationError' })
+    await expectApiError(makeChange(admin, {
         book: BOOK,
         change_type: 'new_line',
         lines: [
@@ -570,8 +532,7 @@ describe('BUD-R7: a new line arrives complete and unique', () => {
             proposed_value: 20,
           },
         ],
-      }),
-    ).rejects.toMatchObject({ status: 417 })
+      }), { status: 417, type: 'ValidationError' })
   })
 
   test('BUD-R7: on approval the row is born with proposed measures, absent ones 0', async ({
@@ -598,7 +559,6 @@ describe('BUD-R7: a new line arrives complete and unique', () => {
     await submit(admin, String(change.row_id))
     const [born] = await sql`
       select * from ${sql('bb_line')} where store = 'Adyar' and subcategory = 'Millet Snacks'`
-    expect(born).toBeTruthy()
     expect(Number(born.q1)).toBe(0)
     expect(Number(born.q2)).toBe(0)
     expect(Number(born.q3)).toBe(60)
@@ -653,14 +613,12 @@ describe('BUD-R8: discontinue zeroes forward, never deletes', () => {
     await submit(admin, String(first.row_id))
     // The earlier periods are the wind-down yardstick — re-zeroing them via
     // a second discontinue is refused at draft time.
-    await expect(
-      makeChange(admin, {
+    await expectApiError(makeChange(admin, {
         book: BOOK,
         change_type: 'discontinue',
         effective_from: 'q1',
         lines: [{ line_ref: name }],
-      }),
-    ).rejects.toMatchObject({ status: 417 })
+      }), { status: 417, type: 'ValidationError' })
     const line = await getRow(admin, LINE, name)
     expect(Number(line.q1)).toBe(10)
     expect(Number(line.q2)).toBe(20)
@@ -670,22 +628,18 @@ describe('BUD-R8: discontinue zeroes forward, never deletes', () => {
     admin,
   }) => {
     const rows = await activeSetup(admin)
-    await expect(
-      makeChange(admin, {
+    await expectApiError(makeChange(admin, {
         book: BOOK,
         change_type: 'discontinue',
         effective_from: 'q9',
         lines: [{ line_ref: rows.aSnk.row_id }],
-      }),
-    ).rejects.toMatchObject({ status: 417 })
-    await expect(
-      makeChange(admin, {
+      }), { status: 417, type: 'ValidationError' })
+    await expectApiError(makeChange(admin, {
         book: BOOK,
         change_type: 'revise',
         effective_from: 'q3',
         lines: [{ line_ref: rows.aSnk.row_id, measure_column: 'q1', proposed_value: 5 }],
-      }),
-    ).rejects.toMatchObject({ status: 417 })
+      }), { status: 417, type: 'ValidationError' })
   })
 })
 
@@ -698,9 +652,7 @@ describe('BUD-R9: applied changes are history', () => {
       lines: [{ line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 150 }],
     })
     await submit(admin, String(change.row_id))
-    await expect(
-      admin.post(`${CHANGE_PATH}/${T(String(change.row_id))}:cancel`, {}),
-    ).rejects.toMatchObject({ status: 417 })
+    await expectApiError(admin.post(`${changeRef.rowUrl(String(change.row_id))}:cancel`, {}), { status: 417, type: 'ValidationError' })
     const after = await getRow(admin, 'Budget Change', String(change.row_id))
     expect(after.status).toBe('submitted')
   })
