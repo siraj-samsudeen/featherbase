@@ -84,6 +84,32 @@ ratchets met.
 **Next:** #197 is complete and PR #210 is green. #212 can be closed as fixed
 by #228.
 
+## 2026-08-28 — Runtime results close the last proof escape hatch (#241)
+
+The evidence checker now has two deliberately separate modes. Its default
+remains the zero-dependency static join used before install. CI additionally
+passes the combined Vitest and Playwright JSON reports with `--results`; every
+`proven` and `rule-tier` verdict must have at least one matching concrete test
+that actually executed. No runtime match (including runner exclusion) and
+all-matching-results-skipped both fail. IDs carried by a `describe`/suite title
+propagate to its concrete descendants.
+
+Expected failures cannot counterfeit runtime proof: Playwright's
+`expectedStatus` is honored, while Vitest leaves are joined back to the static
+file/title declaration because its JSON reporter does not expose `.fails`.
+A genuinely failed test still counts as executed here — its suite already owns
+the red verdict. CI uploads three Vitest reports and the Playwright report, then
+runs one aggregation job after both runner families succeed.
+
+Verified: 42 checker mutation tests passed, including passed, dynamically
+skipped, missing, suite-title, failed-but-executed, and expected-failure cases;
+the repository's static check passed (78 verdicts across five specs, 197 test
+files); workflow YAML parsed; `git diff --check` passed; the archived Explorer
+was regenerated and a clean second build made no changes.
+
+Next: merge this branch to close #241; the release/re-pin queue in #225 and the
+lint-plugin adoption in #238 remain separate.
+
 ## 2026-08-28 — The checker learns to distrust (#239 review response)
 
 The owner's review of #239 asked the only question that matters — can a
