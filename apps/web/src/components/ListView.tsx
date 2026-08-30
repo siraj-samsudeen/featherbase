@@ -371,6 +371,25 @@ export function ListView({
               </div>
             )}
           </div>
+          {/* TLC-R1 (docs/specs/0007-table-lifecycle.md): the create
+              affordance is metadata-gated and lives HERE, in the toolbar of
+              the list the user is already looking at. It used to exist only
+              as an awesomebar suggestion, which meant a table you had just
+              built could not be filled unless you knew to search for its own
+              name (#247). Absent, not disabled, where rows cannot be made:
+              a read-only source owns its rows (EDS-13), and a settings table
+              has one row and no list at all. */}
+          {!isSourceReadOnly(meta.data) && meta.data?.kind !== 'settings' && (
+            <Link
+              to="/admin/$table/$name"
+              params={{ table, name: 'new' }}
+              search={{ prefill: undefined }}
+              className="fc-btn-primary"
+              data-testid="list-new"
+            >
+              New
+            </Link>
+          )}
           <Link
             to="/admin/$table/view/report"
             params={{ table }}
@@ -652,11 +671,34 @@ export function ListView({
                 >
                   {/* A refused list query is an error, not an empty table —
                       rendering it as "No rows" hides real data (#176). */}
-                  {list.isError
-                    ? list.error instanceof ApiError
-                      ? list.error.message
-                      : `Cannot load rows for ${table}`
-                    : 'No rows'}
+                  {list.isError ? (
+                    list.error instanceof ApiError ? (
+                      list.error.message
+                    ) : (
+                      `Cannot load rows for ${table}`
+                    )
+                  ) : (
+                    <>
+                      No rows
+                      {/* TLC-J1.2: an empty table is the moment the user most
+                          needs the way forward, so the empty state carries it
+                          too — the toolbar action is not the only door. */}
+                      {!isSourceReadOnly(meta.data) && meta.data?.kind !== 'settings' && (
+                        <>
+                          {' — '}
+                          <Link
+                            to="/admin/$table/$name"
+                            params={{ table, name: 'new' }}
+                            search={{ prefill: undefined }}
+                            className="text-[var(--color-brand)] underline"
+                            data-testid="list-empty-new"
+                          >
+                            add the first one
+                          </Link>
+                        </>
+                      )}
+                    </>
+                  )}
                 </td>
               </tr>
             )}

@@ -1,5 +1,65 @@
 # Progress Log
 
+## 2026-08-30 — The row lifecycle gets a spec, and the Admin gets its two missing doors (#247, #252, #256)
+
+The owner's acceptance test found the hole: you can declare a table in the
+UI and then stop. No way to add a row, nothing to change a column. Issue
+#249 maps the whole lifecycle; this session builds the **row** half and
+specs all of it.
+
+**`docs/specs/0007-table-lifecycle.md`** — the first spec to cover the
+surface every user meets first. It carries the built half as `proven` and
+the unbuilt half as `gap`/`pinned` against its own issues, so the debt is
+CI's problem rather than memory's. The checker went from 78 verdicts across
+5 specs to **99 across 6** (25 gap · 7 pinned · 64 proven · 3 rule-tier).
+
+**Two affordances, both metadata-gated, no per-table code:**
+
+- **`list-new`** in the list toolbar plus `list-empty-new` inline in the
+  empty state (#247). Absent — not disabled — on a read-only source and on
+  a settings table. Creating a row previously required the awesomebar's
+  "New X" suggestion, i.e. knowing the table's own name; a table you had
+  just built could not be filled.
+- **`form-delete`** beside Rename, with a confirmation dialog that NAMES
+  the row (#252). Deliberately the same shape as the table-level dialog
+  from spec 0003 — labelled, `aria-modal`, Escape-dismissable. Row
+  deletion existed only in the list's bulk bar. The server owns every
+  refusal (referenced row, submitted row, engine-managed table); the
+  dialog reports whichever comes back rather than pre-judging it, so the
+  UI cannot disagree with the rule that actually holds.
+
+**The tests are the point of the exercise.** `apps/web/e2e/table-lifecycle.spec.ts`
+never navigates by URL after its entry point — every step is reached by
+clicking what a user clicks. That is the mitigation for TLC-H2, the hazard
+that let this survive: 60 spec files and 117 `page.goto` calls, every
+row-creation test deep-linking to `/admin/<Table>/new`, so no assertion
+could ever fail for a missing button. `UI-011` stood as "passing" against
+half its own title for the same reason.
+
+Two pins hold the spec's invariants against defects the schema editor
+(#209) is about to be built on top of, both verified to fail on their own
+assertion rather than in setup: **#250** (`expected null to be 'first'` —
+a column rename is diffed as drop+add, so the data is orphaned) and
+**#251** (`promise resolved instead of rejecting` — a `PUT` carrying a
+different `name` answers 200 with the old one).
+
+Verified: `pnpm --filter web e2e` 101 passed (the 3 new journeys included);
+the same 3 confirmed RED with the two components stashed, failing on
+`list-new` and `form-delete` exactly; `apps/server/test/table-lifecycle.test.ts`
+8 passed; full server suite 739 passed / 1 failed (the known container-only
+sources-csv chmod case, red before this change — we run as root, so
+`chmod 000` does not stop the write); web 92 passed; shared 22 passed;
+both typechecks clean; `node tools/check-evidence.mjs` green at 99 verdicts.
+
+Gotcha for the record: Playwright 1.61.1 wants Chromium build 1228 and this
+container ships 1194, so `./init.sh` fails its smoke gate on the browser
+alone. `CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`
+is the workaround the config already supports.
+
+Next: #256's spec is written, so the remaining #249 children each flip
+their own verdict as they land. #250 and #251 are the ones to take before
+#209 builds a rename control on top of them.
+
 ## 2026-08-28 — Runtime results close the last proof escape hatch (#241)
 
 The evidence checker now has two deliberately separate modes. Its default

@@ -57,6 +57,12 @@ export function FormView({
   const [saving, setSaving] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
+  // TLC-J2 (docs/specs/0007-table-lifecycle.md): removing the row you are
+  // looking at. Deletion existed only in the list's bulk bar, so removing one
+  // row meant going back, finding it again and ticking a checkbox (#252).
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [staleBanner, setStaleBanner] = useState(false)
   const [scriptError, setScriptError] = useState<string | null>(null)
 
@@ -191,6 +197,27 @@ export function FormView({
       navigate({ to: '/admin/$table/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
     } catch (err) {
       setBanner(err instanceof ApiError ? err.message : 'Rename failed')
+    }
+  }
+
+  // TLC-R3: one row, at the documented address. The server owns every
+  // refusal — a referencing row (TLC-R3.referenced), a submitted row, an
+  // engine-managed table — and the dialog reports whichever comes back
+  // rather than pre-judging it here, so the UI can never disagree with the
+  // rule that actually holds.
+  async function deleteRow() {
+    setDeleteBusy(true)
+    setDeleteError(null)
+    try {
+      await api.delete(
+        `/api/table/${encodeURIComponent(table)}/${encodeURIComponent(name)}`,
+      )
+      await queryClient.invalidateQueries({ queryKey: ['doc', table] })
+      await queryClient.invalidateQueries({ queryKey: ['list', table] })
+      navigate({ to: '/admin/$table', params: { table }, search: { filters: undefined } })
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : 'Delete failed')
+      setDeleteBusy(false)
     }
   }
 
@@ -363,6 +390,26 @@ export function FormView({
               </button>
             </span>
           )}
+          {/* TLC-J2.1: the row I am looking at is the row I can remove.
+              Absent where rows are not deletable at all — a settings table's
+              single row and a sub-table's rows (both refused by the server,
+              so an affordance here would only ever produce an error), and a
+              read-only source, which owns its rows. */}
+          {!isNew &&
+            !sourceReadOnly &&
+            m.kind !== 'settings' &&
+            m.kind !== 'sub_table' && (
+              <button
+                onClick={() => {
+                  setDeleteError(null)
+                  setConfirmingDelete(true)
+                }}
+                data-testid="form-delete"
+                className="fc-btn border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)]"
+              >
+                {t('Delete')}
+              </button>
+            )}
           {!sourceReadOnly && (
             <button
               onClick={save}
@@ -402,6 +449,60 @@ export function FormView({
           )}
         </div>
       </div>
+      {/* TLC-J2.2 / TLC-R4: a real dialog that NAMES the row. Deliberately
+          the same shape as the table-level confirmation in ListView (DEL-J1.2)
+          — labelled, aria-modal, Escape-dismissable, destructive action on the
+          right — so a confirmation reads the same wherever it appears. */}
+      {confirmingDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => !deleteBusy && setConfirmingDelete(false)}
+          onKeyDown={(e) => e.key === 'Escape' && !deleteBusy && setConfirmingDelete(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-row-title"
+            className="fc-card w-full max-w-md p-4"
+            data-testid="delete-row-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2
+              id="delete-row-title"
+              className="mb-2 text-base font-semibold text-[var(--color-ink)]"
+            >
+              Delete {table} {name}?
+            </h2>
+            <p className="mb-3 text-sm text-[var(--color-ink-muted)]">
+              This cannot be undone.
+            </p>
+            {deleteError && (
+              <p className="mb-3 text-sm text-[var(--color-danger)]" data-testid="delete-row-error">
+                {deleteError}
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                autoFocus
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deleteBusy}
+                className="fc-btn"
+                data-testid="delete-row-cancel"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={deleteRow}
+                disabled={deleteBusy}
+                className="fc-btn border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-tint)] disabled:opacity-40"
+                data-testid="delete-row-confirm"
+              >
+                {deleteBusy ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {banner && (
         <p
           className={`mb-3 text-sm ${banner === 'Saved' || banner === 'Done' ? 'text-[var(--color-good)]' : 'text-[var(--color-danger)]'}`}
