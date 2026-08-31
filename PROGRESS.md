@@ -1,5 +1,40 @@
 # Progress Log
 
+## 2026-08-31 — #197 meets the runtime evidence gate (#241)
+
+Merged `main` (#242) into the import branch a second time. The gate that
+arrived with it is the one that mattered: a `proven` or `rule-tier` verdict
+now needs a concrete test that **actually executed on this commit**, not just
+a title that matches statically. Ran it locally exactly as CI does — the
+three Vitest JSON reports plus Playwright's — rather than trusting the static
+pass.
+
+The conflicts were `PROGRESS.md` and the two generated archive pages. Both
+`PROGRESS.md` entries are dated 2026-08-28 and both are kept; the import
+entry sits first because its commit (05:28 UTC) is later than #241's
+(04:48 UTC). The archive pages were taken from `main` and rebuilt, never
+hand-merged.
+
+One trap worth writing down: `pnpm --filter web e2e` **deletes**
+`apps/web/test-results/`, which is where the web Vitest JSON report lands.
+Run e2e first or stage the report before it, or the runtime check runs
+against a report that is no longer there. CI does not hit this because its
+`unit` and `e2e` jobs never share a working directory — a local run does.
+
+Verified on the merge commit: checker mutation tests 42 passed; static
+evidence check 78 verdicts / 213 test files; runtime evidence check the same
+78 verdicts with **1087 runtime tests checked**; both typechecks clean;
+server 697 passed, web 123 unit / 136 e2e passed, shared 111 passed;
+coverage floors met (server 86.87, web 34.32, shared 99+).
+
+The one red is `sources-csv` "a failed write never poisons the parse cache",
+which chmods a directory read-only to force a failure — root ignores
+directory permissions and this container runs as uid 0, so the write
+succeeds. Environmental, reproduces on `main`, and CI runs non-root.
+
+**Next:** PR #210 still has no workflow run of its own — GitHub has created
+none for any commit on this branch. Nothing to build; the wait is on a runner.
+
 ## 2026-08-28 — #197 meets the new test system
 
 Merged `main` into the import branch after the test-system overhaul (#227,
