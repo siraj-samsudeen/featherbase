@@ -1,5 +1,62 @@
 # Progress Log
 
+## 2026-09-01 (later) — M4: append_decisions mode, scope targets, the decision ledger
+
+The owner answered Q7/Q8/Q9 and delegated Q6, so the three shapes the
+PR-2961 review said this engine could not express are now built.
+
+- **BUD-R14 — a book states what approval DOES.** `mode = mutate_rows |
+  append_decisions`. In append mode the bound table is a **read-only
+  model**: approval writes nothing to it and appends one immutable
+  `Budget Decision` instead, in the approval's own transaction. Two
+  decisions may address the same target on purpose — which is exactly
+  what mutate mode cannot do, since the second write overwrites the first
+  and R7 refuses a colliding key outright. A decision carries provenance
+  (the approving change), an anchor (`model_version`), the application's
+  typed `payload` as ONE opaque document, and a **server-derived** actor
+  (`decided_by` / `decided_role`, from the platform's own `getRoles` — a
+  client cannot claim a stronger role by putting it in the payload).
+- **BUD-R15 — a decision may address a scope, and stays one decision.**
+  `target_kind = row | scope`; a scope maps declared key columns to
+  values and an absent dimension means "all". The engine validates only
+  what it can without domain knowledge (every dimension must be a
+  declared key column — this catches the typo; a wide-open scope is
+  refused) and **never expands it**. One push across a region is one
+  stored row, counted once at its node. Expanding to leaves would change
+  the arithmetic (an additive push risks being counted per leaf) and the
+  audit meaning — which is why the line cap was never the thing to raise.
+- **BUD-R16 — the ledger is append-only.** No edit, no delete, through
+  any surface: a superseded decision is still evidence, and grading is
+  what reads it.
+- **Q9 answered by construction:** the ledger is a NATIVE table in the
+  same database as the Budget Change, so approval and append commit in
+  one transaction. BUD-R1's `data_source` guard stands and model tables
+  stay reflected and read-only; transactional source drivers remain a
+  separate project rather than a guard removal.
+- **Q6 ratified** (owner delegated): approving the change *is* the
+  authorization. The deciding argument is that a bound-table grant would
+  be **unusable** — R3's lock refuses its holder a direct write anyway —
+  so requiring one buys ceremony while coupling every governed table's
+  ACL to its approvers. The audit answer comes from the change, its
+  Version trail, and in append mode the decision's own actor fields.
+
+**Stated limit, in the spec rather than hidden:** `over_doa` counts
+`delta` decisions and row-target `set`s. A `set` on a *scope* has no
+computable delta, because computing one would mean resolving the scope —
+which R15 forbids. The engine reports what it can defend.
+
+**Verified:** server **790 passed** (only the documented container-only
+`sources-csv` chmod-as-root case), web 97, shared 22, e2e **101 passed**;
+both typechecks clean; coverage floors held (server 87.58, web 37.59);
+and the full CI evidence gate including the runtime pass — 104 verdicts
+across 6 specs, **1026 runtime tests checked**, zero warnings.
+
+**Next:** no UI for append mode yet — the generic FormView renders Budget
+Decision and the change lines, which is enough to drive it, but a book in
+append mode has no bespoke surface. Precedence, roll-up and grading stay
+the application's by design (R15).
+
+
 ## 2026-09-01 — Budget Books answers the PR-2961 review: P0s fixed, two shapes named as design
 
 An external review compared this engine against a forecast-override

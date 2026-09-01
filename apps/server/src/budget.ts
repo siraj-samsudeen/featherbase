@@ -14,6 +14,7 @@ import { randomBytes } from 'node:crypto'
 import type { sql as sqlType } from './db'
 import { AppError } from './errors'
 import { getMeta, invalidateMeta, physicalRowKey } from './meta'
+import { getRoles } from './permissions'
 import { tableName } from './table-engine'
 import { recordVersion, saveDoc, type RowValues } from './document'
 
@@ -37,10 +38,22 @@ export const CHANGE = 'Budget Change'
 export const ENGINE_APPLY = 'budget-apply'
 const SNAPSHOT_CHUNK = 200
 
+export type BookMode = 'mutate_rows' | 'append_decisions'
+export const DECISION = 'Budget Decision'
+
 export interface BookBinding {
   name: string
   refTable: string
   lifecycle: 'working' | 'active' | 'closed'
+  /**
+   * What approval DOES (owner decision 2026-09-01, Q7):
+   *   mutate_rows      — replace values in the bound table.
+   *   append_decisions — leave the bound table alone (it is a read-only
+   *                      model) and append one immutable Budget Decision.
+   */
+  mode: BookMode
+  /** append mode: the model run decisions are being made against. */
+  modelVersion: string | null
   ownerColumn: string | null
   keyColumns: string[]
   measureColumns: string[]
@@ -91,6 +104,8 @@ async function withChildren(tx: Sql, row: RowValues): Promise<BookBinding> {
     ownerColumn: row.owner_column ? String(row.owner_column) : null,
     keyColumns: keys.map((k) => String(k.column_name)),
     measureColumns: measures.map((m) => String(m.column_name)),
+    mode: row.mode === 'append_decisions' ? 'append_decisions' : 'mutate_rows',
+    modelVersion: row.model_version == null || row.model_version === '' ? null : String(row.model_version),
     doaAmount: row.doa_amount == null ? null : Number(row.doa_amount),
     escalationDir:
       row.escalation_dir === 'increase' || row.escalation_dir === 'decrease'
@@ -466,6 +481,88 @@ export async function keyCollides(
 // caller's transaction (the submit/workflow-transition transaction — BUD-I2).
 // Every touched row is re-verified against its snapped current_value first:
 // a stale snapshot refuses the whole approval (BUD-R5's branch).
+
+/**
+ * BUD-R15: a scope names declared key columns only, and an absent or null
+ * dimension means "all". That is the ONE thing the engine can check about a
+ * scope without knowing the domain — it catches a typo'd dimension while
+ * leaving leaf resolution and roll-up placement entirely to the application.
+ *
+ * Returns the normalized scope: declared keys only, nulls dropped, so two
+ * spellings of "all of Kerala" store identically.
+ */
+export function normalizeScope(
+  book: BookBinding,
+  raw: unknown,
+): Record<string, unknown> {
+  const parsed = typeof raw === 'string' && raw !== '' ? JSON.parse(raw) : raw
+  if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed))
+    throw new AppError('ValidationError', 'scope must be a JSON object of key column values')
+  const obj = parsed as Record<string, unknown>
+  const unknown = Object.keys(obj).filter((k) => !book.keyColumns.includes(k))
+  if (unknown.length)
+    throw new AppError(
+      'ValidationError',
+      `scope names ${unknown.join(', ')}, which ${unknown.length > 1 ? 'are' : 'is'} not a key column of ${book.name} (declared: ${book.keyColumns.join(', ')})`,
+    )
+  const out: Record<string, unknown> = {}
+  for (const c of book.keyColumns) {
+    const v = obj[c]
+    if (v == null || v === '') continue // absent = every value of this dimension
+    out[c] = v
+  }
+  if (!Object.keys(out).length)
+    throw new AppError(
+      'ValidationError',
+      'a scope with every dimension left open addresses the whole book — name at least one',
+    )
+  return out
+}
+
+/**
+ * BUD-R14/R16: approval in append mode. The bound table is never touched;
+ * one immutable Budget Decision is appended per line, in the approval's own
+ * transaction. Two decisions may address the same target on purpose — which
+ * one is in force is the application's to derive, and the superseded one
+ * stays readable for grading.
+ */
+async function appendDecisions(
+  tx: Sql,
+  change: RowValues,
+  lines: RowValues[],
+  book: BookBinding,
+  user: string,
+): Promise<void> {
+  const now = new Date()
+  const changeName = String(change.row_id)
+  // The actor's roles are SERVER-derived (the platform's own getRoles), so a
+  // client cannot claim a stronger one by putting it in the payload. The
+  // application ranks them; the engine only records what was true.
+  const decidedRole = (await getRoles(user)).join(', ') || null
+  for (const [i, l] of lines.entries()) {
+    const kind = l.target_kind === 'scope' ? 'scope' : 'row'
+    await tx`
+      insert into ${tx(tableName(DECISION))} ${tx({
+        row_id: `${changeName}-${i + 1}`,
+        ...auditColumns(user, now),
+        book: book.name,
+        change: changeName,
+        target_kind: kind,
+        line_ref: kind === 'row' ? String(l.line_ref) : null,
+        scope: kind === 'scope' ? JSON.stringify(l.scope ?? {}) : null,
+        measure: String(l.measure_column),
+        basis: l.basis === 'delta' ? 'delta' : 'set',
+        value: num(l.proposed_value),
+        payload: l.payload == null ? null : JSON.stringify(l.payload),
+        model_version: book.modelVersion,
+        reason: String(change.reason ?? ''),
+        decided_by: user,
+        decided_role: decidedRole,
+        decided_at: now,
+      })}`
+  }
+}
+
 export async function applyChange(
   tx: Sql,
   change: RowValues,
@@ -478,6 +575,8 @@ export async function applyChange(
       'ValidationError',
       `${book.name} is ${book.lifecycle} — only an active book accepts changes`,
     )
+  // BUD-R14: append mode leaves the model alone entirely.
+  if (book.mode === 'append_decisions') return appendDecisions(tx, change, lines, book, user)
   const boundMeta = await getMeta(book.refTable)
   const boundTbl = tableName(book.refTable)
   const changeName = String(change.row_id)

@@ -9,7 +9,10 @@ simulation document and its resolved decisions §6); build authorized
 same day. M2 (compare view, propose-change button, pending badge) is
 UI over R2/R4/R10 and adds no rules. M3 (import-as-proposal, J4/R12)
 authorized 2026-08-17, with the owner's same-day ruling on missing
-rows: untouched by default, discontinuable by explicit option.
+rows: untouched by default, discontinuable by explicit option. M4
+(append_decisions mode, scope targets, the decision ledger — R14/R15/R16)
+authorized 2026-09-01 by the owner's answers to Q7, Q8 and Q9, with Q6
+delegated and decided as recorded below.
 
 ## The job
 
@@ -511,6 +514,92 @@ to approval.
 > observation surviving a re-save unchanged, and a line with no observation
 > keeping the R5 draft-save → approval guard.
 
+### BUD-R14 — A book states what approval DOES · `shape: contract`
+
+A Budget Book declares `mode`:
+
+- **`mutate_rows`** (default) — approval replaces values in the bound
+  table. Everything above describes this mode.
+- **`append_decisions`** — the bound table is a **read-only model**.
+  Approval writes nothing to it; it appends one immutable **Budget
+  Decision** per line, in the approval's own transaction. The write-lock
+  (R3) still holds, and now means "nobody edits the model by hand".
+
+Append mode exists because an overlay ledger needs what a mutating engine
+cannot express: the model numbers stay as the engine produced them, two
+decisions may address the same target on purpose, and a superseded
+decision stays readable for grading. In mutate mode the second write
+overwrites the first, and R7 refuses a colliding key outright.
+
+A decision carries its **provenance** (the approving change), its
+**anchor** (`model_version`, so a later reader knows which numbers the
+human was looking at), its **payload** (the application's own typed
+fields, as ONE opaque document rather than smuggled in as extra scalar
+lines), and its **actor** — `decided_by` and `decided_role`, both derived
+server-side from the platform's own roles, never from client input.
+
+In append mode a change is a `revise`: `transfer`, `new_line` and
+`discontinue` all describe mutations of a model row and are refused.
+
+**Stated limit:** `over_doa` counts `delta` decisions and row-target
+`set`s. A `set` on a *scope* has no computable delta, because computing
+one would mean resolving the scope — which R15 says the engine must never
+do. The engine reports what it can defend rather than guessing a number.
+
+> evidence: proven — approval appends a decision carrying provenance,
+> anchor and server-derived actor while the model row still reads its
+> original value; two decisions on one target both survive; and transfer /
+> new_line / discontinue are refused in append mode.
+
+### BUD-R15 — A decision may address a scope, and stays one decision · `shape: rule`
+
+A change line declares `target_kind`:
+
+- **`row`** — the line addresses one bound row (`line_ref`), as always.
+- **`scope`** — the line addresses a **set** of rows: `scope` maps
+  declared key columns to values, and an **absent or null dimension means
+  "all"**. The engine stores it and **never expands it**.
+
+The engine validates only what it can without domain knowledge: every
+scope dimension must be a declared key column (this catches the typo), and
+a scope with every dimension left open is refused as too broad to have
+been meant. Which leaves a scope reaches, and where it lands in a roll-up,
+belong to the application.
+
+Not expanding is the point, not an optimisation. One push across a region
+is **one decision**, counted once at its node: expanding it to its leaves
+changes the arithmetic (an additive push risks being counted once per
+leaf) and destroys the audit meaning (nobody approved 10,023 facts). This
+is also why `MAX_CHANGE_LINES` was never the thing to raise — the cap is
+not what was wrong.
+
+| # | target_kind | scope | outcome | Why? |
+|---|---|---|---|---|
+| 1 | scope | `{region: 'Kerala'}` | one stored decision; no model row touched | the node decided, not the leaves |
+| 2 | scope | `{region: 'Kerala', store: null}` | stored as `{region: 'Kerala'}` | one scope, one stored shape |
+| 3 | scope | `{regoin: 'Kerala'}` | rejected | not a declared key column |
+| 4 | scope | `{}` | rejected | every dimension open is the whole book — say it deliberately |
+| 5 | scope + line_ref | — | rejected | a scope decision carries scope, not a row |
+
+**Property:** for any scope decision, exactly one row is written to the
+ledger and no bound row changes, whatever the scope's leaf reach.
+
+> evidence: proven — a Kerala-wide push stores one decision with its scope
+> intact and leaves all three model rows untouched; a null dimension is
+> dropped to one stored shape; and an undeclared dimension, a wide-open
+> scope and a scope carrying line_ref are each refused.
+
+### BUD-R16 — The ledger is append-only · `shape: contract`
+
+A `Budget Decision` cannot be edited or deleted — by anyone, through any
+surface. It records what a person judged at a moment against a stated
+model version; editing it would rewrite history, and deleting it would
+remove the entry a later grading pass exists to read. The road back is
+another decision, exactly as R9 for changes.
+
+> evidence: proven — an edit and a delete of an appended decision are each
+> refused and the stored value stands.
+
 ### BUD-R10 — The snapshot is the whole book · `shape: invariant`
 
 > evidence: proven — a v0 line's data holds exactly the declared key,
@@ -606,22 +695,28 @@ one-active-per-table is the owner's call.
   owner.*
 - **Q5** — enforce one active Workflow per table platform-wide (BUD-H3)?
   *Arbiter: owner.*
-- **Q6** — the apply writes bound rows without requiring the actor to hold
-  a create/write grant on the bound table: the reading is that approving
-  the Budget Change *is* the authorization, and an approver governs the
-  budget rather than the line table (in the demo they hold no grant on it
-  at all). Ratify, or require a grant and re-cut the demo roles?
-  *Arbiter: owner.*
+- **Q6** — RATIFIED 2026-09-01 (owner delegated the call). Approving the
+  Budget Change **is** the authorization: the apply does not additionally
+  require a create/write grant on the bound table. The deciding argument
+  is that such a grant would be **unusable** — R3's write-lock refuses a
+  direct write from its holder anyway — so requiring one buys ceremony
+  rather than safety, while coupling every governed table's ACL to its
+  approvers. The audit question it leaves ("who caused this write?") is
+  answered by the change and its Version trail, and in append mode by the
+  decision's own server-derived `decided_by` / `decided_role` (R14).
+  Everything except the permission check still judges the row.
 
-## Not built: the two shapes an overlay ledger needs
+## The overlay shapes — asked 2026-09-01, answered the same day
 
-A 2026-09-01 review against a forecast-override application (an
-append-only decision ledger over immutable model versions) found two
-requirements this engine cannot express. Both are recorded here as
-**design questions, deliberately not implemented** — each changes what a
-Budget Change *means*, and neither is a parameter to tune.
+A review against a forecast-override application (an append-only decision
+ledger over immutable model versions) found three requirements this
+engine could not express. Each changed what a Budget Change *means*, so
+each went to the owner rather than being guessed at. All three were
+answered, and R14/R15/R16 above are the result.
 
-- **Q7** — `mode = mutate_rows | append_decisions`. Approval here replaces
+- **Q7** — ANSWERED: build append mode. Now R14. *(Original question
+  below, kept because the reasoning is the rule's justification.)*
+  `mode = mutate_rows | append_decisions`. Approval here replaces
   values in the bound table. An overlay application needs the model
   numbers immutable and the human decisions appended beside them, with
   "in force" derived by precedence at read time and superseded entries
@@ -633,7 +728,8 @@ Budget Change *means*, and neither is a parameter to tune.
   for which the current line schema has no legal payload — one typed
   document validated as a whole, not five unrelated scalar lines.
   *Arbiter: owner.*
-- **Q8** — scope-addressed decisions (`target_kind = row | scope`). Every
+- **Q8** — ANSWERED: scope targets belong in the engine. Now R15.
+  Scope-addressed decisions (`target_kind = row | scope`). Every
   line here addresses one row. A decision taken at a node of a hierarchy
   ("push this across Kerala") is **one decision**, not one per leaf:
   expanding it to 10,023 rows changes its arithmetic (an additive push
@@ -643,7 +739,13 @@ Budget Change *means*, and neither is a parameter to tune.
   What is missing is a decision that stores its scope, with nullable
   dimensions meaning "all", and leaves leaf resolution and roll-up
   placement to the application. *Arbiter: owner.*
-- **Q9** — externally reflected tables. BUD-R1 refuses a `data_source`
+- **Q9** — ANSWERED: native ledger, reflected tables stay read-only. The
+  decision ledger is a native table in the same database as the Budget
+  Change, so approval and append commit in one transaction (R14); BUD-R1's
+  guard stands and model tables remain reflected and read-only.
+  Transactional source drivers are a separate project, not a guard
+  removal. *(Original question:)* externally reflected tables. BUD-R1
+  refuses a `data_source`
   binding, and lifting that guard alone would not work: the engine reads
   and writes native physical tables through the control-database client,
   while reflected rows must go through the source driver, whose

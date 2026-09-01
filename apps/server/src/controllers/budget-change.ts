@@ -10,6 +10,7 @@ import {
   keyCollides,
   keySignature,
   loadBook,
+  normalizeScope,
   overDoa,
   parseNewLineKey,
   type BookBinding,
@@ -120,6 +121,59 @@ const controller: TableController = {
         if (seenCells.has(cell)) reject(`duplicate ${what} in one change`)
         seenCells.add(cell)
       }
+
+      // BUD-R14 (append mode): the bound table is a read-only model, so a
+      // line is a DECISION — it may address a row or a scope, and there is
+      // no cell to snap for a scope. Everything the engine can check without
+      // domain knowledge is checked; precedence and roll-up are the
+      // application's (BUD-R15).
+      if (book.mode === 'append_decisions') {
+        if (type !== 'revise')
+          reject(
+            `${book.name} appends decisions — change_type must be "revise" (a decision is neither a transfer, a new line, nor a discontinuation of a model row)`,
+          )
+        let appendTotal = 0
+        const seenTargets = new Set<string>()
+        for (const l of lines) {
+          const m = String(l.measure_column ?? '')
+          if (!book.measureColumns.includes(m))
+            reject(`"${m}" is not a declared measure of ${book.name}`)
+          if (l.proposed_value == null || l.proposed_value === '')
+            reject('a decision states a value')
+          const kind = l.target_kind === 'scope' ? 'scope' : 'row'
+          let signature: string
+          if (kind === 'scope') {
+            if (l.line_ref != null && l.line_ref !== '')
+              reject('a scope decision carries scope, not line_ref')
+            const scope = normalizeScope(book, l.scope)
+            l.scope = scope
+            signature = `scope\u0000${keySignature(scope, book.keyColumns)}`
+          } else {
+            const ref = l.line_ref == null || l.line_ref === '' ? null : String(l.line_ref)
+            if (!ref) reject('a row decision carries line_ref')
+            const live = await liveRow(ref!)
+            collectOwner(live)
+            const cur = num(live[m])
+            guardObservation(ref!, m, l, cur)
+            // Recorded for the reader; the model row is never written.
+            l.current_value = cur
+            signature = `row\u0000${ref}`
+          }
+          dedupe(`${signature}\u0000${m}`, 'decision target and measure')
+          seenTargets.add(signature)
+          // A 'set' on a scope has no computable delta — the engine will not
+          // resolve the scope to find out. Only deltas move the DOA needle;
+          // BUD-R14 states that limit rather than guessing a number.
+          const isDelta = l.basis === 'delta'
+          l.delta = isDelta ? num(l.proposed_value) : num(l.proposed_value) - num(l.current_value ?? 0)
+          if (isDelta || kind === 'row') appendTotal += num(l.delta)
+        }
+        row.total_delta = appendTotal
+        row.crosses_owner = owners.size > 1
+        row.over_doa = overDoa(book, appendTotal)
+        return
+      }
+
 
       for (const l of lines) {
         const ref = l.line_ref == null || l.line_ref === '' ? null : String(l.line_ref)
