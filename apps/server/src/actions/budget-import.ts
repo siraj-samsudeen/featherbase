@@ -1,0 +1,277 @@
+import { AppError } from '../errors'
+import { registerCollectionAction } from '../actions'
+import { sql } from '../db'
+import { getMeta } from '../meta'
+import { tableName } from '../table-engine'
+import { saveDoc, type RowValues } from '../document'
+import { assertPermission } from '../permissions'
+import { MAX_ROWS } from './collection-import'
+import {
+  CHANGE,
+  DISCONTINUED_FLAG,
+  MAX_CHANGE_LINES,
+  activeBookFor,
+  type BookBinding,
+} from '../budget'
+
+// Spec 0007, BUD-R12 (M3): import-as-proposal. The bulk road onto a table
+// governed by an active Budget Book — the file is diffed against the live
+// rows over the book's own declared key/measure columns and materialized as
+// DRAFT Budget Changes (revise / new_line / discontinue), never written to
+// the bound table. The drafts are ordinary drafts from here on: the
+// budget-change controller re-snaps them (BUD-R4), workflow lanes gate them
+// (BUD-R5/R11), and each approves independently.
+//
+// The run refuses WHOLE on any malformed input (missing key cell, duplicate
+// key, non-numeric measure) — a proposal is one deliberate act, not the
+// best-effort trickle plain :import is.
+
+interface ProposalLine extends RowValues {
+  position: number
+}
+
+interface DraftPlan {
+  change_type: 'revise' | 'new_line' | 'discontinue'
+  lines: ProposalLine[]
+  effective_from?: string
+}
+
+const present = (v: unknown): boolean => v != null && v !== ''
+const num = (v: unknown): number => Number(v)
+
+// Match by trimmed-string image of the declared key columns — the file says
+// "101", the database holds 101, and they mean the same row.
+function matchSignature(row: RowValues, keyColumns: string[]): string {
+  return keyColumns.map((c) => String(row[c] ?? '').trim()).join('\0')
+}
+
+function parseArgs(book: BookBinding, args: Record<string, unknown>) {
+  const reason = typeof args.reason === 'string' ? args.reason.trim() : ''
+  if (!reason)
+    throw new AppError('ValidationError', 'reason is required — every proposal carries one')
+  const missingRows = args.missing_rows ?? 'keep'
+  if (missingRows !== 'keep' && missingRows !== 'discontinue')
+    throw new AppError('ValidationError', "missing_rows must be 'keep' or 'discontinue'")
+  const effective = args.effective_from
+  if (missingRows === 'discontinue') {
+    if (typeof effective !== 'string' || !book.measureColumns.includes(effective))
+      throw new AppError(
+        'ValidationError',
+        `missing_rows: 'discontinue' needs effective_from naming one of ${book.name}'s measure columns`,
+      )
+  } else if (effective != null) {
+    throw new AppError('ValidationError', "effective_from applies only with missing_rows: 'discontinue'")
+  }
+  return { reason, missingRows, effectiveFrom: missingRows === 'discontinue' ? String(effective) : null }
+}
+
+// One pass over the file: refuse-whole validation (R12's last clause) and
+// the ignored-column census, before any live row is read.
+function checkRows(book: BookBinding, rows: unknown[]): { ignored: string[] } {
+  const declared = new Set([...book.keyColumns, ...book.measureColumns])
+  const ignored = new Set<string>()
+  const seen = new Set<string>()
+  for (const [index, raw] of rows.entries()) {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw))
+      throw new AppError('ValidationError', `row #${index} must be an object`)
+    const row = raw as RowValues
+    const missing = book.keyColumns.filter((c) => !present(row[c]))
+    if (missing.length)
+      throw new AppError(
+        'ValidationError',
+        `row #${index} is missing key column${missing.length > 1 ? 's' : ''} ${missing.join(', ')}`,
+      )
+    const sig = matchSignature(row, book.keyColumns)
+    if (seen.has(sig))
+      throw new AppError(
+        'ValidationError',
+        `rows share the key ${book.keyColumns.map((c) => row[c]).join(' / ')} — one file, one voice per row`,
+      )
+    seen.add(sig)
+    for (const col of Object.keys(row)) {
+      if (declared.has(col)) continue
+      ignored.add(col)
+    }
+    for (const m of book.measureColumns) {
+      if (!present(row[m])) continue
+      if (!Number.isFinite(num(row[m])))
+        throw new AppError('ValidationError', `row #${index}: ${m} is not a number (${String(row[m])})`)
+    }
+  }
+  return { ignored: [...ignored].sort() }
+}
+
+// Chunk line groups (one group = one bound row's cells) into drafts of at
+// most MAX_CHANGE_LINES, never splitting a group across drafts.
+function chunkGroups(groups: ProposalLine[][]): ProposalLine[][] {
+  const chunks: ProposalLine[][] = []
+  let current: ProposalLine[] = []
+  for (const group of groups) {
+    if (group.length > MAX_CHANGE_LINES)
+      throw new AppError(
+        'ValidationError',
+        `one row's cells exceed the ${MAX_CHANGE_LINES}-line cap on a single Budget Change`,
+      )
+    if (current.length + group.length > MAX_CHANGE_LINES) {
+      chunks.push(current)
+      current = []
+    }
+    current.push(...group)
+  }
+  if (current.length) chunks.push(current)
+  return chunks
+}
+
+registerCollectionAction('import_proposal', {
+  effect: 'write',
+  description:
+    'Diff { rows } against the table governed by its active Budget Book and ' +
+    'materialize draft Budget Changes (revise / new_line; with missing_rows: ' +
+    "'discontinue' + effective_from, also discontinue). reason is required; " +
+    'dry_run: true reports the diff and writes nothing. The bound table is ' +
+    'never written at import time — approval of the drafts is what applies.',
+  handler: async ({ table, args, user }) => {
+    const rows = args.rows
+    if (!Array.isArray(rows) || rows.length === 0)
+      throw new AppError('ValidationError', 'Expected { rows: [...] } with at least one row')
+    if (rows.length > MAX_ROWS)
+      throw new AppError('ValidationError', `Import is capped at ${MAX_ROWS} rows per request`)
+
+    const meta = await getMeta(table)
+    const book = await activeBookFor(sql, meta.name)
+    if (!book)
+      throw new AppError(
+        'ValidationError',
+        `${table} is not governed by an active Budget Book — plain :import is the way in`,
+      )
+    // The diff reads live values; creating the drafts is saveDoc's own
+    // permission check on Budget Change.
+    await assertPermission(user.row_id, table, 'read')
+
+    const { reason, missingRows, effectiveFrom } = parseArgs(book, args)
+    const { ignored } = checkRows(book, rows)
+
+    // The live side of the diff, once: identity + measures + the flag.
+    const live = await sql`
+      select * from ${sql(tableName(book.refTable))}`
+    const liveBySig = new Map<string, RowValues>()
+    for (const l of live) liveBySig.set(matchSignature(l as RowValues, book.keyColumns), l as RowValues)
+
+    // The diff (R12): revise groups, new_line groups, discontinue lines.
+    const reviseGroups: ProposalLine[][] = []
+    const newLineGroups: ProposalLine[][] = []
+    let matchedRows = 0
+    let changedCells = 0
+    let newRows = 0
+    let unchangedRows = 0
+    const fileSigs = new Set<string>()
+
+    for (const raw of rows) {
+      const row = raw as RowValues
+      const sig = matchSignature(row, book.keyColumns)
+      fileSigs.add(sig)
+      const hit = liveBySig.get(sig)
+      if (hit) {
+        matchedRows++
+        const group: ProposalLine[] = []
+        for (const m of book.measureColumns) {
+          if (!present(row[m])) continue // a partial file is silent, not zero
+          if (num(row[m]) === num(hit[m] == null || hit[m] === '' ? 0 : hit[m])) continue
+          group.push({ line_ref: String(hit.row_id), measure_column: m, proposed_value: num(row[m]), position: 0 })
+        }
+        if (group.length) {
+          changedCells += group.length
+          reviseGroups.push(group)
+        } else unchangedRows++
+      } else {
+        newRows++
+        const key = Object.fromEntries(book.keyColumns.map((c) => [c, row[c]]))
+        const group: ProposalLine[] = []
+        for (const m of book.measureColumns) {
+          if (!present(row[m])) continue
+          group.push({
+            new_line_key: JSON.stringify(key),
+            measure_column: m,
+            proposed_value: num(row[m]),
+            position: 0,
+          })
+        }
+        if (!group.length)
+          throw new AppError(
+            'ValidationError',
+            `new row ${book.keyColumns.map((c) => row[c]).join(' / ')} proposes no measure values`,
+          )
+        newLineGroups.push(group)
+      }
+    }
+
+    const discontinueLines: ProposalLine[] = []
+    if (missingRows === 'discontinue') {
+      for (const [sig, l] of liveBySig) {
+        if (fileSigs.has(sig)) continue
+        if (l[DISCONTINUED_FLAG] === true) continue // already wound down
+        discontinueLines.push({ line_ref: String(l.row_id), position: 0 })
+      }
+    }
+
+    const plans: DraftPlan[] = [
+      ...chunkGroups(reviseGroups).map((lines) => ({ change_type: 'revise' as const, lines })),
+      ...chunkGroups(newLineGroups).map((lines) => ({ change_type: 'new_line' as const, lines })),
+      ...chunkGroups(discontinueLines.map((l) => [l])).map((lines) => ({
+        change_type: 'discontinue' as const,
+        lines,
+        effective_from: effectiveFrom!,
+      })),
+    ]
+    for (const p of plans) p.lines.forEach((l, i) => (l.position = i))
+
+    const summary = {
+      book: book.name,
+      matched_rows: matchedRows,
+      changed_cells: changedCells,
+      new_rows: newRows,
+      unchanged_rows: unchangedRows,
+      discontinued_rows: discontinueLines.length,
+      ignored_columns: ignored,
+    }
+
+    if (args.dry_run)
+      return {
+        dry_run: true,
+        ...summary,
+        changes: plans.map((p) => ({
+          change_type: p.change_type,
+          ...(p.effective_from ? { effective_from: p.effective_from } : {}),
+          lines: p.lines,
+        })),
+      }
+
+    // Materialize — all of it, or none. Every draft is created inside ONE
+    // control-database transaction (SaveOptions.tx), so a failure on the
+    // last chunk of a wide diff leaves nothing behind. This replaced a
+    // compensating delete loop whose cleanup errors were swallowed, which
+    // was never equivalent to a transaction and got weaker as the chunk
+    // count grew (review finding P2).
+    const created = await sql.begin(async (tx) => {
+      const out: { row_id: string; change_type: string; lines: number }[] = []
+      for (const p of plans) {
+        const saved = await saveDoc(
+          CHANGE,
+          {
+            book: book.name,
+            change_type: p.change_type,
+            reason,
+            ...(p.effective_from ? { effective_from: p.effective_from } : {}),
+            lines: p.lines,
+          },
+          user.row_id,
+          'insert',
+          { tx: tx as unknown as typeof sql },
+        )
+        out.push({ row_id: String(saved.row_id), change_type: p.change_type, lines: p.lines.length })
+      }
+      return out
+    })
+    return { ...summary, changes: created }
+  },
+})

@@ -131,7 +131,16 @@ async function resolveRowId(
 // Filter incoming values to real data columns; reject unknown keys so typos
 // fail loudly instead of silently dropping data. read_only columns are
 // system-managed (META-010): client-sent values for them are ignored.
-function pickFieldValues(meta: TableMeta, values: RowValues): RowValues {
+//
+// `owned` names read_only columns THIS writer manages, so an in-process
+// engine can set the column it owns while every other read_only column stays
+// system-managed. It is an explicit allowlist at the call site, never a
+// blanket "the engine may write anything" — see SaveOptions.ownedColumns.
+function pickFieldValues(
+  meta: TableMeta,
+  values: RowValues,
+  owned?: ReadonlySet<string>,
+): RowValues {
   const known = new Map(meta.columns.map((f) => [f.column_name, f]))
   const out: RowValues = {}
   const errors: Record<string, string> = {}
@@ -144,7 +153,7 @@ function pickFieldValues(meta: TableMeta, values: RowValues): RowValues {
       continue
     }
     if (NO_COLUMN_TYPES.has(field.column_type)) continue
-    if (field.read_only) continue
+    if (field.read_only && !owned?.has(key)) continue
     out[key] = value ?? null
   }
   if (Object.keys(errors).length)
@@ -476,6 +485,38 @@ export interface SaveOptions {
   // created_by, which is what makes own_rows_only portals work. Never expose
   // this to callers that pass through arbitrary client input.
   skipPermissions?: boolean
+  /**
+   * Run inside a transaction the CALLER already opened, instead of opening
+   * one here. This is what lets an engine write a row through the full
+   * lifecycle — validation, hooks, Document Event Scripts, link checks,
+   * versions — and still have that write commit or roll back with whatever
+   * else the caller is doing (spec 0007 BUD-I2: an approval either applies
+   * every line or none, and the status change goes with them).
+   *
+   * Post-commit effects (email rules, assignment rules, webhooks,
+   * `after_commit`) are deliberately SKIPPED in this mode: the caller's
+   * transaction has not committed yet, so firing them here would announce a
+   * change that may still roll back. The caller owns them.
+   */
+  tx?: typeof sql
+  /** Capabilities to hand the hook chain — see HookContext.capabilities. */
+  capabilities?: readonly string[]
+  /**
+   * read_only columns this writer owns and may set. Narrow by construction:
+   * the caller names the exact columns, so an engine that owns one flag
+   * cannot also overwrite the rest of a Table's system-managed state.
+   */
+  ownedColumns?: readonly string[]
+}
+
+/**
+ * Run `fn` in the caller's transaction when there is one, otherwise open our
+ * own. postgres.js resolves `begin` to the callback's own return value, so
+ * both branches hand back the same shape.
+ */
+function withTx<T>(external: typeof sql | undefined, fn: (tx: typeof sql) => Promise<T>): Promise<T> {
+  if (external) return fn(external)
+  return sql.begin((tx) => fn(tx as unknown as typeof sql)) as Promise<T>
 }
 
 export async function saveDoc(
@@ -485,6 +526,7 @@ export async function saveDoc(
   mode: 'upsert' | 'insert' = 'upsert',
   opts: SaveOptions = {},
 ): Promise<RowValues> {
+  const owned = opts.ownedColumns ? new Set(opts.ownedColumns) : undefined
   const meta = await getMeta(table)
   if (ENGINE_MANAGED.has(table))
     throw new AppError(
@@ -505,7 +547,7 @@ export async function saveDoc(
     if (exists) {
       if (mode === 'insert')
         throw new AppError('ConflictError', `${table} ${values[ROW_KEY]} already exists`)
-      return updateDoc(meta, String(values[ROW_KEY]), values, user)
+      return updateDoc(meta, String(values[ROW_KEY]), values, user, opts)
     }
     // In upsert mode an unknown name on a generated-id Table is almost
     // certainly a mistyped update — refuse it. Insert mode is different:
@@ -523,7 +565,7 @@ export async function saveDoc(
     : await permittedTiers(user, table, 'write')
   const fieldValues = validateValues(
     meta,
-    applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))),
+    applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values, owned))),
     'insert',
   )
   assertRequiredChildren(meta, values, 'insert')
@@ -541,9 +583,9 @@ export async function saveDoc(
   }
 
   const childInputs = pickChildInputs(meta, values)
+  const capabilities = opts.capabilities ? new Set(opts.capabilities) : undefined
   const tbl = tableName(table)
-  const [saved] = await sql
-    .begin(async (tx) => {
+  const [saved] = await withTx(opts.tx, async (tx) => {
       const stx = tx as unknown as typeof sql
       const rowId = await resolveRowId(stx, meta, values)
       const now = new Date()
@@ -560,7 +602,7 @@ export async function saveDoc(
       // Expose child rows to hooks (validate/before_save) under their
       // column names; columnValues ignores non-scalar keys when building the row.
       for (const ci of childInputs) row[ci.columnName] = ci.rows
-      const ctx: HookContext = { row, meta, user, isNew: true, tx: stx }
+      const ctx: HookContext = { row, meta, user, isNew: true, tx: stx, capabilities }
       await runHooks('before_insert', ctx)
       await runHooks('before_validate', ctx)
       await runHooks('validate', ctx)
@@ -591,9 +633,11 @@ export async function saveDoc(
       await runHooks('on_update', ctx)
       await runDocEventScripts('after_save', meta.name, ctx.row, ctx.tx)
       return inserted
-    })
-    .catch((err) => mapDbError(meta, err))
+    }).catch((err) => mapDbError(meta, err))
   const insertResult = await loadChildren(meta, { table, ...(saved as RowValues) })
+  // Running inside the caller's transaction: nothing has committed, so the
+  // post-commit announcements below are the caller's to make.
+  if (opts.tx) return insertResult
   // EML-004: fire matching email rules post-commit. Frappe's Save event covers
   // inserts too, so both on_create and on_save rules are evaluated here.
   await evaluateEmailRules('on_create', meta.name, insertResult)
@@ -753,7 +797,9 @@ async function updateDoc(
   name: string,
   values: RowValues,
   user: string,
+  opts: SaveOptions = {},
 ): Promise<RowValues> {
+  const owned = opts.ownedColumns ? new Set(opts.ownedColumns) : undefined
   const table = tableName(meta.name)
   if (values.updated_at == null)
     throw new AppError(
@@ -767,7 +813,7 @@ async function updateDoc(
     : await permittedTiers(user, meta.name, 'write')
   const fieldValues = validateValues(
     meta,
-    stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values)),
+    stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values, owned)),
     'update',
   )
   assertRequiredChildren(meta, values, 'update')
@@ -792,8 +838,8 @@ async function updateDoc(
 
   // Snapshot of the row before this save, for post-commit transition checks.
   let previous: RowValues | undefined
-  const saved = await sql
-    .begin(async (tx) => {
+  const capabilities = opts.capabilities ? new Set(opts.capabilities) : undefined
+  const saved = await withTx(opts.tx, async (tx) => {
       const stx = tx as unknown as typeof sql
       const [existing] = await tx`
         select * from ${tx(table)} where ${tx(meta.row_key)} = ${name} for update`
@@ -832,6 +878,7 @@ async function updateDoc(
         user,
         isNew: false,
         tx: stx,
+        capabilities,
       }
       await runHooks('before_validate', ctx)
       await runHooks('validate', ctx)
@@ -858,9 +905,11 @@ async function updateDoc(
       await runHooks('on_update', ctx)
       await runDocEventScripts('after_save', meta.name, ctx.row, ctx.tx)
       return updated
-    })
-    .catch((err) => mapDbError(meta, err))
+    }).catch((err) => mapDbError(meta, err))
   const updateResult = await loadChildren(meta, { table: meta.name, ...(saved as RowValues) })
+  // See SaveOptions.tx: post-commit announcements belong to the caller whose
+  // transaction this write is riding.
+  if (opts.tx) return updateResult
   // EML-004: on_save rules fire post-commit; the pre-save snapshot lets a
   // conditional rule fire only when the value transitions into the match.
   await evaluateEmailRules('on_save', meta.name, updateResult, previous)
@@ -878,10 +927,12 @@ async function updateDoc(
 }
 
 // DOC-009: record a field-level diff in the Version Table on every
-// tracked update. Runs inside the save transaction.
+// tracked update. Runs inside the save transaction. Exported for the one
+// other writer that mutates rows inside a caller-owned transaction with the
+// full trail intact: the Budget engine's apply path (spec 0007, BUD-R5).
 const UNVERSIONED = new Set(['Version', 'Table', 'Column'])
 
-async function recordVersion(
+export async function recordVersion(
   tx: typeof sql,
   meta: TableMeta,
   name: string,
@@ -928,6 +979,18 @@ async function setStatus(
   const meta = await getMeta(table)
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
+  // Spec 0007 BUD-R11 (audit finding): an attached Workflow owns the status
+  // gate. The plain :submit/:cancel actions would sidestep every role- and
+  // condition-gated lane the workflow defines — refused for everyone;
+  // approval rides the workflow's own transitions.
+  {
+    const wf = await getActiveWorkflow(table)
+    if (wf?.states.length)
+      throw new AppError(
+        'ValidationError',
+        `${table} status is governed by workflow "${wf.row_id}" — use its actions instead of :${event === 'on_submit' ? 'submit' : 'cancel'}`,
+      )
+  }
   const tbl = tableName(table)
   const [saved] = await sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql

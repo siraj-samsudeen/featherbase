@@ -2,6 +2,8 @@ import { AppError } from '../errors'
 import { amendDoc, cancelDoc, renameDoc, submitDoc } from '../document'
 import { applyWorkflowAction } from '../workflow'
 import { registerRowAction } from '../actions'
+import { activeBookFor } from '../budget'
+import { sql } from '../db'
 
 // The row actions every Table gets from the engine itself (not app/plugin
 // contributed) — submit/cancel/amend gated by is_submittable, workflow
@@ -40,10 +42,19 @@ registerRowAction('apply_workflow_action', {
 registerRowAction('rename', {
   effect: 'write',
   description: 'Rename a row, cascading the new name to every Link reference.',
-  handler: ({ table, name, args, user }) => {
+  handler: async ({ table, name, args, user }) => {
     const newName = args.new_name
     if (typeof newName !== 'string' || !newName)
       throw new AppError('ValidationError', 'Expected { new_name }')
+    // Spec 0007 BUD-R3 (audit bug #3): renameDoc runs no lifecycle hooks, so
+    // the budget write-lock cannot see it — and a rename would orphan every
+    // budget_version_line pointing at the old row id. Gate it here.
+    const book = await activeBookFor(sql, table)
+    if (book)
+      throw new AppError(
+        'ValidationError',
+        `${book.name} is active — rows of a governed budget cannot be renamed`,
+      )
     return renameDoc(table, name, newName, user.row_id)
   },
 })

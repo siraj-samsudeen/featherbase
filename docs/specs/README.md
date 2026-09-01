@@ -37,6 +37,7 @@ hand-maintained `evidence/*.csv` matrices this replaced were retired
 | [0004 — Import Upsert](0004-import-upsert.md) | Built 2026-08-05 | Spreadsheet import upserts by key |
 | [0005 — Import Revert](0005-import-revert.md) | Built 2026-08-11 | Row-level reverse of a completed import |
 | [0006 — Connection Console](0006-connection-console.md) | Proposed | Connect a Data Source through the UI: typed credentials encrypted at rest, phased test with inline diagnosis, post-auth database dropdown, verified grants, advanced disclosure, saved-source health |
+| [0007 — Budget Books](0007-budget-books.md) | Built 2026-08-22 | Grain-agnostic budget versioning + approval: a book binds any table's key/measure columns, baseline freezes v0, all further writes ride approved Budget Changes — including a whole overwrite file, which the Import wizard turns into draft changes |
 
 Both are shaped by [ADR 0007](../adr/0007-app-and-database-topology.md) and the
 research note [Frappe: many apps in one instance](../research/frappe-multi-app-and-multi-db.md).

@@ -31,6 +31,9 @@ import {
 } from './actions'
 import './actions/core-row-actions'
 import './actions/collection-import'
+import './actions/budget-actions'
+import './actions/budget-import'
+import { activeBookFor, compareVersions } from './budget'
 import './actions/collection-import-revert'
 import './actions/source-actions'
 import './actions/row-connections'
@@ -61,6 +64,7 @@ import { createSite, listSites, resolveSite, siteCreateTableDef, siteListTableDe
 import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
 import checklists from './sample-apps/checklists'
+import budgetBooksDemo from './sample-apps/budget-books-demo'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
@@ -82,6 +86,9 @@ registerApp(helpdesk)
 // Same discipline: checklist tables exist only after
 // POST /api/install_app { name: 'checklists' }.
 registerApp(checklists)
+// Spec 0007: the Budget Books scenario world (two books, three approval
+// lanes, CFO flag rule) — POST /api/install_app { name: 'budget-books-demo' }.
+registerApp(budgetBooksDemo)
 await loadInstalledApps()
 
 type Env = { Variables: { user: SessionUser } }
@@ -1034,6 +1041,75 @@ app.get('/api/workflow/:table/:name', async (c) => {
     state,
     actions: availableActions(wf, state, roles, doc).map((t) => ({ action: t.action, next_state: t.next_state })),
   })
+})
+
+// Spec 0007 M2: governance status for a row form — which active Budget Book
+// governs this table, and the pending draft changes touching this row.
+// Drives the "Governed by …" pill, the pending badge, and Propose change.
+//
+// M4 (BUD-R14) adds what append mode needs the surface to say: the book's
+// `mode` and `model_version`, so the form can stop promising the row will
+// change, and the decisions already appended AGAINST THIS ROW. Only
+// target_kind 'row' decisions are counted — a scope decision that might
+// reach this row is deliberately not resolved, because BUD-R15 says the
+// engine never expands a scope, and a count derived from an expansion would
+// be exactly the arithmetic that rule forbids.
+const ROW_DECISION_LIMIT = 10
+app.get('/api/budget/line/:table/:row_id', async (c) => {
+  const table = c.req.param('table')
+  const book = await activeBookFor(sql, table)
+  if (!book) return c.json({ book: null, pending: [], decisions: [], decision_count: 0 })
+  await assertPermission(who(c), table, 'read')
+  const rowId = c.req.param('row_id')
+  const pending = await sql`
+    select distinct c.row_id, c.change_type, c.reason, c.created_by
+    from budget_change c
+    join budget_change_line l on l.parent = c.row_id
+    where c.book = ${book.name} and c.status = 'draft'
+      and l.line_ref = ${rowId}
+    order by c.row_id`
+  // A mutate_rows book appends nothing, so it never pays for these two.
+  const decisions =
+    book.mode === 'append_decisions'
+      ? await sql`
+          select row_id, change, measure, basis, value, model_version,
+                 reason, decided_by, decided_role, decided_at
+          from budget_decision
+          where book = ${book.name} and target_kind = 'row' and line_ref = ${rowId}
+          order by decided_at desc, row_id desc
+          limit ${ROW_DECISION_LIMIT}`
+      : []
+  const [counted] =
+    book.mode === 'append_decisions'
+      ? await sql`
+          select count(*)::int as n from budget_decision
+          where book = ${book.name} and target_kind = 'row' and line_ref = ${rowId}`
+      : [{ n: 0 }]
+  return c.json({
+    book: {
+      name: book.name,
+      lifecycle: book.lifecycle,
+      mode: book.mode,
+      model_version: book.modelVersion,
+      key_columns: book.keyColumns,
+      measure_columns: book.measureColumns,
+      owner_column: book.ownerColumn,
+    },
+    pending,
+    decisions,
+    decision_count: Number(counted.n),
+  })
+})
+
+// Spec 0007 M2: the compare view — two snapshots of a book (or a snapshot
+// vs the live table via ?to=current), one entry per differing line.
+app.get('/api/budget/compare/:book', async (c) => {
+  await assertPermission(who(c), 'Budget Book', 'read')
+  const from = c.req.query('from')
+  const to = c.req.query('to')
+  if (!from || !to)
+    throw new AppError('ValidationError', 'Expected ?from=<version|current>&to=<version|current>')
+  return c.json(await compareVersions(sql, c.req.param('book'), from, to))
 })
 
 // UI-013: per-user list/view settings. Stored per (user, table) and only

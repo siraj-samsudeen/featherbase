@@ -58,9 +58,15 @@ export default defineConfig({
       // further point below the floor rather than a hundredth above it,
       // where it would flake.
       thresholds: {
-        lines: 33,
-        statements: 33,
-        functions: 45,
+        // Ratcheted 2026-08-28 → 33/45, then 2026-09-01 → 37/47 when the
+        // Import wizard's governed (budget-proposal) branch gained component
+        // coverage: measured 37.59% lines / 47.33% functions, rounded down.
+        // Ratcheted again 2026-09-01 → 40/48 with the append-mode decision
+        // desk (BUD-R14/R15/R16): measured 40.63% lines / 49.25% functions,
+        // lines rounded down, functions left the usual point of headroom.
+        lines: 40,
+        statements: 40,
+        functions: 48,
       },
     },
   },

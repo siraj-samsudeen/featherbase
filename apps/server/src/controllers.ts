@@ -21,6 +21,17 @@ export interface HookContext {
   user: string
   isNew: boolean
   tx: typeof sql
+  /**
+   * Capabilities the WRITER declared for this save (SaveOptions.capabilities).
+   * A hook may consult them to let a trusted engine past a guard it owns —
+   * `budget-apply` is the only one today (spec 0007 BUD-R3: an approved
+   * Budget Change writes bound rows through the normal lifecycle, so the
+   * write-lock must recognise the engine rather than refuse it).
+   *
+   * This is a capability, not a role: it is never derived from client input,
+   * only from an in-process caller that already proved its authority.
+   */
+  capabilities?: ReadonlySet<string>
 }
 
 export type Hook = (ctx: HookContext) => void | Promise<void>
