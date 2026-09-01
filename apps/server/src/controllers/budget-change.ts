@@ -64,6 +64,9 @@ const controller: TableController = {
     validate: async (ctx) => {
       const { row, tx } = ctx
       const book = await requireBook(ctx)
+      const reason = typeof row.reason === 'string' ? row.reason.trim() : ''
+      if (!reason) reject('reason is required — every Budget Change carries one')
+      row.reason = reason
       if (book.lifecycle !== 'active')
         reject(
           `${book.name} is ${book.lifecycle} — a Budget Change needs an active book` +
