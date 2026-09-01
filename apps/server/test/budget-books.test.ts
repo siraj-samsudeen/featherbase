@@ -303,6 +303,19 @@ describe('BUD-R4: a change computes its own facts', () => {
     await expectApiError(makeChange(admin, { book: BOOK, lines: [] }), { status: 417, type: 'ValidationError' })
   })
 
+  test('BUD-R4: a whitespace-only reason is not a reason', async ({ admin }) => {
+    const rows = await activeSetup(admin)
+    await expectApiError(makeChange(admin, {
+      reason: '   ',
+      book: BOOK,
+      lines: [{ line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 1 }],
+    }), {
+      status: 417,
+      type: 'ValidationError',
+      message: expect.stringContaining('reason is required'),
+    })
+  })
+
   test('BUD-R4: over_doa is computed from the book policy, direction-aware', async ({ admin }) => {
     await makeLineTable(admin)
     const rows = await makeRows(admin)
@@ -381,7 +394,11 @@ describe('BUD-R5: approval applies, atomically, through the front door', () => {
     })
     await submit(admin, String(winner.row_id))
     // … so the stale one is refused whole-request.
-    await expectApiError(submit(admin, String(stale.row_id)), { status: 409, type: 'ConflictError' })
+    await expectApiError(submit(admin, String(stale.row_id)), {
+      status: 409,
+      type: 'ConflictError',
+      message: expect.stringContaining(String(stale.row_id)),
+    })
     // Nothing applied, status untouched (BUD-I2).
     const untouched = await getRow(admin, LINE, String(rows.bBev.row_id))
     expect(Number(untouched.q1)).toBe(200)

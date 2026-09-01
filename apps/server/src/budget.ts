@@ -460,7 +460,7 @@ export async function applyChange(
     )
   const boundMeta = await getMeta(book.refTable)
   const boundTbl = tableName(book.refTable)
-  const changeName = String(change.name)
+  const changeName = String(change.row_id)
   const type = String(change.change_type)
   const now = new Date()
   const hasFlag = boundMeta.columns.some((f) => f.column_name === DISCONTINUED_FLAG)
