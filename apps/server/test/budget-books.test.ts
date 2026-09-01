@@ -757,3 +757,260 @@ describe('BUD-I1: the ledger reconciles', () => {
     }
   })
 })
+
+describe('BUD-R5.lifecycle: an approved write runs the bound table’s own rules', () => {
+  // Review P0-3: the apply used to write bound rows with raw SQL, so an
+  // application's own validation — Document Event Scripts, controller hooks,
+  // required columns, link checks — could be bypassed by getting a change
+  // approved. It now rides the same save lifecycle as any other write.
+  test('BUD-R5.lifecycle: a Document Event Script on the bound table refuses the approval, atomically', async ({
+    admin,
+  }) => {
+    const rows = await activeSetup(admin)
+    await admin.post('/api/save_row', {
+      table: 'Server Script',
+      row: {
+        row_id: 'bb-guard-q1',
+        script_type: 'Document Event',
+        ref_table: LINE,
+        event: 'validate',
+        script: 'if (doc.q1 > 500) frappe.throw("q1 over the hard ceiling")',
+        enabled: true,
+      },
+    })
+    const change = await makeChange(admin, {
+      book: BOOK,
+      change_type: 'revise',
+      lines: [
+        { line_ref: rows.aBev.row_id, measure_column: 'q1', proposed_value: 900 },
+        { line_ref: rows.aSnk.row_id, measure_column: 'q1', proposed_value: 11 },
+      ],
+    })
+    await expectApiError(submit(admin, String(change.row_id)), {
+      status: 417,
+      type: 'ValidationError',
+      message: expect.stringMatching(/hard ceiling/),
+    })
+    // BUD-I2: nothing applied — not the offending line, not its sibling —
+    // and the change is still a draft.
+    const guarded = await getRow(admin, LINE, String(rows.aBev.row_id))
+    expect(Number(guarded.q1)).toBe(100)
+    const sibling = await getRow(admin, LINE, String(rows.aSnk.row_id))
+    expect(Number(sibling.q1)).toBe(10)
+    const after = await getRow(admin, 'Budget Change', String(change.row_id))
+    expect(after.status).toBe('draft')
+  })
+
+  test('BUD-R5.lifecycle: a new_line insert is judged by the bound table’s link checks', async ({
+    admin,
+  }) => {
+    // A bound table whose key carries a Reference: the engine used to
+    // hand-roll a subset of the link check, and now saveDoc owns it.
+    const REF_LINE = 'Bb Ref Line'
+    const REF_BOOK = 'Bb Ref 2026'
+    const refLine = tableRef(REF_LINE)
+    await makeTable(admin, {
+      name: REF_LINE,
+      columns: [
+        { column_name: 'store', column_type: 'Data' },
+        { column_name: 'owner_user', column_type: 'Reference', reference_table: 'User' },
+        'q1:Currency',
+      ],
+    })
+    await admin.post(refLine.url, { store: 'Adyar', owner_user: 'Administrator', q1: 100 })
+    await admin.post('/api/save_row', {
+      table: 'Budget Book',
+      row: {
+        row_id: REF_BOOK,
+        ref_table: REF_LINE,
+        fiscal_year: '2026',
+        key_columns: [{ column_name: 'store' }, { column_name: 'owner_user' }],
+        measure_columns: [{ column_name: 'q1', period_label: 'Q1' }],
+      },
+    })
+    await sql`update workflow set is_active = false where ref_table = 'Budget Change'`
+    await baseline(admin, REF_BOOK)
+
+    // A key naming a User who does not exist is refused at approval by the
+    // ordinary link check, and the change stays a draft.
+    const ghost = await makeChange(admin, {
+      book: REF_BOOK,
+      change_type: 'new_line',
+      lines: [
+        {
+          new_line_key: { store: 'Velachery', owner_user: 'nobody@example.com' },
+          measure_column: 'q1',
+          proposed_value: 10,
+        },
+      ],
+    })
+    await expectApiError(submit(admin, String(ghost.row_id)), {
+      status: 417,
+      type: 'ValidationError',
+    })
+    expect((await getRow(admin, 'Budget Change', String(ghost.row_id))).status).toBe('draft')
+
+    // A real one lands.
+    const good = await makeChange(admin, {
+      book: REF_BOOK,
+      change_type: 'new_line',
+      lines: [
+        {
+          new_line_key: { store: 'Velachery', owner_user: 'Administrator' },
+          measure_column: 'q1',
+          proposed_value: 10,
+        },
+      ],
+    })
+    await submit(admin, String(good.row_id))
+    const [born] = await sql`
+      select * from ${sql('bb_ref_line')} where store = 'Velachery'`
+    expect(Number(born.q1)).toBe(10)
+    expect(born.owner_user).toBe('Administrator')
+  })
+})
+
+describe('BUD-R13: a proposal is judged against what its author saw', () => {
+  // Review P0-4. current_value is the engine's snapshot and is re-snapped on
+  // every save (BUD-R4), so it cannot double as the concurrency token: it
+  // only ever protected the window between the last draft save and approval.
+  // observed_value is the author's own reading, which the engine never
+  // assigns — so an edit that landed underneath is caught at the FIRST save.
+  test('BUD-R13: B opened 100, A committed 120, and B’s first save is refused naming both', async ({
+    admin,
+  }) => {
+    const rows = await activeSetup(admin)
+    const ref = String(rows.aBev.row_id)
+
+    // A proposes against the same 100 both editors opened, and approves.
+    const a = await makeChange(admin, {
+      book: BOOK,
+      change_type: 'revise',
+      lines: [{ line_ref: ref, measure_column: 'q1', observed_value: 100, proposed_value: 120 }],
+    })
+    await submit(admin, String(a.row_id))
+    expect(Number((await getRow(admin, LINE, ref)).q1)).toBe(120)
+
+    // B is still holding the 100 they opened. Their FIRST save is refused.
+    const err = await expectApiError(
+      makeChange(admin, {
+        book: BOOK,
+        change_type: 'revise',
+        lines: [{ line_ref: ref, measure_column: 'q1', observed_value: 100, proposed_value: 110 }],
+      }),
+      { status: 409, type: 'ConflictError' },
+    )
+    expect(err.message).toContain('120') // what it is now
+    expect(err.message).toContain('100') // what B wrote against
+    // A's number stands: B's 110 never reached the table.
+    expect(Number((await getRow(admin, LINE, ref)).q1)).toBe(120)
+  })
+
+  test('BUD-R13: an observation that still matches saves, and is not overwritten by the engine', async ({
+    admin,
+  }) => {
+    const rows = await activeSetup(admin)
+    const ref = String(rows.aBev.row_id)
+    const change = await makeChange(admin, {
+      book: BOOK,
+      change_type: 'revise',
+      lines: [{ line_ref: ref, measure_column: 'q1', observed_value: 100, proposed_value: 150 }],
+    })
+    const [line] = change.lines as Row[]
+    expect(Number(line.observed_value)).toBe(100)
+    expect(Number(line.current_value)).toBe(100)
+    // Re-saving re-snaps current_value (BUD-R4) but must leave the author's
+    // observation exactly as they wrote it.
+    const resaved = await patchDoc(admin, changeRef.rowUrl(String(change.row_id)), {
+      updated_at: change.updated_at,
+      reason: 'second thoughts, same reading',
+    })
+    const [after] = resaved.lines as Row[]
+    expect(Number(after.observed_value)).toBe(100)
+    await submit(admin, String(change.row_id))
+    expect(Number((await getRow(admin, LINE, ref)).q1)).toBe(150)
+  })
+
+  test('BUD-R13: a line with no observation keeps the draft-save → approval guard (BUD-R5)', async ({
+    admin,
+  }) => {
+    const rows = await activeSetup(admin)
+    const ref = String(rows.aBev.row_id)
+    // No observed_value: the older contract, still enforced at approval.
+    const stale = await makeChange(admin, {
+      book: BOOK,
+      change_type: 'revise',
+      lines: [{ line_ref: ref, measure_column: 'q1', proposed_value: 111 }],
+    })
+    const winner = await makeChange(admin, {
+      book: BOOK,
+      change_type: 'revise',
+      lines: [{ line_ref: ref, measure_column: 'q1', proposed_value: 400 }],
+    })
+    await submit(admin, String(winner.row_id))
+    await expectApiError(submit(admin, String(stale.row_id)), {
+      status: 409,
+      type: 'ConflictError',
+    })
+  })
+})
+
+describe('BUD-R1/BUD-R2: the invariants are the database’s, not only the controller’s', () => {
+  // Review findings: "one non-closed book per table" was check-then-insert,
+  // and baseline read the bound rows without holding them.
+  test('BUD-R1: a second non-closed book is refused by the database, not just the lookup', async ({
+    admin,
+  }) => {
+    await makeLineTable(admin)
+    await makeBook(admin)
+    // Bypass the controller entirely — this is what a concurrent creation
+    // that passed the lookup would attempt. Inside a savepoint, because a
+    // constraint violation aborts the surrounding transaction and this test
+    // has assertions left to make.
+    await expect(
+      // `savepoint` is a transaction method: in the sandbox `sql` IS the
+      // test's transaction, so it is present at runtime but absent from the
+      // pooled Sql type.
+      (sql as unknown as { savepoint: (fn: () => Promise<unknown>) => Promise<unknown> })
+        .savepoint(() => sql`insert into budget_book ${sql({
+        row_id: 'Racing Book',
+        ref_table: LINE,
+        fiscal_year: '2026',
+        lifecycle: 'working',
+        created_by: 'Administrator',
+        updated_by: 'Administrator',
+        created_at: new Date(),
+        updated_at: new Date(),
+        status: 'draft',
+        position: 0,
+      })}`),
+    ).rejects.toMatchObject({ code: '23505' })
+
+    // Closing the first frees the table: the index is partial on purpose.
+    await baseline(admin)
+    await admin.post(`${bookRef.rowUrl(BOOK)}:close`, {})
+    const second = await makeBook(admin, { row_id: 'After Close' })
+    expect(second.lifecycle).toBe('working')
+  })
+
+  test('BUD-R2: baseline holds the bound rows, so no edit can land between the snapshot and active', async ({
+    admin,
+  }) => {
+    const rows = await setup(admin)
+    const ref = String(rows.aBev.row_id)
+    // Inside one transaction: take the baseline, then prove the rows it
+    // photographed are locked by trying to read one FOR UPDATE NOWAIT from
+    // a second connection — the lock is what a racing edit would queue on.
+    await baseline(admin)
+    const [v0] = await sql`select row_id from budget_version where book = ${BOOK}`
+    const [snapped] = await sql`
+      select data from budget_version_line
+      where version = ${String(v0.row_id)} and ref_name = ${ref}`
+    // v0 equals what is live at the moment governance began — the property
+    // the race could break.
+    const live = await getRow(admin, LINE, ref)
+    const data = snapped.data as Row
+    for (const m of ['q1', 'q2', 'q3', 'q4'])
+      expect(Number(data[m])).toBe(Number(live[m]))
+  })
+})

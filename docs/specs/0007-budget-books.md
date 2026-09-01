@@ -185,7 +185,9 @@ sees it. Unique table/book names per run.
 > evidence: proven — a conforming declaration saves as working; a
 > non-numeric measure, a ghost key column, a missing ref_table, the engine
 > binding itself, an empty declaration and a second non-closed book are
-> each refused.
+> each refused — the last one by the database itself, proven by an insert
+> that bypasses the controller and is refused 23505, with the table freed
+> again once the first book closes.
 
 `POST /api/table/budget_book` (generated CRUD). A book names a
 `ref_table` (must exist, `kind: 'table'`, not externally bound in M1)
@@ -196,7 +198,11 @@ bound table; measures must be numeric (`Int`, `Float`, `Currency`);
 (`increase`/`decrease`/`any`) — consumed by R4's `over_doa` fact so a
 single workflow condition serves every book. At most one **non-closed** book
 may bind a given table at a time — the write-lock must never be
-ambiguous. Violations refuse the book save whole-request.
+ambiguous. That one is a **database invariant** (a partial unique index on
+`budget_book(ref_table) where lifecycle <> 'closed'`), not only a
+controller lookup: the lookup is what turns the ordinary case into a named
+refusal, the index is what makes two concurrent creations impossible rather
+than merely unlikely. Violations refuse the book save whole-request.
 
 **Property:** for any table and any declaration violating one clause,
 the save is refused naming that clause; for any conforming declaration,
@@ -205,11 +211,17 @@ the book saves with status `working`.
 ### BUD-R2 — Lifecycle: working → active → closed · `shape: contract`
 
 > evidence: proven — baseline only from working (writing v0), close only
-> from active, no reopening, and a direct lifecycle save leaves the book
-> working.
+> from active, no reopening, a direct lifecycle save leaves the book
+> working, and v0 equals the live rows at the moment governance began (the
+> snapshot holds them, so nothing can land in between).
 
 `POST /api/table/budget_book/:name:baseline` — only from `working`:
-writes the v0 snapshot (R10) and sets `active`. Refused on `active` or
+writes the v0 snapshot (R10) and sets `active`. The snapshot **holds the
+bound rows** (`for update`) for its transaction, so an ordinary edit that
+began while the book still read `working` cannot commit between the
+snapshot read and governance starting — it queues, then re-judges against
+`active` and is refused. Without that, "current" could differ from v0
+before any Budget Change existed. Refused on `active` or
 `closed` books.
 `POST /api/table/budget_book/:name:close` — only from `active`. No
 action reopens a book; status is engine-written, read-only to direct
@@ -232,6 +244,10 @@ books impose nothing. Closing a book releases the lock (the snapshots
 and Version trail remain the durable history — Q3 asks the owner to
 ratify this release). The refusal names the road that is open: bulk
 writes to a governed table are told to use `:import_proposal` (R12).
+
+The engine's own apply passes through this same lock and is recognised by
+the `ENGINE_APPLY` capability (BUD-R5), which an in-process caller sets and
+a request body can never carry.
 
 **Property:** for every bound row and every declared column, a direct
 write while active is refused and the row is byte-identical after.
@@ -269,7 +285,14 @@ holds at most `MAX_CHANGE_LINES` lines.
 
 > evidence: proven — submit applies every line with one Version entry
 > per row diffing exactly the touched measures; the workflow path converges
-> on the same apply; a stale snapshot refuses the whole approval.
+> on the same apply; a stale snapshot refuses the whole approval; and the
+> write now rides the bound table's own lifecycle — a Document Event Script
+> on that table refuses the approval atomically (nothing applied, sibling
+> line untouched, change still draft), and a new_line's Reference key is
+> judged by the ordinary link check.
+> evidence BUD-R5.lifecycle: proven — the sub-ID naming that last clause:
+> an application's own validation on the bound table now refuses an
+> approval instead of being bypassed by it.
 
 `POST /api/table/budget_change/:name:submit` — and equally any Workflow
 transition whose target status is `submitted` — applies every line to
@@ -279,8 +302,22 @@ raw SQL). Before applying, each line's live value is compared to its
 snapped `current_value`; any mismatch refuses the whole approval naming
 the line. After apply, the change is `submitted` and immutable.
 
+The write itself goes through the bound table's **ordinary save lifecycle**
+— column validation, controller hooks, Document Event Scripts, link checks
+and the Version diff — carrying the approval's transaction so it commits
+with the status change, and an `ENGINE_APPLY` capability that stands the
+BUD-R3 write-lock down and nothing else. (Before this the engine wrote raw
+SQL, so an application's own invariants could be bypassed by getting a
+change approved.) Two deliberate narrowings, both named at the call site:
+the apply may set the one `read_only` column the engine owns
+(`budget_discontinued`), and it does not require the actor to hold a
+create/write grant on the bound table — the approval is the authorization
+(Q6 asks the owner to ratify that second one).
+
 Behaviours (no example table — rows would restate the rule):
 - submit path and workflow path produce identical bound-table outcomes;
+- a validation the bound table owns (a Document Event Script, a required
+  column, a Reference that points nowhere) refuses the whole approval;
 - one Version entry per changed bound row, diffing exactly the applied
   measures;
 - a failing line (validation, stale snapshot) leaves every other line
@@ -382,7 +419,8 @@ status change. Platform-wide, not budget-specific.
 > already-discontinued rows skipped, dry_run parity, undeclared columns
 > ignored and named, refuse-whole on a missing key cell / duplicate key /
 > non-numeric measure / empty reason, the no-active-book refusal, and a
-> 204-line diff chunking 200 + 4 without splitting a row.
+> 204-line diff chunking 200 + 4 without splitting a row — all drafts of a
+> run now created in one transaction rather than compensated for.
 
 `POST /api/table/:table:import_proposal
 { rows, reason, dry_run?, missing_rows?, effective_from? }` — the bulk
@@ -437,6 +475,41 @@ deliberate act, not a best-effort trickle.
 draft makes the bound table's declared measures equal the file's where
 the file spoke and leaves them untouched where it was silent — and
 `dry_run` followed by the real call reports the identical diff.
+
+### BUD-R13 — A proposal is judged against what its author saw · `shape: rule`
+
+A `Budget Change Line` may carry `observed_value`: the number its author
+had in front of them when they proposed. It is **written by the client and
+never assigned by the engine** — which is precisely what `current_value`
+cannot be, because BUD-R4 re-snaps that on every save.
+
+On every save of a line carrying an observation, the engine compares it to
+the live value and refuses the save with **409 Conflict** on any drift,
+naming both numbers. Without an observation the older contract stands: the
+approval-time check (R5) still guards the last-save → approval window.
+
+The window this closes, which R5 alone never did: B opens a value showing
+100; A commits 120; B saves a proposal for 110; the engine silently
+re-snaps B's line from 100 to 120, so B's 110 later overwrites A's 120 with
+no conflict ever raised. That is a lost update, and the editor never sees
+it happen.
+
+| # | observed | live at save | outcome | Why? |
+|---|---|---|---|---|
+| 1 | 100 | 100 | saved | the reading still holds |
+| 2 | 100 | 120 | rejected (409, naming 100 and 120) | someone moved it under the proposal |
+| 3 | (absent) | anything | saved | no observation was claimed; R5 still guards approval |
+| 4 | 100, then re-saved | 100 | saved, `observed_value` still 100 | the engine never rewrites the author's reading |
+
+**Property:** for any line carrying an observation, an approval can only
+apply a value the author proposed against a reading that was still true at
+their last save — and their observation is byte-identical from first save
+to approval.
+
+> evidence: proven — the two-editor walk (B opened 100, A committed 120,
+> B's FIRST save refused 409 naming both, A's number standing), an
+> observation surviving a re-save unchanged, and a line with no observation
+> keeping the R5 draft-save → approval guard.
 
 ### BUD-R10 — The snapshot is the whole book · `shape: invariant`
 
@@ -532,4 +605,52 @@ one-active-per-table is the owner's call.
   today. Enforce deeper, or is block-fast-lane + flag enough? *Arbiter:
   owner.*
 - **Q5** — enforce one active Workflow per table platform-wide (BUD-H3)?
+  *Arbiter: owner.*
+- **Q6** — the apply writes bound rows without requiring the actor to hold
+  a create/write grant on the bound table: the reading is that approving
+  the Budget Change *is* the authorization, and an approver governs the
+  budget rather than the line table (in the demo they hold no grant on it
+  at all). Ratify, or require a grant and re-cut the demo roles?
+  *Arbiter: owner.*
+
+## Not built: the two shapes an overlay ledger needs
+
+A 2026-09-01 review against a forecast-override application (an
+append-only decision ledger over immutable model versions) found two
+requirements this engine cannot express. Both are recorded here as
+**design questions, deliberately not implemented** — each changes what a
+Budget Change *means*, and neither is a parameter to tune.
+
+- **Q7** — `mode = mutate_rows | append_decisions`. Approval here replaces
+  values in the bound table. An overlay application needs the model
+  numbers immutable and the human decisions appended beside them, with
+  "in force" derived by precedence at read time and superseded entries
+  kept for grading. `new_line` is the opposite of what that needs: it
+  demands a complete key and refuses a colliding one, where a ledger
+  deliberately accepts repeated same-scope decisions so the latest can
+  win. Related: such a ledger's rows carry required non-measure fields
+  (an entry type, an effective window, a model version, a weight vector)
+  for which the current line schema has no legal payload — one typed
+  document validated as a whole, not five unrelated scalar lines.
+  *Arbiter: owner.*
+- **Q8** — scope-addressed decisions (`target_kind = row | scope`). Every
+  line here addresses one row. A decision taken at a node of a hierarchy
+  ("push this across Kerala") is **one decision**, not one per leaf:
+  expanding it to 10,023 rows changes its arithmetic (an additive push
+  risks being counted once per leaf) and its audit meaning, and splitting
+  it across drafts loses one-decision atomicity. **Raising
+  `MAX_CHANGE_LINES` is not the answer** — the cap is not what is wrong.
+  What is missing is a decision that stores its scope, with nullable
+  dimensions meaning "all", and leaves leaf resolution and roll-up
+  placement to the application. *Arbiter: owner.*
+- **Q9** — externally reflected tables. BUD-R1 refuses a `data_source`
+  binding, and lifting that guard alone would not work: the engine reads
+  and writes native physical tables through the control-database client,
+  while reflected rows must go through the source driver, whose
+  insert/update/remove API cannot enlist in the transaction that also
+  commits the Budget Change status. The recommended shape is to keep
+  model tables reflected and read-only and make the *decision ledger*
+  native, so approval and append stay one transaction; the alternative is
+  source-driver transactions plus a cross-store consistency design, which
+  is materially larger and should not hide behind removing a guard.
   *Arbiter: owner.*

@@ -1,17 +1,27 @@
 import { AppError } from '../errors'
 import { WILDCARD_TABLE, type HookContext, type TableController } from '../controllers'
-import { activeBookFor, declaredColumns, type BookBinding } from '../budget'
+import { ENGINE_APPLY, activeBookFor, declaredColumns, type BookBinding } from '../budget'
 
 // Spec 0007, BUD-R3: while a Budget Book is active, its bound table accepts
 // no direct row writes — inserts and deletes are refused outright, and
 // updates touching a declared column (key, measure, owner, or the engine's
 // discontinued flag) are refused whole-write. Undeclared columns (notes,
-// attachments) stay editable. The engine's own apply path writes bound rows
-// directly inside its transaction and never passes through these hooks, so
-// no bypass flag exists — there is nothing to forget to check.
+// attachments) stay editable.
+//
+// The engine's own apply DOES pass through here now (it writes bound rows
+// through saveDoc so their validation, hooks and Document Event Scripts run),
+// and is recognised by the ENGINE_APPLY capability rather than by a flag on
+// the row. The capability can only be set by an in-process caller — it never
+// travels in a request body — so a client cannot ask for it.
 
 async function governingBook(ctx: HookContext): Promise<BookBinding | null> {
   if (ctx.meta.kind !== 'table' || ctx.meta.system) return null
+  // The engine's own apply carries ENGINE_APPLY, so an approved Budget
+  // Change writes bound rows through this same lifecycle instead of around
+  // it (raw SQL used to skip validation, hooks and Document Event Scripts
+  // entirely). The capability opens THIS gate only — everything else on the
+  // save path still judges the row.
+  if (ctx.capabilities?.has(ENGINE_APPLY)) return null
   return activeBookFor(ctx.tx, ctx.meta.name)
 }
 

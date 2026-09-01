@@ -1,5 +1,66 @@
 # Progress Log
 
+## 2026-09-01 — Budget Books answers the PR-2961 review: P0s fixed, two shapes named as design
+
+An external review compared this engine against a forecast-override
+application (an append-only decision overlay over immutable model
+versions). Four P0s. Two were Featherbase defects and are fixed; two are
+shape mismatches that a parameter cannot fix, and are recorded as
+questions rather than guessed at.
+
+**Fixed — the apply no longer bypasses the bound table's own rules.**
+`applyChange` wrote bound rows with raw SQL and hand-rolled a subset of
+the checks, so an application's invariants — Document Event Scripts,
+controller hooks, required columns, link checks — could be bypassed by
+getting a change *approved*. The write now goes through the ordinary save
+lifecycle. That needed a real seam: `SaveOptions.tx` lets a caller lend
+its transaction (so the write still commits with the status change,
+BUD-I2), `SaveOptions.capabilities` carries `budget-apply` so only the
+BUD-R3 write-lock stands down, and `SaveOptions.ownedColumns` names the
+one `read_only` column the engine owns rather than granting it all of
+them. Post-commit effects are skipped in borrowed-transaction mode —
+they belong to whoever commits.
+
+**Fixed — a proposal is now judged against what its author saw
+(BUD-R13).** `current_value` is re-snapped on every save by design, so it
+never protected the window that matters: B opens 100, A commits 120, B
+saves 110, and the engine silently re-snaps B to 120 — B's 110 later
+overwrites A's 120 with no conflict raised. Reproduced first, then fixed:
+a new `observed_value` the client writes and the engine never assigns,
+compared to live on every save, 409 naming both numbers.
+
+**Also fixed, from the same review:** "one non-closed book per table" was
+check-then-insert and is now a partial unique index (proven by an insert
+that bypasses the controller); baseline read the bound rows without
+holding them, so a final direct edit could land between the snapshot and
+`active` — it now locks them, and since `updateDoc` takes its row lock
+before running hooks, a waiting edit re-judges against `active` and is
+refused; and import materialization creates every draft of a run in one
+transaction instead of compensating with best-effort deletes whose
+failures were swallowed (a direct payoff of the `tx` seam).
+
+**Not built, on purpose — Q7/Q8/Q9.** An overlay ledger needs approval to
+*append* an immutable decision beside immutable model numbers rather than
+replace values (Q7); a decision taken at a hierarchy node must stay **one**
+decision rather than expand to its 10,023 leaves — raising
+`MAX_CHANGE_LINES` is explicitly not the answer, since expansion changes
+the arithmetic and the audit meaning (Q8); and reflected tables cannot be
+bound today because the source driver cannot enlist in the transaction
+that commits the change status, so lifting the guard alone would not work
+(Q9). Each changes what a Budget Change *means*; the owner arbitrates.
+
+**Verified:** server **783 passed** (the one failure is the documented
+container-only `sources-csv` chmod-as-root case), web 97, shared 22, e2e
+**101 passed**; both typechecks clean; coverage floors held (server 87.44,
+web 37.61); and the full CI evidence gate including the runtime pass —
+101 verdicts across 6 specs, **1019 runtime tests checked**, zero
+warnings.
+
+**Next:** Q6–Q9 are the owner's; a UI that renders a measure should send
+it back as `observed_value` (the column is writable and the contract is
+live, but no surface fills it yet).
+
+
 ## 2026-08-29 — Budget Books joins the new test system (#227/#233/#239/#240)
 
 The branch predated the test-system overhaul; this brings it across and

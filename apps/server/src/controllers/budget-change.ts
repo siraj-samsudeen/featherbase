@@ -98,6 +98,20 @@ const controller: TableController = {
         if (!live) reject(`line ${ref} does not exist in ${book.refTable}`)
         return live as RowValues
       }
+      // BUD-R13 (review P0-4): current_value is the ENGINE's snapshot and is
+      // deliberately re-snapped on every save, so it cannot also be the
+      // concurrency token. observed_value is what the author saw; the engine
+      // never assigns it, and any drift from live means someone else moved
+      // the number under this proposal — a 409, not a silent re-snap.
+      const guardObservation = (ref: string, col: string, l: RowValues, live: number) => {
+        if (l.observed_value == null || l.observed_value === '') return
+        const seen = num(l.observed_value)
+        if (seen === live) return
+        throw new AppError(
+          'ConflictError',
+          `${book.refTable} ${ref} ${col} is now ${live}, but this proposal was written against ${seen} — reopen the line to see the current value before proposing`,
+        )
+      }
       const collectOwner = (live: RowValues) => {
         if (book.ownerColumn && live[book.ownerColumn] != null)
           owners.add(String(live[book.ownerColumn]))
@@ -141,6 +155,7 @@ const controller: TableController = {
           collectOwner(live)
           const fromIdx = book.measureColumns.indexOf(effective!)
           const cur = book.measureColumns.slice(fromIdx).reduce((s, c) => s + num(live[c]), 0)
+          guardObservation(ref!, `${effective!}…`, l, cur)
           l.current_value = cur
           l.proposed_value = 0
           l.delta = -cur
@@ -155,6 +170,7 @@ const controller: TableController = {
           const live = await liveRow(ref!)
           collectOwner(live)
           const cur = num(live[m])
+          guardObservation(ref!, m, l, cur)
           l.current_value = cur
           l.delta = num(l.proposed_value) - cur
         } else {

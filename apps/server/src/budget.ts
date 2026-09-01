@@ -15,7 +15,7 @@ import type { sql as sqlType } from './db'
 import { AppError } from './errors'
 import { getMeta, invalidateMeta, physicalRowKey } from './meta'
 import { tableName } from './table-engine'
-import { recordVersion, type RowValues } from './document'
+import { recordVersion, saveDoc, type RowValues } from './document'
 
 type Sql = typeof sqlType
 
@@ -28,6 +28,13 @@ const NON_SCALAR = new Set(['Sub-table', 'Section Break', 'Column Break'])
 
 export const BOOK = 'Budget Book'
 export const CHANGE = 'Budget Change'
+/**
+ * The capability an approved apply carries (SaveOptions.capabilities). It
+ * lets the engine's own writes past the BUD-R3 write-lock — and nothing
+ * else: validation, controller hooks, Document Event Scripts and link checks
+ * all still run on the bound row. Never derived from client input.
+ */
+export const ENGINE_APPLY = 'budget-apply'
 const SNAPSHOT_CHUNK = 200
 
 export interface BookBinding {
@@ -199,6 +206,15 @@ export async function snapshotBook(
   label: string,
   kind: 'baseline' | 'reforecast' | 'adhoc',
   user: string,
+  // BUD-R2 (review finding: baseline could race a final direct edit). The
+  // book row is locked by the caller, but the BOUND rows are not: an
+  // ordinary edit that started while the book still read `working` could
+  // commit after this snapshot read, leaving "current" different from v0
+  // before any Budget Change existed. Holding the rows for the baseline
+  // transaction closes that window — updateDoc takes its row lock before it
+  // runs the write-lock hook, so a waiting edit re-judges against `active`
+  // once we commit, and is refused.
+  lockRows = false,
 ): Promise<{ version: string; line_count: number }> {
   const now = new Date()
   const versionName = newName()
@@ -207,8 +223,12 @@ export async function snapshotBook(
     ...book.measureColumns,
     ...(book.ownerColumn ? [book.ownerColumn] : []),
   ]
-  const rows = await tx`
-    select ${tx(['row_id', ...cols])} from ${tx(tableName(book.refTable))} order by row_id`
+  const rows = lockRows
+    ? await tx`
+        select ${tx(['row_id', ...cols])} from ${tx(tableName(book.refTable))}
+        order by row_id for update`
+    : await tx`
+        select ${tx(['row_id', ...cols])} from ${tx(tableName(book.refTable))} order by row_id`
   await tx`
     insert into ${tx(tableName('Budget Version'))} ${tx({
       row_id: versionName,
@@ -279,7 +299,7 @@ export async function baselineBook(
     measureColumns: book.measureColumns,
   })
   await ensureDiscontinuedFlag(tx, book.refTable)
-  const snap = await snapshotBook(tx, book, 'v0', 'baseline', user)
+  const snap = await snapshotBook(tx, book, 'v0', 'baseline', user, true)
   await setLifecycle(tx, before, 'active', user)
   return { book: name, lifecycle: 'active', ...snap }
 }
@@ -478,11 +498,33 @@ export async function applyChange(
       throw new AppError('ValidationError', `${changeName}: ${book.refTable} ${ref} no longer exists`)
     return row as RowValues
   }
+  // BUD-R5 (review P0-3): the approved write goes through the SAME document
+  // lifecycle an ordinary save would — column validation, controller hooks,
+  // Document Event Scripts, link checks and the Version diff — carrying the
+  // caller's transaction so it commits or rolls back with the status change
+  // (BUD-I2), and the ENGINE_APPLY capability so only the BUD-R3 write-lock
+  // stands aside. Raw SQL used to skip all of it, which meant an application
+  // could have its own invariants bypassed by an approval.
+  //
+  // skipPermissions is deliberate and narrow: the actor's authority for this
+  // write is the approval they just made on the Budget Change, not a
+  // create/write grant on the bound table — an approver governs the budget,
+  // and typically holds no direct grant on the line table at all. (Q6 asks
+  // the owner to ratify that reading.)
+  const engineSave = (values: RowValues, mode: 'upsert' | 'insert'): Promise<RowValues> =>
+    saveDoc(book.refTable, values, user, mode, {
+      tx,
+      capabilities: [ENGINE_APPLY],
+      skipPermissions: true,
+      // The one read_only column the engine owns on a bound table. Named
+      // explicitly so the apply can set the wind-down flag and nothing else
+      // system-managed.
+      ownedColumns: [DISCONTINUED_FLAG],
+    })
   const applyTo = async (ref: string, before: RowValues, sets: RowValues): Promise<void> => {
-    const [after] = await tx`
-      update ${tx(boundTbl)} set ${tx({ ...sets, updated_at: now, updated_by: user })}
-      where row_id = ${ref} returning *`
-    await recordVersion(tx, boundMeta, ref, before, after as RowValues, user)
+    // updateDoc's own optimistic-concurrency stamp; the row is already
+    // locked FOR UPDATE above, so this reads the value we just took.
+    await engineSave({ ...sets, row_id: ref, updated_at: before.updated_at }, 'upsert')
   }
 
   if (type === 'revise' || type === 'transfer') {
@@ -521,31 +563,12 @@ export async function applyChange(
           'ValidationError',
           `${changeName}: a ${book.refTable} row with that key already exists — revise it instead`,
         )
-      // Key columns that are References must point at real rows: the engine
-      // inserts directly, so it owns the link check saveDoc would have run.
-      for (const [c, v] of Object.entries(g.key)) {
-        const f = byName.get(c)
-        if (f?.column_type === 'Reference' && v != null && v !== '') {
-          const [hit] = await tx`
-            select 1 from ${tx(tableName(f.reference_table!))}
-            where ${tx(physicalRowKey(f.reference_table!))} = ${String(v)}`
-          if (!hit)
-            throw new AppError(
-              'ValidationError',
-              `${changeName}: ${c} "${String(v)}" does not exist in ${f.reference_table}`,
-            )
-        }
-      }
+      // Reference key columns, required columns and defaults are all judged
+      // by the save lifecycle now (validateLinks included), so the engine no
+      // longer hand-rolls a subset of those checks.
       const zeroed: RowValues = {}
       for (const m of book.measureColumns) zeroed[m] = 0
-      await tx`
-        insert into ${tx(boundTbl)} ${tx({
-          row_id: newName(),
-          ...auditColumns(user, now),
-          ...zeroed,
-          ...g.key,
-          ...g.measures,
-        })}`
+      await engineSave({ ...zeroed, ...g.key, ...g.measures }, 'insert')
     }
   } else if (type === 'discontinue') {
     const effective = String(change.effective_from)
