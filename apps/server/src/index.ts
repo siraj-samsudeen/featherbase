@@ -1046,27 +1046,58 @@ app.get('/api/workflow/:table/:name', async (c) => {
 // Spec 0007 M2: governance status for a row form — which active Budget Book
 // governs this table, and the pending draft changes touching this row.
 // Drives the "Governed by …" pill, the pending badge, and Propose change.
+//
+// M4 (BUD-R14) adds what append mode needs the surface to say: the book's
+// `mode` and `model_version`, so the form can stop promising the row will
+// change, and the decisions already appended AGAINST THIS ROW. Only
+// target_kind 'row' decisions are counted — a scope decision that might
+// reach this row is deliberately not resolved, because BUD-R15 says the
+// engine never expands a scope, and a count derived from an expansion would
+// be exactly the arithmetic that rule forbids.
+const ROW_DECISION_LIMIT = 10
 app.get('/api/budget/line/:table/:row_id', async (c) => {
   const table = c.req.param('table')
   const book = await activeBookFor(sql, table)
-  if (!book) return c.json({ book: null, pending: [] })
+  if (!book) return c.json({ book: null, pending: [], decisions: [], decision_count: 0 })
   await assertPermission(who(c), table, 'read')
+  const rowId = c.req.param('row_id')
   const pending = await sql`
     select distinct c.row_id, c.change_type, c.reason, c.created_by
     from budget_change c
     join budget_change_line l on l.parent = c.row_id
     where c.book = ${book.name} and c.status = 'draft'
-      and l.line_ref = ${c.req.param('row_id')}
+      and l.line_ref = ${rowId}
     order by c.row_id`
+  // A mutate_rows book appends nothing, so it never pays for these two.
+  const decisions =
+    book.mode === 'append_decisions'
+      ? await sql`
+          select row_id, change, measure, basis, value, model_version,
+                 reason, decided_by, decided_role, decided_at
+          from budget_decision
+          where book = ${book.name} and target_kind = 'row' and line_ref = ${rowId}
+          order by decided_at desc, row_id desc
+          limit ${ROW_DECISION_LIMIT}`
+      : []
+  const [counted] =
+    book.mode === 'append_decisions'
+      ? await sql`
+          select count(*)::int as n from budget_decision
+          where book = ${book.name} and target_kind = 'row' and line_ref = ${rowId}`
+      : [{ n: 0 }]
   return c.json({
     book: {
       name: book.name,
       lifecycle: book.lifecycle,
+      mode: book.mode,
+      model_version: book.modelVersion,
       key_columns: book.keyColumns,
       measure_columns: book.measureColumns,
       owner_column: book.ownerColumn,
     },
     pending,
+    decisions,
+    decision_count: Number(counted.n),
   })
 })
 

@@ -133,7 +133,6 @@ const controller: TableController = {
             `${book.name} appends decisions — change_type must be "revise" (a decision is neither a transfer, a new line, nor a discontinuation of a model row)`,
           )
         let appendTotal = 0
-        const seenTargets = new Set<string>()
         for (const l of lines) {
           const m = String(l.measure_column ?? '')
           if (!book.measureColumns.includes(m))
@@ -160,7 +159,6 @@ const controller: TableController = {
             signature = `row\u0000${ref}`
           }
           dedupe(`${signature}\u0000${m}`, 'decision target and measure')
-          seenTargets.add(signature)
           // A 'set' on a scope has no computable delta — the engine will not
           // resolve the scope to find out. Only deltas move the DOA needle;
           // BUD-R14 states that limit rather than guessing a number.

@@ -543,7 +543,12 @@ async function appendDecisions(
     const kind = l.target_kind === 'scope' ? 'scope' : 'row'
     await tx`
       insert into ${tx(tableName(DECISION))} ${tx({
-        row_id: `${changeName}-${i + 1}`,
+        // Zero-padded on purpose: with the change series already padded,
+        // this makes the decision id sort in append order as plain text —
+        // which is the only total order a single-column list query can ask
+        // for, and `decided_at` cannot be one (every line of one approval
+        // shares it to the microsecond).
+        row_id: `${changeName}-${String(i + 1).padStart(3, '0')}`,
         ...auditColumns(user, now),
         book: book.name,
         change: changeName,

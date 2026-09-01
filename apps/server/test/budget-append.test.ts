@@ -264,3 +264,124 @@ describe('BUD-R16: the ledger is append-only', () => {
     expect(Number(still.value)).toBe(550000)
   })
 })
+
+// The surface's own read (M4 UI): /api/budget/line is what a governed row
+// form asks before it decides what to SAY. In mutate mode it must keep the
+// exact shape M2 shipped; in append mode it additionally carries the book's
+// mode and the decisions already recorded against that row.
+interface LineStatus {
+  book: {
+    name: string
+    lifecycle: string
+    mode: string
+    model_version: string | null
+    key_columns: string[]
+    measure_columns: string[]
+    owner_column: string | null
+  } | null
+  pending: { row_id: string; change_type: string }[]
+  decisions: {
+    row_id: string
+    change: string
+    measure: string
+    basis: string
+    value: number
+    model_version: string | null
+    decided_by: string
+    reason: string
+  }[]
+  decision_count: number
+}
+
+const lineStatus = (admin: TestClient, ref: string) =>
+  admin.get<LineStatus>(`/api/budget/line/${encodeURIComponent(MODEL)}/${encodeURIComponent(ref)}`)
+
+describe('BUD-R14: the line endpoint says what approval does', () => {
+  test('BUD-R14: an append book reports its mode, its model version and the decisions on the row, newest first', async ({
+    admin,
+  }) => {
+    const rows = await setup(admin)
+    const ref = String(rows.kl1.row_id)
+    for (const value of [550000, 480000]) {
+      const c = await decide(admin, {
+        book: BOOK,
+        change_type: 'revise',
+        reason: `push to ${value}`,
+        lines: [{ target_kind: 'row', line_ref: ref, measure_column: 'target', proposed_value: value }],
+      })
+      await approve(admin, String(c.row_id))
+    }
+
+    const status = await lineStatus(admin, ref)
+    expect(status.book?.mode).toBe('append_decisions')
+    expect(status.book?.model_version).toBe('run-47')
+    // The M2 keys other callers depend on are untouched.
+    expect(status.book?.name).toBe(BOOK)
+    expect(status.book?.lifecycle).toBe('active')
+    expect(status.book?.key_columns).toEqual(['region', 'store'])
+    expect(status.book?.measure_columns).toEqual(['forecast', 'target'])
+    expect(status.pending).toEqual([])
+
+    expect(status.decision_count).toBe(2)
+    // Newest first: the reader wants the standing judgment at the top.
+    expect(status.decisions.map((d) => Number(d.value))).toEqual([480000, 550000])
+    expect(status.decisions.map((d) => d.reason)).toEqual(['push to 480000', 'push to 550000'])
+    expect(status.decisions[0].measure).toBe('target')
+    expect(status.decisions[0].basis).toBe('set')
+    expect(status.decisions[0].model_version).toBe('run-47')
+    expect(status.decisions[0].decided_by).toBe('Administrator')
+  })
+
+  test('BUD-R15: a scope decision is never counted against a row it might reach', async ({
+    admin,
+  }) => {
+    const rows = await setup(admin)
+    const change = await decide(admin, {
+      book: BOOK,
+      change_type: 'revise',
+      reason: 'Kerala push',
+      lines: [
+        {
+          target_kind: 'scope',
+          scope: { region: 'Kerala' },
+          measure_column: 'target',
+          basis: 'delta',
+          proposed_value: 10000,
+        },
+      ],
+    })
+    await approve(admin, String(change.row_id))
+    // kl1 IS a Kerala store, and the decision still does not appear on its
+    // row: counting it here would mean the engine resolved the scope, which
+    // BUD-R15 forbids precisely because it changes the arithmetic.
+    const status = await lineStatus(admin, String(rows.kl1.row_id))
+    expect(status.decisions).toEqual([])
+    expect(status.decision_count).toBe(0)
+    expect((await decisions()).length).toBe(1)
+  })
+
+  test('BUD-R14: a mutate_rows book reports mode mutate_rows and no ledger', async ({ admin }) => {
+    const rows = await setup(admin, { mode: 'mutate_rows', model_version: null })
+    const ref = String(rows.kl1.row_id)
+    const change = await decide(admin, {
+      book: BOOK,
+      change_type: 'revise',
+      lines: [{ line_ref: ref, measure_column: 'target', proposed_value: 550000 }],
+    })
+    const status = await lineStatus(admin, ref)
+    expect(status.book?.mode).toBe('mutate_rows')
+    expect(status.book?.model_version).toBeNull()
+    expect(status.pending.map((p) => p.row_id)).toEqual([String(change.row_id)])
+    expect(status.decisions).toEqual([])
+    expect(status.decision_count).toBe(0)
+  })
+
+  test('BUD-R14: an ungoverned table reports no book and an empty ledger', async ({ admin }) => {
+    await makeTable(admin, { name: 'Ap Ungoverned', columns: ['region', 'target:Currency'] })
+    const row = await admin.post<Row>(tableRef('Ap Ungoverned').url, { region: 'Kerala', target: 1 })
+    const status = await admin.get<LineStatus>(
+      `/api/budget/line/${encodeURIComponent('Ap Ungoverned')}/${encodeURIComponent(String(row.row_id))}`,
+    )
+    expect(status).toEqual({ book: null, pending: [], decisions: [], decision_count: 0 })
+  })
+})

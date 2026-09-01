@@ -1,5 +1,81 @@
 # Progress Log
 
+## 2026-09-01 (latest) — M4 gets a surface: the decision desk, and three defects the review of it found
+
+The append-mode engine landed without a UI (the previous entry's "next").
+It has one now — built by a sub-session, then reviewed here against the
+diff rather than against its report.
+
+**What the surface is.** Two things the generic FormView cannot give a
+person, so two bespoke pieces:
+
+- **The row form branches on `mode` (BUD-R14).** "Governed" and "Propose
+  change" both promise the model row will move; in append mode it never
+  does. So an append-mode row says **Decisions · <book>**, states in
+  words that approval records a judgment beside the row and never into
+  it, counts the decisions already appended *to that row*, and leads to
+  the composer. `mutate_rows` renders exactly what M2 shipped — the mode
+  check is an early return, not an edit to that branch.
+- **The decision desk** (`/admin/budget-decisions`, mirroring the
+  `budget-compare` precedent) — a scope composer and the ledger. Since
+  the engine never expands a scope (BUD-R15), the surface is the only
+  place a human states or reads one: every declared key column gets a
+  control and **"all" is a thing you choose, not a box you left empty**.
+  The composer drafts an ordinary Budget Change; approval rides the
+  existing R5/R11 lanes, deliberately — there is no second approval path.
+
+**The row badge counts row-target decisions only.** A scope decision that
+an application would say reaches this row is not counted, because
+counting it means resolving the scope — the expansion R15 forbids. That
+is a judgment call, and it is now written into R14 rather than left in
+the code.
+
+**Three defects the review found that a green suite did not.** The
+sub-session's 15 tests all passed; these were still wrong:
+
+1. **The ledger's count was the page's, not the book's.** The heading
+   read `{rows.length} recorded` under a `limit_page_length: 50` — so a
+   book with a thousand decisions would say "50 recorded" and read as the
+   truth. Exactly the drift CLAUDE.md's document-set section is about.
+   Now it reports the server's `total` and names the slice it is showing.
+2. **The ledger had no total order.** It sorted on `decided_at desc`
+   alone, but one approval appends every one of its lines in a single
+   transaction — those decisions share `decided_at` to the microsecond,
+   and their order was the planner's to pick. Root cause was the decision
+   id: `${change}-${i+1}` is unpadded, so decision 9 sorts above decision
+   10 and `row_id` could not be the tiebreak either. The id is now
+   zero-padded (`BCR-0001-009`), which makes it sort in append order as
+   plain text — the only total order a single-column list query can ask
+   for — and the ledger orders by it. The id is also rendered now: it is
+   what an auditor cites, and the only handle on one line of a many-line
+   approval.
+3. **`budget-import.ts` was a binary file to every tool.** Its key
+   separator was a literal NUL byte rather than `'\0'`, so `file` called
+   it data and **`grep -r` silently skipped it** — including mine, all
+   session. Same value, now written as an escape.
+
+Also removed a dead `seenTargets` set in the append validation branch
+(written, never read — `dedupe` already tracks it).
+
+**Verified:** web **13 + 3** new tests in `budget-decisions.test.tsx` /
+`budget-scope.test.ts`, including one that approves a 55-line change to
+prove the paging and the tie case together; server budget suites
+**63 passed**; both typechecks clean; coverage floors held and ratcheted
+(web 37/47 → 40/48, measured 40.6 lines / 49.2 functions); evidence gate
+**104 verdicts across 6 specs**.
+
+**Accepted with a note, not reworked:** the desk's book picker lists
+append-mode books at any lifecycle (it shows each one's lifecycle, and
+the engine refuses an approval on a non-active book, which the composer
+surfaces verbatim) — so a `working` book can be composed against from the
+desk though the book form only offers the link once it is active.
+
+**Next:** precedence and roll-up over the ledger are the application's by
+design (R15), but nothing yet *reads* the ledger back as an effective
+number — a "what does the model say after decisions?" view is the obvious
+M5 candidate, and it belongs to whoever owns the domain rules, not to the
+engine.
+
 ## 2026-09-01 (later) — M4: append_decisions mode, scope targets, the decision ledger
 
 The owner answered Q7/Q8/Q9 and delegated Q6, so the three shapes the

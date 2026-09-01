@@ -546,10 +546,21 @@ In append mode a change is a `revise`: `transfer`, `new_line` and
 one would mean resolving the scope — which R15 says the engine must never
 do. The engine reports what it can defend rather than guessing a number.
 
+In the Admin, `mode` decides what the row form may say. "Governed" and
+"Propose change" both promise the model row will move, so an append-mode
+row says **Decisions** instead, states in words that approval records a
+judgment beside the row and never into it, and counts the decisions
+already appended **to that row**. Scope decisions are deliberately not
+counted there: counting one would mean resolving its reach, which is the
+expansion R15 forbids.
+
 > evidence: proven — approval appends a decision carrying provenance,
 > anchor and server-derived actor while the model row still reads its
-> original value; two decisions on one target both survive; and transfer /
-> new_line / discontinue are refused in append mode.
+> original value; two decisions on one target both survive; transfer /
+> new_line / discontinue are refused in append mode; and in the Admin an
+> append-mode row shows the Decisions pill, the read-only note and a
+> row-only count (a Kerala scope decision uncounted, a draft counted as
+> pending) while a `mutate_rows` row keeps the M2 wording unchanged.
 
 ### BUD-R15 — A decision may address a scope, and stays one decision · `shape: rule`
 
@@ -584,10 +595,21 @@ not what was wrong.
 **Property:** for any scope decision, exactly one row is written to the
 ledger and no bound row changes, whatever the scope's leaf reach.
 
+Because the engine never expands a scope, the **surface is the only place
+a human ever states or reads one**. So a scope is composed dimension by
+dimension — every declared key column gets a control, and "all" is a thing
+chosen rather than a box left empty — and it reads back the same way, each
+dimension named by its value or as `all`. Asking someone to type
+`{"region":"Kerala"}` into a JSON column would be neither.
+
 > evidence: proven — a Kerala-wide push stores one decision with its scope
 > intact and leaves all three model rows untouched; a null dimension is
-> dropped to one stored shape; and an undeclared dimension, a wide-open
-> scope and a scope carrying line_ref are each refused.
+> dropped to one stored shape; an undeclared dimension, a wide-open scope
+> and a scope carrying line_ref are each refused; and in the Admin the
+> composer names every dimension or says All, sends exactly the scope shown
+> (a dimension switched back to All is dropped from the payload), refuses a
+> wide-open scope before the round trip, and surfaces an engine refusal
+> verbatim having drafted nothing.
 
 ### BUD-R16 — The ledger is append-only · `shape: contract`
 
@@ -597,8 +619,20 @@ model version; editing it would rewrite history, and deleting it would
 remove the entry a later grading pass exists to read. The road back is
 another decision, exactly as R9 for changes.
 
+Being append-only makes the ledger a **reading** surface, and two
+properties follow. Its order must be total: one approval appends every one
+of its lines in a single transaction, so those decisions share
+`decided_at` to the microsecond and it cannot order them — the decision id
+can, and is zero-padded so that it sorts in append order as plain text.
+And its count must be the book's, never the page's: a heading that counts
+the rows it happens to be showing would report a page size for a book of a
+thousand decisions and read as the truth.
+
 > evidence: proven — an edit and a delete of an appended decision are each
-> refused and the stored value stands.
+> refused and the stored value stands; and in the Admin the ledger reads
+> newest-first with each scope in words, says so plainly when a book has
+> nothing appended, and past one page reports the book's real total, names
+> the slice it is showing, and shows exactly the newest ids in order.
 
 ### BUD-R10 — The snapshot is the whole book · `shape: invariant`
 

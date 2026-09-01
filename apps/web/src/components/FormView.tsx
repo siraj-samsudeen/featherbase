@@ -312,7 +312,11 @@ export function FormView({
             </RouterLink>
           )}
           {table === 'Budget Book' && !isNew && (
-            <BudgetActions name={name} lifecycle={String((values as Row).lifecycle ?? '')} />
+            <BudgetActions
+              name={name}
+              lifecycle={String((values as Row).lifecycle ?? '')}
+              mode={String((values as Row).mode ?? '')}
+            />
           )}
           {!isNew && m.kind === 'table' && table !== 'Budget Book' && (
             <BudgetGovernance table={table} name={name} />
