@@ -12,6 +12,13 @@ async function envelope(res: Response) {
   expect(body.error).toMatchObject({ type: expect.any(String), message: expect.any(String) })
   expect(typeof body.error.type).toBe('string')
   expect(typeof body.error.message).toBe('string')
+  // `error` is the WHOLE body. The envelope used to carry Frappe's top-level
+  // `exc_type` beside it, which CLAUDE.md invariant 4 forbids reintroducing
+  // for compatibility's sake. Asserting the key set rather than just the
+  // absence of that one name means no future Frappe-shaped sibling can appear
+  // unnoticed either — and it holds for every error path exercised below,
+  // which is why it lives in the shared helper.
+  expect(Object.keys(body)).toEqual(['error'])
   return body.error
 }
 

@@ -35,36 +35,24 @@ export class AppError extends Error {
   }
 }
 
-// Frappe wire parity: real Frappe error bodies carry a top-level `exc_type`
-// with its exception-class name. Ours map 1:1 except NotFound, which Frappe
-// calls DoesNotExistError.
-const EXC_TYPE: Record<ErrorType, string> = {
-  ValidationError: 'ValidationError',
-  BadRequestError: 'BadRequestError',
-  AuthenticationError: 'AuthenticationError',
-  PermissionError: 'PermissionError',
-  NotFoundError: 'DoesNotExistError',
-  ConflictError: 'ConflictError',
-  MethodNotAllowedError: 'MethodNotAllowedError',
-  DataSourceError: 'DataSourceError',
-  InternalError: 'InternalError',
-}
-
 export function errorResponse(c: Context, err: unknown) {
   if (err instanceof AppError) {
     return c.json(
-      {
-        exc_type: EXC_TYPE[err.type],
-        error: { type: err.type, message: err.message, ...(err.fields ? { fields: err.fields } : {}) },
-      },
+      // ONE envelope, and nothing beside it: `error: { type, message, fields? }`.
+      // This body used to carry Frappe's top-level `exc_type` as well (with
+      // NotFound spelled DoesNotExistError). That was wire parity for the
+      // replication phase and is a CLAUDE.md invariant-4 violation now —
+      // docs/ARCHITECTURE.md has described it as removed since the divergence
+      // phase began; the code had not caught up.
+      { error: { type: err.type, message: err.message, ...(err.fields ? { fields: err.fields } : {}) } },
       STATUS[err.type] as 403,
     )
   }
   // A SyntaxError here means c.req.json() failed on a malformed body — a
   // client error, not a server fault.
   if (err instanceof SyntaxError) {
-    return c.json({ exc_type: 'BadRequestError', error: { type: 'BadRequestError', message: 'Malformed JSON body' } }, 400)
+    return c.json({ error: { type: 'BadRequestError', message: 'Malformed JSON body' } }, 400)
   }
   console.error(err)
-  return c.json({ exc_type: 'InternalError', error: { type: 'InternalError', message: 'Internal server error' } }, 500)
+  return c.json({ error: { type: 'InternalError', message: 'Internal server error' } }, 500)
 }
