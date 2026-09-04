@@ -78,7 +78,7 @@ carries a **small workbook of its own**, described where it is used:
   hidden in the workbook itself and one *very* hidden (a state only VBA
   can set).
 - **J4** — three sheets of the same shape, disagreeing only in spelling
-  (`Merge Floor` · `Merge Floor` · `merge floor`), one of them carrying a
+  (`Merge Floor` · `MERGE FLOOR` · `merge_floor `), one of them carrying a
   column the others lack; and a second pair naming the same real-world
   thing as `Store Code` (STR-009) and `Store Name` (Anna Nagar).
 - **J5** — three sheets where the middle one is refused.
@@ -138,13 +138,13 @@ skip path.
 
 | # | Where / do | Must observably see | Bug if | Rules |
 |---|---|---|---|---|
-| J2.3′ | Read the target | The matching Table **already chosen**, with a notice naming it and saying the rows will be **added to it** — never silently | rows are routed into a lookalike Table with nothing said | IMP-R7 |
-| J2.3″ | Pick a different Table by hand | The same reassurance, naming what you picked | the notice vanishes exactly when you chose the target yourself | IMP-R7 |
-| J2.5′ | Read the mapping | Every file column paired with a Table column, and a count of how many of them found a home | a column pairs itself with a column already spoken for | IMP-R7 |
-| J2.6′ | Look before committing | A way to **rehearse**: every row validated, the same per-row problems a real run would report, nothing written | the rehearsal writes a row, an id, or a history entry | IMP-R9, IMP-I3 |
-| J2.7′ | Import | The existing rows *plus* the file's rows; nothing replaced | an existing row is overwritten when no match key was chosen | |
+| J2.3 | Read the target | The matching Table **already chosen**, with a notice naming it and saying the rows will be **added to it** — never silently | rows are routed into a lookalike Table with nothing said | IMP-R7 |
+| J2.3b | Pick a different Table by hand | The same reassurance, naming what you picked | the notice vanishes exactly when you chose the target yourself | IMP-R7 |
+| J2.5 | Read the mapping | Every file column paired with a Table column, and a count of how many of them found a home | a column pairs itself with a column already spoken for | IMP-R7 |
+| J2.6 | Look before committing | A way to **rehearse**: every row validated, the same per-row problems a real run would report, nothing written | the rehearsal writes a row, an id, or a history entry | IMP-R9, IMP-I3 |
+| J2.7 | Import | The existing rows *plus* the file's rows; nothing replaced | an existing row is overwritten when no match key was chosen | |
 
-**Branch at J2.5′ — match on a column instead of always adding.**
+**Branch at J2.5 — match on a column instead of always adding.**
 [Spec 0004](0004-import-upsert.md) owns this whole branch and is not
 restated: the match key control and its remembered suggestion (UPS-R5),
 the counts shown before anything commits (UPS-R2), what an update touches

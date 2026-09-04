@@ -356,7 +356,7 @@ export function parseSpec(md) {
         fail(lineNo, `${id} step row has ${cells.length} cells, expected ${STEP_HEADER.length}`)
       }
       const [stepId, doCell, seeCell, bugCell, rulesCell] = cells
-      if (!/^J\d+\.\d+[′″]?$/.test(stepId)) fail(lineNo, `"${stepId}" is not a step id (J<journey>.<n>)`)
+      if (!/^J\d+\.\d+[a-z]?$/.test(stepId)) fail(lineNo, `"${stepId}" is not a step id (J<journey>.<n>, optional letter suffix)`)
       if (!doCell) fail(lineNo, `${stepId} has an empty "Where / do"`)
       if (!seeCell) fail(lineNo, `${stepId} has an empty "Must observably see"`)
       const slot = `IMP-${stepId}`
