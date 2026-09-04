@@ -161,10 +161,23 @@ describe('PLAT-005: webhooks', () => {
       table: 'Webhook',
       row: { webhook_table: DT, webhook_event: 'on_update', request_url: `http://127.0.0.1:${port}/nomatch`, webhook_secret: SECRET, enabled: true },
     })
-    await makeDoc(admin) // after_insert only
-    await drainDueJobs()
-    await new Promise((r) => setTimeout(r, 300))
-    await drainDueJobs()
+    // Positive control: an after_insert webhook on the same Table, created
+    // alongside the on_update one above. waitForHits drains due jobs in a
+    // loop until this hit shows up, so once it lands, every job that was
+    // going to be enqueued for this insert (control included) has already
+    // been drained — if /nomatch had (incorrectly) been enqueued too, it
+    // would already be sitting in `received`. That gives the negative
+    // assertion below a deterministic anchor instead of a guessed delay.
+    await admin.post('/api/save_row', {
+      table: 'Webhook',
+      row: { webhook_table: DT, webhook_event: 'after_insert', request_url: `http://127.0.0.1:${port}/control`, webhook_secret: SECRET, enabled: true },
+    })
+    const doc = await makeDoc(admin) // after_insert only
+    const controlHits = await waitForHits(
+      (r) => r.path === '/control' && JSON.parse(r.body).row_id === doc.row_id,
+      1,
+    )
+    expect(controlHits.length).toBe(1)
     expect(received.filter((r) => r.path === '/nomatch').length).toBe(0)
   })
 })

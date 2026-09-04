@@ -1,7 +1,5 @@
 import zlib from 'node:zlib'
-import { expect, test, type APIRequestContext } from '@playwright/test'
-
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
+import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
 // FILE-004: an image attachment shows a thumbnail; a non-image does not.
 
@@ -53,11 +51,6 @@ function makePng(w: number, h: number): Buffer {
 const DT = 'Thumb E2E Doc'
 const DOC = 'thumb-e2e-1'
 
-async function adminAuth(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
-
 test.beforeAll(async ({ request }) => {
   const headers = await adminAuth(request)
   const dt = await request.post('/api/table_def', {
@@ -80,12 +73,6 @@ test.beforeEach(async ({ request }) => cleanupFiles(request))
 test.afterEach(async ({ request }) => cleanupFiles(request))
 
 test('FILE-004: image attachment gets a thumbnail; text does not', async ({ page }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   await page.goto(`/admin/${encodeURIComponent(DT)}/${DOC}`)
   await expect(page.getByTestId('attachments-panel')).toBeVisible()
 

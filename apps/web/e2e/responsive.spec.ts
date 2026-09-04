@@ -1,15 +1,9 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminAuth, type Page } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Resp E2E Item'
 
-async function adminHeaders(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
-
 test.beforeAll(async ({ request }) => {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   const dt = await request.post('/api/table_def', {
     headers,
     data: {
@@ -25,14 +19,6 @@ test.beforeAll(async ({ request }) => {
   await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { title: 'Widget', qty: 5 } })
 })
 
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
-
 async function noHorizontalOverflow(page: Page): Promise<boolean> {
   return page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)
 }
@@ -41,7 +27,7 @@ test.describe('UI-025: responsive Admin (mobile)', () => {
   test.use({ viewport: { width: 375, height: 720 } })
 
   test('sidebar collapses to a drawer and list/form are usable at mobile width', async ({ page }) => {
-    await login(page)
+    await page.goto('/admin')
 
     // The hamburger is shown; the sidebar starts off-screen (translated left).
     await expect(page.getByTestId('sidebar-toggle')).toBeVisible()
@@ -88,7 +74,8 @@ test.describe('UI-025: desktop keeps a static sidebar', () => {
   test.use({ viewport: { width: 1280, height: 800 } })
 
   test('sidebar is always visible and the hamburger is hidden', async ({ page }) => {
-    await login(page)
+    await page.goto('/admin')
+
     // On desktop the drawer toggle is hidden and the sidebar is on-screen.
     await expect(page.getByTestId('sidebar-toggle')).toBeHidden()
     const box = await page.getByTestId('admin-sidebar').boundingBox()

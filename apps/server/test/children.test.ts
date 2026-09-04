@@ -174,3 +174,108 @@ describe('DOC-005: child saves are atomic and payload-authoritative', () => {
     }
   })
 })
+
+describe('#231: a reqd Sub-table column must hold at least one row', () => {
+  // Owner ruling on the #231 investigation (defect, not accepted semantics):
+  // `reqd: true` on a Sub-table column means the same thing it means on a
+  // scalar column — a row cannot be created without it. tableSchemaToZod
+  // still drops Sub-table columns from its shape (NO_VALUE_TYPES), and
+  // pickFieldValues strips them before validateValues ever runs, so the rule
+  // is enforced in document.ts's children handling (assertRequiredChildren),
+  // where the child arrays actually are. The error is field-keyed under the
+  // column name with the same `Required` message and the same envelope a
+  // missing reqd scalar produces, so FormView renders it under the grid with
+  // no client change.
+  const REQ_PARENT = 'Rq231 Order'
+
+  async function setupRequired(admin: TestClient) {
+    await admin.post('/api/table_def', {
+      name: 'Rq231 Item',
+      kind: 'sub_table',
+      columns: [{ column_name: 'item', column_type: 'Data', reqd: true }],
+    })
+    await admin.post('/api/table_def', {
+      name: REQ_PARENT,
+      columns: [
+        { column_name: 'title', column_type: 'Data' },
+        { column_name: 'items', column_type: 'Sub-table', row_table: 'Rq231 Item', reqd: true },
+      ],
+    })
+  }
+
+  const saveReq = (admin: TestClient, row: Record<string, unknown>) =>
+    admin.post<Record<string, any>>('/api/save_row', { table: REQ_PARENT, row })
+
+  test('create is rejected when the reqd Sub-table is absent from the payload', async ({
+    admin,
+  }) => {
+    await setupRequired(admin)
+    await expect(saveReq(admin, { title: 'no items key at all' })).rejects.toMatchObject({
+      status: 417,
+      fields: { items: 'Required' },
+    })
+    const [{ count }] = await sql.unsafe(`select count(*)::int as count from rq231_order`)
+    expect(count).toBe(0)
+  })
+
+  test('create is rejected when the reqd Sub-table is present but empty', async ({ admin }) => {
+    await setupRequired(admin)
+    await expect(saveReq(admin, { title: 'empty items', items: [] })).rejects.toMatchObject({
+      status: 417,
+      fields: { items: 'Required' },
+    })
+    const [{ count }] = await sql.unsafe(`select count(*)::int as count from rq231_order`)
+    expect(count).toBe(0)
+  })
+
+  test('create succeeds with at least one row', async ({ admin }) => {
+    await setupRequired(admin)
+    const doc = await saveReq(admin, { title: 'ok', items: [{ item: 'apple' }] })
+    expect(doc.row_id).toMatch(/^[0-9a-f]{10}$/)
+    expect(doc.items.map((r: any) => r.item)).toEqual(['apple'])
+    const [{ count }] = await sql.unsafe(
+      `select count(*)::int as count from rq231_item where parent = '${doc.row_id}'`,
+    )
+    expect(count).toBe(1)
+  })
+
+  test('update with the key absent leaves the children untouched (mirrors scalar reqd)', async ({
+    admin,
+  }) => {
+    await setupRequired(admin)
+    const doc = await saveReq(admin, { title: 'ok', items: [{ item: 'apple' }] })
+    const updated = await saveReq(admin, {
+      row_id: doc.row_id,
+      updated_at: doc.updated_at,
+      title: 'retitled',
+    })
+    expect(updated.title).toBe('retitled')
+    expect(updated.items.map((r: any) => r.item)).toEqual(['apple'])
+  })
+
+  test('update is rejected when the key is present but empty', async ({ admin }) => {
+    await setupRequired(admin)
+    const doc = await saveReq(admin, { title: 'ok', items: [{ item: 'apple' }] })
+    await expect(
+      saveReq(admin, {
+        row_id: doc.row_id,
+        updated_at: doc.updated_at,
+        title: 'clearing the grid',
+        items: [],
+      }),
+    ).rejects.toMatchObject({ status: 417, fields: { items: 'Required' } })
+    // the whole save rolls back: title unchanged, the child row survives
+    const [row] = await sql.unsafe(`select title from rq231_order where row_id='${doc.row_id}'`)
+    expect(row.title).toBe('ok')
+    const [{ count }] = await sql.unsafe(
+      `select count(*)::int as count from rq231_item where parent = '${doc.row_id}'`,
+    )
+    expect(count).toBe(1)
+  })
+
+  test('a non-reqd Sub-table still saves empty', async ({ admin }) => {
+    await setup(admin)
+    const doc = await save(admin, { title: 'no lines', items: [] })
+    expect(doc.items).toEqual([])
+  })
+})

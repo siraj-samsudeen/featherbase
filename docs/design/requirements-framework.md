@@ -58,7 +58,7 @@ may need supporting strategies beside its primary one.
 > **Why this is not academic.** Applying the shapes lens to this one feature
 > surfaced eight defects in code whose every inventory entry reads
 > `passing`. Three were re-confirmed by direct execution while writing this
-> document (Part II, coverage matrix). None is a sequence defect; browser
+> document — see Part II's verdicts. None is a sequence defect; browser
 > tests are an inefficient, incomplete way to explore these input spaces —
 > property and boundary tests are the right primary evidence.
 
@@ -236,7 +236,7 @@ edges.
 > `assertHas` count — and is now documented in the DSL's own README). And
 > the same vocabulary has an RTL adapter, so a sequence can be exercised at
 > the integration tier without rewriting — a cheaper path for promoting
-> "never witnessed in a browser" matrix rows. The verbs this document
+> "never witnessed in a browser" verdicts. The verbs this document
 > originally flagged as missing shipped upstream in 0.2.0 — `upload(label,
 > path)` for file inputs, `dropFile(selector, path)` for drop areas, and
 > the form-state assertion family, making J1.3 and J1.8 fully expressible.
@@ -261,25 +261,52 @@ register, no row owns them and no review sees them.
 answered, the answer graduates into a rule or step and the question is
 removed (feather-spec's protocol).
 
-**Coverage matrix** — the only overlay, never woven into the spec body.
-Rows are journeys, rules, invariants, hazards, questions; columns are
-shape, proof (tier + file), and verdict. Three integrity mechanisms:
-**the test title is the join key** (a test named `IMP-R1: …` links itself;
-CI failures name the requirement at risk) — this is **static
-traceability**, a claim of linkage, never execution evidence: whether the
-test ran, passed, or skipped is stamped separately; **staleness stamps** (the matrix
-states the commit it was verified against — an unstamped row is a
-hypothesis. There is **no
-automatic precedence between artifacts** — approved requirements and
-decisions define intended behaviour; code is the current implementation;
-tests are verification claims; execution results are evidence; an observed
-undocumented behaviour is a finding. When artifacts disagree, an agent
-classifies the discrepancy — implementation defect, incorrect test, stale
-requirement, unresolved product decision, or environmental failure — and
-never lets code or tests silently overrule approved intent); and **skip ≠ pass** (every
-journey test states its isolation strategy; a skipped test reports as
-distinct from a passing one — this feature's golden-path e2e currently
-skips itself on any database that has run it once, and reads green).
+**Evidence verdict** — one line per obligation, sitting under the
+obligation it judges:
+
+```markdown
+> evidence: proven — <what was executed>
+> evidence: rule-tier — <what the specified tier never witnessed>
+> evidence: gap — <what is missing>
+> evidence: pinned #110 — <the defect the expected-failing test pins>
+> evidence: proven via IMP-010 — <when the proving title doesn't quote the ID>
+```
+
+This layer was a CSV beside the spec until 2026-08-28 (issue #235). It
+was a join table between specs and tests, and §8's *derive, don't
+maintain* applies to it as much as to anything else: its file-path links
+made moving a test a breaking change, and its date stamps drifted while
+the code moved underneath them. So the judgment came into the spec —
+where a reader is already standing — and the **linkage became a CI
+check**, `tools/check-evidence.mjs`, which re-derives it from the spec
+headings and the test titles on every run. Grammar and status vocabulary:
+`.claude/skills/journey-spec/references/evidence-schema.md`.
+
+Three integrity mechanisms survive the move, now enforced rather than
+asserted. **The test title is the join key** (a test named `IMP-R1: …`
+links itself; CI failures name the requirement at risk) — this is
+**static traceability** in the dependency-free local mode: that a test
+exists and names the rule is all that pass proves, and a `proven` verdict
+with no such title fails the build. CI then runs the checker again with the
+combined Vitest and Playwright JSON reports (`--results <json...>`). For
+every `proven` or `rule-tier` verdict, at least one matching concrete test
+must appear as executed; no runtime match, or matches that are all skipped,
+fails. IDs on suite titles flow to their executed descendants. A failed test
+counts as executed for this check because its runner already makes the build
+red. **Freshness is derived, not stamped** — the verdict's date is its
+commit's, and there is no unstamped-row hypothesis left to keep honest. And
+**skip ≠ pass** (every journey test states its isolation strategy; a skipped
+test reports as distinct from a passing one — which is why the import journeys
+stopped self-skipping once table deletion shipped).
+
+There is **no automatic precedence between artifacts** — approved
+requirements and decisions define intended behaviour; code is the current
+implementation; tests are verification claims; execution results are
+evidence; an observed undocumented behaviour is a finding. When artifacts
+disagree, an agent classifies the discrepancy — implementation defect,
+incorrect test, stale requirement, unresolved product decision, or
+environmental failure — and never lets code or tests silently overrule
+approved intent.
 
 ## 7. Lenses, not seats
 
@@ -293,11 +320,11 @@ paths* over the same document:
 | Reader | Reads | Gets |
 |---|---|---|
 | **Business owner** | Job, fixture, journeys (skipping branches), example tables | Sign-off in minutes, in their own vocabulary |
-| **Product manager** | Journey list, open questions, hazards, matrix | What's undecided and who owes the answer; proven vs claimed |
+| **Product manager** | Journey list, open questions, hazards, evidence verdicts | What's undecided and who owes the answer; proven vs claimed |
 | **Developer** | Rules with shapes, contracts, invariants | Unambiguous decisions; which test layer proves each |
 | **Author agent** | Rules + journeys + fixture | What to build and where the new test goes |
 | **Reviewer agent** | Negative space, polarity tags, hazards | A statement of what must *not* be true — independent of the author's tests. An agent judging its own tests passes them; the reviewer needs the opposite document, which is the structural argument for keeping spec and tests separate |
-| **QA / test architect** | Shape tags, coverage policy, matrix | Whether the suite proves anything — adequacy, not counts |
+| **QA / test architect** | Shape tags, coverage policy, evidence verdicts | Whether the suite proves anything — adequacy, not counts |
 | **Domain SME** | Judgement rules, thresholds, corpus | The bets nobody else can make |
 | **Decision owner** | Open questions naming them | Resolution — the one contribution that unblocks everything else |
 
@@ -321,7 +348,9 @@ not a review), security (a scoped gate at file parsing and permissions).
   a requirement — it has three fates (ratified, filed as a defect, raised as
   an open question) and choosing is a human act.
 - **Derive, don't maintain.** Every trace link comes from an artifact that
-  already has to be correct: test titles, the generated matrix, git diffs.
+  already has to be correct: test titles, spec headings, git diffs. The
+  evidence layer is the standing example — a hand-kept CSV of links and
+  stamps, replaced by a checker that re-derives both (§6).
   Hand-maintained sidecars rot.
 
 ## 9. What "coverage" may honestly mean
@@ -369,7 +398,8 @@ document agents don't read):
   rule names its address (`DELETE /api/table_def/:name`) — the route is the
   contract's identity, not implementation detail.
 - **Status woven into the spec body** — the spec says what *should* be
-  true; the matrix says what *is proven*, stamped with when.
+  true; the `> evidence:` verdict says what *is proven*, and git says
+  when.
 - **Hand-written "actual" columns** — actual is the test run's output.
 - **Restatements** — the journey is told once; everything else is a delta.
 - **Committee seats and published percentages** — §7 and §9.
@@ -393,13 +423,14 @@ what makes one document serve the whole lifecycle:
 - **Freshness is derived, not maintained.** Screenshots are produced only
   by a passing journey test, so a missing or stale shot means the walk has
   not been proven on this commit — the same staleness discipline as the
-  matrix (§6). Shots are committed, so a PR that changes the UI shows
+  evidence verdicts (§6). Shots are committed, so a PR that changes the
+  UI shows
   screenshot diffs next to code diffs: change-impact for the eyes.
 
 Both standing rules survive intact. The direction rule (§8): test runs
 supply *assets only* — prose flows spec → manual, never test → spec. The
 lens rule (§7): the manual is the **end-user lens** rendered from the
-journeys — imperative voice, no rule IDs, no gaps, no matrix — while the
+journeys — imperative voice, no rule IDs, no gaps, no verdicts — while the
 spec keeps its other audiences.
 
 Caveats priced in up front: fixed viewport and theme per snap; dynamic
@@ -421,6 +452,9 @@ survives review.
 ---
 
 # Part II — Worked example: Spreadsheet Import
+
+**IDs:** `IMP-J*` journeys · `IMP-R*` rules · `IMP-I*` invariants ·
+`IMP-H*` hazards · `C1` the import boundary · `Q*` questions
 
 ## The jobs
 
@@ -460,6 +494,16 @@ boundaries, not in this file.
 
 ## IMP-J1 — First import: file to new Table
 
+> evidence: proven via IMP-006 — the DSL walk creates the typed Table
+> from `zones.csv`
+> end to end; the drop, `.xlsx` and wrong-kind-refusal steps are
+> additionally witnessed by `IMP-006`. Hermetic since table deletion
+> (spec 0003): the create path pre-cleans through the deletion capability
+> instead of self-skipping, so it runs green on a used database, and the
+> walk still proves R7's notice when a matching Table already exists.
+> Caveat: J1.6's bad-cell branch on a fixed-type column is rule-tier only
+> — never witnessed in a browser (see IMP-R8).
+
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
 | J1.1 | Anywhere — click **Import Data** in the sidebar | The import screen with an empty drop area | |
@@ -491,6 +535,11 @@ the create path runs on every database, used or fresh.
 
 ## IMP-J2 — Append: file to existing Table *(deltas from J1 only)*
 
+> evidence: proven via IMP-010, IMP-013 — the append walk with the
+> target notice, the rehearsal before commit, and the target picker.
+> Gap at J2.3″: the added-rows notice disappears when the user picks the
+> Table by hand (see IMP-R7).
+
 | # | Where / do | Must observably see | Rules |
 |---|---|---|---|
 | J2.3′ | Read the target | The matching Table **already selected**, with a visible notice naming it and saying rows will be **added** — never silently | R7 |
@@ -503,6 +552,11 @@ wizard with that Table preselected (→ R7).
 
 ## IMP-J3 — A multi-sheet workbook *(a loop, not extra steps)*
 
+> evidence: proven via IMP-010, IMP-013 — the per-sheet loop walked in
+> the browser (one sheet to a new Table, one onto an existing Table),
+> plus skip-a-sheet and drop-a-column. The empty-sheet skip is
+> unasserted.
+
 For **each populated sheet, independently**: its own card, target, and
 column grid — J1/J2 apply per card. An empty sheet is skipped without
 comment. The user can skip any sheet and drop any column. Any whole-file
@@ -512,6 +566,16 @@ results, never evaluate a whole-file predicate (see H2).
 ## The rules
 
 ### IMP-R1 — Column naming · `shape: rule`
+
+> evidence: proven via IMP-001 — property tests over the whole header
+> space: output
+> length always equals input length, every name is a valid identifier of
+> ≤ 63 chars and never reserved, and names stay distinct below the
+> truncation boundary.
+>
+> evidence IMP-R1.uniq-boundary: pinned #110 — AT the truncation
+> boundary three identical 62+-char headers still collapse to one name;
+> the uniqueness property is pinned expected-failing there.
 
 **Property:** for any header list, the output is the same length, every
 name is a valid identifier of ≤ 63 chars, and **all names are distinct**.
@@ -529,9 +593,22 @@ Examples (agreement):
 
 > The last row is a live defect: today all three collapse to one name —
 > confirmed by execution 2026-08-03; the uniqueness property catches it on
-> the first randomised run. Issue pending (see matrix).
+> the first randomised run — pinned #110 (see R1's verdict).
 
 ### IMP-R2 — Type inference · `shape: rule` (ordering is part of the rule)
+
+> evidence: proven via IMP-002 — the ordering table proven by example
+> and by property: totality (any column yields exactly one known type),
+> order-independence, the Int/Float/Check/Text boundaries, an entirely
+> empty column falling back to Data, and a Date that keeps its calendar
+> day in every server timezone.
+>
+> evidence IMP-R2.leading-zero: pinned #111 — a leading-zero code column
+> still infers Int and destroys the padding.
+>
+> evidence IMP-R2.16-digit: pinned #112 — 16+ digit identifiers fall
+> through `INT_SAFE_DIGITS` to the unbounded float pattern and lose
+> precision.
 
 Tested **in this order**:
 
@@ -555,15 +632,25 @@ Tested **in this order**:
 
 > Both rows are live defects today (Int and Float respectively; both
 > confirmed by execution 2026-08-03, precision loss observable). The spec
-> states the intended behaviour; the matrix records the gap and the pending
-> issues.
+> states the intended behaviour; R2's verdicts record the pins (#111,
+> #112).
 
-**R2.7 — ordering guard.** *Is Active* clears the R3 promotion bar exactly
-as *Region* does; it stays Check **only because the yes/no test runs before
-the repetition test**. Consistency-testable even though R3 itself is
+**IMP-R2.7 — ordering guard.** *Is Active* clears the R3 promotion bar
+exactly as *Region* does; it stays Check **only because the yes/no test runs
+before the repetition test**. Consistency-testable even though R3 itself is
 judgement-shaped.
 
+> evidence: proven via IMP-R2 — yes/no in any casing infers Check and
+> wins before Choice could, asserted as a property.
+
 ### IMP-R3 — Choice promotion · `shape: judgement`
+
+> evidence: rule-tier via IMP-008 — the agreement anchors proven at the
+> unit tier (a repeated small set reads as choices, sorted; too few
+> samples, too many distinct values, near-unique values, long or
+> multiline values all decline; a qualifying Data column becomes a
+> Choice column). No labelled corpus scores the judgement and
+> consistency is untested; the thresholds are named constants (ADR 0008).
 
 A short-text column becomes a fixed choice list when its values repeat
 enough to read as a category. The thresholds (minimum sample count, allowed
@@ -581,16 +668,34 @@ any threshold change. Agreement anchors:
 
 ### IMP-R4 — Labels keep the file's wording · `shape: rule`
 
+> evidence: proven via IMP-012, IMP-003 — `prettifyLabel` keeps the
+> file's wording lightly tidied while only the database name is
+> sanitized, and `inferTableDef` carries the original headers through as
+> labels.
+
 Only the database name is sanitized; the label stays the file's words,
 lightly tidied — *Area Sq Km*, never *area_sq_km*. First four columns show
 in the list view by default; a default, not a judgement.
 
 ### IMP-R5 — Table naming · `shape: rule`
 
+> evidence: proven via IMP-003 — `tableNameFromFile` derives **Zones**
+> from `zones.csv`; the wizard's edit-before-import is walked in IMP-J1.
+
 `zones.csv` → **Zones**, editable before import; everything downstream
 follows the *final* name (→ R6).
 
 ### IMP-R6 — Row identity · `shape: rule`
+
+> evidence IMP-R6.shape: proven via IMP-003, IMP-J1, NAM-001 —
+> `inferTableDef` defaults an imported Table to a readable series, the
+> browser walk asserts the id *shape* and never a value, and the builder
+> derives the prefix and the digit-count preview from the Table name.
+>
+> evidence IMP-R6.follows-final-name: gap #114 — the wizard's rename does
+> not re-derive the series, so ids keep the parse-time prefix. Per the
+> polarity rule the journey asserts only the neutral shape and makes NO
+> evidence claim for this half until #114 is fixed.
 
 | Table name | Series shape |
 |---|---|
@@ -602,6 +707,15 @@ survives Table deletion; verify the shape, never a value. *(The file's own
 reference numbers → Q4.)*
 
 ### IMP-R7 — Target matching · `shape: judgement`
+
+> evidence: rule-tier via IMP-009, IMP-012, IMP-010 — the behavioural
+> anchors proven at the unit tier (perfect score with weak coverage and
+> no name overlap ⇒ no auto-match; full coverage auto-matches under a
+> junk sheet name; matching names rescue a weak-coverage match) plus the
+> list-view entry variant in the browser. No labelled corpus scores the
+> judgement; thresholds are named constants (ADR 0008). Gap at J2.3″:
+> the added-rows notice disappears when the user picks the target by
+> hand.
 
 Match scoring and coverage thresholds are named-constant bets (§4).
 The behavioural anchors are firm:
@@ -615,6 +729,12 @@ The behavioural anchors are firm:
 
 ### IMP-R8 — Cell coercion · `shape: rule`
 
+> evidence: rule-tier via IMP-004, IMP-005 — coercion per column type,
+> empty cells absent rather than zero or empty string, fully blank rows
+> dropped, and a bad row failing by index while the good rows still
+> land, all proven below the browser. Never witnessed in a browser: the
+> J1.6 bad-cell branch on a fixed-type column.
+
 | The incoming cell / row | → |
 |---|---|
 | Clean | Coerced to the column type; dates keep their calendar day in every timezone |
@@ -624,14 +744,29 @@ The behavioural anchors are firm:
 
 ### IMP-R9 — Rehearsal · `shape: contract`
 
+> evidence: gap — the *boundary's* `dry_run` is proven (IMP-005:
+> validates every row, writes nothing, flags existing-name conflicts and
+> in-file duplicates, still requires create permission), but R9's two
+> standing obligations are unmet. The first-time journey offers no
+> rehearsal, so J1 commits blind. And the wizard chunks its dry runs, so
+> a duplicate at rows 10 and 550 is scoped per chunk rather than
+> file-wide — reported from reading the code, never re-executed;
+> upsert's pre-chunk duplicate gate (UPS-R2) closes the keyed case only.
+
 Validate a file against the target with zero writes: same per-row error
 report as a real run, no rows, no history entry (→ I3). Must exist on
 **both** journeys — the first-time user (J1) is exactly the one who commits
 blind. Rehearsal must evaluate the **whole file** in one scope: a duplicate
-at rows 10 and 550 is one conflict, not two clean chunks (→ matrix,
-suspected defect).
+at rows 10 and 550 is one conflict, not two clean chunks (→ R9's
+verdict, a standing gap).
 
 ### IMP-R10 — The import record · `shape: contract`
+
+> evidence: proven via IMP-005 — every real run writes its Import Log
+> row (target, file, counts, table-created) and dry runs write none; a
+> run without context still logs bare counts; import requires create
+> permission and refusal is whole-request. Caveat: "any abort still
+> writes the record of what already landed" is unproven — see IMP-H2.
 
 Every real run writes **one** history entry (→ I2): target, file name,
 inserted, failed, whether the Table was created. Rehearsals write nothing.
@@ -640,6 +775,14 @@ whole-request, and **any abort still writes the record of what already
 landed** (→ H2).
 
 ### C1 — The import boundary · `shape: contract`
+
+> evidence: proven via IMP-005 — insert semantics through the full
+> lifecycle, `dry_run`, whole-request 403 with nothing inserted,
+> argument validation, malformed rows reported rather than crashed on,
+> settings and sub-table kinds refused, and registration as a write
+> effect (GET refused). Caveat: rehearsal scope is per request, so the
+> wizard's chunked dry runs cannot see a file-wide duplicate — see
+> IMP-R9.
 
 `POST /api/table/:table:import` has consumers beyond the wizard, so its
 behaviours are requirements independent of any screen: insert semantics;
@@ -651,6 +794,10 @@ sub-table kinds are refused; the operation is registered as a write effect
 
 ### IMP-R11 — Header-only files create the empty Table · `shape: contract`
 
+> evidence: gap — decided 2026-08-04, not yet built: a header-only file
+> must create the empty Table with its inferred columns and log the run
+> with 0 inserted.
+
 *Decided 2026-08-04 (was Q1).* A file with headers and zero data rows
 creates the Table with its inferred columns and no rows — schema-first
 template workflows are legitimate. The Import Log records the run with
@@ -658,39 +805,63 @@ template workflows are legitimate. The Import Log records the run with
 
 ### IMP-R12 — Re-import is an upsert on a user-mapped key · `shape: contract`
 
+> evidence: proven via UPS-R1, UPS-R2 — built and walked as
+> [spec 0004](../specs/0004-import-upsert.md) on 2026-08-05, which
+> carries the rule-by-rule evidence; the match key is user-mapped, the
+> row identifier is mappable, and the log records updated / inserted /
+> failed separately.
+
 *Decided 2026-08-04 (was Q2 + Q4).* In the mapping step the user may mark
 one file column as the **match key** — including mapping it onto the row
 identifier, which the engine already accepts for direct sends. On import,
 rows matching an existing key **update**; the rest insert; the log records
 updated/inserted/failed separately. "I'll just import the corrected file
-again" then does what everyone expects. *Not yet built.*
+again" then does what everyone expects.
 
 ### IMP-R13 — An import can be undone · `shape: contract`
+
+> evidence: proven via RVT-R1, RVT-R2 — built and walked run-scoped as
+> [spec 0005](../specs/0005-import-revert.md) on 2026-08-11: the log
+> records the rows each run wrote, and a run's entry offers a one-click
+> reverse that deletes the inserts and restores the updates by replaying
+> the version trail. An undo wider than one import run stays a framework
+> ambition with no evidence claim.
 
 *Decided 2026-08-04 (was Q5).* The Import Log records the **ids of the
 rows each run inserted**, and a run's history entry offers a one-click
 reverse that deletes exactly those rows — and, for R12 upsert runs,
 **restores updated rows by replaying the version trail** (Q4 of spec
 0004, ruled 2026-08-05).
-Closes the wrong-table trap directly. *Not yet built.*
+Closes the wrong-table trap directly.
 
 ### Invariants · `shape: invariant`
 
 - **IMP-I1 — reconciliation.** For every run: rows in file = inserted +
   failed + dropped-blank, and every failure names the **true spreadsheet
   row** — a blank row above an error must not shift the blame onto an
-  innocent neighbour. *(Re-executed 2026-08-03: the arithmetic holds; the
-  row-number half is a confirmed defect — #115, pinned.)*
+  innocent neighbour.
+
+  > evidence: proven — both halves. The arithmetic closes on a mixed
+  > run, and the row-number half is no longer a defect: #115 was fixed
+  > (`coerceRows` carries each survivor's source index) and its
+  > expected-failing pin flipped to a plain test in the fixing change.
+
 - **IMP-I2 — a chunked run reconciles.** The review demanded "one run, one
   record" and called per-chunk log rows a defect; the log schema's
   `part`/`parts` columns show they are design intent, so the storage
   invariant is restated with evidence: **one log row per part, every part
   present exactly once, and the parts' sums equal the run's totals.**
   Presenting a run as a single history entry is a UI grouping concern.
-  *(Proven 2026-08-03.)*
+
+  > evidence: proven — one log row per part, every part present exactly
+  > once, and the parts' sums equal the run's totals.
+
 - **IMP-I3 — rehearsal writes nothing.** No rows, no history, no series
   ids burned — the first real row after a rehearsal is the first of its
-  series. *(All three proven 2026-08-03.)*
+  series.
+
+  > evidence: proven — all three halves: no rows, no history entry, and
+  > no series ids burned.
 
 ### Hazards
 
@@ -698,15 +869,28 @@ Closes the wrong-table trap directly. *Not yet built.*
   be neither stopped nor undone, and re-running the corrected file
   duplicates everything. *Resolution decided 2026-08-04:* R12 (upsert)
   + R13 (undo) + table deletion (hermeticity decision) disarm all three
-  legs. The hazard stays listed until they are built and proven.
+  legs.
+
+  > evidence: proven via DEL-J1, UPS-J1, RVT-J1 — all three legs are
+  > disarmed and each is walked in its own spec: table deletion
+  > (0003, 2026-08-04), upsert (0004 / IMP-R12, 2026-08-05) and
+  > run-scoped revert (0005 / IMP-R13, 2026-08-11). Kept in the register
+  > as the compound this feature must not re-acquire.
+
 - **IMP-H2 — abort without a record.** A permission failure mid-import is
   reported to leave already-inserted rows behind with **no history entry**
   — the one failure mode guaranteed to strand rows is the one guaranteed to
-  hide them. *(Reported; not yet re-executed.)*
+  hide them.
+
+  > evidence: gap — reported from reading the code, never re-executed.
+
 - **IMP-H3 — whole-file predicates over per-sheet behaviour.** Any control
   that validates or summarises must aggregate per-sheet results; a
   whole-file predicate silently skips one sheet's problems in a mixed
   workbook. Distinct cause and fix from H2 — split on review feedback.
+
+  > evidence: gap — reported, never re-executed; distinct cause and fix
+  > from H2.
 
 ## Open questions *(arbiter: Siraj)*
 
@@ -720,32 +904,30 @@ Q5 → R13 (undo via row-identity logging). Per the change protocol, the
 answers now live as rules and the questions are removed; only Q3 remains
 open.
 
-## Coverage matrix
+## Reading the evidence
 
-**Verified against:** worktree at `ea821f8`, 2026-08-03. Tiers: `unit`
-(pure logic) · `server` (real HTTP + Postgres) · `e2e` (Playwright).
-Current tests carry legacy `IMP-001…013` titles; the join-key migration is
-adoption item 1. Verdicts: **proven** · **conditionally proven** (passes,
-but see caveat) · **rule tier only** (never witnessed in a browser) ·
-**gap** (spec'd, nothing implements or asserts it) · **defect** (spec
-violated by shipped code; three executed here, issues being filed) ·
-**reported** (review's finding from reading or executing code, not
-independently re-run here) · **open**.
+Each obligation above carries its own `> evidence:` verdict (§6), and
+`node tools/check-evidence.mjs` re-derives the linkage on every CI run.
+There is no separate matrix to keep in step and no stamp to go stale:
+run the checker for the tally, `git log -L` a verdict line for its
+history.
 
-The matrix's canonical home is
-[`evidence/spreadsheet-import.csv`](evidence/spreadsheet-import.csv) —
-one row per obligation with shape, strategy, static link, verdict, issue,
-and stamp. CSV because this layer is genuinely tabular, diffable, and is
-the exact shape that later lands as rows in Featherbase itself
-(dog-fooding); this document keeps only the reading:
+What the verdicts add up to is still a sentence, not a count of green
+rows. Today: three defects pinned expected-failing (#110–#112); one
+known gap with no evidence claim at all (#114, R6's follows-the-final-
+name half); two judgement rules with anchors but no labelled corpus
+(R3, R7) and one rule never witnessed in a browser (R8); R9's rehearsal
+missing from the first-time journey and scoped per chunk rather than
+per file; H2 and H3 reported from reading the code and never
+re-executed; R11 decided and unbuilt. Everything else in the feature is
+proven, including all three invariants and the two rules (R12, R13) that
+shipped as specs 0004 and 0005.
 
-**Reading the matrix (2026-08-03):** three defects pinned expected-failing
-(#110–#112) plus one known-gap with no evidence claim (#114) and one
-pinned invariant (#115); two invariants and a chunk-run reconciliation
-proven; three *reported* claims still awaiting re-execution (H2, H3,
-cross-chunk rehearsal scope); two gaps; one conditionally-proven golden
-path; two judgement rules without a corpus; five open questions. That
-sentence — not a count of green rows — is the feature's true state.
+Some proofs still join through legacy `IMP-001…013` test titles rather
+than quoting the rule ID; those verdicts name the joining title with
+`via`, so the linkage is checked rather than assumed. Renaming those
+tests to the rule IDs would let the `via` clauses go — a cleanup the
+checker will keep honest either way.
 
 ---
 
@@ -761,8 +943,12 @@ sentence — not a count of green rows — is the feature's true state.
    complement), then add absence assertions for the named gaps, polarity-
    tagged.
 4. **Promote the ID scanner into CI** — and align its grammar with the IDs
-   actually in use (it currently requires exactly three digits, which makes
-   `EDS-1`-style IDs invisible to the only trace tool the repo owns).
+   actually in use (the original required exactly three digits, which made
+   `EDS-1`-style IDs invisible to the only trace tool the repo owned).
+   **Landed 2026-08-28 (#235):** `tools/check-evidence.mjs` runs in the
+   unit job and reads the IDs the specs actually declare, failing a
+   `proven` verdict whose test title has gone missing and warning on a
+   test ID no spec owns.
 5. **The two agent rules into `CLAUDE.md`** (§10).
 
 ## 2. Next — where the defects actually live
@@ -835,7 +1021,7 @@ product cannot host its own spec before the product is trustworthy).
 
 Before the format is declared adopted, write the **author's walkthrough**:
 one trivial requirement traced through every artifact it touches — spec
-row, test title, matrix row, CI check. Cost of adoption is dominated by the
+row, test title, evidence verdict, CI check. Cost of adoption is dominated by the
 first hour; this is that hour, written down.
 
 ## 6. Relationship to feather-spec (the skill)
@@ -866,12 +1052,13 @@ structural layer by default (minimal mode governs), coverage percentages.
   the owner arbitrates and all representations are updated together —
   never a silent tiebreak in either direction.
 - **A question is answered** → it graduates into a rule or step, gains
-  tests and a matrix row; the document's history is the decision log.
+  tests and an evidence verdict; the document's history is the decision log.
 
 ## 8. Scaling smells
 
 A feature with six journeys is two features. A rule no step references is
 dead behaviour or a missing journey. A fixture that cannot feed a new rule
-is extended deliberately, never worked around inside one test. A matrix row
-without a stamp is a hypothesis. A skip that reads green is a lie with a
+is extended deliberately, never worked around inside one test. An
+obligation with no evidence verdict is a hypothesis, and a `proven`
+verdict no test title backs is a claim. A skip that reads green is a lie with a
 timestamp.

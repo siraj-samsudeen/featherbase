@@ -27,7 +27,7 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
   }) => {
     await createProbeTable(admin)
     const doc = await seed(DT, { title: 'first', qty: 3 })
-    expect(doc.row_id).toBeTruthy()
+    expect(doc.row_id).toMatch(/^[0-9a-f]{10}$/)
     const listed = await admin.get<{ data: { row_id: string }[] }>(
       `/api/table/${encodeURIComponent(DT)}`,
     )
@@ -40,7 +40,7 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
   }) => {
     await createProbeTable(admin)
     const doc = await seed(DT, { title: 'first', qty: 3 })
-    expect(doc.row_id).toBeTruthy()
+    expect(doc.row_id).toMatch(/^[0-9a-f]{10}$/)
     const listed = await admin.get<{ data: { row_id: string }[] }>(
       `/api/table/${encodeURIComponent(DT)}`,
     )
@@ -57,7 +57,7 @@ describe('SQL sandbox (Ecto-style rollback isolation)', () => {
     await expect(seed(DT, { qty: 1 })).rejects.toMatchObject({ status: 417 })
     // ...and the sandbox connection is still usable afterwards.
     const doc = await seed(DT, { title: 'after failure', qty: 2 })
-    expect(doc.row_id).toBeTruthy()
+    expect(doc.row_id).toMatch(/^[0-9a-f]{10}$/)
   })
 
   test('users created in a test are sandboxed too', async ({ client, admin }) => {

@@ -1,5 +1,626 @@
 # Progress Log
 
+## 2026-08-31 — #197 meets the runtime evidence gate (#241)
+
+Merged `main` (#242) into the import branch a second time. The gate that
+arrived with it is the one that mattered: a `proven` or `rule-tier` verdict
+now needs a concrete test that **actually executed on this commit**, not just
+a title that matches statically. Ran it locally exactly as CI does — the
+three Vitest JSON reports plus Playwright's — rather than trusting the static
+pass.
+
+The conflicts were `PROGRESS.md` and the two generated archive pages. Both
+`PROGRESS.md` entries are dated 2026-08-28 and both are kept; the import
+entry sits first because its commit (05:28 UTC) is later than #241's
+(04:48 UTC). The archive pages were taken from `main` and rebuilt, never
+hand-merged.
+
+One trap worth writing down: `pnpm --filter web e2e` **deletes**
+`apps/web/test-results/`, which is where the web Vitest JSON report lands.
+Run e2e first or stage the report before it, or the runtime check runs
+against a report that is no longer there. CI does not hit this because its
+`unit` and `e2e` jobs never share a working directory — a local run does.
+
+Verified on the merge commit: checker mutation tests 42 passed; static
+evidence check 78 verdicts / 213 test files; runtime evidence check the same
+78 verdicts with **1087 runtime tests checked**; both typechecks clean;
+server 697 passed, web 123 unit / 136 e2e passed, shared 111 passed;
+coverage floors met (server 86.87, web 34.32, shared 99+).
+
+The one red is `sources-csv` "a failed write never poisons the parse cache",
+which chmods a directory read-only to force a failure — root ignores
+directory permissions and this container runs as uid 0, so the write
+succeeds. Environmental, reproduces on `main`, and CI runs non-root.
+
+**Next:** PR #210 still has no workflow run of its own — GitHub has created
+none for any commit on this branch. Nothing to build; the wait is on a runner.
+
+## 2026-08-28 — #197 meets the new test system
+
+Merged `main` into the import branch after the test-system overhaul (#227,
+#233, #239, #240) and adapted the work to it. No behaviour changed; what
+changed is where the tests live and what proves them.
+
+### The merge
+
+Six conflicts. Five were mechanical, one was a real decision:
+
+**My lockfile guard is superseded and is gone.** The branch carried a
+`lint:lockfile` script and two CI steps refusing scp-style `git@host:` URLs
+in `pnpm-lock.yaml`. `main` fixes the same failure one layer down —
+`git config --global url."https://github.com/".insteadOf "git@github.com:"`
+on the runner — which is strictly more tolerant, and `main`'s own lockfile
+records the scp form in five places. Keeping both would have failed the
+build on `main`'s lockfile. The runner-side fix wins; `tools/check-lockfile-urls.ts`
+is deleted rather than left around as a second, contradictory rule.
+
+### Adapting to the new system
+
+- **E2E auth is the fixtures'.** Ten specs dropped their hand-rolled
+  `adminToken`/`login` for `e2e/fixtures.ts`. Nine take the pre-authed
+  `test` (a per-worker `storageState`); `preview-login.spec.ts` takes
+  `anonymousTest`, because arriving with no session *is* its subject — which
+  is exactly the point of the convention that the import states the auth
+  story.
+- **Server tests moved to their new homes** — `import/batches.test.ts` under
+  the promoted `import/` directory, both files on `makeTable`, `tableRef`
+  and `expectApiError` rather than their own builders.
+- **Two banned assertions became precise ones.** `rejects.toBeDefined()` on
+  the unique-constraint rename now asserts a 417 whose `fields` map names
+  the NEW column — which is what actually proves the constraint travelled
+  rather than merely surviving under the old name. `toBeTruthy()` on the
+  preview token became a three-segment JWT match.
+- **The stricter `tsconfig.test.json` typecheck caught a real gap:** the
+  `import-session` test's decisions factory predated `batchId` and had been
+  passing an incomplete shape.
+
+### Both ratchets rose
+
+`#197` added ~200 lines to `packages/shared/src/import.ts` and three web
+pages, and coverage is per-package: the server suite that exercised them
+could not credit either. Shared fell to 16.74% (floor 21), web to 30.23%
+(floor 33).
+
+Neither floor moved down. Instead:
+
+- **The pure sheet-merging and inference tests moved into
+  `packages/shared`**, where `docs/TESTING.md`'s decision tree puts I/O-free
+  code. `apps/server/test/import/infer.test.ts` said shared-package tests
+  live in the server suite by convention — and `packages/shared/vitest.config.ts`
+  named that same convention as the whole of this package's coverage gap.
+  Closing it took shared from **21.30% to 99.10% lines** (functions 85.71% →
+  97.14%); the server number went *up* slightly, confirming those 89 tests
+  were only ever exercising shared code.
+- **The column editor and the post-hoc Table merge gained component tests**
+  (15 of them), which is the layer `docs/TESTING.md` names for rendering
+  from metadata and form logic. `ColumnEditor.tsx` 2.75% → 97.93%,
+  `TableMerge.tsx` 7.71% → 95.30%, web overall **30.23% → 34.25%**.
+
+New floors: shared lines/statements 99, functions 97; web lines/statements
+34, functions 49. Server's 86/91 stands — its own note says to raise it to
+whatever the first green CI run reports, and CI covers the MySQL driver a
+developer checkout skips.
+
+### #212 is fixed, by someone else
+
+The `UPS-J1` e2e failure this branch had been carrying — `clickButton('Check')`
+colliding with the sidebar's "Checklist Run" under Playwright strict mode —
+passes now. #228 made the sidebar recall rows links rather than buttons, so
+`getByRole('button')` no longer reaches them. Nothing in `feather-testing-core`
+had to change after all.
+
+**Verified:** server 697 passed (1 environmental failure — `sources-csv`
+chmods a directory read-only in a container running as uid 0, where root
+ignores directory permissions; CI runs non-root), web 123 unit / 136 e2e
+passed with **zero failures**, shared 111 passed, both typechecks clean,
+evidence checker green (78 verdicts, 213 test files), all three coverage
+ratchets met.
+
+**Next:** #197 is complete and PR #210 is green. #212 can be closed as fixed
+by #228.
+
+## 2026-08-28 — Runtime results close the last proof escape hatch (#241)
+
+The evidence checker now has two deliberately separate modes. Its default
+remains the zero-dependency static join used before install. CI additionally
+passes the combined Vitest and Playwright JSON reports with `--results`; every
+`proven` and `rule-tier` verdict must have at least one matching concrete test
+that actually executed. No runtime match (including runner exclusion) and
+all-matching-results-skipped both fail. IDs carried by a `describe`/suite title
+propagate to its concrete descendants.
+
+Expected failures cannot counterfeit runtime proof: Playwright's
+`expectedStatus` is honored, while Vitest leaves are joined back to the static
+file/title declaration because its JSON reporter does not expose `.fails`.
+A genuinely failed test still counts as executed here — its suite already owns
+the red verdict. CI uploads three Vitest reports and the Playwright report, then
+runs one aggregation job after both runner families succeed.
+
+Verified: 42 checker mutation tests passed, including passed, dynamically
+skipped, missing, suite-title, failed-but-executed, and expected-failure cases;
+the repository's static check passed (78 verdicts across five specs, 197 test
+files); workflow YAML parsed; `git diff --check` passed; the archived Explorer
+was regenerated and a clean second build made no changes.
+
+Next: merge this branch to close #241; the release/re-pin queue in #225 and the
+lint-plugin adoption in #238 remain separate.
+
+## 2026-08-28 — The checker learns to distrust (#239 review response)
+
+The owner's review of #239 asked the only question that matters — can a
+future contributor make an unsupported claim look green? — and answered
+it three ways: delete a spec's `**IDs:**` line and 14 verdicts vanish
+silently; flip a proving test to `.skip` and it still proves; flip a
+pin's `it.fails` to `it.skip` (or just mention `#110` in a comment) and
+the pin still counts. All three closed, each with the owner's exact
+mutation committed as a test:
+
+- **Participation is declared and checked.** Every doc under
+  `docs/specs/` carries `**IDs:**` or `**Evidence mode:** excluded — <reason>`
+  (0001/0002/README now say so explicitly); a doc with neither fails the
+  run naming the file, and any doc under watched trees carrying verdicts
+  must declare.
+- **Only executable declarations prove.** Modifier allowlist (skip/todo/
+  skipIf/runIf and anything unknown disqualify), real parent-suite
+  exclusion with honest failure on an unbalanced scan, and `.fails` can
+  never satisfy `proven`. The fixture found a fourth dress of the lie —
+  a skipped test's *suite* title standing as proof — closed too.
+- **Pins join to their expected-failure test.** `pinned #N` requires an
+  executable `it.fails`/`test.fails` whose title carries both the ID and
+  `#N`; the three real pins were retitled to be findable (titles only).
+- 35 mutation tests in `tools/check-evidence.test.mjs` (node:test, zero
+  deps, 158ms) run in CI before the checker itself.
+
+Also: the Railway mystery died — every preview build had failed since the
+bot arrived because the web-build Docker stage installed git under
+`--no-install-recommends`, which omits ca-certificates; git rewrote SSH to
+HTTPS and then couldn't verify GitHub's certificate. Owner-diagnosed;
+one-word fix on #227, cascaded through the stack; all three previews
+reached SUCCESS for the first time.
+
+Gotcha for the record: `node --test tools/` fails on Node 22 (loads the
+directory as a module) — the glob `node --test tools/*.test.mjs` is the
+form CI and package.json use.
+
+## 2026-08-28 — A required Sub-table column is now enforced on save (#231)
+
+The owner ruled the #231 discovery a **defect**: `reqd: true` on a Sub-table
+column meant nothing on save — a row was accepted with the column absent and
+with `[]`. It now means what it means on a scalar column.
+
+- **Enforcement point: `assertRequiredChildren` in
+  `apps/server/src/document.ts`**, beside the children handling that owns the
+  arrays — called from `saveDoc` (insert), `updateDoc` (update) and
+  `checkRowForInsert` (the import dry run, which has to agree with the real
+  import since that inserts through `saveDoc`). *Not* the schema layer:
+  `tableSchemaToZod` drops Sub-table columns from its shape AND
+  `pickFieldValues` strips them from the payload before `validateValues` ever
+  runs, so a rule in `packages/shared` would fire on every save unless child
+  arrays were threaded through the whole scalar pipeline — defaults, tier
+  stripping, the null backfill, dbRow construction — only to be filtered out
+  again. The shared schema is unchanged; its pin now says why, citing #231.
+  Consequence: no client-side pre-check, and none was built — the server
+  guarantee is the requirement, and FormView already renders a field-keyed
+  error under the grid (`error={errors[f.column_name]}` →
+  `data-testid="error-<column>"`), so the round trip renders with no client
+  change.
+- **Semantics mirror scalar `reqd` exactly.** Create: absent or `[]` →
+  violation. Update: absent key = untouched (no error, the partial-update
+  rule); key present as `[]` = the caller clearing a required grid = refused.
+  A present non-array still falls through to `pickChildInputs`' shape error.
+- **Error shape is the scalar shape**, not a new one: `AppError`
+  `ValidationError` → 417, `message: "Invalid values for <Table>"`,
+  `fields: { <column>: "Required" }`.
+- **Pin flipped** (CLAUDE.md pin protocol): the #231 pin in
+  `apps/server/test/children.test.ts` asserted the accepting behaviour; it now
+  asserts rejection and covers create-absent, create-empty, create-with-rows,
+  update-absent-untouched, update-empty-rejected, and a non-reqd Sub-table
+  still saving empty.
+
+Verified: `pnpm --filter server test test/children.test.ts` 13 passed;
+`test/validation.test.ts` 4 passed; full server suite 731 passed / 1 failed
+(the known container-only sources-csv "round 3" chmod case, red before this
+change too); `pnpm --filter shared test` 22 passed; `pnpm --filter web test`
+92 passed; `node tools/check-evidence.mjs` green (78 verdicts, unchanged —
+no spec IDs move here); both typechecks clean. End-to-end against the running
+stack: empty reqd Sub-table → 417 `{"lines":"Required"}`, key absent → the
+same 417, with a row → 201; partial update without the key → 201 with the
+child row intact; update with `[]` → 417.
+
+Next: #231 can be closed on merge. This branch stacks on
+`claude/docs-to-checks`; the rest of that queue and the harness release
+checklist (#225) are unchanged.
+
+## 2026-08-28 — Documents become checks (#235, #236, #237)
+
+The document-set rule the owner ratified — judgment in the spec, mechanics
+in one living doc, history in append-only logs, relationships checked by
+CI — applied to its own house, on `claude/docs-to-checks` (stacked on
+batch 1):
+
+- **The 2026 build harness retired** (#236): `harness/` →
+  `docs/archive/harness-2026/` with a tombstone; its features.json
+  statuses were self-attested and its evaluation protocol was never wired
+  up. CLAUDE.md loses the features.json protocol, gains the document-set
+  section and the accepting-delegated-work rule (a report is a claim —
+  re-run the verification). Open question flagged for the owner: the
+  public Pages Explorer still renders the frozen feature board.
+- **Evidence CSVs mechanized away** (#235): all FIVE hand-maintained
+  matrices (not one — four more hid in docs/specs/evidence/) became
+  `> evidence:` verdict lines in the specs that own the IDs, checked by
+  `tools/check-evidence.mjs` (73ms, zero deps, in CI): 78 verdicts across
+  5 specs, title-joined to 197 test files, `via` aliases carrying the
+  unfinished join-key migration visibly. Six stale verdicts corrected
+  against the tree (three "not yet built" features had shipped); one
+  false "proven" (RVT-R5) surfaced by the checker itself and migrated
+  honestly.
+- **Organization** (#237): the where-does-a-test-go decision tree tops
+  TESTING.md; the 8-file `import-*` prefix family became
+  `test/import/` — a move the CSVs' path links used to forbid and the
+  title-joining checker now makes safe, which is the whole point.
+
+Verified: check-evidence green; server suite 726 passed (known
+container-only sources-csv chmod case red locally, green in CI); both
+typechecks; site build. In the harness repos the same session landed
+feather-testing-core PR #7 (until()/raw()/attachFile/pressKey/hover/
+assertDownload + the eslint plugin whose rules found and fixed 11 weak
+assertions in the library's own tests, v0.4.0) and the postgres PR #4
+pin bump to ^0.4.0.
+
+Next: owner merges the stacked PRs (#227 → #233 → this) and releases the
+harness chain (#225 checklist); then #238 adopts the lint plugin here.
+
+## 2026-08-28 — Test pyramid, batch 1: delete, push down, and fix #228 (#223)
+
+First batch of the owner-ratified partition in #223 (deletions included).
+Three commits on `claude/test-pyramid-batch-1`, branched off #227's head so
+the PR diff shows only this batch.
+
+**e2e 78 -> 60 spec files; web component suite 10 -> 17 files, 66 -> 92
+tests.**
+
+**Commit 1 — 13 thin duplicate specs deleted, one trimmed.** Each was read
+against its same-topic server test before deleting; the disposition list is
+in the commit body. All 13 asserted only what `apps/server/test` already
+owns, over a "the button exists" veneer — `audit-log`, `activity-feed`,
+`assign`, `single-table`, `rename`, `server-script`, `script-report`,
+`query-report`, `job-monitor`, `job-progress`, `letterhead`,
+`workflow-condition`, `permission-manager`.
+
+Two exceptions the gate caught. `access-tokens` was skipped by instruction
+(its show-once modal folds into a journey in a later batch). And
+`naming-series` was **trimmed, not deleted**: its builder half is genuinely
+client-only and uncovered anywhere else — the prefix derived from the Table
+name, `namingPreview()`'s digit-count string, and the composed pattern
+reaching the server — and it is the cited evidence for `IMP-R6.shape` in
+`docs/design/evidence/spreadsheet-import.csv`. Its `PUT
+:name/id_pattern` 417 case also stayed, because the server suite does not
+test that endpoint at all. **Gap for a later batch: move that 417 into
+`apps/server/test`, then the trimmed spec can lose it.**
+
+**Commit 2 — seven specs pushed down to the component layer.** `dark-mode`,
+`client-validation`, `list-settings`, `i18n`, `comments`, `home-recall`,
+`checklist`. New files: `theme`, `client-validation`, `list-settings`,
+`i18n-rendering`, `comments`, `home-recall` tests, plus three run-lifecycle
+tests added to `checklist-binding`. Five e2e specs deleted outright; two
+kept as trimmed specs holding only what a browser adds — `dark-mode` keeps
+"does the canvas actually repaint" (jsdom loads no stylesheet), `checklist`
+keeps the photo upload (image decoding) and phone-width layout (box model).
+
+The push-down also retired two cleanup burdens that only existed because e2e
+commits: `i18n`'s Translation rows are unique on (language, source_text) and
+poisoned the *server* suite's `i18n.test.ts` if a run died before its
+`afterAll`; `comments` carried 20 lines of "delete what the last run left".
+Rollback does both now.
+
+**Gotcha worth remembering — the fire-and-forget write.** The Admin sends
+several writes as `void api.post(...)`: the theme toggle, `setLanguage`, and
+ListView's settings PUT. A component test that returns while one is in
+flight lets it execute *after* its sandbox transaction closed, so it commits
+for real — the next test then starts against a dark, French, or pre-sorted
+Admin, and the failure surfaces somewhere unrelated. Hit this twice while
+writing these tests (it is why `theme.test.tsx` first went red in the full
+run but green alone). The fix is to end such a test by polling the server
+until it reports the new value, so the write lands inside the transaction.
+`docs/TESTING.md` now states the rule and the layer-2/layer-3 dividing line.
+
+Coverage ratchet raised, floors only rising: web lines/statements 29 -> 33,
+functions 39 -> 45 (measured twice at 33.33/33.35 and 45.92/46.32, rounded
+down). `docs/TESTING.md`'s baseline table updated with the before/after.
+
+**Commit 3 — #228 fixed app-side.** The sidebar's Recent/Frequent rows were
+buttons named after whatever the operator last visited, so a chip reading
+"Checklist Run — checklist" matched an import-wizard lookup for a button
+named "Check" and failed `UPS-J1` — ordering-dependent, hence flake-shaped.
+They are anchors now: every sidebar row is a destination (searches are
+filtered out upstream), so `link` is the honest role and a button lookup can
+never reach it. Modified clicks fall through, so middle-click and
+open-in-new-tab work for the first time.
+`apps/web/test/sidebar-recall-roles.test.tsx` pins it and fails against the
+previous markup. Scope is the sidebar only — the command bar's `RecentRow`
+lives in a popup that exists only while the bar is focused. The DSL half
+(exact-name matching in `clickButton`) lands separately in
+`feather-testing-core`.
+
+**Verified.** `pnpm --filter web test` 92/92 green (17 files).
+`CHROMIUM_PATH=/opt/pw-browsers/chromium pnpm e2e` (isolated stack) 98
+passed in 3.5m across 60 spec files. `pnpm --filter server test` 726 passed
+/ 1 failed / 15 skipped — the single failure is the known container-only
+`sources-csv` "round 3" (chmod is a no-op as root), untouched by this batch.
+Both typechecks clean. `pnpm --filter web test:coverage` green against the
+raised floors, and the test database carries zero leaked `user_settings`
+rows or non-null `user.theme` / `user.language` after a full run.
+
+**Next.** Batch 2 of #223: the remaining push-down candidates (`recents`,
+`filters` mechanics, `form-sidebar`, `grid-layout`, `custom-field`,
+`property-setter`, `report-view`/`export`, `link-autocomplete`), and the
+promotion of the keeper specs into DSL journeys. Fold `access-tokens`'
+show-once modal into an admin journey there, and move the `id_pattern` 417
+into the server suite.
+
+## 2026-08-27 — Test-suite audit and remediation (#214, PR #227)
+
+A full audit of all three suites (121 server files / 680 tests, 78 e2e
+specs, 10 web files), then a remediation round driven through the #214
+tracker — one sub-issue per finding, one commit per sub-issue, each
+implemented by a delegated agent and reviewed before landing. The audit's
+verdict: quality high (sandbox discipline real, assertions strong, zero
+mocks/snapshots), organization diverged from our own framework — DSL
+adoption 3/78 e2e specs, pyramid inverted, conventions forked.
+
+Landed on PR #227 (CI green at every head):
+
+- **#215** — `client-validation` and `filters` self-skipped on *every*
+  isolated run (they sort before the specs that created their fixtures) —
+  green-by-skip since their creation. All four coupled specs now own their
+  fixtures; CI's isolated run executes them for the first time.
+- **#216** — one shared auth story for e2e: worker-scoped `storageState`
+  fixture in `e2e/fixtures.ts` (real UI login once per worker), `loginAs`
+  replacing 71 hand-rolled logins, shared UI fixture builders in
+  `e2e/fixtures-ui.ts`. Net −840 LOC; full isolated suite 120/120 and ~17%
+  faster. Which `test` a spec imports is now its auth story
+  (`test`/`anonymousTest`/`journeyTest`).
+- **#217/#219** — Playwright keeps trace+screenshot on failure; the five
+  arbitrary sleeps became condition waits with positive controls (the one
+  honest exception, saved-views' dedup window, polls the real localStorage
+  record with the constant traced to ListView.tsx).
+- **#218/#220** — `pg-test` binding deduped into `pg-test-shared.ts`
+  (fixing the web teardown's missing `invalidateSources()`), and the
+  emergent per-file builders promoted into `test/fixtures.ts`
+  (`makeTable`, `grantRole`, `expectApiError`); 9 exemplar files migrated,
+  error assertions strictly stronger.
+- **#221/#222** — `coverage-gaps.test.ts` dissolved into topic files,
+  `helpers.ts` retired, `email-rules-save` merged (test count 680
+  unchanged, moves verbatim); `packages/shared` got its first real vitest
+  project — 22 tests pinning `tableSchemaToZod`/`zodFieldErrors`, three
+  discovered behaviors pinned as-is for the owner's ruling (see #214).
+- **Infra:** the harness pin now fetches via `git+https` (codeload
+  tarballs are proxy-blocked in remote sessions); CI and the Dockerfile's
+  web-build stage rewrite `git@github.com:` to anonymous https.
+
+**Gotchas recorded:** `tsc --noEmit` never sees `test/` dirs (both
+tsconfigs include only `src`) — test-file type errors are invisible to
+every current command. The DSL's `clickButton` can collide with sidebar
+"frequent" chips (ordering-dependent, #228). The Railway PR preview fails
+in ~15s pre-build for reasons only its dashboard can show (noted on #227).
+
+Next: owner decisions on #223 (pyramid epic: shrink e2e to ~12–15 DSL
+journeys, grow the component layer) and #226 (ratify the real naming
+convention, decide the coverage tenet); #224 (realtime subscribed signal)
+is ready for an agent session; #225 (Session DSL forked between harness
+repos) belongs to the `feather-testing-*` repos.
+
+## 2026-08-27 — the whole import redesign, and a dev preview per pull request
+
+Finished #197 — the remaining eight tickets (#202–#209, #211) on top of the
+2026-08-26 Part A entry. Twelve of twelve now built. Owner directive was
+"everything, A through C".
+
+### What shipped
+
+- **#211 — combining columns folding could never join.** A merge group's grid
+  gains a Join column: tick two, name the result, combine. Sample values are
+  the feature, not decoration — `Store Code` (STR-009) and `Store Name` (Anna
+  Nagar) look nothing alike, which is exactly why nothing proposes it (Q5) and
+  why the values must be visible to answer "same thing?". A sheet carrying
+  BOTH is the data-loss case, so it is never resolved silently: the overlap is
+  named with its sheets and a rule is required — `first` (priority WITH
+  fallback, so a blank in the winner does not blank a row the other could
+  answer) or `join`.
+- **#203/#205 — a failing sheet stops taking the whole run with it.** The loop
+  sat inside one try, so a throw on target 2 left 3..n unattempted AND
+  unreported, skipped `setDone`, and hid the only link to the Import Log —
+  the one situation where the log matters most. Each target now fails on its
+  own; the run reports whenever it STOPS, not only when everything succeeded;
+  the log link moved out of the completion block entirely.
+- **#202 — the column step walks one Table at a time.** One target on screen,
+  "Table 2 of 11", Previous/Next, and a strip of every target marked done or
+  failed and clickable to jump. **Import happens per target**, and the bulk
+  button skips whatever already landed. Results moved OUT of the card that
+  made them into a "This import" panel — with one card on screen the card is
+  the wrong place to keep a result, since stepping on would hide it.
+- **#204 — the wizard's work survives leaving the page.** Two sessionStorage
+  keys: decisions (small, written often, debounced) and the file's rows
+  (large, written once). The rows are the half allowed to fail — a big
+  workbook does not fit, and the answer is to keep every decision and ask for
+  the file again, announced BEFORE you leave rather than discovered on
+  return. Saved plans address sheets by index, so a re-drop must match name,
+  sheet names, headers and row counts before they are applied.
+- **#206/#207 — an import is one thing you did, and undone as one.**
+  `batch_id` on the Import Log, minted per file read and carried by every part
+  of every target; `GET /api/import/batches` rolls the parts back up into the
+  act. A "Past imports" page shows which Tables each import created and which
+  it added to, with one action to delete everything it created — and only
+  what it created, because a Table that merely received rows is undone by the
+  per-run revert.
+- **#209 — columns after the rows are in.** Add, relabel, and rename in place.
+  The rename needed real server work: PUT /api/table_def matches columns BY
+  name, so a changed name reads as delete-plus-add and silently orphans the
+  data. `renameColumn` does the real DDL and carries the unique constraint's
+  own name, `title_column`, and a `field:<column>` id pattern with it.
+- **#208 — merging one Table into another.** A post-hoc merge is an import
+  whose source is a Table rather than a file, so it goes through
+  `sendImportRun` — which is what gives it chunking, per-row failures, an
+  Import Log entry, a batch, and revert, all for free. Folding pairs what it
+  can; `Glor` and `Floor` stay apart until the user says otherwise.
+
+### Dev previews
+
+Railway PR environments are enabled on the **Feather-Base Dev** project
+(bot-authored PRs included), so every pull request now brings its own running
+copy with its own empty database. `/preview?key=…` signs you in as an
+ordinary named user — never Administrator, refused outright — using the
+one-time handoff code so no JWT rides a URL.
+
+Two things worth not rediscovering:
+
+- **`SITE_URL` must be `https://${{RAILWAY_PUBLIC_DOMAIN}}` in the base
+  environment.** A PR environment inherits variables verbatim, so a literal
+  domain there mints links pointing at the wrong host.
+- **The preview seed runs in the pre-deploy step of EVERY environment**, so
+  it is gated on the same resolution the `/preview` route uses. Where preview
+  sign-in is not configured it says so and does nothing — otherwise the first
+  deploy of this release step would put a shareable-link account into
+  production.
+
+Full runbook: `docs/PREVIEW.md`.
+
+### Gotchas
+
+- **A debounced save is lost precisely when it matters.** Leaving the page is
+  when the snapshot must land and when its timer is about to be cleared. It is
+  flushed on unmount and `pagehide`, and a late timer checks it is still the
+  live snapshot — without that, a timer fired after a finished run's
+  `clearSession()` resurrected a session that was over. That cost a real
+  debugging round.
+- **The meta this server returns could not be sent back to it.** Every unset
+  optional came back `null` and the schema took only `string | undefined`, so
+  read-modify-write — the natural shape of a column editor — was rejected on
+  every one of them. Null and absent mean the same thing; the schema now says
+  so once.
+- **Dropping a file must clear the screen first.** Parsing is async, so a
+  restored grid stayed live and clickable for as long as the read took, and
+  edits made in that window were thrown away when the parse landed.
+- **Int columns are bigint and reach the client as strings.** `+=` over log
+  counts concatenated ("0"+"1"+"2" = "012") rather than adding.
+- Deleting a Table sweeps the Import Log rows pointing at it (DEL-R4), so a
+  batch whose Tables all went is itself gone from the next fetch. The
+  delete-batch confirmation is therefore reported by the PAGE, not the card.
+
+**Verified:** web 155 e2e / 94 unit passed, server 779 passed, both typechecks
+clean. Two failures, neither this work's and both established: e2e `UPS-J1`
+reproduces on main ([#212](https://github.com/siraj-samsudeen/featherbase/issues/212)
+— `feather-testing-core`'s `clickButton` substring-matches, so `Check`
+collides with the sidebar's `Checklist Run`), and server `sources-csv`'s
+parse-cache test chmods a directory read-only in a container running as uid 0,
+where root ignores directory permissions. Draft PR
+[#210](https://github.com/siraj-samsudeen/featherbase/pull/210).
+
+**Next:** #212 is the only thing left open from this stretch, and it is a
+harness fix in `feather-testing-postgres`/`feather-testing-core` rather than
+here — `clickButton` needs an exact-match option. Beyond that, the import
+work is done end to end; the natural next thread is whatever
+`docs/design/execution-plan.md` puts after M-import.
+
+## 2026-08-26 — the import wizard asks what is in the file first
+
+Owner report: importing a workbook of ~17 sheets (11 visible, 6–7 hidden) put
+**every sheet, with its full column grid, on one screen**, with everything
+selected by default. It made eleven Tables nobody wanted, there was no way to
+send same-shaped sheets into one Table, a failure on sheet 2 lost sheet 1's
+work, and nothing showed which Tables came from which file.
+
+The whole workflow is mapped as **[#197](https://github.com/siraj-samsudeen/featherbase/issues/197)**
+with twelve sub-issues (#198–#209) in three parts. **Part A (#198–#201) is
+built**; B and C are not.
+
+**The design was reviewed as an interactive mockup before any code**, and
+three rounds of owner feedback changed it materially — worth recording,
+because each one was a modelling error the mockup caught cheaply:
+
+1. The merge action was a disabled button nobody would find. It became an
+   explicit either/or that appears the moment anything is ticked.
+2. The reconciliation screen only let the owner ratify the system's guesses.
+   There was no path for "these two are the same thing and you could never
+   work that out" — `Store Code` and `Store Name`. User-driven combining is
+   now a first-class action (specced, not yet built — see below).
+3. The decision applied to the whole selection, so a 17-sheet workbook could
+   only produce one answer. Targets have to accumulate.
+
+### What shipped
+
+- **#198 — a parsed sheet knows whether the workbook was hiding it.**
+  `ParsedSheet.visibility`, from `wb.Workbook.Sheets`. `very-hidden` stays
+  distinct from `hidden` (only VBA can set it, so it is a stronger statement
+  of intent). Read by index in `SheetNames`, **not** by position in the
+  output — an all-blank sheet is dropped, so indexing as sheets are pushed
+  would shift every visibility after the gap by one.
+- **#199/#200 — a file overview before the columns.** Sheets only; visible
+  first, hidden below in a collapsed section; **nothing selected by default**,
+  which is the direct fix for the eleven Tables. Individual / per-group /
+  tri-state-master selection, a sticky action bar, and a refusal in words
+  when nothing is chosen. A CSV skips the step entirely.
+- **#201 — several sheets can become one Table.** `mergeSheetHeaders` folds
+  with **`sanitizeColumnName`, the normalizer `autoMapColumns` already uses**
+  — reused, not reinvented — so `Floor` / `FLOOR` / `floor ` are one column.
+
+### Decisions the owner made, and where they live
+
+- **Q1 — merging sheets with differing headers is allowed**, reconciled per
+  sheet rather than refused. Recorded on #201.
+- **Q5 — no fuzzy guessing.** Case, spaces, underscores and punctuation fold
+  silently; nothing beyond that is ever guessed, so `Glor` is never assumed to
+  mean `Floor`. It stays its own column until the user says otherwise.
+- **Q2 (resume) and Q3 (batch delete semantics) are still open** on #197.
+
+### Gotchas worth keeping
+
+- **A merge group imports member by member, never as one blended batch.**
+  Two things die on concatenation: the Import Log's per-sheet `sheet_name`,
+  and row-number truth (#115) — a failed row's number is only true against
+  its own sheet. Failures now carry a sheet index and read "Store 003 row 14".
+  One `run_id` still spans the group, so one revert takes all of it back, and
+  `table_created` is stamped once rather than once per member.
+- **Auto-navigation after import now requires a single-*sheet* target.** It
+  existed because a lone sheet leaves nothing to look at. A merge group is one
+  target but many sheets, and jumping to the list view destroyed its per-sheet
+  result and its revert control — the owner's original complaint, reproduced
+  by the new feature.
+- **"Skip this sheet" is gone from the target picker.** Leaving a sheet
+  unselected is the one way to exclude it; two mechanisms for one act is what
+  the redesign removes. `mode: 'skip'` survives as the internal parked state.
+- **`pnpm install` cannot fetch `github:owner/repo#sha` everywhere.** pnpm
+  resolves that shorthand to codeload.github.com, which some egress policies
+  block with a bare 403. Both `package.json`s now use `git+https://`, same
+  repo and commit. They still move back to a version range together when the
+  harness publishes.
+- **Two test failures in this environment are not this work's**, and both were
+  established rather than assumed: e2e `UPS-J1` reproduces identically on main
+  (117/1 there, 125/1 here) — the harness resolves `Check` by accessible name
+  and the sidebar's "Checklist Run" matches the same substring, so strict mode
+  refuses the locator; worth its own issue. And server `sources-csv`'s "a
+  failed write never poisons the parse cache" chmods a directory read-only to
+  force a failure, but this container runs as uid 0 and root ignores directory
+  permissions. Environmental — CI runs non-root.
+- **Chromium:** this image ships build 1194 while `@playwright/test` resolves
+  to one wanting 1228, so run e2e with
+  `CHROMIUM_PATH=/opt/pw-browsers/chromium` — the escape hatch CLAUDE.md
+  already documents. Do not run `playwright install`.
+- **Run e2e as `pnpm --filter web e2e`, never `playwright test` directly.**
+  Only the former sets `E2E_ISOLATED=1`; the bare command drives the
+  developer's own database, which cost a confusing debugging round here.
+
+**Verified:** web 68 unit / 125 e2e passed, server 733 passed, both typechecks
+clean, `./init.sh` boots and smoke passes. Draft PR
+[#210](https://github.com/siraj-samsudeen/featherbase/pull/210).
+
+**Next:** the user-driven column combine — ticking two columns of the merged
+set and declaring them one, with sample values shown and a rule for sheets
+that carry both. It is the part of the mockup the owner pushed hardest on and
+the one piece of #201's design not yet built; it needs its own ticket under
+#197. Then Part B: the stepper (#202), the failing sheet that abandons the run
+(#203), and resume (#204, gated on Q2).
+
 ## 2026-08-15 — e2e brings its own database, and drops it first
 
 The last of the four. e2e writes are real commits outside any sandbox, so

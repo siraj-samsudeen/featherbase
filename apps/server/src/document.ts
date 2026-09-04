@@ -288,6 +288,42 @@ function pickChildInputs(meta: TableMeta, values: RowValues) {
   return out
 }
 
+// #231: `reqd: true` on a Sub-table column means what it means on a scalar
+// column — the row cannot be created without at least one child row.
+// The scalar rule lives in the metadata-generated zod schema, but that layer
+// cannot carry this one: tableSchemaToZod drops Sub-table columns from its
+// shape, and pickFieldValues strips them from the payload before
+// validateValues ever runs, so a schema-level rule would either fire on every
+// save (the server never hands zod the key) or force child arrays through the
+// whole scalar pipeline — defaults, tier stripping, the null backfill, dbRow
+// construction — only to be filtered out again. So it is enforced here, beside
+// the children handling that owns the arrays, and raised as the same
+// field-keyed ValidationError a missing reqd scalar raises (417, fields keyed
+// by column name, message 'Required') so every renderer treats them alike.
+//
+// Update mirrors the scalar partial-update rule exactly: an absent key means
+// "children untouched" and is no violation; a key present as [] is the caller
+// clearing a required grid, and is refused. A present non-array still falls
+// through to pickChildInputs' shape error.
+function assertRequiredChildren(
+  meta: TableMeta,
+  values: RowValues,
+  mode: 'insert' | 'update',
+): void {
+  const errors: Record<string, string> = {}
+  for (const f of meta.columns) {
+    if (f.column_type !== 'Sub-table' || !f.reqd) continue
+    const raw = values[f.column_name]
+    if (raw === undefined) {
+      if (mode === 'insert') errors[f.column_name] = 'Required'
+      continue
+    }
+    if (Array.isArray(raw) && raw.length === 0) errors[f.column_name] = 'Required'
+  }
+  if (Object.keys(errors).length)
+    throw new AppError('ValidationError', `Invalid values for ${meta.name}`, errors)
+}
+
 async function saveChildren(
   tx: typeof sql,
   parentMeta: TableMeta,
@@ -408,6 +444,10 @@ export async function checkRowForInsert(meta: TableMeta, values: RowValues): Pro
       `${meta.name} is bound to data source ${meta.data_source}; bulk import is not supported on bound Tables yet`,
     )
   validateValues(meta, applyDefaults(meta, pickFieldValues(meta, values)), 'insert')
+  // #231: the real import inserts through saveDoc, so the dry run has to
+  // apply the same required-children rule or it would pass rows the import
+  // then refuses.
+  assertRequiredChildren(meta, values, 'insert')
   const rowId = String(values[ROW_KEY] ?? '').trim()
   if (meta.id_pattern === 'prompt' && !rowId)
     throw new AppError('ValidationError', `${meta.name} requires a Row ID`, {
@@ -486,6 +526,7 @@ export async function saveDoc(
     applyDefaults(meta, stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values))),
     'insert',
   )
+  assertRequiredChildren(meta, values, 'insert')
   // SLA: stamp response/resolution deadlines from the active SLA (if any)
   // before the row is written, so they are part of the insert itself.
   await applySla(meta, fieldValues)
@@ -729,6 +770,7 @@ async function updateDoc(
     stripUnwritableFields(meta.columns, writeTiers, pickFieldValues(meta, values)),
     'update',
   )
+  assertRequiredChildren(meta, values, 'update')
   // WF-003: the workflow-bound state field only changes through workflow
   // actions (apply_workflow_action) — a direct save changing it would bypass
   // the role-gated transitions.

@@ -1,82 +1,24 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth } from './fixtures'
+import { ensureListTableA, ensureTable, fillRows, LIST_DT_A as DT_A } from './fixtures-ui'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
-const DT_A = 'UI List A'
 const DT_B = 'UI List B'
 
-async function adminToken(request: APIRequestContext): Promise<string> {
-  const res = await request.post('/api/login', {
-    data: { usr: 'Administrator', pwd: ADMIN_PWD },
-  })
-  return ((await res.json()) as { token: string }).token
-}
-
-async function ensureFixtures(request: APIRequestContext) {
-  const token = await adminToken(request)
-  const auth = { Authorization: `Bearer ${token}` }
-
-  for (const [name, columns] of [
-    [
-      DT_A,
-      [
-        { column_name: 'title', column_type: 'Data', label: 'Title', in_list_view: true },
-        { column_name: 'qty', column_type: 'Int', label: 'Qty', in_list_view: true },
-      ],
-    ],
-    [
-      DT_B,
-      [
-        { column_name: 'city', column_type: 'Data', label: 'City', in_list_view: true },
-        { column_name: 'active', column_type: 'Check', label: 'Active', in_list_view: true },
-      ],
-    ],
-  ] as const) {
-    const meta = await request.get(`/api/table/${encodeURIComponent(name)}:meta`, { headers: auth })
-    if (meta.status() === 404) {
-      await request.post('/api/table_def', { headers: auth, data: { name, columns } })
-    }
-  }
-
-  const listA = await request.get(
-    `/api/table/${encodeURIComponent(DT_A)}?limit_page_length=1`,
-    { headers: auth },
-  )
-  const totalA = ((await listA.json()) as { total: number }).total
-  for (let i = totalA; i < 30; i++) {
-    await request.post(`/api/table/${encodeURIComponent(DT_A)}`, {
-      headers: auth,
-      data: { title: `item-${String(i).padStart(2, '0')}`, qty: i },
-    })
-  }
-
-  const listB = await request.get(
-    `/api/table/${encodeURIComponent(DT_B)}?limit_page_length=1`,
-    { headers: auth },
-  )
-  const totalB = ((await listB.json()) as { total: number }).total
-  for (let i = totalB; i < 3; i++) {
-    await request.post(`/api/table/${encodeURIComponent(DT_B)}`, {
-      headers: auth,
-      data: { city: `city-${i}`, active: i % 2 === 0 },
-    })
-  }
-}
-
 test.beforeAll(async ({ request }) => {
-  await ensureFixtures(request)
+  const auth = await adminAuth(request)
+  // The DT_A fill-to-30 is shared with filters.spec (./fixtures-ui): both
+  // assert exact counts against it, and either may run first.
+  await ensureListTableA(request, auth)
+  await ensureTable(request, auth, {
+    name: DT_B,
+    columns: [
+      { column_name: 'city', column_type: 'Data', label: 'City', in_list_view: true },
+      { column_name: 'active', column_type: 'Check', label: 'Active', in_list_view: true },
+    ],
+  })
+  await fillRows(request, auth, DT_B, 3, (i) => ({ city: `city-${i}`, active: i % 2 === 0 }))
 })
 
-async function login(page: import('@playwright/test').Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
-
 test('UI-002: one generic ListView renders two different Tables with sort + pagination', async ({ page }) => {
-  await login(page)
-
   // --- Table A: metadata columns, pagination
   await page.goto(`/admin/${encodeURIComponent(DT_A)}`)
   await expect(page.getByTestId('col-title')).toContainText('Title')

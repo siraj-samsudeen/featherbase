@@ -1,15 +1,9 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { anonymousTest as test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const USER = 'set2-e2e-user@x.com'
 
-async function adminHeaders(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
-
 async function resetKeyFromSink(request: APIRequestContext): Promise<string> {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   const filters = encodeURIComponent(JSON.stringify([['mail_to', '=', USER]]))
   const fields = encodeURIComponent(JSON.stringify(['row_id', 'body', 'created_at']))
   // Poll: the mail is delivered inside the reset-request handler, but allow a
@@ -34,7 +28,7 @@ async function resetKeyFromSink(request: APIRequestContext): Promise<string> {
 test.describe.configure({ mode: 'serial' })
 
 test.beforeAll(async ({ request }) => {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   const created = await request.post('/api/save_row', {
     headers,
     data: { table: 'User', row: { row_id: USER, email: USER, full_name: 'Set2 E2E', enabled: true } },
@@ -78,7 +72,7 @@ test('SET-002: password reset via emailed link works end to end', async ({ page,
 
 // SET-002: a disabled user cannot log in.
 test('SET-002: a disabled user cannot log in', async ({ page, request }) => {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   const doc = (await (
     await request.get(`/api/table/User/${encodeURIComponent(USER)}`, { headers })
   ).json()) as { updated_at: string }

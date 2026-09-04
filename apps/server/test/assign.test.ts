@@ -2,6 +2,8 @@ import { describe, expect } from 'vitest'
 import { sql } from '../src/db'
 import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
+import { saveDoc } from '../src/document'
+import { createAssignment } from '../src/assign'
 
 // EML-006: assigning a document creates a ToDo for the assignee and a
 // notification.
@@ -78,5 +80,26 @@ describe('EML-006: assignment', () => {
       body: JSON.stringify({ table: DT, row_id: 'asg-1', assign_to: ASSIGNEE }),
     })
     expect(res.status).toBe(401)
+  })
+})
+
+// Moved from coverage-gaps.test.ts (#221): createAssignment's default
+// description when the caller supplies none. Exercises createAssignment
+// directly (a deliberate exception to the HTTP-first idiom) since the point
+// is the RPC's default, not the /api/assign route around it.
+describe('assignment + RPC edges', () => {
+  test('createAssignment defaults its description', async ({ admin, createUser }) => {
+    const DT = 'Cov Assign Note'
+    await admin.post('/api/table_def', {
+      name: DT,
+      columns: [{ column_name: 'title', column_type: 'Data' }],
+    })
+    const user = await createUser({ roles: [] })
+    const doc = await saveDoc(DT, { title: 'x' }, 'Administrator')
+    await createAssignment(DT, String(doc.row_id), String(user.user), 'Administrator')
+    const [todo] = await sql`
+      select description from todo
+      where ref_table = ${DT} and reference_name = ${String(doc.row_id)}`
+    expect(todo.description).toBe(`Assigned ${DT} ${String(doc.row_id)}`)
   })
 })

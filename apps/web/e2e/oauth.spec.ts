@@ -1,16 +1,10 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { anonymousTest as test, expect, adminAuth } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const EMAIL = 'oauth.e2e.user@gmail.com'
-
-async function adminHeaders(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
 
 test.beforeEach(async ({ request }) => {
   // Start from a clean slate so the flow exercises account CREATION.
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   await request.delete(`/api/table/User/${encodeURIComponent(EMAIL)}`, { headers })
 })
 
@@ -47,7 +41,7 @@ test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', asyn
   expect(visited.join(' ')).not.toContain(stored as string)
 
   // The User was created and marked as a Google login.
-  const headers = await adminHeaders(page.request)
+  const headers = await adminAuth(page.request)
   const doc = (await (
     await page.request.get(`/api/table/User/${encodeURIComponent(EMAIL)}`, { headers })
   ).json()) as { row_id: string; social_login: string; enabled: boolean }
@@ -60,7 +54,7 @@ test('PLAT-006: a second OAuth sign-in links the same User (no duplicate)', asyn
   // Pre-create the user (as if from a first sign-in) to prove the flow LINKS
   // rather than duplicating. It is created enabled on purpose: since #137 a
   // disabled account is refused, never re-enabled by signing in.
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   await request.post('/api/save_row', {
     headers,
     data: { table: 'User', row: { row_id: EMAIL, email: EMAIL, full_name: 'Existing', enabled: true, roles: [] } },

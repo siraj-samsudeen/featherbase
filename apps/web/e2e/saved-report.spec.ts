@@ -1,6 +1,5 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminToken, bearer, type APIRequestContext } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'RPT Saved Task'
 const REPORT = 'Open tasks by status'
 
@@ -8,9 +7,8 @@ const REPORT = 'Open tasks by status'
 // filters, and grouping.
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
-  const auth = { Authorization: `Bearer ${token}` }
+  const token = await adminToken(request)
+  const auth = bearer(token)
   // RPT Task fixtures exist via report-view.spec; make sure here too (idempotent).
   const dt = await request.post('/api/table_def', {
     headers: auth,
@@ -43,12 +41,6 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 })
 
 test('RPT-002: saved report restores columns, filters, and grouping', async ({ page }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   // Configure: drop qty column, filter status=Open, group by status.
   await page.goto(`/admin/${encodeURIComponent(DT)}/view/report`)
   await expect(page.getByTestId('report-row')).toHaveCount(3)

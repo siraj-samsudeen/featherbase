@@ -1,32 +1,22 @@
-import { expect, test } from '@playwright/test'
+import { test, expect, adminAuth } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Naming Demo'
 
-async function login(page: import('@playwright/test').Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await expect(page).toHaveURL(/\/admin/)
-}
+// NAM-001 (client half). Series *naming* itself is owned by
+// apps/server/test/naming.test.ts; what only the browser can see is the
+// builder's own derivation — the prefix it composes from the Table name, the
+// preview it renders for a digit count, and the fact that the pattern the UI
+// composed is the one that reaches the server. Cited as evidence for
+// IMP-R6.shape in docs/design/requirements-framework.md (Part II).
 
-async function token(request: import('@playwright/test').APIRequestContext) {
-  const res = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await res.json()) as { token: string }).token
-}
-
-// NAM-001: the builder derives a series from the Table name, the digit count is
-// selectable down to a bare 1/2/3, and the pattern reaches the server.
-test('NAM-001: build a Table with a naming series; rows are named from it', async ({
+test('NAM-001: the builder derives the series prefix and preview from the Table name', async ({
   page,
   request,
 }) => {
-  const auth = { Authorization: `Bearer ${await token(request)}` }
+  const auth = await adminAuth(request)
   const exists = await request.get(`/api/table/${encodeURIComponent(DT)}:meta`, { headers: auth })
   test.skip(exists.status() === 200, `${DT} already exists in this DB; skipping the create path`)
 
-  await login(page)
   await page.goto('/admin/new-table')
   await expect(page.getByTestId('table-builder')).toBeVisible()
 
@@ -50,22 +40,15 @@ test('NAM-001: build a Table with a naming series; rows are named from it', asyn
   // The server stored the pattern the UI composed.
   const meta = await request.get(`/api/table/${encodeURIComponent(DT)}:meta`, { headers: auth })
   expect(((await meta.json()) as { id_pattern: string }).id_pattern).toBe('ND-.#')
-
-  // And a row saved through the form is named from the series, not a hash.
-  await page.goto(`/admin/${encodeURIComponent(DT)}/new`)
-  await page.locator('[data-field=title]').fill('first')
-  await page.getByTestId('form-save').click()
-  await expect(page.getByTestId('form-status')).toContainText('Saved')
-  await expect(page).toHaveURL(/\/admin\/Naming%20Demo\/ND-1$/)
 })
 
 // NAM-001: an already-created Table can be switched to a series afterwards —
 // the case an Excel import that landed on hash ids needs.
-test('NAM-001: change an existing Table to a series from the list view', async ({
+test('NAM-001: switching an existing Table to a series offers the derived prefix', async ({
   page,
   request,
 }) => {
-  const auth = { Authorization: `Bearer ${await token(request)}` }
+  const auth = await adminAuth(request)
   const created = await request.post('/api/table_def', {
     headers: auth,
     data: { name: DT, columns: [{ column_name: 'title', column_type: 'Data', in_list_view: true }] },
@@ -79,7 +62,6 @@ test('NAM-001: change an existing Table to a series from the list view', async (
     data: { id_pattern: 'hash' },
   })
 
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}`)
   await page.getByTestId('open-naming').click()
   await expect(page.getByTestId('table-naming')).toBeVisible()
@@ -95,7 +77,9 @@ test('NAM-001: change an existing Table to a series from the list view', async (
   const meta = await request.get(`/api/table/${encodeURIComponent(DT)}:meta`, { headers: auth })
   expect(((await meta.json()) as { id_pattern: string }).id_pattern).toBe('EXISTING-.###')
 
-  // A bad pattern is refused with the server's field-wise message.
+  // A bad pattern is refused with the server's field-wise message. This is the
+  // only coverage PUT :name/id_pattern has; the server suite does not test the
+  // endpoint (see the batch-1 PR note) — move it there before deleting it here.
   const bad = await request.put(`/api/table_def/${encodeURIComponent(DT)}/id_pattern`, {
     headers: auth,
     data: { id_pattern: 'EXISTING-' },

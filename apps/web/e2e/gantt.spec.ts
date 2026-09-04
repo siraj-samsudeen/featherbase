@@ -1,17 +1,11 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect, adminAuth } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const DT = 'Gantt E2E Project'
-
-async function adminHeaders(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
 
 let taskA = ''
 
 test.beforeAll(async ({ request }) => {
-  const headers = await adminHeaders(request)
+  const headers = await adminAuth(request)
   const dt = await request.post('/api/table_def', {
     headers,
     data: {
@@ -41,16 +35,7 @@ test.beforeAll(async ({ request }) => {
   })
 })
 
-async function login(page: import('@playwright/test').Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
-
 test('UI-022: bars span the correct ranges', async ({ page }) => {
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}/view/gantt`)
   await expect(page.getByTestId('gantt-view')).toBeVisible()
 
@@ -66,7 +51,6 @@ test('UI-022: bars span the correct ranges', async ({ page }) => {
 })
 
 test('UI-022: resizing a bar updates the end date', async ({ page }) => {
-  await login(page)
   await page.goto(`/admin/${encodeURIComponent(DT)}/view/gantt`)
   const barA = page.getByTestId(`gantt-bar-${taskA}`)
   await expect(barA).toHaveAttribute('data-end', '2026-03-05')
@@ -85,10 +69,7 @@ test('UI-022: resizing a bar updates the end date', async ({ page }) => {
 
   // And the change is persisted server-side.
   const check = await page.request.get(`/api/table/${encodeURIComponent(DT)}/${taskA}`, {
-    headers: { Authorization: `Bearer ${await (async () => {
-      const l = await page.request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-      return ((await l.json()) as { token: string }).token
-    })()}` },
+    headers: await adminAuth(page.request),
   })
   expect(((await check.json()) as { end_date: string }).end_date).toContain('2026-03-07')
 })

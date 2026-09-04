@@ -54,7 +54,7 @@ describe('WEB-002: web forms', () => {
       message: 'Hi',
       secret_note: 'should be dropped',
     })
-    expect(res.row_id).toBeTruthy()
+    expect(res.row_id).toMatch(/^[0-9a-f]{10}$/)
     const [doc] =
       await sql`select full_name, message, secret_note from wf_srv_msg where row_id = ${res.row_id}`
     expect(doc.full_name).toBe('Alice')
@@ -89,5 +89,58 @@ describe('WEB-002: web forms', () => {
       body: JSON.stringify({ values: { full_name: 'HttpAnon', message: 'via http' } }),
     })
     expect(submit.status).toBe(201)
+  })
+})
+
+// Moved from coverage-gaps.test.ts (#221): the web_fields column-whitelist
+// parser tolerates malformed JSON, an already-parsed array, and an absent
+// column list.
+describe('web form: field whitelist parsing', () => {
+  test('malformed web_fields yields an empty field list; an array passes through', async ({
+    admin,
+  }) => {
+    const DT = 'Cov Webform Note'
+    await admin.post('/api/table_def', {
+      name: DT,
+      columns: [{ column_name: 'title', column_type: 'Data' }],
+    })
+    await admin.post('/api/save_row', {
+      table: 'Web Form',
+      row: {
+        row_id: 'Cov WF Broken',
+        title: 'Broken',
+        route: 'cov-broken',
+        ref_table: DT,
+        published: true,
+        web_fields: '{not json',
+      },
+    })
+    expect((await getWebFormConfig('cov-broken')).columns).toEqual([])
+
+    await admin.post('/api/save_row', {
+      table: 'Web Form',
+      row: {
+        row_id: 'Cov WF Array',
+        title: 'Array',
+        route: 'cov-array',
+        ref_table: DT,
+        published: true,
+        web_fields: ['title'],
+      },
+    })
+    const config = await getWebFormConfig('cov-array')
+    expect(config.columns.map((f) => f.column_name)).toEqual(['title'])
+
+    await admin.post('/api/save_row', {
+      table: 'Web Form',
+      row: {
+        row_id: 'Cov WF Nofields',
+        title: 'Nofields',
+        route: 'cov-nofields',
+        ref_table: DT,
+        published: true,
+      },
+    })
+    expect((await getWebFormConfig('cov-nofields')).columns).toEqual([])
   })
 })

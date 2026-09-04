@@ -1,12 +1,6 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { test, expect } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
 const SVC = 'svc-e2e-spec'
-
-async function adminHeaders(request: APIRequestContext) {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return { Authorization: `Bearer ${((await login.json()) as { token: string }).token}` }
-}
 
 // #131: the access-tokens screen — create a service account, issue it a
 // token through the show-once modal, prove the secret authenticates, revoke.
@@ -14,12 +8,6 @@ test('#131: service account + token lifecycle through the Admin screen', async (
   page,
   request,
 }) => {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-
   await page.goto('/admin/access-tokens')
   await expect(page.getByTestId('access-tokens')).toBeVisible()
 

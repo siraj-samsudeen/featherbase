@@ -119,7 +119,7 @@ describe('app manifests can declare Data Sources and reflections', () => {
     expect(res.sources).toEqual([]) // adopted, so not recorded
     await admin.post('/api/uninstall_app', { name: 'appsrc-demo' })
     const [src] = await sql`select 1 from data_source where row_id = 'appsrc-fixture'`
-    expect(src).toBeTruthy() // predated the app — never removed
+    expect(src).toEqual({ '?column?': 1 }) // predated the app — never removed
   })
 
   test('a relation the source does not have fails the install loudly', async ({ admin }) => {

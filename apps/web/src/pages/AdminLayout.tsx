@@ -16,6 +16,7 @@ import {
   type ServerRecentEntry,
 } from '../lib/recents'
 import { useHomePages } from '../lib/home-pages'
+import { useIsPreview } from '../lib/session'
 import { useRealtime } from '../lib/realtime'
 import { useSettings } from '../lib/settings'
 import { useTheme } from '../lib/theme'
@@ -53,6 +54,21 @@ connectEventSink({
 
 // Frappe-style Admin shell: top navbar (brand + command bar + avatar) and a
 // home page sidebar. All Tables render inside <Outlet/>.
+// A dev-preview deployment announces itself. The link is shareable and the
+// data is disposable; a visitor who does not know that may mistake it for the
+// real thing, or be surprised when it is reset.
+function PreviewBanner() {
+  if (!useIsPreview()) return null
+  return (
+    <div
+      data-testid="preview-banner"
+      className="flex shrink-0 items-center justify-center gap-2 bg-[var(--color-warn-tint)] px-3 py-1 text-xs font-medium text-[var(--color-warn)]"
+    >
+      Preview deployment — data here is disposable and may be reset at any time.
+    </div>
+  )
+}
+
 export function AdminLayout() {
   const navigate = useNavigate()
   const router = useRouter()
@@ -348,6 +364,7 @@ export function AdminLayout() {
   return (
     <PeekProvider>
     <div className="flex h-full flex-col">
+      <PreviewBanner />
       {/* Navbar */}
       <header className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 sm:gap-4 sm:px-4">
         <button
@@ -675,6 +692,15 @@ export function AdminLayout() {
             >
               Import Data
             </Link>
+            {/* #206: an import is a thing you did, not just rows that
+                appeared — so it has a place to be found again. */}
+            <Link
+              to="/admin/imports"
+              data-testid="past-imports-link"
+              className="mt-1 block text-center text-xs text-[var(--color-ink-faint)] underline"
+            >
+              Past imports
+            </Link>
           </div>
           {/* #80: the sidebar is Home Pages only (Frappe parity). Every
               table stays reachable through the All tables entry below —
@@ -779,6 +805,17 @@ export function AdminLayout() {
 // client-side confirm check, then a success state.
 // #101 Phase 2: one sidebar recall row — label over sub-label, truncated to
 // the rail's width, ★-marked when it comes from the Frequent ranking.
+//
+// It is an anchor, not a button, and that is a correctness fix rather than a
+// style choice (#228). Every sidebar row is a *destination* — the searches
+// that merely refill the command bar are filtered out before they get here —
+// so `link` is the honest role, and it buys real href behaviour
+// (middle-click, open-in-new-tab) for free. As a button it also sat in the
+// same role/name space as the page's own buttons, and its name is whatever
+// row the operator last visited: a chip reading "Checklist Run — checklist"
+// collided with the import wizard's Check button and broke an unrelated
+// journey depending only on which spec had run before it. A link cannot
+// collide with a button however the trail is worded.
 function SidebarRecentRow({
   entry,
   frequent,
@@ -789,9 +826,14 @@ function SidebarRecentRow({
   onOpen: (entry: RecentEntry) => void
 }) {
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(entry)}
+    <a
+      href={entry.path}
+      onClick={(e) => {
+        // Let the browser handle the modified clicks it handles better.
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return
+        e.preventDefault()
+        onOpen(entry)
+      }}
       data-testid={frequent ? 'sidebar-frequent' : 'sidebar-recent'}
       title={entry.sub ? `${entry.label} — ${entry.sub}` : entry.label}
       className="block w-full rounded-md px-2 py-1 text-left hover:bg-[var(--color-subtle)]"
@@ -803,7 +845,7 @@ function SidebarRecentRow({
       {entry.sub && (
         <span className="block truncate text-[11px] text-[var(--color-ink-faint)]">{entry.sub}</span>
       )}
-    </button>
+    </a>
   )
 }
 

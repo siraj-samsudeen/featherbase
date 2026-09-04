@@ -16,7 +16,19 @@ class RealtimeClient {
   private socket: WebSocket | null = null
   private handlers = new Set<Handler>()
   private channels = new Set<string>()
+  // Channels the server has acknowledged registering. `channels` is what we
+  // have *asked* for; this is what is actually live.
+  private live = new Set<string>()
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+  // #224: mirror the live set onto the document element so it is observable
+  // from outside the bundle. Nothing in the UI reads it — it exists so a
+  // test can wait for "B is really subscribed" instead of sleeping a second
+  // and hoping. Written as JSON because channel names contain both ':' and
+  // spaces (`list:Sales Order`), so no separator is safe.
+  private mirrorLiveChannels() {
+    document.documentElement.dataset.realtimeChannels = JSON.stringify([...this.live])
+  }
 
   private connect() {
     const token = getToken()
@@ -33,6 +45,11 @@ class RealtimeClient {
     socket.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data) as RealtimeEvent
+        if (msg.channel === 'system' && msg.event === 'subscribed') {
+          for (const ch of (msg.payload as { channels?: string[] } | undefined)?.channels ?? [])
+            this.live.add(ch)
+          this.mirrorLiveChannels()
+        }
         for (const h of this.handlers) h(msg)
       } catch {
         // ignore malformed frames
@@ -40,6 +57,10 @@ class RealtimeClient {
     }
     socket.onclose = () => {
       this.socket = null
+      // Nothing is live across a dropped socket; the channels are re-sent on
+      // reconnect and re-acked from scratch.
+      this.live.clear()
+      this.mirrorLiveChannels()
       // Reconnect while we still have a token (i.e. logged in).
       if (getToken() && !this.reconnectTimer)
         this.reconnectTimer = setTimeout(() => {

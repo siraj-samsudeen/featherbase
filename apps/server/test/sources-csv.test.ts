@@ -129,7 +129,7 @@ describe('M1: csv-folder source', () => {
     const doc = (await admin.get(`/api/table/${enc}/1`)) as Record<string, unknown>
     expect(doc.store_code).toBe('KKL')
     expect(doc.store_name).toBe('Karaikal, Main')
-    expect(doc.updated_at).toBeTruthy()
+    expect(Date.parse(doc.updated_at as string)).not.toBeNaN()
   })
 
   test('a cell edit rewrites only that record — other lines keep their bytes', async ({

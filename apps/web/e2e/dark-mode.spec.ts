@@ -1,57 +1,28 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { test, expect, adminToken } from './fixtures'
 
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
+// UI-024, browser-only remainder. The toggle's DOM effect, its per-user
+// server storage, and a fresh load reading it back are all component tests
+// now (apps/web/test/theme.test.tsx, #223 batch 1). What no jsdom test can
+// see is the payoff: jsdom loads no stylesheet and computes no cascade, so
+// only a real browser can say whether marking the root `dark` actually
+// repaints the canvas. That one assertion is what is left here.
 
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
-
-async function serverTheme(request: APIRequestContext): Promise<string> {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
-  const who = (await (await request.get('/api/whoami', { headers: { Authorization: `Bearer ${token}` } })).json()) as {
-    theme?: string
-  }
-  return who.theme ?? 'light'
-}
-
-// Ensure the account starts (and ends) in light mode so this test is isolated.
 test.beforeEach(async ({ request }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
+  const token = await adminToken(request)
   await request.post('/api/set_theme', { headers: { Authorization: `Bearer ${token}` }, data: { theme: 'light' } })
 })
 test.afterEach(async ({ request }) => {
-  const login = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  const token = ((await login.json()) as { token: string }).token
+  const token = await adminToken(request)
   await request.post('/api/set_theme', { headers: { Authorization: `Bearer ${token}` }, data: { theme: 'light' } })
 })
 
-// UI-024: toggling dark mode re-skins the UI and the preference persists
-// per-user (server-side), surviving a reload.
-test('UI-024: dark mode toggles, persists across reload, and is stored per-user', async ({ page, request }) => {
-  await login(page)
-  const html = page.locator('html')
-
-  // Starts light.
-  await expect(html).not.toHaveAttribute('data-theme', 'dark')
+test('UI-024: switching to dark actually repaints the canvas', async ({ page }) => {
+  await page.goto('/admin')
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'dark')
   const lightBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
 
-  // Toggle to dark: the root marks dark and the canvas darkens.
   await page.getByTestId('theme-toggle').click()
-  await expect(html).toHaveAttribute('data-theme', 'dark')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   const darkBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
   expect(darkBg).not.toBe(lightBg)
-
-  // The preference is stored server-side, per user.
-  await expect.poll(() => serverTheme(request)).toBe('dark')
-
-  // It survives a reload (no flash back to light).
-  await page.reload()
-  await page.waitForURL(/\/admin/)
-  await expect(html).toHaveAttribute('data-theme', 'dark')
 })

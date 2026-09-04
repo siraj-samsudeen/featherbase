@@ -1,19 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
-
-const ADMIN_PWD = process.env.ADMIN_PASSWORD ?? 'admin'
-
-async function login(page: Page) {
-  await page.goto('/login')
-  await page.fill('input[name=email]', 'Administrator')
-  await page.fill('input[name=password]', ADMIN_PWD)
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-}
-
-async function adminToken(request: APIRequestContext): Promise<string> {
-  const res = await request.post('/api/login', { data: { usr: 'Administrator', pwd: ADMIN_PWD } })
-  return ((await res.json()) as { token: string }).token
-}
+import { anonymousTest as test, expect, adminToken, loginAs, type APIRequestContext } from './fixtures'
 
 async function serverPalette(request: APIRequestContext): Promise<string> {
   const token = await adminToken(request)
@@ -38,7 +23,7 @@ test.afterEach(async ({ request }) => resetPalette(request))
 // UI-025: the palette picker re-skins the UI (second theming axis alongside
 // light/dark), persists per-user on the server, and survives a reload.
 test('UI-025: palette switches, persists across reload, and is stored per-user', async ({ page, request }) => {
-  await login(page)
+  await loginAs(page)
   const html = page.locator('html')
 
   // Starts classic: no data-palette attribute, Frappe-blue brand.
@@ -97,7 +82,7 @@ test('UI-025: palette switches, persists across reload, and is stored per-user',
 // the navbar selects collapse to avoid horizontal overflow (PR #92 review).
 test('UI-025: on mobile the palette moves into the account menu and the navbar does not overflow', async ({ page, request }) => {
   await page.setViewportSize({ width: 390, height: 720 })
-  await login(page)
+  await loginAs(page)
 
   await expect(page.getByTestId('palette-select')).toBeHidden()
   const noOverflow = await page.evaluate(
@@ -128,7 +113,7 @@ test('UI-025: a second user in the same tab does not inherit the first user’s 
   await request.post('/api/set_password', { headers, data: { user: USER_B, password: 'palettepw123' } })
 
   // A (Administrator) picks Ivory; wait for it to persist server-side.
-  await login(page)
+  await loginAs(page)
   await page.getByTestId('palette-select').selectOption('ivory')
   await expect(page.locator('html')).toHaveAttribute('data-palette', 'ivory')
   await expect.poll(() => serverPalette(request)).toBe('ivory')
