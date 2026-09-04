@@ -443,11 +443,24 @@ other verbs. Until it ships, 0.2.0's `step(name, fn)` escape hatch can
 host an interim capture (`step('snap IMP-J1.4', ({ page }) =>
 page.screenshot(...))`) without leaving the chain.
 
-Exemplar: [`docs/manual/spreadsheet-import.html`](../manual/spreadsheet-import.html)
-— hand-rendered once to fix the target output (now an interactive HTML
-field guide, same slot contract); the generator that derives it from the
-spec's journey tables is adoption work, built only after the format
-survives review.
+**Ratified 2026-09-04 — the generator exists and the manual is one page,
+three lenses.** `tools/build-manual.mjs` (`pnpm manual:build`) renders
+[`docs/manual/spreadsheet-import.html`](../manual/spreadsheet-import.html)
+from [spec 0008](../specs/0008-spreadsheet-import.md); the emitted file
+carries a GENERATED banner and is never edited by hand. The lens rule
+(§7) is now served by one document rather than several: **Read** is the
+end-user lens (imperative voice, no rule IDs, no verdicts), **Test** is
+the session instrument (per-step tick + a "what you actually saw"
+observation, rolled up into a matrix and exported as Markdown with the
+step IDs attached), **Build** is the builder's lens (rule chips per
+step, evidence verdicts as badges derived from the spec's `> evidence:`
+lines — witnessed status is computed, never hand-marked). Two journey-
+layer extensions rode in with it and are now standing: the **language
+split** (journey steps in the user's language, press-release voice —
+implementation nouns live only in the rules layer) and the **"Bug if"
+fourth field** on every step (the one-clause failure that step exists to
+catch). The parser fails the build, naming the spec line, rather than
+guess at structure it does not recognize.
 
 ---
 

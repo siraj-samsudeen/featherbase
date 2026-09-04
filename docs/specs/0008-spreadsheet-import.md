@@ -16,7 +16,8 @@ resume, batches, column edits and Table merge). Upsert and revert are
 <!--
 TWO DELIBERATE DEPARTURES FROM THE TEMPLATE, both owner-directed
 experiments made ahead of formal ratification. Flagged here so a reviewer
-judges them as choices, not as drift.
+judges them as choices, not as drift. (Both ratified 2026-09-04 —
+requirements-framework §12 and the journey-spec skill now carry them.)
 
  1. A FOURTH FIELD in every journey step — "Bug if". The template's triple
     says what must be true; this says what going wrong at THIS step looks
