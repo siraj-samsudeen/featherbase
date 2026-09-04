@@ -8,12 +8,14 @@ import { config } from './config'
 import { sql } from './db'
 import { AppError, errorResponse } from './errors'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
-import { createTable, deleteTable, setIdPattern, updateTable } from './table-engine'
+import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } from './table-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
 import { getAccessToken, issueAccessToken, listAccessTokens, login, resolveToken, revokeAccessToken, setUserPassword, issueSession, type SessionUser } from './auth'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled } from './service-accounts'
+import { deleteBatchTables, getBatch, listBatches } from './import-batches'
+import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
 import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
@@ -402,6 +404,24 @@ app.post('/api/oauth/session', async (c) => {
   return c.json(redeemHandoffCode(code, getCookie(c, 'sid')))
 })
 
+// A dev-preview deployment's click-through sign-in (see preview.ts). Public
+// by nature — the key IS the credential — and 404 when previews are off or
+// the key is wrong, so the route neither advertises itself nor tells a
+// guesser they were close.
+//
+// The session token does not travel in this redirect. #150 removed 7-day
+// JWTs from URLs (they land in history, in the Referer of the next request,
+// and in every proxy log); this reuses the same one-time handoff code and the
+// SPA's existing /oauth-callback page, so there is no second way in and no
+// new client code.
+app.get('/preview', async (c) => {
+  const config = previewLogin()
+  if (!config || !previewKeyMatches(c.req.query('key'), config.key)) return c.notFound()
+  const session = await issueSession(config.user)
+  setSidCookie(c, session.token)
+  return c.redirect(`/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
+})
+
 // ---- API-004: everything below requires a valid session --------------------
 
 app.use('/api/*', async (c, next) => {
@@ -425,6 +445,9 @@ app.get('/api/whoami', async (c) => {
     theme: (row?.theme as string) || 'light',
     palette: (row?.palette as string) || 'classic',
     language: (row?.language as string) || 'en',
+    // A preview deployment says so in the UI: anyone handed the link should
+    // know the data is disposable and that they are signed in as someone.
+    preview: previewLogin() !== null,
   })
 })
 
@@ -681,11 +704,45 @@ app.put('/api/table_def/:name/id_pattern', async (c) => {
   return c.json(await setIdPattern(c.req.param('name'), body.id_pattern))
 })
 
+// #206 (issue #197): the file-imports that have run, each rolled up from its
+// Import Log parts — which Tables it created, which it added to, and what
+// landed. This is a reading of the Import Log, so it answers to the Import
+// Log's own read permission (own_rows_only included) rather than to merely
+// holding a session; listBatches enforces that from the user it is given.
+app.get('/api/import/batches', async (c) => {
+  const limit = Number(c.req.query('limit') ?? '')
+  return c.json({
+    batches: await listBatches(who(c), Number.isFinite(limit) ? limit : undefined),
+  })
+})
+
+app.get('/api/import/batches/:id', async (c) => {
+  return c.json(await getBatch(who(c), c.req.param('id')))
+})
+
+// #207: delete every Table one import CREATED. Only the created ones — a
+// Table that merely received rows is undone by the per-run revert, which is
+// offered separately and does not destroy data the import never made.
+app.post('/api/import/batches/:id/delete_tables', async (c) => {
+  return c.json(await deleteBatchTables(c.req.param('id'), who(c)))
+})
+
 // DEL-R1/R2 (docs/specs/0003-table-deletion.md): delete a Table outright.
 app.delete('/api/table_def/:name', async (c) => {
   await assertSystemManager(who(c))
   await deleteTable(c.req.param('name'), who(c))
   return c.json({ ok: true })
+})
+
+// #209 (issue #197): rename a column in place, keeping its data. PUT
+// /api/table_def/:name matches columns BY NAME, so a changed name there reads
+// as delete-plus-add and silently orphans the rows — hence its own route.
+app.post('/api/table_def/:name/rename_column', async (c) => {
+  await assertSystemManager(who(c))
+  const body = (await c.req.json()) as { from?: unknown; to?: unknown }
+  if (typeof body.from !== 'string' || typeof body.to !== 'string')
+    throw new AppError('ValidationError', 'Expected { from, to }')
+  return c.json(await renameColumn(c.req.param('name'), body.from, body.to, who(c)))
 })
 
 app.put('/api/table_def/:name', async (c) => {
@@ -1404,6 +1461,9 @@ if (process.env.NODE_ENV !== 'test') {
   const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
     console.log(`server listening on :${info.port}`)
   })
+  // An auth bypass nobody noticed being enabled is the failure mode worth a
+  // log line: say once whether preview sign-in is live, or why it was refused.
+  announcePreviewLogin()
   // RT-001/002/003: attach the realtime WebSocket server to the HTTP server.
   attachRealtime(server as unknown as import('node:http').Server)
   // JOB-001: run the background worker in-process (tests drive the queue

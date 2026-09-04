@@ -1,21 +1,37 @@
 import { describe, expect, test } from 'vitest'
 import {
+  applyColumnCombines,
   autoMapColumns,
   coerceRows,
+  combineOverlap,
+  COMBINE_JOIN_SEPARATOR,
+  idPatternFor,
   inferChoices,
   inferColumnType,
-  idPatternFor,
   inferTableDef,
+  mergeSheetHeaders,
+  mergeSheetRows,
   namesShareToken,
-  seriesPrefix,
   prettifyLabel,
   sanitizeColumnName,
   sanitizeHeaders,
   scoreTableMatch,
+  seriesPrefix,
   shouldAutoMatch,
   tableMatchQuality,
   tableNameFromFile,
-} from 'shared'
+} from '../src/import'
+
+// The sheet-merging half of `src/import.ts` (#201/#211, issue #197), tested
+// in its own package rather than from the server suite.
+//
+// `apps/server/test/import/infer.test.ts` notes that shared-package tests
+// live in the server suite by convention. That convention is also what
+// `packages/shared/vitest.config.ts` names as the whole of this package's
+// coverage gap: coverage is per-package, so a server run cannot credit
+// `src/import.ts` here. These functions need no database and no HTTP — the
+// decision tree in docs/TESTING.md puts pure, I/O-free code in this suite —
+// so the code added by #201/#211 is verified where it lives.
 
 // IMP-001..004: the pure inference layer behind the drag-drop Table builder.
 // (Shared-package tests live in the server suite by convention.)
@@ -333,5 +349,217 @@ describe('IMP-004: coerceRows', () => {
     expect(coerceRows(columns, [['', null, '', undefined], ['C']])).toEqual([
       { values: { title: 'C' }, sourceIndex: 1 },
     ])
+  })
+})
+
+// #201 (issue #197): merging several sheets into one Table. The folding rule
+// is sanitizeColumnName — reused, not reinvented — and nothing beyond folding
+// is ever guessed.
+describe('mergeSheetHeaders', () => {
+  test('case, spaces and underscores fold into one column', () => {
+    const merged = mergeSheetHeaders([
+      ['Zone', 'Floor', 'SKU Count'],
+      ['Zone', 'FLOOR', 'SKU_Count'],
+      ['zone', 'Floor ', 'sku count'],
+    ])
+    expect(merged.map((c) => c.key)).toEqual(['zone', 'floor', 'sku_count'])
+    // Every raw spelling is kept, so the UI can disclose what it folded —
+    // a trailing space is invisible on screen and must still be explainable.
+    expect(merged[1].spellings).toEqual(['Floor', 'FLOOR', 'Floor '])
+    expect(merged[1].from).toEqual([1, 1, 1])
+  })
+
+  test('a name with no folded twin stays its own column — nothing is guessed', () => {
+    // 'Glor' is one letter from 'Floor'. Featherbase does not propose that
+    // (owner decision): combining them is the user's explicit act.
+    const merged = mergeSheetHeaders([
+      ['Zone', 'Floor'],
+      ['Zone', 'Glor'],
+    ])
+    expect(merged.map((c) => c.key)).toEqual(['zone', 'floor', 'glor'])
+    expect(merged[1].from).toEqual([1, -1]) // floor: sheet 1 only
+    expect(merged[2].from).toEqual([-1, 1]) // glor: sheet 2 only
+  })
+
+  test('a column only one sheet has is kept, and the others report -1', () => {
+    const merged = mergeSheetHeaders([['A', 'B'], ['A']])
+    expect(merged.map((c) => c.key)).toEqual(['a', 'b'])
+    expect(merged[1].from).toEqual([1, -1])
+  })
+
+  test('two headers folding together WITHIN one sheet stay two columns', () => {
+    // The sheet really has two columns; folding them would drop one.
+    const merged = mergeSheetHeaders([['Floor', 'floor']])
+    expect(merged).toHaveLength(2)
+    expect(merged[0].from).toEqual([0])
+    expect(merged[1].from).toEqual([1])
+  })
+
+  test('blank headers in different sheets are not the same column', () => {
+    const merged = mergeSheetHeaders([
+      ['', 'A'],
+      ['', 'A'],
+    ])
+    expect(merged.filter((c) => c.key === 'a')).toHaveLength(1)
+    expect(merged).toHaveLength(3) // one 'a', plus a separate blank per sheet
+  })
+
+  test('the label comes from the first spelling seen, normalized', () => {
+    const merged = mergeSheetHeaders([['sku_count'], ['SKU Count']])
+    expect(merged[0].label).toBe('Sku Count')
+  })
+})
+
+describe('mergeSheetRows', () => {
+  test('rows are projected onto the merged shape, absent columns as null', () => {
+    const columns = mergeSheetHeaders([
+      ['Zone', 'Floor'],
+      ['Zone', 'Remarks'],
+    ])
+    expect(mergeSheetRows(columns, [[['Fresh', 'Ground']], [['Dairy', 'relaid']]])).toEqual([
+      ['Fresh', 'Ground', null],
+      ['Dairy', null, 'relaid'],
+    ])
+  })
+
+  test('every member sheet contributes its rows, in sheet order', () => {
+    const columns = mergeSheetHeaders([['A'], ['A']])
+    expect(mergeSheetRows(columns, [[[1], [2]], [[3]]])).toEqual([[1], [2], [3]])
+  })
+
+  test('inference sees every member, so a disagreement resolves once', () => {
+    // Sheet 1 alone would read as Int; sheet 2's codes make the column Data.
+    const columns = mergeSheetHeaders([['Code'], ['Code']])
+    const rows = mergeSheetRows(columns, [
+      [[1], [2], [3]],
+      [['A-1'], ['A-2'], ['A-3']],
+    ])
+    const def = inferTableDef(
+      'T',
+      columns.map((c) => c.label),
+      rows,
+    )
+    expect(def.columns[0].column_type).toBe('Data')
+  })
+})
+
+// #211: combining columns the folding rule could never join, because the
+// knowledge is the user's. `Store Code` holding STR-009 and `Store Name`
+// holding Anna Nagar are the same column to them and to nothing else.
+describe('combineOverlap', () => {
+  test('no sheet has both: nothing to resolve', () => {
+    const columns = mergeSheetHeaders([['Store Code'], ['Store Name']])
+    expect(combineOverlap(columns, ['store_code', 'store_name'])).toEqual([])
+  })
+
+  test('a sheet carrying both is named, because those rows need a rule', () => {
+    const columns = mergeSheetHeaders([
+      ['Store Code', 'Store Name'], // sheet 0 has both
+      ['Store Name'],
+    ])
+    expect(combineOverlap(columns, ['store_code', 'store_name'])).toEqual([0])
+  })
+
+  test('fewer than two columns is not an overlap question', () => {
+    const columns = mergeSheetHeaders([['Store Code']])
+    expect(combineOverlap(columns, ['store_code'])).toEqual([])
+  })
+})
+
+describe('applyColumnCombines', () => {
+  const twoSheets = () => mergeSheetHeaders([['Store Code', 'Zone'], ['Store Name', 'Zone']])
+
+  test('two columns become one, where the first of them was', () => {
+    const out = applyColumnCombines(twoSheets(), [
+      { name: 'Store', keys: ['store_code', 'store_name'], rule: 'first' },
+    ])
+    // Combined column sits in the first source's position — a combine must
+    // not reshuffle the grid the user is reading.
+    expect(out.map((c) => c.label)).toEqual(['Store', 'Zone'])
+    expect(out[0].combinedKeys).toEqual(['store_code', 'store_name'])
+    // Each sheet feeds it from whichever column it actually has.
+    expect(out[0].from).toEqual([0, 0])
+  })
+
+  test('the rows follow: each sheet contributes its own spelling', () => {
+    const columns = applyColumnCombines(twoSheets(), [
+      { name: 'Store', keys: ['store_code', 'store_name'], rule: 'first' },
+    ])
+    const rows = mergeSheetRows(columns, [
+      [['STR-009', 'Fresh']],
+      [['Anna Nagar', 'Dairy']],
+    ])
+    expect(rows).toEqual([
+      ['STR-009', 'Fresh'],
+      ['Anna Nagar', 'Dairy'],
+    ])
+  })
+
+  test("'first' is priority WITH fallback — the other fills only empty cells", () => {
+    // Sheet 0 has both columns. A blank in the winner must not blank the row
+    // when the other source has the value; discarding it would be the
+    // data-loss bug the rule exists to prevent.
+    const columns = applyColumnCombines(
+      mergeSheetHeaders([['Store Code', 'Store Name']]),
+      [{ name: 'Store', keys: ['store_code', 'store_name'], rule: 'first' }],
+    )
+    expect(mergeSheetRows(columns, [[['STR-001', 'Anna Nagar']]])).toEqual([['STR-001']])
+    expect(mergeSheetRows(columns, [[['', 'Anna Nagar']]])).toEqual([['Anna Nagar']])
+    expect(mergeSheetRows(columns, [[[null, null]]])).toEqual([[null]])
+  })
+
+  test("'join' keeps both values where a sheet has both", () => {
+    const columns = applyColumnCombines(
+      mergeSheetHeaders([['Store Code', 'Store Name']]),
+      [{ name: 'Store', keys: ['store_code', 'store_name'], rule: 'join' }],
+    )
+    expect(mergeSheetRows(columns, [[['STR-001', 'Anna Nagar']]])).toEqual([
+      [`STR-001${COMBINE_JOIN_SEPARATOR}Anna Nagar`],
+    ])
+    // With only one value present there is nothing to join to.
+    expect(mergeSheetRows(columns, [[['STR-001', '']]])).toEqual([['STR-001']])
+  })
+
+  test('the user can combine what folding refused to guess', () => {
+    // The Glor/Floor case: no folded twin, so mergeSheetHeaders left them
+    // apart (Q5). The user says otherwise and the rows follow.
+    const columns = applyColumnCombines(
+      mergeSheetHeaders([['Floor'], ['Glor']]),
+      [{ name: 'Floor', keys: ['floor', 'glor'], rule: 'first' }],
+    )
+    expect(columns).toHaveLength(1)
+    expect(mergeSheetRows(columns, [[['Ground']], [['Mezzanine']]])).toEqual([
+      ['Ground'],
+      ['Mezzanine'],
+    ])
+  })
+
+  test('a combine naming a column that is gone is ignored, not fatal', () => {
+    // Selections change; a stale combine must not refuse to render the step.
+    const out = applyColumnCombines(twoSheets(), [
+      { name: 'Store', keys: ['store_code', 'nope'], rule: 'first' },
+    ])
+    expect(out.map((c) => c.key)).toEqual(['store_code', 'zone', 'store_name'])
+  })
+
+  test('two combines both apply, and their keys do not collide', () => {
+    const columns = mergeSheetHeaders([['A', 'B', 'C', 'D']])
+    const out = applyColumnCombines(columns, [
+      { name: 'AB', keys: ['a', 'b'], rule: 'first' },
+      { name: 'CD', keys: ['c', 'd'], rule: 'first' },
+    ])
+    expect(out.map((c) => c.label)).toEqual(['AB', 'CD'])
+    expect(new Set(out.map((c) => c.key)).size).toBe(2)
+  })
+
+  test('inference sees the combined column, not its sources', () => {
+    const columns = applyColumnCombines(
+      mergeSheetHeaders([['Store Code'], ['Store Name']]),
+      [{ name: 'Store', keys: ['store_code', 'store_name'], rule: 'first' }],
+    )
+    const rows = mergeSheetRows(columns, [[['STR-009']], [['Anna Nagar']]])
+    const def = inferTableDef('T', columns.map((c) => c.label), rows)
+    expect(def.columns).toHaveLength(1)
+    expect(def.columns[0].column_name).toBe('store')
   })
 })

@@ -53,6 +53,41 @@ before these changes too); both typechecks clean; `check-evidence` green at
 Next: #258 is ready to merge. The schema half of #249 is untouched — #250 and
 #251 remain the ones to take before #209 builds a rename control on them.
 
+## 2026-08-31 — #197 meets the runtime evidence gate (#241)
+
+Merged `main` (#242) into the import branch a second time. The gate that
+arrived with it is the one that mattered: a `proven` or `rule-tier` verdict
+now needs a concrete test that **actually executed on this commit**, not just
+a title that matches statically. Ran it locally exactly as CI does — the
+three Vitest JSON reports plus Playwright's — rather than trusting the static
+pass.
+
+The conflicts were `PROGRESS.md` and the two generated archive pages. Both
+`PROGRESS.md` entries are dated 2026-08-28 and both are kept; the import
+entry sits first because its commit (05:28 UTC) is later than #241's
+(04:48 UTC). The archive pages were taken from `main` and rebuilt, never
+hand-merged.
+
+One trap worth writing down: `pnpm --filter web e2e` **deletes**
+`apps/web/test-results/`, which is where the web Vitest JSON report lands.
+Run e2e first or stage the report before it, or the runtime check runs
+against a report that is no longer there. CI does not hit this because its
+`unit` and `e2e` jobs never share a working directory — a local run does.
+
+Verified on the merge commit: checker mutation tests 42 passed; static
+evidence check 78 verdicts / 213 test files; runtime evidence check the same
+78 verdicts with **1087 runtime tests checked**; both typechecks clean;
+server 697 passed, web 123 unit / 136 e2e passed, shared 111 passed;
+coverage floors met (server 86.87, web 34.32, shared 99+).
+
+The one red is `sources-csv` "a failed write never poisons the parse cache",
+which chmods a directory read-only to force a failure — root ignores
+directory permissions and this container runs as uid 0, so the write
+succeeds. Environmental, reproduces on `main`, and CI runs non-root.
+
+**Next:** PR #210 still has no workflow run of its own — GitHub has created
+none for any commit on this branch. Nothing to build; the wait is on a runner.
+
 ## 2026-08-30 — The row lifecycle gets a spec, and the Admin gets its two missing doors (#247, #252, #256)
 
 The owner's acceptance test found the hole: you can declare a table in the
@@ -112,6 +147,90 @@ is the workaround the config already supports.
 Next: #256's spec is written, so the remaining #249 children each flip
 their own verdict as they land. #250 and #251 are the ones to take before
 #209 builds a rename control on top of them.
+
+## 2026-08-28 — #197 meets the new test system
+
+Merged `main` into the import branch after the test-system overhaul (#227,
+#233, #239, #240) and adapted the work to it. No behaviour changed; what
+changed is where the tests live and what proves them.
+
+### The merge
+
+Six conflicts. Five were mechanical, one was a real decision:
+
+**My lockfile guard is superseded and is gone.** The branch carried a
+`lint:lockfile` script and two CI steps refusing scp-style `git@host:` URLs
+in `pnpm-lock.yaml`. `main` fixes the same failure one layer down —
+`git config --global url."https://github.com/".insteadOf "git@github.com:"`
+on the runner — which is strictly more tolerant, and `main`'s own lockfile
+records the scp form in five places. Keeping both would have failed the
+build on `main`'s lockfile. The runner-side fix wins; `tools/check-lockfile-urls.ts`
+is deleted rather than left around as a second, contradictory rule.
+
+### Adapting to the new system
+
+- **E2E auth is the fixtures'.** Ten specs dropped their hand-rolled
+  `adminToken`/`login` for `e2e/fixtures.ts`. Nine take the pre-authed
+  `test` (a per-worker `storageState`); `preview-login.spec.ts` takes
+  `anonymousTest`, because arriving with no session *is* its subject — which
+  is exactly the point of the convention that the import states the auth
+  story.
+- **Server tests moved to their new homes** — `import/batches.test.ts` under
+  the promoted `import/` directory, both files on `makeTable`, `tableRef`
+  and `expectApiError` rather than their own builders.
+- **Two banned assertions became precise ones.** `rejects.toBeDefined()` on
+  the unique-constraint rename now asserts a 417 whose `fields` map names
+  the NEW column — which is what actually proves the constraint travelled
+  rather than merely surviving under the old name. `toBeTruthy()` on the
+  preview token became a three-segment JWT match.
+- **The stricter `tsconfig.test.json` typecheck caught a real gap:** the
+  `import-session` test's decisions factory predated `batchId` and had been
+  passing an incomplete shape.
+
+### Both ratchets rose
+
+`#197` added ~200 lines to `packages/shared/src/import.ts` and three web
+pages, and coverage is per-package: the server suite that exercised them
+could not credit either. Shared fell to 16.74% (floor 21), web to 30.23%
+(floor 33).
+
+Neither floor moved down. Instead:
+
+- **The pure sheet-merging and inference tests moved into
+  `packages/shared`**, where `docs/TESTING.md`'s decision tree puts I/O-free
+  code. `apps/server/test/import/infer.test.ts` said shared-package tests
+  live in the server suite by convention — and `packages/shared/vitest.config.ts`
+  named that same convention as the whole of this package's coverage gap.
+  Closing it took shared from **21.30% to 99.10% lines** (functions 85.71% →
+  97.14%); the server number went *up* slightly, confirming those 89 tests
+  were only ever exercising shared code.
+- **The column editor and the post-hoc Table merge gained component tests**
+  (15 of them), which is the layer `docs/TESTING.md` names for rendering
+  from metadata and form logic. `ColumnEditor.tsx` 2.75% → 97.93%,
+  `TableMerge.tsx` 7.71% → 95.30%, web overall **30.23% → 34.25%**.
+
+New floors: shared lines/statements 99, functions 97; web lines/statements
+34, functions 49. Server's 86/91 stands — its own note says to raise it to
+whatever the first green CI run reports, and CI covers the MySQL driver a
+developer checkout skips.
+
+### #212 is fixed, by someone else
+
+The `UPS-J1` e2e failure this branch had been carrying — `clickButton('Check')`
+colliding with the sidebar's "Checklist Run" under Playwright strict mode —
+passes now. #228 made the sidebar recall rows links rather than buttons, so
+`getByRole('button')` no longer reaches them. Nothing in `feather-testing-core`
+had to change after all.
+
+**Verified:** server 697 passed (1 environmental failure — `sources-csv`
+chmods a directory read-only in a container running as uid 0, where root
+ignores directory permissions; CI runs non-root), web 123 unit / 136 e2e
+passed with **zero failures**, shared 111 passed, both typechecks clean,
+evidence checker green (78 verdicts, 213 test files), all three coverage
+ratchets met.
+
+**Next:** #197 is complete and PR #210 is green. #212 can be closed as fixed
+by #228.
 
 ## 2026-08-28 — Runtime results close the last proof escape hatch (#241)
 
@@ -403,6 +522,217 @@ journeys, grow the component layer) and #226 (ratify the real naming
 convention, decide the coverage tenet); #224 (realtime subscribed signal)
 is ready for an agent session; #225 (Session DSL forked between harness
 repos) belongs to the `feather-testing-*` repos.
+
+## 2026-08-27 — the whole import redesign, and a dev preview per pull request
+
+Finished #197 — the remaining eight tickets (#202–#209, #211) on top of the
+2026-08-26 Part A entry. Twelve of twelve now built. Owner directive was
+"everything, A through C".
+
+### What shipped
+
+- **#211 — combining columns folding could never join.** A merge group's grid
+  gains a Join column: tick two, name the result, combine. Sample values are
+  the feature, not decoration — `Store Code` (STR-009) and `Store Name` (Anna
+  Nagar) look nothing alike, which is exactly why nothing proposes it (Q5) and
+  why the values must be visible to answer "same thing?". A sheet carrying
+  BOTH is the data-loss case, so it is never resolved silently: the overlap is
+  named with its sheets and a rule is required — `first` (priority WITH
+  fallback, so a blank in the winner does not blank a row the other could
+  answer) or `join`.
+- **#203/#205 — a failing sheet stops taking the whole run with it.** The loop
+  sat inside one try, so a throw on target 2 left 3..n unattempted AND
+  unreported, skipped `setDone`, and hid the only link to the Import Log —
+  the one situation where the log matters most. Each target now fails on its
+  own; the run reports whenever it STOPS, not only when everything succeeded;
+  the log link moved out of the completion block entirely.
+- **#202 — the column step walks one Table at a time.** One target on screen,
+  "Table 2 of 11", Previous/Next, and a strip of every target marked done or
+  failed and clickable to jump. **Import happens per target**, and the bulk
+  button skips whatever already landed. Results moved OUT of the card that
+  made them into a "This import" panel — with one card on screen the card is
+  the wrong place to keep a result, since stepping on would hide it.
+- **#204 — the wizard's work survives leaving the page.** Two sessionStorage
+  keys: decisions (small, written often, debounced) and the file's rows
+  (large, written once). The rows are the half allowed to fail — a big
+  workbook does not fit, and the answer is to keep every decision and ask for
+  the file again, announced BEFORE you leave rather than discovered on
+  return. Saved plans address sheets by index, so a re-drop must match name,
+  sheet names, headers and row counts before they are applied.
+- **#206/#207 — an import is one thing you did, and undone as one.**
+  `batch_id` on the Import Log, minted per file read and carried by every part
+  of every target; `GET /api/import/batches` rolls the parts back up into the
+  act. A "Past imports" page shows which Tables each import created and which
+  it added to, with one action to delete everything it created — and only
+  what it created, because a Table that merely received rows is undone by the
+  per-run revert.
+- **#209 — columns after the rows are in.** Add, relabel, and rename in place.
+  The rename needed real server work: PUT /api/table_def matches columns BY
+  name, so a changed name reads as delete-plus-add and silently orphans the
+  data. `renameColumn` does the real DDL and carries the unique constraint's
+  own name, `title_column`, and a `field:<column>` id pattern with it.
+- **#208 — merging one Table into another.** A post-hoc merge is an import
+  whose source is a Table rather than a file, so it goes through
+  `sendImportRun` — which is what gives it chunking, per-row failures, an
+  Import Log entry, a batch, and revert, all for free. Folding pairs what it
+  can; `Glor` and `Floor` stay apart until the user says otherwise.
+
+### Dev previews
+
+Railway PR environments are enabled on the **Feather-Base Dev** project
+(bot-authored PRs included), so every pull request now brings its own running
+copy with its own empty database. `/preview?key=…` signs you in as an
+ordinary named user — never Administrator, refused outright — using the
+one-time handoff code so no JWT rides a URL.
+
+Two things worth not rediscovering:
+
+- **`SITE_URL` must be `https://${{RAILWAY_PUBLIC_DOMAIN}}` in the base
+  environment.** A PR environment inherits variables verbatim, so a literal
+  domain there mints links pointing at the wrong host.
+- **The preview seed runs in the pre-deploy step of EVERY environment**, so
+  it is gated on the same resolution the `/preview` route uses. Where preview
+  sign-in is not configured it says so and does nothing — otherwise the first
+  deploy of this release step would put a shareable-link account into
+  production.
+
+Full runbook: `docs/PREVIEW.md`.
+
+### Gotchas
+
+- **A debounced save is lost precisely when it matters.** Leaving the page is
+  when the snapshot must land and when its timer is about to be cleared. It is
+  flushed on unmount and `pagehide`, and a late timer checks it is still the
+  live snapshot — without that, a timer fired after a finished run's
+  `clearSession()` resurrected a session that was over. That cost a real
+  debugging round.
+- **The meta this server returns could not be sent back to it.** Every unset
+  optional came back `null` and the schema took only `string | undefined`, so
+  read-modify-write — the natural shape of a column editor — was rejected on
+  every one of them. Null and absent mean the same thing; the schema now says
+  so once.
+- **Dropping a file must clear the screen first.** Parsing is async, so a
+  restored grid stayed live and clickable for as long as the read took, and
+  edits made in that window were thrown away when the parse landed.
+- **Int columns are bigint and reach the client as strings.** `+=` over log
+  counts concatenated ("0"+"1"+"2" = "012") rather than adding.
+- Deleting a Table sweeps the Import Log rows pointing at it (DEL-R4), so a
+  batch whose Tables all went is itself gone from the next fetch. The
+  delete-batch confirmation is therefore reported by the PAGE, not the card.
+
+**Verified:** web 155 e2e / 94 unit passed, server 779 passed, both typechecks
+clean. Two failures, neither this work's and both established: e2e `UPS-J1`
+reproduces on main ([#212](https://github.com/siraj-samsudeen/featherbase/issues/212)
+— `feather-testing-core`'s `clickButton` substring-matches, so `Check`
+collides with the sidebar's `Checklist Run`), and server `sources-csv`'s
+parse-cache test chmods a directory read-only in a container running as uid 0,
+where root ignores directory permissions. Draft PR
+[#210](https://github.com/siraj-samsudeen/featherbase/pull/210).
+
+**Next:** #212 is the only thing left open from this stretch, and it is a
+harness fix in `feather-testing-postgres`/`feather-testing-core` rather than
+here — `clickButton` needs an exact-match option. Beyond that, the import
+work is done end to end; the natural next thread is whatever
+`docs/design/execution-plan.md` puts after M-import.
+
+## 2026-08-26 — the import wizard asks what is in the file first
+
+Owner report: importing a workbook of ~17 sheets (11 visible, 6–7 hidden) put
+**every sheet, with its full column grid, on one screen**, with everything
+selected by default. It made eleven Tables nobody wanted, there was no way to
+send same-shaped sheets into one Table, a failure on sheet 2 lost sheet 1's
+work, and nothing showed which Tables came from which file.
+
+The whole workflow is mapped as **[#197](https://github.com/siraj-samsudeen/featherbase/issues/197)**
+with twelve sub-issues (#198–#209) in three parts. **Part A (#198–#201) is
+built**; B and C are not.
+
+**The design was reviewed as an interactive mockup before any code**, and
+three rounds of owner feedback changed it materially — worth recording,
+because each one was a modelling error the mockup caught cheaply:
+
+1. The merge action was a disabled button nobody would find. It became an
+   explicit either/or that appears the moment anything is ticked.
+2. The reconciliation screen only let the owner ratify the system's guesses.
+   There was no path for "these two are the same thing and you could never
+   work that out" — `Store Code` and `Store Name`. User-driven combining is
+   now a first-class action (specced, not yet built — see below).
+3. The decision applied to the whole selection, so a 17-sheet workbook could
+   only produce one answer. Targets have to accumulate.
+
+### What shipped
+
+- **#198 — a parsed sheet knows whether the workbook was hiding it.**
+  `ParsedSheet.visibility`, from `wb.Workbook.Sheets`. `very-hidden` stays
+  distinct from `hidden` (only VBA can set it, so it is a stronger statement
+  of intent). Read by index in `SheetNames`, **not** by position in the
+  output — an all-blank sheet is dropped, so indexing as sheets are pushed
+  would shift every visibility after the gap by one.
+- **#199/#200 — a file overview before the columns.** Sheets only; visible
+  first, hidden below in a collapsed section; **nothing selected by default**,
+  which is the direct fix for the eleven Tables. Individual / per-group /
+  tri-state-master selection, a sticky action bar, and a refusal in words
+  when nothing is chosen. A CSV skips the step entirely.
+- **#201 — several sheets can become one Table.** `mergeSheetHeaders` folds
+  with **`sanitizeColumnName`, the normalizer `autoMapColumns` already uses**
+  — reused, not reinvented — so `Floor` / `FLOOR` / `floor ` are one column.
+
+### Decisions the owner made, and where they live
+
+- **Q1 — merging sheets with differing headers is allowed**, reconciled per
+  sheet rather than refused. Recorded on #201.
+- **Q5 — no fuzzy guessing.** Case, spaces, underscores and punctuation fold
+  silently; nothing beyond that is ever guessed, so `Glor` is never assumed to
+  mean `Floor`. It stays its own column until the user says otherwise.
+- **Q2 (resume) and Q3 (batch delete semantics) are still open** on #197.
+
+### Gotchas worth keeping
+
+- **A merge group imports member by member, never as one blended batch.**
+  Two things die on concatenation: the Import Log's per-sheet `sheet_name`,
+  and row-number truth (#115) — a failed row's number is only true against
+  its own sheet. Failures now carry a sheet index and read "Store 003 row 14".
+  One `run_id` still spans the group, so one revert takes all of it back, and
+  `table_created` is stamped once rather than once per member.
+- **Auto-navigation after import now requires a single-*sheet* target.** It
+  existed because a lone sheet leaves nothing to look at. A merge group is one
+  target but many sheets, and jumping to the list view destroyed its per-sheet
+  result and its revert control — the owner's original complaint, reproduced
+  by the new feature.
+- **"Skip this sheet" is gone from the target picker.** Leaving a sheet
+  unselected is the one way to exclude it; two mechanisms for one act is what
+  the redesign removes. `mode: 'skip'` survives as the internal parked state.
+- **`pnpm install` cannot fetch `github:owner/repo#sha` everywhere.** pnpm
+  resolves that shorthand to codeload.github.com, which some egress policies
+  block with a bare 403. Both `package.json`s now use `git+https://`, same
+  repo and commit. They still move back to a version range together when the
+  harness publishes.
+- **Two test failures in this environment are not this work's**, and both were
+  established rather than assumed: e2e `UPS-J1` reproduces identically on main
+  (117/1 there, 125/1 here) — the harness resolves `Check` by accessible name
+  and the sidebar's "Checklist Run" matches the same substring, so strict mode
+  refuses the locator; worth its own issue. And server `sources-csv`'s "a
+  failed write never poisons the parse cache" chmods a directory read-only to
+  force a failure, but this container runs as uid 0 and root ignores directory
+  permissions. Environmental — CI runs non-root.
+- **Chromium:** this image ships build 1194 while `@playwright/test` resolves
+  to one wanting 1228, so run e2e with
+  `CHROMIUM_PATH=/opt/pw-browsers/chromium` — the escape hatch CLAUDE.md
+  already documents. Do not run `playwright install`.
+- **Run e2e as `pnpm --filter web e2e`, never `playwright test` directly.**
+  Only the former sets `E2E_ISOLATED=1`; the bare command drives the
+  developer's own database, which cost a confusing debugging round here.
+
+**Verified:** web 68 unit / 125 e2e passed, server 733 passed, both typechecks
+clean, `./init.sh` boots and smoke passes. Draft PR
+[#210](https://github.com/siraj-samsudeen/featherbase/pull/210).
+
+**Next:** the user-driven column combine — ticking two columns of the merged
+set and declaring them one, with sample values shown and a rule for sheets
+that carry both. It is the part of the mockup the owner pushed hardest on and
+the one piece of #201's design not yet built; it needs its own ticket under
+#197. Then Part B: the stepper (#202), the failing sheet that abandons the run
+(#203), and resume (#204, gated on Q2).
 
 ## 2026-08-15 — e2e brings its own database, and drops it first
 

@@ -79,3 +79,48 @@ describe('#115: parseWorkbook keeps sheet geometry', () => {
     expect(sheets.map((s) => s.sheetName)).toEqual(['Real'])
   })
 })
+
+// #198 — a workbook hides sheets, and the overview must be able to say so.
+// Reading wb.Workbook.Sheets is the only way to know; SheetJS reports
+// Hidden: 0 visible, 1 hidden, 2 very hidden, index-aligned with SheetNames.
+describe('#198: parseWorkbook reports each sheet visibility', () => {
+  // book_append_sheet does not write sheet properties, so set them the way a
+  // real workbook carries them — one entry per sheet, in SheetNames order.
+  function workbookWith(hidden: (0 | 1 | 2 | undefined)[], names: string[]): File {
+    const wb = XLSX.utils.book_new()
+    names.forEach((n) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['H'], ['x']]), n))
+    wb.Workbook = { Sheets: hidden.map((h) => (h === undefined ? {} : { Hidden: h })) }
+    return asFile(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer, 'wb.xlsx')
+  }
+
+  it('separates visible, hidden and very hidden', async () => {
+    const sheets = await parseWorkbook(workbookWith([0, 1, 2], ['Open', 'Tucked', 'Buried']))
+    expect(sheets.map((s) => [s.sheetName, s.visibility])).toEqual([
+      ['Open', 'visible'],
+      ['Tucked', 'hidden'],
+      ['Buried', 'very-hidden'],
+    ])
+  })
+
+  it('a workbook carrying no sheet properties reads as all visible', async () => {
+    // Written by a tool that omits them; absence must not throw or mislead.
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['H'], ['x']]), 'Only')
+    delete wb.Workbook
+    const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+    const sheets = await parseWorkbook(asFile(buf, 'plain.xlsx'))
+    expect(sheets.map((s) => s.visibility)).toEqual(['visible'])
+  })
+
+  it('visibility follows the sheet, not its position, when a sheet is skipped', async () => {
+    // An all-blank sheet is dropped (see above), so a naive index into
+    // Workbook.Sheets would shift every visibility after it by one.
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['', '']]), 'Blank')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['H'], ['x']]), 'Real')
+    wb.Workbook = { Sheets: [{ Hidden: 0 }, { Hidden: 1 }] }
+    const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+    const sheets = await parseWorkbook(asFile(buf, 'skip.xlsx'))
+    expect(sheets.map((s) => [s.sheetName, s.visibility])).toEqual([['Real', 'hidden']])
+  })
+})

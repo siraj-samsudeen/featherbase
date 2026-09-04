@@ -57,10 +57,16 @@ export default defineConfig({
       // take different render branches run to run), so its threshold sits a
       // further point below the floor rather than a hundredth above it,
       // where it would flake.
+      //
+      // Re-measured 2026-08-28 after #197 added the column editor and the
+      // post-hoc Table merge with component tests rather than e2e alone:
+      // lines/statements 34.25%, functions 50.61%. The same asymmetry
+      // applies — lines to the whole percent below, functions a further
+      // point below that.
       thresholds: {
-        lines: 33,
-        statements: 33,
-        functions: 45,
+        lines: 34,
+        statements: 34,
+        functions: 49,
       },
     },
   },

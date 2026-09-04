@@ -407,3 +407,205 @@ function toLocalIso(d: Date): string {
   const pad = (n: number, w = 2) => String(n).padStart(w, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
+
+// #201 (issue #197): several sheets of the same shape become one Table, so
+// their headers have to be reconciled into one column set.
+//
+// The folding rule is `sanitizeColumnName` — the SAME normalizer
+// `autoMapColumns` already matches on, deliberately reused rather than
+// duplicated. It folds case, spaces, underscores, hyphens and punctuation,
+// so "Floor", "FLOOR" and "floor " are one column: exactly the class of
+// difference a person cannot see on screen.
+//
+// Nothing beyond folding is guessed (owner decision, 2026-08-26). A header
+// with no folded twin stays its own column, and combining it with another is
+// the user's explicit act — "Glor" is never quietly assumed to mean "Floor".
+export interface MergedColumn {
+  // The folded key — what makes two spellings the same column.
+  key: string
+  // The first raw header seen for this key, normalized into a human label.
+  label: string
+  // Every distinct raw spelling folded into this column, in the order the
+  // sheets were given. More than one means the UI has something to disclose.
+  spellings: string[]
+  // Per input sheet (by position), the column index feeding this column, or
+  // -1 when that sheet has no such column. Projecting a member sheet's row
+  // into the merged shape reads exactly this.
+  from: number[]
+  // #211: set only on a column the USER combined. Per sheet, every
+  // contributing column index in their priority order — length 0 means
+  // absent there, and length > 1 is the case `combineRule` decides.
+  // `from` stays the first of these, so nothing that reads it needs to know.
+  combinedFrom?: number[][]
+  combineRule?: 'first' | 'join'
+  // The keys this was combined from, so the UI can offer an undo.
+  combinedKeys?: string[]
+}
+
+export function mergeSheetHeaders(sheetHeaders: string[][]): MergedColumn[] {
+  const merged: MergedColumn[] = []
+  const byKey = new Map<string, MergedColumn>()
+
+  sheetHeaders.forEach((headers, sheetIndex) => {
+    // Two headers in ONE sheet that fold together (a sheet carrying both
+    // "Floor" and "floor") are not one column — the sheet really has two,
+    // and merging them would silently drop one. Keep them apart.
+    const usedHere = new Set<string>()
+    headers.forEach((raw, columnIndex) => {
+      const folded = sanitizeColumnName(raw)
+      // A blank header is not evidence of anything: two sheets' blank first
+      // columns are not the same column, so each gets a key of its own.
+      let key = folded || ` blank:${sheetIndex}:${columnIndex}`
+      if (usedHere.has(key)) {
+        let n = 2
+        while (usedHere.has(`${key} ${n}`)) n++
+        key = `${key} ${n}`
+      }
+      usedHere.add(key)
+
+      let column = byKey.get(key)
+      if (!column) {
+        column = {
+          key,
+          label: prettifyLabel(raw) || prettifyLabel(folded) || `Column ${columnIndex + 1}`,
+          spellings: [],
+          from: sheetHeaders.map(() => -1),
+        }
+        byKey.set(key, column)
+        merged.push(column)
+      }
+      if (raw !== '' && !column.spellings.includes(raw)) column.spellings.push(raw)
+      column.from[sheetIndex] = columnIndex
+    })
+  })
+
+  return merged
+}
+
+// The merged column set as one "virtual sheet": every member's rows projected
+// onto the shared shape, which inferTableDef and coerceRows then consume
+// unchanged. Type inference therefore runs over the union of all members'
+// values, so two sheets disagreeing on whether a column is Int or Data
+// resolve ONCE, before the Table is created.
+export function mergeSheetRows(columns: MergedColumn[], sheetRows: unknown[][][]): unknown[][] {
+  const out: unknown[][] = []
+  sheetRows.forEach((rows, sheetIndex) => {
+    for (const row of rows) {
+      out.push(columns.map((c) => projectCell(c, row, sheetIndex)))
+    }
+  })
+  return out
+}
+
+// One column's value for one row. Ordinary columns read a single index; a
+// user-combined column resolves the sources its rule asks for.
+function projectCell(column: MergedColumn, row: unknown[], sheetIndex: number): unknown {
+  const contributions = column.combinedFrom?.[sheetIndex]
+  if (!contributions || contributions.length <= 1) {
+    const at = column.from[sheetIndex]
+    return at === -1 ? null : row[at]
+  }
+  const present = contributions
+    .map((i) => row[i])
+    .filter((v) => v !== null && v !== undefined && String(v).trim() !== '')
+  if (!present.length) return null
+  // 'first' is priority-with-fallback: the earliest source that actually has
+  // a value, so the other only fills empty cells rather than being discarded.
+  if (column.combineRule !== 'join') return present[0]
+  return present.map((v) => String(v)).join(COMBINE_JOIN_SEPARATOR)
+}
+
+// #211 (issue #197): combining columns the folding rule could never join.
+//
+// `mergeSheetHeaders` folds case, spaces and punctuation and stops there —
+// beyond that it guesses nothing (owner decision, Q5). That leaves exactly
+// one thing undone: a column set the USER knows is one thing and no algorithm
+// could. Some sheets label the store column `Store Code` (STR-009), others
+// `Store Name` (Anna Nagar). The values look nothing alike, which is why
+// nothing should propose it — and why the user must be able to say it.
+//
+// A combine is therefore an instruction, not an inference: it names the
+// columns being joined and what to do where a single sheet has more than one
+// of them.
+export interface ColumnCombine {
+  // The resulting column's human label.
+  name: string
+  // The MergedColumn keys being combined, in the order the user gave. That
+  // order is the priority order for 'first'.
+  keys: string[]
+  // What a sheet carrying MORE THAN ONE of these columns does. Silently
+  // picking one would be a data-loss bug, so this is required rather than
+  // defaulted: 'first' takes the earliest key that has a value and lets the
+  // others fill only empty cells; 'join' keeps both, separated.
+  rule: 'first' | 'join'
+}
+
+export const COMBINE_JOIN_SEPARATOR = ' · '
+
+/**
+ * The sheets on which more than one of `keys` exists — the rows that need
+ * `rule` to mean anything. Empty means every row takes whichever column it
+ * has and there is nothing to resolve, which the UI says rather than asking.
+ */
+export function combineOverlap(columns: MergedColumn[], keys: string[]): number[] {
+  const chosen = keys
+    .map((k) => columns.find((c) => c.key === k))
+    .filter((c): c is MergedColumn => Boolean(c))
+  if (chosen.length < 2) return []
+  const sheetCount = chosen[0].from.length
+  const overlapping: number[] = []
+  for (let sheet = 0; sheet < sheetCount; sheet++) {
+    if (chosen.filter((c) => c.from[sheet] !== -1).length > 1) overlapping.push(sheet)
+  }
+  return overlapping
+}
+
+/**
+ * Fold the user's combines into the merged column set.
+ *
+ * The result replaces the combined columns with one, positioned where the
+ * first of them was — a combine should not reshuffle the grid the user is
+ * reading. Unknown keys are ignored rather than throwing: a combine can
+ * outlive the column it named (the user goes back and changes the selection),
+ * and dropping it silently is better than refusing to render the step.
+ */
+export function applyColumnCombines(
+  columns: MergedColumn[],
+  combines: ColumnCombine[],
+): MergedColumn[] {
+  let out = columns
+  for (const combine of combines) {
+    const sources = combine.keys
+      .map((k) => out.find((c) => c.key === k))
+      .filter((c): c is MergedColumn => Boolean(c))
+    if (sources.length < 2) continue
+
+    const at = out.findIndex((c) => c.key === sources[0].key)
+    const sheetCount = sources[0].from.length
+    // Per sheet, every contributing column index in the user's priority
+    // order. Absent sources simply do not appear, so a length of 0 means the
+    // combined column is absent from that sheet.
+    const contributions: number[][] = []
+    for (let sheet = 0; sheet < sheetCount; sheet++) {
+      contributions.push(sources.map((c) => c.from[sheet]).filter((i) => i !== -1))
+    }
+
+    const merged: MergedColumn = {
+      // A stable key of its own: two different combines must not collide, and
+      // re-running with the same inputs must produce the same key.
+      key: `combined:${combine.keys.join('+')}`,
+      label: combine.name,
+      spellings: sources.flatMap((c) => c.spellings),
+      // `from` stays the first contributing index, so every existing reader
+      // (projection, "is this column in that sheet?") keeps working unchanged.
+      from: contributions.map((indices) => (indices.length ? indices[0] : -1)),
+      combinedFrom: contributions,
+      combineRule: combine.rule,
+      combinedKeys: combine.keys.slice(),
+    }
+
+    out = out.filter((c) => !combine.keys.includes(c.key))
+    out.splice(Math.min(at, out.length), 0, merged)
+  }
+  return out
+}

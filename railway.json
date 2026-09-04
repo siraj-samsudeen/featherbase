@@ -5,7 +5,7 @@
     "dockerfilePath": "apps/server/Dockerfile"
   },
   "deploy": {
-    "preDeployCommand": ["pnpm --filter server release"],
+    "preDeployCommand": ["pnpm --filter server release && pnpm --filter server seed:preview"],
     "healthcheckPath": "/api/ping",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",

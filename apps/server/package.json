@@ -19,7 +19,8 @@
     "test:smoke": "tsx src/smoke.ts",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
     "e2e:reset": "tsx scripts/reset-e2e-db.ts",
-    "e2e:serve": "tsx scripts/reset-e2e-db.ts && tsx src/migrate.ts && tsx src/run-patches.ts && tsx watch src/index.ts"
+    "e2e:serve": "tsx scripts/reset-e2e-db.ts && tsx src/migrate.ts && tsx src/run-patches.ts && tsx watch src/index.ts",
+    "seed:preview": "tsx scripts/seed-preview.ts"
   },
   "dependencies": {
     "@duckdb/node-api": "1.5.4-r.1",
