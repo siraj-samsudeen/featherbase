@@ -8,6 +8,8 @@ linkage checked by `tools/check-evidence.mjs`
 import spec's Q2 + Q4). Second greenfield trial of the journey-spec
 framework. Spec authored before any code; **all five open questions
 ruled by the arbiter 2026-08-05 — ready to build.**
+The wizard sequence this feature rides in is
+[spec 0008](0008-spreadsheet-import.md) (IMP-J2's match-key branch).
 
 ## The job
 

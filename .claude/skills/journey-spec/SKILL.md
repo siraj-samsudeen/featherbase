@@ -25,7 +25,7 @@ One feature produces:
 |---|---|---|
 | `docs/specs/NNNN-<feature>.md` | Markdown | Narrative + tables + the evidence verdicts — what humans sign and agents author. Never HTML. |
 | Fixture files | Real files (`e2e/fixtures/*.csv` + a `.claims.md`) | The agreement dataset the tests literally load. |
-| Review artifact | HTML, **generated** | A view rendered from the markdown, never a source. Regenerate on change. |
+| Manual | `docs/manual/<feature>.html`, **generated** (`pnpm manual:build`) | One page, three lenses (Read / Test / Build), rendered from the spec by `tools/build-manual.mjs` — never a source; edit the spec and rebuild. Screenshot slots keyed by step ID, filled by `SNAP=1` journey runs. Precedent: spec 0008. |
 
 HTML is a presentation format, not a source format: verbose to edit,
 hostile to diffs. Markdown carries the spec; HTML is always downstream.
@@ -44,11 +44,16 @@ the linkage on every CI run.
    *residue* — state another feature leaves behind, as deletion's is —
    describe that prior state instead; reusing the upstream feature's
    fixture is the honest move (trial #1 finding).
-2. **Journeys** (2–3): the walk told once, each step a triple
-   *(where am I, what do I do, what must I observably see)* — every "see"
-   an observable at a declared boundary. Loops are repeating groups;
-   durable failure states are named states. Each journey states its
-   **isolation strategy**; a skip is never a pass.
+2. **Journeys** (2–3): the walk told once, each step a quadruple
+   *(where am I, what do I do, what must I observably see, and one "Bug
+   if" clause — the failure this step exists to catch)* — every "see"
+   an observable at a declared boundary. **Journey steps speak the
+   user's language** (press-release voice; the test of a "see" is
+   whether someone who has never read the code could read it off the
+   screen). No implementation nouns in a journey — storage keys, chunk
+   sizes, thresholds, routes all belong in the rules layer. Loops are
+   repeating groups; durable failure states are named states. Each
+   journey states its **isolation strategy**; a skip is never a pass.
 3. **Sort the edge cases** — the triple-convergence rule: same walk,
    different values → an example-table row; the walk forks → a branch
    step; nobody has decided → an open question with a named arbiter.
