@@ -7,6 +7,12 @@
 // and excelRow — are the only blank-row predicate and the only
 // index→row-number arithmetic anywhere; every consumer imports them.
 
+// #198: what the workbook itself said about showing this sheet. 'very-hidden'
+// is set deliberately (from VBA, and not undoable through Excel's UI), so it
+// stays distinct from an ordinary hidden sheet rather than being flattened
+// into it — the overview says which.
+export type SheetVisibility = 'visible' | 'hidden' | 'very-hidden'
+
 export interface ParsedSheet {
   sheetName: string
   headers: string[]
@@ -14,6 +20,9 @@ export interface ParsedSheet {
   // 1-based Excel row of the header. Data row i (0-based, blanks included)
   // sits at Excel row excelRow(i, headerExcelRow) — see below.
   headerExcelRow: number
+  // #198: reported, never acted on here. A CSV, and any workbook written
+  // without sheet properties, is 'visible' throughout.
+  visibility: SheetVisibility
 }
 
 // The one definition of "blank": no cell with visible content.
@@ -41,6 +50,16 @@ export function isImportableFile(name: string): boolean {
   return ACCEPTED.test(name)
 }
 
+// SheetJS carries sheet properties in wb.Workbook.Sheets, index-aligned with
+// wb.SheetNames — `Hidden` is 0 visible, 1 hidden, 2 very hidden. The array is
+// absent for CSVs and for workbooks written by tools that omit it, and may be
+// shorter than SheetNames; every one of those reads as visible.
+function visibilityOf(props: { Hidden?: number } | undefined): SheetVisibility {
+  if (props?.Hidden === 2) return 'very-hidden'
+  if (props?.Hidden === 1) return 'hidden'
+  return 'visible'
+}
+
 // IMP-010: parse every non-empty sheet — a multi-sheet workbook yields one
 // ParsedSheet per sheet, a CSV exactly one.
 export async function parseWorkbook(file: File): Promise<ParsedSheet[]> {
@@ -50,7 +69,11 @@ export async function parseWorkbook(file: File): Promise<ParsedSheet[]> {
   const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true })
   if (!wb.SheetNames.length) throw new Error('The file has no sheets')
   const sheets: ParsedSheet[] = []
-  for (const sheetName of wb.SheetNames) {
+  // #198: read visibility by the sheet's own index in SheetNames, before any
+  // sheet is dropped below. Indexing the props array as sheets are pushed
+  // would shift every visibility after a skipped sheet by one.
+  const sheetProps = wb.Workbook?.Sheets
+  for (const [sheetIndex, sheetName] of wb.SheetNames.entries()) {
     // #115: blankrows: true keeps the sheet's real geometry — a blank row
     // survives as all-nulls instead of silently vanishing and shifting
     // every row number below it. coerceRows is the single place blanks are
@@ -66,7 +89,13 @@ export async function parseWorkbook(file: File): Promise<ParsedSheet[]> {
     while (h < grid.length && isBlankRow(grid[h])) h++
     if (h === grid.length) continue
     const headers = grid[h].map((c) => (c == null ? '' : String(c)))
-    sheets.push({ sheetName, headers, rows: grid.slice(h + 1), headerExcelRow: h + 1 })
+    sheets.push({
+      sheetName,
+      headers,
+      rows: grid.slice(h + 1),
+      headerExcelRow: h + 1,
+      visibility: visibilityOf(sheetProps?.[sheetIndex]),
+    })
   }
   if (!sheets.length)
     throw new Error('The file has no sheet with a header row and data')

@@ -11,6 +11,9 @@ interface WhoAmI {
   theme?: 'light' | 'dark'
   palette?: 'classic' | 'ivory' | 'graphite' | 'indigo'
   language?: string
+  // True on a dev-preview deployment. The shell says so out loud: anyone
+  // handed the link should know the data is disposable.
+  preview?: boolean
 }
 
 export function useWhoAmI() {
@@ -22,6 +25,10 @@ export function useWhoAmI() {
     // the sid cookie (if one survives) and answer as the previous user.
     enabled: Boolean(getSessionUser()),
   })
+}
+
+export function useIsPreview(): boolean {
+  return useWhoAmI().data?.preview ?? false
 }
 
 export function useIsSystemManager(): boolean {
