@@ -17,6 +17,7 @@ import { deleteTableIfExists } from './cleanup'
 
 const NOTE = 'Journey Lifecycle Note'
 const REF = 'Journey Lifecycle Ref'
+const SUB = 'Journey Lifecycle Line'
 const ENC = encodeURIComponent(NOTE)
 
 test('TLC-J1 / TLC-R1 / TLC-I1: declare a table, then reach its first row by clicking — never by URL', async ({
@@ -105,6 +106,41 @@ test('TLC-R1.settings: a settings table opens its single row and offers no creat
     .visit('/admin/System Settings')
     .assertHas('[data-testid="form-view"]')
     .refuteHas('[data-testid="list-new"]')
+})
+
+test('TLC-R1.sub_table: a child table reached directly offers no create affordance', async ({
+  session,
+  request,
+}) => {
+  const token = await adminToken(request)
+  const headers = { Authorization: `Bearer ${token}` }
+  await deleteTableIfExists(request, token, SUB)
+
+  // A sub-table's rows exist only inside a parent: `saveDoc` refuses a direct
+  // child insert ("<table> is a child Table; save it through its parent"), so
+  // an affordance here could only ever produce an error. The list itself
+  // stays reachable — this asserts the absence, not a blocked page.
+  expect(
+    (
+      await request.post('/api/table_def', {
+        headers,
+        data: {
+          name: SUB,
+          kind: 'sub_table',
+          columns: [{ column_name: 'line', column_type: 'Data' }],
+        },
+      })
+    ).status(),
+  ).toBe(201)
+
+  await signIn(session)
+  await session
+    .visit(`/admin/${encodeURIComponent(SUB)}`)
+    .assertHas('[data-testid="list-view"]')
+    .refuteHas('[data-testid="list-new"]')
+    .refuteHas('[data-testid="list-empty-new"]')
+
+  await deleteTableIfExists(request, token, SUB)
 })
 
 test('TLC-J2 / TLC-R3 / TLC-R4: delete a row from its own form, behind a confirmation that names it', async ({

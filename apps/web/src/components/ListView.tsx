@@ -377,9 +377,14 @@ export function ListView({
               as an awesomebar suggestion, which meant a table you had just
               built could not be filled unless you knew to search for its own
               name (#247). Absent, not disabled, where rows cannot be made:
-              a read-only source owns its rows (EDS-13), and a settings table
-              has one row and no list at all. */}
-          {!isSourceReadOnly(meta.data) && meta.data?.kind !== 'settings' && (
+              a read-only source owns its rows (EDS-13), a settings table
+              has one row and no list at all, and a sub-table's rows exist only
+              inside a parent — `saveDoc` refuses a direct child insert, so
+              offering New on a directly-reached child list could only ever
+              produce an error. */}
+          {!isSourceReadOnly(meta.data) &&
+            meta.data?.kind !== 'settings' &&
+            meta.data?.kind !== 'sub_table' && (
             <Link
               to="/admin/$table/$name"
               params={{ table, name: 'new' }}
@@ -683,7 +688,9 @@ export function ListView({
                       {/* TLC-J1.2: an empty table is the moment the user most
                           needs the way forward, so the empty state carries it
                           too — the toolbar action is not the only door. */}
-                      {!isSourceReadOnly(meta.data) && meta.data?.kind !== 'settings' && (
+                      {!isSourceReadOnly(meta.data) &&
+                        meta.data?.kind !== 'settings' &&
+                        meta.data?.kind !== 'sub_table' && (
                         <>
                           {' — '}
                           <Link

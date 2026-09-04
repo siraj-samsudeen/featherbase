@@ -137,10 +137,15 @@ accepts new rows from this Desk.
 > evidence TLC-R1.settings: proven — a settings table opens its single
 > row's form and offers no create affordance.
 
-> evidence TLC-R1.bound: gap #249 — the read-only-source clause is stated but not
-> witnessed here; it needs a Data Source fixture, which is spec 0001's
-> territory. The shared helper `isSourceReadOnly` is the single point
-> both specs gate on.
+> evidence TLC-R1.sub_table: proven — a child table reached directly renders
+> its list with neither create affordance. The gate initially checked only
+> `settings`, so the shipped code contradicted this rule's own example table
+> until the #258 review caught it.
+
+> evidence TLC-R1.bound: proven — a csv-folder source reflected at
+> `read_only` renders its list with neither create affordance. Added in the
+> #258 review response, where a writable binding was needed anyway; the
+> shared helper `isSourceReadOnly` is the single point both specs gate on.
 
 > evidence TLC-R1.permission: gap #249 — the Desk renders the affordance for any signed-in
 > user and lets the server refuse the write. Honest but late: a user
@@ -183,6 +188,12 @@ contract's identity. The same operation the form issues:
 
 > evidence TLC-R3.referenced: proven — the refusal names the referencing
 > row, and the row survives it.
+
+> evidence TLC-R3.bound: proven — a writable csv-folder binding refuses a
+> delete that omits the loaded revision, so the form echoes it: the test
+> asserts both the wire (the stamp is on the DELETE) and the outcome (the
+> row leaves the source). Red before the #258 review fix, which is where
+> this clause was found unimplemented on the form path.
 
 A row referenced by any Reference column in any table is refused, and the
 message **names the holder** — the referencing table and row — so the
