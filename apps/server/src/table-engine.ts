@@ -649,6 +649,17 @@ export async function renameColumn(
       await tx.unsafe(`alter table "${physical}" rename column "${from}" to "${target}"`)
     await tx`update column_def set column_name = ${target}
       where parent = ${meta.name} and column_name = ${from}`
+    // A Sub-table's children name their column on every row, in
+    // `parentfield`, and every child read filters on it (document.ts
+    // loadChildren). Renaming only the column_def would leave them addressed
+    // under a name nothing asks for: the parent loads an empty list, and the
+    // next save of that row deletes the children it could not see.
+    if (column.column_type === 'Sub-table' && column.row_table)
+      await tx.unsafe(
+        `update "${tableName(column.row_table)}" set parentfield = $1
+          where parenttype = $2 and parentfield = $3`,
+        [target, meta.name, from],
+      )
     // A unique constraint carries the old name in its own name. Postgres
     // renames the column inside it but not the constraint, so the next
     // updateTable — which builds that name from the column — would fail to

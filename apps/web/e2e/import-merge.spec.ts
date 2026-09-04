@@ -201,3 +201,70 @@ test('choosing separate still makes one Table per sheet', async ({ page, request
   for (const name of ['Store 001', 'Store 002']) await deleteTableIfExists(request, token, name)
   void headers
 })
+
+// Review finding 4 on PR #210: `table_created` used to be stamped on member
+// index 0, but a member with no projected rows is skipped before any log
+// request is made — and a header-only sheet parses fine. So a group whose
+// FIRST sheet carries only headers recorded table_created=false on every
+// part, and Past imports then called the brand-new Table pre-existing and
+// would not offer to delete it. The flag belongs on the first part actually
+// sent for the target, whichever member that turns out to be.
+const HEADER_FIRST_DT = 'Merge Header First'
+
+function headerFirstWorkbook(): Buffer {
+  const wb = XLSX.utils.book_new()
+  // Store 010 is a real sheet a real workbook has: the columns are set up,
+  // nobody has filled it in yet.
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.aoa_to_sheet([['Merge Zone', 'Merge Floor']]),
+    'Store 010',
+  )
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.aoa_to_sheet([
+      ['Merge Zone', 'Merge Floor'],
+      ['Bakery', 'Ground'],
+    ]),
+    'Store 011',
+  )
+  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+}
+
+test('a group whose first sheet is header-only still records that it created the Table', async ({
+  page,
+  request,
+}) => {
+  const token = await adminToken(request)
+  const headers = { Authorization: `Bearer ${token}` }
+  for (const name of [HEADER_FIRST_DT, 'Store 010', 'Store 011'])
+    await deleteTableIfExists(request, token, name)
+
+  await page.goto('/admin')
+  await page.getByTestId('import-data-link').click()
+  await page.getByTestId('iw-file-input').setInputFiles({
+    name: 'header first.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer: headerFirstWorkbook(),
+  })
+  await expect(page.getByTestId('iw-overview')).toBeVisible()
+  await page.getByTestId('iw-ov-master').check()
+  await page.getByTestId('iw-ov-mode-merge').check()
+  await page.getByTestId('iw-ov-merge-name').fill(HEADER_FIRST_DT)
+  await page.getByTestId('iw-ov-continue').click()
+  await page.getByTestId('iw-import').click()
+  await expect(page.getByTestId('iw-result-0')).toContainText('Imported 1 row')
+
+  // Past imports must show the Table as one this import CREATED — that is
+  // what makes it offerable for deletion.
+  const batches = await request.get('/api/import/batches', { headers })
+  const list = (await batches.json()) as {
+    batches: { targets: { table: string; created: boolean }[] }[]
+  }
+  const target = list.batches
+    .flatMap((b) => b.targets)
+    .find((t) => t.table === HEADER_FIRST_DT)
+  expect(target).toMatchObject({ table: HEADER_FIRST_DT, created: true })
+
+  await deleteTableIfExists(request, token, HEADER_FIRST_DT)
+})

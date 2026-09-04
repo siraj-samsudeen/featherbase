@@ -43,6 +43,10 @@ const mergeable = (meta: TableMeta) =>
 
 const SAMPLE_ROWS = 3
 const MAX_ROWS = 5000
+// The list endpoint clamps every response to 500 rows however large a
+// limit_page_length it is asked for (server/src/query.ts). Reading a source
+// bigger than that means paging, not asking for more.
+const PAGE_ROWS = 500
 
 interface Outcome {
   inserted: number
@@ -137,20 +141,35 @@ export function TableMerge() {
     try {
       const froms = mapped.map(([from]) => from)
       const tos = mapped.map(([, to]) => to)
-      const page = await api.get<{ data: Record<string, unknown>[]; total: number }>(
-        `/api/table/${encodeURIComponent(source)}?fields=${encodeURIComponent(
-          JSON.stringify(froms),
-        )}&limit_page_length=${MAX_ROWS}`,
-      )
-      if (page.total > MAX_ROWS) {
+      const read = (start: number) =>
+        api.get<{ data: Record<string, unknown>[]; total: number }>(
+          `/api/table/${encodeURIComponent(source)}?fields=${encodeURIComponent(
+            JSON.stringify(froms),
+          )}&limit_page_length=${PAGE_ROWS}&limit_start=${start}&order_by=${encodeURIComponent(
+            'row_id asc',
+          )}`,
+        )
+      const first = await read(0)
+      if (first.total > MAX_ROWS) {
         // Said, never silently truncated: a merge that quietly leaves rows
         // behind is worse than one that refuses.
         setError(
-          `${source} has ${page.total} rows; this screen merges at most ${MAX_ROWS} at a time.`,
+          `${source} has ${first.total} rows; this screen merges at most ${MAX_ROWS} at a time.`,
         )
         setBusy(null)
         return
       }
+      // Every row, not the first page. The guard above is against the
+      // screen's own ceiling; the endpoint's page size is smaller than that
+      // and is a paging question, not a refusal.
+      const collected = [...first.data]
+      while (collected.length < first.total) {
+        setBusy(`Reading rows ${collected.length + 1}–${first.total}…`)
+        const next = await read(collected.length)
+        if (!next.data.length) break
+        collected.push(...next.data)
+      }
+      const page = { data: collected, total: first.total }
       const typeOf = new Map(targetColumns.map((c) => [c.column_name, c.column_type]))
       // Coerced to the TARGET's types — a Data column landing in an Int one
       // has to become an Int or fail saying so, not arrive as a string.

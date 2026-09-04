@@ -706,16 +706,18 @@ app.put('/api/table_def/:name/id_pattern', async (c) => {
 
 // #206 (issue #197): the file-imports that have run, each rolled up from its
 // Import Log parts — which Tables it created, which it added to, and what
-// landed. Any signed-in reader; the log itself is the authority on detail.
+// landed. This is a reading of the Import Log, so it answers to the Import
+// Log's own read permission (own_rows_only included) rather than to merely
+// holding a session; listBatches enforces that from the user it is given.
 app.get('/api/import/batches', async (c) => {
-  who(c)
   const limit = Number(c.req.query('limit') ?? '')
-  return c.json({ batches: await listBatches(Number.isFinite(limit) ? limit : undefined) })
+  return c.json({
+    batches: await listBatches(who(c), Number.isFinite(limit) ? limit : undefined),
+  })
 })
 
 app.get('/api/import/batches/:id', async (c) => {
-  who(c)
-  return c.json(await getBatch(c.req.param('id')))
+  return c.json(await getBatch(who(c), c.req.param('id')))
 })
 
 // #207: delete every Table one import CREATED. Only the created ones — a

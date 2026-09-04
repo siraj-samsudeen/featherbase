@@ -160,3 +160,61 @@ describe('#209: adding a column after the rows are in', () => {
     expect((await rows(admin)).map((r) => r.glor)).toEqual(['Mezzanine', 'Ground'])
   })
 })
+
+// Review finding 2 on PR #210: a Sub-table column names its children by
+// `parentfield`, which every child read filters on (document.ts loadChildren).
+// Renaming the column without carrying that value forward leaves the existing
+// children addressed under a name nothing asks for any more: the parent loads
+// an empty list, and the rows are still there but unreachable.
+describe('#209: renaming a Sub-table column carries its children', () => {
+  const CHILD = 'Column Edit Line'
+  const ORDER = 'Column Edit Order'
+  const O = tableRef(ORDER)
+
+  async function withChildren(admin: TestClient) {
+    await admin.post('/api/table_def', {
+      name: CHILD,
+      kind: 'sub_table',
+      columns: [{ column_name: 'item', column_type: 'Data' }],
+    })
+    await makeTable(admin, {
+      name: ORDER,
+      columns: [
+        { column_name: 'title', column_type: 'Data' },
+        { column_name: 'items', column_type: 'Sub-table', row_table: CHILD },
+      ],
+    })
+    return admin.post<{ row_id: string }>('/api/save_row', {
+      table: ORDER,
+      row: { title: 'first', items: [{ item: 'apple' }, { item: 'pear' }] },
+    })
+  }
+
+  test('the children are still readable under the new column name', async ({ admin }) => {
+    const doc = await withChildren(admin)
+    await admin.post(`${O.defUrl}/rename_column`, { from: 'items', to: 'lines' })
+    const after = await admin.get<Record<string, any>>(
+      `/api/table/${encodeURIComponent(ORDER)}/${doc.row_id}`,
+    )
+    expect(after.lines?.map((r: any) => r.item)).toEqual(['apple', 'pear'])
+  })
+
+  test('a save after the rename does not silently drop them', async ({ admin }) => {
+    const doc = await withChildren(admin)
+    await admin.post(`${O.defUrl}/rename_column`, { from: 'items', to: 'lines' })
+    const loaded = await admin.get<Record<string, any>>(
+      `/api/table/${encodeURIComponent(ORDER)}/${doc.row_id}`,
+    )
+    // Re-saving the row exactly as it was read is the ordinary thing a form
+    // does. Before the fix `lines` read back empty, so this save DELETED both
+    // children — the data loss the rename was supposed to avoid.
+    await admin.post('/api/save_row', {
+      table: ORDER,
+      row: { ...loaded, title: 'renamed' },
+    })
+    const again = await admin.get<Record<string, any>>(
+      `/api/table/${encodeURIComponent(ORDER)}/${doc.row_id}`,
+    )
+    expect(again.lines?.map((r: any) => r.item)).toEqual(['apple', 'pear'])
+  })
+})

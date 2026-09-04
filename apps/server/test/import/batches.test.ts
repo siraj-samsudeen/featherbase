@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from '../pg-test'
-import { expectApiError, makeTable, tableRef } from '../fixtures'
+import { createUserWithRole, expectApiError, makeTable, tableRef } from '../fixtures'
 import type { TestClient } from 'feather-testing-postgres'
 
 // #206/#207 (issue #197): a file-import, seen and undone as one thing.
@@ -284,5 +284,74 @@ describe('#207: deleting what one import created', () => {
       TABLES.listUrl({ limit_page_length: 500 }),
     )
     expect(tables.data.map((t) => t.row_id)).toContain('Batch Guarded')
+  })
+})
+
+// Review finding 3 on PR #210: these routes required only a valid session,
+// then read the Import Log with raw SQL — so a user with no read grant on it
+// could still enumerate every import: filenames, sheet names, target Tables,
+// counts and who ran them. The wizard already treats a missing Import Log
+// grant as no access; the history has to say the same thing.
+describe('#206: the batch history obeys Import Log read permission', () => {
+  async function seedBatch(admin: TestClient, table: string, batch: string, file: string) {
+    await zoneTable(admin, table)
+    await importInto(admin, table, [{ zone: 'a' }], {
+      batch_id: batch,
+      file_name: file,
+      sheet_name: 'Sheet1',
+      table_created: true,
+      run_id: `run-${batch}`,
+    })
+  }
+
+  test('a signed-in user with no Import Log grant is refused', async ({ admin, createUser }) => {
+    const batch = newBatch()
+    await seedBatch(admin, 'Batch Perm A', batch, 'private.xlsx')
+    const user = await createUser({ roles: [] })
+    await expectApiError(user.get('/api/import/batches'), { status: 403 })
+    await expectApiError(user.get(`/api/import/batches/${batch}`), { status: 403 })
+  })
+
+  test('a reader with an unscoped grant sees the history', async ({
+    admin,
+    createUser,
+  }) => {
+    const batch = newBatch()
+    await seedBatch(admin, 'Batch Perm B', batch, 'shared.xlsx')
+    const user = await createUserWithRole(admin, createUser, {
+      role: 'Batch Log Reader',
+      table: 'Import Log',
+      can_read: true,
+    })
+    const seen = (await user.get<{ batches: Batch[] }>('/api/import/batches')).batches
+    expect(seen.map((b) => b.batch_id)).toContain(batch)
+  })
+
+  test('an own_rows_only grant hides imports the user did not run', async ({
+    admin,
+    createUser,
+  }) => {
+    const mine = newBatch()
+    const theirs = newBatch()
+    await seedBatch(admin, 'Batch Perm C', theirs, 'not-mine.xlsx')
+    await zoneTable(admin, 'Batch Perm D')
+    const user = await createUserWithRole(admin, createUser, {
+      role: 'Batch Own Reader',
+      table: ['Import Log', 'Batch Perm D'],
+      can_read: true,
+      can_create: true,
+      own_rows_only: true,
+    })
+    await user.post(`/api/table/${encodeURIComponent('Batch Perm D')}:import`, {
+      rows: [{ zone: 'z' }],
+      context: { batch_id: mine, file_name: 'mine.xlsx', sheet_name: 'S', run_id: `run-${mine}` },
+    })
+    const ids = (await user.get<{ batches: Batch[] }>('/api/import/batches')).batches.map(
+      (b) => b.batch_id,
+    )
+    expect(ids).toContain(mine)
+    expect(ids).not.toContain(theirs)
+    // And addressing the other batch directly is a 404, not a peek at it.
+    await expectApiError(user.get(`/api/import/batches/${theirs}`), { status: 404 })
   })
 })

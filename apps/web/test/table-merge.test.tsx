@@ -188,3 +188,37 @@ test('changing the target throws away a mapping made against the old one', async
   await screen.findByTestId('tm-mapping')
   await waitFor(() => expect(screen.getByTestId('tm-map-glor')).toHaveValue(''))
 })
+
+// Review finding 1 on PR #210: the screen asked the list endpoint for 5000
+// rows and only refused above 5000 — but the endpoint clamps every response
+// to 500 (`query.ts`). A source of 501–5000 rows passed the guard and then
+// merged only its first 500, silently leaving the rest behind. Silent
+// truncation is the one outcome this screen was written to avoid.
+test('a source larger than one page merges all of its rows, not the first page', async ({
+  admin,
+}) => {
+  const user = userEvent.setup()
+  await seed(admin)
+  // 520 > the endpoint's 500-row page and < the screen's 5000-row ceiling:
+  // the exact band that used to lose rows without saying anything.
+  const bulk = Array.from({ length: 520 }, (_, i) => ({
+    glor: `Level ${i}`,
+    zone_name: `Zone ${i}`,
+    pop: i,
+  }))
+  await admin.post(`/api/table/${encodeURIComponent(SRC)}:import`, { rows: bulk })
+
+  await openMerge(admin)
+  await chooseTarget(user)
+  await user.selectOptions(screen.getByTestId('tm-map-glor'), 'floor')
+  await waitFor(() => expect(screen.getByTestId('tm-map-glor')).toHaveValue('floor'))
+  await user.click(screen.getByTestId('tm-go'))
+
+  await screen.findByTestId('tm-outcome', undefined, { timeout: 30_000 })
+  // 2 from the seed + 520 here, every one of them, checked against the
+  // database the merge actually wrote to.
+  const page = await admin.get<{ total: number }>(
+    `/api/table/${encodeURIComponent(DST)}?limit_page_length=1`,
+  )
+  expect(page.total).toBe(523)
+})

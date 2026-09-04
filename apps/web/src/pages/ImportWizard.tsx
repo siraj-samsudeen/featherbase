@@ -1359,7 +1359,14 @@ export function ImportWizard() {
         // are lost the moment members are concatenated.
         const total = { updated: 0, inserted: 0, skipped: 0 }
         const failed: { sheetIndex: number; sourceIndex: number; message: string }[] = []
-        for (const [memberOrder, m] of plan.members.entries()) {
+        // Stamped on the FIRST PART ACTUALLY SENT for this target, not on
+        // member 0: a member whose projected rows are all blank is skipped
+        // before any log request (header-only sheets parse fine), so keying
+        // the flag to the member index loses the fact that the import made
+        // the Table — and Past imports then calls it pre-existing and will
+        // not offer to delete it.
+        let creationStamped = false
+        for (const m of plan.members) {
           const sheet = sheets[m]
           const rows =
             plan.mode === 'new'
@@ -1375,7 +1382,7 @@ export function ImportWizard() {
             context: (part, parts) => ({
               file_name: fileName ?? undefined,
               sheet_name: sheet.sheetName,
-              table_created: plan.mode === 'new' && memberOrder === 0 && part === 1,
+              table_created: plan.mode === 'new' && !creationStamped && part === 1,
               part,
               parts,
               run_id: runId,
@@ -1386,6 +1393,7 @@ export function ImportWizard() {
                 `${plan.table}${plan.members.length > 1 ? ` · ${sheet.sheetName}` : ''}: importing rows ${from}–${to} of ${n}…`,
               ),
           })
+          creationStamped = true
           total.updated += report.updated
           total.inserted += report.inserted
           failed.push(...report.failed.map((f) => ({ ...f, sheetIndex: m })))

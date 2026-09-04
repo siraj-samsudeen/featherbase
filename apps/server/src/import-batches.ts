@@ -10,7 +10,7 @@
 import { AppError } from './errors'
 import { sql } from './db'
 import { deleteTable, tableName } from './table-engine'
-import { assertSystemManager } from './permissions'
+import { assertSystemManager, permissionScope } from './permissions'
 
 const DEFAULT_LIMIT = 20
 const MAX_LIMIT = 100
@@ -71,26 +71,45 @@ interface LogRow {
  * (a target per sheet, a part per chunk), so a row limit would cut a batch in
  * half and report it as smaller than it was.
  */
-export async function listBatches(limit = DEFAULT_LIMIT, only?: string): Promise<ImportBatch[]> {
+export async function listBatches(
+  user: string,
+  limit = DEFAULT_LIMIT,
+  only?: string,
+): Promise<ImportBatch[]> {
   const capped = Math.min(Math.max(1, Math.trunc(limit) || DEFAULT_LIMIT), MAX_LIMIT)
   const log = tableName('Import Log')
+
+  // The history is a reading of the Import Log, so it answers to the Import
+  // Log's own read permission rather than to merely holding a session. The
+  // wizard already treats a missing grant as no access; without this a user
+  // with none could still enumerate every import — filenames, sheet names,
+  // target Tables, counts and who ran them.
+  const scope = await permissionScope(user, 'Import Log', 'read')
+  if (scope === 'none')
+    throw new AppError('PermissionError', `No read permission on Import Log for ${user}`)
+  // PERM-007: an own_rows_only grant scopes to what this user created. The
+  // filter goes on the LOG ROWS, not the batches, so a batch is visible only
+  // through the parts its reader actually ran — a shared batch does not carry
+  // someone else's parts along with it.
+  const mine = scope === 'own_rows'
 
   // `only` addresses one batch however old it is — a batch named in a URL
   // must not depend on still being on the first page of recent ones.
   const picked = only
     ? await sql.unsafe<{ batch_id: string; started_at: Date }[]>(
         `select batch_id, min(created_at) as started_at
-           from "${log}" where batch_id = $1 group by batch_id`,
-        [only],
+           from "${log}" where batch_id = $1 ${mine ? 'and created_by = $2' : ''}
+          group by batch_id`,
+        mine ? [only, user] : [only],
       )
     : await sql.unsafe<{ batch_id: string; started_at: Date }[]>(
         `select batch_id, min(created_at) as started_at
            from "${log}"
-          where batch_id is not null
+          where batch_id is not null ${mine ? 'and created_by = $2' : ''}
           group by batch_id
           order by min(created_at) desc
           limit $1`,
-        [capped],
+        mine ? [capped, user] : [capped],
       )
   if (!picked.length) return []
 
@@ -99,9 +118,9 @@ export async function listBatches(limit = DEFAULT_LIMIT, only?: string): Promise
     `select batch_id, ref_table, file_name, sheet_name, table_created, inserted, updated,
             failed, run_id, reverted_at, created_at, created_by
        from "${log}"
-      where batch_id = any($1)
+      where batch_id = any($1) ${mine ? 'and created_by = $2' : ''}
       order by created_at asc`,
-    [ids],
+    mine ? [ids, user] : [ids],
   )
 
   // Which of the named Tables still exist — asked once for the whole page
@@ -167,8 +186,8 @@ export async function listBatches(limit = DEFAULT_LIMIT, only?: string): Promise
   })
 }
 
-export async function getBatch(batchId: string): Promise<ImportBatch> {
-  const [batch] = await listBatches(1, batchId)
+export async function getBatch(user: string, batchId: string): Promise<ImportBatch> {
+  const [batch] = await listBatches(user, 1, batchId)
   if (!batch) throw new AppError('NotFoundError', `No import batch ${batchId}`)
   return batch
 }
@@ -193,7 +212,7 @@ export interface BatchDeletion {
  */
 export async function deleteBatchTables(batchId: string, user: string): Promise<BatchDeletion> {
   await assertSystemManager(user)
-  const batch = await getBatch(batchId)
+  const batch = await getBatch(user, batchId)
   const deleted: string[] = []
   const refused: { table: string; message: string }[] = []
   for (const target of batch.targets) {
