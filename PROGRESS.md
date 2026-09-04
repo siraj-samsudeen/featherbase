@@ -1,5 +1,58 @@
 # Progress Log
 
+## 2026-09-04 — Review response on #258, and two long-standing invariant violations closed
+
+The owner's review of #258 found two places where the new affordances offered
+an operation the server deterministically refuses. Both were real, both are
+fixed, and each regression test was confirmed red before its fix:
+
+- **A bound row's Delete never sent the revision.** `deleteBoundDoc` refuses
+  any delete omitting `updated_at` once the binding maps a modified column, so
+  the button was decorative on every writable source. The form now echoes
+  `baseline.updated_at` — deliberately the stamp it LOADED, not a fresh
+  re-read the way `ListView.bulkDelete` does it, because the loaded stamp is
+  what the user was looking at when they decided.
+- **New was offered on sub-tables.** The gate checked only `settings`, so a
+  directly reached child list offered a link into `saveDoc`'s "is a child
+  Table; save it through its parent". Worth recording plainly: this
+  contradicted the example table in TLC-R1, the very rule the gate
+  implements. The spec and the code disagreed inside one PR.
+
+New fixture: `apps/web/test/table-lifecycle-bound.test.tsx` reflects a real
+`csv-folder` source in a web component test — positional `_row` pk, file mtime
+as `updated_at`. It asserts the wire AND the outcome, and at `read_only` it
+also closes the spec's `TLC-R1.bound` gap (24 gaps now, 67 proven).
+
+**Then two things this session had flagged and left unfiled, now closed on the
+owner's instruction:**
+
+- **`exc_type` is gone from the error envelope** (CLAUDE.md invariant 4). The
+  striking part: `docs/ARCHITECTURE.md` has claimed twice, in the present
+  tense, that the envelope "no longer carries Frappe's `exc_type`" since the
+  divergence phase began. The doc was right and the code had never caught up —
+  drift in the direction nobody checks. `error-envelope.test.ts` now asserts
+  `Object.keys(body)` equals `['error']` in its shared helper, so no
+  Frappe-shaped sibling can reappear on any path; 8 of its 9 cases fail
+  without the fix. ADR 0006 still records `exc_type` as a then-advantage of
+  this implementation — that is dated history and stays.
+- **`./init.sh` boots clean again.** `playwright.config.ts` now resolves
+  Chromium the way `print.ts` does: explicit `CHROMIUM_PATH` wins, else probe
+  the container's browsers root for the newest Chromium actually installed.
+  A prebuilt image pins browsers at its own build while the pinned
+  `@playwright/test` expects the build it ships with; when those drift every
+  spec dies before its first assertion and the smoke gate takes the whole
+  boot down with it. The probe is inert where that root does not exist, so a
+  developer machine still uses Playwright's own browser.
+
+Verified: `./init.sh` exits 0 with CHROMIUM_PATH unset (the gate that had been
+red all session); web e2e 102 passed, also with it unset; web unit 94; server
+739 passed / 1 failed (the known container-only sources-csv chmod case, red
+before these changes too); both typechecks clean; `check-evidence` green at
+101 verdicts.
+
+Next: #258 is ready to merge. The schema half of #249 is untouched — #250 and
+#251 remain the ones to take before #209 builds a rename control on them.
+
 ## 2026-08-30 — The row lifecycle gets a spec, and the Admin gets its two missing doors (#247, #252, #256)
 
 The owner's acceptance test found the hole: you can declare a table in the
