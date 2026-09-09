@@ -20,9 +20,9 @@ lives in the rules' properties.
 
 > evidence: gap — spec'd, not yet built
 
-| # | Where / do | Must observably see | Rules |
-|---|---|---|---|
-| J1.1 | … | … | R1 |
+| # | Where / do | Must observably see | Bug if | Rules |
+|---|---|---|---|---|
+| J1.1 | <user's language, no implementation nouns> | <readable off the screen> | <the one-clause failure this step exists to catch> | R1 |
 
 **Branch at J1.n — <path variation>.** <only what changes>
 **Isolation strategy:** <how re-runs stay honest; a skip is never a pass>

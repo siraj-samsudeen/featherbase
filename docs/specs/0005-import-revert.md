@@ -10,7 +10,8 @@ first real-data deployment. Three rulings made 2026-08-11, before
 authoring: revert defaults to **skipping rows edited after the import**,
 reported by name; an explicit **"revert these N anyway"** escalation
 covers the skipped rows; refusing entirely is just not proceeding — there
-is no third mode.
+is no third mode. The wizard sequence this feature rides in is
+[spec 0008](0008-spreadsheet-import.md) (IMP-J5.5 and IMP-J7.5).
 
 ## The job
 

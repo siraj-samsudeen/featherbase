@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "manual",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "4317", "-d", "docs/manual"],
+      "port": 4317
+    }
+  ]
+}

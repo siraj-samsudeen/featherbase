@@ -1,0 +1,276 @@
+{
+  "fixtures": [
+    {
+      "file": "zones.csv",
+      "journeys": [
+        "IMP-J1",
+        "IMP-J2"
+      ],
+      "shape": "8 rows · 6 columns",
+      "provokes": "The agreement instrument. Every column lands on a different inferred type with no judgement call: Choice (North/South), Int, Float, Date, Check."
+    },
+    {
+      "file": "zones-updates.csv",
+      "journeys": [
+        "IMP-J2"
+      ],
+      "shape": "6 rows against Zones",
+      "provokes": "The matched-key half of J2, which spec 0004 owns: 3 updates, 2 inserts, one blank cell (Delta’s Population — keep or clear) and one key duplicated inside the file (Alpha twice)."
+    },
+    {
+      "file": "zones-messy.csv",
+      "journeys": [
+        "IMP-J1",
+        "IMP-J5"
+      ],
+      "shape": "7 rows, three of them bad",
+      "provokes": "J1.6’s bad-cell branch on both paths, and J5’s row numbering: a bad int, a bad date, a fully blank row (counted in the spreadsheet row numbers the user sees) and `maybe` in a yes/no column."
+    },
+    {
+      "file": "zones-large.csv",
+      "journeys": [
+        "IMP-J2",
+        "IMP-J5"
+      ],
+      "shape": "1,200 rows",
+      "provokes": "A target sent in more than one part: chunked progress, one Import Log row per part, and a batch that still counts the target once (IMP-I5). Imported twice with a key, it also crosses the typed-confirmation threshold."
+    },
+    {
+      "file": "notes.pdf",
+      "journeys": [
+        "IMP-J1"
+      ],
+      "shape": "one page, no rows at all",
+      "provokes": "J1.2’s wrong-file-kind branch: refused by name — <em>notes.pdf: not a CSV or Excel file</em> — with the screen otherwise unchanged."
+    },
+    {
+      "file": "j3-mixed-sheets.xlsx",
+      "sheets": [
+        {
+          "name": "Zone Register",
+          "rows": 3,
+          "headers": [
+            "Zone",
+            "Region",
+            "Population"
+          ],
+          "visibility": "visible"
+        },
+        {
+          "name": "Suppliers",
+          "rows": 2,
+          "headers": [
+            "Supplier",
+            "Contact",
+            "Since"
+          ],
+          "visibility": "visible"
+        },
+        {
+          "name": "Vehicles",
+          "rows": 2,
+          "headers": [
+            "Registration",
+            "Kind",
+            "Capacity Kg"
+          ],
+          "visibility": "visible"
+        },
+        {
+          "name": "Lookups",
+          "rows": 2,
+          "headers": [
+            "Code",
+            "Meaning"
+          ],
+          "visibility": "hidden"
+        },
+        {
+          "name": "Macro Cache",
+          "rows": 1,
+          "headers": [
+            "key",
+            "value"
+          ],
+          "visibility": "very hidden"
+        }
+      ],
+      "journeys": [
+        "IMP-J3"
+      ],
+      "shape": "5 sheets — 3 ordinary, 1 hidden, 1 very hidden",
+      "provokes": "The whole of J3: unrelated sheets so nothing tempts a merge, a hidden sheet and a <em>very</em> hidden one (the state only a macro can set) for the overview’s own section, and three visible sheets so ticking two leaves one demonstrably out."
+    },
+    {
+      "file": "j4-store-floors.xlsx",
+      "sheets": [
+        {
+          "name": "Anna Nagar",
+          "rows": 3,
+          "headers": [
+            "Store Code",
+            "Merge Floor",
+            "Floor",
+            "Items",
+            "Monthly Sales"
+          ],
+          "visibility": "visible"
+        },
+        {
+          "name": "T Nagar",
+          "rows": 3,
+          "headers": [
+            "Store Name",
+            "MERGE FLOOR",
+            "Floor",
+            "Items",
+            "Monthly Sales"
+          ],
+          "visibility": "visible"
+        },
+        {
+          "name": "Velachery",
+          "rows": 3,
+          "headers": [
+            "Store Code",
+            "Store Name",
+            "merge_floor ",
+            "Glor",
+            "Items",
+            "Monthly Sales"
+          ],
+          "visibility": "visible"
+        }
+      ],
+      "journeys": [
+        "IMP-J4",
+        "IMP-J7"
+      ],
+      "shape": "3 same-shape sheets, 45 cells of disagreement",
+      "provokes": "Every clause of the merge group. <code>Merge Floor</code> · <code>MERGE FLOOR</code> · <code>merge_floor </code> fold into one column (IMP-R16); <code>Glor</code> and <code>Floor</code> do <strong>not</strong> (IMP-H5) and are the pair the user combines; <code>Glor</code> is on one sheet only, so it is also the column the others lack; and <code>Store Code</code> (STR-009) / <code>Store Name</code> (Anna Nagar) are the pair no algorithm could propose — with Velachery carrying both, so a first/join rule is <em>required</em> (IMP-R17). Velachery’s middle row has a blank <code>Store Name</code>, which is what tells <code>first</code> apart from a rule that blanks the row."
+    },
+    {
+      "file": "j5-three-depots.xlsx",
+      "sheets": [
+        {
+          "name": "North Depot",
+          "rows": 2,
+          "headers": [
+            "Bay",
+            "Pallets",
+            "Checked On"
+          ],
+          "visibility": "visible"
+        },
+        {
+          "name": "Central Depot",
+          "rows": 2,
+          "headers": [
+            "Bay",
+            "Pallets",
+            "Checked On"
+          ],
+          "visibility": "visible"
+        },
+        {
+          "name": "South Depot",
+          "rows": 2,
+          "headers": [
+            "Bay",
+            "Pallets",
+            "Checked On"
+          ],
+          "visibility": "visible"
+        }
+      ],
+      "journeys": [
+        "IMP-J5"
+      ],
+      "shape": "3 ordinary sheets of one shape",
+      "provokes": "J5’s partial failure. Tick all three as <strong>separate</strong> Tables and refuse <em>Central Depot</em>’s create call: the first result must survive, the second must be named with its reason, and the third must still import."
+    },
+    {
+      "file": "j6-three-weeks.xlsx",
+      "sheets": [
+        {
+          "name": "Week 1",
+          "rows": 3,
+          "headers": [
+            "Day",
+            "Orders",
+            "Revenue"
+          ],
+          "visibility": "visible"
+        },
+        {
+          "name": "Week 2",
+          "rows": 2,
+          "headers": [
+            "Day",
+            "Orders",
+            "Revenue"
+          ],
+          "visibility": "visible"
+        },
+        {
+          "name": "Week 3",
+          "rows": 2,
+          "headers": [
+            "Day",
+            "Orders",
+            "Revenue"
+          ],
+          "visibility": "visible"
+        }
+      ],
+      "journeys": [
+        "IMP-J6"
+      ],
+      "shape": "3 sheets, imported one at a time",
+      "provokes": "J6’s resume walk. Three separate targets give you a <em>Table 2 of 3</em> to leave from and come back to, a first result to find still on screen, and a third still waiting."
+    },
+    {
+      "file": "j7-residue.xlsx",
+      "sheets": [
+        {
+          "name": "Floor Plan",
+          "rows": 3,
+          "headers": [
+            "Section",
+            "Glor",
+            "Items"
+          ],
+          "visibility": "visible"
+        },
+        {
+          "name": "Floor Plan Annexe",
+          "rows": 2,
+          "headers": [
+            "Section",
+            "Floor",
+            "Items"
+          ],
+          "visibility": "visible"
+        },
+        {
+          "name": "Zone Register",
+          "rows": 2,
+          "headers": [
+            "Zone Name",
+            "Region",
+            "Population",
+            "Area Sq Km",
+            "Opened On",
+            "Is Active"
+          ],
+          "visibility": "visible"
+        }
+      ],
+      "journeys": [
+        "IMP-J7"
+      ],
+      "shape": "3 sheets — two Tables created, one added to",
+      "provokes": "The residue J7 acts on, in one drop. <em>Floor Plan</em> and <em>Floor Plan Annexe</em> create Tables (so the batch has Tables to delete) while <em>Zone Register</em> only adds rows to the Zones Table zones.csv already made (so the batch has a Table it must <strong>not</strong> delete). <em>Floor Plan</em> carries the misspelt <code>Glor</code> to rename, and <em>Floor Plan Annexe</em> is the second Table to merge into the first — with <code>Glor</code> and <code>Floor</code> staying apart until you pair them."
+    }
+  ]
+}
