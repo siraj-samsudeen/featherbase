@@ -16,6 +16,16 @@ working with an agent.
 - “Active” does not require polling. Continue useful management or discussion
   work while workers run, and have workers report back when finished.
 
+## Coordination cadence
+
+- Launching an implementation or review thread must not unnecessarily pause
+  the main thread. Move to the next PR, decision, or independent workstream
+  while delegated work runs, unless its result is a prerequisite.
+- Whenever stopping for owner input, offer concrete next-step options. Include
+  choices such as waiting for active work, proceeding to the next item, or
+  opening additional independent paths when applicable, so the owner can
+  choose how much parallel work to engage with.
+
 ## Review gates
 
 - Invoke an independent code review for every completed code change before it
