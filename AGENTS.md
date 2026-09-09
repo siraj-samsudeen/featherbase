@@ -34,6 +34,9 @@ default guidance to implement directly in the main thread.
   choices such as waiting for active work, proceeding to the next item, or
   opening additional independent paths when applicable, so the owner can
   choose how much parallel work to engage with.
+- For owner-facing decisions or questions that require a choice, give enough
+  context to decide: explain why it matters, state a recommended option when
+  one is warranted, and link any directly relevant issue or PR.
 
 ## Review gates
 
