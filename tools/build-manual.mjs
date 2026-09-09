@@ -331,10 +331,12 @@ export function parseSpec(md) {
   // ---- journeys --------------------------------------------------------
   const STEP_HEADER = ['#', 'Where / do', 'Must observably see', 'Bug if', 'Rules']
   const journeys = []
+  const stepLines = new Map()
   for (const s of sections) {
     const m = s.heading.match(/^(IMP-J\d+)\s+—\s+(.*?)(?:\s+\*\((.+)\)\*)?$/)
     if (!m) continue
     const [, id, jTitle, shape] = m
+    const journeyId = id.slice(4)
     const body = s.body
 
     // The step table.
@@ -357,9 +359,13 @@ export function parseSpec(md) {
       }
       const [stepId, doCell, seeCell, bugCell, rulesCell] = cells
       if (!/^J\d+\.\d+[a-z]?$/.test(stepId)) fail(lineNo, `"${stepId}" is not a step id (J<journey>.<n>, optional letter suffix)`)
+      if (!stepId.startsWith(`${journeyId}.`)) fail(lineNo, `"${stepId}" does not belong to ${id}`)
       if (!doCell) fail(lineNo, `${stepId} has an empty "Where / do"`)
       if (!seeCell) fail(lineNo, `${stepId} has an empty "Must observably see"`)
       const slot = `IMP-${stepId}`
+      const firstLine = stepLines.get(stepId)
+      if (firstLine) fail(lineNo, `duplicate step id "${stepId}" (slot "${slot}"), first declared on line ${firstLine}`)
+      stepLines.set(stepId, lineNo)
       steps.push({
         id: stepId,
         slot,

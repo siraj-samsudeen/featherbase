@@ -116,11 +116,29 @@ test('a step id not shaped J<n>.<n> (optional letter suffix) is refused', () => 
   }
 })
 
-test('a step id with a letter suffix, e.g. "J2.3b", is accepted', () => {
-  const md = mutate(106, '| J1.1 |', '| J2.3b |')
+test('a step id with a letter suffix in its own journey, e.g. "J1.1b", is accepted', () => {
+  const md = mutate(106, '| J1.1 |', '| J1.1b |')
   const spec = parseSpec(md)
   const j1 = spec.journeys.find((j) => j.id === 'IMP-J1')
-  assert.equal(j1.steps[0].id, 'J2.3b')
+  assert.equal(j1.steps[0].id, 'J1.1b')
+})
+
+test('a validly shaped step id from another journey is refused, naming the line', () => {
+  const md = mutate(106, '| J1.1 |', '| J2.99b |')
+  assertRefused(
+    md,
+    'docs/specs/0008-spreadsheet-import.md:106',
+    '"J2.99b" does not belong to IMP-J1',
+  )
+})
+
+test('a duplicate step id and its derived screenshot slot are refused, naming the second line', () => {
+  const md = mutate(107, '| J1.2 |', '| J1.1 |')
+  assertRefused(
+    md,
+    'docs/specs/0008-spreadsheet-import.md:107',
+    'duplicate step id "J1.1" (slot "IMP-J1.1")',
+  )
 })
 
 // ---------------------------------------------- (5) fixture manifest check
