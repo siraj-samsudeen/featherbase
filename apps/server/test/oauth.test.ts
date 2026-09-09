@@ -3,6 +3,7 @@ import { test } from './pg-test'
 import { config } from '../src/config'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
+import { mockConsentHtml } from '../src/oauth'
 import type { TestClient } from 'feather-testing-postgres'
 
 // PLAT-006: Google OAuth server-side flow, driven through the dev mock
@@ -76,6 +77,11 @@ function redeem(api: TestClient, code: string | null, cookie: string) {
 }
 
 describe('PLAT-006: OAuth sign-in (mock provider)', () => {
+  test('the mock consent page begins with a standards-mode doctype', () => {
+    expect(mockConsentHtml('state', '/api/oauth/google/callback', 'person@example.com', 'Test User'))
+      .toMatch(/^<!DOCTYPE html>/)
+  })
+
   test('full mock flow provisions a user and hands the SPA a session', async ({ api }) => {
     const res = await mockSignIn(api, 'new.person@gmail.com')
     expect(res.status).toBe(302)

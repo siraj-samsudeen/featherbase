@@ -18,13 +18,13 @@ export async function renderWebPage(route: string): Promise<RenderedPage> {
   if (!page || !page.published) {
     return {
       found: false,
-      html: `<!table html><html><head><meta charset="utf-8"><title>Not Found</title></head><body><h1>404</h1><p>No published page at this route.</p></body></html>`,
+      html: `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Not Found</title></head><body><h1>404</h1><p>No published page at this route.</p></body></html>`,
     }
   }
   const title = escapeHtml((page.title as string) ?? route)
   // Content is authored HTML (trusted author input), rendered as the page body.
   const content = (page.content as string) ?? ''
-  const html = `<!table html>
+  const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">

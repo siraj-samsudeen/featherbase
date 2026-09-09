@@ -34,6 +34,7 @@ describe('WEB-001: web pages', () => {
     await setup(admin)
     const page = await renderWebPage('srv-pub')
     expect(page.found).toBe(true)
+    expect(page.html).toMatch(/^<!DOCTYPE html>/)
     expect(page.html).toContain('<title>Public</title>')
     expect(page.html).toContain('<h1>Hello Public</h1>')
   })
@@ -42,6 +43,7 @@ describe('WEB-001: web pages', () => {
     await setup(admin)
     const page = await renderWebPage('srv-draft')
     expect(page.found).toBe(false)
+    expect(page.html).toMatch(/^<!DOCTYPE html>/)
     expect(page.html).not.toContain('Secret')
   })
 
