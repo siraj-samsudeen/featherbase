@@ -1,5 +1,58 @@
 # Progress Log
 
+## 2026-09-04 — Review response on #258, and two long-standing invariant violations closed
+
+The owner's review of #258 found two places where the new affordances offered
+an operation the server deterministically refuses. Both were real, both are
+fixed, and each regression test was confirmed red before its fix:
+
+- **A bound row's Delete never sent the revision.** `deleteBoundDoc` refuses
+  any delete omitting `updated_at` once the binding maps a modified column, so
+  the button was decorative on every writable source. The form now echoes
+  `baseline.updated_at` — deliberately the stamp it LOADED, not a fresh
+  re-read the way `ListView.bulkDelete` does it, because the loaded stamp is
+  what the user was looking at when they decided.
+- **New was offered on sub-tables.** The gate checked only `settings`, so a
+  directly reached child list offered a link into `saveDoc`'s "is a child
+  Table; save it through its parent". Worth recording plainly: this
+  contradicted the example table in TLC-R1, the very rule the gate
+  implements. The spec and the code disagreed inside one PR.
+
+New fixture: `apps/web/test/table-lifecycle-bound.test.tsx` reflects a real
+`csv-folder` source in a web component test — positional `_row` pk, file mtime
+as `updated_at`. It asserts the wire AND the outcome, and at `read_only` it
+also closes the spec's `TLC-R1.bound` gap (24 gaps now, 67 proven).
+
+**Then two things this session had flagged and left unfiled, now closed on the
+owner's instruction:**
+
+- **`exc_type` is gone from the error envelope** (CLAUDE.md invariant 4). The
+  striking part: `docs/ARCHITECTURE.md` has claimed twice, in the present
+  tense, that the envelope "no longer carries Frappe's `exc_type`" since the
+  divergence phase began. The doc was right and the code had never caught up —
+  drift in the direction nobody checks. `error-envelope.test.ts` now asserts
+  `Object.keys(body)` equals `['error']` in its shared helper, so no
+  Frappe-shaped sibling can reappear on any path; 8 of its 9 cases fail
+  without the fix. ADR 0006 still records `exc_type` as a then-advantage of
+  this implementation — that is dated history and stays.
+- **`./init.sh` boots clean again.** `playwright.config.ts` now resolves
+  Chromium the way `print.ts` does: explicit `CHROMIUM_PATH` wins, else probe
+  the container's browsers root for the newest Chromium actually installed.
+  A prebuilt image pins browsers at its own build while the pinned
+  `@playwright/test` expects the build it ships with; when those drift every
+  spec dies before its first assertion and the smoke gate takes the whole
+  boot down with it. The probe is inert where that root does not exist, so a
+  developer machine still uses Playwright's own browser.
+
+Verified: `./init.sh` exits 0 with CHROMIUM_PATH unset (the gate that had been
+red all session); web e2e 102 passed, also with it unset; web unit 94; server
+739 passed / 1 failed (the known container-only sources-csv chmod case, red
+before these changes too); both typechecks clean; `check-evidence` green at
+101 verdicts.
+
+Next: #258 is ready to merge. The schema half of #249 is untouched — #250 and
+#251 remain the ones to take before #209 builds a rename control on them.
+
 ## 2026-08-31 — #197 meets the runtime evidence gate (#241)
 
 Merged `main` (#242) into the import branch a second time. The gate that
@@ -34,6 +87,66 @@ succeeds. Environmental, reproduces on `main`, and CI runs non-root.
 
 **Next:** PR #210 still has no workflow run of its own — GitHub has created
 none for any commit on this branch. Nothing to build; the wait is on a runner.
+
+## 2026-08-30 — The row lifecycle gets a spec, and the Admin gets its two missing doors (#247, #252, #256)
+
+The owner's acceptance test found the hole: you can declare a table in the
+UI and then stop. No way to add a row, nothing to change a column. Issue
+#249 maps the whole lifecycle; this session builds the **row** half and
+specs all of it.
+
+**`docs/specs/0007-table-lifecycle.md`** — the first spec to cover the
+surface every user meets first. It carries the built half as `proven` and
+the unbuilt half as `gap`/`pinned` against its own issues, so the debt is
+CI's problem rather than memory's. The checker went from 78 verdicts across
+5 specs to **99 across 6** (25 gap · 7 pinned · 64 proven · 3 rule-tier).
+
+**Two affordances, both metadata-gated, no per-table code:**
+
+- **`list-new`** in the list toolbar plus `list-empty-new` inline in the
+  empty state (#247). Absent — not disabled — on a read-only source and on
+  a settings table. Creating a row previously required the awesomebar's
+  "New X" suggestion, i.e. knowing the table's own name; a table you had
+  just built could not be filled.
+- **`form-delete`** beside Rename, with a confirmation dialog that NAMES
+  the row (#252). Deliberately the same shape as the table-level dialog
+  from spec 0003 — labelled, `aria-modal`, Escape-dismissable. Row
+  deletion existed only in the list's bulk bar. The server owns every
+  refusal (referenced row, submitted row, engine-managed table); the
+  dialog reports whichever comes back rather than pre-judging it, so the
+  UI cannot disagree with the rule that actually holds.
+
+**The tests are the point of the exercise.** `apps/web/e2e/table-lifecycle.spec.ts`
+never navigates by URL after its entry point — every step is reached by
+clicking what a user clicks. That is the mitigation for TLC-H2, the hazard
+that let this survive: 60 spec files and 117 `page.goto` calls, every
+row-creation test deep-linking to `/admin/<Table>/new`, so no assertion
+could ever fail for a missing button. `UI-011` stood as "passing" against
+half its own title for the same reason.
+
+Two pins hold the spec's invariants against defects the schema editor
+(#209) is about to be built on top of, both verified to fail on their own
+assertion rather than in setup: **#250** (`expected null to be 'first'` —
+a column rename is diffed as drop+add, so the data is orphaned) and
+**#251** (`promise resolved instead of rejecting` — a `PUT` carrying a
+different `name` answers 200 with the old one).
+
+Verified: `pnpm --filter web e2e` 101 passed (the 3 new journeys included);
+the same 3 confirmed RED with the two components stashed, failing on
+`list-new` and `form-delete` exactly; `apps/server/test/table-lifecycle.test.ts`
+8 passed; full server suite 739 passed / 1 failed (the known container-only
+sources-csv chmod case, red before this change — we run as root, so
+`chmod 000` does not stop the write); web 92 passed; shared 22 passed;
+both typechecks clean; `node tools/check-evidence.mjs` green at 99 verdicts.
+
+Gotcha for the record: Playwright 1.61.1 wants Chromium build 1228 and this
+container ships 1194, so `./init.sh` fails its smoke gate on the browser
+alone. `CHROMIUM_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome`
+is the workaround the config already supports.
+
+Next: #256's spec is written, so the remaining #249 children each flip
+their own verdict as they land. #250 and #251 are the ones to take before
+#209 builds a rename control on top of them.
 
 ## 2026-08-28 — #197 meets the new test system
 

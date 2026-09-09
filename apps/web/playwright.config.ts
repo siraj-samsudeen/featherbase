@@ -1,9 +1,54 @@
 import { defineConfig } from '@playwright/test'
+import { existsSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 
-// Only override the browser binary when the environment names one (the
-// container installs Chromium outside Playwright's own cache). Everywhere
-// else, let Playwright resolve the browser it installed itself.
-const chromiumPath = process.env.CHROMIUM_PATH
+// Resolve the Chromium binary the same way `apps/server/src/print.ts` does,
+// and for the same reason: CLAUDE.md's environment rule says Chromium is
+// resolved from the environment and never hardcoded.
+//
+// Preferring Playwright's own resolution is not enough on a prebuilt
+// container. The image installs browsers under /opt/pw-browsers at whatever
+// build the image was made with, while the pinned @playwright/test expects
+// the build IT ships with — when those drift, Playwright looks for a
+// directory that was never installed and every spec dies before its first
+// assertion ("Executable doesn't exist at .../chromium_headless_shell-<n>").
+// That took out `./init.sh`'s smoke gate on a stack that was otherwise
+// healthy, which is the worst kind of failure: loud, total, and about
+// nothing.
+//
+// So: an explicit CHROMIUM_PATH wins; otherwise probe the container's
+// browsers root and take the newest Chromium actually present. The probe is
+// naturally inert anywhere that root does not exist, so a developer machine
+// still uses the browser Playwright installed for itself.
+const CHROMIUM_BINARIES = [
+  'chrome-linux/chrome',
+  'chrome-mac/Chromium.app/Contents/MacOS/Chromium',
+  'chrome-win/chrome.exe',
+]
+
+function resolveChromium(): string | undefined {
+  if (process.env.CHROMIUM_PATH && existsSync(process.env.CHROMIUM_PATH))
+    return process.env.CHROMIUM_PATH
+  const root = process.env.PLAYWRIGHT_BROWSERS_PATH ?? '/opt/pw-browsers'
+  try {
+    // Newest build first: 'chromium-1228' sorts above 'chromium-1194'.
+    const dirs = readdirSync(root)
+      .filter((d) => d.startsWith('chromium-'))
+      .sort()
+      .reverse()
+    for (const d of dirs) {
+      for (const rel of CHROMIUM_BINARIES) {
+        const bin = join(root, d, ...rel.split('/'))
+        if (existsSync(bin)) return bin
+      }
+    }
+  } catch {
+    /* no such root — fall through to Playwright's own resolution */
+  }
+  return undefined
+}
+
+const chromiumPath = resolveChromium()
 
 // ISOLATED MODE (`pnpm --filter web e2e`, which sets E2E_ISOLATED=1).
 //
