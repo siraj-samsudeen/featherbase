@@ -159,11 +159,14 @@ async function cmdRevokeToken(positional: string[]) {
 async function cmdSeed() {
   // Core seed migrations are written idempotently (ensureTable/ensureDoc),
   // so re-running them is a safe "seed" that repairs missing core data.
-  for (const file of ['0005_core_seeds.ts', '0006_admin_password.ts']) {
+  for (const file of ['0005_core_seeds.ts']) {
     const mod = await import(new URL(`../migrations/${file}`, import.meta.url).href)
     await mod.up()
     console.log(`seeded ${file}`)
   }
+  const { bootstrapAdministrator, diagnoseAdminBootstrap } = await import('./admin-bootstrap')
+  await bootstrapAdministrator()
+  await diagnoseAdminBootstrap()
   console.log('seed complete')
 }
 

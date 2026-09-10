@@ -173,6 +173,16 @@ what got sent to the server and what didn't: those are layer 2, where the
 sandbox rolls the data back and the whole test runs in milliseconds. #223 is
 the standing effort to move the misfiled ones down.
 
+**At least one journey per surface arrives by clicking (#257).** A URL
+asserts the destination, never the path to it. The Table Builder journey
+creates a Table, follows its home-page/list links, and clicks New to reach
+the first row form without a URL jump. Client-script, grouped form layout,
+and mobile journeys likewise reach new forms through the list's New link.
+Keep deliberate deep-link tests (shareable URLs, refresh, preserved return
+destinations), and comment why direct navigation is the subject. This is
+not a blanket `page.goto` ban: incidental fixture navigation remains useful,
+but cannot be the only evidence that users can reach a surface.
+
 **A component test must not leave a request in flight when it ends.** The
 Admin fires several writes as `void api.post(...)` — the theme toggle,
 `setLanguage`, ListView's settings PUT. A test that returns while one is

@@ -227,14 +227,18 @@ unreachable.
 
 ### DEL-R7 — Attachments · `shape: rule`
 
-> evidence: proven — File registry rows sweep with the Table and the
-> stored bytes are gone.
+> evidence: proven — direct and actually deleted child-row File records
+> sweep transactionally; filesystem assertions prove bytes absent, shared
+> references preserved, and rollback causes no unlink.
 
 File registry rows referencing the Table are swept by R4 — which alone
 makes the bytes unreachable, since files are only ever served through a
 registry lookup. The stored bytes themselves are removed after commit,
 best-effort: a byte that survives an unlink failure is disk garbage,
-not a data leak.
+not a data leak. Child-row attachments are selected from child IDs actually
+deleted in the same transaction; shared child storage, other parents and
+child-table-level attachments survive. URLs are deduplicated after commit
+and unlinked only without surviving File references. Missing bytes are OK.
 
 ### DEL-R8 — The deletion is logged, in text · `shape: contract`
 
@@ -243,7 +247,9 @@ not a data leak.
 
 Every successful deletion writes an Access Log entry — who, which
 table, when — using plain-text columns, so the record outlives its
-subject (R4 deliberately cannot reach it).
+subject (R4 deliberately cannot reach it). If audit storage fails after
+commit, deletion still succeeds with an operator warning; audit failure
+must neither skip byte cleanup nor report a completed deletion as refused.
 
 ### DEL-R9 — A stale pointer gets a tombstone, not a shrug · `shape: contract`
 

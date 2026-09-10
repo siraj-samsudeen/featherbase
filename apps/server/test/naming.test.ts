@@ -15,6 +15,44 @@ const save = (admin: TestClient, table: string, row: Record<string, unknown>) =>
   admin.post<{ row_id: string } & Record<string, unknown>>('/api/save_row', { table, row })
 
 describe('META-006: naming rules', () => {
+  test('#234 id_pattern HTTP accepts all supported shapes without changing schema or existing IDs', async ({ admin }) => {
+    const table = 'Pattern Endpoint'
+    await makeDT(admin, table, 'hash')
+    const original = await save(admin, table, { title: 'original' })
+    const schema = await sql`select column_name, data_type from information_schema.columns where table_name = 'pattern_endpoint' order by ordinal_position`
+    const columns = await sql`select * from column_def where parent = ${table} order by position`
+    for (const [pattern, input, expected] of [
+      ['hash', { title: 'random' }, /^[0-9a-f]{10}$/],
+      ['prompt', { row_id: 'Chosen ID', title: 'chosen' }, /^Chosen ID$/],
+      ['ENDPOINT-.###', { title: 'series' }, /^ENDPOINT-001$/],
+      ['field:title', { title: 'Field ID' }, /^Field ID$/],
+    ] as const) {
+      const response = await admin.fetch('/api/table_def/Pattern%20Endpoint/id_pattern', { method: 'PUT', body: JSON.stringify({ id_pattern: pattern }) })
+      expect(response.status).toBe(200)
+      expect(await response.json()).toMatchObject({ id_pattern: pattern })
+      expect((await save(admin, table, input)).row_id).toMatch(expected)
+      expect(await admin.get(`/api/table/Pattern%20Endpoint/${original.row_id}`)).toMatchObject(original)
+      expect(await sql`select * from column_def where parent = ${table} order by position`).toEqual(columns)
+      expect(await sql`select column_name, data_type from information_schema.columns where table_name = 'pattern_endpoint' order by ordinal_position`).toEqual(schema)
+    }
+  })
+
+  test('#234 malformed patterns and non-manager requests leave metadata unchanged', async ({ admin, createUser }) => {
+    const table = 'Pattern Refusal'
+    await makeDT(admin, table, 'hash')
+    const before = await admin.get('/api/table/Pattern%20Refusal:meta')
+    for (const pattern of [undefined, null, 42, '', 'PREFIX-', '.###', 'P-.##x', 'field:', 'field:missing']) {
+      const res = await admin.fetch('/api/table_def/Pattern%20Refusal/id_pattern', { method: 'PUT', body: JSON.stringify({ id_pattern: pattern }) })
+      expect(res.status).toBe(417)
+      expect(await res.json()).toMatchObject({ error: { type: 'ValidationError' } })
+      expect(await admin.get('/api/table/Pattern%20Refusal:meta')).toEqual(before)
+    }
+    const user = await createUser()
+    const denied = await user.fetch('/api/table_def/Pattern%20Refusal/id_pattern', { method: 'PUT', body: JSON.stringify({ id_pattern: 'NO-.###' }) })
+    expect(denied.status).toBe(403)
+    expect(await admin.get('/api/table/Pattern%20Refusal:meta')).toEqual(before)
+  })
+
   test('50 parallel series inserts produce distinct gapless sequential names', async ({
     admin,
   }) => {

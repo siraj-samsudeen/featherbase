@@ -334,7 +334,7 @@ async function buildBoundTable(
   // (#176). createTable's schema doesn't carry sort_column — set it the same
   // way the FK edges below are recorded.
   if (!modified) {
-    await sql`update table_def set sort_column = 'name' where name = ${name}`
+    await sql`update table_def set sort_column = 'row_id' where name = ${name}`
     invalidateMeta(name)
   }
   // Record every FK edge raw on the new column_defs — the convergence

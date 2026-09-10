@@ -265,6 +265,8 @@ export async function updateTable(
   input: unknown,
   opts: { drop_columns?: boolean } = {},
 ): Promise<TableMeta> {
+  if (input && typeof input === 'object' && 'name' in input && input.name !== name)
+    throw new AppError('ValidationError', 'Body Table name must match the path', { name: 'Table renaming is not supported by this endpoint' })
   const existing = await getMeta(name)
   const parsed = tableDefSchema.safeParse({ ...(input as object), name })
   if (!parsed.success) {
@@ -563,23 +565,26 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
       and cd.parent <> ${meta.name}
       and td.kind <> 'settings' and td.data_source is null`
 
-  // DEL-R7: capture attachment urls before their registry rows vanish.
-  const files = await sql<{ file_url: string | null }[]>`
-    select file_url from file where ref_table = ${meta.name}`
-
   const physical = tableName(meta.name)
-  await sql.begin(async (tx) => {
+  const files = await sql.begin(async (tx) => {
+    const removedFiles: { file_url: string | null }[] = []
+    // This Table's own child rows; the child Table definition is not
+    // cascaded — it may serve other parents (DEL-R2). Collect actual deleted
+    // IDs before the generic pointer sweep can remove those rows (#123).
+    for (const f of meta.columns) {
+      if (f.column_type !== 'Sub-table') continue
+      const children = await tx<{ row_id: string }[]>`
+        delete from ${tx(tableName(f.row_table!))} where parenttype = ${meta.name} returning row_id`
+      if (children.length) removedFiles.push(...await tx<{ file_url: string | null }[]>`
+        delete from file where ref_table = ${f.row_table!} and ref_name in ${tx(children.map((r) => r.row_id))}
+        returning file_url`)
+    }
+    removedFiles.push(...await tx<{ file_url: string | null }[]>`
+      delete from file where ref_table = ${meta.name} returning file_url`)
     for (const p of pointers)
       await tx`
         delete from ${tx(tableName(p.parent))}
         where ${tx(p.column_name)} = ${meta.name}`
-    // This Table's own child rows; the child Table definition is not
-    // cascaded — it may serve other parents (DEL-R2).
-    for (const f of meta.columns) {
-      if (f.column_type !== 'Sub-table') continue
-      await tx`
-        delete from ${tx(tableName(f.row_table!))} where parenttype = ${meta.name}`
-    }
     await tx`delete from column_def where parent = ${meta.name}`
     await tx`delete from table_def where name = ${meta.name}`
     // DEL-R6/BV1: a bound Table sheds its binding, never its source's
@@ -588,14 +593,25 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
     // (DEL-R5 / IMP-R6: the pattern is the promise, not the number).
     if (!meta.data_source && meta.kind !== 'settings')
       await tx.unsafe(`drop table if exists "${physical}"`)
+    return removedFiles
   })
   invalidateMeta(meta.name)
-  // DEL-R8: the audit line is plain text, so it outlives its subject.
-  await logAccess(user, 'delete_table', { table: meta.name })
   // DEL-R7: bytes are removed best-effort after commit — a survivor is disk
-  // garbage, not a leak (files are only served through the registry).
-  for (const f of files)
-    if (f.file_url) await deleteStored(f.file_url).catch(() => {})
+  // garbage, not a leak. Only managed URLs qualify; another File row may
+  // still own these bytes. Failure here cannot undo the committed deletion.
+  for (const url of new Set(files.map((f) => f.file_url))) {
+    if (!url || !/^\/(?:private\/)?files\/[a-f0-9]{16}_[\w.-]+$/.test(url)) continue
+    try {
+      const survivors = await sql.begin((tx) => tx`select 1 from file where file_url = ${url} limit 1`)
+      if (!survivors.length) await deleteStored(url)
+    } catch {
+      console.warn('Table deleted; attachment cleanup could not complete')
+    }
+  }
+  // DEL-R8: audit is independent of cleanup, and an audit outage must not
+  // claim that an already committed deletion was refused.
+  await sql.begin((tx) => logAccess(user, 'delete_table', { table: meta.name }, tx))
+    .catch(() => console.warn('Table deleted; deletion audit could not be recorded'))
 }
 
 // #209 (issue #197): rename a column in place, keeping its data.

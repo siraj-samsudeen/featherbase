@@ -57,6 +57,13 @@ describe('IMP-001: sanitizeColumnName', () => {
 })
 
 describe('IMP-001: sanitizeHeaders', () => {
+  test.each(Array.from({ length: 10 }, (_, i) => i + 61))('long headers remain unique at %i characters', (length) => {
+    const base = 'h'.repeat(length)
+    const out = sanitizeHeaders([`${base.slice(0, 61)}_1`, ...Array(105).fill(base), '', 'row_id', 'row_id_1', ''])
+    expect(new Set(out).size).toBe(out.length)
+    for (const name of out) expect(name).toMatch(/^[a-z][a-z0-9_]{0,62}$/)
+  })
+
   test('blank headers become positional col_N', () => {
     expect(sanitizeHeaders(['a', '', 'b'])).toEqual(['a', 'col_2', 'b'])
   })
@@ -86,6 +93,18 @@ describe('IMP-001: sanitizeHeaders', () => {
 })
 
 describe('IMP-002: inferColumnType', () => {
+  test.each([
+    [['007', '012', '350'], 'Data'],
+    [['-007', '5.2'], 'Data'],
+    [['9007199254740991'], 'Int'],
+    [['9007199254740993', '1.5'], 'Data'],
+    [['12345678901234567'], 'Data'],
+    [['0', '-1'], 'Int'],
+    [['0.5', '1.5e20'], 'Float'],
+  ])('identifier lexical safety %j → %s', (values, expected) => {
+    expect(inferColumnType(values)).toBe(expected)
+  })
+
   test.each([
     [['1', '42', '-7'], 'Int'],
     [[1, 42, -7], 'Int'],

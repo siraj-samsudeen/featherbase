@@ -139,6 +139,11 @@ export default defineConfig({
             // import the app in-process instead. Setting NODE_ENV here produces a
             // server that migrates, prints nothing, and never binds.
             FEATHERBASE_ENV: 'test',
+            // The isolated suite creates hundreds of sessions from one socket.
+            // Security budgets are exercised with small limits in server tests.
+            PREAUTH_LOGIN_MAX: '10000',
+            PREAUTH_OAUTH_LOGIN_MAX: '10000',
+            PREAUTH_OAUTH_CALLBACK_MAX: '10000',
             // The e2e specs drive the mock OAuth provider, which is opt-in and
             // fails closed. Matches what init.sh does for a dev machine.
             ALLOW_MOCK_OAUTH: '1',

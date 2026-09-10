@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   autoMapColumns,
   coerceRows,
+  idPatternFor,
   inferTableDef,
   applyColumnCombines,
   combineOverlap,
@@ -1204,7 +1205,7 @@ export function ImportWizard() {
   }
 
   function planIdPattern(plan: SheetPlan): string {
-    return plan.id_pattern ?? plan.inferred.id_pattern
+    return plan.id_pattern ?? idPatternFor(plan.table)
   }
 
   // The mapped target columns of an existing-mode run — the `columns` the

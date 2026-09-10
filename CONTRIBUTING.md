@@ -43,9 +43,10 @@ heavily commented):
 
 Re-running `./init.sh` is safe and mostly a no-op once things are up.
 
-**Log in** at http://localhost:5173 as `Administrator` / `admin`. The
-default password is set by `apps/server/migrations/0006_admin_password.ts`;
-override with the `ADMIN_PASSWORD` environment variable at first migration.
+**Log in** at http://localhost:5173 as `Administrator` / `admin` in
+development/test. Bootstrap accepts `ADMIN_PASSWORD` only while the hash is
+null; it never rotates a password. Production has no default password; see
+[First admin](docs/DEPLOY.md#first-admin).
 
 ## Running tests
 

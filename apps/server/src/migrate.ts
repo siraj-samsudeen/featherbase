@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { sql } from './db'
 import { invalidateMeta } from './meta'
 import { assertDatabaseEnvironment, stampEnvironment } from './db-environment'
+import { bootstrapAdministrator } from './admin-bootstrap'
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations')
 
@@ -104,8 +105,13 @@ export async function runMigrations() {
     } else {
       // .ts migrations export up(); they use the engine itself (createTable,
       // saveDoc) so seed Tables get real DDL instead of duplicated SQL.
-      const mod = await import(new URL(`../migrations/${file}`, import.meta.url).href)
-      await mod.up()
+      // #130 security supersession: retain the shipped migration as history,
+      // but never execute its known-password production fallback on a fresh DB.
+      if (file === '0006_admin_password.ts') await bootstrapAdministrator()
+      else {
+        const mod = await import(new URL(`../migrations/${file}`, import.meta.url).href)
+        await mod.up()
+      }
       await sql`insert into migration (name) values (${file})`
     }
     // Migrations may alter Table metadata with raw SQL (e.g. 0046 adds

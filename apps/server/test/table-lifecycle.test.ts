@@ -123,10 +123,8 @@ describe('TLC-R3: deleting a row', () => {
 
 // ------------------------------------------------------------- the pins
 //
-// These assert the SPEC and are EXPECTED to fail. When #250 and #251 are
-// fixed each one goes green and Vitest reports the expected-failure as a
-// failure — which is the signal to flip it to a plain `test` in the same
-// change (CLAUDE.md pin protocol).
+// #250 remains pinned; #251's mismatched-name slice now refuses correctly.
+// Its destructive omitted-column/full-replacement semantics remain open.
 
 describe('TLC-I2 / TLC-I3: invariants the definition API violates today', () => {
   test.fails(
@@ -151,8 +149,8 @@ describe('TLC-I2 / TLC-I3: invariants the definition API violates today', () => 
     },
   )
 
-  test.fails(
-    'TLC-I3 / TLC-R7: a definition write refuses a name it will not apply, rather than reporting success (pins #251)',
+  test(
+    'TLC-I3 / TLC-R7: a definition write refuses a name it will not apply, rather than reporting success (#251)',
     async ({ admin }) => {
       await setup(admin)
 

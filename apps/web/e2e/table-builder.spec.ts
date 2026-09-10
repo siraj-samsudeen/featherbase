@@ -70,7 +70,7 @@ test('UI-011: create a Table with 5 fields from the Admin; list+form work immedi
   await expect(page.getByTestId('list-view')).toBeVisible()
 
   // Form view works immediately: create a document
-  await page.goto(`/admin/${encodeURIComponent(NEW_DT)}/new`)
+  await page.getByTestId('list-new').click()
   await expect(page.getByTestId('form-view')).toBeVisible()
   await page.locator('[data-field=title]').fill('first doc')
   await page.locator('select[data-field=stage]').selectOption('Done')

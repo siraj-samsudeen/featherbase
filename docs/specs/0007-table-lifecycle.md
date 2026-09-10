@@ -250,9 +250,12 @@ readable after it — under some name the metadata still declares.
 
 ### TLC-R7 — A definition write reports what it did · `shape: contract`
 
-> evidence: pinned #251 — a `PUT` whose body carries a different `name`
-> returns 200 with the old name, and a partial payload deletes every
-> column it omitted.
+> evidence TLC-R7.name: proven via TLC-R7 — a mismatched body name is
+> refused before mutation; omitted/same names remain supported.
+>
+> evidence TLC-R7.replacement: gap #251 — a partial payload still removes
+> omitted columns from metadata without acknowledgement. The name-only fix
+> does not close this issue or claim safe partial-update semantics.
 
 `PUT /api/table_def/:name` must refuse what it will not do. Ignoring a
 field the caller sent and answering 200 makes the response a false record
@@ -296,8 +299,10 @@ of the request.
   No successful response may report a name, or a shape, that the request
   did not achieve.
 
-  > evidence: pinned #251 — `PUT /api/table_def/:name` violates this for
-  > a changed `name`.
+  > evidence TLC-I3.name: proven via TLC-I3 — a changed body name is refused.
+  >
+  > evidence TLC-I3.shape: gap #251 — destructive omitted-column replacement
+  > remains unresolved; this tranche covers name mismatch only.
 
 ### Hazards
 

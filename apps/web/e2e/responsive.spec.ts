@@ -59,7 +59,7 @@ test.describe('UI-025: responsive Admin (mobile)', () => {
 
     // The form view is usable: fields stack in a single column (the second
     // field sits below the first, not beside it) and no horizontal overflow.
-    await page.goto(`/admin/${encodeURIComponent(DT)}/new`)
+    await page.getByTestId('list-new').click()
     await expect(page.getByTestId('form-view')).toBeVisible()
     const f1 = await page.locator('[data-field=title]').boundingBox()
     const f2 = await page.locator('[data-field=qty]').boundingBox()

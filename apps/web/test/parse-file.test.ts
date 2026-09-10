@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as XLSX from 'xlsx'
+import { inferTableDef, coerceRows } from 'shared'
+import { test } from './pg-test'
 import {
   countDataRows,
   excelRow,
@@ -29,6 +31,35 @@ function fileFrom(aoa: unknown[][], name = 'test.xlsx'): File {
   XLSX.utils.book_append_sheet(wb, ws, 'Sheet1')
   return asFile(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer, name)
 }
+
+describe('text identifiers survive the parser and storage (#111/#112)', () => {
+  for (const [extension, separator] of [['csv', ','], ['tsv', '\t']]) {
+    test(`${extension} preserves mixed codes and unsafe integers through import`, async ({ admin }) => {
+      const bytes = new TextEncoder().encode([
+        ['Code', 'Identifier', 'Quantity'].join(separator),
+        ['007', '9007199254740993', '0.5'].join(separator),
+        ['350', '12', '2.25'].join(separator),
+      ].join('\n'))
+      const [sheet] = await parseWorkbook(asFile(bytes.buffer, `codes.${extension}`))
+      expect(sheet.rows).toEqual([['007', '9007199254740993', '0.5'], ['350', '12', '2.25']])
+      const def = inferTableDef(`Lexical ${extension}`, sheet.headers, sheet.rows)
+      expect(def.columns.map((c) => c.column_type)).toEqual(['Data', 'Data', 'Float'])
+      await admin.post('/api/table_def', def)
+      const values = coerceRows(def.columns, sheet.rows)
+      for (const { values: value } of values) {
+        const saved = await admin.post<{ row_id: string }>('/api/save_row', { table: def.name, row: value })
+        const stored = await admin.get(`/api/table/${encodeURIComponent(def.name)}/${saved.row_id}`)
+        expect(stored).toMatchObject({ code: value.code, identifier: value.identifier, quantity: Number(value.quantity) })
+      }
+    })
+  }
+
+  it('native XLSX numeric cells remain numeric', async () => {
+    const [sheet] = await parseWorkbook(fileFrom([['Quantity'], [7], [2.25]]))
+    expect(sheet.rows).toEqual([[7], [2.25]])
+    expect(inferTableDef('Numbers', sheet.headers, sheet.rows).columns[0].column_type).toBe('Float')
+  })
+})
 
 describe('#115: parseWorkbook keeps sheet geometry', () => {
   it('a blank data row survives as a row, and counts as no data', async () => {

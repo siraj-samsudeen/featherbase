@@ -5,6 +5,36 @@ import { sql } from '../src/db'
 const DT = 'Ddl Test Task'
 const CHILD = 'Ddl Test Row'
 
+test('#251 refuses a mismatched body name before replacing either definition', async ({ admin }) => {
+  const names = ['Rename Source', 'Rename Target']
+  const definitions = []
+  for (const name of names) {
+    await admin.post('/api/table_def', { name, columns: [
+      { column_name: 'title', column_type: 'Data' },
+      { column_name: 'amount', column_type: 'Int' },
+    ] })
+    await admin.post('/api/save_row', { table: name, row: { title: name, amount: 17 } })
+    definitions.push(await admin.get(`/api/table/${encodeURIComponent(name)}:meta`))
+  }
+  const before = await sql`select * from rename_source union all select * from rename_target order by title`
+  const response = await admin.fetch('/api/table_def/Rename%20Source', {
+    method: 'PUT', body: JSON.stringify({ name: names[1], columns: [{ column_name: 'title', column_type: 'Data' }] }),
+  })
+  expect(response.status).toBe(417)
+  expect(await response.json()).toMatchObject({ error: { type: 'ValidationError' } })
+  for (const [i, name] of names.entries())
+    expect(await admin.get(`/api/table/${encodeURIComponent(name)}:meta`)).toEqual(definitions[i])
+  expect(await sql`select * from rename_source union all select * from rename_target order by title`).toEqual(before)
+  for (const name of [undefined, names[0]]) {
+    const response = await admin.fetch('/api/table_def/Rename%20Source', {
+      method: 'PUT', body: JSON.stringify({ name, columns: [
+        { column_name: 'title', column_type: 'Data' }, { column_name: 'amount', column_type: 'Int' },
+      ] }),
+    })
+    expect(response.status).toBe(200)
+  }
+})
+
 async function columns(table: string): Promise<Record<string, string>> {
   const rows = await sql`
     select column_name, data_type from information_schema.columns

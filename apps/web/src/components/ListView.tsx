@@ -179,7 +179,7 @@ export function ListView({
   const orderBy = sort
     ? `${sort.field} ${sort.dir}`
     : meta.data
-      ? `${metaSortColumn || (boundNoRevision ? 'name' : 'updated_at')} ${meta.data.sort_order || 'desc'}`
+      ? `${metaSortColumn || (boundNoRevision ? 'row_id' : 'updated_at')} ${meta.data.sort_order || 'desc'}`
       : undefined
 
   const list = useQuery({

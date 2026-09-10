@@ -35,6 +35,8 @@ Everything comes from the environment; every variable has a dev default in
 | Variable | Required in production | Purpose |
 | --- | --- | --- |
 | `DATABASE_URL` | **yes** | Postgres connection string |
+| `FEATHERBASE_ENV` / `NODE_ENV` | **yes** | set to `production` for release and serve; `FEATHERBASE_ENV` takes precedence. Only `development` and `test` allow zero-setup Administrator credentials |
+| `ADMIN_PASSWORD` | optional | provisions a null Administrator password hash; missing/blank leaves production password login locked. Never rotates an existing hash |
 | `PORT` | no (8000) | HTTP + WebSocket port |
 | `WEB_ORIGINS` | yes, if the SPA is served from another origin | comma-separated CORS allowlist |
 | `JWT_SECRET` | **yes** | session/token signing (dev default is `dev-secret-change-me`) |
@@ -46,6 +48,77 @@ Two settings already in the codebase matter specifically for hosted
 Postgres and must not regress: `db.ts` sets `prepare: false` (required by
 transaction-mode poolers such as Supabase's on port 6543), and `config.ts`
 reads `DATABASE_URL` with a local default.
+
+## First admin
+
+A fresh production database has **no default password**. With no nonblank
+`ADMIN_PASSWORD`, Administrator's password hash stays null, so password
+login is unavailable. The release step warns when no enabled human System
+Manager has a password. Provision a named manager on the production box:
+
+```sh
+pnpm --filter server cli create-user <email> <password> --roles "System Manager"
+```
+
+Use a protected operator shell; do not put real passwords in shared logs or
+shell history. Administrator is a break-glass account, not a daily login.
+Alternatively, set `ADMIN_PASSWORD` in the deployment secret store before
+first release. If migrations already ran with Administrator locked, set it
+and deliberately run `pnpm --filter server cli seed`. Ordinary recorded
+migrations do not replay bootstrap; seed can provision only a **null** hash.
+Development/test still default to Administrator / admin.
+
+Neither release, migrations nor seed overwrites any existing password hash.
+In particular, setting `ADMIN_PASSWORD` later is **not password rotation**.
+An upgraded deployment with the old known `admin` password receives a loud
+release warning, but is not silently locked or rotated. Before exposing it,
+use the authenticated password UI to change Administrator's password, or
+bootstrap a named manager and explicitly reset/disable Administrator.
+That existing credential remains active until the operator acts. A missing
+bootstrap password does not disable OAuth or other independently configured
+authentication mechanisms.
+
+Migration 0006 remains immutable history; the migration runner explicitly
+supersedes its unsafe password action on fresh chains. Migration 0083 and
+deliberate seed use the same null-only policy.
+
+## Public-route abuse limits
+
+Password login, Google OAuth initiation/callback, and public web-form POSTs
+use atomic Postgres counters shared by every server instance. Deploy all
+instances with the same configuration and database; no process-local fallback
+admits requests during a database failure. The existing authenticated fairness
+limiter is separate. Successful forms still consume admission budget.
+
+| Variable | Default | Budget per source and window |
+| --- | --- | --- |
+| `PREAUTH_WINDOW_MS` | 900000 | fixed window beginning at first admission, in milliseconds |
+| `PREAUTH_LOGIN_MAX` | 60 | all password submissions, across usernames |
+| `PREAUTH_PASSWORD_MAX` | 5 | tighter password-provider + trimmed/lowercase username + source budget |
+| `PREAUTH_OAUTH_LOGIN_MAX` | 30 | initiation, independent of callback |
+| `PREAUTH_OAUTH_CALLBACK_MAX` | 30 | callback, checked before challenge clearing or code exchange |
+| `PREAUTH_FORM_MAX` | 30 | all public web-form POSTs |
+| `TRUSTED_PROXY_IPS` | empty | comma-separated exact socket IPs trusted to append `X-Forwarded-For`; no wildcard, hostname, or CIDR |
+
+Numeric values must be positive integers no greater than 2147483647; invalid
+configuration refuses startup. Tune the source ceiling for shared NAT users,
+keeping credential attempts tighter. There is no username-only lockout.
+A successful password login forgives its credential bucket only if no newer
+attempt was admitted; an older success cannot erase newer attempts. Source
+budgets are never forgiven. A 429 uses the standard `RateLimitError` envelope
+and `Retry-After` seconds. Windows are fixed, not sliding; expiration can
+permit two bursts close together. Each protected request removes at most
+100 expired counters using row locks that skip busy rows.
+
+By default the socket peer is authoritative and all forwarded addresses are
+ignored. Behind a proxy, explicitly allowlist the actual proxy peer addresses
+and require that proxy to append/replace `X-Forwarded-For` correctly. The
+server walks right-to-left only while the current hop is trusted, stopping
+at the nearest untrusted address. Malformed chains fall back to the socket;
+missing socket information shares an `unknown` bucket, never a supplied header.
+IPv4-mapped IPv6 is normalized. Do not trust a public client network or assume
+`SITE_URL` enables IP-header trust. Supplied sessions/tokens do not bypass
+these public-route controls.
 
 ## Container
 

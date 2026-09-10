@@ -1,5 +1,56 @@
 # Progress Log
 
+## 2026-09-10 — PR #269 mapped-address review resolution (#245)
+
+Independent review found that equivalent IPv4-mapped IPv6 spellings did
+not share a canonical address. Normalize IPv6 first, then convert only the
+mapped prefix to dotted IPv4. No other tranche behavior changed. Added an
+asymmetric 1,024-combination matrix across proxy configuration, socket peer,
+forwarded trusted hop and client; IPv4-compatible/NAT64 remain IPv6. A
+sandboxed login-route matrix covers all 16 configuration/socket pairs:
+distinct clients both reach authentication, while alternate spellings of
+the same client receive the same 429 envelope and Retry-After.
+
+Verified red/green: both new tests failed on the reviewed implementation;
+all ten focused admission tests pass after the fix. Full server coverage:
+736 passed, 15 MySQL tests skipped (unconfigured), 87.09% lines and coverage
+ratchets pass. Full web/component 133 passed; shared 128 passed; full browser
+141 passed / 4 skipped. Server/web typechecks pass, evidence checker passes
+52 tests / 148 verdicts, git diff --check clean. No visible UI changed.
+Independent reviewer recheck of this delta remains required before merge.
+
+## 2026-09-10 — Consolidated bounded small-fix tranche
+
+Implemented #130 (null-only production-safe admin bootstrap, fresh-chain
+security supersession and deliberate seed, release diagnostics), #245
+(atomic deployment-wide Postgres public-route budgets with explicit proxy
+trust), #110–#112 (final identifier uniqueness and raw CSV/TSV lexical
+preservation), #114 (null-provenance import naming), #123 (transactional
+child File collection and postcommit shared-reference-aware byte cleanup),
+#176 (fresh reflection row_id sort), #138 (installed local tsx), #234
+(sandboxed id-pattern endpoint tests), and #257 (five click-through journeys).
+#251 addresses only body/path name mismatch; omitted-column destructive
+replacement remains open. Existing production default credentials warn,
+never silently rotate or lock; operator remediation is in DEPLOY.md.
+
+Verified: full server 734 passed / 15 MySQL source tests skipped (no MySQL
+configured); shared 128 passed; web/component 133 passed; isolated browser
+141 passed / 4 skipped. Both server/web typechecks pass. Coverage ratchets
+pass: shared 99.11%, server 87.08%, web 41.27% lines. The combined coverage
+run had one helpdesk aborted-transaction failure; standalone full web
+coverage rerun passed all 133. An earlier browser run was interrupted by
+a watched-server restart during source edits; the frozen-source full rerun
+passed. Evidence checker: 52 tests, 148 verdicts; manual regenerated;
+git diff --check clean. Fresh init and migration/seed subprocesses, actual
+CSV/TSV parser-to-storage, 60 concurrent admissions across three independent
+Postgres pools (exactly seven admitted), deletion filesystem absence and
+rollback, plus rendered renamed/explicit import previews were exercised.
+Focused tests reproduced prior failures before fixes. Scoped Oracle review
+found a zone-qualified IPv6 normalization throw; red/green regression and
+Oracle recheck resolved it. Independent final review/merge remain with the
+coordinator. Cleanup is best effort, without a durable retry framework;
+concurrent postcommit reattachment remains a residual race.
+
 ## 2026-09-10 — Grid spec review: row incarnation and response ordering (#259)
 
 Revised PR #268's specification after Oracle and independent review. Pending
