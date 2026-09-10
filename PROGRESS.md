@@ -1,5 +1,23 @@
 # Progress Log
 
+## 2026-09-10 — Spec 0004 import-upsert ratifications (#142–#144)
+
+Ratified three previously queued observations without changing runtime
+behavior: a keyed row whose mapped Row ID differs from its matched row now
+has an explicit UPS-R3 example requiring row failure, never identity rename,
+replacement, or merge; UPS-R1 formally enumerates `columns` as the mapped
+participation set and requires it for clear semantics; and UPS-R5 says a
+keyless Import Log records `updated: 0` while match-key configuration remains
+null. The existing server assertion now explicitly verifies that zero log
+count. Evidence text cites only existing/upheld proof; no new runtime claim
+or generated manual content was added.
+
+Verified: server typechecks; `pnpm check:evidence` (52 tests, 148 verdicts);
+manual generation byte-identical; local spec/index links and obligation
+verdicts; and `git diff --check`. Focused UPS server execution is blocked in
+this orb because Postgres rejects the configured `postgres` credentials during
+Vitest global setup before collection.
+
 ## 2026-09-10 — PR #269 mapped-address review resolution (#245)
 
 Independent review found that equivalent IPv4-mapped IPv6 spellings did

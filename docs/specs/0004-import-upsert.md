@@ -118,13 +118,18 @@ as match key: it is an update — that is UPS-J1.
 > the full lifecycle; whole-request refusal for create-only, write-only
 > and own-rows callers, evaluated per matched row before any write;
 > action-aware `dry_run` writes and logs nothing; argument validation
-> covers a bad key, orphan `empty_cells`, and `clear` without `columns`.
+> covers a bad key, orphan `empty_cells`, and `clear` without `columns`;
+> a keyless Import Log records `updated: 0`.
 
 `POST /api/table/:table:import` gains an optional `key_column`. Enumerated
 behaviours (no example table — the rows would restate the rule):
 
 - absent `key_column` → today's insert-only semantics, byte-for-byte;
 - present → each row resolves via UPS-R2 to update / insert / fail;
+- `columns`, when supplied, names this run's mapped columns and therefore
+  the only columns eligible to participate in UPS-R3's update semantics;
+  it must name Table columns. With `empty_cells: 'clear'`, it is required:
+  an absent mapped column is cleared, while an unmapped column is untouched;
 - updates require write permission on the matched row; inserts require
   create; a request the caller may not fully perform is refused whole;
 - the response and the Import Log carry `updated`, `inserted`, `failed`
@@ -159,9 +164,8 @@ resolves to exactly one action, and
 > evidence: proven — examples: unmapped columns survive, new values
 > land, empty+keep survives, empty+clear clears (never-mapped columns
 > stay out of reach); a model-based property over mapped/absent ×
-> keep/clear; an id change via upsert is refused loudly, naming the row.
-> Note: `clear` required a `columns` request argument (the run's mapped
-> set) that the spec never enumerated — flagged in the retrospective.
+> keep/clear; a mapped Row ID differing from the matched row is refused
+> loudly, naming the row.
 
 Only **mapped** columns change; unmapped database columns are untouched.
 Within a mapped column, empty-cell semantics are the **importing user's
@@ -178,6 +182,7 @@ updates that row; changing an id via upsert does not exist.
 | mapped cell holds a new value | value updated, full lifecycle | |
 | mapped cell empty · choice = keep (default) | stored value survives | absence is not intent |
 | mapped cell empty · choice = clear | value cleared, full lifecycle | the user said the file is the whole truth |
+| key matches a row, but mapped Row ID differs from that row | **failed**, named by its spreadsheet row; neither row identity nor values change | an upsert updates its matched row, never renames, replaces, or merges identities |
 
 ### UPS-R4 — The file's own codes as ids · `shape: contract`
 
@@ -196,16 +201,19 @@ pattern is the promise).
 ### UPS-R5 — The key is remembered as a suggestion · `shape: contract`
 
 > evidence: proven — a keyed run stores `key_column` and `empty_cells`
-> in its log rows while a keyless run stores nothing and does not erase
-> the memory; the wizard pre-fills the newest keyed pair as a visible
-> suggestion, confirmed in a fresh visit; with no Import Log read grant
-> there is no suggestion, and it fails soft.
+> in its log rows while a keyless run records `updated: 0`, leaves those
+> configuration fields null, and does not erase the memory; the wizard
+> pre-fills the newest keyed pair as a visible suggestion, confirmed in a
+> fresh visit; with no Import Log read grant there is no suggestion, and
+> it fails soft.
 
 *Ruled 2026-08-05 (was Q5).* The match key (and the empty-cells choice)
 used on a Table's last import is stored per Table and **pre-filled as a
 visible suggestion** on the next one — "Match on Zone Name, as last
 time" — confirmed or changed by the user, never silently active. A run
-with no key chosen stores nothing.
+with no key chosen stores no match-key configuration. Its Import Log
+reports `updated: 0`, not null: without update matching, no row was
+updated.
 
 ### Invariants · `shape: invariant`
 
@@ -299,10 +307,10 @@ database static.
    whole file) fails duplicates before chunking — is now code and tests,
    but the spec never assigned the obligation. *Format lesson: closure
    lines that cross a boundary should name the side that owns them.*
-3. **R3's 'clear' needed contract surface the spec never enumerates.**
+3. **R3's 'clear' needed contract surface the spec initially omitted.**
    Empty cells arrive as *absent keys* (IMP-R8), so clearing needs the
-   run's mapped-column universe — the API grew a `columns` argument.
-   Consistent with R3's intent, but R1's enumeration doesn't mention it.
+   run's mapped-column universe — the API grew a `columns` argument,
+   now enumerated by R1.
 4. **J1.4's wording promised a surface the wizard never had.** "Each row
    says update / insert / failed" reads as a per-row UI listing; the
    wizard's rehearsal report has always been counts + per-row *failures*.
@@ -313,18 +321,12 @@ database static.
    offerable as key only when a file column maps onto it (a key the file
    has no cells for would fail every row).
 
-**Discovered behaviours, three-fates queue** *(none ratified silently —
-owner's call)*:
+**Resolved discovered behaviours:** #142 ratified the loud Row ID refusal
+into R3; #143 ratified `columns` into R1; #144 ratified keyless Import Log
+`updated: 0`. The remaining observation is a recorded implementation
+answer, not a queued product decision:
 
-- **A mapped Row ID that differs from the matched row fails the row**
-  ("an upsert cannot change a row's id") — the loud reading of R3's
-  "changing an id via upsert does not exist"; silent-ignore was the
-  alternative. Ratify into R3's example table, or re-rule.
-- **The `columns` request argument** (mapped-column universe, required
-  for `empty_cells: 'clear'`) — fold into R1's enumeration.
 - **Performance answer stated** per the closure sweep: matching casts
   the key column to text for one `= any(...)` scan per request (chunk),
   not per row — a seq scan on unindexed keys, documented in
   `resolveRows`; index-on-demand deferred until a real dataset hurts.
-- **Keyless runs log `updated: 0`** (not null) — the count is truthful;
-  R5's "stores nothing" is carried by `key_column`/`empty_cells` nulls.

@@ -551,7 +551,7 @@ describe('UPS-R4: the file’s own codes as ids', () => {
 })
 
 describe('UPS-R5: the key is remembered per Table', () => {
-  test('UPS-R5: a keyed run stores its key and choice; a keyless run stores nothing', async ({
+  test('UPS-R5: a keyed run stores its key and choice; a keyless run records updated 0 and no key configuration', async ({
     admin,
   }) => {
     await setup(admin)
@@ -566,13 +566,15 @@ describe('UPS-R5: the key is remembered per Table', () => {
 
     const logs = await admin.get<{ data: Record<string, unknown>[] }>(
       `/api/table/${encodeURIComponent('Import Log')}?fields=${encodeURIComponent(
-        '["key_column","empty_cells","created_at"]',
+        '["key_column","empty_cells","updated","created_at"]',
       )}&filters=${encodeURIComponent(
         JSON.stringify([['ref_table', '=', DT]]),
       )}&order_by=${encodeURIComponent('created_at desc')}`,
     )
     expect(logs.data.length).toBe(3) // seed request + keyed run + keyless run
-    // Latest row (the keyless run) stored nothing…
+    // Latest row (the keyless run) records the truthful zero count but no
+    // match-key configuration…
+    expect(Number(logs.data[0].updated)).toBe(0)
     expect(logs.data[0].key_column).toBeNull()
     expect(logs.data[0].empty_cells).toBeNull()
     // …and the wizard's lookup — newest row WITH a key — still finds the
