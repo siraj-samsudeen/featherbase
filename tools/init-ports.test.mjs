@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { existsSync } from 'node:fs'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -38,6 +39,27 @@ setTimeout(() => createServer((req, res) => {
 `,
   )
   await writeFile(
+    join(dir, 'foreign-server.mjs'),
+    `import { writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+createServer((req, res) => {
+  if (req.url === '/api/ping') res.end(JSON.stringify({ message: 'pong', db: true }))
+  else res.end('foreign')
+}).listen(Number(process.env.PORT), () => writeFileSync(process.env.FOREIGN_LISTENER_READY, 'ready'))
+`,
+  )
+  await writeFile(
+    join(dir, 'foreign-launcher.mjs'),
+    `import { spawn } from 'node:child_process'
+const child = spawn(process.execPath, [new URL('./foreign-server.mjs', import.meta.url).pathname], {
+  detached: true,
+  env: process.env,
+  stdio: 'ignore',
+})
+child.unref()
+`,
+  )
+  await writeFile(
     join(bin, 'pnpm'),
     `#!/bin/sh
 if [ "$1" = "smoke" ]; then
@@ -46,7 +68,15 @@ if [ "$1" = "smoke" ]; then
   exit 0
 fi
 case "$*" in
-  *dev*) exec "${process.execPath}" "$INIT_TEST_ROOT/server.mjs" ;;
+  *dev*)
+    # init.sh only invokes pnpm dev after selected-port cleanup. The launcher
+    # detaches the listener before this mocked server attempts its own bind.
+    if [ "\${INIT_TEST_FOREIGN_LISTENER:-}" = 1 ] && [ "$(basename "$PWD")" = server ]; then
+      "${process.execPath}" "$INIT_TEST_ROOT/foreign-launcher.mjs"
+      while [ ! -f "$FOREIGN_LISTENER_READY" ]; do sleep 0.01; done
+    fi
+    exec "${process.execPath}" "$INIT_TEST_ROOT/server.mjs"
+    ;;
   *) exit 0 ;;
 esac
 `,
@@ -96,16 +126,17 @@ test('init rejects a listener that did not descend from its selected API process
     await rm(checkout.dir, { recursive: true, force: true })
   })
 
-  const foreign = spawn(process.execPath, [join(checkout.dir, 'server.mjs')], {
-    env: { ...process.env, PORT: '18011', MOCK_SERVER_DELAY_MS: '100' },
-    detached: true,
-    stdio: 'ignore',
-  })
-  foreign.unref()
+  const ready = join(checkout.dir, 'foreign-listener-ready')
   const result = await command('/bin/bash', ['./init.sh'], {
     cwd: checkout.dir,
-    env: initEnv(checkout, { API_PORT: '18011', WEB_PORT: '15189', MOCK_SERVER_DELAY_MS: '1000' }),
+    env: initEnv(checkout, {
+      API_PORT: '18011',
+      WEB_PORT: '15189',
+      INIT_TEST_FOREIGN_LISTENER: '1',
+      FOREIGN_LISTENER_READY: ready,
+    }),
   })
+  assert.equal(existsSync(ready), true, 'the foreign listener bound after init cleanup')
   assert.notEqual(result.code, 0)
   assert.match(result.stdout, /:18011 is answering, but from PID .*not the/)
   assert.match(result.stdout, /featherbase-server-18011\.log/)
