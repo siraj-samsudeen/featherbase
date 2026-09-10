@@ -2,8 +2,9 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { spawn } from 'node:child_process'
+import { createServer } from 'node:net'
 import test from 'node:test'
 
 const root = new URL('..', import.meta.url).pathname
@@ -21,7 +22,7 @@ async function command(file, args, options = {}) {
   })
 }
 
-async function setupCheckout(name) {
+async function setupCheckout(name, { mockPsql = true } = {}) {
   const dir = await mkdtemp(join(tmpdir(), `featherbase-init-${name}-`))
   const bin = join(dir, 'bin')
   await mkdir(join(dir, 'apps/server'), { recursive: true })
@@ -82,7 +83,7 @@ esac
 `,
     { mode: 0o755 },
   )
-  await writeFile(join(bin, 'psql'), '#!/bin/sh\nexit 0\n', { mode: 0o755 })
+  if (mockPsql) await writeFile(join(bin, 'psql'), '#!/bin/sh\nexit 0\n', { mode: 0o755 })
   return { dir, bin }
 }
 
@@ -93,6 +94,17 @@ function initEnv(checkout, extra = {}) {
     INIT_TEST_ROOT: checkout.dir,
     ...extra,
   }
+}
+
+async function freePort() {
+  const server = createServer()
+  await new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  const { port } = server.address()
+  await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+  return String(port)
 }
 
 test('init boots isolated selected ports without touching a sibling stack', async (t) => {
@@ -140,4 +152,82 @@ test('init rejects a listener that did not descend from its selected API process
   assert.notEqual(result.code, 0)
   assert.match(result.stdout, /:18011 is answering, but from PID .*not the/)
   assert.match(result.stdout, /featherbase-server-18011\.log/)
+})
+
+test('root bootstrap creates the role and database only in the selected Debian cluster', async (t) => {
+  const required = ['pg_config', 'pg_createcluster', 'pg_dropcluster', 'pg_ctlcluster', 'pg_lsclusters', 'psql', 'sudo']
+  for (const executable of required) {
+    const found = await command('/bin/sh', ['-c', `command -v ${executable}`])
+    if (found.code !== 0) return t.skip(`${executable} is unavailable`)
+  }
+  if ((await command('sudo', ['-n', 'true'])).code !== 0) return t.skip('passwordless sudo is unavailable')
+
+  const checkout = await setupCheckout('postgres-cluster', { mockPsql: false })
+  const versionOutput = await command('pg_config', ['--version'])
+  const version = versionOutput.stdout.match(/PostgreSQL (\d+)/)?.[1]
+  assert.ok(version, versionOutput.stdout)
+  const suffix = `${process.pid}${Date.now()}`.slice(-10)
+  const decoyCluster = `fb38_decoy_${suffix}`
+  const targetCluster = `fb38_target_${suffix}`
+  const decoyPort = await freePort()
+  const targetPort = await freePort()
+  const apiPort = await freePort()
+  const webPort = await freePort()
+  const role = `fb38_role_${suffix}`
+  const database = `fb38_db_${suffix}`
+
+  t.after(async () => {
+    await command('sudo', ['-n', 'pkill', '-f', checkout.dir])
+    await command('sudo', ['-n', 'pg_dropcluster', '--stop', version, targetCluster])
+    await command('sudo', ['-n', 'pg_dropcluster', '--stop', version, decoyCluster])
+    await rm(checkout.dir, { recursive: true, force: true })
+  })
+
+  for (const [cluster, port] of [
+    [decoyCluster, decoyPort],
+    [targetCluster, targetPort],
+  ]) {
+    const created = await command('sudo', ['-n', 'pg_createcluster', version, cluster, '--port', port])
+    assert.equal(created.code, 0, created.stderr || created.stdout)
+  }
+  const started = await command('sudo', ['-n', 'pg_ctlcluster', version, decoyCluster, 'start'])
+  assert.equal(started.code, 0, started.stderr || started.stdout)
+
+  const result = await command('sudo', [
+    '-n',
+    'env',
+    `PATH=${checkout.bin}:${dirname(process.execPath)}:/usr/bin:/bin`,
+    'PGHOST=/var/run/postgresql',
+    'PGHOSTADDR=127.0.0.1',
+    `PGPORT=${decoyPort}`,
+    `INIT_TEST_ROOT=${checkout.dir}`,
+    `DATABASE_URL=postgres://${role}:cluster-secret@127.0.0.1:${targetPort}/${database}`,
+    `API_PORT=${apiPort}`,
+    `WEB_PORT=${webPort}`,
+    '/bin/bash',
+    './init.sh',
+  ], { cwd: checkout.dir })
+
+  const existsIn = async (cluster, sql) => {
+    const query = await command('sudo', [
+      '-n',
+      '-u',
+      'postgres',
+      'psql',
+      '--cluster',
+      `${version}/${cluster}`,
+      '-d',
+      'postgres',
+      '-tAc',
+      sql,
+    ])
+    assert.equal(query.code, 0, query.stderr)
+    return query.stdout.trim()
+  }
+
+  assert.equal(result.code, 0, `${result.stdout}\n${result.stderr}`)
+  assert.equal(await existsIn(targetCluster, `select 1 from pg_roles where rolname='${role}'`), '1')
+  assert.equal(await existsIn(targetCluster, `select 1 from pg_database where datname='${database}'`), '1')
+  assert.equal(await existsIn(decoyCluster, `select 1 from pg_roles where rolname='${role}'`), '')
+  assert.equal(await existsIn(decoyCluster, `select 1 from pg_database where datname='${database}'`), '')
 })

@@ -36,6 +36,28 @@ EOF
 
   db_url_ok() { PGCONNECT_TIMEOUT=5 psql "$DATABASE_URL" -tAc 'select 1' >/dev/null 2>&1; }
 
+  is_loopback_host() {
+    case "$DB_HOST" in
+      localhost|'[::1]') return 0 ;;
+    esac
+    [[ "$DB_HOST" =~ ^127\.([0-9]{1,3}\.){2}[0-9]{1,3}$ ]] || return 1
+    IFS=. read -r _ octet2 octet3 octet4 <<<"$DB_HOST"
+    [ "$octet2" -le 255 ] && [ "$octet3" -le 255 ] && [ "$octet4" -le 255 ]
+  }
+
+  admin_psql() {
+    env -u PGHOST -u PGHOSTADDR -u PGPORT -u PGSERVICE -u PGSERVICEFILE psql "$@"
+  }
+
+  # The postgres OS user can use peer authentication only against a local
+  # Debian cluster. Remember a cluster only when both the URL host is loopback
+  # and pg_lsclusters says that cluster owns the URL's port. Remote hosts must
+  # never fall back to an unrelated local socket server.
+  DEBIAN_CLUSTER=""
+  if command -v pg_lsclusters >/dev/null && is_loopback_host; then
+    DEBIAN_CLUSTER="$(pg_lsclusters -h 2>/dev/null | awk -v p="$DB_PORT" '$3==p {print $1 "/" $2; exit}')"
+  fi
+
   if ! db_url_ok; then
     # (a) Is anything listening at all? If not, try to start the local cluster.
     if ! pg_isready -h "$DB_HOST" -p "$DB_PORT" >/dev/null 2>&1; then
@@ -43,10 +65,11 @@ EOF
       if command -v pg_ctlcluster >/dev/null; then
         # Debian/Ubuntu (the container): start whichever cluster owns the port,
         # falling back to the first one defined.
-        cl="$(pg_lsclusters -h 2>/dev/null | awk -v p="$DB_PORT" '$3==p {print $1, $2; exit}')"
-        [ -n "$cl" ] || cl="$(pg_lsclusters -h 2>/dev/null | awk 'NR==1 {print $1, $2}')"
-        # shellcheck disable=SC2086
-        [ -n "$cl" ] && pg_ctlcluster $cl start || true
+        cl="$DEBIAN_CLUSTER"
+        [ -n "$cl" ] || cl="$(pg_lsclusters -h 2>/dev/null | awk 'NR==1 {print $1 "/" $2}')"
+        if [ -n "$cl" ]; then
+          pg_ctlcluster "${cl%%/*}" "${cl#*/}" start || true
+        fi
       elif command -v brew >/dev/null; then
         # macOS/Homebrew: whatever postgresql formula is installed.
         svc="$(brew list --formula 2>/dev/null | grep '^postgresql' | head -1)"
@@ -70,9 +93,9 @@ EOF
     for u in "$(id -un)" postgres; do
       [ -n "$ADMIN_URL" ] && continue
       cand="postgres://$u@$DB_HOST:$DB_PORT/postgres"
-      PGCONNECT_TIMEOUT=5 psql "$cand" -tAc 'select 1' >/dev/null 2>&1 && ADMIN_URL="$cand"
+      PGCONNECT_TIMEOUT=5 admin_psql "$cand" -tAc 'select 1' >/dev/null 2>&1 && ADMIN_URL="$cand"
     done
-    if [ -z "$ADMIN_URL" ] && [ "$(id -u)" = 0 ] && id postgres >/dev/null 2>&1; then
+    if [ -z "$ADMIN_URL" ] && [ -n "$DEBIAN_CLUSTER" ] && [ "$(id -u)" = 0 ] && id postgres >/dev/null 2>&1; then
       SU_POSTGRES=1   # container: peer auth over the local socket
     fi
     if [ -z "$ADMIN_URL" ] && [ "$SU_POSTGRES" = 0 ]; then
@@ -84,8 +107,16 @@ EOF
     fi
 
     admin_sql() {  # $1 = SQL, printed result on stdout
-      if [ -n "$ADMIN_URL" ]; then psql "$ADMIN_URL" -tAc "$1"
-      else su postgres -c "psql -tAc \"$1\""; fi
+      if [ -n "$ADMIN_URL" ]; then
+        printf '%s\n' "$1" | admin_psql "$ADMIN_URL" -v ON_ERROR_STOP=1 -tA
+      else
+        # --cluster keeps peer authentication while pinning psql to the
+        # Debian cluster matched above. Clear inherited libpq defaults so a
+        # caller cannot redirect this privileged SQL through its environment.
+        printf '%s\n' "$1" | su postgres -s /bin/sh -c \
+          'exec env -u PGHOST -u PGHOSTADDR -u PGPORT -u PGSERVICE -u PGSERVICEFILE psql --cluster "$1" -p "$2" -d postgres -v ON_ERROR_STOP=1 -tA' \
+          sh "$DEBIAN_CLUSTER" "$DB_PORT"
+      fi
     }
 
     if [ "$(admin_sql "select 1 from pg_roles where rolname='$DB_USER'")" = 1 ]; then
