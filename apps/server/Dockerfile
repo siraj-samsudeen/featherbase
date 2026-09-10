@@ -24,8 +24,7 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 # SSH key. The slim base also lacks git itself. Install git for this build
 # stage only and fetch the public repo anonymously over https. ca-certificates
 # is required too: --no-install-recommends omits it, and pnpm's git fetch
-# needs TLS verification against a real CA bundle. The final server stage
-# installs --prod (no dev deps), so it needs neither.
+# needs TLS verification against a real CA bundle.
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && git config --global url."https://github.com/".insteadOf "git@github.com:"
@@ -44,6 +43,11 @@ RUN pnpm --filter web build
 FROM node:22-slim
 WORKDIR /app
 RUN corepack enable
+# Native TLS clients (including the MotherDuck DuckDB extension) use the
+# system trust store rather than Node's bundled roots. Keep its CA bundle in
+# the final image, not only in the build stage.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 # PDF printing resolves Chromium from CHROMIUM_PATH / PLAYWRIGHT_BROWSERS_PATH
 # at runtime; never download browsers into the image.
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1

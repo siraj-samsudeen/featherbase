@@ -13,6 +13,27 @@ diff).
 
 **Next:** merge PR #213 after its refreshed CI run is green.
 
+## 2026-09-09 — #194 restores the production image trust store
+
+The final `apps/server` image now installs Debian's `ca-certificates` with
+`--no-install-recommends` and removes apt metadata in the same layer. This is
+the image-level fix for the missing system trust bundle that prevents native
+TLS clients, including MotherDuck's DuckDB extension, from validating public
+certificates. The build-stage certificate install remains unchanged; its old
+claim that the final stage needed neither build dependency is removed.
+
+No Dockerfile/image-test convention exists in this repository, so this focused
+image contract change adds no brittle source-text test. The runtime PEM
+fallback from #196 is deliberately not included: it used a predictable
+`/tmp` path and discarded `NODE_EXTRA_CA_CERTS`.
+
+Verified: `pnpm --filter server typecheck` passed and `git diff --check` is
+clean. Docker is installed in this orb but its daemon is unavailable, so the
+production image could not be built or inspected for the CA file / system TLS.
+`MOTHERDUCK_TOKEN` is absent, so a live `Data Source:test_connection` could
+not be run; the DuckDB source test is also blocked because the local Postgres
+service rejects the default `postgres` credentials (`28P01`).
+
 ## 2026-09-04 — Review response on #258, and two long-standing invariant violations closed
 
 The owner's review of #258 found two places where the new affordances offered
