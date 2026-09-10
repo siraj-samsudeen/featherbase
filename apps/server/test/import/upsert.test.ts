@@ -42,13 +42,17 @@ async function seed(admin: TestClient) {
   })
 }
 
-async function rowsByZone(admin: TestClient) {
+async function listRows(admin: TestClient) {
   const list = await admin.get<{ data: Record<string, unknown>[] }>(
     `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
       '["row_id","zone","pop","note","stage","updated_by","updated_at"]',
     )}&order_by=${encodeURIComponent('zone asc')}&limit_page_length=100`,
   )
-  return Object.fromEntries(list.data.map((r) => [String(r.zone), r]))
+  return list.data
+}
+
+async function rowsByZone(admin: TestClient) {
+  return Object.fromEntries((await listRows(admin)).map((r) => [String(r.zone), r]))
 }
 
 describe('UPS-R1: the import boundary learns update', () => {
@@ -448,17 +452,24 @@ describe('UPS-R3: what an update touches', () => {
   }) => {
     await setup(admin)
     await seed(admin)
-    const before = await rowsByZone(admin)
-    const res = await admin.post<{ updated: number; failed: { message: string }[] }>(PATH, {
+    const before = await listRows(admin)
+    const alphaBefore = before.find((row) => row.zone === 'Alpha')!
+    const res = await admin.post<{ updated: number; inserted: number; failed: { message: string }[] }>(PATH, {
       key_column: 'zone',
       rows: [{ zone: 'Alpha', row_id: 'SMUGGLED-ID', pop: 1 }],
     })
     expect(res.updated).toBe(0)
+    expect(res.inserted).toBe(0)
     expect(res.failed).toHaveLength(1)
     expect(res.failed[0].message).toContain("cannot change a row's id")
-    const after = await rowsByZone(admin)
-    expect(after.Alpha.name).toBe(before.Alpha.name)
-    expect(Number(after.Alpha.pop)).toBe(12000)
+    const after = await listRows(admin)
+    expect(after.find((row) => row.zone === 'Alpha')?.row_id).toBe(alphaBefore.row_id)
+    expect(after).toHaveLength(before.length)
+    const beforeIds = before.map((row) => String(row.row_id)).sort()
+    const afterIds = after.map((row) => String(row.row_id)).sort()
+    expect(afterIds).toEqual(beforeIds)
+    expect(afterIds).not.toContain('SMUGGLED-ID')
+    expect(Number(after.find((row) => row.row_id === alphaBefore.row_id)?.pop)).toBe(12000)
   })
 
   test('UPS-R3 property: keep preserves exactly the absent mapped columns; clear nulls them', async ({
@@ -551,7 +562,7 @@ describe('UPS-R4: the file’s own codes as ids', () => {
 })
 
 describe('UPS-R5: the key is remembered per Table', () => {
-  test('UPS-R5: a keyed run stores its key and choice; a keyless run stores nothing', async ({
+  test('UPS-R5: a keyed run stores its key and choice; a keyless run records updated 0 and no key configuration', async ({
     admin,
   }) => {
     await setup(admin)
@@ -566,13 +577,18 @@ describe('UPS-R5: the key is remembered per Table', () => {
 
     const logs = await admin.get<{ data: Record<string, unknown>[] }>(
       `/api/table/${encodeURIComponent('Import Log')}?fields=${encodeURIComponent(
-        '["key_column","empty_cells","created_at"]',
+        '["key_column","empty_cells","updated","created_at"]',
       )}&filters=${encodeURIComponent(
         JSON.stringify([['ref_table', '=', DT]]),
       )}&order_by=${encodeURIComponent('created_at desc')}`,
     )
     expect(logs.data.length).toBe(3) // seed request + keyed run + keyless run
-    // Latest row (the keyless run) stored nothing…
+    // Latest row (the keyless run) records the truthful zero count but no
+    // match-key configuration…
+    expect(logs.data[0].updated).not.toBeNull()
+    expect(logs.data[0].updated).toBeTypeOf('string')
+    expect(logs.data[0].updated).toBe('0')
+    expect(Number(logs.data[0].updated)).toBe(0)
     expect(logs.data[0].key_column).toBeNull()
     expect(logs.data[0].empty_cells).toBeNull()
     // …and the wizard's lookup — newest row WITH a key — still finds the
