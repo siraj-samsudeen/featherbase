@@ -1,5 +1,26 @@
 # Progress Log
 
+## 2026-09-10 — Grid spec review: row incarnation and response ordering (#259)
+
+Revised PR #268's specification after Oracle and independent review. Pending
+writes now bind to a server-provided row incarnation checked under the lock
+before field comparison; replacement is a stopped lifecycle refusal that
+confirmation cannot bypass. Receipt replay authorizes the original instance,
+not a replacement at its former ID. Examples cover delete/recreate and
+rename/old-ID reuse for both pending writes and successful receipts.
+Post-discard reconciliation is read-only and cannot initiate an unaccepted
+write; explicit pre-discard Retry save may do so with a warning. Clean-state
+freshness now protects display, saved status, next-edit baseline and unrelated
+newer fields against both late reads and late acknowledgments, with two
+response-barrier cases. No application behavior or tests were changed.
+
+Verified: `pnpm check:evidence` passes all 50 tests and 146 repository
+verdicts; all twenty Grid gap verdict lines are byte-identical to the prior
+head. Local spec/index links and 29 unique journey step IDs checked;
+`pnpm manual:build` regenerates the import guide without a diff;
+`git diff --check` passes. Next: reviewers recheck this final delta before
+merge; no implementation evidence or review approval is claimed.
+
 ## 2026-09-10 — Current-main Grid specification (#259)
 
 Authored spec 0009 (`GRD`) from all owner-decision comments on #259 and the

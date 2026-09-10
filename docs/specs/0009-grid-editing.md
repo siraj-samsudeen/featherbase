@@ -138,6 +138,12 @@ session for concurrent changes, not a fabricated success response.
 | J3.7 | Ben submits/cancels A, removes write permission, or makes its field ineligible before Alice saves | An actionable refusal with no partial save; navigation waits unless Alice explicitly discards | A stale eligibility result authorizes a write | R2, R7, R9 |
 | J3.8 | Ben deletes A or a filter/refetch no longer returns it while Alice has a proposal | A clearly identified pending/missing row problem remains recoverable or explicitly discardable | Disappearance deletes the draft or silently recreates A | R6, R7 |
 | J3.9 | A notification fails after a successful save | A is reported as committed with a separate delivery problem, not as an unsaved row to write again | Delivery failure causes another version on Retry | R8, R9, I3 |
+| J3.10 | Ben deletes A and creates a different row with the same ID and Quantity 7; Alice tries to save her pending 11 | A stopped row-replacement refusal, preserved proposal and no overwrite confirmation for the replacement | Matching values let Alice change a different row | R5, R6, R8 |
+| J3.11 | Instead, Ben renames A to A-renamed and creates a new A with Quantity 7; Alice tries her pending save to A | The same stopped refusal; neither row changes and Alice's proposal is not moved onto the new A | Reusing the old ID retargets the pending edit | R5, R6, R8 |
+| J3.12 | After Alice saved 11 but lost the response, Ben replaces A by deletion/recreation or rename/old-ID reuse; Alice retries | Replacement is not changed or used to authorize the original row's saved values; any disclosed outcome belongs to the authorized original row only | Permission on the replacement reveals the old row's outcome | R8, R10, H1 |
+| J3.13 | Alice discards an uncertain save, then checks its outcome | Checking does not send the discarded change; an already-issued save may still finish and be reported | Checking performs a write that never reached the server | R7, R8, I3 |
+| J3.14 | Alice sees 11 saved; an older refresh then completes | 11 remains displayed and saved, and the next edit starts from the acknowledged value; newer unrelated values remain | A clean row flashes back to 7 or the next edit starts from 7 | R6, R7, I2 |
+| J3.15 | Alice's save response is delayed; a refresh shows Ben's later 19 and Cedar East, then Alice's response arrives | 19 and Cedar East remain displayed; Alice's earlier save is settled and the next edit starts from 19 | The acknowledgment restores 11 or loses Cedar East | R6, R7, I2 |
 
 ## Rules
 
@@ -170,7 +176,8 @@ existing creation flows, never inferred from Grid's displayed columns.
 mutating cached shared metadata. `GET /api/table/:table` offers opt-in edit
 capabilities alongside its paginated, permission-filtered rows. The opt-in
 response associates capabilities with `row_id`, includes the loaded
-revision and authorized changed-field baseline inputs, and does not alter
+revision, a server-provided row-incarnation discriminator and authorized
+changed-field baseline inputs, and does not alter
 ordinary non-opt-in list behavior. Exact option/envelope names belong to
 the implementing contract, not an alternate per-row GET API.
 
@@ -254,9 +261,20 @@ not just mouse editing. R10 owns names, announcements and dialog focus.
 > evidence: gap #259 — asymmetric merge, zero-partial-write and conditional-confirmation properties are not implemented.
 
 **Property:** for every authorized changed-field set, the server either
-accepts all proposed fields against locked current values or applies none;
-a changed field whose current value differs from its submitted baseline
+accepts all proposed fields against locked current values of the original
+row incarnation or applies none; a changed field whose current value differs from its submitted baseline
 conflicts, and unchanged fields come from the locked row, not the baseline.
+
+The server-provided incarnation distinguishes a row instance from its
+reusable `row_id`; its representation is implementation-defined, not
+inferred from baseline values or a mutable revision. A newly created row
+cannot reuse an earlier instance's discriminator, including after deletion
+or rename frees an old ID. Under the mutation lock, verify the addressed
+row is the loaded incarnation **before field comparison**. A missing or
+replacement instance is a stopped lifecycle refusal, not a same-field
+conflict: confirmation cannot bypass it, and matching baselines do not
+make the replacement eligible for the pending write. Never automatically
+retarget a pending request to the renamed original or the replacement.
 
 Compare metadata-normalized typed values; missing baseline is not null,
 and false, zero and empty text must not collapse through truthiness.
@@ -265,7 +283,7 @@ success. A differing revision alone does not reject non-overlapping fields.
 Even when current equals proposed, a changed field differing from baseline
 requires review; only receipt replay (R8) proves this is the same mutation.
 This is value-based comparison, not a promise to detect an intervening
-change that returned to the same value.
+change that returned to the same value within the same incarnation.
 
 | Baseline A | Locked current A | Proposed changes | Result | Why? |
 |---|---|---|---|---|
@@ -275,17 +293,22 @@ change that returned to the same value.
 | Reviewed Quantity 19; Price baseline 12.50 | Cedar East, 19, 12.50 | Confirm Quantity 11; Price 8.25 | Cedar East, 11, 8.25 | Explicit confirmation is conditional comparison |
 | Reviewed Quantity 19; Price baseline 12.50 | Cedar East, 29, 12.50 | Same confirmation | rejected; Cedar East, 29, 12.50 unchanged | Server changed again after review |
 | Quantity 7 | Quantity 11 | Quantity 11 with a new mutation ID | rejected | Equal proposal is not replay evidence |
+| A, incarnation α, Quantity 7 | Delete α; create A, incarnation β, Quantity 7 | α's pending Quantity 11 | rejected; β stays 7 | Matching baselines cannot authorize a replacement |
+| A, incarnation α, Quantity 7 | Rename α to A-renamed; create A, incarnation β, Quantity 7 | α's pending Quantity 11 addressed to A | rejected; both rows unchanged | Old-ID reuse is not continuity of identity |
 
 Primary verification is generated disjoint/overlapping field sets with
 asymmetric values and transaction barriers; assert database values and
 Version counts on both sides, not merely response status. Include two
-simultaneous disjoint requests and a multi-conflict request.
+simultaneous disjoint requests, a multi-conflict request, and both replacement
+cases with matching changed-field baselines, including attempted confirmation.
 
 ### GRD-R6 — Pending edits and explicit conflict recovery · `shape: sequence`
 
 > evidence: gap #259 — row scheduling, draft generations and conflict recovery require state-machine and browser evidence.
 
-Drafts are keyed by principal, Table, row and field, never display position.
+Drafts are keyed by principal, Table, row and field, with the server-provided
+incarnation binding them to the loaded instance, never display position or
+a replacement that reuses the same `row_id`.
 The original baseline/revision and current proposal remain distinct from
 refetched data. Each row has at most one in-flight request; sending captures
 an immutable generation/payload and does not clear dirty state. A later
@@ -297,9 +320,10 @@ the subsequent same-field generation while preserving that newer proposal;
 unrelated dirty fields keep their own baselines. R5 still protects against
 another writer between those requests.
 
-States are dirty, saving, saved, conflict, error, and outcome-unknown.
-Conflict/error/unknown is a stopped recovery state, not an automatic resend
-loop. A successful earlier generation can allow a queued newer generation
+States are dirty, saving, saved, conflict, error, outcome-unknown, and
+lifecycle-refused (missing/replaced instance).
+Conflict/error/unknown/lifecycle-refused is a stopped recovery state, not
+an automatic resend loop. A successful earlier generation can allow a queued newer generation
 to proceed. A lost-response retry uses the exact original payload/ID (R8),
 never packages newer edits into that retry.
 
@@ -308,17 +332,44 @@ baseline, reviewed server current and proposed values. Cancel closes review
 without changing server data or deleting proposals. Explicit overwrite
 confirmation makes a **new conditional request** against the reviewed current
 values, with a new mutation ID; non-conflicting fields retain their pending
-baselines. It is never force/ignore-revision. If the reviewed conflicting
-server values or the local proposal changes after review, the displayed confirmation cannot
+baselines and the request retains the original incarnation. Lifecycle refusal
+has no overwrite-confirmation escape hatch. It is never force/ignore-revision.
+If the reviewed conflicting server values or the local proposal changes after
+review, the displayed confirmation cannot
 authorize an unseen overwrite; review the changed proposal/current values
 again. Errors preserve drafts for correction, copying or explicit discard.
 
 Realtime/refetch never replaces pending proposals or baselines. Filtered-out,
 deleted or otherwise missing rows retain identifiable drafts and recovery
-state; they are never silently recreated. Principal changes must not expose
+state; they are never silently recreated or attached to a replacement instance.
+Principal changes must not expose
 another principal's draft or accept an old response into the new session.
 Verify delayed acknowledgments in both orders, row disappearance, cancelled
 dialogs, edited proposals during review, and authentication changes.
+
+**Freshness also survives becoming clean.** After a successful acknowledgment,
+a read initiated before that mutation settled cannot replace acknowledged
+saved values or the next-edit baseline with older state, even if no draft
+remains. Conversely, a delayed acknowledgment can settle its own generation
+but cannot downgrade a newer accepted server snapshot, its unrelated fields,
+or the baseline for the next edit. Saved means the local generation committed,
+not that the acknowledged value remains the server's latest value. Arrival
+order alone is not freshness. If freshness cannot be established, reconcile
+through an authoritative read without rebasing pending edits; do not accept
+an ambiguous snapshot as the baseline or current displayed state. This
+ordering is scoped to the original incarnation, not an ID-reusing replacement.
+
+Required response-barrier cases (fresh J1 state, actual reads/writes; no
+fabricated response values), supporting J3.14–J3.15:
+
+| Barrier sequence | Display after all delayed responses | Saved status | Next-edit baseline | Unrelated newer field |
+|---|---|---|---|---|
+| Hold an old read of A = Cedar/7; Ben saves Title Cedar East; Alice saves Quantity 11 and accepts the acknowledgment Cedar East/11; release old read with no intervening refresh | Cedar East/11, never Cedar/7 | Alice's generation remains saved | Quantity 11 and the acknowledged revision/incarnation | Title stays Cedar East |
+| Save Quantity 11 but hold acknowledgment; Ben then saves Quantity 19 and Title Cedar East; accept that authoritative read; release acknowledgment of Cedar/11 | Cedar East/19, never Cedar/11 | Alice's generation settles saved, with no pending local change implied | Quantity 19 and the accepted latest revision/incarnation | Title stays Cedar East |
+
+Assert all four outcome columns, then start a new Quantity edit to 23 and
+inspect its submitted baseline. Repeat with a separate pending Price proposal to
+prove neither reconciliation nor these delayed responses rebase or erase it.
 
 ### GRD-R7 — Leaving, refresh and in-memory durability · `shape: sequence`
 
@@ -328,16 +379,22 @@ Controlled transitions (List/Form/New/Import links, Table/view/route changes,
 pagination, sort/filter changes, back navigation and controlled sign-out)
 commit the active cell, flush pending rows, and await safe outcomes before
 unmounting. A local validation error blocks this just like a server error.
-Conflict/error/unknown blocks leaving unless the user explicitly discards
-pending work. Discard does not cancel an already-committed save or claim to
+Conflict/error/unknown/lifecycle refusal blocks leaving unless the user
+explicitly discards pending work. Discard does not cancel an already-committed save or claim to
 undo a request already in flight; warn of an unknown outcome and retain the
-ability to reconcile it while the session remains. No new mutations are
-sent after discard; late acknowledgments cannot resurrect discarded edits.
+ability to reconcile it while the session remains. Post-discard reconciliation
+is read-only receipt/outcome lookup (R8), never resubmission of the original
+mutation: it cannot initiate a previously unaccepted write. An already-issued
+request may still finish. No new mutations are sent for discarded work;
+late acknowledgments cannot resurrect discarded edits. A not-yet-recorded
+outcome is not proof that an already-issued request cannot later commit.
 
 Defer disruptive live reorder/removal while editing; selection and drafts
 follow row identity when order is eventually applied. Non-dirty data can
 refresh, but it cannot move the active edit onto another row. A missing row
 with a draft stays represented as a recovery problem, not a vanished success.
+After drafts become clean, R6's read/acknowledgment ordering still protects
+displayed values, saved status and the baseline captured by the next edit.
 
 Browser close/reload while dirty or in flight installs the browser's unload
 warning; do not claim custom text or warning delivery where browsers forbid
@@ -358,30 +415,61 @@ mutate it. Ordinary `PATCH /api/table/:table/:row_id` retains its existing
 whole-row revision policy; this action is not an insert/upsert escape hatch.
 
 Request carries a client-generated mutation ID, loaded baseline revision,
-baseline values for each changed field, and the nonempty changed-field map.
-Missing/malformed revision, ID or baseline, unknown/ineligible fields, and
-attempts to change identity are whole-request refusals. Baselines are
+the server-provided incarnation, baseline values for each changed field,
+and the nonempty changed-field map. Missing/malformed revision, incarnation,
+ID or baseline, unknown/ineligible fields, and attempts to change identity
+are whole-request refusals. Baselines are
 comparison input, not evidence of read/write authorization or past server
 state. Confirmation is R6's new conditional request, never a bypass flag.
 
-Success identifies the mutation and committed revision, with authorized
-saved values sufficient to reconcile generations. Conflict identifies the
+Success identifies the mutation, original incarnation and committed revision,
+with authorized saved values sufficient to reconcile generations. Conflict identifies the
 mutation and all authorized conflicting fields with baseline/current/proposed
-values and the reviewed revision. Missing row, permission/eligibility/status
+values, original incarnation and the reviewed revision. Missing/replaced
+row-instance lifecycle refusal, permission/eligibility/status
 refusal, malformed request and field-validation errors are distinguishable
 from conflict and from a committed outcome with post-commit-effect failure.
 No response exposes a row/field that current read authorization hides.
 
 A server receipt is scoped by authenticated principal, canonical Table,
-row and mutation ID, bound to the immutable payload, and commits atomically
-with the row/Version outcome. Concurrent identical attempts resolve to one
+row address, original incarnation and mutation ID, bound to the immutable
+payload, and commits atomically with the row/Version outcome.
+Concurrent identical attempts resolve to one
 commit. Same ID/same payload replays the prior authorized outcome without
 rerunning validation, hooks, scripts, notifications or versioning. Same
 ID/different payload is rejected, including attempts to add newer local
 edits. Confirmation/correction uses a new ID; response-loss retry does not.
-Replay re-authorizes current reads, filters fields, and never treats a
-historical success as permission to expose a now-hidden/deleted row. It
-does not require re-performing the old write to recover its outcome.
+Replay re-authorizes current reads of the **original instance**, filters
+fields, and never authorizes its outcome against a replacement at the old
+address. Permission to read the replacement grants no access to the original
+receipt's values. If the original instance and its current read authorization
+cannot be established (including deletion), refuse disclosure of its row
+values; any permitted non-value outcome must not disclose protected data or
+claim a write to the replacement. For a renamed original, replay may disclose
+its outcome only if that same instance is resolved and currently authorized,
+never using the replacement's grants. Neither replay nor lookup reruns the
+write or creates a receipt for the replacement. R5's incarnation check under
+lock applies before any new field comparison; a valid historical receipt
+instead authorizes only the original committed outcome, not a new mutation.
+
+| Successful receipt then lifecycle change | Replay obligation | Why? |
+|---|---|---|
+| α saved Quantity 11 at A; delete α; create β at A with Quantity 7; caller can read β | β remains 7; no α row values disclosed using β's authorization; no new Version/effects | Delete/recreate cannot launder an old receipt through a new row |
+| α saved Quantity 11 at A; rename α to A-renamed; create β at A with Quantity 7; caller can read β but not α | Neither row changes; α's saved values are refused; no new Version/effects | Old-ID reuse does not transfer read grants |
+| Same rename/reuse, but caller is currently authorized for resolved α | Only α's permission-filtered historical outcome may be recovered; β is untouched and is not labelled saved by α's receipt | Original-instance authorization, not old-address authorization |
+
+**Outcome lookup versus write retry:** read-only receipt/outcome reconciliation
+must be available without invoking the write action's accept-if-unseen path;
+its address/representation is implementation-defined. It returns only an
+authorized known outcome or unknown/not-recorded, never writes an unaccepted
+mutation, and follows the same original-instance authorization as replay.
+Use this after discard. Before discard, an explicit user **Retry save** of an
+uncertain mutation may resend the identical payload/ID: if no attempt ever
+reached the server, that retry may perform the first write after all current
+checks. Warn that retry may save the pending change, not merely check status.
+Checking after discard is not this consent. Test a request that never reached
+the server, discard followed by lookup (zero writes), an already-issued
+request completing after discard, and explicit pre-discard retry (one write).
 
 Receipt retention must cover the supported retry lifetime; an unavailable
 receipt must not make an old accepted mutation execute as new. Any future
@@ -396,7 +484,8 @@ failure, with exact row/Version/effect counters (I3).
 > evidence: gap #259 — the new action must prove locked merge/lifecycle ordering and final candidate checks; ordinary save behavior is not evidence of this contract.
 
 At `POST /api/table/:table/:row_id:merge_fields`, one native transaction
-locks the current row, rechecks permission/field eligibility/status,
+locks the addressed row, verifies its original incarnation before field
+comparison, rechecks permission/field eligibility/status,
 compares every requested field, and refuses all conflicts before mutation.
 No conflict runs mutating save hooks or writes a partial row. On acceptance,
 merge proposals into the **locked latest row**, then apply ordinary metadata
@@ -433,7 +522,9 @@ failure stage, and the committed/not-committed distinction after effect failure.
 Success/conflict/replay at `POST /api/table/:table/:row_id:merge_fields` and
 opt-in `GET /api/table/:table` capability responses are authorized read
 surfaces. Filter them by current row/Data Scope/field read permissions,
-including errors and derived values. Do not echo unauthorized values merely
+including errors and derived values. Receipt replay and outcome lookup
+authorize the original row instance, not a replacement using its old ID (R8).
+Do not echo unauthorized values merely
 because the caller supplied them. Revocation may return a generic refusal
 instead of field detail. Never log mutation payloads, baselines, proposals,
 conflict values or sensitive receipt contents. Operational diagnosis can
@@ -498,7 +589,9 @@ by an explicit newer local edit, is acknowledged for its own saved value,
 or is explicitly discarded; no send, stale acknowledgment, refresh,
 reorder, row disappearance or dialog cancellation invents a fifth outcome.
 Active-cell Escape restores the pre-edit generation rather than discarding
-it. A response for one principal/Table/row cannot settle another. Reconcile
+it. A response for one principal/Table/row incarnation cannot settle another.
+Settling a generation does not relax R6's freshness ordering for clean
+displayed state or the next-edit baseline. Reconcile
 these categories over generated edit/send/ack/error/refetch/navigation
 sequences and witness J3.1 in a browser with a real delayed response.
 
@@ -513,6 +606,9 @@ do not increase on replay. A post-commit-effect failure may mean external
 delivery count is zero or uncertain, never that committed row count is
 zero. Reconcile both a lost response after full success and a failure after
 row/receipt commit but before all effects finish.
+After discard, outcome lookup adds zero writes even if no receipt exists;
+an already-issued request may still finish. ID reuse adds zero transitions
+to the replacement and never transfers receipt read authorization.
 
 ## Compound hazards
 
@@ -525,6 +621,8 @@ then conflict or receipt replay discloses restricted values. R2, R8 and R10
 jointly require fresh authorization and filtering, rejection rather than
 stripping, and payload-free logs. Verify the merge_fields response and logs
 after row and field revocation, including a previously successful receipt.
+Repeat successful-receipt replay after deletion/recreation and rename/old-ID
+reuse, with grants only on the replacement; no original values may leak.
 
 ### GRD-H2 — Moving rows plus delayed saves lose work · `shape: sequence`
 
@@ -535,6 +633,8 @@ erase a newer edit or apply it to the wrong row. R6/R7/I2 preserve identity
 and generations and await controlled transitions. Walk J3 with A moving
 past B, a dirty off-page/missing row, delayed success, then a conflict on
 leaving. Assert proposals, selected identity and blocked navigation together.
+Also run R6's two clean-state response barriers: discarding the draft state
+after success must not discard the protection against old reads or old acks.
 
 ### GRD-H3 — Retry disguises a committed save as failure · `shape: contract`
 
@@ -549,10 +649,10 @@ discarding the newer generation or invoking the lifecycle twice.
 ## Closure sweep
 
 - Actors & permissions: R1/R2/R10/H1 — server policy, tiers, shares, own rows, Data Scopes and revocation.
-- Prior state & lifecycle (including reversal): R1/R3/R9 — existing rows, required hidden values, status; Cancel is not undo, explicit discard is not rollback.
+- Prior state & lifecycle (including reversal): R1/R3/R5/R8/R9 — original incarnation survives identity reuse checks; delete/recreate and rename/old-ID reuse never retarget writes or receipt authorization; Cancel is not undo, explicit discard is not rollback.
 - Concurrency & retries: R5/R6/R8/I1/I2/I3 — locked field comparison, conditional confirmation, generation ordering and receipts.
 - External-dependency failure: R9/H3 — References validated; post-commit delivery failure distinguished; reflected drivers excluded.
-- Durability & recovery: R6/R7/R8 — in-memory proposals, controlled navigation, unload warning, reliable committed-outcome replay without a crash-recovery promise.
+- Durability & recovery: R6/R7/R8 — in-memory proposals, clean-state freshness, controlled navigation, unload warning, read-only post-discard reconciliation versus explicit write retry, without a crash-recovery promise.
 - Security & privacy: R2/R9/R10/H1 — baseline is not authority, finalized candidate scope, filtered conflict/replay and no payload logs.
 - Accessibility: R4/R10/J1.9 — keyboard/IME/shortcuts, safe Tab, screen-reader status and conflict focus.
 - Performance & scale: R11 — paginated batched capabilities and bounded dirty-row request counts, measured separately from latency.
