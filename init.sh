@@ -50,15 +50,23 @@ EOF
   }
 
   # The postgres OS user can use peer authentication only against a local
-  # Debian cluster. Remember a cluster only when both the URL host is loopback
-  # and pg_lsclusters says that cluster owns the URL's port. Remote hosts must
-  # never fall back to an unrelated local socket server.
-  DEBIAN_CLUSTER=""
+  # Debian cluster. Collect candidates only when the URL host is loopback;
+  # pg_lsclusters must map the URL's port to exactly one cluster before peer
+  # administration is allowed. Remote hosts must never fall back to a local
+  # socket server.
+  DEBIAN_CLUSTERS=()
   if command -v pg_lsclusters >/dev/null && is_loopback_host; then
-    DEBIAN_CLUSTER="$(pg_lsclusters -h 2>/dev/null | awk -v p="$DB_PORT" '$3==p {print $1 "/" $2; exit}')"
+    mapfile -t DEBIAN_CLUSTERS < <(pg_lsclusters -h 2>/dev/null | awk -v p="$DB_PORT" '$3==p {print $1 "/" $2}')
   fi
 
   if ! db_url_ok; then
+    if [ "${#DEBIAN_CLUSTERS[@]}" -gt 1 ]; then
+      echo "!! multiple Debian Postgres clusters use port $DB_PORT."
+      echo "   Give each cluster a unique port before bootstrapping DATABASE_URL."
+      exit 1
+    fi
+    DEBIAN_CLUSTER="${DEBIAN_CLUSTERS[0]:-}"
+
     # (a) Is anything listening at all? If not, try to start the local cluster.
     if ! pg_isready -h "$DB_HOST" -p "$DB_PORT" >/dev/null 2>&1; then
       echo "--> no Postgres on $DB_HOST:$DB_PORT — attempting to start one"

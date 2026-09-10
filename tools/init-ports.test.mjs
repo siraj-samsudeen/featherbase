@@ -231,3 +231,120 @@ test('root bootstrap creates the role and database only in the selected Debian c
   assert.equal(await existsIn(decoyCluster, `select 1 from pg_roles where rolname='${role}'`), '')
   assert.equal(await existsIn(decoyCluster, `select 1 from pg_database where datname='${database}'`), '')
 })
+
+test('root bootstrap refuses an ambiguous Debian cluster port without starting or mutating either cluster', async (t) => {
+  const required = ['pg_config', 'pg_createcluster', 'pg_dropcluster', 'pg_ctlcluster', 'pg_lsclusters', 'psql', 'sudo']
+  for (const executable of required) {
+    const found = await command('/bin/sh', ['-c', `command -v ${executable}`])
+    if (found.code !== 0) return t.skip(`${executable} is unavailable`)
+  }
+  if ((await command('sudo', ['-n', 'true'])).code !== 0) return t.skip('passwordless sudo is unavailable')
+
+  const checkout = await setupCheckout('postgres-ambiguous', { mockPsql: false })
+  const versionOutput = await command('pg_config', ['--version'])
+  const version = versionOutput.stdout.match(/PostgreSQL (\d+)/)?.[1]
+  assert.ok(version, versionOutput.stdout)
+  const suffix = `${process.pid}${Date.now()}`.slice(-10)
+  const clusters = [`fb38_amb_a_${suffix}`, `fb38_amb_b_${suffix}`]
+  const port = await freePort()
+  const role = `fb38_amb_role_${suffix}`
+  const database = `fb38_amb_db_${suffix}`
+
+  t.after(async () => {
+    await command('sudo', ['-n', 'pkill', '-f', checkout.dir])
+    for (const cluster of clusters) {
+      await command('sudo', ['-n', 'pg_dropcluster', '--stop', version, cluster])
+    }
+    await rm(checkout.dir, { recursive: true, force: true })
+  })
+
+  for (const cluster of clusters) {
+    const created = await command('sudo', ['-n', 'pg_createcluster', version, cluster, '--port', port])
+    assert.equal(created.code, 0, created.stderr || created.stdout)
+  }
+
+  const result = await command('sudo', [
+    '-n',
+    'env',
+    `PATH=${checkout.bin}:${dirname(process.execPath)}:/usr/bin:/bin`,
+    `INIT_TEST_ROOT=${checkout.dir}`,
+    `DATABASE_URL=postgres://${role}:cluster-secret@127.0.0.1:${port}/${database}`,
+    '/bin/bash',
+    './init.sh',
+  ], { cwd: checkout.dir })
+
+  assert.notEqual(result.code, 0, result.stdout)
+  assert.match(result.stdout, /multiple Debian Postgres clusters use port/)
+  const listed = await command('pg_lsclusters', ['-h'])
+  for (const cluster of clusters) {
+    assert.match(listed.stdout, new RegExp(`^${version} ${cluster} ${port} down `, 'm'))
+    const started = await command('sudo', ['-n', 'pg_ctlcluster', version, cluster, 'start'])
+    assert.equal(started.code, 0, started.stderr || started.stdout)
+    for (const [catalog, name] of [
+      ['pg_roles', role],
+      ['pg_database', database],
+    ]) {
+      const column = catalog === 'pg_roles' ? 'rolname' : 'datname'
+      const query = await command('sudo', [
+        '-n',
+        '-u',
+        'postgres',
+        'psql',
+        '--cluster',
+        `${version}/${cluster}`,
+        '-d',
+        'postgres',
+        '-tAc',
+        `select 1 from ${catalog} where ${column}='${name}'`,
+      ])
+      assert.equal(query.code, 0, query.stderr)
+      assert.equal(query.stdout.trim(), '')
+    }
+    const stopped = await command('sudo', ['-n', 'pg_ctlcluster', version, cluster, 'stop'])
+    assert.equal(stopped.code, 0, stopped.stderr || stopped.stdout)
+  }
+})
+
+test('root bootstrap keeps the start fallback but denies peer administration when no cluster matches the port', async (t) => {
+  if ((await command('sudo', ['-n', 'true'])).code !== 0) return t.skip('passwordless sudo is unavailable')
+
+  const checkout = await setupCheckout('postgres-no-match')
+  const suCalled = join(checkout.dir, 'su-called')
+  const clusterStarted = join(checkout.dir, 'cluster-started')
+  const serverReady = join(checkout.dir, 'server-ready')
+  t.after(async () => {
+    await rm(checkout.dir, { recursive: true, force: true })
+  })
+  await writeFile(join(checkout.bin, 'psql'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
+  await writeFile(
+    join(checkout.bin, 'pg_isready'),
+    `#!/bin/sh\ntest -f "${serverReady}"\n`,
+    { mode: 0o755 },
+  )
+  await writeFile(
+    join(checkout.bin, 'pg_lsclusters'),
+    '#!/bin/sh\necho "15 unrelated 5432 down postgres /tmp/unrelated /tmp/unrelated.log"\n',
+    { mode: 0o755 },
+  )
+  await writeFile(
+    join(checkout.bin, 'pg_ctlcluster'),
+    `#!/bin/sh\ntouch "${clusterStarted}" "${serverReady}"\n`,
+    { mode: 0o755 },
+  )
+  await writeFile(join(checkout.bin, 'su'), `#!/bin/sh\ntouch "${suCalled}"\nexit 99\n`, { mode: 0o755 })
+
+  const result = await command('sudo', [
+    '-n',
+    'env',
+    `PATH=${checkout.bin}:${dirname(process.execPath)}:/usr/bin:/bin`,
+    `INIT_TEST_ROOT=${checkout.dir}`,
+    'DATABASE_URL=postgres://missing:cluster-secret@127.0.0.1:55439/missing',
+    '/bin/bash',
+    './init.sh',
+  ], { cwd: checkout.dir })
+
+  assert.notEqual(result.code, 0, result.stdout)
+  assert.match(result.stdout, /no superuser connection is available/)
+  assert.equal(existsSync(clusterStarted), true, 'zero matches retain the legacy first-cluster start fallback')
+  assert.equal(existsSync(suCalled), false, 'zero port matches must not enable the postgres OS-user fallback')
+})
