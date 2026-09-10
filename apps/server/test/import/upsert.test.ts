@@ -42,13 +42,17 @@ async function seed(admin: TestClient) {
   })
 }
 
-async function rowsByZone(admin: TestClient) {
+async function listRows(admin: TestClient) {
   const list = await admin.get<{ data: Record<string, unknown>[] }>(
     `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
       '["row_id","zone","pop","note","stage","updated_by","updated_at"]',
     )}&order_by=${encodeURIComponent('zone asc')}&limit_page_length=100`,
   )
-  return Object.fromEntries(list.data.map((r) => [String(r.zone), r]))
+  return list.data
+}
+
+async function rowsByZone(admin: TestClient) {
+  return Object.fromEntries((await listRows(admin)).map((r) => [String(r.zone), r]))
 }
 
 describe('UPS-R1: the import boundary learns update', () => {
@@ -448,7 +452,8 @@ describe('UPS-R3: what an update touches', () => {
   }) => {
     await setup(admin)
     await seed(admin)
-    const before = await rowsByZone(admin)
+    const before = await listRows(admin)
+    const alphaBefore = before.find((row) => row.zone === 'Alpha')!
     const res = await admin.post<{ updated: number; inserted: number; failed: { message: string }[] }>(PATH, {
       key_column: 'zone',
       rows: [{ zone: 'Alpha', row_id: 'SMUGGLED-ID', pop: 1 }],
@@ -457,13 +462,14 @@ describe('UPS-R3: what an update touches', () => {
     expect(res.inserted).toBe(0)
     expect(res.failed).toHaveLength(1)
     expect(res.failed[0].message).toContain("cannot change a row's id")
-    const after = await rowsByZone(admin)
-    expect(after.Alpha.row_id).toBe(before.Alpha.row_id)
-    const beforeIds = Object.values(before).map((row) => String(row.row_id)).sort()
-    const afterIds = Object.values(after).map((row) => String(row.row_id)).sort()
+    const after = await listRows(admin)
+    expect(after.find((row) => row.zone === 'Alpha')?.row_id).toBe(alphaBefore.row_id)
+    expect(after).toHaveLength(before.length)
+    const beforeIds = before.map((row) => String(row.row_id)).sort()
+    const afterIds = after.map((row) => String(row.row_id)).sort()
     expect(afterIds).toEqual(beforeIds)
     expect(afterIds).not.toContain('SMUGGLED-ID')
-    expect(Number(after.Alpha.pop)).toBe(12000)
+    expect(Number(after.find((row) => row.row_id === alphaBefore.row_id)?.pop)).toBe(12000)
   })
 
   test('UPS-R3 property: keep preserves exactly the absent mapped columns; clear nulls them', async ({
