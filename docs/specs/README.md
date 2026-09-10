@@ -38,6 +38,7 @@ hand-maintained `evidence/*.csv` matrices this replaced were retired
 | [0005 — Import Revert](0005-import-revert.md) | Built 2026-08-11 | Row-level reverse of a completed import |
 | [0006 — Connection Console](0006-connection-console.md) | Proposed | Connect a Data Source through the UI: typed credentials encrypted at rest, phased test with inline diagnosis, post-auth database dropdown, verified grants, advanced disclosure, saved-source health |
 | [0008 — Spreadsheet Import](0008-spreadsheet-import.md) | Built (retrofit 2026-09-04) | The import wizard end to end: the file overview, merge groups and user combines, the stepper, leave-and-resume, past imports, column edits and Table merge — recovered from PR #210 plus the wizard core |
+| [0009 — Grid Editing](0009-grid-editing.md) | Proposed — specification only (#259) | Existing native business rows; server-derived eligibility, atomic per-field merge, conditional conflict confirmation, idempotent retry, keyboard editing and in-memory draft/navigation safety |
 
 Both are shaped by [ADR 0007](../adr/0007-app-and-database-topology.md) and the
 research note [Frappe: many apps in one instance](../research/frappe-multi-app-and-multi-db.md).
