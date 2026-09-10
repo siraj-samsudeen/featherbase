@@ -102,9 +102,11 @@ as match key: it is an update — that is UPS-J1.
 - **security & privacy:** covered by the permission rule; no new surface.
 - **accessibility:** the Match key control is a real labelled control in
   the mapping grid, keyboard-reachable — asserted in J1's walk.
-- **performance & scale:** matching is one indexed lookup per file row on
-  the key column; a key column without an index is a seq-scan per row —
-  the build must state its answer (index on demand, or document the cost).
+- **performance & scale:** one `= any(...)` query resolves a request's
+  keys. Before a real keyed run resolves a non-Row-ID key, it ensures the
+  matching cast-expression index; the Row ID primary key already serves
+  Row ID matches. Rehearsals create no catalog objects, so they may scan
+  until a real run has created that index.
 - **observability:** the Import Log gains `updated` beside inserted /
   failed; IMP-I2's per-part reconciliation extends to the new count.
 - **compound hazards:** UPS-H1.
@@ -126,10 +128,11 @@ behaviours (no example table — the rows would restate the rule):
 
 - absent `key_column` → today's insert-only semantics, byte-for-byte;
 - present → each row resolves via UPS-R2 to update / insert / fail;
-- `columns`, when supplied, names this run's mapped columns and therefore
-  the only columns eligible to participate in UPS-R3's update semantics;
-  it must name Table columns. With `empty_cells: 'clear'`, it is required:
-  an absent mapped column is cleared, while an unmapped column is untouched;
+- `columns`, when supplied, must name Table columns. With
+  `empty_cells: 'clear'`, it is required and identifies which absent row
+  properties are mapped empty cells to clear; absent unmapped columns stay
+  untouched. It does not otherwise restrict supplied row values passed to
+  the update lifecycle;
 - updates require write permission on the matched row; inserts require
   create; a request the caller may not fully perform is refused whole;
 - the response and the Import Log carry `updated`, `inserted`, `failed`
@@ -167,14 +170,14 @@ resolves to exactly one action, and
 > keep/clear; a mapped Row ID differing from the matched row is refused
 > loudly, naming the row.
 
-Only **mapped** columns change; unmapped database columns are untouched.
-Within a mapped column, empty-cell semantics are the **importing user's
-explicit per-run choice** *(Q3 ruled 2026-08-05 — the arbiter's third
+`columns` controls only mapped-cell absence: it is not an update-field
+whitelist. Within a mapped column, empty-cell semantics are the **importing
+user's explicit per-run choice** *(Q3 ruled 2026-08-05 — the arbiter's third
 way)*: a control beside the match key, shown only when a key is set,
-offering **keep existing values** (the default) or **clear them**.
-Clearing is thereby always a chosen act — but the sparse-export wipe is
-possible when chosen. Row identity never changes: matching on Row ID
-updates that row; changing an id via upsert does not exist.
+offering **keep existing values** (the default) or **clear them**. Clearing
+is thereby always a chosen act — but the sparse-export wipe is possible when
+chosen. Row identity never changes: matching on Row ID updates that row;
+changing an id via upsert does not exist.
 
 | Existing row + file row | → | Why? |
 |---|---|---|
@@ -326,7 +329,8 @@ into R3; #143 ratified `columns` into R1; #144 ratified keyless Import Log
 `updated: 0`. The remaining observation is a recorded implementation
 answer, not a queued product decision:
 
-- **Performance answer stated** per the closure sweep: matching casts
-  the key column to text for one `= any(...)` scan per request (chunk),
-  not per row — a seq scan on unindexed keys, documented in
-  `resolveRows`; index-on-demand deferred until a real dataset hurts.
+- **Performance answer stated** per the closure sweep: matching casts the
+  key column to text for one `= any(...)` query per request (chunk), not per
+  row. A real keyed run ensures its matching expression index before that
+  query; a dry run deliberately creates no index and may scan until one
+  exists.

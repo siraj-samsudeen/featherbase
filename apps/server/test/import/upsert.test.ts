@@ -449,15 +449,20 @@ describe('UPS-R3: what an update touches', () => {
     await setup(admin)
     await seed(admin)
     const before = await rowsByZone(admin)
-    const res = await admin.post<{ updated: number; failed: { message: string }[] }>(PATH, {
+    const res = await admin.post<{ updated: number; inserted: number; failed: { message: string }[] }>(PATH, {
       key_column: 'zone',
       rows: [{ zone: 'Alpha', row_id: 'SMUGGLED-ID', pop: 1 }],
     })
     expect(res.updated).toBe(0)
+    expect(res.inserted).toBe(0)
     expect(res.failed).toHaveLength(1)
     expect(res.failed[0].message).toContain("cannot change a row's id")
     const after = await rowsByZone(admin)
-    expect(after.Alpha.name).toBe(before.Alpha.name)
+    expect(after.Alpha.row_id).toBe(before.Alpha.row_id)
+    const beforeIds = Object.values(before).map((row) => String(row.row_id)).sort()
+    const afterIds = Object.values(after).map((row) => String(row.row_id)).sort()
+    expect(afterIds).toEqual(beforeIds)
+    expect(afterIds).not.toContain('SMUGGLED-ID')
     expect(Number(after.Alpha.pop)).toBe(12000)
   })
 
@@ -574,6 +579,9 @@ describe('UPS-R5: the key is remembered per Table', () => {
     expect(logs.data.length).toBe(3) // seed request + keyed run + keyless run
     // Latest row (the keyless run) records the truthful zero count but no
     // match-key configuration…
+    expect(logs.data[0].updated).not.toBeNull()
+    expect(logs.data[0].updated).toBeTypeOf('string')
+    expect(logs.data[0].updated).toBe('0')
     expect(Number(logs.data[0].updated)).toBe(0)
     expect(logs.data[0].key_column).toBeNull()
     expect(logs.data[0].empty_cells).toBeNull()
