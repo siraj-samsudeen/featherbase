@@ -1,14 +1,32 @@
-import { anonymousTest as test, expect, adminAuth } from './fixtures'
+import { anonymousTest as test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
 const EMAIL = 'oauth.e2e.user@gmail.com'
 
+async function setAllowedDomains(request: APIRequestContext, value: string) {
+  const headers = await adminAuth(request)
+  const res = await request.post('/api/save_row', {
+    headers,
+    data: { table: 'System Settings', row: { allowed_login_domains: value } },
+  })
+  if (res.status() !== 201) throw new Error(`save allowed_login_domains: ${res.status()}`)
+}
+
 test.beforeEach(async ({ request }) => {
-  // Start from a clean slate so the flow exercises account CREATION.
+  // Blank is the secure default and makes each test independent even if a
+  // preceding process was interrupted before its teardown ran.
+  await setAllowedDomains(request, '')
   const headers = await adminAuth(request)
   await request.delete(`/api/table/User/${encodeURIComponent(EMAIL)}`, { headers })
 })
 
-test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', async ({ page }) => {
+test.afterEach(async ({ request }) => {
+  // The creation journey opts into wildcard provisioning. Always restore the
+  // secure default so no later spec can inherit that widened policy.
+  await setAllowedDomains(request, '')
+})
+
+test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', async ({ page, request }) => {
+  await setAllowedDomains(request, '*')
   // #150: every URL this flow puts in the address bar — and therefore in
   // history, in the Referer of anything the page fetches next, and in every
   // proxy log on the way — is recorded, so the assertion below can prove the

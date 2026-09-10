@@ -285,14 +285,15 @@ export function redeemHandoffCode(code: string | undefined, sid: string | undefi
 // exist were provisioned deliberately and always may sign in, mirroring the
 // report server's grants arm.
 async function domainAdmitted(email: string): Promise<boolean> {
+  const match = /^[^\s@]+@([^\s@]+)$/.exec(email.trim().toLowerCase())
+  if (!match) return false
   const domains = (await getSystemSettings()).allowed_login_domains
     .split(',')
     .map((d) => d.trim().toLowerCase())
     .filter(Boolean)
   if (!domains.length) return false
   if (domains.includes('*')) return true
-  const at = email.lastIndexOf('@')
-  return at > 0 && domains.includes(email.slice(at + 1))
+  return domains.includes(match[1])
 }
 
 // Map an OAuth identity to a User: link an existing account by email/name or

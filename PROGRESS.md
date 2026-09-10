@@ -31,13 +31,18 @@ The OAuth integration suite now pins all four boundaries through the real
 mock-provider HTTP callback path: blank refuses without creating a User,
 `*` provisions, a populated allowlist admits only its domain, and an existing
 user bypasses creation admission. Existing tests that provision as setup now
-opt in explicitly rather than depending on the old blank default.
+opt in explicitly rather than depending on the old blank default. Review also
+caught that wildcard admission preceded identity-shape validation: the HTTP
+callback now rejects both a missing `@` and a repeated `@` before consulting
+`*`. The browser creation journey scopes its own wildcard setting with blank
+before/after guards, while the existing-user journey continues under blank.
 
 Verified red before implementation: `pnpm --filter server test
 test/oauth.test.ts` failed 5/16 tests — blank returned 302 instead of 401,
 `*` returned 401 instead of 302, and three successful-flow tests exposed the
 missing wildcard semantics. Verified green: OAuth plus token-hardening tests
-29/29; server source and test typechecks; and a live curl flow against `:8000`
+31/31; isolated OAuth e2e 3/3 with the final setting restored blank; both
+server and web source/test typechecks; and a live curl flow against `:8000`
 carried state and cookies through login → mock approval → callback, observing
 blank = 401 / zero Users and `*` = 302 / one enabled Google User. Baseline
 `./init.sh` also passed server smoke and both browser smoke tests after the

@@ -160,6 +160,19 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     expect(user).toMatchObject({ social_login: 'google', enabled: true })
   })
 
+  test('* still rejects malformed provider identities', async ({ api }) => {
+    await setAllowedDomains('*')
+    // Missing and repeated separators distinguish "contains @" from exactly
+    // one non-empty, non-whitespace local part and domain.
+    for (const email of ['not-an-email', 'user@@example.com']) {
+      const denied = await mockSignIn(api, email)
+      expect(denied.status).toBe(401)
+      const [row] = await sql`
+        select 1 from "user" where email = ${email} or row_id = ${email}`
+      expect(row).toBeUndefined()
+    }
+  })
+
   test('allowed_login_domains blocks auto-provisioning foreign domains', async ({ api }) => {
     await setAllowedDomains('jeyarama.com')
     const denied = await mockSignIn(api, 'stranger@gmail.com')
