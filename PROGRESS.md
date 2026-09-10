@@ -1,5 +1,25 @@
 # Progress Log
 
+## 2026-09-10 — `init.sh` supports isolated configurable stacks (#260)
+
+`API_PORT` and `WEB_PORT` now default to `8000` and `5173`, are exported for
+Vite's selected listener and API proxy, and drive every `init.sh` lifecycle
+operation: stale-listener cleanup, server launch, readiness, ownership checks,
+port-specific logs, smoke URLs, and the success message. A stack therefore
+only cleans its selected pair, while the existing default invocation remains
+unchanged.
+
+The new black-box shell regression harness boots a default fixture checkout
+and a selected-port sibling, checks both remain reachable, asserts smoke gets
+the derived URLs, and introduces a listener after cleanup to prove ownership
+validation refuses it rather than reporting it as this invocation's server.
+Live verification used separate Postgres databases in this orb: default
+`./init.sh` passed its server and browser smoke tests; the isolated worktree
+passed with API `:18020` and web `:15190`, including `/api/ping` through Vite,
+while the original `:8000` and `:5173` listener PIDs were unchanged. The
+focused harness (2/2), server and web typechecks, `bash -n init.sh`, and
+`git diff --check` are green.
+
 ## 2026-09-10 — Valid doctypes restored for server-rendered documents (#264)
 
 The DocType → Table vocabulary rename had also changed the `DOCTYPE` token in

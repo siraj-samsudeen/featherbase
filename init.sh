@@ -136,6 +136,12 @@ fi
 # This is a local dev boot, so it says otherwise. A deployment never runs
 # init.sh and so never sets this — the mock is unreachable there.
 export ALLOW_MOCK_OAUTH=1
+# These defaults are the single-checkout development ports. Export them so
+# Vite both listens on the selected web port and proxies to this stack's API.
+export API_PORT="${API_PORT:-8000}"
+export WEB_PORT="${WEB_PORT:-5173}"
+server_log="/tmp/featherbase-server-${API_PORT}.log"
+web_log="/tmp/featherbase-web-${WEB_PORT}.log"
 # Kill by listening port — pattern-matching the tsx wrapper misses the actual
 # node child that holds the port (and its in-process meta cache).
 
@@ -162,7 +168,7 @@ descends_from() {
   return 1
 }
 
-for port in 8000 5173; do
+for port in "$API_PORT" "$WEB_PORT"; do
   pids="$(listeners "$port")"
   if [ -n "$pids" ]; then
     # shellcheck disable=SC2086
@@ -190,19 +196,19 @@ sleep 2
 # `exec` so the subshell becomes the dev server rather than lingering as a
 # parent that still holds this script's stdout — on macOS such a subshell
 # outlives the script and `./init.sh | tee` never sees EOF.
-(cd apps/server && exec nohup pnpm dev >/tmp/featherbase-server.log 2>&1) &
+(cd apps/server && exec nohup env PORT="$API_PORT" pnpm dev >"$server_log" 2>&1) &
 server_pid=$!
-(cd apps/web && exec nohup pnpm dev >/tmp/featherbase-web.log 2>&1) &
+(cd apps/web && exec nohup pnpm dev >"$web_log" 2>&1) &
 web_pid=$!
 
 for i in $(seq 1 30); do
-  curl -sf http://localhost:8000/api/ping >/dev/null 2>&1 && break
-  [ "$i" = 30 ] && { echo "!! server failed to boot; see /tmp/featherbase-server.log"; exit 1; }
+  curl -sf "http://localhost:$API_PORT/api/ping" >/dev/null 2>&1 && break
+  [ "$i" = 30 ] && { echo "!! server failed to boot; see $server_log"; exit 1; }
   sleep 1
 done
 for i in $(seq 1 30); do
-  curl -sf http://localhost:5173 >/dev/null 2>&1 && break
-  [ "$i" = 30 ] && { echo "!! web failed to boot; see /tmp/featherbase-web.log"; exit 1; }
+  curl -sf "http://localhost:$WEB_PORT" >/dev/null 2>&1 && break
+  [ "$i" = 30 ] && { echo "!! web failed to boot; see $web_log"; exit 1; }
   sleep 1
 done
 
@@ -210,18 +216,19 @@ done
 # checkout's stack is up, ours dies with EADDRINUSE while the health checks
 # above still pass against theirs — and the script reports success for a tree
 # whose code is not the one under test. Assert we own both ports.
-for spec in "8000:$server_pid:server" "5173:$web_pid:web"; do
+for spec in "$API_PORT:$server_pid:server:$server_log" "$WEB_PORT:$web_pid:web:$web_log"; do
   port="${spec%%:*}"; rest="${spec#*:}"; pid="${rest%%:*}"; what="${rest#*:}"
+  log="${what#*:}"; what="${what%%:*}"
   owner="$(listeners "$port" | head -1)"
   if [ -z "$owner" ] || ! descends_from "$owner" "$pid"; then
     echo "!! :$port is answering, but from PID ${owner:-none}, which is not the"
     echo "   $what this script started (pid $pid). Something else is serving it;"
-    echo "   see /tmp/featherbase-$what.log"
+    echo "   see $log"
     exit 1
   fi
 done
 
 # --- 5. Smoke test ----------------------------------------------------------
-pnpm smoke
+SERVER_URL="http://localhost:$API_PORT" WEB_URL="http://localhost:$WEB_PORT" pnpm smoke
 
-echo "==> init OK — server :8000, web :5173"
+echo "==> init OK — server :$API_PORT, web :$WEB_PORT"
