@@ -7,6 +7,24 @@ import { expect, it } from 'vitest'
 import { config } from '../src/config'
 import { admit, forgive, cleanExpiredBuckets, preAuthPolicy, sourceAddress } from '../src/pre-auth-rate-limit'
 
+it('#245 canonicalizes mapped IPv4 across configuration, socket and forwarded positions', () => {
+  const proxy = ['127.0.0.1', '::ffff:127.0.0.1', '0:0:0:0:0:ffff:127.0.0.1', '::FFFF:7F00:1']
+  const hop = ['192.0.2.17', '::ffff:192.0.2.17', '0:0:0:0:0:ffff:192.0.2.17', '::ffff:c000:211']
+  const client = ['198.51.100.9', '::ffff:198.51.100.9', '0:0:0:0:0:ffff:198.51.100.9', '::ffff:c633:6409']
+  for (const configured of proxy) for (const configuredHop of hop) {
+    const trusted = preAuthPolicy({ TRUSTED_PROXY_IPS: `${configured},${configuredHop}` }).trusted
+    expect(trusted).toEqual(['127.0.0.1', '192.0.2.17'])
+    for (const socket of proxy) for (const forwardedHop of hop) for (const forwardedClient of client) {
+      expect(sourceAddress(socket, `203.0.113.77, ${forwardedClient}, ${forwardedHop}`, trusted)).toBe('198.51.100.9')
+      // Without trust, neither spelling nor a forged header changes the peer.
+      expect(sourceAddress(forwardedClient, '203.0.113.77', trusted)).toBe('198.51.100.9')
+    }
+  }
+  // IPv4-compatible and NAT64 IPv6 addresses are not IPv4-mapped addresses.
+  expect(sourceAddress('::c633:6409', undefined, [])).toBe('::c633:6409')
+  expect(sourceAddress('64:ff9b::c633:6409', undefined, [])).toBe('64:ff9b::c633:6409')
+})
+
 it('#245 admits exactly the shared budget across independent pools, resets expiry and bounds cleanup', async () => {
   const schema = `limiter_${randomUUID().replaceAll('-', '')}`
   const control = postgres(config.databaseUrl, { onnotice: () => {} })

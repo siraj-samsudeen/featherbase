@@ -12,6 +12,24 @@ function request(path: string, init: RequestInit = {}, ip = '192.0.2.10') {
 }
 
 describe('#245 public route admission', () => {
+  test('equivalent mapped proxy spellings separate clients and share each client budget', async () => {
+    vi.stubEnv('PREAUTH_LOGIN_MAX', '1')
+    const proxies = ['::ffff:7f00:1', '127.0.0.1', '::ffff:127.0.0.1', '0:0:0:0:0:ffff:127.0.0.1']
+    for (const configured of proxies) for (const socket of proxies) {
+      vi.stubEnv('TRUSTED_PROXY_IPS', configured)
+      await sql`delete from pre_auth_bucket`
+      const send = (forwarded: string) => request('/api/login', { method: 'POST', headers: { 'x-forwarded-for': forwarded }, body: JSON.stringify({ usr: 'nobody', pwd: 'wrong' }) }, socket)
+      expect((await send('198.51.100.9')).status).toBe(401)
+      expect((await send('::ffff:c633:641b')).status).toBe(401) // distinct client .27
+      for (const sameClient of ['::ffff:198.51.100.9', '0:0:0:0:0:ffff:198.51.100.9', '::ffff:c633:6409']) {
+        const blocked = await send(sameClient)
+        expect(blocked.status).toBe(429)
+        expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0)
+        expect(await blocked.json()).toMatchObject({ error: { type: 'RateLimitError' } })
+      }
+    }
+  })
+
   test('malformed zone-qualified forwarded IPs consume the trusted socket budget', async () => {
     vi.stubEnv('TRUSTED_PROXY_IPS', '192.0.2.10')
     vi.stubEnv('PREAUTH_LOGIN_MAX', '1')

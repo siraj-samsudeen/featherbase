@@ -1,5 +1,24 @@
 # Progress Log
 
+## 2026-09-10 — PR #269 mapped-address review resolution (#245)
+
+Independent review found that equivalent IPv4-mapped IPv6 spellings did
+not share a canonical address. Normalize IPv6 first, then convert only the
+mapped prefix to dotted IPv4. No other tranche behavior changed. Added an
+asymmetric 1,024-combination matrix across proxy configuration, socket peer,
+forwarded trusted hop and client; IPv4-compatible/NAT64 remain IPv6. A
+sandboxed login-route matrix covers all 16 configuration/socket pairs:
+distinct clients both reach authentication, while alternate spellings of
+the same client receive the same 429 envelope and Retry-After.
+
+Verified red/green: both new tests failed on the reviewed implementation;
+all ten focused admission tests pass after the fix. Full server coverage:
+736 passed, 15 MySQL tests skipped (unconfigured), 87.09% lines and coverage
+ratchets pass. Full web/component 133 passed; shared 128 passed; full browser
+141 passed / 4 skipped. Server/web typechecks pass, evidence checker passes
+52 tests / 148 verdicts, git diff --check clean. No visible UI changed.
+Independent reviewer recheck of this delta remains required before merge.
+
 ## 2026-09-10 — Consolidated bounded small-fix tranche
 
 Implemented #130 (null-only production-safe admin bootstrap, fresh-chain

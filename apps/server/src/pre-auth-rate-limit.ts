@@ -17,8 +17,16 @@ function ip(value: string | undefined): string | null {
   // Node accepts scoped IPv6 literals, but they are not portable client
   // addresses and URL normalization rejects them. Treat them as malformed.
   if (!value || value.includes('%') || !isIP(value)) return null
-  if (value.toLowerCase().startsWith('::ffff:') && isIP(value.slice(7)) === 4) return value.slice(7)
-  return isIP(value) === 6 ? new URL(`http://[${value}]/`).hostname.slice(1, -1) : value
+  if (isIP(value) === 4) return value
+  const normalized = new URL(`http://[${value}]/`).hostname.slice(1, -1)
+  // URL canonicalization turns every mapped spelling (including dotted or
+  // expanded IPv6) into these two hex words. Match only the mapped prefix.
+  const mapped = /^::ffff:([\da-f]+):([\da-f]+)$/.exec(normalized)
+  if (!mapped) return normalized
+  return mapped.slice(1).flatMap((word) => {
+    const n = parseInt(word, 16)
+    return [n >>> 8, n & 255]
+  }).join('.')
 }
 
 export function preAuthPolicy(env = process.env) {
