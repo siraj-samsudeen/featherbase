@@ -83,6 +83,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   })
 
   test('full mock flow provisions a user and hands the SPA a session', async ({ api }) => {
+    await setAllowedDomains('*')
     const res = await mockSignIn(api, 'new.person@gmail.com')
     expect(res.status).toBe(302)
     const landing = res.headers.get('location') as string
@@ -115,6 +116,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   // a Referer header or in a proxy log is already spent by the time anyone
   // reads it — unlike the 7-day session JWT that used to be in that URL.
   test('a handoff code cannot be redeemed twice', async ({ api }) => {
+    await setAllowedDomains('*')
     const res = await mockSignIn(api, 'replay@gmail.com')
     const code = handoffCode(res)
     const cookie = sidCookie(res)
@@ -126,6 +128,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   // sid cookie set by the same callback response. A code lifted from the URL
   // is worth nothing in another browser.
   test('a handoff code redeemed without the matching sid cookie is refused', async ({ api }) => {
+    await setAllowedDomains('*')
     const res = await mockSignIn(api, 'bound@gmail.com')
     const code = handoffCode(res)
     expect((await redeem(api, code, '')).status).toBe(401)
@@ -140,6 +143,36 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     expect((await redeem(api, null, '')).status).toBe(401)
   })
 
+  test('blank allowed_login_domains blocks auto-provisioning by default', async ({ api }) => {
+    await setAllowedDomains('')
+    const denied = await mockSignIn(api, 'unconfigured@gmail.com')
+    expect(denied.status).toBe(401)
+    const [row] = await sql`select 1 from "user" where email = 'unconfigured@gmail.com'`
+    expect(row).toBeUndefined()
+  })
+
+  test('* explicitly allows auto-provisioning from any domain', async ({ api }) => {
+    await setAllowedDomains('*')
+    const admitted = await mockSignIn(api, 'explicit-anywhere@outside.io')
+    expect(admitted.status).toBe(302)
+    const [user] = await sql`
+      select social_login, enabled from "user" where email = 'explicit-anywhere@outside.io'`
+    expect(user).toMatchObject({ social_login: 'google', enabled: true })
+  })
+
+  test('* still rejects malformed provider identities', async ({ api }) => {
+    await setAllowedDomains('*')
+    // Missing and repeated separators distinguish "contains @" from exactly
+    // one non-empty, non-whitespace local part and domain.
+    for (const email of ['not-an-email', 'user@@example.com']) {
+      const denied = await mockSignIn(api, email)
+      expect(denied.status).toBe(401)
+      const [row] = await sql`
+        select 1 from "user" where email = ${email} or row_id = ${email}`
+      expect(row).toBeUndefined()
+    }
+  })
+
   test('allowed_login_domains blocks auto-provisioning foreign domains', async ({ api }) => {
     await setAllowedDomains('jeyarama.com')
     const denied = await mockSignIn(api, 'stranger@gmail.com')
@@ -152,13 +185,13 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     expect(admitted.headers.get('location')).toContain('/oauth-callback?code=')
   })
 
-  test('an existing user signs in even off-domain (provisioned deliberately)', async ({ api }) => {
+  test('an existing user signs in when auto-provisioning is disabled', async ({ api }) => {
     await saveDoc(
       'User',
       { row_id: 'contractor@outside.io', email: 'contractor@outside.io', enabled: true, roles: [] },
       'Administrator',
     )
-    await setAllowedDomains('jeyarama.com')
+    await setAllowedDomains('')
     const res = await mockSignIn(api, 'contractor@outside.io')
     expect(res.status).toBe(302)
     expect(res.headers.get('location')).toContain('/oauth-callback?code=')
@@ -217,6 +250,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   // with their own account and feeds the victim the callback URL, planting the
   // attacker's session in the victim's browser (login CSRF / session fixation).
   test('a callback whose state cookie is missing or mismatched is rejected', async ({ api }) => {
+    await setAllowedDomains('*')
     // "No user was provisioned" only means something if none existed to begin
     // with, and this email is reachable by hand against a dev server. Clearing
     // it inside the sandbox transaction (rolled back like everything else)

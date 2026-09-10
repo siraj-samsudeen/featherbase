@@ -18,6 +18,36 @@ obtain a superuser connection, so Vitest fails in global setup before test
 collection. PR #265 carries the same limitation while its remote `unit` and
 `e2e` checks are pending.
 
+## 2026-09-10 — Google OAuth auto-provisioning now fails closed by default (#262)
+
+`allowed_login_domains` no longer treats a blank System Settings value as
+permission to create any Google identity. Blank admits no new users; `*` is
+the explicit allow-anywhere opt-in; a populated list still matches email
+domains. The admission check remains exclusively on the create path, so an
+existing enabled human User can still sign in when auto-provisioning is off.
+No role, home-page, Data Scope, or general permission behavior changed.
+
+The OAuth integration suite now pins all four boundaries through the real
+mock-provider HTTP callback path: blank refuses without creating a User,
+`*` provisions, a populated allowlist admits only its domain, and an existing
+user bypasses creation admission. Existing tests that provision as setup now
+opt in explicitly rather than depending on the old blank default. Review also
+caught that wildcard admission preceded identity-shape validation: the HTTP
+callback now rejects both a missing `@` and a repeated `@` before consulting
+`*`. The browser creation journey scopes its own wildcard setting with blank
+before/after guards, while the existing-user journey continues under blank.
+
+Verified red before implementation: `pnpm --filter server test
+test/oauth.test.ts` failed 5/16 tests — blank returned 302 instead of 401,
+`*` returned 401 instead of 302, and three successful-flow tests exposed the
+missing wildcard semantics. Verified green: OAuth plus token-hardening tests
+31/31; isolated OAuth e2e 3/3 with the final setting restored blank; both
+server and web source/test typechecks; and a live curl flow against `:8000`
+carried state and cookies through login → mock approval → callback, observing
+blank = 401 / zero Users and `*` = 302 / one enabled Google User. Baseline
+`./init.sh` also passed server smoke and both browser smoke tests after the
+orb's missing Postgres credentials and Playwright browser were restored.
+
 ## 2026-09-09 — PR #213 parser identity guards
 
 `tools/build-manual.mjs` now refuses a step that belongs to another journey
