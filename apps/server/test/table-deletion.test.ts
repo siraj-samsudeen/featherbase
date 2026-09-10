@@ -9,6 +9,11 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { invalidateSources } from '../src/sources/registry'
+import { saveUpload, deleteStored } from '../src/storage'
+import { fileURLToPath } from 'node:url'
+
+const storageRoot = process.env.FILE_STORAGE_DIR ?? fileURLToPath(new URL('../storage', import.meta.url))
+const bytesPath = (url: string) => path.join(storageRoot, url.startsWith('/private/') ? 'private' : 'public', path.basename(url))
 
 const DT = 'Deletion Target'
 const ENC = encodeURIComponent(DT)
@@ -296,6 +301,60 @@ describe('DEL-R5: row-id series survive deletion', () => {
 })
 
 describe('DEL-R7: attachments', () => {
+  test('DEL-I1 #123: delete only actual child-row attachments; preserve shared storage and surviving URL references', async ({ admin }) => {
+    await admin.post('/api/table_def', { name: 'Attachment Child', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data' }] })
+    for (const name of [DT, 'Attachment Other']) {
+      await makeTable(admin, name, [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Attachment Child' }])
+      await admin.post('/api/save_row', { table: name, row: { title: name, lines: [{ item: name }] } })
+    }
+    const children = await sql`select row_id, parenttype from attachment_child order by parenttype`
+    const own = children.find((c) => c.parenttype === DT)!.row_id
+    const other = children.find((c) => c.parenttype !== DT)!.row_id
+    const urls: string[] = []
+    try {
+      for (const privateFile of [false, true, false, true])
+        urls.push((await saveUpload(Buffer.from('owned bytes'), 'delete-child.txt', privateFile)).file_url)
+      for (const [id, refTable, refName, url] of [
+        ['gone-child', 'Attachment Child', own, urls[0]],
+        ['gone-direct', DT, null, urls[1]],
+        ['shared-gone', 'Attachment Child', own, urls[2]],
+        ['shared-kept', 'Attachment Child', other, urls[2]],
+        ['table-level', 'Attachment Child', null, urls[3]],
+      ]) await sql`insert into file (row_id, ref_table, ref_name, file_url) values (${id}, ${refTable}, ${refName}, ${url})`
+      await admin.delete(`/api/table_def/${ENC}`)
+      expect(await sql`select row_id from attachment_child`).toEqual([{ row_id: other }])
+      expect((await sql`select row_id from file where row_id in ('gone-child','gone-direct','shared-gone','shared-kept','table-level') order by row_id`).map((r) => r.row_id)).toEqual(['shared-kept', 'table-level'])
+      for (const url of urls.slice(0, 2)) expect(() => readFileSync(bytesPath(url))).toThrow(/ENOENT/)
+      for (const url of urls.slice(2)) expect(readFileSync(bytesPath(url)).toString()).toBe('owned bytes')
+      expect(await physicalExists('Attachment Child')).toBe(true)
+      expect(await physicalExists('Attachment Other')).toBe(true)
+    } finally {
+      await Promise.all(urls.map(deleteStored))
+    }
+  })
+
+  test('DEL-R7: rollback never unlinks; audit failure after commit cannot skip cleanup or report refusal', async ({ admin }) => {
+    await makeTable(admin)
+    const { file_url } = await saveUpload(Buffer.from('rollback bytes'), 'rollback.txt', false)
+    try {
+      await sql`insert into file (row_id, ref_table, file_url) values ('rollback-file', ${DT}, ${file_url})`
+      // A real database dependency causes DROP TABLE to fail after registry
+      // deletion. The transaction must restore the registry and its bytes.
+      await sql.unsafe('create view deletion_guard as select title from deletion_target')
+      expect((await admin.fetch(`/api/table_def/${ENC}`, { method: 'DELETE' })).status).toBe(500)
+      expect(readFileSync(bytesPath(file_url)).toString()).toBe('rollback bytes')
+      expect(await sql`select row_id from file where row_id = 'rollback-file'`).toHaveLength(1)
+      await sql.unsafe('drop view deletion_guard')
+      await sql.unsafe("create function pg_temp.refuse_delete_audit() returns trigger language plpgsql as $$ begin raise exception 'test audit failure'; end $$")
+      await sql.unsafe('create trigger refuse_delete_audit before insert on access_log for each row execute function pg_temp.refuse_delete_audit()')
+      expect((await admin.fetch(`/api/table_def/${ENC}`, { method: 'DELETE' })).status).toBe(200)
+      expect(() => readFileSync(bytesPath(file_url))).toThrow(/ENOENT/)
+      expect(await physicalExists(DT)).toBe(false)
+    } finally {
+      await deleteStored(file_url)
+    }
+  })
+
   test('DEL-R7: File registry rows sweep with the Table and the bytes are gone', async ({
     admin,
   }) => {

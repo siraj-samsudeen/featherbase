@@ -21,6 +21,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { invalidateSources } from 'server/src/sources/registry'
+import { sql } from 'server/src/db'
+import { invalidateMeta } from 'server/src/meta'
 import type { TestClient } from 'feather-testing-postgres'
 import { test, expect, renderApp } from './pg-test'
 
@@ -112,4 +114,15 @@ test('TLC-R1.bound: a read-only binding owns its rows, so the list offers no New
   // EDS-13: absent, not disabled.
   expect(screen.queryByTestId('list-new')).toBeNull()
   expect(screen.queryByTestId('list-empty-new')).toBeNull()
+})
+
+test('#176 ListView falls back to row_id for a no-revision binding without a stored sort', async ({ admin }) => {
+  const table = await bindCsv(admin, 'read_only')
+  await sql`update table_def set external_modified = null, sort_column = '' where name = ${table}`
+  invalidateMeta(table)
+  await renderApp(`/admin/${encodeURIComponent(table)}`, admin)
+  await waitFor(() => expect(screen.getByTestId('list-rows')).toHaveTextContent('Thiruvananthapuram'))
+  const rows = screen.getByTestId('list-rows').querySelectorAll('tr')
+  expect(rows[0]).toHaveTextContent('Thiruvananthapuram')
+  expect(rows[1]).toHaveTextContent('Karaikal')
 })

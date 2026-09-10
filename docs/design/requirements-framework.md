@@ -586,9 +586,8 @@ results, never evaluate a whole-file predicate (see H2).
 > ≤ 63 chars and never reserved, and names stay distinct below the
 > truncation boundary.
 >
-> evidence IMP-R1.uniq-boundary: pinned #110 — AT the truncation
-> boundary three identical 62+-char headers still collapse to one name;
-> the uniqueness property is pinned expected-failing there.
+> evidence IMP-R1.uniq-boundary: proven — property and boundary tests cover
+> 61–70 characters, suffix-width growth, existing suffixes and reserved names.
 
 **Property:** for any header list, the output is the same length, every
 name is a valid identifier of ≤ 63 chars, and **all names are distinct**.
@@ -600,13 +599,9 @@ Examples (agreement):
 | Zone Name | `zone_name` | lowercase, spaces to underscores |
 | *(blank, 2nd column)* | `col_2` | named by position |
 | Zone Name *(again)* | `zone_name_1` | duplicates suffixed; both keep their label |
-| name | `name_1` | every row already has a built-in `name` |
+| row_id | `row_id_1` | every row already has a built-in `row_id` |
 | 2026 Total | `col_2026_total` | a name cannot begin with a digit |
 | *(70-char header ×3, identical)* | three **distinct** truncated names | truncation must not silently merge columns |
-
-> The last row is a live defect: today all three collapse to one name —
-> confirmed by execution 2026-08-03; the uniqueness property catches it on
-> the first randomised run — pinned #110 (see R1's verdict).
 
 ### IMP-R2 — Type inference · `shape: rule` (ordering is part of the rule)
 
@@ -616,19 +611,18 @@ Examples (agreement):
 > empty column falling back to Data, and a Date that keeps its calendar
 > day in every server timezone.
 >
-> evidence IMP-R2.leading-zero: pinned #111 — a leading-zero code column
-> still infers Int and destroys the padding.
+> evidence IMP-R2.leading-zero: proven — padded codes remain text even in
+> mixed columns; CSV/TSV parser-to-storage tests preserve their actual values.
 >
-> evidence IMP-R2.16-digit: pinned #112 — 16+ digit identifiers fall
-> through `INT_SAFE_DIGITS` to the unbounded float pattern and lose
-> precision.
+> evidence IMP-R2.16-digit: proven — unsafe integer lexemes cannot fall
+> through to Float; properties cover both signs beyond the safe boundary.
 
 Tested **in this order**:
 
 | # | The values are… | → Type | Example / boundary |
 |---|---|---|---|
 | 1 | All yes/no (or true/false) | Check | Is Active |
-| 2 | Whole numbers, none with leading zeros | Int | Population: 12000 |
+| 2 | Whole numbers, no padded integer text or unsafe integer lexemes | Int | Population: 12000; safe integer text includes 9007199254740991 |
 | 3 | Numbers, some with decimals | Float | Area Sq Km: 45.5 — a column mixing 12000 and 45.5 is Float, never Int |
 | 4 | Calendar dates, no time | Date | 2026-01-15 — same calendar day in every server timezone |
 | 5 | Dates carrying a time | Datetime | 2026-01-15 09:30 |
@@ -641,12 +635,15 @@ Tested **in this order**:
 | The column holds | → Type | Why? |
 |---|---|---|
 | 007, 012, 350 | **Data** | a leading zero is content; Int destroys it silently |
-| 12345678901234567 | **Data** | 16+ digits exceed 2⁵³; Float changes the value |
+| 12345678901234567 | **Data** | exceeds the safe-integer boundary; Float changes the value |
+| 9007199254740991 | **Int** | 16 digits but still a safe integer |
+| 9007199254740992, 9007199254740993 | **Data** | both are outside the safe range, even if one is exactly representable |
 
-> Both rows are live defects today (Int and Float respectively; both
-> confirmed by execution 2026-08-03, precision loss observable). The spec
-> states the intended behaviour; R2's verdicts record the pins (#111,
-> #112).
+The integer lexical guard applies to `^-?\d+$` text and disqualifies both
+Int and Float for a mixed column. Decimal/exponent quantities retain their
+numeric interpretation; long/multiline mixed content retains Text. CSV/TSV
+parsing must preserve raw lexemes before inference. Native XLSX numeric
+cells stay numeric; already-lost source precision is not recoverable.
 
 **IMP-R2.7 — ordering guard.** *Is Active* clears the R3 promotion bar
 exactly as *Region* does; it stays Check **only because the yes/no test runs
@@ -705,15 +702,17 @@ follows the *final* name (→ R6).
 > browser walk asserts the id *shape* and never a value, and the builder
 > derives the prefix and the digit-count preview from the Table name.
 >
-> evidence IMP-R6.follows-final-name: gap #114 — the wizard's rename does
-> not re-derive the series, so ids keep the parse-time prefix. Per the
-> polarity rule the journey asserts only the neutral shape and makes NO
-> evidence claim for this half until #114 is fixed.
+> evidence IMP-R6.follows-final-name: proven via IMP-R6, IMP-J1 — the
+> component-to-storage tests and browser journey follow the final Table
+> name while explicit overrides, including the old default, remain fixed.
 
 | Table name | Series shape |
 |---|---|
 | Zones | `ZONES-###` |
 | Sales Invoice *(renamed first)* | `SALES-INVOICE-###` |
+
+An untouched inferred pattern follows the final name. An explicit pattern
+override stays fixed, even when its value equals the previous default.
 
 **The pattern is the promise, not the number** — the counter is global and
 survives Table deletion; verify the shape, never a value. *(The file's own

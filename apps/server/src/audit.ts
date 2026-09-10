@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { sql } from './db'
+import { sql, type Sql, type TxSql } from './db'
 
 // PLAT-007: append-only audit logs. Written with direct inserts (not saveDoc)
 // so an activity row can be recorded during login — before any session exists —
@@ -9,8 +9,8 @@ function id(): string {
   return randomBytes(8).toString('hex')
 }
 
-async function tableExists(table: string): Promise<boolean> {
-  const [row] = await sql`select 1 from information_schema.tables where table_name = ${table}`
+async function tableExists(table: string, db: Sql | TxSql = sql): Promise<boolean> {
+  const [row] = await db`select 1 from information_schema.tables where table_name = ${table}`
   return Boolean(row)
 }
 
@@ -39,10 +39,11 @@ export async function logAccess(
   user: string,
   operation: string,
   ref: { table?: string; row_id?: string; method?: string } = {},
+  db: Sql | TxSql = sql,
 ): Promise<void> {
-  if (!(await tableExists('access_log'))) return
+  if (!(await tableExists('access_log', db))) return
   const now = new Date()
-  await sql`insert into access_log ${sql({
+  await db`insert into access_log ${db({
     row_id: id(),
     created_by: user,
     updated_by: user,

@@ -55,6 +55,7 @@ import { runApiScript } from './server-scripts'
 import { exportCustomizations, importCustomizations } from './customizations'
 import { getCatalog } from './i18n'
 import { rateLimit } from './rate-limit'
+import { publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { parseFilters, runQueryReport } from './query-report'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
@@ -147,10 +148,13 @@ function authCredential(c: Context): string | undefined {
   return sid ? `Bearer ${sid}` : undefined
 }
 
-app.post('/api/login', async (c) => {
+app.post('/api/login', publicLimit('LOGIN'), async (c) => {
   const { usr, pwd } = (await c.req.json()) as { usr?: string; pwd?: string }
-  if (!usr || !pwd) throw new AppError('ValidationError', 'Expected { usr, pwd }')
+  if (typeof usr !== 'string' || typeof pwd !== 'string' || !usr || !pwd) throw new AppError('ValidationError', 'Expected { usr, pwd }')
+  const attempt = await passwordAttempt(c, usr)
+  if (attempt.refusal) return attempt.refusal
   const session = await login(usr, pwd)
+  await forgive(attempt.ticket)
   setSidCookie(c, session.token)
   return c.json(session)
 })
@@ -231,7 +235,7 @@ app.get('/api/web_form/:route', async (c) => {
   return c.json(await getWebFormConfig(c.req.param('route')))
 })
 
-app.post('/api/web_form/:route', async (c) => {
+app.post('/api/web_form/:route', publicLimit('FORM'), async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { values?: Record<string, unknown> }
   // The route is public, but a logged-in submitter (Bearer token or sid
   // cookie) gets the document created in their name — that's what makes
@@ -239,7 +243,7 @@ app.post('/api/web_form/:route', async (c) => {
   const sessionUser = await resolveToken(authCredential(c))
     .then((u) => u.row_id)
     .catch(() => undefined)
-  return c.json(await submitWebForm(c.req.param('route'), body.values ?? {}, sessionUser), 201)
+  return c.json(await submitWebForm(c.req.param('route')!, body.values ?? {}, sessionUser), 201)
 })
 
 // WEB-001: public, server-rendered Web Pages. No session required; only
@@ -343,7 +347,7 @@ function clearLoginChallengeCookies(c: Context) {
   deleteCookie(c, OAUTH_VERIFIER_COOKIE, { path: '/' })
 }
 
-app.get('/api/oauth/google/login', async (c) => {
+app.get('/api/oauth/google/login', publicLimit('OAUTH_LOGIN'), async (c) => {
   const clientId = await oauthClientId()
   assertSignInAvailable(clientId)
   const redirectUri = oauthRedirectUri(c, clientId)
@@ -372,7 +376,7 @@ app.get('/api/oauth/mock/approve', async (c) => {
   return c.redirect(mockApproveRedirect(state, redirectUri, email, name))
 })
 
-app.get('/api/oauth/google/callback', async (c) => {
+app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) => {
   const clientId = await oauthClientId()
   assertSignInAvailable(clientId)
   // The state must match the cookie this browser got at login. Without that

@@ -7,6 +7,7 @@ import { sql } from './db'
 import { runMigrations } from './migrate'
 import { runPatches } from './patches'
 import { patches } from '../patches/index'
+import { diagnoseAdminBootstrap } from './admin-bootstrap'
 
 try {
   await sql.begin(async (tx) => {
@@ -17,6 +18,7 @@ try {
     const newly = await runPatches(patches)
     for (const n of newly) console.log(`applied patch ${n}`)
     console.log(`patches up to date (${patches.length} total)`)
+    await diagnoseAdminBootstrap()
   })
   await sql.end()
 } catch (err) {

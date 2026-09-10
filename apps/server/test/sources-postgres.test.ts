@@ -23,6 +23,8 @@ beforeAll(async () => {
   cli = postgres(config.databaseUrl, { max: 2 })
   await cli.unsafe(`drop schema if exists ext_fixture cascade`)
   await cli.unsafe(`create schema ext_fixture`)
+  await cli.unsafe(`create table ext_fixture.business (code integer primary key, name text);
+    insert into ext_fixture.business values (1, 'Zulu'), (9, 'Alpha')`)
   await cli.unsafe(`
     create table ext_fixture.tenant (
       id uuid primary key default gen_random_uuid(),
@@ -152,6 +154,20 @@ describe('EDS-1: Data Source registry', () => {
 })
 
 describe('EDS-2/EDS-3: introspection and reflection', () => {
+  test('#176 fresh no-revision reflection sorts on row_id, not the business name', async ({ admin }) => {
+    await makeSource(admin)
+    const reflected = await admin.post<{ created: { name: string }[] }>('/api/table/Data%20Source/ext-fixture:reflect', { schema: 'ext_fixture', tables: ['business'] })
+    const name = reflected.created[0].name
+    const meta = await admin.get<{ sort_column: string; external_pk: string }>(`/api/table/${encodeURIComponent(name)}:meta`)
+    expect(meta).toMatchObject({ sort_column: 'row_id', external_pk: 'code' })
+    const rows = await admin.get<{ data: { row_id: string; name: string }[] }>(`/api/table/${encodeURIComponent(name)}?fields=${encodeURIComponent('["row_id","name"]')}&order_by=${meta.sort_column}%20desc`)
+    expect(rows.data.map((r) => [r.row_id, r.name])).toEqual([['9', 'Alpha'], ['1', 'Zulu']])
+    // Reflection is additive/idempotent; it must not overwrite an operator's sort.
+    await sql`update table_def set sort_column = 'name' where name = ${name}`
+    await admin.post('/api/table/Data%20Source/ext-fixture:reflect', { schema: 'ext_fixture', tables: ['business'] })
+    expect((await sql`select sort_column from table_def where name = ${name}`)[0].sort_column).toBe('name')
+  })
+
   test('lists tables with pk detection; composite pk is not bindable', async ({ admin }) => {
     await makeSource(admin)
     const res = (await admin.get(

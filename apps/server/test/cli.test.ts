@@ -1,6 +1,7 @@
 // NOT sandbox-migrated: spawns the CLI as a SUBPROCESS, which opens its own
 // Postgres connection — a per-test transaction in this process cannot cover it.
 import { execFileSync } from 'node:child_process'
+import { accessSync, constants } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -12,6 +13,7 @@ import { saveDoc } from '../src/document'
 
 const serverDir = join(dirname(fileURLToPath(import.meta.url)), '..')
 const CLI = join(serverDir, 'src', 'cli.ts')
+const TSX = join(serverDir, 'node_modules', '.bin', 'tsx')
 const DT = 'Cli Test Widget'
 const USER = 'cli-test-user@x.com'
 const SVC = 'svc-cli-test'
@@ -19,7 +21,12 @@ const DUP_USER = 'cli-dup-user@x.com'
 
 // execFileSync (not async execFile) so the `input` stdin option is honored.
 function cli(args: string[], input = ''): string {
-  return execFileSync('npx', ['tsx', CLI, ...args], {
+  try {
+    accessSync(TSX, constants.X_OK)
+  } catch {
+    throw new Error(`Missing executable ${TSX}; run pnpm install before CLI tests`)
+  }
+  return execFileSync(TSX, [CLI, ...args], {
     cwd: serverDir,
     timeout: 60_000,
     input,

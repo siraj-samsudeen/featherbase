@@ -68,16 +68,13 @@ describe('IMP-R1 properties: column naming', () => {
     )
   })
 
-  // pins-gap #110: at 62+ sanitized chars the `_n` suffix is sliced back
-  // off, so identical long headers collapse to ONE name — the documented
-  // "always a valid, unique set" contract is violated. When #110 is fixed
-  // this test fails on purpose: flip it to a plain `it` (and fold the
-  // boundary into the distinctness property above) in the same change.
-  it.fails('IMP-R1.uniq-boundary: outputs stay distinct AT the truncation boundary (pins #110)', () => {
-    const h63 = 'h'.repeat(63)
-    expect(new Set(sanitizeHeaders([h63, h63])).size).toBe(2)
-    const h70 = 'x'.repeat(70)
-    expect(new Set(sanitizeHeaders([h70, h70, h70])).size).toBe(3)
+  it('IMP-R1.uniq-boundary: outputs stay distinct AT the truncation boundary (#110)', () => {
+    fc.assert(fc.property(fc.integer({ min: 61, max: 70 }), fc.integer({ min: 2, max: 110 }), (length, copies) => {
+      const h = 'h'.repeat(length)
+      const out = sanitizeHeaders([h.slice(0, 61) + '_1', ...Array(copies).fill(h), '', 'row_id'])
+      expect(new Set(out).size).toBe(out.length)
+      for (const name of out) expect(name).toMatch(/^[a-z][a-z0-9_]{0,62}$/)
+    }))
   })
 })
 
@@ -168,19 +165,16 @@ describe('IMP-R2 properties: type inference', () => {
     )
   })
 
-  // pins-gap #111: INT_RE accepts leading zeros, so code-like columns
-  // ('007') infer Int and the padding is destroyed silently on import.
-  // Spec (IMP-R2 example table): digit strings with a leading zero are
-  // content → Data. Fixing #111 makes this fail on purpose — flip to `it`.
-  it.fails('IMP-R2.leading-zero: leading-zero codes are content, not quantities (pins #111)', () => {
-    expect(inferColumnType(['007', '012', '350'])).toBe('Data')
+  it('IMP-R2.leading-zero: leading-zero codes are content, not quantities (#111)', () => {
+    fc.assert(fc.property(fc.integer({ min: 0, max: 999999 }), (n) => {
+      expect(inferColumnType([`0${n}`, '350', '1.5'])).toBe('Data')
+    }))
   })
 
-  // pins-gap #112: INT_RE's 15-digit cap correctly refuses >2^53 integers,
-  // but the values then fall through to the UNBOUNDED FLOAT_RE and infer
-  // Float — '…67' becomes '…68'. Spec: 16+ digit identifiers → Data.
-  // Fixing #112 makes this fail on purpose — flip to `it`.
-  it.fails('IMP-R2.16-digit: 16+ digit identifiers must not lose precision (pins #112)', () => {
-    expect(inferColumnType(['12345678901234567', '98765432109876543'])).toBe('Data')
+  it('IMP-R2.16-digit: unsafe integer identifiers must not lose precision (#112)', () => {
+    fc.assert(fc.property(fc.bigInt({ min: 9007199254740992n, max: 9999999999999999999n }), (n) => {
+      expect(inferColumnType([String(n), '2.25'])).toBe('Data')
+      expect(inferColumnType([String(-n), '2'])).toBe('Data')
+    }))
   })
 })

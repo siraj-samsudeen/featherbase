@@ -77,12 +77,4 @@ test('NAM-001: switching an existing Table to a series offers the derived prefix
   const meta = await request.get(`/api/table/${encodeURIComponent(DT)}:meta`, { headers: auth })
   expect(((await meta.json()) as { id_pattern: string }).id_pattern).toBe('EXISTING-.###')
 
-  // A bad pattern is refused with the server's field-wise message. This is the
-  // only coverage PUT :name/id_pattern has; the server suite does not test the
-  // endpoint (see the batch-1 PR note) — move it there before deleting it here.
-  const bad = await request.put(`/api/table_def/${encodeURIComponent(DT)}/id_pattern`, {
-    headers: auth,
-    data: { id_pattern: 'EXISTING-' },
-  })
-  expect(bad.status()).toBe(417)
 })

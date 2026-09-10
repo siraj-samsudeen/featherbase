@@ -66,7 +66,10 @@ export async function parseWorkbook(file: File): Promise<ParsedSheet[]> {
   const XLSX = await import('xlsx')
   // cellDates keeps Excel date cells as JS Dates instead of serial numbers,
   // which is what the shared type inference expects.
-  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true })
+  // raw applies to text formats at READ time: sheet_to_json cannot recover
+  // padding or precision after SheetJS has already converted a CSV/TSV cell.
+  // Native XLSX cell types (including numeric/date cells) remain intact.
+  const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true, raw: true })
   if (!wb.SheetNames.length) throw new Error('The file has no sheets')
   const sheets: ParsedSheet[] = []
   // #198: read visibility by the sheet's own index in SheetNames, before any

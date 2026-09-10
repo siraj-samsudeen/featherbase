@@ -96,10 +96,10 @@ belongs to the rules' properties and boundaries, never to a fixture.
 
 > evidence: proven — the DSL walk creates the typed Table from
 > `zones.csv` end to end, and the seven manual slots IMP-J1.1–J1.7 are
-> captured from it. Caveats, both inherited from Part II: J1.8 and J1.9
-> are witnessed at the contract tier (the form's controls are not yet
-> label-associated), and the series-follows-the-final-name half of row
-> identity is #114, so the walk asserts only the series shape.
+> captured from it. J1.8 and J1.9 are witnessed at the contract tier
+> (the form's controls are not yet label-associated). The walk verifies
+> that the untouched series prefix follows the renamed Table; component
+> tests separately prove explicit overrides remain fixed.
 
 | # | Where / do | Must observably see | Bug if | Rules |
 |---|---|---|---|---|

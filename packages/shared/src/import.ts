@@ -54,8 +54,11 @@ export function sanitizeHeaders(headers: string[]): string[] {
     let candidate = sanitizeColumnName(h) || `col_${i + 1}`
     if (RESERVED_COLUMN_NAMES.has(candidate) || taken.has(candidate)) {
       let n = 1
-      while (taken.has(`${candidate}_${n}`) || RESERVED_COLUMN_NAMES.has(`${candidate}_${n}`)) n++
-      candidate = `${candidate}_${n}`.slice(0, COLUMN_NAME_MAX)
+      const base = candidate
+      do {
+        const suffix = `_${n++}`
+        candidate = base.slice(0, COLUMN_NAME_MAX - suffix.length) + suffix
+      } while (taken.has(candidate) || RESERVED_COLUMN_NAMES.has(candidate))
     }
     taken.add(candidate)
     return candidate
@@ -87,7 +90,6 @@ export function prettifyLabel(header: string): string {
 // and tests reference these names, never the literals. Changing one means
 // re-scoring the judgement rules it feeds (see the ADR).
 export const COLUMN_NAME_MAX = 63 // Postgres identifier headroom
-export const INT_SAFE_DIGITS = 15 // 10^15 < 2^53: Int never loses precision
 export const LONG_TEXT_CHARS = 140 // beyond this a cell reads as prose
 export const CHOICE_MIN_SAMPLE = 6 // fewer values: repetition proves nothing
 export const CHOICE_MIN_OPTIONS = 2
@@ -97,7 +99,7 @@ export const CHOICE_MAX_OPTION_CHARS = 60 // longer values are content
 export const AUTO_MATCH_MIN_SCORE = 0.6 // share of sheet headers that map
 export const AUTO_MATCH_MIN_COVERAGE = 0.8 // share of Table columns covered
 
-const INT_RE = new RegExp(`^-?\\d{1,${INT_SAFE_DIGITS}}$`)
+const INT_RE = /^-?\d+$/
 const FLOAT_RE = /^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const DATETIME_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/
@@ -156,6 +158,9 @@ export function inferColumnType(values: unknown[]): string {
     }
     const s = String(v).trim()
     if (s.length > LONG_TEXT_CHARS || s.includes('\n')) longText = true
+    // Integer lexemes with padding or unsafe precision are identifiers,
+    // even in a mixed numeric column. Never let them fall through to Float.
+    if (INT_RE.test(s) && (/^-?0\d/.test(s) || !Number.isSafeInteger(Number(s)))) allInt = allNumeric = false
     if (!INT_RE.test(s)) allInt = false
     if (!FLOAT_RE.test(s)) allNumeric = false
     if (!BOOL_WORDS.has(s.toLowerCase())) allBool = false

@@ -56,3 +56,21 @@ Named locally where they are consumed:
   invalidating them.
 - `#112`'s fix has a natural home: digit strings longer than
   `INT_SAFE_DIGITS` should infer Data, not fall through to Float.
+
+## 2026-09-10 addendum — lexical integer safety (#111/#112)
+
+The 15-digit bet above is superseded, not tuned. `INT_SAFE_DIGITS` is
+retired: signed decimal integer text (`^-?\d+$`) is Int only when it has
+no multi-digit leading-zero padding and `Number.isSafeInteger(Number(text))`
+holds. Thus 9007199254740991 is still Int, while 9007199254740992 and
+9007199254740993 are text, even if a particular unsafe value happens to be
+exactly representable. Padding and unsafe integer lexemes disqualify the
+whole column from both Int and Float, including mixed quantity/identifier
+columns. Decimal/exponent quantity syntax keeps its existing Float behavior.
+Long/multiline mixed text retains the existing Text classification.
+
+CSV/TSV must be read with SheetJS's `raw: true` at the workbook-read
+boundary, before inference; setting raw on `sheet_to_json` is too late.
+Native XLSX numeric cells remain numeric. Precision already lost by a source
+application cannot be recovered by inference. No Choice or matching
+judgement threshold changes with this correction.

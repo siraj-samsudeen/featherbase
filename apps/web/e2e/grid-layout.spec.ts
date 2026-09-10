@@ -63,7 +63,8 @@ test('UI-007: child grid add/edit/delete/reorder round-trips through save', asyn
 })
 
 test('UI-008: Section and Column Breaks produce grouped sections in metadata order', async ({ page }) => {
-  await page.goto(`/admin/${encodeURIComponent(SEC_DT)}/new`)
+  await page.goto(`/admin/${encodeURIComponent(SEC_DT)}`)
+  await page.getByTestId('list-new').click()
   await expect(page.getByTestId('form-view')).toBeVisible()
 
   // Two sections: 0 has a1+a2, 1 has b1+b2 (with a column break between)

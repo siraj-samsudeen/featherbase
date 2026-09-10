@@ -44,7 +44,8 @@ test.beforeAll(async ({ request }) => {
 
 // CUST-003: a client script auto-fills a field on change.
 test('CUST-003: a client script auto-fills a field on change', async ({ page }) => {
-  await page.goto(`/admin/${encodeURIComponent(DT)}/new`)
+  await page.goto(`/admin/${encodeURIComponent(DT)}`)
+  await page.getByTestId('list-new').click()
   await expect(page.getByTestId('form-view')).toBeVisible()
 
   await page.locator('[data-field=qty]').fill('7')
@@ -60,7 +61,8 @@ test('CUST-003: a client script auto-fills a field on change', async ({ page }) 
 
 // CUST-003: a broken client script surfaces an error but does not crash the Admin.
 test('CUST-003: a broken client script surfaces an error without crashing', async ({ page }) => {
-  await page.goto(`/admin/${encodeURIComponent(DT_BAD)}/new`)
+  await page.goto(`/admin/${encodeURIComponent(DT_BAD)}`)
+  await page.getByTestId('list-new').click()
 
   // The form still renders and the error is shown.
   await expect(page.getByTestId('form-view')).toBeVisible()
