@@ -17,6 +17,28 @@ manual generation byte-identical; local spec/index links and obligation
 verdicts; `git diff --check`; and focused UPS server coverage (20 passing) on
 an isolated `featherbase_test` Postgres database.
 
+## 2026-09-10 — Linux initializer pins privileged SQL to the selected cluster (#38)
+
+The root-only Debian bootstrap now enables peer-authenticated administration
+only when `DATABASE_URL` names a numeric loopback/localhost host and
+`pg_lsclusters` maps its port to a specific cluster. Administrative `psql`
+clears inherited libpq destination overrides; the peer fallback uses Debian's
+`--cluster` selector plus the parsed port, so it cannot mutate the default
+socket cluster. SQL is fed on stdin rather than exposed in `psql -c` process
+arguments. The existing first-cluster start fallback and default port remain.
+
+Added a real two-cluster regression: the selected cluster begins stopped and
+without the requested role/database while inherited libpq defaults name a
+running decoy. The test was red on `origin/main` (`DATABASE_URL still
+unreachable after bootstrap`) and is green with creation only in the selected
+cluster; both disposable clusters are always dropped. Full real `init.sh`
+scenarios also passed for an already-running selected cluster (database block
+was a no-op) and a stopped selected cluster (start, role/database creation),
+including server and two-test web smoke. Both reported no matching role or
+database on the default `:5432` cluster. Server, web, and shared typechecks,
+shell syntax, all 53 tools tests, and `git diff --check` pass. Cleanup left only
+the original `15/main :5432` cluster/listener and no test app listeners.
+
 ## 2026-09-10 — PR #269 mapped-address review resolution (#245)
 
 Independent review found that equivalent IPv4-mapped IPv6 spellings did
