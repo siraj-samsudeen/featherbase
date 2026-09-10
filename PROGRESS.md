@@ -1,5 +1,23 @@
 # Progress Log
 
+## 2026-09-10 — Valid doctypes restored for server-rendered documents (#264)
+
+The DocType → Table vocabulary rename had also changed the `DOCTYPE` token in
+four server-rendered documents. Public Web Page 404s and published pages,
+print/PDF source HTML, and the development OAuth consent page now begin with
+`<!DOCTYPE html>`, preventing quirks-mode rendering before Print Format
+templates accumulate. Focused assertions cover both Website outcomes, print
+HTML, and the mock OAuth renderer.
+
+Verified locally: `pnpm --filter server typecheck` passes; a direct rendered
+mock OAuth assertion passes; and `rg -n -F '<!table html>' --glob
+'!docs/archive/**' .` finds no active occurrences. The database-backed
+targeted Vitest run and local end-to-end check remain unavailable in this orb:
+Postgres rejects the default `postgres` credentials and `./init.sh` cannot
+obtain a superuser connection, so Vitest fails in global setup before test
+collection. PR #265 carries the same limitation while its remote `unit` and
+`e2e` checks are pending.
+
 ## 2026-09-09 — PR #213 parser identity guards
 
 `tools/build-manual.mjs` now refuses a step that belongs to another journey

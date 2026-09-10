@@ -40,6 +40,7 @@ describe('PRN-003: server-side PDF', () => {
   test('auto-layout PDF contains the field values', async () => {
     await setup()
     const html = await renderPrintHtml(DT, 'srv-1', 'Administrator', 'standard')
+    expect(html).toMatch(/^<!DOCTYPE html>/)
     const text = await pdfText(html)
     expect(text).toContain('Umbrella Corp')
     expect(text).toContain('9876')
