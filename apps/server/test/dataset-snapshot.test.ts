@@ -240,6 +240,28 @@ describe('publish before cache', () => {
 })
 
 describe('freshness', () => {
+  test('a snapshot read carries the refresh instant as well as the source as-of', async () => {
+    stub(sampleRows(), '2026-09-15')
+    const before = Date.now()
+    await buildSnapshot(SALES_TARGET_DATASET)
+    const r = await reportFor(EMP1)
+    // Both facts, never one standing in for the other: a snapshot refreshed a
+    // moment ago from 15-Sep data is fresh by one measure and stale by the other.
+    expect(r.source_as_of).toBe('2026-09-15')
+    expect(r.generated_at).not.toBeNull()
+    const refreshed = new Date(r.generated_at as string).getTime()
+    expect(refreshed).toBeGreaterThanOrEqual(before - 1000)
+    expect(refreshed).toBeLessThanOrEqual(Date.now() + 1000)
+  })
+
+  test('a live read has no refresh instant, because there is nothing to be stale', async () => {
+    stub(sampleRows())
+    const r = await reportFor(EMP1)
+    expect(r.source).toBe('live')
+    expect(r.generated_at).toBeNull()
+    expect(r.source_as_of).toBe('2026-09-17')
+  })
+
   test('a snapshot read states the source as-of, not the build time', async () => {
     stub(sampleRows(), '2026-09-15')
     await buildSnapshot(SALES_TARGET_DATASET)
