@@ -106,6 +106,12 @@ the measured figures (224 test files, 885 declarations, `index.ts` 1,492 lines).
 **That is the rot these skills describe, arriving within an hour of being
 written** — cited line numbers are a dated fact, and the documents now say so.
 
+Re-merged again an hour later for #290 (the sales-target assignment now derives
+from Store Sections), which moved one more cited line — `SalesTarget.tsx:211` →
+`:215`. Twice in two hours, on the same four documents. Server **788 passed / 1
+failed / 15 skipped** (the same root/`chmod` failure), web 133 passed, both
+typechecks clean, both checkers green.
+
 **Next:** rule on `docs/design/openspec-vs-journey-spec.md`. Then, whichever way
 it goes, delete the losing table-deletion document. Findings surfaced by the
 audit and deliberately **not** fixed here (findings and fixes are separate PRs):
