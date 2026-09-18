@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { sql } from './db'
+import { enqueue } from './jobs'
 
 // Query-grained analytical dataset snapshots — the read side of
 // openspec/changes/query-grained-dataset-snapshots (data-warehouse), against the
@@ -85,6 +86,30 @@ export async function recordMiss(dataset: string): Promise<void> {
     insert into dataset_miss (row_id, dataset)
     values (${randomUUID()}, ${dataset})
     on conflict (dataset) do update set last_seen = now(), hits = dataset_miss.hits + 1`
+
+  // Wake the refresh worker NOW rather than waiting for its next interval.
+  // Without this the promise that a published report "gets fast on its own" is
+  // true only after up to a full refresh period: the boot run fires before any
+  // reader has asked for anything, finds nothing due, and re-enqueues four hours
+  // out — so the first reader of a new report keeps paying the live price all
+  // afternoon. Observed on featherbase-dev, 18-Sep-2026.
+  //
+  // Guarded on a job already queued for this method, so a burst of misses
+  // schedules one build rather than one per reader.
+  const [pending] = await sql`
+    select 1 from background_job
+    where method = 'refresh_datasets' and job_status = 'running' limit 1`
+  if (pending) return
+  // statement_timestamp(), not now(): now() is the TRANSACTION timestamp, and
+  // the test sandbox runs a whole file inside one transaction, so now() is
+  // frozen before the row being looked for was written. statement_timestamp()
+  // is the real clock in both worlds, which keeps this guard testable without
+  // changing what it does in production.
+  const [dueNow] = await sql`
+    select 1 from background_job
+    where method = 'refresh_datasets' and job_status = 'queued'
+      and run_at <= statement_timestamp() limit 1`
+  if (!dueNow) await enqueue('refresh_datasets')
 }
 
 export async function pendingMisses(): Promise<string[]> {

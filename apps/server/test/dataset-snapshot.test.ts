@@ -202,6 +202,32 @@ describe('publish before cache', () => {
     expect((await reportFor(EMP1)).source).toBe('snapshot')
   })
 
+  test('a miss wakes the refresh worker immediately', async () => {
+    stub(sampleRows())
+    await reportFor(EMP1)
+    // Otherwise the first reader of a newly published report pays the live price
+    // until the next scheduled interval — up to four hours (observed on
+    // featherbase-dev, 18-Sep-2026: the boot run fires before anyone has asked
+    // for anything, finds nothing due, and re-enqueues four hours out).
+    const jobs = await sql`
+      select row_id from background_job
+      where method = 'refresh_datasets' and job_status = 'queued'
+        and run_at <= statement_timestamp()`
+    expect(jobs).toHaveLength(1)
+  })
+
+  test('a burst of misses schedules one build, not one per reader', async () => {
+    stub(sampleRows())
+    await reportFor(EMP1)
+    await reportFor(EMP3)
+    await reportFor(EMP1)
+    const jobs = await sql`
+      select row_id from background_job
+      where method = 'refresh_datasets' and job_status = 'queued'
+        and run_at <= statement_timestamp()`
+    expect(jobs).toHaveLength(1)
+  })
+
   test('repeated misses count rather than duplicate', async () => {
     stub(sampleRows())
     await reportFor(EMP1)
