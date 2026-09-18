@@ -35,6 +35,8 @@ export interface SnapshotRecord {
   definition_version: string
   source_as_of: string | null
   built_at: string
+  /** When this snapshot became the one readers resolve. Null while building. */
+  activated_at: string | null
   row_count: number | null
   status: string
 }
@@ -68,7 +70,7 @@ function isoDay(v: unknown): string | null {
 /** The one snapshot a reader may use, or null when the dataset has never built. */
 export async function activeSnapshot(dataset: string): Promise<SnapshotRecord | null> {
   const [row] = await sql`
-    select row_id, dataset, definition_version, source_as_of, built_at, row_count, status
+    select row_id, dataset, definition_version, source_as_of, built_at, activated_at, row_count, status
     from dataset_snapshot
     where dataset = ${dataset} and status = 'active'`
   if (!row) return null

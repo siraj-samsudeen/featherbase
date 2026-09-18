@@ -296,6 +296,14 @@ salesTargetRoutes.post('/embed_session', async (c) => {
   const a = await currentAssignment(user.row_id)
   if (!a || !a.material_groups.length) return c.json({ no_assignment: true })
   const r = await createEmbedSession(initialStateFor(a))
+  // A deployment with no Dive configured is not a failure — it is a deployment
+  // that serves the pre-generated report and nothing else. `status: 0` is the
+  // server's own "never reached MotherDuck" marker, so it is the honest place to
+  // draw the line: missing configuration answers 200 with a marker, the way
+  // no_assignment does, while a real upstream refusal still answers 502. Showing
+  // a red "Report unavailable" under a working report told the reader something
+  // was broken when nothing was.
+  if (!r.ok && r.status === 0) return c.json({ not_configured: true, reason: r.error })
   if (!r.ok)
     return c.json(
       { error: { type: 'EmbedSessionError', message: r.error, upstream_status: r.status } },

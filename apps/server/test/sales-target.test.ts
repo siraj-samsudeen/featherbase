@@ -190,6 +190,36 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     })
   })
 
+  test('a deployment with no Dive configured says so quietly, and is not an error', async ({ admin, api }) => {
+    await seed(admin)
+    // featherbase-dev on 18-Sep-2026: MOTHERDUCK_TOKEN set, no DIVE_* at all. The
+    // page showed a red "Report unavailable" under a perfectly good snapshot table,
+    // telling the reader something was broken when nothing was. Missing
+    // configuration is not a failure; a live refusal (the test below) still is.
+    const saved = [process.env.DIVE_ID, process.env.DIVE_VERSION, process.env.SERVICE_ACCOUNT]
+    const savedShared = process.env.SALES_TARGET_SHARED_ENV
+    delete process.env.DIVE_ID
+    delete process.env.DIVE_VERSION
+    delete process.env.SERVICE_ACCOUNT
+    // embedConfig() falls back to the shared .env.local, which a developer
+    // checkout has and a deployment does not — so clearing the process env alone
+    // does not reproduce featherbase-dev. Point the fallback at nothing.
+    process.env.SALES_TARGET_SHARED_ENV = '/nonexistent/sales-target.env'
+    try {
+      const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
+      const res = await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { not_configured?: boolean; session?: string; error?: unknown }
+      expect(body.not_configured).toBe(true)
+      expect(body.session).toBeUndefined()
+      expect(body.error).toBeUndefined()
+    } finally {
+      ;[process.env.DIVE_ID, process.env.DIVE_VERSION, process.env.SERVICE_ACCOUNT] = saved as string[]
+      if (savedShared === undefined) delete process.env.SALES_TARGET_SHARED_ENV
+      else process.env.SALES_TARGET_SHARED_ENV = savedShared
+    }
+  })
+
   test('an upstream refusal is reported with its status and message, never with the token; no session is invented', async ({ admin, api }) => {
     await seed(admin)
     stubUpstream({
