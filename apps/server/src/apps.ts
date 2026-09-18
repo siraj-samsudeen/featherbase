@@ -7,7 +7,7 @@ import { invalidateMeta, physicalRowKey } from './meta'
 import { saveDoc, deleteDoc } from './document'
 import { reflectTables } from './sources/reflect'
 import { invalidateSources } from './sources/registry'
-import { enqueue, registerJob, type JobHandler } from './jobs'
+import { cadenceSeconds, registerJob, syncScheduledJobs, type Cadence, type JobHandler } from './jobs'
 import { swapMethod, type MethodDef, type ServerMethod } from './methods'
 import {
   registerController,
@@ -31,7 +31,11 @@ export interface SchedulerEvent {
   // The job method name (registered in the job registry; must be unique).
   method: string
   handler: JobHandler
-  every_seconds: number
+  // One of jobs.ts CADENCE_SECONDS. Installing writes a Scheduled Job row
+  // with it; an administrator may change the cadence afterwards and the
+  // manifest's value is only the default, never re-imposed.
+  cadence: Cadence
+  description?: string
 }
 
 // PLAT-004 (#54): a role grant an app declares on a Table. `table` may
@@ -110,7 +114,7 @@ export interface AppManifest {
   // "*" key hooks EVERY Table (Frappe's doc_events["*"]).
   doc_events?: Record<string, Partial<Record<HookEvent, Hook>>>
   // Recurring jobs this app schedules (Frappe's scheduler_events). Wired as
-  // job handlers + a guarded recurring enqueue while the app is installed.
+  // job handlers + a Scheduled Job row while the app is installed.
   scheduler_events?: SchedulerEvent[]
   // Replacements for whitelisted RPC methods (Frappe's
   // override_whitelisted_methods). The original is restored on uninstall.
@@ -197,20 +201,32 @@ function unwireHooks(name: string): void {
   overridden.delete(name)
 }
 
-// Ensure each scheduler_event has a live recurring job row (guarded so
-// restarts don't stack duplicates) — same pattern as the boot-seeded jobs.
+// Ensure each scheduler_event has a Scheduled Job row (the manifest's cadence
+// is the default for a NEW row only — an edited row is the administrator's)
+// and a live queue entry to match.
 async function ensureSchedulerJobs(manifest: AppManifest): Promise<void> {
   for (const ev of manifest.scheduler_events ?? []) {
-    const [pending] = await sql`
-      select 1 from background_job
-      where method = ${ev.method} and job_status in ('queued', 'running') limit 1`
-    if (!pending) await enqueue(ev.method, {}, { repeatEvery: ev.every_seconds })
+    cadenceSeconds(ev.cadence) // refuse an unknown cadence before writing anything
+    const [have] = await sql`select 1 from scheduled_job where method = ${ev.method}`
+    if (!have)
+      await sql`insert into scheduled_job ${sql({
+        row_id: ev.method,
+        created_by: 'Administrator',
+        updated_by: 'Administrator',
+        method: ev.method,
+        cadence: ev.cadence,
+        enabled: true,
+        description: ev.description ?? `Scheduled by app ${manifest.name}.`,
+      })}`
+    await syncScheduledJobs(ev.method)
   }
 }
 
-// Remove an uninstalled app's pending recurring jobs so they stop firing.
+// Remove an uninstalled app's schedule and its pending recurrence so it stops
+// firing; a run already in progress finishes and, finding no row, does not recur.
 async function dropSchedulerJobs(manifest: AppManifest): Promise<void> {
   for (const ev of manifest.scheduler_events ?? []) {
+    await sql`delete from scheduled_job where method = ${ev.method}`
     await sql`delete from background_job where method = ${ev.method} and job_status = 'queued'`
   }
 }

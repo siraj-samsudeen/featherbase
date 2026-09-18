@@ -50,6 +50,7 @@ export const ENGINE_TABLES = [
   'Print Format',
   'Report',
   'Role',
+  'Scheduled Job',
   'Server Script',
   'Service Level Agreement',
   'Share',

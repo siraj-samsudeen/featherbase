@@ -12,9 +12,38 @@ import { publishUserEvent } from './realtime'
 // runs the handler with at-least-once semantics, retries up to max_attempts,
 // logs every attempt as a Job Execution, and re-enqueues recurring jobs.
 
+// Why a queue row exists. 'schedule' is the clock (a Scheduled Job's cadence,
+// or the re-enqueue after a recurring run); 'demand' is something that
+// happened (an email queued, a webhook fired, a report asked for a dataset
+// that had not built); 'manual' is a person on /api/enqueue_job; 'retry' is a
+// failed job re-queued. Observability, not behaviour: nothing branches on it.
+export const JOB_TRIGGERS = ['schedule', 'demand', 'manual', 'retry'] as const
+export type JobTrigger = (typeof JOB_TRIGGERS)[number]
+
+// The cadences a Scheduled Job may choose from. A closed set on purpose:
+// "every 4 hours" is a decision an administrator can read and reverse, a
+// bare number of seconds is not (data-warehouse #3036 — every hand-typed
+// interval that drifted off the fleet grid failed silently).
+export const CADENCE_SECONDS: Record<string, number> = {
+  'every minute': 60,
+  'every 15 minutes': 15 * 60,
+  hourly: 60 * 60,
+  'every 4 hours': 4 * 60 * 60,
+  daily: 24 * 60 * 60,
+}
+export type Cadence = keyof typeof CADENCE_SECONDS
+
+export function cadenceSeconds(cadence: string): number {
+  const seconds = CADENCE_SECONDS[cadence]
+  if (!seconds) throw new Error(`Unknown cadence "${cadence}"`)
+  return seconds
+}
+
 // JOB-005: handlers receive a context that can report progress to the client.
 export interface JobContext {
   setProgress: (percent: number, message?: string) => void
+  /** The queue row being run, and why it exists. */
+  job: { row_id: string; trigger: JobTrigger }
 }
 export type JobHandler = (
   payload: Record<string, unknown>,
@@ -35,6 +64,7 @@ export interface EnqueueOpts {
   maxAttempts?: number
   runAt?: Date
   repeatEvery?: number // seconds; recurring jobs re-enqueue after each run
+  trigger?: JobTrigger // defaults to 'demand': most enqueues are something happening
 }
 
 export async function enqueue(
@@ -55,28 +85,51 @@ export async function enqueue(
       max_attempts: opts.maxAttempts ?? 3,
       run_at: opts.runAt ?? new Date(),
       repeat_every: opts.repeatEvery ?? null,
+      trigger: opts.trigger ?? 'demand',
     })}`
   return name
 }
 
-async function logExecution(
-  job: string,
-  method: string,
-  attempt: number,
-  outcome: 'success' | 'error',
-  error?: string,
-): Promise<void> {
+interface ExecutionRecord {
+  job: string
+  method: string
+  attempt: number
+  outcome: 'success' | 'error'
+  startedAt: Date
+  durationMs: number
+  error?: string
+}
+
+// Every attempt is a Job Execution row, and the method's Scheduled Job row
+// (when it has one) carries the latest: "when did this last run, did it work,
+// how long did it take" answered from the list view without a query.
+async function logExecution(r: ExecutionRecord): Promise<void> {
   await sql`
     insert into job_execution ${sql({
       row_id: jobName(),
       created_by: 'Administrator',
       updated_by: 'Administrator',
-      job,
-      method,
-      attempt,
-      outcome,
-      error: error ?? null,
+      job: r.job,
+      method: r.method,
+      attempt: r.attempt,
+      outcome: r.outcome,
+      error: r.error ?? null,
+      started_at: r.startedAt,
+      duration_ms: r.durationMs,
     })}`
+  await sql`
+    update scheduled_job
+    set last_run_at = ${r.startedAt}, last_outcome = ${r.outcome}, last_duration_ms = ${r.durationMs},
+        updated_at = now()
+    where method = ${r.method}`
+}
+
+// The Scheduled Job row for a method, if an administrator has one. Absent
+// means the method is not administered here (a one-off, or an app that
+// enqueued its own recurrence) and the queue row's own repeat_every governs.
+async function scheduledJob(method: string): Promise<{ cadence: string; enabled: boolean } | null> {
+  const [row] = await sql`select cadence, enabled from scheduled_job where method = ${method}`
+  return row ? { cadence: String(row.cadence), enabled: Boolean(row.enabled) } : null
 }
 
 // Claim and run a single due job. Returns true if one was processed.
@@ -101,6 +154,7 @@ export async function runOneJob(): Promise<boolean> {
   const payload = (claimed.payload as Record<string, unknown>) ?? {}
 
   // JOB-005: progress reports go to the job owner's realtime channel.
+  const trigger = (claimed.trigger as JobTrigger | null) ?? 'demand'
   const ctx: JobContext = {
     setProgress: (percent, message) =>
       publishUserEvent(claimed.created_by as string, 'job_progress', {
@@ -109,7 +163,19 @@ export async function runOneJob(): Promise<boolean> {
         percent: Math.max(0, Math.min(100, Math.round(percent))),
         message: message ?? null,
       }),
+    job: { row_id: claimed.row_id as string, trigger },
   }
+
+  const startedAt = new Date()
+  const record = (outcome: 'success' | 'error', error?: string): ExecutionRecord => ({
+    job: claimed.row_id as string,
+    method,
+    attempt,
+    outcome,
+    startedAt,
+    durationMs: Date.now() - startedAt.getTime(),
+    error,
+  })
 
   try {
     if (!handler) throw new Error(`No job handler registered for "${method}"`)
@@ -117,15 +183,27 @@ export async function runOneJob(): Promise<boolean> {
     await sql`
       update background_job set job_status = 'done', attempts = ${attempt}, error = null, updated_at = now()
       where row_id = ${claimed.row_id as string}`
-    await logExecution(claimed.row_id as string, method, attempt, 'success')
+    await logExecution(record('success'))
 
-    // JOB-003: recurring jobs re-enqueue for the next interval.
-    const every = claimed.repeat_every == null ? null : Number(claimed.repeat_every)
+    // JOB-003: recurring jobs re-enqueue for the next interval. A Scheduled
+    // Job row, when there is one, is the authority: its cadence (edited since
+    // this row was queued, perhaps) sets the interval, and disabled means the
+    // recurrence ends here. Without a row the queue entry's own repeat_every
+    // governs, as it always did.
+    const administered = await scheduledJob(method)
+    const every = administered
+      ? administered.enabled
+        ? cadenceSeconds(administered.cadence)
+        : null
+      : claimed.repeat_every == null
+        ? null
+        : Number(claimed.repeat_every)
     if (every && every > 0)
       await enqueue(method, payload, {
         maxAttempts,
         runAt: new Date(Date.now() + every * 1000),
         repeatEvery: every,
+        trigger: 'schedule',
       })
     return true
   } catch (err) {
@@ -136,8 +214,71 @@ export async function runOneJob(): Promise<boolean> {
       update background_job
       set job_status = ${nextStatus}, attempts = ${attempt}, error = ${message}, updated_at = now()
       where row_id = ${claimed.row_id as string}`
-    await logExecution(claimed.row_id as string, method, attempt, 'error', message)
+    await logExecution(record('error', message))
+    // A recurrence must survive its own failure. Before Scheduled Job, a run
+    // that exhausted its attempts ended the recurrence until the next restart
+    // re-seeded it from a literal — a schedule that silently stopped. Now the
+    // row is the schedule: if it is enabled, the next interval is queued
+    // regardless of how this one ended.
+    if (nextStatus === 'failed') {
+      const administered = await scheduledJob(method)
+      if (administered?.enabled) {
+        const every = cadenceSeconds(administered.cadence)
+        await enqueue(method, payload, {
+          maxAttempts,
+          runAt: new Date(Date.now() + every * 1000),
+          repeatEvery: every,
+          trigger: 'schedule',
+        })
+      }
+    }
     return true
+  }
+}
+
+// Make the queue agree with the Scheduled Job rows: every enabled row has
+// exactly one live (queued or running) entry carrying its cadence, and a
+// disabled row has none. Runs at boot (replacing the literal seeds that used
+// to live in index.ts) and after every save of a Scheduled Job, so an edit in
+// the Admin is in force before the page has finished reloading.
+//
+// A cadence change re-times the pending entry rather than replacing it:
+// its next run moves to whichever is sooner, the time it already had or one
+// new interval from now — shortening "daily" to "hourly" fires within the
+// hour; lengthening never fires early. Idempotent: calling it twice stacks
+// nothing (the duplicate-recurrence bug the old boot guards existed for).
+export async function syncScheduledJobs(method?: string): Promise<void> {
+  const rows = method
+    ? await sql`select method, cadence, enabled from scheduled_job where method = ${method}`
+    : await sql`select method, cadence, enabled from scheduled_job`
+  for (const row of rows) {
+    const name = String(row.method)
+    if (!row.enabled) {
+      await sql`delete from background_job where method = ${name} and job_status = 'queued'`
+      continue
+    }
+    const every = cadenceSeconds(String(row.cadence))
+    const live = await sql`
+      select row_id, job_status, repeat_every, run_at from background_job
+      where method = ${name} and job_status in ('queued', 'running')
+      order by run_at asc`
+    if (!live.length) {
+      await enqueue(name, {}, { repeatEvery: every, trigger: 'schedule' })
+      continue
+    }
+    // One live entry is the invariant; anything beyond the first is a stacked
+    // duplicate from an older seed path and is dropped.
+    const [keep, ...extra] = live
+    if (extra.length) {
+      const ids = extra.filter((r) => r.job_status === 'queued').map((r) => String(r.row_id))
+      if (ids.length) await sql`delete from background_job where row_id in ${sql(ids)}`
+    }
+    if (keep.job_status === 'queued' && Number(keep.repeat_every) !== every) {
+      const soonest = new Date(Math.min(new Date(keep.run_at as string).getTime(), Date.now() + every * 1000))
+      await sql`
+        update background_job set repeat_every = ${every}, run_at = ${soonest}, updated_at = now()
+        where row_id = ${String(keep.row_id)}`
+    }
   }
 }
 
@@ -146,7 +287,7 @@ export async function runOneJob(): Promise<boolean> {
 export async function retryJob(name: string): Promise<boolean> {
   const [row] = await sql`
     update background_job
-    set job_status = 'queued', attempts = 0, error = null, run_at = now(), updated_at = now()
+    set job_status = 'queued', attempts = 0, error = null, run_at = now(), trigger = 'retry', updated_at = now()
     where row_id = ${name} and job_status = 'failed'
     returning row_id`
   return Boolean(row)

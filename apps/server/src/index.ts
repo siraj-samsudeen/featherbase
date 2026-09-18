@@ -41,8 +41,7 @@ import './actions/collection-aggregate'
 import { renderPdf, renderPrintHtml } from './print'
 import { availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
-import { enqueue, loadJobs, retryJob, startWorker } from './jobs'
-import { REFRESH_EVERY_SECONDS } from './jobs/refresh-datasets'
+import { enqueue, loadJobs, retryJob, startWorker, syncScheduledJobs } from './jobs'
 import { attachRealtime, publishDocEvent, publishUserEvent } from './realtime'
 import { createAssignment } from './assign'
 import { queueEmail, sendTestEmail } from './email'
@@ -1229,6 +1228,7 @@ app.post('/api/enqueue_job', async (c) => {
   const name = await enqueue(method, payload ?? {}, {
     maxAttempts: max_attempts,
     repeatEvery: repeat_every,
+    trigger: 'manual',
   })
   return c.json({ name }, 201)
 })
@@ -1483,30 +1483,9 @@ if (process.env.NODE_ENV !== 'test') {
   // JOB-001: run the background worker in-process (tests drive the queue
   // directly via runOneJob/drainJobs, so the worker stays off under test).
   startWorker()
-  // EML-007: ensure the daily Auto Email Report scheduler is queued exactly
-  // once (it re-enqueues itself thereafter). Guarded so restarts don't stack
-  // duplicate recurring jobs.
-  {
-    const [pending] = await sql`
-      select 1 from background_job
-      where method = 'auto_email_reports' and job_status in ('queued', 'running') limit 1`
-    if (!pending) await enqueue('auto_email_reports', {}, { repeatEvery: 24 * 60 * 60 })
-  }
-  // SLA: the recurring escalation sweep (see src/jobs/sla-escalation.ts).
-  {
-    const [pending] = await sql`
-      select 1 from background_job
-      where method = 'check_sla' and job_status in ('queued', 'running') limit 1`
-    if (!pending) await enqueue('check_sla', {}, { repeatEvery: 60 })
-  }
-  // Dataset snapshots: the recurring refresh (see src/jobs/refresh-datasets.ts).
-  // Registering the handler is not enough — without this the job is never
-  // enqueued, so a deployed snapshot would be built once by a reader's miss and
-  // then never move again, ageing silently behind a correct-looking as-of date.
-  {
-    const [pending] = await sql`
-      select 1 from background_job
-      where method = 'refresh_datasets' and job_status in ('queued', 'running') limit 1`
-    if (!pending) await enqueue('refresh_datasets', {}, { repeatEvery: REFRESH_EVERY_SECONDS })
-  }
+  // Every recurring job (auto_email_reports, check_sla, refresh_datasets, and
+  // whatever an app or an administrator adds) is a Scheduled Job row; the
+  // sync makes the queue agree with the rows. Idempotent, so a restart never
+  // stacks a duplicate recurrence.
+  await syncScheduledJobs()
 }
