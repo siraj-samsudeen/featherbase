@@ -19,6 +19,7 @@ import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview
 import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
+import { EMBED_ORIGIN, landingFor, salesTargetRoutes } from './sales-target'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
@@ -41,6 +42,7 @@ import { renderPdf, renderPrintHtml } from './print'
 import { availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
 import { enqueue, loadJobs, retryJob, startWorker } from './jobs'
+import { REFRESH_EVERY_SECONDS } from './jobs/refresh-datasets'
 import { attachRealtime, publishDocEvent, publishUserEvent } from './realtime'
 import { createAssignment } from './assign'
 import { queueEmail, sendTestEmail } from './email'
@@ -101,7 +103,10 @@ app.notFound((c) =>
 // API-008: CORS restricted to the Admin origin(s) + standard security
 // headers. Runs before auth so preflight OPTIONS (which carries no
 // Authorization header) is answered here.
-app.use('*', secureHeaders())
+// #3755: the personalised sales-target report embeds MotherDuck's sandbox
+// origin in an iframe, so frames from that origin are allowed; everything
+// else secureHeaders() sets stays as it was.
+app.use('*', secureHeaders({ contentSecurityPolicy: { frameSrc: ["'self'", EMBED_ORIGIN] } }))
 app.use(
   '/api/*',
   cors({
@@ -156,7 +161,9 @@ app.post('/api/login', publicLimit('LOGIN'), async (c) => {
   const session = await login(usr, pwd)
   await forgive(attempt.ticket)
   setSidCookie(c, session.token)
-  return c.json(session)
+  // #3755: report viewers land on their report, not the Admin.
+  const landing = await landingFor(session.user.row_id)
+  return c.json(landing ? { ...session, landing } : session)
 })
 
 // The SPA's sign-out. Public — it must clear the sid cookie even when the
@@ -439,6 +446,9 @@ app.use('/api/*', async (c, next) => {
 app.use('/api/*', rateLimit)
 
 const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').row_id
+
+// #3755: personalised sales-target report (identity + embed-session minting).
+app.route('/api/sales_target', salesTargetRoutes)
 
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
@@ -1488,5 +1498,15 @@ if (process.env.NODE_ENV !== 'test') {
       select 1 from background_job
       where method = 'check_sla' and job_status in ('queued', 'running') limit 1`
     if (!pending) await enqueue('check_sla', {}, { repeatEvery: 60 })
+  }
+  // Dataset snapshots: the recurring refresh (see src/jobs/refresh-datasets.ts).
+  // Registering the handler is not enough — without this the job is never
+  // enqueued, so a deployed snapshot would be built once by a reader's miss and
+  // then never move again, ageing silently behind a correct-looking as-of date.
+  {
+    const [pending] = await sql`
+      select 1 from background_job
+      where method = 'refresh_datasets' and job_status in ('queued', 'running') limit 1`
+    if (!pending) await enqueue('refresh_datasets', {}, { repeatEvery: REFRESH_EVERY_SECONDS })
   }
 }

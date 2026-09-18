@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { ApiError, api, login } from '../lib/api'
+import { ApiError, api, landingPath, login } from '../lib/api'
 import { Logo } from '../components/Logo'
 
 export function LoginPage() {
@@ -37,8 +37,8 @@ export function LoginPage() {
     setBusy(true)
     const form = new FormData(e.currentTarget)
     try {
-      await login(String(form.get('email')), String(form.get('password')))
-      navigate({ to: '/admin' })
+      const user = await login(String(form.get('email')), String(form.get('password')))
+      navigate({ to: landingPath(user) })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Login failed')
     } finally {

@@ -1,5 +1,49 @@
 # Progress Log
 
+## 2026-09-18 — Personalised sales-target report host (data-warehouse#3755, candidate A)
+
+Featherbase hosts one employee's MotherDuck sales-target Dive: four local
+viewer accounts (`test_employee_1..4`, role `Sales Target Viewer`, no Table
+permissions, synthetic `@example.invalid` emails because `User.email` is
+required), a `Sales Target Assignment` Table whose unique `store_subcategory`
+column — filled by a `before_validate` controller from the exact 4-digit store
+and 9-digit subcategory — makes one employee per store–subcategory pair a
+database fact, and `POST /api/sales_target/embed_session`, which reads the
+caller's current rows on every call and mints a fresh embed session with
+`initial_state = {plant_code, material_groups, period_start, period_end}`.
+The creation token is read from `process.env.MOTHERDUCK_TOKEN` only and is
+provably absent from every response. `/sales-target` (outside the Admin
+shell, `.fc-*` look) frames `https://embed-motherduck.com/sandbox/#session=…`
+with `sandbox="allow-scripts allow-same-origin"`, shows explicit
+no-assignment and error states ("This is not a sales figure"), drops any
+in-flight embed response after logout (counter + AbortController), and
+viewers land on it from login. Framework edits: login answers a `landing`
+path, `secureHeaders` allows `frame-src` for the embed origin, one route
+each in `index.ts` and `router.tsx`. Seed with `pnpm --filter server
+seed:sales-target` after `./init.sh` (passwords from the gitignored shared
+`.env.local` named by `SALES_TARGET_SHARED_ENV`; never committed).
+
+Verified: `pnpm --filter server typecheck`, `pnpm --filter web typecheck`;
+`pnpm --filter server test test/sales-target.test.ts` (15 passed, injected
+upstream); full server suite 750 passed / 15 skipped / 1 failed —
+`sources-csv.test.ts › a failed write never poisons the parse cache` fails
+identically on base `ce3b450` (it relies on `chmod 0o555` blocking a write;
+this container runs as root); `pnpm --filter web test` 133 passed;
+`SALES_TARGET_EMBED=stub MOTHERDUCK_API_BASE=http://127.0.0.1:8779
+MOTHERDUCK_EMBED_ORIGIN=http://127.0.0.1:8779 MOTHERDUCK_TOKEN=stub-token-not-real
+pnpm --filter web e2e e2e/sales-target.spec.ts` 18 passed / 6 skipped (the
+amount checks, which the stub cannot render); `pnpm --filter web e2e
+e2e/sales-target.spec.ts` live 11 passed / 13 skipped as BLOCKED — the
+container's MotherDuck token answers HTTP 403 (`dashboards.createEmbedSession`),
+so every check needing the real report is a skip quoting that status, never a
+pass. Rerun the live command with an Admin-role token to convert them.
+Result note with the six sections: `experiments/issue_3755/featherbase/RESULT.md`
+in the data-warehouse repo. Gotcha: Playwright's `webServer` inherits
+`process.env`, which is what lets the stub run steer the isolated API server
+without touching `playwright.config.ts`. Next: nothing further for this
+experiment until the comparison (data-warehouse#3755 task 6) picks a host;
+if Featherbase is chosen, the StyleHR gap in RESULT.md §5 is the backlog.
+
 ## 2026-09-10 — Spec 0004 import-upsert ratifications (#142–#144)
 
 Ratified three previously queued observations without changing runtime
