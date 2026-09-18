@@ -107,7 +107,7 @@ data_through: string | null
 | 2 | `datasets/sales-target-mtd.ts:34` | the `cutoff` CTE **inside the rows query** — decides which rows are actually cut |
 | 3 | `sales-target-report.ts:169` | `select max(actuals_as_of_date) …` — the live (no-snapshot) path |
 
-(1) and (2) run in **different statements over different connections** — `motherduckReader` builds a fresh `DuckDBInstance` per call — so they observe the mart at two moments. Nothing compares them. If the mart advances or is mid-rebuild between the two reads, the report says *"Data as of 15-Sep"* (`apps/web/src/pages/SalesTarget.tsx:211`) while the rows were cut at a different boundary, and no surface can tell.
+(1) and (2) run in **different statements over different connections** — `motherduckReader` builds a fresh `DuckDBInstance` per call — so they observe the mart at two moments. Nothing compares them. If the mart advances or is mid-rebuild between the two reads, the report says *"Data as of 15-Sep"* (`apps/web/src/pages/SalesTarget.tsx:215`) while the rows were cut at a different boundary, and no surface can tell.
 
 **The fix shape** — make the assumption executable rather than described. Read the as-of **once** and pass it into the rows query as a parameter, so one value decides both; or, if two reads are unavoidable, return both and fail the build when they disagree:
 

@@ -14,7 +14,7 @@ import { fmtDate as fmtDay, fmtExact, fmtInstantIST, fmtPct, fmtSigned } from '.
 interface Me {
   username: string
   display_name: string
-  assignment: { plant_code: string; store_label: string | null; material_groups: string[] } | null
+  assignment: { plant_code: string; store_label: string | null; material_groups: string[]; sections?: string[] } | null
   period_start: string
   period_end: string
   embed_origin: string
@@ -154,8 +154,12 @@ export function SalesTargetPage() {
     await navigate({ to: '/login' })
   }
 
+  // #3783: when the assignment was derived from the Store Sections maps, name the Sections —
+  // that is the fact the store maintains, and what a reader recognises.
+  const sections = me?.assignment?.sections ?? []
   const store = me?.assignment
-    ? `${me.assignment.plant_code} — ${me.assignment.store_label ?? ''}`.trim()
+    ? `${me.assignment.plant_code} — ${me.assignment.store_label ?? ''}`.trim() +
+      (sections.length ? ` · ${sections.join(' · ')}` : '')
     : 'no store assigned'
   const period = me ? `${fmtDate(me.period_start)} to ${fmtDate(me.period_end)}` : ''
 

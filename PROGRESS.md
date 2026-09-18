@@ -1,5 +1,36 @@
 # Progress Log
 
+## 2026-09-18 — The sales-target assignment is derived from the Store Sections maps (data-warehouse#3783)
+
+The store maintains which Sections hold which merchandise and who owns which
+subcategories as Featherbase Tables — `Section Merchandise Map`, `Employee
+Section Map` and five siblings, installed as the `store-sections` app from the
+data-warehouse repo (`featherbase/apps/store-sections`) and mirrored to
+MotherDuck by the featherbase CDC. The host now reads them: `currentAssignment`
+unions the explicit `Sales Target Assignment` rows with what the maps derive
+for the user's StyleHR code — `Employee Section Map ⋈ Section Merchandise Map
+on (store_code, subcategory = mch_subcategory)` — so an employee whose Sections
+are mapped needs no assignment row, an assignment row still works for a store
+with no map yet, and the two add up where both exist. One store per employee
+stays the rule: a conflict between the sources is a 417, never a mix. The
+employee code lives on `User` as a **Custom Field** (`User-employee_code`,
+declared by `seedSalesTarget`) — the framework's way to give a platform Table
+one more attribute an app needs, no migration. `Assignment` gains
+`sections: string[]`, and `/sales-target` names them after the store. An
+instance without the Tables, or a user without a code, derives nothing and
+behaves exactly as before (tested).
+
+Verified: `pnpm --filter server typecheck`, `pnpm --filter web typecheck`;
+`pnpm --filter server test test/sales-target.test.ts` → 21 passed (+4: an
+employee code widens the assignment to the Sections' material groups, once
+each, sorted; maps alone serve an employee with no assignment row; maps and
+assignment naming different stores are refused with 417; without the Tables
+or a code nothing changes); full server suite 788 passed / 15 skipped / 1 failed (the pre-existing root-runs-chmod `sources-csv.test.ts` case, identical on base); `pnpm --filter web
+test` 133 passed. Next: on featherbase-dev, create the Custom Field and set
+`employee_code` on a test account to a mapped ATK employee (e.g. RR-11092,
+Kurti) and watch the report widen; the maps' arrival in
+`bronze_featherbase.application` is the data-warehouse side's check.
+
 ## 2026-09-18 — The STC review skills, ported; OpenSpec installed as an evaluation
 
 Three repo-local review skills — `/code-review-8-axes`, `/test-review-3-axes`,
