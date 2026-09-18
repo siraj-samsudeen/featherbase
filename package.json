@@ -6,6 +6,7 @@
     "apps:prove": "node tools/prove-runtime-packages.mjs",
     "seed:tasker": "node tools/seed-tasker-development.mjs",
     "check:evidence": "node --test tools/*.test.mjs && node tools/check-evidence.mjs",
+    "check:stc": "node --test tools/stc-matrix.test.mjs && node tools/stc-matrix.mjs",
     "manual:build": "node tools/build-manual.mjs",
     "manual:fixtures": "node docs/manual/fixtures/make-fixtures.mjs",
     "smoke": "pnpm --filter server test:smoke && pnpm --filter web smoke",

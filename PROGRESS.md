@@ -205,6 +205,81 @@ data-warehouse#3775's review thread for the full list; two items (the
 category/subcategory assignment ambiguity, and a freshness-policy design
 question) are reserved for a separate owner discussion, not implemented here.
 
+## 2026-09-18 — The STC review skills, ported; OpenSpec installed as an evaluation
+
+Three repo-local review skills — `/code-review-8-axes`, `/test-review-3-axes`,
+`/spec-review-5-axes` — carried over from the data-warehouse repo
+(#3664/#3666/#3691). The axes, framing rules and REJECT lists are theirs; **every
+worked example was re-derived from this codebase**, because an axis illustrated
+by a Python data pipeline teaches nothing to a reviewer reading TypeScript. Each
+cited defect was opened and confirmed, and four suspicions were investigated and
+**refuted** — including one killed by experiment (appending a deliberate type
+error to `packages/shared` fails both server and web typechecks, so shared's
+absence from CI's typecheck list is not a hole). The refuted list is in the
+code skill, as the worked example of what belongs in one.
+
+OpenSpec (`@fission-ai/openspec` 1.13.1, core profile: `openspec/`, six `opsx:`
+skills) is installed **as an evaluation, not as the house format**.
+`docs/specs/0003-table-deletion.md` was migrated to
+`openspec/specs/table-deletion/spec.md` — all 14 obligations, example tables,
+properties, evidence verdicts and ruled questions, plus a domain-assumptions
+section and a governed/characterized label per requirement, with `Legacy ID:
+DEL-R3` carried so the 87 IDs already in circulation keep resolving.
+`docs/design/openspec-vs-journey-spec.md` reports what the migration lost (the
+step triple, the closure sweep, the isolation-strategy slot, "Bug if", the
+language split, CI-checked evidence), what it gained, and the recommendation —
+**don't migrate; adopt the three additive conventions into the journey-spec form
+instead** — for the owner to rule on. `docs/specs` remains live; two accountable
+documents about one capability should not outlive the ruling.
+
+Traceability: `docs/agents/stc-traceability.md` and `tools/stc-matrix.mjs` (a
+zero-dependency Node port of the Python original) with 13 mutation tests, run by
+`pnpm check:stc`. It owns `openspec/specs` and joins the spec heading to `@spec`
+markers in code and tests; `check-evidence.mjs` keeps `docs/specs` and its
+title-based join, untouched. **`check:stc` is deliberately NOT in CI** while
+OpenSpec is on trial, and both the doc and CLAUDE.md say so — an unenforced guard
+that reads as enforced makes the next reader stop looking. The measurement that
+shaped the recommendation: 87 obligation IDs are declared in `docs/specs`, 54 are
+cited in test titles and 39 in `src` — the convention already exists here by
+hand; what was missing is the script and the spec↔code edge.
+
+Source edits are comment-only: 19 `@spec` markers across `table-engine.ts`,
+`meta.ts`, `index.ts`, `ListView.tsx`, the deletion tests and the deletion e2e.
+One of them was wrong in the first draft — `system_manager_only` sat on
+`deleteTable`, whose own guard is the *system-table* refusal, while the manager
+check is `assertSystemManager` at the route. That is the citation-does-not-cover-
+its-claim failure `spec-review-5-axes` Axis 2 names; the spec now records the
+correction where a future reader meets it.
+
+Verified: `pnpm check:stc` (14 requirements, 10 with code, 14 with a test, no
+orphans, no new gaps) · `node --test tools/*.test.mjs` 68 passed (55 existing +
+13 new) · `pnpm check:evidence` unchanged at 148 verdicts across 8 specs ·
+`npx @fission-ai/openspec validate --specs --strict` 1 passed, 0 failed (which
+proves well-formed, not true — the point is made in the skill) ·
+`pnpm --filter server typecheck`, `pnpm --filter web typecheck` clean ·
+`./init.sh` boots and `pnpm smoke` passes · `pnpm --filter server test
+test/table-deletion.test.ts` 16 passed · `pnpm --filter web test` 133 passed ·
+`pnpm --filter web e2e e2e/table-deletion.spec.ts` 2 passed · full
+`pnpm --filter server test` **765 passed / 1 failed / 15 skipped**, the failure
+being `sources-csv.test.ts › a failed write never poisons the parse cache`,
+which fails identically on base `4b31a7d` in a clean worktree (it relies on
+`chmod 0o555` blocking a write; this container runs as root). An earlier run of
+mine showed a second failure — a 5 s timeout in `sources-security.test.ts` —
+which did not reproduce when the suite ran alone: I had started the web suite
+against the same database concurrently, which the vitest configs warn about by
+name. Self-inflicted, recorded so nobody re-diagnoses it.
+
+**Next:** rule on `docs/design/openspec-vs-journey-spec.md`. Then, whichever way
+it goes, delete the losing table-deletion document. Findings surfaced by the
+audit and deliberately **not** fixed here (findings and fixes are separate PRs):
+the sales-target as-of read three times with nothing comparing them
+(a divergence triage item, written out in full in `spec-review-5-axes`); the
+`realtime.ts` catch labelled "malformed frames" that also swallows the
+authorization lookup; the "columns that hold no value" set living in seven
+places under three names; `docstatus` surviving in one user-facing error string;
+and the coverage ratchets never raised to the figure their own comment says to
+raise them to.
+
 ## 2026-09-18 — The sales-target assignment is derived from the Store Sections maps (data-warehouse#3783)
 
 The store maintains which Sections hold which merchandise and who owns which
