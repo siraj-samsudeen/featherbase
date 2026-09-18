@@ -51,7 +51,7 @@ function expectedTotals(): Map<string, { target: number; actual: number }> {
 
 async function main() {
   console.log('## Build\n')
-  const [outcome, buildMs] = await timed(() => buildSnapshot(SALES_TARGET_DATASET))
+  const [outcome, buildMs] = await timed(() => buildSnapshot(SALES_TARGET_DATASET, { trigger: 'script' }))
   if (outcome.status !== 'activated') {
     console.error(`build did not activate: ${outcome.status} — ${outcome.reason}`)
     process.exit(1)

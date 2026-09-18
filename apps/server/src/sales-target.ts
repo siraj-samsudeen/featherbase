@@ -15,6 +15,7 @@ import { Hono } from 'hono'
 import { sql } from './db'
 import { AppError } from './errors'
 import { getRoles } from './permissions'
+import { logAccess } from './audit'
 import type { SessionUser } from './auth'
 
 export const ASSIGNMENT_TABLE = 'Sales Target Assignment'
@@ -320,6 +321,20 @@ salesTargetRoutes.get('/report', async (c) => {
   const user = c.get('user')
   const a = await currentAssignment(user.row_id)
   if (!a || !a.material_groups.length) return c.json({ no_assignment: true })
+  // Lazy, like reportFor: the dataset module imports PERIOD from this file.
   const { reportFor } = await import('./sales-target-report')
-  return c.json(await reportFor(a))
+  const { SALES_TARGET_DATASET } = await import('./datasets/sales-target-mtd')
+  const report = await reportFor(a)
+  // Who opened which report, served from what: the same Access Log that
+  // records exports and prints (PLAT-007), so "who is looking at the sales
+  // target report" is answered from the Admin like any other access question
+  // (data-warehouse #3376). `method` says snapshot or live, `reference_name`
+  // names the snapshot, so a complaint about a figure can be traced to the
+  // exact rows that were served.
+  await logAccess(user.row_id, 'view_report', {
+    table: SALES_TARGET_DATASET,
+    row_id: report.snapshot_id ?? undefined,
+    method: report.source,
+  })
+  return c.json(report)
 })

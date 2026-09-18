@@ -72,11 +72,11 @@ describe('snapshot lifecycle', () => {
     const first = await buildSnapshot(SALES_TARGET_DATASET)
     const second = await buildSnapshot(SALES_TARGET_DATASET)
     expect(second.status).toBe('activated')
-    const actives = await sql`select row_id from dataset_snapshot where dataset = ${SALES_TARGET_DATASET} and status = 'active'`
+    const actives = await sql`select row_id from dataset_snapshot where dataset = ${SALES_TARGET_DATASET} and state = 'active'`
     expect(actives).toHaveLength(1)
     expect(String(actives[0].row_id)).toBe(second.snapshotId)
-    const [old] = await sql`select status from dataset_snapshot where row_id = ${first.snapshotId!}`
-    expect(old.status).toBe('superseded')
+    const [old] = await sql`select state from dataset_snapshot where row_id = ${first.snapshotId!}`
+    expect(old.state).toBe('superseded')
   })
 
   test('an empty candidate is refused and the previous snapshot keeps serving', async () => {
@@ -108,8 +108,8 @@ describe('snapshot lifecycle', () => {
     expect(bad.status).toBe('failed')
     expect(bad.reason).toMatch(/upstream is down/)
     expect((await activeSnapshot(SALES_TARGET_DATASET))?.row_id).toBe(good.snapshotId)
-    const [r] = await sql`select status, error from dataset_snapshot where row_id = ${bad.snapshotId!}`
-    expect(r.status).toBe('failed')
+    const [r] = await sql`select state, error from dataset_snapshot where row_id = ${bad.snapshotId!}`
+    expect(r.state).toBe('failed')
   })
 
   test('an interrupted build is never resolved by a reader', async () => {
@@ -117,8 +117,8 @@ describe('snapshot lifecycle', () => {
     await buildSnapshot(SALES_TARGET_DATASET)
     const active = await activeSnapshot(SALES_TARGET_DATASET)
     // A process that dies mid-build leaves exactly this: a 'building' row.
-    await sql`insert into dataset_snapshot (row_id, dataset, definition_version, status)
-              values ('half-built', ${SALES_TARGET_DATASET}, '1', 'building')`
+    await sql`insert into dataset_snapshot (row_id, dataset, definition_version, state, built_at)
+              values ('half-built', ${SALES_TARGET_DATASET}, '1', 'building', now())`
     expect((await activeSnapshot(SALES_TARGET_DATASET))?.row_id).toBe(active?.row_id)
   })
 
@@ -128,7 +128,7 @@ describe('snapshot lifecycle', () => {
     await buildSnapshot(SALES_TARGET_DATASET)
     await buildSnapshot(SALES_TARGET_DATASET)
     await pruneSnapshots(SALES_TARGET_DATASET)
-    const kept = await sql`select status from dataset_snapshot where dataset = ${SALES_TARGET_DATASET} and status = 'superseded'`
+    const kept = await sql`select state from dataset_snapshot where dataset = ${SALES_TARGET_DATASET} and state = 'superseded'`
     expect(kept).toHaveLength(1)
   })
 })
@@ -271,5 +271,51 @@ describe('freshness', () => {
     // The cutoff actually applied to both sides, and the report says it is early.
     expect(r.data_through).toBe('2026-09-15')
     expect(r.cutoff_early).toBe(true)
+  })
+})
+
+describe('registry as Tables (migration 0087)', () => {
+  test('a build records what it cost and what caused it', async () => {
+    stub(sampleRows())
+    const out = await buildSnapshot(SALES_TARGET_DATASET, { trigger: 'demand' })
+    expect(out.status).toBe('activated')
+    const snap = await activeSnapshot(SALES_TARGET_DATASET)
+    expect(snap?.triggered_by).toBe('demand')
+    expect(snap?.fetch_ms).toBeGreaterThanOrEqual(0)
+    expect(snap?.load_ms).toBeGreaterThanOrEqual(0)
+    // Eight rows on disk are more than zero bytes; the exact figure is Postgres's.
+    expect(snap?.bytes).toBeGreaterThan(0)
+  })
+
+  test('a failed build still records its timings — the cost of a refusal is a fact too', async () => {
+    _setSourceReader(async () => { throw new Error('upstream is down') })
+    const bad = await buildSnapshot(SALES_TARGET_DATASET, { trigger: 'schedule' })
+    const [r] = await sql`
+      select state, triggered_by, fetch_ms from dataset_snapshot where row_id = ${bad.snapshotId!}`
+    expect(r).toMatchObject({ state: 'failed', triggered_by: 'schedule' })
+    expect(Number(r.fetch_ms)).toBeGreaterThanOrEqual(0)
+  })
+
+  test('the registry is a Table a System Manager reads through the generic API; the rows table is not', async ({ admin }) => {
+    stub(sampleRows())
+    const out = await buildSnapshot(SALES_TARGET_DATASET)
+    const list = await admin.get<{ data: Record<string, unknown>[] }>(
+      `/api/table/${encodeURIComponent('Dataset Snapshot')}?fields=${encodeURIComponent(JSON.stringify(['row_id', 'dataset', 'state', 'row_count', 'triggered_by']))}`,
+    )
+    const mine = list.data.find((r) => r.row_id === out.snapshotId)
+    expect(mine).toMatchObject({ dataset: SALES_TARGET_DATASET, state: 'active' })
+    expect(Number(mine?.row_count)).toBe(8)
+    // The rows table holds every store's figures and has no Table: unreachable generically.
+    const rows = await admin.fetch(`/api/table/${encodeURIComponent('Sales Target Snapshot Row')}`)
+    expect(rows.status).toBe(404)
+  })
+
+  test('a miss is a Dataset Miss row the Admin can see', async ({ admin }) => {
+    stub(sampleRows())
+    await reportFor(EMP1)
+    const list = await admin.get<{ data: Record<string, unknown>[] }>(
+      `/api/table/${encodeURIComponent('Dataset Miss')}?fields=${encodeURIComponent(JSON.stringify(['dataset', 'hits']))}`,
+    )
+    expect(list.data.find((r) => r.dataset === SALES_TARGET_DATASET)).toBeTruthy()
   })
 })

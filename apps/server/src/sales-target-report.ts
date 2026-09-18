@@ -9,11 +9,12 @@ import { PERIOD, type Assignment } from './sales-target'
 // on the next read with nothing rebuilt, and what keeps a principal in context
 // when the rows are selected.
 //
-// The snapshot tables are app-internal and are never read through the generic
-// list/document APIs: a snapshot holds every store's rows, and generic row
-// scoping is fail-open for a principal with no `data_scope` rows
-// (`query.ts:180`). Until #246's `scope_required` lands, the only safe reader is
-// this one, which cannot be reached without an assignment.
+// The snapshot ROWS table is app-internal and is never read through the generic
+// list/document APIs: it holds every store's rows, and generic row scoping is
+// fail-open for a principal with no `data_scope` rows (`query.ts:180`). Until
+// #246's `scope_required` lands, the only safe reader is this one, which cannot
+// be reached without an assignment. (The registry — which snapshot is active,
+// what it cost — holds no figures and IS a Table, since migration 0087.)
 
 export interface ReportRow {
   code: string
