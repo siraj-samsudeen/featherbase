@@ -235,6 +235,15 @@ command, that is the first finding.
   feather-spec form (EARS criteria + example tables). Capability IDs there
   (`EDS-1`, `VDT-3`) are the traceability handles — use them in commits, bugs
   and review comments.
+- `openspec/specs/` — **an evaluation, not the house format.** One capability
+  (`table-deletion`) migrated from `docs/specs/0003` so the question "should specs
+  move to OpenSpec?" could be answered from a real migration. `docs/specs` remains
+  live and is what `check-evidence.mjs` checks. Read
+  [`docs/design/openspec-vs-journey-spec.md`](docs/design/openspec-vs-journey-spec.md)
+  before writing a spec in either place — it records what the migration lost, what it
+  gained, and the recommendation awaiting the owner's ruling. **Do not migrate more
+  specs until that is ruled**, and delete one of the two table-deletion documents when
+  it is.
 - `docs/research/` — Frappe architecture, Glide, and stack studies.
 - `docs/archive/` — frozen history: the 2026 build harness and its feature
   inventory (`harness-2026/`), and the specs from the retired Convex
@@ -264,6 +273,35 @@ Requirements documents still use the featherbase-local `journey-spec`
 skill, not a plugin. When spawning sub-sessions or task chips, name the
 required skills in the prompt — spawned agents read this file, but an
 explicit instruction survives context loss.
+
+### The STC triangle — design, test and spec review
+
+Three repo-local skills, ported from the data-warehouse repo (#3664/#3666/#3691)
+with every worked example re-derived from this codebase: **`/code-review-8-axes`**,
+**`/test-review-3-axes`**, **`/spec-review-5-axes`**. Spec says what to promise, code
+holds the promises, tests check them — and they drift apart continuously.
+
+They are **deeper and slower than the routing table's review row above**, and they do
+not replace it: reach for `mattpocock-skills:code-review` on an ordinary PR, and for
+these when the blast radius of what you are touching is a module's behaviour — a save
+path, a permission rule, a status vocabulary, a guard. The trigger is the blast radius,
+**not the size of your change**. A three-line edit to the row engine qualifies; a typo
+fix does not. (Whether the two review routes should collapse into one is an open
+question for the owner.)
+
+These axes almost never fire on the lines you edited: they find the seventh copy of a
+fact you changed in six places, the guard that silently stopped running, the promise
+nothing tests. **Report what you found, what you fixed here, and what you filed
+instead** — fixing everything found is not expected and usually widens the PR wrongly.
+All three carry a REJECT list: **file and function length are not findings.**
+
+**When the artifacts disagree, never silently pick a winner and never punt** — emit the
+divergence triage item defined in `spec-review-5-axes`. That is this repo's
+"a discovered behaviour is not a requirement" rule, in an output format.
+
+Traceability: `docs/agents/stc-traceability.md` — one `@spec <slug>` marker per vertex,
+computed by `pnpm check:stc` (`openspec/specs`, **not in CI**, run it by hand) beside
+`pnpm check:evidence` (`docs/specs`, in CI).
 
 ### Issue tracker
 

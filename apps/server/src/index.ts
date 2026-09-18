@@ -743,6 +743,7 @@ app.post('/api/import/batches/:id/delete_tables', async (c) => {
 
 // DEL-R1/R2 (docs/specs/0003-table-deletion.md): delete a Table outright.
 app.delete('/api/table_def/:name', async (c) => {
+  // @spec system_manager_only
   await assertSystemManager(who(c))
   await deleteTable(c.req.param('name'), who(c))
   return c.json({ ok: true })
