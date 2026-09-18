@@ -41,7 +41,7 @@ A human who wrote the code is partly immune to the third — they carry a mental
 
 ### 2. The owner is the binding reader — not the agent
 
-This inverts the obvious. An agent can brute-force `apps/server/src/index.ts`'s 1,512 lines by burning context. A human debugging at 2am, on the path where agents have already failed, cannot.
+This inverts the obvious. An agent can brute-force `apps/server/src/index.ts`'s 1,492 lines by burning context. A human debugging at 2am, on the path where agents have already failed, cannot.
 
 **So design for the human and the agent gets it free. Design for the agent and the human is stranded.** Where an axis could be satisfied two ways, pick the one a human can follow without a tool.
 
@@ -92,7 +92,7 @@ They form three tiers. The tiers matter: the first four catch code that **lies**
 
 **Real violation — a freshness claim with three independent sources of truth.**
 
-`apps/server/src/sales-target-report.ts:37` documents the field a reader sees:
+`apps/server/src/sales-target-report.ts:46` documents the field a reader sees:
 
 ```ts
 /** least(period_end, source_as_of) — the cutoff actually applied to both sides. */
@@ -105,9 +105,9 @@ data_through: string | null
 |---|---|---|
 | 1 | `datasets/sales-target-mtd.ts:61` | `select max(actuals_as_of_date) as as_of …` — becomes the snapshot's `source_as_of` |
 | 2 | `datasets/sales-target-mtd.ts:34` | the `cutoff` CTE **inside the rows query** — decides which rows are actually cut |
-| 3 | `sales-target-report.ts:156` | `select max(actuals_as_of_date) …` — the live (no-snapshot) path |
+| 3 | `sales-target-report.ts:169` | `select max(actuals_as_of_date) …` — the live (no-snapshot) path |
 
-(1) and (2) run in **different statements over different connections** — `motherduckReader` builds a fresh `DuckDBInstance` per call — so they observe the mart at two moments. Nothing compares them. If the mart advances or is mid-rebuild between the two reads, the report says *"Data as of 15-Sep"* (`apps/web/src/pages/SalesTarget.tsx:202`) while the rows were cut at a different boundary, and no surface can tell.
+(1) and (2) run in **different statements over different connections** — `motherduckReader` builds a fresh `DuckDBInstance` per call — so they observe the mart at two moments. Nothing compares them. If the mart advances or is mid-rebuild between the two reads, the report says *"Data as of 15-Sep"* (`apps/web/src/pages/SalesTarget.tsx:211`) while the rows were cut at a different boundary, and no surface can tell.
 
 **The fix shape** — make the assumption executable rather than described. Read the as-of **once** and pass it into the rows query as a parameter, so one value decides both; or, if two reads are unavoidable, return both and fail the build when they disagree:
 
@@ -116,7 +116,7 @@ if (fetched.sourceAsOf !== fetched.cutoffUsed)
   throw new Error(`as-of moved mid-build: ${fetched.sourceAsOf} vs ${fetched.cutoffUsed}`)
 ```
 
-**Related, same module.** `dataset-snapshot.ts:25` states the loader's contract — *"Returns the row count written"* — and `datasets/sales-target-mtd.ts:136` returns `rows.length`, the length of the array it was **handed**. That number then gates activation (the >50%-drop refusal) and is displayed as the snapshot's `row_count`. With a plain chunked `INSERT` the two are equal unless the statement throws, so this is a **weaker** finding than it first looks — say so in the review rather than inflating it. What it does establish is that the *source* half is unchecked: a silently truncated superset under the 50% threshold activates and reads fresh.
+**Related, same module.** `dataset-snapshot.ts:31` states the loader's contract — *"Returns the row count written"* — and `datasets/sales-target-mtd.ts:136` returns `rows.length`, the length of the array it was **handed**. That number then gates activation (the >50%-drop refusal) and is displayed as the snapshot's `row_count`. With a plain chunked `INSERT` the two are equal unless the statement throws, so this is a **weaker** finding than it first looks — say so in the review rather than inflating it. What it does establish is that the *source* half is unchecked: a silently truncated superset under the 50% threshold activates and reads fresh.
 
 > **A lesson about reviewing, not about this bug: the first draft of this finding claimed the insert count was unverified and left it there. Chasing it to the end — what does `postgres` actually return, what would have to happen for the counts to differ — turned a dramatic finding into an accurate smaller one. Do that before reporting, not after.**
 
@@ -397,7 +397,7 @@ Recorded so that a future agent does not import them from training and start "im
 | **The Boy Scout Rule** (clean up as you pass through) | *Clean Code* | Actively harmful for agent work: it buries the fix inside unrelated tidying and makes the diff unreviewable. **Unrelated cleanup gets its own issue.** |
 | **DDD tactical patterns** (Entity / Value Object / Aggregate / Repository) | Evans | OO ceremony for large domain models. Applied here it manufactures Axis 7 defects. Take Ubiquitous Language and Bounded Context (Axis 6); leave the rest. |
 | **Test coverage targets** | — | Measures lines executed, not invariants protected. **Count contracts, not percentages.** (This repo *does* run coverage ratchets; they are a regression alarm, not a quality target — and Axis 8 above is about one that stopped being either.) |
-| **File length as a defect** | — | Not a finding on its own. `index.ts` at 1,512 lines is a symptom worth investigating under Axis 7, never a finding under it. |
+| **File length as a defect** | — | Not a finding on its own. `index.ts` at 1,492 lines is a symptom worth investigating under Axis 7, never a finding under it. |
 
 ---
 

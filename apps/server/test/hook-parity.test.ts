@@ -128,7 +128,7 @@ describe('Frappe lifecycle + app-contract parity', () => {
     const METHOD = `hookp_sweep_${Date.now()}`
     registerApp({
       name: APP,
-      scheduler_events: [{ method: METHOD, every_seconds: 3600, handler: async () => {} }],
+      scheduler_events: [{ method: METHOD, cadence: 'hourly', handler: async () => {} }],
     })
     try {
       await installApp(APP)

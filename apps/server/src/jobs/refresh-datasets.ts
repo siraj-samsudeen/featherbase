@@ -4,15 +4,10 @@ import { buildSnapshot, pendingMisses, pruneSnapshots, registeredDatasets, activ
 // import, like controllers and job handlers, so adding one is adding a file.
 import '../datasets/sales-target-mtd'
 
-// Refresh every dataset that has been asked for. Recurring: the job re-enqueues
-// itself (JOB-003 `repeatEvery`), so the cadence is data in `background_job`
-// rather than a constant compiled into the server.
-//
-// Aligned to the warehouse fleet's 4-hourly grid, offset behind dbt-runner —
-// refreshing on the same minute the build commits reads pre-build rows and
-// reports data a day behind (data-warehouse #3082). Four hours, not four
-// minutes: the snapshot's whole purpose is that a reader never waits for it.
-export const REFRESH_EVERY_SECONDS = 4 * 60 * 60
+// Refresh every dataset that has been asked for. Recurring: its cadence is the
+// `refresh_datasets` Scheduled Job row (seeded four-hourly by migration 0086,
+// editable in the Admin), not a constant here. A cache miss also enqueues it
+// on demand (dataset-snapshot.ts recordMiss).
 
 /**
  * A dataset is refreshed when it has an outstanding miss (a reader asked for it
@@ -26,14 +21,17 @@ export async function datasetsDue(): Promise<string[]> {
   return [...misses]
 }
 
-registerJob('refresh_datasets', async () => {
+registerJob('refresh_datasets', async (_payload, ctx) => {
   for (const dataset of await datasetsDue()) {
-    const outcome = await buildSnapshot(dataset)
+    // The job's trigger travels onto the registry row: a refresh caused by a
+    // reader's miss and one caused by the clock look different afterwards.
+    const outcome = await buildSnapshot(dataset, { trigger: ctx.job.trigger })
     // Fail loud in the log, keep serving last-good: a refused or failed build
     // leaves the previous snapshot active, which ages visibly rather than
     // disappearing. Never more destructive than not running at all.
     console.log(`[dataset] ${dataset}: ${outcome.status}${outcome.reason ? ` — ${outcome.reason}` : ''}` +
-      (outcome.rowCount != null ? ` (${outcome.rowCount} rows)` : ''))
+      (outcome.rowCount != null ? ` (${outcome.rowCount} rows)` : '') +
+      (outcome.fetchMs != null ? ` fetch ${outcome.fetchMs} ms, load ${outcome.loadMs} ms` : ''))
     if (outcome.status === 'activated') await pruneSnapshots(dataset)
   }
 })

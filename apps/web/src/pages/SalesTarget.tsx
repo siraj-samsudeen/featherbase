@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { api, clearSession, getSessionUser, getToken } from '../lib/api'
 import { Logo } from '../components/Logo'
-import { fmtDate as fmtDay, fmtExact, fmtPct, fmtSigned } from '../lib/inr'
+import { fmtDate as fmtDay, fmtExact, fmtInstantIST, fmtPct, fmtSigned } from '../lib/inr'
 
 // #3755: the personalised sales-target report. The page holds no report
 // logic — MotherDuck renders the Dive inside a sandboxed iframe. What the page
@@ -24,6 +24,7 @@ type Embed =
   | { kind: 'loading' }
   | { kind: 'frame'; src: string }
   | { kind: 'no-assignment' }
+  | { kind: 'not-configured' }
   | { kind: 'error'; message: string }
 
 // The pre-generated read: the same numbers as the Dive, served from the dataset
@@ -42,6 +43,7 @@ interface ReportRow {
 interface Report {
   source: 'snapshot' | 'live'
   source_as_of: string | null
+  generated_at: string | null
   store_name: string | null
   data_through: string | null
   cutoff_early: boolean
@@ -120,6 +122,7 @@ export function SalesTargetPage() {
         const body = (await res.json().catch(() => ({}))) as {
           session?: string
           no_assignment?: boolean
+          not_configured?: boolean
           error?: { message?: string; upstream_status?: number }
         }
         if (!current()) return
@@ -129,6 +132,7 @@ export function SalesTargetPage() {
           return
         }
         if (body.no_assignment) setEmbed({ kind: 'no-assignment' })
+        else if (body.not_configured) setEmbed({ kind: 'not-configured' })
         else if (res.ok && typeof body.session === 'string')
           setEmbed({ kind: 'frame', src: `${identity.embed_origin}/sandbox/#session=${encodeURIComponent(body.session)}` })
         else setEmbed({ kind: 'error', message: body.error?.message ?? `HTTP ${res.status}` })
@@ -198,9 +202,17 @@ export function SalesTargetPage() {
                 {pre.report.store_name ?? 'Store'} · month to date
               </p>
               <p className="text-xs text-[var(--color-ink-muted)]" data-testid="snapshot-freshness">
-                {/* Honest staleness: the SOURCE as-of, distinct from when this page rendered. */}
+                {/* Two different facts, both shown on purpose. "Data as of" is the
+                    WAREHOUSE's own cutoff — is this figure complete. "Refreshed" is when
+                    we last materialised it — how stale is this page. A snapshot built
+                    minutes ago from three-day-old data is fresh by one and stale by the
+                    other, so collapsing them into one number would hide exactly the case
+                    a reader needs to catch. */}
                 Data as of {fmtDay(pre.report.source_as_of)}
                 {pre.report.cutoff_early ? ` (period ends later; counted through ${fmtDay(pre.report.data_through)})` : ''}
+                {pre.report.generated_at ? (
+                  <> · refreshed <span data-testid="snapshot-generated">{fmtInstantIST(pre.report.generated_at)}</span></>
+                ) : null}
                 {' · '}
                 <span data-testid="snapshot-timing">
                   {pre.report.source === 'snapshot' ? 'snapshot' : 'live'} · {Math.round(pre.ms)} ms
@@ -275,6 +287,14 @@ export function SalesTargetPage() {
                   This account has no store–subcategory assignment. Ask your manager to assign your subcategories.
                 </p>
               </>
+            )}
+            {embed.kind === 'not-configured' && (
+              // Quiet, not red: this deployment simply has no live Dive. The numbers
+              // above came from the snapshot and are unaffected.
+              <p className="text-[var(--color-ink-muted)]">
+                The live MotherDuck report is not configured on this deployment. The figures above
+                are served from the dataset snapshot and are unaffected.
+              </p>
             )}
             {embed.kind === 'error' && (
               <>

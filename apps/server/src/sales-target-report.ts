@@ -9,11 +9,12 @@ import { PERIOD, type Assignment } from './sales-target'
 // on the next read with nothing rebuilt, and what keeps a principal in context
 // when the rows are selected.
 //
-// The snapshot tables are app-internal and are never read through the generic
-// list/document APIs: a snapshot holds every store's rows, and generic row
-// scoping is fail-open for a principal with no `data_scope` rows
-// (`query.ts:180`). Until #246's `scope_required` lands, the only safe reader is
-// this one, which cannot be reached without an assignment.
+// The snapshot ROWS table is app-internal and is never read through the generic
+// list/document APIs: it holds every store's rows, and generic row scoping is
+// fail-open for a principal with no `data_scope` rows (`query.ts:180`). Until
+// #246's `scope_required` lands, the only safe reader is this one, which cannot
+// be reached without an assignment. (The registry — which snapshot is active,
+// what it cost — holds no figures and IS a Table, since migration 0087.)
 
 export interface ReportRow {
   code: string
@@ -29,6 +30,14 @@ export interface ReportRow {
 export interface Report {
   source: 'snapshot' | 'live'
   source_as_of: string | null
+  /**
+   * When the snapshot was last refreshed (ISO instant), or null on a live read.
+   * Distinct from source_as_of on purpose: as-of answers "is my figure complete",
+   * refreshed answers "how stale is this page". A snapshot built minutes ago from
+   * three-day-old warehouse data is fresh by one measure and stale by the other,
+   * and a reader needs to be able to tell.
+   */
+  generated_at: string | null
   snapshot_id: string | null
   store_name: string | null
   short_code: string | null
@@ -98,6 +107,10 @@ function shape(grouped: Grouped[]): Pick<Report, 'rows' | 'total'> {
 }
 
 const num = (v: unknown): number | null => (v == null ? null : Number(v))
+
+/** pg hands timestamptz back as a Date; the wire carries an ISO instant. */
+const iso = (v: unknown): string | null =>
+  v == null ? null : v instanceof Date ? v.toISOString() : String(v)
 
 async function fromSnapshot(a: Assignment, snapshotId: string): Promise<Grouped[]> {
   // `unnest` + LEFT JOIN, exactly as the Dive does it: a selected code with no
@@ -197,6 +210,7 @@ export async function reportFor(a: Assignment): Promise<Report> {
     return {
       source: 'live',
       source_as_of: live.asOf,
+      generated_at: null, // read straight from the source: there is nothing to be stale
       snapshot_id: null,
       ...live.store,
       period_start: PERIOD.period_start,
@@ -214,6 +228,7 @@ export async function reportFor(a: Assignment): Promise<Report> {
   return {
     source: 'snapshot',
     source_as_of: asOf,
+    generated_at: iso(snap.activated_at ?? snap.built_at),
     snapshot_id: snap.row_id,
     ...store,
     period_start: PERIOD.period_start,

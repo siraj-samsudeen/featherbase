@@ -20,7 +20,7 @@ Ported from the data-warehouse repo (#3666, Siraj, 16-Sep-2026). The axes and th
 | | data-warehouse | featherbase |
 |---|---|---|
 | isolation | hand-built fakes, monkeypatched sinks | every test in a real Postgres transaction, rolled back (`feather-testing-postgres`) |
-| test files using a double | most | **5 of 223** — `dataset-snapshot`, `sales-target`, `app-grants`, `table-lifecycle-bound`, `client-validation` |
+| test files using a double | most | **5 of 224** — `dataset-snapshot`, `sales-target`, `app-grants`, `table-lifecycle-bound`, `client-validation` |
 | spec↔test linkage | none until #3691 | `tools/check-evidence.mjs`, in CI, static *and* runtime |
 | pins | undeclared | `test.fails` with the issue in the title (`CLAUDE.md`'s rule) |
 
@@ -84,10 +84,10 @@ Kent Beck's *TDD by Example* opens exactly here — before writing any code he w
 **The richest source by far: every invariant currently asserted only in a comment.** Prose cannot fail, so an invariant living in prose is a promise with no test by definition. This repo's comments are unusually dense with them, which makes the harvest unusually good:
 
 ```
-dataset-snapshot.ts:15  "A build that dies halfway leaves its row in 'building', which
+dataset-snapshot.ts:16  "A build that dies halfway leaves its row in 'building', which
                          activeSnapshot never resolves"                        -> TESTED
-dataset-snapshot.ts:25  "Returns the row count written"                        -> untested
-sales-target-report.ts:37 "least(period_end, source_as_of) — the cutoff ACTUALLY
+dataset-snapshot.ts:31  "Returns the row count written"                        -> untested
+sales-target-report.ts:46 "least(period_end, source_as_of) — the cutoff ACTUALLY
                          APPLIED to both sides"                                -> see Axis 3A
 realtime.ts:151         "ignore malformed frames"                              -> untested
                          (nothing asserts what a non-parse failure does)
@@ -140,9 +140,9 @@ If one bug reddens twelve tests, eleven carried no information. The rigorous ver
 
 The origin skill warns about this directly: *"in a young, well-named suite Axis 1 dominates and Axis 2 barely fires; in an old accreted suite the reverse. One reviewer wasted a pass hunting deletions in a suite that was badly under-tested."*
 
-Measured on 18-Sep-2026: 866 test declarations across 223 files, organised one-promise-per-test and named after the promise, most files under 300 lines. **Do not manufacture clusters here.** Report what is there.
+Measured on 18-Sep-2026: 885 test declarations across 224 files, organised one-promise-per-test and named after the promise, most files under 300 lines. **Do not manufacture clusters here.** Report what is there.
 
-**What to watch instead — the growth pattern that produces clusters later.** `apps/server/test/sources-security.test.ts` (581 lines) is organised by *provenance*: `describe('finding 1: …')`, `describe('re-review findings')`, `test('round 3: …')`. Every test in it is currently distinct — this is **not** a finding today. It is the visible signature of the REJECTed rule *"every bug gets a regression test"*, which appends a test per incident with no check against the promise set. The moment two review rounds raise the same underlying promise, that file gets its first genuine duplicate and nothing will notice. The cheap prophylactic is to name tests after the promise and let the issue number ride in a comment — which 851 of the 866 already do.
+**What to watch instead — the growth pattern that produces clusters later.** `apps/server/test/sources-security.test.ts` (581 lines) is organised by *provenance*: `describe('finding 1: …')`, `describe('re-review findings')`, `test('round 3: …')`. Every test in it is currently distinct — this is **not** a finding today. It is the visible signature of the REJECTed rule *"every bug gets a regression test"*, which appends a test per incident with no check against the promise set. The moment two review rounds raise the same underlying promise, that file gets its first genuine duplicate and nothing will notice. The cheap prophylactic is to name tests after the promise and let the issue number ride in a comment — which 870 of the 885 already do.
 
 ### The critical nuance: many CASES is not many TESTS
 
@@ -301,7 +301,7 @@ Close with: a count of **findings** per axis and, separately, **promises tested 
 | **One assertion per test** | Meszaros's *Assertion Roulette* is about assertions you cannot tell apart on failure, not about their number. Several assertions about **one promise** is correct. |
 | **The strict test pyramid** (many unit, few integration) | Wrong shape for this product. The risk lives in metadata-driven generation, permissions and SQL — so integration-level tests against a real Postgres carry most of the value. That is what the sandbox is *for*; over-applying the pyramid here would manufacture Axis 3A at scale. |
 | **Mock everything / total isolation** | Produces Axis 3A at scale. GOOS's rule stands: only mock types you own. |
-| **Test count or test-to-code ratio as a quality signal** | 16,927 lines of server test says nothing about whether the promises are covered. Count promises, not tests. |
+| **Test count or test-to-code ratio as a quality signal** | 17,326 lines of server test says nothing about whether the promises are covered. Count promises, not tests. |
 
 ### What a bug actually means
 
@@ -354,4 +354,4 @@ Kept at three rather than two because **a false-tracking test is worse than a mi
 | Framing rules, and the promise as the unit | `code-review-8-axes` |
 | The sandbox model this suite is built on | Phoenix / Ecto SQL Sandbox, via `feather-testing-postgres` |
 
-Evidence base: 223 test files / 866 test declarations, read on 18-Sep-2026. The five files carrying a double were read in full; `dataset-snapshot.test.ts`'s `stub()` is the verified Axis 3A example.
+Evidence base: 224 test files / 885 test declarations, read on 18-Sep-2026. The five files carrying a double were read in full; `dataset-snapshot.test.ts`'s `stub()` is the verified Axis 3A example.

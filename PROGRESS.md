@@ -64,6 +64,17 @@ which did not reproduce when the suite ran alone: I had started the web suite
 against the same database concurrently, which the vitest configs warn about by
 name. Self-inflicted, recorded so nobody re-diagnoses it.
 
+Re-verified after merging `origin/main` (#285–#288, which rewrote
+`dataset-snapshot.ts` around a `state` column and a two-Table registry): server
+**784 passed / 1 failed / 15 skipped** — the same root/`chmod` failure and no
+other — web 133 passed, all three typechecks clean, both checkers green
+(`check-evidence` now scans 224 test files). The merge also moved five line
+numbers the skills cite; every `file:line` in the four new documents was
+re-resolved against the merged tree and the drifted ones corrected, along with
+the measured figures (224 test files, 885 declarations, `index.ts` 1,492 lines).
+**That is the rot these skills describe, arriving within an hour of being
+written** — cited line numbers are a dated fact, and the documents now say so.
+
 **Next:** rule on `docs/design/openspec-vs-journey-spec.md`. Then, whichever way
 it goes, delete the losing table-deletion document. Findings surfaced by the
 audit and deliberately **not** fixed here (findings and fixes are separate PRs):
@@ -74,6 +85,110 @@ authorization lookup; the "columns that hold no value" set living in seven
 places under three names; `docstatus` surviving in one user-facing error string;
 and the coverage ratchets never raised to the figure their own comment says to
 raise them to.
+## 2026-09-18 — The dataset-snapshot registry is two Tables; builds record cost and cause; report opens are Access Log rows
+
+Migration `0085` had created `dataset_snapshot` and `dataset_miss` as raw SQL,
+outside `table_def`, on the reasoning that snapshot ROWS hold every store's
+figures and generic row scoping is fail-open (#246). That reasoning covers the
+rows table (`sales_target_snapshot_row`, still raw and app-internal) and never
+covered the registry, which holds no figure and which nobody could see.
+Migration `0087` moves the raw tables aside, creates the system Tables
+**Dataset Snapshot** (`dataset`, `state` — `building · active · superseded ·
+failed`, not the reserved `status` — `definition_version`, `source_as_of`,
+`built_at`, `activated_at`, `row_count`, and the new `bytes`, `fetch_ms`,
+`load_ms`, `triggered_by`, `error`; sorted by `built_at desc`) and **Dataset
+Miss** (`dataset` unique, `first_seen`, `last_seen`, `hits`), carries the rows
+across, re-points the rows table's cascade FK, drops the old, and recreates the
+partial unique index that makes one-active-per-dataset a database fact.
+Without Permission rows only System Managers read them, which is the
+audience; a viewer gets 403. `buildSnapshot(dataset, { trigger })` now times
+fetch and load separately, asks the definition for `sizeOf(snapshotId)`
+(pg_column_size over the rows — several snapshots share one table), and writes
+all of it plus the cause — the `refresh_datasets` job passes
+`ctx.job.trigger`, so a refresh a reader's miss caused and one the clock
+caused look different afterwards; the measure script passes `'script'` — onto
+the row whichever way the build ends: a failed build's timings are a fact too.
+`GET /api/sales_target/report` now calls `logAccess(user, 'view_report',
+{ table: dataset, row_id: snapshot_id, method: 'snapshot' | 'live' })` — the
+PLAT-007 Access Log that already records exports and prints, so "who is
+looking at the sales-target report, served from what" is an Admin list
+(data-warehouse#3376), and a complaint about a figure traces to the exact
+snapshot served. The `Sales Target Viewer` role reads neither log nor
+registry. Nothing in `apps/web`.
+
+Verified: `pnpm --filter server typecheck`; `pnpm --filter server test
+test/dataset-snapshot.test.ts` (23 passed — the 19 lifecycle/grain/
+personalisation/freshness tests on the `state` column, plus: a build records
+fetch_ms/load_ms/bytes/triggered_by; a failed build still records its
+timings; the registry lists through `/api/table/Dataset%20Snapshot` while
+`Sales Target Snapshot Row` is 404; a miss is a Dataset Miss row);
+`test/sales-target.test.ts` (17 passed, +1: a viewer's report open is one
+Access Log row with `method live` and `reference_name null`, and the viewer
+is 403 on both Access Log and Dataset Snapshot); system-flag, audit and
+scheduled-jobs suites unchanged; full server suite 784 passed / 15 skipped / 1 failed — the same root-runs-chmod `sources-csv.test.ts` case that fails identically on base.
+By hand: `pnpm --filter server migrate` on a database carrying the
+343,723-row active snapshot from the morning's build — the row survived with
+`state active`, the FK follows the new table, both indexes exist — and the
+booted server lists it at `GET /api/table/Dataset%20Snapshot` with
+`bytes/fetch_ms/load_ms/triggered_by` null (built before this change) and the
+next build will fill them. Gotcha: `createTable` refuses a physical name that
+an engine-owned raw table occupies (#137's derived guard), which is why the
+migration renames the raw table aside FIRST and copies back, rather than
+creating beside it. Next: MotherDuck `session_name` tagging on the dataset
+fetch (data-warehouse #3364 attribution) once the fetch goes through a Data
+Source row instead of its own instance; `scope_required` (#246) before any
+rows table becomes a Table.
+
+## 2026-09-18 — Recurring jobs are Scheduled Job rows; executions carry duration and trigger
+
+Every recurring cadence was a literal in code — three boot blocks in
+`index.ts` (`auto_email_reports` daily, `check_sla` minutely,
+`refresh_datasets` four-hourly) plus an app manifest's `every_seconds` —
+re-seeded on each restart, invisible and uneditable in the Admin, and a run
+that exhausted its attempts ended the recurrence until the next restart.
+Migration `0086` adds the system Table **Scheduled Job** (`method` is the
+identity via `id_pattern: field:method`, so `/admin/scheduled-job/refresh_datasets`;
+`cadence` is a Choice — `every minute · every 15 minutes · hourly · every 4
+hours · daily` — never free-text seconds, because the warehouse this serves
+runs on a fixed grid and every hand-typed interval that drifted off it failed
+silently, data-warehouse #3036/#3082; `enabled`; read-only `last_run_at`,
+`last_outcome`, `last_duration_ms` written by the worker) and seeds the three
+rows. `jobs.ts` gains `syncScheduledJobs()` — the queue is DERIVED from the
+rows at boot (replacing the literal seeds) and, via the `Scheduled Job`
+controller's `after_commit`, after every save: one live entry per enabled
+row carrying its cadence, none for a disabled one, a cadence change re-times
+the pending entry to whichever is sooner (its existing time or one new
+interval from now), and stacked duplicates are dropped. The re-enqueue after
+a run reads the row, so an edit is in force on the very next run, and an
+enabled row queues its next interval even when the run just failed for good.
+App manifests declare `cadence` (a default for a NEW row only — an
+administrator's later edit is never re-imposed) instead of `every_seconds`.
+Two observability columns the queue lacked: **Job Execution** gains
+`started_at` + `duration_ms`; **Background Job** gains `trigger`
+(`schedule` for the clock, `demand` for something that happened — an email,
+a webhook, a report's cache miss — `manual` from `/api/enqueue_job`, `retry`
+from `/api/retry_job`), which `JobContext.job.trigger` hands to handlers.
+Nothing new in `apps/web`: the generic list and form render the Table.
+
+Verified: `pnpm --filter server typecheck`; `pnpm --filter server test
+test/scheduled-jobs.test.ts` (9 passed: seed + idempotent boot sync; API
+edit re-times / disable withdraws / re-enable restores; unknown cadence is a
+417; post-run interval follows the row not the stale entry; disabled ends the
+recurrence; a failed-for-good run still queues the next interval; delete
+withdraws; started_at/duration_ms on the execution and mirrored on the row;
+demand/manual/retry triggers); jobs / jobs-recurring / job-retry /
+hook-parity / system-flag suites unchanged; full server suite 779 passed / 15 skipped / 1 failed — `sources-csv.test.ts › a failed write never poisons the parse cache`, the root-runs-chmod case that fails identically on base `86b9fd5`.
+By hand against the booted server: `GET /api/table/Scheduled%20Job` lists the
+three rows with `check_sla` already showing `last_outcome success,
+last_duration_ms 6`; `POST /api/save_row` switching `refresh_datasets` to
+`hourly` changed the queued entry from `14400 @ 16:54` to `3600 @ 16:00` and
+switching back kept the sooner `16:00`. Gotcha: the migration seeds with
+direct inserts, not `saveDoc` — controllers are not wired mid-migration and
+the queue entries belong to the boot sync, not the migration. Next: the
+dataset-snapshot registry (`dataset_snapshot`, `dataset_miss`) is still raw
+SQL from `0085`; make them Tables with build timing, size and trigger, and
+log report opens to Access Log (the observability slice for
+data-warehouse#3755's snapshot layer).
 
 ## 2026-09-18 — Personalised sales-target report host (data-warehouse#3755, candidate A)
 

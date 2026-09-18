@@ -48,7 +48,7 @@ Emit this, one per disagreement:
 ```
 DIVERGENCE  cutoff_applied_to_both_sides
   SPEC  "data_through: least(period_end, source_as_of) -- the cutoff ACTUALLY
-         APPLIED to both sides"          apps/server/src/sales-target-report.ts:37
+         APPLIED to both sides"          apps/server/src/sales-target-report.ts:46
   CODE  three independent reads of max(actuals_as_of_date): the snapshot's
         as-of (datasets/sales-target-mtd.ts:61), the rows query's own cutoff
         CTE (:34) and the live path (:156). Separate statements, separate

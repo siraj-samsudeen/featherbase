@@ -90,7 +90,9 @@ async function login(page: Page, n: number, password = pw(n)) {
 type Outcome = { kind: 'frame' } | { kind: string; text: string }
 async function embedOutcome(page: Page): Promise<Outcome> {
   const frame = page.locator('[data-testid="report-frame"]')
-  const settled = page.locator('[data-testid="embed-state"][data-state="no-assignment"], [data-testid="embed-state"][data-state="error"]')
+  const settled = page.locator(
+    '[data-testid="embed-state"][data-state="no-assignment"], [data-testid="embed-state"][data-state="error"], [data-testid="embed-state"][data-state="not-configured"]',
+  )
   await expect(frame.or(settled)).toBeAttached({ timeout: 60_000 })
   if (await frame.count()) return { kind: 'frame' }
   return { kind: (await settled.getAttribute('data-state')) ?? 'unknown', text: await settled.innerText() }

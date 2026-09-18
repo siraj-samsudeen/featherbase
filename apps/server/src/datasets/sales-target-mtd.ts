@@ -136,6 +136,15 @@ registerDataset({
     return rows.length
   },
 
+  // What the rows cost on disk, for the registry. pg_column_size over the rows
+  // rather than the relation's size: several snapshots share the table.
+  async sizeOf(snapshotId) {
+    const [r] = await sql`
+      select coalesce(sum(pg_column_size(t)), 0)::bigint as bytes
+      from sales_target_snapshot_row t where snapshot_id = ${snapshotId}`
+    return Number(r.bytes)
+  },
+
   // An empty candidate is the shape a silent upstream failure takes — a
   // successful query against a mart that has not been built yet. Activating it
   // would replace a working snapshot with a report that shows nothing and says
