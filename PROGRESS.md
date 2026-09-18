@@ -1,5 +1,56 @@
 # Progress Log
 
+## 2026-09-18 — Recurring jobs are Scheduled Job rows; executions carry duration and trigger
+
+Every recurring cadence was a literal in code — three boot blocks in
+`index.ts` (`auto_email_reports` daily, `check_sla` minutely,
+`refresh_datasets` four-hourly) plus an app manifest's `every_seconds` —
+re-seeded on each restart, invisible and uneditable in the Admin, and a run
+that exhausted its attempts ended the recurrence until the next restart.
+Migration `0086` adds the system Table **Scheduled Job** (`method` is the
+identity via `id_pattern: field:method`, so `/admin/scheduled-job/refresh_datasets`;
+`cadence` is a Choice — `every minute · every 15 minutes · hourly · every 4
+hours · daily` — never free-text seconds, because the warehouse this serves
+runs on a fixed grid and every hand-typed interval that drifted off it failed
+silently, data-warehouse #3036/#3082; `enabled`; read-only `last_run_at`,
+`last_outcome`, `last_duration_ms` written by the worker) and seeds the three
+rows. `jobs.ts` gains `syncScheduledJobs()` — the queue is DERIVED from the
+rows at boot (replacing the literal seeds) and, via the `Scheduled Job`
+controller's `after_commit`, after every save: one live entry per enabled
+row carrying its cadence, none for a disabled one, a cadence change re-times
+the pending entry to whichever is sooner (its existing time or one new
+interval from now), and stacked duplicates are dropped. The re-enqueue after
+a run reads the row, so an edit is in force on the very next run, and an
+enabled row queues its next interval even when the run just failed for good.
+App manifests declare `cadence` (a default for a NEW row only — an
+administrator's later edit is never re-imposed) instead of `every_seconds`.
+Two observability columns the queue lacked: **Job Execution** gains
+`started_at` + `duration_ms`; **Background Job** gains `trigger`
+(`schedule` for the clock, `demand` for something that happened — an email,
+a webhook, a report's cache miss — `manual` from `/api/enqueue_job`, `retry`
+from `/api/retry_job`), which `JobContext.job.trigger` hands to handlers.
+Nothing new in `apps/web`: the generic list and form render the Table.
+
+Verified: `pnpm --filter server typecheck`; `pnpm --filter server test
+test/scheduled-jobs.test.ts` (9 passed: seed + idempotent boot sync; API
+edit re-times / disable withdraws / re-enable restores; unknown cadence is a
+417; post-run interval follows the row not the stale entry; disabled ends the
+recurrence; a failed-for-good run still queues the next interval; delete
+withdraws; started_at/duration_ms on the execution and mirrored on the row;
+demand/manual/retry triggers); jobs / jobs-recurring / job-retry /
+hook-parity / system-flag suites unchanged; full server suite 779 passed / 15 skipped / 1 failed — `sources-csv.test.ts › a failed write never poisons the parse cache`, the root-runs-chmod case that fails identically on base `86b9fd5`.
+By hand against the booted server: `GET /api/table/Scheduled%20Job` lists the
+three rows with `check_sla` already showing `last_outcome success,
+last_duration_ms 6`; `POST /api/save_row` switching `refresh_datasets` to
+`hourly` changed the queued entry from `14400 @ 16:54` to `3600 @ 16:00` and
+switching back kept the sooner `16:00`. Gotcha: the migration seeds with
+direct inserts, not `saveDoc` — controllers are not wired mid-migration and
+the queue entries belong to the boot sync, not the migration. Next: the
+dataset-snapshot registry (`dataset_snapshot`, `dataset_miss`) is still raw
+SQL from `0085`; make them Tables with build timing, size and trigger, and
+log report opens to Access Log (the observability slice for
+data-warehouse#3755's snapshot layer).
+
 ## 2026-09-18 — Personalised sales-target report host (data-warehouse#3755, candidate A)
 
 Featherbase hosts one employee's MotherDuck sales-target Dive: four local
