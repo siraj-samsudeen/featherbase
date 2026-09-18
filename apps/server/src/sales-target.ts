@@ -303,3 +303,15 @@ salesTargetRoutes.post('/embed_session', async (c) => {
     )
   return c.json({ session: r.session })
 })
+
+// The report itself, served from the dataset snapshot when one is active and
+// live otherwise (openspec/changes/query-grained-dataset-snapshots). Additive:
+// /me and /embed_session above are untouched, so the embedded Dive and the
+// pre-generated read are two deliveries of one authorization decision.
+salesTargetRoutes.get('/report', async (c) => {
+  const user = c.get('user')
+  const a = await currentAssignment(user.row_id)
+  if (!a || !a.material_groups.length) return c.json({ no_assignment: true })
+  const { reportFor } = await import('./sales-target-report')
+  return c.json(await reportFor(a))
+})
