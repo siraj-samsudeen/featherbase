@@ -5,7 +5,7 @@
 // .env.local. The upstream MotherDuck call is injected: no network, and the
 // stub records exactly what the server would have sent.
 import { afterEach, describe, expect } from 'vitest'
-import { test } from './pg-test'
+import { test, patchDoc } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import {
@@ -184,7 +184,7 @@ describe('#3755 sales-target host: embed session from the current assignment', (
     expect(me).toEqual({
       username: 'test_employee_2',
       display_name: 'Employee 2',
-      assignment: { plant_code: '1501', store_label: 'ATK', material_groups: ['010102001', '010102002'] },
+      assignment: { plant_code: '1501', store_label: 'ATK', material_groups: ['010102001', '010102002'], sections: [] },
       period_start: '2026-09-01',
       period_end: '2026-09-17',
       embed_origin: 'https://embed-motherduck.com',
@@ -290,6 +290,93 @@ describe('#3755 sales-target host: report opens are Access Log rows', () => {
     } finally {
       _setSourceReader(null)
     }
+  })
+})
+
+describe('#3783 sales-target host: the assignment is derived from the Store Sections maps', () => {
+  // The two Tables the store maintains in Featherbase (featherbase/apps/store-sections in the
+  // data-warehouse repo). Created here through the same public API the app manifest uses, with
+  // the columns the derivation joins on; the real Tables carry more.
+  async function seedSectionMaps(admin: TestClient) {
+    for (const [name, columns] of [
+      ['Section Merchandise Map', ['store_code', 'material_group', 'mch_subcategory', 'section_name']],
+      ['Employee Section Map', ['store_code', 'employee_code', 'subcategory', 'section_name']],
+    ] as const) {
+      const meta = await admin.fetch(`/api/table/${encodeURIComponent(name)}:meta`)
+      if (meta.status === 404)
+        await admin.post('/api/table_def', {
+          name, module: 'Store Sections',
+          columns: columns.map((c) => ({ column_name: c, column_type: 'Data' })),
+        })
+    }
+    // Kurti section at ATK holds two material groups; RR-11092 owns the Kurti subcategory.
+    for (const row of [
+      { store_code: '1501', material_group: '010505001', mch_subcategory: 'Kurti', section_name: 'Kurti' },
+      { store_code: '1501', material_group: '010505002', mch_subcategory: 'Kurti Set', section_name: 'Kurti' },
+      { store_code: '1515', material_group: '010505001', mch_subcategory: 'Kurti', section_name: 'Kurti' },
+    ])
+      await admin.post('/api/save_row', { table: 'Section Merchandise Map', row })
+    for (const row of [
+      { store_code: '1501', employee_code: 'RR-11092', subcategory: 'Kurti', section_name: 'Kurti' },
+      { store_code: '1501', employee_code: 'RR-11092', subcategory: 'Kurti Set', section_name: 'Kurti' },
+      { store_code: '1515', employee_code: 'RR-90001', subcategory: 'Kurti', section_name: 'Kurti' },
+    ])
+      await admin.post('/api/save_row', { table: 'Employee Section Map', row })
+  }
+
+  async function setEmployeeCode(admin: TestClient, user: string, code: string) {
+    const doc = await admin.get<{ updated_at: string }>(`/api/table/User/${user}`)
+    await patchDoc(admin, `/api/table/User/${user}`, { employee_code: code, updated_at: doc.updated_at })
+  }
+
+  test('an employee code on the user widens the assignment to the material groups their Sections hold', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    await setEmployeeCode(admin, 'test_employee_2', 'RR-11092')
+    const r = await loginAs(api, 'test_employee_2', PASSWORDS.test_employee_2)
+    const me = (await (await api.fetch('/api/sales_target/me', { headers: r.headers })).json()) as { assignment: unknown }
+    expect(me.assignment).toEqual({
+      plant_code: '1501',
+      store_label: 'ATK',
+      // the two explicit rows plus the two Kurti material groups, once each, sorted
+      material_groups: ['010102001', '010102002', '010505001', '010505002'],
+      sections: ['Kurti'],
+    })
+  })
+
+  test('an employee with mapped Sections and no assignment row is served from the maps alone', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    await admin.post('/api/save_row', {
+      table: 'User',
+      row: { row_id: 'test_employee_5', email: 'test_employee_5@example.invalid', full_name: 'Employee 5', enabled: true, roles: [{ role: VIEWER_ROLE }] },
+    })
+    await setEmployeeCode(admin, 'test_employee_5', 'RR-11092')
+    await admin.post('/api/set_password', { user: 'test_employee_5', password: 'sandbox-pw-5' })
+    const r = await loginAs(api, 'test_employee_5', 'sandbox-pw-5')
+    const me = (await (await api.fetch('/api/sales_target/me', { headers: r.headers })).json()) as { assignment: unknown }
+    expect(me.assignment).toEqual({
+      plant_code: '1501', store_label: null, material_groups: ['010505001', '010505002'], sections: ['Kurti'],
+    })
+  })
+
+  test('maps and assignment naming different stores are refused loudly, never mixed', async ({ admin, api }) => {
+    await seed(admin)
+    await seedSectionMaps(admin)
+    // test_employee_3 is assigned at 1515; RR-11092's Sections are at 1501.
+    await setEmployeeCode(admin, 'test_employee_3', 'RR-11092')
+    const r = await loginAs(api, 'test_employee_3', PASSWORDS.test_employee_3)
+    const res = await api.fetch('/api/sales_target/me', { headers: r.headers })
+    expect(res.status).toBe(417)
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain('more than one store')
+  })
+
+  test('without the Store Sections Tables, or without an employee code, nothing changes', async ({ admin, api }) => {
+    await seed(admin)
+    const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
+    const me = (await (await api.fetch('/api/sales_target/me', { headers: r.headers })).json()) as { assignment: { material_groups: string[]; sections: string[] } }
+    expect(me.assignment.material_groups).toEqual(['010101001', '010101003'])
+    expect(me.assignment.sections).toEqual([])
   })
 })
 
