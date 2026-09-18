@@ -7,6 +7,9 @@ export interface SessionUser {
   row_id: string
   email: string
   full_name: string | null
+  // #3755: where this account lands after sign-in when it is not the Admin
+  // (a sales-target report viewer lands on /sales-target). Absent = /admin.
+  landing?: string
 }
 
 export function getToken(): string | null {
@@ -91,9 +94,15 @@ export const api = {
 }
 
 export async function login(usr: string, pwd: string): Promise<SessionUser> {
-  const res = await api.post<{ token: string; user: SessionUser }>('/api/login', { usr, pwd })
-  setSession(res.token, res.user)
-  return res.user
+  const res = await api.post<{ token: string; user: SessionUser; landing?: string }>('/api/login', { usr, pwd })
+  const user = res.landing ? { ...res.user, landing: res.landing } : res.user
+  setSession(res.token, user)
+  return user
+}
+
+/** The signed-in account's landing path: the Admin unless the server said otherwise (#3755). */
+export function landingPath(user: SessionUser | null = getSessionUser()): string {
+  return user?.landing ?? '/admin'
 }
 
 export interface ListResult<T = Record<string, unknown>> {

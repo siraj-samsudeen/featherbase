@@ -186,6 +186,7 @@ describe('#3755 sales-target host: embed session from the current assignment', (
       assignment: { plant_code: '1501', store_label: 'ATK', material_groups: ['010102001', '010102002'] },
       period_start: '2026-09-01',
       period_end: '2026-09-17',
+      embed_origin: 'https://embed-motherduck.com',
     })
   })
 

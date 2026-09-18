@@ -12,7 +12,8 @@ import { WebFormPage } from './pages/WebForm'
 import { PortalListPage, PortalRowPage } from './pages/Portal'
 import { OAuthCallbackPage } from './pages/OAuthCallback'
 import { AdminLayout } from './pages/AdminLayout'
-import { getToken } from './lib/api'
+import { getToken, landingPath } from './lib/api'
+import { SalesTargetPage } from './pages/SalesTarget'
 import { ListView } from './components/ListView'
 import { FormView } from './components/FormView'
 import { useMeta } from './lib/meta'
@@ -87,7 +88,7 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   beforeLoad: () => {
-    throw redirect({ to: getToken() ? '/admin' : '/login' })
+    throw redirect({ to: getToken() ? landingPath() : '/login' })
   },
 })
 
@@ -147,6 +148,18 @@ function PortalDocRouteComponent() {
   const { table, name } = portalDocRoute.useParams()
   return <PortalRowPage key={`${table}/${name}`} table={table} name={name} />
 }
+
+// #3755: the personalised sales-target report — outside the Admin shell, one
+// page per signed-in employee, no selector. The server resolves the
+// assignment and mints the embed session; the page only frames it.
+const salesTargetRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/sales-target',
+  beforeLoad: () => {
+    if (!getToken()) throw redirect({ to: '/login' })
+  },
+  component: SalesTargetPage,
+})
 
 // SET-002: public password-reset page (target of the emailed link).
 const resetPasswordRoute = createRoute({
@@ -706,6 +719,7 @@ export const routeTree = rootRoute.addChildren([
   oauthCallbackRoute,
   portalListRoute,
   portalDocRoute,
+  salesTargetRoute,
   printRoute,
   adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, tableRoute, docRoute]),
 ])

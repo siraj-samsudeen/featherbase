@@ -22,7 +22,10 @@ export const VIEWER_ROLE = 'Sales Target Viewer'
 export const REPORT_PATH = '/sales-target'
 // Fixed experiment period (issue #3755): not a production calendar.
 export const PERIOD = { period_start: '2026-09-01', period_end: '2026-09-17' } as const
-export const EMBED_ORIGIN = 'https://embed-motherduck.com'
+// The sandbox origin the page frames and the CSP allows. Overridable only so
+// a browser-level test can point both at a local stub; the page never
+// chooses it — the server hands it out with the identity chrome.
+export const EMBED_ORIGIN = (process.env.MOTHERDUCK_EMBED_ORIGIN ?? 'https://embed-motherduck.com').replace(/\/+$/, '')
 
 // The shared experiment inputs live in the sibling data-warehouse checkout;
 // SALES_TARGET_SHARED_ENV names the gitignored .env.local that holds the
@@ -283,6 +286,7 @@ salesTargetRoutes.get('/me', async (c) => {
     display_name: user.full_name ?? user.row_id,
     assignment: a,
     ...PERIOD,
+    embed_origin: EMBED_ORIGIN,
   })
 })
 
