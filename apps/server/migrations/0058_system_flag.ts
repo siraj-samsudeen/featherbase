@@ -30,6 +30,8 @@ export const ENGINE_TABLES = [
   'Custom Field',
   'Dashboard',
   'Data Scope',
+  'Dataset Miss',
+  'Dataset Snapshot',
   'Email Account',
   'Email Queue',
   'Email Rule',

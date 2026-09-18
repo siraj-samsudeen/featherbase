@@ -21,14 +21,17 @@ export async function datasetsDue(): Promise<string[]> {
   return [...misses]
 }
 
-registerJob('refresh_datasets', async () => {
+registerJob('refresh_datasets', async (_payload, ctx) => {
   for (const dataset of await datasetsDue()) {
-    const outcome = await buildSnapshot(dataset)
+    // The job's trigger travels onto the registry row: a refresh caused by a
+    // reader's miss and one caused by the clock look different afterwards.
+    const outcome = await buildSnapshot(dataset, { trigger: ctx.job.trigger })
     // Fail loud in the log, keep serving last-good: a refused or failed build
     // leaves the previous snapshot active, which ages visibly rather than
     // disappearing. Never more destructive than not running at all.
     console.log(`[dataset] ${dataset}: ${outcome.status}${outcome.reason ? ` — ${outcome.reason}` : ''}` +
-      (outcome.rowCount != null ? ` (${outcome.rowCount} rows)` : ''))
+      (outcome.rowCount != null ? ` (${outcome.rowCount} rows)` : '') +
+      (outcome.fetchMs != null ? ` fetch ${outcome.fetchMs} ms, load ${outcome.loadMs} ms` : ''))
     if (outcome.status === 'activated') await pruneSnapshots(dataset)
   }
 })
