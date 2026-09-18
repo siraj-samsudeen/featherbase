@@ -40,6 +40,15 @@ function readEnvFile(file: string): Record<string, string> {
   }
   return out
 }
+// The shared inputs live in the sibling data-warehouse checkout and are never
+// committed here. Without them there is nothing to seed or compare against, so
+// the whole file skips with a reason instead of dying at collection (which took
+// the rest of the e2e run down with it on CI).
+const SHARED_AVAILABLE = ['assignments.json', 'baseline.csv'].every((f) => existsSync(path.join(SHARED_DIR, f))) && existsSync(SHARED_ENV)
+test.skip(
+  !SHARED_AVAILABLE,
+  `shared experiment inputs not available at ${SHARED_DIR} — set SALES_TARGET_SHARED_ENV to data-warehouse experiments/issue_3755/shared/.env.local`,
+)
 const env = readEnvFile(SHARED_ENV)
 const pw = (n: number) => env[`TEST_EMPLOYEE_${n}_PASSWORD`] ?? ''
 
@@ -50,11 +59,11 @@ interface AssignmentRecord {
   store_label: string
   material_groups: string[]
 }
-const assignments = JSON.parse(readFileSync(path.join(SHARED_DIR, 'assignments.json'), 'utf8')) as AssignmentRecord[]
+const assignments = SHARED_AVAILABLE ? (JSON.parse(readFileSync(path.join(SHARED_DIR, 'assignments.json'), 'utf8')) as AssignmentRecord[]) : []
 const A = (n: number) => assignments.find((a) => a.username === `test_employee_${n}`)!
 
 const csv = (name: string) =>
-  readFileSync(path.join(SHARED_DIR, name), 'utf8').trim().split('\n').map((l) => l.split(',')).slice(1)
+  SHARED_AVAILABLE ? readFileSync(path.join(SHARED_DIR, name), 'utf8').trim().split('\n').map((l) => l.split(',')).slice(1) : []
 const baseline = csv('baseline.csv').map(([plant_code, material_group, subcategory, t, a, g, ach]) => ({
   plant_code, material_group, subcategory, mtd_target: +t, mtd_actual: +a, gap: +g, achievement_pct: +ach,
 }))
