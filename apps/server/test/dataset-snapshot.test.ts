@@ -20,8 +20,8 @@ import { SALES_TARGET_DATASET, _setSourceReader, definitionSql } from '../src/da
 import { reportFor } from '../src/sales-target-report'
 import type { Assignment } from '../src/sales-target'
 
-const EMP1: Assignment = { plant_code: '1501', store_label: 'ATK', material_groups: ['010101001', '010101003'] }
-const EMP3: Assignment = { plant_code: '1515', store_label: 'Kattakada', material_groups: ['010101001', '010101003'] }
+const EMP1: Assignment = { plant_code: '1501', store_label: 'ATK', material_groups: ['010101001', '010101003'], sections: [] }
+const EMP3: Assignment = { plant_code: '1515', store_label: 'Kattakada', material_groups: ['010101001', '010101003'], sections: [] }
 
 /** One snapshot row in the dataset's 8-column shape. */
 const row = (plant: string, code: string, date: string, target: number | null, actual: number | null) =>

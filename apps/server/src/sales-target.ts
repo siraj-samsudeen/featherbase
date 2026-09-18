@@ -147,6 +147,26 @@ export async function seedSalesTarget(
   if (role.status === 404)
     await ok(await f('/api/save_row', json({ table: 'Role', row: { row_id: VIEWER_ROLE } })), 'create role')
 
+  // #3783: the host derives an employee's sections from the Store Sections maps, which key on
+  // the StyleHR employee code. A Custom Field is the framework's way to give a platform Table
+  // one more attribute an app needs — no migration, no fork of User.
+  const field = await f(`/api/table/${enc('Custom Field')}/${enc(EMPLOYEE_CODE_FIELD_ID)}`)
+  if (field.status === 404)
+    await ok(
+      await f('/api/save_row', json({
+        table: 'Custom Field',
+        row: {
+          row_id: EMPLOYEE_CODE_FIELD_ID,
+          dt: 'User',
+          column_name: EMPLOYEE_CODE_FIELD,
+          label: 'Employee code (StyleHR)',
+          column_type: 'Data',
+          in_list_view: true,
+        },
+      })),
+      'create employee_code custom field',
+    )
+
   const users: string[] = []
   for (const a of TEST_ACCOUNTS) {
     const password = passwords[a.username]
@@ -194,23 +214,76 @@ export interface Assignment {
   plant_code: string
   store_label: string | null
   material_groups: string[]
+  /** The store Sections the employee's material groups were derived from (#3783); empty when every group is an explicit assignment. */
+  sections: string[]
 }
 
-/** The caller's CURRENT assignment, read from the Table on every call. */
-export async function currentAssignment(user: string): Promise<Assignment | null> {
+/** The StyleHR employee code lives on User as a Custom Field the sales-target seed declares. */
+export const EMPLOYEE_CODE_FIELD = 'employee_code'
+export const EMPLOYEE_CODE_FIELD_ID = `User-${EMPLOYEE_CODE_FIELD}`
+
+async function relationExists(name: string): Promise<boolean> {
+  const [row] = await sql`
+    select 1 from information_schema.tables
+    where table_schema = current_schema() and table_name = ${name}`
+  return Boolean(row)
+}
+
+/**
+ * #3783: what the Store Sections maps say this employee owns — Employee Section Map (employee →
+ * subcategory, under a Section) joined to Section Merchandise Map (store × subcategory → material
+ * group) on the store's own subcategory spelling. Both Tables are maintained in Featherbase by
+ * the store; an instance without them, or a user without an employee code, derives nothing.
+ */
+async function derivedFromSections(user: string): Promise<{ plant_code: string; material_group: string; section_name: string }[]> {
+  const [col] = await sql`
+    select 1 from information_schema.columns
+    where table_schema = current_schema() and table_name = 'user' and column_name = ${EMPLOYEE_CODE_FIELD}`
+  if (!col) return []
+  if (!(await relationExists('employee_section_map')) || !(await relationExists('section_merchandise_map'))) return []
+  const [u] = await sql`select employee_code from "user" where row_id = ${user}`
+  const code = u?.employee_code == null ? '' : String(u.employee_code).trim()
+  if (!code) return []
   const rows = await sql`
+    select distinct e.store_code as plant_code, m.material_group, e.section_name
+    from employee_section_map e
+    join section_merchandise_map m
+      on  m.store_code = e.store_code
+      and lower(trim(m.mch_subcategory)) = lower(trim(e.subcategory))
+    where e.employee_code = ${code}
+      and m.material_group is not null and m.material_group <> ''
+    order by 1, 2, 3`
+  return rows.map((r) => ({
+    plant_code: String(r.plant_code),
+    material_group: String(r.material_group),
+    section_name: String(r.section_name),
+  }))
+}
+
+/**
+ * The caller's CURRENT assignment, read on every call: the explicit Sales Target Assignment rows
+ * plus what the Store Sections maps derive for the employee (#3783). An employee whose sections
+ * are mapped needs no assignment row; an assignment row still works for a store with no map yet,
+ * and adds to the derived set where both exist. One store per employee is still the rule — a
+ * conflict between the two sources is refused loudly rather than mixing stores.
+ */
+export async function currentAssignment(user: string): Promise<Assignment | null> {
+  const explicit = await sql`
     select plant_code, store_label, material_group
     from sales_target_assignment
     where employee = ${user}
     order by material_group`
-  if (!rows.length) return null
-  const plants = new Set(rows.map((r) => String(r.plant_code)))
+  const derived = await derivedFromSections(user)
+  if (!explicit.length && !derived.length) return null
+  const plants = new Set([...explicit.map((r) => String(r.plant_code)), ...derived.map((r) => r.plant_code)])
   if (plants.size > 1)
-    throw new AppError('ValidationError', `${user} is assigned in more than one store: ${[...plants].join(', ')}`)
+    throw new AppError('ValidationError', `${user} is assigned in more than one store: ${[...plants].sort().join(', ')}`)
+  const groups = new Set([...explicit.map((r) => String(r.material_group)), ...derived.map((r) => r.material_group)])
   return {
-    plant_code: String(rows[0].plant_code),
-    store_label: (rows[0].store_label as string | null) ?? null,
-    material_groups: rows.map((r) => String(r.material_group)),
+    plant_code: [...plants][0],
+    store_label: (explicit[0]?.store_label as string | null) ?? null,
+    material_groups: [...groups].sort(),
+    sections: [...new Set(derived.map((r) => r.section_name))].sort(),
   }
 }
 
