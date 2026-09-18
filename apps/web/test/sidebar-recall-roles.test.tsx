@@ -17,6 +17,15 @@ import { screen, waitFor } from '@testing-library/react'
 import { recordAction } from '../src/lib/recents'
 import { test, expect, renderApp } from './pg-test'
 
+// Testing Library's findBy* default is 1000 ms. The sidebar row renders after
+// the app boots and reads the per-user recents buffer, which is comfortably
+// inside that locally (this file runs in ~390 ms) but not on CI, where the
+// `unit` job runs the server and web suites together and the web suite alone
+// takes 60+ s. This assertion timed out twice in two days on PRs that touched
+// zero files under apps/web (#272 at 7c38862, #285 at a5ec317). The wait is
+// widened, never weakened: the row must still appear, and still be a link.
+const SIDEBAR_WAIT = { timeout: 15_000 }
+
 const DT = 'Recall Roles'
 
 type Admin = Parameters<typeof renderApp>[1]
@@ -46,7 +55,7 @@ test('sidebar recall rows expose the link role, never button', async ({ admin })
   await renderApp(`/admin/${encodeURIComponent(DT)}/new`, admin)
   await screen.findByTestId('form-view')
 
-  const row = await screen.findByTestId('sidebar-recent')
+  const row = await screen.findByTestId('sidebar-recent', {}, SIDEBAR_WAIT)
   expect(row).toHaveRole('link')
   expect(row).toHaveAttribute('href', '/admin/Saved%20Search/SS-1')
   expect(screen.queryAllByRole('button')).not.toContain(row)
@@ -60,7 +69,7 @@ test("a chip wearing a button's words does not widen that button's name lookup",
 
   await renderApp(`/admin/${encodeURIComponent(DT)}/new`, admin)
   await screen.findByTestId('form-view')
-  await screen.findByTestId('sidebar-recent')
+  await screen.findByTestId('sidebar-recent', {}, SIDEBAR_WAIT)
 
   // The chip reads "Saved Search"; the form's own control reads "Save".
   // Exactly one button answers to Save, and it is the form's.
