@@ -19,6 +19,7 @@ import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview
 import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
+import { EMBED_ORIGIN, landingFor, salesTargetRoutes } from './sales-target'
 import { readStored, saveUpload, signFileUrl, verifyFileSignature } from './storage'
 import { isThumbnable, makeThumbnailDataUrl } from './thumbnails'
 import { globalSearch } from './search'
@@ -101,7 +102,10 @@ app.notFound((c) =>
 // API-008: CORS restricted to the Admin origin(s) + standard security
 // headers. Runs before auth so preflight OPTIONS (which carries no
 // Authorization header) is answered here.
-app.use('*', secureHeaders())
+// #3755: the personalised sales-target report embeds MotherDuck's sandbox
+// origin in an iframe, so frames from that origin are allowed; everything
+// else secureHeaders() sets stays as it was.
+app.use('*', secureHeaders({ contentSecurityPolicy: { frameSrc: ["'self'", EMBED_ORIGIN] } }))
 app.use(
   '/api/*',
   cors({
@@ -156,7 +160,9 @@ app.post('/api/login', publicLimit('LOGIN'), async (c) => {
   const session = await login(usr, pwd)
   await forgive(attempt.ticket)
   setSidCookie(c, session.token)
-  return c.json(session)
+  // #3755: report viewers land on their report, not the Admin.
+  const landing = await landingFor(session.user.row_id)
+  return c.json(landing ? { ...session, landing } : session)
 })
 
 // The SPA's sign-out. Public — it must clear the sid cookie even when the
@@ -439,6 +445,9 @@ app.use('/api/*', async (c, next) => {
 app.use('/api/*', rateLimit)
 
 const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').row_id
+
+// #3755: personalised sales-target report (identity + embed-session minting).
+app.route('/api/sales_target', salesTargetRoutes)
 
 app.get('/api/whoami', async (c) => {
   const user = c.get('user')
