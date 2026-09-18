@@ -42,6 +42,7 @@ import { renderPdf, renderPrintHtml } from './print'
 import { availableActions, currentState, getActiveWorkflow } from './workflow'
 import { reapplyCustomFields } from './custom-fields'
 import { enqueue, loadJobs, retryJob, startWorker } from './jobs'
+import { REFRESH_EVERY_SECONDS } from './jobs/refresh-datasets'
 import { attachRealtime, publishDocEvent, publishUserEvent } from './realtime'
 import { createAssignment } from './assign'
 import { queueEmail, sendTestEmail } from './email'
@@ -1497,5 +1498,15 @@ if (process.env.NODE_ENV !== 'test') {
       select 1 from background_job
       where method = 'check_sla' and job_status in ('queued', 'running') limit 1`
     if (!pending) await enqueue('check_sla', {}, { repeatEvery: 60 })
+  }
+  // Dataset snapshots: the recurring refresh (see src/jobs/refresh-datasets.ts).
+  // Registering the handler is not enough — without this the job is never
+  // enqueued, so a deployed snapshot would be built once by a reader's miss and
+  // then never move again, ageing silently behind a correct-looking as-of date.
+  {
+    const [pending] = await sql`
+      select 1 from background_job
+      where method = 'refresh_datasets' and job_status in ('queued', 'running') limit 1`
+    if (!pending) await enqueue('refresh_datasets', {}, { repeatEvery: REFRESH_EVERY_SECONDS })
   }
 }

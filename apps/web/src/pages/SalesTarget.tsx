@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { api, clearSession, getSessionUser, getToken } from '../lib/api'
 import { Logo } from '../components/Logo'
+import { fmtDate as fmtDay, fmtExact, fmtPct, fmtSigned } from '../lib/inr'
 
 // #3755: the personalised sales-target report. The page holds no report
 // logic — MotherDuck renders the Dive inside a sandboxed iframe. What the page
@@ -25,6 +26,41 @@ type Embed =
   | { kind: 'no-assignment' }
   | { kind: 'error'; message: string }
 
+// The pre-generated read: the same numbers as the Dive, served from the dataset
+// snapshot instead of MotherDuck. It lands in milliseconds, so it paints while
+// the embed session is still being minted — the whole point of the snapshot.
+interface ReportRow {
+  code: string
+  subcategory: string
+  target: number | null
+  actual: number | null
+  gap: number | null
+  achievement: number | null
+  missingActual: boolean
+  missingTarget: boolean
+}
+interface Report {
+  source: 'snapshot' | 'live'
+  source_as_of: string | null
+  store_name: string | null
+  data_through: string | null
+  cutoff_early: boolean
+  rows: ReportRow[]
+  total: {
+    target: number | null
+    actual: number | null
+    gap: number | null
+    achievement: number | null
+    missing: number
+    n: number
+  }
+}
+type Pre =
+  | { kind: 'loading' }
+  | { kind: 'ready'; report: Report; ms: number }
+  | { kind: 'no-assignment' }
+  | { kind: 'error'; message: string }
+
 // ISO date -> DD-Mon-YYYY (identity chrome only; the report's own dates are the Dive's).
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 function fmtDate(iso: string): string {
@@ -41,6 +77,7 @@ export function SalesTargetPage() {
   const user = getSessionUser()
   const [me, setMe] = useState<Me | null>(null)
   const [embed, setEmbed] = useState<Embed>({ kind: 'loading' })
+  const [pre, setPre] = useState<Pre>({ kind: 'loading' })
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -53,6 +90,28 @@ export function SalesTargetPage() {
         const identity = await api.get<Me>('/api/sales_target/me')
         if (!current()) return
         setMe(identity)
+
+        // Deliberately NOT awaited before the embed call: the snapshot read is
+        // the fast path and must not queue behind a session mint.
+        void (async () => {
+          const t0 = performance.now()
+          try {
+            const res = await fetch('/api/sales_target/report', {
+              headers: { authorization: `Bearer ${getToken() ?? ''}` },
+              signal: controller.signal,
+            })
+            const body = (await res.json().catch(() => ({}))) as Report & { no_assignment?: boolean }
+            const ms = performance.now() - t0
+            if (!current()) return
+            if (body.no_assignment) setPre({ kind: 'no-assignment' })
+            else if (res.ok) setPre({ kind: 'ready', report: body, ms })
+            else setPre({ kind: 'error', message: `HTTP ${res.status}` })
+          } catch (err) {
+            if (!current()) return
+            setPre({ kind: 'error', message: err instanceof Error ? err.message : 'network error' })
+          }
+        })()
+
         const res = await fetch('/api/sales_target/embed_session', {
           method: 'POST',
           headers: { authorization: `Bearer ${getToken() ?? ''}` },
@@ -116,6 +175,88 @@ export function SalesTargetPage() {
       </header>
 
       <main className="flex flex-1 flex-col p-3">
+      {/* Pre-generated read, above the live Dive. Same numbers, served from the
+          dataset snapshot; it paints while the embed session is still being minted. */}
+      <section className="fc-card mb-3 overflow-x-auto p-0" data-testid="snapshot-report" data-state={pre.kind}>
+        {pre.kind === 'loading' && (
+          <p className="p-4 text-sm text-[var(--color-ink-muted)]">Reading your numbers…</p>
+        )}
+        {pre.kind === 'no-assignment' && (
+          <p className="p-4 text-sm text-[var(--color-ink-muted)]">
+            No store–subcategory assignment, so there are no numbers to show.
+          </p>
+        )}
+        {pre.kind === 'error' && (
+          <p className="p-4 text-sm text-[var(--color-danger)]" data-testid="snapshot-error">
+            Numbers unavailable ({pre.message}). This is not a sales figure.
+          </p>
+        )}
+        {pre.kind === 'ready' && (
+          <>
+            <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[var(--color-border)] px-4 py-2">
+              <p className="text-sm font-semibold text-[var(--color-ink)]">
+                {pre.report.store_name ?? 'Store'} · month to date
+              </p>
+              <p className="text-xs text-[var(--color-ink-muted)]" data-testid="snapshot-freshness">
+                {/* Honest staleness: the SOURCE as-of, distinct from when this page rendered. */}
+                Data as of {fmtDay(pre.report.source_as_of)}
+                {pre.report.cutoff_early ? ` (period ends later; counted through ${fmtDay(pre.report.data_through)})` : ''}
+                {' · '}
+                <span data-testid="snapshot-timing">
+                  {pre.report.source === 'snapshot' ? 'snapshot' : 'live'} · {Math.round(pre.ms)} ms
+                </span>
+              </p>
+            </div>
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wide text-[var(--color-ink-muted)]">
+                  <th className="px-4 py-2 font-medium">Subcategory</th>
+                  <th className="px-4 py-2 font-medium">Code</th>
+                  <th className="px-4 py-2 text-right font-medium">Target</th>
+                  <th className="px-4 py-2 text-right font-medium">Actual</th>
+                  <th className="px-4 py-2 text-right font-medium">Above / below</th>
+                  <th className="px-4 py-2 text-right font-medium">Achievement</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pre.report.rows.map((r) => (
+                  <tr key={r.code} className="border-t border-[var(--color-border)]" data-testid="snapshot-row" data-code={r.code}>
+                    <td className="px-4 py-2 text-[var(--color-ink)]">{r.subcategory}</td>
+                    <td className="px-4 py-2 font-mono text-xs text-[var(--color-ink-muted)]">{r.code}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{fmtExact(r.target)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{fmtExact(r.actual)}</td>
+                    <td className={`px-4 py-2 text-right tabular-nums ${r.gap != null && r.gap < 0 ? 'text-[var(--color-danger)]' : ''}`}>
+                      {fmtSigned(r.gap)}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums">{fmtPct(r.achievement)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-[var(--color-border)] font-semibold" data-testid="snapshot-total">
+                  <td className="px-4 py-2" colSpan={2}>
+                    Total · {pre.report.total.n} subcategor{pre.report.total.n === 1 ? 'y' : 'ies'}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums">{fmtExact(pre.report.total.target)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{fmtExact(pre.report.total.actual)}</td>
+                  <td className={`px-4 py-2 text-right tabular-nums ${pre.report.total.gap != null && pre.report.total.gap < 0 ? 'text-[var(--color-danger)]' : ''}`}>
+                    {fmtSigned(pre.report.total.gap)}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums">{fmtPct(pre.report.total.achievement)}</td>
+                </tr>
+              </tfoot>
+            </table>
+            {pre.report.total.missing > 0 && (
+              <p className="px-4 py-2 text-xs text-[var(--color-ink-muted)]" data-testid="snapshot-missing">
+                {/* A day never observed is missing, never zero — the two must not look alike. */}
+                {pre.report.total.missing} subcategor{pre.report.total.missing === 1 ? 'y has' : 'ies have'} no actuals
+                in this period and show “—” rather than ₹0.00.
+              </p>
+            )}
+          </>
+        )}
+      </section>
+
         {embed.kind === 'frame' ? (
           <iframe
             data-testid="report-frame"
