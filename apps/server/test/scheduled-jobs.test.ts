@@ -129,6 +129,39 @@ describe('Scheduled Job: the queue is derived from the rows', () => {
     expect(live[0].trigger).toBe('schedule')
   })
 
+  // Codex review, 19-Sep-2026: migration 0086 added `trigger` with no
+  // backfill, so a row queued before it has trigger NULL in Postgres — and
+  // syncScheduledJobs() adopts an existing live entry rather than replacing
+  // it, so a legacy row can still be sitting in the queue with trigger NULL
+  // on a deployment that has run the migration for days. The trigger ===
+  // 'schedule' gate (added earlier in this same PR) must not read that NULL
+  // as 'demand', or the recurrence silently ends the first time that row runs.
+  test('a legacy row queued before the trigger column existed (trigger NULL) still advances its own recurrence', async () => {
+    await setup()
+    registerJob(METHOD, async () => {})
+    await sql`insert into scheduled_job ${sql({
+      row_id: METHOD, created_by: 'Administrator', updated_by: 'Administrator',
+      method: METHOD, cadence: 'hourly', enabled: true,
+    })}`
+    // Simulate the pre-0086 row directly, the way an ALTER TABLE ADD COLUMN
+    // with no backfill would leave it: repeat_every set (it was recurring),
+    // trigger NULL (the column did not exist yet).
+    await sql`
+      insert into background_job ${sql({
+        row_id: 'legacy-row', created_by: 'Administrator', updated_by: 'Administrator',
+        method: METHOD, payload: {}, job_status: 'queued', attempts: 0, max_attempts: 3,
+        run_at: new Date(), repeat_every: CADENCE_SECONDS.hourly,
+      })}`
+    await sql`update background_job set trigger = null where row_id = 'legacy-row'`
+
+    await nudgeDueJobs()
+    expect(await drainJobs()).toBe(1)
+
+    const live = await liveEntries(METHOD)
+    expect(live).toHaveLength(1) // the recurrence continued, not just ran once and stopped
+    expect(live[0].trigger).toBe('schedule') // and is healthy going forward
+  })
+
   test('a disabled row ends the recurrence after the run in flight', async () => {
     await setup()
     registerJob(METHOD, async () => {})

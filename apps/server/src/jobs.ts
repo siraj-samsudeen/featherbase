@@ -154,7 +154,20 @@ export async function runOneJob(): Promise<boolean> {
   const payload = (claimed.payload as Record<string, unknown>) ?? {}
 
   // JOB-005: progress reports go to the job owner's realtime channel.
-  const trigger = (claimed.trigger as JobTrigger | null) ?? 'demand'
+  //
+  // A row queued before migration 0086 added `trigger` has it NULL (ALTER
+  // TABLE ADD COLUMN backfills nothing) — and syncScheduledJobs() adopts
+  // rather than replaces an existing live entry, so a legacy recurring row
+  // can still be sitting in the queue with trigger NULL on a deployment that
+  // has run this migration for days. `repeat_every IS NOT NULL` was, under
+  // the pre-0086 system, only ever true for the three platform recurrences —
+  // there was no other reason to set it — so a null trigger there means
+  // 'schedule', never 'demand'. Getting this wrong silently ends the
+  // recurrence under the trigger === 'schedule' gate below (Codex review,
+  // 19-Sep-2026): the exact multi-restart-safety failure mode #287 exists to
+  // prevent, just triggered by an upgrade instead of a restart.
+  const trigger: JobTrigger =
+    (claimed.trigger as JobTrigger | null) ?? (claimed.repeat_every != null ? 'schedule' : 'demand')
   const ctx: JobContext = {
     setProgress: (percent, message) =>
       publishUserEvent(claimed.created_by as string, 'job_progress', {
