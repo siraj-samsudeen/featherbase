@@ -167,6 +167,40 @@ describe('Scheduled Job: the queue is derived from the rows', () => {
     expect(row.last_outcome).toBe('error')
   })
 
+  // Review, 19-Sep-2026: every completed run of an administered method
+  // re-enqueued the schedule's next occurrence, whatever triggered it — so a
+  // demand run (recordMiss waking the refresh worker) left the ORIGINAL
+  // future occurrence live and added a second one alongside it.
+  test('a demand run of an administered method does not fork a second recurrence chain', async () => {
+    await setup()
+    registerJob(METHOD, async () => {})
+    await sql`insert into scheduled_job ${sql({
+      row_id: METHOD, created_by: 'Administrator', updated_by: 'Administrator',
+      method: METHOD, cadence: 'hourly', enabled: true,
+    })}`
+    await syncScheduledJobs(METHOD)
+    // The very first occurrence a fresh sync queues runs immediately; let it
+    // complete so the schedule's NEXT occurrence is genuinely in the future.
+    await nudgeDueJobs()
+    expect(await drainJobs()).toBe(1)
+    const before = await liveEntries(METHOD)
+    expect(before).toHaveLength(1)
+    expect(before[0].trigger).toBe('schedule')
+    const scheduledRowId = before[0].row_id
+
+    // A reader's miss (or a person clicking "run now") wakes the worker
+    // between two scheduled occurrences; the future occurrence above is not
+    // due yet, so only the demand job runs.
+    await enqueue(METHOD, {}, { trigger: 'demand' })
+    await nudgeDueJobs()
+    expect(await drainJobs()).toBe(1)
+
+    const after = await liveEntries(METHOD)
+    expect(after).toHaveLength(1) // still one, not two
+    expect(after[0].row_id).toBe(scheduledRowId) // the original occurrence, untouched
+    expect(after[0].trigger).toBe('schedule')
+  })
+
   test('deleting the row withdraws the pending entry', async ({ admin }) => {
     await setup()
     registerJob(METHOD, async () => {})

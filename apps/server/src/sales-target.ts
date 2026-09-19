@@ -301,7 +301,12 @@ export function initialStateFor(a: Assignment) {
 
 export type EmbedResult =
   | { ok: true; session: string; status: number }
-  | { ok: false; status: number; error: string }
+  // 'not_configured': DIVE_ID/DIVE_VERSION/SERVICE_ACCOUNT or the token are
+  // simply absent — a deployment choice, not a failure (#3783/#286).
+  // 'unreachable': the embed API was configured but the request itself
+  // failed (network error, or answered but refused) — an operational
+  // failure that must not be reported the same way (#284).
+  | { ok: false; status: number; error: string; kind: 'not_configured' | 'unreachable' }
 
 // Injectable for the sandboxed suite (no network); MOTHERDUCK_API_BASE
 // redirects the real fetch for browser-level stub runs.
@@ -315,9 +320,14 @@ export async function createEmbedSession(
   cfg: EmbedConfig = embedConfig(),
 ): Promise<EmbedResult> {
   const token = process.env.MOTHERDUCK_TOKEN
-  if (!token) return { ok: false, status: 0, error: 'MOTHERDUCK_TOKEN is not set on the server' }
+  if (!token) return { ok: false, status: 0, error: 'MOTHERDUCK_TOKEN is not set on the server', kind: 'not_configured' }
   if (!cfg.diveId || !cfg.version || !cfg.serviceAccount)
-    return { ok: false, status: 0, error: 'DIVE_ID, DIVE_VERSION and SERVICE_ACCOUNT must be configured' }
+    return {
+      ok: false,
+      status: 0,
+      error: 'DIVE_ID, DIVE_VERSION and SERVICE_ACCOUNT must be configured',
+      kind: 'not_configured',
+    }
   let res: Response
   try {
     res = await embedFetch(`${cfg.apiBase}/v1/dives/${encodeURIComponent(cfg.diveId)}/embed-session`, {
@@ -326,7 +336,15 @@ export async function createEmbedSession(
       body: JSON.stringify({ username: cfg.serviceAccount, version: cfg.version, initial_state: initialState }),
     })
   } catch (err) {
-    return { ok: false, status: 0, error: `embed API unreachable: ${(err as Error)?.constructor?.name ?? 'error'}` }
+    // Configured but unreachable — the embed API refused the TCP/TLS
+    // connection or the DNS lookup failed. Distinct from missing config:
+    // this is an operational failure the reader must be told about (#284).
+    return {
+      ok: false,
+      status: 0,
+      error: `embed API unreachable: ${(err as Error)?.constructor?.name ?? 'error'}`,
+      kind: 'unreachable',
+    }
   }
   const text = await res.text()
   type UpstreamBody = { session?: unknown; message?: unknown; code?: unknown }
@@ -338,7 +356,7 @@ export async function createEmbedSession(
   }
   if (res.ok && body && typeof body.session === 'string') return { ok: true, session: body.session, status: res.status }
   const message = String(body?.message ?? body?.code ?? text.slice(0, 200))
-  return { ok: false, status: res.status, error: `embed API answered HTTP ${res.status}: ${message}` }
+  return { ok: false, status: res.status, error: `embed API answered HTTP ${res.status}: ${message}`, kind: 'unreachable' }
 }
 
 // ------------------------------------------------------------------- routes
@@ -348,12 +366,24 @@ export async function landingFor(user: string): Promise<string | undefined> {
   return (await getRoles(user)).includes(VIEWER_ROLE) ? REPORT_PATH : undefined
 }
 
+/**
+ * Fail-closed gate shared by every sales-target route (#279): a session
+ * token alone is not enough, because the role can be revoked mid-session.
+ * Checked fresh on every call, before any assignment is disclosed, any
+ * upstream embed session is minted, or any row is read.
+ */
+async function requireViewerRole(user: string): Promise<void> {
+  if (!(await getRoles(user)).includes(VIEWER_ROLE))
+    throw new AppError('PermissionError', 'Requires the Sales Target Viewer role')
+}
+
 // Mounted under /api/sales_target, behind the session middleware in index.ts.
 export const salesTargetRoutes = new Hono<{ Variables: { user: SessionUser } }>()
 
 // Identity chrome for the report page — no amounts, no credentials.
 salesTargetRoutes.get('/me', async (c) => {
   const user = c.get('user')
+  await requireViewerRole(user.row_id)
   const a = await currentAssignment(user.row_id)
   return c.json({
     username: user.row_id,
@@ -367,17 +397,21 @@ salesTargetRoutes.get('/me', async (c) => {
 // A fresh session per call; the browser receives only the session string.
 salesTargetRoutes.post('/embed_session', async (c) => {
   const user = c.get('user')
+  await requireViewerRole(user.row_id)
   const a = await currentAssignment(user.row_id)
   if (!a || !a.material_groups.length) return c.json({ no_assignment: true })
   const r = await createEmbedSession(initialStateFor(a))
   // A deployment with no Dive configured is not a failure — it is a deployment
-  // that serves the pre-generated report and nothing else. `status: 0` is the
-  // server's own "never reached MotherDuck" marker, so it is the honest place to
-  // draw the line: missing configuration answers 200 with a marker, the way
-  // no_assignment does, while a real upstream refusal still answers 502. Showing
-  // a red "Report unavailable" under a working report told the reader something
-  // was broken when nothing was.
-  if (!r.ok && r.status === 0) return c.json({ not_configured: true, reason: r.error })
+  // that serves the pre-generated report and nothing else. `kind` is the
+  // server's own discriminator (#284: status 0 alone conflated this with a
+  // configured-but-unreachable upstream), so it is the honest place to draw
+  // the line: missing configuration answers 200 with a marker, the way
+  // no_assignment does, while every other failure — unreachable or a real
+  // upstream refusal — still answers 502. Showing a red "Report unavailable"
+  // under a working report told the reader something was broken when nothing
+  // was; the reverse — hiding a real outage behind that same quiet marker —
+  // is just as wrong.
+  if (!r.ok && r.kind === 'not_configured') return c.json({ not_configured: true, reason: r.error })
   if (!r.ok)
     return c.json(
       { error: { type: 'EmbedSessionError', message: r.error, upstream_status: r.status } },
@@ -392,6 +426,7 @@ salesTargetRoutes.post('/embed_session', async (c) => {
 // pre-generated read are two deliveries of one authorization decision.
 salesTargetRoutes.get('/report', async (c) => {
   const user = c.get('user')
+  await requireViewerRole(user.row_id)
   const a = await currentAssignment(user.row_id)
   if (!a || !a.material_groups.length) return c.json({ no_assignment: true })
   // Lazy, like reportFor: the dataset module imports PERIOD from this file.

@@ -6,15 +6,18 @@
 // pinned is the lifecycle, the grain and the read-time personalisation, not the
 // warehouse's arithmetic (baseline agreement is measured separately by
 // scripts/measure-sales-target-snapshot.ts against real data).
-import { afterEach, describe, expect } from 'vitest'
+import { randomUUID } from 'node:crypto'
+import { afterEach, describe, expect, it } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
+import { drainJobs, loadJobs } from '../src/jobs'
 import {
   activeSnapshot,
   buildSnapshot,
   pendingMisses,
   pruneSnapshots,
   recordMiss,
+  registerDataset,
 } from '../src/dataset-snapshot'
 import { SALES_TARGET_DATASET, _setSourceReader, definitionSql } from '../src/datasets/sales-target-mtd'
 import { reportFor } from '../src/sales-target-report'
@@ -275,6 +278,30 @@ describe('freshness', () => {
 })
 
 describe('registry as Tables (migration 0087)', () => {
+  // Review, 19-Sep-2026: activeSnapshot() resolved by dataset + state='active'
+  // only, so a deployed DatasetDefinition.version bump with the OLD row still
+  // 'active' (the refresh job hasn't run since deploy) was served as a normal
+  // hit — an incompatible shape passed off as current.
+  test('an active snapshot built under a retired definition_version is not a hit — the reader falls back to live', async () => {
+    stub(sampleRows())
+    const out = await buildSnapshot(SALES_TARGET_DATASET, { trigger: 'schedule' })
+    expect(out.status).toBe('activated')
+    expect(await activeSnapshot(SALES_TARGET_DATASET)).toBeTruthy()
+
+    // Simulate a deploy that bumped the dataset's version without a rebuild
+    // yet: the row on disk still says the old one.
+    await sql`update dataset_snapshot set definition_version = 'retired' where row_id = ${out.snapshotId!}`
+    expect(await activeSnapshot(SALES_TARGET_DATASET)).toBeNull()
+
+    // reportFor already has a path for "never built": live, with a miss
+    // recorded so the worker rebuilds under the current definition. Reused,
+    // not reinvented, for the version-mismatch case.
+    await sql`delete from dataset_miss where dataset = ${SALES_TARGET_DATASET}`
+    const r = await reportFor(EMP1)
+    expect(r.source).toBe('live')
+    expect(await pendingMisses()).toContain(SALES_TARGET_DATASET)
+  })
+
   test('a build records what it cost and what caused it', async () => {
     stub(sampleRows())
     const out = await buildSnapshot(SALES_TARGET_DATASET, { trigger: 'demand' })
@@ -318,4 +345,108 @@ describe('registry as Tables (migration 0087)', () => {
     )
     expect(list.data.find((r) => r.dataset === SALES_TARGET_DATASET)).toBeTruthy()
   })
+})
+
+// The sandbox transaction's now() is frozen at BEGIN while the worker stamps
+// run_at from the wall clock — the same shim scheduled-jobs.test.ts uses.
+async function nudgeDueJobs() {
+  await sql`
+    update background_job set run_at = now()
+    where job_status = 'queued' and run_at > now() and run_at <= clock_timestamp()`
+}
+
+// Review, 19-Sep-2026: refresh_datasets logged a failed/refused build and
+// returned normally, so the job queue recorded every refresh as a successful
+// Job Execution — no matter how many datasets actually failed to activate —
+// and nothing was ever retried.
+describe('refresh_datasets job: a build that does not activate is a failed run', () => {
+  test('a fetch failure is a failed Job Execution, not success — and the previous snapshot keeps serving', async () => {
+    await loadJobs()
+    await sql`delete from background_job where method = 'refresh_datasets'`
+    await sql`delete from job_execution where method = 'refresh_datasets'`
+    await sql`delete from dataset_miss where dataset = ${SALES_TARGET_DATASET}`
+
+    // A good snapshot first, so there is a "last good" to preserve.
+    stub(sampleRows())
+    const first = await buildSnapshot(SALES_TARGET_DATASET, { trigger: 'script' })
+    expect(first.status).toBe('activated')
+
+    // Now the source breaks, and a reader's miss asks for a refresh — the
+    // same path recordMiss uses to wake the worker between scheduled runs.
+    _setSourceReader(async () => {
+      throw new Error('warehouse unreachable')
+    })
+    await recordMiss(SALES_TARGET_DATASET)
+    await nudgeDueJobs()
+    expect(await drainJobs()).toBeGreaterThanOrEqual(1)
+
+    const [exec] = await sql`
+      select outcome, error from job_execution
+      where method = 'refresh_datasets' order by started_at desc limit 1`
+    expect(exec.outcome).toBe('error')
+    expect(String(exec.error)).toContain(SALES_TARGET_DATASET)
+
+    const stillActive = await activeSnapshot(SALES_TARGET_DATASET)
+    expect(stillActive?.row_id).toBe(first.snapshotId) // untouched — last-good is still serving
+  })
+})
+
+// Not sandboxed: the sandbox delegates the app's global `sql` to ONE real
+// transaction for the test's duration (feather-testing-postgres), so two
+// "concurrent" buildSnapshot() calls inside a sandboxed test would share one
+// Postgres session — the same session re-acquiring its own advisory lock
+// never blocks itself, so the fencing this proves cannot be observed there.
+// Outside the sandbox `sql` is the real pool, and `sql.begin()` genuinely
+// reserves a separate connection (a separate Postgres session) per call, the
+// same as production — so this is the one place that can actually exercise
+// the review's "real multi-session overlap" (19-Sep-2026). Own dataset name,
+// manual cleanup in `finally`.
+it('#8 buildSnapshot serializes overlapping refreshes of one dataset: the second cannot even start fetching until the first has fully activated', async () => {
+  const dataset = `lock_probe_${randomUUID().replaceAll('-', '')}`
+  const events: string[] = []
+  let releaseFirst: () => void = () => {}
+  const firstGate = new Promise<void>((resolve) => {
+    releaseFirst = resolve
+  })
+  let calls = 0
+
+  registerDataset({
+    name: dataset,
+    version: '1',
+    fetch: async () => {
+      calls += 1
+      const n = calls
+      events.push(`fetch:${n}:start`)
+      if (n === 1) await firstGate
+      events.push(`fetch:${n}:end`)
+      return { rows: [[n]], sourceAsOf: n === 1 ? '2026-01-01' : '2026-01-02' }
+    },
+    load: async (_id, rows) => rows.length,
+  })
+
+  try {
+    const first = buildSnapshot(dataset, { trigger: 'script' })
+    // Give the first call time to acquire the lock and enter its (blocked) fetch.
+    await new Promise((r) => setTimeout(r, 100))
+    expect(events).toEqual(['fetch:1:start'])
+
+    const second = buildSnapshot(dataset, { trigger: 'script' })
+    // The second call must be stuck waiting on the lock, not fetching.
+    await new Promise((r) => setTimeout(r, 100))
+    expect(events).toEqual(['fetch:1:start']) // fetch:2:start has NOT happened yet
+
+    releaseFirst()
+    const [out1, out2] = await Promise.all([first, second])
+
+    expect(out1.status).toBe('activated')
+    expect(out2.status).toBe('activated')
+    // The second call's fetch only started after the first's had fully ended
+    // (which, for the first, is after its own activation commits).
+    expect(events).toEqual(['fetch:1:start', 'fetch:1:end', 'fetch:2:start', 'fetch:2:end'])
+
+    const active = await activeSnapshot(dataset)
+    expect(active?.row_id).toBe(out2.snapshotId) // the later request is the one left serving
+  } finally {
+    await sql`delete from dataset_snapshot where dataset = ${dataset}`
+  }
 })
