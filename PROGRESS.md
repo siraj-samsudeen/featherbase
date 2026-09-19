@@ -101,6 +101,123 @@ test` 133 passed. Next: on featherbase-dev, create the Custom Field and set
 Kurti) and watch the report widen; the maps' arrival in
 `bronze_featherbase.application` is the data-warehouse side's check.
 
+## 2026-09-18 — The STC review skills, ported; OpenSpec installed as an evaluation
+
+Three repo-local review skills — `/code-review-8-axes`, `/test-review-3-axes`,
+`/spec-review-5-axes` — carried over from the data-warehouse repo
+(#3664/#3666/#3691). The axes, framing rules and REJECT lists are theirs; **every
+worked example was re-derived from this codebase**, because an axis illustrated
+by a Python data pipeline teaches nothing to a reviewer reading TypeScript. Each
+cited defect was opened and confirmed, and four suspicions were investigated and
+**refuted** — including one killed by experiment (appending a deliberate type
+error to `packages/shared` fails both server and web typechecks, so shared's
+absence from CI's typecheck list is not a hole). The refuted list is in the
+code skill, as the worked example of what belongs in one.
+
+OpenSpec (`@fission-ai/openspec` 1.13.1, core profile: `openspec/`, six `opsx:`
+skills) is installed **as an evaluation, not as the house format**.
+`docs/specs/0003-table-deletion.md` was migrated to
+`openspec/specs/table-deletion/spec.md` — all 14 obligations, example tables,
+properties, evidence verdicts and ruled questions, plus a domain-assumptions
+section and a governed/characterized label per requirement, with `Legacy ID:
+DEL-R3` carried so the 87 IDs already in circulation keep resolving.
+`docs/design/openspec-vs-journey-spec.md` reports what the migration lost (the
+step triple, the closure sweep, the isolation-strategy slot, "Bug if", the
+language split, CI-checked evidence), what it gained, and the recommendation —
+**don't migrate; adopt the three additive conventions into the journey-spec form
+instead** — for the owner to rule on. `docs/specs` remains live; two accountable
+documents about one capability should not outlive the ruling.
+
+Traceability: `docs/agents/stc-traceability.md` and `tools/stc-matrix.mjs` (a
+zero-dependency Node port of the Python original) with 13 mutation tests, run by
+`pnpm check:stc`. It owns `openspec/specs` and joins the spec heading to `@spec`
+markers in code and tests; `check-evidence.mjs` keeps `docs/specs` and its
+title-based join, untouched. **`check:stc` is deliberately NOT in CI** while
+OpenSpec is on trial, and both the doc and CLAUDE.md say so — an unenforced guard
+that reads as enforced makes the next reader stop looking. The measurement that
+shaped the recommendation: 87 obligation IDs are declared in `docs/specs`, 54 are
+cited in test titles and 39 in `src` — the convention already exists here by
+hand; what was missing is the script and the spec↔code edge.
+
+Source edits are comment-only: 19 `@spec` markers across `table-engine.ts`,
+`meta.ts`, `index.ts`, `ListView.tsx`, the deletion tests and the deletion e2e.
+One of them was wrong in the first draft — `system_manager_only` sat on
+`deleteTable`, whose own guard is the *system-table* refusal, while the manager
+check is `assertSystemManager` at the route. That is the citation-does-not-cover-
+its-claim failure `spec-review-5-axes` Axis 2 names; the spec now records the
+correction where a future reader meets it.
+
+Verified: `pnpm check:stc` (14 requirements, 10 with code, 14 with a test, no
+orphans, no new gaps) · `node --test tools/*.test.mjs` 68 passed (55 existing +
+13 new) · `pnpm check:evidence` unchanged at 148 verdicts across 8 specs ·
+`npx @fission-ai/openspec validate --specs --strict` 1 passed, 0 failed (which
+proves well-formed, not true — the point is made in the skill) ·
+`pnpm --filter server typecheck`, `pnpm --filter web typecheck` clean ·
+`./init.sh` boots and `pnpm smoke` passes · `pnpm --filter server test
+test/table-deletion.test.ts` 16 passed · `pnpm --filter web test` 133 passed ·
+`pnpm --filter web e2e e2e/table-deletion.spec.ts` 2 passed · full
+`pnpm --filter server test` **765 passed / 1 failed / 15 skipped**, the failure
+being `sources-csv.test.ts › a failed write never poisons the parse cache`,
+which fails identically on base `4b31a7d` in a clean worktree (it relies on
+`chmod 0o555` blocking a write; this container runs as root). An earlier run of
+mine showed a second failure — a 5 s timeout in `sources-security.test.ts` —
+which did not reproduce when the suite ran alone: I had started the web suite
+against the same database concurrently, which the vitest configs warn about by
+name. Self-inflicted, recorded so nobody re-diagnoses it.
+
+Re-verified after merging `origin/main` (#285–#288, which rewrote
+`dataset-snapshot.ts` around a `state` column and a two-Table registry): server
+**784 passed / 1 failed / 15 skipped** — the same root/`chmod` failure and no
+other — web 133 passed, all three typechecks clean, both checkers green
+(`check-evidence` now scans 224 test files). The merge also moved five line
+numbers the skills cite; every `file:line` in the four new documents was
+re-resolved against the merged tree and the drifted ones corrected, along with
+the measured figures (224 test files, 885 declarations, `index.ts` 1,492 lines).
+**That is the rot these skills describe, arriving within an hour of being
+written** — cited line numbers are a dated fact, and the documents now say so.
+
+Re-merged again an hour later for #290 (the sales-target assignment now derives
+from Store Sections), which moved one more cited line — `SalesTarget.tsx:211` →
+`:215`. Twice in two hours, on the same four documents. Server **788 passed / 1
+failed / 15 skipped** (the same root/`chmod` failure), web 133 passed, both
+typechecks clean, both checkers green.
+
+**Next:** rule on `docs/design/openspec-vs-journey-spec.md`. Then, whichever way
+it goes, delete the losing table-deletion document. Findings surfaced by the
+audit and deliberately **not** fixed here (findings and fixes are separate PRs):
+the sales-target as-of read three times with nothing comparing them
+(a divergence triage item, written out in full in `spec-review-5-axes`); the
+`realtime.ts` catch labelled "malformed frames" that also swallows the
+authorization lookup; the "columns that hold no value" set living in seven
+places under three names; `docstatus` surviving in one user-facing error string;
+and the coverage ratchets never raised to the figure their own comment says to
+raise them to.
+
+**Merged `origin/main` a third time (2026-09-19, `3a6770f` — #291's six owner-review
+fixes) and re-resolved every citation against the merged tree.** Two drifted and were
+repointed: `dataset-snapshot.ts:16` → `:17` and `dataset-snapshot.test.ts:40` → `:43`.
+Two claims were sharpened rather than moved. The "224 test files / 885 test
+declarations" tally could not be reproduced by any reading of the tree, so it is
+replaced by the two commands that produce the figures, with today's numbers as
+output — the same rule `CLAUDE.md` states for claims about the codebase. And
+"`Returns the row count written` → untested" now says which word is untested:
+`dataset-snapshot.test.ts:67` does assert the returned `8`, but the loader returns
+the length of the array it was handed and the stub hands it 8, so nothing reaches
+*written*. Re-checked and still exact: the three as-of reads
+(`datasets/sales-target-mtd.ts:34`, `:61`, `sales-target-report.ts:169`) against
+`sales-target-report.ts:46`'s "actually applied" claim — #291 fixed six other things
+in these files and not this one, so the divergence triage item stands; and the
+five-files-with-a-double count (a regex sweep says six, but `oauth.test.ts`'s
+`mockConsentHtml` is a *production* dev-mode consent screen and `mockSignIn` drives
+the real route — a false positive, which is why the row names the five rather than
+counting matches).
+
+Verified after the merge: server 796 passed / 1 failed / 15 skipped — the same
+root-runs-`chmod` `sources-csv.test.ts` case main's own entry above records as
+failing identically; web unit 133 passed; `node --test tools/*.test.mjs` 68 passed;
+`pnpm check:stc` 14 requirements, 10 with code, 14 with a test, no orphans;
+`pnpm check:evidence` 148 verdicts across 8 specs, 224 test files; all three
+typechecks clean.
 ## 2026-09-18 — The dataset-snapshot registry is two Tables; builds record cost and cause; report opens are Access Log rows
 
 Migration `0085` had created `dataset_snapshot` and `dataset_miss` as raw SQL,

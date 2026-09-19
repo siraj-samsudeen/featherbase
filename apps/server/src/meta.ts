@@ -262,6 +262,7 @@ export async function getMeta(name: string): Promise<TableMeta> {
   }
   const [dt] = await sql`select * from table_def where name = ${name}`
   if (!dt) {
+    // @spec stale_pointer_gets_tombstone
     // DEL-R9 (docs/specs/0003-table-deletion.md): a deleted Table's
     // not-found names the deletion — the Access Log's plain-text testimony
     // (DEL-R8) read back at the miss. A never-created name stays a plain

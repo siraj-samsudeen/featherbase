@@ -1,0 +1,14 @@
+# Accepted STC coverage gaps — the ratchet floor for tools/stc-matrix.mjs.
+# Only ever shrinks: a NEW gap fails the check, a closed one is reported so
+# this file can be rewritten with --write-baseline.
+#
+# The four below are journeys and invariants. Each is a COMPOSITION of
+# requirements that are individually marked in the code, so no single line
+# owns it and a marker would have to be placed arbitrarily. The spec says so
+# per requirement ("the journey is the composition ...; no single symbol owns
+# it"). They are covered at the test vertex, where a journey genuinely does
+# have one executable.
+no_code delete_an_unwanted_table
+no_code nothing_dangles
+no_code refusal_changes_nothing
+no_code refused_then_unblocked
