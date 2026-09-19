@@ -84,9 +84,12 @@ Kent Beck's *TDD by Example* opens exactly here — before writing any code he w
 **The richest source by far: every invariant currently asserted only in a comment.** Prose cannot fail, so an invariant living in prose is a promise with no test by definition. This repo's comments are unusually dense with them, which makes the harvest unusually good:
 
 ```
-dataset-snapshot.ts:16  "A build that dies halfway leaves its row in 'building', which
+dataset-snapshot.ts:17  "A build that dies halfway leaves its row in 'building', which
                          activeSnapshot never resolves"                        -> TESTED
 dataset-snapshot.ts:31  "Returns the row count written"                        -> untested
+                         (:67 asserts the returned 8 — but the loader returns the
+                         length of the array it was HANDED, and the stub hands it
+                         8, so the word "written" is what nothing reaches)
 sales-target-report.ts:46 "least(period_end, source_as_of) — the cutoff ACTUALLY
                          APPLIED to both sides"                                -> see Axis 3A
 realtime.ts:151         "ignore malformed frames"                              -> untested
@@ -162,7 +165,7 @@ The mechanical rule, which beats arguing about intent: **the sweep is earned whe
 
 Four costumes, one defect. The assertion is satisfied by something other than the system being right: the **mock** satisfies it; the code's **own output** satisfies it (a value copied from a previous run — a pin, not a proof); a **stale fixture** satisfies it; or **anything** satisfies it (tautologies, `expect(mock).toHaveBeenCalled()`).
 
-**Real violation — the double makes the production disagreement impossible.** `apps/server/test/dataset-snapshot.test.ts:40`:
+**Real violation — the double makes the production disagreement impossible.** `apps/server/test/dataset-snapshot.test.ts:43`:
 
 ```ts
 function stub(rows, asOf = '2026-09-17') {
@@ -277,7 +280,7 @@ Lead with the promise list — it is the most valuable artifact the review produ
 
 ```
 [VERIFIED] Axis 3A — passes when the promise is broken
-  apps/server/test/dataset-snapshot.test.ts:40
+  apps/server/test/dataset-snapshot.test.ts:43
   `stub()` answers the as-of query and the rows query from ONE constant, so the
   two-reads-two-moments disagreement that production allows cannot occur under
   test. The freshness test asserts source_as_of === data_through — "the cutoff
@@ -354,4 +357,19 @@ Kept at three rather than two because **a false-tracking test is worse than a mi
 | Framing rules, and the promise as the unit | `code-review-8-axes` |
 | The sandbox model this suite is built on | Phoenix / Ecto SQL Sandbox, via `feather-testing-postgres` |
 
-Evidence base: 224 test files / 885 test declarations, read on 18-Sep-2026. The five files carrying a double were read in full; `dataset-snapshot.test.ts`'s `stub()` is the verified Axis 3A example.
+Evidence base, re-measured on 19-Sep-2026 at `3a6770f`, with the command that
+produces each number rather than the number alone — a hand-kept tally goes stale
+silently, which is the failure this repo's `CLAUDE.md` names:
+
+```bash
+# test files
+find apps packages -path '*/node_modules' -prune -o \
+  \( -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.spec.ts' -o -name '*.spec.tsx' \) -print | wc -l
+# 224
+# test declarations
+grep -rhoE '^[[:space:]]*(test|it)(\.[a-z]+)?\(' apps packages \
+  --include=*.test.ts --include=*.test.tsx --include=*.spec.ts --include=*.spec.tsx | wc -l
+# 1176 — 792 server, 130 web unit, 177 e2e, 77 shared
+```
+
+The five files carrying a double were read in full; `dataset-snapshot.test.ts`'s `stub()` is the verified Axis 3A example.

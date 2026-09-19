@@ -53,7 +53,7 @@ DIVERGENCE  cutoff_applied_to_both_sides
         as-of (datasets/sales-target-mtd.ts:61), the rows query's own cutoff
         CTE (:34) and the live path (:156). Separate statements, separate
         connections, separate moments; nothing compares them.
-  TEST  cannot see it. dataset-snapshot.test.ts:40's stub answers the as-of
+  TEST  cannot see it. dataset-snapshot.test.ts:43's stub answers the as-of
         query and the rows query from ONE constant, so the disagreement is
         impossible under test.
   RECOMMEND  the SPEC is right and the CODE cannot currently honour it. Read

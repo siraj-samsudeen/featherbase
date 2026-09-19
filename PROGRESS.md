@@ -192,6 +192,32 @@ authorization lookup; the "columns that hold no value" set living in seven
 places under three names; `docstatus` surviving in one user-facing error string;
 and the coverage ratchets never raised to the figure their own comment says to
 raise them to.
+
+**Merged `origin/main` a third time (2026-09-19, `3a6770f` — #291's six owner-review
+fixes) and re-resolved every citation against the merged tree.** Two drifted and were
+repointed: `dataset-snapshot.ts:16` → `:17` and `dataset-snapshot.test.ts:40` → `:43`.
+Two claims were sharpened rather than moved. The "224 test files / 885 test
+declarations" tally could not be reproduced by any reading of the tree, so it is
+replaced by the two commands that produce the figures, with today's numbers as
+output — the same rule `CLAUDE.md` states for claims about the codebase. And
+"`Returns the row count written` → untested" now says which word is untested:
+`dataset-snapshot.test.ts:67` does assert the returned `8`, but the loader returns
+the length of the array it was handed and the stub hands it 8, so nothing reaches
+*written*. Re-checked and still exact: the three as-of reads
+(`datasets/sales-target-mtd.ts:34`, `:61`, `sales-target-report.ts:169`) against
+`sales-target-report.ts:46`'s "actually applied" claim — #291 fixed six other things
+in these files and not this one, so the divergence triage item stands; and the
+five-files-with-a-double count (a regex sweep says six, but `oauth.test.ts`'s
+`mockConsentHtml` is a *production* dev-mode consent screen and `mockSignIn` drives
+the real route — a false positive, which is why the row names the five rather than
+counting matches).
+
+Verified after the merge: server 796 passed / 1 failed / 15 skipped — the same
+root-runs-`chmod` `sources-csv.test.ts` case main's own entry above records as
+failing identically; web unit 133 passed; `node --test tools/*.test.mjs` 68 passed;
+`pnpm check:stc` 14 requirements, 10 with code, 14 with a test, no orphans;
+`pnpm check:evidence` 148 verdicts across 8 specs, 224 test files; all three
+typechecks clean.
 ## 2026-09-18 — The dataset-snapshot registry is two Tables; builds record cost and cause; report opens are Access Log rows
 
 Migration `0085` had created `dataset_snapshot` and `dataset_miss` as raw SQL,
