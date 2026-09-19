@@ -154,7 +154,20 @@ export async function runOneJob(): Promise<boolean> {
   const payload = (claimed.payload as Record<string, unknown>) ?? {}
 
   // JOB-005: progress reports go to the job owner's realtime channel.
-  const trigger = (claimed.trigger as JobTrigger | null) ?? 'demand'
+  //
+  // A row queued before migration 0086 added `trigger` has it NULL (ALTER
+  // TABLE ADD COLUMN backfills nothing) — and syncScheduledJobs() adopts
+  // rather than replaces an existing live entry, so a legacy recurring row
+  // can still be sitting in the queue with trigger NULL on a deployment that
+  // has run this migration for days. `repeat_every IS NOT NULL` was, under
+  // the pre-0086 system, only ever true for the three platform recurrences —
+  // there was no other reason to set it — so a null trigger there means
+  // 'schedule', never 'demand'. Getting this wrong silently ends the
+  // recurrence under the trigger === 'schedule' gate below (Codex review,
+  // 19-Sep-2026): the exact multi-restart-safety failure mode #287 exists to
+  // prevent, just triggered by an upgrade instead of a restart.
+  const trigger: JobTrigger =
+    (claimed.trigger as JobTrigger | null) ?? (claimed.repeat_every != null ? 'schedule' : 'demand')
   const ctx: JobContext = {
     setProgress: (percent, message) =>
       publishUserEvent(claimed.created_by as string, 'job_progress', {
@@ -190,21 +203,37 @@ export async function runOneJob(): Promise<boolean> {
     // this row was queued, perhaps) sets the interval, and disabled means the
     // recurrence ends here. Without a row the queue entry's own repeat_every
     // governs, as it always did.
+    //
+    // An administered method's recurrence advances only when THIS run was
+    // itself the scheduled occurrence. syncScheduledJobs already guarantees
+    // exactly one live ('queued'/'running') entry per enabled row; a demand
+    // or manual run (recordMiss waking the refresh worker between two
+    // scheduled occurrences, or a person hitting "run now") must not queue a
+    // second one alongside it — that leaves two future occurrences live at
+    // once, one of them never reachable by the invariant syncScheduledJobs
+    // otherwise enforces (found in review, 19-Sep-2026). Those triggers still
+    // did the work; they just don't get to move the clock.
     const administered = await scheduledJob(method)
-    const every = administered
-      ? administered.enabled
-        ? cadenceSeconds(administered.cadence)
-        : null
-      : claimed.repeat_every == null
-        ? null
-        : Number(claimed.repeat_every)
-    if (every && every > 0)
-      await enqueue(method, payload, {
-        maxAttempts,
-        runAt: new Date(Date.now() + every * 1000),
-        repeatEvery: every,
-        trigger: 'schedule',
-      })
+    if (administered) {
+      if (trigger === 'schedule' && administered.enabled) {
+        const every = cadenceSeconds(administered.cadence)
+        await enqueue(method, payload, {
+          maxAttempts,
+          runAt: new Date(Date.now() + every * 1000),
+          repeatEvery: every,
+          trigger: 'schedule',
+        })
+      }
+    } else if (claimed.repeat_every != null) {
+      const every = Number(claimed.repeat_every)
+      if (every > 0)
+        await enqueue(method, payload, {
+          maxAttempts,
+          runAt: new Date(Date.now() + every * 1000),
+          repeatEvery: every,
+          trigger: 'schedule',
+        })
+    }
     return true
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -219,8 +248,10 @@ export async function runOneJob(): Promise<boolean> {
     // that exhausted its attempts ended the recurrence until the next restart
     // re-seeded it from a literal — a schedule that silently stopped. Now the
     // row is the schedule: if it is enabled, the next interval is queued
-    // regardless of how this one ended.
-    if (nextStatus === 'failed') {
+    // regardless of how this one ended. Same gate as the success path: only
+    // the schedule's own occurrence advances the schedule, so a demand or
+    // manual run that exhausts its attempts does not fork a second chain.
+    if (nextStatus === 'failed' && trigger === 'schedule') {
       const administered = await scheduledJob(method)
       if (administered?.enabled) {
         const every = cadenceSeconds(administered.cadence)
