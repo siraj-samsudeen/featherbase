@@ -129,6 +129,31 @@ describe('#3755 sales-target host: accounts and login', () => {
     expect((await api.fetch(TABLE_URL, { headers: r.headers })).status).toBe(403)
     expect((await api.fetch('/api/table/User', { headers: r.headers })).status).toBe(403)
   })
+
+  // #279: a session token alone is not authorization — the role can be
+  // revoked after the token was issued, and every route must check fresh.
+  test('a signed-in account with no Viewer role is 403 on every sales_target route; no upstream call', async ({ admin, api, createUser }) => {
+    await seed(admin)
+    const calls = stubUpstream()
+    const outsider = await createUser({ roles: [] })
+    expect((await outsider.fetch('/api/sales_target/me')).status).toBe(403)
+    expect((await outsider.fetch('/api/sales_target/embed_session', { method: 'POST' })).status).toBe(403)
+    expect((await outsider.fetch('/api/sales_target/report')).status).toBe(403)
+    expect(calls).toEqual([])
+  })
+
+  test('revoking the Viewer role mid-session denies the very next call on the same token; no upstream call, no row read', async ({ admin, api }) => {
+    await seed(admin)
+    const calls = stubUpstream()
+    const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
+    // Sanity: the token works before revocation.
+    expect((await api.fetch('/api/sales_target/me', { headers: r.headers })).status).toBe(200)
+    await sql`delete from has_role where parent = 'test_employee_1' and role = ${VIEWER_ROLE}`
+    expect((await api.fetch('/api/sales_target/me', { headers: r.headers })).status).toBe(403)
+    expect((await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })).status).toBe(403)
+    expect((await api.fetch('/api/sales_target/report', { headers: r.headers })).status).toBe(403)
+    expect(calls).toEqual([])
+  })
 })
 
 describe('#3755 sales-target host: embed session from the current assignment', () => {
@@ -219,6 +244,22 @@ describe('#3755 sales-target host: embed session from the current assignment', (
       if (savedShared === undefined) delete process.env.SALES_TARGET_SHARED_ENV
       else process.env.SALES_TARGET_SHARED_ENV = savedShared
     }
+  })
+
+  // #284: a configured-but-unreachable Dive must not be reported the same
+  // way as a deliberately unconfigured one — the reader needs to know the
+  // difference between "nothing to see here" and "something is broken".
+  test('a configured but unreachable embed API is a 502, never the not_configured marker', async ({ admin, api }) => {
+    await seed(admin)
+    _setEmbedFetch(async () => {
+      throw new TypeError('fetch failed')
+    })
+    const r = await loginAs(api, 'test_employee_1', PASSWORDS.test_employee_1)
+    const res = await api.fetch('/api/sales_target/embed_session', { method: 'POST', headers: r.headers })
+    expect(res.status).toBe(502)
+    const body = (await res.json()) as { not_configured?: boolean; error?: { message?: string } }
+    expect(body.not_configured).toBeUndefined()
+    expect(body.error?.message).toContain('embed API unreachable')
   })
 
   test('an upstream refusal is reported with its status and message, never with the token; no session is invented', async ({ admin, api }) => {

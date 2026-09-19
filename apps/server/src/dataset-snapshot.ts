@@ -78,13 +78,30 @@ function isoDay(v: unknown): string | null {
   return String(v).slice(0, 10)
 }
 
-/** The one snapshot a reader may use, or null when the dataset has never built. */
+/**
+ * The one snapshot a reader may use, or null when the dataset has never built
+ * UNDER ITS CURRENT DEFINITION. `state = 'active'` alone is not enough:
+ * deploying a new `DatasetDefinition.version` (a real shape change — new
+ * columns, a different grain) with the old snapshot still 'active' must not
+ * serve that old shape as a normal hit just because nothing has failed
+ * (review, 19-Sep-2026). Falling through to null routes the caller to the
+ * existing live-and-record-a-miss path (`reportFor`), which is exactly the
+ * "dataset has never built" behaviour this reuses rather than inventing a
+ * second code path for it.
+ */
 export async function activeSnapshot(dataset: string): Promise<SnapshotRecord | null> {
-  const [row] = await sql`
-    select row_id, dataset, definition_version, source_as_of, built_at, activated_at, row_count, state,
-           bytes, fetch_ms, load_ms, triggered_by
-    from dataset_snapshot
-    where dataset = ${dataset} and state = 'active'`
+  const version = registry.get(dataset)?.version
+  const [row] = version
+    ? await sql`
+        select row_id, dataset, definition_version, source_as_of, built_at, activated_at, row_count, state,
+               bytes, fetch_ms, load_ms, triggered_by
+        from dataset_snapshot
+        where dataset = ${dataset} and state = 'active' and definition_version = ${version}`
+    : await sql`
+        select row_id, dataset, definition_version, source_as_of, built_at, activated_at, row_count, state,
+               bytes, fetch_ms, load_ms, triggered_by
+        from dataset_snapshot
+        where dataset = ${dataset} and state = 'active'`
   if (!row) return null
   return {
     ...(row as unknown as SnapshotRecord),
@@ -168,64 +185,80 @@ export async function buildSnapshot(dataset: string, opts: BuildOpts = {}): Prom
   const def = registry.get(dataset)
   if (!def) return { status: 'failed', reason: `no dataset registered as ${dataset}` }
 
-  const previous = await activeSnapshot(dataset)
-  const snapshotId = randomUUID()
-  const triggeredBy = opts.trigger ?? null
-  await sql`
-    insert into dataset_snapshot (row_id, dataset, definition_version, state, built_at, triggered_by)
-    values (${snapshotId}, ${dataset}, ${def.version}, 'building', now(), ${triggeredBy})`
+  // Serialized per dataset: a schedule tick and a reader's miss can land at
+  // once, and without this an older, slower fetch finishing after a newer,
+  // faster one could publish stale rows over fresh ones (review, 19-Sep-2026)
+  // — the unique-active-per-dataset index stops two rows being active at
+  // once, not a stale one winning the race to be the one. The advisory lock
+  // is held for the WHOLE build — fetch, load, validate, activate — via the
+  // same idiom release.ts uses for "N instances racing": the transaction
+  // exists only to hold the lock, hashed per dataset name rather than
+  // globally, while the actual work below still runs its own statements on
+  // the pool exactly as it did before this lock existed.
+  return sql.begin(async (tx) => {
+    await tx`select pg_advisory_xact_lock(hashtext('dataset-snapshot:' || ${dataset}))`
 
-  let rowCount: number
-  let sourceAsOf: string | null
-  let fetchMs = 0
-  let loadMs = 0
-  try {
-    const t0 = Date.now()
-    const fetched = await def.fetch()
-    fetchMs = Date.now() - t0
-    sourceAsOf = fetched.sourceAsOf
-    const t1 = Date.now()
-    rowCount = await def.load(snapshotId, fetched.rows)
-    loadMs = Date.now() - t1
-  } catch (e) {
-    const reason = e instanceof Error ? e.message : String(e)
+    const previous = await activeSnapshot(dataset)
+    const snapshotId = randomUUID()
+    const triggeredBy = opts.trigger ?? null
     await sql`
-      update dataset_snapshot
-      set state = 'failed', error = ${reason}, fetch_ms = ${fetchMs}, load_ms = ${loadMs}, updated_at = now()
-      where row_id = ${snapshotId}`
-    return { status: 'failed', snapshotId, reason, fetchMs, loadMs }
-  }
+      insert into dataset_snapshot (row_id, dataset, definition_version, state, built_at, triggered_by)
+      values (${snapshotId}, ${dataset}, ${def.version}, 'building', now(), ${triggeredBy})`
 
-  const bytes = def.sizeOf ? await def.sizeOf(snapshotId) : null
-  const refusal = def.validate?.(rowCount, previous) ?? null
-  if (refusal) {
-    // A refused candidate is never activated and never deleted: the row is the
-    // record of why the refresh did not take, which a silent no-op would lose.
-    await sql`
-      update dataset_snapshot
-      set state = 'failed', error = ${refusal}, row_count = ${rowCount}, bytes = ${bytes},
-          fetch_ms = ${fetchMs}, load_ms = ${loadMs}, updated_at = now()
-      where row_id = ${snapshotId}`
-    return { status: 'refused', snapshotId, rowCount, reason: refusal, fetchMs, loadMs, bytes }
-  }
+    let rowCount: number
+    let sourceAsOf: string | null
+    let fetchMs = 0
+    let loadMs = 0
+    try {
+      const t0 = Date.now()
+      const fetched = await def.fetch()
+      fetchMs = Date.now() - t0
+      sourceAsOf = fetched.sourceAsOf
+      const t1 = Date.now()
+      rowCount = await def.load(snapshotId, fetched.rows)
+      loadMs = Date.now() - t1
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : String(e)
+      await sql`
+        update dataset_snapshot
+        set state = 'failed', error = ${reason}, fetch_ms = ${fetchMs}, load_ms = ${loadMs}, updated_at = now()
+        where row_id = ${snapshotId}`
+      return { status: 'failed', snapshotId, reason, fetchMs, loadMs }
+    }
 
-  // Demote and promote together. `dataset_snapshot_one_active` makes "exactly
-  // one active per dataset" a database fact rather than something this function
-  // has to remember; doing it in two statements outside a transaction would
-  // leave a window with none.
-  await sql.begin(async (tx) => {
-    await tx`
-      update dataset_snapshot set state = 'superseded', updated_at = now()
-      where dataset = ${dataset} and state = 'active'`
-    await tx`
-      update dataset_snapshot
-      set state = 'active', activated_at = now(), row_count = ${rowCount}, source_as_of = ${sourceAsOf},
-          bytes = ${bytes}, fetch_ms = ${fetchMs}, load_ms = ${loadMs}, updated_at = now()
-      where row_id = ${snapshotId}`
+    const bytes = def.sizeOf ? await def.sizeOf(snapshotId) : null
+    const refusal = def.validate?.(rowCount, previous) ?? null
+    if (refusal) {
+      // A refused candidate is never activated and never deleted: the row is the
+      // record of why the refresh did not take, which a silent no-op would lose.
+      await sql`
+        update dataset_snapshot
+        set state = 'failed', error = ${refusal}, row_count = ${rowCount}, bytes = ${bytes},
+            fetch_ms = ${fetchMs}, load_ms = ${loadMs}, updated_at = now()
+        where row_id = ${snapshotId}`
+      return { status: 'refused', snapshotId, rowCount, reason: refusal, fetchMs, loadMs, bytes }
+    }
+
+    // Demote and promote together. `dataset_snapshot_one_active` makes "exactly
+    // one active per dataset" a database fact rather than something this function
+    // has to remember; doing it in two statements outside a transaction would
+    // leave a window with none. A separate transaction from the advisory-lock
+    // one above (same reason release.ts's does), so it commits and is visible
+    // to readers immediately rather than waiting on the outer one.
+    await sql.begin(async (activation) => {
+      await activation`
+        update dataset_snapshot set state = 'superseded', updated_at = now()
+        where dataset = ${dataset} and state = 'active'`
+      await activation`
+        update dataset_snapshot
+        set state = 'active', activated_at = now(), row_count = ${rowCount}, source_as_of = ${sourceAsOf},
+            bytes = ${bytes}, fetch_ms = ${fetchMs}, load_ms = ${loadMs}, updated_at = now()
+        where row_id = ${snapshotId}`
+    })
+    await sql`delete from dataset_miss where dataset = ${dataset}`
+
+    return { status: 'activated', snapshotId, rowCount, sourceAsOf, fetchMs, loadMs, bytes }
   })
-  await sql`delete from dataset_miss where dataset = ${dataset}`
-
-  return { status: 'activated', snapshotId, rowCount, sourceAsOf, fetchMs, loadMs, bytes }
 }
 
 /**

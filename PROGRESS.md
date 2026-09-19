@@ -1,5 +1,75 @@
 # Progress Log
 
+## 2026-09-19 — Owner review of the sales-target/dataset-snapshot work: six correctness and authorization fixes
+
+Siraj reviewed data-warehouse#3775 at this branch's tip and found six concrete
+defects in the code that shipped in the last three PROGRESS entries. Fixed all
+six, each with a test that fails on the pre-fix code and passes on the fix
+(verified by reverting each file with `git stash` and rerunning):
+
+1. **#279 — a revoked Viewer role did not revoke access.** `/me`,
+   `/embed_session` and `/report` resolved the caller's assignment on session
+   token alone; a role removed mid-session still worked. `requireViewerRole()`
+   checks fresh on every call, before any assignment is disclosed or upstream
+   call made. Two new tests: an account with no Viewer role is 403 everywhere
+   with no upstream call; revoking mid-session denies the very next call on
+   the same token.
+2. **#284 — an unreachable Dive was reported as "not configured".**
+   `createEmbedSession()` used `status: 0` for both missing config and a
+   network exception, and the route mapped both to the quiet 200
+   `not_configured` marker. `EmbedResult` now carries a `kind:
+   'not_configured' | 'unreachable'` discriminant; only `not_configured`
+   gets the quiet marker, everything else (unreachable or a real refusal)
+   still answers 502.
+3. **A failed dataset refresh reported as a successful Job Execution.**
+   `refresh_datasets` logged a failed/refused `BuildOutcome` and returned
+   normally, so the job queue recorded success and never retried, however
+   many datasets actually failed. It now collects failures across the run and
+   throws once, after every dataset has had its turn — the existing
+   retry/failure machinery in `jobs.ts` does the rest. Last-good serving was
+   already independent of this (buildSnapshot never touches the previous
+   active row on failure); only the job-level signal was wrong.
+4. **A demand or manual refresh of an administered method forked a second
+   recurrence chain.** Every completed run of a method with a `Scheduled
+   Job` row re-enqueued the next interval, whatever triggered it — so a
+   reader's miss waking the worker between two scheduled occurrences left
+   the original future occurrence live AND queued a second one alongside it.
+   Now only a run whose own `trigger` was `'schedule'` advances the
+   schedule; demand/manual runs still do their work, they just don't move
+   the clock. Same gate on the failure-exhausted recurrence path.
+5. **`activeSnapshot()` ignored `definition_version`.** A deploy that bumped
+   a dataset's version with the old snapshot still `active` (refresh job
+   hasn't run since) was served as a normal hit — an incompatible shape
+   passed off as current. `activeSnapshot()` now filters on the currently
+   registered definition's version; a mismatch resolves to `null`, which
+   `reportFor`'s existing live-and-record-a-miss path already handles
+   correctly — reused, not reinvented.
+6. **`buildSnapshot()` had no fencing between overlapping refreshes.** A
+   schedule tick and a reader's miss landing at once could let a slower,
+   older fetch finish (and activate) after a faster, newer one already had,
+   publishing stale data as current. The whole build (fetch, load, validate,
+   activate) now runs under a `pg_advisory_xact_lock` keyed on the dataset
+   name, the same idiom `release.ts` uses for its own "N instances racing"
+   problem. Proven with a genuine two-session test (`it`, not the sandboxed
+   `test` fixture — the sandbox delegates to ONE real transaction, so two
+   "concurrent" calls inside it would share one Postgres session and the
+   lock would never actually block): the second call's fetch provably does
+   not start until the first has fully activated.
+
+Verified: `pnpm --filter server typecheck`, `pnpm --filter web typecheck`;
+full server suite 795 passed / 15 skipped / 1 failed (the same pre-existing
+root-runs-chmod `sources-csv.test.ts` case, identical on base — a root
+container's chmod doesn't actually deny writes, so the test's own "should
+get a 500" assertion sees success instead). `sales-target.test.ts` 24 passed
+(+3), `scheduled-jobs.test.ts` 10 passed (+1), `dataset-snapshot.test.ts` 26
+passed (+2, one of them the not-sandboxed lock test). Four more review items
+landed on the data-warehouse side of the same PR (the loader no longer
+overwrites Admin edits on rerun, a dbt test that missed same-section
+duplicate rows, and two documentation overclaims corrected) — see
+data-warehouse#3775's review thread for the full list; two items (the
+category/subcategory assignment ambiguity, and a freshness-policy design
+question) are reserved for a separate owner discussion, not implemented here.
+
 ## 2026-09-18 — The sales-target assignment is derived from the Store Sections maps (data-warehouse#3783)
 
 The store maintains which Sections hold which merchandise and who owns which
