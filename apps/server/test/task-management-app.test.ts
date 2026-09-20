@@ -170,6 +170,22 @@ describe('TSK-R5: responsibility and work state are independent', () => {
 })
 
 describe('shared team visibility', () => {
+  test('installation creates one Tasks Home Page, not a duplicate shortcut page', async ({
+    admin,
+  }) => {
+    await install()
+    try {
+      const pages = await admin.get<{
+        pages: { row_id: string; label: string; module: string | null }[]
+      }>('/api/home_pages')
+      expect(pages.pages.filter((page) => page.label === 'Tasks')).toEqual([
+        expect.objectContaining({ row_id: 'tasks', module: 'Tasks' }),
+      ])
+    } finally {
+      await uninstallApp(APP).catch(() => {})
+    }
+  })
+
   test('a team member can read and update a task without being assigned', async ({
     admin,
     createUser,

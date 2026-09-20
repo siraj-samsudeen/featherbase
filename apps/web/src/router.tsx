@@ -519,6 +519,10 @@ const homePageRoute = createRoute({
 
 function HomePagePage() {
   const { name } = homePageRoute.useParams()
+  // #296: the Tasks module's one normal Home Page is its purpose-built
+  // workspace. This avoids a second, identically named sidebar entry while
+  // every other module continues through the generic Home Page renderer.
+  if (name === 'tasks') return <TaskManagementPage />
   return (
     <div data-testid="table-page">
       <HomePageView key={name} name={name} />

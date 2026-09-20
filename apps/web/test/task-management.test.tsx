@@ -13,7 +13,7 @@ async function install() {
 test('TSK-J1 TSK-R1 TSK-R2: Enter captures a title-only task in Inbox', async ({ admin }) => {
   await install()
   try {
-    await renderApp('/admin/tasks', admin)
+    await renderApp('/admin/home/tasks', admin)
     const user = userEvent.setup()
 
     const capture = await screen.findByRole('textbox', { name: 'Quick capture' })
@@ -38,7 +38,7 @@ test('TSK-J1 TSK-R1 TSK-R2: Enter captures a title-only task in Inbox', async ({
 test('TSK-J2 TSK-R4: a project accepts rapid unassigned task entry', async ({ admin }) => {
   await install()
   try {
-    await renderApp('/admin/tasks', admin)
+    await renderApp('/admin/home/tasks', admin)
     const user = userEvent.setup()
 
     await user.click(await screen.findByRole('button', { name: 'Projects' }))
@@ -67,7 +67,7 @@ test('TSK-J1 TSK-R3 TSK-I1: triage to Personal tasks assigns its owner', async (
       table: 'Team Task',
       row: { task_title: 'Prepare my weekly notes' },
     })) as { row_id: string }
-    await renderApp('/admin/tasks', admin)
+    await renderApp('/admin/home/tasks', admin)
     const user = userEvent.setup()
 
     const destination = await screen.findByRole('combobox', {
@@ -103,7 +103,7 @@ test('TSK-J3 TSK-R9 TSK-R10 TSK-I3 TSK-H1: My Focus is ordered, private, and doe
     await admin.put('/api/user_settings/Task%20Management%20Focus', {
       task_ids: ['TASK-does-not-exist'],
     })
-    await renderApp('/admin/tasks', admin)
+    await renderApp('/admin/home/tasks', admin)
     const user = userEvent.setup()
 
     await user.click(await screen.findByRole('button', { name: 'Add to My Focus: Assigned and focused' }))
@@ -135,7 +135,7 @@ test('TSK-R7: an inactive state offers but does not require an explanation', asy
       table: 'Team Task',
       row: { task_title: 'Wait for stock ledger correction' },
     })) as { row_id: string }
-    await renderApp('/admin/tasks', admin)
+    await renderApp('/admin/home/tasks', admin)
     const user = userEvent.setup()
 
     await user.selectOptions(

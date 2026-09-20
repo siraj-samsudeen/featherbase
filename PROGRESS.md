@@ -3,20 +3,22 @@
 ## 2026-09-20 — Shared task-management prototype (#296)
 
 Built an opt-in `task-management` app on native Featherbase Tables. The task
-workspace at `/admin/tasks` now supports title-only Inbox capture, one-step
+workspace at the Tasks Home Page (`/admin/home/tasks`, with `/admin/tasks` as
+a direct-link alias) now supports title-only Inbox capture, one-step
 destination and responsibility choices, name-only projects with rapid task
 entry, team-visible Personal tasks, explicit work states with an optional
 comment for inactive states, shared Urgent, and private ordered My Focus / My
 Work. The generic Team Task form remains the full description, comments,
-attachments and history surface.
+attachments and history surface. The app uses the module Home Page Featherbase
+already creates, so Tasks appears only once in the sidebar.
 
 Server hooks enforce one destination, Personal-task ownership, single
 responsibility, and reversible Done-state behavior regardless of whether a
-write comes from the workspace or the generic API. The app installs a Tasks
-Home Page shortcut and grants the trusted team the task, project, user-picker
-and comment access the shared workflow needs.
+write comes from the workspace or the generic API. The app grants the trusted
+team the task, project, user-picker and comment access the shared workflow
+needs.
 
-**Verified:** server integration 8/8; web component journeys 5/5; server and
+**Verified:** server integration 9/9; web component journeys 5/5; server and
 web typechecks; task-only Playwright 2/2 including desktop persistence and
 375 px layout; inspected desktop capture showed two legible Inbox tasks with
 independent Urgent and private-star signals. `node tools/check-evidence.mjs`

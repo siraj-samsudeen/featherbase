@@ -19,7 +19,7 @@ test.beforeAll(async ({ request }) => {
 test('TSK-J1 TSK-J2 TSK-J3 TSK-R8: capture, project entry, urgency, and private focus survive reload', async ({
   page,
 }) => {
-  await page.goto('/admin/tasks')
+  await page.goto('/admin/home/tasks')
   const capture = page.getByRole('textbox', { name: 'Quick capture' })
   await capture.fill('Review September stock variance')
   await capture.press('Enter')
@@ -55,7 +55,7 @@ test.describe('TSK-J1: phone capture', () => {
   test.use({ viewport: { width: 375, height: 720 } })
 
   test('the task workspace has no page-level horizontal overflow', async ({ page }) => {
-    await page.goto('/admin/tasks')
+    await page.goto('/admin/home/tasks')
     await expect(page.getByRole('textbox', { name: 'Quick capture' })).toBeVisible()
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),

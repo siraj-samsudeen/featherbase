@@ -157,21 +157,6 @@ const taskManagement: AppManifest = {
   doc_events: {
     'Team Task': { before_validate: prepareTask },
   },
-  fixtures: [
-    {
-      table: 'Home Page',
-      rows: [
-        {
-          row_id: 'task-management',
-          label: 'Tasks',
-          module: 'Tasks',
-          shortcuts: JSON.stringify([
-            { label: 'Open task workspace', type: 'url', link_to: '/admin/tasks' },
-          ]),
-        },
-      ],
-    },
-  ],
 }
 
 export default taskManagement
