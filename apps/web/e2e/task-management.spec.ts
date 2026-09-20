@@ -31,14 +31,18 @@ test('TSK-J1 TSK-J2 TSK-J3 TSK-R8: capture, project entry, urgency, and private 
 
   const taskCards = page.locator('article')
   await expect(taskCards.nth(0)).toContainText('Review September stock variance')
-  await page.getByRole('button', { name: 'Mark urgent Confirm warehouse count date' }).click()
+  const urgentToggle = page.getByRole('button', {
+    name: 'Mark urgent Confirm warehouse count date',
+  })
+  await expect(urgentToggle).toHaveText('Not urgent')
+  await urgentToggle.click()
   await expect(taskCards.nth(0)).toContainText('Review September stock variance')
   await page.getByRole('button', {
     name: 'Add to My Focus: Review September stock variance',
   }).click()
   await expect(page.getByRole('button', {
     name: 'Remove urgent flag from Confirm warehouse count date',
-  })).toHaveAttribute('aria-pressed', 'true')
+  })).toHaveText('Urgent')
   await page.getByRole('combobox', {
     name: 'State for Review September stock variance',
   }).selectOption('Blocked')
@@ -57,9 +61,20 @@ test('TSK-J1 TSK-J2 TSK-J3 TSK-R8: capture, project entry, urgency, and private 
   await projectTask.fill('Compare September closing stock')
   await projectTask.press('Enter')
   await expect(page.getByText('Compare September closing stock')).toBeVisible()
+  const projectCard = page.locator('article').filter({
+    hasText: 'Compare September closing stock',
+  })
+  await expect(projectCard.getByRole('button', {
+    name: 'Mark urgent Compare September closing stock',
+  })).toHaveText('Not urgent')
+  await expect(projectCard.getByRole('button', {
+    name: 'Add to My Focus: Compare September closing stock',
+  })).toBeVisible()
+  await expect(projectCard.getByRole('button', { name: 'Take it' })).toBeVisible()
   await expect(page.getByRole('combobox', {
     name: 'Assign Compare September closing stock',
   })).toHaveValue('')
+  await page.screenshot({ path: '../../task-management-project.png', fullPage: true })
 
   await page.reload()
   await page.getByRole('button', { name: /My Work/ }).click()
