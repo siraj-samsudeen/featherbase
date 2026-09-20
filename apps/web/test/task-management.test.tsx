@@ -152,11 +152,34 @@ test('TSK-R7: an inactive state offers but does not require an explanation', asy
     await user.type(explanation, 'Waiting for the warehouse team')
     await user.click(screen.getByRole('button', { name: 'Save note' }))
 
+    expect(await screen.findByText('Waiting for the warehouse team')).toBeInTheDocument()
+
     await waitFor(async () => {
       const comments = (await admin.get(
         `/api/table/Comment?filters=${encodeURIComponent(JSON.stringify([['ref_name', '=', task.row_id]]))}&fields=%5B%22content%22%5D`,
       )) as { data: Record<string, unknown>[] }
       expect(comments.data).toEqual([{ content: 'Waiting for the warehouse team' }])
+    })
+  } finally {
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
+test('task rows offer one-click self-assignment', async ({ admin }) => {
+  await install()
+  try {
+    const task = (await admin.post('/api/save_row', {
+      table: 'Team Task',
+      row: { task_title: 'Own the stock follow-up' },
+    })) as { row_id: string }
+    await renderApp('/admin/home/tasks', admin)
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: 'Take it' }))
+
+    await waitFor(async () => {
+      const saved = (await admin.get(`/api/table/Team%20Task/${task.row_id}`)) as Record<string, unknown>
+      expect(saved.assigned_to).toBe('Administrator')
     })
   } finally {
     await uninstallApp(APP).catch(() => {})

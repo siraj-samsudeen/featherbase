@@ -22,6 +22,12 @@ interface Project {
   project_name: string
 }
 
+interface TaskComment {
+  ref_name: string
+  content: string
+  created_at: string
+}
+
 const TASK_FIELDS = [
   'row_id',
   'task_title',
@@ -84,14 +90,25 @@ export function TaskManagementPage() {
         `/api/user_settings/${encodeURIComponent(FOCUS_SETTINGS)}`,
       ),
   })
+  const comments = useQuery({
+    queryKey: ['task-management', 'comments'],
+    queryFn: () =>
+      listResource<TaskComment>('Comment', {
+        filters: [['ref_table', '=', 'Team Task']],
+        fields: ['ref_name', 'content', 'created_at'],
+        order_by: 'created_at asc',
+        limit_page_length: 500,
+      }),
+  })
 
   const allTasks = tasks.data?.data ?? []
   const byId = new Map(allTasks.map((task) => [task.row_id, task]))
+  const latestExplanation = new Map<string, string>()
+  for (const comment of comments.data?.data ?? [])
+    latestExplanation.set(comment.ref_name, comment.content)
   const focusIds = (focus.data?.settings?.task_ids ?? []).filter((id) => byId.has(id))
   const focusSet = new Set(focusIds)
-  const inbox = allTasks
-    .filter((task) => !task.project && !task.personal_tasks_owner)
-    .sort((left, right) => Number(Boolean(right.urgent)) - Number(Boolean(left.urgent)))
+  const inbox = allTasks.filter((task) => !task.project && !task.personal_tasks_owner)
   const focused = focusIds.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []))
   const myWork = [
     ...focused,
@@ -246,14 +263,14 @@ export function TaskManagementPage() {
             <button className="fc-btn-primary" disabled={saving || !capture.trim()}>Add</button>
           </form>
           <SectionTitle id="inbox-heading" title="Inbox" hint="Unassigned ideas waiting for triage" />
-          <TaskList tasks={inbox} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} onPatch={patchTask} onFocus={toggleFocus} />
+          <TaskList tasks={inbox} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
         </section>
       )}
 
       {view === 'work' && (
         <section aria-labelledby="work-heading">
           <SectionTitle id="work-heading" title="My Work" hint="Your private focus order, followed by work assigned to you" />
-          <TaskList tasks={myWork} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} onPatch={patchTask} onFocus={toggleFocus} onMove={moveFocus} />
+          <TaskList tasks={myWork} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} onMove={moveFocus} />
         </section>
       )}
 
@@ -278,10 +295,10 @@ export function TaskManagementPage() {
                 <SectionTitle title={projects.data?.data.find((project) => project.row_id === selectedProject)?.project_name ?? selectedProject} hint="Tasks begin unassigned; someone can take responsibility when work starts" />
                 <form className="mb-3 flex gap-2" onSubmit={async (event) => { event.preventDefault(); const title = projectTask; try { await createTask(title, { project: selectedProject }); setProjectTask('') } catch { /* shown above */ } }}>
                   <label className="sr-only" htmlFor="project-task">Add task to project</label>
-                  <input id="project-task" value={projectTask} onChange={(event) => setProjectTask(event.target.value)} placeholder="Add a task, then press Enter" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" />
+                  <input id="project-task" value={projectTask} onChange={(event) => setProjectTask(event.target.value)} placeholder="Add a task, then press Enter" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" autoFocus />
                   <button className="fc-btn-primary" disabled={saving || !projectTask.trim()}>Add</button>
                 </form>
-                <TaskList tasks={projectRows} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} onPatch={patchTask} onFocus={toggleFocus} />
+                <TaskList tasks={projectRows} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
               </>
             ) : <Empty text="Choose a project, or create the first one." />}
           </div>
@@ -297,10 +314,10 @@ export function TaskManagementPage() {
           </label>
           <form className="fc-card mb-5 flex gap-2 p-3" onSubmit={async (event) => { event.preventDefault(); const title = capture; try { await createTask(title, { personal_tasks_owner: personalOwner }); setCapture('') } catch { /* shown above */ } }}>
             <label className="sr-only" htmlFor="personal-capture">Add personal task</label>
-            <input id="personal-capture" value={capture} onChange={(event) => setCapture(event.target.value)} placeholder="Add a personal task" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" />
+            <input id="personal-capture" value={capture} onChange={(event) => setCapture(event.target.value)} placeholder="Add a personal task" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" autoFocus />
             <button className="fc-btn-primary" disabled={saving || !capture.trim()}>Add</button>
           </form>
-          <TaskList tasks={personalRows} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} onPatch={patchTask} onFocus={toggleFocus} />
+          <TaskList tasks={personalRows} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
         </section>
       )}
     </div>
@@ -315,15 +332,18 @@ function Empty({ text }: { text: string }) {
   return <div className="fc-card border-dashed px-4 py-10 text-center text-sm text-[var(--color-ink-muted)]">{text}</div>
 }
 
-function TaskList({ tasks, users, projects, focusSet, onPatch, onFocus, onMove }: {
+function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch, onFocus, onMove }: {
   tasks: Task[]
   users: { row_id: string }[]
   projects: Project[]
   focusSet: Set<string>
+  me: string
+  explanations: Map<string, string>
   onPatch: (task: Task, patch: Partial<Task>) => Promise<void>
   onFocus: (id: string) => Promise<void>
   onMove?: (id: string, offset: -1 | 1) => Promise<void>
 }) {
+  const queryClient = useQueryClient()
   const [explaining, setExplaining] = useState<string | null>(null)
   const [explanation, setExplanation] = useState('')
   const [posting, setPosting] = useState(false)
@@ -337,6 +357,7 @@ function TaskList({ tasks, users, projects, focusSet, onPatch, onFocus, onMove }
           table: 'Comment',
           row: { ref_table: 'Team Task', ref_name: task.row_id, content },
         })
+        await queryClient.invalidateQueries({ queryKey: ['task-management', 'comments'] })
       } finally {
         setPosting(false)
       }
@@ -348,18 +369,19 @@ function TaskList({ tasks, users, projects, focusSet, onPatch, onFocus, onMove }
   if (!tasks.length) return <Empty text="Nothing here yet." />
   return <div className="space-y-2">{tasks.map((task) => {
     const focused = focusSet.has(task.row_id)
+    const inactive = ['Blocked', 'On hold', 'Cancelled'].includes(task.task_state)
     return (
       <article key={task.row_id} className={`fc-card flex items-start gap-3 px-3 py-3 ${task.is_done ? 'opacity-60' : ''}`}>
         <input aria-label={`Mark ${task.task_title} done`} type="checkbox" checked={Boolean(task.is_done)} onChange={(event) => void onPatch(task, { is_done: event.target.checked })} className="mt-1 h-4 w-4 accent-[var(--color-brand)]" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <Link to="/admin/$table/$name" params={{ table: 'Team Task', name: task.row_id }} search={{ prefill: undefined }} className={`font-medium text-[var(--color-ink)] hover:text-[var(--color-brand)] ${task.is_done ? 'line-through' : ''}`}>{task.task_title}</Link>
-            {task.urgent && <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700">Urgent</span>}
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
             <select aria-label={`State for ${task.task_title}`} value={task.task_state ?? 'Not started'} onChange={(event) => { const taskState = event.target.value; void onPatch(task, { task_state: taskState }); if (['Blocked', 'On hold', 'Cancelled'].includes(taskState)) { setExplaining(task.row_id); setExplanation('') } }} className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-ink-muted)]">{STATES.map((state) => <option key={state}>{state}</option>)}</select>
             <select aria-label={`Destination for ${task.task_title}`} value={task.personal_tasks_owner ? `personal:${task.personal_tasks_owner}` : task.project ? `project:${task.project}` : ''} onChange={(event) => { const [kind, value] = event.target.value.split(':', 2); void onPatch(task, kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }) }} className="max-w-52 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-ink-muted)]"><option value="">Inbox</option><optgroup label="Projects">{projects.map((project) => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}</optgroup><optgroup label="Personal tasks">{users.map((user) => <option key={user.row_id} value={`personal:${user.row_id}`}>{user.row_id}</option>)}</optgroup></select>
             <select aria-label={`Assign ${task.task_title}`} value={task.assigned_to ?? ''} onChange={(event) => void onPatch(task, { assigned_to: event.target.value || null })} className="max-w-44 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-ink-muted)]"><option value="">Unassigned</option>{users.map((user) => <option key={user.row_id} value={user.row_id}>{user.row_id}</option>)}</select>
+            {!task.assigned_to && me && <button type="button" onClick={() => void onPatch(task, { assigned_to: me })} className="rounded border border-[var(--color-brand)] px-2 py-1 text-xs font-medium text-[var(--color-brand)] hover:bg-[var(--color-brand-tint)]">Take it</button>}
           </div>
           {explaining === task.row_id && (
             <form className="mt-3 flex gap-2" onSubmit={(event) => { event.preventDefault(); void addExplanation(task) }}>
@@ -369,9 +391,12 @@ function TaskList({ tasks, users, projects, focusSet, onPatch, onFocus, onMove }
               <button type="button" className="fc-btn" onClick={() => { setExplanation(''); setExplaining(null) }}>Skip</button>
             </form>
           )}
+          {explaining !== task.row_id && inactive && explanations.get(task.row_id) && (
+            <p className="mt-2 text-xs text-[var(--color-ink-muted)]"><span className="font-medium">{task.task_state}:</span> {explanations.get(task.row_id)}</p>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <button type="button" aria-label={`${task.urgent ? 'Remove urgent flag from' : 'Mark urgent'} ${task.task_title}`} title="Urgent is visible to the team" onClick={() => void onPatch(task, { urgent: !task.urgent })} className={`rounded p-1 text-sm ${task.urgent ? 'text-red-600' : 'text-[var(--color-ink-faint)] hover:text-red-600'}`}>!</button>
+          <button type="button" aria-label={`${task.urgent ? 'Remove urgent flag from' : 'Mark urgent'} ${task.task_title}`} aria-pressed={task.urgent} title="Urgent is visible to the team" onClick={() => void onPatch(task, { urgent: !task.urgent })} className={`flex items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-medium transition ${task.urgent ? 'border-red-300 bg-red-50 text-red-700' : 'border-transparent bg-[var(--color-subtle)] text-[var(--color-ink-muted)] hover:border-red-200 hover:text-red-700'}`}>{task.urgent && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-red-600" />}Urgent</button>
           <button type="button" aria-label={`${focused ? 'Remove from' : 'Add to'} My Focus: ${task.task_title}`} title="My Focus is private to you" onClick={() => void onFocus(task.row_id)} className={`rounded p-1 text-lg ${focused ? 'text-amber-500' : 'text-[var(--color-ink-faint)] hover:text-amber-500'}`}>{focused ? '★' : '☆'}</button>
           {onMove && focused && <><button type="button" aria-label={`Move ${task.task_title} up`} onClick={() => void onMove(task.row_id, -1)} className="rounded px-1 text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)]">↑</button><button type="button" aria-label={`Move ${task.task_title} down`} onClick={() => void onMove(task.row_id, 1)} className="rounded px-1 text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)]">↓</button></>}
         </div>

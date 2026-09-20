@@ -10,7 +10,10 @@ entry, team-visible Personal tasks, explicit work states with an optional
 comment for inactive states, shared Urgent, and private ordered My Focus / My
 Work. The generic Team Task form remains the full description, comments,
 attachments and history surface. The app uses the module Home Page Featherbase
-already creates, so Tasks appears only once in the sidebar.
+already creates, so Tasks appears only once in the sidebar. The compact task
+row keeps shared Urgent and private Focus actions together on the right,
+preserves row position when urgency changes, places Take it beside assignment,
+and shows the latest inactive-state explanation in context.
 
 Server hooks enforce one destination, Personal-task ownership, single
 responsibility, and reversible Done-state behavior regardless of whether a
@@ -18,7 +21,7 @@ write comes from the workspace or the generic API. The app grants the trusted
 team the task, project, user-picker and comment access the shared workflow
 needs.
 
-**Verified:** server integration 9/9; web component journeys 5/5; server and
+**Verified:** server integration 9/9; web component journeys 6/6; server and
 web typechecks; task-only Playwright 2/2 including desktop persistence and
 375 px layout; inspected desktop capture showed two legible Inbox tasks with
 independent Urgent and private-star signals. `node tools/check-evidence.mjs`
