@@ -65,6 +65,7 @@ import { createSite, listSites, resolveSite, siteCreateTableDef, siteListTableDe
 import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
 import checklists from './sample-apps/checklists'
+import taskManagement from './sample-apps/task-management'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
@@ -86,6 +87,9 @@ registerApp(helpdesk)
 // Same discipline: checklist tables exist only after
 // POST /api/install_app { name: 'checklists' }.
 registerApp(checklists)
+// The shared task workspace is opt-in for the same reason: structure appears
+// only on sites that choose to install it.
+registerApp(taskManagement)
 await loadInstalledApps()
 
 type Env = { Variables: { user: SessionUser } }

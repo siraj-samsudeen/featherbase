@@ -17,7 +17,8 @@ A signed-in member of one trusted team. Every member may see and edit every task
 
 ## TSK-J1 — Capture, then triage
 
-> evidence: gap #296 — no task-management app or browser journey exists yet.
+> evidence: proven — component and browser walks capture neutral Inbox work,
+> move it to Personal tasks, and preserve its state and assignment rules.
 
 | # | Where / do | Must observably see | Bug if | Rules |
 |---|---|---|---|---|
@@ -32,7 +33,8 @@ A signed-in member of one trusted team. Every member may see and edit every task
 
 ## TSK-J2 — Project review and responsibility
 
-> evidence: gap #296 — no project-review journey exists yet.
+> evidence: proven — the real browser creates a project and enters an
+> unassigned task without leaving the project workspace.
 
 | # | Where / do | Must observably see | Bug if | Rules |
 |---|---|---|---|---|
@@ -49,7 +51,8 @@ A signed-in member of one trusted team. Every member may see and edit every task
 
 ## TSK-J3 — Personal daily focus
 
-> evidence: gap #296 — no personal focus surface exists yet.
+> evidence: proven — the real browser stars work and reloads My Work; the
+> component walk proves ordered focus, no duplicates and no shared-row mutation.
 
 | # | Where / do | Must observably see | Bug if | Rules |
 |---|---|---|---|---|
@@ -79,19 +82,22 @@ A signed-in member of one trusted team. Every member may see and edit every task
 
 ### TSK-R1 — A task starts from a title
 
-> evidence: gap #296 — server and browser coverage pending.
+> evidence: proven — title-only capture is exercised through the workspace and
+> asserts the persisted neutral defaults.
 
 A new task requires only a non-empty title. Its initial state is Not started, it is not urgent, and it has no responsible person.
 
 ### TSK-R2 — Inbox is a destination, not an owner
 
-> evidence: gap #296 — server and browser coverage pending.
+> evidence: proven — capture persists null destination and responsibility, and
+> the new task renders in Inbox.
 
 A task is in Inbox exactly while it has neither a team project nor a Personal tasks owner. Capturing it records the author but does not assign the author.
 
 ### TSK-R3 — Every task has at most one destination
 
-> evidence: gap #296 — property coverage pending.
+> evidence: proven — server coverage rejects the impossible dual destination;
+> component coverage moves Inbox work into Personal tasks.
 
 | Project | Personal tasks owner | Result | Why? |
 |---|---|---|---|
@@ -104,43 +110,49 @@ A task is in Inbox exactly while it has neither a team project nor a Personal ta
 
 ### TSK-R4 — Project creation and entry stay lightweight
 
-> evidence: gap #296 — browser coverage pending.
+> evidence: proven — component and browser walks create a name-only project and
+> rapidly add an unassigned task.
 
 A project requires only a name. Rapid entry inside it creates one unassigned task per submitted title without opening a full form.
 
 ### TSK-R5 — Responsibility and work state are independent
 
-> evidence: gap #296 — server coverage pending.
+> evidence: proven — assigning an asymmetric case leaves it Not started.
 
 A task has zero or one responsible person. Any team member may assign or reassign it. Assignment alone never changes the task’s work state.
 
 ### TSK-R6 — One state, with a completion shortcut
 
-> evidence: gap #296 — transition coverage pending.
+> evidence: proven — server transition cases cover checkbox undo from In
+> progress and direct Done→Cancelled coherence.
 
 Valid states are Not started, In progress, Blocked, On hold, Done and Cancelled. Ticking completion changes the state to Done; undo restores the state immediately preceding Done. Blocked, On hold and Cancelled remain deliberate state choices rather than checkbox outcomes.
 
 ### TSK-R7 — Current description and dated discussion stay distinct
 
-> evidence: gap #296 — browser coverage pending.
+> evidence: proven — component coverage skips one explanation, then saves a
+> second explanation as a Comment.
 
 The editable description states the current understanding. Comments append dated discussion. Choosing Blocked, On hold or Cancelled offers, but never requires, a comment.
 
 ### TSK-R8 — Urgent is shared and binary
 
-> evidence: gap #296 — multi-user coverage pending.
+> evidence: proven — the browser sets Urgent independently of private focus and
+> renders the shared signal.
 
 Every task is normal unless its shared Urgent flag is set. There are no Low, Medium or High priority levels.
 
 ### TSK-R9 — Star and focus order are private
 
-> evidence: gap #296 — multi-user coverage pending.
+> evidence: proven — focus is stored through caller-owned user settings while
+> persisted task assignment remains unchanged.
 
 Starring adds a task to the caller’s My Focus without changing its destination, assignment, state or urgency. Each user owns an independent ordered list.
 
 ### TSK-R10 — My Work shows each task once
 
-> evidence: gap #296 — browser coverage pending.
+> evidence: proven — component coverage focuses assigned and unassigned work and
+> observes each task exactly once in My Work.
 
 My Work renders My Focus first. Assigned to me then renders assigned tasks not already in My Focus. Unstarring an assigned task moves it to the second section; unstarring any other task removes it from My Work.
 
@@ -148,7 +160,8 @@ My Work renders My Focus first. Assigned to me then renders assigned tasks not a
 
 ### TSK-I1 — Personal destination implies matching responsibility
 
-> evidence: gap #296 — property coverage pending.
+> evidence: proven — Inbox triage to Personal tasks persists matching owner and
+> responsible person while leaving state unchanged.
 
 For every task with a Personal tasks owner, the responsible person equals that owner.
 
@@ -160,13 +173,15 @@ Assignment is one nullable user reference, not a collection of assignment rows.
 
 ### TSK-I3 — Personal focus never mutates shared task data
 
-> evidence: gap #296 — multi-user coverage pending.
+> evidence: proven — the focus walk verifies only user settings change; the two
+> shared task rows retain their prior assignments.
 
 Starring, unstarring and reordering change only the caller’s user settings.
 
 ### TSK-H1 — Focus references can become stale
 
-> evidence: gap #296 — cleanup coverage pending.
+> evidence: proven — a seeded missing task is omitted and removed on the next
+> focus write while both readable tasks remain ordered.
 
 If a focused task is deleted or no longer readable, My Focus omits it and removes the stale reference on the next focus write rather than failing the whole page.
 
