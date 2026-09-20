@@ -1029,12 +1029,19 @@ Full elements/actions/states modelling; per-test coverage attribution;
 requirements as rows in Featherbase itself (attractive, and circular — the
 product cannot host its own spec before the product is trustworthy).
 
-## 5. The missing document
+## 5. The author's walkthrough *(written 2026-09-20 — `spec-walkthrough.md`)*
 
 Before the format is declared adopted, write the **author's walkthrough**:
 one trivial requirement traced through every artifact it touches — spec
 row, test title, evidence verdict, CI check. Cost of adoption is dominated by the
 first hour; this is that hour, written down.
+
+**Now written:** [`spec-walkthrough.md`](spec-walkthrough.md) follows `RVT-I3`
+("a second identical revert is a no-op") from spec entry to test title to the
+two CI passes, with the five ways to break the chain and what each one fails
+with. It also renders the same requirement in OpenSpec form, so the trade in
+[`openspec-vs-journey-spec.md`](openspec-vs-journey-spec.md) is visible on one
+requirement rather than argued in the abstract. Send a newcomer there first.
 
 ## 6. Relationship to feather-spec (the skill)
 

@@ -7,6 +7,13 @@ Requirements for work that is **agreed but not yet built**. Once a spec is
 implemented and verified end-to-end, it stays here as the contract the code was
 written against; `PROGRESS.md` records when that happened.
 
+**New here?** Read
+[`docs/design/spec-walkthrough.md`](../design/spec-walkthrough.md) first — one
+requirement (`RVT-I3`) traced from its spec entry through its test title to the
+two CI passes that keep them joined, plus the five ways to break the chain. Then
+read [0005](0005-import-revert.md), the smallest spec that is genuinely in the
+journeys-and-rules form.
+
 Format: feather-spec — a one-pager per
 feature with EARS acceptance criteria (`WHEN … THE SYSTEM SHALL …`) grouped by
 user capability, each group carrying a concrete example table. Capability IDs
@@ -37,6 +44,7 @@ hand-maintained `evidence/*.csv` matrices this replaced were retired
 | [0004 — Import Upsert](0004-import-upsert.md) | Built 2026-08-05 | Spreadsheet import upserts by key |
 | [0005 — Import Revert](0005-import-revert.md) | Built 2026-08-11 | Row-level reverse of a completed import |
 | [0006 — Connection Console](0006-connection-console.md) | Proposed | Connect a Data Source through the UI: typed credentials encrypted at rest, phased test with inline diagnosis, post-auth database dropdown, verified grants, advanced disclosure, saved-source health |
+| [0007 — Table Lifecycle](0007-table-lifecycle.md) | Row half built 2026-08-30; schema half specified | What a table owner can do with a table they declared: add rows without knowing a URL, delete a row from the row itself with dependants named first, and change the shape (`TLC-J3` carries `gap` verdicts against its own issues) |
 | [0008 — Spreadsheet Import](0008-spreadsheet-import.md) | Built (retrofit 2026-09-04) | The import wizard end to end: the file overview, merge groups and user combines, the stepper, leave-and-resume, past imports, column edits and Table merge — recovered from PR #210 plus the wizard core |
 | [0009 — Grid Editing](0009-grid-editing.md) | Proposed — specification only (#259) | Existing native business rows; server-derived eligibility, atomic per-field merge, conditional conflict confirmation, idempotent retry, keyboard editing and in-memory draft/navigation safety |
 

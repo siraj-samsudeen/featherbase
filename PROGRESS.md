@@ -1,5 +1,65 @@
 # Progress Log
 
+## 2026-09-20 — The author's walkthrough, written at last (docs/design/spec-walkthrough.md)
+
+`docs/design/requirements-framework.md` §5 has asked since 2026-08-03 for the
+**author's walkthrough** — one trivial requirement traced through every artifact
+it touches — on the grounds that "cost of adoption is dominated by the first
+hour; this is that hour, written down". It was never written, and the cost has
+been visible: the owner's reading of the OpenSpec migration this week was that
+both the journey spec and its conversion are "unreadable, cluttered", with no
+short document anywhere that shows how one requirement actually works.
+
+- **`docs/design/spec-walkthrough.md`** follows **`RVT-I3`** ("a second
+  identical revert is a no-op") end to end: the spec entry at
+  `docs/specs/0005-import-revert.md:220`, the test title at
+  `apps/server/test/import/revert.test.ts:275`, the title join that
+  `tools/check-evidence.mjs` re-derives, and the **two** CI passes
+  (`.github/workflows/test.yml:104` static, `:274` with `--results`). Chosen
+  because it is the smallest real obligation in the repo — one sentence, one
+  invariant, five assertions.
+- **The five ways to break the chain** are tabulated with what each one fails
+  with, including the two that were once counterfeits: a `.skip`ped test (and a
+  skipped *suite title*, the fourth disguise the #239 fixtures found), and a
+  test that exists but was excluded from the run — static green, runtime red,
+  which is what #241 closed. Also the deliberate non-failure: a test that ran
+  and **failed** still counts as executed, because its own suite owns that
+  verdict.
+- **The same requirement rendered in OpenSpec form**, as an illustration rather
+  than a committed file, with what the translation gains (a cold reader can act
+  on the Given/When/Then; `Status: governed`; `openspec validate --strict`) and
+  what it loses (the `> evidence:` verdict has no slot, so nothing joins it to
+  the test; the one-clause mechanism has nowhere to live; `shape: invariant`
+  disappears, so the next person writes one example instead of a property).
+  That puts the `openspec-vs-journey-spec.md` trade on one requirement instead
+  of in the abstract.
+- **§5 now points at it** instead of describing a document that does not exist,
+  and `docs/specs/README.md` opens with a "new here?" route: walkthrough first,
+  then spec 0005 — the smallest document genuinely in the journeys-and-rules
+  form (1 journey, 6 rules, 7 verdicts, against 0003's 2/9/11).
+
+**Found while indexing:** `docs/specs/README.md`'s table was missing
+**0007 — Table Lifecycle** entirely. A hand-maintained inventory describing
+other artifacts at a distance, silently one row short — the exact anti-pattern
+the 2026-08-28 document-set section names. Row added; making the table
+generated rather than kept is not done here.
+
+Verified: `node tools/check-evidence.mjs` green (148 verdicts across 8 specs,
+224 test files — unchanged, no obligations move); `node --test tools/*.test.mjs`
+68 passed; `pnpm check:stc` 14 requirements, no orphans, no new gaps. Every
+`file:line` in the new document was resolved against this tree, and the one
+count it would otherwise have hard-coded (the checker's mutation tests) is
+written as the command that produces it, per CLAUDE.md.
+
+Next: the owner's ruling on `docs/design/openspec-vs-journey-spec.md` is still
+what unblocks deleting one of the two table-deletion documents. Separately, the
+domain-assumptions section in `openspec/specs/table-deletion/spec.md` is filled
+with *environment* facts, not domain ones — diagnosed but not yet fixed; the
+proposal is to split the slot in two, require a `False if:` world-falsifier per
+entry, and make an explicit reasoned "none" available, then check it the way
+`check-evidence.mjs` checks verdicts.
+
+
 ## 2026-09-19 — Owner review of the sales-target/dataset-snapshot work: six correctness and authorization fixes
 
 Siraj reviewed data-warehouse#3775 at this branch's tip and found six concrete
