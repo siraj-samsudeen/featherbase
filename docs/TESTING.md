@@ -345,18 +345,32 @@ the artifact proof supplies real committed rows for this boundary.
 
 ### Tasker development scenarios
 
-With Tasker installed and enabled on a running loopback development server, seed
-the deterministic discussion scenarios through the ordinary HTTP API:
+With Tasker installed and enabled on a directly local development server backed
+by directly local PostgreSQL, seed the deterministic discussion scenarios through
+the ordinary HTTP API:
 
 ```bash
 ADMIN_PASSWORD=admin pnpm seed:tasker -- --url=http://127.0.0.1:8000
 ```
 
-The command refuses non-loopback URLs. It adopts matching deterministic users,
-projects, tasks and explanations, preserves unrelated rows, and keeps unrelated
-task IDs after its three-item private focus order. Running it again is safe. It
-does not reset a database. The data lives in `tools/seed-tasker-development.mjs`,
-outside Tasker's npm `files` and `featherbase.json` production fixtures.
+The command refuses non-loopback URLs (including accepting Node's canonical
+`http://[::1]` form), redirects, an environment other than `development`, and a
+PostgreSQL server that reports a non-local server address. It verifies identity
+before login, uses redirect refusal on every request, and rejects any response
+outside the exact configured origin so an Administrator credential is never
+forwarded across a detectable redirect. These checks cannot detect a transparent
+proxy: policy forbids SSH tunnels, port forwards, reverse/transparent proxies,
+shared development databases, QA, staging, production, external services, and
+production data. A literal artifact proof may explicitly request `test`; ordinary
+CLI seeding cannot.
+
+Every project and task has a deterministic `DEV-TASKER-*` row ID. The seed adopts
+only that ID and never overwrites an adopted row. Same-title developer rows remain
+untouched and receive neither scenario comments nor focus. Unrelated focus IDs are
+preserved after the three-item scenario order. Running it again is safe and it does
+not reset a database. Scenario definitions live in
+`runtime-apps/tasker/development/scenarios.mjs`, an app-owned development path
+excluded by Tasker's npm `files` and `featherbase.json` production fixtures.
 
 Concrete seeded row: `Triage supplier invoice mismatch` is an urgent, unassigned
 Inbox task. Other scenarios cover a non-urgent Inbox item, a visibly explained

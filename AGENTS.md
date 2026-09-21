@@ -64,6 +64,9 @@ Before any development build is offered to the owner, run the project skill
 `.agents/skills/proving-before-handoff/SKILL.md`: Prepare, Prove, then Hand off.
 A build is not done merely because it compiles or its focused tests pass.
 
-The owner gives standing authorization to reset **only** Featherbase development
-databases reached through a loopback address. This narrow authorization never
-covers shared QA, staging, production, external services, or production data.
+The owner gives standing authorization to reset **only after positively identifying**
+a local Featherbase database stamped `development`, with the PostgreSQL server
+itself directly local. A loopback URL alone is not sufficient. This narrow
+authorization explicitly excludes SSH tunnels, port forwards, reverse proxies,
+transparent proxies, shared development databases, QA, staging, production,
+external services, and production data.

@@ -123,8 +123,17 @@ app.use(
 // ---- Public routes (no session required) -----------------------------------
 
 app.get('/api/ping', async (c) => {
-  const [row] = await sql`select 1 as ok`
-  return c.json({ message: 'pong', db: row.ok === 1 })
+  const [row] = await sql`select
+    1 as ok,
+    inet_server_addr() is null
+      or inet_server_addr() <<= inet '127.0.0.0/8'
+      or inet_server_addr() = inet '::1' as server_local`
+  return c.json({
+    message: 'pong',
+    db: row.ok === 1,
+    environment: config.environment,
+    database_server_local: row.server_local === true,
+  })
 })
 
 // SET-004: the instance's display name, public so the login page (pre-auth)

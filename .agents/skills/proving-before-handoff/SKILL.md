@@ -7,7 +7,18 @@ description: Use Prove Before Handoff when asked to “prove before handoff”, 
 
 ## 1. Prepare
 
-Reset only a clearly identified loopback local development database or a dedicated disposable/test database. Never reset shared QA, staging, production, an external service, or production data. Create deterministic, realistic scenarios from the product discussion. Keep development scenarios outside production installation artifacts; never ship demo/test rows as production install fixtures unless that is an explicit product requirement.
+Reset under standing authorization only after positively identifying a local
+Featherbase database stamped `development` whose PostgreSQL server is directly
+local—not merely reachable through loopback. A dedicated disposable/test database
+may be reset only by a proof explicitly expecting its `test` stamp. Never treat a
+loopback URL as proof of locality. SSH tunnels, port forwards, reverse or
+transparent proxies, shared development databases, QA, staging, production,
+external services, and production data are excluded. The identity checks close
+detectable redirect, environment, and remote-database mistakes; they cannot prove
+that no transparent proxy exists, so policy forbids proxies. Create deterministic,
+realistic scenarios from the product discussion. Keep development scenarios outside
+production installation artifacts; never ship demo/test rows as production install
+fixtures unless that is an explicit product requirement.
 
 ## 2. Prove
 

@@ -5,13 +5,18 @@
 Added the three-stage Prove Before Handoff practice (Prepare, Prove, Hand off)
 and made it the automatic development-build definition of done. The standing
 reset authorization is explicitly limited to loopback Featherbase development
-databases; shared QA/staging/production, external services and production data
-remain out of bounds.
+databases only after the `development` environment and directly local PostgreSQL
+server are positively identified. Loopback alone is insufficient; tunnels, port
+forwards, reverse/transparent proxies, shared development, QA/staging/production,
+external services and production data remain out of bounds.
 
-Tasker's app-owned development seed now uses ordinary HTTP APIs and is outside
-the production npm artifact. `pnpm seed:tasker -- --url=http://127.0.0.1:8000`
-adopts deterministic rows without overwriting unrelated data and refuses remote
-hosts. A concrete row is `Triage supplier invoice mismatch` (urgent, unassigned,
+Tasker's app-owned development seed now uses ordinary HTTP APIs and its scenarios
+live under `runtime-apps/tasker/development/`, outside the production npm artifact.
+`pnpm seed:tasker -- --url=http://127.0.0.1:8000` refuses redirects, wrong
+environment, remote PostgreSQL and cross-origin responses before credentials are
+sent. It adopts deterministic development-only row IDs without overwriting
+same-title or adopted data. A concrete row is `DEV-TASKER-TASK-INVOICE-MISMATCH`,
+`Triage supplier invoice mismatch` (urgent, unassigned,
 Inbox); the complete set includes fake teammates, projects, assigned/unassigned,
 blocked/on-hold explanations, personal and completed work, and private focus.
 
@@ -19,20 +24,20 @@ The literal package proof seeds that state and asserts Inbox, Projects, private
 focus order, explanation visibility, urgent/Not urgent, self-assignment,
 Done→undo restoration, detail responsiveness, stale-client rejection and an
 invalid dual destination, while retaining restart/isolation/security checks.
-Evidence is emitted as `seeded-inbox.png`, `seeded-my-work.png`, responsive detail
-captures and `evidence.json` under the printed `dist/runtime-proof-*/` directory.
+At tablet and phone widths the proof also attempts real wheel scrolling: document
+scroll stays locked, inspector scroll advances, and closing restores document
+scroll. Evidence is emitted as `seeded-inbox.png`, `seeded-my-work.png`, responsive
+detail captures and `evidence.json` under the printed `dist/runtime-proof-*/` directory.
 The fake teammates deliberately have no passwords; the seed never resets or
 deletes data and does not reconcile developer edits to adopted scenario rows.
 
-**Verification:** seed safety/idempotence 3/3; server runtime/transition/Tasker
-20/20 and web Tasker 6/6 against dedicated `featherbase_handoff_e2e`; server and
+**Verification:** seed safety/identity/idempotence 6/6; server runtime/transition/Tasker
+21/21 and web Tasker 6/6 against dedicated `featherbase_handoff_e2e`; server and
 web source+test typechecks; npm dry-run contained only six production files and
 no scenario seed; `pnpm apps:prove` passed with frozen core unchanged at
-`c704fb4176f745709a59d94a0ed06a6fa4013576fedbd283899a47589e4aef7f`.
-Evidence: `dist/runtime-proof-7nyjfh/`. The seeded Inbox and My Work screenshots
-were visually inspected; they show the expected content/order without overlap.
-The mobile full-page inspector capture shows underlying page content below the
-viewport-height overlay, while the asserted viewport itself remains unclipped.
+`e4da7d662879947420b6ec3a56178d446daf3ffc5160ad4de32b9eeb58a32e2a`.
+Evidence: `dist/runtime-proof-ztr3gT/`. The seeded Inbox, My Work, wide inspector,
+tablet inspector and phone inspector screenshots were visually inspected.
 
 ## 2026-09-21 — Independent trusted runtime-package learning slice (#296)
 

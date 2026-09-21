@@ -28,10 +28,11 @@ button:disabled { cursor: default; opacity: .5; }
 .tasker-sidebar nav button[aria-current] { background: var(--color-brand-tint); }
 .tasker-main { padding: 36px; max-width: 1180px; width: 100%; margin: auto; align-self: start; }
 .tasker-shell:has(.tasker-inspector) { grid-template-columns: 210px minmax(0, 1fr) minmax(360px, 440px); }
-.tasker-inspector { position: sticky; top: 0; height: 100vh; overflow: auto; padding: 28px; background: white; border-left: 1px solid var(--color-border); box-shadow: -12px 0 40px #1c212610; z-index: 10; }
+.tasker-inspector { position: sticky; top: 0; height: 100vh; overflow: auto; overscroll-behavior: contain; padding: 28px; background: white; border-left: 1px solid var(--color-border); box-shadow: -12px 0 40px #1c212610; z-index: 10; }
 @media (max-width: 1100px) {
+  html.tasker-compact-inspector-open, html.tasker-compact-inspector-open body { overflow: hidden; }
   .tasker-shell:has(.tasker-inspector) { grid-template-columns: 210px minmax(0, 1fr); }
-  .tasker-inspector { position: fixed; inset: 0; width: 100%; height: auto; }
+  .tasker-inspector { position: fixed; inset: 0; box-sizing: border-box; width: 100%; height: 100dvh; }
 }
 @media (max-width: 700px) {
   .tasker-shell { display: block; }

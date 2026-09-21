@@ -119,11 +119,12 @@ try {
   const seeded = await seedTasker({
     baseUrl: origin,
     password: process.env.ADMIN_PASSWORD ?? 'admin',
+    expectedEnvironment: 'test',
     log: (message) => console.log(`SEEDED ${message}`),
   })
   await api('/api/save_row', { table: 'tasker.task', row: {
     task_title: 'Impossible dual destination',
-    project: seeded.projects['September stock review'],
+    project: seeded.projects['DEV-TASKER-PROJECT-STOCK-REVIEW'],
     personal_tasks_owner: 'Administrator',
   } }, 417)
   browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {})
@@ -146,7 +147,7 @@ try {
 
   await page.getByRole('button', { name: /My Work/ }).click()
   const workTitles = await page.locator('main article a[href^="#task="]').allTextContents()
-  assert.deepEqual(workTitles.slice(0, 3), TASKER_SCENARIOS.focus)
+  assert.deepEqual(workTitles.slice(0, 3), TASKER_SCENARIOS.focus.map(id => TASKER_SCENARIOS.tasks.find(task => task.row_id === id).task_title))
   await page.screenshot({ path: resolve(output, 'seeded-my-work.png'), fullPage: true })
 
   await page.getByRole('button', { name: 'Projects' }).click()
@@ -197,15 +198,34 @@ try {
   )
   await page.screenshot({ path: resolve(output, 'inspector.png'), fullPage: true })
   for (const [width, screenshot] of [[900, 'inspector-tablet.png'], [375, 'inspector-mobile.png']]) {
-    await page.setViewportSize({ width, height: 812 })
+    await page.setViewportSize({ width, height: 400 })
     const compactInspectorBox = await page.getByRole('complementary', { name: 'Task details' }).boundingBox()
     assert(compactInspectorBox)
     assert.equal(compactInspectorBox.x, 0)
     assert.equal(compactInspectorBox.width, width)
     await expect(page.getByRole('link', { name: 'Close details' })).toBeVisible()
-    await page.screenshot({ path: resolve(output, screenshot), fullPage: true })
+    await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('tasker-compact-inspector-open'))).toBe(true)
+    const lockedAt = await page.evaluate(() => ({
+      top: document.documentElement.scrollTop,
+      locked: document.documentElement.classList.contains('tasker-compact-inspector-open'),
+      overflow: getComputedStyle(document.body).overflow,
+    }))
+    assert(lockedAt.locked)
+    assert.equal(lockedAt.overflow, 'hidden')
+    const inspector = page.getByRole('complementary', { name: 'Task details' })
+    await inspector.evaluate(element => { element.scrollTop = 0 })
+    assert(await inspector.evaluate(element => element.scrollHeight > element.clientHeight))
+    await inspector.hover()
+    await page.mouse.wheel(0, 250)
+    assert.equal(await page.evaluate(() => document.documentElement.scrollTop), lockedAt.top)
+    await inspector.evaluate(element => { element.scrollTop = 100 })
+    assert((await inspector.evaluate(element => element.scrollTop)) > 0)
+    await page.screenshot({ path: resolve(output, screenshot) })
   }
   await page.getByRole('link', { name: 'Close details' }).click()
+  await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('tasker-compact-inspector-open'))).toBe(false)
+  await page.evaluate(() => window.scrollTo(0, 200))
+  assert((await page.evaluate(() => window.scrollY)) > 0)
   await page.screenshot({ path: resolve(output, 'mobile.png'), fullPage: true })
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
   const packageFilter = encodeURIComponent(JSON.stringify([['task_title', '=', 'Package-delivered stock review']]))

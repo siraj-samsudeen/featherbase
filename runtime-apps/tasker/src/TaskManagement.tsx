@@ -338,6 +338,17 @@ function TaskInspector({ onSaved }: { onSaved: () => Promise<void> }) {
     window.addEventListener('hashchange', change)
     return () => window.removeEventListener('hashchange', change)
   }, [])
+  useEffect(() => {
+    if (!id) return
+    const compact = window.matchMedia('(max-width: 1100px)')
+    const sync = () => document.documentElement.classList.toggle('tasker-compact-inspector-open', compact.matches)
+    sync()
+    compact.addEventListener('change', sync)
+    return () => {
+      compact.removeEventListener('change', sync)
+      document.documentElement.classList.remove('tasker-compact-inspector-open')
+    }
+  }, [id])
   return id ? <TaskDetail key={id} id={id} onSaved={onSaved} /> : null
 }
 
