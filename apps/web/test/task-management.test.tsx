@@ -75,7 +75,12 @@ test('lightweight_project_entry: a project accepts rapid unassigned task entry',
       'Confirm warehouse count date',
       'Review damaged stock notes',
     ]
-    for (const title of titles) {
+    await user.type(projectTask, titles[0])
+    expect(projectTask.closest('form')?.querySelector('button[type="submit"], button:not([type])')).toBeEnabled()
+    await user.type(projectTask, '{Enter}')
+    expect(await screen.findByText(titles[0])).toBeInTheDocument()
+    expect(projectTask).toHaveFocus()
+    for (const title of titles.slice(1)) {
       await user.type(projectTask, `${title}{Enter}`)
       expect(await screen.findByText(title)).toBeInTheDocument()
       expect(projectTask).toHaveFocus()

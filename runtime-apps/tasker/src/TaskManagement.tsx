@@ -82,6 +82,7 @@ export function TaskManagementPage() {
   const [personalOwner, setPersonalOwner] = useState(me)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [creatingProject, setCreatingProject] = useState(false)
   const [selectedTask, setSelectedTask] = useState(hashTaskId)
 
   useEffect(() => {
@@ -292,7 +293,7 @@ export function TaskManagementPage() {
     // @spec lightweight_project_entry
     const name = projectName.trim()
     if (!name) return
-    setSaving(true)
+    setCreatingProject(true)
     setError(null)
     try {
       const saved = await api.post<Project>('/api/save_row', {
@@ -305,7 +306,7 @@ export function TaskManagementPage() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create project')
     } finally {
-      setSaving(false)
+      setCreatingProject(false)
     }
   }
 
@@ -423,7 +424,7 @@ export function TaskManagementPage() {
             <form className="mb-3 flex gap-2" onSubmit={(event) => { event.preventDefault(); void createProject() }}>
               <label className="sr-only" htmlFor="project-name">Project name</label>
               <input id="project-name" value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="New project" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-2 text-sm" />
-              <button className="fc-btn-primary" disabled={saving || !projectName.trim()}>Add</button>
+              <button className="fc-btn-primary" disabled={creatingProject || !projectName.trim()}>Add</button>
             </form>
             <div className="space-y-1">
               {allProjects.map((project) => (
