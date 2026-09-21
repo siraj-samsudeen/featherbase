@@ -17,7 +17,9 @@ const prove = process.env.TASKER_UPGRADE_ACTION_PROOF === '1' ? test : test.skip
 prove('Tasker upgrade waits through committed action effects, then gates obsolete replay and preserves disable', async () => {
   const [identity] = await sql`select current_database() as name,
     (select value from internal_metadata where key = 'environment') as environment`
-  expect(identity).toEqual({ name: 'featherbase_tasker296_actions_commit_e2e', environment: 'test' })
+  const expectedDatabase = decodeURIComponent(new URL(process.env.DATABASE_URL!).pathname.slice(1))
+  expect(expectedDatabase).toMatch(/^featherbase_[a-z0-9_]+_actions_commit_e2e$/)
+  expect(identity).toEqual({ name: expectedDatabase, environment: 'test' })
   const source = resolve('../..', 'runtime-apps/tasker')
   const target = await mkdtemp(resolve('test/.tasker-action-upgrade-'))
   await cp(source, target, { recursive: true, filter: file => !file.split('/').includes('node_modules') })
