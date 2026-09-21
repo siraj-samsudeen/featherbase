@@ -7,6 +7,12 @@ Requirements for work that is **agreed but not yet built**. Once a spec is
 implemented and verified end-to-end, it stays here as the contract the code was
 written against; `PROGRESS.md` records when that happened.
 
+Before splitting behavior into specification files, use
+[Recognizing product features](../design/recognizing-product-features.md) to test
+the boundary against the data model, user goal, starting context, required
+decision, completion point, shared rules, independent evolution and independent
+proof.
+
 Format: feather-spec — a one-pager per
 feature with EARS acceptance criteria (`WHEN … THE SYSTEM SHALL …`) grouped by
 user capability, each group carrying a concrete example table. Capability IDs
