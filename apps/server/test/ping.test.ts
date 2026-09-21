@@ -6,11 +6,11 @@ describe('GET /api/ping', () => {
     const res = await admin.fetch('/api/ping')
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body).toMatchObject({
+    expect(body).toEqual({
       message: 'pong',
       db: true,
       environment: 'test',
+      database_server_local: expect.any(Boolean),
     })
-    expect(body.database_server_local).toEqual(expect.any(Boolean))
   })
 })
