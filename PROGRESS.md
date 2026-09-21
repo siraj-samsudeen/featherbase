@@ -9027,3 +9027,67 @@ its own database, post-#191) green on the PR. Closes the loop on #132.
   file byte download/removal and no dangling File after refused stale uploads.
   Its 375px screenshot exposes existing generic form clipping. This is now a
   separately assigned responsive follow-up, not a claimed visual handoff.
+
+## #296 responsive generic core forms
+
+- Separate characterized baseline `c97c95f`, validated change `137fdbe`, and
+  implementation/browser proof `d631d14`. No new ADR: this is a recoverable
+  presentation correction governed by `core-forms`, not platform architecture.
+- The browser red reproduced the defect at 375px: after focusing Save the
+  breadcrumb's left edge was -95px. The unwrapped heading/action row expanded
+  the inner scrolling canvas. Existing navigation media queries were correct;
+  wrapping/shrink boundaries restored containment without overflow hiding or
+  application-specific CSS. Attachment Remove no longer requires hover.
+- Local proof: direct375 and desktop1440 followed by live375 resize both pass
+  per-control bounds and main-canvas checks. Real blank/populated forms, save
+  and independent readback, realtime stale warning/Refresh, field validation,
+  long attachment filename, byte download/removal404 and keyboard Tab/Enter
+  with visible outline all pass. Example row: `Responsive row editor`,
+  `Stock-review-with-a-long-unbroken-identifier-3783`, title `Northern 375 crates`,
+  qty `83`, notes `Keep **this** description`.
+- Pending403/obsolete409 in the responsive test are explicitly presentation
+  probes with injected host-shaped errors. They check unsaved value retention,
+  truthful refusal text and bounds, not admission. Real upgrade/admission
+  remains covered by the identity tests and integrator's frozen-package proof.
+- Isolated resources: `featherbase_296_responsive_e2e`, API8826/web5226; directly
+  local PostgreSQL process and resolved DB name checked before reset. Browser
+  stack stopped. Full web158 passed on `featherbase_296_identity_test`; web
+  types, strict OpenSpec validation and diff checks passed. The combined spec
+  gate FAILED with two STC gaps for the removed layout baseline; an initial
+  status update incorrectly reported green because a later shell command
+  obscured the failing status. The log is authoritative. Browser2/2; screenshots
+  `dist/core-responsive-*` inspected, including live resize, blank, stale,
+  validation,403/409 and attachment keyboard focus. Vertical scrolling remains.
+- Reviews: five-axis spec review distinguishes the characterized overflow
+  limitation from the new governed promise; four scenario traces resolve to
+  code and tests. Eight-axis review refuted a sidebar-breakpoint defect through
+  live resize and isolated the actual unwrapped flex constraint. Three-axis
+  review found programmatic focus did not prove keyboard visibility; replaced
+  it with Tab plus outline assertion and inspected fresh captures. A held upload
+  response now also proves readable/disabled Uploading state. Desktop is
+  the counterexample to an unconditional stacked layout, not a duplicate case.
+  CI's required e2e job includes this browser spec; component tests alone cannot
+  prove CSS containment. No Oracle question remained unresolved.
+- Independent integrated proof at `95db87c` passed45 classes, real identity/
+  attachment lifecycle, pending403/activated409 and both login returns; touch375
+  visible32px Remove and tap→File0/download404 also passed. The unchanged
+  `347f7f0` harness passed before its follow-up `589883e` added a condition-based
+  drawer readiness wait for settled captures. Inspected actual Tasker desktop
+  and mobile captures in integrator `dist/runtime-proof-ne4Bia`: readable fields,
+  actions and heading, no horizontal clipping or drawer overlay. Attachments
+  are below native vertical scroll. Local resize test now uses the same actual
+  right-edge readiness predicate, without sleeps or hiding the drawer.
+- The parent's final ruling accepts normal sync/archive as the smallest release
+  gate resolution, superseding the temporary tooling hold. Retire the obsolete
+  canonical requirement through the accepted delta; no old markers, baseline
+  relaxation, checker redesign or Tasker archive. `3edfa78` is the separate
+  test-only readiness/busy-state checkpoint. No deployment or push.
+- Final standalone checks after sync/archive: `pnpm check:specs` exit0 (no
+  orphans/new gaps; responsive requirement has code/test and four scenarios),
+  strict archived validation6/6, full web158/158, web typechecks and diff check
+  exit0. The canonical spec contains the accepted governed requirement and no
+  obsolete layout baseline. Owned identity/mutation/responsive databases were
+  dropped only after rechecking their exact names and test stamps. API8826 and
+  web5226 stopped. Evidence logs and representative inspected images retained
+  in `rama_dw/outputs/issue296-core-responsive/`. Final integrated delta review
+  remains with the parent/reviewer; this worker makes no deployment claim.

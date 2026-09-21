@@ -18,11 +18,23 @@ The generic editor SHALL render metadata-defined fields, mark edited values unsa
 - **WHEN** an editor uploads two attachments and removes one
 - **THEN** both are initially listed and downloadable, and removal deletes only the selected attachment and its storage object
 
-### Requirement: generic_form_layout_baseline
-Status: characterized (#296)
+### Requirement: generic_core_form_controls_fit_viewport
+Status: governed (#296)
 
-The editor SHALL place its breadcrumb above a heading/status and action row. Field sections SHALL use one column below the medium breakpoint and two above; the supplemental panels SHALL stack below fields until the large breakpoint. This baseline does not guarantee horizontal containment: the unwrapped action row can overflow narrow screens, and attachment removal is visually exposed on hover only.
+At 375px and desktop widths, generic forms SHALL keep navigation, heading, status, editable fields, Save and attachment upload/download/removal readable and horizontally reachable without page-level clipping. Long identifiers, filenames and error text SHALL not push controls outside the available width. Desktop sections and supplemental panels SHALL retain their wider layout. Keyboard users SHALL be able to focus and operate attachment controls without hover.
 
-#### Scenario: narrow_layout_stacks_panels_but_actions_can_overflow
-- **WHEN** an existing row is opened at 375px with the standard actions
-- **THEN** supplemental panels stack below fields but the action row may exceed the available width
+#### Scenario: narrow_blank_and_populated_form
+- **WHEN** a user opens a blank or populated generic form at 375px
+- **THEN** its breadcrumb, title, values and actions fit the available width and remain usable after focusing a field or Save
+
+#### Scenario: narrow_form_errors_remain_visible
+- **WHEN** validation fails, a document becomes stale, or save/upload is refused with pending403 or obsolete409
+- **THEN** the form retains its unsaved values and readable refusal/error state within the viewport without showing false success or replacing the pinned identity
+
+#### Scenario: narrow_attachment_identity_and_actions
+- **WHEN** attachments are empty, uploading, populated with a long filename, or an operation fails
+- **THEN** upload, filename/download and removal controls remain reachable, errors remain readable, and removal is visible and operable by keyboard without hover
+
+#### Scenario: desktop_keeps_generic_form_layout
+- **WHEN** the same row opens at 1440px
+- **THEN** field sections retain multiple columns where applicable and supplemental panels sit beside them with all actions reachable
