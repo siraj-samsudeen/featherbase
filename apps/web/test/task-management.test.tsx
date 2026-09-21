@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { installApp, isInstalled, uninstallApp } from 'server/src/apps'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { resolve } from 'node:path'
+import { vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { TestClient } from 'feather-testing-postgres'
 import { peopleWithTaskResponsibility, TaskManagementPage } from '../../../runtime-apps/tasker/src/TaskManagement'
@@ -108,7 +109,7 @@ test('projects_landing_flow: the directory opens a project and keeps its context
 
     const navigation = await screen.findByRole('navigation', { name: 'Task views' })
     expect(Array.from(navigation.querySelectorAll(':scope > button')).map((button) => button.textContent?.replace(/\d+$/, ''))).toEqual([
-      'Inbox', 'My Work', 'Together', 'Personal tasks', 'Projects',
+      'Inbox', 'My Work', 'Together', 'Personal tasks', 'Views', 'Projects',
     ])
     await user.click(await screen.findByRole('button', { name: 'Projects' }))
     await user.type(screen.getByRole('textbox', { name: 'New project' }), 'Warehouse review{Enter}')
@@ -129,6 +130,127 @@ test('projects_landing_flow: the directory opens a project and keeps its context
     await user.click(screen.getByRole('link', { name: 'Count closing stock' }))
     expect(await screen.findByRole('complementary', { name: 'Task details' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Warehouse review' })).toBeInTheDocument()
+  } finally {
+    location.hash = ''
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
+// @spec task_search_stays_in_scope.title_and_description_search
+// @spec task_filters_combine_dimensions.or_within_and_between
+// @spec task_view_state_is_visible.zero_matches_are_recoverable
+// @spec saved_task_views_are_private_fixed.saved_definition_round_trip
+// @spec saved_task_views_are_private_fixed.project_view_keeps_project_boundary
+// @spec saved_view_changes_are_explicit.reset_detects_changes
+test('find_and_reuse_task_view: compound project criteria stay visible and save privately without changing tasks', async ({ admin, createUser }) => {
+  await install()
+  try {
+    const member = await createUser({ roles: [] })
+    const stockProject = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: 'tasker.project', row: { project_name: 'September stock review' },
+    })
+    const otherProject = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: 'tasker.project', row: { project_name: 'Store opening readiness' },
+    })
+    const matching = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: 'tasker.task', row: {
+        task_title: 'Reconcile receiving variance',
+        description: 'Check the warehouse transfer evidence.',
+        project: stockProject.row_id,
+        assigned_to: member.user,
+        task_state: 'Not started',
+        urgent: true,
+      },
+    })
+    await admin.post('/api/save_row', { table: 'tasker.task', row: {
+      task_title: 'Book the count date', project: stockProject.row_id,
+      assigned_to: member.user, task_state: 'In progress', urgent: false,
+    } })
+    await admin.post('/api/save_row', { table: 'tasker.task', row: {
+      task_title: 'Escalate damaged stock', project: stockProject.row_id,
+      assigned_to: 'Administrator', task_state: 'Blocked', urgent: true,
+    } })
+    await admin.post('/api/save_row', { table: 'tasker.task', row: {
+      task_title: 'Review another warehouse transfer',
+      description: 'The same search words are outside this project.',
+      project: otherProject.row_id,
+      assigned_to: member.user,
+      task_state: 'Not started',
+      urgent: true,
+    } })
+    const taskBefore = await admin.get(`/api/table/tasker.task/${matching.row_id}`)
+
+    renderTasker(admin)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Projects' }))
+    await user.click(await screen.findByRole('button', { name: 'September stock review' }))
+
+    const search = await screen.findByRole('searchbox', { name: 'Search task titles and descriptions' })
+    await user.type(search, 'warehouse transfer')
+    expect(await screen.findByText('Reconcile receiving variance')).toBeInTheDocument()
+    expect(screen.queryByText('Review another warehouse transfer')).not.toBeInTheDocument()
+    expect(screen.getByText('1 of 3 tasks')).toBeInTheDocument()
+    await user.clear(search)
+
+    await user.click(screen.getByRole('button', { name: 'Filter' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Not started' }))
+    await user.click(screen.getByRole('checkbox', { name: 'In progress' }))
+    await user.click(screen.getByRole('checkbox', { name: member.user! }))
+    await user.click(screen.getByRole('checkbox', { name: 'Urgent' }))
+    await user.click(screen.getAllByRole('button', { name: 'Close filters' }).at(-1)!)
+
+    expect(screen.getByText('1 of 3 tasks')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove Not started filter' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove In progress filter' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: `Remove ${member.user} filter` })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove Urgent filter' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Save view' }))
+    await user.type(screen.getByRole('textbox', { name: 'View name' }), 'Urgent open stock work')
+    await user.click(screen.getByRole('button', { name: 'Save private view' }))
+    expect(await screen.findByRole('heading', { name: 'Urgent open stock work' })).toBeInTheDocument()
+    const stored = await admin.get('/api/user_settings/tasker.saved-views') as {
+      settings: { views: { id: string; name: string; scope: { kind: string; projectId?: string } }[] }
+    }
+    expect(stored.settings.views).toHaveLength(1)
+    expect(stored.settings.views[0]).toMatchObject({
+      name: 'Urgent open stock work',
+      scope: { kind: 'project', projectId: stockProject.row_id },
+    })
+    expect(location.hash).toBe(`#view=${stored.settings.views[0].id}`)
+    expect(await member.get('/api/user_settings/tasker.saved-views')).toEqual({ settings: null })
+    expect(await admin.get(`/api/table/tasker.task/${matching.row_id}`)).toEqual(taskBefore)
+
+    await user.click(screen.getByRole('button', { name: 'Filter (4)' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Blocked' }))
+    await user.click(screen.getAllByRole('button', { name: 'Close filters' }).at(-1)!)
+    expect(screen.getByRole('button', { name: 'Update view' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Reset' }))
+    expect(screen.queryByRole('button', { name: 'Remove Blocked filter' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Update view' })).not.toBeInTheDocument()
+
+    const savedViewSearch = screen.getByRole('searchbox', { name: 'Search task titles and descriptions' })
+    await user.type(savedViewSearch, 'does not exist')
+    expect(await screen.findByText('No tasks match this search and filters')).toBeInTheDocument()
+    expect(screen.getAllByText('0 of 3 tasks').length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: 'Remove Urgent filter' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Clear search' }))
+    expect(await screen.findByText('Reconcile receiving variance')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Views/ }))
+    await user.click(screen.getByRole('button', { name: 'Rename' }))
+    const rename = screen.getByRole('textbox', { name: 'Rename saved view' })
+    await user.clear(rename)
+    await user.type(rename, 'September urgent work')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText('September urgent work')).toBeInTheDocument()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    confirm.mockRestore()
+    await waitFor(async () => expect(await admin.get('/api/user_settings/tasker.saved-views')).toEqual({
+      settings: { views: [] },
+    }))
+    expect(await admin.get(`/api/table/tasker.task/${matching.row_id}`)).toEqual(taskBefore)
   } finally {
     location.hash = ''
     await uninstallApp(APP).catch(() => {})
