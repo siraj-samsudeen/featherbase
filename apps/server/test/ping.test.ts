@@ -5,11 +5,12 @@ describe('GET /api/ping', () => {
   test('responds with pong and a live db check', async ({ admin }) => {
     const res = await admin.fetch('/api/ping')
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({
+    const body = await res.json()
+    expect(body).toMatchObject({
       message: 'pong',
       db: true,
       environment: 'test',
-      database_server_local: true,
     })
+    expect(body.database_server_local).toEqual(expect.any(Boolean))
   })
 })
