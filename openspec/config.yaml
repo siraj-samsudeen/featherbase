@@ -10,7 +10,7 @@ context: |
 rules:
   specs:
     - Use globally unique descriptive snake_case requirement and scenario slugs.
-    - Label every requirement `Status: governed` or `Status: characterized (#issue)`.
+    - 'Label every requirement `Status: governed` or `Status: characterized (#issue)`.'
     - Record facts outside Featherbase's control as dated domain assumptions with a detector.
   tasks:
     - Include strict OpenSpec validation and STC verification for behavior changes.
