@@ -23,8 +23,11 @@ import { test, expect, renderApp } from './pg-test'
 // `unit` job runs the server and web suites together and the web suite alone
 // takes 60+ s. This assertion timed out twice in two days on PRs that touched
 // zero files under apps/web (#272 at 7c38862, #285 at a5ec317). The wait is
-// widened, never weakened: the row must still appear, and still be a link.
+// widened, never weakened: the row must still appear, and still be a link. The
+// whole-test timeout must exceed this assertion timeout or Vitest can abort the
+// test before Testing Library has used the allowance.
 const SIDEBAR_WAIT = { timeout: 15_000 }
+const TEST_TIMEOUT = SIDEBAR_WAIT.timeout + 15_000
 
 const DT = 'Recall Roles'
 
@@ -59,7 +62,7 @@ test('sidebar recall rows expose the link role, never button', async ({ admin })
   expect(row).toHaveRole('link')
   expect(row).toHaveAttribute('href', '/featherbase/admin/Saved%20Search/SS-1')
   expect(screen.queryAllByRole('button')).not.toContain(row)
-})
+}, TEST_TIMEOUT)
 
 test("a chip wearing a button's words does not widen that button's name lookup", async ({
   admin,
@@ -77,4 +80,4 @@ test("a chip wearing a button's words does not widen that button's name lookup",
     const saves = screen.getAllByRole('button', { name: /^Save/ })
     expect(saves).toEqual([screen.getByTestId('form-save')])
   })
-})
+}, TEST_TIMEOUT)
