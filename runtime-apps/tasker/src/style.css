@@ -152,6 +152,13 @@ button:disabled { cursor: default; opacity: .48; }
 .tasker-markdown pre { overflow-x: auto; padding: 12px; border-radius: 6px; background: var(--color-subtle); }
 .tasker-markdown code { font-size: 12px; background: var(--color-subtle); }
 .tasker-markdown img { max-width: 100%; height: auto; }
+.tasker-actions { position: relative; margin: -8px 0 16px; font-size: 13px; }
+.tasker-actions summary { width: fit-content; cursor: pointer; color: var(--color-ink-muted); padding: 6px 0; }
+.tasker-action-menu { position: absolute; right: 0; z-index: 20; display: grid; min-width: 210px; padding: 6px; border: 1px solid var(--color-border); border-radius: 8px; background: white; box-shadow: 0 8px 24px #14263d25; }
+.tasker-action-menu button { padding: 10px; border-radius: 5px; text-align: left; }
+.tasker-action-menu button:hover { background: var(--color-subtle); }
+.tasker-action-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; align-items: center; justify-items: center; padding: 18px; background: #13233366; }
+.tasker-action-confirm { width: min(100%, 480px); max-height: 85dvh; overflow: auto; padding: 24px; border-radius: 12px; background: white; box-shadow: 0 14px 48px #14263d44; line-height: 1.6; }
 html:has(.tasker-focus-detail), html:has(.tasker-focus-detail) body { overflow: hidden; }
 .tasker-shell:has(.tasker-focus-detail) > .tasker-sidebar, .tasker-shell:has(.tasker-focus-detail) > .tasker-main { visibility: hidden; }
 

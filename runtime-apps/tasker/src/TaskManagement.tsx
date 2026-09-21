@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser, listResource } from './api'
 import { Markdown } from './Markdown'
 import { ProjectDescription } from './ProjectDescription'
+import { TaskActions } from './TaskActions'
 
 type View = 'inbox' | 'work' | 'together' | 'projects' | 'personal'
 type DetailMode = 'compact' | 'inspector' | 'focus'
@@ -196,6 +197,13 @@ export function TaskManagementPage() {
 
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ['task-management'] })
+  }
+
+  async function actionCompleted(projectId?: string) {
+    location.hash = ''
+    setSelectedTask(null)
+    if (projectId) { setSelectedProject(projectId); setView('projects') }
+    await refresh()
   }
 
   async function createTask(title: string, extra: Partial<Task> = {}) {
@@ -402,7 +410,7 @@ export function TaskManagementPage() {
       {error && <p role="alert" className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       {selectedTask && detailMode === 'compact' && (
         <div className="tasker-compact-detail">
-          <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} people={people} projects={allProjects} />
+          <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} people={people} projects={allProjects} onCompleted={actionCompleted} />
         </div>
       )}
 
@@ -522,12 +530,12 @@ export function TaskManagementPage() {
       {selectedTask && detailMode === 'inspector' && (
         // @spec responsive_detail_preserves_workspace_context
         <aside className="tasker-inspector" aria-label="Task details">
-          <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} people={people} projects={allProjects} />
+          <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} people={people} projects={allProjects} onCompleted={actionCompleted} />
         </aside>
       )}
       {selectedTask && detailMode === 'focus' && (
         <div className="tasker-focus-detail" role="dialog" aria-label="Focused task details">
-          <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} people={people} projects={allProjects} />
+          <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} people={people} projects={allProjects} onCompleted={actionCompleted} />
         </div>
       )}
     </div>
@@ -572,17 +580,19 @@ function ProjectHeading({ project, starred, onRename, onToggleStar, onMoveStar }
   </div>
 }
 
-function TaskDetail({ id, mode, onMode, onSaved, people, projects }: {
+function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }: {
   id: string
   mode: DetailMode
   onMode: (mode: DetailMode) => Promise<void>
   onSaved: () => Promise<void>
   people: { row_id: string }[]
   projects: Project[]
+  onCompleted: (projectId?: string) => Promise<void>
 }) {
   const queryClient = useQueryClient()
   const task = useQuery({ queryKey: ['task-management', 'detail', id],
     queryFn: () => api.get<Task & { description: string }>(`/api/table/tasker.task/${encodeURIComponent(id)}`),
+    retry: false,
   })
   const taskActivity = useQuery({
     queryKey: ['task-management', 'detail-activity', id],
@@ -661,7 +671,8 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects }: {
     {task.error && <p role="alert">{task.error.message}</p>}
     {task.isPending && <p role="status">Loading task…</p>}
     {error && <p role="alert">{error}</p>}
-    {task.data && <>
+    <TaskActions key={id} task={task.data ?? { row_id: id, updated_at: '' }} disabled={!task.data || Boolean(task.error) || saving || Boolean(draft)} onCompleted={onCompleted} />
+    {task.data && !task.error && <>
       <fieldset className="tasker-detail-controls" disabled={saving || Boolean(draft)}>
         <legend className="sr-only">Task workflow</legend>
         <label>State<select aria-label="Task state" value={task.data.task_state} onChange={(event) => void patch({ task_state: event.target.value })}>{STATES.map(state => <option key={state}>{state}</option>)}</select></label>
@@ -726,6 +737,7 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects }: {
 
       <div className="mt-7 border-t border-[var(--color-border)] pt-5">
         <h3 className="mb-3 text-sm font-semibold">Discussion and history</h3>
+        {taskActivity.error && <p role="alert">Could not load discussion and history: {taskActivity.error.message}</p>}
         <form className="mb-5 flex gap-2" onSubmit={async (event) => {
           event.preventDefault()
           const content = comment.trim()

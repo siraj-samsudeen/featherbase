@@ -1,4 +1,6 @@
-export class ApiError extends Error {}
+export class ApiError extends Error {
+  constructor(message: string, readonly status?: number) { super(message) }
+}
 
 export function getSessionUser(): { row_id: string } | null {
   return JSON.parse(localStorage.getItem('fc_user') ?? 'null')
@@ -13,7 +15,7 @@ async function request<T>(path: string, method = 'GET', body?: unknown): Promise
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
   const result = await response.json()
-  if (!response.ok) throw new ApiError(result.error?.message ?? 'Request failed')
+  if (!response.ok) throw new ApiError(result.error?.message ?? 'Request failed', response.status)
   return result
 }
 export const api = {

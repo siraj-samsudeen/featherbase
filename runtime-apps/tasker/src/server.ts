@@ -6,6 +6,7 @@ interface Context {
 }
 export const apiVersion = 1
 export const validators = { 'tasker.task': prepareTask }
+export { actions } from './actions'
 
 function prepareTask(ctx: Context): void {
   // @spec one_task_destination

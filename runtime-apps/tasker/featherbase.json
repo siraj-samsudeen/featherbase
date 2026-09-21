@@ -2,6 +2,7 @@
   "manifestVersion": 1, "apiVersion": 1,
   "name": "tasker", "title": "Tasker",
   "server": "dist/server.mjs", "client": "dist/client", "entryTable": "tasker.task",
+  "actions": {"version": 1, "names": ["promote", "delete_accidental"], "tables": ["tasker.task", "tasker.project"]},
   "tables": [
     {"name": "tasker.project", "label": "Project", "module": "Tasker", "id_pattern": "TPROJ-.####", "title_column": "project_name",
       "columns": [{"column_name": "project_name", "label": "Project name", "column_type": "Data", "reqd": true, "in_list_view": true},

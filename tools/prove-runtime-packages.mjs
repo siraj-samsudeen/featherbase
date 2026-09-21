@@ -9,6 +9,7 @@ import { existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { createRequire } from 'node:module'
 import { seedTasker, TASKER_SCENARIOS } from './seed-tasker-development.mjs'
+import { proveTaskerAcceptance } from './prove-tasker-acceptance.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const requireWeb = createRequire(resolve(root, 'apps/web/package.json'))
@@ -136,6 +137,7 @@ try {
   await page.waitForURL('**/admin**')
   await page.locator('a[href="/tasker/"]').click()
   await expect(page).toHaveURL(`${origin}/tasker/`)
+  await proveTaskerAcceptance({ page, api, expect, output, origin })
   await expect(page.getByText('Triage supplier invoice mismatch')).toBeVisible()
   await expect(page.getByText('Collect ideas for the Monday review')).toBeVisible()
   await expect(page.getByText('Blocked until the warehouse confirms the night-shift roster.')).toBeVisible()

@@ -13,13 +13,3 @@ docs/specs/0009-grid-editing.md
 docs/specs/0011-runtime-packages.md
 docs/specs/README.md
 docs/specs/tasker/README.md
-docs/specs/tasker/manage-responsibility-and-progress.md
-docs/specs/tasker/plan-my-work.md
-docs/specs/tasker/process-inbox-items.md
-docs/specs/tasker/quick-task-capture.md
-docs/specs/tasker/reorganize-projects.md
-docs/specs/tasker/review-team-workload.md
-docs/specs/tasker/shared-team-work.md
-docs/specs/tasker/star-projects-for-quick-access.md
-docs/specs/tasker/start-a-project.md
-docs/specs/tasker/use-task-details.md

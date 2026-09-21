@@ -9,7 +9,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc --noEmit && vite build && esbuild src/server.ts --format=esm --platform=node --outfile=dist/server.mjs",
+    "build": "tsc --noEmit && vite build && esbuild src/server.ts --bundle --format=esm --platform=node --outfile=dist/server.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
