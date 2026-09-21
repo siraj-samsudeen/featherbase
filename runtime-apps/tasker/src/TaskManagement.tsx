@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser, listResource } from './api'
 
@@ -57,6 +57,19 @@ const PREFERENCE_SETTINGS = 'tasker.preferences'
 
 function hashTaskId() {
   return new URLSearchParams(location.hash.slice(1)).get('task')
+}
+
+type TaskerIconName = 'inbox' | 'work' | 'together' | 'projects' | 'personal'
+
+function TaskerIcon({ name }: { name: TaskerIconName }) {
+  const paths: Record<TaskerIconName, ReactNode> = {
+    inbox: <><path d="M4 5.5h16v13H4z" /><path d="M4 14h4l2 2h4l2-2h4" /></>,
+    work: <><circle cx="12" cy="8" r="3" /><path d="M5.5 20c.6-4 2.7-6 6.5-6s5.9 2 6.5 6" /></>,
+    together: <><circle cx="9" cy="8" r="2.5" /><circle cx="16.5" cy="9" r="2" /><path d="M3.5 19c.5-3.5 2.3-5.2 5.5-5.2s5 1.7 5.5 5.2" /><path d="M14.5 14.4c3.3-.4 5.3 1.1 6 4.1" /></>,
+    projects: <><path d="M3.5 7.5h6l2-2h9v13h-17z" /><path d="M3.5 9.5h17" /></>,
+    personal: <><rect x="5" y="4" width="14" height="16" rx="2" /><path d="M9 4V2.8M15 4V2.8M8.5 10h7M8.5 14h5" /></>,
+  }
+  return <svg className="tasker-nav-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>
 }
 
 export function peopleWithTaskResponsibility(
@@ -168,6 +181,10 @@ export function TaskManagementPage() {
   const personalRows = allTasks.filter((task) => task.personal_tasks_owner === personalOwner)
   const allProjects = projects.data?.data ?? []
   const projectById = new Map(allProjects.map((project) => [project.row_id, project]))
+  const projectTaskCounts = new Map(allProjects.map((project) => [
+    project.row_id,
+    allTasks.filter((task) => task.project === project.row_id).length,
+  ]))
   // @spec stale_project_tabs_self_heal
   const starredProjectIds = (projectPreferences.data?.settings?.project_ids ?? []).filter((id) => projectById.has(id))
   const starredProjectSet = new Set(starredProjectIds)
@@ -310,38 +327,69 @@ export function TaskManagementPage() {
     }
   }
 
-  const tabs: { id: View; label: string; count?: number }[] = [
-    { id: 'inbox', label: 'Inbox', count: inbox.length },
-    { id: 'work', label: 'My Work', count: myWork.length },
-    { id: 'together', label: 'Together' },
-    { id: 'projects', label: 'Projects' },
+  const primaryTabs: { id: View; label: string; icon: TaskerIconName; count?: number }[] = [
+    { id: 'inbox', label: 'Inbox', icon: 'inbox', count: inbox.length },
+    { id: 'work', label: 'My Work', icon: 'work', count: myWork.length },
+    { id: 'together', label: 'Together', icon: 'together' },
     {
       id: 'personal',
       label: 'Personal tasks',
+      icon: 'personal',
       count: allTasks.filter((task) => task.personal_tasks_owner === me).length,
     },
   ]
 
   return (
-    <div className="tasker-shell" data-testid="task-management-page">
+    <div className="tasker-shell" data-view={view} data-testid="task-management-page">
       <aside className="tasker-sidebar">
-        <a href="/admin" className="text-xs text-[var(--color-ink-muted)]">← Featherbase</a>
-        <h1 className="mt-5 text-2xl font-semibold">Tasker</h1>
-        <p className="mt-1 text-xs text-[var(--color-ink-muted)]">Team workspace</p>
-      <nav aria-label="Task views">
-        {tabs.map((tab) => (
+        <a href="/admin" className="tasker-back-link">← Featherbase</a>
+        <h1 className="tasker-brand">Tasker</h1>
+        <p className="tasker-brand-subtitle">Team workspace</p>
+      <nav aria-label="Task views" className="tasker-primary-nav">
+        {primaryTabs.slice(0, 3).map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => setView(tab.id)}
             aria-current={view === tab.id ? 'page' : undefined}
-            className={`whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium ${
-              view === tab.id
-                ? 'border-[var(--color-brand)] text-[var(--color-brand)]'
-                : 'border-transparent text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]'
-            }`}
+            className={`tasker-nav-item tasker-nav-${tab.id}`}
           >
-            {tab.label}{tab.count != null ? ` ${tab.count}` : ''}
+            <TaskerIcon name={tab.icon} />
+            <span>{tab.label}</span>
+            {tab.count != null && <span className="tasker-count">{tab.count}</span>}
+          </button>
+        ))}
+        <button type="button" onClick={() => setView('projects')} aria-current={view === 'projects' ? 'page' : undefined} className="tasker-nav-item tasker-nav-projects">
+          <TaskerIcon name="projects" />
+          <span>Projects</span>
+        </button>
+        <div className="tasker-sidebar-projects" aria-label="Projects">
+          {allProjects.map((project) => (
+            <div key={project.row_id} className={`tasker-sidebar-project ${view === 'projects' && selectedProject === project.row_id ? 'is-selected' : ''}`}>
+              <button type="button" className="tasker-sidebar-project-name" aria-label={project.project_name} onClick={() => { setSelectedProject(project.row_id); setView('projects') }}>
+                <span>{project.project_name}</span>
+                <span className="tasker-count">{projectTaskCounts.get(project.row_id) ?? 0}</span>
+              </button>
+              <div className="tasker-project-actions">
+                <button type="button" aria-label={`${starredProjectSet.has(project.row_id) ? 'Unstar' : 'Star'} project ${project.project_name}`} onClick={() => void toggleProjectStar(project.row_id)} className={starredProjectSet.has(project.row_id) ? 'is-starred' : ''}>{starredProjectSet.has(project.row_id) ? '★' : '☆'}</button>
+                {starredProjectSet.has(project.row_id) && <>
+                  <button type="button" aria-label={`Move project ${project.project_name} left`} onClick={() => void moveProjectStar(project.row_id, -1)}>←</button>
+                  <button type="button" aria-label={`Move project ${project.project_name} right`} onClick={() => void moveProjectStar(project.row_id, 1)}>→</button>
+                </>}
+              </div>
+            </div>
+          ))}
+          <form className="tasker-new-project" onSubmit={(event) => { event.preventDefault(); void createProject() }}>
+            <label className="sr-only" htmlFor="project-name">Project name</label>
+            <input id="project-name" value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="New project" />
+            <button disabled={creatingProject || !projectName.trim()} aria-label="Add project">+</button>
+          </form>
+        </div>
+        {primaryTabs.slice(3).map((tab) => (
+          <button key={tab.id} type="button" onClick={() => setView(tab.id)} aria-current={view === tab.id ? 'page' : undefined} className={`tasker-nav-item tasker-nav-${tab.id}`}>
+            <TaskerIcon name={tab.icon} />
+            <span>{tab.label}</span>
+            {tab.count != null && <span className="tasker-count">{tab.count}</span>}
           </button>
         ))}
       </nav>
@@ -357,7 +405,6 @@ export function TaskManagementPage() {
           ))}
         </div>
       )}
-      <p className="mb-6 text-sm text-[var(--color-ink-muted)]">Capture first. Decide where it belongs when you are ready.</p>
       {tasks.error && <p role="alert" className="mb-4">{tasks.error.message} · <a href="/admin">Back to Featherbase</a></p>}
       {error && <p role="alert" className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       {selectedTask && detailMode === 'compact' && (
@@ -368,8 +415,9 @@ export function TaskManagementPage() {
 
       {view === 'inbox' && (
         <section aria-labelledby="inbox-heading">
+          <SectionTitle id="inbox-heading" title="Inbox" hint="Capture first. Decide where it belongs when you are ready." />
           <form
-            className="fc-card mb-6 flex gap-2 p-3"
+            className="tasker-composer"
             onSubmit={async (event) => {
               event.preventDefault()
               const title = capture
@@ -390,7 +438,6 @@ export function TaskManagementPage() {
             />
             <button className="fc-btn-primary" disabled={saving || !capture.trim()}>Add</button>
           </form>
-          <SectionTitle id="inbox-heading" title="Inbox" hint="Unassigned ideas waiting for triage" />
           <TaskList tasks={inbox} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
         </section>
       )}
@@ -418,40 +465,18 @@ export function TaskManagementPage() {
       )}
 
       {view === 'projects' && (
-        <section aria-labelledby="projects-heading" className="grid gap-5 md:grid-cols-[15rem_1fr]">
-          <div>
-            <SectionTitle id="projects-heading" title="Projects" hint="Shared areas of work" />
-            <form className="mb-3 flex gap-2" onSubmit={(event) => { event.preventDefault(); void createProject() }}>
-              <label className="sr-only" htmlFor="project-name">Project name</label>
-              <input id="project-name" value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="New project" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-2 text-sm" />
-              <button className="fc-btn-primary" disabled={creatingProject || !projectName.trim()}>Add</button>
-            </form>
-            <div className="space-y-1">
-              {allProjects.map((project) => (
-                <div key={project.row_id} className={`flex items-center rounded-md ${selectedProject === project.row_id ? 'bg-[var(--color-brand-tint)]' : 'hover:bg-[var(--color-subtle)]'}`}>
-                  <button type="button" onClick={() => setSelectedProject(project.row_id)} className={`min-w-0 flex-1 truncate px-3 py-2 text-left text-sm ${selectedProject === project.row_id ? 'font-medium text-[var(--color-brand)]' : 'text-[var(--color-ink)]'}`}>{project.project_name}</button>
-                  <button type="button" aria-label={`${starredProjectSet.has(project.row_id) ? 'Unstar' : 'Star'} project ${project.project_name}`} onClick={() => void toggleProjectStar(project.row_id)} className={`px-1 text-base ${starredProjectSet.has(project.row_id) ? 'text-amber-500' : 'text-[var(--color-ink-faint)]'}`}>{starredProjectSet.has(project.row_id) ? '★' : '☆'}</button>
-                  {starredProjectSet.has(project.row_id) && <>
-                    <button type="button" aria-label={`Move project ${project.project_name} left`} onClick={() => void moveProjectStar(project.row_id, -1)} className="px-1 text-xs text-[var(--color-ink-muted)]">←</button>
-                    <button type="button" aria-label={`Move project ${project.project_name} right`} onClick={() => void moveProjectStar(project.row_id, 1)} className="px-1 text-xs text-[var(--color-ink-muted)]">→</button>
-                  </>}
-                </div>
-              ))}
-            </div>
-          </div>
-          <div>
+        <section aria-labelledby="projects-heading" className="tasker-project-workspace">
             {selectedProject && projectById.has(selectedProject) ? (
               <>
                 <ProjectHeading project={projectById.get(selectedProject)!} onRename={renameProject} />
-                <form className="mb-3 flex gap-2" onSubmit={async (event) => { event.preventDefault(); const title = projectTask; try { await createTask(title, { project: selectedProject }); setProjectTask('') } catch { /* shown above */ } }}>
+                <form className="tasker-composer" onSubmit={async (event) => { event.preventDefault(); const title = projectTask; try { await createTask(title, { project: selectedProject }); setProjectTask('') } catch { /* shown above */ } }}>
                   <label className="sr-only" htmlFor="project-task">Add task to project</label>
                   <input id="project-task" value={projectTask} onChange={(event) => setProjectTask(event.target.value)} placeholder="Add a task, then press Enter" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" autoFocus />
                   <button className="fc-btn-primary" disabled={saving || !projectTask.trim()}>Add</button>
                 </form>
                 <TaskList tasks={projectRows} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
               </>
-            ) : <Empty text="Choose a project, or create the first one." />}
-          </div>
+            ) : <><SectionTitle id="projects-heading" title="Projects" hint="Choose a project from the sidebar, or create the first one." /><Empty text="Choose a project, or create the first one." /></>}
         </section>
       )}
 
@@ -486,7 +511,7 @@ export function TaskManagementPage() {
 }
 
 function SectionTitle({ id, title, hint }: { id?: string; title: string; hint?: string }) {
-  return <div className="mb-3"><h2 id={id} className="text-base font-semibold text-[var(--color-ink)]">{title}</h2>{hint && <p className="text-xs text-[var(--color-ink-muted)]">{hint}</p>}</div>
+  return <div className="tasker-section-title"><h2 id={id}>{title}</h2>{hint && <p>{hint}</p>}</div>
 }
 
 function ProjectHeading({ project, onRename }: { project: Project; onRename: (project: Project, name: string) => Promise<void> }) {
@@ -675,25 +700,23 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
   }
 
   if (!tasks.length) return <Empty text="Nothing here yet." />
-  return <div className="space-y-2">{tasks.map((task) => {
+  return <div className="tasker-task-list">
+    <div className="tasker-task-guide" aria-hidden="true">
+      <span />
+      <span>Task</span>
+      <div className="tasker-task-metadata"><span>State</span><span>Destination</span><span>Responsibility</span></div>
+      <span>Signals</span>
+    </div>
+    {tasks.map((task) => {
     const focused = focusSet.has(task.row_id)
     const inactive = ['Blocked', 'On hold', 'Cancelled'].includes(task.task_state)
     return (
-      <article key={task.row_id} className={`fc-card flex items-start gap-3 px-3 py-3 ${task.is_done ? 'opacity-60' : ''}`}>
-        <input aria-label={`Mark ${task.task_title} done`} type="checkbox" checked={Boolean(task.is_done)} onChange={(event) => void onPatch(task, { is_done: event.target.checked })} className="mt-1 h-4 w-4 accent-[var(--color-brand)]" />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <a href={`#task=${encodeURIComponent(task.row_id)}`} className={`font-medium text-[var(--color-ink)] hover:text-[var(--color-brand)] ${task.is_done ? 'line-through' : ''}`}>{task.task_title}</a>
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <select aria-label={`State for ${task.task_title}`} value={task.task_state ?? 'Not started'} onChange={(event) => { const taskState = event.target.value; void onPatch(task, { task_state: taskState }); if (['Blocked', 'On hold', 'Cancelled'].includes(taskState)) { setExplaining(task.row_id); setExplanation('') } }} className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-ink-muted)]">{STATES.map((state) => <option key={state}>{state}</option>)}</select>
-            <select aria-label={`Destination for ${task.task_title}`} value={task.personal_tasks_owner ? `personal:${task.personal_tasks_owner}` : task.project ? `project:${task.project}` : ''} onChange={(event) => { const [kind, value] = event.target.value.split(':', 2); void onPatch(task, kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }) }} className="max-w-52 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-ink-muted)]"><option value="">Inbox</option><optgroup label="Projects">{projects.map((project) => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}</optgroup><optgroup label="Personal tasks">{users.map((user) => <option key={user.row_id} value={`personal:${user.row_id}`}>{user.row_id}</option>)}</optgroup></select>
-            {/* @spec assignment_state_independent */}
-            <select aria-label={`Assign ${task.task_title}`} value={task.assigned_to ?? ''} onChange={(event) => void onPatch(task, { assigned_to: event.target.value || null })} className="max-w-44 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-ink-muted)]"><option value="">Unassigned</option>{users.map((user) => <option key={user.row_id} value={user.row_id}>{user.row_id}</option>)}</select>
-            {!task.assigned_to && me && <button type="button" onClick={() => void onPatch(task, { assigned_to: me })} className="rounded border border-[var(--color-brand)] px-2 py-1 text-xs font-medium text-[var(--color-brand)] hover:bg-[var(--color-brand-tint)]">Take it</button>}
-          </div>
+      <article key={task.row_id} className={`tasker-task-row ${task.is_done ? 'is-done' : ''}`}>
+        <input aria-label={`Mark ${task.task_title} done`} type="checkbox" checked={Boolean(task.is_done)} onChange={(event) => void onPatch(task, { is_done: event.target.checked })} className="tasker-task-checkbox" />
+        <div className="tasker-task-copy">
+          <a href={`#task=${encodeURIComponent(task.row_id)}`} className={task.is_done ? 'line-through' : ''}>{task.task_title}</a>
           {explaining === task.row_id && (
-            <form className="mt-3 flex gap-2" onSubmit={(event) => { event.preventDefault(); void addExplanation(task) }}>
+            <form className="tasker-explanation-form" onSubmit={(event) => { event.preventDefault(); void addExplanation(task) }}>
               <label className="sr-only" htmlFor={`explain-${task.row_id}`}>Optional explanation</label>
               <input id={`explain-${task.row_id}`} value={explanation} onChange={(event) => setExplanation(event.target.value)} placeholder="Optional explanation" autoFocus className="min-w-0 flex-1 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 text-xs" />
               <button className="fc-btn-primary" disabled={posting}>Save note</button>
@@ -701,16 +724,26 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
             </form>
           )}
           {explaining !== task.row_id && inactive && explanations.get(task.row_id) && (
-            <p className="mt-2 text-xs text-[var(--color-ink-muted)]"><span className="font-medium">{task.task_state}:</span> {explanations.get(task.row_id)}</p>
+            <p className="tasker-task-explanation"><span>{task.task_state}:</span> {explanations.get(task.row_id)}</p>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="tasker-task-metadata">
+          <select data-state={task.task_state} aria-label={`State for ${task.task_title}`} value={task.task_state ?? 'Not started'} onChange={(event) => { const taskState = event.target.value; void onPatch(task, { task_state: taskState }); if (['Blocked', 'On hold', 'Cancelled'].includes(taskState)) { setExplaining(task.row_id); setExplanation('') } }}>{STATES.map((state) => <option key={state}>{state}</option>)}</select>
+          <select aria-label={`Destination for ${task.task_title}`} value={task.personal_tasks_owner ? `personal:${task.personal_tasks_owner}` : task.project ? `project:${task.project}` : ''} onChange={(event) => { const [kind, value] = event.target.value.split(':', 2); void onPatch(task, kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }) }}><option value="">Inbox</option><optgroup label="Projects">{projects.map((project) => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}</optgroup><optgroup label="Personal tasks">{users.map((user) => <option key={user.row_id} value={`personal:${user.row_id}`}>{user.row_id}</option>)}</optgroup></select>
+          <div className="tasker-responsibility">
+            {/* @spec assignment_state_independent */}
+            <select aria-label={`Assign ${task.task_title}`} value={task.assigned_to ?? ''} onChange={(event) => void onPatch(task, { assigned_to: event.target.value || null })}><option value="">Unassigned</option>{users.map((user) => <option key={user.row_id} value={user.row_id}>{user.row_id}</option>)}</select>
+            {!task.assigned_to && me && <button type="button" onClick={() => void onPatch(task, { assigned_to: me })} className="tasker-take-button">Take it</button>}
+          </div>
+        </div>
+        <div className="tasker-task-signals">
           {/* @spec urgency_is_shared_binary */}
-          <button type="button" aria-label={`${task.urgent ? 'Remove urgent flag from' : 'Mark urgent'} ${task.task_title}`} aria-pressed={task.urgent} title="Urgent is visible to the team" onClick={() => void onPatch(task, { urgent: !task.urgent })} className={`flex items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-medium transition ${task.urgent ? 'border-red-300 bg-red-50 text-red-700' : 'border-transparent bg-[var(--color-subtle)] text-[var(--color-ink-muted)] hover:border-red-200 hover:text-red-700'}`}>{task.urgent && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-red-600" />}{task.urgent ? 'Urgent' : 'Not urgent'}</button>
-          <button type="button" aria-label={`${focused ? 'Remove from' : 'Add to'} My Focus: ${task.task_title}`} title="My Focus is private to you" onClick={() => void onFocus(task.row_id)} className={`rounded p-1 text-lg ${focused ? 'text-amber-500' : 'text-[var(--color-ink-faint)] hover:text-amber-500'}`}>{focused ? '★' : '☆'}</button>
-          {onMove && focused && <><button type="button" aria-label={`Move ${task.task_title} up`} onClick={() => void onMove(task.row_id, -1)} className="rounded px-1 text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)]">↑</button><button type="button" aria-label={`Move ${task.task_title} down`} onClick={() => void onMove(task.row_id, 1)} className="rounded px-1 text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)]">↓</button></>}
+          <button type="button" aria-label={`${task.urgent ? 'Remove urgent flag from' : 'Mark urgent'} ${task.task_title}`} aria-pressed={task.urgent} title="Urgent is visible to the team" onClick={() => void onPatch(task, { urgent: !task.urgent })} className={`tasker-urgent ${task.urgent ? 'is-urgent' : ''}`}>{task.urgent && <span aria-hidden="true" />}{task.urgent ? 'Urgent' : 'Not urgent'}</button>
+          <button type="button" aria-label={`${focused ? 'Remove from' : 'Add to'} My Focus: ${task.task_title}`} title="My Focus is private to you" onClick={() => void onFocus(task.row_id)} className={`tasker-focus-star ${focused ? 'is-focused' : ''}`}>{focused ? '★' : '☆'}</button>
+          {onMove && focused && <div className="tasker-focus-order"><button type="button" aria-label={`Move ${task.task_title} up`} onClick={() => void onMove(task.row_id, -1)}>↑</button><button type="button" aria-label={`Move ${task.task_title} down`} onClick={() => void onMove(task.row_id, 1)}>↓</button></div>}
         </div>
       </article>
     )
-  })}</div>
+  })}
+  </div>
 }
