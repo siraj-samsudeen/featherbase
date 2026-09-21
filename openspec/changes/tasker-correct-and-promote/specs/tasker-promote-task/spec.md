@@ -3,7 +3,7 @@
 ### Requirement: promotion_preserves_work_history
 Status: governed (#296) · implemented and locally proven for supported host retention
 
-> evidence: tasker-actions.test.ts independently exercises assignment, state, urgency, comment and previous-assignment history, creation-only simple tasks and retained Personal assignment. Browser proof checks exact prompt, Cancel and Continue. Gap: arbitrary File/share soft pointers await platform coordination.
+> evidence: tasker-actions.test.ts independently exercises assignment, state, urgency, comment and previous-assignment history, creation-only simple tasks, retained Personal assignment and File-only/Share-only links. Browser proof checks exact prompt, Cancel and Continue. Independent exploration remains parent-owned.
 
 Promotion SHALL create a project named from the task title and copy its optional description. A simple task SHALL be removed without a preservation prompt. A rich task SHALL remain as the new project's first task with its assignment, urgency, comments and activity preserved, only after confirmation. Cancel SHALL change nothing.
 

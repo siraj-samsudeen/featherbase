@@ -1,7 +1,7 @@
 ## 1. Task correction
 - [x] 1.1 Prove title/description correction, cancellation and stale draft rejection red/green.
 - [x] 1.2 Implement detail edits and shared-view refresh with direct spec traces.
-- [ ] 1.3 Resolve generic deletion safety completely: guarded action and raw DELETE are implemented/proven for Comment/Version/declared References; arbitrary File/share soft-pointer retention remains parent/platform coordination.
+- [x] 1.3 Integrate and prove generic revision/retention safety for Comment/Version/declared References and exact core File/Share targets, including raw DELETE and both writer/deletion race orders.
 
 ## 2. Project context
 - [x] 2.1 Add safe Markdown rendering and v2 description metadata.

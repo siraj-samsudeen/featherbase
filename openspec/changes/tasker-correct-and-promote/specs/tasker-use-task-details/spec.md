@@ -1,9 +1,9 @@
 ## MODIFIED Requirements
 
 ### Requirement: task_activity_stays_in_tasker
-Status: governed (#296) · implemented; local evidence with retention boundary pending
+Status: governed (#296) · implemented and locally proven
 
-> evidence: task-management.test.tsx correction, stale-draft and Take read-backs; tasker-actions.test.ts guarded/raw deletion; prove-tasker-acceptance.mjs desktop/mobile journeys. Gap: arbitrary File/share soft pointers are not included in the host retention counts; independent exploration remains parent-owned.
+> evidence: task-management.test.tsx correction, stale-draft and Take read-backs; tasker-actions.test.ts guarded/raw deletion and independent File-only/Share-only retention; prove-tasker-acceptance.mjs desktop/mobile journeys. Independent exploration remains parent-owned.
 
 Task details SHALL show description, append-only comments and chronological field history with actor and time. Inspector and focused modes SHALL let a member correct task title and plain/Markdown description, Save or Cancel the draft. Compact mode SHALL provide an explicit path to editing. Empty description SHALL be valid; blank title SHALL not save. Saving SHALL use the version at draft start, surface a conflict without losing the draft, and refresh every task-bearing view without reloading. Switching selected task SHALL not carry another task's draft.
 

@@ -8,14 +8,14 @@ Task detail already edits description but not title. A draft currently uses the 
 - Use react-markdown with raw HTML disabled and its default safe URL transform. No raw HTML plugins or hand-built HTML renderer.
 - Package v2 adds nullable Text project description, through the generic package migration contract owned by the runtime-upgrades worker.
 - Promotion is one declared host-transaction action, never a sequence of client requests. The integrated host owns locking, permissions, the transaction and durable result replay. Creation-only history does not make a task rich; recorded updates, comments, assignment, urgency or non-default state do. References also retain the source identity.
-- Both the generic runtime DELETE route and action helper enforce source revision plus Comment/Version/declared Reference retention. Tasker additionally refuses deletion of assigned, urgent or non-default-state work and explains Cancelled. The client never performs its own read/check/delete sequence.
+- Both the generic runtime DELETE route and action helper enforce source revision plus Comment/Version/declared Reference and exact core File/Share retention. Tasker additionally refuses deletion of assigned, urgent or non-default-state work and explains Cancelled. The client never performs its own read/check/delete sequence.
 - Pending action envelopes persist per caller/task in session storage, retaining the same key and payload after transport failure and reload. A known refusal clears the envelope. A successful simple promotion can therefore be recovered even after its source has disappeared.
 
 ## Dependencies and evidence
 
 The combined branch integrates platform convergence, upgrades and actions with migrations 0094 → 0095 → 0096. Tasker adds no core migration or endpoint. Version 2.0.0 declares its project description migration and sends its build-pinned package version on requests. Preserved v1 → actual packaged v2 and clean v2 are both exercised.
 
-Remaining retention boundary: the integrated host counts Comment, Version and declared Reference columns, not arbitrary File/share soft pointers. Parent coordination must resolve that gap before claiming all references protected. Independent exploration and exact Dev deployment remain parent-owned; this change stays open until its acceptance gate is complete.
+The integrated host counts Comment, Version, declared Reference columns and exact core File/Share targets. Independent File-only/Share-only cases preserve source identity. Upload rejection may leave unlinked storage bytes, but no File document pointing at a deleted runtime row. Arbitrary application pointers and direct admin SQL remain outside the contract. Independent exploration and exact Dev deployment remain parent-owned; this change stays open until its acceptance gate is complete.
 
 ## Five-axis spec review
 

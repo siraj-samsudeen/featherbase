@@ -4,7 +4,7 @@ import { sql } from '../src/db'
 import { discoverPackages, runPackageAction } from '../src/runtime-packages'
 import { installApp, uninstallApp } from '../src/apps'
 import { saveDoc } from '../src/document'
-import { createTable, deleteTable } from '../src/table-engine'
+import { createTable, deleteTable, tableRelation } from '../src/table-engine'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
 import { app } from '../src/index'
 
@@ -72,7 +72,7 @@ prove('real commits: both sides of core-link/reference deletion races; effects o
           expect(written).toMatchObject([{ ok: false, error: { type: 'NotFoundError' } }, { ok: false, error: { type: 'ValidationError' } },
             { ok: false, error: { type: 'NotFoundError' } }, { ok: false, error: { type: 'NotFoundError' } }])
           expect(await sql`select row_id from comment where ref_table = 'actionproof.work' and ref_name = ${first}`).toHaveLength(0)
-          expect(await sql`select row_id from actionproof_ref where source = ${first}`).toHaveLength(0)
+          expect(await sql`select row_id from ${sql(await tableRelation('ActionProof Ref'))} where source = ${first}`).toHaveLength(0)
           expect(await sql`select row_id from file where ref_table = 'actionproof.work' and ref_name = ${first}`).toHaveLength(0)
           expect(await sql`select row_id from share where share_table = 'actionproof.work' and share_name = ${first}`).toHaveLength(0)
         } else {
