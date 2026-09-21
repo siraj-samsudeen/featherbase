@@ -116,7 +116,10 @@ fall back to either SPA. Vite and Hono share the app-root reservation rule.
 `featherbase`, `/api` and technical roots are reserved; existing platform human
 roots remain reserved until they converge under `/featherbase/`. Core router and AdminLayout
 contain no Tasker import, route or name conditional. App switching can reload
-the page. The signed-in app catalog is separate from manager-only management.
+the page. Opening an app while signed out returns to that app after sign-in.
+An app with its own client has one normal launch in the signed-in catalog; its
+Tables remain available through administrator tools but do not produce a
+competing generated Home Page. The signed-in app catalog is separate from manager-only management.
 Disabled/missing application navigation explains unavailability and preserved
 data with a link back; missing JS/CSS files still return errors, never HTML SPA
 fallbacks. SDK control details remain provisional, not generalized by this slice.

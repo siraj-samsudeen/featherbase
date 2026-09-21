@@ -478,6 +478,8 @@ app.get('*', async (c, next) => {
     } catch (error) {
       if (!(error instanceof AppError)) throw error
       const navigation = !asset || c.req.header('accept')?.includes('text/html')
+      if (navigation && error.type === 'AuthenticationError')
+        return c.redirect(`/login?next=${encodeURIComponent(appHref(name))}`)
       if (!navigation || path.extname(asset)) throw error
       return c.html(
         `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Application unavailable</title></head>

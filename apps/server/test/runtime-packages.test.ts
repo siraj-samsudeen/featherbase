@@ -224,9 +224,14 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   })
 
   // @spec app_owns_client_root.missing_asset_is_not_html
-  test('PKG-R4: ordinary member catalog and client root are separate from management and server files', async ({ admin, createUser }) => {
+  // @spec app_owns_client_root.app_login_returns_to_one_launch
+  test('PKG-R4: ordinary member catalog and client root are separate from management and server files', async ({ api, admin, createUser }) => {
     expect(await discoverPackages([resolve('../..', 'runtime-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })
+    const signIn = await api.fetch('/other/', { headers: { accept: 'text/html' } })
+    expect(signIn.status).toBe(302)
+    expect(signIn.headers.get('location')).toBe('/login?next=%2Fother%2F')
+    expect(await sql`select row_id from home_page where module = 'Other'`).toEqual([])
     const member = await createUser({ email: 'runtime-reader@example.com', roles: ['All'] })
     await expect(admin.post('/api/uninstall_app', { name: 'other' })).rejects.toMatchObject({ status: 417 })
     expect(await member.get('/api/app_catalog')).toEqual([

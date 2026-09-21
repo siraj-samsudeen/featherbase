@@ -3,6 +3,13 @@ import { useNavigate } from '@tanstack/react-router'
 import { ApiError, api, landingPath, login } from '../lib/api'
 import { Logo } from '../components/Logo'
 
+export function safeLoginNext(next: string | undefined): string | undefined {
+  if (!next || !next.startsWith('/') || next.startsWith('//') || next.includes('\\')) return undefined
+  const parsed = new URL(next, window.location.origin)
+  if (parsed.origin !== window.location.origin) return undefined
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`
+}
+
 export function LoginPage() {
   const navigate = useNavigate()
   // SET-004: instance brand from the public /api/brand — plain fetch, not
@@ -38,6 +45,11 @@ export function LoginPage() {
     const form = new FormData(e.currentTarget)
     try {
       const user = await login(String(form.get('email')), String(form.get('password')))
+      const returnTo = safeLoginNext(new URLSearchParams(window.location.search).get('next') ?? undefined)
+      if (returnTo) {
+        window.location.assign(returnTo)
+        return
+      }
       navigate({ to: landingPath(user) })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Login failed')

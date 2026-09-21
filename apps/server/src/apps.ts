@@ -431,13 +431,14 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
   if (await isInstalled(manifest.name))
     throw new AppError('ConflictError', `App ${manifest.name} is already installed`)
   const provisioned = await provisionSources(manifest)
+  const runtimeManifest = manifest.runtime_manifest as { client?: unknown } | undefined
+  const ownsClientRoot = manifest.runtime_package && typeof runtimeManifest?.client === 'string'
   // Reflected Tables are the app's tables for teardown purposes.
   const created: string[] = [...provisioned.tables]
   for (const def of manifest.tables ?? []) {
-    // App tables are user-space: they group under the app's own module in the
-    // sidebar. `system` marks tables created by the migration chain and is
-    // rejected on POST /api/table_def — an app manifest gets the same refusal,
-    // not a silent bypass.
+    // `system` marks tables created by the migration chain and is rejected on
+    // POST /api/table_def — an app manifest gets the same refusal, not a
+    // silent bypass.
     if ((def as { system?: unknown })?.system === true)
       throw new AppError(
         'ValidationError',
@@ -445,10 +446,10 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
       )
     const meta = await createTable(def, manifest.name)
     created.push(meta.name)
-    // #80: app tables group under the app's own module in navigation, same
-    // as builder-created tables — the module's home page is created on
-    // demand and the table's link appended.
-    if (meta.kind !== 'sub_table') await ensureHomePageForTable(meta.name, meta.module)
+    // A runtime application with its own client owns normal navigation. Apps
+    // without one retain the generated Table home page as their usable UI.
+    if (meta.kind !== 'sub_table' && !ownsClientRoot)
+      await ensureHomePageForTable(meta.name, meta.module)
   }
   const access = await provisionAccess(manifest)
   // Wire its doc_events, scheduler jobs, and method overrides BEFORE the

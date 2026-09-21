@@ -2,6 +2,7 @@ import { describe, expect } from 'vitest'
 import { test } from './pg-test'
 import { installApp, isInstalled, uninstallApp } from '../src/apps'
 import { discoverPackages } from '../src/runtime-packages'
+import { sql } from '../src/db'
 import { resolve } from 'node:path'
 
 const APP = 'tasker'
@@ -185,6 +186,7 @@ describe('shared team visibility', () => {
       expect(await admin.get('/api/app_catalog')).toEqual([
         { name: 'tasker', title: 'Tasker', href: '/tasker/' },
       ])
+      expect(await sql`select row_id from home_page where module = 'Tasker'`).toEqual([])
     } finally {
       await uninstallApp(APP).catch(() => {})
     }

@@ -61,8 +61,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     // Already on the login screen there is nothing to redirect to — a hard
     // reload here just destroys in-flight state (a stale query 401ing during
     // the logout transition, #101 review).
-    if (!path.endsWith('/api/login') && window.location.pathname !== '/login')
-      window.location.href = '/login'
+    if (!path.endsWith('/api/login') && window.location.pathname !== '/login') {
+      const next = `${window.location.pathname}${window.location.search}${window.location.hash}`
+      window.location.href = `/login?next=${encodeURIComponent(next)}`
+    }
   }
   const body = (await res.json().catch(() => ({}))) as {
     error?: { type: string; message: string; fields?: Record<string, string> }
