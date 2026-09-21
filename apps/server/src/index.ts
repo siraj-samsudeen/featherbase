@@ -482,7 +482,13 @@ app.get('*', async (c, next) => {
   const name = c.req.path.split('/')[1]
   if (c.req.path === `/${name}`) return c.redirect(appHref(name))
   return appOperation(async () => {
-    const asset = decodeURIComponent(c.req.path.slice(appHref(name).length))
+    const url = new URL(c.req.url)
+    let asset: string
+    try {
+      asset = decodeURIComponent(url.pathname.slice(appHref(name).length))
+    } catch {
+      return c.notFound()
+    }
     let resource
     try {
       const user = await resolveToken(authCredential(c))
@@ -491,7 +497,9 @@ app.get('*', async (c, next) => {
       if (!(error instanceof AppError)) throw error
       const navigation = !asset || c.req.header('accept')?.includes('text/html')
       if (navigation && error.type === 'AuthenticationError')
-        return c.redirect(`/featherbase/login?next=${encodeURIComponent(appHref(name))}`)
+        return c.redirect(
+          `/featherbase/login?next=${encodeURIComponent(`${url.pathname}${url.search}`)}`,
+        )
       if (!navigation || path.extname(asset)) throw error
       return c.html(
         `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Application unavailable</title></head>

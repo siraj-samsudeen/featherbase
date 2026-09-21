@@ -251,6 +251,16 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     const signIn = await api.fetch('/other/', { headers: { accept: 'text/html' } })
     expect(signIn.status).toBe(302)
     expect(signIn.headers.get('location')).toBe('/featherbase/login?next=%2Fother%2F')
+    const deepSignIn = await api.fetch('/other/review/item?filter=a%26b&owner=me', {
+      headers: { accept: 'text/html' },
+    })
+    expect(deepSignIn.status).toBe(302)
+    expect(deepSignIn.headers.get('location')).toBe(
+      '/featherbase/login?next=%2Fother%2Freview%2Fitem%3Ffilter%3Da%2526b%26owner%3Dme',
+    )
+    const malformed = await api.fetch('/other/%E0%A4%A', { headers: { accept: 'text/html' } })
+    expect(malformed.status).toBe(404)
+    expect(malformed.headers.get('location')).toBeNull()
     expect(await sql`select row_id from home_page where module = 'Other'`).toEqual([])
     const member = await createUser({ email: 'runtime-reader@example.com', roles: ['All'] })
     await expect(admin.post('/api/uninstall_app', { name: 'other' })).rejects.toMatchObject({ status: 417 })

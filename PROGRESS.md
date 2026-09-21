@@ -1,5 +1,25 @@
 # Progress Log
 
+## 2026-09-21 — Exact runtime-app location survives sign-in (#296)
+
+Canonical Featherbase login now carries the exact runtime-app path and encoded
+query observed by the server, while the browser preserves its inherited fragment
+and appends it only after the return destination passes the shared runtime-root
+allow-list. External, scheme-relative, backslash, technical, legacy and malformed
+destinations fail closed to the member's normal landing page; no Tasker-specific
+route or fragment parsing entered Featherbase core.
+
+Proof used only worker-owned resources: server/web tests used
+`featherbase_test_issue_296_login_return` and
+`featherbase_test_issue_296_login_return_web`; the browser journey used
+`featherbase_issue_296_login_return_browser2_e2e` with API 8502 and web 5502.
+The browser opened a signed-out Tasker URL with encoded query state and a selected
+task fragment, passed through `/featherbase/login`, and returned to the exact URL
+with the task detail open. Focused server tests passed 10/10; full server passed
+826 with 15 MySQL-only skips; full web passed 153/153; all workspace typechecks,
+SQL lint, strict OpenSpec, policy, STC and evidence checks passed. No shared
+database, deployment or `tools/prove-runtime-packages.mjs` was touched.
+
 ## 2026-09-21 — OpenSpec becomes Tasker's sole behavior contract (#296)
 
 Reviewed the final Tasker UI revision against its implementation and tests.
