@@ -8,7 +8,7 @@ the work.
 ## Requirements
 
 ### Requirement: project_name_is_correctable
-Status: governed (#296) · Built
+Status: governed (#296) · Built · evidence gap
 
 A team member SHALL be able to rename a project while retaining its stable
 identity and connected tasks. The new name SHALL appear wherever that identity

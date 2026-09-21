@@ -17,7 +17,7 @@ These assumptions apply across Tasker and are not permanent product rules:
 ## Requirements
 
 ### Requirement: team_shares_tasker_work
-Status: governed (#296) · Built
+Status: governed (#296) · Built · evidence gap
 
 Every signed-in team member SHALL be able to read, create and edit every Tasker
 project and task. A member SHALL NOT need to become responsible for a task to

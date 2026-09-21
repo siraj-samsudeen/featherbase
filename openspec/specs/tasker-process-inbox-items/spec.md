@@ -42,7 +42,7 @@ SHALL be rejected.
 - **THEN** the write is refused and the impossible state is not saved.
 
 ### Requirement: personal_destination_assigns_owner
-Status: governed (#296) · Built
+Status: governed (#296) · Built · evidence gap
 
 Moving a task to one person's Personal tasks SHALL make that person responsible.
 Its work state and other shared information SHALL remain unchanged.

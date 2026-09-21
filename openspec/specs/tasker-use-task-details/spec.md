@@ -20,7 +20,7 @@ survives reload.
 - **THEN** the same task remains selected and every mode remains reversible.
 
 ### Requirement: task_activity_stays_in_tasker
-Status: governed (#296) · Built
+Status: governed (#296) · Built · evidence gap
 
 Task details SHALL show the current description, append-only comment entry,
 existing comments and shared field-change history in chronological order. Each

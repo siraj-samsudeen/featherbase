@@ -24,7 +24,7 @@ These short feature specifications are the authoritative product contract:
 | [Process Inbox Items](process-inbox-items.md) | Placement rules built; guided processing loop is a gap |
 | [Start a Project](start-a-project.md) | Built |
 | [Star Projects for Quick Access](star-projects-for-quick-access.md) | Built |
-| [Reorganize Projects](reorganize-projects.md) | Rename built; combine and split are future ideas |
+| [Reorganize Projects](reorganize-projects.md) | Rename built; stale-rejection evidence gap; combine and split are future ideas |
 | [Manage Responsibility and Progress](manage-responsibility-and-progress.md) | Built, with one dedicated-test gap |
 | [Plan My Work](plan-my-work.md) | Built |
 | [Review Team Workload](review-team-workload.md) | Built |

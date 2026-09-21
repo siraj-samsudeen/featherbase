@@ -10,7 +10,7 @@ the work.
 ### Requirement: project_name_is_correctable
 Status: governed (#296)
 
-> evidence: proven via project_coordination_flow — a populated project is renamed through optimistic concurrency and retains its tasks.
+> evidence: rule-tier via project_coordination_flow — a populated project is renamed and retains its tasks; rejecting a competing stale rename lacks a dedicated asymmetric test.
 
 A team member SHALL be able to rename a project while retaining its stable
 identity and connected tasks. The new name SHALL appear wherever that identity
