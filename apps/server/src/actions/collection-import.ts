@@ -5,7 +5,7 @@ import { ROW_KEY, getMeta, type TableMeta } from '../meta'
 import { assertDocPermission, assertPermission, permissionScope } from '../permissions'
 import { registerCollectionAction } from '../actions'
 import { sql } from '../db'
-import { tableName } from '../table-engine'
+import { tableRelation, quoteRelation } from '../table-engine'
 
 // IMP-005: bulk import — POST /api/table/:table:import { rows: [...] }.
 // The first real collection-action registrant (#61 left the registry empty on
@@ -78,7 +78,7 @@ async function resolveRows(
   const wanted = [...counts.keys()]
   const matches = new Map<string, { row_id: string; updated_at: Date; created_by: string }[]>()
   if (wanted.length) {
-    const tbl = tableName(meta.name)
+    const tbl = await tableRelation(meta.name)
     const key = sql(meta.row_key)
     const found =
       keyColumn === ROW_KEY
@@ -160,10 +160,10 @@ async function ensureKeyIndex(table: string, keyColumn: string): Promise<void> {
   if (keyColumn === ROW_KEY) return // the primary key already serves it
   const cacheKey = `${table}:${keyColumn}`
   if (ensuredKeyIndexes.has(cacheKey)) return
-  const tbl = tableName(table)
+  const tbl = await tableRelation(table)
   const suffix = createHash('sha256').update(cacheKey).digest('hex').slice(0, 8)
   const idx = `${tbl}_${keyColumn}`.slice(0, 46) + `_${suffix}_ukidx`
-  await sql.unsafe(`create index if not exists "${idx}" on "${tbl}" ((("${keyColumn}")::text))`)
+  await sql.unsafe(`create index if not exists "${idx}" on ${quoteRelation(tbl)} ((("${keyColumn}")::text))`)
   ensuredKeyIndexes.add(cacheKey)
 }
 

@@ -1,7 +1,7 @@
 import { sql } from './db'
 import { getMeta } from './meta'
 import { hasPermission } from './permissions'
-import { tableName } from './table-engine'
+import { tableRelation } from './table-engine'
 
 // UI-014: awesomebar global search. Matches row names (and the
 // Table's title_column) across every regular Table the user can read.
@@ -38,11 +38,11 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
     const key = sql(meta.row_key)
     const rows = title
       ? await sql`
-          select ${key} as row_id, ${sql(title)} as title from ${sql(tableName(meta.name))}
+          select ${key} as row_id, ${sql(title)} as title from ${sql(await tableRelation(meta.name))}
           where ${key} ilike ${like} or ${sql(title)} ilike ${like}
           limit ${PER_TABLE}`
       : await sql`
-          select ${key} as row_id, ${key} as title from ${sql(tableName(meta.name))}
+          select ${key} as row_id, ${key} as title from ${sql(await tableRelation(meta.name))}
           where ${key} ilike ${like}
           limit ${PER_TABLE}`
     for (const row of rows) {

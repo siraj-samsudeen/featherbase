@@ -87,7 +87,8 @@ const columnSchema = z.object({
 export const tableDefSchema = z.object({
   name: z
     .string()
-    .regex(/^[A-Za-z][A-Za-z0-9 ]{0,60}$/, 'invalid Table name'),
+    .regex(/^(?:[A-Za-z][A-Za-z0-9 ]{0,60}|[a-z][a-z0-9_]{0,30}\.[a-z][a-z0-9_]{0,30})$/, 'invalid Table name'),
+  label: optionalString,
   module: optionalString,
   // Replaces the old istable/issingle booleans: 'table' = normal collection,
   // 'sub_table' = rows only ever nested inside a parent row, 'settings' = a
@@ -199,10 +200,24 @@ export function tableName(table: string): string {
   return PHYSICAL_TABLE_OVERRIDES[naive] ?? naive
 }
 
+// Existing core Tables keep their bootstrap mapping. Qualified identities must
+// have persisted storage metadata; never infer their location from spelling.
+export async function tableRelation(name: string): Promise<string> {
+  if (!name.includes('.')) return tableName(name)
+  const meta = await getMeta(name)
+  if (!meta.owner_app || !meta.physical_schema || !meta.physical_relation)
+    throw new AppError('ValidationError', `Table ${name} has no app storage mapping`)
+  return `${meta.physical_schema}.${meta.physical_relation}`
+}
+
+export function quoteRelation(relation: string): string {
+  return relation.split('.').map((part) => `"${part.replaceAll('"', '""')}"`).join('.')
+}
+
 // META-003: generate the CREATE TABLE statement for a Table definition.
 // Standard columns (META-005) are always present; sub-tables additionally
 // carry parent linkage. Settings Tables (kind: 'settings') get no table.
-function createTableDDL(def: TableDef): string | null {
+function createTableDDL(def: TableDef, relation = tableName(def.name)): string | null {
   if (def.kind === 'settings') return null
   const cols: string[] = [
     `"${ROW_KEY}" varchar(140) primary key`,
@@ -230,7 +245,7 @@ function createTableDDL(def: TableDef): string | null {
         `constraint "${tableName(def.name)}_${f.column_name}_uq" unique ("${f.column_name}")`,
       )
   }
-  return `create table "${tableName(def.name)}" (\n  ${[...cols, ...constraints].join(',\n  ')}\n)`
+  return `create table ${quoteRelation(relation)} (\n  ${[...cols, ...constraints].join(',\n  ')}\n)`
 }
 
 // PERM-004: new tables get RLS with a generated SELECT-only policy for the
@@ -240,20 +255,23 @@ function createTableDDL(def: TableDef): string | null {
 async function applyRls(
   tx: { unsafe: (q: string) => Promise<unknown> },
   def: TableDef,
+  relation = tableName(def.name),
 ): Promise<void> {
   const [ready] = (await tx.unsafe(
     `select 1 from pg_proc where proname = 'fc_has_read'`,
   )) as unknown as unknown[]
   if (!ready) return
-  const table = tableName(def.name)
-  await tx.unsafe(`alter table "${table}" enable row level security`)
+  const table = quoteRelation(relation)
+  await tx.unsafe(`alter table ${table} enable row level security`)
   const predicate = def.kind === 'sub_table'
     ? 'fc_has_read(parenttype)'
     : `fc_has_read('${def.name.replace(/'/g, "''")}')`
   await tx.unsafe(
-    `create policy fc_select on "${table}" for select to app_client using (${predicate})`,
+    `create policy fc_select on ${table} for select to app_client using (${predicate})`,
   )
-  await tx.unsafe(`grant select on "${table}" to app_client`)
+  if (relation.includes('.'))
+    await tx.unsafe(`grant usage on schema ${quoteRelation(relation.split('.')[0])} to app_client`)
+  await tx.unsafe(`grant select on ${table} to app_client`)
 }
 
 // META-004: sync an existing Table's columns to a new definition. Additions
@@ -313,6 +331,7 @@ export async function updateTable(
   // anyone's storage, ours included).
   const isBound = Boolean(existing.data_source)
   const table = tableName(name)
+  const relation = quoteRelation(await tableRelation(name))
   await sql.begin(async (tx) => {
     await tx`update table_def set ${tx({
       module: def.module ?? existing.module,
@@ -352,10 +371,10 @@ export async function updateTable(
         })}`
         const type = pgType(f.column_type)
         if (type && existing.kind !== 'settings' && !isBound)
-          await tx.unsafe(`alter table "${table}" add column if not exists "${f.column_name}" ${type}`)
+          await tx.unsafe(`alter table ${relation} add column if not exists "${f.column_name}" ${type}`)
         if (f.unique && type && !isBound)
           await tx.unsafe(
-            `alter table "${table}" add constraint "${table}_${f.column_name}_uq" unique ("${f.column_name}")`,
+            `alter table ${relation} add constraint "${table}_${f.column_name}_uq" unique ("${f.column_name}")`,
           )
       } else {
         await tx`update column_def set ${tx(row)}
@@ -364,11 +383,11 @@ export async function updateTable(
         if (type && existing.kind !== 'settings' && !isBound && Boolean(old.unique) !== Boolean(f.unique)) {
           if (f.unique)
             await tx.unsafe(
-              `alter table "${table}" add constraint "${table}_${f.column_name}_uq" unique ("${f.column_name}")`,
+              `alter table ${relation} add constraint "${table}_${f.column_name}_uq" unique ("${f.column_name}")`,
             )
           else
             await tx.unsafe(
-              `alter table "${table}" drop constraint if exists "${table}_${f.column_name}_uq"`,
+              `alter table ${relation} drop constraint if exists "${table}_${f.column_name}_uq"`,
             )
         }
       }
@@ -379,7 +398,7 @@ export async function updateTable(
       await tx`delete from column_def where parent = ${name} and column_name = ${column_name}`
       const type = pgType(old.column_type)
       if (type && existing.kind !== 'settings' && !isBound && opts.drop_columns)
-        await tx.unsafe(`alter table "${table}" drop column if exists "${column_name}"`)
+        await tx.unsafe(`alter table ${relation} drop column if exists "${column_name}"`)
       // without drop_columns the column (and its data) is retained
     }
   })
@@ -387,7 +406,7 @@ export async function updateTable(
   return getMeta(name)
 }
 
-export async function createTable(input: unknown): Promise<TableMeta> {
+export async function createTable(input: unknown, ownerApp?: string): Promise<TableMeta> {
   const parsed = tableDefSchema.safeParse(input)
   if (!parsed.success) {
     const errs: Record<string, string> = {}
@@ -395,6 +414,11 @@ export async function createTable(input: unknown): Promise<TableMeta> {
     throw new AppError('ValidationError', 'Invalid Table definition', errs)
   }
   const def = parsed.data
+  const qualified = def.name.includes('.')
+  if (qualified && def.name.split('.')[0] !== ownerApp)
+    throw new AppError('ValidationError', 'App-qualified Tables must be created by their owning app')
+  if (qualified && (def.data_source || def.kind === 'settings'))
+    throw new AppError('ValidationError', 'Runtime app Tables require local collection storage')
   // DOC-008: submittable rows track their cancelled predecessor.
   if (def.is_submittable && !def.columns.some((f) => f.column_name === 'amended_from'))
     def.columns.push({
@@ -429,7 +453,8 @@ export async function createTable(input: unknown): Promise<TableMeta> {
   if (def.kind !== 'settings') {
     const [clash] = await sql`
       select 1 from information_schema.tables
-      where table_schema = current_schema() and table_name = ${physical}`
+      where table_schema = ${qualified ? ownerApp! : 'public'}
+        and table_name = ${qualified ? def.name.split('.')[1] : physical}`
     if (clash)
       throw new AppError('ConflictError', `Table ${def.name} collides with an internal table`, {
         name: `"${physical}" is reserved for platform storage`,
@@ -486,6 +511,13 @@ export async function createTable(input: unknown): Promise<TableMeta> {
       description: def.description ?? null,
       system: def.system ?? false,
     }
+    if (qualified) {
+      tableRow.label = def.label ?? def.name.split('.')[1]
+      tableRow.owner_app = ownerApp
+      tableRow.physical_schema = ownerApp
+      tableRow.physical_relation = def.name.split('.')[1]
+      await tx.unsafe(`create schema if not exists ${quoteRelation(ownerApp!)}`)
+    }
     if (def.data_source) {
       tableRow.data_source = def.data_source
       tableRow.external_schema = def.external_schema ?? null
@@ -517,14 +549,15 @@ export async function createTable(input: unknown): Promise<TableMeta> {
     }
     // BV1!: a bound Table never causes DDL — no CREATE TABLE, no RLS, no
     // index. Its storage belongs to the source.
-    const ddl = def.data_source ? null : createTableDDL(def)
+    const relation = qualified ? `${tableRow.physical_schema}.${tableRow.physical_relation}` : physical
+    const ddl = def.data_source ? null : createTableDDL(def, relation)
     if (ddl) {
       await tx.unsafe(ddl)
       if (def.kind === 'sub_table')
         await tx.unsafe(
-          `create index "${tableName(def.name)}_parent_idx" on "${tableName(def.name)}" ("parent", "position")`,
+          `create index "${tableName(def.name)}_parent_idx" on ${quoteRelation(relation)} ("parent", "position")`,
         )
-      await applyRls(tx, def)
+      await applyRls(tx, def, relation)
     }
   })
   invalidateMeta(def.name)
@@ -565,7 +598,7 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
       and cd.parent <> ${meta.name}
       and td.kind <> 'settings' and td.data_source is null`
 
-  const physical = tableName(meta.name)
+  const physical = quoteRelation(await tableRelation(meta.name))
   const files = await sql.begin(async (tx) => {
     const removedFiles: { file_url: string | null }[] = []
     // This Table's own child rows; the child Table definition is not
@@ -574,7 +607,7 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
     for (const f of meta.columns) {
       if (f.column_type !== 'Sub-table') continue
       const children = await tx<{ row_id: string }[]>`
-        delete from ${tx(tableName(f.row_table!))} where parenttype = ${meta.name} returning row_id`
+        delete from ${tx(await tableRelation(f.row_table!))} where parenttype = ${meta.name} returning row_id`
       if (children.length) removedFiles.push(...await tx<{ file_url: string | null }[]>`
         delete from file where ref_table = ${f.row_table!} and ref_name in ${tx(children.map((r) => r.row_id))}
         returning file_url`)
@@ -583,7 +616,7 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
       delete from file where ref_table = ${meta.name} returning file_url`)
     for (const p of pointers)
       await tx`
-        delete from ${tx(tableName(p.parent))}
+        delete from ${tx(await tableRelation(p.parent))}
         where ${tx(p.column_name)} = ${meta.name}`
     await tx`delete from column_def where parent = ${meta.name}`
     await tx`delete from table_def where name = ${meta.name}`
@@ -592,7 +625,7 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
     // drop with the table. Series counters are deliberately untouched
     // (DEL-R5 / IMP-R6: the pattern is the promise, not the number).
     if (!meta.data_source && meta.kind !== 'settings')
-      await tx.unsafe(`drop table if exists "${physical}"`)
+      await tx.unsafe(`drop table if exists ${physical}`)
     return removedFiles
   })
   invalidateMeta(meta.name)
@@ -658,11 +691,12 @@ export async function renameColumn(
     throw new AppError('ValidationError', `${meta.name} already has a column ${target}`)
 
   const physical = tableName(meta.name)
+  const relation = quoteRelation(await tableRelation(meta.name))
   const hasStorage = pgType(column.column_type) !== null && meta.kind !== 'settings'
 
   await sql.begin(async (tx) => {
     if (hasStorage)
-      await tx.unsafe(`alter table "${physical}" rename column "${from}" to "${target}"`)
+      await tx.unsafe(`alter table ${relation} rename column "${from}" to "${target}"`)
     await tx`update column_def set column_name = ${target}
       where parent = ${meta.name} and column_name = ${from}`
     // A Sub-table's children name their column on every row, in
@@ -672,7 +706,7 @@ export async function renameColumn(
     // next save of that row deletes the children it could not see.
     if (column.column_type === 'Sub-table' && column.row_table)
       await tx.unsafe(
-        `update "${tableName(column.row_table)}" set parentfield = $1
+        `update ${quoteRelation(await tableRelation(column.row_table))} set parentfield = $1
           where parenttype = $2 and parentfield = $3`,
         [target, meta.name, from],
       )
@@ -682,7 +716,7 @@ export async function renameColumn(
     // find it. Rename it to match.
     if (column.unique && hasStorage)
       await tx.unsafe(
-        `alter table "${physical}" rename constraint "${physical}_${from}_uq" to "${physical}_${target}_uq"`,
+        `alter table ${relation} rename constraint "${physical}_${from}_uq" to "${physical}_${target}_uq"`,
       )
     // The two places this Table names its own column. Left stale, the id
     // pattern would stop resolving and the list would lose its title.

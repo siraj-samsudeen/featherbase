@@ -1,7 +1,7 @@
 import { sql } from '../db'
 import { registerJob } from '../jobs'
 import { getMeta } from '../meta'
-import { tableName } from '../table-engine'
+import { tableRelation } from '../table-engine'
 import { getActiveWorkflow, stateField } from '../workflow'
 import { queueEmail } from '../email'
 
@@ -38,7 +38,7 @@ registerJob('check_sla', async () => {
     const wf = await getActiveWorkflow(table)
     const stateCol = wf ? stateField(wf) : has('status') ? 'status' : null
 
-    const tbl = tableName(table)
+    const tbl = await tableRelation(table)
     const stateCond =
       stateCol && fulfilled.length
         ? sql`and (${sql(stateCol)} is null or ${sql(stateCol)} not in ${sql(fulfilled)})`

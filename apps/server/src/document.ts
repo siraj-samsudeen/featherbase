@@ -3,7 +3,7 @@ import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
-import { STANDARD_COLUMNS, tableName } from './table-engine'
+import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
 import { evaluateAssignmentRules } from './assignment-rules'
@@ -224,7 +224,7 @@ async function validateLinks(
       continue
     }
     const [row] = await tx`
-      select 1 from ${tx(tableName(target))}
+      select 1 from ${tx(await tableRelation(target))}
       where ${tx(physicalRowKey(target))} = ${String(value)}`
     if (!row)
       errors[prefix + f.column_name] = `${target} ${String(value)} does not exist`
@@ -263,7 +263,7 @@ async function assertParentReadable(row: RowValues, user: string) {
   if (await isSharedWith(user, parentType, parentRowId, 'read')) return
   const parentMeta = await getMeta(parentType)
   const [parent] = await sql`
-    select * from ${sql(tableName(parentType))}
+    select * from ${sql(await tableRelation(parentType))}
     where ${sql(parentMeta.row_key)} = ${parentRowId}`
   if (!parent) return
   await assertPermission(user, parentType, 'read')
@@ -332,7 +332,7 @@ async function saveChildren(
   user: string,
 ) {
   const childMeta = await getMeta(input.childTable)
-  const table = tableName(childMeta.name)
+  const table = await tableRelation(childMeta.name)
   const childKey = childMeta.row_key
   const existing = await tx`
     select ${tx(childKey)} from ${tx(table)}
@@ -418,7 +418,7 @@ async function loadChildren(meta: TableMeta, row: RowValues): Promise<RowValues>
     if (f.column_type !== 'Sub-table') continue
     const childMeta = await getMeta(f.row_table!)
     const rows = await sql`
-      select * from ${sql(tableName(f.row_table!))}
+      select * from ${sql(await tableRelation(f.row_table!))}
       where parent = ${String(row[meta.row_key] ?? row[ROW_KEY])}
         and parenttype = ${meta.name}
         and parentfield = ${f.column_name}
@@ -455,7 +455,7 @@ export async function checkRowForInsert(meta: TableMeta, values: RowValues): Pro
     })
   if (rowId) {
     const [exists] = await sql`
-      select 1 from ${sql(tableName(meta.name))}
+      select 1 from ${sql(await tableRelation(meta.name))}
       where ${sql(meta.row_key)} = ${rowId}`
     if (exists) throw new AppError('ConflictError', `${meta.name} ${rowId} already exists`)
   }
@@ -500,7 +500,7 @@ export async function saveDoc(
     )
   if (values[ROW_KEY] != null && values[ROW_KEY] !== '') {
     const [exists] = await sql`
-      select 1 from ${sql(tableName(table))}
+      select 1 from ${sql(await tableRelation(table))}
       where ${sql(meta.row_key)} = ${String(values[ROW_KEY])}`
     if (exists) {
       if (mode === 'insert')
@@ -541,7 +541,7 @@ export async function saveDoc(
   }
 
   const childInputs = pickChildInputs(meta, values)
-  const tbl = tableName(table)
+  const tbl = await tableRelation(table)
   const [saved] = await sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
@@ -754,7 +754,7 @@ async function updateDoc(
   values: RowValues,
   user: string,
 ): Promise<RowValues> {
-  const table = tableName(meta.name)
+  const table = await tableRelation(meta.name)
   if (values.updated_at == null)
     throw new AppError(
       'ValidationError',
@@ -928,7 +928,7 @@ async function setStatus(
   const meta = await getMeta(table)
   if (!meta.is_submittable)
     throw new AppError('ValidationError', `${table} is not submittable`)
-  const tbl = tableName(table)
+  const tbl = await tableRelation(table)
   const [saved] = await sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     const [existing] = await tx`
@@ -1002,7 +1002,7 @@ export async function amendDoc(
   await assertDocPermission(user, table, 'amend', String(source.created_by))
 
   const [{ count }] = await sql`
-    select count(*)::int as count from ${sql(tableName(table))}
+    select count(*)::int as count from ${sql(await tableRelation(table))}
     where amended_from = ${name}`
   const newRowId = `${name}-${(count as number) + 1}`
 
@@ -1039,7 +1039,7 @@ export async function deleteDoc(
   await sql.begin(async (tx) => {
     const stx = tx as unknown as typeof sql
     const [existing] = await tx`
-      select * from ${tx(tableName(table))} where ${tx(meta.row_key)} = ${name} for update`
+      select * from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name} for update`
     if (!existing)
       throw new AppError('NotFoundError', `${table} ${name} not found`)
     await assertDocPermission(user, table, 'delete', String(existing.created_by))
@@ -1064,7 +1064,7 @@ export async function deleteDoc(
         ? [parentKey, 'parent', 'parenttype']
         : [parentKey]
       const [ref] = await tx`
-        select ${tx(refCols)} from ${tx(tableName(parentTable))}
+        select ${tx(refCols)} from ${tx(await tableRelation(parentTable))}
         where ${tx(lf.column_name as string)} = ${name} limit 1`
       if (ref) {
         const holder = parentMeta.kind === 'sub_table'
@@ -1090,10 +1090,10 @@ export async function deleteDoc(
     for (const f of meta.columns) {
       if (f.column_type !== 'Sub-table') continue
       await tx`
-        delete from ${tx(tableName(f.row_table!))}
+        delete from ${tx(await tableRelation(f.row_table!))}
         where parent = ${name} and parenttype = ${table}`
     }
-    await tx`delete from ${tx(tableName(table))} where ${tx(meta.row_key)} = ${name}`
+    await tx`delete from ${tx(await tableRelation(table))} where ${tx(meta.row_key)} = ${name}`
   })
   // Post-commit: caches keyed on this row (e.g. a Data Source's pool and
   // the meta of Tables bound to it) may only be dropped once the delete is
@@ -1143,7 +1143,7 @@ async function deleteBoundDoc(
     if (!pm || pm.kind === 'settings' || pm.data_source) continue
     const parentKey = physicalRowKey(parentTable)
     const [ref] = await sql`
-      select ${sql(parentKey)} from ${sql(tableName(parentTable))}
+      select ${sql(parentKey)} from ${sql(await tableRelation(parentTable))}
       where ${sql(lf.column_name as string)} = ${name} limit 1`
     if (ref)
       throw new AppError(
@@ -1191,7 +1191,7 @@ export async function renameDoc(
   if (target === oldName) return getDoc(table, oldName, user)
 
   await sql.begin(async (tx) => {
-    const tbl = tableName(table)
+    const tbl = await tableRelation(table)
     const [existing] = await tx`
       select * from ${tx(tbl)} where ${tx(meta.row_key)} = ${oldName} for update`
     if (!existing) throw new AppError('NotFoundError', `${table} ${oldName} not found`)
@@ -1207,7 +1207,7 @@ export async function renameDoc(
     for (const f of meta.columns) {
       if (f.column_type !== 'Sub-table') continue
       await tx`
-        update ${tx(tableName(f.row_table!))} set parent = ${target}
+        update ${tx(await tableRelation(f.row_table!))} set parent = ${target}
         where parent = ${oldName} and parenttype = ${table}`
     }
 
@@ -1221,7 +1221,7 @@ export async function renameDoc(
       if (!pm || pm.kind === 'settings') continue
       const col = lf.column_name as string
       await tx`
-        update ${tx(tableName(parentTable))} set ${tx(col)} = ${target}
+        update ${tx(await tableRelation(parentTable))} set ${tx(col)} = ${target}
         where ${tx(col)} = ${oldName}`
     }
   })
@@ -1257,7 +1257,7 @@ export async function getDoc(
     return { table, ...filterReadFields(meta.columns, tiers, doc) }
   }
   const [row] = await sql`
-    select * from ${sql(tableName(table))} where ${sql(meta.row_key)} = ${name}`
+    select * from ${sql(await tableRelation(table))} where ${sql(meta.row_key)} = ${name}`
   if (!row) throw new AppError('NotFoundError', `${table} ${name} not found`)
   // PERM-008: a direct share grants read even without role permission.
   const shared = await isSharedWith(user, table, name, 'read')

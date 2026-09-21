@@ -77,6 +77,10 @@ export function physicalRowKey(table: string): string {
 
 export interface TableMeta {
   name: string
+  label?: string | null
+  owner_app?: string | null
+  physical_schema?: string | null
+  physical_relation?: string | null
   // Physical primary-key column of this Table's storage — `row_id` for every
   // Table but `Table` itself (see physicalRowKey). SQL construction uses this;
   // the wire format is always `row_id`.

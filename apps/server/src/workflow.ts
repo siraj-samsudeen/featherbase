@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta, invalidateMeta, physicalRowKey } from './meta'
-import { tableName } from './table-engine'
+import { tableRelation, quoteRelation } from './table-engine'
 import { getRoles } from './permissions'
 import { getDoc } from './document'
 import { queueEmail } from './email'
@@ -118,8 +118,8 @@ export async function ensureStateField(
       'ValidationError',
       `Workflow state field "${field}" does not exist on ${table}`,
     )
-  const tbl = tableName(table)
-  await tx.unsafe(`alter table "${tbl}" add column if not exists "workflow_state" varchar(140)`)
+  const tbl = await tableRelation(table)
+  await tx.unsafe(`alter table ${quoteRelation(tbl)} add column if not exists "workflow_state" varchar(140)`)
   const position = meta.columns.length + 1
   await tx`
     insert into column_def ${tx({
@@ -204,7 +204,7 @@ export async function applyWorkflowAction(
   // Persist via a direct update (bypasses the submitted-row write lock — a
   // workflow legitimately moves a submitted row between states/statuses).
   await sql`
-    update ${sql(tableName(table))}
+    update ${sql(await tableRelation(table))}
     set ${sql(field)} = ${transition.next_state}, status = ${status}, updated_at = now()
     where ${sql(physicalRowKey(table))} = ${name}`
 
@@ -290,7 +290,7 @@ export async function initDocState(table: string): Promise<void> {
   const field = stateField(wf)
   await ensureStateField(table, sql, field)
   await sql`
-    update ${sql(tableName(table))}
+    update ${sql(await tableRelation(table))}
     set ${sql(field)} = ${wf.states[0].state}
     where ${sql(field)} is null`
 }

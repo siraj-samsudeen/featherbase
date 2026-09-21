@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { sql } from './db'
 import { AppError } from './errors'
-import { createTable, tableName } from './table-engine'
+import { createTable, tableRelation, quoteRelation } from './table-engine'
 import { ensureHomePageForTable } from './home-pages'
 import { invalidateMeta, physicalRowKey } from './meta'
 import { saveDoc, deleteDoc } from './document'
@@ -308,7 +308,7 @@ async function provisionFixtures(manifest: AppManifest): Promise<FixtureRef[]> {
       const name = row.row_id == null ? '' : String(row.row_id).trim()
       if (name) {
         const [have] = await sql`
-          select 1 from ${sql(tableName(fixture.table))}
+          select 1 from ${sql(await tableRelation(fixture.table))}
           where ${sql(physicalRowKey(fixture.table))} = ${name}`
         if (have) continue
       }
@@ -427,7 +427,7 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
         'ValidationError',
         `App table declares system: true — the system flag belongs to the migration chain, app tables are user-space`,
       )
-    const meta = await createTable(def)
+    const meta = await createTable(def, manifest.name)
     created.push(meta.name)
     // #80: app tables group under the app's own module in navigation, same
     // as builder-created tables — the module's home page is created on
@@ -583,7 +583,7 @@ export async function uninstallApp(name: string): Promise<{ name: string; remove
   await teardownFixtures(asFixtureRefs(row.fixtures))
 
   for (const t of tables) {
-    const tbl = tableName(t)
+    const tbl = quoteRelation(await tableRelation(t))
     await sql`delete from column_def where parent = ${t}`
     await sql`delete from table_def where name = ${t}`
     await sql.unsafe(`drop table if exists ${tbl} cascade`)

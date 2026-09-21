@@ -18,7 +18,7 @@ import { ROW_KEY, getMeta, physicalRowKey } from '../meta'
 import { assertDocPermission, permissionScope } from '../permissions'
 import { registerCollectionAction } from '../actions'
 import { sql } from '../db'
-import { tableName } from '../table-engine'
+import { tableName, tableRelation } from '../table-engine'
 import type { TouchedRow } from './collection-import'
 
 type SkipReason =
@@ -145,7 +145,7 @@ registerCollectionAction('import-revert', {
     const names = [...known]
     const rows = await sql`
       select ${sql(physicalRowKey(table))} as row_id, updated_at, created_by
-      from ${sql(tableName(table))}
+      from ${sql(await tableRelation(table))}
       where ${sql(physicalRowKey(table))} = any(${names})`
     const current = new Map<string, CurrentRow>(
       rows.map((r) => [

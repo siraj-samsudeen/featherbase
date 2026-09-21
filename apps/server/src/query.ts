@@ -1,7 +1,7 @@
 import { sql } from './db'
 import { AppError } from './errors'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
-import { STANDARD_COLUMNS, tableName } from './table-engine'
+import { STANDARD_COLUMNS, tableRelation } from './table-engine'
 import { getUserPermissionMap, isBypassUser, permissionScope, permittedTiers } from './permissions'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
 import { boundCountDocs, boundGetList, boundGroupCount, isBound } from './sources/dispatch'
@@ -153,7 +153,7 @@ async function scopedWhere(
       `${table} is a Settings Table and has no list — open it directly by its name`,
     )
   const cols = columnSet(meta, await permittedTiers(user, table, 'read'))
-  const tbl = tableName(table)
+  const tbl = await tableRelation(table)
   // Callers always speak the logical row key (`row_id`); only the SQL we emit
   // uses the physical one, which differs for `Table` alone (see meta.ts).
   const phys = (field: string) => (field === ROW_KEY ? meta.row_key : field)
@@ -289,11 +289,11 @@ async function scopedWhere(
         frag:
           spec.parentfield !== undefined
             ? sql`exists (
-                select 1 from ${sql(tableName(spec.via))} ${v}
+                select 1 from ${sql(await tableRelation(spec.via))} ${v}
                 where ${v}.parent = ${owner} and ${v}.parenttype = ${meta.name}
                   and ${v}.parentfield = ${spec.parentfield} and ${inTarget})`
             : sql`exists (
-                select 1 from ${sql(tableName(spec.via))} ${v}
+                select 1 from ${sql(await tableRelation(spec.via))} ${v}
                 where ${v}.parent = ${owner} and ${v}.parenttype = ${meta.name}
                   and ${inTarget})`,
       }
@@ -359,7 +359,7 @@ async function parentScopeCond(
       scope === 'all'
         ? sql`parenttype = ${holder}`
         : sql`(parenttype = ${holder} and parent in (
-             select ${sql(physicalRowKey(holder))} from ${sql(tableName(holder))} where created_by = ${user}))`,
+             select ${sql(physicalRowKey(holder))} from ${sql(await tableRelation(holder))} where created_by = ${user}))`,
     )
   }
   if (!branches.length) return { frag: sql`false` }

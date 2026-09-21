@@ -1,7 +1,7 @@
 import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta, invalidateMeta } from './meta'
-import { pgType, tableName } from './table-engine'
+import { pgType, tableRelation, quoteRelation } from './table-engine'
 
 // CUST-001: apply a Custom Field record to its target Table — add the
 // column (if the column_type has one) and a column_def row marked custom.
@@ -29,7 +29,7 @@ export async function applyCustomField(
   const col = pgType(columnType)
   if (col)
     await tx.unsafe(
-      `alter table "${tableName(rec.dt)}" add column if not exists "${rec.column_name}" ${col}`,
+      `alter table ${quoteRelation(await tableRelation(rec.dt))} add column if not exists "${rec.column_name}" ${col}`,
     )
   // column_def row: insert or update, always marked custom.
   const existing = meta.columns.find((f) => f.column_name === rec.column_name)
