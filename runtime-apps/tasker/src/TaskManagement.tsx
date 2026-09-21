@@ -1,6 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser, listResource } from './api'
+import { Markdown } from './Markdown'
+import { ProjectDescription } from './ProjectDescription'
 
 type View = 'inbox' | 'work' | 'together' | 'projects' | 'personal'
 type DetailMode = 'compact' | 'inspector' | 'focus'
@@ -20,6 +22,7 @@ interface Task {
 interface Project {
   row_id: string
   project_name: string
+  description: string | null
   updated_at: string
 }
 
@@ -117,7 +120,7 @@ export function TaskManagementPage() {
     queryKey: ['task-management', 'projects'],
     queryFn: () =>
       listResource<Project>('tasker.project', {
-        fields: ['row_id', 'project_name', 'updated_at'],
+        fields: ['row_id', 'project_name', 'description', 'updated_at'],
         order_by: 'project_name asc',
         limit_page_length: 200,
       }),
@@ -399,7 +402,7 @@ export function TaskManagementPage() {
       {error && <p role="alert" className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       {selectedTask && detailMode === 'compact' && (
         <div className="tasker-compact-detail">
-          <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} />
+          <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} people={people} projects={allProjects} />
         </div>
       )}
 
@@ -466,6 +469,7 @@ export function TaskManagementPage() {
                   onToggleStar={() => toggleProjectStar(selectedProject)}
                   onMoveStar={(offset) => moveProjectStar(selectedProject, offset)}
                 />
+                <ProjectDescription key={selectedProject} project={projectById.get(selectedProject)!} onSaved={refresh} />
                 <form className="tasker-composer" onSubmit={async (event) => { event.preventDefault(); const title = projectTask; try { await createTask(title, { project: selectedProject }); setProjectTask('') } catch { /* shown above */ } }}>
                   <label className="sr-only" htmlFor="project-task">Add task to project</label>
                   <input id="project-task" value={projectTask} onChange={(event) => setProjectTask(event.target.value)} placeholder="Add a task, then press Enter" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" autoFocus />
@@ -518,12 +522,12 @@ export function TaskManagementPage() {
       {selectedTask && detailMode === 'inspector' && (
         // @spec responsive_detail_preserves_workspace_context
         <aside className="tasker-inspector" aria-label="Task details">
-          <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} />
+          <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} people={people} projects={allProjects} />
         </aside>
       )}
       {selectedTask && detailMode === 'focus' && (
         <div className="tasker-focus-detail" role="dialog" aria-label="Focused task details">
-          <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} />
+          <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} people={people} projects={allProjects} />
         </div>
       )}
     </div>
@@ -568,11 +572,13 @@ function ProjectHeading({ project, starred, onRename, onToggleStar, onMoveStar }
   </div>
 }
 
-function TaskDetail({ id, mode, onMode, onSaved }: {
+function TaskDetail({ id, mode, onMode, onSaved, people, projects }: {
   id: string
   mode: DetailMode
   onMode: (mode: DetailMode) => Promise<void>
   onSaved: () => Promise<void>
+  people: { row_id: string }[]
+  projects: Project[]
 }) {
   const queryClient = useQueryClient()
   const task = useQuery({ queryKey: ['task-management', 'detail', id],
@@ -584,15 +590,36 @@ function TaskDetail({ id, mode, onMode, onSaved }: {
       `/api/activity/tasker.task/${encodeURIComponent(id)}`,
     ),
   })
-  const [description, setDescription] = useState<string | null>(null)
+  const [draft, setDraft] = useState<{ task_title: string; description: string; updated_at: string } | null>(null)
   const [comment, setComment] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const editButton = useRef<HTMLButtonElement>(null)
+  const detail = useRef<HTMLElement>(null)
+  const me = getSessionUser()?.row_id ?? ''
+  function cancelDraft() {
+    setDraft(null); setError('')
+    requestAnimationFrame(() => editButton.current?.focus())
+  }
+  async function patch(patch: Partial<Task>) {
+    if (!task.data) return
+    setSaving(true); setError('')
+    try {
+      await api.patch(`/api/table/tasker.task/${encodeURIComponent(id)}`, { ...patch, updated_at: task.data.updated_at })
+      await onSaved()
+    } catch (error) { setError(error instanceof Error ? error.message : 'Could not update task') }
+    finally { setSaving(false) }
+  }
   useEffect(() => {
-    setDescription(null)
+    setDraft(null)
     setComment('')
     setError('')
   }, [id])
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null
+    detail.current?.querySelector<HTMLElement>('a, button')?.focus()
+    return () => { if (previous?.isConnected) previous.focus() }
+  }, [id, mode])
   useEffect(() => {
     if (mode !== 'inspector') return
     if (!window.matchMedia) return
@@ -614,8 +641,14 @@ function TaskDetail({ id, mode, onMode, onSaved }: {
   const latestActivity = activity.at(-1)
   const formatValue = (value: unknown) => value == null || value === '' ? 'empty' : String(value)
 
-  return <section className="tasker-detail" aria-label="Task detail content" onKeyDown={(event) => {
-    if (event.key === 'Escape') location.hash = ''
+  return <section ref={detail} className="tasker-detail" aria-label="Task detail content" onKeyDown={(event) => {
+    if (event.key === 'Escape') { if (draft && !saving) cancelDraft(); else if (!saving) location.hash = '' }
+    if (event.key === 'Tab' && (mode === 'focus' || (mode === 'inspector' && window.matchMedia?.('(max-width: 1100px)').matches))) {
+      const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled)')]
+      const first = controls[0], last = controls.at(-1)
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+    }
   }}>
     <div className="tasker-detail-toolbar">
       <a href="#" className="fc-btn" autoFocus>Close</a>
@@ -626,35 +659,70 @@ function TaskDetail({ id, mode, onMode, onSaved }: {
     </div>
     <h2 className="my-5 text-xl font-semibold">{task.data?.task_title ?? 'Task details'}</h2>
     {task.error && <p role="alert">{task.error.message}</p>}
+    {task.isPending && <p role="status">Loading task…</p>}
     {error && <p role="alert">{error}</p>}
     {task.data && <>
-      <p className="mb-5 text-sm text-[var(--color-ink-muted)]">{task.data.task_state} · {task.data.assigned_to ?? 'Unassigned'}</p>
+      <fieldset className="tasker-detail-controls" disabled={saving || Boolean(draft)}>
+        <legend className="sr-only">Task workflow</legend>
+        <label>State<select aria-label="Task state" value={task.data.task_state} onChange={(event) => void patch({ task_state: event.target.value })}>{STATES.map(state => <option key={state}>{state}</option>)}</select></label>
+        <label>Responsibility<select aria-label="Task responsibility" value={task.data.assigned_to ?? ''} onChange={(event) => void patch({ assigned_to: event.target.value || null })}>
+          <option value="">Unassigned</option>{people.map(user => <option key={user.row_id}>{user.row_id}</option>)}
+        </select></label>
+        <label>Destination<select aria-label="Task destination" value={task.data.personal_tasks_owner ? `personal:${task.data.personal_tasks_owner}` : task.data.project ? `project:${task.data.project}` : ''} onChange={(event) => {
+          const [kind, value] = event.target.value.split(':', 2)
+          void patch(kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null })
+        }}><option value="">Inbox</option>{projects.map(project => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}
+          {people.map(user => <option key={user.row_id} value={`personal:${user.row_id}`}>Personal: {user.row_id}</option>)}
+        </select></label>
+        <div className="tasker-detail-signals">
+          {!task.data.assigned_to && <button type="button" className="fc-btn" onClick={() => void patch({ assigned_to: me })}>Take it</button>}
+          <button type="button" className="fc-btn" aria-pressed={task.data.urgent} onClick={() => void patch({ urgent: !task.data.urgent })}>{task.data.urgent ? 'Urgent' : 'Not urgent'}</button>
+          <button type="button" className="fc-btn" onClick={() => void patch({ is_done: !task.data.is_done })}>{task.data.is_done ? 'Undo Done' : 'Mark Done'}</button>
+        </div>
+      </fieldset>
       {mode === 'compact' ? <div className="tasker-compact-summary">
-        <p className="whitespace-pre-wrap text-sm">{task.data.description || 'No description yet.'}</p>
+        <Markdown>{task.data.description || 'No description yet.'}</Markdown>
         {latestActivity && <p className="mt-3 border-l-2 border-[var(--color-border)] pl-3 text-xs text-[var(--color-ink-muted)]">
           Latest: {latestActivity.kind === 'comment' ? latestActivity.content : 'Task fields changed'}
         </p>}
         <p className="mt-3 text-xs text-[var(--color-ink-muted)]">Open Inspector to edit or join the discussion.</p>
       </div> : <>
-      <form onSubmit={async (event) => {
+      {draft ? <form className="tasker-description-editor" onSubmit={async (event) => {
+        // @spec task_activity_stays_in_tasker
+        // Keep the draft's original revision even if another action refetches this row.
         event.preventDefault(); setSaving(true); setError('')
+        if (!draft?.task_title.trim()) { setSaving(false); return }
         try {
           const saved = await api.patch<Task & { description: string }>(`/api/table/tasker.task/${encodeURIComponent(id)}`, {
-            description: description ?? task.data.description, updated_at: task.data.updated_at,
+            ...draft, task_title: draft.task_title.trim(),
           })
           queryClient.setQueryData(['task-management', 'detail', id], saved)
-          setDescription(null)
+          cancelDraft()
           await onSaved()
           await queryClient.invalidateQueries({ queryKey: ['task-management', 'detail-activity', id] })
         } catch (error) { setError(error instanceof Error ? error.message : 'Could not save') }
         finally { setSaving(false) }
       }}>
-        <label className="block text-sm">Description
-          <textarea className="mt-2 w-full rounded border border-[var(--color-border)] p-3" rows={7}
-            value={description ?? task.data.description ?? ''} onChange={(event) => setDescription(event.target.value)} />
+        <label className="block text-sm mb-3">Task title
+          <input autoFocus className="mt-2 w-full rounded border border-[var(--color-border)] p-3"
+            disabled={saving} value={draft?.task_title ?? task.data.task_title}
+            onChange={(event) => setDraft({ ...draft, task_title: event.target.value })} />
         </label>
-        <button className="fc-btn-primary mt-3" disabled={saving}>Save description</button>
-      </form>
+        <label className="block text-sm">Description
+          <textarea className="mt-2 w-full rounded border border-[var(--color-border)] p-3" rows={4} disabled={saving}
+            value={draft?.description ?? task.data.description ?? ''}
+            onChange={(event) => setDraft({ ...draft, description: event.target.value })} />
+        </label>
+        <div className="mt-3 flex gap-2">
+          <button className="fc-btn-primary" disabled={saving || !draft?.task_title.trim()}>Save task</button>
+          <button type="button" className="fc-btn" disabled={saving || !draft} onClick={cancelDraft}>Cancel changes</button>
+        </div>
+      </form> : <div className="tasker-description-read">
+        <div className="tasker-description-heading"><h3>Description</h3>
+          <button ref={editButton} type="button" className="fc-btn" onClick={() => setDraft({ task_title: task.data.task_title, description: task.data.description ?? '', updated_at: task.data.updated_at })}>Edit task</button>
+        </div>
+        <Markdown>{task.data.description || 'No description yet. Add context when it helps.'}</Markdown>
+      </div>}
 
       <div className="mt-7 border-t border-[var(--color-border)] pt-5">
         <h3 className="mb-3 text-sm font-semibold">Discussion and history</h3>

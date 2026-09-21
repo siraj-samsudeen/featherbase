@@ -4,7 +4,8 @@
   "server": "dist/server.mjs", "client": "dist/client", "entryTable": "tasker.task",
   "tables": [
     {"name": "tasker.project", "label": "Project", "module": "Tasker", "id_pattern": "TPROJ-.####", "title_column": "project_name",
-      "columns": [{"column_name": "project_name", "label": "Project name", "column_type": "Data", "reqd": true, "in_list_view": true}]},
+      "columns": [{"column_name": "project_name", "label": "Project name", "column_type": "Data", "reqd": true, "in_list_view": true},
+        {"column_name": "description", "label": "Description", "column_type": "Text"}]},
     {"name": "tasker.task", "label": "Task", "module": "Tasker", "id_pattern": "TASK-.#####", "title_column": "task_title",
       "columns": [
         {"column_name": "task_title", "label": "Task", "column_type": "Data", "reqd": true, "in_list_view": true},

@@ -6,6 +6,31 @@ export const TASKER_SCENARIOS = {
   projects: [
     { row_id: 'DEV-TASKER-PROJECT-STOCK-REVIEW', project_name: 'September stock review' },
     { row_id: 'DEV-TASKER-PROJECT-STORE-OPENING', project_name: 'Store opening readiness' },
+    { row_id: 'DEV-TASKER-PROJECT-TEST-DRIVE', project_name: 'Tasker Test Drive', description: `## Report feedback
+
+- One observation per task.
+- Title: \`Surface — observed gap\`.
+- Type: Bug | Expectation mismatch | Small improvement.
+
+### Description template
+
+- **I was trying to:**
+- **What happened:**
+- **What I expected:**
+- **Done when:**
+- **Evidence:**
+
+### Triage agreement
+
+- **Not started:** captured.
+- **In progress:** accepted.
+- **Blocked:** needs reporter.
+- **Done:** fixed and retested.
+- **Cancelled:** declined with an explanation.
+
+Urgent is only for blocked testing, data loss or security.
+
+Unassigned means ready for triage. Assigned means the named person must answer or verify.` },
   ],
   tasks: [
     { row_id: 'DEV-TASKER-TASK-INVOICE-MISMATCH', task_title: 'Triage supplier invoice mismatch', urgent: true, description: 'Compare the supplier invoice against the received quantities and note the first mismatched line.', comments: ['Purchasing has shared the signed invoice copy.'] },

@@ -7,6 +7,8 @@ Status: governed (#296) · specified but unbuilt for correction/deletion additio
 
 Task details SHALL show description, append-only comments and chronological field history with actor and time. Inspector and focused modes SHALL let a member correct task title and plain/Markdown description, Save or Cancel the draft. Compact mode SHALL provide an explicit path to editing. Empty description SHALL be valid; blank title SHALL not save. Saving SHALL use the version at draft start, surface a conflict without losing the draft, and refresh every task-bearing view without reloading. Switching selected task SHALL not carry another task's draft.
 
+Descriptions SHALL start in a calm read or empty state, not an always-open editor. Editing SHALL be intentional. Detail modes SHALL expose state, responsibility, destination, urgency and completion controls, with discoverable promotion/deletion actions. Focus SHALL preserve workspace context when closed and prevent focus or scrolling from leaking to the hidden background. Take SHALL update responsibility without changing state or destination; My Work SHALL reflect the persisted assignment, while Personal tasks remains a separate destination.
+
 Deletion SHALL require explicit confirmation explaining permanent removal versus Cancelled for retained work. It SHALL preserve comments/history/references by refusing unsafe removal, reject a stale version and close or explain a deleted selected task. Private focus SHALL ignore removed IDs. Until the generic host can enforce those conditions atomically, deletion SHALL remain unavailable rather than promise client-only safety.
 
 #### Scenario: comment_and_edit_are_visible
@@ -25,3 +27,13 @@ Deletion SHALL require explicit confirmation explaining permanent removal versus
 #### Scenario: retained_work_is_not_silently_deleted
 - **WHEN** a task has discussion, meaningful history or references
 - **THEN** Delete does not silently discard that work and explains Cancelled as the retained-work option.
+
+#### Scenario: focus_is_a_working_surface
+- **WHEN** a member opens a task with no description in Focus
+- **THEN** an empty read state and workflow controls appear without a textarea or Save button
+- **AND** Edit task opens title and description with Save and Cancel.
+
+#### Scenario: take_updates_my_work
+- **WHEN** a member takes an unassigned Blocked urgent Inbox task
+- **THEN** responsibility persists and My Work contains the task
+- **AND** Blocked, urgency and Inbox destination remain unchanged; Personal tasks does not gain it.

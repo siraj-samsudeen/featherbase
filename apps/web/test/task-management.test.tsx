@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { installApp, isInstalled, uninstallApp } from 'server/src/apps'
 import { discoverPackages } from 'server/src/runtime-packages'
@@ -6,6 +6,7 @@ import { resolve } from 'node:path'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { TestClient } from 'feather-testing-postgres'
 import { peopleWithTaskResponsibility, TaskManagementPage } from '../../../runtime-apps/tasker/src/TaskManagement'
+import { Markdown } from '../../../runtime-apps/tasker/src/Markdown'
 import { setSession } from '../src/lib/api'
 import { test, expect } from './pg-test'
 
@@ -335,6 +336,145 @@ test('project_coordination_flow: rename, private tabs, and Together retain their
   }
 })
 
+// @spec markdown_cannot_execute_html.malicious_markup_is_inert
+test('markdown_safety: links lists and code render but HTML and unsafe URLs remain inert', () => {
+  const { container } = render(<Markdown>{'- First\n- Second\n\n[Safe](https://example.test) [Unsafe](javascript:alert(1))\n\n`inline`\n\n```js\nconst n = 3\n```\n\n<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>\n\n<iframe src="https://example.test"></iframe>'}</Markdown>)
+  expect(screen.getAllByRole('listitem')).toHaveLength(2)
+  expect(screen.getByRole('link', { name: 'Safe' })).toHaveAttribute('href', 'https://example.test')
+  expect(container.querySelector('pre code')).toHaveTextContent('const n = 3')
+  expect(container.querySelector('script, iframe, img, [onerror]')).toBeNull()
+  expect(container.querySelector('a[href^="javascript:"]')).toBeNull()
+})
+
+// @spec project_markdown_is_shared.shared_context_and_empty_content
+test('project_description_flow: explicit editing cancel save clear and a second member see shared context', async ({ admin, createUser }) => {
+  await install()
+  try {
+    const project = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.project', row: { project_name: 'Shared context' } })
+    const other = await createUser({ roles: [] })
+    renderTasker(admin)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Shared context', exact: true }))
+    await user.click(await screen.findByRole('button', { name: 'Add description' }))
+    const region = within(screen.getByRole('region', { name: 'Project description' }))
+    await user.type(region.getByRole('textbox'), 'Discard this')
+    await user.click(region.getByRole('button', { name: 'Cancel', exact: true }))
+    expect(await admin.get(`/api/table/tasker.project/${project.row_id}`)).toMatchObject({ description: null })
+    await user.click(region.getByRole('button', { name: 'Add description' }))
+    await user.type(region.getByRole('textbox'), '- Report one observation\n- Include evidence')
+    await user.click(region.getByRole('button', { name: 'Save description' }))
+    expect(await region.findByText('Report one observation')).toBeInTheDocument()
+    expect(await other.get(`/api/table/tasker.project/${project.row_id}`)).toMatchObject({ description: '- Report one observation\n- Include evidence' })
+    await user.click(region.getByRole('button', { name: 'Edit description' }))
+    await user.clear(region.getByRole('textbox'))
+    await user.click(region.getByRole('button', { name: 'Save description' }))
+    expect(await region.findByRole('button', { name: 'Add description' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Add task to project' })).toBeInTheDocument()
+  } finally { await uninstallApp(APP).catch(() => {}) }
+})
+
+// @spec project_markdown_is_shared.stale_project_draft
+test('project_description_conflict: competing project edit is not overwritten', async ({ admin }) => {
+  await install()
+  try {
+    const project = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.project', row: { project_name: 'Conflicting context' } })
+    renderTasker(admin)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Conflicting context', exact: true }))
+    await user.click(await screen.findByRole('button', { name: 'Add description' }))
+    const region = within(screen.getByRole('region', { name: 'Project description' }))
+    await user.type(region.getByRole('textbox'), 'My draft')
+    await admin.post('/api/save_row', { table: 'tasker.project', row: { row_id: project.row_id, updated_at: project.updated_at, description: 'Their description' } })
+    await user.click(region.getByRole('button', { name: 'Save description' }))
+    expect(await region.findByRole('alert')).toHaveTextContent(/modified|changed|conflict/i)
+    expect(region.getByRole('textbox')).toHaveValue('My draft')
+    expect(await admin.get(`/api/table/tasker.project/${project.row_id}`)).toMatchObject({ description: 'Their description' })
+  } finally { await uninstallApp(APP).catch(() => {}) }
+})
+
+// @spec assignment_state_independent.assign_not_started_task
+// @spec my_work_has_no_duplicates
+test('take_membership: Take persists responsibility into My Work, not the Personal destination', async ({ admin, createUser }) => {
+  await install()
+  try {
+    const member = await createUser({ roles: [] })
+    const task = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Take membership probe', task_state: 'Blocked', urgent: true } })
+    renderTasker(member)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('link', { name: 'Take membership probe' }))
+    await user.click(screen.getByRole('button', { name: 'Focus', exact: true }))
+    const detail = within(await screen.findByRole('dialog', { name: 'Focused task details' }))
+    await user.click(await detail.findByRole('button', { name: 'Take it' }))
+    await waitFor(() => expect(detail.getByRole('combobox', { name: 'Task responsibility' })).toHaveValue(member.user))
+    expect(await admin.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({ assigned_to: member.user, task_state: 'Blocked', urgent: true, personal_tasks_owner: null })
+    await user.click(detail.getByRole('link', { name: 'Close' }))
+    await user.click(screen.getByRole('button', { name: /My Work/ }))
+    expect(await screen.findByRole('link', { name: 'Take membership probe' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^Personal tasks/ }))
+    expect(screen.queryByRole('link', { name: 'Take membership probe' })).not.toBeInTheDocument()
+  } finally { location.hash = ''; await uninstallApp(APP).catch(() => {}) }
+})
+
+// @spec task_activity_stays_in_tasker.correct_title_and_description
+test('task_correction_flow: save and cancel correct the title and permit an empty description', async ({ admin }) => {
+  await install()
+  try {
+    const task = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: 'tasker.task', row: { task_title: 'Wrong warehouse', description: 'Old scope' },
+    })
+    renderTasker(admin)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('link', { name: 'Wrong warehouse' }))
+    expect(screen.queryByRole('textbox', { name: 'Description' })).not.toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Edit task' }))
+    let title = await screen.findByRole('textbox', { name: 'Task title' })
+    await user.clear(title)
+    expect(screen.getByRole('button', { name: 'Save task' })).toBeDisabled()
+    await user.type(title, 'Discard this draft')
+    await user.click(screen.getByRole('button', { name: 'Cancel changes' }))
+    expect(screen.queryByRole('textbox', { name: 'Task title' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Edit task' }))
+    title = screen.getByRole('textbox', { name: 'Task title' })
+    expect(title).toHaveValue('Wrong warehouse')
+    await user.clear(title)
+    await user.type(title, 'Correct warehouse')
+    await user.clear(screen.getByRole('textbox', { name: 'Description' }))
+    await user.click(screen.getByRole('button', { name: 'Save task' }))
+    expect(await screen.findByRole('link', { name: 'Correct warehouse' })).toBeInTheDocument()
+    expect(await admin.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({ task_title: 'Correct warehouse', description: null })
+    await waitFor(() => expect(screen.getByTestId('task-activity')).toHaveTextContent('task title: Wrong warehouse → Correct warehouse'))
+  } finally {
+    location.hash = ''
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
+// @spec task_activity_stays_in_tasker.cancel_or_conflict_preserves_work
+test('task_correction_conflict: a background refresh cannot rebase an unsaved draft', async ({ admin }) => {
+  await install()
+  try {
+    const task = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: 'tasker.task', row: { task_title: 'Concurrent task', description: 'Original' },
+    })
+    renderTasker(admin)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('link', { name: 'Concurrent task' }))
+    await user.click(await screen.findByRole('button', { name: 'Edit task' }))
+    await user.type(await screen.findByRole('textbox', { name: 'Task title' }), ' draft')
+    await admin.post('/api/save_row', { table: 'tasker.task', row: { row_id: task.row_id, description: 'Another editor', updated_at: task.updated_at } })
+    // List mutation refreshes all detail queries while the draft is still open.
+    await user.type(screen.getByRole('textbox', { name: 'Quick capture' }), 'Refresh trigger{Enter}')
+    await screen.findByRole('link', { name: 'Refresh trigger' })
+    await user.click(screen.getByRole('button', { name: 'Save task' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/modified|changed|conflict/i)
+    expect(screen.getByRole('textbox', { name: 'Task title' })).toHaveValue('Concurrent task draft')
+    expect(await admin.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({ task_title: 'Concurrent task', description: 'Another editor' })
+  } finally {
+    location.hash = ''
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
 // @spec task_detail_has_three_modes.choose_depth_without_losing_task
 // @spec task_activity_stays_in_tasker.comment_and_edit_are_visible
 test('task_detail_flow: one task switches among three detail modes with comments and history', async ({ admin }) => {
@@ -389,6 +529,7 @@ test('task details do not carry unsaved text into another task', async ({ admin 
     const user = userEvent.setup()
 
     await user.click(await screen.findByRole('link', { name: 'First task' }))
+    await user.click(await screen.findByRole('button', { name: 'Edit task' }))
     const firstDescription = await screen.findByRole('textbox', { name: 'Description' })
     await user.clear(firstDescription)
     await user.type(firstDescription, 'Unsaved first-task draft')
@@ -396,7 +537,8 @@ test('task details do not carry unsaved text into another task', async ({ admin 
 
     await user.click(screen.getByRole('link', { name: 'Second task' }))
 
-    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Description' })).toHaveValue('Second description'))
+    await screen.findByText('Second description')
+    expect(screen.queryByRole('textbox', { name: 'Description' })).not.toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Add comment' })).toHaveValue('')
   } finally {
     location.hash = ''
