@@ -23,6 +23,11 @@ test.beforeAll(async ({ request }) => {
 })
 
 async function contained(page: Page, selectors: string[]) {
+  if (page.viewportSize()!.width === 375) {
+    // Live resize animates the existing closed drawer; capture its settled
+    // state, without hiding it or accepting an overlay over the form.
+    await expect.poll(() => page.getByTestId('admin-sidebar').evaluate(e => e.getBoundingClientRect().right)).toBeLessThanOrEqual(0)
+  }
   for (const selector of selectors) {
     for (const element of await page.locator(selector).all()) {
       if (!await element.isVisible()) continue
@@ -94,12 +99,24 @@ for (const width of [375, 1440]) {
     // runtime-client-identity.test and the separately built package journey.
     for (const [status, message] of [[403, 'Application pending activation; contact an administrator.'], [409, 'Application version changed; reload before saving.']] as const) {
       await page.route('**/api/save_row', route => route.fulfill({ status, json: { error: { type: 'PermissionError', message } } }))
-      await page.route('**/api/upload_file', route => route.fulfill({ status, json: { error: { type: 'PermissionError', message } } }))
+      let releaseUpload!: () => void
+      const uploadGate = new Promise<void>(resolve => { releaseUpload = resolve })
+      await page.route('**/api/upload_file', async route => {
+        await uploadGate
+        await route.fulfill({ status, json: { error: { type: 'PermissionError', message } } })
+      })
       await page.getByTestId('form-save').click()
       await expect(page.getByTestId('form-banner')).toHaveText(message)
       await expect(page.locator('[data-field=title]')).toHaveValue('Unsaved 37, not 83')
       await expect(page.getByTestId('form-status')).toHaveText('Not saved')
       await page.getByTestId('attach-file-input').setInputFiles({ name: fileName, mimeType: 'text/plain', buffer: Buffer.from('37 cartons, not 83') })
+      try {
+        await expect(page.getByTestId('attach-file')).toHaveText('Uploading…')
+        await expect(page.getByTestId('attach-file')).toBeDisabled()
+        await contained(page, controls)
+      } finally {
+        releaseUpload()
+      }
       await expect(page.getByTestId('attach-error')).toHaveText(message)
       await contained(page, controls)
       await page.getByTestId('attach-error').scrollIntoViewIfNeeded()
