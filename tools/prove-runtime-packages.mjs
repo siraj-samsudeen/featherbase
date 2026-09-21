@@ -216,6 +216,8 @@ try {
   await expect(page.getByRole('combobox', { name: 'State for Package-delivered stock review' })).toHaveValue('In progress')
   await page.screenshot({ path: resolve(output, 'desktop.png'), fullPage: true })
   await page.getByRole('link', { name: 'Package-delivered stock review' }).click()
+  await page.getByRole('button', { name: 'Inspector', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Inspector', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await page.getByRole('button', { name: 'Edit task', exact: true }).click()
   await page.getByRole('textbox', { name: 'Description', exact: true }).fill('Delivered after the core artifact was frozen.')
   await page.getByRole('button', { name: 'Save task', exact: true }).click()
