@@ -12,3 +12,17 @@ no_code delete_an_unwanted_table
 no_code nothing_dangles
 no_code refusal_changes_nothing
 no_code refused_then_unblocked
+
+# Tasker's neutral defaults are declared in strict JSON metadata and its focus
+# return is a UI composition; neither has one marker-capable deciding line.
+no_code capture_neutral_task
+
+# Team-wide grants are declared in strict runtime manifest JSON; the executable
+# test covers them, but JSON has no legal @spec comment location.
+no_code team_shares_tasker_work
+
+# The one-person shape is declarative JSON metadata. Spec 0010 already records
+# the missing dedicated server test as gap #296; the OpenSpec trial must expose,
+# not launder, that same gap.
+no_code responsibility_is_singular
+no_test responsibility_is_singular

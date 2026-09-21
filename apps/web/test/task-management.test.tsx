@@ -48,6 +48,7 @@ test('TSK-J1 TSK-R1 TSK-R2: Enter captures a title-only task in Inbox', async ({
   }
 })
 
+// @spec lightweight_project_entry.rapid_project_tasks
 test('TSK-J2 TSK-R4: a project accepts rapid unassigned task entry', async ({ admin }) => {
   await install()
   try {
@@ -57,17 +58,23 @@ test('TSK-J2 TSK-R4: a project accepts rapid unassigned task entry', async ({ ad
     await user.click(await screen.findByRole('button', { name: 'Projects' }))
     await user.type(screen.getByRole('textbox', { name: 'Project name' }), 'Warehouse review{Enter}')
     const projectTask = await screen.findByRole('textbox', { name: 'Add task to project' })
-    await user.type(projectTask, 'Compare September closing stock{Enter}')
+    const titles = [
+      'Compare September closing stock',
+      'Confirm warehouse count date',
+      'Review damaged stock notes',
+    ]
+    for (const title of titles) {
+      await user.type(projectTask, `${title}{Enter}`)
+      expect(await screen.findByText(title)).toBeInTheDocument()
+      expect(projectTask).toHaveFocus()
+    }
 
-    expect(await screen.findByText('Compare September closing stock')).toBeInTheDocument()
     const rows = (await admin.get(
       '/api/table/tasker.task?fields=%5B%22task_title%22%2C%22project%22%2C%22assigned_to%22%5D',
     )) as { data: Record<string, unknown>[] }
-    expect(rows.data[0]).toMatchObject({
-      task_title: 'Compare September closing stock',
-      assigned_to: null,
-    })
-    expect(rows.data[0].project).toBeTruthy()
+    expect(rows.data).toHaveLength(3)
+    expect(rows.data.map((row) => row.task_title).sort()).toEqual([...titles].sort())
+    expect(rows.data.every((row) => row.assigned_to === null && Boolean(row.project))).toBe(true)
   } finally {
     await uninstallApp(APP).catch(() => {})
   }
@@ -102,7 +109,11 @@ test('TSK-J1 TSK-R3 TSK-I1: triage to Personal tasks assigns its owner', async (
   }
 })
 
-test('TSK-J3 TSK-R9 TSK-R10 TSK-I3 TSK-H1: My Focus is ordered, private, and does not duplicate assigned work', async ({ admin }) => {
+// @spec focus_is_private_ordered.mixed_daily_shortlist
+// @spec my_work_has_no_duplicates.focused_assigned_once
+// @spec focus_never_mutates_task.star_unassigned_task
+// @spec stale_focus_self_heals.missing_focus_reference
+test('TSK-J3 TSK-R9 TSK-R10 TSK-I3 TSK-H1: My Focus is ordered, private, and does not duplicate assigned work', async ({ admin, createUser }) => {
   await install()
   try {
     const assigned = (await admin.post('/api/save_row', {
@@ -113,22 +124,36 @@ test('TSK-J3 TSK-R9 TSK-R10 TSK-I3 TSK-H1: My Focus is ordered, private, and doe
       table: 'tasker.task',
       row: { task_title: 'Focused only' },
     })) as { row_id: string }
+    const member = await createUser({ roles: [] })
+    await member.put('/api/user_settings/Task%20Management%20Focus', {
+      task_ids: [focusedOnly.row_id],
+    })
     await admin.put('/api/user_settings/Task%20Management%20Focus', {
       task_ids: ['TASK-does-not-exist'],
     })
-    renderTasker(admin)
+    const rendered = renderTasker(admin)
     const user = userEvent.setup()
 
     await user.click(await screen.findByRole('button', { name: 'Add to My Focus: Assigned and focused' }))
     await user.click(screen.getByRole('button', { name: 'Add to My Focus: Focused only' }))
     await user.click(screen.getByRole('button', { name: /My Work/ }))
+    await user.click(screen.getByRole('button', { name: 'Move Focused only up' }))
 
     expect(await screen.findAllByText('Assigned and focused')).toHaveLength(1)
     expect(screen.getAllByText('Focused only')).toHaveLength(1)
     const settings = (await admin.get('/api/user_settings/Task%20Management%20Focus')) as {
       settings: { task_ids: string[] }
     }
-    expect(settings.settings.task_ids).toEqual([assigned.row_id, focusedOnly.row_id])
+    expect(settings.settings.task_ids).toEqual([focusedOnly.row_id, assigned.row_id])
+    expect(await member.get('/api/user_settings/Task%20Management%20Focus')).toEqual({
+      settings: { task_ids: [focusedOnly.row_id] },
+    })
+    rendered.unmount()
+    renderTasker(admin)
+    await user.click(await screen.findByRole('button', { name: /My Work/ }))
+    const cards = await screen.findAllByRole('article')
+    expect(cards[0]).toHaveTextContent('Focused only')
+    expect(cards[1]).toHaveTextContent('Assigned and focused')
     const rows = (await admin.get(
       '/api/table/tasker.task?fields=%5B%22task_title%22%2C%22assigned_to%22%5D&order_by=task_title%20asc',
     )) as { data: Record<string, unknown>[] }
@@ -141,6 +166,7 @@ test('TSK-J3 TSK-R9 TSK-R10 TSK-I3 TSK-H1: My Focus is ordered, private, and doe
   }
 })
 
+// @spec discussion_stays_append_only.optional_blocked_explanation
 test('TSK-R7: an inactive state offers but does not require an explanation', async ({ admin }) => {
   await install()
   try {

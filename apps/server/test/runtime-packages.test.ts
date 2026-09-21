@@ -14,6 +14,7 @@ import { runQueryReport } from '../src/query-report'
 import { permittedTiers } from '../src/permissions'
 
 describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
+  // @spec versioned_trusted_artifact.incompatible_package_rejected
   test('PKG-R1: reserved names fail discovery; failed installation leaves no Tables or activation', async ({ admin }) => {
     const directory = await mkdtemp(resolve('test/.runtime-package-'))
     try {
@@ -56,6 +57,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     await expect(getMeta('other.task')).rejects.toMatchObject({ type: 'ValidationError' })
   })
 
+  // @spec app_data_is_api_only.query_report_cannot_escape_role
   test('PKG-R3: raw SQL reports cannot read app relations outside the availability-aware API', async ({ admin }) => {
     await discoverPackages([resolve('../..', 'runtime-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
@@ -74,6 +76,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     await expect(runQueryReport('Raw app data', {}, 'Administrator')).rejects.toMatchObject({ type: 'ValidationError' })
   })
 
+  // @spec lifecycle_fails_closed.stale_write_after_disable
   test('PKG-R3: disable waits for the post-commit tail, including a nested save', async ({ admin }) => {
     await discoverPackages([resolve('../..', 'runtime-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
@@ -220,6 +223,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     })).toMatchObject({ validation_runs: '2' })
   })
 
+  // @spec app_owns_client_root.missing_asset_is_not_html
   test('PKG-R4: ordinary member catalog and client root are separate from management and server files', async ({ admin, createUser }) => {
     expect(await discoverPackages([resolve('../..', 'runtime-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })
@@ -243,6 +247,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     expect(await unavailable.text()).toContain('Disabling an application preserves its data')
   })
 
+  // @spec lifecycle_fails_closed.restart_and_restore
   test('PKG-J2: restart without compatible code fails closed, restoring code preserves data', async ({ admin }) => {
     const source = resolve('../..', 'runtime-apps/other')
     await discoverPackages([source])

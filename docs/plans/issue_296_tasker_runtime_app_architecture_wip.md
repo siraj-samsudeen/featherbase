@@ -204,6 +204,26 @@ activates whole trusted packages only and does not claim to prove those properti
 
 Do not settle later items speculatively when the preceding experiment can expose the real constraint.
 
+## OpenSpec comparison checkpoint (21-Sep-2026)
+
+The owner chose an additive trial: `docs/specs/0010-task-management.md` and
+`0011-runtime-packages.md` remain authoritative, while
+`openspec/specs/tasker/spec.md` and `trusted-runtime-packages/spec.md` re-express
+the same contracts using OpenSpec requirements, scenarios, domain assumptions and
+state tables. Legacy `TSK-*` and `PKG-*` IDs remain visible. `@spec` slugs connect
+requirements to deciding code and asymmetric tests; the matrix now scans
+`runtime-apps/` and server migrations because application code is no longer all
+inside core.
+
+This comparison already paid for itself. It caught an assumption/contract mix-up
+around team grants and package powers, an incomplete package lifecycle row, an
+omitted API-only security contract, and tests whose citations covered less than
+their scenario claimed. The rapid-project test now enters three tasks, private
+focus proves two users, reorder and reload, and urgency proves shared visibility
+without changing either user’s focus. One gap remains deliberately visible rather
+than laundered: `TSK-I2` says responsibility is one nullable user reference, but a
+dedicated server test is still absent.
+
 ## Next build-and-learn experiment
 
 Build the smallest real vertical slice that proves all three properties together:

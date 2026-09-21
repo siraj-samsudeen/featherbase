@@ -1,5 +1,34 @@
 # Progress Log
 
+## 2026-09-21 — Tasker OpenSpec comparison, without replacing journey specs (#296)
+
+Cherry-picked only the OpenSpec/STC evaluation commit from PR #289 and retained
+the newer Tasker/runtime-package work while resolving its two conflicts. Added
+OpenSpec counterparts for Tasker and trusted runtime packages beside authoritative
+journey specs 0010/0011. They preserve the established `TSK-*`/`PKG-*` handles,
+separate world assumptions from governed machine contracts, tabulate destination,
+state and package-lifecycle spaces, and explicitly remain an additive evaluation.
+
+The STC matrix now scans independently delivered runtime-app source and migrations.
+Markers sit at actual decisions and asymmetric tests rather than merely making the
+matrix green. The comparison exposed and retained one real gap: singular Tasker
+responsibility is declarative manifest shape but still lacks its dedicated server
+test (`TSK-I2`). An independent five-axis review found nine first-draft divergences;
+the specs now restore team access and API-only app data, classify trust correctly,
+split capture evidence, correct package lifecycle completeness, and strengthen
+project rapid-entry, private focus/order/reload and two-user urgency tests.
+
+**Verification:** OpenSpec strict validation passed all three evaluation specs;
+`pnpm check:stc` passed with no orphans/new gaps across 35 requirements; all 76
+tool tests passed with three host-only skips;
+server/web/Tasker typechecks passed; focused server tests passed 37/37 before the
+review fixes and 19/19 after them; strengthened Tasker component tests passed 6/6.
+`pnpm check:evidence` passed 172 verdicts across ten authoritative journey specs.
+The final literal package proof passed with frozen core SHA-256
+`09873e4abf0b200b3612e6167925d5e2a412dd8c31c12247ae3525780f9cd1a0` and evidence
+under `dist/runtime-proof-mcI6uQ/`; its seeded Inbox was visually inspected with
+realistic rows, controls and no clipping or broken layout.
+
 ## 2026-09-21 — Prove Before Handoff and Tasker development scenarios (#296)
 
 Added the three-stage Prove Before Handoff practice (Prepare, Prove, Hand off)

@@ -19,6 +19,7 @@ export interface PackageHookContext {
 }
 type Validator = (context: PackageHookContext) => void | Promise<void>
 
+// @spec versioned_trusted_artifact
 const manifestSchema = z.object({
   manifestVersion: z.literal(1),
   apiVersion: z.literal(1),
@@ -79,6 +80,7 @@ export function discoverPackages(paths: string[]) {
         if (names.size !== manifest.tables.length || !names.has(manifest.entryTable))
           throw new Error('Duplicate Tables or unknown entryTable')
         for (const table of manifest.tables) {
+          // @spec logical_identity_maps_storage
           if (!table.name.startsWith(`${manifest.name}.`) || !table.label || table.system || table.data_source)
             throw new Error('Package Tables require qualified ownership, label and local storage')
         }
@@ -117,6 +119,7 @@ export function discoverPackages(paths: string[]) {
 }
 
 export async function appCatalog(user: string) {
+  // @spec app_owns_client_root
   const installed = await listInstalledApps()
   const result = []
   for (const item of installed) {
@@ -133,6 +136,7 @@ export async function appAsset(name: string, asset: string, user: string) {
     throw new AppError('NotFoundError', 'App is unavailable')
   const pkg = packages.get(name)!
   try {
+    // @spec app_owns_client_root
     const file = await contained(pkg.clientRoot!, asset || 'index.html')
     if (!(await stat(file)).isFile()) throw new Error('Not a file')
     return { file, bytes: await readFile(file) }

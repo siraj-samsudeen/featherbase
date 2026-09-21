@@ -16,6 +16,7 @@ const locks = postgres(config.databaseUrl, {
 const scope = new AsyncLocalStorage<{ exclusive: boolean; provisioning?: string }>()
 export const activeApps = new Set<string>()
 
+// @spec lifecycle_fails_closed
 export async function appOperation<T>(fn: () => Promise<T>, exclusive = false): Promise<T> {
   const current = scope.getStore()
   if (current) {

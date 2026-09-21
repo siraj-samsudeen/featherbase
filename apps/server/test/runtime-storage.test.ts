@@ -5,6 +5,7 @@ import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 
 describe('PKG-R2: independent app-owned Task storage', () => {
+  // @spec logical_identity_maps_storage.same_local_name_and_row_id
   test('same local name and row ID do not share columns or values', async ({ admin }) => {
     for (const [owner, column] of [['tasker', 'title'], ['other', 'quantity']]) {
       registerApp({ name: owner, tables: [{

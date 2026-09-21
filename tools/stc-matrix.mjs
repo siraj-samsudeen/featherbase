@@ -51,7 +51,10 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 export const SPEC_ROOTS = ['openspec/specs']
 
 /** Trees whose `@spec` markers count as the CODE vertex. */
-export const CODE_DIRS = ['apps/server/src', 'apps/web/src', 'packages/shared/src', 'tools']
+export const CODE_DIRS = [
+  'apps/server/src', 'apps/server/migrations', 'apps/web/src',
+  'packages/shared/src', 'runtime-apps', 'tools',
+]
 
 /** Trees whose `@spec` markers count as the TEST vertex — the same list
  *  `check-evidence.mjs` calls TEST_DIRS, so the two checkers cannot disagree

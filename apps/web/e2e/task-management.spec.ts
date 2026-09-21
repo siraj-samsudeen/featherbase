@@ -16,6 +16,7 @@ test.beforeAll(async ({ request }) => {
   await ensureTaskManagement(request)
 })
 
+// @spec capture_neutral_task.entry_stays_ready
 test('PKG-J1 PKG-R4 TSK-J1 TSK-J2 TSK-J3 TSK-R8: capture, project entry, urgency, and private focus survive reload', async ({
   page,
 }) => {

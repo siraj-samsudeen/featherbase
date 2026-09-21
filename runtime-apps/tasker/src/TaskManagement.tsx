@@ -105,10 +105,13 @@ export function TaskManagementPage() {
   const latestExplanation = new Map<string, string>()
   for (const comment of comments.data?.data ?? [])
     latestExplanation.set(comment.ref_name, comment.content)
+  // @spec stale_focus_self_heals
   const focusIds = (focus.data?.settings?.task_ids ?? []).filter((id) => byId.has(id))
   const focusSet = new Set(focusIds)
+  // @spec inbox_is_destination
   const inbox = allTasks.filter((task) => !task.project && !task.personal_tasks_owner)
   const focused = focusIds.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []))
+  // @spec my_work_has_no_duplicates
   const myWork = [
     ...focused,
     ...allTasks.filter((task) => task.assigned_to === me && !focusSet.has(task.row_id)),
@@ -123,6 +126,7 @@ export function TaskManagementPage() {
   }
 
   async function createTask(title: string, extra: Partial<Task> = {}) {
+    // @spec lightweight_project_entry
     const trimmed = title.trim()
     if (!trimmed) return
     setSaving(true)
@@ -158,6 +162,8 @@ export function TaskManagementPage() {
     setError(null)
     queryClient.setQueryData(['task-management', 'focus'], { settings: { task_ids: ids } })
     try {
+      // @spec focus_is_private_ordered
+      // @spec focus_never_mutates_task
       await api.put(`/api/user_settings/${encodeURIComponent(FOCUS_SETTINGS)}`, { task_ids: ids })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not update My Focus')
@@ -179,6 +185,7 @@ export function TaskManagementPage() {
   }
 
   async function createProject() {
+    // @spec lightweight_project_entry
     const name = projectName.trim()
     if (!name) return
     setSaving(true)
@@ -414,6 +421,7 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
     if (content) {
       setPosting(true)
       try {
+        // @spec discussion_stays_append_only
         await api.post('/api/save_row', {
           table: 'Comment',
           row: { ref_table: 'tasker.task', ref_name: task.row_id, content },
@@ -441,6 +449,7 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
           <div className="mt-2 flex flex-wrap gap-2">
             <select aria-label={`State for ${task.task_title}`} value={task.task_state ?? 'Not started'} onChange={(event) => { const taskState = event.target.value; void onPatch(task, { task_state: taskState }); if (['Blocked', 'On hold', 'Cancelled'].includes(taskState)) { setExplaining(task.row_id); setExplanation('') } }} className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-ink-muted)]">{STATES.map((state) => <option key={state}>{state}</option>)}</select>
             <select aria-label={`Destination for ${task.task_title}`} value={task.personal_tasks_owner ? `personal:${task.personal_tasks_owner}` : task.project ? `project:${task.project}` : ''} onChange={(event) => { const [kind, value] = event.target.value.split(':', 2); void onPatch(task, kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }) }} className="max-w-52 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-ink-muted)]"><option value="">Inbox</option><optgroup label="Projects">{projects.map((project) => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}</optgroup><optgroup label="Personal tasks">{users.map((user) => <option key={user.row_id} value={`personal:${user.row_id}`}>{user.row_id}</option>)}</optgroup></select>
+            {/* @spec assignment_state_independent */}
             <select aria-label={`Assign ${task.task_title}`} value={task.assigned_to ?? ''} onChange={(event) => void onPatch(task, { assigned_to: event.target.value || null })} className="max-w-44 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-ink-muted)]"><option value="">Unassigned</option>{users.map((user) => <option key={user.row_id} value={user.row_id}>{user.row_id}</option>)}</select>
             {!task.assigned_to && me && <button type="button" onClick={() => void onPatch(task, { assigned_to: me })} className="rounded border border-[var(--color-brand)] px-2 py-1 text-xs font-medium text-[var(--color-brand)] hover:bg-[var(--color-brand-tint)]">Take it</button>}
           </div>
@@ -457,6 +466,7 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          {/* @spec urgency_is_shared_binary */}
           <button type="button" aria-label={`${task.urgent ? 'Remove urgent flag from' : 'Mark urgent'} ${task.task_title}`} aria-pressed={task.urgent} title="Urgent is visible to the team" onClick={() => void onPatch(task, { urgent: !task.urgent })} className={`flex items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-medium transition ${task.urgent ? 'border-red-300 bg-red-50 text-red-700' : 'border-transparent bg-[var(--color-subtle)] text-[var(--color-ink-muted)] hover:border-red-200 hover:text-red-700'}`}>{task.urgent && <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-red-600" />}{task.urgent ? 'Urgent' : 'Not urgent'}</button>
           <button type="button" aria-label={`${focused ? 'Remove from' : 'Add to'} My Focus: ${task.task_title}`} title="My Focus is private to you" onClick={() => void onFocus(task.row_id)} className={`rounded p-1 text-lg ${focused ? 'text-amber-500' : 'text-[var(--color-ink-faint)] hover:text-amber-500'}`}>{focused ? '★' : '☆'}</button>
           {onMove && focused && <><button type="button" aria-label={`Move ${task.task_title} up`} onClick={() => void onMove(task.row_id, -1)} className="rounded px-1 text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)]">↑</button><button type="button" aria-label={`Move ${task.task_title} down`} onClick={() => void onMove(task.row_id, 1)} className="rounded px-1 text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)]">↓</button></>}
