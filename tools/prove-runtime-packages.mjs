@@ -158,14 +158,21 @@ try {
   // @spec featherbase_human_routes_are_canonical.exact_runtime_app_location_survives_sign_in
   const selectedTask = seeded.tasks['DEV-TASKER-TASK-INVOICE-MISMATCH']
   const deepLink = `${origin}/tasker/?review=deep-link&note=37%20cartons%2F83#task=${selectedTask}`
-  await page.goto(deepLink)
-  await page.waitForURL(url => url.pathname === '/featherbase/login')
-  await page.locator('input[name=email]').fill('Administrator')
-  await page.locator('input[name=password]').fill(process.env.ADMIN_PASSWORD ?? 'admin')
-  await page.locator('button[type=submit]').click()
-  await expect(page).toHaveURL(deepLink)
-  await expect(page.getByRole('region', { name: 'Task detail content' })).toContainText('Triage supplier invoice mismatch')
-  await page.screenshot({ path: resolve(output, 'signed-out-deep-link-return.png'), fullPage: true })
+  async function proveSignedOutReturn(target, requested, screenshot) {
+    await target.goto(requested)
+    await target.waitForURL(url => url.pathname === '/featherbase/login')
+    await target.locator('input[name=email]').fill('Administrator')
+    await target.locator('input[name=password]').fill(process.env.ADMIN_PASSWORD ?? 'admin')
+    await target.locator('button[type=submit]').click()
+    await expect(target).toHaveURL(deepLink)
+    await expect(target.getByRole('region', { name: 'Task detail content' })).toContainText('Triage supplier invoice mismatch')
+    await target.screenshot({ path: resolve(output, screenshot), fullPage: true })
+  }
+  await proveSignedOutReturn(page, deepLink, 'signed-out-deep-link-return.png')
+  const slashlessContext = await browser.newContext({ viewport: { width: 1440, height: 960 } })
+  try {
+    await proveSignedOutReturn(await slashlessContext.newPage(), deepLink.replace('/tasker/?', '/tasker?'), 'signed-out-slashless-return.png')
+  } finally { await slashlessContext.close() }
   await page.goto(`${origin}/admin/User?proof=compatibility#deep-link`)
   await expect(page).toHaveURL(`${origin}/featherbase/admin/User?proof=compatibility#deep-link`)
   await page.locator('a[href="/tasker/"]').click()
@@ -449,6 +456,7 @@ try {
   const coreFilesFilter = encodeURIComponent(JSON.stringify([['ref_table', '=', 'tasker.task'], ['ref_name', '=', preservedTask.row_id]]))
   assert.equal((await api(`/api/table/File?filters=${coreFilesFilter}`)).total, 0, 'Refused stale uploads left a File document')
   // @spec core_runtime_client_pins_active_identity.core_form_and_attachment_after_upgrade
+  await page.setViewportSize({ width: 1440, height: 960 })
   await page.getByRole('link', { name: 'Preserved 37 cartons', exact: true }).click()
   await page.getByRole('link', { name: 'Attachments and advanced fields in Featherbase ↗' }).click()
   await expect(page).toHaveURL(`${origin}/featherbase/admin/tasker.task/${preservedTask.row_id}`)
@@ -466,6 +474,13 @@ try {
   assert.equal(served.status(), 200)
   assert.equal(await served.text(), '37 cartons independently verified')
   await page.screenshot({ path: resolve(output, 'upgraded-core-form-attachment.png'), fullPage: true })
+  await page.setViewportSize({ width: 375, height: 900 })
+  await page.screenshot({ path: resolve(output, 'upgraded-core-form-mobile.png'), fullPage: true })
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Upgraded core form has horizontal page overflow at 375px')
+  for (const control of [page.locator('[data-field="task_title"]'), page.locator('[data-field="description"]'), page.getByTestId('attachments-panel'), page.getByTestId('form-save')]) {
+    const bounds = await control.boundingBox()
+    assert(bounds && bounds.x >= 0 && bounds.x + bounds.width <= 375, 'Core form control is horizontally clipped at 375px')
+  }
   await attachment.hover()
   await attachment.getByTestId('attachment-delete').click()
   await expect(attachment).toHaveCount(0)
@@ -482,7 +497,7 @@ try {
     browserRead, restartBeforeCommit: true, restartPendingActivation: true,
     staleBrowserRejected: true, restoredTargetAfterMissing: true,
     staleCoreSaveAndUploadRejected: [403, 409], coreFormSaveUploadReadRemove: true,
-    signedOutDeepLinkReturned: deepLink,
+    signedOutDeepLinkReturned: deepLink, signedOutSlashlessReturn: true,
   }, null, 2))
   assert.equal(await digest(core), before, 'Core changed after package staging')
   assert.equal(await digest(resolve(root, 'packages/shared')), sharedBefore, 'Shared core dependency changed')
