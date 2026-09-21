@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiError, api, getToken, listResource } from '../lib/api'
+import { ApiError, api, listResource } from '../lib/api'
 
 interface FileRow {
   row_id: string
@@ -42,17 +42,7 @@ export function Attachments({ table, name }: { table: string; name: string }) {
       form.append('file', file)
       form.append('ref_table', table)
       form.append('ref_name', name)
-      const res = await fetch('/api/upload_file', {
-        method: 'POST',
-        headers: { authorization: `Bearer ${getToken()}` },
-        body: form,
-      })
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as {
-          error?: { message?: string }
-        }
-        throw new Error(body.error?.message ?? `Upload failed (${res.status})`)
-      }
+      await api.upload(form)
       await queryClient.invalidateQueries({ queryKey: ['attachments', table, name] })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed')

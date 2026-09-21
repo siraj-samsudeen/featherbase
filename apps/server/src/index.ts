@@ -64,7 +64,7 @@ import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uni
 import { discoverPackages, appCatalog, appAsset, packageFailures, runPackageAction, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { documentActivity } from './document-activity'
 import { APP_ROOT_PATTERN, appHref } from 'shared'
-import { appOperation, withAppClientVersion } from './app-lifecycle'
+import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { createSite, listSites, resolveSite, siteCreateTableDef, siteListTableDefs, siteCreateUser, siteListUsers } from './tenancy'
 import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
@@ -1110,6 +1110,11 @@ app.get('/api/apps', async (c) => {
     failures: packageFailures.map(() => ({ error: 'A configured artifact failed validation. Restore a compatible immutable package and inspect the server discovery log' })) })
 })
 app.get('/api/app_catalog', async (c) => c.json(await appCatalog(who(c))))
+// Authenticated bootstrap contains identities only, never manager metadata.
+app.get('/api/runtime_app_versions', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await activeRuntimeVersions())
+})
 app.post('/api/app_actions/:app/:action', async (c) =>
   c.json(await runPackageAction(c.req.param('app'), c.req.param('action'), await c.req.json(), who(c))))
 // @spec runtime_upgrade_reviewed_plan

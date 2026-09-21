@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { tableSchemaToZod, zodFieldErrors } from 'shared'
-import { ApiError, api, getToken, listResource } from '../lib/api'
+import { ApiError, api, listResource } from '../lib/api'
 import { useRealtime } from '../lib/realtime'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { NO_COLUMN_TYPES, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
@@ -1047,14 +1047,7 @@ function AttachControl({
       form.append('file', file)
       form.append('ref_table', refTable)
       if (refName) form.append('ref_name', refName)
-      const res = await fetch('/api/upload_file', {
-        method: 'POST',
-        headers: { authorization: `Bearer ${getToken()}` },
-        body: form,
-      })
-      const body = (await res.json()) as { file_url?: string; error?: { message?: string } }
-      if (!res.ok || !body.file_url)
-        throw new Error(body.error?.message ?? `Upload failed (${res.status})`)
+      const body = await api.upload<{ file_url: string }>(form)
       onChange(body.file_url)
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Upload failed')

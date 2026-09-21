@@ -2,6 +2,7 @@
 
 const TOKEN_KEY = 'fc_token'
 const USER_KEY = 'fc_user'
+let runtimeSnapshot: { token: string; versions: Promise<string[]> } | undefined
 
 export interface SessionUser {
   row_id: string
@@ -22,6 +23,7 @@ export function getSessionUser(): SessionUser | null {
 }
 
 export function clearSession() {
+  runtimeSnapshot = undefined
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
 }
@@ -30,6 +32,7 @@ export function clearSession() {
 // the password login below, and the OAuth callback (#150), which redeems its
 // one-time handoff code for exactly this pair.
 export function setSession(token: string, user: SessionUser) {
+  runtimeSnapshot = undefined
   localStorage.setItem(TOKEN_KEY, token)
   localStorage.setItem(USER_KEY, JSON.stringify(user))
 }
@@ -48,12 +51,27 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken()
+  // Pin before metadata/data reads. Refetch and 409 must never relabel an old
+  // form as new code; only a new login or page reload obtains another snapshot.
+  // @spec core_runtime_client_pins_active_identity.stale_generic_form_is_not_relabelled
+  // @spec core_runtime_client_pins_active_identity.parallel_requests_share_session_snapshot
+  let versions: string[] = []
+  if (token && path !== '/api/login' && path !== '/api/runtime_app_versions') {
+    if (runtimeSnapshot?.token !== token) {
+      runtimeSnapshot = { token, versions: request<string[]>('/api/runtime_app_versions') }
+    }
+    const snapshot = runtimeSnapshot
+    versions = await snapshot.versions
+    if (getToken() !== token || runtimeSnapshot !== snapshot)
+      throw new ApiError(409, 'ConflictError', 'Session changed. Reload before retrying')
+  }
   const res = await fetch(path, {
     ...init,
     headers: {
-      'content-type': 'application/json',
+      ...(init.body instanceof FormData ? {} : { 'content-type': 'application/json' }),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...((init.headers as Record<string, string>) ?? {}),
+      ...(versions.length ? { 'X-Featherbase-App-Version': versions.join(', ') } : {}),
     },
   })
   if (res.status === 401) {
@@ -83,6 +101,8 @@ export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) }),
+  // @spec core_runtime_client_pins_active_identity.core_form_and_attachment_after_upgrade
+  upload: <T>(body: FormData) => request<T>('/api/upload_file', { method: 'POST', body }),
   // API surface design (#61): PATCH, not PUT, for row updates — Tables gain
   // columns at runtime via Custom Field, and a PUT from a client that read a
   // row before a column existed would silently null it on write. `put` stays

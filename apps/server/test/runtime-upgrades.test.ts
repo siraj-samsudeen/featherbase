@@ -25,6 +25,40 @@ async function targetPackage() {
 }
 
 describe('runtime upgrades', () => {
+  // @spec core_runtime_client_pins_active_identity.identity_bootstrap_fails_closed
+  // @spec core_runtime_client_pins_active_identity.indirect_requests_pin_each_app
+  test('core identity snapshot is host derived; multiple identities never override availability or version', async ({ admin, createUser }) => {
+    const { directory } = await targetPackage()
+    try {
+      await discoverPackages([resolve('../..', 'runtime-apps/tasker'), directory])
+      await admin.post('/api/install_app', { name: 'tasker' })
+      await admin.post('/api/install_app', { name: 'other' })
+      const member = await createUser({ email: 'identity-reader@example.com', roles: [] })
+      expect(await member.get('/api/runtime_app_versions')).toEqual(['other@2.0.0', 'tasker@2.0.0'])
+      const read = (table: string, header: string) => admin.fetch(`/api/table/${table}`, { headers: { 'X-Featherbase-App-Version': header } })
+      for (const table of ['tasker.task', 'other.task']) {
+        expect((await read(table, 'other@2.0.0, tasker@2.0.0')).status).toBe(200)
+      }
+      expect((await read('other.task', 'other@0.0.1, tasker@2.0.0')).status).toBe(409)
+      expect((await read('tasker.task', 'other@2.0.0')).status).toBe(409)
+      for (const invalid of ['tasker@2.0.0,tasker@0.0.1', 'tasker@2.0.0,tasker@2.0.0', 'other@wat,tasker@2.0.0']) {
+        expect((await read('tasker.task', invalid)).status).toBe(417)
+      }
+      await admin.post('/api/set_app_enabled', { name: 'tasker', enabled: false })
+      expect(await member.get('/api/runtime_app_versions')).toEqual(['other@2.0.0'])
+      expect((await read('tasker.task', 'tasker@2.0.0')).status).toBe(403)
+      await sql`update installed_app set activation_pending = true where name = 'other'`
+      expect(await member.get('/api/runtime_app_versions')).toEqual([])
+      expect((await read('other.task', 'other@2.0.0')).status).toBe(403)
+      await sql`update installed_app set activation_pending = false, package_version = null where name = 'other'`
+      expect(await member.get('/api/runtime_app_versions')).toEqual([])
+      await discoverPackages([])
+      await loadInstalledApps()
+      expect(await member.get('/api/runtime_app_versions')).toEqual([])
+      expect((await read('other.task', 'other@2.0.0')).status).toBe(403)
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   // @spec runtime_upgrade_preserves_owned_work.tasker_description_is_generic_migration
   test('Tasker upgrade preserves complete existing work and matches fresh v2 schema', async ({ admin }) => {
     const source = resolve('../..', 'runtime-apps/fixtures/tasker-v1')
