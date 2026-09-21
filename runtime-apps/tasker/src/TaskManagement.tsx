@@ -359,6 +359,13 @@ export function TaskManagementPage() {
             {tab.count != null && <span className="tasker-count">{tab.count}</span>}
           </button>
         ))}
+        {primaryTabs.slice(3).map((tab) => (
+          <button key={tab.id} type="button" onClick={() => setView(tab.id)} aria-current={view === tab.id ? 'page' : undefined} className={`tasker-nav-item tasker-nav-${tab.id}`}>
+            <TaskerIcon name={tab.icon} />
+            <span>{tab.label}</span>
+            {tab.count != null && <span className="tasker-count">{tab.count}</span>}
+          </button>
+        ))}
         <button type="button" onClick={() => setView('projects')} aria-current={view === 'projects' ? 'page' : undefined} className="tasker-nav-item tasker-nav-projects">
           <TaskerIcon name="projects" />
           <span>Projects</span>
@@ -370,13 +377,6 @@ export function TaskManagementPage() {
                 <span>{project.project_name}</span>
                 <span className="tasker-count">{projectTaskCounts.get(project.row_id) ?? 0}</span>
               </button>
-              <div className="tasker-project-actions">
-                <button type="button" aria-label={`${starredProjectSet.has(project.row_id) ? 'Unstar' : 'Star'} project ${project.project_name}`} onClick={() => void toggleProjectStar(project.row_id)} className={starredProjectSet.has(project.row_id) ? 'is-starred' : ''}>{starredProjectSet.has(project.row_id) ? '★' : '☆'}</button>
-                {starredProjectSet.has(project.row_id) && <>
-                  <button type="button" aria-label={`Move project ${project.project_name} left`} onClick={() => void moveProjectStar(project.row_id, -1)}>←</button>
-                  <button type="button" aria-label={`Move project ${project.project_name} right`} onClick={() => void moveProjectStar(project.row_id, 1)}>→</button>
-                </>}
-              </div>
             </div>
           ))}
           <form className="tasker-new-project" onSubmit={(event) => { event.preventDefault(); void createProject() }}>
@@ -385,13 +385,6 @@ export function TaskManagementPage() {
             <button disabled={creatingProject || !projectName.trim()} aria-label="Add project">+</button>
           </form>
         </div>
-        {primaryTabs.slice(3).map((tab) => (
-          <button key={tab.id} type="button" onClick={() => setView(tab.id)} aria-current={view === tab.id ? 'page' : undefined} className={`tasker-nav-item tasker-nav-${tab.id}`}>
-            <TaskerIcon name={tab.icon} />
-            <span>{tab.label}</span>
-            {tab.count != null && <span className="tasker-count">{tab.count}</span>}
-          </button>
-        ))}
       </nav>
       </aside>
       <main className="tasker-main">
@@ -468,7 +461,13 @@ export function TaskManagementPage() {
         <section aria-labelledby="projects-heading" className="tasker-project-workspace">
             {selectedProject && projectById.has(selectedProject) ? (
               <>
-                <ProjectHeading project={projectById.get(selectedProject)!} onRename={renameProject} />
+                <ProjectHeading
+                  project={projectById.get(selectedProject)!}
+                  starred={starredProjectSet.has(selectedProject)}
+                  onRename={renameProject}
+                  onToggleStar={() => toggleProjectStar(selectedProject)}
+                  onMoveStar={(offset) => moveProjectStar(selectedProject, offset)}
+                />
                 <form className="tasker-composer" onSubmit={async (event) => { event.preventDefault(); const title = projectTask; try { await createTask(title, { project: selectedProject }); setProjectTask('') } catch { /* shown above */ } }}>
                   <label className="sr-only" htmlFor="project-task">Add task to project</label>
                   <input id="project-task" value={projectTask} onChange={(event) => setProjectTask(event.target.value)} placeholder="Add a task, then press Enter" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" autoFocus />
@@ -514,7 +513,13 @@ function SectionTitle({ id, title, hint }: { id?: string; title: string; hint?: 
   return <div className="tasker-section-title"><h2 id={id}>{title}</h2>{hint && <p>{hint}</p>}</div>
 }
 
-function ProjectHeading({ project, onRename }: { project: Project; onRename: (project: Project, name: string) => Promise<void> }) {
+function ProjectHeading({ project, starred, onRename, onToggleStar, onMoveStar }: {
+  project: Project
+  starred: boolean
+  onRename: (project: Project, name: string) => Promise<void>
+  onToggleStar: () => Promise<void>
+  onMoveStar: (offset: -1 | 1) => Promise<void>
+}) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(project.project_name)
   useEffect(() => setName(project.project_name), [project.project_name])
@@ -531,7 +536,14 @@ function ProjectHeading({ project, onRename }: { project: Project; onRename: (pr
   </form>
   return <div className="mb-3 flex items-start justify-between gap-3">
     <SectionTitle title={project.project_name} hint="Tasks begin unassigned; someone can take responsibility when work starts" />
-    <button type="button" className="fc-btn" onClick={() => setEditing(true)}>Rename</button>
+    <div className="tasker-project-heading-actions">
+      <button type="button" className="fc-btn" onClick={() => void onToggleStar()}>{starred ? '★ Starred tab' : '☆ Add to tabs'}</button>
+      {starred && <>
+        <button type="button" className="fc-btn" aria-label={`Move project ${project.project_name} tab left`} onClick={() => void onMoveStar(-1)}>←</button>
+        <button type="button" className="fc-btn" aria-label={`Move project ${project.project_name} tab right`} onClick={() => void onMoveStar(1)}>→</button>
+      </>}
+      <button type="button" className="fc-btn" onClick={() => setEditing(true)}>Rename</button>
+    </div>
   </div>
 }
 
