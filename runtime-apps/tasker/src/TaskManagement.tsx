@@ -654,7 +654,8 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
   return <section ref={detail} className="tasker-detail" aria-label="Task detail content" onKeyDown={(event) => {
     if (event.key === 'Escape') { if (draft && !saving) cancelDraft(); else if (!saving) location.hash = '' }
     if (event.key === 'Tab' && (mode === 'focus' || (mode === 'inspector' && window.matchMedia?.('(max-width: 1100px)').matches))) {
-      const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled)')]
+      const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('a[href], summary, button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled)')]
+        .filter(control => control.getClientRects().length > 0)
       const first = controls[0], last = controls.at(-1)
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }

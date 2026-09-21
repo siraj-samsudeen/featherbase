@@ -14,6 +14,7 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
     evidence.push({ screenshot: `${name}.png`, expected, observed: 'Executed assertions passed; screenshot requires human inspection' })
   }
   const title = 'When I Take a task. It is assigned to me, but it does not appear in my personal task.'
+  await api('/api/save_row', { table: 'tasker.project', row: { project_name: 'Blank context proof' } }, 201)
   const task = await api('/api/save_row', { table: 'tasker.task', row: { task_title: title } }, 201)
   const populated = await api('/api/save_row', { table: 'tasker.task', row: {
     task_title: 'Description rendering probe', description: '## Check the evidence\n\n- First observation\n- Second observation\n\n[Reference](https://example.test) and `inline code`.\n\n```text\nA long code line remains scrollable instead of pushing the viewport wider.\n```',
@@ -33,6 +34,10 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
     await page.getByRole('button', { name: 'Edit description', exact: true }).click()
     await capture(`${size}-project-editor`, 'Explicit Project Markdown editor with Save and Cancel, no clipping')
     await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+    await page.getByRole('button', { name: 'Projects', exact: true }).click()
+    await page.getByRole('button', { name: 'Open project Blank context proof' }).click()
+    await expect(page.getByRole('button', { name: 'Add description', exact: true })).toBeVisible()
+    await capture(`${size}-project-blank`, 'Blank shared description invites Add description and preserves task entry')
     await page.getByRole('button', { name: /^Inbox/ }).click()
     for (const [source, content] of [[task, 'empty'], [populated, 'populated']]) {
       await page.getByRole('link', { name: source.task_title, exact: true }).click()
@@ -101,7 +106,28 @@ export async function proveTaskerAcceptance({ page, api, expect, output, origin 
   await page.goto(`${origin}/tasker/#task=missing-task-proof`)
   await expect(page.getByRole('region', { name: 'Task detail content' }).getByRole('alert')).toContainText(/not found/i)
   await capture('desktop-missing-task', 'Deleted or missing selected task has an explanation and Close rather than stale editable data')
+  await page.getByRole('button', { name: 'Focus', exact: true }).click()
+  await page.getByLabel('More task actions').focus()
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('link', { name: 'Close', exact: true })).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await expect(page.getByLabel('More task actions')).toBeFocused()
   await page.getByRole('link', { name: 'Close' }).click()
+  let releaseLoading
+  await page.route('**/api/table/tasker.task/loading-proof', async route => {
+    await new Promise(resolve => { releaseLoading = resolve })
+    await route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ error: { message: 'Task access denied' } }) })
+  })
+  await page.goto(`${origin}/tasker/#task=loading-proof`)
+  await expect(page.getByRole('status')).toContainText('Loading task')
+  await capture('desktop-task-loading', 'Loading detail explains pending request without editable stale fields')
+  releaseLoading()
+  await expect(page.getByRole('alert')).toContainText('Task access denied')
+  await page.setViewportSize({ width: 375, height: 900 })
+  await capture('mobile-task-denied', 'Denied task request explains failure and offers Close, with no editable task fields')
+  await page.getByRole('link', { name: 'Close' }).click()
+  await page.unroute('**/api/table/tasker.task/loading-proof')
+  await page.setViewportSize({ width: 1440, height: 900 })
   // A response can be lost after the host commits. Retry must use the durable
   // envelope even after reload and even though the simple source is now gone.
   const simple = await api('/api/save_row', { table: 'tasker.task', row: { task_title: 'Promote simple proof', description: 'Copied project context' } }, 201)
