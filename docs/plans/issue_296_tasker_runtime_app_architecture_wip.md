@@ -5,13 +5,13 @@
 - **Product:** Tasker
 - **Initial users:** the Ramachandran data warehouse team
 
-This note preserves the architecture discussion that followed the working task-management prototype. The prototype plan remains in [`issue_296_shared_task_management.md`](issue_296_shared_task_management.md), and the settled task behavior remains in the [Tasker feature specs](../specs/tasker/README.md). This note does not retroactively claim that the prototype has the package, loading, storage or shell architecture described below.
+This note preserves the architecture discussion that followed the working task-management prototype. The prototype plan remains in [`issue_296_shared_task_management.md`](issue_296_shared_task_management.md), and the settled task behavior lives in the [Tasker OpenSpec contract](../../openspec/TASKER.md). This note does not retroactively claim that the prototype has the package, loading, storage or shell architecture described below.
 
 ## Original prototype: observed, temporary seams (superseded by the slice below)
 
 The original checkpoint proved the task journeys with a server-side `AppManifest`, server registration at boot, a compiled frontend `TaskManagementPage`, and hard-coded route/Home Page handling. Those were prototype seams: installing the manifest did not independently deliver the client page, and adding this kind of app required rebuilding Featherbase. The learning slice replaces those seams.
 
-The task behavior already settled and exercised by the prototype remains in force. The architecture work below changes how an app is packaged, loaded, named and hosted; it does not reopen the task rules in spec 0010.
+The task behavior already settled and exercised by the prototype remains in force. The architecture work below changes how an app is packaged, loaded, named and hosted; it does not reopen the Tasker OpenSpec requirements.
 
 ## Settled direction
 
@@ -26,7 +26,7 @@ The task behavior already settled and exercised by the prototype remains in forc
   - a quick right-side inspector;
   - a full task page with the settled Together/Tabs preference;
   - reusable task rows;
-  - all task behavior already settled in spec 0010.
+  - all task behavior already settled in the Tasker OpenSpec contract.
 - This experience is approved product direction, not a claim that every element is implemented in the current prototype.
 
 ### Independent app distribution
@@ -222,11 +222,13 @@ Do not settle later items speculatively when the preceding experiment can expose
 
 ## OpenSpec comparison checkpoint (21-Sep-2026)
 
-The owner chose an additive trial: `docs/specs/tasker/` and
-`0011-runtime-packages.md` remain authoritative, while the feature-sized
-`openspec/specs/tasker-*/spec.md` files and `trusted-runtime-packages/spec.md`
-re-express the same contracts using OpenSpec requirements and scenarios. Tasker
-uses descriptive requirement and scenario slugs only; package IDs remain unchanged.
+This section records the original additive trial. The owner subsequently chose
+OpenSpec as Tasker's sole application-behavior contract on 21-Sep-2026. The
+duplicate `docs/specs/tasker/` feature files were retired after their unique
+content moved to `openspec/specs/tasker-*/spec.md`. Platform behavior remains a
+separate contract in `0011-runtime-packages.md` and
+`trusted-runtime-packages/spec.md`. Tasker uses descriptive requirement and
+scenario slugs only; package IDs remain unchanged.
 `@spec` slugs connect requirements to deciding code and asymmetric tests; the matrix now scans
 `runtime-apps/` and server migrations because application code is no longer all
 inside core.
@@ -252,7 +254,7 @@ The slice should retain the existing task semantics but need not yet solve marke
 
 ## Recovery after context loss
 
-1. Read this checkpoint, then the [prototype plan](issue_296_shared_task_management.md) and [Tasker feature specs](../specs/tasker/README.md).
+1. Read this checkpoint, then the [prototype plan](issue_296_shared_task_management.md) and [Tasker OpenSpec contract](../../openspec/TASKER.md).
 2. Treat the current `AppManifest`, compiled `TaskManagementPage`, route and Home Page exceptions as prototype evidence, not the target architecture.
 3. Preserve the settled direction: independently installed runtime packages; manifest plus optional client/server code; app-scoped logical identities and explicit physical mappings; Tasker’s full-stage UX.
 4. Resume at the first unresolved decision above only when the narrow runtime-package experiment forces it. Do not design the marketplace or full lifecycle first.

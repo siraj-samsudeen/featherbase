@@ -1,5 +1,7 @@
 # Star Projects for Quick Access
 
+**IDs:** `project_tabs_are_private_ordered` · `stale_project_tabs_self_heal`
+
 ## Purpose
 
 A team member can keep frequently used projects in a personal order and switch
@@ -10,9 +12,14 @@ to them quickly without changing the shared projects.
 ### Requirement: project_tabs_are_private_ordered
 Status: governed (#296) · Built
 
+> evidence: proven via project_coordination_flow — two users retain different project preferences while one reorders tabs from the selected project workspace.
+
 Starring SHALL add a project to the current person's ordered quick-access list.
 Unstarring SHALL remove only that person's shortcut. The order SHALL survive
-reload. Star and reorder controls SHALL have visible labels and work by keyboard.
+reload. Only starred projects SHALL appear as persistent workspace tabs. Star
+and tab-order controls SHALL live in the selected project workspace, have
+visible labels and work by keyboard; they SHALL NOT appear in the project
+directory.
 
 #### Scenario: frequent_project_switching
 - **WHEN** one member stars and orders two projects while another stars only one
@@ -20,6 +27,8 @@ reload. Star and reorder controls SHALL have visible labels and work by keyboard
 
 ### Requirement: stale_project_tabs_self_heal
 Status: governed (#296) · Dedicated-test gap
+
+> evidence: gap — Tasker filters stale project ids and the next write uses the filtered list, but no dedicated test proves the full sequence.
 
 Missing or unreadable projects SHALL be omitted and removed on the next
 preference write without disturbing the readable order.

@@ -41,8 +41,8 @@
 //        `**Evidence mode:** excluded — <one-phrase reason>`.
 //        A file with neither fails the run by name. A file with both fails
 //        too: a document cannot be accountable and exempt at once.
-//      * WATCHED_SPEC_DIRS (docs/design) — design notes are not specs, so
-//        they are not forced to declare. But a document that CARRIES
+//      * WATCHED_SPEC_DIRS (docs/design and openspec/specs) — these trees are
+//        not forced to declare. But a document that CARRIES
 //        obligations (any `> evidence:` verdict line outside a code fence)
 //        must declare, exactly as a spec does; that is what stops a future
 //        obligations-bearing design doc from being ignored in silence.
@@ -110,7 +110,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 export const REQUIRED_SPEC_DIRS = ['docs/specs']
 /** Documents that participate only by declaring — but must declare if they
  *  carry `> evidence:` verdicts. */
-export const WATCHED_SPEC_DIRS = ['docs/design']
+export const WATCHED_SPEC_DIRS = ['docs/design', 'openspec/specs']
 
 /** Trees whose test titles are the join key. */
 export const TEST_DIRS = [

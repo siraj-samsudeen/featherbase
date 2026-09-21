@@ -1,5 +1,24 @@
 # Progress Log
 
+## 2026-09-21 — OpenSpec becomes Tasker's sole behavior contract (#296)
+
+Reviewed the final Tasker UI revision against its implementation and tests.
+Moved the approved workspace navigation, Projects landing, project tabs, reusable
+task-list controls and responsive Inspector behavior into feature-sized OpenSpec
+capabilities. Migrated the unique requirements, scenarios, assumptions, tables
+and evidence verdicts from the duplicate Tasker docs, then retired that surface
+to one compatibility pointer. Incidental CSS values remain implementation detail.
+
+The explicit specified-but-not-built inventory now contains only guided
+one-at-a-time Inbox processing. Built behavior with incomplete proof is listed
+separately in `openspec/TASKER.md`. Updated stale UI selectors and added focused
+coverage for the Projects landing and consistent task rows.
+
+**Verification:** all 149 web tests passed; Tasker production build passed;
+evidence and STC checks passed with no new gaps or orphan markers; all 13 OpenSpec
+specifications passed strict validation; `git diff --check` passed. No push, pull
+request, merge or deployment was performed.
+
 ## 2026-09-21 — Tasker OpenSpec comparison, without replacing journey specs (#296)
 
 Cherry-picked only the OpenSpec/STC evaluation commit from PR #289 and retained

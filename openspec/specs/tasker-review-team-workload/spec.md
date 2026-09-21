@@ -1,5 +1,7 @@
 # Review Team Workload
 
+**IDs:** `together_groups_active_responsibility`
+
 ## Purpose
 
 The team can review active work by responsible person and see work that nobody
@@ -9,6 +11,8 @@ has taken.
 
 ### Requirement: together_groups_active_responsibility
 Status: governed (#296) · Built
+
+> evidence: proven via project_coordination_flow — asymmetric assigned, unassigned and finished tasks appear in the expected groups.
 
 Together SHALL group active tasks by their sole responsible person and show
 tasks with no responsible person in Unassigned. Done and Cancelled tasks SHALL

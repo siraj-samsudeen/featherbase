@@ -68,7 +68,7 @@ test('lightweight_project_entry: a project accepts rapid unassigned task entry',
     const user = userEvent.setup()
 
     await user.click(await screen.findByRole('button', { name: 'Projects' }))
-    await user.type(screen.getByRole('textbox', { name: 'Project name' }), 'Warehouse review{Enter}')
+    await user.type(screen.getByRole('textbox', { name: 'New project' }), 'Warehouse review{Enter}')
     const projectTask = await screen.findByRole('textbox', { name: 'Add task to project' })
     const titles = [
       'Compare September closing stock',
@@ -93,6 +93,44 @@ test('lightweight_project_entry: a project accepts rapid unassigned task entry',
     expect(rows.data.map((row) => row.task_title).sort()).toEqual([...titles].sort())
     expect(rows.data.every((row) => row.assigned_to === null && Boolean(row.project))).toBe(true)
   } finally {
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
+// @spec projects_landing_connects_directory_and_creation
+// @spec responsive_detail_preserves_workspace_context
+// @spec workspace_navigation_is_stable
+test('projects_landing_flow: the directory opens a project and keeps its context behind task details', async ({ admin }) => {
+  await install()
+  try {
+    renderTasker(admin)
+    const user = userEvent.setup()
+
+    const navigation = await screen.findByRole('navigation', { name: 'Task views' })
+    expect(Array.from(navigation.querySelectorAll(':scope > button')).map((button) => button.textContent?.replace(/\d+$/, ''))).toEqual([
+      'Inbox', 'My Work', 'Together', 'Personal tasks', 'Projects',
+    ])
+    await user.click(await screen.findByRole('button', { name: 'Projects' }))
+    await user.type(screen.getByRole('textbox', { name: 'New project' }), 'Warehouse review{Enter}')
+    await user.type(await screen.findByRole('textbox', { name: 'Add task to project' }), 'Count closing stock{Enter}')
+    await user.click(screen.getByRole('button', { name: 'Projects' }))
+    await user.type(screen.getByRole('textbox', { name: 'New project' }), 'Store opening readiness{Enter}')
+    expect(await screen.findByRole('heading', { name: 'Store opening readiness' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Projects' }))
+
+    expect(screen.getByRole('textbox', { name: 'New project' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open project Warehouse review' })).toHaveTextContent('1 task')
+    expect(screen.getByRole('button', { name: 'Open project Store opening readiness' })).toHaveTextContent('0 tasks')
+    expect(screen.getByRole('button', { name: 'Warehouse review' })).toHaveTextContent('1')
+    expect(screen.queryByRole('button', { name: /star project/i })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Open project Warehouse review' }))
+    expect(await screen.findByRole('heading', { name: 'Warehouse review' })).toBeInTheDocument()
+    await user.click(screen.getByRole('link', { name: 'Count closing stock' }))
+    expect(await screen.findByRole('complementary', { name: 'Task details' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Warehouse review' })).toBeInTheDocument()
+  } finally {
+    location.hash = ''
     await uninstallApp(APP).catch(() => {})
   }
 })
@@ -276,9 +314,10 @@ test('project_coordination_flow: rename, private tabs, and Together retain their
     expect(await screen.findByRole('heading', { name: 'Stock review — September' })).toBeInTheDocument()
     expect(screen.getByText('Reconcile receiving variance')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Star project Stock review — September' }))
-    await user.click(screen.getByRole('button', { name: 'Star project Store opening readiness' }))
-    await user.click(screen.getByRole('button', { name: 'Move project Store opening readiness left' }))
+    await user.click(screen.getByRole('button', { name: '☆ Add to tabs' }))
+    await user.click(screen.getByRole('button', { name: 'Store opening readiness' }))
+    await user.click(screen.getByRole('button', { name: '☆ Add to tabs' }))
+    await user.click(screen.getByRole('button', { name: 'Move project Store opening readiness tab left' }))
     expect(await admin.get('/api/user_settings/tasker.projects')).toEqual({
       settings: { project_ids: [second.row_id, first.row_id] },
     })
@@ -361,6 +400,26 @@ test('task details do not carry unsaved text into another task', async ({ admin 
     expect(screen.getByRole('textbox', { name: 'Add comment' })).toHaveValue('')
   } finally {
     location.hash = ''
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
+// @spec task_lists_present_one_consistent_control_set
+test('task_list_surface: every task row exposes the same shared and private controls', async ({ admin }) => {
+  await install()
+  try {
+    await admin.post('/api/save_row', {
+      table: 'tasker.task',
+      row: { task_title: 'Review blocked transfer', task_state: 'Blocked', urgent: true },
+    })
+    renderTasker(admin)
+
+    expect(await screen.findByRole('combobox', { name: 'State for Review blocked transfer' })).toHaveValue('Blocked')
+    expect(screen.getByRole('combobox', { name: 'Destination for Review blocked transfer' })).toHaveValue('')
+    expect(screen.getByRole('combobox', { name: 'Assign Review blocked transfer' })).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Remove urgent flag from Review blocked transfer' })).toHaveTextContent('Urgent')
+    expect(screen.getByRole('button', { name: 'Add to My Focus: Review blocked transfer' })).toBeInTheDocument()
+  } finally {
     await uninstallApp(APP).catch(() => {})
   }
 })

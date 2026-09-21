@@ -85,9 +85,12 @@ test('tasker_browser_flow: PKG-J1 PKG-R4 capture, project entry, urgency, and fo
 test.describe('phone capture', () => {
   test.use({ viewport: { width: 375, height: 720 } })
 
-  test('the task workspace has no page-level horizontal overflow', async ({ page }) => {
+  // @spec workspace_adapts_to_available_space.mobile_projects_landing
+  test('responsive_workspace_flow: Tasker and its Projects landing have no page-level horizontal overflow', async ({ page }) => {
     await page.goto('/tasker/')
     await expect(page.getByRole('textbox', { name: 'Quick capture' })).toBeVisible()
+    await page.getByRole('button', { name: 'Projects' }).click()
+    await expect(page.getByRole('textbox', { name: 'New project' })).toBeVisible()
     await page.screenshot({ path: '../../task-management-mobile.png', fullPage: true })
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),

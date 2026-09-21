@@ -1,5 +1,7 @@
 # Quick Task Capture
 
+**IDs:** `capture_neutral_task`
+
 ## Purpose
 
 A team member can record something immediately without first deciding where it
@@ -9,6 +11,8 @@ belongs or who should handle it.
 
 ### Requirement: capture_neutral_task
 Status: governed (#296) · Built
+
+> evidence: proven via quick_capture_flow — component, server and browser tests exercise title-only capture and continued entry.
 
 A non-empty title SHALL be sufficient to capture a task. The task SHALL appear
 in Inbox immediately, start Not started and Not urgent, and have no project,

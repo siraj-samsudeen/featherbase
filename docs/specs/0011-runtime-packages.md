@@ -7,8 +7,9 @@
 
 An operator has a built Featherbase server/client and two separately built,
 trusted npm-compatible package directories. A signed-in team member wants to
-open Tasker and use the task journeys in spec 0010 without a new Featherbase
-build. Existing local Team Task/Team Project rows must survive the transition.
+open Tasker and use the [Tasker OpenSpec behavior](../../openspec/TASKER.md)
+without a new Featherbase build. Existing local Team Task/Team Project rows
+must survive the transition.
 
 ## PKG-J1 — Install and use an independently delivered app
 
@@ -145,7 +146,7 @@ concurrency. Package failures are visible to managers; no secret paths need be
 shown to ordinary users. Package artifacts may require restart. Marketplace,
 signing, untrusted-code isolation, capability/dependency graphs, hot discovery,
 full upgrade orchestration, remove/delete-data, typed recents and generalized app settings
-are deliberately deferred. Spec 0010 task behavior remains authoritative.
+are deliberately deferred. The Tasker OpenSpec behavior remains authoritative.
 Per-person focus retains its existing private server-synced key for the local
 transition. Application-scoped declared preferences and structured, access-checked
 cross-app recents are future platform contracts, not claimed implemented here.

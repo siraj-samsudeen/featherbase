@@ -1,5 +1,7 @@
 # Plan My Work
 
+**IDs:** `focus_is_private_ordered` · `my_work_has_no_duplicates` · `focus_never_mutates_task` · `stale_focus_self_heals`
+
 ## Purpose
 
 A person can assemble and order a private daily shortlist from shared work
@@ -9,6 +11,8 @@ without accepting responsibility or changing the tasks.
 
 ### Requirement: focus_is_private_ordered
 Status: governed (#296) · Built
+
+> evidence: proven via personal_worklist_flow — two users retain independent focus while one reorders and reloads.
 
 Each person SHALL own an independent, server-synced ordered My Focus list.
 Starring, unstarring and reordering SHALL preserve that person's order across
@@ -21,6 +25,8 @@ reload. Focus and reorder controls SHALL have visible labels and work by keyboar
 ### Requirement: my_work_has_no_duplicates
 Status: governed (#296) · Built
 
+> evidence: proven via personal_worklist_flow — a focused assigned task appears only in My Focus.
+
 My Work SHALL show My Focus first, followed by tasks assigned to the person that
 are not already focused. Each task SHALL appear at most once.
 
@@ -30,6 +36,8 @@ are not already focused. Each task SHALL appear at most once.
 
 ### Requirement: focus_never_mutates_task
 Status: governed (#296) · Built
+
+> evidence: proven via personal_worklist_flow — focus operations leave shared task assignment unchanged.
 
 Every focus operation SHALL change only the caller's preference. It SHALL NOT
 change destination, responsibility, state, urgency or any other shared task
@@ -41,6 +49,8 @@ field.
 
 ### Requirement: stale_focus_self_heals
 Status: governed (#296) · Built
+
+> evidence: proven via personal_worklist_flow — a missing task is omitted and removed on the next focus write.
 
 A deleted or unreadable focused task SHALL be omitted rather than failing My
 Work. The stale reference SHALL be removed on the next focus write while the

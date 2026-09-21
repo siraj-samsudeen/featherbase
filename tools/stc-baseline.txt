@@ -18,8 +18,8 @@ no_code refused_then_unblocked
 no_code capture_neutral_task
 
 # The agreed guided Inbox processing loop is not implemented yet. Its current
-# gap is explicit in both Tasker spec homes rather than being hidden behind the
-# existing inline placement controls.
+# gap is explicit in the Tasker OpenSpec contract rather than being hidden
+# behind the existing inline placement controls.
 no_code process_inbox_one_at_a_time
 no_test process_inbox_one_at_a_time
 
@@ -31,8 +31,11 @@ no_test stale_project_tabs_self_heal
 # test covers them, but JSON has no legal @spec comment location.
 no_code team_shares_tasker_work
 
-# The one-person shape is declarative JSON metadata. Spec 0010 already records
-# the missing dedicated server test as gap #296; the OpenSpec trial must expose,
-# not launder, that same gap.
+# The one-person shape is declarative JSON metadata. The OpenSpec contract
+# records the missing dedicated server test rather than laundering that gap.
 no_code responsibility_is_singular
 no_test responsibility_is_singular
+
+# Visual hierarchy and focus-ring treatment were inspected in desktop/mobile
+# screenshots. The executable responsive check does not judge visual clarity.
+no_test workspace_visual_hierarchy_is_clear

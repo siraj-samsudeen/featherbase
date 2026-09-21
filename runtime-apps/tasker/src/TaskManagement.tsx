@@ -339,6 +339,8 @@ export function TaskManagementPage() {
     },
   ]
 
+  // @spec workspace_navigation_is_stable
+  // @spec workspace_visual_hierarchy_is_clear
   return (
     <div className="tasker-shell" data-view={view} data-testid="task-management-page">
       <aside className="tasker-sidebar">
@@ -453,6 +455,7 @@ export function TaskManagementPage() {
       )}
 
       {view === 'projects' && (
+        // @spec projects_landing_connects_directory_and_creation
         <section aria-labelledby="projects-heading" className="tasker-project-workspace">
             {selectedProject && projectById.has(selectedProject) ? (
               <>
@@ -513,6 +516,7 @@ export function TaskManagementPage() {
       )}
       </main>
       {selectedTask && detailMode === 'inspector' && (
+        // @spec responsive_detail_preserves_workspace_context
         <aside className="tasker-inspector" aria-label="Task details">
           <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} />
         </aside>
@@ -592,6 +596,7 @@ function TaskDetail({ id, mode, onMode, onSaved }: {
   useEffect(() => {
     if (mode !== 'inspector') return
     if (!window.matchMedia) return
+    // @spec workspace_adapts_to_available_space
     const compact = window.matchMedia('(max-width: 1100px)')
     const sync = () => document.documentElement.classList.toggle('tasker-compact-inspector-open', compact.matches)
     sync()
@@ -729,6 +734,7 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
   }
 
   if (!tasks.length) return <Empty text="Nothing here yet." />
+  // @spec task_lists_present_one_consistent_control_set
   return <div className="tasker-task-list">
     <div className="tasker-task-guide" aria-hidden="true">
       <span />

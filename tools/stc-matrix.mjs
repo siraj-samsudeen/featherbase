@@ -33,13 +33,13 @@
 // decides — `spec-review-5-axes` and its divergence triage.
 //
 // It is also not `check-evidence.mjs` and does not replace it. That checker
-// owns `docs/specs` — the `> evidence:` verdict under every obligation, joined
-// to the test TITLES that back it, upgraded in CI to "a matching test actually
-// executed on this commit". This one owns `openspec/specs` and joins on a
-// marker rather than a title. Two spec homes, two join keys, no overlap:
+// owns `> evidence:` verdicts in participating documents, including Tasker's
+// OpenSpec capabilities, and joins them to test TITLES. This checker joins the
+// same OpenSpec requirement to code and test markers. One spec home, two
+// complementary joins:
 //
-//   check-evidence.mjs   docs/specs/*.md       verdict  <-> test title
-//   stc-matrix.mjs       openspec/specs/**     heading  <-> @spec marker
+//   check-evidence.mjs   OpenSpec verdict  <-> test title
+//   stc-matrix.mjs       OpenSpec heading  <-> code/test @spec markers
 
 import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join, relative, resolve, dirname } from 'node:path'

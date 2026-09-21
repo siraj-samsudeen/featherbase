@@ -3,7 +3,8 @@
 > Superseded architecture (21-Sep-2026): this is the original prototype plan.
 > Spec 0011 and the runtime-app checkpoint replace its core-import/route seams
 > with independently delivered packages, qualified Table identities and
-> non-destructive disable/re-enable. Task rules in spec 0010 remain in force.
+> non-destructive disable/re-enable. The [Tasker OpenSpec index](../../openspec/TASKER.md)
+> is now the sole current behavior contract; the original spec 0010 was retired.
 > Runtime removal and data deletion are separate future operations, not the
 > legacy sample app's destructive uninstall.
 
@@ -34,7 +35,7 @@ The prototype is deliberately a complete vertical slice: quick capture, Inbox tr
 
 **Create:**
 
-- `docs/specs/tasker/` — feature-sized product behavior, BDD scenarios, evidence and deferred scope.
+- `openspec/specs/tasker-*/` — feature-sized product behavior, BDD scenarios, evidence and deferred scope (migrated here after the original prototype).
 - `apps/server/src/sample-apps/task-management.ts` — installable Team Project and Team Task metadata plus lifecycle invariants.
 - `apps/server/test/task-management-app.test.ts` — real-Postgres contract and property cases.
 - `apps/web/src/pages/TaskManagement.tsx` — quick capture, Inbox triage, project entry and My Work.
@@ -45,7 +46,7 @@ The prototype is deliberately a complete vertical slice: quick capture, Inbox tr
 
 - `apps/server/src/index.ts` — register the opt-in task-management app.
 - `apps/web/src/router.tsx` — add the authenticated task workspace route.
-- `docs/specs/README.md` — index spec 0010.
+- `openspec/TASKER.md` — index the sole Tasker behavior contract and its evidence-labelled gaps.
 - `PROGRESS.md` — append verification evidence after implementation.
 
 **Delete:** none.
