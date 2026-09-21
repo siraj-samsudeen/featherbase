@@ -15,14 +15,15 @@ Status: governed (#296) · Built
 > evidence: proven via projects_landing_flow — the component test checks destination order, the complete project directory, task counts and project selection.
 
 The primary destinations SHALL appear in this order: Inbox, My Work, Together,
-Personal tasks and Projects. The sidebar SHALL then list every readable project
-by name and task count. Sidebar project rows SHALL open their project and SHALL
-NOT contain star or reorder controls.
+Personal tasks, Views and Projects. Views SHALL open the current person's
+private saved-view directory. The sidebar SHALL then list every readable
+project by name and task count. Sidebar project rows SHALL open their project
+and SHALL NOT contain star or reorder controls.
 
 #### Scenario: move_from_destinations_to_a_project
 - **GIVEN** Tasker has two readable projects
 - **WHEN** a member scans the sidebar
-- **THEN** the primary destinations appear in the specified order
+- **THEN** the primary destinations appear in the specified order, including Views
 - **AND** both projects appear below Projects with their task counts
 - **WHEN** the member chooses one project
 - **THEN** its task list opens.

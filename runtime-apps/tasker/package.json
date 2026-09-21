@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "build": "tsc --noEmit && vite build && esbuild src/server.ts --bundle --format=esm --platform=node --outfile=dist/server.mjs",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -22,6 +23,7 @@
     "@tailwindcss/vite": "^4.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "vitest": "^3.2.7",
     "@vitejs/plugin-react": "^4.3.0",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.0.0",
