@@ -73,7 +73,7 @@ console.log(`CORE FROZEN ${before}`)
 // tarballs, not source directories or a workspace module import.
 run('pnpm', ['apps:prepare'])
 const paths = []
-for (const name of ['tasker', 'other']) {
+for (const name of ['tasker', 'other', 'action-proof']) {
   const destination = resolve(output, name)
   await mkdir(destination)
   run('npm', ['pack', '--pack-destination', destination], resolve(root, 'runtime-apps', name))
@@ -119,6 +119,18 @@ try {
   await start(paths)
   token = (await api('/api/login', { usr: 'Administrator', pwd: process.env.ADMIN_PASSWORD ?? 'admin' })).token
   for (const name of ['tasker', 'other']) await api('/api/install_app', { name }, 201)
+  await api('/api/install_app', { name: 'actionproof' }, 201)
+  const actionSource = await api('/api/save_row', { table: 'actionproof.work', row: { row_id: 'packaged-source', title: '73 packed units' } }, 201)
+  const actionRequest = { idempotencyKey: 'packaged-action', payload: { source: actionSource.row_id, updatedAt: actionSource.updated_at } }
+  await api('/api/app_actions/actionproof/transform', { ...actionRequest, payload: { ...actionRequest.payload, fail: true } }, 500)
+  assert.equal((await api('/api/table/actionproof.destination')).total, 0)
+  // @spec action_writes_and_replay_are_atomic
+  const actionResults = await Promise.all(Array.from({ length: 8 }, () => api('/api/app_actions/actionproof/transform', actionRequest)))
+  for (const result of actionResults) assert.deepEqual(result, actionResults[0])
+  assert.equal((await api('/api/table/actionproof.destination')).total, 1)
+  const actionActivity = await api(`/api/activity/actionproof.work/${actionSource.row_id}`)
+  assert.equal(actionActivity.comments.length, 1)
+  assert.equal(actionActivity.versions.length, 1)
   const seeded = await seedTasker({
     baseUrl: origin,
     password: process.env.ADMIN_PASSWORD ?? 'admin',
@@ -296,6 +308,7 @@ try {
   assert.equal(other.validation_runs, '2')
   await stop()
   await start(paths)
+  assert.deepEqual(await api('/api/app_actions/actionproof/transform', actionRequest), actionResults[0])
   await api('/api/table/tasker.task', undefined, 403)
   await api('/api/set_app_enabled', { name: 'tasker', enabled: true })
   await api('/api/set_app_enabled', { name: 'tasker', enabled: true })
@@ -306,11 +319,20 @@ try {
   await expect(page.getByText('Package-delivered stock review')).toBeVisible()
   await stop()
   await start([paths[1]])
+  await api('/api/app_actions/actionproof/transform', actionRequest, 403)
   await api('/api/run_query_report', { report: 'Raw Tasker report' }, 417)
   await api('/api/save_row', { table: 'tasker.task', row: { ...task, is_done: true } }, 403)
   assert((await api('/api/apps')).installed.some(a => a.name === 'tasker' && !a.available && !a.active))
   await stop()
   await start(paths)
+  assert.deepEqual(await api('/api/app_actions/actionproof/transform', actionRequest), actionResults[0])
+  await writeFile(resolve(output, 'action-evidence.json'), JSON.stringify({
+    database: new URL(database).pathname, source: actionSource.row_id,
+    result: actionResults[0], concurrentIdenticalRequests: actionResults.length,
+    destinationCount: (await api('/api/table/actionproof.destination')).total,
+    activity: actionActivity, rollbackBeforeRetry: true, restartReplay: true,
+    missingCodeRefused: true, restoredReplay: true,
+  }, null, 2))
   assert.equal((await api(`/api/table/tasker.task/${task.row_id}`)).description, task.description)
   // @spec runtime_upgrade_preserves_owned_work.tasker_description_is_generic_migration
   // Build/deliver a target only after core and v1 have run. Keep v1 intact.
