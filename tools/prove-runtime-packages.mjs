@@ -157,7 +157,7 @@ try {
   const page = await context.newPage()
   // @spec featherbase_human_routes_are_canonical.exact_runtime_app_location_survives_sign_in
   const selectedTask = seeded.tasks['DEV-TASKER-TASK-INVOICE-MISMATCH']
-  const deepLink = `${origin}/tasker/?review=deep-link&note=37%20cartons%2F83#task=${selectedTask}`
+  const deepLink = `${origin}/tasker/?review=deep-link&note=37%20cartons%2F83&review=again#task=${selectedTask}`
   async function proveSignedOutReturn(target, requested, screenshot) {
     await target.goto(requested)
     await target.waitForURL(url => url.pathname === '/featherbase/login')
@@ -475,6 +475,12 @@ try {
   assert.equal(await served.text(), '37 cartons independently verified')
   await page.screenshot({ path: resolve(output, 'upgraded-core-form-attachment.png'), fullPage: true })
   await page.setViewportSize({ width: 375, height: 900 })
+  // Resizing animates the desktop sidebar off-screen; capture the settled
+  // narrow form, not the intermediate drawer covering otherwise valid fields.
+  await expect.poll(async () => {
+    const sidebar = await page.getByTestId('admin-sidebar').boundingBox()
+    return sidebar ? sidebar.x + sidebar.width : Number.POSITIVE_INFINITY
+  }).toBeLessThanOrEqual(0)
   await page.screenshot({ path: resolve(output, 'upgraded-core-form-mobile.png'), fullPage: true })
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Upgraded core form has horizontal page overflow at 375px')
   for (const control of [page.locator('[data-field="task_title"]'), page.locator('[data-field="description"]'), page.getByTestId('attachments-panel'), page.getByTestId('form-save')]) {
