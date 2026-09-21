@@ -27,8 +27,12 @@ const manifestSchema = z.object({
   tables: z.array(tableDefSchema).min(1),
   permissions: z.array(z.object({
     table: z.string(), role: z.string(),
+    tier: z.enum(['basic', 'restricted']).optional(),
+    own_rows_only: z.boolean().optional(),
     can_read: z.boolean().optional(), can_write: z.boolean().optional(),
     can_create: z.boolean().optional(), can_delete: z.boolean().optional(),
+    can_submit: z.boolean().optional(), can_cancel: z.boolean().optional(),
+    can_amend: z.boolean().optional(),
   }).strict()).default([]),
   server: z.string().optional(),
   client: z.string().optional(),

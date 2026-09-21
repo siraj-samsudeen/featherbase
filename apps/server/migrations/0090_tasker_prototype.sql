@@ -56,5 +56,12 @@ begin
   end loop;
   grant usage on schema tasker to app_client;
   update installed_app set name = 'tasker', tables = '["tasker.project", "tasker.task"]'::jsonb,
-    runtime_package = true where name = 'task-management';
+    runtime_package = true,
+    manifest = '{"permissions":[
+      {"table":"tasker.project","role":"All","can_read":true,"can_write":true,"can_create":true,"can_delete":true},
+      {"table":"tasker.task","role":"All","can_read":true,"can_write":true,"can_create":true,"can_delete":true},
+      {"table":"User","role":"All","can_read":true},
+      {"table":"Comment","role":"All","can_read":true,"can_write":true,"can_create":true}
+    ]}'::jsonb
+    where name = 'task-management';
 end $$;

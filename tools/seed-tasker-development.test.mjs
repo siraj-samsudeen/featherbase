@@ -87,3 +87,33 @@ test('seeding twice adopts deterministic IDs and leaves duplicate-title rows unt
   assert.equal(rows.get('tasker.task').filter(row => row.task_title === 'Triage supplier invoice mismatch').length, 3)
   assert.equal(rows.get('Comment').some(row => row.ref_name.startsWith('UNRELATED-')), false)
 })
+
+test('seed refuses a deterministic ID occupied by unrelated work', async () => {
+  const server = fakeSeedServer()
+  server.rows.get('tasker.task').push({
+    row_id: 'DEV-TASKER-TASK-INVOICE-MISMATCH',
+    task_title: 'My unrelated real task',
+  })
+  await assert.rejects(
+    seedTasker({ baseUrl: 'http://127.0.0.1:8000', fetchImpl: server.fetchImpl, log: () => {} }),
+    /ID collision.*unexpected task_title/,
+  )
+  assert.equal(server.rows.get('Comment').length, 0)
+  assert.deepEqual(server.focus(), ['user-created-task'])
+})
+
+test('seed refuses a deterministic user ID occupied by another account', async () => {
+  const server = fakeSeedServer()
+  server.rows.get('User').push({
+    row_id: 'asha.local@example.test',
+    email: 'someone-else@example.test',
+    full_name: 'Someone Else',
+  })
+  await assert.rejects(
+    seedTasker({ baseUrl: 'http://127.0.0.1:8000', fetchImpl: server.fetchImpl, log: () => {} }),
+    /ID collision.*unexpected email/,
+  )
+  assert.equal(server.rows.get('tasker.project').length, 1)
+  assert.equal(server.rows.get('tasker.task').length, 2)
+  assert.deepEqual(server.focus(), ['user-created-task'])
+})

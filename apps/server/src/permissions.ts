@@ -1,5 +1,6 @@
 import { sql } from './db'
 import { AppError } from './errors'
+import { activeApps } from './app-lifecycle'
 
 // PERM-001: role resolution. Every enabled user implicitly holds 'All';
 // explicit roles come from the Has Role child table on User.
@@ -47,12 +48,13 @@ export async function permissionScope(
   const roles = await getRoles(user)
   if (roles.includes('System Manager')) return 'all'
   const rows = await sql`
-    select own_rows_only from permission
+    select own_rows_only, owner_app from permission
     where ref_table = ${table} and tier = 'basic'
       and role in ${sql(roles)}
       and ${sql(ACTION_COLUMN[action])} = true`
-  if (rows.some((r) => !r.own_rows_only)) return 'all'
-  if (rows.length) return 'own_rows'
+  const active = rows.filter((r) => r.owner_app == null || activeApps.has(String(r.owner_app)))
+  if (active.some((r) => !r.own_rows_only)) return 'all'
+  if (active.length) return 'own_rows'
   return 'none'
 }
 
@@ -179,12 +181,13 @@ export async function permittedTiers(
   if (await isBypassUser(user)) return new Set(['basic', 'restricted'])
   const roles = await getRoles(user)
   const rows = await sql`
-    select distinct tier from permission
+    select tier, owner_app from permission
     where ref_table = ${table}
       and role in ${sql(roles)}
       and ${sql(ACTION_COLUMN[action])} = true`
   const tiers = new Set<'basic' | 'restricted'>()
   for (const r of rows) {
+    if (r.owner_app != null && !activeApps.has(String(r.owner_app))) continue
     const tier = r.tier as 'basic' | 'restricted'
     tiers.add(tier)
     if (tier === 'restricted') tiers.add('basic')

@@ -86,6 +86,10 @@ does not expose partially created Tables or activation. Disable preserves Tables
 grants and ownership, removes launchability and server contributions, and denies
 operations against those Tables even with warm metadata. Enable requires
 compatible code and wires hooks once. Missing code fails closed at boot.
+Permissions contributed by a runtime package, including permissions on shared
+core Tables, apply only while that package is enabled and its compatible code
+is available. Disabling one package does not suspend an independently declared
+equivalent permission from another package.
 Lifecycle transitions must not remove validation halfway through an admitted
 write; complete operations and transition ordering require explicit coordination.
 Remove application (code gone, owned data archived for compatible reinstall)

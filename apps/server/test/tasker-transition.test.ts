@@ -41,11 +41,35 @@ test('PKG-H1: prototype transition preserves work, references, comments, focus a
     share_table: 'Team Task', share_name: task.row_id, user: member.user, read: true,
   } })
   await member.put('/api/user_settings/Task%20Management%20Focus', { task_ids: [task.row_id] })
+  // Recreate the old shared-grant adoption case: another runtime app owns the
+  // one User grant and Task Management has no ledger entry or stored manifest.
+  const [sharedUserGrant] = await sql`
+    select p.row_id from permission p join installed_app app on p.row_id in (
+      select jsonb_array_elements_text(app.perms)
+    ) where app.name = 'task-management' and p.ref_table = 'User'`
+  await sql`
+    update installed_app set perms = perms - ${String(sharedUserGrant.row_id)}
+    where name = 'task-management'`
+  await sql`
+    insert into installed_app (name, perms, manifest, runtime_package)
+    values (
+      'other', ${sql.json([String(sharedUserGrant.row_id)])},
+      ${sql.json({ permissions: [{ table: 'User', role: 'All', can_read: true }] })}, true
+    )`
   const migration = await readFile(resolve('migrations/0090_tasker_prototype.sql'), 'utf8')
   await sql.unsafe(migration)
   await sql.unsafe(migration)
   await sql.unsafe(await readFile(resolve('migrations/0091_runtime_api_only.sql'), 'utf8'))
+  await sql.unsafe(await readFile(resolve('migrations/0092_runtime_permission_owner.sql'), 'utf8'))
   expect(await sql`select has_table_privilege('app_client', 'tasker.task', 'select') as allowed`).toMatchObject([{ allowed: false }])
+  expect(await sql`
+    select distinct owner_app from permission
+    where row_id in (select jsonb_array_elements_text(perms) from installed_app where name = 'tasker')`
+  ).toEqual([{ owner_app: 'tasker' }])
+  expect(await sql`
+    select owner_app from permission where ref_table = 'User' and owner_app in ('other', 'tasker')
+    order by owner_app`
+  ).toEqual([{ owner_app: 'other' }, { owner_app: 'tasker' }])
   invalidateMeta()
   expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker')])).toEqual([])
   await loadInstalledApps()
@@ -63,6 +87,8 @@ test('PKG-H1: prototype transition preserves work, references, comments, focus a
   const saved = await member.get<Record<string, unknown>>(`/api/table/tasker.task/${task.row_id}`)
   expect(await member.post('/api/save_row', { table: 'tasker.task', row: { ...saved, is_done: true } }))
     .toMatchObject({ task_state: 'Done', state_before_done: 'In progress' })
+  await admin.post('/api/set_app_enabled', { name: 'tasker', enabled: false })
+  await expect(member.get('/api/table/Comment')).rejects.toMatchObject({ status: 403 })
   expect(await sql`select to_regclass('public.team_task') as old, to_regclass('tasker.task') as current`)
     .toMatchObject([{ old: null, current: 'tasker.task' }])
 })

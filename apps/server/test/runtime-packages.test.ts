@@ -11,6 +11,7 @@ import { registerController, unregisterController, type TableController } from '
 import { importCustomizations } from '../src/customizations'
 import { getMeta, invalidateMeta } from '../src/meta'
 import { runQueryReport } from '../src/query-report'
+import { permittedTiers } from '../src/permissions'
 
 describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   test('PKG-R1: reserved names fail discovery; failed installation leaves no Tables or activation', async ({ admin }) => {
@@ -131,13 +132,70 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     await admin.post('/api/save_row', { table: 'Package pointer', row: { row_id: 'explicit', target: id } })
     const lone = await member.post<{ row_id: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Absent from Other' } })
     await expect(admin.post('/api/save_row', { table: 'Package pointer', row: { row_id: 'wrong-owner', target: lone.row_id } })).rejects.toMatchObject({ status: 417 })
+    expect(await member.get('/api/table/Comment')).toMatchObject({ data: [] })
     await admin.post('/api/set_app_enabled', { name: 'tasker', enabled: false })
     await expect(member.post('/api/save_row', { table: 'tasker.task', row: { ...task, is_done: true } })).rejects.toMatchObject({ status: 403 })
+    await expect(member.get('/api/table/Comment')).rejects.toMatchObject({ status: 403 })
+    await expect(member.get('/api/table/User')).rejects.toMatchObject({ status: 403 })
     expect(await admin.post('/api/save_row', { table: 'other.task', row: { ...other, quantity: 23 } })).toMatchObject({ quantity: '23', validation_runs: '2' })
     await admin.post('/api/set_app_enabled', { name: 'tasker', enabled: true })
+    expect(await member.get('/api/table/Comment')).toMatchObject({ data: [] })
     expect(await member.post('/api/save_row', { table: 'tasker.task', row: { ...task, is_done: true } })).toMatchObject({ task_state: 'Done', state_before_done: 'In progress' })
     await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
     await expect(admin.post('/api/save_row', { table: 'Package pointer', row: { row_id: 'disabled-target', target: id } })).rejects.toMatchObject({ status: 403 })
+  })
+
+  test('PKG-R3: equivalent shared-table grants remain independent across packages', async ({ admin, createUser }) => {
+    const other = await mkdtemp(resolve('test/.runtime-shared-grant-'))
+    try {
+      await cp(resolve('../..', 'runtime-apps/other'), other, { recursive: true })
+      const file = resolve(other, 'featherbase.json')
+      const manifest = JSON.parse(await readFile(file, 'utf8'))
+      manifest.permissions.push(
+        { table: 'User', role: 'All', can_read: true },
+        { table: 'User', role: 'All', tier: 'restricted', can_read: true },
+      )
+      await writeFile(file, JSON.stringify(manifest))
+      expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker'), other])).toEqual([])
+      await admin.post('/api/install_app', { name: 'tasker' })
+      await admin.post('/api/install_app', { name: 'other' })
+      // Recreate the pre-0092 upgrade state: Tasker created the basic grant,
+      // Other adopted it without a ledger entry, and neither grant had an
+      // owner. The migration must recover both independent declarations.
+      const [adopted] = await sql`
+        delete from permission
+        where owner_app = 'other' and ref_table = 'User' and tier = 'basic'
+        returning row_id`
+      await sql`
+        update installed_app set perms = perms - ${String(adopted.row_id)}
+        where name = 'other'`
+      await sql`update permission set owner_app = null where owner_app in ('tasker', 'other')`
+      await sql.unsafe(await readFile(resolve('migrations/0092_runtime_permission_owner.sql'), 'utf8'))
+      expect(await sql`
+        select owner_app, tier from permission
+        where ref_table = 'User' and owner_app in ('tasker', 'other')
+        order by owner_app, tier`
+      ).toEqual([
+        { owner_app: 'other', tier: 'basic' },
+        { owner_app: 'other', tier: 'restricted' },
+        { owner_app: 'tasker', tier: 'basic' },
+      ])
+      const member = await createUser({ email: 'shared-grants@example.com', roles: [] })
+      expect((await member.get<{ data: unknown[] }>('/api/table/User')).data.length).toBeGreaterThan(0)
+      expect(await permittedTiers(member.user!, 'User', 'read')).toEqual(new Set(['basic', 'restricted']))
+
+      await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
+      expect((await member.get<{ data: unknown[] }>('/api/table/User')).data.length).toBeGreaterThan(0)
+      expect(await permittedTiers(member.user!, 'User', 'read')).toEqual(new Set(['basic']))
+      await admin.post('/api/set_app_enabled', { name: 'other', enabled: true })
+      await admin.post('/api/set_app_enabled', { name: 'tasker', enabled: false })
+      expect((await member.get<{ data: unknown[] }>('/api/table/User')).data.length).toBeGreaterThan(0)
+      expect(await permittedTiers(member.user!, 'User', 'read')).toEqual(new Set(['basic', 'restricted']))
+      await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
+      await expect(member.get('/api/table/User')).rejects.toMatchObject({ status: 403 })
+    } finally {
+      await rm(other, { recursive: true, force: true })
+    }
   })
 
   test('disable rejects stale writes, preserves rows, and enable wires validation once', async ({ admin }) => {

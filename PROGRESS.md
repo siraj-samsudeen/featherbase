@@ -15,7 +15,8 @@ live under `runtime-apps/tasker/development/`, outside the production npm artifa
 `pnpm seed:tasker -- --url=http://127.0.0.1:8000` refuses redirects, wrong
 environment, remote PostgreSQL and cross-origin responses before credentials are
 sent. It adopts deterministic development-only row IDs without overwriting
-same-title or adopted data. A concrete row is `DEV-TASKER-TASK-INVOICE-MISMATCH`,
+same-title or adopted data, and refuses a deterministic ID whose identifying
+title belongs to unrelated work. A concrete row is `DEV-TASKER-TASK-INVOICE-MISMATCH`,
 `Triage supplier invoice mismatch` (urgent, unassigned,
 Inbox); the complete set includes fake teammates, projects, assigned/unassigned,
 blocked/on-hold explanations, personal and completed work, and private focus.
@@ -30,14 +31,22 @@ scroll. Evidence is emitted as `seeded-inbox.png`, `seeded-my-work.png`, respons
 detail captures and `evidence.json` under the printed `dist/runtime-proof-*/` directory.
 The fake teammates deliberately have no passwords; the seed never resets or
 deletes data and does not reconcile developer edits to adopted scenario rows.
+Runtime-package permissions now retain package ownership internally: disabling
+or losing compatible package code suspends even grants on shared core Tables,
+while an equivalent grant independently contributed by another active package
+continues to apply.
 
-**Verification:** seed safety/identity/idempotence 6/6; server runtime/transition/Tasker
-21/21 and web Tasker 6/6 against dedicated `featherbase_handoff_e2e`; server and
-web source+test typechecks; npm dry-run contained only six production files and
-no scenario seed; `pnpm apps:prove` passed with frozen core unchanged at
-`e4da7d662879947420b6ec3a56178d446daf3ffc5160ad4de32b9eeb58a32e2a`.
-Evidence: `dist/runtime-proof-ztr3gT/`. The seeded Inbox, My Work, wide inspector,
-tablet inspector and phone inspector screenshots were visually inspected.
+**Verification:** seed safety/identity/idempotence/collision 8/8; focused server
+runtime/grant/transition/Tasker/ping 28/28 and web Tasker 6/6; all server/shared
+tests passed and all 139 web assertions passed (the first combined run reported
+one existing Home Recall teardown-time rejection; the isolated web rerun was
+clean). Server, web and Tasker typechecks passed. The npm dry-run contained only
+six production files and no scenario seed. `pnpm apps:prove` passed with frozen
+core unchanged at
+`987e4ee961a3b7de8cec3f146704cabe1748de230db3fedd08dbe46dbc9ae2d7`.
+Evidence: `dist/runtime-proof-SZNYNd/`. The seeded Inbox, My Work, wide inspector,
+tablet inspector and phone inspector screenshots from the preceding equivalent
+proof were visually inspected.
 
 ## 2026-09-21 — Independent trusted runtime-package learning slice (#296)
 

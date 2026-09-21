@@ -266,7 +266,8 @@ async function provisionAccess(manifest: AppManifest): Promise<{ roles: string[]
     const tier = p.tier ?? 'basic'
     const [have] = await sql`
       select 1 from permission
-      where ref_table = ${p.table} and role = ${p.role} and tier = ${tier}`
+      where ref_table = ${p.table} and role = ${p.role} and tier = ${tier}
+        and (owner_app is null or owner_app = ${manifest.name})`
     if (have) continue
     const saved = await saveDoc('Permission', {
       ref_table: p.table,
@@ -281,6 +282,11 @@ async function provisionAccess(manifest: AppManifest): Promise<{ roles: string[]
       can_cancel: p.can_cancel ?? false,
       can_amend: p.can_amend ?? false,
     })
+    // Runtime-package grants are live contributions, not permanent core
+    // permissions. Keep their owner outside editable metadata so permission
+    // checks can suspend them whenever that package is disabled or absent.
+    if (manifest.runtime_package)
+      await sql`update permission set owner_app = ${manifest.name} where row_id = ${String(saved.row_id)}`
     perms.push(String(saved.row_id))
   }
   return { roles, perms }

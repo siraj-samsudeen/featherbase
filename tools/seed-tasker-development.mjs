@@ -40,15 +40,23 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
   const catalog = await request('/api/app_catalog')
   if (!catalog.some((app) => app.name === 'tasker')) throw new Error('Tasker must be installed and enabled before seeding')
 
-  async function ensure(table, key, value, row) {
-    const found = (await request(`/api/table/${encodeURIComponent(table)}${query([[key, '=', value]], ['row_id', key])}`)).data
-    if (found.length) return found[0]
+  async function ensure(table, key, value, row, identity = {}) {
+    const fields = [...new Set(['row_id', key, ...Object.keys(identity)])]
+    const found = (await request(`/api/table/${encodeURIComponent(table)}${query([[key, '=', value]], fields)}`)).data
+    if (found.length) {
+      for (const [field, expected] of Object.entries(identity)) {
+        if (found[0][field] !== expected)
+          throw new Error(`Tasker seed ID collision in ${table}: ${value} has unexpected ${field}`)
+      }
+      return found[0]
+    }
     return request(`/api/table/${encodeURIComponent(table)}`, { method: 'POST', body: row })
   }
-  for (const user of TASKER_SCENARIOS.users) await ensure('User', 'row_id', user.row_id, user)
+  for (const user of TASKER_SCENARIOS.users)
+    await ensure('User', 'row_id', user.row_id, user, { email: user.email })
   const projects = new Map()
   for (const scenario of TASKER_SCENARIOS.projects) {
-    const project = await ensure('tasker.project', 'row_id', scenario.row_id, scenario)
+    const project = await ensure('tasker.project', 'row_id', scenario.row_id, scenario, { project_name: scenario.project_name })
     projects.set(scenario.row_id, project.row_id)
   }
   const tasks = new Map()
@@ -57,7 +65,7 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
     const task = await ensure('tasker.task', 'row_id', scenario.row_id, {
       ...values,
       ...(project ? { project: projects.get(project) } : {}),
-    })
+    }, { task_title: scenario.task_title })
     tasks.set(scenario.row_id, task.row_id)
     if (explanation) {
       const filters = [['ref_table', '=', 'tasker.task'], ['ref_name', '=', task.row_id], ['content', '=', explanation]]
