@@ -87,14 +87,14 @@ test('PKG-H1: prototype transition preserves work, references, comments, focus a
     order by owner_app`
   ).toEqual([{ owner_app: 'other' }, { owner_app: 'tasker' }])
   invalidateMeta()
-  expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker')])).toEqual([])
+  expect(await discoverPackages([resolve('../..', 'runtime-apps/fixtures/tasker-v1')])).toEqual([])
   await loadInstalledApps()
   // @spec runtime_upgrade_identity.unversioned_legacy_install_fails_closed
   // 0090 recorded permissions only. Discovery cannot infer which package
   // version produced that schema; recovering a reviewed identity is explicit.
   await expect(member.get(`/api/table/tasker.task/${task.row_id}`)).rejects.toMatchObject({ status: 403 })
   expect(await sql`select task_title from tasker.task where row_id = ${task.row_id}`).toEqual([{ task_title: 'Keep this work' }])
-  const packageRoot = resolve('../..', 'runtime-apps/tasker')
+  const packageRoot = resolve('../..', 'runtime-apps/fixtures/tasker-v1')
   const packageInfo = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
   const recoveredManifest = { ...JSON.parse(await readFile(resolve(packageRoot, 'featherbase.json'), 'utf8')),
     migrations: [], packageName: packageInfo.name, packageVersion: packageInfo.version }

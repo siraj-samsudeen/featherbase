@@ -1,3 +1,5 @@
+import { version } from '../package.json'
+
 export class ApiError extends Error {
   constructor(message: string, readonly status?: number) { super(message) }
 }
@@ -10,6 +12,7 @@ async function request<T>(path: string, method = 'GET', body?: unknown): Promise
   const response = await fetch(path, {
     method, credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json',
+      'X-Featherbase-App-Version': `tasker@${version}`,
       ...(localStorage.getItem('fc_token') ? { Authorization: `Bearer ${localStorage.getItem('fc_token')}` } : {}),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),

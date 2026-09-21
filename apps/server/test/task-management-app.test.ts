@@ -1,9 +1,16 @@
 import { describe, expect } from 'vitest'
-import { test } from './pg-test'
+import { test as base } from './pg-test'
+import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
+import { taskerClient } from './tasker-client'
 import { installApp, isInstalled, uninstallApp } from '../src/apps'
 import { discoverPackages } from '../src/runtime-packages'
 import { sql } from '../src/db'
 import { resolve } from 'node:path'
+
+const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
+  admin: async ({ admin }, use) => use(taskerClient(admin)),
+  createUser: async ({ createUser }, use) => use(async options => taskerClient(await createUser(options))),
+})
 
 const APP = 'tasker'
 const TASK = 'tasker.task'

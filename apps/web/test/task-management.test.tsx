@@ -4,11 +4,17 @@ import { installApp, isInstalled, uninstallApp } from 'server/src/apps'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { resolve } from 'node:path'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { TestClient } from 'feather-testing-postgres'
+import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
 import { peopleWithTaskResponsibility, TaskManagementPage } from '../../../runtime-apps/tasker/src/TaskManagement'
 import { Markdown } from '../../../runtime-apps/tasker/src/Markdown'
 import { setSession } from '../src/lib/api'
-import { test, expect } from './pg-test'
+import { test as base, expect } from './pg-test'
+import { taskerClient } from '../../server/test/tasker-client'
+
+const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
+  admin: async ({ admin }, use) => use(taskerClient(admin)),
+  createUser: async ({ createUser }, use) => use(async options => taskerClient(await createUser(options))),
+})
 
 const APP = 'tasker'
 

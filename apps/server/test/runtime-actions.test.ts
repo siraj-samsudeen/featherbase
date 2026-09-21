@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { discoverPackages } from '../src/runtime-packages'
+import { discoverPackages, availableRuntimeVersions } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
 import { app } from '../src/index'
@@ -124,7 +124,7 @@ describe('declared transactional runtime actions', () => {
     await expect(admin.post(action + 'probe', { ...request, user: 'Administrator' })).rejects.toMatchObject({ status: 417 })
     const manager = await admin.get<any>('/api/apps')
     expect(manager.actions).toContainEqual({ app: 'actionproof', actions: ['transform', 'discard', 'probe'] })
-    expect(await sql`select has_table_privilege('app_client', 'runtime_action_result', 'select') as allowed`).toEqual([{ allowed: false }])
+    expect(await sql`select has_table_privilege('app_client', 'featherbase.runtime_action_result', 'select') as allowed`).toEqual([{ allowed: false }])
     await discoverPackages([]); await loadInstalledApps()
     await expect(admin.post(action + 'probe', request)).rejects.toMatchObject({ status: 403 })
   })
@@ -188,7 +188,8 @@ describe('declared transactional runtime actions', () => {
       expect(await sql`select * from runtime_action_result`).toHaveLength(0)
     }
     expect(await admin.post(action + 'probe', { idempotencyKey: 'escape', payload: { operation: 'escape' } })).toEqual({ result: true })
-    const module = await import(/* @vite-ignore */ pathToFileURL(resolve(directory, 'server.mjs')).href)
+    const artifact = availableRuntimeVersions().find(pkg => pkg.name === 'actionproof')!
+    const module = await import(/* @vite-ignore */ `${pathToFileURL(resolve(directory, 'server.mjs')).href}?artifact=${artifact.digest}`)
     await expect(module.escapedDocuments.create('actionproof.destination', { title: 'Too late' })).rejects.toMatchObject({ type: 'ValidationError' })
     expect(await sql`select row_id from actionproof.destination`).toHaveLength(0)
   })

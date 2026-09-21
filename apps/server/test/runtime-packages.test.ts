@@ -2,7 +2,9 @@ import { describe, expect } from 'vitest'
 import { resolve } from 'node:path'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { test } from './pg-test'
+import { test as base } from './pg-test'
+import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
+import { taskerClient } from './tasker-client'
 import { discoverPackages } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
@@ -12,6 +14,11 @@ import { importCustomizations } from '../src/customizations'
 import { getMeta, invalidateMeta } from '../src/meta'
 import { runQueryReport } from '../src/query-report'
 import { permittedTiers } from '../src/permissions'
+
+const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
+  admin: async ({ admin }, use) => use(taskerClient(admin)),
+  createUser: async ({ createUser }, use) => use(async options => taskerClient(await createUser(options))),
+})
 
 describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
   // @spec featherbase_human_routes_are_canonical

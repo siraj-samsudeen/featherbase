@@ -1,9 +1,16 @@
 import { resolve } from 'node:path'
 import { expect } from 'vitest'
-import { test } from './pg-test'
+import { test as base } from './pg-test'
+import { taskerClient } from './tasker-client'
 import { discoverPackages } from '../src/runtime-packages'
 import { installApp, isInstalled, uninstallApp } from '../src/apps'
 import { sql } from '../src/db'
+import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
+
+const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
+  admin: async ({ admin }, use) => use(taskerClient(admin)),
+  createUser: async ({ createUser }, use) => use(async options => taskerClient(await createUser(options))),
+})
 
 async function install() {
   expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker')])).toEqual([])
@@ -112,4 +119,19 @@ test('accidental deletion requires confirmation and refuses retained work, histo
   await admin.post('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: kept.row_id, content: 'Meaningful discussion' } })
   expect(await admin.post(discard, envelope(kept, true))).toMatchObject({ result: { deleted: false, counts: { comments: 1 } } })
   expect(await admin.get(`/api/activity/tasker.task/${kept.row_id}`)).toMatchObject({ comments: [{ content: 'Meaningful discussion' }] })
+})
+
+// @spec runtime_row_delete_guard
+test('Tasker raw DELETE cannot bypass missing revision or retained discussion', async ({ admin }) => {
+  await install()
+  const task = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Keep evidence through both delete paths' } })
+  await admin.post('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: task.row_id, content: 'Retain 37, not 83' } })
+  await expect(admin.delete(`/api/table/tasker.task/${task.row_id}`)).rejects.toMatchObject({ status: 409 })
+  await expect(admin.delete(`/api/table/tasker.task/${task.row_id}?updated_at=${encodeURIComponent(String(task.updated_at))}`)).rejects.toMatchObject({
+    status: 417, fields: { comments: '1', versions: '0', references: '0' },
+  })
+  expect(await admin.post(discard, envelope(task, true))).toMatchObject({ result: { deleted: false, counts: { comments: 1 } } })
+  expect(await admin.get(`/api/activity/tasker.task/${task.row_id}`)).toMatchObject({ comments: [{ content: 'Retain 37, not 83' }] })
+  expect(await sql`select table_schema from information_schema.tables where table_name = 'runtime_action_result'`).toEqual([{ table_schema: 'featherbase' }])
+  expect(await sql`select has_table_privilege('app_client', 'featherbase.runtime_action_result', 'select') as allowed`).toEqual([{ allowed: false }])
 })

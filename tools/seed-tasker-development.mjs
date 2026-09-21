@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import { pathToFileURL } from 'node:url'
+import { readFileSync } from 'node:fs'
 import { TASKER_SCENARIOS } from '../runtime-apps/tasker/development/scenarios.mjs'
 export { TASKER_SCENARIOS }
+const { version } = JSON.parse(readFileSync(new URL('../runtime-apps/tasker/package.json', import.meta.url), 'utf8'))
 
 export function requireLoopback(rawUrl) {
   const url = new URL(rawUrl)
@@ -21,7 +23,7 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
     const response = await fetchImpl(`${origin}${path}`, {
       method,
       redirect: 'error',
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': `tasker@${version}`, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
     if (response.redirected || new URL(response.url).origin !== origin) {
