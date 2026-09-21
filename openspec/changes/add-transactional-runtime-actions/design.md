@@ -45,6 +45,7 @@ interface ActionContext {
     update(table: string, values: Record<string, unknown>): Promise<Record<string, unknown>>
     delete(table: string, rowId: string, updatedAt: string): Promise<void>
     activity(table: string, rowId: string): Promise<{ comments: unknown[]; versions: unknown[] }>
+    deletionState(table: string, rowId: string): Promise<{ comments: number; versions: number; references: number }>
   }
 }
 ```
@@ -57,6 +58,17 @@ redacts history fields as the existing activity API does. It is read-only and
 does not require broad Comment/Version permission. Moving comments/history to a
 different document is not offered in v1; updating/moving the original row keeps
 its existing identity and discussion.
+
+Guarded deletion is deliberately conservative: `deletionState` locks and checks
+document access, then counts Comment, Version and declared Reference rows.
+`delete` repeats this check and rejects nonzero counts with string-valued
+`fields.comments`, `fields.versions`, `fields.references`. The app can use counts
+to return a structured refusal and suggest its own retained-work state. Creation
+has no Version in the native document model; all existing Version rows count.
+Counts include hidden history without disclosing its values. Runtime Reference
+and Comment writers lock the target row in their transaction and recheck that
+it exists, closing the insert-after-delete race. Comment target changes also
+lock the old target so activity inspection cannot race a discussion move.
 
 ```ts
 await fetch('/api/app_actions/example/promote', {

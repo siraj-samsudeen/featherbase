@@ -68,3 +68,24 @@ handler completion and SHALL NOT allow overlapping document operations.
 #### Scenario: post-commit effect fails
 - **WHEN** an effect throws after successful command commit
 - **THEN** writes and replay result remain committed and retry does not repeat effects
+
+### Requirement: guarded_action_deletion_preserves_retained_work
+Status: governed (#296)
+
+Action helpers SHALL expose document-authorized counts of comments, recorded
+update Versions and declared incoming References under the source row lock.
+Action deletion SHALL require an exact loaded revision and SHALL refuse nonzero
+counts with structured counts, without deleting the source or its history.
+Runtime-target Comment and declared Reference writes SHALL serialize with that
+source lock and SHALL reject a missing target. Apps MAY return explanatory
+refusal results without a platform-specific retained-work status policy.
+
+#### Scenario: delete races comment or reference creation
+- **WHEN** guarded deletion races a writer linking to the same runtime row
+- **THEN** either the link commits first and deletion refuses, or deletion commits
+  first and the writer refuses; no orphan link survives
+
+#### Scenario: app returns retained-work refusal
+- **WHEN** a readable source has two comments or one recorded update
+- **THEN** the helper reports those counts and the app can return an explanatory
+  result while source and discussion remain unchanged
