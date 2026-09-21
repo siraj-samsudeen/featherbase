@@ -59,6 +59,32 @@ export function assertExplicitReportRelations(query: string) {
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/'(?:''|[^'])*'/g, "''")
     .replace(/\$\$[\s\S]*?\$\$/g, '$$$$')
+  const fromDepths = new Set<number>()
+  let depth = 0
+  for (const match of lexical.matchAll(/"(?:[^"]|"")*"|[a-z_][a-z0-9_$]*|[(),]/gi)) {
+    const token = match[0].toLowerCase()
+    if (token.startsWith('"')) continue
+    if (token === '(') {
+      depth += 1
+      continue
+    }
+    if (token === ')') {
+      fromDepths.delete(depth)
+      depth = Math.max(0, depth - 1)
+      continue
+    }
+    if (token === 'from') {
+      fromDepths.add(depth)
+      continue
+    }
+    if (fromDepths.has(depth) && token === ',')
+      throw new AppError(
+        'ValidationError',
+        'Query report comma joins are unsupported; use JOIN with an explicitly schema-qualified relation',
+      )
+    if (fromDepths.has(depth) && /^(where|group|having|order|limit|offset|fetch|for|union|intersect|except|returning)$/.test(token))
+      fromDepths.delete(depth)
+  }
   const ctes = new Set(
     [...lexical.matchAll(/(?:\bwith\b|,)\s*(?:"([^"]+)"|([a-z_][a-z0-9_]*))\s+as\s*\(/gi)]
       .map((m) => (m[1] ?? m[2]).toLowerCase()),

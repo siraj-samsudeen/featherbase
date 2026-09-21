@@ -19,6 +19,34 @@ evidence and STC checks passed with no new gaps or orphan markers; all 13 OpenSp
 specifications passed strict validation; `git diff --check` passed. No push, pull
 request, merge or deployment was performed.
 
+## 2026-09-21 — Convergence worker migration and edge proof (#296)
+
+Progressive migration proof used three disposable databases. A fresh install
+produced 64 Featherbase base tables, migration ledger 95 and only `public.site`
+in public. An exact `cf88a7b` upgrade retained OIDs `2335350` (`table_def`),
+`2336342` (`Upgrade Note`) and `2336357` (`tasker.task`), two asymmetric core
+rows, one Tasker row, disabled Tasker metadata and its ACL/RLS state. A forced
+destination collision failed with both old objects and ledger 94 intact; removing
+the collision and retrying produced one complete ledger-95 state. Re-running the
+released migration remained idempotent. Legacy names with repeated interior or
+trailing whitespace retained their exact runtime-derived physical names, OIDs and
+rows. A missing metadata-required relation failed closed at ledger 94 and rolled
+earlier moves back. Focused import/revert, tenancy, RLS, Query Report and
+runtime-package tests passed 57/57; Query Reports also reject comma-join operands
+that could otherwise evade explicit-schema validation.
+
+Parallel proof is isolated: the convergence suite owns
+`featherbase_test_issue_296_convergence`, and the literal package/browser proof
+owns `featherbase_issue_296_convergence_runtime_e2e` on port 8497. The full
+server suite passed 826/826 with 15 MySQL-only skips; web passed 147/147; all
+workspace typechecks and SQL lint passed. The frozen-core proof passed with hash
+`7a722ec9bb600f40a39def1ac1063ae48259951e57169572a5c8c5aa9d2bee1a`, including
+disable/re-enable, restart, missing-code recovery, signed-out Tasker return and
+old-route query/fragment preservation. Direct Tasker and unavailable-state
+captures under `dist/runtime-proof-6L2HgG/` were visually inspected with no
+broken layout. Strict OpenSpec, STC and evidence checks are the final handoff
+gates; no shared Railway database was touched.
+
 ## 2026-09-21 — Tasker OpenSpec comparison, without replacing journey specs (#296)
 
 Cherry-picked only the OpenSpec/STC evaluation commit from PR #289 and retained

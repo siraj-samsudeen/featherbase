@@ -42,6 +42,17 @@ describe('RPT-004: query reports', () => {
     expect(() => assertExplicitReportRelations('select * from public."user"')).toThrow(/is stale/)
     expect(() => assertExplicitReportRelations('select * from public.site')).not.toThrow()
     expect(() => assertExplicitReportRelations('with active as (select * from featherbase."user") select * from active')).not.toThrow()
+    expect(() =>
+      assertExplicitReportRelations('select u.row_id from featherbase.role r, "user" u'),
+    ).toThrow(/comma joins are unsupported/)
+    expect(() =>
+      assertExplicitReportRelations('select u.row_id from featherbase.role r$where, "user" u'),
+    ).toThrow(/comma joins are unsupported/)
+    expect(() =>
+      assertExplicitReportRelations(
+        'select u.row_id from featherbase.role r join featherbase."user" u on true',
+      ),
+    ).not.toThrow()
   })
 
   test('runs with a bound date filter (and returns nothing for a future date)', async ({
