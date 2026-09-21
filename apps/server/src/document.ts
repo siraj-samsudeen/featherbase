@@ -1048,6 +1048,7 @@ async function amendDocImpl(
 }
 
 // DOC-006: a row referenced by Reference columns anywhere cannot be deleted.
+// @spec runtime_row_delete_guard
 export function deleteDoc(...args: Parameters<typeof deleteDocImpl>) {
   return appOperation(() => deleteDocImpl(...args))
 }
