@@ -60,7 +60,12 @@ The `task-management` AppManifest owns two Tables under module `Tasks`:
 - **Team Project** — `project_name` only, with generated identity and title column.
 - **Team Task** — title, description, state, completion checkbox, shared urgent flag, optional project, optional Personal tasks owner, optional responsible person, and hidden prior-state storage for completion undo.
 
-The names are app-safe rather than bare `Task`/`Project`: app installation adopts a pre-existing Table of the same name, so generic names could silently bind the app to an unrelated local schema.
+These global names were a prototype precaution, not app-scoped identity.
+Correction (21-Sep-2026): installation calls `createTable`, which rejects an
+existing Table name; it does **not** adopt that Table. The runtime slice below
+supersedes these names with `tasker.task` and `tasker.project`, with explicit
+physical storage metadata. The old local prototype requires a deliberate,
+data-preserving transition rather than adoption by matching display label.
 
 The manifest grants the implicit `All` role read/write/create/delete on both Tables. This matches the settled trusted-team scope without requiring role assignment before the prototype is usable.
 

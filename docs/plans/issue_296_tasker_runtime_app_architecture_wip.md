@@ -65,7 +65,46 @@ These are starting constraints for learning, not permanent platform promises:
 
 Observed friction in the experiment should revise the contribution contract. The first implementation is evidence gathering, not an attempt to freeze a comprehensive plugin API.
 
-## Pending decisions, in order
+## Executable learning slice (21-Sep-2026)
+
+Spec [0011](../specs/0011-runtime-packages.md) now fixes the acceptance surface
+for this experiment. The sections below remain history of the exploration,
+not permission to defer the approved build for more architecture discussion.
+
+Stable implementation checkpoints, with a red/green test at each seam:
+
+1. Persist separate label, owner and physical schema/relation metadata. Replace
+   physical-name guessing on app-owned paths with one resolver. Prove two
+   visible Tasks, different schemas/columns, same row ID, explicit references
+   and asymmetric ordinary-user permissions through real HTTP.
+2. Load versioned manifests/compiled owned-Table hooks from operator-configured
+   package directories at boot. Add non-destructive enable/disable and separate
+   signed-in catalog. Reject missing/incompatible code before activation.
+   Serialize lifecycle transitions with admitted operations, including their
+   post-commit work; reference holders and children also require activation.
+3. Extract Tasker server/client into an independently buildable npm-compatible
+   directory. Serve only its client build root under `/apps/tasker/`, with a
+   separate React root and full-stage shell. Remove core Tasker exceptions and
+   proxy `/apps/` in Vite. Add minimal Other package with a different Task rule.
+4. Supply deterministic local prototype transition with collision refusal.
+   Inspection found an installed `task-management` app and both Team Tables in
+   the developer database on 21-Sep-2026; do not uninstall/drop these for tests.
+   Exercise transition against disposable data before any developer DB write.
+5. Build core first, then stage independently built packages without another
+   core build. Prove install/open/use/disable/re-enable/restart, unavailable
+   code, client-root containment and missing assets. Inspect desktop/mobile
+   captures. Run affected server/web suites, broader storage regressions,
+   typechecks and evidence checker. Record commands, actual results and gaps
+   in PROGRESS. Commit locally; no push, PR, deployment or merge.
+
+Test seams are the already agreed generic authenticated APIs, package loading
+from real artifacts, manager lifecycle endpoints, signed-in catalog, static
+HTTP and real browser navigation. Trusted hooks receive a narrow host-owned
+validation function instead of importing AppError. Packages retain Node and
+same-origin browser powers; this is explicitly not isolation. Discovery is
+boot-only; no HTTP package installation and no dependency/capability graph.
+
+## Earlier pending decisions, retained for context
 
 1. **Trust and isolation:** what trusted means, which client/server capabilities packages receive, and which isolation boundary follows later.
 2. **Lifecycle:** install, enable, disable, upgrade, remove and purge semantics, especially the distinction between removing code and deleting app-owned data.
