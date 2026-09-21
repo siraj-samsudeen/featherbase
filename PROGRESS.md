@@ -1,5 +1,39 @@
 # Progress Log
 
+## 2026-09-21 — Prove Before Handoff and Tasker development scenarios (#296)
+
+Added the three-stage Prove Before Handoff practice (Prepare, Prove, Hand off)
+and made it the automatic development-build definition of done. The standing
+reset authorization is explicitly limited to loopback Featherbase development
+databases; shared QA/staging/production, external services and production data
+remain out of bounds.
+
+Tasker's app-owned development seed now uses ordinary HTTP APIs and is outside
+the production npm artifact. `pnpm seed:tasker -- --url=http://127.0.0.1:8000`
+adopts deterministic rows without overwriting unrelated data and refuses remote
+hosts. A concrete row is `Triage supplier invoice mismatch` (urgent, unassigned,
+Inbox); the complete set includes fake teammates, projects, assigned/unassigned,
+blocked/on-hold explanations, personal and completed work, and private focus.
+
+The literal package proof seeds that state and asserts Inbox, Projects, private
+focus order, explanation visibility, urgent/Not urgent, self-assignment,
+Done→undo restoration, detail responsiveness, stale-client rejection and an
+invalid dual destination, while retaining restart/isolation/security checks.
+Evidence is emitted as `seeded-inbox.png`, `seeded-my-work.png`, responsive detail
+captures and `evidence.json` under the printed `dist/runtime-proof-*/` directory.
+The fake teammates deliberately have no passwords; the seed never resets or
+deletes data and does not reconcile developer edits to adopted scenario rows.
+
+**Verification:** seed safety/idempotence 3/3; server runtime/transition/Tasker
+20/20 and web Tasker 6/6 against dedicated `featherbase_handoff_e2e`; server and
+web source+test typechecks; npm dry-run contained only six production files and
+no scenario seed; `pnpm apps:prove` passed with frozen core unchanged at
+`c704fb4176f745709a59d94a0ed06a6fa4013576fedbd283899a47589e4aef7f`.
+Evidence: `dist/runtime-proof-7nyjfh/`. The seeded Inbox and My Work screenshots
+were visually inspected; they show the expected content/order without overlap.
+The mobile full-page inspector capture shows underlying page content below the
+viewport-height overlay, while the asserted viewport itself remains unclipped.
+
 ## 2026-09-21 — Independent trusted runtime-package learning slice (#296)
 
 Tasker now builds outside the pnpm workspace as an npm-compatible package with

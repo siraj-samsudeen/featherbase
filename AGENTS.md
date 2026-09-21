@@ -57,3 +57,13 @@ default guidance to implement directly in the main thread.
 
 Implementation threads must do their assigned work themselves and must not
 create further threads unless the owner explicitly requests nested delegation.
+
+## Automatic definition of done: Prove Before Handoff
+
+Before any development build is offered to the owner, run the project skill
+`.agents/skills/proving-before-handoff/SKILL.md`: Prepare, Prove, then Hand off.
+A build is not done merely because it compiles or its focused tests pass.
+
+The owner gives standing authorization to reset **only** Featherbase development
+databases reached through a loopback address. This narrow authorization never
+covers shared QA, staging, production, external services, or production data.

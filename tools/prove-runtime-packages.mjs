@@ -8,6 +8,7 @@ import { cp, mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from 'node:
 import { existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { createRequire } from 'node:module'
+import { seedTasker, TASKER_SCENARIOS } from './seed-tasker-development.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const requireWeb = createRequire(resolve(root, 'apps/web/package.json'))
@@ -115,6 +116,16 @@ try {
   await start(paths)
   token = (await api('/api/login', { usr: 'Administrator', pwd: process.env.ADMIN_PASSWORD ?? 'admin' })).token
   for (const name of ['tasker', 'other']) await api('/api/install_app', { name }, 201)
+  const seeded = await seedTasker({
+    baseUrl: origin,
+    password: process.env.ADMIN_PASSWORD ?? 'admin',
+    log: (message) => console.log(`SEEDED ${message}`),
+  })
+  await api('/api/save_row', { table: 'tasker.task', row: {
+    task_title: 'Impossible dual destination',
+    project: seeded.projects['September stock review'],
+    personal_tasks_owner: 'Administrator',
+  } }, 417)
   browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {})
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } })
   await page.goto(`${origin}/login`)
@@ -124,12 +135,45 @@ try {
   await page.waitForURL('**/admin**')
   await page.locator('a[href="/tasker/"]').click()
   await expect(page).toHaveURL(`${origin}/tasker/`)
+  await expect(page.getByText('Triage supplier invoice mismatch')).toBeVisible()
+  await expect(page.getByText('Collect ideas for the Monday review')).toBeVisible()
+  await expect(page.getByText('Blocked until the warehouse confirms the night-shift roster.')).toBeVisible()
+  const urgentInbox = page.locator('article').filter({ hasText: 'Triage supplier invoice mismatch' })
+  const ordinaryInbox = page.locator('article').filter({ hasText: 'Collect ideas for the Monday review' })
+  await expect(urgentInbox.getByRole('button', { name: /Remove urgent flag/ })).toHaveText(/Urgent/)
+  await expect(ordinaryInbox.getByRole('button', { name: /Mark urgent/ })).toHaveText(/Not urgent/)
+  await page.screenshot({ path: resolve(output, 'seeded-inbox.png'), fullPage: true })
+
+  await page.getByRole('button', { name: /My Work/ }).click()
+  const workTitles = await page.locator('main article a[href^="#task="]').allTextContents()
+  assert.deepEqual(workTitles.slice(0, 3), TASKER_SCENARIOS.focus)
+  await page.screenshot({ path: resolve(output, 'seeded-my-work.png'), fullPage: true })
+
+  await page.getByRole('button', { name: 'Projects' }).click()
+  await page.getByRole('button', { name: 'September stock review' }).click()
+  await expect(page.getByText('Reconcile the first stock variance')).toBeVisible()
+  const unassignedProjectTask = page.locator('article').filter({ hasText: 'Photograph the receiving bay' })
+  await unassignedProjectTask.getByRole('button', { name: 'Take it' }).click()
+  await expect(unassignedProjectTask.getByRole('button', { name: 'Take it' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: /My Work/ }).click()
+  const seededTask = page.locator('article').filter({ hasText: 'Reconcile the first stock variance' })
+  const seededDone = seededTask.getByRole('checkbox', { name: 'Mark Reconcile the first stock variance done' })
+  await seededDone.click()
+  await expect(seededDone).toBeChecked()
+  await expect(seededTask.getByRole('combobox', { name: 'State for Reconcile the first stock variance' })).toHaveValue('Done')
+  await seededDone.click()
+  await expect(seededDone).not.toBeChecked()
+  await expect(seededTask.getByRole('combobox', { name: 'State for Reconcile the first stock variance' })).toHaveValue('In progress')
+
+  await page.getByRole('button', { name: /Inbox/ }).click()
   const capture = page.getByRole('textbox', { name: 'Quick capture' })
   await capture.fill('Package-delivered stock review')
   await capture.press('Enter')
   await expect(page.getByText('Package-delivered stock review')).toBeVisible()
-  await page.getByRole('button', { name: 'Take it' }).click()
-  await expect(page.getByRole('button', { name: 'Take it' })).toHaveCount(0)
+  const packageTaskRow = page.locator('article').filter({ hasText: 'Package-delivered stock review' })
+  await packageTaskRow.getByRole('button', { name: 'Take it' }).click()
+  await expect(packageTaskRow.getByRole('button', { name: 'Take it' })).toHaveCount(0)
   await page.getByRole('combobox', { name: 'State for Package-delivered stock review' }).selectOption('In progress')
   await expect(page.getByRole('combobox', { name: 'State for Package-delivered stock review' })).toHaveValue('In progress')
   const done = page.getByRole('checkbox', { name: 'Mark Package-delivered stock review done' })
@@ -164,8 +208,10 @@ try {
   await page.getByRole('link', { name: 'Close details' }).click()
   await page.screenshot({ path: resolve(output, 'mobile.png'), fullPage: true })
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
-  const firstTask = (await api('/api/table/tasker.task')).data[0]
-  const task = await api(`/api/table/tasker.task/${firstTask.row_id}`)
+  const packageFilter = encodeURIComponent(JSON.stringify([['task_title', '=', 'Package-delivered stock review']]))
+  const packageTask = (await api(`/api/table/tasker.task?filters=${packageFilter}&fields=%5B%22row_id%22%5D`)).data[0]
+  assert(packageTask, 'Captured package task is absent from the API')
+  const task = await api(`/api/table/tasker.task/${packageTask.row_id}`)
   assert.equal(task.description, 'Delivered after the core artifact was frozen.')
   await api('/api/save_row', { table: 'other.task', row: { row_id: task.row_id, quantity: 37 } }, 201)
   const directUrl = new URL(process.env.QUERY_REPORT_DATABASE_URL ?? database)
@@ -218,7 +264,7 @@ try {
   assert.equal((await api(`/api/table/tasker.task/${task.row_id}`)).description, task.description)
   assert.equal(await digest(core), before, 'Core changed after package staging')
   assert.equal(await digest(resolve(root, 'packages/shared')), sharedBefore, 'Shared core dependency changed')
-  await writeFile(resolve(output, 'evidence.json'), JSON.stringify({ coreHash: before, coreUnchanged: true, stagedPackages: paths, database: new URL(database).pathname, journeys: ['install', 'capture', 'assign', 'complete', 'undo', 'inspect', 'disable-stale-client', 'restart', 'enable', 'missing-code', 'restore'], screenshots: ['desktop.png', 'inspector.png', 'inspector-tablet.png', 'inspector-mobile.png', 'mobile.png', 'disabled.png', 'unavailable.png'] }, null, 2))
+  await writeFile(resolve(output, 'evidence.json'), JSON.stringify({ coreHash: before, coreUnchanged: true, stagedPackages: paths, database: new URL(database).pathname, seededScenarios: TASKER_SCENARIOS, seededRows: seeded, journeys: ['install', 'seed', 'inbox-content', 'projects-content', 'private-focus-order', 'urgent-and-not-urgent', 'blocked-explanation', 'invalid-dual-destination', 'capture', 'self-assign', 'complete', 'undo-state-restoration', 'inspect-responsive', 'disable-stale-client', 'restart', 'enable', 'missing-code', 'restore'], screenshots: ['seeded-inbox.png', 'seeded-my-work.png', 'desktop.png', 'inspector.png', 'inspector-tablet.png', 'inspector-mobile.png', 'mobile.png', 'disabled.png', 'unavailable.png'] }, null, 2))
   console.log(`PKG-J1 PKG-J2 PASS — frozen core unchanged; evidence: ${output}`)
 } finally {
   await browser?.close()

@@ -343,6 +343,34 @@ is checked before executing report SQL. App-owned relations are API-only for now
 The report's SQL sees committed data, not a test sandbox's uncommitted fixtures;
 the artifact proof supplies real committed rows for this boundary.
 
+### Tasker development scenarios
+
+With Tasker installed and enabled on a running loopback development server, seed
+the deterministic discussion scenarios through the ordinary HTTP API:
+
+```bash
+ADMIN_PASSWORD=admin pnpm seed:tasker -- --url=http://127.0.0.1:8000
+```
+
+The command refuses non-loopback URLs. It adopts matching deterministic users,
+projects, tasks and explanations, preserves unrelated rows, and keeps unrelated
+task IDs after its three-item private focus order. Running it again is safe. It
+does not reset a database. The data lives in `tools/seed-tasker-development.mjs`,
+outside Tasker's npm `files` and `featherbase.json` production fixtures.
+
+Concrete seeded row: `Triage supplier invoice mismatch` is an urgent, unassigned
+Inbox task. Other scenarios cover a non-urgent Inbox item, a visibly explained
+Blocked item, two projects with assigned and unassigned work, Administrator's
+personal task, completed work, two fake `@example.test` teammates, and private
+My Work ordering. `pnpm apps:prove` creates these rows in the stamped disposable
+`*_e2e` database, checks positive UI content and API boundaries, and writes the
+rows plus screenshots to its printed `dist/runtime-proof-*/` evidence directory.
+
+Limitations: the seed authenticates as Administrator and assumes Tasker is already
+installed and enabled. It intentionally creates no passwords for fake teammates,
+and it neither removes stale prior scenario rows nor modifies an adopted row whose
+content was changed by a developer.
+
 ## Ground rules
 
 - Never mock the database or the API — if a test can't run against the
