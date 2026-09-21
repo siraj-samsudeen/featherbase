@@ -61,16 +61,16 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
   }
   const tasks = new Map()
   for (const scenario of TASKER_SCENARIOS.tasks) {
-    const { explanation, project, ...values } = scenario
+    const { explanation, comments = [], project, ...values } = scenario
     const task = await ensure('tasker.task', 'row_id', scenario.row_id, {
       ...values,
       ...(project ? { project: projects.get(project) } : {}),
     }, { task_title: scenario.task_title })
     tasks.set(scenario.row_id, task.row_id)
-    if (explanation) {
-      const filters = [['ref_table', '=', 'tasker.task'], ['ref_name', '=', task.row_id], ['content', '=', explanation]]
+    for (const content of [...(explanation ? [explanation] : []), ...comments]) {
+      const filters = [['ref_table', '=', 'tasker.task'], ['ref_name', '=', task.row_id], ['content', '=', content]]
       const comments = (await request(`/api/table/Comment${query(filters)}`)).data
-      if (!comments.length) await request('/api/save_row', { method: 'POST', body: { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: task.row_id, content: explanation } } })
+      if (!comments.length) await request('/api/save_row', { method: 'POST', body: { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: task.row_id, content } } })
     }
   }
   const focusPath = `/api/user_settings/${encodeURIComponent('Task Management Focus')}`
@@ -78,6 +78,12 @@ export async function seedTasker({ baseUrl, password = 'admin', expectedEnvironm
   const seededFocus = TASKER_SCENARIOS.focus.map((id) => tasks.get(id))
   const task_ids = [...seededFocus, ...current.filter((id) => !seededFocus.includes(id))]
   await request(focusPath, { method: 'PUT', body: { task_ids } })
+  await request(`/api/user_settings/${encodeURIComponent('tasker.projects')}`, {
+    method: 'PUT', body: { project_ids: TASKER_SCENARIOS.projectStars.map((id) => projects.get(id)) },
+  })
+  await request(`/api/user_settings/${encodeURIComponent('tasker.preferences')}`, {
+    method: 'PUT', body: { mode: TASKER_SCENARIOS.detailMode },
+  })
   log(`Tasker development scenarios ready at ${origin}/tasker/ (${tasks.size} tasks, ${projects.size} projects)`)
   return { origin, projects: Object.fromEntries(projects), tasks: Object.fromEntries(tasks), focus: task_ids }
 }

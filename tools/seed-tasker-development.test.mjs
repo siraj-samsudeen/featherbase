@@ -17,6 +17,8 @@ test('scenario contract covers the owner-approved states without production fixt
   assert(TASKER_SCENARIOS.tasks.some((task) => task.is_done))
   assert(TASKER_SCENARIOS.tasks.some((task) => task.personal_tasks_owner === 'Administrator'))
   assert.equal(TASKER_SCENARIOS.focus.length, 3)
+  assert.equal(TASKER_SCENARIOS.projectStars.length, 2)
+  assert(TASKER_SCENARIOS.tasks.some((task) => task.description && task.comments?.length > 1))
 })
 
 function fakeSeedServer({ environment = 'development', databaseServerLocal = true, redirectPing = false } = {}) {
@@ -26,7 +28,7 @@ function fakeSeedServer({ environment = 'development', databaseServerLocal = tru
     ['tasker.task', [{ row_id: 'UNRELATED-TASK-1', task_title: 'Triage supplier invoice mismatch' }, { row_id: 'UNRELATED-TASK-2', task_title: 'Triage supplier invoice mismatch' }]],
     ['Comment', []],
   ])
-  let focus = ['user-created-task']
+  const settings = new Map([['Task Management Focus', { task_ids: ['user-created-task'] }]])
   let next = 1
   const fetchImpl = async (raw, init = {}) => {
     const url = new URL(raw)
@@ -36,8 +38,9 @@ function fakeSeedServer({ environment = 'development', databaseServerLocal = tru
     else if (url.pathname === '/api/login') result = { token: 'local-token' }
     else if (url.pathname === '/api/app_catalog') result = [{ name: 'tasker' }]
     else if (url.pathname.startsWith('/api/user_settings/')) {
-      if (init.method === 'PUT') { focus = body.task_ids; result = { settings: { task_ids: focus } } }
-      else result = { settings: { task_ids: focus } }
+      const key = decodeURIComponent(url.pathname.slice('/api/user_settings/'.length))
+      if (init.method === 'PUT') { settings.set(key, body); result = { settings: body } }
+      else result = { settings: settings.get(key) ?? null }
     } else if (url.pathname === '/api/save_row') {
       const row = { row_id: `ROW-${next++}`, ...body.row }
       rows.get(body.table).push(row); result = row
@@ -52,7 +55,7 @@ function fakeSeedServer({ environment = 'development', databaseServerLocal = tru
     } else throw new Error(`unexpected ${url.pathname}`)
     return { ok: true, status: 200, redirected: redirectPing && url.pathname === '/api/ping', url: redirectPing && url.pathname === '/api/ping' ? 'http://127.0.0.1:8999/api/ping' : url.href, json: async () => result }
   }
-  return { rows, fetchImpl, focus: () => focus }
+  return { rows, fetchImpl, focus: () => settings.get('Task Management Focus').task_ids, settings }
 }
 
 test('seed refuses redirects before sending the administrator credential', async () => {
@@ -84,6 +87,8 @@ test('seeding twice adopts deterministic IDs and leaves duplicate-title rows unt
   assert.equal(focus.at(-1), 'user-created-task')
   assert.equal(new Set(focus).size, focus.length)
   assert(focus.every(id => id === 'user-created-task' || id.startsWith('DEV-TASKER-TASK-')))
+  assert.deepEqual(server.settings.get('tasker.projects').project_ids, TASKER_SCENARIOS.projectStars)
+  assert.deepEqual(server.settings.get('tasker.preferences'), { mode: 'inspector' })
   assert.equal(rows.get('tasker.task').filter(row => row.task_title === 'Triage supplier invoice mismatch').length, 3)
   assert.equal(rows.get('Comment').some(row => row.ref_name.startsWith('UNRELATED-')), false)
 })

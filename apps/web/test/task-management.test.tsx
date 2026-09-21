@@ -5,7 +5,7 @@ import { discoverPackages } from 'server/src/runtime-packages'
 import { resolve } from 'node:path'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { TestClient } from 'feather-testing-postgres'
-import { TaskManagementPage } from '../../../runtime-apps/tasker/src/TaskManagement'
+import { peopleWithTaskResponsibility, TaskManagementPage } from '../../../runtime-apps/tasker/src/TaskManagement'
 import { setSession } from '../src/lib/api'
 import { test, expect } from './pg-test'
 
@@ -22,6 +22,17 @@ async function install() {
   if (await isInstalled(APP)) await uninstallApp(APP)
   await installApp(APP)
 }
+
+test('Together retains responsibility whose user is outside the fetched directory page', () => {
+  expect(peopleWithTaskResponsibility(
+    [{ row_id: 'first@example.test' }],
+    [{ assigned_to: 'outside-page@example.test' }],
+    'first@example.test',
+  )).toEqual([
+    { row_id: 'first@example.test' },
+    { row_id: 'outside-page@example.test' },
+  ])
+})
 
 test('TSK-J1 TSK-R1 TSK-R2: Enter captures a title-only task in Inbox', async ({ admin }) => {
   await install()
@@ -221,6 +232,98 @@ test('task rows offer one-click self-assignment', async ({ admin }) => {
       expect(saved.assigned_to).toBe('Administrator')
     })
   } finally {
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
+// @spec project_name_is_correctable.rename_keeps_tasks
+// @spec project_tabs_are_private_ordered.frequent_project_switching
+// @spec together_groups_active_responsibility.assigned_unassigned_and_finished
+test('TSK-J4 TSK-R11 TSK-R12 TSK-R13: projects stay correctable, private tabs stay personal, and Together shows active responsibility', async ({ admin, createUser }) => {
+  await install()
+  try {
+    const first = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: 'tasker.project', row: { project_name: 'September stock review' },
+    })
+    const second = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: 'tasker.project', row: { project_name: 'Store opening readiness' },
+    })
+    await admin.post('/api/save_row', { table: 'tasker.task', row: {
+      task_title: 'Reconcile receiving variance', project: first.row_id, assigned_to: 'Administrator',
+    } })
+    await admin.post('/api/save_row', { table: 'tasker.task', row: {
+      task_title: 'Choose the count date', project: first.row_id,
+    } })
+    await admin.post('/api/save_row', { table: 'tasker.task', row: {
+      task_title: 'Archive finished checklist', project: second.row_id, task_state: 'Done',
+    } })
+    const member = await createUser({ roles: [] })
+    renderTasker(admin)
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: 'Projects' }))
+    await user.click(await screen.findByRole('button', { name: 'September stock review' }))
+    await user.click(screen.getByRole('button', { name: 'Rename' }))
+    await user.clear(screen.getByRole('textbox', { name: 'Rename project' }))
+    await user.type(screen.getByRole('textbox', { name: 'Rename project' }), 'Stock review — September{Enter}')
+    expect(await screen.findByRole('heading', { name: 'Stock review — September' })).toBeInTheDocument()
+    expect(screen.getByText('Reconcile receiving variance')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Star project Stock review — September' }))
+    await user.click(screen.getByRole('button', { name: 'Star project Store opening readiness' }))
+    await user.click(screen.getByRole('button', { name: 'Move project Store opening readiness left' }))
+    expect(await admin.get('/api/user_settings/tasker.projects')).toEqual({
+      settings: { project_ids: [second.row_id, first.row_id] },
+    })
+    expect(await member.get('/api/user_settings/tasker.projects')).toEqual({ settings: null })
+
+    await user.click(screen.getByRole('button', { name: 'Together' }))
+    expect(await screen.findByRole('heading', { name: /Unassigned 1/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Administrator 1/ })).toBeInTheDocument()
+    expect(screen.getByText('Choose the count date')).toBeInTheDocument()
+    expect(screen.getByText('Reconcile receiving variance')).toBeInTheDocument()
+    expect(screen.queryByText('Archive finished checklist')).not.toBeInTheDocument()
+  } finally {
+    location.hash = ''
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
+// @spec task_detail_has_three_modes.choose_depth_without_losing_task
+// @spec task_activity_stays_in_tasker.comment_and_edit_are_visible
+test('TSK-R14 TSK-R15: one task switches among three detail modes with integrated comments and history', async ({ admin }) => {
+  await install()
+  try {
+    const task = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: 'tasker.task', row: { task_title: 'Confirm the warehouse count', description: 'Confirm scope and date.' },
+    })
+    await admin.post('/api/save_row', { table: 'tasker.task', row: {
+      row_id: task.row_id, updated_at: task.updated_at, urgent: true,
+    } })
+    await admin.post('/api/save_row', { table: 'Comment', row: {
+      ref_table: 'tasker.task', ref_name: task.row_id, content: 'Warehouse lead is checking the roster.',
+    } })
+    renderTasker(admin)
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('link', { name: 'Confirm the warehouse count' }))
+    expect(await screen.findByRole('complementary', { name: 'Task details' })).toBeInTheDocument()
+    expect(await screen.findByText('Warehouse lead is checking the roster.')).toBeInTheDocument()
+    expect(screen.getByTestId('task-activity')).toHaveTextContent('urgent: false → true')
+    await user.type(screen.getByRole('textbox', { name: 'Add comment' }), 'Count is now booked for Friday.')
+    await user.click(screen.getByRole('button', { name: 'Comment' }))
+    expect(await screen.findByText('Count is now booked for Friday.')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Focus' }))
+    expect(await screen.findByRole('dialog', { name: 'Focused task details' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Compact' }))
+    expect(await screen.findByRole('region', { name: 'Task detail content' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Focused task details' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Add comment' })).not.toBeInTheDocument()
+    expect(screen.getByText('Open Inspector to edit or join the discussion.')).toBeInTheDocument()
+    expect(await admin.get('/api/user_settings/tasker.preferences')).toEqual({ settings: { mode: 'compact' } })
+  } finally {
+    location.hash = ''
     await uninstallApp(APP).catch(() => {})
   }
 })

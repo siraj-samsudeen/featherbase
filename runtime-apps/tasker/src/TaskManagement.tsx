@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api, getSessionUser, listResource } from './api'
 
-type View = 'inbox' | 'work' | 'projects' | 'personal'
+type View = 'inbox' | 'work' | 'together' | 'projects' | 'personal'
+type DetailMode = 'compact' | 'inspector' | 'focus'
 
 interface Task {
   row_id: string
@@ -19,11 +20,20 @@ interface Task {
 interface Project {
   row_id: string
   project_name: string
+  updated_at: string
 }
 
 interface TaskComment {
   ref_name: string
   content: string
+  created_by: string
+  created_at: string
+}
+
+interface TaskVersion {
+  ref_name: string
+  data: { changed?: [string, unknown, unknown][] } | null
+  created_by: string
   created_at: string
 }
 
@@ -42,6 +52,24 @@ const TASK_FIELDS = [
 
 const STATES = ['Not started', 'In progress', 'Blocked', 'On hold', 'Done', 'Cancelled']
 const FOCUS_SETTINGS = 'Task Management Focus'
+const PROJECT_SETTINGS = 'tasker.projects'
+const PREFERENCE_SETTINGS = 'tasker.preferences'
+
+function hashTaskId() {
+  return new URLSearchParams(location.hash.slice(1)).get('task')
+}
+
+export function peopleWithTaskResponsibility(
+  listed: { row_id: string }[],
+  tasks: Pick<Task, 'assigned_to'>[],
+  currentUser: string,
+) {
+  const people = [...listed]
+  for (const rowId of [currentUser, ...tasks.map((task) => task.assigned_to ?? '')]) {
+    if (rowId && !people.some((person) => person.row_id === rowId)) people.push({ row_id: rowId })
+  }
+  return people
+}
 
 export function TaskManagementPage() {
   const queryClient = useQueryClient()
@@ -54,6 +82,13 @@ export function TaskManagementPage() {
   const [personalOwner, setPersonalOwner] = useState(me)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [selectedTask, setSelectedTask] = useState(hashTaskId)
+
+  useEffect(() => {
+    const change = () => setSelectedTask(hashTaskId())
+    window.addEventListener('hashchange', change)
+    return () => window.removeEventListener('hashchange', change)
+  }, [])
 
   const tasks = useQuery({
     queryKey: ['task-management', 'tasks'],
@@ -68,7 +103,7 @@ export function TaskManagementPage() {
     queryKey: ['task-management', 'projects'],
     queryFn: () =>
       listResource<Project>('tasker.project', {
-        fields: ['row_id', 'project_name'],
+        fields: ['row_id', 'project_name', 'updated_at'],
         order_by: 'project_name asc',
         limit_page_length: 200,
       }),
@@ -89,12 +124,24 @@ export function TaskManagementPage() {
         `/api/user_settings/${encodeURIComponent(FOCUS_SETTINGS)}`,
       ),
   })
+  const projectPreferences = useQuery({
+    queryKey: ['task-management', 'project-preferences'],
+    queryFn: () => api.get<{ settings: { project_ids?: string[] } | null }>(
+      `/api/user_settings/${encodeURIComponent(PROJECT_SETTINGS)}`,
+    ),
+  })
+  const detailPreferences = useQuery({
+    queryKey: ['task-management', 'detail-preferences'],
+    queryFn: () => api.get<{ settings: { mode?: DetailMode } | null }>(
+      `/api/user_settings/${encodeURIComponent(PREFERENCE_SETTINGS)}`,
+    ),
+  })
   const comments = useQuery({
     queryKey: ['task-management', 'comments'],
     queryFn: () =>
       listResource<TaskComment>('Comment', {
         filters: [['ref_table', '=', 'tasker.task']],
-        fields: ['ref_name', 'content', 'created_at'],
+        fields: ['ref_name', 'content', 'created_by', 'created_at'],
         order_by: 'created_at asc',
         limit_page_length: 500,
       }),
@@ -118,8 +165,12 @@ export function TaskManagementPage() {
   ]
   const projectRows = allTasks.filter((task) => task.project === selectedProject)
   const personalRows = allTasks.filter((task) => task.personal_tasks_owner === personalOwner)
-  const people = [...(users.data?.data ?? [])]
-  if (me && !people.some((user) => user.row_id === me)) people.unshift({ row_id: me })
+  const allProjects = projects.data?.data ?? []
+  const projectById = new Map(allProjects.map((project) => [project.row_id, project]))
+  const starredProjectIds = (projectPreferences.data?.settings?.project_ids ?? []).filter((id) => projectById.has(id))
+  const starredProjectSet = new Set(starredProjectIds)
+  const detailMode = detailPreferences.data?.settings?.mode ?? 'inspector'
+  const people = peopleWithTaskResponsibility(users.data?.data ?? [], allTasks, me)
 
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ['task-management'] })
@@ -184,6 +235,58 @@ export function TaskManagementPage() {
     await saveFocus(next)
   }
 
+  async function saveStarredProjects(ids: string[]) {
+    setError(null)
+    queryClient.setQueryData(['task-management', 'project-preferences'], { settings: { project_ids: ids } })
+    try {
+      // @spec project_tabs_are_private_ordered
+      await api.put(`/api/user_settings/${encodeURIComponent(PROJECT_SETTINGS)}`, { project_ids: ids })
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not update project tabs')
+      await queryClient.invalidateQueries({ queryKey: ['task-management', 'project-preferences'] })
+    }
+  }
+
+  async function toggleProjectStar(id: string) {
+    await saveStarredProjects(starredProjectSet.has(id)
+      ? starredProjectIds.filter((value) => value !== id)
+      : [...starredProjectIds, id])
+  }
+
+  async function moveProjectStar(id: string, offset: -1 | 1) {
+    const from = starredProjectIds.indexOf(id)
+    const to = from + offset
+    if (from < 0 || to < 0 || to >= starredProjectIds.length) return
+    const next = [...starredProjectIds]
+    ;[next[from], next[to]] = [next[to], next[from]]
+    await saveStarredProjects(next)
+  }
+
+  async function setDetailMode(mode: DetailMode) {
+    queryClient.setQueryData(['task-management', 'detail-preferences'], { settings: { mode } })
+    try {
+      // @spec task_detail_has_three_modes
+      await api.put(`/api/user_settings/${encodeURIComponent(PREFERENCE_SETTINGS)}`, { mode })
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save detail view')
+      await queryClient.invalidateQueries({ queryKey: ['task-management', 'detail-preferences'] })
+    }
+  }
+
+  async function renameProject(project: Project, project_name: string) {
+    setError(null)
+    try {
+      // @spec project_name_is_correctable
+      await api.patch(`/api/table/tasker.project/${encodeURIComponent(project.row_id)}`, {
+        project_name, updated_at: project.updated_at,
+      })
+      await refresh()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not rename project')
+      throw err
+    }
+  }
+
   async function createProject() {
     // @spec lightweight_project_entry
     const name = projectName.trim()
@@ -208,6 +311,7 @@ export function TaskManagementPage() {
   const tabs: { id: View; label: string; count?: number }[] = [
     { id: 'inbox', label: 'Inbox', count: inbox.length },
     { id: 'work', label: 'My Work', count: myWork.length },
+    { id: 'together', label: 'Together' },
     { id: 'projects', label: 'Projects' },
     {
       id: 'personal',
@@ -241,9 +345,24 @@ export function TaskManagementPage() {
       </nav>
       </aside>
       <main className="tasker-main">
+      {starredProjectIds.length > 0 && (
+        <div className="tasker-project-tabs" aria-label="Starred projects">
+          {starredProjectIds.map((id) => (
+            <button key={id} type="button" aria-current={view === 'projects' && selectedProject === id ? 'page' : undefined}
+              onClick={() => { setSelectedProject(id); setView('projects') }}>
+              {projectById.get(id)?.project_name}
+            </button>
+          ))}
+        </div>
+      )}
       <p className="mb-6 text-sm text-[var(--color-ink-muted)]">Capture first. Decide where it belongs when you are ready.</p>
       {tasks.error && <p role="alert" className="mb-4">{tasks.error.message} · <a href="/admin">Back to Featherbase</a></p>}
       {error && <p role="alert" className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      {selectedTask && detailMode === 'compact' && (
+        <div className="tasker-compact-detail">
+          <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} />
+        </div>
+      )}
 
       {view === 'inbox' && (
         <section aria-labelledby="inbox-heading">
@@ -281,6 +400,21 @@ export function TaskManagementPage() {
         </section>
       )}
 
+      {view === 'together' && (
+        <section aria-labelledby="together-heading">
+          <SectionTitle id="together-heading" title="Together" hint="Active work grouped by who has responsibility" />
+          {[null, ...people.map((person) => person.row_id)].map((owner) => {
+            const rows = allTasks.filter((task) => task.assigned_to === owner && !['Done', 'Cancelled'].includes(task.task_state))
+            if (!rows.length) return null
+            return <div key={owner ?? 'unassigned'} className="mb-7">
+              <h3 className="mb-2 text-sm font-semibold">{owner ?? 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
+              {/* @spec together_groups_active_responsibility */}
+              <TaskList tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+            </div>
+          })}
+        </section>
+      )}
+
       {view === 'projects' && (
         <section aria-labelledby="projects-heading" className="grid gap-5 md:grid-cols-[15rem_1fr]">
           <div>
@@ -291,15 +425,22 @@ export function TaskManagementPage() {
               <button className="fc-btn-primary" disabled={saving || !projectName.trim()}>Add</button>
             </form>
             <div className="space-y-1">
-              {(projects.data?.data ?? []).map((project) => (
-                <button key={project.row_id} type="button" onClick={() => setSelectedProject(project.row_id)} className={`w-full rounded-md px-3 py-2 text-left text-sm ${selectedProject === project.row_id ? 'bg-[var(--color-brand-tint)] font-medium text-[var(--color-brand)]' : 'text-[var(--color-ink)] hover:bg-[var(--color-subtle)]'}`}>{project.project_name}</button>
+              {allProjects.map((project) => (
+                <div key={project.row_id} className={`flex items-center rounded-md ${selectedProject === project.row_id ? 'bg-[var(--color-brand-tint)]' : 'hover:bg-[var(--color-subtle)]'}`}>
+                  <button type="button" onClick={() => setSelectedProject(project.row_id)} className={`min-w-0 flex-1 truncate px-3 py-2 text-left text-sm ${selectedProject === project.row_id ? 'font-medium text-[var(--color-brand)]' : 'text-[var(--color-ink)]'}`}>{project.project_name}</button>
+                  <button type="button" aria-label={`${starredProjectSet.has(project.row_id) ? 'Unstar' : 'Star'} project ${project.project_name}`} onClick={() => void toggleProjectStar(project.row_id)} className={`px-1 text-base ${starredProjectSet.has(project.row_id) ? 'text-amber-500' : 'text-[var(--color-ink-faint)]'}`}>{starredProjectSet.has(project.row_id) ? '★' : '☆'}</button>
+                  {starredProjectSet.has(project.row_id) && <>
+                    <button type="button" aria-label={`Move project ${project.project_name} left`} onClick={() => void moveProjectStar(project.row_id, -1)} className="px-1 text-xs text-[var(--color-ink-muted)]">←</button>
+                    <button type="button" aria-label={`Move project ${project.project_name} right`} onClick={() => void moveProjectStar(project.row_id, 1)} className="px-1 text-xs text-[var(--color-ink-muted)]">→</button>
+                  </>}
+                </div>
               ))}
             </div>
           </div>
           <div>
-            {selectedProject ? (
+            {selectedProject && projectById.has(selectedProject) ? (
               <>
-                <SectionTitle title={projects.data?.data.find((project) => project.row_id === selectedProject)?.project_name ?? selectedProject} hint="Tasks begin unassigned; someone can take responsibility when work starts" />
+                <ProjectHeading project={projectById.get(selectedProject)!} onRename={renameProject} />
                 <form className="mb-3 flex gap-2" onSubmit={async (event) => { event.preventDefault(); const title = projectTask; try { await createTask(title, { project: selectedProject }); setProjectTask('') } catch { /* shown above */ } }}>
                   <label className="sr-only" htmlFor="project-task">Add task to project</label>
                   <input id="project-task" value={projectTask} onChange={(event) => setProjectTask(event.target.value)} placeholder="Add a task, then press Enter" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" autoFocus />
@@ -328,7 +469,16 @@ export function TaskManagementPage() {
         </section>
       )}
       </main>
-      <TaskInspector onSaved={refresh} />
+      {selectedTask && detailMode === 'inspector' && (
+        <aside className="tasker-inspector" aria-label="Task details">
+          <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} />
+        </aside>
+      )}
+      {selectedTask && detailMode === 'focus' && (
+        <div className="tasker-focus-detail" role="dialog" aria-label="Focused task details">
+          <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} />
+        </div>
+      )}
     </div>
   )
 }
@@ -337,16 +487,50 @@ function SectionTitle({ id, title, hint }: { id?: string; title: string; hint?: 
   return <div className="mb-3"><h2 id={id} className="text-base font-semibold text-[var(--color-ink)]">{title}</h2>{hint && <p className="text-xs text-[var(--color-ink-muted)]">{hint}</p>}</div>
 }
 
-// Hash routing keeps app navigation inside the one explicitly served entry.
-function TaskInspector({ onSaved }: { onSaved: () => Promise<void> }) {
-  const [id, setId] = useState(() => new URLSearchParams(location.hash.slice(1)).get('task'))
+function ProjectHeading({ project, onRename }: { project: Project; onRename: (project: Project, name: string) => Promise<void> }) {
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState(project.project_name)
+  useEffect(() => setName(project.project_name), [project.project_name])
+  if (editing) return <form className="mb-3 flex gap-2" onSubmit={async (event) => {
+    event.preventDefault()
+    const next = name.trim()
+    if (!next) return
+    try { await onRename(project, next); setEditing(false) } catch { /* parent shows error */ }
+  }}>
+    <label className="sr-only" htmlFor="rename-project">Project name</label>
+    <input id="rename-project" aria-label="Rename project" autoFocus value={name} onChange={(event) => setName(event.target.value)} className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] px-3 py-2 text-base font-semibold" />
+    <button className="fc-btn-primary" disabled={!name.trim()}>Save</button>
+    <button type="button" className="fc-btn" onClick={() => { setName(project.project_name); setEditing(false) }}>Cancel</button>
+  </form>
+  return <div className="mb-3 flex items-start justify-between gap-3">
+    <SectionTitle title={project.project_name} hint="Tasks begin unassigned; someone can take responsibility when work starts" />
+    <button type="button" className="fc-btn" onClick={() => setEditing(true)}>Rename</button>
+  </div>
+}
+
+function TaskDetail({ id, mode, onMode, onSaved }: {
+  id: string
+  mode: DetailMode
+  onMode: (mode: DetailMode) => Promise<void>
+  onSaved: () => Promise<void>
+}) {
+  const queryClient = useQueryClient()
+  const task = useQuery({ queryKey: ['task-management', 'detail', id],
+    queryFn: () => api.get<Task & { description: string }>(`/api/table/tasker.task/${encodeURIComponent(id)}`),
+  })
+  const taskActivity = useQuery({
+    queryKey: ['task-management', 'detail-activity', id],
+    queryFn: () => api.get<{ comments: TaskComment[]; versions: TaskVersion[] }>(
+      `/api/activity/tasker.task/${encodeURIComponent(id)}`,
+    ),
+  })
+  const [description, setDescription] = useState<string | null>(null)
+  const [comment, setComment] = useState('')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
   useEffect(() => {
-    const change = () => setId(new URLSearchParams(location.hash.slice(1)).get('task'))
-    window.addEventListener('hashchange', change)
-    return () => window.removeEventListener('hashchange', change)
-  }, [])
-  useEffect(() => {
-    if (!id) return
+    if (mode !== 'inspector') return
+    if (!window.matchMedia) return
     const compact = window.matchMedia('(max-width: 1100px)')
     const sync = () => document.documentElement.classList.toggle('tasker-compact-inspector-open', compact.matches)
     sync()
@@ -355,45 +539,93 @@ function TaskInspector({ onSaved }: { onSaved: () => Promise<void> }) {
       compact.removeEventListener('change', sync)
       document.documentElement.classList.remove('tasker-compact-inspector-open')
     }
-  }, [id])
-  return id ? <TaskDetail key={id} id={id} onSaved={onSaved} /> : null
-}
+  }, [mode])
 
-function TaskDetail({ id, onSaved }: { id: string; onSaved: () => Promise<void> }) {
-  const task = useQuery({ queryKey: ['task-management', 'detail', id],
-    queryFn: () => api.get<Task & { description: string }>(`/api/table/tasker.task/${encodeURIComponent(id)}`),
-  })
-  const [description, setDescription] = useState<string | null>(null)
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-  return <aside className="tasker-inspector" aria-label="Task details" onKeyDown={(event) => {
+  const activity = [
+    ...(taskActivity.data?.comments ?? []).map((entry) => ({ kind: 'comment' as const, at: entry.created_at, who: entry.created_by, content: entry.content })),
+    ...(taskActivity.data?.versions ?? []).map((entry) => ({ kind: 'version' as const, at: entry.created_at, who: entry.created_by, changes: entry.data?.changed ?? [] })),
+  ].sort((left, right) => new Date(left.at).getTime() - new Date(right.at).getTime())
+  const latestActivity = activity.at(-1)
+  const formatValue = (value: unknown) => value == null || value === '' ? 'empty' : String(value)
+
+  return <section className="tasker-detail" aria-label="Task detail content" onKeyDown={(event) => {
     if (event.key === 'Escape') location.hash = ''
   }}>
-    <a href="#" className="fc-btn" autoFocus>Close details</a>
-    <h2 className="my-6 text-xl font-semibold">{task.data?.task_title ?? 'Task details'}</h2>
+    <div className="tasker-detail-toolbar">
+      <a href="#" className="fc-btn" autoFocus>Close</a>
+      <div className="tasker-mode-switch" aria-label="Task detail view">
+        {([['compact', 'Compact'], ['inspector', 'Inspector'], ['focus', 'Focus']] as [DetailMode, string][]).map(([value, label]) =>
+          <button key={value} type="button" aria-pressed={mode === value} onClick={() => void onMode(value)}>{label}</button>)}
+      </div>
+    </div>
+    <h2 className="my-5 text-xl font-semibold">{task.data?.task_title ?? 'Task details'}</h2>
     {task.error && <p role="alert">{task.error.message}</p>}
     {error && <p role="alert">{error}</p>}
-    {task.data && <form onSubmit={async (event) => {
-      event.preventDefault()
-      setSaving(true)
-      setError('')
-      try {
-        await api.patch(`/api/table/tasker.task/${encodeURIComponent(id)}`, {
-          description: description ?? task.data.description, updated_at: task.data.updated_at,
-        })
-        await onSaved()
-      } catch (error) { setError(error instanceof Error ? error.message : 'Could not save') }
-      finally { setSaving(false) }
-    }}>
+    {task.data && <>
       <p className="mb-5 text-sm text-[var(--color-ink-muted)]">{task.data.task_state} · {task.data.assigned_to ?? 'Unassigned'}</p>
-      <label className="block text-sm">Description
-        <textarea className="mt-2 w-full rounded border border-[var(--color-border)] p-3" rows={10}
-          value={description ?? task.data.description ?? ''} onChange={(event) => setDescription(event.target.value)} />
-      </label>
-      <button className="fc-btn-primary mt-4" disabled={saving}>Save description</button>
-      <a className="mt-6 block text-sm text-[var(--color-brand)]" href={`/admin/tasker.task/${encodeURIComponent(id)}`}>Open comments, attachments and history in Featherbase ↗</a>
-    </form>}
-  </aside>
+      {mode === 'compact' ? <div className="tasker-compact-summary">
+        <p className="whitespace-pre-wrap text-sm">{task.data.description || 'No description yet.'}</p>
+        {latestActivity && <p className="mt-3 border-l-2 border-[var(--color-border)] pl-3 text-xs text-[var(--color-ink-muted)]">
+          Latest: {latestActivity.kind === 'comment' ? latestActivity.content : 'Task fields changed'}
+        </p>}
+        <p className="mt-3 text-xs text-[var(--color-ink-muted)]">Open Inspector to edit or join the discussion.</p>
+      </div> : <>
+      <form onSubmit={async (event) => {
+        event.preventDefault(); setSaving(true); setError('')
+        try {
+          const saved = await api.patch<Task & { description: string }>(`/api/table/tasker.task/${encodeURIComponent(id)}`, {
+            description: description ?? task.data.description, updated_at: task.data.updated_at,
+          })
+          queryClient.setQueryData(['task-management', 'detail', id], saved)
+          setDescription(null)
+          await onSaved()
+          await queryClient.invalidateQueries({ queryKey: ['task-management', 'detail-activity', id] })
+        } catch (error) { setError(error instanceof Error ? error.message : 'Could not save') }
+        finally { setSaving(false) }
+      }}>
+        <label className="block text-sm">Description
+          <textarea className="mt-2 w-full rounded border border-[var(--color-border)] p-3" rows={7}
+            value={description ?? task.data.description ?? ''} onChange={(event) => setDescription(event.target.value)} />
+        </label>
+        <button className="fc-btn-primary mt-3" disabled={saving}>Save description</button>
+      </form>
+
+      <div className="mt-7 border-t border-[var(--color-border)] pt-5">
+        <h3 className="mb-3 text-sm font-semibold">Discussion and history</h3>
+        <form className="mb-5 flex gap-2" onSubmit={async (event) => {
+          event.preventDefault()
+          const content = comment.trim()
+          if (!content) return
+          setSaving(true); setError('')
+          try {
+            // @spec task_activity_stays_in_tasker
+            await api.post('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: id, content } })
+            setComment('')
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ['task-management', 'detail-activity', id] }),
+              queryClient.invalidateQueries({ queryKey: ['task-management', 'comments'] }),
+            ])
+          } catch (error) { setError(error instanceof Error ? error.message : 'Could not add comment') }
+          finally { setSaving(false) }
+        }}>
+          <label className="sr-only" htmlFor={`task-comment-${id}`}>Add comment</label>
+          <input id={`task-comment-${id}`} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Add a comment" className="min-w-0 flex-1 rounded border border-[var(--color-border)] px-3 py-2 text-sm" />
+          <button className="fc-btn-primary" disabled={saving || !comment.trim()}>Comment</button>
+        </form>
+        {!activity.length && <p className="text-xs text-[var(--color-ink-faint)]">No discussion or changes yet.</p>}
+        <ol className="space-y-4" data-testid="task-activity">
+          {activity.map((entry, index) => <li key={`${entry.kind}-${entry.at}-${index}`} className="border-l-2 border-[var(--color-border)] pl-3 text-sm">
+            <p className="text-xs text-[var(--color-ink-muted)]"><strong className="text-[var(--color-ink)]">{entry.who}</strong> {entry.kind === 'comment' ? 'commented' : 'edited'} · {new Date(entry.at).toLocaleString()}</p>
+            {entry.kind === 'comment'
+              ? <p className="mt-1 whitespace-pre-wrap">{entry.content}</p>
+              : <ul className="mt-1 text-xs text-[var(--color-ink-muted)]">{entry.changes.length ? entry.changes.map(([field, from, to], changeIndex) => <li key={changeIndex}><strong>{field.replaceAll('_', ' ')}</strong>: {formatValue(from)} → {formatValue(to)}</li>) : <li>Task updated</li>}</ul>}
+          </li>)}
+        </ol>
+        <a className="mt-6 block text-xs text-[var(--color-brand)]" href={`/admin/tasker.task/${encodeURIComponent(id)}`}>Attachments and advanced fields in Featherbase ↗</a>
+      </div>
+      </>}
+    </>}
+  </section>
 }
 
 function Empty({ text }: { text: string }) {

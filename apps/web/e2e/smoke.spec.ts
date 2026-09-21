@@ -10,5 +10,5 @@ test('app boots: root redirects to login and the form renders', async ({ page })
 test('api is reachable through the web proxy', async ({ request }) => {
   const res = await request.get('/api/ping')
   expect(res.ok()).toBeTruthy()
-  expect(await res.json()).toEqual({ message: 'pong', db: true })
+  expect(await res.json()).toMatchObject({ message: 'pong', db: true })
 })

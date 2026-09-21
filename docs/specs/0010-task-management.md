@@ -11,6 +11,11 @@
 
 **TSK-J3 — “I am starting my day. Let me pull a personal shortlist from every project and arrange what I will look at first.”**
 
+**TSK-J4 — “I move between a few active projects, review responsibility across the team, and open each task at the depth the work needs.”**
+
+> evidence: proven — component and literal-package browser walks rename and
+> star projects, review Together, and switch one task among all detail depths.
+
 ## Prior state
 
 A signed-in member of one trusted team. Every member may see and edit every task and project. The app starts with no projects or tasks; each user’s Personal tasks list is derived from that user rather than created as a separate administrative record.
@@ -155,6 +160,53 @@ Starring adds a task to the caller’s My Focus without changing its destination
 > observes each task exactly once in My Work.
 
 My Work renders My Focus first. Assigned to me then renders assigned tasks not already in My Focus. Unstarring an assigned task moves it to the second section; unstarring any other task removes it from My Work.
+
+### TSK-R11 — Project names remain correctable
+
+> evidence: proven — component and literal-package browser walks rename a
+> populated project through an optimistic-concurrency PATCH.
+
+A team member may rename a project without recreating it or moving its tasks.
+The new name appears everywhere that stable project id is shown. A stale rename
+is rejected rather than overwriting a newer edit.
+
+### TSK-R12 — Starred projects are private quick tabs
+
+> evidence: proven — component coverage proves ordered caller-owned settings
+> against a second user; the package browser opens the resulting quick tab.
+
+Starring a project adds it to that person’s ordered quick tabs without changing
+the shared project. Unstarring removes only the tab. Missing projects are omitted
+and removed on the next preference write, as with stale task focus.
+
+### TSK-R13 — Together groups active responsibility
+
+> evidence: proven — asymmetric component and package-browser cases show
+> assigned and unassigned active work while excluding Done.
+
+Together groups active tasks by their sole responsible person and places tasks
+without a responsible person in Unassigned. Done and Cancelled tasks are not
+active work and do not appear in Together.
+
+### TSK-R14 — Task detail has three deliberate depths
+
+> evidence: proven — component and package-browser walks switch the same task
+> through compact, right-inspector and focused-page modes and persist the choice.
+
+Opening a task defaults to a right inspector so list context remains visible.
+The person may switch the same task to a compact in-list view or a focused full
+task page, and back again without changing the selected task. The chosen
+mode is a private server-synced preference and survives reload.
+
+### TSK-R15 — Discussion and history live with the task
+
+> evidence: proven — component, server and literal-package browser cases show
+> comments and field history without broad Version-table permission.
+
+Task detail shows the description, an append-only comment composer, existing
+comments, and shared field-change history in chronological order. A member need
+not leave Tasker for ordinary discussion or history. Attachments may still use
+the generic Featherbase surface in this slice.
 
 ## Invariants and hazards
 

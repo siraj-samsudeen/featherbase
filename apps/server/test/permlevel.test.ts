@@ -1,6 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { createUserWithRole, makeTable, type TableRef } from './fixtures'
+import { createUserWithRole, makeTable, patchDoc, type TableRef } from './fixtures'
 import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
 
 const DT = 'Pl Salary'
@@ -66,5 +66,28 @@ describe('PERM-006: field-level (tier) permissions', () => {
     const after = await admin.get<Record<string, unknown>>(dt.rowUrl(name))
     expect(Number(after.salary)).toBe(5000)
     expect(after.employee).toBe('Alice B')
+  })
+
+  test('document activity omits restricted field values from a basic-tier reader', async ({
+    admin,
+    createUser,
+  }) => {
+    const { user, dt } = await setup(admin, createUser)
+    const list = await admin.get<{ data: { row_id: string }[] }>(dt.listUrl({ fields: ['row_id'] }))
+    const name = list.data[0].row_id
+    const before = await admin.get<Record<string, unknown>>(dt.rowUrl(name))
+    await patchDoc(admin, dt.rowUrl(name), {
+      updated_at: before.updated_at,
+      employee: 'Alice B',
+      salary: 6500,
+    })
+
+    const activity = await user.get<{
+      versions: { data: { changed: [string, unknown, unknown][] } }[]
+    }>(`/api/activity/${encodeURIComponent(DT)}/${name}`)
+    const changed = activity.versions.flatMap((version) => version.data.changed)
+    expect(changed).toContainEqual(['employee', 'Alice', 'Alice B'])
+    expect(changed.some(([field]) => field === 'salary')).toBe(false)
+    expect(JSON.stringify(activity)).not.toContain('6500')
   })
 })

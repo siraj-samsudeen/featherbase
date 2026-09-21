@@ -154,6 +154,22 @@ inspector proves app-owned navigation; starred project tabs, full task detail an
 Together/Tabs are still approved product direction, not delivered UX. No Help Desk
 implementation was added; Other is a deliberately asymmetric collision fixture.
 
+## Approved next Tasker UX slice (21-Sep-2026)
+
+The owner approved implementation and handoff without another design checkpoint:
+
+1. rename projects inline with optimistic concurrency;
+2. privately star and order projects as quick switching tabs;
+3. add Together, grouping active work by responsible person plus Unassigned;
+4. provide compact, right-inspector and focused-page task detail modes, with a
+   private server-synced mode preference;
+5. integrate comment entry, existing comments and Version history into Tasker.
+
+The slice must update deterministic realistic scenarios, prove happy and edge
+paths, render and inspect desktop/mobile states, and receive an independent
+exploratory review before human handoff. Bulk Inbox triage remains deferred until
+real use establishes its shape.
+
 ## Durable product context: Data Warehouse Operating System (DWOS)
 
 Featherbase will host a real application portfolio, not hypothetical examples:

@@ -1202,6 +1202,32 @@ app.put('/api/user_settings/:table', async (c) => {
   return c.json({ ok: true })
 })
 
+// A document's activity follows access to that document, not broad read
+// permission on the platform-wide Comment and Version tables.
+app.get('/api/activity/:table/:name', async (c) => {
+  const table = c.req.param('table')
+  const name = c.req.param('name')
+  const visibleDoc = await getDoc(table, name, who(c))
+  const visibleFields = new Set(Object.keys(visibleDoc))
+  const [comments, versions] = await Promise.all([
+    sql`select content, created_by, created_at from comment
+        where ref_table = ${table} and ref_name = ${name} order by created_at asc`,
+    sql`select data, created_by, created_at from version
+        where ref_table = ${table} and ref_name = ${name} order by created_at asc`,
+  ])
+  const visibleVersions = versions.map((version) => {
+    const data = version.data as { changed?: [string, unknown, unknown][] } | null
+    return {
+      ...version,
+      data: {
+        ...data,
+        changed: (data?.changed ?? []).filter(([field]) => visibleFields.has(field)),
+      },
+    }
+  })
+  return c.json({ comments, versions: visibleVersions })
+})
+
 // EML-006 / UI-017: assign a document to a user. Creates a ToDo in their
 // task list and notifies them (Notification Log + realtime user event).
 app.post('/api/assign', async (c) => {

@@ -219,6 +219,15 @@ describe('shared team visibility', () => {
         row: { ref_table: TASK, ref_name: task.row_id, content: 'Waiting for warehouse input' },
       })
       expect(comment).toMatchObject({ content: 'Waiting for warehouse input' })
+      const activity = await member.get<{
+        comments: Record<string, unknown>[]
+        versions: { data: { changed: [string, unknown, unknown][] } }[]
+      }>(`/api/activity/${TASK}/${task.row_id}`)
+      expect(activity.comments).toContainEqual(expect.objectContaining({ content: 'Waiting for warehouse input' }))
+      expect(activity.versions.flatMap((version) => version.data.changed)).toContainEqual([
+        'urgent', false, true,
+      ])
+      await expect(member.get('/api/table/Version')).rejects.toMatchObject({ status: 403 })
     } finally {
       await uninstallApp(APP).catch(() => {})
     }

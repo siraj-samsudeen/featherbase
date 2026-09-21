@@ -212,6 +212,63 @@ Work, and SHALL be removed on the next focus write while readable order remains.
 - **THEN** My Focus renders the two readable tasks in order and the next write
   drops the missing id.
 
+### Requirement: project_name_is_correctable
+Legacy ID: TSK-R11 · `shape: contract`
+Status: governed (#296)
+A team member SHALL be able to rename a project in its workspace. Rename SHALL
+retain the stable project id and all task links, and SHALL use optimistic
+concurrency rather than overwrite a newer name.
+
+#### Scenario: rename_keeps_tasks
+- **WHEN** a member renames `September stock review` to `Stock review — September`
+- **THEN** the selected project, quick tabs, destination choices, and existing
+  project tasks show the new name without moving or recreating those tasks.
+
+### Requirement: project_tabs_are_private_ordered
+Legacy ID: TSK-R12 · `shape: rule`
+Status: governed (#296)
+Each person SHALL own an independent server-synced ordered list of starred
+project ids. Star, unstar, and reorder SHALL NOT mutate a shared project.
+
+#### Scenario: frequent_project_switching
+- **WHEN** one member stars two projects and another member stars only one
+- **THEN** each sees only their own quick tabs and order after reload.
+
+### Requirement: together_groups_active_responsibility
+Legacy ID: TSK-R13 · `shape: rule`
+Status: governed (#296)
+Together SHALL group active tasks by responsible person and SHALL show tasks
+with no responsible person in a separate Unassigned group. Done and Cancelled
+tasks SHALL be excluded.
+
+#### Scenario: assigned_unassigned_and_finished
+- **WHEN** the shared tasks include one assigned active task, one unassigned
+  active task, and one Done task
+- **THEN** Together shows the first two in their respective groups and omits Done.
+
+### Requirement: task_detail_has_three_modes
+Legacy ID: TSK-R14 · `shape: contract`
+Status: governed (#296)
+Task detail SHALL support compact, right-inspector, and focused-page modes. The
+right inspector SHALL be the initial default. The chosen mode SHALL be a private
+server-synced preference and SHALL survive reload.
+
+#### Scenario: choose_depth_without_losing_task
+- **WHEN** a member opens a task, switches from inspector to focused page and
+  then to compact mode
+- **THEN** the same task remains selected and every mode remains reversible.
+
+### Requirement: task_activity_stays_in_tasker
+Legacy ID: TSK-R15 · `shape: contract`
+Status: governed (#296)
+Task detail SHALL show description, append-only comment entry, comments, and
+Version field changes in chronological order without navigating to the generic
+Featherbase form.
+
+#### Scenario: comment_and_edit_are_visible
+- **WHEN** a member adds a comment and changes a shared task field
+- **THEN** Tasker detail shows both events with their actor and time.
+
 ## Deferred
 
 Bulk Inbox editing; due dates and reminders; recurring tasks; dependencies;
