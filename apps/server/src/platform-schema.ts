@@ -13,6 +13,7 @@ const PLATFORM_RELATIONS = new Set([
   'import_log', 'installed_app', 'internal_metadata', 'job_execution', 'letter_head',
   'metadata_override', 'migration', 'notification_log', 'password_reset', 'patch_log',
   'permission', 'pre_auth_bucket', 'print_format', 'report', 'role',
+  'runtime_action_result',
   'sales_target_snapshot_row', 'saved_view', 'scheduled_job', 'series', 'server_script',
   'service_level_agreement', 'share', 'single_value', 'sla_priority', 'table_def',
   'tag_link', 'todo', 'translation', 'user', 'user_event', 'user_settings', 'version',

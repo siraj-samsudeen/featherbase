@@ -51,6 +51,19 @@ describe('platform SQL relation mapping', () => {
       /* join table_def */`)
   })
 
+  it('routes runtime action results to private platform storage without capturing app relations', () => {
+    const mapped = qualifyPlatformSql(`
+      select r.result, t.title
+      from runtime_action_result r
+      join tasker.task t on true`)
+
+    expect(mapped).toBe(`
+      select r.result, t.title
+      from "featherbase".runtime_action_result r
+      join tasker.task t on true`)
+    expect(mapped).not.toContain('public.runtime_action_result')
+  })
+
   it('qualifies DDL targets and references but leaves the public site registry explicit', () => {
     expect(qualifyPlatformSql(
       'create table if not exists role (id text references "user"); create unique index role_id on role(id); select * from public.site',
