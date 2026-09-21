@@ -530,6 +530,11 @@ function TaskDetail({ id, mode, onMode, onSaved }: {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   useEffect(() => {
+    setDescription(null)
+    setComment('')
+    setError('')
+  }, [id])
+  useEffect(() => {
     if (mode !== 'inspector') return
     if (!window.matchMedia) return
     const compact = window.matchMedia('(max-width: 1100px)')

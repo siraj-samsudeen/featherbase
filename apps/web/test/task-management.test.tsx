@@ -329,3 +329,33 @@ test('task_detail_flow: one task switches among three detail modes with comments
     await uninstallApp(APP).catch(() => {})
   }
 })
+
+test('task details do not carry unsaved text into another task', async ({ admin }) => {
+  await install()
+  try {
+    await admin.post('/api/save_row', {
+      table: 'tasker.task',
+      row: { task_title: 'First task', description: 'First description' },
+    })
+    await admin.post('/api/save_row', {
+      table: 'tasker.task',
+      row: { task_title: 'Second task', description: 'Second description' },
+    })
+    renderTasker(admin)
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('link', { name: 'First task' }))
+    const firstDescription = await screen.findByRole('textbox', { name: 'Description' })
+    await user.clear(firstDescription)
+    await user.type(firstDescription, 'Unsaved first-task draft')
+    await user.type(screen.getByRole('textbox', { name: 'Add comment' }), 'Unsaved first-task comment')
+
+    await user.click(screen.getByRole('link', { name: 'Second task' }))
+
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Description' })).toHaveValue('Second description'))
+    expect(screen.getByRole('textbox', { name: 'Add comment' })).toHaveValue('')
+  } finally {
+    location.hash = ''
+    await uninstallApp(APP).catch(() => {})
+  }
+})
