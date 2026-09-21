@@ -3,6 +3,7 @@ import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
+import { afterDocumentCommit } from './action-transaction'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
@@ -226,7 +227,8 @@ async function validateLinks(
     }
     const [row] = await tx`
       select 1 from ${tx(await tableRelation(target))}
-      where ${tx(physicalRowKey(target))} = ${String(value)}`
+      where ${tx(physicalRowKey(target))} = ${String(value)}
+      ${target.includes('.') ? tx`for key share` : tx``}`
     if (!row)
       errors[prefix + f.column_name] = `${target} ${String(value)} does not exist`
   }
@@ -234,8 +236,23 @@ async function validateLinks(
     throw new AppError('ValidationError', `Invalid links for ${meta.name}`, errors)
 }
 
+// @spec guarded_action_deletion_preserves_retained_work
+async function lockDiscussionTargets(tx: typeof sql, meta: TableMeta, row: RowValues, user: string, old?: RowValues) {
+  if (meta.name !== 'Comment') return
+  for (const target of [old, row]) {
+    if (!target || typeof target.ref_table !== 'string' || !target.ref_table.includes('.')) continue
+    const table = target.ref_table
+    const name = String(target.ref_name ?? '')
+    const targetMeta = await getMeta(table)
+    const [exists] = await tx`select 1 from ${tx(await tableRelation(table))}
+      where ${tx(targetMeta.row_key)} = ${name} for key share`
+    if (!exists) throw new AppError('NotFoundError', `${table} ${name} not found`)
+    await getDoc(table, name, user)
+  }
+}
+
 // PERM-005: gate a concrete row against the user's Data Scopes.
-async function assertUserPermissions(
+export async function assertUserPermissions(
   user: string,
   meta: TableMeta,
   row: RowValues,
@@ -585,6 +602,7 @@ async function saveDocImpl(
         status: row.status,
         position: row.position,
       }
+      await lockDiscussionTargets(stx, meta, dbRow, user)
       await validateLinks(stx, meta, dbRow)
       const inserted = await tx`insert into ${tx(tbl)} ${tx(dbRow as unknown as Record<string, never>)} returning *`
       for (const input of finalChildInputs)
@@ -600,13 +618,13 @@ async function saveDocImpl(
   const insertResult = await loadChildren(meta, { table, ...(saved as RowValues) })
   // EML-004: fire matching email rules post-commit. Frappe's Save event covers
   // inserts too, so both on_create and on_save rules are evaluated here.
-  await evaluateEmailRules('on_create', meta.name, insertResult)
-  await evaluateEmailRules('on_save', meta.name, insertResult)
-  // Auto-assignment: apply any Assignment Rules for this Table (post-commit).
-  await evaluateAssignmentRules(meta.name, insertResult)
-  // PLAT-005: fire webhooks post-commit for the create event.
-  await evaluateWebhooks('after_insert', meta.name, insertResult)
-  await runHooks('after_commit', { row: insertResult, meta, user, isNew: true, tx: sql })
+  await afterDocumentCommit(async () => {
+    await evaluateEmailRules('on_create', meta.name, insertResult)
+    await evaluateEmailRules('on_save', meta.name, insertResult)
+    await evaluateAssignmentRules(meta.name, insertResult)
+    await evaluateWebhooks('after_insert', meta.name, insertResult)
+    await runHooks('after_commit', { row: insertResult, meta, user, isNew: true, tx: sql })
+  })
   return insertResult
 }
 
@@ -847,6 +865,7 @@ async function updateDoc(
         updated_at: new Date(),
         updated_by: user,
       }
+      await lockDiscussionTargets(stx, meta, { ...existing, ...dbRow }, user, existing as RowValues)
       await validateLinks(stx, meta, dbRow)
       const [updated] = await tx`
         update ${tx(table)} set ${tx(dbRow)} where ${tx(meta.row_key)} = ${name} returning *`
@@ -867,16 +886,12 @@ async function updateDoc(
   const updateResult = await loadChildren(meta, { table: meta.name, ...(saved as RowValues) })
   // EML-004: on_save rules fire post-commit; the pre-save snapshot lets a
   // conditional rule fire only when the value transitions into the match.
-  await evaluateEmailRules('on_save', meta.name, updateResult, previous)
-  // PLAT-005: fire webhooks post-commit for the update event.
-  await evaluateWebhooks('on_update', meta.name, updateResult)
-  await runHooks('after_commit', {
-    row: updateResult,
-    old: previous,
-    meta,
-    user,
-    isNew: false,
-    tx: sql,
+  await afterDocumentCommit(async () => {
+    await evaluateEmailRules('on_save', meta.name, updateResult, previous)
+    await evaluateWebhooks('on_update', meta.name, updateResult)
+    await runHooks('after_commit', {
+      row: updateResult, old: previous, meta, user, isNew: false, tx: sql,
+    })
   })
   return updateResult
 }
@@ -1108,13 +1123,13 @@ async function deleteDocImpl(
   // Post-commit: caches keyed on this row (e.g. a Data Source's pool and
   // the meta of Tables bound to it) may only be dropped once the delete is
   // actually visible to other connections.
-  await runHooks('after_commit', {
+  await afterDocumentCommit(() => runHooks('after_commit', {
     row: { [ROW_KEY]: name },
     meta,
     user,
     isNew: false,
     tx: sql,
-  })
+  }))
 }
 
 // EDS-6: delete a bound row on the source. The link-integrity check runs

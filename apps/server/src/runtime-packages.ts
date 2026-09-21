@@ -7,7 +7,8 @@ import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
 import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
-import { RESERVED_APP_ROOTS, appHref } from 'shared'
+import { RESERVED_APP_ROOTS, appHref, type RuntimeActionHandler } from 'shared'
+import { actionDeclaration, executeRuntimeAction, type DeclaredActions } from './runtime-actions'
 
 // Public v1 hook contract is structural: packages never import core classes.
 export interface PackageHookContext {
@@ -38,6 +39,7 @@ const manifestSchema = z.object({
   server: z.string().optional(),
   client: z.string().optional(),
   entryTable: z.string(),
+  actions: actionDeclaration.optional(),
 }).strict()
 
 interface RuntimePackage {
@@ -45,6 +47,7 @@ interface RuntimePackage {
   title: string
   entryTable: string
   clientRoot?: string
+  actions?: DeclaredActions
 }
 const packages = new Map<string, RuntimePackage>()
 export const packageFailures: { path: string; error: string }[] = []
@@ -91,11 +94,31 @@ export function discoverPackages(paths: string[]) {
           await contained(clientRoot, 'index.html')
         }
         const doc_events: AppManifest['doc_events'] = {}
+        const handlers = new Map<string, RuntimeActionHandler>()
+        // @spec declared_app_actions_fail_closed
+        if (manifest.actions) {
+          if (!manifest.server) throw new Error('Declared actions require a server module')
+          if (new Set(manifest.actions.names).size !== manifest.actions.names.length
+            || new Set(manifest.actions.tables).size !== manifest.actions.tables.length)
+            throw new Error('Duplicate action names or Tables')
+          for (const table of manifest.actions.tables) {
+            if (!names.has(table) && (!manifest.permissions.some(permission => permission.table === table) || table.includes('.')))
+              throw new Error('Shared action Tables require declared permissions; other apps are not allowed')
+          }
+        }
         if (manifest.server) {
           const modulePath = await contained(root, manifest.server)
           if (!/\.(mjs|js)$/.test(modulePath)) throw new Error('Server module must be compiled JavaScript')
           const module = await import(/* @vite-ignore */ pathToFileURL(modulePath).href)
           if (module.apiVersion !== 1) throw new Error('Incompatible server API version')
+          const exported = module.actions ?? {}
+          if (!exported || typeof exported !== 'object' || Array.isArray(exported)) throw new Error('Expected named action handlers')
+          for (const [name, handler] of Object.entries(exported)) {
+            if (!manifest.actions?.names.includes(name) || typeof handler !== 'function')
+              throw new Error('Action handlers must match declared names')
+            handlers.set(name, handler as RuntimeActionHandler)
+          }
+          if (handlers.size !== (manifest.actions?.names.length ?? 0)) throw new Error('Missing declared action handler')
           for (const [table, validator] of Object.entries(module.validators ?? {})) {
             if (!names.has(table) || typeof validator !== 'function')
               throw new Error('Validators must target owned Tables')
@@ -109,13 +132,22 @@ export function discoverPackages(paths: string[]) {
           permissions: manifest.permissions, doc_events, runtime_package: true,
           runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } })
         packages.set(manifest.name, { name: manifest.name, title: manifest.title,
-          entryTable: manifest.entryTable, clientRoot })
+          entryTable: manifest.entryTable, clientRoot,
+          actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers } : undefined })
       } catch (error) {
         packageFailures.push({ path: directory, error: error instanceof Error ? error.message : String(error) })
       }
     }
     return packageFailures
   }, true)
+}
+
+export function runPackageAction(app: string, action: string, input: unknown, user: string) {
+  return executeRuntimeAction(app, action, input, user, () => packages.get(app)?.actions)
+}
+
+export function declaredPackageActions() {
+  return [...packages.values()].map(pkg => ({ app: pkg.name, actions: [...(pkg.actions?.handlers.keys() ?? [])] }))
 }
 
 export async function appCatalog(user: string) {

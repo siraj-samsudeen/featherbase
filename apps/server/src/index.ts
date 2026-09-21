@@ -61,7 +61,8 @@ import { parseFilters, runQueryReport } from './query-report'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
-import { discoverPackages, appCatalog, appAsset, packageFailures } from './runtime-packages'
+import { discoverPackages, appCatalog, appAsset, packageFailures, runPackageAction, declaredPackageActions } from './runtime-packages'
+import { documentActivity } from './document-activity'
 import { APP_ROOT_PATTERN, appHref } from 'shared'
 import { appOperation } from './app-lifecycle'
 import { createSite, listSites, resolveSite, siteCreateTableDef, siteListTableDefs, siteCreateUser, siteListUsers } from './tenancy'
@@ -1094,9 +1095,11 @@ app.get('/api/tenancy/users', async (c) => {
 // install/uninstall their Tables + doc_events and report installed state.
 app.get('/api/apps', async (c) => {
   await assertSystemManager(who(c))
-  return c.json({ available: getAvailableApps(), installed: await listInstalledApps(), failures: packageFailures })
+  return c.json({ available: getAvailableApps(), installed: await listInstalledApps(), failures: packageFailures, actions: declaredPackageActions() })
 })
 app.get('/api/app_catalog', async (c) => c.json(await appCatalog(who(c))))
+app.post('/api/app_actions/:app/:action', async (c) =>
+  c.json(await runPackageAction(c.req.param('app'), c.req.param('action'), await c.req.json(), who(c))))
 app.post('/api/set_app_enabled', async (c) => {
   await assertSystemManager(who(c))
   const body = await c.req.json()
@@ -1209,25 +1212,7 @@ app.put('/api/user_settings/:table', async (c) => {
 app.get('/api/activity/:table/:name', async (c) => {
   const table = c.req.param('table')
   const name = c.req.param('name')
-  const visibleDoc = await getDoc(table, name, who(c))
-  const visibleFields = new Set(Object.keys(visibleDoc))
-  const [comments, versions] = await Promise.all([
-    sql`select content, created_by, created_at from comment
-        where ref_table = ${table} and ref_name = ${name} order by created_at asc`,
-    sql`select data, created_by, created_at from version
-        where ref_table = ${table} and ref_name = ${name} order by created_at asc`,
-  ])
-  const visibleVersions = versions.map((version) => {
-    const data = version.data as { changed?: [string, unknown, unknown][] } | null
-    return {
-      ...version,
-      data: {
-        ...data,
-        changed: (data?.changed ?? []).filter(([field]) => visibleFields.has(field)),
-      },
-    }
-  })
-  return c.json({ comments, versions: visibleVersions })
+  return c.json(await documentActivity(table, name, who(c)))
 })
 
 // EML-006 / UI-017: assign a document to a user. Creates a ToDo in their
