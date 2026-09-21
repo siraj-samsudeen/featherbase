@@ -24,3 +24,8 @@ The generic Featherbase client SHALL resolve runtime application identities from
 #### Scenario: parallel_requests_share_session_snapshot
 - **WHEN** a signed-in page begins multiple metadata/data requests concurrently
 - **THEN** they use one resolved snapshot until reload or a new login, while a new login cannot inherit the previous session's snapshot
+
+#### Scenario: public_exchange_ignores_expired_saved_token
+- **WHEN** a browser with an expired saved bearer redeems a valid OAuth handoff, resets a password, signs out or uses a public form
+- **THEN** the public request reaches its existing host contract without requiring an authenticated identity snapshot first
+- **AND** subsequent authenticated data operations still require the pinned snapshot and normal admission

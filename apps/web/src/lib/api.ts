@@ -3,6 +3,13 @@
 const TOKEN_KEY = 'fc_token'
 const USER_KEY = 'fc_user'
 let runtimeSnapshot: { token: string; versions: Promise<string[]> } | undefined
+// These requests establish/end credentials or serve public content. A saved
+// expired bearer must not insert a protected request in front of them.
+// @spec core_runtime_client_pins_active_identity.public_exchange_ignores_expired_saved_token
+const PUBLIC_API_PATHS = new Set([
+  '/api/login', '/api/logout', '/api/oauth/session',
+  '/api/reset_password_request', '/api/reset_password', '/api/brand', '/api/ping',
+])
 
 export interface SessionUser {
   row_id: string
@@ -56,7 +63,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   // @spec core_runtime_client_pins_active_identity.stale_generic_form_is_not_relabelled
   // @spec core_runtime_client_pins_active_identity.parallel_requests_share_session_snapshot
   let versions: string[] = []
-  if (token && path !== '/api/login' && path !== '/api/runtime_app_versions') {
+  const endpoint = path.split('?')[0]
+  if (token && endpoint !== '/api/runtime_app_versions' &&
+      !PUBLIC_API_PATHS.has(endpoint) && !endpoint.startsWith('/api/web_form/')) {
     if (runtimeSnapshot?.token !== token) {
       runtimeSnapshot = { token, versions: request<string[]>('/api/runtime_app_versions') }
     }
