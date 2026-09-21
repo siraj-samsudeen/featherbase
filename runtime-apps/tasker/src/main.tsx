@@ -13,7 +13,7 @@ try {
     queries: { retry: false, refetchOnWindowFocus: true },
   } })}><TaskManagementPage /></QueryClientProvider>)
 } catch {
-  root.render(<main><h1>Tasker</h1><p>Sign in to open your team's work.</p><a href="/login?next=%2Ftasker%2F">Sign in to Featherbase</a></main>)
+  root.render(<main><h1>Tasker</h1><p>Sign in to open your team's work.</p><a href="/featherbase/login?next=%2Ftasker%2F">Sign in to Featherbase</a></main>)
 }
 }
 void boot()

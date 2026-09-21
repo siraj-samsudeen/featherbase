@@ -165,7 +165,7 @@ export function AdminLayout() {
   useEffect(() => {
     let leader = 0 // timestamp of a recent 'g' press
     function currentTable(): string | null {
-      const m = /^\/admin\/([^/]+)/.exec(window.location.pathname)
+      const m = /^\/featherbase\/admin\/([^/]+)/.exec(window.location.pathname)
       return m ? decodeURIComponent(m[1]) : null
     }
     function onKey(e: KeyboardEvent) {

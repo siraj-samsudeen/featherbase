@@ -63,7 +63,7 @@ import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
 import { discoverPackages, appCatalog, appAsset, packageFailures, runPackageAction, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { documentActivity } from './document-activity'
-import { APP_ROOT_PATTERN, appHref } from 'shared'
+import { APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, appHref } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { createSite, listSites, resolveSite, siteCreateTableDef, siteListTableDefs, siteCreateUser, siteListUsers } from './tenancy'
 import helloCrm from './sample-apps/hello-crm'
@@ -470,7 +470,7 @@ app.use('/api/*', async (c, next) => {
 // Old bookmarks remain meaningful, but all Featherbase-owned human pages have
 // one canonical namespace. Runtime app roots and technical /api paths never
 // pass through this redirect.
-const legacyHumanRoot = /^\/(admin|login|form|portal|print|oauth-callback|reset-password|sales-target)(\/|$)/
+const legacyHumanRoot = new RegExp(LEGACY_HUMAN_ROOT_PATTERN)
 app.get('*', (c, next) => {
   const url = new URL(c.req.url)
   if (!legacyHumanRoot.test(url.pathname)) return next()

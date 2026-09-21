@@ -12,14 +12,14 @@ function routeFor(s: HomePageShortcut): string {
   const to = s.link_to
   switch (s.type) {
     case 'dashboard':
-      return `/admin/dashboard/${encodeURIComponent(to)}`
+      return `/featherbase/admin/dashboard/${encodeURIComponent(to)}`
     case 'report':
-      return `/admin/query-report/${encodeURIComponent(to)}`
+      return `/featherbase/admin/query-report/${encodeURIComponent(to)}`
     case 'url':
       return to
     case 'table':
     default:
-      return `/admin/${encodeURIComponent(to)}`
+      return `/featherbase/admin/${encodeURIComponent(to)}`
   }
 }
 

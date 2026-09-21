@@ -355,7 +355,7 @@ export function TaskManagementPage() {
   return (
     <div className="tasker-shell" data-view={view} data-testid="task-management-page">
       <aside className="tasker-sidebar">
-        <a href="/admin" className="tasker-back-link">← Featherbase</a>
+        <a href="/featherbase/admin" className="tasker-back-link">← Featherbase</a>
         <h1 className="tasker-brand">Tasker</h1>
         <p className="tasker-brand-subtitle">Team workspace</p>
       <nav aria-label="Task views" className="tasker-primary-nav">
@@ -406,7 +406,7 @@ export function TaskManagementPage() {
           ))}
         </div>
       )}
-      {tasks.error && <p role="alert" className="mb-4">{tasks.error.message} · <a href="/admin">Back to Featherbase</a></p>}
+      {tasks.error && <p role="alert" className="mb-4">{tasks.error.message} · <a href="/featherbase/admin">Back to Featherbase</a></p>}
       {error && <p role="alert" className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
       {selectedTask && detailMode === 'compact' && (
         <div className="tasker-compact-detail">
@@ -768,7 +768,7 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
               : <ul className="mt-1 text-xs text-[var(--color-ink-muted)]">{entry.changes.length ? entry.changes.map(([field, from, to], changeIndex) => <li key={changeIndex}><strong>{field.replaceAll('_', ' ')}</strong>: {formatValue(from)} → {formatValue(to)}</li>) : <li>Task updated</li>}</ul>}
           </li>)}
         </ol>
-        <a className="mt-6 block text-xs text-[var(--color-brand)]" href={`/admin/tasker.task/${encodeURIComponent(id)}`}>Attachments and advanced fields in Featherbase ↗</a>
+        <a className="mt-6 block text-xs text-[var(--color-brand)]" href={`/featherbase/admin/tasker.task/${encodeURIComponent(id)}`}>Attachments and advanced fields in Featherbase ↗</a>
       </div>
       </>}
     </>}

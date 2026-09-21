@@ -71,6 +71,24 @@ export async function adminAuth(request: APIRequestContext): Promise<{ Authoriza
   return bearer(await adminToken(request))
 }
 
+/** Install a runtime app if needed and return headers pinned to active app versions. */
+export async function ensureRuntimeApp(
+  request: APIRequestContext,
+  name: string,
+): Promise<{ Authorization: string; 'X-Featherbase-App-Version': string }> {
+  const auth = await adminAuth(request)
+  let versions = (await (await request.get('/api/runtime_app_versions', { headers: auth })).json()) as string[]
+  if (!versions.some((version) => version.startsWith(`${name}@`))) {
+    const installed = await request.post('/api/install_app', { headers: auth, data: { name } })
+    if (![201, 409].includes(installed.status()))
+      throw new Error(`install ${name}: ${installed.status()} ${await installed.text()}`)
+    versions = (await (await request.get('/api/runtime_app_versions', { headers: auth })).json()) as string[]
+  }
+  if (!versions.some((version) => version.startsWith(`${name}@`)))
+    throw new Error(`runtime app ${name} is not active after installation`)
+  return { ...auth, 'X-Featherbase-App-Version': versions.join(', ') }
+}
+
 /**
  * Interactive sign-in through the real login form. The one implementation the
  * suite has: specs used to carry ~70 subtly different copies of it, half

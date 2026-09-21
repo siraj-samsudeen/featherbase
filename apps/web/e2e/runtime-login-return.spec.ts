@@ -1,18 +1,9 @@
-import { anonymousTest as test, expect, adminAuth, ADMIN_PWD } from './fixtures'
+import { anonymousTest as test, expect, ensureRuntimeApp, ADMIN_PWD } from './fixtures'
 
 let taskId: string
 
 test.beforeAll(async ({ request }) => {
-  const headers = await adminAuth(request)
-  const meta = await request.get('/api/table/tasker.task:meta', { headers })
-  if (!meta.ok()) {
-    const installed = await request.post('/api/install_app', {
-      headers,
-      data: { name: 'tasker' },
-    })
-    if (installed.status() !== 201)
-      throw new Error(`install tasker: ${installed.status()} ${await installed.text()}`)
-  }
+  const headers = await ensureRuntimeApp(request, 'tasker')
   const saved = await request.post('/api/save_row', {
     headers,
     data: {

@@ -1819,7 +1819,7 @@ export function ImportWizard() {
                     <TargetRowCount i={i} table={plan.table} />
                     {/* Peek at the target without losing wizard state. */}
                     <a
-                      href={`/admin/${encodeURIComponent(plan.table)}`}
+                      href={`/featherbase/admin/${encodeURIComponent(plan.table)}`}
                       target="_blank"
                       rel="noreferrer"
                       data-testid={`iw-view-target-${i}`}
@@ -1869,7 +1869,7 @@ export function ImportWizard() {
                   >
                     A similar existing Table matches this sheet:{' '}
                     <a
-                      href={`/admin/${encodeURIComponent(plan.similar.name)}`}
+                      href={`/featherbase/admin/${encodeURIComponent(plan.similar.name)}`}
                       target="_blank"
                       rel="noreferrer"
                       className="font-semibold underline"
@@ -2211,7 +2211,7 @@ export function ImportWizard() {
                   >
                     Auto-matched to the existing Table{' '}
                     <a
-                      href={`/admin/${encodeURIComponent(plan.table)}`}
+                      href={`/featherbase/admin/${encodeURIComponent(plan.table)}`}
                       target="_blank"
                       rel="noreferrer"
                       className="font-semibold underline"

@@ -1,19 +1,7 @@
-import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
-
-async function ensureTaskManagement(request: APIRequestContext) {
-  const headers = await adminAuth(request)
-  const meta = await request.get('/api/table/tasker.task:meta', { headers })
-  if (meta.ok()) return
-  const installed = await request.post('/api/install_app', {
-    headers,
-    data: { name: 'tasker' },
-  })
-  if (installed.status() !== 201)
-    throw new Error(`install tasker: ${installed.status()} ${await installed.text()}`)
-}
+import { test, expect, ensureRuntimeApp } from './fixtures'
 
 test.beforeAll(async ({ request }) => {
-  await ensureTaskManagement(request)
+  await ensureRuntimeApp(request, 'tasker')
 })
 
 // @spec capture_neutral_task.entry_stays_ready
@@ -55,8 +43,8 @@ test('tasker_browser_flow: PKG-J1 PKG-R4 capture, project entry, urgency, and fo
   await page.screenshot({ path: '../../task-management.png', fullPage: true })
 
   await page.getByRole('button', { name: 'Projects' }).click()
-  await page.getByRole('textbox', { name: 'Project name' }).fill('Warehouse review')
-  await page.getByRole('textbox', { name: 'Project name' }).press('Enter')
+  await page.getByRole('textbox', { name: 'New project' }).fill('Warehouse review')
+  await page.getByRole('textbox', { name: 'New project' }).press('Enter')
   const projectTask = page.getByRole('textbox', { name: 'Add task to project' })
   await expect(projectTask).toBeFocused()
   await projectTask.fill('Compare September closing stock')

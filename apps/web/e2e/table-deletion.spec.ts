@@ -78,7 +78,7 @@ test('DEL-J1: delete an unwanted Table — counted confirmation, then gone every
     await page.getByTestId('delete-table-confirm').click()
   })
   await session
-    .assertPath('/admin/all-tables')
+    .assertPath('/featherbase/admin/all-tables')
     .assertHas('[data-testid="all-tables-page"]')
   await session.step('J1.3: the Table is gone from every module group', async ({ page }: { page: Page }) => {
     await expect(page.getByTestId('table-nav')).toBeVisible()
@@ -141,6 +141,6 @@ test('DEL-J2: refused while referenced — the refusal names the blocker; unbloc
   await session.step('J2.3′: retry the confirmation', async ({ page }: { page: Page }) => {
     await page.getByTestId('delete-table-confirm').click()
   })
-  await session.assertPath('/admin/all-tables')
+  await session.assertPath('/featherbase/admin/all-tables')
   expect((await request.get(`/api/table/${ENC}:meta`, { headers })).status()).toBe(404)
 })

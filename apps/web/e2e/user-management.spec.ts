@@ -55,7 +55,7 @@ test('SET-002: password reset via emailed link works end to end', async ({ page,
 
   // The reset link (with its key) landed in the sink; open it and set a new pw.
   const key = await resetKeyFromSink(request)
-  await page.goto(`/reset-password?key=${key}`)
+  await page.goto(`/featherbase/reset-password?key=${key}`)
   await page.getByTestId('reset-password').fill('brandnewpw456')
   await page.getByTestId('reset-confirm').fill('brandnewpw456')
   await page.getByTestId('reset-submit').click()
