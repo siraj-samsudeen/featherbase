@@ -366,7 +366,7 @@ export function TaskManagementPage() {
             {tab.count != null && <span className="tasker-count">{tab.count}</span>}
           </button>
         ))}
-        <button type="button" onClick={() => setView('projects')} aria-current={view === 'projects' ? 'page' : undefined} className="tasker-nav-item tasker-nav-projects">
+        <button type="button" onClick={() => { setSelectedProject(''); setView('projects') }} aria-current={view === 'projects' ? 'page' : undefined} className="tasker-nav-item tasker-nav-projects">
           <TaskerIcon name="projects" />
           <span>Projects</span>
         </button>
@@ -379,11 +379,6 @@ export function TaskManagementPage() {
               </button>
             </div>
           ))}
-          <form className="tasker-new-project" onSubmit={(event) => { event.preventDefault(); void createProject() }}>
-            <label className="sr-only" htmlFor="project-name">Project name</label>
-            <input id="project-name" value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="New project" />
-            <button disabled={creatingProject || !projectName.trim()} aria-label="Add project">+</button>
-          </form>
         </div>
       </nav>
       </aside>
@@ -475,7 +470,29 @@ export function TaskManagementPage() {
                 </form>
                 <TaskList tasks={projectRows} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
               </>
-            ) : <><SectionTitle id="projects-heading" title="Projects" hint="Choose a project from the sidebar, or create the first one." /><Empty text="Choose a project, or create the first one." /></>}
+            ) : <>
+              <SectionTitle id="projects-heading" title="Projects" hint="Choose an existing project or create a new shared workspace." />
+              <form className="tasker-project-create" onSubmit={(event) => { event.preventDefault(); void createProject() }}>
+                <label htmlFor="project-name">New project</label>
+                <div>
+                  <input id="project-name" value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="Project name" />
+                  <button className="fc-btn-primary" disabled={creatingProject || !projectName.trim()}>Create project</button>
+                </div>
+              </form>
+              <div className="tasker-project-directory" aria-label="All projects">
+                {allProjects.map((project) => (
+                  <button key={project.row_id} type="button" aria-label={`Open project ${project.project_name}`} onClick={() => setSelectedProject(project.row_id)} className="tasker-project-directory-item">
+                    <span className="tasker-project-directory-icon" aria-hidden="true"><TaskerIcon name="projects" /></span>
+                    <span>
+                      <strong>{project.project_name}</strong>
+                      <small>{projectTaskCounts.get(project.row_id) ?? 0} {(projectTaskCounts.get(project.row_id) ?? 0) === 1 ? 'task' : 'tasks'}</small>
+                    </span>
+                    <span aria-hidden="true">›</span>
+                  </button>
+                ))}
+                {!allProjects.length && <Empty text="No projects yet. Create the first one above." />}
+              </div>
+            </>}
         </section>
       )}
 
