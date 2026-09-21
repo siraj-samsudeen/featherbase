@@ -330,3 +330,23 @@ The slice should retain the existing task semantics but need not yet solve marke
 3. Preserve the settled direction: independently installed runtime packages; manifest plus optional client/server code; app-scoped logical identities and explicit physical mappings; Tasker’s full-stage UX.
 4. Resume at the first unresolved decision above only when the narrow runtime-package experiment forces it. Do not design the marketplace or full lifecycle first.
 5. Keep assumptions provisional and update this note with observed friction before promoting any contract into a stable spec or ADR.
+
+## Runtime upgrade checkpoint (21-Sep-2026)
+
+The earlier deferral of upgrades is superseded by the governed requirements in
+`openspec/specs/trusted-runtime-packages/spec.md`. Package authors now declare
+cumulative typed optional-column additions; the manager explicitly previews,
+commits and activates each version. `docs/DEPLOY.md` contains the package contract
+and operator sequence. This note records reasoning, not a second specification.
+
+The literal Tasker proof starts at the real package version `0.0.1` and upgrades
+to `2.0.0` while retaining asymmetric data and exact v1 artifact bytes. Failed DDL
+rolls back; committed schema cannot be paired with old code. Artifact restoration
+after commit restores the target, never silently downgrades. Local prototype
+installations that never recorded their version/full manifest require explicit
+identity recovery before they can use this path. No reset or guessed adoption
+is an acceptable migration.
+
+The standalone and convergence-integrated verification, remaining independent
+review gate and integration boundaries are recorded in `PROGRESS.md`. This worker
+does not deploy Dev or supply Tasker's Markdown editor UI.

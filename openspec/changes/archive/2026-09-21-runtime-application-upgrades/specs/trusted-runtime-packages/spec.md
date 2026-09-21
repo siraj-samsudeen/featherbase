@@ -67,3 +67,23 @@ Upgrade SHALL require the prior and target operator artifacts to be available an
 #### Scenario: committed_target_disappears
 - **WHEN** committed target code is absent but the previous artifact is present
 - **THEN** the application remains unavailable and directs the operator to restore the target artifact without modifying rows or ledger
+
+## MODIFIED Requirements
+
+### Requirement: prototype_transition_preserves_work
+Legacy ID: PKG-H1 · `shape: hazard`
+Status: governed (#296)
+The local prototype transition SHALL transactionally preserve row IDs, projects,
+references, comments, history, files, shares, focus preferences, and grants. A
+destination collision SHALL abort rather than merge or discard data. References
+to disabled app-owned Tables SHALL reject rather than resolve a same-local-name
+Table or silently skip work.
+
+#### Scenario: occupied_destination_aborts
+- **WHEN** the target Tasker relation already contains unrelated storage
+- **THEN** migration aborts and every prototype row remains unchanged.
+
+#### Scenario: transition_keeps_discussion_and_focus
+- **WHEN** prototype work with comments, history, files, shares, and focus migrates
+- **THEN** each pointer names the new qualified Table and all work is preserved
+- **AND** access resumes once the installation has a reviewed package identity and compatible code; unversioned legacy installations follow `unversioned_legacy_install_fails_closed`

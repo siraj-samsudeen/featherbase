@@ -8857,3 +8857,77 @@ its own database, post-#191) green on the PR. Closes the loop on #132.
 - Verified evidence, STC, strict OpenSpec validation, focused Tasker component
   tests and the full server suite. Next: parent review against the current
   implementation before any push or pull request.
+
+## 2026-09-21 — Transactional runtime application upgrades (#296)
+
+- Prepared and strictly validated `runtime-application-upgrades` before code.
+  Five governed requirements cover immutable cumulative identity, reviewed plan,
+  transaction/activation boundary, preservation and honest recovery. ADR 0010
+  remains unchanged; OpenSpec owns behavior. The config's unquoted YAML rule
+  containing `Status:` was corrected so the pinned CLI actually reads its rules.
+- Package-owned typed `addColumn` operations, generic ledger migration 0095,
+  manager Preview → Upgrade → Activate APIs and pinned-client version admission
+  implement the narrow slice. No Tasker-specific core migration, project editor,
+  deployment, reset of shared databases or published changes.
+- Spec five-axis review distinguished trusted immutable artifacts/single-server
+  operation from enforced promises and covered absent, active, disabled, pending,
+  missing-artifact and failed-transaction states. Semantic verification maps all
+  five new requirements to `runtime-upgrades.test.ts`, with literal restart/browser
+  evidence in `tools/prove-runtime-packages.mjs`. Strict validation/STC alone do
+  not establish that semantic agreement.
+- Code eight-axis review over loader, lifecycle, install, metadata DDL and HTTP
+  admission found one silent-success defect: a completed upgrade could replay
+  success after same-version replacement of its artifact. The regression went
+  red before the digest check and green after it (`67e7622`). No Oracle consultation
+  was needed: direct investigation settled the invariant.
+- Test three-axis review retained separate promises for rollback after the second
+  DDL, history checksums, exact retry identity, stale queued writes, disabled
+  activation and fresh-vs-upgraded schema. A scratch mutation disabling the
+  checksum-prefix guard made the expected rejection test red; its unmutated
+  baseline passed. This was an isolated copied test tree, not a production edit.
+- Standalone server: **828 passed, 15 MySQL skipped**; shared: **129 passed**;
+  server/shared typechecks and spec/STC/policy checks passed. Dedicated database
+  `featherbase_296_upgrade_test`; literal proof used
+  `featherbase_296_upgrade_e2e`, port 8497, evidence
+  `dist/runtime-proof-I5mLAk/upgrade-evidence.json` (ignored local output).
+- Convergence integration used a separate worktree, applying `29ca45b` before
+  upgrade commits `230e06d`, `0cf7f83`, `67e7622` without textual conflicts.
+  **833 server tests passed, 15 MySQL skipped**; combined focused tests: **23**.
+  Database `featherbase_296_upgrade_integrated_test`; literal proof used
+  `featherbase_296_upgrade_integrated_e2e`, port 8498, evidence
+  `dist/runtime-proof-hyVVga`. Metadata resolves to `featherbase` through
+  convergence's SQL wrapper, not a mutable pooled `search_path`; app DDL uses
+  explicit persisted physical relations. Actions 0096 and real Tasker v2 still
+  need parent integration verification; their loader/API edits overlap ours.
+- Literal proof built core before separate npm packages, created v2 after v1
+  started, restarted before commit and while activation was pending, retried,
+  activated, rejected the retained old browser, wrote/read Markdown with v2,
+  removed/restored the target artifact, and checked unchanged core/v1 bytes.
+  Example real row: `tasker.project`, `DEV-TASKER-PROJECT-STOCK-REVIEW`,
+  `Stock review — September`, description `## Upgrade proof\n\n**37** cartons; keep the original project.`
+  Unit integration additionally compares complete existing project/task/comment/
+  preferences/grant values and fresh-v2 metadata/physical columns.
+- Desktop/mobile proof screenshots were inspected. The existing mobile project
+  chip strip clips the last chip at the viewport edge; task rows/navigation remain
+  usable. This change adds no visual UI. API manager status is the operator surface.
+- Recovery boundary: before commit, old version survives; after commit, restore
+  the exact target and activate. Retained prior artifact is not a down migration.
+  Unversioned prototype installs lack enough identity to auto-adopt safely and
+  fail closed; Dev must be inspected before planning an authorized recovery.
+  `docs/DEPLOY.md` includes package contract, immutable Railway paths, curl
+  sequence and later creation of `Tasker Test Drive` without a reset.
+- STC divergence surfaced at final sync: the older prototype scenario said work
+  immediately "remains usable", whereas the new missing-identity rule and test
+  deny access until explicit identity recovery. The delta now states that
+  prerequisite rather than leaving contradictory promises. Recommendation:
+  retain fail-closed identity matching. If the owner requires automatic legacy
+  availability, add a separately reviewed adoption path with concrete historical
+  artifact evidence; never weaken matching or reset the preserved data. The
+  lifecycle table also now includes the committed/pending state.
+- Prove Before Handoff: disposable deterministic preparation and automated
+  browser/restart checks completed. **Independent exploratory review and final
+  consolidated-diff review remain parent acceptance gates**, not claimed here:
+  this worker was instructed not to delegate. No live Dev build is handed over.
+  Three useful acceptance exercises: review the nullable-column preview; verify
+  asymmetric old work after activation; attempt an old-tab write and recover a
+  missing target artifact. Parent must rerun combined verification before merge.
