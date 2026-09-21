@@ -20,9 +20,11 @@ pool, not an owner session with SET ROLE (which a nested SQL expression escaped)
 Scoped Oracle follow-up confirmed the reproduced escape is closed after the fix.
 
 The deterministic prototype migration preserves rows, references, comments, private
-focus and grants, and aborts collisions. Read-only inspection found three tasks in
-the developer database, including TASK-00003, “Follow up with Deepak on the GoFrugal
-discrepancy discussed in the call with Bala”, in TPROJ-0001 “GoFrugal Data Quality”.
+focus and grants, and aborts collisions. Its regression covers the real Comment,
+Version, File and Share pointers rather than only the task rows. Read-only
+inspection found three tasks in the developer database, including TASK-00003,
+“Follow up with Deepak on the GoFrugal discrepancy discussed in the call with
+Bala”, in TPROJ-0001 “GoFrugal Data Quality”.
 That database was not migrated; migration tests and browser proof use disposable
 databases only. Starting normal init will run the migration and needs operator
 authorization for those existing developer rows.
@@ -40,9 +42,12 @@ to the owner's direct-root decision before the final full coverage run.
 `pnpm apps:prove` passed against plain Node and compiled core frozen BEFORE
 Tasker/Other were built and packed. Install → capture → assign → complete → undo
 → inspect → disable stale client → restart → enable → missing code → restore
-preserved rows and core checksum. Evidence and inspected desktop/mobile/inspector/
-unavailable screenshots: `dist/runtime-proof-iyFeI0/`; core SHA-256
-`ea11c0236e07e34d494f07a2dac094fdaf5ccea75a9668d47cedd112c71fc8ba`.
+preserved rows and core checksum. The final proof also asserts and visually checks
+the wide side-by-side inspector plus focused tablet and phone detail layouts.
+Evidence: `dist/runtime-proof-fBa1vY/`; core SHA-256
+`c704fb4176f745709a59d94a0ed06a6fa4013576fedbd283899a47589e4aef7f`.
+Independent final-form review approved the corrected responsive inspector and
+found no remaining actionable issue.
 
 **Provisional/deferred:** single-server activation, trusted full Node/same-origin
 code, API-only app data, a small duplicated client API/CSS seam, and the generic

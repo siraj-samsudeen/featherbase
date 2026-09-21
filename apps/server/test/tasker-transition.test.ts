@@ -28,8 +28,17 @@ test('PKG-H1: prototype transition preserves work, references, comments, focus a
   const task = await member.post<{ row_id: string }>('/api/save_row', {
     table: 'Team Task', row: { task_title: 'Keep this work', project: project.row_id, task_state: 'In progress' },
   })
-  await member.post('/api/save_row', { table: 'Comment', row: {
+  const comment = await member.post<{ row_id: string }>('/api/save_row', { table: 'Comment', row: {
     ref_table: 'Team Task', ref_name: task.row_id, content: 'Keep this discussion',
+  } })
+  const version = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Version', row: {
+    ref_table: 'Team Task', ref_name: task.row_id, data: { changed: ['task_state'] },
+  } })
+  const file = await admin.post<{ row_id: string }>('/api/save_row', { table: 'File', row: {
+    file_name: 'transition-note.txt', ref_table: 'Team Task', ref_name: task.row_id,
+  } })
+  const share = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Share', row: {
+    share_table: 'Team Task', share_name: task.row_id, user: member.user, read: true,
   } })
   await member.put('/api/user_settings/Task%20Management%20Focus', { task_ids: [task.row_id] })
   const migration = await readFile(resolve('migrations/0090_tasker_prototype.sql'), 'utf8')
@@ -47,6 +56,10 @@ test('PKG-H1: prototype transition preserves work, references, comments, focus a
   expect(await member.get('/api/user_settings/Task%20Management%20Focus')).toEqual({ settings: { task_ids: [task.row_id] } })
   const comments = await member.get<{ data: unknown[] }>(`/api/table/Comment?filters=${encodeURIComponent(JSON.stringify([['ref_table', '=', 'tasker.task']]))}&fields=["content"]`)
   expect(comments.data).toEqual([{ content: 'Keep this discussion' }])
+  expect(await sql`select ref_table from comment where row_id = ${comment.row_id}`).toEqual([{ ref_table: 'tasker.task' }])
+  expect(await sql`select ref_table from version where row_id = ${version.row_id}`).toEqual([{ ref_table: 'tasker.task' }])
+  expect(await sql`select ref_table from file where row_id = ${file.row_id}`).toEqual([{ ref_table: 'tasker.task' }])
+  expect(await sql`select share_table from share where row_id = ${share.row_id}`).toEqual([{ share_table: 'tasker.task' }])
   const saved = await member.get<Record<string, unknown>>(`/api/table/tasker.task/${task.row_id}`)
   expect(await member.post('/api/save_row', { table: 'tasker.task', row: { ...saved, is_done: true } }))
     .toMatchObject({ task_state: 'Done', state_before_done: 'In progress' })

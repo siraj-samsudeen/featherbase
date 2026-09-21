@@ -144,9 +144,24 @@ try {
   await page.getByRole('textbox', { name: 'Description', exact: true }).fill('Delivered after the core artifact was frozen.')
   await page.getByRole('button', { name: 'Save description' }).click()
   await expect(page.getByRole('button', { name: 'Save description' })).toBeEnabled()
+  const inspectorBox = await page.getByRole('complementary', { name: 'Task details' }).boundingBox()
+  const captureBox = await capture.boundingBox()
+  assert(inspectorBox && captureBox)
+  assert(
+    captureBox.x + captureBox.width <= inspectorBox.x,
+    `Task inspector overlaps quick capture: ${JSON.stringify({ captureBox, inspectorBox })}`,
+  )
   await page.screenshot({ path: resolve(output, 'inspector.png'), fullPage: true })
+  for (const [width, screenshot] of [[900, 'inspector-tablet.png'], [375, 'inspector-mobile.png']]) {
+    await page.setViewportSize({ width, height: 812 })
+    const compactInspectorBox = await page.getByRole('complementary', { name: 'Task details' }).boundingBox()
+    assert(compactInspectorBox)
+    assert.equal(compactInspectorBox.x, 0)
+    assert.equal(compactInspectorBox.width, width)
+    await expect(page.getByRole('link', { name: 'Close details' })).toBeVisible()
+    await page.screenshot({ path: resolve(output, screenshot), fullPage: true })
+  }
   await page.getByRole('link', { name: 'Close details' }).click()
-  await page.setViewportSize({ width: 375, height: 812 })
   await page.screenshot({ path: resolve(output, 'mobile.png'), fullPage: true })
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
   const firstTask = (await api('/api/table/tasker.task')).data[0]
@@ -203,7 +218,7 @@ try {
   assert.equal((await api(`/api/table/tasker.task/${task.row_id}`)).description, task.description)
   assert.equal(await digest(core), before, 'Core changed after package staging')
   assert.equal(await digest(resolve(root, 'packages/shared')), sharedBefore, 'Shared core dependency changed')
-  await writeFile(resolve(output, 'evidence.json'), JSON.stringify({ coreHash: before, coreUnchanged: true, stagedPackages: paths, database: new URL(database).pathname, journeys: ['install', 'capture', 'assign', 'complete', 'undo', 'inspect', 'disable-stale-client', 'restart', 'enable', 'missing-code', 'restore'], screenshots: ['desktop.png', 'inspector.png', 'mobile.png', 'disabled.png'] }, null, 2))
+  await writeFile(resolve(output, 'evidence.json'), JSON.stringify({ coreHash: before, coreUnchanged: true, stagedPackages: paths, database: new URL(database).pathname, journeys: ['install', 'capture', 'assign', 'complete', 'undo', 'inspect', 'disable-stale-client', 'restart', 'enable', 'missing-code', 'restore'], screenshots: ['desktop.png', 'inspector.png', 'inspector-tablet.png', 'inspector-mobile.png', 'mobile.png', 'disabled.png', 'unavailable.png'] }, null, 2))
   console.log(`PKG-J1 PKG-J2 PASS — frozen core unchanged; evidence: ${output}`)
 } finally {
   await browser?.close()

@@ -27,7 +27,12 @@ button:disabled { cursor: default; opacity: .5; }
 .tasker-sidebar nav button { text-align: left; border: 0; border-radius: 6px; }
 .tasker-sidebar nav button[aria-current] { background: var(--color-brand-tint); }
 .tasker-main { padding: 36px; max-width: 1180px; width: 100%; margin: auto; align-self: start; }
-.tasker-inspector { position: fixed; right: 0; top: 0; bottom: 0; width: min(440px, 100%); overflow: auto; padding: 28px; background: white; border-left: 1px solid var(--color-border); box-shadow: -12px 0 40px #1c212610; z-index: 10; }
+.tasker-shell:has(.tasker-inspector) { grid-template-columns: 210px minmax(0, 1fr) minmax(360px, 440px); }
+.tasker-inspector { position: sticky; top: 0; height: 100vh; overflow: auto; padding: 28px; background: white; border-left: 1px solid var(--color-border); box-shadow: -12px 0 40px #1c212610; z-index: 10; }
+@media (max-width: 1100px) {
+  .tasker-shell:has(.tasker-inspector) { grid-template-columns: 210px minmax(0, 1fr); }
+  .tasker-inspector { position: fixed; inset: 0; width: 100%; height: auto; }
+}
 @media (max-width: 700px) {
   .tasker-shell { display: block; }
   .tasker-sidebar { padding: 16px; border-right: 0; border-bottom: 1px solid var(--color-border); }
