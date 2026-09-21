@@ -8899,6 +8899,16 @@ its own database, post-#191) green on the PR. Closes the loop on #132.
   convergence's SQL wrapper, not a mutable pooled `search_path`; app DDL uses
   explicit persisted physical relations. Actions 0096 and real Tasker v2 still
   need parent integration verification; their loader/API edits overlap ours.
+- Final combined spec check exposed a missing convergence prerequisite:
+  implementation `29ca45b` alone references five markers defined by checkpoint
+  `3eac821`. Adding that committed checkpoint to the isolated integration branch
+  applied without conflicts and made strict OpenSpec/STC/policy checks pass.
+  Server/shared typechecks also passed there. Upgrade close-out `9f350ad` applied
+  cleanly. The Tasker thread already reconciles actions through `441c90f` and
+  upgrades; it was sent the combined fresh 0094→0095→0096 and action/upgrade race
+  proof contract. No action consumer API or other worker's files were changed
+  here. Combined actions evidence remains an acceptance dependency, not a pass
+  inferred from the convergence-plus-upgrades run.
 - Literal proof built core before separate npm packages, created v2 after v1
   started, restarted before commit and while activation was pending, retried,
   activated, rejected the retained old browser, wrote/read Markdown with v2,
