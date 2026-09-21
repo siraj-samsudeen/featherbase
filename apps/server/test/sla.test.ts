@@ -102,7 +102,7 @@ describe('SLA: deadline stamping + escalation', () => {
     // Force both past their deadline; mark one Resolved via the workflow (the
     // real lifecycle path — a direct write to a workflow-bound field is
     // rejected, see workflow-state-field.test.ts).
-    await sql`update sla_ticket set resolution_by = now() - interval '1 hour'
+    await sql`update featherbase.sla_ticket set resolution_by = now() - interval '1 hour'
       where row_id in (${String(doc.row_id)}, ${String(done.row_id)})`
     await admin.post(`/api/table/${encodeURIComponent(DT)}/${encodeURIComponent(String(done.row_id))}:apply_workflow_action`, { action: 'Resolve' })
 
@@ -110,9 +110,9 @@ describe('SLA: deadline stamping + escalation', () => {
     await nudgeDueJobs()
     await drainJobs()
 
-    const [late] = await sql`select sla_status from sla_ticket where row_id = ${String(doc.row_id)}`
+    const [late] = await sql`select sla_status from featherbase.sla_ticket where row_id = ${String(doc.row_id)}`
     expect(late.sla_status).toBe('Overdue')
-    const [ok] = await sql`select sla_status from sla_ticket where row_id = ${String(done.row_id)}`
+    const [ok] = await sql`select sla_status from featherbase.sla_ticket where row_id = ${String(done.row_id)}`
     expect(ok.sla_status).toBe('On Track') // fulfilled state — never escalated
 
     const mails = await sql`
@@ -192,12 +192,12 @@ describe('SLA: non-matching paths', () => {
       priorities: [{ priority: 'High', response_hours: 1, resolution_hours: 1 }],
     })
     const doc = await saveDoc(DT, { title: 'late', priority: 'High' }, 'Administrator')
-    await sql`update cov_sla_norole set resolution_by = now() - interval '1 hour'
+    await sql`update featherbase.cov_sla_norole set resolution_by = now() - interval '1 hour'
       where row_id = ${String(doc.row_id)}`
     await enqueue('check_sla', {})
     await nudgeDueJobs()
     await drainJobs()
-    const [row] = await sql`select sla_status from cov_sla_norole where row_id = ${String(doc.row_id)}`
+    const [row] = await sql`select sla_status from featherbase.cov_sla_norole where row_id = ${String(doc.row_id)}`
     expect(row.sla_status).toBe('Overdue')
     const mails = await sql`
       select 1 from email_queue where ref_table = ${DT}`

@@ -104,7 +104,7 @@ describe('the /preview route', () => {
     const location = res.headers.get('location') ?? ''
     // #150/#173: a session JWT must never ride a URL. What travels is the
     // one-time handoff code, redeemed over POST by the SPA.
-    expect(location).toMatch(/^\/oauth-callback\?code=/)
+    expect(location).toMatch(/^\/featherbase\/oauth-callback\?code=/)
     expect(location).not.toMatch(/eyJ/) // no JWT, which always starts so
     // The browser is bound to the handoff by the sid cookie set here.
     expect(res.headers.get('set-cookie') ?? '').toMatch(/sid=/)

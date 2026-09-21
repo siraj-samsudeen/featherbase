@@ -4,7 +4,7 @@ import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 
 const DT = 'Val Test Ticket'
-const TABLE = 'val_test_ticket'
+const TABLE = 'featherbase.val_test_ticket'
 
 async function setup(admin: TestClient) {
   await admin.post('/api/table_def', {

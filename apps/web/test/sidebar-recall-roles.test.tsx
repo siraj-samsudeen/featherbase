@@ -43,7 +43,7 @@ function seedTrail(user: string) {
   for (const at of [1, 2, 3])
     recordAction(
       user,
-      { kind: 'row', key: 'row:Saved Search/SS-1', label: 'Saved Search', sub: 'row', path: '/admin/Saved%20Search/SS-1' },
+      { kind: 'row', key: 'row:Saved Search/SS-1', label: 'Saved Search', sub: 'row', path: '/featherbase/admin/Saved%20Search/SS-1' },
       Date.now() - at * 1000,
     )
 }
@@ -52,12 +52,12 @@ test('sidebar recall rows expose the link role, never button', async ({ admin })
   await seed(admin)
   seedTrail('Administrator')
 
-  await renderApp(`/admin/${encodeURIComponent(DT)}/new`, admin)
+  await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}/new`, admin)
   await screen.findByTestId('form-view')
 
   const row = await screen.findByTestId('sidebar-recent', {}, SIDEBAR_WAIT)
   expect(row).toHaveRole('link')
-  expect(row).toHaveAttribute('href', '/admin/Saved%20Search/SS-1')
+  expect(row).toHaveAttribute('href', '/featherbase/admin/Saved%20Search/SS-1')
   expect(screen.queryAllByRole('button')).not.toContain(row)
 })
 
@@ -67,7 +67,7 @@ test("a chip wearing a button's words does not widen that button's name lookup",
   await seed(admin)
   seedTrail('Administrator')
 
-  await renderApp(`/admin/${encodeURIComponent(DT)}/new`, admin)
+  await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}/new`, admin)
   await screen.findByTestId('form-view')
   await screen.findByTestId('sidebar-recent', {}, SIDEBAR_WAIT)
 

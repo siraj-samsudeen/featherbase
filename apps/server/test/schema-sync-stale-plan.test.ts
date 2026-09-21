@@ -51,7 +51,7 @@ const DT = 'Stale Plan DT'
 async function cleanup() {
   await sql`delete from column_def where parent = ${DT}`
   await sql`delete from table_def where name = ${DT}`
-  await sql.unsafe('drop table if exists stale_plan_dt')
+  await sql.unsafe('drop table if exists featherbase.stale_plan_dt')
 }
 
 beforeAll(cleanup)

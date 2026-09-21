@@ -35,7 +35,7 @@ const serverTheme = (as: Client) =>
  * compute the wrong direction.
  */
 async function mountAdmin(as: Client, theme: 'light' | 'dark' = 'light') {
-  const { queryClient } = await renderApp('/admin', as)
+  const { queryClient } = await renderApp('/featherbase/admin', as)
   await screen.findByTestId('theme-toggle')
   await waitFor(() => expect(queryClient.getQueryData(['whoami'])).toMatchObject({ theme }))
 }

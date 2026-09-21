@@ -40,7 +40,7 @@ async function cleanup() {
   await sql`delete from has_role where lower(parent) in ${sql([USER, DUP_USER, SVC])}`
   await sql`delete from "user" where lower(row_id) in ${sql([USER, DUP_USER, SVC])}` // cascades access_token rows
   await sql`delete from table_def where name = ${DT}`
-  await sql.unsafe('drop table if exists cli_test_widget')
+  await sql.unsafe('drop table if exists featherbase.cli_test_widget')
 }
 
 beforeAll(cleanup)

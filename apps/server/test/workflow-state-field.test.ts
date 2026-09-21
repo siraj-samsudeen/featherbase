@@ -65,7 +65,7 @@ describe('Workflow state_field binding', () => {
     expect(doc.ticket_status).toBe('Open')
     const after = await applyWorkflowAction(DT, String(doc.row_id), 'Close', 'Administrator')
     expect(after.ticket_status).toBe('Closed')
-    const [row] = await sql`select ticket_status from wf_bind_ticket where row_id = ${String(doc.row_id)}`
+    const [row] = await sql`select ticket_status from featherbase.wf_bind_ticket where row_id = ${String(doc.row_id)}`
     expect(row.ticket_status).toBe('Closed')
     // The transition counted as a save: the conditional on_save rule fired.
     const mails = await sql`select 1 from email_queue where subject = 'WfBind closed'`

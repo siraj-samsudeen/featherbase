@@ -220,7 +220,7 @@ export function TableMerge() {
       <h1 className="mb-1 text-xl font-semibold text-[var(--color-ink)]">
         Merge{' '}
         <Link
-          to="/admin/$table"
+          to="/featherbase/admin/$table"
           params={{ table: source }}
           search={{ filters: undefined }}
           className="underline"
@@ -324,7 +324,7 @@ export function TableMerge() {
             <p className="mt-1 text-xs text-gray-500">
               Missing a column on {target}?{' '}
               <Link
-                to="/admin/$table/columns"
+                to="/featherbase/admin/$table/columns"
                 params={{ table: target }}
                 className="underline"
                 data-testid="tm-add-column-link"
@@ -352,7 +352,7 @@ export function TableMerge() {
           <span className={outcome.failed.length ? 'text-red-600' : 'text-green-700'}>
             Merged {outcome.inserted} rows into{' '}
             <Link
-              to="/admin/$table"
+              to="/featherbase/admin/$table"
               params={{ table: target }}
               search={{ filters: undefined }}
               className="underline"
@@ -367,7 +367,7 @@ export function TableMerge() {
             {/* A merge is an import, so it undoes like one. */}
             {source} still has its own rows — this copied them.{' '}
             <Link
-              to="/admin/import"
+              to="/featherbase/admin/import"
               search={{ table: target }}
               className="underline"
               data-testid="tm-undo-link"
@@ -376,7 +376,7 @@ export function TableMerge() {
             </Link>{' '}
             from {target}&apos;s import history, or{' '}
             <Link
-              to="/admin/$table/columns"
+              to="/featherbase/admin/$table/columns"
               params={{ table: source }}
               className="underline"
             >

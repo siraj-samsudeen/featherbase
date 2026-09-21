@@ -44,7 +44,7 @@ async function seedList(admin: Admin) {
 /** Mount the list and wait for its rows — settings load on mount, so every
  *  assertion below has to come after this resolves. */
 async function openList(admin: Admin) {
-  await renderApp(`/admin/${encodeURIComponent(DT)}`, admin)
+  await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}`, admin)
   await screen.findByTestId('list-view')
   await waitFor(() => expect(screen.getByTestId('col-title')).toBeInTheDocument())
   await waitFor(() =>

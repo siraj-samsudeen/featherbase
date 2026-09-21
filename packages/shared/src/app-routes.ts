@@ -1,5 +1,5 @@
-// The legacy human roots remain reserved until platform screens converge
-// under /featherbase. Technical roots and Vite's development URLs are not apps.
+// Canonical Featherbase pages and their compatibility roots are not runtime
+// apps. Technical roots and Vite's development URLs are reserved too.
 // @spec app_owns_client_root
 export const RESERVED_APP_ROOTS = [
   'featherbase', 'public', 'pg_catalog', 'information_schema',

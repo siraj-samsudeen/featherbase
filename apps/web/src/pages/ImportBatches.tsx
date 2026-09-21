@@ -109,7 +109,7 @@ function BatchCard({ batch, onDone }: { batch: ImportBatch; onDone: (o: Outcome)
           >
             {target.exists ? (
               <Link
-                to="/admin/$table"
+                to="/featherbase/admin/$table"
                 params={{ table: target.table }}
                 search={{ filters: undefined }}
                 className="underline"
@@ -213,7 +213,7 @@ export function ImportBatches() {
       <p className="mb-4 text-xs text-gray-500">
         Every file you have imported, and what each one did.{' '}
         <Link
-          to="/admin/$table"
+          to="/featherbase/admin/$table"
           params={{ table: 'Import Log' }}
           search={{ filters: undefined }}
           className="underline"
@@ -250,7 +250,7 @@ export function ImportBatches() {
       {batches.data?.batches.length === 0 && (
         <p className="text-sm text-gray-500" data-testid="ib-empty">
           Nothing imported yet.{' '}
-          <Link to="/admin/import" search={{ table: undefined }} className="underline">
+          <Link to="/featherbase/admin/import" search={{ table: undefined }} className="underline">
             Import a file
           </Link>
           .

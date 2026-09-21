@@ -61,9 +61,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     // Already on the login screen there is nothing to redirect to — a hard
     // reload here just destroys in-flight state (a stale query 401ing during
     // the logout transition, #101 review).
-    if (!path.endsWith('/api/login') && window.location.pathname !== '/login') {
+    if (!path.endsWith('/api/login') && window.location.pathname !== '/featherbase/login') {
       const next = `${window.location.pathname}${window.location.search}${window.location.hash}`
-      window.location.href = `/login?next=${encodeURIComponent(next)}`
+      window.location.href = `/featherbase/login?next=${encodeURIComponent(next)}`
     }
   }
   const body = (await res.json().catch(() => ({}))) as {
@@ -104,7 +104,7 @@ export async function login(usr: string, pwd: string): Promise<SessionUser> {
 
 /** The signed-in account's landing path: the Admin unless the server said otherwise (#3755). */
 export function landingPath(user: SessionUser | null = getSessionUser()): string {
-  return user?.landing ?? '/admin'
+  return user?.landing ?? '/featherbase/admin'
 }
 
 export interface ListResult<T = Record<string, unknown>> {

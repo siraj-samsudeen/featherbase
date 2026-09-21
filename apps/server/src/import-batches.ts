@@ -11,6 +11,7 @@ import { AppError } from './errors'
 import { sql } from './db'
 import { deleteTable, tableName } from './table-engine'
 import { assertSystemManager, permissionScope } from './permissions'
+import { platformRelation } from './platform-schema'
 
 const DEFAULT_LIMIT = 20
 const MAX_LIMIT = 100
@@ -77,7 +78,7 @@ export async function listBatches(
   only?: string,
 ): Promise<ImportBatch[]> {
   const capped = Math.min(Math.max(1, Math.trunc(limit) || DEFAULT_LIMIT), MAX_LIMIT)
-  const log = tableName('Import Log')
+  const log = platformRelation(tableName('Import Log'))
 
   // The history is a reading of the Import Log, so it answers to the Import
   // Log's own read permission rather than to merely holding a session. The
@@ -98,13 +99,13 @@ export async function listBatches(
   const picked = only
     ? await sql.unsafe<{ batch_id: string; started_at: Date }[]>(
         `select batch_id, min(created_at) as started_at
-           from "${log}" where batch_id = $1 ${mine ? 'and created_by = $2' : ''}
+           from ${log} where batch_id = $1 ${mine ? 'and created_by = $2' : ''}
           group by batch_id`,
         mine ? [only, user] : [only],
       )
     : await sql.unsafe<{ batch_id: string; started_at: Date }[]>(
         `select batch_id, min(created_at) as started_at
-           from "${log}"
+           from ${log}
           where batch_id is not null ${mine ? 'and created_by = $2' : ''}
           group by batch_id
           order by min(created_at) desc
@@ -117,7 +118,7 @@ export async function listBatches(
   const rows = await sql.unsafe<LogRow[]>(
     `select batch_id, ref_table, file_name, sheet_name, table_created, inserted, updated,
             failed, run_id, reverted_at, created_at, created_by
-       from "${log}"
+       from ${log}
       where batch_id = any($1) ${mine ? 'and created_by = $2' : ''}
       order by created_at asc`,
     mine ? [ids, user] : [ids],

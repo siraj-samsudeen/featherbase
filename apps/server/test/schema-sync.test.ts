@@ -8,7 +8,8 @@ const TABLE = 'sync_task'
 
 async function columns(): Promise<string[]> {
   const rows = await sql`
-    select column_name from information_schema.columns where table_name = ${TABLE}`
+    select column_name from information_schema.columns
+    where table_schema = 'featherbase' and table_name = ${TABLE}`
   return rows.map((r) => r.column_name as string)
 }
 
@@ -40,7 +41,7 @@ describe('META-004: schema sync', () => {
     const res = await addSeverity(admin)
     expect(res.status).toBe(200)
     expect(await columns()).toContain('severity')
-    const rows = await sql.unsafe(`select title, points from ${TABLE} order by title`)
+    const rows = await sql.unsafe(`select title, points from featherbase.${TABLE} order by title`)
     expect(rows.map((r) => [r.title, Number(r.points)])).toEqual([['a', 1], ['b', 1]])
     // new field usable immediately
     const save = await admin.fetch('/api/save_row', {
@@ -96,7 +97,7 @@ describe('META-004: schema sync', () => {
     )
     expect(meta.columns.map((f) => f.column_name)).not.toContain('points')
     expect(await columns()).toContain('points') // data retained
-    const rows = await sql.unsafe(`select points from ${TABLE} where title='a'`)
+    const rows = await sql.unsafe(`select points from featherbase.${TABLE} where title='a'`)
     expect(Number(rows[0].points)).toBe(1)
   })
 

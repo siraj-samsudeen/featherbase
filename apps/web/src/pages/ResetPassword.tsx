@@ -5,7 +5,7 @@ import { ApiError, api } from '../lib/api'
 // SET-002: the target of the emailed reset link. Reads ?key= and sets a new
 // password for the associated account.
 export function ResetPasswordPage() {
-  const { key } = useSearch({ from: '/reset-password' }) as { key?: string }
+  const { key } = useSearch({ from: '/featherbase/reset-password' }) as { key?: string }
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -44,7 +44,7 @@ export function ResetPasswordPage() {
           {done ? (
             <div className="space-y-4 text-center" data-testid="reset-done">
               <p className="text-sm text-[var(--color-ink)]">Your password has been reset.</p>
-              <Link to="/login" className="fc-btn-primary inline-flex w-full justify-center py-2" data-testid="reset-to-login">
+              <Link to="/featherbase/login" className="fc-btn-primary inline-flex w-full justify-center py-2" data-testid="reset-to-login">
                 Sign in
               </Link>
             </div>

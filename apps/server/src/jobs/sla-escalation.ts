@@ -62,7 +62,7 @@ registerJob('check_sla', async () => {
           subject: `SLA breached: ${table} ${row.row_id as string}`,
           body:
             `${table} ${row.row_id as string} has passed its resolution deadline ` +
-            `and is now Overdue.\n\nOpen the row: /admin/${encodeURIComponent(
+            `and is now Overdue.\n\nOpen the row: /featherbase/admin/${encodeURIComponent(
               table,
             )}/${encodeURIComponent(row.row_id as string)}`,
           ref_table: table,

@@ -4,6 +4,7 @@ import { AppError } from './errors'
 import { COLUMN_TYPE_VALUES, ROW_KEY, type TableMeta, getMeta, invalidateMeta } from './meta'
 import { logAccess } from './audit'
 import { deleteStored } from './storage'
+import { PLATFORM_SCHEMA, SITE_REGISTRY_RELATION, platformRelation } from './platform-schema'
 
 // Columns every generated table has (META-005); user columns cannot shadow them.
 // #132: `name` left this list when the primary key became `row_id`, so a user
@@ -203,7 +204,7 @@ export function tableName(table: string): string {
 // Existing core Tables keep their bootstrap mapping. Qualified identities must
 // have persisted storage metadata; never infer their location from spelling.
 export async function tableRelation(name: string): Promise<string> {
-  if (!name.includes('.')) return tableName(name)
+  if (!name.includes('.')) return platformRelation(tableName(name))
   const meta = await getMeta(name)
   if (!meta.owner_app || !meta.physical_schema || !meta.physical_relation)
     throw new AppError('ValidationError', `Table ${name} has no app storage mapping`)
@@ -258,14 +259,14 @@ async function applyRls(
   relation = tableName(def.name),
 ): Promise<void> {
   const [ready] = (await tx.unsafe(
-    `select 1 from pg_proc where proname = 'fc_has_read'`,
+    `select to_regprocedure('featherbase.fc_has_read(text)') as function`,
   )) as unknown as unknown[]
-  if (!ready) return
+  if (!ready || !(ready as { function?: unknown }).function) return
   const table = quoteRelation(relation)
   await tx.unsafe(`alter table ${table} enable row level security`)
   const predicate = def.kind === 'sub_table'
-    ? 'fc_has_read(parenttype)'
-    : `fc_has_read('${def.name.replace(/'/g, "''")}')`
+    ? 'featherbase.fc_has_read(parenttype)'
+    : `featherbase.fc_has_read('${def.name.replace(/'/g, "''")}')`
   await tx.unsafe(
     `create policy fc_select on ${table} for select to app_client using (${predicate})`,
   )
@@ -453,8 +454,10 @@ export async function createTable(input: unknown, ownerApp?: string): Promise<Ta
   if (def.kind !== 'settings') {
     const [clash] = await sql`
       select 1 from information_schema.tables
-      where table_schema = ${qualified ? ownerApp! : 'public'}
-        and table_name = ${qualified ? def.name.split('.')[1] : physical}`
+      where (table_schema = ${qualified ? ownerApp! : PLATFORM_SCHEMA}
+             and table_name = ${qualified ? def.name.split('.')[1] : physical})
+         or (${!qualified && physical === SITE_REGISTRY_RELATION.split('.')[1]}
+             and table_schema = 'public' and table_name = 'site')`
     if (clash)
       throw new AppError('ConflictError', `Table ${def.name} collides with an internal table`, {
         name: `"${physical}" is reserved for platform storage`,
@@ -549,7 +552,9 @@ export async function createTable(input: unknown, ownerApp?: string): Promise<Ta
     }
     // BV1!: a bound Table never causes DDL — no CREATE TABLE, no RLS, no
     // index. Its storage belongs to the source.
-    const relation = qualified ? `${tableRow.physical_schema}.${tableRow.physical_relation}` : physical
+    const relation = qualified
+      ? `${tableRow.physical_schema}.${tableRow.physical_relation}`
+      : platformRelation(physical)
     const ddl = def.data_source ? null : createTableDDL(def, relation)
     if (ddl) {
       await tx.unsafe(ddl)

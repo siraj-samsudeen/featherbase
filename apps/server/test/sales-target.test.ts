@@ -91,13 +91,13 @@ describe('#3755 sales-target host: accounts and login', () => {
     expect(new Set(rows.data.map((r) => r.store_subcategory)).size).toBe(8)
   })
 
-  test('each account logs in with its password and is told to land on /sales-target; not a System Manager', async ({ admin, api }) => {
+  test('each account logs in with its password and is told to land on /featherbase/sales-target; not a System Manager', async ({ admin, api }) => {
     await seed(admin)
     for (const [usr, pwd] of Object.entries(PASSWORDS)) {
       const r = await loginAs(api, usr, pwd)
       expect(r.status).toBe(200)
       expect(r.body.user?.row_id).toBe(usr)
-      expect(r.body.landing).toBe('/sales-target')
+      expect(r.body.landing).toBe('/featherbase/sales-target')
       const me = await (await api.fetch('/api/whoami', { headers: r.headers })).json() as { roles: string[] }
       expect(me.roles).toEqual(['All', VIEWER_ROLE])
     }

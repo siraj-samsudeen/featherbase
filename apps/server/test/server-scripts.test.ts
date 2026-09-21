@@ -51,7 +51,7 @@ describe('CUST-004: server scripts', () => {
       table: DT,
       row: { amount: 200 },
     })
-    const [row] = await sql`select size_label from ss_srv_doc where row_id = ${created.row_id}`
+    const [row] = await sql`select size_label from featherbase.ss_srv_doc where row_id = ${created.row_id}`
     expect(row.size_label).toBe('big')
   })
 

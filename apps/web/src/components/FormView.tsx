@@ -174,7 +174,7 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       if (action === 'amend') {
-        navigate({ to: '/admin/$table/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
+        navigate({ to: '/featherbase/admin/$table/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
       } else {
         setBanner('Done')
       }
@@ -194,7 +194,7 @@ export function FormView({
       )
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       setRenaming(false)
-      navigate({ to: '/admin/$table/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
+      navigate({ to: '/featherbase/admin/$table/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
     } catch (err) {
       setBanner(err instanceof ApiError ? err.message : 'Rename failed')
     }
@@ -223,7 +223,7 @@ export function FormView({
       )
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
-      navigate({ to: '/admin/$table', params: { table }, search: { filters: undefined } })
+      navigate({ to: '/featherbase/admin/$table', params: { table }, search: { filters: undefined } })
     } catch (err) {
       setDeleteError(err instanceof ApiError ? err.message : 'Delete failed')
       setDeleteBusy(false)
@@ -261,7 +261,7 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['versions', table, name] })
       if (isNew) {
         navigate({
-          to: '/admin/$table/$name',
+          to: '/featherbase/admin/$table/$name',
           params: { table, name: String(saved.row_id) },
           search: { prefill: undefined },
         })
@@ -290,10 +290,10 @@ export function FormView({
   return (
     <div data-testid="form-view" className="max-w-5xl">
       <nav className="mb-2 text-xs text-gray-500" data-testid="breadcrumbs">
-        <RouterLink to="/admin" className="hover:underline">Admin</RouterLink>
+        <RouterLink to="/featherbase/admin" className="hover:underline">Admin</RouterLink>
         <span className="mx-1">/</span>
         <RouterLink
-          to="/admin/$table"
+          to="/featherbase/admin/$table"
           params={{ table }}
           search={{ filters: undefined }}
           className="hover:underline"
@@ -324,7 +324,7 @@ export function FormView({
         <div className="flex items-center gap-2">
           {table === 'Data Source' && !isNew && (
             <RouterLink
-              to="/admin/source/$name"
+              to="/featherbase/admin/source/$name"
               params={{ name }}
               data-testid="form-source-browser"
               className="fc-btn"
@@ -349,7 +349,7 @@ export function FormView({
           )}
           {!isNew && (
             <RouterLink
-              to="/print/$table/$name"
+              to="/featherbase/print/$table/$name"
               params={{ table, name }}
               search={{ format: undefined }}
               data-testid="form-print"
@@ -361,7 +361,7 @@ export function FormView({
           {/* #100 pattern 6: walk this row's relational neighborhood. */}
           {!isNew && m.kind !== 'settings' && (
             <RouterLink
-              to="/admin/map/$table/$name"
+              to="/featherbase/admin/map/$table/$name"
               params={{ table, name }}
               search={{ trail: undefined }}
               data-testid="form-map"
@@ -962,7 +962,7 @@ function LinkControl({
             onMouseDown={(e) => {
               e.preventDefault()
               navigate({
-                to: '/admin/$table/$name',
+                to: '/featherbase/admin/$table/$name',
                 params: { table: target, name: String(value) },
                 search: { prefill: undefined },
               })
@@ -999,7 +999,7 @@ function LinkControl({
             <p className="px-3 py-1.5 text-sm text-gray-400">No matches</p>
           )}
           <RouterLink
-            to="/admin/$table/$name"
+            to="/featherbase/admin/$table/$name"
             params={{ table: target, name: 'new' }}
             search={{ prefill: undefined }}
             className="block border-t border-gray-100 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50"

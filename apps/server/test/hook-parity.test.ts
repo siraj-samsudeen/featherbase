@@ -95,7 +95,7 @@ describe('Frappe lifecycle + app-contract parity', () => {
         'submission blocked',
       )
       const [row] = await sql`
-        select status from hook_parity_note where row_id = ${String(bad.row_id)}`
+        select status from featherbase.hook_parity_note where row_id = ${String(bad.row_id)}`
       expect(row.status).toBe('draft') // the abort rolled the write back
     } finally {
       await uninstallApp(APP).catch(() => {})

@@ -108,7 +108,7 @@ export function CalendarView({ table }: { table: string }) {
             <button onClick={() => shiftMonth(1)} className="fc-btn" data-testid="cal-next">›</button>
           </div>
         </div>
-        <RouterLink to="/admin/$table" params={{ table }} search={{ filters: undefined }} className="fc-btn" data-testid="cal-to-list">
+        <RouterLink to="/featherbase/admin/$table" params={{ table }} search={{ filters: undefined }} className="fc-btn" data-testid="cal-to-list">
           List view
         </RouterLink>
       </div>
@@ -144,7 +144,7 @@ export function CalendarView({ table }: { table: string }) {
                     }`}
                   >
                     <RouterLink
-                      to="/admin/$table/$name"
+                      to="/featherbase/admin/$table/$name"
                       search={{ prefill: undefined }}
                       params={{ table, name: String(row.row_id) }}
                       className="hover:underline"

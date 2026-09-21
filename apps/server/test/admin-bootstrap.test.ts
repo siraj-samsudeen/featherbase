@@ -32,27 +32,27 @@ describe('#130 production bootstrap', () => {
       try {
         await control.unsafe(`create database "${name}"`)
         await run(['src/migrate.ts'])
-        const [first] = await db`select password_hash from "user" where row_id = 'Administrator'`
+        const [first] = await db`select password_hash from featherbase."user" where row_id = 'Administrator'`
         if (expected === null) expect(first.password_hash).toBeNull()
         else expect(verifyPassword(expected, first.password_hash)).toBe(true)
         // Recorded migrations must not replay 0006, and deliberate seed must
         // use the same safe policy, not directly import the retired seed.
         await run(['src/migrate.ts'])
         await run(['src/cli.ts', 'seed'])
-        const [again] = await db`select password_hash from "user" where row_id = 'Administrator'`
+        const [again] = await db`select password_hash from featherbase."user" where row_id = 'Administrator'`
         expect(again.password_hash).toBe(first.password_hash)
         if (expected === null) {
           const release = await run(['src/release.ts'])
           expect(release.stderr).toContain('First admin bootstrap pending')
           await run(['src/cli.ts', 'seed'], { ADMIN_PASSWORD: 'late-explicit' })
-          const [late] = await db`select password_hash from "user" where row_id = 'Administrator'`
+          const [late] = await db`select password_hash from featherbase."user" where row_id = 'Administrator'`
           expect(verifyPassword('late-explicit', late.password_hash)).toBe(true)
         }
         const existing = hashPassword('admin')
-        await db`update "user" set password_hash = ${existing} where row_id = 'Administrator'`
+        await db`update featherbase."user" set password_hash = ${existing} where row_id = 'Administrator'`
         await run(['src/cli.ts', 'seed'], { ADMIN_PASSWORD: 'do-not-rotate' })
         const release = await run(['src/release.ts'], { ADMIN_PASSWORD: 'do-not-rotate' })
-        expect((await db`select password_hash from "user" where row_id = 'Administrator'`)[0].password_hash).toBe(existing)
+        expect((await db`select password_hash from featherbase."user" where row_id = 'Administrator'`)[0].password_hash).toBe(existing)
         if (environment === 'production') expect(release.stderr).toContain('known default password remains active')
       } finally {
         await db.end({ timeout: 1 })

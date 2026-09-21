@@ -417,7 +417,7 @@ app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) =
   // credential in a query string lands in browser history, in the Referer of
   // anything that page fetches next, and in every proxy log on the way. The
   // SPA gets a one-time, one-minute handoff code and POSTs it back below.
-  return c.redirect(`/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
+  return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
 })
 
 // #150: the other half of the handoff. Public — the code IS the credential,
@@ -443,7 +443,7 @@ app.get('/preview', async (c) => {
   if (!config || !previewKeyMatches(c.req.query('key'), config.key)) return c.notFound()
   const session = await issueSession(config.user)
   setSidCookie(c, session.token)
-  return c.redirect(`/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
+  return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
 })
 
 // ---- API-004: everything below requires a valid session --------------------
@@ -466,6 +466,17 @@ app.use('/api/*', async (c, next) => {
   return appOperation(next)
 })
 
+// @spec featherbase_human_routes_are_canonical
+// Old bookmarks remain meaningful, but all Featherbase-owned human pages have
+// one canonical namespace. Runtime app roots and technical /api paths never
+// pass through this redirect.
+const legacyHumanRoot = /^\/(admin|login|form|portal|print|oauth-callback|reset-password|sales-target)(\/|$)/
+app.get('*', (c, next) => {
+  const url = new URL(c.req.url)
+  if (!legacyHumanRoot.test(url.pathname)) return next()
+  return c.redirect(`/featherbase${url.pathname}${url.search}`, 308)
+})
+
 app.get('*', async (c, next) => {
   if (!new RegExp(APP_ROOT_PATTERN).test(c.req.path)) return next()
   const name = c.req.path.split('/')[1]
@@ -480,14 +491,14 @@ app.get('*', async (c, next) => {
       if (!(error instanceof AppError)) throw error
       const navigation = !asset || c.req.header('accept')?.includes('text/html')
       if (navigation && error.type === 'AuthenticationError')
-        return c.redirect(`/login?next=${encodeURIComponent(appHref(name))}`)
+        return c.redirect(`/featherbase/login?next=${encodeURIComponent(appHref(name))}`)
       if (!navigation || path.extname(asset)) throw error
       return c.html(
         `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Application unavailable</title></head>
       <body style="font:16px system-ui;background:#f4f5f6;color:#1c2126;margin:0;padding:8vw"><main style="max-width:36rem;margin:auto;background:white;border:1px solid #ebeef0;border-radius:8px;padding:2rem">
       <h1>Application unavailable</h1><p>This application may be disabled, its package may be missing or incompatible, or your account may not have access.</p>
       <p>Disabling an application preserves its data. Ask your system manager to restore access.</p>
-      <p><a href="/admin">Back to Featherbase</a> · <a href="/login">Sign in</a></p></main></body></html>`,
+      <p><a href="/featherbase/admin">Back to Featherbase</a> · <a href="/featherbase/login">Sign in</a></p></main></body></html>`,
         404,
       )
     }
@@ -621,7 +632,7 @@ app.get('/api/activity_feed', async (c) => {
       kind: 'change',
       label: (v.ref_name as string | null) ?? '',
       sub: (v.ref_table as string | null) ?? undefined,
-      path: v.ref_table && v.ref_name ? `/admin/${v.ref_table}/${v.ref_name}` : '',
+      path: v.ref_table && v.ref_name ? `/featherbase/admin/${v.ref_table}/${v.ref_name}` : '',
       at: new Date(v.created_at as string).toISOString(),
     })),
     ...logins.map((l) => ({

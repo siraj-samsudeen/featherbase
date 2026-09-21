@@ -74,7 +74,7 @@ export function HomePageView({ name }: { name: string }) {
                 {card.links.map((l) => (
                   <Link
                     key={l.link_to}
-                    to="/admin/$table"
+                    to="/featherbase/admin/$table"
                     params={{ table: l.link_to }}
                     search={{ filters: undefined }}
                     data-testid={`home-link-${l.link_to}`}

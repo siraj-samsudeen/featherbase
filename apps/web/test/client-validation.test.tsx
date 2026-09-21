@@ -50,7 +50,7 @@ test('an emptied required column errors inline and sends no save at all', async 
   const doc = await makeForm(admin)
   const saves = countSaves()
 
-  await renderApp(`/admin/${encodeURIComponent(DT)}/${doc.row_id}`, admin)
+  await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}/${doc.row_id}`, admin)
   await screen.findByTestId('form-view')
   await waitFor(() => expect(field('title')).toHaveValue('starts valid'))
 
@@ -65,7 +65,7 @@ test('fixing the column clears the error and sends exactly one save', async ({ a
   const doc = await makeForm(admin)
   const saves = countSaves()
 
-  await renderApp(`/admin/${encodeURIComponent(DT)}/${doc.row_id}`, admin)
+  await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}/${doc.row_id}`, admin)
   await screen.findByTestId('form-view')
   await waitFor(() => expect(field('title')).toHaveValue('starts valid'))
 

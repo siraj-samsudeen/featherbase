@@ -12,6 +12,7 @@
 import type { AppManifest } from '../apps'
 import type { HookContext } from '../controllers'
 import { tableName } from '../table-engine'
+import { platformRelation } from '../platform-schema'
 import { AppError } from '../errors'
 
 type ItemRow = Record<string, unknown>
@@ -23,7 +24,7 @@ type ItemRow = Record<string, unknown>
 async function persistedItems(ctx: HookContext): Promise<ItemRow[]> {
   if (!ctx.row.row_id) return []
   return await ctx.tx`
-    select * from ${ctx.tx(tableName('Checklist Run Item'))}
+    select * from ${ctx.tx(platformRelation(tableName('Checklist Run Item')))}
     where parent = ${String(ctx.row.row_id)}
       and parenttype = 'Checklist Run' and parentfield = 'items'
     order by position`
@@ -103,12 +104,12 @@ async function prepareRun(ctx: HookContext): Promise<void> {
     // so validation refuses it a moment later.
     const [template] = row.template
       ? await ctx.tx`
-          select * from ${ctx.tx(tableName('Checklist Template'))}
+          select * from ${ctx.tx(platformRelation(tableName('Checklist Template')))}
           where row_id = ${String(row.template)}`
       : [undefined]
     const templateItems = template
       ? await ctx.tx`
-          select * from ${ctx.tx(tableName('Checklist Template Item'))}
+          select * from ${ctx.tx(platformRelation(tableName('Checklist Template Item')))}
           where parent = ${String(row.template)}
             and parenttype = 'Checklist Template' and parentfield = 'items'
           order by position`

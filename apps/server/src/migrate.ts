@@ -4,7 +4,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { sql } from './db'
+import { _getRootSql, sql, withTransaction } from './db'
 import { invalidateMeta } from './meta'
 import { assertDatabaseEnvironment, stampEnvironment } from './db-environment'
 import { bootstrapAdministrator } from './admin-bootstrap'
@@ -27,9 +27,14 @@ function migrationFiles(): string[] {
  * `migrate status` exiting non-zero.
  */
 export async function pendingMigrations(): Promise<string[]> {
-  const [present] = await sql`select to_regclass('migration') as reg`
-  if (!present?.reg) return migrationFiles()
-  const applied = new Set((await sql`select name from migration`).map((r) => r.name as string))
+  const [present] = await sql`
+    select to_regclass('public.migration') as legacy,
+      to_regclass('featherbase.migration') as current`
+  if (present?.legacy && present?.current)
+    throw new Error('Refusing to run: both public and featherbase migration ledgers exist')
+  const relation = present?.current ? 'featherbase.migration' : present?.legacy ? 'public.migration' : null
+  if (!relation) return migrationFiles()
+  const applied = new Set((await sql.unsafe(`select name from ${relation}`)).map((r) => r.name as string))
   return migrationFiles().filter((f) => !applied.has(f))
 }
 
@@ -82,12 +87,21 @@ export async function runMigrations() {
   // (brand-new) database passes and is claimed below; one belonging to
   // another environment stops the run here, before any DDL.
   await assertDatabaseEnvironment()
-  await sql`create table if not exists migration (
+  const root = _getRootSql()
+  const [state] = await root`
+    select to_regclass('public.migration') as legacy,
+      to_regclass('featherbase.migration') as current`
+  if (state?.legacy && state?.current)
+    throw new Error('Refusing to run: both public and featherbase migration ledgers exist')
+  const legacy = Boolean(state?.legacy)
+  await root.unsafe('create schema if not exists featherbase')
+  if (!legacy) await root.unsafe(`create table if not exists featherbase.migration (
     name text primary key,
     applied_at timestamptz not null default now()
-  )`
+  )`)
+  const ledger = legacy ? 'public.migration' : 'featherbase.migration'
   const applied = new Set(
-    (await sql`select name from migration`).map((r) => r.name as string),
+    (await root.unsafe(`select name from ${ledger}`)).map((r) => r.name as string),
   )
   const files = migrationFiles()
   const duplicatePrefixErrors = findDuplicateMigrationPrefixes(files)
@@ -96,24 +110,35 @@ export async function runMigrations() {
   }
   for (const file of files) {
     if (applied.has(file)) continue
-    if (file.endsWith('.sql')) {
-      const body = readFileSync(join(dir, file), 'utf8')
-      await sql.begin(async (tx) => {
-        await tx.unsafe(body)
-        await tx`insert into migration (name) values (${file})`
-      })
-    } else {
+    await withTransaction(async () => {
+      await sql.unsafe(`set local search_path = ${file === '0045_site_registry.ts' ? 'public' : 'featherbase'}, pg_temp`)
+      if (file.endsWith('.sql')) {
+        let body = readFileSync(join(dir, file), 'utf8')
+        if (file === '0010_rls.sql' || file === '0055_terminology_rename.sql') {
+          body = body
+            .replaceAll('set search_path = public', 'set search_path = pg_catalog')
+            .replaceAll('fc_session_user()', 'featherbase.fc_session_user()')
+            .replaceAll('from permission p', 'from featherbase.permission p')
+            .replaceAll('join has_role hr', 'join featherbase.has_role hr')
+        }
+        await sql.unsafe(body)
+      } else {
       // .ts migrations export up(); they use the engine itself (createTable,
       // saveDoc) so seed Tables get real DDL instead of duplicated SQL.
       // #130 security supersession: retain the shipped migration as history,
       // but never execute its known-password production fallback on a fresh DB.
-      if (file === '0006_admin_password.ts') await bootstrapAdministrator()
-      else {
-        const mod = await import(new URL(`../migrations/${file}`, import.meta.url).href)
-        await mod.up()
+        if (file === '0006_admin_password.ts') await bootstrapAdministrator()
+        else {
+          const mod = await import(new URL(`../migrations/${file}`, import.meta.url).href)
+          await mod.up()
+        }
       }
-      await sql`insert into migration (name) values (${file})`
-    }
+      const [after] = await sql`
+        select to_regclass('public.migration') as legacy,
+          to_regclass('featherbase.migration') as current`
+      const target = after.current ? 'featherbase.migration' : 'public.migration'
+      await sql.unsafe(`insert into ${target} (name) values ($1)`, [file])
+    })
     // Migrations may alter Table metadata with raw SQL (e.g. 0046 adds
     // Workflow Transition.condition); drop the per-process meta cache so the
     // NEXT migration validates against what is actually in the database. A

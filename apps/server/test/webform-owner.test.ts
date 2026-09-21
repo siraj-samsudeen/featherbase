@@ -41,7 +41,7 @@ describe('WEB-002/003: web-form owner attribution', () => {
     const res = await api.post<{ row_id: string }>(`/api/web_form/${ROUTE}`, {
       values: { subject: 'anon' },
     })
-    const [row] = await sql`select created_by from wf_owner_req where row_id = ${res.row_id}`
+    const [row] = await sql`select created_by from featherbase.wf_owner_req where row_id = ${res.row_id}`
     expect(row.created_by).toBe('Administrator')
   })
 
@@ -54,7 +54,7 @@ describe('WEB-002/003: web-form owner attribution', () => {
     const res = await cust.post<{ row_id: string }>(`/api/web_form/${ROUTE}`, {
       values: { subject: 'mine' },
     })
-    const [row] = await sql`select created_by from wf_owner_req where row_id = ${res.row_id}`
+    const [row] = await sql`select created_by from featherbase.wf_owner_req where row_id = ${res.row_id}`
     expect(row.created_by).toBe(cust.user)
 
     // The own_rows_only read grant now surfaces exactly this document.

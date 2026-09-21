@@ -63,7 +63,7 @@ describe('DOC-003: lifecycle hook chain', () => {
       expect(doc.title).toBe('ABC')
       expect(doc.computed).toBe('ABC:new')
       const [row] = await sql.unsafe(
-        `select title, computed from hook_chain_probe where row_id='${doc.row_id}'`,
+        `select title, computed from featherbase.hook_chain_probe where row_id='${doc.row_id}'`,
       )
       expect(row).toMatchObject({ title: 'ABC', computed: 'ABC:new' })
     } finally {
@@ -103,7 +103,7 @@ describe('DOC-003: lifecycle hook chain', () => {
         admin.post('/api/save_row', { table: DT, row: { title: 'explode' } }),
       ).rejects.toMatchObject({ status: 417 })
       const [{ count }] = await sql.unsafe(
-        `select count(*)::int as count from hook_chain_probe where title='explode' or title='EXPLODE'`,
+        `select count(*)::int as count from featherbase.hook_chain_probe where title='explode' or title='EXPLODE'`,
       )
       expect(count).toBe(0)
     } finally {

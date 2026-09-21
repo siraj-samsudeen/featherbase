@@ -3,7 +3,7 @@ import { test } from './pg-test'
 import type { TestClient } from 'feather-testing-postgres'
 import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
-import { runQueryReport, parseFilters } from '../src/query-report'
+import { assertExplicitReportRelations, runQueryReport, parseFilters } from '../src/query-report'
 
 // RPT-004: admin-authored SQL reports run with bound filter params, read-only;
 // authoring is gated to System Managers even for users who can otherwise edit
@@ -27,7 +27,7 @@ async function setup(admin: TestClient) {
       row_id: REPORT,
       ref_table: 'User',
       report_type: 'Query Report',
-      query: 'select row_id, created_at from "user" where created_at >= {from_date} order by row_id',
+      query: 'select row_id, created_at from featherbase."user" where created_at >= {from_date} order by row_id',
     },
   })
 }
@@ -35,6 +35,13 @@ async function setup(admin: TestClient) {
 describe('RPT-004: query reports', () => {
   test('parses filter placeholders in first-seen order, deduped', () => {
     expect(parseFilters('select 1 where a={x} and b={y} or c={x}')).toEqual(['x', 'y'])
+  })
+
+  test('requires physical relation names while allowing local CTE names', () => {
+    expect(() => assertExplicitReportRelations('select * from "user"')).toThrow(/schema-qualified/)
+    expect(() => assertExplicitReportRelations('select * from public."user"')).toThrow(/is stale/)
+    expect(() => assertExplicitReportRelations('select * from public.site')).not.toThrow()
+    expect(() => assertExplicitReportRelations('with active as (select * from featherbase."user") select * from active')).not.toThrow()
   })
 
   test('runs with a bound date filter (and returns nothing for a future date)', async ({
@@ -100,7 +107,7 @@ describe('RPT-004: query reports', () => {
     await expect(
       saveDoc(
         'Report',
-        { row_id: 'Rpt Srv Evil2', ref_table: 'User', report_type: 'Query Report', query: 'select name from "user"' },
+        { row_id: 'Rpt Srv Evil2', ref_table: 'User', report_type: 'Query Report', query: 'select name from featherbase."user"' },
         AUTHOR,
       ),
     ).rejects.toMatchObject({ type: 'PermissionError' })
@@ -114,7 +121,7 @@ describe('RPT-004: query reports', () => {
         {
           row_id: REPORT,
           updated_at: (updated_at as Date).toISOString(),
-          query: 'select name, password_hash from "user"',
+          query: 'select name, password_hash from featherbase."user"',
         },
         AUTHOR,
       ),

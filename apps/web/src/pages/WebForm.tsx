@@ -51,7 +51,7 @@ function Column({
 }
 
 export function WebFormPage() {
-  const { route } = useParams({ from: '/form/$route' })
+  const { route } = useParams({ from: '/featherbase/form/$route' })
   const [config, setConfig] = useState<WebFormConfig | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [values, setValues] = useState<Record<string, string>>({})

@@ -22,15 +22,15 @@ export function OAuthCallbackPage({ code }: { code?: string }) {
   const navigate = useNavigate()
   useEffect(() => {
     if (!code) {
-      navigate({ to: '/login' })
+      navigate({ to: '/featherbase/login' })
       return
     }
     redeemOnce(code)
       .then(({ token, user }) => {
         setSession(token, user)
-        navigate({ to: '/admin' })
+        navigate({ to: '/featherbase/admin' })
       })
-      .catch(() => navigate({ to: '/login' }))
+      .catch(() => navigate({ to: '/featherbase/login' }))
   }, [code, navigate])
 
   return (

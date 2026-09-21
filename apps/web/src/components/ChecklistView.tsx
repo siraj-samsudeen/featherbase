@@ -63,7 +63,7 @@ export function ChecklistSwitch({ table, meta }: { table: string; meta?: TableMe
   if (!shape.binding) return null
   return (
     <RouterLink
-      to="/admin/$table/view/checklist"
+      to="/featherbase/admin/$table/view/checklist"
       params={{ table }}
       search={{ run: undefined }}
       className="fc-btn"
@@ -216,7 +216,7 @@ function RunList({
         <div className="flex items-center gap-2">
           {!binding.readOnly && (
             <RouterLink
-              to="/admin/$table/$name"
+              to="/featherbase/admin/$table/$name"
               params={{ table, name: 'new' }}
               search={{ prefill: undefined }}
               className="fc-btn fc-btn-primary"
@@ -225,7 +225,7 @@ function RunList({
               + New
             </RouterLink>
           )}
-          <RouterLink to="/admin/$table" params={{ table }} search={{ filters: undefined }} className="fc-btn">
+          <RouterLink to="/featherbase/admin/$table" params={{ table }} search={{ filters: undefined }} className="fc-btn">
             List
           </RouterLink>
         </div>

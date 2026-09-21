@@ -7,6 +7,20 @@ import { discoverPackages } from '../src/runtime-packages'
 import { sql } from '../src/db'
 import { invalidateMeta } from '../src/meta'
 
+// 0090 is immutable migration history whose original physical source was
+// public. These focused behavior tests run after 0094, so adapt only that
+// historical physical/function vocabulary to the converged layout. The exact
+// unmodified cf88a7b -> 0094 path is exercised by the migration proof.
+const onConvergedStorage = (body: string) => body
+  .replaceAll('public.%I', 'featherbase.%I')
+  .replaceAll("'public'", "'featherbase'")
+  .replaceAll('using (fc_has_read(', 'using (featherbase.fc_has_read(')
+
+const runTransition = (body: string) => sql.begin(async tx => {
+  await tx.unsafe('set local search_path = featherbase, pg_temp')
+  await tx.unsafe(body)
+})
+
 // @spec prototype_transition_preserves_work.occupied_destination_aborts
 test('PKG-H1: prototype transition refuses occupied destinations without changing old work', async ({ admin }) => {
   registerApp(prototype)
@@ -14,8 +28,8 @@ test('PKG-H1: prototype transition refuses occupied destinations without changin
   const task = await admin.post<{ row_id: string }>('/api/save_row', { table: 'Team Task', row: { task_title: 'Do not discard' } })
   await sql`create schema if not exists tasker`
   await sql`create table tasker.task (sentinel text)`
-  const migration = await readFile(resolve('migrations/0090_tasker_prototype.sql'), 'utf8')
-  await expect(sql.begin(async tx => { await tx.unsafe(migration) })).rejects.toThrow('refusing to merge or discard')
+  const migration = onConvergedStorage(await readFile(resolve('migrations/0090_tasker_prototype.sql'), 'utf8'))
+  await expect(runTransition(migration)).rejects.toThrow('refusing to merge or discard')
   expect(await admin.get(`/api/table/Team%20Task/${task.row_id}`)).toMatchObject({ task_title: 'Do not discard' })
 })
 
@@ -58,9 +72,9 @@ test('PKG-H1: prototype transition preserves work, references, comments, focus a
       'other', ${sql.json([String(sharedUserGrant.row_id)])},
       ${sql.json({ permissions: [{ table: 'User', role: 'All', can_read: true }] })}, true
     )`
-  const migration = await readFile(resolve('migrations/0090_tasker_prototype.sql'), 'utf8')
-  await sql.unsafe(migration)
-  await sql.unsafe(migration)
+  const migration = onConvergedStorage(await readFile(resolve('migrations/0090_tasker_prototype.sql'), 'utf8'))
+  await runTransition(migration)
+  await runTransition(migration)
   await sql.unsafe(await readFile(resolve('migrations/0091_runtime_api_only.sql'), 'utf8'))
   await sql.unsafe(await readFile(resolve('migrations/0092_runtime_permission_owner.sql'), 'utf8'))
   expect(await sql`select has_table_privilege('app_client', 'tasker.task', 'select') as allowed`).toMatchObject([{ allowed: false }])

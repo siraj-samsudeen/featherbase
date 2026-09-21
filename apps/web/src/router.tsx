@@ -88,20 +88,28 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   beforeLoad: () => {
-    throw redirect({ to: getToken() ? landingPath() : '/login' })
+    throw redirect({ to: getToken() ? landingPath() : '/featherbase/login' })
+  },
+})
+
+const featherbaseIndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/featherbase',
+  beforeLoad: () => {
+    throw redirect({ to: getToken() ? landingPath() : '/featherbase/login' })
   },
 })
 
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/login',
+  path: '/featherbase/login',
   component: LoginPage,
 })
 
 // WEB-002: public web form (no session required).
 const webFormRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/form/$route',
+  path: '/featherbase/form/$route',
   component: WebFormPage,
 })
 
@@ -110,7 +118,7 @@ const webFormRoute = createRoute({
 // the Admin.
 const oauthCallbackRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/oauth-callback',
+  path: '/featherbase/oauth-callback',
   validateSearch: (search: Record<string, unknown>) => ({
     code: searchString(search.code),
   }),
@@ -125,9 +133,9 @@ function OAuthCallbackRouteComponent() {
 // rows (own_rows_only-scoped by the API). Lives outside the Admin shell.
 const portalListRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/portal/$table',
+  path: '/featherbase/portal/$table',
   beforeLoad: () => {
-    if (!getToken()) throw redirect({ to: '/login' })
+    if (!getToken()) throw redirect({ to: '/featherbase/login' })
   },
   component: PortalListRouteComponent,
 })
@@ -138,9 +146,9 @@ function PortalListRouteComponent() {
 
 const portalDocRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/portal/$table/$name',
+  path: '/featherbase/portal/$table/$name',
   beforeLoad: () => {
-    if (!getToken()) throw redirect({ to: '/login' })
+    if (!getToken()) throw redirect({ to: '/featherbase/login' })
   },
   component: PortalDocRouteComponent,
 })
@@ -154,9 +162,9 @@ function PortalDocRouteComponent() {
 // assignment and mints the embed session; the page only frames it.
 const salesTargetRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/sales-target',
+  path: '/featherbase/sales-target',
   beforeLoad: () => {
-    if (!getToken()) throw redirect({ to: '/login' })
+    if (!getToken()) throw redirect({ to: '/featherbase/login' })
   },
   component: SalesTargetPage,
 })
@@ -164,7 +172,7 @@ const salesTargetRoute = createRoute({
 // SET-002: public password-reset page (target of the emailed link).
 const resetPasswordRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/reset-password',
+  path: '/featherbase/reset-password',
   validateSearch: (search: Record<string, unknown>) => ({
     key: searchString(search.key),
   }),
@@ -173,9 +181,9 @@ const resetPasswordRoute = createRoute({
 
 const adminRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/admin',
+  path: '/featherbase/admin',
   beforeLoad: () => {
-    if (!getToken()) throw redirect({ to: '/login' })
+    if (!getToken()) throw redirect({ to: '/featherbase/login' })
   },
   component: AdminLayout,
 })
@@ -183,12 +191,12 @@ const adminRoute = createRoute({
 // PRN-001: print view lives OUTSIDE the Admin layout — no navbar/sidebar.
 const printRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/print/$table/$name',
+  path: '/featherbase/print/$table/$name',
   validateSearch: (search: Record<string, unknown>) => ({
     format: searchString(search.format),
   }),
   beforeLoad: () => {
-    if (!getToken()) throw redirect({ to: '/login' })
+    if (!getToken()) throw redirect({ to: '/featherbase/login' })
   },
   component: PrintPage,
 })
@@ -221,14 +229,14 @@ function AdminIndexPage() {
   const pages = useHomePages()
   const first = pages.data?.pages[0]
   useEffect(() => {
-    if (first) void navigate({ to: '/admin/home/$name', params: { name: first.row_id }, replace: true })
+    if (first) void navigate({ to: '/featherbase/admin/home/$name', params: { name: first.row_id }, replace: true })
   }, [first, navigate])
   if (!pages.data) return null
   if (first) return null
   return (
     <p className="text-sm text-gray-500" data-testid="admin-index-empty">
       No Home Pages are visible to you. Browse{' '}
-      <Link to="/admin/all-tables" className="text-[var(--color-brand)] underline">
+      <Link to="/featherbase/admin/all-tables" className="text-[var(--color-brand)] underline">
         All tables
       </Link>{' '}
       instead.
@@ -713,6 +721,7 @@ function MapPage() {
 
 export const routeTree = rootRoute.addChildren([
   indexRoute,
+  featherbaseIndexRoute,
   loginRoute,
   resetPasswordRoute,
   webFormRoute,

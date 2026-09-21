@@ -56,8 +56,8 @@ describe('DOC-012: rename document + cascade Link references', () => {
     expect(renamed.row_id).toBe('Acme Corp')
 
     // Old name is gone, new name exists.
-    expect(await sql`select 1 from rn_customer where row_id = 'Acme'`).toHaveLength(0)
-    expect(await sql`select 1 from rn_customer where row_id = 'Acme Corp'`).toHaveLength(1)
+    expect(await sql`select 1 from featherbase.rn_customer where row_id = 'Acme'`).toHaveLength(0)
+    expect(await sql`select 1 from featherbase.rn_customer where row_id = 'Acme Corp'`).toHaveLength(1)
 
     // Parent Link field updated.
     const order = await admin.get<{ customer: string; lines: { supplier: string }[] }>(
@@ -83,7 +83,7 @@ describe('DOC-012: rename document + cascade Link references', () => {
       admin.post(`/api/table/${encodeURIComponent(CUST)}/Globex:rename`, { new_name: 'Acme Corp' }),
     ).rejects.toMatchObject({ status: 409, type: 'ConflictError' })
     // Globex is untouched.
-    expect(await sql`select 1 from rn_customer where row_id = 'Globex'`).toHaveLength(1)
+    expect(await sql`select 1 from featherbase.rn_customer where row_id = 'Globex'`).toHaveLength(1)
   })
 
   test('404s renaming a document that does not exist', async ({ admin }) => {

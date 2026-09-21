@@ -14,6 +14,19 @@ import { runQueryReport } from '../src/query-report'
 import { permittedTiers } from '../src/permissions'
 
 describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
+  // @spec featherbase_human_routes_are_canonical
+  test('PKG-R6: legacy human deep links redirect to Featherbase while technical roots remain reserved', async ({ api }) => {
+    const old = await api.fetch('/admin/Tasker%20Task/one?view=board')
+    expect(old.status).toBe(308)
+    expect(old.headers.get('location')).toBe('/featherbase/admin/Tasker%20Task/one?view=board')
+    const login = await api.fetch('/login?next=%2Ftasker%2F')
+    expect(login.status).toBe(308)
+    expect(login.headers.get('location')).toBe('/featherbase/login?next=%2Ftasker%2F')
+    const technical = await api.fetch('/api/not-a-route')
+    expect(technical.status).toBe(401)
+    expect(technical.headers.get('location')).toBeNull()
+  })
+
   // @spec versioned_trusted_artifact.incompatible_package_rejected
   test('PKG-R1: reserved names fail discovery; failed installation leaves no Tables or activation', async ({ admin }) => {
     const directory = await mkdtemp(resolve('test/.runtime-package-'))
@@ -230,7 +243,7 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     await admin.post('/api/install_app', { name: 'other' })
     const signIn = await api.fetch('/other/', { headers: { accept: 'text/html' } })
     expect(signIn.status).toBe(302)
-    expect(signIn.headers.get('location')).toBe('/login?next=%2Fother%2F')
+    expect(signIn.headers.get('location')).toBe('/featherbase/login?next=%2Fother%2F')
     expect(await sql`select row_id from home_page where module = 'Other'`).toEqual([])
     const member = await createUser({ email: 'runtime-reader@example.com', roles: ['All'] })
     await expect(admin.post('/api/uninstall_app', { name: 'other' })).rejects.toMatchObject({ status: 417 })

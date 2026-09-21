@@ -67,7 +67,7 @@ describe('PERM-005: Data Scopes', () => {
     createUser,
   }) => {
     const { user, company, project } = await setup(admin, createUser)
-    const pb = await sql.unsafe(`select row_id from up_project where title='pb'`)
+    const pb = await sql.unsafe(`select row_id from featherbase.up_project where title='pb'`)
     await expectApiError(user.get(project.rowUrl(String(pb[0].row_id))), { status: 403 })
     await expectApiError(user.get(company.rowUrl('Company B')), { status: 403 })
     expect((await user.fetch(company.rowUrl('Company A'))).status).toBe(200)

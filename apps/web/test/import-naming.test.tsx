@@ -6,7 +6,7 @@ import { clearSession } from '../src/lib/import-session'
 for (const override of [null, 'ORIGINAL-.###', 'CUSTOM-.##']) {
   test(`IMP-R6 #114 renamed Table follows null provenance, preserves override ${override}`, async ({ admin }) => {
     clearSession()
-    await renderApp('/admin/import', admin)
+    await renderApp('/featherbase/admin/import', admin)
     const bytes = new TextEncoder().encode('Title\nalpha\nbeta\n').buffer
     const file = new File([bytes], 'original.csv', { type: 'text/csv' })
     Object.defineProperty(file, 'arrayBuffer', { value: async () => bytes })

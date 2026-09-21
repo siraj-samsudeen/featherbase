@@ -17,10 +17,12 @@ import { AppError } from './errors'
 import { getRoles } from './permissions'
 import { logAccess } from './audit'
 import type { SessionUser } from './auth'
+import { platformRelation } from './platform-schema'
+import { tableRelation } from './table-engine'
 
 export const ASSIGNMENT_TABLE = 'Sales Target Assignment'
 export const VIEWER_ROLE = 'Sales Target Viewer'
-export const REPORT_PATH = '/sales-target'
+export const REPORT_PATH = '/featherbase/sales-target'
 // Fixed experiment period (issue #3755): not a production calendar.
 export const PERIOD = { period_start: '2026-09-01', period_end: '2026-09-17' } as const
 // The sandbox origin the page frames and the CSP allows. Overridable only so
@@ -223,10 +225,8 @@ export const EMPLOYEE_CODE_FIELD = 'employee_code'
 export const EMPLOYEE_CODE_FIELD_ID = `User-${EMPLOYEE_CODE_FIELD}`
 
 async function relationExists(name: string): Promise<boolean> {
-  const [row] = await sql`
-    select 1 from information_schema.tables
-    where table_schema = current_schema() and table_name = ${name}`
-  return Boolean(row)
+  const [row] = await sql`select to_regclass(${platformRelation(name)}) as relation`
+  return Boolean(row?.relation)
 }
 
 /**
@@ -238,16 +238,17 @@ async function relationExists(name: string): Promise<boolean> {
 async function derivedFromSections(user: string): Promise<{ plant_code: string; material_group: string; section_name: string }[]> {
   const [col] = await sql`
     select 1 from information_schema.columns
-    where table_schema = current_schema() and table_name = 'user' and column_name = ${EMPLOYEE_CODE_FIELD}`
+    where table_schema = 'featherbase' and table_name = 'user' and column_name = ${EMPLOYEE_CODE_FIELD}`
   if (!col) return []
   if (!(await relationExists('employee_section_map')) || !(await relationExists('section_merchandise_map'))) return []
-  const [u] = await sql`select employee_code from "user" where row_id = ${user}`
+  const [u] = await sql`
+    select employee_code from ${sql(platformRelation('user'))} where row_id = ${user}`
   const code = u?.employee_code == null ? '' : String(u.employee_code).trim()
   if (!code) return []
   const rows = await sql`
     select distinct e.store_code as plant_code, m.material_group, e.section_name
-    from employee_section_map e
-    join section_merchandise_map m
+    from ${sql(platformRelation('employee_section_map'))} e
+    join ${sql(platformRelation('section_merchandise_map'))} m
       on  m.store_code = e.store_code
       and lower(trim(m.mch_subcategory)) = lower(trim(e.subcategory))
     where e.employee_code = ${code}
@@ -270,7 +271,7 @@ async function derivedFromSections(user: string): Promise<{ plant_code: string; 
 export async function currentAssignment(user: string): Promise<Assignment | null> {
   const explicit = await sql`
     select plant_code, store_label, material_group
-    from sales_target_assignment
+    from ${sql(await tableRelation(ASSIGNMENT_TABLE))}
     where employee = ${user}
     order by material_group`
   const derived = await derivedFromSections(user)

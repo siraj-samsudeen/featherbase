@@ -48,6 +48,41 @@ function assertReadOnly(query: string) {
     throw new AppError('ValidationError', 'Query reports must start with SELECT or WITH')
 }
 
+// Stored SQL is an external input, so it does not pass through the server's
+// logical-to-physical SQL mapping. Require every relation operand to name its
+// schema; otherwise the report's meaning depends on the database role's
+// search_path and can silently change across a migration. CTEs are local
+// query names rather than physical relations and remain unqualified.
+export function assertExplicitReportRelations(query: string) {
+  const lexical = query
+    .replace(/--[^\n]*/g, ' ')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/'(?:''|[^'])*'/g, "''")
+    .replace(/\$\$[\s\S]*?\$\$/g, '$$$$')
+  const ctes = new Set(
+    [...lexical.matchAll(/(?:\bwith\b|,)\s*(?:"([^"]+)"|([a-z_][a-z0-9_]*))\s+as\s*\(/gi)]
+      .map((m) => (m[1] ?? m[2]).toLowerCase()),
+  )
+  const relation = /\b(?:from|join)\s+(?:only\s+)?(?:"([^"]+)"|([a-z_][a-z0-9_]*))(?:\s*(\.)\s*(?:"([^"]+)"|([a-z_][a-z0-9_]*)))?/gi
+  for (const match of lexical.matchAll(relation)) {
+    const name = (match[1] ?? match[2]).toLowerCase()
+    if (match[3]) {
+      const physical = (match[4] ?? match[5]).toLowerCase()
+      if (name === 'public' && physical !== 'site')
+        throw new AppError(
+          'ValidationError',
+          `Query report relation public.${physical} is stale; Featherbase platform relations use the featherbase schema`,
+        )
+      continue
+    }
+    if (ctes.has(name)) continue
+    throw new AppError(
+      'ValidationError',
+      `Query report relation ${name} must be schema-qualified (for example featherbase.${name})`,
+    )
+  }
+}
+
 // Replace {name} with $n placeholders, returning the parameter values in order.
 function bind(query: string, filters: Record<string, unknown>): { text: string; params: unknown[] } {
   const index = new Map<string, number>()
@@ -75,6 +110,7 @@ export async function runQueryReport(
   if (!query) throw new AppError('ValidationError', `${reportName} has no query`)
 
   assertReadOnly(query)
+  assertExplicitReportRelations(query)
   const { text, params } = bind(query.replace(/;\s*$/, ''), filters)
 
   let rows: unknown

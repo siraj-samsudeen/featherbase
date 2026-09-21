@@ -1,6 +1,7 @@
 import postgres from 'postgres'
 import { config } from './config'
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { qualifyPlatformSql } from './platform-schema'
 
 export type Sql = postgres.Sql<Record<string, never>>
 export type TxSql = postgres.TransactionSql<Record<string, never>>
@@ -37,23 +38,48 @@ export function _getRootSql(): Sql {
   return root
 }
 
+function qualifiedClient(client: Sql): Sql {
+  return new Proxy((() => {}) as unknown as Sql, {
+  apply(_target, _thisArg, args) {
+    if (Array.isArray(args[0]) && Object.prototype.hasOwnProperty.call(args[0], 'raw')) {
+      const strings = args[0] as unknown as TemplateStringsArray
+      const qualified = strings.map(qualifyPlatformSql) as unknown as TemplateStringsArray
+      Object.defineProperty(qualified, 'raw', { value: qualified })
+      return (client as unknown as (...a: unknown[]) => unknown)(qualified, ...args.slice(1))
+    }
+    return (client as unknown as (...a: unknown[]) => unknown)(...args)
+  },
+  get(_target, prop) {
+    if (prop === 'unsafe') {
+      return (query: string, parameters?: unknown[]) =>
+        (client.unsafe as unknown as (q: string, p?: unknown[]) => unknown)(
+          qualifyPlatformSql(query), parameters,
+        )
+    }
+    const value = (client as never)[prop] as unknown
+    return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(client) : value
+  },
+  })
+}
+
 export const sql: Sql = new Proxy((() => {}) as unknown as Sql, {
   apply(_target, _thisArg, args) {
-    return ((transactions.getStore() ?? delegate) as unknown as (...a: unknown[]) => unknown)(...args)
+    const current = qualifiedClient(transactions.getStore() ?? delegate)
+    return (current as unknown as (...a: unknown[]) => unknown)(...args)
   },
   get(_target, prop) {
     const current = transactions.getStore() ?? delegate
-    if (current !== root) {
-      if (prop === 'begin') {
-        return (first: unknown, second?: unknown) => {
-          const fn = (typeof first === 'function' ? first : second) as (s: TxSql) => unknown
-          return (current as unknown as TxSql).savepoint(fn)
-        }
+    if (prop === 'begin') {
+      return (first: unknown, second?: unknown) => {
+        const fn = (typeof first === 'function' ? first : second) as (s: TxSql) => unknown
+        const run = (tx: TxSql) => fn(qualifiedClient(tx as unknown as Sql) as unknown as TxSql)
+        if (current !== root) return (current as unknown as TxSql).savepoint(run)
+        return typeof first === 'function'
+          ? root.begin(run)
+          : root.begin(first as never, run)
       }
-      // A sandboxed suite must not be able to close the shared pool.
-      if (prop === 'end') return async () => {}
     }
-    const value = (current as never)[prop] as unknown
-    return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(current) : value
+    if (current !== root && prop === 'end') return async () => {}
+    return (qualifiedClient(current) as never)[prop]
   },
 })
