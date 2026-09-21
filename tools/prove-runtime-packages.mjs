@@ -153,7 +153,8 @@ try {
     personal_tasks_owner: 'Administrator',
   } }, 417)
   browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {})
-  const page = await browser.newPage({ viewport: { width: 1440, height: 960 } })
+  const context = await browser.newContext({ viewport: { width: 1440, height: 960 } })
+  const page = await context.newPage()
   // @spec featherbase_human_routes_are_canonical.exact_runtime_app_location_survives_sign_in
   const selectedTask = seeded.tasks['DEV-TASKER-TASK-INVOICE-MISMATCH']
   const deepLink = `${origin}/tasker/?review=deep-link&note=37%20cartons%2F83#task=${selectedTask}`
