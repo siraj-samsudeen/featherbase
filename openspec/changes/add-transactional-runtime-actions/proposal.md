@@ -18,6 +18,8 @@ caller-authorized transaction boundary with durable replay after a lost response
 - `transactional-runtime-actions`: declared atomic commands, replay and lifecycle admission.
 
 ### Modified Capabilities
+- `runtime-document-deletion`: generic runtime deletes enforce the same revision
+  and retained-activity guard instead of bypassing it.
 
 ## Impact
 
