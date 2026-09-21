@@ -1,0 +1,70 @@
+## ADDED Requirements
+
+### Requirement: declared_app_actions_fail_closed
+Status: governed (#296)
+
+The host SHALL accept only version-1 declared named actions through one
+authenticated app-identity/action-name endpoint. Declaration and handler names
+SHALL match exactly. Missing, disabled, incompatible, inaccessible or undeclared
+actions SHALL fail before handler execution. Manager diagnostics SHALL expose
+declared names. Identical local names in different apps SHALL remain distinct.
+
+#### Scenario: stale or unauthenticated call
+- **WHEN** a caller has no session or submits a stale action after disable
+- **THEN** the host rejects without running the handler or replaying private results
+
+#### Scenario: two applications declare the same name
+- **WHEN** two active applications declare `transform`
+- **THEN** the app identity selects only that application's implementation
+
+### Requirement: action_helpers_preserve_caller_authority
+Status: governed (#296)
+
+Handlers SHALL receive unknown payload, caller identity, host validation rejection
+and narrow document helpers, never a raw SQL transaction or caller override.
+Helpers SHALL restrict access to declared local tables, ordinary caller table,
+row, field and reference permissions, and current app availability. Shared tables
+SHALL require package permission declarations as well as caller permission.
+Bound sources and privileged platform configuration SHALL be refused. Activity
+reads SHALL require document read access and redact inaccessible version fields.
+
+#### Scenario: malformed payload or attempted bypass
+- **WHEN** a handler rejects malformed payload or requests undeclared/private storage
+- **THEN** the command fails and no partial rows or history survive
+
+### Requirement: action_writes_and_replay_are_atomic
+Status: governed (#296)
+
+An action SHALL execute within one host-owned transaction. A successful command
+SHALL atomically persist its JSON result and payload identity under caller, app,
+action and idempotency key. Same-key identical-payload retries SHALL return that
+result without execution; different-payload retries SHALL conflict. Failed
+handlers or stale source revisions SHALL roll back all writes and Versions and
+SHALL NOT consume a key. Update and delete SHALL require source revision checks.
+
+#### Scenario: asymmetric multi-row command rolls back
+- **WHEN** a handler creates one row, changes a different row and then throws
+- **THEN** neither change, shared relation change nor partial Version persists
+
+#### Scenario: response is lost and caller retries
+- **WHEN** a committed request is repeated, including across restart
+- **THEN** the original result returns and no second destination is created
+
+### Requirement: action_commit_boundary_and_lifecycle_serialize
+Status: governed (#296)
+
+Actions and their deferred post-commit work SHALL hold the existing admitted
+operation lock against lifecycle transitions. Post-commit effects SHALL run only
+after the outer commit, never on rollback or replay. An effect failure SHALL NOT
+undo committed documents, change the durable successful result, or permit
+duplicate action execution. Effects are best effort, not durable delivery.
+Restart/re-enable SHALL NOT accumulate handlers. Helpers SHALL be invalid after
+handler completion and SHALL NOT allow overlapping document operations.
+
+#### Scenario: disable waits for admitted action
+- **WHEN** disable races an admitted action or its post-commit tail
+- **THEN** disable waits, then subsequent calls fail closed
+
+#### Scenario: post-commit effect fails
+- **WHEN** an effect throws after successful command commit
+- **THEN** writes and replay result remain committed and retry does not repeat effects
