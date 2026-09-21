@@ -63,3 +63,12 @@ Eight-axis review found two concrete integration assumptions (unregistered ledge
 Five-axis divergence resolved: the requirement protects retained references, while the earlier generic guard protected only Comment/Version/declared References. The failing attachment-only regression proved the gap. Parent approved the generic File/Share guard and target locks, now integrated and proven; upstream archive a7f77f3 is included. Upload rejection may leave unlinked storage bytes, but not a File document pointing at a deleted runtime row. Arbitrary application pointers/direct admin SQL remain outside the contract.
 
 Keep this OpenSpec change open until parent independent exploration passes. Guided Inbox processing and the pre-existing evidence gaps listed in `openspec/TASKER.md` are not claimed complete by this change. No live Dev deployment or authenticated deployed-commit smoke is claimed.
+
+## Independent review: release blocked
+
+Independent review of b97b1ab rejected release despite reproducing all passing counts above. Two boundary journeys were missing from the original matrix:
+
+- The advertised advanced-fields/attachments link opens a core client without runtime identity, so upgraded Tasker rows return 409. The upgrades owner is correcting the generic pinned client, without weakening the host guard. The extended package proof retains a v1 core form across upgrade (Save/upload must refuse), then follows the actual Tasker link to v2 and exercises Save/upload/read/remove.
+- Signed-out links lost the query and selected-task hash. The convergence owner is correcting generic safe login return. The new literal exact-URL assertion is red on the old core (`dist/runtime-proof-HWaLhf`), matching the independent finding. It will also assert the selected task is open after login.
+
+The proof-isolation issue is separately closed by independent review of 8733964. Both opt-in real-commit tests pass unchanged on a reviewer-selected `featherbase_review296_873_actions_commit_e2e`; missing DATABASE_URL and shared `featherbase_test` are rejected during config loading, before database imports/global setup. The actual database name and test stamp are still asserted. Product findings remain open until integrated fixes and independent re-review; no final acceptance is inferred from the isolated proof correction.
