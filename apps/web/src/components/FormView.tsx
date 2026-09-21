@@ -287,6 +287,8 @@ export function FormView({
     else if (!f.hidden) sections[sections.length - 1].push(f)
   }
 
+  // @spec generic_form_layout_baseline
+  // @spec generic_row_editor_preserves_field_contract
   return (
     <div data-testid="form-view" className="max-w-5xl">
       <nav className="mb-2 text-xs text-gray-500" data-testid="breadcrumbs">

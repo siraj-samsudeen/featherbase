@@ -35,6 +35,7 @@ test('UI-004: FormView renders every field type as the correct control', async (
   await expect(grid.locator('tbody tr').first().locator('[data-childfield=item]')).toHaveValue('bolt')
 })
 
+// @spec generic_row_editor_preserves_field_contract.generic_fields_save_or_show_errors
 test('UI-005: save persists edits, shows dirty state and field-wise server errors inline', async ({ page }) => {
   await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
   await expect(page.getByTestId('form-status')).toContainText('Saved')
