@@ -4,6 +4,7 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
 import { afterDocumentCommit } from './action-transaction'
+import { retainedDocumentCounts } from './document-activity'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
@@ -238,7 +239,7 @@ async function validateLinks(
 
 // @spec guarded_action_deletion_preserves_retained_work
 async function lockDiscussionTargets(tx: typeof sql, meta: TableMeta, row: RowValues, user: string, old?: RowValues) {
-  if (meta.name !== 'Comment') return
+  if (meta.name !== 'Comment' && meta.name !== 'Version') return
   for (const target of [old, row]) {
     if (!target || typeof target.ref_table !== 'string' || !target.ref_table.includes('.')) continue
     const table = target.ref_table
@@ -1070,6 +1071,15 @@ async function deleteDocImpl(
       throw new AppError('NotFoundError', `${table} ${name} not found`)
     await assertDocPermission(user, table, 'delete', String(existing.created_by))
     await assertUserPermissions(user, meta, existing as RowValues)
+    if (meta.owner_app) {
+      if (!opts.expectUpdatedAt || !Number.isFinite(Date.parse(opts.expectUpdatedAt))
+        || new Date(existing.updated_at as string).getTime() !== Date.parse(opts.expectUpdatedAt))
+        throw new AppError('ConflictError', `${table} ${name} has been modified after you loaded it; supply its current updated_at`)
+      const counts = await retainedDocumentCounts(stx, table, name)
+      if (Object.values(counts).some(Boolean))
+        throw new AppError('ValidationError', 'This document has retained activity or references and cannot be deleted',
+          Object.fromEntries(Object.entries(counts).map(([key, count]) => [key, String(count)])))
+    }
     if ((existing.status as string) === 'submitted')
       throw new AppError(
         'ValidationError',

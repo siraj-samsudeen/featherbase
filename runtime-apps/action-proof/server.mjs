@@ -1,4 +1,5 @@
 export const apiVersion = 1
+export let escapedDocuments
 export const actions = {
   async transform({ payload, documents, reject }) {
     if (!payload || typeof payload !== 'object' || typeof payload.source !== 'string' || typeof payload.updatedAt !== 'string')
@@ -20,6 +21,19 @@ export const actions = {
   async probe(context) {
     const { payload, documents } = context
     if (payload.operation === 'shape') return Object.keys(context).sort()
+    if (payload.operation === 'escape') { escapedDocuments = documents; return true }
+    if (payload.operation === 'unawaited') {
+      void documents.create('actionproof.destination', { title: 'Must roll back' }).catch(() => {})
+      return true
+    }
+    if (payload.operation === 'swallow') {
+      try { await documents.create('Permission', { row_id: 'forbidden' }) } catch {}
+      return true
+    }
+    if (payload.operation === 'nonjson') {
+      await documents.create('actionproof.destination', { title: 'Cannot replay undefined' })
+      return undefined
+    }
     if (payload.operation === 'parallel') return Promise.all([documents.get('actionproof.work', payload.source), documents.get('actionproof.work', payload.source)])
     return documents[payload.operation](payload.table, payload.values ?? payload.source)
   },

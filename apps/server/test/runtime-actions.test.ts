@@ -1,4 +1,5 @@
 import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
@@ -22,6 +23,7 @@ describe('declared transactional runtime actions', () => {
     const first = await admin.post<any>(action + 'transform', request)
     expect(first.result).toMatchObject({ marker: 37, source: 'source' })
     expect(await admin.post(action + 'transform', request)).toEqual(first)
+    expect(await admin.post(action + 'transform', { ...request, payload: { updatedAt: source.updated_at, source: 'source' } })).toEqual(first)
     await discoverPackages([directory]); await loadInstalledApps()
     expect(await admin.post(action + 'transform', request)).toEqual(first)
     expect(await sql`select title from actionproof.destination`).toEqual([{ title: '37 units / destination' }])
@@ -149,5 +151,45 @@ describe('declared transactional runtime actions', () => {
         expect(await discoverPackages([second])).toHaveLength(1)
       }
     } finally { await rm(second, { recursive: true, force: true }) }
+  })
+
+  // @spec action_helpers_preserve_caller_authority
+  // @spec guarded_action_deletion_preserves_retained_work
+  test('finalized references, retained update counts, related queries and helper overlap cannot evade authority', async ({ admin, createUser }) => {
+    await discoverPackages([directory]); await admin.post('/api/install_app', { name: 'actionproof' })
+    const owner = await createUser({ email: 'reference-owner@example.com', roles: [] })
+    const other = await createUser({ email: 'reference-other@example.com', roles: [] })
+    const source = await owner.post<any>('/api/save_row', { table: 'actionproof.work', row: { row_id: 'scope', title: 'Public input' } })
+    const hidden = await other.post<any>('/api/save_row', { table: 'actionproof.destination', row: { title: 'Private destination' } })
+    const controller: TableController = { table: 'actionproof.work', hooks: { before_validate: ctx => { ctx.row.destination = hidden.row_id } } }
+    registerController(controller)
+    try {
+      await expect(owner.post(action + 'probe', { idempotencyKey: 'scoped', payload: { operation: 'update', table: 'actionproof.work', values: { row_id: source.row_id, updated_at: source.updated_at, title: 'Forbidden after hook' } } })).rejects.toMatchObject({ status: 403 })
+      expect(await sql`select title, destination from actionproof.work where row_id = 'scope'`).toEqual([{ title: 'Public input', destination: null }])
+      expect(await sql`select row_id from version where ref_table = 'actionproof.work'`).toHaveLength(0)
+    } finally { unregisterController(controller) }
+    await expect(owner.post(action + 'probe', { idempotencyKey: 'parallel', payload: { operation: 'parallel', source: source.row_id } })).rejects.toMatchObject({ status: 417 })
+    const changed = await owner.post<any>('/api/save_row', { table: 'actionproof.work', row: { ...source, title: 'Retain the edit' } })
+    const activity = await owner.post<any>(action + 'probe', { idempotencyKey: 'activity', payload: { operation: 'activity', table: 'actionproof.work', source: source.row_id } })
+    expect(activity.result.versions[0].data.changed).toEqual([['title', 'Public input', 'Retain the edit']])
+    expect(await owner.post(action + 'discard', { idempotencyKey: 'has-history', payload: { source: source.row_id, updatedAt: changed.updated_at, explain: true } })).toEqual({ result: { deleted: false, counts: { comments: 0, versions: 1, references: 0 } } })
+    // Neither a system Table declaration nor its ordinary read grant makes
+    // global Comment queries a document-authorized activity API.
+    await expect(owner.post(action + 'probe', { idempotencyKey: 'global-comments', payload: { operation: 'list', table: 'Comment' } })).rejects.toMatchObject({ status: 417 })
+    await expect(owner.post(action + 'probe', { idempotencyKey: 'related', payload: { operation: 'list', table: 'actionproof.work', values: { filters: [['destination', 'related', { table: 'actionproof.destination' }]] } } })).rejects.toMatchObject({ status: 417 })
+  })
+
+  // @spec action_commit_boundary_and_lifecycle_serialize
+  test('escaped helpers, unawaited writes, swallowed failures and non-JSON results fail without partial commits', async ({ admin }) => {
+    await discoverPackages([directory]); await admin.post('/api/install_app', { name: 'actionproof' })
+    for (const operation of ['unawaited', 'swallow', 'nonjson']) {
+      await expect(admin.post(action + 'probe', { idempotencyKey: operation, payload: { operation } })).rejects.toMatchObject({ status: 417 })
+      expect(await sql`select row_id from actionproof.destination`).toHaveLength(0)
+      expect(await sql`select * from runtime_action_result`).toHaveLength(0)
+    }
+    expect(await admin.post(action + 'probe', { idempotencyKey: 'escape', payload: { operation: 'escape' } })).toEqual({ result: true })
+    const module = await import(/* @vite-ignore */ pathToFileURL(resolve(directory, 'server.mjs')).href)
+    await expect(module.escapedDocuments.create('actionproof.destination', { title: 'Too late' })).rejects.toMatchObject({ type: 'ValidationError' })
+    expect(await sql`select row_id from actionproof.destination`).toHaveLength(0)
   })
 })

@@ -95,18 +95,24 @@ not durable delivery; no automatic retry of notifications/webhooks is promised.
 - Single-process activation remains the existing deployment assumption.
 - Actions reject bound, settings, child and platform-control tables. Shared
   Comment access needs both declared permission and target document permission.
+  Comment is append-only; read discussion through document activity. Delete is
+  owned-row-only. List does not accept cross-table `related` filters.
 - Serialized helper calls avoid overlapping savepoints. Escaped helper contexts
   become invalid when the handler returns; the handler must await its work.
-- `db.ts`, runtime discovery and API routing overlap upgrades; both use the same
+- Runtime discovery and API routing overlap upgrades; both use the same
   lifecycle lock, and neither action execution nor replay calls lifecycle APIs.
-- The pre-existing trusted-runtime spec incorrectly calls the retired Journey
-  spec authoritative. Repository-workflow/ADR 0010 govern; convergence owns that
-  documentation correction, not this capability.
+  `db.ts` remains unchanged. Helper rows are JSON-normalized, including timestamp
+  strings, so a returned result has the same representation on replay.
+- The generic runtime DELETE path uses the same revision and retention guard;
+  it cannot bypass action safety. Nonruntime deletion behavior is unchanged.
 
 ## Migration Plan
 
-Add an inaccessible internal ledger by migration; no backfill. Existing packages
-without actions keep working. Rollback code leaves inert ledger rows.
+Add an inaccessible internal ledger by `0096_runtime_action_results.sql`; no
+backfill. 0094 belongs to schema convergence and 0095 to upgrades. Existing
+packages without actions keep working. Rollback code leaves inert ledger rows.
+Pre-integration disposable databases with the earlier 0094 ledger must be rebuilt
+or explicitly reconciled before applying 0096; this is an unreleased renumber.
 
 ## Open Questions
 
