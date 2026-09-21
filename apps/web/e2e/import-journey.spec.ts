@@ -98,7 +98,7 @@ test('IMP-J1: first import creates a typed Table from zones.csv', async ({
 
   // J1.7 — lands on the new Table's list: all eight zones, ids in the series
   await session
-    .assertPath(`/admin/${encodeURIComponent(DT)}`)
+    .assertPath(`/featherbase/admin/${encodeURIComponent(DT)}`)
     .assertHas('[data-testid="list-rows"]', { text: 'Alpha' })
     .assertHas('[data-testid="list-rows"]', { text: 'Hotel' })
   await snap(page, 'IMP-J1.7')

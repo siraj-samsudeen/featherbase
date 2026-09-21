@@ -1,5 +1,254 @@
 # Progress Log
 
+## 2026-09-21 — Runtime-root normalization retains exact query state (#296)
+
+The permanent trailing-slash redirect for direct runtime-app roots now retains
+the original encoded query and uses 308 semantics. The shared app-root matcher
+also recognizes a query immediately after an unslashed root, so development proxy
+behavior matches the single-origin production server while reserved roots remain
+excluded. The browser continues to own fragment inheritance; the server neither
+receives nor fabricates it.
+
+Asymmetric route proof covered signed-in and signed-out roots, an empty query,
+repeated and encoded parameters, malformed encoding, reserved/ambiguous paths and
+the already-slashed login handoff. A real browser opened unslashed Tasker with
+repeated encoded query state and a selected-task fragment, traversed slash
+normalization and canonical login, then returned to the exact URL with the task
+detail open. Proof used only `featherbase_test_issue_296_root_query`,
+`featherbase_test_issue_296_root_query_web` and
+`featherbase_issue_296_root_query_browser_e2e`, with API 8503/web 5503.
+
+## 2026-09-21 — Exact runtime-app location survives sign-in (#296)
+
+Canonical Featherbase login now carries the exact runtime-app path and encoded
+query observed by the server, while the browser preserves its inherited fragment
+and appends it only after the return destination passes the shared runtime-root
+allow-list. External, scheme-relative, backslash, technical, legacy and malformed
+destinations fail closed to the member's normal landing page; no Tasker-specific
+route or fragment parsing entered Featherbase core.
+
+Proof used only worker-owned resources: server/web tests used
+`featherbase_test_issue_296_login_return` and
+`featherbase_test_issue_296_login_return_web`; the browser journey used
+`featherbase_issue_296_login_return_browser2_e2e` with API 8502 and web 5502.
+The browser opened a signed-out Tasker URL with encoded query state and a selected
+task fragment, passed through `/featherbase/login`, and returned to the exact URL
+with the task detail open. Focused server tests passed 10/10; full server passed
+826 with 15 MySQL-only skips; full web passed 153/153; all workspace typechecks,
+SQL lint, strict OpenSpec, policy, STC and evidence checks passed. No shared
+database, deployment or `tools/prove-runtime-packages.mjs` was touched.
+
+## 2026-09-21 — OpenSpec becomes Tasker's sole behavior contract (#296)
+
+Reviewed the final Tasker UI revision against its implementation and tests.
+Moved the approved workspace navigation, Projects landing, project tabs, reusable
+task-list controls and responsive Inspector behavior into feature-sized OpenSpec
+capabilities. Migrated the unique requirements, scenarios, assumptions, tables
+and evidence verdicts from the duplicate Tasker docs, then retired that surface
+to one compatibility pointer. Incidental CSS values remain implementation detail.
+
+The explicit specified-but-not-built inventory now contains only guided
+one-at-a-time Inbox processing. Built behavior with incomplete proof is listed
+separately in `openspec/TASKER.md`. Updated stale UI selectors and added focused
+coverage for the Projects landing and consistent task rows.
+
+**Verification:** all 149 web tests passed; Tasker production build passed;
+evidence and STC checks passed with no new gaps or orphan markers; all 13 OpenSpec
+specifications passed strict validation; `git diff --check` passed. No push, pull
+request, merge or deployment was performed.
+
+## 2026-09-21 — Convergence worker migration and edge proof (#296)
+
+Progressive migration proof used three disposable databases. A fresh install
+produced 64 Featherbase base tables, migration ledger 95 and only `public.site`
+in public. An exact `cf88a7b` upgrade retained OIDs `2335350` (`table_def`),
+`2336342` (`Upgrade Note`) and `2336357` (`tasker.task`), two asymmetric core
+rows, one Tasker row, disabled Tasker metadata and its ACL/RLS state. A forced
+destination collision failed with both old objects and ledger 94 intact; removing
+the collision and retrying produced one complete ledger-95 state. Re-running the
+released migration remained idempotent. Legacy names with repeated interior or
+trailing whitespace retained their exact runtime-derived physical names, OIDs and
+rows. A missing metadata-required relation failed closed at ledger 94 and rolled
+earlier moves back. Focused import/revert, tenancy, RLS, Query Report and
+runtime-package tests passed 57/57; Query Reports also reject comma-join operands
+that could otherwise evade explicit-schema validation.
+
+Parallel proof is isolated: the convergence suite owns
+`featherbase_test_issue_296_convergence`, and the literal package/browser proof
+owns `featherbase_issue_296_convergence_runtime_e2e` on port 8497. The full
+server suite passed 826/826 with 15 MySQL-only skips; web passed 147/147; all
+workspace typechecks and SQL lint passed. The frozen-core proof passed with hash
+`7a722ec9bb600f40a39def1ac1063ae48259951e57169572a5c8c5aa9d2bee1a`, including
+disable/re-enable, restart, missing-code recovery, signed-out Tasker return and
+old-route query/fragment preservation. Direct Tasker and unavailable-state
+captures under `dist/runtime-proof-6L2HgG/` were visually inspected with no
+broken layout. Strict OpenSpec, STC and evidence checks are the final handoff
+gates; no shared Railway database was touched.
+
+## 2026-09-21 — Tasker OpenSpec comparison, without replacing journey specs (#296)
+
+Cherry-picked only the OpenSpec/STC evaluation commit from PR #289 and retained
+the newer Tasker/runtime-package work while resolving its two conflicts. Added
+OpenSpec counterparts for Tasker and trusted runtime packages beside authoritative
+journey specs 0010/0011. They preserve the established `TSK-*`/`PKG-*` handles,
+separate world assumptions from governed machine contracts, tabulate destination,
+state and package-lifecycle spaces, and explicitly remain an additive evaluation.
+
+The STC matrix now scans independently delivered runtime-app source and migrations.
+Markers sit at actual decisions and asymmetric tests rather than merely making the
+matrix green. The comparison exposed and retained one real gap: singular Tasker
+responsibility is declarative manifest shape but still lacks its dedicated server
+test (`TSK-I2`). An independent five-axis review found nine first-draft divergences;
+the specs now restore team access and API-only app data, classify trust correctly,
+split capture evidence, correct package lifecycle completeness, and strengthen
+project rapid-entry, private focus/order/reload and two-user urgency tests.
+
+**Verification:** OpenSpec strict validation passed all three evaluation specs;
+`pnpm check:stc` passed with no orphans/new gaps across 35 requirements; all 76
+tool tests passed with three host-only skips;
+server/web/Tasker typechecks passed; focused server tests passed 37/37 before the
+review fixes and 19/19 after them; strengthened Tasker component tests passed 6/6.
+`pnpm check:evidence` passed 172 verdicts across ten authoritative journey specs.
+The final literal package proof passed with frozen core SHA-256
+`09873e4abf0b200b3612e6167925d5e2a412dd8c31c12247ae3525780f9cd1a0` and evidence
+under `dist/runtime-proof-mcI6uQ/`; its seeded Inbox was visually inspected with
+realistic rows, controls and no clipping or broken layout.
+
+## 2026-09-21 — Prove Before Handoff and Tasker development scenarios (#296)
+
+Added the three-stage Prove Before Handoff practice (Prepare, Prove, Hand off)
+and made it the automatic development-build definition of done. The standing
+reset authorization is explicitly limited to loopback Featherbase development
+databases only after the `development` environment and directly local PostgreSQL
+server are positively identified. Loopback alone is insufficient; tunnels, port
+forwards, reverse/transparent proxies, shared development, QA/staging/production,
+external services and production data remain out of bounds.
+
+Tasker's app-owned development seed now uses ordinary HTTP APIs and its scenarios
+live under `runtime-apps/tasker/development/`, outside the production npm artifact.
+`pnpm seed:tasker -- --url=http://127.0.0.1:8000` refuses redirects, wrong
+environment, remote PostgreSQL and cross-origin responses before credentials are
+sent. It adopts deterministic development-only row IDs without overwriting
+same-title or adopted data, and refuses a deterministic ID whose identifying
+title belongs to unrelated work. A concrete row is `DEV-TASKER-TASK-INVOICE-MISMATCH`,
+`Triage supplier invoice mismatch` (urgent, unassigned,
+Inbox); the complete set includes fake teammates, projects, assigned/unassigned,
+blocked/on-hold explanations, personal and completed work, and private focus.
+
+The literal package proof seeds that state and asserts Inbox, Projects, private
+focus order, explanation visibility, urgent/Not urgent, self-assignment,
+Done→undo restoration, detail responsiveness, stale-client rejection and an
+invalid dual destination, while retaining restart/isolation/security checks.
+At tablet and phone widths the proof also attempts real wheel scrolling: document
+scroll stays locked, inspector scroll advances, and closing restores document
+scroll. Evidence is emitted as `seeded-inbox.png`, `seeded-my-work.png`, responsive
+detail captures and `evidence.json` under the printed `dist/runtime-proof-*/` directory.
+The fake teammates deliberately have no passwords; the seed never resets or
+deletes data and does not reconcile developer edits to adopted scenario rows.
+Runtime-package permissions now retain package ownership internally: disabling
+or losing compatible package code suspends even grants on shared core Tables,
+while an equivalent grant independently contributed by another active package
+continues to apply.
+
+**Verification:** seed safety/identity/idempotence/collision 8/8; focused server
+runtime/grant/transition/Tasker/ping 28/28 and web Tasker 6/6; all server/shared
+tests passed and all 139 web assertions passed (the first combined run reported
+one existing Home Recall teardown-time rejection; the isolated web rerun was
+clean). Server, web and Tasker typechecks passed. The npm dry-run contained only
+six production files and no scenario seed. `pnpm apps:prove` passed with frozen
+core unchanged at
+`987e4ee961a3b7de8cec3f146704cabe1748de230db3fedd08dbe46dbc9ae2d7`.
+Evidence: `dist/runtime-proof-SZNYNd/`. The seeded Inbox, My Work, wide inspector,
+tablet inspector and phone inspector screenshots from the preceding equivalent
+proof were visually inspected.
+
+## 2026-09-21 — Independent trusted runtime-package learning slice (#296)
+
+Tasker now builds outside the pnpm workspace as an npm-compatible package with
+a versioned manifest, compiled validation module and separate browser root at
+`/tasker/`. Featherbase core has no Tasker router/layout import or conditional.
+Explicit operator paths supply boot-time discovery; install enables atomically,
+disable preserves data/grants, and missing or incompatible code is unavailable
+and cannot operate on owned Tables. Re-enable registers hooks once. Only declared
+client assets are served, with explanatory disabled/missing navigation pages.
+
+Qualified identities (`tasker.task`, `other.task`) resolve through metadata to
+separate schema/relation pairs, not dotted single relations. The asymmetric Other
+fixture proves distinct schemas, rules and ordinary-user permissions for the same
+row ID. Complete-operation lifecycle locks include post-commit work. Metadata
+overrides cannot redirect identity/storage/hook dispatch. Raw app SQL is deliberately
+unsupported: Query Reports authenticate through a separate restricted app_client
+pool, not an owner session with SET ROLE (which a nested SQL expression escaped).
+Scoped Oracle follow-up confirmed the reproduced escape is closed after the fix.
+
+The deterministic prototype migration preserves rows, references, comments, private
+focus and grants, and aborts collisions. Its regression covers the real Comment,
+Version, File and Share pointers rather than only the task rows. Read-only
+inspection found three tasks in the developer database, including TASK-00003,
+“Follow up with Deepak on the GoFrugal discrepancy discussed in the call with
+Bala”, in TPROJ-0001 “GoFrugal Data Quality”.
+That database was not migrated; migration tests and browser proof use disposable
+databases only. Starting normal init will run the migration and needs operator
+authorization for those existing developer rows.
+
+**Verification:** final `pnpm -r test:coverage` passed: shared 129, server 817,
+web 139 tests; 15 MySQL tests skipped without MYSQL_TEST_URL. Line coverage was
+99.56%, 88.30%, 40.76%, respectively; existing thresholds unchanged. Shared
+typecheck and server/web source-and-test typechecks passed. Isolated Playwright
+smoke + Tasker passed 4/4. The default `pnpm smoke` initially found no dev server
+on port 8000; the isolated run verified boot and proxy without touching dev data.
+`pnpm check:evidence` passed: 52 tool tests, three host-specific skips; 172 verdicts
+across ten specs. The earlier stale `/apps/tasker/` catalog assertion was corrected
+to the owner's direct-root decision before the final full coverage run.
+
+`pnpm apps:prove` passed against plain Node and compiled core frozen BEFORE
+Tasker/Other were built and packed. Install → capture → assign → complete → undo
+→ inspect → disable stale client → restart → enable → missing code → restore
+preserved rows and core checksum. The final proof also asserts and visually checks
+the wide side-by-side inspector plus focused tablet and phone detail layouts.
+Evidence: `dist/runtime-proof-fBa1vY/`; core SHA-256
+`c704fb4176f745709a59d94a0ed06a6fa4013576fedbd283899a47589e4aef7f`.
+Independent final-form review approved the corrected responsive inspector and
+found no remaining actionable issue.
+
+**Provisional/deferred:** single-server activation, trusted full Node/same-origin
+code, API-only app data, a small duplicated client API/CSS seam, and the generic
+form for comments/history. Full task detail, project stars and Together/Tabs are
+not delivered. Remove versus explicit data deletion, previewed upgrades, full
+ADK controls, declared preferences/recents, capability selection/layers and core
+`/featherbase/`/schema convergence remain future work. Owner's DWOS portfolio and
+ERP-scale vision are recorded in the WIP recovery plan without expanding this slice.
+
+## 2026-09-20 — Shared task-management prototype (#296)
+
+Built an opt-in `task-management` app on native Featherbase Tables. The task
+workspace at the Tasks Home Page (`/admin/home/tasks`, with `/admin/tasks` as
+a direct-link alias) now supports title-only Inbox capture, one-step
+destination and responsibility choices, name-only projects with rapid task
+entry, team-visible Personal tasks, explicit work states with an optional
+comment for inactive states, shared Urgent, and private ordered My Focus / My
+Work. The generic Team Task form remains the full description, comments,
+attachments and history surface. The app uses the module Home Page Featherbase
+already creates, so Tasks appears only once in the sidebar. The compact task
+row keeps shared Urgent and private Focus actions together on the right,
+preserves row position when urgency changes, places Take it beside assignment,
+and shows the latest inactive-state explanation in context.
+
+Server hooks enforce one destination, Personal-task ownership, single
+responsibility, and reversible Done-state behavior regardless of whether a
+write comes from the workspace or the generic API. The app grants the trusted
+team the task, project, user-picker and comment access the shared workflow
+needs.
+
+**Verified:** server integration 9/9; web component journeys 6/6; server and
+web typechecks; task-only Playwright 2/2 including desktop persistence and
+375 px layout; inspected desktop capture showed two legible Inbox tasks with
+independent Urgent and private-star signals. `node tools/check-evidence.mjs`
+passes. The broader `pnpm check:evidence` wrapper still has the existing local
+environment failure in `tools/init-ports.test.mjs` because its isolated shell
+cannot find `node`; 51 tool tests passed and 3 root-only cases skipped before
+that failure.
+
 ## 2026-09-19 — Owner review of the sales-target/dataset-snapshot work: six correctness and authorization fixes
 
 Siraj reviewed data-warehouse#3775 at this branch's tip and found six concrete
@@ -69,6 +318,81 @@ duplicate rows, and two documentation overclaims corrected) — see
 data-warehouse#3775's review thread for the full list; two items (the
 category/subcategory assignment ambiguity, and a freshness-policy design
 question) are reserved for a separate owner discussion, not implemented here.
+
+## 2026-09-18 — The STC review skills, ported; OpenSpec installed as an evaluation
+
+Three repo-local review skills — `/code-review-8-axes`, `/test-review-3-axes`,
+`/spec-review-5-axes` — carried over from the data-warehouse repo
+(#3664/#3666/#3691). The axes, framing rules and REJECT lists are theirs; **every
+worked example was re-derived from this codebase**, because an axis illustrated
+by a Python data pipeline teaches nothing to a reviewer reading TypeScript. Each
+cited defect was opened and confirmed, and four suspicions were investigated and
+**refuted** — including one killed by experiment (appending a deliberate type
+error to `packages/shared` fails both server and web typechecks, so shared's
+absence from CI's typecheck list is not a hole). The refuted list is in the
+code skill, as the worked example of what belongs in one.
+
+OpenSpec (`@fission-ai/openspec` 1.13.1, core profile: `openspec/`, six `opsx:`
+skills) is installed **as an evaluation, not as the house format**.
+`docs/specs/0003-table-deletion.md` was migrated to
+`openspec/specs/table-deletion/spec.md` — all 14 obligations, example tables,
+properties, evidence verdicts and ruled questions, plus a domain-assumptions
+section and a governed/characterized label per requirement, with `Legacy ID:
+DEL-R3` carried so the 87 IDs already in circulation keep resolving.
+`docs/design/openspec-vs-journey-spec.md` reports what the migration lost (the
+step triple, the closure sweep, the isolation-strategy slot, "Bug if", the
+language split, CI-checked evidence), what it gained, and the recommendation —
+**don't migrate; adopt the three additive conventions into the journey-spec form
+instead** — for the owner to rule on. `docs/specs` remains live; two accountable
+documents about one capability should not outlive the ruling.
+
+Traceability: `docs/agents/stc-traceability.md` and `tools/stc-matrix.mjs` (a
+zero-dependency Node port of the Python original) with 13 mutation tests, run by
+`pnpm check:stc`. It owns `openspec/specs` and joins the spec heading to `@spec`
+markers in code and tests; `check-evidence.mjs` keeps `docs/specs` and its
+title-based join, untouched. **`check:stc` is deliberately NOT in CI** while
+OpenSpec is on trial, and both the doc and CLAUDE.md say so — an unenforced guard
+that reads as enforced makes the next reader stop looking. The measurement that
+shaped the recommendation: 87 obligation IDs are declared in `docs/specs`, 54 are
+cited in test titles and 39 in `src` — the convention already exists here by
+hand; what was missing is the script and the spec↔code edge.
+
+Source edits are comment-only: 19 `@spec` markers across `table-engine.ts`,
+`meta.ts`, `index.ts`, `ListView.tsx`, the deletion tests and the deletion e2e.
+One of them was wrong in the first draft — `system_manager_only` sat on
+`deleteTable`, whose own guard is the *system-table* refusal, while the manager
+check is `assertSystemManager` at the route. That is the citation-does-not-cover-
+its-claim failure `spec-review-5-axes` Axis 2 names; the spec now records the
+correction where a future reader meets it.
+
+Verified: `pnpm check:stc` (14 requirements, 10 with code, 14 with a test, no
+orphans, no new gaps) · `node --test tools/*.test.mjs` 68 passed (55 existing +
+13 new) · `pnpm check:evidence` unchanged at 148 verdicts across 8 specs ·
+`npx @fission-ai/openspec validate --specs --strict` 1 passed, 0 failed (which
+proves well-formed, not true — the point is made in the skill) ·
+`pnpm --filter server typecheck`, `pnpm --filter web typecheck` clean ·
+`./init.sh` boots and `pnpm smoke` passes · `pnpm --filter server test
+test/table-deletion.test.ts` 16 passed · `pnpm --filter web test` 133 passed ·
+`pnpm --filter web e2e e2e/table-deletion.spec.ts` 2 passed · full
+`pnpm --filter server test` **765 passed / 1 failed / 15 skipped**, the failure
+being `sources-csv.test.ts › a failed write never poisons the parse cache`,
+which fails identically on base `4b31a7d` in a clean worktree (it relies on
+`chmod 0o555` blocking a write; this container runs as root). An earlier run of
+mine showed a second failure — a 5 s timeout in `sources-security.test.ts` —
+which did not reproduce when the suite ran alone: I had started the web suite
+against the same database concurrently, which the vitest configs warn about by
+name. Self-inflicted, recorded so nobody re-diagnoses it.
+
+**Next:** rule on `docs/design/openspec-vs-journey-spec.md`. Then, whichever way
+it goes, delete the losing table-deletion document. Findings surfaced by the
+audit and deliberately **not** fixed here (findings and fixes are separate PRs):
+the sales-target as-of read three times with nothing comparing them
+(a divergence triage item, written out in full in `spec-review-5-axes`); the
+`realtime.ts` catch labelled "malformed frames" that also swallows the
+authorization lookup; the "columns that hold no value" set living in seven
+places under three names; `docstatus` surviving in one user-facing error string;
+and the coverage ratchets never raised to the figure their own comment says to
+raise them to.
 
 ## 2026-09-18 — The sales-target assignment is derived from the Store Sections maps (data-warehouse#3783)
 
@@ -8582,3 +8906,188 @@ table-prefixed fix.
 
 **Verified:** web typecheck clean; web units 65/65; CI (unit + e2e with
 its own database, post-#191) green on the PR. Closes the loop on #132.
+
+---
+
+## 2026-09-21 — Tasker specification redesigned by product feature (#296)
+
+- Replaced the single Tasker journey document with ten short capability
+  specifications and matching OpenSpec files. Requirement and scenario slugs
+  are now the only Tasker identifiers; the old `TSK-*` IDs were removed.
+- Preserved product rules, assumptions, state and destination tables, explicit
+  implementation gaps and the boundary between Tasker behavior and runtime
+  package architecture. Added the reusable feature-recognition guide under
+  `docs/design/`.
+- Extended evidence parsing for OpenSpec-style headings and descriptive test
+  labels, then migrated Tasker test and code markers.
+- Verified evidence, STC, strict OpenSpec validation, focused Tasker component
+  tests and the full server suite. Next: parent review against the current
+  implementation before any push or pull request.
+
+## 2026-09-21 — Transactional runtime application upgrades (#296)
+
+- Prepared and strictly validated `runtime-application-upgrades` before code.
+  Five governed requirements cover immutable cumulative identity, reviewed plan,
+  transaction/activation boundary, preservation and honest recovery. ADR 0010
+  remains unchanged; OpenSpec owns behavior. The config's unquoted YAML rule
+  containing `Status:` was corrected so the pinned CLI actually reads its rules.
+- Package-owned typed `addColumn` operations, generic ledger migration 0095,
+  manager Preview → Upgrade → Activate APIs and pinned-client version admission
+  implement the narrow slice. No Tasker-specific core migration, project editor,
+  deployment, reset of shared databases or published changes.
+- Spec five-axis review distinguished trusted immutable artifacts/single-server
+  operation from enforced promises and covered absent, active, disabled, pending,
+  missing-artifact and failed-transaction states. Semantic verification maps all
+  five new requirements to `runtime-upgrades.test.ts`, with literal restart/browser
+  evidence in `tools/prove-runtime-packages.mjs`. Strict validation/STC alone do
+  not establish that semantic agreement.
+- Code eight-axis review over loader, lifecycle, install, metadata DDL and HTTP
+  admission found one silent-success defect: a completed upgrade could replay
+  success after same-version replacement of its artifact. The regression went
+  red before the digest check and green after it (`67e7622`). No Oracle consultation
+  was needed: direct investigation settled the invariant.
+- Test three-axis review retained separate promises for rollback after the second
+  DDL, history checksums, exact retry identity, stale queued writes, disabled
+  activation and fresh-vs-upgraded schema. A scratch mutation disabling the
+  checksum-prefix guard made the expected rejection test red; its unmutated
+  baseline passed. This was an isolated copied test tree, not a production edit.
+- Standalone server: **828 passed, 15 MySQL skipped**; shared: **129 passed**;
+  server/shared typechecks and spec/STC/policy checks passed. Dedicated database
+  `featherbase_296_upgrade_test`; literal proof used
+  `featherbase_296_upgrade_e2e`, port 8497, evidence
+  `dist/runtime-proof-I5mLAk/upgrade-evidence.json` (ignored local output).
+- Convergence integration used a separate worktree, applying `29ca45b` before
+  upgrade commits `230e06d`, `0cf7f83`, `67e7622` without textual conflicts.
+  **833 server tests passed, 15 MySQL skipped**; combined focused tests: **23**.
+  Database `featherbase_296_upgrade_integrated_test`; literal proof used
+  `featherbase_296_upgrade_integrated_e2e`, port 8498, evidence
+  `dist/runtime-proof-hyVVga`. Metadata resolves to `featherbase` through
+  convergence's SQL wrapper, not a mutable pooled `search_path`; app DDL uses
+  explicit persisted physical relations. Actions 0096 and real Tasker v2 still
+  need parent integration verification; their loader/API edits overlap ours.
+- Final combined spec check exposed a missing convergence prerequisite:
+  implementation `29ca45b` alone references five markers defined by checkpoint
+  `3eac821`. Adding that committed checkpoint to the isolated integration branch
+  applied without conflicts and made strict OpenSpec/STC/policy checks pass.
+  Server/shared typechecks also passed there. Upgrade close-out `9f350ad` applied
+  cleanly. The Tasker thread already reconciles actions through `441c90f` and
+  upgrades; it was sent the combined fresh 0094→0095→0096 and action/upgrade race
+  proof contract. No action consumer API or other worker's files were changed
+  here. Combined actions evidence remains an acceptance dependency, not a pass
+  inferred from the convergence-plus-upgrades run.
+- Literal proof built core before separate npm packages, created v2 after v1
+  started, restarted before commit and while activation was pending, retried,
+  activated, rejected the retained old browser, wrote/read Markdown with v2,
+  removed/restored the target artifact, and checked unchanged core/v1 bytes.
+  Example real row: `tasker.project`, `DEV-TASKER-PROJECT-STOCK-REVIEW`,
+  `Stock review — September`, description `## Upgrade proof\n\n**37** cartons; keep the original project.`
+  Unit integration additionally compares complete existing project/task/comment/
+  preferences/grant values and fresh-v2 metadata/physical columns.
+- Desktop/mobile proof screenshots were inspected. The existing mobile project
+  chip strip clips the last chip at the viewport edge; task rows/navigation remain
+  usable. This change adds no visual UI. API manager status is the operator surface.
+- Recovery boundary: before commit, old version survives; after commit, restore
+  the exact target and activate. Retained prior artifact is not a down migration.
+  Unversioned prototype installs lack enough identity to auto-adopt safely and
+  fail closed; Dev must be inspected before planning an authorized recovery.
+  `docs/DEPLOY.md` includes package contract, immutable Railway paths, curl
+  sequence and later creation of `Tasker Test Drive` without a reset.
+- STC divergence surfaced at final sync: the older prototype scenario said work
+  immediately "remains usable", whereas the new missing-identity rule and test
+  deny access until explicit identity recovery. The delta now states that
+  prerequisite rather than leaving contradictory promises. Recommendation:
+  retain fail-closed identity matching. If the owner requires automatic legacy
+  availability, add a separately reviewed adoption path with concrete historical
+  artifact evidence; never weaken matching or reset the preserved data. The
+  lifecycle table also now includes the committed/pending state.
+- Prove Before Handoff: disposable deterministic preparation and automated
+  browser/restart checks completed. **Independent exploratory review and final
+  consolidated-diff review remain parent acceptance gates**, not claimed here:
+  this worker was instructed not to delegate. No live Dev build is handed over.
+  Three useful acceptance exercises: review the nullable-column preview; verify
+  asymmetric old work after activation; attempt an old-tab write and recover a
+  missing target artifact. Parent must rerun combined verification before merge.
+
+## #296 generic client identity follow-up
+
+- `df8543b` planned the contract; `0f2c61f` pins host-derived identities for
+  generic metadata/data/forms/uploads; `c5dd3b9` excludes public credential
+  exchanges from protected bootstrap. No guard relaxation or new migration.
+- Red/green and final local proof: server 853 passed / 17 skipped, web 158,
+  shared 129; types and strict OpenSpec/STC/policy passed. Only worker-owned
+  `featherbase_296_identity_test` and `featherbase_296_identity_mutation_test`
+  were used. The refresh-every-request mutant failed initialization.
+- Independent reviewer executed frozen-core form save/upload/list/remove and
+  retained-v1 pending403/activated409 journeys; reload obtained v2 and saved201.
+  Public OAuth/reset/logout regression independently passed with expired bearer.
+  Evidence: `rama_dw/outputs/review296-identity-independent/` (JSON, inspected
+  screenshots and clean reviewer logs). No remaining confirmed identity defect
+  at this checkpoint; overall integrated acceptance and P2 remain parent-owned.
+- Integrator proof `dist/runtime-proof-Satva5` at `9366df4` additionally checks
+  file byte download/removal and no dangling File after refused stale uploads.
+  Its 375px screenshot exposes existing generic form clipping. This is now a
+  separately assigned responsive follow-up, not a claimed visual handoff.
+
+## #296 responsive generic core forms
+
+- Separate characterized baseline `c97c95f`, validated change `137fdbe`, and
+  implementation/browser proof `d631d14`. No new ADR: this is a recoverable
+  presentation correction governed by `core-forms`, not platform architecture.
+- The browser red reproduced the defect at 375px: after focusing Save the
+  breadcrumb's left edge was -95px. The unwrapped heading/action row expanded
+  the inner scrolling canvas. Existing navigation media queries were correct;
+  wrapping/shrink boundaries restored containment without overflow hiding or
+  application-specific CSS. Attachment Remove no longer requires hover.
+- Local proof: direct375 and desktop1440 followed by live375 resize both pass
+  per-control bounds and main-canvas checks. Real blank/populated forms, save
+  and independent readback, realtime stale warning/Refresh, field validation,
+  long attachment filename, byte download/removal404 and keyboard Tab/Enter
+  with visible outline all pass. Example row: `Responsive row editor`,
+  `Stock-review-with-a-long-unbroken-identifier-3783`, title `Northern 375 crates`,
+  qty `83`, notes `Keep **this** description`.
+- Pending403/obsolete409 in the responsive test are explicitly presentation
+  probes with injected host-shaped errors. They check unsaved value retention,
+  truthful refusal text and bounds, not admission. Real upgrade/admission
+  remains covered by the identity tests and integrator's frozen-package proof.
+- Isolated resources: `featherbase_296_responsive_e2e`, API8826/web5226; directly
+  local PostgreSQL process and resolved DB name checked before reset. Browser
+  stack stopped. Full web158 passed on `featherbase_296_identity_test`; web
+  types, strict OpenSpec validation and diff checks passed. The combined spec
+  gate FAILED with two STC gaps for the removed layout baseline; an initial
+  status update incorrectly reported green because a later shell command
+  obscured the failing status. The log is authoritative. Browser2/2; screenshots
+  `dist/core-responsive-*` inspected, including live resize, blank, stale,
+  validation,403/409 and attachment keyboard focus. Vertical scrolling remains.
+- Reviews: five-axis spec review distinguishes the characterized overflow
+  limitation from the new governed promise; four scenario traces resolve to
+  code and tests. Eight-axis review refuted a sidebar-breakpoint defect through
+  live resize and isolated the actual unwrapped flex constraint. Three-axis
+  review found programmatic focus did not prove keyboard visibility; replaced
+  it with Tab plus outline assertion and inspected fresh captures. A held upload
+  response now also proves readable/disabled Uploading state. Desktop is
+  the counterexample to an unconditional stacked layout, not a duplicate case.
+  CI's required e2e job includes this browser spec; component tests alone cannot
+  prove CSS containment. No Oracle question remained unresolved.
+- Independent integrated proof at `95db87c` passed45 classes, real identity/
+  attachment lifecycle, pending403/activated409 and both login returns; touch375
+  visible32px Remove and tap→File0/download404 also passed. The unchanged
+  `347f7f0` harness passed before its follow-up `589883e` added a condition-based
+  drawer readiness wait for settled captures. Inspected actual Tasker desktop
+  and mobile captures in integrator `dist/runtime-proof-ne4Bia`: readable fields,
+  actions and heading, no horizontal clipping or drawer overlay. Attachments
+  are below native vertical scroll. Local resize test now uses the same actual
+  right-edge readiness predicate, without sleeps or hiding the drawer.
+- The parent's final ruling accepts normal sync/archive as the smallest release
+  gate resolution, superseding the temporary tooling hold. Retire the obsolete
+  canonical requirement through the accepted delta; no old markers, baseline
+  relaxation, checker redesign or Tasker archive. `3edfa78` is the separate
+  test-only readiness/busy-state checkpoint. No deployment or push.
+- Final standalone checks after sync/archive: `pnpm check:specs` exit0 (no
+  orphans/new gaps; responsive requirement has code/test and four scenarios),
+  strict archived validation6/6, full web158/158, web typechecks and diff check
+  exit0. The canonical spec contains the accepted governed requirement and no
+  obsolete layout baseline. Owned identity/mutation/responsive databases were
+  dropped only after rechecking their exact names and test stamps. API8826 and
+  web5226 stopped. Evidence logs and representative inspected images retained
+  in `rama_dw/outputs/issue296-core-responsive/`. Final integrated delta review
+  remains with the parent/reviewer; this worker makes no deployment claim.

@@ -254,7 +254,7 @@ export function actionForLocation(
   pathname: string,
   search: Record<string, unknown>,
 ): RecentAction | null {
-  const m = /^\/admin(?:\/(.*))?$/.exec(pathname)
+  const m = /^\/featherbase\/admin(?:\/(.*))?$/.exec(pathname)
   if (!m || !m[1]) return null
   const segs = m[1].split('/').map((s) => decodeURIComponent(s)).filter(Boolean)
   if (segs.length === 0) return null

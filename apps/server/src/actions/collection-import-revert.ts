@@ -18,7 +18,8 @@ import { ROW_KEY, getMeta, physicalRowKey } from '../meta'
 import { assertDocPermission, permissionScope } from '../permissions'
 import { registerCollectionAction } from '../actions'
 import { sql } from '../db'
-import { tableName } from '../table-engine'
+import { tableName, tableRelation } from '../table-engine'
+import { platformRelation } from '../platform-schema'
 import type { TouchedRow } from './collection-import'
 
 type SkipReason =
@@ -121,8 +122,9 @@ registerCollectionAction('import-revert', {
       )
 
     // RVT-R2: resolve the run across ALL its parts.
+    const importLog = platformRelation(tableName('Import Log'))
     const parts = await sql`
-      select row_id, touched from ${sql(tableName('Import Log'))}
+      select row_id, touched from ${sql(importLog)}
       where ref_table = ${table} and run_id = ${runId}`
     if (!parts.length)
       throw new AppError('NotFoundError', `No import run ${runId} on ${table}`)
@@ -145,7 +147,7 @@ registerCollectionAction('import-revert', {
     const names = [...known]
     const rows = await sql`
       select ${sql(physicalRowKey(table))} as row_id, updated_at, created_by
-      from ${sql(tableName(table))}
+      from ${sql(await tableRelation(table))}
       where ${sql(physicalRowKey(table))} = any(${names})`
     const current = new Map<string, CurrentRow>(
       rows.map((r) => [
@@ -214,7 +216,7 @@ registerCollectionAction('import-revert', {
     const now = new Date().toISOString()
     for (const p of parts)
       await sql`
-        update ${sql(tableName('Import Log'))}
+        update ${sql(importLog)}
         set reverted_at = ${now} where row_id = ${String(p.row_id)}`.catch(() => {})
 
     return { restored, deleted, skipped: plan.skipped, failed }

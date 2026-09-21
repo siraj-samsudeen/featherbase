@@ -4,6 +4,7 @@ import { join, dirname } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { sql } from './db'
 import { publishUserEvent } from './realtime'
+import { appOperation } from './app-lifecycle'
 
 // JOB-001/002/003: durable job queue with an in-process worker.
 //
@@ -133,7 +134,10 @@ async function scheduledJob(method: string): Promise<{ cadence: string; enabled:
 }
 
 // Claim and run a single due job. Returns true if one was processed.
-export async function runOneJob(): Promise<boolean> {
+export function runOneJob(): Promise<boolean> {
+  return appOperation(runOneJobImpl)
+}
+async function runOneJobImpl(): Promise<boolean> {
   // Atomic claim: flip exactly one due queued job to running.
   const [claimed] = await sql`
     update background_job set job_status = 'running', updated_at = now()

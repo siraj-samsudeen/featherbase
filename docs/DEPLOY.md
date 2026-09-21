@@ -177,6 +177,134 @@ empty database, which is the usual route; a service tracking a `dev-preview`
 branch gives a stable always-on URL. Full runbook:
 [PREVIEW.md](PREVIEW.md).
 
+## Runtime application upgrades (#296)
+
+The behavior contract is `openspec/specs/trusted-runtime-packages/spec.md`.
+Upgrade is **Preview → Upgrade → Activate**, never install-again or reset.
+Only a System Manager can call these APIs. This slice supports one server
+process and PostgreSQL; packages still have trusted Node/same-origin powers.
+
+### Package author contract
+
+The npm `package.json` version is a numeric `major.minor.patch` triplet. Keep
+every previous migration unchanged, in order, in `featherbase.json`. A Tasker
+v2 package (`2.0.0`) appends this entry and appends the same column declaration
+to its final `tasker.project` Table:
+
+```json
+{"migrations":[{"id":"project_description","fromVersion":"0.0.1","toVersion":"2.0.0","operations":[{"kind":"addColumn","table":"tasker.project","column":{"column_name":"description","label":"Description","column_type":"Text"}}]}]}
+```
+
+`0.0.1` is the actual original Tasker package version. Optional Text stores
+Markdown without rendering it; empty form input normalizes to null. Additions
+may use Data, Text, Int, Float, Check, Date or Datetime, without defaults,
+required/unique flags or references. A code-only version still appends a
+contiguous migration with `operations: []`. This slice rejects SQL, destructive
+changes, existing-column edits, new Tables, changed permission declarations,
+jobs and dependency declarations. Fresh installation uses the final schema
+and records the complete ledger; upgrades apply only its missing suffix.
+
+The built client must pin `X-Featherbase-App-Version: tasker@2.0.0` on requests
+that access Tasker Tables (reads as well as writes). Do not obtain that header
+from the current catalog: doing so lets stale client code claim compatibility.
+After a migrated version activates, obsolete/headerless requests reject with
+reload guidance. The proof fixture's fetch adapter is test-only, not a client SDK.
+
+The generic Featherbase client is metadata-driven rather than package-built.
+Before its first authenticated metadata/data request, it resolves
+`GET /api/runtime_app_versions` and pins that active-identity snapshot for the
+signed-in page lifetime. Form saves, references, File/Comment metadata and
+multipart uploads reuse it. For requests touching several apps, the same header
+accepts distinct comma-separated identities; every accessed app still requires
+its own exact installed version. Duplicates and malformed entries are refused.
+Navigation, refetch and 409 never refresh the snapshot: reload the page after
+upgrade/activation or installing another app. Pending, disabled, unavailable and
+unversioned packages are not advertised. Public OAuth/password-reset/logout and
+public-form requests do not bootstrap first, so expired saved credentials cannot
+block their existing public contracts.
+
+### Artifact delivery and recovery
+
+Build/pack the application separately; unpack each release into its own durable,
+immutable directory. Set `FEATHERBASE_APP_PATHS` to a JSON array containing both
+prior and target directories, then restart the server to discover them. Retain
+all shipped bytes, including manifests and lockfiles: the fingerprint covers
+the package tree except `node_modules` and `.git`. Symlinks are refused. Review
+trusted module imports; import-time side effects are not sandboxed.
+
+For example, operator-managed persistent paths can be
+`["/data/apps/tasker/0.0.1","/data/apps/tasker/2.0.0"]`. Railway must mount those
+artifacts into the actual running container and preserve them across releases.
+The current Dockerfile bundles just one Tasker directory; overwriting it with
+v2 is **not** a safe upgrade delivery strategy. Provision the immutable paths
+and override the environment variable explicitly. No package upload API exists.
+Once this generic core capability ships, later app-only upgrades need no core
+rebuild. Run the normal core release step once to install ledger migration 0095;
+never use a reset or demo seed as an application migration.
+
+Discovery selects the installed exact version, not the newest available one.
+Missing/changed code makes an installed application unavailable without deleting
+rows. `/api/apps` reports versions, pending activation and discovery failures;
+server logs provide detailed validation errors. Legacy prototype installations
+without a recorded full manifest/version fail closed: recover their reviewed
+identity explicitly before attempting upgrade, rather than guessing from the
+latest package. There is deliberately no generic automatic legacy adoption API.
+
+The exclusive lifecycle lock drains admitted operations and post-commit work.
+PostgreSQL commits column metadata, explicit physical DDL, version and checksum
+ledger together. Failure before commit retains old code and all data. Successful
+commit suspends old hooks and client access until activation; restart preserves
+that pending state. Activation verifies the committed artifact and wires hooks
+once. An upgrade of a disabled application remains disabled after activation.
+
+**After commit, restoring old code alone is not recovery.** Restore the exact
+target artifact and activate it. No down migration/schema rollback is provided.
+The prior artifact identity is retained for diagnosis and matched external backup
+restoration; any database restore is a separate, explicitly authorized operation.
+If the response is lost, retry the same version/planId: committed work is not
+applied twice. For a stale plan, obtain and review a new preview.
+
+### Later authorized Featherbase Dev sequence
+
+These steps are instructions, not authorization to deploy or mutate Dev:
+
+1. Integrate convergence 0094, upgrades 0095 and actions 0096; verify the combined
+   build plus the real Tasker v2 package/client. Back up Dev and retain the exact
+   installed artifact. Check `/api/apps` for a known installed identity; stop for
+   explicit recovery if it is an unversioned prototype.
+2. Deliver both immutable artifacts and deploy the generic core release normally
+   with the paths above. Inspect `/api/apps`: v1 must still be installed/active
+   and v2 merely available. Do not seed or reset Dev. Use a System Manager bearer
+   token in the following requests; `BASE` must name the reviewed Dev origin.
+3. Preview, inspect the complete output and save its `planId`:
+
+   ```sh
+   curl --fail-with-body "$BASE/api/preview_app_upgrade" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data '{"name":"tasker","version":"2.0.0"}'
+   ```
+
+4. Expect only `project_description`, no permissions/jobs/indexes/destructive
+   effects, existing values unchanged and a nullable new column. Substitute the
+   reviewed plan ID, then commit and explicitly activate:
+
+   ```sh
+   curl --fail-with-body "$BASE/api/upgrade_app" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data '{"name":"tasker","version":"2.0.0","planId":"REVIEWED_PLAN_ID"}'
+   curl --fail-with-body "$BASE/api/activate_app_upgrade" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data '{"name":"tasker","version":"2.0.0"}'
+   ```
+
+5. Confirm `/api/apps` reports v2, no pending activation and the intended enabled
+   state. Reload Tasker and verify prior project/task/comment/settings/grant
+   values. Only now, with authorization to create the project, create **Tasker
+   Test Drive** (check that it does not already exist before retrying a lost
+   create response; row creation is not the upgrade's idempotent operation):
+
+   ```sh
+   curl --fail-with-body "$BASE/api/table/tasker.project" -H "Authorization: Bearer $TOKEN" -H 'X-Featherbase-App-Version: tasker@2.0.0' -H 'Content-Type: application/json' --data '{"project_name":"Tasker Test Drive","description":"## Tasker Test Drive\n\nTry projects, tasks and Markdown descriptions without changing existing work."}'
+   ```
+
+   Read the returned row back with the same pinned header, inspect its Markdown
+   in the separately delivered Tasker UI, and verify an old tab rejects writes.
+   Do not run the local development scenario seeder against Railway.
+
 ## Automation credentials (#131)
 
 Scripts, CI, and instance-manifest installs authenticate with **access

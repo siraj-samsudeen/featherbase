@@ -39,7 +39,16 @@ COPY packages/shared packages/shared
 COPY apps/web apps/web
 RUN pnpm --filter web build
 
-# ---- Stage 2: the server image ---------------------------------------------
+# ---- Stage 2: build independently packaged runtime apps --------------------
+FROM node:22-slim AS tasker-build
+WORKDIR /app/runtime-apps/tasker
+COPY runtime-apps/tasker/package.json runtime-apps/tasker/package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY runtime-apps/tasker/featherbase.json runtime-apps/tasker/index.html runtime-apps/tasker/tsconfig.json runtime-apps/tasker/vite.config.ts ./
+COPY runtime-apps/tasker/src src
+RUN npm run build
+
+# ---- Stage 3: the server image ---------------------------------------------
 FROM node:22-slim
 WORKDIR /app
 RUN corepack enable
@@ -60,7 +69,11 @@ RUN pnpm install --frozen-lockfile --filter server... --prod
 COPY packages/shared packages/shared
 COPY apps/server apps/server
 COPY --from=web-build /app/apps/web/dist apps/web/dist
+COPY --from=tasker-build /app/runtime-apps/tasker/package.json runtime-apps/tasker/package.json
+COPY --from=tasker-build /app/runtime-apps/tasker/featherbase.json runtime-apps/tasker/featherbase.json
+COPY --from=tasker-build /app/runtime-apps/tasker/dist runtime-apps/tasker/dist
 
 ENV NODE_ENV=production
+ENV FEATHERBASE_APP_PATHS='["/app/runtime-apps/tasker"]'
 EXPOSE 8000
 CMD ["pnpm", "--filter", "server", "start"]

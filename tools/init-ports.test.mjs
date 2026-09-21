@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { spawn } from 'node:child_process'
@@ -28,6 +28,7 @@ async function setupCheckout(name, { mockPsql = true } = {}) {
   await mkdir(join(dir, 'apps/server'), { recursive: true })
   await mkdir(join(dir, 'apps/web'), { recursive: true })
   await mkdir(bin)
+  await symlink(process.execPath, join(bin, 'node'))
   await writeFile(join(dir, 'init.sh'), await (await import('node:fs/promises')).readFile(init))
   await writeFile(
     join(dir, 'server.mjs'),
@@ -90,7 +91,7 @@ esac
 function initEnv(checkout, extra = {}) {
   return {
     ...process.env,
-    PATH: `${checkout.bin}:/usr/bin:/bin`,
+    PATH: `${checkout.bin}:/usr/bin:/bin:/usr/sbin`,
     INIT_TEST_ROOT: checkout.dir,
     ...extra,
   }
@@ -110,25 +111,30 @@ async function freePort() {
 test('init boots isolated selected ports without touching a sibling stack', async (t) => {
   const sibling = await setupCheckout('default')
   const selected = await setupCheckout('selected')
+  const [siblingApi, siblingWeb, selectedApi, selectedWeb] = await Promise.all([
+    freePort(), freePort(), freePort(), freePort(),
+  ])
   t.after(async () => {
     await command('pkill', ['-f', sibling.dir])
     await command('pkill', ['-f', selected.dir])
     await Promise.all([rm(sibling.dir, { recursive: true, force: true }), rm(selected.dir, { recursive: true, force: true })])
   })
 
-  const defaultRun = await command('/bin/bash', ['./init.sh'], { cwd: sibling.dir, env: initEnv(sibling) })
-  assert.equal(defaultRun.code, 0, defaultRun.stderr)
-  assert.match(defaultRun.stdout, /server :8000, web :5173/)
+  const defaultRun = await command('/bin/bash', ['./init.sh'], {
+    cwd: sibling.dir, env: initEnv(sibling, { API_PORT: siblingApi, WEB_PORT: siblingWeb }),
+  })
+  assert.equal(defaultRun.code, 0, defaultRun.stdout + defaultRun.stderr)
+  assert.match(defaultRun.stdout, new RegExp(`server :${siblingApi}, web :${siblingWeb}`))
 
   const selectedRun = await command('/bin/bash', ['./init.sh'], {
     cwd: selected.dir,
-    env: initEnv(selected, { API_PORT: '18010', WEB_PORT: '15188' }),
+    env: initEnv(selected, { API_PORT: selectedApi, WEB_PORT: selectedWeb }),
   })
   assert.equal(selectedRun.code, 0, selectedRun.stderr)
-  assert.match(selectedRun.stdout, /server :18010, web :15188/)
-  assert.equal((await fetch('http://localhost:8000/api/ping')).status, 200)
-  assert.equal((await fetch('http://localhost:18010/api/ping')).status, 200)
-  assert.equal((await fetch('http://localhost:15188')).status, 200)
+  assert.match(selectedRun.stdout, new RegExp(`server :${selectedApi}, web :${selectedWeb}`))
+  assert.equal((await fetch(`http://localhost:${siblingApi}/api/ping`)).status, 200)
+  assert.equal((await fetch(`http://localhost:${selectedApi}/api/ping`)).status, 200)
+  assert.equal((await fetch(`http://localhost:${selectedWeb}`)).status, 200)
 })
 
 test('init rejects a listener that did not descend from its selected API process', async (t) => {

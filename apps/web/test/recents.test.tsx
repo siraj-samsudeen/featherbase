@@ -23,7 +23,7 @@ const row = (name: string) => ({
   key: `row:Customer/${name}`,
   label: name,
   sub: 'Customer',
-  path: `/admin/Customer/${name}`,
+  path: `/featherbase/admin/Customer/${name}`,
 })
 
 beforeEach(() => localStorage.clear())
@@ -81,40 +81,40 @@ describe('recentSearches', () => {
 
 describe('actionForLocation', () => {
   it('maps a form URL to a row action', () => {
-    expect(actionForLocation('/admin/Customer/CUST-7', {})).toMatchObject({
+    expect(actionForLocation('/featherbase/admin/Customer/CUST-7', {})).toMatchObject({
       kind: 'row',
       key: 'row:Customer/CUST-7',
       label: 'CUST-7',
       sub: 'Customer',
-      path: '/admin/Customer/CUST-7',
+      path: '/featherbase/admin/Customer/CUST-7',
     })
   })
 
   it('maps a filtered list URL to a list action that keeps the filters', () => {
     const filters = '[["status","=","Open"]]'
-    const action = actionForLocation('/admin/Task', { filters })
+    const action = actionForLocation('/featherbase/admin/Task', { filters })
     expect(action).toMatchObject({ kind: 'list', label: 'Task', sub: 'status = Open' })
-    expect(action?.path).toBe(`/admin/Task?filters=${encodeURIComponent(filters)}`)
+    expect(action?.path).toBe(`/featherbase/admin/Task?filters=${encodeURIComponent(filters)}`)
     // A different filter set is a different remembered view.
-    expect(action?.key).not.toBe(actionForLocation('/admin/Task', {})?.key)
+    expect(action?.key).not.toBe(actionForLocation('/featherbase/admin/Task', {})?.key)
   })
 
   it('treats list view modes as lists and reports/dashboards as pages', () => {
-    expect(actionForLocation('/admin/Task/view/kanban', {})).toMatchObject({ kind: 'list', sub: 'kanban' })
-    expect(actionForLocation('/admin/query-report/Sales%20Register', {})).toMatchObject({
+    expect(actionForLocation('/featherbase/admin/Task/view/kanban', {})).toMatchObject({ kind: 'list', sub: 'kanban' })
+    expect(actionForLocation('/featherbase/admin/query-report/Sales%20Register', {})).toMatchObject({
       kind: 'page',
       label: 'Sales Register',
       sub: 'Report',
     })
-    expect(actionForLocation('/admin/dashboard/Ops', {})).toMatchObject({ kind: 'page', sub: 'Dashboard' })
+    expect(actionForLocation('/featherbase/admin/dashboard/Ops', {})).toMatchObject({ kind: 'page', sub: 'Dashboard' })
   })
 
   it('ignores home pages, builders, and transient new forms', () => {
-    expect(actionForLocation('/admin', {})).toBeNull()
-    expect(actionForLocation('/admin/home/home', {})).toBeNull()
-    expect(actionForLocation('/admin/new-table', {})).toBeNull()
-    expect(actionForLocation('/admin/import', {})).toBeNull()
-    expect(actionForLocation('/admin/Customer/new', {})).toBeNull()
+    expect(actionForLocation('/featherbase/admin', {})).toBeNull()
+    expect(actionForLocation('/featherbase/admin/home/home', {})).toBeNull()
+    expect(actionForLocation('/featherbase/admin/new-table', {})).toBeNull()
+    expect(actionForLocation('/featherbase/admin/import', {})).toBeNull()
+    expect(actionForLocation('/featherbase/admin/Customer/new', {})).toBeNull()
   })
 })
 

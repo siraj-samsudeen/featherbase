@@ -27,11 +27,12 @@ async function makeTable(admin: TestClient, name = DT, extra: object[] = []) {
 
 async function physicalExists(name: string): Promise<boolean> {
   const physical = name.toLowerCase().replace(/\s+/g, '_')
-  const [row] = await sql`select to_regclass(${'"' + physical + '"'}) as t`
+  const [row] = await sql`select to_regclass(${'featherbase.' + physical}) as t`
   return row.t != null
 }
 
 describe('DEL-R1: who may delete', () => {
+  // @spec system_manager_only
   test('DEL-R1: a non-manager is refused whole-request; the Table survives', async ({
     admin,
     createUser,
@@ -48,6 +49,7 @@ describe('DEL-R1: who may delete', () => {
 })
 
 describe('DEL-R2: deletion removes what creation wrote', () => {
+  // @spec deletion_reverses_creation
   test('DEL-R2: def row, column defs, physical table + rows, and its own child rows go; the child Table stays', async ({
     admin,
   }) => {
@@ -74,10 +76,11 @@ describe('DEL-R2: deletion removes what creation wrote', () => {
     const childMeta = (await admin.get('/api/table/Deletion%20Child:meta')) as { name: string }
     expect(childMeta.name).toBe('Deletion Child')
     const [orphans] = await sql`
-      select count(*)::int as n from deletion_child where parenttype = ${DT}`
+      select count(*)::int as n from featherbase.deletion_child where parenttype = ${DT}`
     expect(orphans.n).toBe(0)
   })
 
+  // @spec deletion_reverses_creation.settings_table_sheds_metadata_only
   test('DEL-R2: a settings Table sheds metadata only; a nonexistent name 404s', async ({
     admin,
   }) => {
@@ -97,6 +100,7 @@ describe('DEL-R2: deletion removes what creation wrote', () => {
 })
 
 describe('DEL-R3: schema references block, and say who', () => {
+  // @spec schema_reference_blocks.zero_rows_still_blocks
   test('DEL-R3: a Reference column blocks — even with zero rows — naming Table.column', async ({
     admin,
   }) => {
@@ -117,6 +121,7 @@ describe('DEL-R3: schema references block, and say who', () => {
     await expect(admin.get(`/api/table/${ENC}:meta`)).rejects.toMatchObject({ status: 404 })
   })
 
+  // @spec schema_reference_blocks.sub_table_storage_blocks
   test('DEL-R3: a Sub-table column blocks its row-storage Table; self-references never block', async ({
     admin,
   }) => {
@@ -144,6 +149,7 @@ describe('DEL-R3: schema references block, and say who', () => {
     })
   })
 
+  // @spec schema_reference_blocks.system_tables_refused
   test('DEL-R3: system tables are platform anatomy — refused', async ({ admin }) => {
     for (const name of ['User', 'Table', 'Column']) {
       await expect(admin.delete(`/api/table_def/${name}`)).rejects.toMatchObject({
@@ -154,7 +160,9 @@ describe('DEL-R3: schema references block, and say who', () => {
   })
 })
 
+// @spec nothing_dangles
 describe('DEL-R4 + DEL-I1: the sidecar sweep', () => {
+  // @spec live_pointer_sweep
   test('DEL-R4: live pointers (Permission, Import Log, home-page link) go; text testimony (Access Log) stays', async ({
     admin,
   }) => {
@@ -200,6 +208,7 @@ describe('DEL-R4 + DEL-I1: the sidecar sweep', () => {
     expect(cols.n).toBe(0)
   })
 
+  // @spec deletion_logged_in_plain_text
   test('DEL-R8: the deletion writes an Access Log line that survives the sweep', async ({
     admin,
   }) => {
@@ -213,6 +222,7 @@ describe('DEL-R4 + DEL-I1: the sidecar sweep', () => {
 })
 
 describe('DEL-R9: a stale pointer gets a tombstone, not a shrug', () => {
+  // @spec stale_pointer_gets_tombstone
   test('DEL-R9: a deleted Table answers with who and when; a never-created name stays plain', async ({
     admin,
   }) => {
@@ -230,6 +240,7 @@ describe('DEL-R9: a stale pointer gets a tombstone, not a shrug', () => {
     })
   })
 
+  // @spec stale_pointer_gets_tombstone.latest_burial_speaks
   test('DEL-R9: recreated and deleted again — the latest burial speaks', async ({ admin }) => {
     await makeTable(admin)
     await admin.delete(`/api/table_def/${ENC}`)
@@ -248,6 +259,7 @@ describe('DEL-R9: a stale pointer gets a tombstone, not a shrug', () => {
 })
 
 describe('DEL-I2: a refusal changes nothing', () => {
+  // @spec refusal_changes_nothing
   test('DEL-I2: after a blocked delete every row count is exactly as before', async ({
     admin,
   }) => {
@@ -262,7 +274,7 @@ describe('DEL-I2: a refusal changes nothing', () => {
       row: { ref_table: DT, role: 'All', can_read: true },
     })
     const counts = async () => {
-      const [a] = await sql`select count(*)::int as n from deletion_target`
+      const [a] = await sql`select count(*)::int as n from featherbase.deletion_target`
       const [b] = await sql`select count(*)::int as n from permission where ref_table = ${DT}`
       const [c] = await sql`select count(*)::int as n from column_def where parent = ${DT}`
       return { rows: a.n, perms: b.n, cols: c.n }
@@ -275,6 +287,7 @@ describe('DEL-I2: a refusal changes nothing', () => {
 })
 
 describe('DEL-R5: row-id series survive deletion', () => {
+  // @spec id_series_survive_deletion
   test('DEL-R5: recreate the same Table — ids continue, never restart', async ({ admin }) => {
     await admin.post('/api/table_def', {
       name: DT,
@@ -301,13 +314,14 @@ describe('DEL-R5: row-id series survive deletion', () => {
 })
 
 describe('DEL-R7: attachments', () => {
+  // @spec attachment_bytes_unreachable.shared_storage_survives
   test('DEL-I1 #123: delete only actual child-row attachments; preserve shared storage and surviving URL references', async ({ admin }) => {
     await admin.post('/api/table_def', { name: 'Attachment Child', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data' }] })
     for (const name of [DT, 'Attachment Other']) {
       await makeTable(admin, name, [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Attachment Child' }])
       await admin.post('/api/save_row', { table: name, row: { title: name, lines: [{ item: name }] } })
     }
-    const children = await sql`select row_id, parenttype from attachment_child order by parenttype`
+    const children = await sql`select row_id, parenttype from featherbase.attachment_child order by parenttype`
     const own = children.find((c) => c.parenttype === DT)!.row_id
     const other = children.find((c) => c.parenttype !== DT)!.row_id
     const urls: string[] = []
@@ -322,7 +336,7 @@ describe('DEL-R7: attachments', () => {
         ['table-level', 'Attachment Child', null, urls[3]],
       ]) await sql`insert into file (row_id, ref_table, ref_name, file_url) values (${id}, ${refTable}, ${refName}, ${url})`
       await admin.delete(`/api/table_def/${ENC}`)
-      expect(await sql`select row_id from attachment_child`).toEqual([{ row_id: other }])
+      expect(await sql`select row_id from featherbase.attachment_child`).toEqual([{ row_id: other }])
       expect((await sql`select row_id from file where row_id in ('gone-child','gone-direct','shared-gone','shared-kept','table-level') order by row_id`).map((r) => r.row_id)).toEqual(['shared-kept', 'table-level'])
       for (const url of urls.slice(0, 2)) expect(() => readFileSync(bytesPath(url))).toThrow(/ENOENT/)
       for (const url of urls.slice(2)) expect(readFileSync(bytesPath(url)).toString()).toBe('owned bytes')
@@ -333,6 +347,7 @@ describe('DEL-R7: attachments', () => {
     }
   })
 
+  // @spec attachment_bytes_unreachable.rollback_never_unlinks
   test('DEL-R7: rollback never unlinks; audit failure after commit cannot skip cleanup or report refusal', async ({ admin }) => {
     await makeTable(admin)
     const { file_url } = await saveUpload(Buffer.from('rollback bytes'), 'rollback.txt', false)
@@ -340,13 +355,13 @@ describe('DEL-R7: attachments', () => {
       await sql`insert into file (row_id, ref_table, file_url) values ('rollback-file', ${DT}, ${file_url})`
       // A real database dependency causes DROP TABLE to fail after registry
       // deletion. The transaction must restore the registry and its bytes.
-      await sql.unsafe('create view deletion_guard as select title from deletion_target')
+      await sql.unsafe('create view deletion_guard as select title from featherbase.deletion_target')
       expect((await admin.fetch(`/api/table_def/${ENC}`, { method: 'DELETE' })).status).toBe(500)
       expect(readFileSync(bytesPath(file_url)).toString()).toBe('rollback bytes')
       expect(await sql`select row_id from file where row_id = 'rollback-file'`).toHaveLength(1)
       await sql.unsafe('drop view deletion_guard')
       await sql.unsafe("create function pg_temp.refuse_delete_audit() returns trigger language plpgsql as $$ begin raise exception 'test audit failure'; end $$")
-      await sql.unsafe('create trigger refuse_delete_audit before insert on access_log for each row execute function pg_temp.refuse_delete_audit()')
+      await sql.unsafe('create trigger refuse_delete_audit before insert on featherbase.access_log for each row execute function pg_temp.refuse_delete_audit()')
       expect((await admin.fetch(`/api/table_def/${ENC}`, { method: 'DELETE' })).status).toBe(200)
       expect(() => readFileSync(bytesPath(file_url))).toThrow(/ENOENT/)
       expect(await physicalExists(DT)).toBe(false)
@@ -355,6 +370,7 @@ describe('DEL-R7: attachments', () => {
     }
   })
 
+  // @spec attachment_bytes_unreachable
   test('DEL-R7: File registry rows sweep with the Table and the bytes are gone', async ({
     admin,
   }) => {
@@ -387,6 +403,7 @@ describe('DEL-R6: a bound Table sheds its binding, never its source', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
+  // @spec bound_table_sheds_binding_only
   test('DEL-R6: the binding goes; the source file keeps its bytes', async ({ admin }) => {
     invalidateSources()
     await admin.post('/api/table/Data%20Source', {

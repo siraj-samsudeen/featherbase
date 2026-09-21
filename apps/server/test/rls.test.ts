@@ -79,7 +79,7 @@ async function cleanup() {
   await sql`delete from role where row_id = ${ROLE}`
   await sql`delete from table_def where name in (${DT}, ${CHILD}, ${SECRET_DT})`
   await sql`delete from column_def where parent in (${DT}, ${CHILD}, ${SECRET_DT})`
-  await sql.unsafe('drop table if exists rls_vault, rls_vault_item, rls_hidden')
+  await sql.unsafe('drop table if exists featherbase.rls_vault, featherbase.rls_vault_item, featherbase.rls_hidden')
 }
 
 beforeAll(async () => {
@@ -145,42 +145,42 @@ afterAll(async () => {
 describe('PERM-004: generated RLS for direct clients', () => {
   it('permitted Table is selectable; child rows follow the parent perm', async () => {
     await as(USER)
-    const rows = await direct`select title from rls_vault`
+    const rows = await direct`select title from featherbase.rls_vault`
     expect(rows).toHaveLength(1)
-    const children = await direct`select part from rls_vault_item order by part`
+    const children = await direct`select part from featherbase.rls_vault_item order by part`
     expect(children.map((r) => r.part)).toEqual(['p1', 'p2'])
   })
 
   it('non-permitted Tables yield zero rows', async () => {
     await as(USER)
-    expect(await direct`select * from rls_hidden`).toHaveLength(0)
-    expect(await direct`select * from "user"`).toHaveLength(0)
+    expect(await direct`select * from featherbase.rls_hidden`).toHaveLength(0)
+    expect(await direct`select * from featherbase."user"`).toHaveLength(0)
   })
 
   it('an unauthenticated session (Guest) sees nothing', async () => {
     await as(null)
-    expect(await direct`select * from rls_vault`).toHaveLength(0)
+    expect(await direct`select * from featherbase.rls_vault`).toHaveLength(0)
   })
 
   it('Administrator sees everything', async () => {
     await as('Administrator')
-    expect(await direct`select * from rls_vault`).toHaveLength(1)
-    expect(await direct`select * from rls_hidden`).toHaveLength(1)
+    expect(await direct`select * from featherbase.rls_vault`).toHaveLength(1)
+    expect(await direct`select * from featherbase.rls_hidden`).toHaveLength(1)
   })
 
   it('every direct write is denied, even on the permitted table', async () => {
     await as(USER)
     await expect(
-      direct`insert into rls_vault (row_id, title) values ('hack', 'x')`,
+      direct`insert into featherbase.rls_vault (row_id, title) values ('hack', 'x')`,
     ).rejects.toThrow(/permission denied/)
-    await expect(direct`update rls_vault set title = 'x'`).rejects.toThrow(
+    await expect(direct`update featherbase.rls_vault set title = 'x'`).rejects.toThrow(
       /permission denied/,
     )
-    await expect(direct`delete from rls_vault`).rejects.toThrow(/permission denied/)
+    await expect(direct`delete from featherbase.rls_vault`).rejects.toThrow(/permission denied/)
   })
 
   it('non-Table bookkeeping tables are not exposed at all', async () => {
     await as('Administrator')
-    await expect(direct`select * from migration`).rejects.toThrow(/permission denied/)
+    await expect(direct`select * from featherbase.migration`).rejects.toThrow(/permission denied/)
   })
 })

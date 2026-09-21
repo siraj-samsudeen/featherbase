@@ -1,5 +1,14 @@
 import { defineConfig } from 'vitest/config'
 
+// Opt-in committed writes must reject shared/default databases before global
+// setup migrates or clears test telemetry. Each reviewer chooses their own DB.
+if (process.env.TASKER_UPGRADE_ACTION_PROOF === '1') {
+  const url = process.env.DATABASE_URL
+  const name = url ? decodeURIComponent(new URL(url).pathname.slice(1)) : ''
+  if (!/^featherbase_[a-z0-9_]+_actions_commit_e2e$/.test(name))
+    throw new Error('Tasker committed proof requires explicit DATABASE_URL naming featherbase_<worker>_actions_commit_e2e')
+}
+
 // All test files share ONE Postgres database, including the single
 // `background_job` queue. `drainJobs()` drains every queued job, so when
 // job-dependent tests (email, jobs, webhooks) run in parallel across files they

@@ -1,5 +1,5 @@
 import { sql } from './db'
-import { tableName } from './table-engine'
+import { tableRelation } from './table-engine'
 import { getMeta } from './meta'
 import { createAssignment } from './assign'
 import { evalCondition } from './server-scripts'
@@ -56,7 +56,7 @@ export async function evaluateAssignmentRules(
       const meta = await getMeta(table)
       if (meta.columns.some((f) => f.column_name === field)) {
         await sql`
-          update ${sql(tableName(table))} set ${sql(field)} = ${next}
+          update ${sql(await tableRelation(table))} set ${sql(field)} = ${next}
           where ${sql(meta.row_key)} = ${String(row.row_id)}`
         row[field] = next
       }

@@ -1,6 +1,17 @@
-import { sql } from './db'
+import postgres from 'postgres'
+import { config } from './config'
 import { AppError } from './errors'
 import { getDoc } from './document'
+
+// Authenticate as the restricted role, rather than SET ROLE on an owner
+// session: report SQL could reset the latter back to the session owner.
+// @spec app_data_is_api_only
+const reportUrl = new URL(process.env.QUERY_REPORT_DATABASE_URL ?? config.databaseUrl)
+if (!process.env.QUERY_REPORT_DATABASE_URL) {
+  reportUrl.username = 'app_client'
+  reportUrl.password = 'app_client' // local role provisioned by migration 0010
+}
+const reportSql = postgres(reportUrl.toString(), { max: 5, idle_timeout: 1, prepare: false })
 
 // RPT-004: admin-authored SQL reports. The query may contain named filter
 // placeholders like {from_date}; these are bound as parameters (never string-
@@ -37,6 +48,67 @@ function assertReadOnly(query: string) {
     throw new AppError('ValidationError', 'Query reports must start with SELECT or WITH')
 }
 
+// Stored SQL is an external input, so it does not pass through the server's
+// logical-to-physical SQL mapping. Require every relation operand to name its
+// schema; otherwise the report's meaning depends on the database role's
+// search_path and can silently change across a migration. CTEs are local
+// query names rather than physical relations and remain unqualified.
+export function assertExplicitReportRelations(query: string) {
+  const lexical = query
+    .replace(/--[^\n]*/g, ' ')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/'(?:''|[^'])*'/g, "''")
+    .replace(/\$\$[\s\S]*?\$\$/g, '$$$$')
+  const fromDepths = new Set<number>()
+  let depth = 0
+  for (const match of lexical.matchAll(/"(?:[^"]|"")*"|[a-z_][a-z0-9_$]*|[(),]/gi)) {
+    const token = match[0].toLowerCase()
+    if (token.startsWith('"')) continue
+    if (token === '(') {
+      depth += 1
+      continue
+    }
+    if (token === ')') {
+      fromDepths.delete(depth)
+      depth = Math.max(0, depth - 1)
+      continue
+    }
+    if (token === 'from') {
+      fromDepths.add(depth)
+      continue
+    }
+    if (fromDepths.has(depth) && token === ',')
+      throw new AppError(
+        'ValidationError',
+        'Query report comma joins are unsupported; use JOIN with an explicitly schema-qualified relation',
+      )
+    if (fromDepths.has(depth) && /^(where|group|having|order|limit|offset|fetch|for|union|intersect|except|returning)$/.test(token))
+      fromDepths.delete(depth)
+  }
+  const ctes = new Set(
+    [...lexical.matchAll(/(?:\bwith\b|,)\s*(?:"([^"]+)"|([a-z_][a-z0-9_]*))\s+as\s*\(/gi)]
+      .map((m) => (m[1] ?? m[2]).toLowerCase()),
+  )
+  const relation = /\b(?:from|join)\s+(?:only\s+)?(?:"([^"]+)"|([a-z_][a-z0-9_]*))(?:\s*(\.)\s*(?:"([^"]+)"|([a-z_][a-z0-9_]*)))?/gi
+  for (const match of lexical.matchAll(relation)) {
+    const name = (match[1] ?? match[2]).toLowerCase()
+    if (match[3]) {
+      const physical = (match[4] ?? match[5]).toLowerCase()
+      if (name === 'public' && physical !== 'site')
+        throw new AppError(
+          'ValidationError',
+          `Query report relation public.${physical} is stale; Featherbase platform relations use the featherbase schema`,
+        )
+      continue
+    }
+    if (ctes.has(name)) continue
+    throw new AppError(
+      'ValidationError',
+      `Query report relation ${name} must be schema-qualified (for example featherbase.${name})`,
+    )
+  }
+}
+
 // Replace {name} with $n placeholders, returning the parameter values in order.
 function bind(query: string, filters: Record<string, unknown>): { text: string; params: unknown[] } {
   const index = new Map<string, number>()
@@ -64,12 +136,19 @@ export async function runQueryReport(
   if (!query) throw new AppError('ValidationError', `${reportName} has no query`)
 
   assertReadOnly(query)
+  assertExplicitReportRelations(query)
   const { text, params } = bind(query.replace(/;\s*$/, ''), filters)
 
   let rows: unknown
   try {
-    rows = await sql.begin(async (tx) => {
+    rows = await reportSql.begin(async (tx) => {
       await tx.unsafe('set transaction read only')
+      // Preserve the admin-authored report's public-table read semantics,
+      // without executing as the owner (which bypasses app relation ACLs).
+      // Runtime app data is API-only until app-aware raw reporting exists.
+      const [identity] = await tx`select session_user as role`
+      if (identity.role !== 'app_client') throw new Error('Query reports require the app_client database login')
+      await tx`select set_config('app.user', 'Administrator', true)`
       return tx.unsafe(text, params as never[])
     })
   } catch (err) {

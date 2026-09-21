@@ -34,7 +34,7 @@ export function ConnectionsPanel({ table, name }: { table: string; name: string 
           className="flex items-center border-b border-[var(--color-border)] last:border-0"
         >
           <Link
-            to="/admin/$table"
+            to="/featherbase/admin/$table"
             params={{ table: c.table }}
             search={{ filters: JSON.stringify(c.filters) }}
             data-testid={`connection-${c.table}`}
@@ -66,7 +66,7 @@ export function ConnectionsPanel({ table, name }: { table: string; name: string 
           )}
           {!c.via && (
             <Link
-              to="/admin/$table/$name"
+              to="/featherbase/admin/$table/$name"
               params={{ table: c.table, name: 'new' }}
               search={{ prefill: JSON.stringify({ [c.column]: name }) }}
               title={`New ${c.table} with ${c.column} = ${name}`}
@@ -170,7 +170,7 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
                 <td key={c.column_name} className="px-3 py-1.5">
                   {i === 0 ? (
                     <Link
-                      to="/admin/$table/$name"
+                      to="/featherbase/admin/$table/$name"
                       search={{ prefill: undefined }}
                       params={{ table: connection.table, name: String(r.row_id) }}
                       className="font-medium text-[var(--color-brand)] hover:underline"
@@ -200,7 +200,7 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
           </span>
         )}
         <Link
-          to="/admin/$table"
+          to="/featherbase/admin/$table"
           params={{ table: connection.table }}
           search={{ filters: JSON.stringify(connection.filters) }}
           data-testid="embedded-open-list"
@@ -210,7 +210,7 @@ function EmbeddedList({ connection, owner }: { connection: Connection; owner: st
         </Link>
         {!connection.via && (
           <Link
-            to="/admin/$table/$name"
+            to="/featherbase/admin/$table/$name"
             params={{ table: connection.table, name: 'new' }}
             search={{ prefill: JSON.stringify({ [connection.column]: owner }) }}
             data-testid="embedded-new"

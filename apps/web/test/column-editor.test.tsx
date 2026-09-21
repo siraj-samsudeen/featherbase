@@ -41,7 +41,7 @@ async function seed(admin: Admin, extra: Record<string, unknown> = {}) {
 }
 
 async function openEditor(admin: Admin, table = DT) {
-  await renderApp(`/admin/${encodeURIComponent(table)}/columns`, admin)
+  await renderApp(`/featherbase/admin/${encodeURIComponent(table)}/columns`, admin)
   await screen.findByTestId('column-editor')
 }
 

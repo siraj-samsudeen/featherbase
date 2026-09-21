@@ -72,7 +72,7 @@ describe('PLAT-006: app fixtures install through the real lifecycle', () => {
       ])
 
       // The rows exist — created through saveDoc, so standard columns are set.
-      const [row] = await sql`select title, created_by from fixture_test_item where row_id = 'seed-1'`
+      const [row] = await sql`select title, created_by from featherbase.fixture_test_item where row_id = 'seed-1'`
       expect(row).toMatchObject({ title: 'first', created_by: 'Administrator' })
       const [rule] = await sql`select ref_table from email_rule where row_id = ${RULE}`
       expect(rule).toMatchObject({ ref_table: DT })
@@ -163,7 +163,7 @@ describe('PLAT-006: app fixtures install through the real lifecycle', () => {
       expect(res.status).toBe(201)
       const body = (await res.json()) as { fixtures: unknown }
       expect(body.fixtures).toEqual([{ table: 'Decl Fixture Item', row_id: 'decl-1' }])
-      const [row] = await sql`select title from decl_fixture_item where row_id = 'decl-1'`
+      const [row] = await sql`select title from featherbase.decl_fixture_item where row_id = 'decl-1'`
       expect(row).toMatchObject({ title: 'shipped' })
 
       const un = await admin.fetch('/api/uninstall_app', {
@@ -282,7 +282,7 @@ describe('helpdesk: a registered app that installs and uninstalls cleanly', () =
       })
       expect(filed.row_id).toMatch(/^HDT-\d{5}$/)
       const [ticket] = await sql`
-        select raised_by, sla_status from hd_ticket where row_id = ${filed.row_id}`
+        select raised_by, sla_status from featherbase.hd_ticket where row_id = ${filed.row_id}`
       expect(ticket).toMatchObject({ raised_by: customer.user, sla_status: 'On Track' })
     } finally {
       await uninstallApp('helpdesk')

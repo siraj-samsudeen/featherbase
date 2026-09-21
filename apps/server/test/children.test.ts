@@ -6,8 +6,8 @@ import { registerController, unregisterController } from '../src/controllers'
 
 const CHILD = 'Chd Item Row'
 const PARENT = 'Chd Order'
-const CTABLE = 'chd_item_row'
-const PTABLE = 'chd_order'
+const CTABLE = 'featherbase.chd_item_row'
+const PTABLE = 'featherbase.chd_order'
 
 async function setup(admin: TestClient) {
   await admin.post('/api/table_def', {
@@ -214,7 +214,7 @@ describe('#231: a reqd Sub-table column must hold at least one row', () => {
       status: 417,
       fields: { items: 'Required' },
     })
-    const [{ count }] = await sql.unsafe(`select count(*)::int as count from rq231_order`)
+    const [{ count }] = await sql.unsafe(`select count(*)::int as count from featherbase.rq231_order`)
     expect(count).toBe(0)
   })
 
@@ -224,7 +224,7 @@ describe('#231: a reqd Sub-table column must hold at least one row', () => {
       status: 417,
       fields: { items: 'Required' },
     })
-    const [{ count }] = await sql.unsafe(`select count(*)::int as count from rq231_order`)
+    const [{ count }] = await sql.unsafe(`select count(*)::int as count from featherbase.rq231_order`)
     expect(count).toBe(0)
   })
 
@@ -234,7 +234,7 @@ describe('#231: a reqd Sub-table column must hold at least one row', () => {
     expect(doc.row_id).toMatch(/^[0-9a-f]{10}$/)
     expect(doc.items.map((r: any) => r.item)).toEqual(['apple'])
     const [{ count }] = await sql.unsafe(
-      `select count(*)::int as count from rq231_item where parent = '${doc.row_id}'`,
+      `select count(*)::int as count from featherbase.rq231_item where parent = '${doc.row_id}'`,
     )
     expect(count).toBe(1)
   })
@@ -265,10 +265,10 @@ describe('#231: a reqd Sub-table column must hold at least one row', () => {
       }),
     ).rejects.toMatchObject({ status: 417, fields: { items: 'Required' } })
     // the whole save rolls back: title unchanged, the child row survives
-    const [row] = await sql.unsafe(`select title from rq231_order where row_id='${doc.row_id}'`)
+    const [row] = await sql.unsafe(`select title from featherbase.rq231_order where row_id='${doc.row_id}'`)
     expect(row.title).toBe('ok')
     const [{ count }] = await sql.unsafe(
-      `select count(*)::int as count from rq231_item where parent = '${doc.row_id}'`,
+      `select count(*)::int as count from featherbase.rq231_item where parent = '${doc.row_id}'`,
     )
     expect(count).toBe(1)
   })

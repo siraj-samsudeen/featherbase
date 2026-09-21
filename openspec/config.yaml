@@ -1,0 +1,25 @@
+schema: spec-driven
+
+context: |
+  Featherbase is a TypeScript monorepo for a metadata-driven low-code platform.
+  OpenSpec is the sole behavior specification and mandatory change workflow.
+  New behavior starts with a change. Existing behavior without an OpenSpec
+  capability is first recovered and committed as a verified, behavior-neutral
+  baseline; only a later change may modify it. See root AGENTS.md and ADR 0010.
+
+rules:
+  specs:
+    - Use globally unique descriptive snake_case requirement and scenario slugs.
+    - 'Label every requirement `Status: governed` or `Status: characterized (#issue)`.'
+    - Record facts outside Featherbase's control as dated domain assumptions with a detector.
+  tasks:
+    - Include strict OpenSpec validation and STC verification for behavior changes.
+
+operations:
+  apply:
+    guidance:
+      - Put `@spec <slug>` at the deciding code line and beside each asymmetric checking test.
+      - Never combine a legacy baseline recovery commit with behavior modifications.
+  archive:
+    guidance:
+      - Run `pnpm check:specs` after syncing the delta into main specs.

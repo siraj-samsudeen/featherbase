@@ -1,6 +1,7 @@
 import { sql } from './db'
 import { AppError } from './errors'
 import { ENGINE_WRITABLE, type SourceEngine } from './sources/types'
+import { assertAppAvailable } from './app-lifecycle'
 
 // Column types the engine understands (columns generated in META-002/003).
 export const COLUMN_TYPE_VALUES = [
@@ -77,6 +78,10 @@ export function physicalRowKey(table: string): string {
 
 export interface TableMeta {
   name: string
+  label?: string | null
+  owner_app?: string | null
+  physical_schema?: string | null
+  physical_relation?: string | null
   // Physical primary-key column of this Table's storage — `row_id` for every
   // Table but `Table` itself (see physicalRowKey). SQL construction uses this;
   // the wire format is always `row_id`.
@@ -193,6 +198,15 @@ export async function getBacklinks(target: string): Promise<Backlink[]> {
 
 // CUST-002: coerce a Metadata Override's string value to the property's type.
 const BOOLEAN_PROPS = new Set(['hidden', 'reqd', 'read_only', 'in_list_view', 'unique'])
+const TABLE_OVERRIDES = new Set(['label', 'title_column', 'search_columns', 'sort_column', 'sort_direction'])
+const COLUMN_OVERRIDES = new Set(['label', 'hidden', 'reqd', 'read_only', 'in_list_view', 'default_value', 'choices'])
+
+export function assertMetadataOverride(property: unknown, column: unknown): void {
+  const allowed = column ? COLUMN_OVERRIDES : TABLE_OVERRIDES
+  if (typeof property !== 'string' || !allowed.has(property))
+    throw new AppError('ValidationError', `Metadata property ${String(property)} cannot be overridden`)
+}
+
 function coerceProperty(property: string, value: unknown): unknown {
   if (BOOLEAN_PROPS.has(property)) return value === true || value === '1' || value === 'true'
   return value
@@ -209,6 +223,7 @@ async function applyMetadataOverrides(name: string, meta: TableMeta): Promise<vo
   const overrides = await sql<{ column_name: string | null; property: string; value: string }[]>`
     select column_name, property, value from metadata_override where table_name = ${name}`
   for (const o of overrides) {
+    assertMetadataOverride(o.property, o.column_name)
     const val = coerceProperty(o.property, o.value)
     if (o.column_name) {
       const f = meta.columns.find((x) => x.column_name === o.column_name)
@@ -255,6 +270,7 @@ export async function resolveTableName(input: string): Promise<string> {
 }
 
 export async function getMeta(name: string): Promise<TableMeta> {
+  await assertAppAvailable(name)
   const cached = cache.get(name)
   if (cached) {
     metaCacheStats.hits++
@@ -262,6 +278,7 @@ export async function getMeta(name: string): Promise<TableMeta> {
   }
   const [dt] = await sql`select * from table_def where name = ${name}`
   if (!dt) {
+    // @spec stale_pointer_gets_tombstone
     // DEL-R9 (docs/specs/0003-table-deletion.md): a deleted Table's
     // not-found names the deletion — the Access Log's plain-text testimony
     // (DEL-R8) read back at the miss. A never-created name stays a plain

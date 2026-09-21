@@ -52,7 +52,7 @@ describe('Assignment Rules: round-robin auto-assignment', () => {
     expect(await assignee(String(d2.row_id))).toBe(A2)
     expect(await assignee(String(d3.row_id))).toBe(A1)
     // assign_to_field stamped the pool user into the document itself.
-    const [row] = await sql`select agent from asg_rule_ticket where row_id = ${String(d2.row_id)}`
+    const [row] = await sql`select agent from featherbase.asg_rule_ticket where row_id = ${String(d2.row_id)}`
     expect(row.agent).toBe(A2)
     // The assignee got a notification.
     const [note] = await sql`

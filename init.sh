@@ -15,6 +15,9 @@ command -v pnpm >/dev/null || npm install -g pnpm
 # near-instant when the lockfile is already satisfied, so paying it every boot
 # is cheaper than the debugging it saves.
 pnpm install
+pnpm apps:prepare
+# Development examples are explicit configured packages, never core imports.
+export FEATHERBASE_APP_PATHS="${FEATHERBASE_APP_PATHS:-$(node -e 'console.log(JSON.stringify(process.argv.slice(1)))' "$PWD/runtime-apps/tasker" "$PWD/runtime-apps/other")}"
 
 # --- 2. Database -----------------------------------------------------------
 # DATABASE_URL is the single source of truth; the default below must stay in

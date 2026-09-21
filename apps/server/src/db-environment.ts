@@ -42,9 +42,14 @@ export async function stampEnvironment(env: string = environment): Promise<void>
  *  been migrated (a brand-new database is nobody's yet, so it is not a
  *  mismatch — the migrator is about to claim it). */
 export async function storedEnvironment(): Promise<string | null> {
-  const [present] = await sql`select to_regclass('internal_metadata') as reg`
-  if (!present?.reg) return null
-  const [row] = await sql`select value from internal_metadata where key = ${ENVIRONMENT_KEY}`
+  const [present] = await sql`
+    select to_regclass('public.internal_metadata') as legacy,
+      to_regclass('featherbase.internal_metadata') as current`
+  if (present?.legacy && present?.current)
+    throw new Error('Refusing to run: both public and featherbase environment stamps exist')
+  const relation = present?.current ? 'featherbase.internal_metadata' : present?.legacy ? 'public.internal_metadata' : null
+  if (!relation) return null
+  const [row] = await sql.unsafe(`select value from ${relation} where key = $1`, [ENVIRONMENT_KEY])
   return row ? String(row.value) : null
 }
 

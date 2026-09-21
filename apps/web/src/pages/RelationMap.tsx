@@ -109,7 +109,7 @@ export function RelationMap({
     const nextTrail = [...parsedTrail, [table, name] as [string, string]].slice(-8)
     setOpenGroup(null)
     navigate({
-      to: '/admin/map/$table/$name',
+      to: '/featherbase/admin/map/$table/$name',
       params: { table: table, name: rowName },
       search: { trail: JSON.stringify(nextTrail) },
     })
@@ -117,7 +117,7 @@ export function RelationMap({
   function backTo(i: number) {
     const [t, n] = parsedTrail[i]
     navigate({
-      to: '/admin/map/$table/$name',
+      to: '/featherbase/admin/map/$table/$name',
       params: { table: t, name: n },
       search: {
         trail: parsedTrail.length > 1 ? JSON.stringify(parsedTrail.slice(0, i)) : undefined,
@@ -130,10 +130,10 @@ export function RelationMap({
   return (
     <div data-testid="relation-map">
       <div className="mb-1 text-xs text-[var(--color-ink-faint)]">
-        <Link to="/admin" className="hover:text-[var(--color-ink)]">Home</Link>
+        <Link to="/featherbase/admin" className="hover:text-[var(--color-ink)]">Home</Link>
         {' / '}
         <Link
-          to="/admin/$table"
+          to="/featherbase/admin/$table"
           params={{ table }}
           search={{ filters: undefined }}
           className="hover:text-[var(--color-ink)]"
@@ -149,7 +149,7 @@ export function RelationMap({
         </h1>
         <span className="text-xs text-[var(--color-ink-faint)]">{table} · {name}</span>
         <Link
-          to="/admin/$table/$name"
+          to="/featherbase/admin/$table/$name"
           params={{ table, name }}
           search={{ prefill: undefined }}
           data-testid="map-open-form"
@@ -158,7 +158,7 @@ export function RelationMap({
           Open form ↗
         </Link>
         <Link
-          to="/admin/explore"
+          to="/featherbase/admin/explore"
           search={{
             root: table,
             chain: exploreChain.length ? JSON.stringify(exploreChain) : undefined,

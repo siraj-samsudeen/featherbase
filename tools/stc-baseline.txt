@@ -1,0 +1,41 @@
+# Accepted STC coverage gaps — the ratchet floor for tools/stc-matrix.mjs.
+# Only ever shrinks: a NEW gap fails the check, a closed one is reported so
+# this file can be rewritten with --write-baseline.
+#
+# The four below are journeys and invariants. Each is a COMPOSITION of
+# requirements that are individually marked in the code, so no single line
+# owns it and a marker would have to be placed arbitrarily. The spec says so
+# per requirement ("the journey is the composition ...; no single symbol owns
+# it"). They are covered at the test vertex, where a journey genuinely does
+# have one executable.
+no_code delete_an_unwanted_table
+no_code nothing_dangles
+no_code refusal_changes_nothing
+no_code refused_then_unblocked
+
+# Tasker's neutral defaults are declared in strict JSON metadata and its focus
+# return is a UI composition; neither has one marker-capable deciding line.
+no_code capture_neutral_task
+
+# The agreed guided Inbox processing loop is not implemented yet. Its current
+# gap is explicit in the Tasker OpenSpec contract rather than being hidden
+# behind the existing inline placement controls.
+no_code process_inbox_one_at_a_time
+no_test process_inbox_one_at_a_time
+
+# Tasker filters missing project ids and saves the filtered list on the next
+# preference write, but the full self-healing sequence has no dedicated test.
+no_test stale_project_tabs_self_heal
+
+# Team-wide grants are declared in strict runtime manifest JSON; the executable
+# test covers them, but JSON has no legal @spec comment location.
+no_code team_shares_tasker_work
+
+# The one-person shape is declarative JSON metadata. The OpenSpec contract
+# records the missing dedicated server test rather than laundering that gap.
+no_code responsibility_is_singular
+no_test responsibility_is_singular
+
+# Visual hierarchy and focus-ring treatment were inspected in desktop/mobile
+# screenshots. The executable responsive check does not judge visual clarity.
+no_test workspace_visual_hierarchy_is_clear

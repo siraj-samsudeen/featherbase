@@ -1,0 +1,17 @@
+{
+  "manifestVersion": 1,
+  "apiVersion": 1,
+  "name": "other",
+  "title": "Other tasks",
+  "server": "server.mjs",
+  "client": "client",
+  "entryTable": "other.task",
+  "tables": [{
+    "name": "other.task", "label": "Task", "module": "Other", "id_pattern": "prompt",
+    "columns": [
+      {"column_name": "quantity", "column_type": "Int", "reqd": true},
+      {"column_name": "validation_runs", "column_type": "Int", "hidden": true}
+    ]
+  }],
+  "permissions": [{"table": "other.task", "role": "All", "can_read": true}]
+}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { tableSchemaToZod, zodFieldErrors } from 'shared'
-import { ApiError, api, getToken, listResource } from '../lib/api'
+import { ApiError, api, listResource } from '../lib/api'
 import { useRealtime } from '../lib/realtime'
 import { Link as RouterLink } from '@tanstack/react-router'
 import { NO_COLUMN_TYPES, isSourceReadOnly, useMeta, type ColumnDef, type TableMeta } from '../lib/meta'
@@ -174,7 +174,7 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       if (action === 'amend') {
-        navigate({ to: '/admin/$table/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
+        navigate({ to: '/featherbase/admin/$table/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
       } else {
         setBanner('Done')
       }
@@ -194,7 +194,7 @@ export function FormView({
       )
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
       setRenaming(false)
-      navigate({ to: '/admin/$table/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
+      navigate({ to: '/featherbase/admin/$table/$name', params: { table, name: String(res.row_id) }, search: { prefill: undefined } })
     } catch (err) {
       setBanner(err instanceof ApiError ? err.message : 'Rename failed')
     }
@@ -223,7 +223,7 @@ export function FormView({
       )
       await queryClient.invalidateQueries({ queryKey: ['doc', table] })
       await queryClient.invalidateQueries({ queryKey: ['list', table] })
-      navigate({ to: '/admin/$table', params: { table }, search: { filters: undefined } })
+      navigate({ to: '/featherbase/admin/$table', params: { table }, search: { filters: undefined } })
     } catch (err) {
       setDeleteError(err instanceof ApiError ? err.message : 'Delete failed')
       setDeleteBusy(false)
@@ -261,7 +261,7 @@ export function FormView({
       await queryClient.invalidateQueries({ queryKey: ['versions', table, name] })
       if (isNew) {
         navigate({
-          to: '/admin/$table/$name',
+          to: '/featherbase/admin/$table/$name',
           params: { table, name: String(saved.row_id) },
           search: { prefill: undefined },
         })
@@ -287,13 +287,15 @@ export function FormView({
     else if (!f.hidden) sections[sections.length - 1].push(f)
   }
 
+  // @spec generic_core_form_controls_fit_viewport
+  // @spec generic_row_editor_preserves_field_contract
   return (
-    <div data-testid="form-view" className="max-w-5xl">
+    <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
       <nav className="mb-2 text-xs text-gray-500" data-testid="breadcrumbs">
-        <RouterLink to="/admin" className="hover:underline">Admin</RouterLink>
+        <RouterLink to="/featherbase/admin" className="hover:underline">Admin</RouterLink>
         <span className="mx-1">/</span>
         <RouterLink
-          to="/admin/$table"
+          to="/featherbase/admin/$table"
           params={{ table }}
           search={{ filters: undefined }}
           className="hover:underline"
@@ -303,8 +305,8 @@ export function FormView({
         <span className="mx-1">/</span>
         <span className="text-gray-700">{isNew ? 'New' : name}</span>
       </nav>
-      <div className="mb-4 flex items-center justify-between">
-        <div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 max-w-full">
           <h1 className="text-xl font-semibold text-[var(--color-ink)]">
             {table}: {isNew ? 'New' : name}
           </h1>
@@ -321,10 +323,10 @@ export function FormView({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex max-w-full flex-wrap items-center gap-2">
           {table === 'Data Source' && !isNew && (
             <RouterLink
-              to="/admin/source/$name"
+              to="/featherbase/admin/source/$name"
               params={{ name }}
               data-testid="form-source-browser"
               className="fc-btn"
@@ -349,7 +351,7 @@ export function FormView({
           )}
           {!isNew && (
             <RouterLink
-              to="/print/$table/$name"
+              to="/featherbase/print/$table/$name"
               params={{ table, name }}
               search={{ format: undefined }}
               data-testid="form-print"
@@ -361,7 +363,7 @@ export function FormView({
           {/* #100 pattern 6: walk this row's relational neighborhood. */}
           {!isNew && m.kind !== 'settings' && (
             <RouterLink
-              to="/admin/map/$table/$name"
+              to="/featherbase/admin/map/$table/$name"
               params={{ table, name }}
               search={{ trail: undefined }}
               data-testid="form-map"
@@ -384,7 +386,7 @@ export function FormView({
             </button>
           )}
           {renaming && (
-            <span className="flex items-center gap-1">
+            <span className="flex max-w-full flex-wrap items-center gap-1">
               <input
                 value={renameValue}
                 onChange={(e) => setRenameValue(e.target.value)}
@@ -522,7 +524,7 @@ export function FormView({
       )}
       {scriptError && (
         <div
-          className="mb-3 flex items-center justify-between rounded-md border border-[var(--color-warn)]/40 bg-[var(--color-warn-tint)] px-3 py-2 text-sm text-[var(--color-warn)]"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--color-warn)]/40 bg-[var(--color-warn-tint)] px-3 py-2 text-sm text-[var(--color-warn)]"
           data-testid="client-script-error"
         >
           <span>{scriptError}</span>
@@ -533,7 +535,7 @@ export function FormView({
       )}
       {staleBanner && (
         <div
-          className="mb-3 flex items-center justify-between rounded-md border border-[var(--color-warn)]/40 bg-[var(--color-warn-tint)] px-3 py-2 text-sm"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--color-warn)]/40 bg-[var(--color-warn-tint)] px-3 py-2 text-sm"
           data-testid="stale-banner"
         >
           <span className="text-[var(--color-ink)]">
@@ -646,7 +648,7 @@ function FieldControl({
 
   const wide = ['Text', 'Long Text', 'JSON', 'Sub-table'].includes(field.column_type)
   const wrap = (control: React.ReactNode) => (
-    <div className={wide ? 'md:col-span-2' : ''}>
+    <div className={`min-w-0 ${wide ? 'md:col-span-2' : ''}`}>
       {label}
       {control}
       {preview}
@@ -962,7 +964,7 @@ function LinkControl({
             onMouseDown={(e) => {
               e.preventDefault()
               navigate({
-                to: '/admin/$table/$name',
+                to: '/featherbase/admin/$table/$name',
                 params: { table: target, name: String(value) },
                 search: { prefill: undefined },
               })
@@ -999,7 +1001,7 @@ function LinkControl({
             <p className="px-3 py-1.5 text-sm text-gray-400">No matches</p>
           )}
           <RouterLink
-            to="/admin/$table/$name"
+            to="/featherbase/admin/$table/$name"
             params={{ table: target, name: 'new' }}
             search={{ prefill: undefined }}
             className="block border-t border-gray-100 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50"
@@ -1047,14 +1049,7 @@ function AttachControl({
       form.append('file', file)
       form.append('ref_table', refTable)
       if (refName) form.append('ref_name', refName)
-      const res = await fetch('/api/upload_file', {
-        method: 'POST',
-        headers: { authorization: `Bearer ${getToken()}` },
-        body: form,
-      })
-      const body = (await res.json()) as { file_url?: string; error?: { message?: string } }
-      if (!res.ok || !body.file_url)
-        throw new Error(body.error?.message ?? `Upload failed (${res.status})`)
+      const body = await api.upload<{ file_url: string }>(form)
       onChange(body.file_url)
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : 'Upload failed')
@@ -1092,7 +1087,7 @@ function AttachControl({
               href={url}
               target="_blank"
               rel="noreferrer"
-              className="truncate text-[var(--color-brand)] hover:underline"
+              className="min-w-0 text-[var(--color-brand)] hover:underline"
               data-testid={`attach-link-${field.column_name}`}
             >
               {url.split('/').pop()?.replace(/^[0-9a-f]{16}_/, '')}
@@ -1102,7 +1097,7 @@ function AttachControl({
                 type="button"
                 onClick={() => onChange(null)}
                 data-testid={`attach-clear-${field.column_name}`}
-                className="text-xs text-[var(--color-ink-faint)] hover:text-[var(--color-danger)]"
+                className="shrink-0 text-xs text-[var(--color-ink-faint)] hover:text-[var(--color-danger)]"
               >
                 Clear
               </button>

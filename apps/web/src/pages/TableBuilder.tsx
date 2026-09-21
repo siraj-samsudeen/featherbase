@@ -344,7 +344,7 @@ export function TableBuilder() {
       // #80: the new table auto-appears on its module's home page — refresh
       // the sidebar so that happens without a reload.
       await queryClient.invalidateQueries({ queryKey: ['home-pages'] })
-      navigate({ to: '/admin/$table', params: { table: name }, search: { filters: undefined } })
+      navigate({ to: '/featherbase/admin/$table', params: { table: name }, search: { filters: undefined } })
     } catch (err) {
       setProgress(null)
       if (err instanceof ApiError && err.fields) {
@@ -730,7 +730,7 @@ export function TableBuilder() {
       {moreSheets > 1 && (
         <p className="mt-3 text-sm text-[var(--color-ink-muted)]" data-testid="dt-more-sheets">
           This workbook has {moreSheets} sheets — only the first is used here. The{' '}
-          <Link to="/admin/import" search={{ table: undefined }} className="text-[var(--color-brand)] underline">
+          <Link to="/featherbase/admin/import" search={{ table: undefined }} className="text-[var(--color-brand)] underline">
             Import wizard
           </Link>{' '}
           imports every sheet.

@@ -229,10 +229,10 @@ describe('NAV-001: via-link permission scoping', () => {
     // generated tables default every audit column, and the engine round
     // trip for 1000+ rows is not what this test measures.
     await sql.unsafe(`
-      insert into cnx_order (row_id, title)
+      insert into featherbase.cnx_order (row_id, title)
       select 'ORD-' || lpad(i::text, 4, '0'), 'bulk' from generate_series(1, 501) i`)
     await sql.unsafe(`
-      insert into cnx_order_line (row_id, parent, parenttype, parentfield, employee, qty)
+      insert into featherbase.cnx_order_line (row_id, parent, parenttype, parentfield, employee, qty)
       select 'L-' || i, 'ORD-' || lpad(i::text, 4, '0'), 'Cnx Order', 'lines', 'E-001', 1
       from generate_series(1, 501) i`)
 

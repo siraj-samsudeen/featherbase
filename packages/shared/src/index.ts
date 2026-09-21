@@ -1,4 +1,6 @@
 export { tableSchemaToZod, zodFieldErrors, type ColumnDef } from './schema'
+export { RESERVED_APP_ROOTS, APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, appHref } from './app-routes'
+export type { RuntimeActionContext, RuntimeActionHandler, ActionRow, ActionListArgs } from './runtime-actions'
 export {
   autoMapColumns,
   coerceRows,

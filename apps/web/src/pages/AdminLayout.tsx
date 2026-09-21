@@ -165,7 +165,7 @@ export function AdminLayout() {
   useEffect(() => {
     let leader = 0 // timestamp of a recent 'g' press
     function currentTable(): string | null {
-      const m = /^\/admin\/([^/]+)/.exec(window.location.pathname)
+      const m = /^\/featherbase\/admin\/([^/]+)/.exec(window.location.pathname)
       return m ? decodeURIComponent(m[1]) : null
     }
     function onKey(e: KeyboardEvent) {
@@ -188,7 +188,7 @@ export function AdminLayout() {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault()
         const dt = currentTable()
-        if (dt && dt !== 'new-table') navigate({ to: '/admin/$table/$name', params: { table: dt, name: 'new' }, search: { prefill: undefined } })
+        if (dt && dt !== 'new-table') navigate({ to: '/featherbase/admin/$table/$name', params: { table: dt, name: 'new' }, search: { prefill: undefined } })
         return
       }
       // Leader-key navigation only when not typing into a field.
@@ -198,7 +198,7 @@ export function AdminLayout() {
         leader = now
       } else if (e.key.toLowerCase() === 'd' && now - leader < 1000) {
         leader = 0
-        navigate({ to: '/admin' })
+        navigate({ to: '/featherbase/admin' })
       } else {
         leader = 0
       }
@@ -223,6 +223,10 @@ export function AdminLayout() {
   // dedicated endpoint is its only source (role visibility and link
   // permission-filtering are computed server-side).
   const homePages = useHomePages()
+  const appCatalog = useQuery({
+    queryKey: ['app-catalog'],
+    queryFn: () => api.get<{ name: string; title: string; href: string }[]>('/api/app_catalog'),
+  })
 
   async function logout() {
     // Drain the pending event batch FIRST, while the departing user's token
@@ -243,7 +247,7 @@ export function AdminLayout() {
     // token-less — 401s that api.ts answers with a hard redirect. Once
     // /login has rendered there are no observers left, and the clear (PR #92
     // review) empties the cache for whoever signs in next.
-    await navigate({ to: '/login' })
+    await navigate({ to: '/featherbase/login' })
     queryClient.clear()
   }
 
@@ -304,7 +308,7 @@ export function AdminLayout() {
   function openDoc(hit: SearchHit) {
     recordSearch(search.trim())
     setSearch('')
-    navigate({ to: '/admin/$table/$name', params: { table: hit.table, name: hit.row_id }, search: { prefill: undefined } })
+    navigate({ to: '/featherbase/admin/$table/$name', params: { table: hit.table, name: hit.row_id }, search: { prefill: undefined } })
   }
 
   // Enter opens the top match: an exactly-named Table's list first,
@@ -322,7 +326,7 @@ export function AdminLayout() {
     const dtHit = tables.data?.data.find((d) => d.row_id.toLowerCase() === q.toLowerCase())
     if (dtHit) {
       setSearch('')
-      navigate({ to: '/admin/$table', params: { table: dtHit.row_id }, search: { filters: undefined } })
+      navigate({ to: '/featherbase/admin/$table', params: { table: dtHit.row_id }, search: { filters: undefined } })
       return
     }
     const doc = docHits.data?.results[0]
@@ -330,7 +334,7 @@ export function AdminLayout() {
       openDoc(doc)
       return
     }
-    navigate({ to: '/admin/$table', params: { table: q }, search: { filters: undefined } })
+    navigate({ to: '/featherbase/admin/$table', params: { table: q }, search: { filters: undefined } })
   }
 
   const initials = (user?.full_name || user?.row_id || '?')
@@ -352,9 +356,9 @@ export function AdminLayout() {
 
   // Command actions surfaced through the command bar (the ⌘K palette).
   const commands = [
-    { id: 'new-table', label: 'New Table', run: () => navigate({ to: '/admin/new-table' }) },
+    { id: 'new-table', label: 'New Table', run: () => navigate({ to: '/featherbase/admin/new-table' }) },
     { id: 'toggle-theme', label: 'Toggle dark mode', run: () => toggleTheme() },
-    { id: 'home', label: 'Go to Admin home', run: () => navigate({ to: '/admin' }) },
+    { id: 'home', label: 'Go to Admin home', run: () => navigate({ to: '/featherbase/admin' }) },
   ]
   const commandHits =
     search.trim().length > 1
@@ -375,7 +379,7 @@ export function AdminLayout() {
         >
           ☰
         </button>
-        <Link to="/admin" className="flex items-center gap-2">
+        <Link to="/featherbase/admin" className="flex items-center gap-2">
           <Logo className="h-6 w-6" />
           {/* SET-004: the instance names itself via System Settings
               app_name; "Featherbase" is only the default. */}
@@ -478,7 +482,7 @@ export function AdminLayout() {
               {suggestions.map((d) => (
                 <Link
                   key={d.row_id}
-                  to="/admin/$table"
+                  to="/featherbase/admin/$table"
                   params={{ table: d.row_id }}
                   search={{ filters: undefined }}
                   onClick={() => setSearch('')}
@@ -492,7 +496,7 @@ export function AdminLayout() {
               {suggestions.slice(0, 2).map((d) => (
                 <Link
                   key={`new-${d.row_id}`}
-                  to="/admin/$table/$name"
+                  to="/featherbase/admin/$table/$name"
                   search={{ prefill: undefined }}
                   params={{ table: d.row_id, name: 'new' }}
                   onClick={() => setSearch('')}
@@ -678,14 +682,14 @@ export function AdminLayout() {
         >
           <div className="px-3 pt-4">
             <Link
-              to="/admin/new-table"
+              to="/featherbase/admin/new-table"
               data-testid="new-table-link"
               className="fc-btn-primary w-full justify-center"
             >
               + New Table
             </Link>
             <Link
-              to="/admin/import"
+              to="/featherbase/admin/import"
               search={{ table: undefined }}
               data-testid="import-data-link"
               className="fc-btn mt-2 w-full justify-center"
@@ -695,7 +699,7 @@ export function AdminLayout() {
             {/* #206: an import is a thing you did, not just rows that
                 appeared — so it has a place to be found again. */}
             <Link
-              to="/admin/imports"
+              to="/featherbase/admin/imports"
               data-testid="past-imports-link"
               className="mt-1 block text-center text-xs text-[var(--color-ink-faint)] underline"
             >
@@ -706,13 +710,16 @@ export function AdminLayout() {
               table stays reachable through the All tables entry below —
               grouping and curation moved there, nothing is hidden. */}
           <nav className="flex-1 overflow-y-auto px-2 pb-4 pt-3" data-testid="home-page-nav">
+            {(appCatalog.data ?? []).map((entry) => (
+              <a key={entry.name} href={entry.href} className="block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] hover:bg-[var(--color-subtle)]">{entry.title} ↗</a>
+            ))}
             {homePages.isLoading && (
               <p className="px-2 py-1 text-xs text-[var(--color-ink-faint)]">Loading…</p>
             )}
             {(homePages.data?.pages ?? []).map((p) => (
               <Link
                 key={p.row_id}
-                to="/admin/home/$name"
+                to="/featherbase/admin/home/$name"
                 params={{ name: p.row_id }}
                 data-testid={`home-page-link-${p.row_id}`}
                 className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-subtle)]"
@@ -749,7 +756,7 @@ export function AdminLayout() {
           <div className="border-t border-[var(--color-border)] px-2 py-2">
             {/* #100 pattern 4: the cross-filter Explore surface. */}
             <Link
-              to="/admin/explore"
+              to="/featherbase/admin/explore"
               search={{ root: undefined, chain: undefined, select: undefined }}
               data-testid="explore-link"
               className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)] hover:text-[var(--color-ink)]"
@@ -761,7 +768,7 @@ export function AdminLayout() {
               Explore
             </Link>
             <Link
-              to="/admin/all-tables"
+              to="/featherbase/admin/all-tables"
               data-testid="all-tables-link"
               className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)] hover:text-[var(--color-ink)]"
               activeProps={{
@@ -774,7 +781,7 @@ export function AdminLayout() {
             {/* #131: automation credentials — tokens are self-service, so the
                 link shows for everyone, not just System Managers. */}
             <Link
-              to="/admin/access-tokens"
+              to="/featherbase/admin/access-tokens"
               data-testid="access-tokens-link"
               className="block rounded-md px-2 py-1.5 text-sm text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)] hover:text-[var(--color-ink)]"
               activeProps={{

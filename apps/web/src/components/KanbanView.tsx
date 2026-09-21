@@ -115,7 +115,7 @@ export function KanbanView({
             </select>
           </label>
           <RouterLink
-            to="/admin/$table"
+            to="/featherbase/admin/$table"
             params={{ table }}
             search={{ filters: undefined }}
             className="fc-btn"
@@ -158,7 +158,7 @@ export function KanbanView({
                   }`}
                 >
                   <RouterLink
-                    to="/admin/$table/$name"
+                    to="/featherbase/admin/$table/$name"
                     search={{ prefill: undefined }}
                     params={{ table, name: String(row.row_id) }}
                     className="font-medium text-[var(--color-brand)] hover:underline"

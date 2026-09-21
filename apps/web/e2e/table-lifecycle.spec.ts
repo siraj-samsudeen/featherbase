@@ -44,7 +44,7 @@ test('TLC-J1 / TLC-R1 / TLC-I1: declare a table, then reach its first row by cli
 
   // J1.1 — the round trip closes on the TABLE, not on the builder.
   await session
-    .assertPath(`/admin/${ENC}`)
+    .assertPath(`/featherbase/admin/${ENC}`)
     .assertHas('[data-testid="list-view"]')
     .assertHas('[data-testid="list-total"]', { text: '0 total' })
 
@@ -65,7 +65,7 @@ test('TLC-J1 / TLC-R1 / TLC-I1: declare a table, then reach its first row by cli
     await page.getByTestId('list-new').click()
   })
   await session
-    .assertPath(`/admin/${ENC}/new`)
+    .assertPath(`/featherbase/admin/${ENC}/new`)
     .assertHas('[data-testid="form-view"]')
     .assertHas('[data-field="body"]')
 
@@ -77,7 +77,7 @@ test('TLC-J1 / TLC-R1 / TLC-I1: declare a table, then reach its first row by cli
     await page.getByTestId('form-save').click()
   })
   await session.assertHas('[data-testid="form-status"]', { text: 'Saved' })
-  await session.refutePath(`/admin/${ENC}/new`)
+  await session.refutePath(`/featherbase/admin/${ENC}/new`)
 
   // J1.5 — back to the list through the breadcrumb, which is the way back a
   // user has. The row is there and the total moved.
@@ -85,7 +85,7 @@ test('TLC-J1 / TLC-R1 / TLC-I1: declare a table, then reach its first row by cli
     await page.getByTestId('breadcrumbs').getByText(NOTE).click()
   })
   await session
-    .assertPath(`/admin/${ENC}`)
+    .assertPath(`/featherbase/admin/${ENC}`)
     .assertHas('[data-testid="list-total"]', { text: '1 total' })
     .assertHas('[data-testid="list-rows"]', { text: 'the first note' })
 
@@ -196,7 +196,7 @@ test('TLC-J2 / TLC-R3 / TLC-R4: delete a row from its own form, behind a confirm
   })
   await session
     .refuteHas('[data-testid="delete-row-dialog"]')
-    .assertPath(`/admin/${ENC}/note-2`)
+    .assertPath(`/featherbase/admin/${ENC}/note-2`)
     .assertHas('[data-testid="form-view"]')
 
   // J2.3 — confirm: landed on the list, the row gone, the total moved.
@@ -205,7 +205,7 @@ test('TLC-J2 / TLC-R3 / TLC-R4: delete a row from its own form, behind a confirm
     await page.getByTestId('delete-row-confirm').click()
   })
   await session
-    .assertPath(`/admin/${ENC}`)
+    .assertPath(`/featherbase/admin/${ENC}`)
     .assertHas('[data-testid="list-total"]', { text: '1 total' })
   await session.step('J2.3: the row is gone from the list', async ({ page }: { page: Page }) => {
     await expect(page.getByTestId('list-rows')).not.toContainText('a mistake')
@@ -222,7 +222,7 @@ test('TLC-J2 / TLC-R3 / TLC-R4: delete a row from its own form, behind a confirm
   })
   await session
     .assertHas('[data-testid="delete-row-error"]', { text: 'ref-1' })
-    .assertPath(`/admin/${ENC}/note-1`)
+    .assertPath(`/featherbase/admin/${ENC}/note-1`)
 
   await deleteTableIfExists(request, token, REF)
   await deleteTableIfExists(request, token, NOTE)

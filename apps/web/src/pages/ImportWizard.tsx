@@ -1459,7 +1459,7 @@ export function ImportWizard() {
       // #203: and never navigate away from a failure the user has not read.
       if (!failedTargets.length && active.length === 1 && active[0].members.length === 1) {
         navigate({
-          to: '/admin/$table',
+          to: '/featherbase/admin/$table',
           params: { table: active[0].table },
           search: { filters: undefined },
         })
@@ -1619,7 +1619,7 @@ export function ImportWizard() {
           It is present from the moment a file is loaded, and after. */}
       <p className="mb-3 text-xs text-gray-500">
         <Link
-          to="/admin/$table"
+          to="/featherbase/admin/$table"
           params={{ table: 'Import Log' }}
           search={{ filters: undefined }}
           className="underline"
@@ -1630,7 +1630,7 @@ export function ImportWizard() {
         {' — every import that has run, with what it created and how to undo it. '}
         {/* #206: the log is run-by-run; this is import-by-import, which is
             what "which Tables came from that file?" actually asks. */}
-        <Link to="/admin/imports" className="underline" data-testid="iw-batches-link">
+        <Link to="/featherbase/admin/imports" className="underline" data-testid="iw-batches-link">
           Past imports
         </Link>
         {' — grouped by the file they came from.'}
@@ -1819,7 +1819,7 @@ export function ImportWizard() {
                     <TargetRowCount i={i} table={plan.table} />
                     {/* Peek at the target without losing wizard state. */}
                     <a
-                      href={`/admin/${encodeURIComponent(plan.table)}`}
+                      href={`/featherbase/admin/${encodeURIComponent(plan.table)}`}
                       target="_blank"
                       rel="noreferrer"
                       data-testid={`iw-view-target-${i}`}
@@ -1869,7 +1869,7 @@ export function ImportWizard() {
                   >
                     A similar existing Table matches this sheet:{' '}
                     <a
-                      href={`/admin/${encodeURIComponent(plan.similar.name)}`}
+                      href={`/featherbase/admin/${encodeURIComponent(plan.similar.name)}`}
                       target="_blank"
                       rel="noreferrer"
                       className="font-semibold underline"
@@ -2211,7 +2211,7 @@ export function ImportWizard() {
                   >
                     Auto-matched to the existing Table{' '}
                     <a
-                      href={`/admin/${encodeURIComponent(plan.table)}`}
+                      href={`/featherbase/admin/${encodeURIComponent(plan.table)}`}
                       target="_blank"
                       rel="noreferrer"
                       className="font-semibold underline"
@@ -2506,7 +2506,7 @@ export function ImportWizard() {
                         ? `Updated ${plan.result.updated} and added ${plan.result.inserted} rows in `
                         : `Imported ${plan.result.inserted} rows into `}
                       <Link
-                        to="/admin/$table"
+                        to="/featherbase/admin/$table"
                         params={{ table: plan.table }}
                         search={{ filters: undefined }}
                         className="underline"

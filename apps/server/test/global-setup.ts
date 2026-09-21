@@ -75,8 +75,8 @@ export async function setup() {
       // not exist would fail the whole run with an error that hides the real
       // cause, so treat an absent table as an already-empty one.
       const [{ exists }] = await sql<{ exists: boolean }[]>`
-        select to_regclass(${'public.' + table}) is not null as exists`
-      if (exists) await sql`delete from ${sql(table)}`
+        select to_regclass(${'featherbase.' + table}) is not null as exists`
+      if (exists) await sql`delete from ${sql('featherbase.' + table)}`
     }
   } finally {
     await sql.end({ timeout: 5 })

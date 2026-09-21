@@ -60,7 +60,11 @@ import { publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { parseFilters, runQueryReport } from './query-report'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
-import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps } from './apps'
+import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
+import { discoverPackages, appCatalog, appAsset, packageFailures, runPackageAction, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { documentActivity } from './document-activity'
+import { APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, appHref } from 'shared'
+import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { createSite, listSites, resolveSite, siteCreateTableDef, siteListTableDefs, siteCreateUser, siteListUsers } from './tenancy'
 import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
@@ -75,8 +79,6 @@ await loadControllers()
 await loadMethods()
 await loadJobs()
 await loadScriptReports()
-// CUST-001: re-apply custom fields so they survive a core re-seed.
-await reapplyCustomFields()
 // PLAT-001: register the apps this build ships, then re-wire the doc_events of
 // any that are already installed (their Tables persist in the DB).
 registerApp(helloCrm)
@@ -86,7 +88,10 @@ registerApp(helpdesk)
 // Same discipline: checklist tables exist only after
 // POST /api/install_app { name: 'checklists' }.
 registerApp(checklists)
+await discoverPackages(JSON.parse(process.env.FEATHERBASE_APP_PATHS ?? '[]') as string[])
 await loadInstalledApps()
+// Custom fields may target app-owned Tables, so activation precedes replay.
+await reapplyCustomFields()
 
 type Env = { Variables: { user: SessionUser } }
 
@@ -119,8 +124,17 @@ app.use(
 // ---- Public routes (no session required) -----------------------------------
 
 app.get('/api/ping', async (c) => {
-  const [row] = await sql`select 1 as ok`
-  return c.json({ message: 'pong', db: row.ok === 1 })
+  const [row] = await sql`select
+    1 as ok,
+    inet_server_addr() is null
+      or inet_server_addr() <<= inet '127.0.0.0/8'
+      or inet_server_addr() = inet '::1' as server_local`
+  return c.json({
+    message: 'pong',
+    db: row.ok === 1,
+    environment: config.environment,
+    database_server_local: row.server_local === true,
+  })
 })
 
 // SET-004: the instance's display name, public so the login page (pre-auth)
@@ -403,7 +417,7 @@ app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) =
   // credential in a query string lands in browser history, in the Referer of
   // anything that page fetches next, and in every proxy log on the way. The
   // SPA gets a one-time, one-minute handoff code and POSTs it back below.
-  return c.redirect(`/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
+  return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
 })
 
 // #150: the other half of the handoff. Public — the code IS the credential,
@@ -429,7 +443,7 @@ app.get('/preview', async (c) => {
   if (!config || !previewKeyMatches(c.req.query('key'), config.key)) return c.notFound()
   const session = await issueSession(config.user)
   setSidCookie(c, session.token)
-  return c.redirect(`/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
+  return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
 })
 
 // ---- API-004: everything below requires a valid session --------------------
@@ -443,6 +457,78 @@ app.use('/api/*', async (c, next) => {
 // API-007: throttle authenticated requests per user (runs after auth so it can
 // key by the resolved user and read their budget).
 app.use('/api/*', rateLimit)
+
+// Lock the complete request, including internal SQL and post-commit work.
+// Lifecycle endpoints take the exclusive counterpart inside their handlers.
+app.use('/api/*', async (c, next) => {
+  if (['/api/install_app', '/api/uninstall_app', '/api/set_app_enabled', '/api/upgrade_app', '/api/activate_app_upgrade'].includes(c.req.path))
+    return next()
+  return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appOperation(next))
+})
+
+// @spec featherbase_human_routes_are_canonical
+// Old bookmarks remain meaningful, but all Featherbase-owned human pages have
+// one canonical namespace. Runtime app roots and technical /api paths never
+// pass through this redirect.
+const legacyHumanRoot = new RegExp(LEGACY_HUMAN_ROOT_PATTERN)
+app.get('*', (c, next) => {
+  const url = new URL(c.req.url)
+  if (!legacyHumanRoot.test(url.pathname)) return next()
+  return c.redirect(`/featherbase${url.pathname}${url.search}`, 308)
+})
+
+app.get('*', async (c, next) => {
+  if (!new RegExp(APP_ROOT_PATTERN).test(c.req.path)) return next()
+  const url = new URL(c.req.url)
+  const name = c.req.path.split('/')[1]
+  if (c.req.path === `/${name}`) return c.redirect(`${appHref(name)}${url.search}`, 308)
+  return appOperation(async () => {
+    let asset: string
+    try {
+      asset = decodeURIComponent(url.pathname.slice(appHref(name).length))
+    } catch {
+      return c.notFound()
+    }
+    let resource
+    try {
+      const user = await resolveToken(authCredential(c))
+      resource = await appAsset(name, asset, user.row_id)
+    } catch (error) {
+      if (!(error instanceof AppError)) throw error
+      const navigation = !asset || c.req.header('accept')?.includes('text/html')
+      if (navigation && error.type === 'AuthenticationError')
+        return c.redirect(
+          `/featherbase/login?next=${encodeURIComponent(`${url.pathname}${url.search}`)}`,
+        )
+      if (!navigation || path.extname(asset)) throw error
+      return c.html(
+        `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Application unavailable</title></head>
+      <body style="font:16px system-ui;background:#f4f5f6;color:#1c2126;margin:0;padding:8vw"><main style="max-width:36rem;margin:auto;background:white;border:1px solid #ebeef0;border-radius:8px;padding:2rem">
+      <h1>Application unavailable</h1><p>This application may be disabled, its package may be missing or incompatible, or your account may not have access.</p>
+      <p>Disabling an application preserves its data. Ask your system manager to restore access.</p>
+      <p><a href="/featherbase/admin">Back to Featherbase</a> · <a href="/featherbase/login">Sign in</a></p></main></body></html>`,
+        404,
+      )
+    }
+    const { file, bytes } = resource
+    const types: Record<string, string> = {
+      '.html': 'text/html',
+      '.js': 'text/javascript',
+      '.css': 'text/css',
+      '.json': 'application/json',
+      '.svg': 'image/svg+xml',
+      '.png': 'image/png',
+      '.woff2': 'font/woff2',
+    }
+    return new Response(new Uint8Array(bytes), {
+      headers: {
+        'Content-Type': types[path.extname(file)] ?? 'application/octet-stream',
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+      },
+    })
+  })
+})
 
 const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').row_id
 
@@ -554,7 +640,7 @@ app.get('/api/activity_feed', async (c) => {
       kind: 'change',
       label: (v.ref_name as string | null) ?? '',
       sub: (v.ref_table as string | null) ?? undefined,
-      path: v.ref_table && v.ref_name ? `/admin/${v.ref_table}/${v.ref_name}` : '',
+      path: v.ref_table && v.ref_name ? `/featherbase/admin/${v.ref_table}/${v.ref_name}` : '',
       at: new Date(v.created_at as string).toISOString(),
     })),
     ...logins.map((l) => ({
@@ -742,6 +828,7 @@ app.post('/api/import/batches/:id/delete_tables', async (c) => {
 
 // DEL-R1/R2 (docs/specs/0003-table-deletion.md): delete a Table outright.
 app.delete('/api/table_def/:name', async (c) => {
+  // @spec system_manager_only
   await assertSystemManager(who(c))
   await deleteTable(c.req.param('name'), who(c))
   return c.json({ ok: true })
@@ -1027,7 +1114,36 @@ app.get('/api/tenancy/users', async (c) => {
 // install/uninstall their Tables + doc_events and report installed state.
 app.get('/api/apps', async (c) => {
   await assertSystemManager(who(c))
-  return c.json({ available: getAvailableApps(), installed: await listInstalledApps() })
+  return c.json({ available: getAvailableApps(), installed: await listInstalledApps(), versions: availableRuntimeVersions(), actions: declaredPackageActions(),
+    failures: packageFailures.map(() => ({ error: 'A configured artifact failed validation. Restore a compatible immutable package and inspect the server discovery log' })) })
+})
+app.get('/api/app_catalog', async (c) => c.json(await appCatalog(who(c))))
+// Authenticated bootstrap contains identities only, never manager metadata.
+app.get('/api/runtime_app_versions', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await activeRuntimeVersions())
+})
+app.post('/api/app_actions/:app/:action', async (c) =>
+  c.json(await runPackageAction(c.req.param('app'), c.req.param('action'), await c.req.json(), who(c))))
+// @spec runtime_upgrade_reviewed_plan
+for (const operation of ['preview_app_upgrade', 'upgrade_app', 'activate_app_upgrade'] as const) {
+  app.post(`/api/${operation}`, async c => {
+    await assertSystemManager(who(c))
+    const body = await c.req.json().catch(() => ({}))
+    if (typeof body.name !== 'string' || typeof body.version !== 'string' ||
+        (operation === 'upgrade_app' && typeof body.planId !== 'string'))
+      throw new AppError('ValidationError', 'Expected application name, target version and reviewed planId for upgrade')
+    if (operation === 'preview_app_upgrade') return c.json(await previewAppUpgrade(body.name, body.version))
+    if (operation === 'upgrade_app') return c.json(await upgradeApp(body.name, body.version, body.planId))
+    return c.json(await activateAppUpgrade(body.name, body.version))
+  })
+}
+app.post('/api/set_app_enabled', async (c) => {
+  await assertSystemManager(who(c))
+  const body = await c.req.json()
+  if (typeof body.name !== 'string' || typeof body.enabled !== 'boolean')
+    throw new AppError('ValidationError', 'Expected { name, enabled: boolean }')
+  return c.json(await setAppEnabled(body.name, body.enabled))
 })
 // Accepts { name } for a code-registered app, or { manifest } — a declarative
 // manifest of Tables, roles and permissions installed as pure data (#55).
@@ -1044,7 +1160,12 @@ app.post('/api/uninstall_app', async (c) => {
   await assertSystemManager(who(c))
   const { name } = (await c.req.json().catch(() => ({}))) as { name?: string }
   if (!name) throw new AppError('ValidationError', 'Expected { name }')
-  return c.json(await uninstallApp(name))
+  return appOperation(async () => {
+    const [installed] = await sql`select runtime_package from installed_app where name = ${name}`
+    if (installed?.runtime_package)
+      throw new AppError('ValidationError', 'Use disable. Removing applications and deleting their data are separate, unsupported operations')
+    return c.json(await uninstallApp(name))
+  }, true)
 })
 
 // EML-007: trigger an Auto Email Report immediately (the "run now" a scheduler
@@ -1122,6 +1243,14 @@ app.put('/api/user_settings/:table', async (c) => {
     values (${who(c)}, ${c.req.param('table')}, ${settings as unknown as string}, now())
     on conflict ("user", table_name) do update set settings = excluded.settings, updated_at = now()`
   return c.json({ ok: true })
+})
+
+// A document's activity follows access to that document, not broad read
+// permission on the platform-wide Comment and Version tables.
+app.get('/api/activity/:table/:name', async (c) => {
+  const table = c.req.param('table')
+  const name = c.req.param('name')
+  return c.json(await documentActivity(table, name, who(c)))
 })
 
 // EML-006 / UI-017: assign a document to a user. Creates a ToDo in their
@@ -1464,7 +1593,7 @@ if (webDist && existsSync(webDist)) {
   // SPA fallback: any GET the API and asset handlers didn't claim gets
   // index.html so client-side routes deep-link. Server-owned prefixes pass
   // through and keep their JSON 404 envelope (API-006).
-  const serverOwned = /^\/(api|files|private\/files|web|ws)(\/|$)/
+  const serverOwned = /^\/(api|apps|files|private\/files|web|ws)(\/|$)/
   app.get('*', (c, next) => {
     if (serverOwned.test(c.req.path)) return next()
     return serveStatic({ root: webRoot, path: 'index.html' })(c, next)

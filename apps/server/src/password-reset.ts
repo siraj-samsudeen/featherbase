@@ -32,7 +32,7 @@ export async function requestPasswordReset(usr: string): Promise<string | null> 
     expires_at: expires,
   })}`
 
-  const link = `${SITE_URL}/reset-password?key=${token}`
+  const link = `${SITE_URL}/featherbase/reset-password?key=${token}`
   await deliverToSink({
     to: (user.email as string) ?? (user.row_id as string),
     subject: 'Reset your password',

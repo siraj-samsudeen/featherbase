@@ -282,7 +282,7 @@ export function ReportView({
     <tr key={String(row.row_id)} className="border-t border-[var(--color-border)]" data-testid="report-row">
       <td className="px-3 py-1.5">
         <RouterLink
-          to="/admin/$table/$name"
+          to="/featherbase/admin/$table/$name"
           search={{ prefill: undefined }}
           params={{ table, name: String(row.row_id) }}
           className="text-[var(--color-brand)] hover:underline"
@@ -315,7 +315,7 @@ export function ReportView({
             XLSX
           </button>
           <RouterLink
-            to="/admin/$table"
+            to="/featherbase/admin/$table"
             params={{ table }}
             search={{ filters: undefined }}
             className="fc-btn"

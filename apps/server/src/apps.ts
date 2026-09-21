@@ -1,12 +1,13 @@
 import { z } from 'zod'
-import { sql } from './db'
+import { sql, withTransaction } from './db'
 import { AppError } from './errors'
-import { createTable, tableName } from './table-engine'
+import { createTable, tableRelation, quoteRelation } from './table-engine'
 import { ensureHomePageForTable } from './home-pages'
 import { invalidateMeta, physicalRowKey } from './meta'
 import { saveDoc, deleteDoc } from './document'
 import { reflectTables } from './sources/reflect'
 import { invalidateSources } from './sources/registry'
+import { activeApps, appOperation, provisionApp } from './app-lifecycle'
 import { cadenceSeconds, registerJob, syncScheduledJobs, type Cadence, type JobHandler } from './jobs'
 import { swapMethod, type MethodDef, type ServerMethod } from './methods'
 import {
@@ -20,8 +21,9 @@ import {
 // PLAT-001/002: the app system. An app is a code-defined manifest that can
 // declare Tables and doc_events (lifecycle hooks on ANY Table, including
 // ones it doesn't own). Installing an app materializes its Tables and wires
-// its hooks; uninstalling tears its Tables down and unwires its hooks —
-// without disturbing the core controllers or other apps on the same Table.
+// its hooks. Legacy in-process samples still have a destructive test teardown.
+// Runtime packages expose disable only: remove-code and delete-data are
+// distinct future operations, never aliases for that legacy teardown.
 //
 // App CODE (manifests + hook functions) lives in the process; the
 // `installed_app` table records which apps are installed and what each
@@ -89,6 +91,9 @@ export interface AppSource {
 
 export interface AppManifest {
   name: string
+  runtime_package?: boolean
+  runtime_manifest?: unknown
+  runtime_identity?: { version: string; digest: string; ledger: { id: string; checksum: string }[] }
   // Data Sources this app connects, and the relations it reflects from them.
   // Materialized FIRST — the app's own tables may be bound to them.
   sources?: AppSource[]
@@ -171,6 +176,7 @@ function asFixtureRefs(v: unknown): FixtureRef[] {
 // Wire an app's doc_events into the controller registry, tracking the created
 // controllers so uninstall can remove exactly them.
 function wireHooks(manifest: AppManifest): void {
+  if (wired.has(manifest.name)) return
   const controllers: TableController[] = []
   for (const [table, hooks] of Object.entries(manifest.doc_events ?? {})) {
     const controller: TableController = { table, hooks }
@@ -178,6 +184,7 @@ function wireHooks(manifest: AppManifest): void {
     controllers.push(controller)
   }
   wired.set(manifest.name, controllers)
+  activeApps.add(manifest.name)
 
   // scheduler_events: register the handlers; the recurring enqueue itself is
   // ensured separately (install + boot) so a dead row gets re-seeded.
@@ -195,11 +202,15 @@ function wireHooks(manifest: AppManifest): void {
 }
 
 function unwireHooks(name: string): void {
+  activeApps.delete(name)
   for (const controller of wired.get(name) ?? []) unregisterController(controller)
   wired.delete(name)
   for (const { path, prev } of overridden.get(name) ?? []) swapMethod(path, prev)
   overridden.delete(name)
 }
+
+// Called under the exclusive lifecycle lock after the schema commit.
+export function suspendRuntimeApp(name: string): void { unwireHooks(name) }
 
 // Ensure each scheduler_event has a Scheduled Job row (the manifest's cadence
 // is the default for a NEW row only — an edited row is the administrator's)
@@ -259,7 +270,8 @@ async function provisionAccess(manifest: AppManifest): Promise<{ roles: string[]
     const tier = p.tier ?? 'basic'
     const [have] = await sql`
       select 1 from permission
-      where ref_table = ${p.table} and role = ${p.role} and tier = ${tier}`
+      where ref_table = ${p.table} and role = ${p.role} and tier = ${tier}
+        and (owner_app is null or owner_app = ${manifest.name})`
     if (have) continue
     const saved = await saveDoc('Permission', {
       ref_table: p.table,
@@ -274,6 +286,11 @@ async function provisionAccess(manifest: AppManifest): Promise<{ roles: string[]
       can_cancel: p.can_cancel ?? false,
       can_amend: p.can_amend ?? false,
     })
+    // Runtime-package grants are live contributions, not permanent core
+    // permissions. Keep their owner outside editable metadata so permission
+    // checks can suspend them whenever that package is disabled or absent.
+    if (manifest.runtime_package)
+      await sql`update permission set owner_app = ${manifest.name} where row_id = ${String(saved.row_id)}`
     perms.push(String(saved.row_id))
   }
   return { roles, perms }
@@ -308,7 +325,7 @@ async function provisionFixtures(manifest: AppManifest): Promise<FixtureRef[]> {
       const name = row.row_id == null ? '' : String(row.row_id).trim()
       if (name) {
         const [have] = await sql`
-          select 1 from ${sql(tableName(fixture.table))}
+          select 1 from ${sql(await tableRelation(fixture.table))}
           where ${sql(physicalRowKey(fixture.table))} = ${name}`
         if (have) continue
       }
@@ -340,12 +357,22 @@ export async function isInstalled(name: string): Promise<boolean> {
   return Boolean(row)
 }
 
-export async function listInstalledApps(): Promise<{ name: string; tables: string[]; installed_at: Date }[]> {
-  const rows = await sql`select name, tables, installed_at from installed_app order by installed_at asc`
+export async function listInstalledApps() {
+  const rows = await sql`select * from installed_app order by installed_at asc`
   return rows.map((r) => ({
     name: r.name as string,
     tables: asNameList(r.tables),
     installed_at: r.installed_at as Date,
+    enabled: r.enabled !== false,
+    version: r.package_version as string | null,
+    activationPending: r.activation_pending === true,
+    recovery: r.runtime_package && !r.package_version
+      ? 'Unversioned legacy installation: recover its reviewed package version and complete declaration; do not guess or reset data'
+      : r.activation_pending ? 'Activate the committed version after restoring its exact artifact'
+        : r.runtime_package && !available.get(r.name as string)?.runtime_package
+          ? 'Restore the exact installed artifact in configured application paths and restart; do not downgrade or reset data' : null,
+    available: !r.runtime_package || available.get(r.name as string)?.runtime_package === true,
+    active: activeApps.has(r.name as string) && r.enabled !== false,
   }))
 }
 
@@ -415,24 +442,25 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
   if (await isInstalled(manifest.name))
     throw new AppError('ConflictError', `App ${manifest.name} is already installed`)
   const provisioned = await provisionSources(manifest)
+  const runtimeManifest = manifest.runtime_manifest as { client?: unknown } | undefined
+  const ownsClientRoot = manifest.runtime_package && typeof runtimeManifest?.client === 'string'
   // Reflected Tables are the app's tables for teardown purposes.
   const created: string[] = [...provisioned.tables]
   for (const def of manifest.tables ?? []) {
-    // App tables are user-space: they group under the app's own module in the
-    // sidebar. `system` marks tables created by the migration chain and is
-    // rejected on POST /api/table_def — an app manifest gets the same refusal,
-    // not a silent bypass.
+    // `system` marks tables created by the migration chain and is rejected on
+    // POST /api/table_def — an app manifest gets the same refusal, not a
+    // silent bypass.
     if ((def as { system?: unknown })?.system === true)
       throw new AppError(
         'ValidationError',
         `App table declares system: true — the system flag belongs to the migration chain, app tables are user-space`,
       )
-    const meta = await createTable(def)
+    const meta = await createTable(def, manifest.name)
     created.push(meta.name)
-    // #80: app tables group under the app's own module in navigation, same
-    // as builder-created tables — the module's home page is created on
-    // demand and the table's link appended.
-    if (meta.kind !== 'sub_table') await ensureHomePageForTable(meta.name, meta.module)
+    // A runtime application with its own client owns normal navigation. Apps
+    // without one retain the generated Table home page as their usable UI.
+    if (meta.kind !== 'sub_table' && !ownsClientRoot)
+      await ensureHomePageForTable(meta.name, meta.module)
   }
   const access = await provisionAccess(manifest)
   // Wire its doc_events, scheduler jobs, and method overrides BEFORE the
@@ -472,7 +500,27 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
 export async function installApp(name: string): Promise<InstallResult> {
   const manifest = available.get(name)
   if (!manifest) throw new AppError('ValidationError', `Unknown app: ${name}`, { name: 'Not registered' })
-  return materialize(manifest, null)
+  return provisionApp(name, async () => {
+    if (!manifest.runtime_package) return materialize(manifest, null)
+    if (await isInstalled(name)) throw new AppError('ConflictError', `App ${name} is already installed`)
+    await (await import('./runtime-packages')).verifySelectedRuntimePackage(name)
+    try {
+      return await withTransaction(async () => {
+        const result = await materialize(manifest, manifest.runtime_manifest ?? null)
+        await sql`update installed_app set runtime_package = true where name = ${name}`
+        if (manifest.runtime_identity) {
+          const { version, digest, ledger } = manifest.runtime_identity
+          await sql`update installed_app set package_version = ${version}, artifact_digest = ${digest},
+            migration_ledger = ${sql.json(ledger)} where name = ${name}`
+        }
+        return result
+      })
+    } catch (error) {
+      unwireHooks(name)
+      invalidateMeta()
+      throw error
+    }
+  })
 }
 
 // PLAT-005 (#55): install an app from a JSON manifest with no code in this
@@ -567,7 +615,11 @@ export async function installAppFromManifest(input: unknown): Promise<InstallRes
   return materialize(parsed.data as AppManifest, parsed.data)
 }
 
-export async function uninstallApp(name: string): Promise<{ name: string; removed: string[] }> {
+export function uninstallApp(name: string): Promise<{ name: string; removed: string[] }> {
+  return provisionApp(name, () => uninstallAppImpl(name))
+}
+
+async function uninstallAppImpl(name: string): Promise<{ name: string; removed: string[] }> {
   const [row] = await sql`
     select tables, roles, perms, fixtures, sources from installed_app where name = ${name}`
   if (!row) throw new AppError('ValidationError', `App ${name} is not installed`)
@@ -583,7 +635,7 @@ export async function uninstallApp(name: string): Promise<{ name: string; remove
   await teardownFixtures(asFixtureRefs(row.fixtures))
 
   for (const t of tables) {
-    const tbl = tableName(t)
+    const tbl = quoteRelation(await tableRelation(t))
     await sql`delete from column_def where parent = ${t}`
     await sql`delete from table_def where name = ${t}`
     await sql.unsafe(`drop table if exists ${tbl} cascade`)
@@ -608,12 +660,45 @@ export async function uninstallApp(name: string): Promise<{ name: string; remove
 // to wire; unknown installed apps (code removed) are skipped the same way —
 // their tables simply remain until re-registered or uninstalled.
 export async function loadInstalledApps(): Promise<void> {
-  const rows = await sql`select name from installed_app`
+  const rows = await sql`select * from installed_app`
   for (const r of rows) {
     const manifest = available.get(r.name as string)
+    // @spec runtime_upgrade_commit_and_activation.restart_at_upgrade_boundary
+    if (r.enabled === false || r.activation_pending || (r.runtime_package && (!manifest?.runtime_package ||
+      manifest.runtime_identity?.version !== r.package_version ||
+      (r.artifact_digest && manifest.runtime_identity?.digest !== r.artifact_digest)))) {
+      unwireHooks(r.name as string)
+      continue
+    }
     if (manifest && !wired.has(manifest.name)) {
       wireHooks(manifest)
       await ensureSchedulerJobs(manifest)
     }
+  }
+}
+
+export function setAppEnabled(name: string, enabled: boolean) {
+  return appOperation(async () => {
+    const [row] = await sql`select runtime_package, activation_pending from installed_app where name = ${name}`
+    if (!row?.runtime_package)
+      throw new AppError('ValidationError', 'Enable/disable requires an installed runtime package')
+    if (enabled && row.activation_pending)
+      throw new AppError('ConflictError', 'Activate the committed upgrade before enabling the application')
+    const manifest = available.get(name)
+    if (enabled && !manifest?.runtime_package)
+      throw new AppError('ValidationError', `Compatible package code for ${name} is unavailable`)
+    if (enabled) await (await import('./runtime-packages')).verifySelectedRuntimePackage(name)
+    await sql`update installed_app set enabled = ${enabled} where name = ${name}`
+    if (enabled) wireHooks(manifest!)
+    else unwireHooks(name)
+    return { name, enabled }
+  }, true)
+}
+
+export function forgetRuntimePackages(): void {
+  for (const [name, manifest] of available) {
+    if (!manifest.runtime_package) continue
+    unwireHooks(name)
+    available.delete(name)
   }
 }

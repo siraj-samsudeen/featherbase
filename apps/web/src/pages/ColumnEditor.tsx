@@ -202,7 +202,7 @@ export function ColumnEditor() {
       <h1 className="mb-1 text-xl font-semibold text-[var(--color-ink)]">
         Columns of{' '}
         <Link
-          to="/admin/$table"
+          to="/featherbase/admin/$table"
           params={{ table: def.name }}
           search={{ filters: undefined }}
           className="underline"
