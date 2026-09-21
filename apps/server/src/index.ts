@@ -61,10 +61,10 @@ import { parseFilters, runQueryReport } from './query-report'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
-import { discoverPackages, appCatalog, appAsset, packageFailures, runPackageAction, declaredPackageActions } from './runtime-packages'
+import { discoverPackages, appCatalog, appAsset, packageFailures, runPackageAction, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { documentActivity } from './document-activity'
 import { APP_ROOT_PATTERN, appHref } from 'shared'
-import { appOperation } from './app-lifecycle'
+import { appOperation, withAppClientVersion } from './app-lifecycle'
 import { createSite, listSites, resolveSite, siteCreateTableDef, siteListTableDefs, siteCreateUser, siteListUsers } from './tenancy'
 import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
@@ -461,9 +461,9 @@ app.use('/api/*', rateLimit)
 // Lock the complete request, including internal SQL and post-commit work.
 // Lifecycle endpoints take the exclusive counterpart inside their handlers.
 app.use('/api/*', async (c, next) => {
-  if (['/api/install_app', '/api/uninstall_app', '/api/set_app_enabled'].includes(c.req.path))
+  if (['/api/install_app', '/api/uninstall_app', '/api/set_app_enabled', '/api/upgrade_app', '/api/activate_app_upgrade'].includes(c.req.path))
     return next()
-  return appOperation(next)
+  return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appOperation(next))
 })
 
 // @spec featherbase_human_routes_are_canonical
@@ -1106,11 +1106,25 @@ app.get('/api/tenancy/users', async (c) => {
 // install/uninstall their Tables + doc_events and report installed state.
 app.get('/api/apps', async (c) => {
   await assertSystemManager(who(c))
-  return c.json({ available: getAvailableApps(), installed: await listInstalledApps(), failures: packageFailures, actions: declaredPackageActions() })
+  return c.json({ available: getAvailableApps(), installed: await listInstalledApps(), versions: availableRuntimeVersions(), actions: declaredPackageActions(),
+    failures: packageFailures.map(() => ({ error: 'A configured artifact failed validation. Restore a compatible immutable package and inspect the server discovery log' })) })
 })
 app.get('/api/app_catalog', async (c) => c.json(await appCatalog(who(c))))
 app.post('/api/app_actions/:app/:action', async (c) =>
   c.json(await runPackageAction(c.req.param('app'), c.req.param('action'), await c.req.json(), who(c))))
+// @spec runtime_upgrade_reviewed_plan
+for (const operation of ['preview_app_upgrade', 'upgrade_app', 'activate_app_upgrade'] as const) {
+  app.post(`/api/${operation}`, async c => {
+    await assertSystemManager(who(c))
+    const body = await c.req.json().catch(() => ({}))
+    if (typeof body.name !== 'string' || typeof body.version !== 'string' ||
+        (operation === 'upgrade_app' && typeof body.planId !== 'string'))
+      throw new AppError('ValidationError', 'Expected application name, target version and reviewed planId for upgrade')
+    if (operation === 'preview_app_upgrade') return c.json(await previewAppUpgrade(body.name, body.version))
+    if (operation === 'upgrade_app') return c.json(await upgradeApp(body.name, body.version, body.planId))
+    return c.json(await activateAppUpgrade(body.name, body.version))
+  })
+}
 app.post('/api/set_app_enabled', async (c) => {
   await assertSystemManager(who(c))
   const body = await c.req.json()

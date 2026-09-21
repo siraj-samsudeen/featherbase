@@ -93,6 +93,7 @@ export interface AppManifest {
   name: string
   runtime_package?: boolean
   runtime_manifest?: unknown
+  runtime_identity?: { version: string; digest: string; ledger: { id: string; checksum: string }[] }
   // Data Sources this app connects, and the relations it reflects from them.
   // Materialized FIRST — the app's own tables may be bound to them.
   sources?: AppSource[]
@@ -207,6 +208,9 @@ function unwireHooks(name: string): void {
   for (const { path, prev } of overridden.get(name) ?? []) swapMethod(path, prev)
   overridden.delete(name)
 }
+
+// Called under the exclusive lifecycle lock after the schema commit.
+export function suspendRuntimeApp(name: string): void { unwireHooks(name) }
 
 // Ensure each scheduler_event has a Scheduled Job row (the manifest's cadence
 // is the default for a NEW row only — an edited row is the administrator's)
@@ -360,6 +364,13 @@ export async function listInstalledApps() {
     tables: asNameList(r.tables),
     installed_at: r.installed_at as Date,
     enabled: r.enabled !== false,
+    version: r.package_version as string | null,
+    activationPending: r.activation_pending === true,
+    recovery: r.runtime_package && !r.package_version
+      ? 'Unversioned legacy installation: recover its reviewed package version and complete declaration; do not guess or reset data'
+      : r.activation_pending ? 'Activate the committed version after restoring its exact artifact'
+        : r.runtime_package && !available.get(r.name as string)?.runtime_package
+          ? 'Restore the exact installed artifact in configured application paths and restart; do not downgrade or reset data' : null,
     available: !r.runtime_package || available.get(r.name as string)?.runtime_package === true,
     active: activeApps.has(r.name as string) && r.enabled !== false,
   }))
@@ -492,10 +503,16 @@ export async function installApp(name: string): Promise<InstallResult> {
   return provisionApp(name, async () => {
     if (!manifest.runtime_package) return materialize(manifest, null)
     if (await isInstalled(name)) throw new AppError('ConflictError', `App ${name} is already installed`)
+    await (await import('./runtime-packages')).verifySelectedRuntimePackage(name)
     try {
       return await withTransaction(async () => {
         const result = await materialize(manifest, manifest.runtime_manifest ?? null)
         await sql`update installed_app set runtime_package = true where name = ${name}`
+        if (manifest.runtime_identity) {
+          const { version, digest, ledger } = manifest.runtime_identity
+          await sql`update installed_app set package_version = ${version}, artifact_digest = ${digest},
+            migration_ledger = ${sql.json(ledger)} where name = ${name}`
+        }
         return result
       })
     } catch (error) {
@@ -646,7 +663,10 @@ export async function loadInstalledApps(): Promise<void> {
   const rows = await sql`select * from installed_app`
   for (const r of rows) {
     const manifest = available.get(r.name as string)
-    if (r.enabled === false || (r.runtime_package && !manifest?.runtime_package)) {
+    // @spec runtime_upgrade_commit_and_activation.restart_at_upgrade_boundary
+    if (r.enabled === false || r.activation_pending || (r.runtime_package && (!manifest?.runtime_package ||
+      manifest.runtime_identity?.version !== r.package_version ||
+      (r.artifact_digest && manifest.runtime_identity?.digest !== r.artifact_digest)))) {
       unwireHooks(r.name as string)
       continue
     }
@@ -659,12 +679,15 @@ export async function loadInstalledApps(): Promise<void> {
 
 export function setAppEnabled(name: string, enabled: boolean) {
   return appOperation(async () => {
-    const [row] = await sql`select runtime_package from installed_app where name = ${name}`
+    const [row] = await sql`select runtime_package, activation_pending from installed_app where name = ${name}`
     if (!row?.runtime_package)
       throw new AppError('ValidationError', 'Enable/disable requires an installed runtime package')
+    if (enabled && row.activation_pending)
+      throw new AppError('ConflictError', 'Activate the committed upgrade before enabling the application')
     const manifest = available.get(name)
     if (enabled && !manifest?.runtime_package)
       throw new AppError('ValidationError', `Compatible package code for ${name} is unavailable`)
+    if (enabled) await (await import('./runtime-packages')).verifySelectedRuntimePackage(name)
     await sql`update installed_app set enabled = ${enabled} where name = ${name}`
     if (enabled) wireHooks(manifest!)
     else unwireHooks(name)

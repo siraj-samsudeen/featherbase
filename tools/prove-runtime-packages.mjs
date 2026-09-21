@@ -10,6 +10,7 @@ import { resolve, dirname } from 'node:path'
 import { createRequire } from 'node:module'
 import { seedTasker, TASKER_SCENARIOS } from './seed-tasker-development.mjs'
 import { proveTaskerAcceptance } from './prove-tasker-acceptance.mjs'
+import { makeTaskerV2 } from './tasker-upgrade-fixture.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const requireWeb = createRequire(resolve(root, 'apps/web/package.json'))
@@ -103,10 +104,11 @@ async function stop() {
   await exited
 }
 let token
-async function api(path, body, status = 200) {
+async function api(path, body, status = 200, appVersion) {
   const response = await fetch(`${origin}${path}`, {
     method: body === undefined ? 'GET' : 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(appVersion ? { 'X-Featherbase-App-Version': appVersion } : {}) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
   const result = await response.json()
@@ -310,6 +312,65 @@ try {
   await stop()
   await start(paths)
   assert.equal((await api(`/api/table/tasker.task/${task.row_id}`)).description, task.description)
+  // @spec runtime_upgrade_preserves_owned_work.tasker_description_is_generic_migration
+  // Build/deliver a target only after core and v1 have run. Keep v1 intact.
+  const v2 = resolve(output, 'tasker-v2')
+  await makeTaskerV2(paths[0], v2)
+  const v1Digest = await digest(paths[0])
+  const projectId = seeded.projects['DEV-TASKER-PROJECT-STOCK-REVIEW']
+  const projectBefore = await api(`/api/table/tasker.project/${projectId}`)
+  const preferencesBefore = await api('/api/user_settings/tasker.preferences')
+  const commentsBefore = await api('/api/table/Comment?limit_page_length=1000')
+  await stop()
+  await start([...paths, v2])
+  await page.reload()
+  await expect(page.getByText('Package-delivered stock review')).toBeVisible()
+  const plan = await api('/api/preview_app_upgrade', { name: 'tasker', version: '2.0.0' })
+  assert.equal(plan.currentVersion, '0.0.1')
+  assert.deepEqual(plan.tables, ['tasker.project'])
+  assert.equal(plan.migrations[0].id, 'project_description')
+  // Restart before commit does not silently upgrade.
+  await stop()
+  await start([...paths, v2])
+  assert.deepEqual(await api(`/api/table/tasker.project/${projectId}`), projectBefore)
+  const upgrade = { name: 'tasker', version: '2.0.0', planId: plan.planId }
+  await api('/api/upgrade_app', upgrade)
+  await api('/api/table/tasker.project', undefined, 403)
+  await stop()
+  await start([...paths, v2])
+  assert.equal((await api('/api/apps')).installed.find(a => a.name === 'tasker').activationPending, true)
+  await api('/api/upgrade_app', upgrade)
+  await api('/api/activate_app_upgrade', { name: 'tasker', version: '2.0.0' })
+  // The retained v1 browser cannot write against the upgraded contract.
+  await capture.fill('Must not save from v1 after upgrading')
+  await capture.press('Enter')
+  await expect(page.getByRole('alert').filter({ hasText: 'was upgraded' }).first()).toBeVisible()
+  const upgradedProject = await api(`/api/table/tasker.project/${projectId}`, undefined, 200, 'tasker@2.0.0')
+  assert.deepEqual(upgradedProject, { ...projectBefore, description: null })
+  const description = '## Upgrade proof\n\n**37** cartons; keep the original project.'
+  await api('/api/save_row', { table: 'tasker.project', row: { ...upgradedProject, description } }, 201, 'tasker@2.0.0')
+  assert.deepEqual(await api('/api/user_settings/tasker.preferences'), preferencesBefore)
+  assert.deepEqual(await api('/api/table/Comment?limit_page_length=1000'), commentsBefore)
+  await page.reload()
+  await expect(page.getByText('Package-delivered stock review')).toBeVisible()
+  const browserRead = await page.evaluate(async id => {
+    const response = await fetch(`/api/table/tasker.project/${id}`, { headers: { Authorization: `Bearer ${localStorage.getItem('fc_token')}` } })
+    return { status: response.status, row: await response.json() }
+  }, projectId)
+  assert.equal(browserRead.status, 200)
+  assert.equal(browserRead.row.description, description)
+  await stop()
+  await start(paths) // Prior artifact is not a rollback for committed schema.
+  await api('/api/table/tasker.project', undefined, 403, 'tasker@2.0.0')
+  await stop()
+  await start([...paths, v2])
+  assert.equal((await api(`/api/table/tasker.project/${projectId}`, undefined, 200, 'tasker@2.0.0')).description, description)
+  assert.equal(await digest(paths[0]), v1Digest, 'Prior artifact was modified')
+  await writeFile(resolve(output, 'upgrade-evidence.json'), JSON.stringify({
+    plan, priorArtifact: paths[0], targetArtifact: v2, priorUnchanged: true,
+    browserRead, restartBeforeCommit: true, restartPendingActivation: true,
+    staleBrowserRejected: true, restoredTargetAfterMissing: true,
+  }, null, 2))
   assert.equal(await digest(core), before, 'Core changed after package staging')
   assert.equal(await digest(resolve(root, 'packages/shared')), sharedBefore, 'Shared core dependency changed')
   await writeFile(resolve(output, 'evidence.json'), JSON.stringify({ coreHash: before, coreUnchanged: true, stagedPackages: paths, database: new URL(database).pathname, seededScenarios: TASKER_SCENARIOS, seededRows: seeded, journeys: ['install', 'seed', 'inbox-content', 'projects-content', 'project-rename', 'private-project-tabs', 'together', 'private-focus-order', 'urgent-and-not-urgent', 'blocked-explanation', 'invalid-dual-destination', 'capture', 'self-assign', 'complete', 'undo-state-restoration', 'integrated-comment-history', 'three-detail-modes', 'inspect-responsive', 'disable-stale-client', 'restart', 'enable', 'missing-code', 'restore'], screenshots: ['seeded-inbox.png', 'seeded-my-work.png', 'together.png', 'desktop.png', 'inspector.png', 'focus-detail.png', 'compact-detail.png', 'inspector-tablet.png', 'inspector-mobile.png', 'mobile.png', 'disabled.png', 'unavailable.png'] }, null, 2))

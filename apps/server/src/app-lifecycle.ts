@@ -14,7 +14,12 @@ const locks = postgres(config.databaseUrl, {
   idle_timeout: 1,
 })
 const scope = new AsyncLocalStorage<{ exclusive: boolean; provisioning?: string }>()
+const clientVersion = new AsyncLocalStorage<string>()
 export const activeApps = new Set<string>()
+
+export function withAppClientVersion<T>(version: string, fn: () => Promise<T>) {
+  return clientVersion.run(version, fn)
+}
 
 // @spec lifecycle_fails_closed
 export async function appOperation<T>(fn: () => Promise<T>, exclusive = false): Promise<T> {
@@ -39,7 +44,12 @@ export async function assertAppAvailable(name: string): Promise<void> {
   if (!name.includes('.')) return
   const owner = name.split('.')[0]
   if (scope.getStore()?.provisioning === owner) return
-  const [installed] = await sql`select enabled from installed_app where name = ${owner}`
-  if (!installed?.enabled || !activeApps.has(owner))
+  const [installed] = await sql`select enabled, activation_pending, package_version, migration_ledger from installed_app where name = ${owner}`
+  if (!installed?.enabled || installed.activation_pending || !activeApps.has(owner))
     throw new AppError('PermissionError', `App ${owner} is disabled or unavailable`)
+  // @spec runtime_upgrade_commit_and_activation.upgrade_drains_admitted_work
+  const supplied = clientVersion.getStore()
+  if (supplied !== undefined && (installed.migration_ledger as unknown[]).length > 0 &&
+      supplied !== `${owner}@${installed.package_version}`)
+    throw new AppError('ConflictError', `App ${owner} was upgraded. Reload its current client and retry with the installed application version`)
 }

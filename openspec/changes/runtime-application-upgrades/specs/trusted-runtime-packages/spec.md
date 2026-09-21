@@ -14,6 +14,11 @@ Installed runtime applications SHALL persist exact package version and an ordere
 - **THEN** only the exact installed version is eligible for activation
 - **AND** missing installed code leaves data preserved and unavailable
 
+#### Scenario: unversioned_legacy_install_fails_closed
+- **WHEN** a legacy installation has no recorded package version or complete manifest
+- **THEN** discovery leaves its rows and grants intact but does not infer an installed code version
+- **AND** the operator must recover its reviewed version/declaration before using the upgrade API
+
 ### Requirement: runtime_upgrade_reviewed_plan
 Status: governed (#296)
 
