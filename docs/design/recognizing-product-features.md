@@ -73,11 +73,14 @@ Do not use these as feature boundaries by default:
 |---|---|---|---|---|---|
 | Quick Capture | Create Task | Record something before forgetting it | Destination and owner are unknown | Neutral task appears in Inbox; entry is ready again | Quick Task Capture |
 | Process Inbox item | Read and update Task | Decide where captured work belongs | An unplaced task already exists | Task is placed, or deliberately left unresolved | Processing Inbox Items |
-| Add task inside project | Create Task | Add known work to the project being reviewed | Project is already selected | Unassigned task appears in that project; entry stays ready | Project Task Entry |
+| Create a project and enter its tasks | Create Project and Tasks | Turn a body of work into an actionable project | The project does not exist | Named project exists with its task list ready | Start a Project |
 
-These are three features even though all operate on the same Task record and two
-of them perform the same create operation. Their goals, starting contexts,
-decisions, defaults and completion points differ.
+Quick Capture and project task entry both create Tasks, but their goals,
+starting contexts, defaults and completion points differ. Project creation and
+project task entry touch different record types, but belong together because an
+empty Project record is not yet the useful user outcome. The useful-alone test
+overrides the CRUD boundary: **mechanically complete data is not necessarily a
+complete product capability**.
 
 ## How this guide evolves
 
