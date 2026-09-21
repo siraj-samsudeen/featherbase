@@ -487,6 +487,8 @@ try {
     const bounds = await control.boundingBox()
     assert(bounds && bounds.x >= 0 && bounds.x + bounds.width <= 375, 'Core form control is horizontally clipped at 375px')
   }
+  await page.getByTestId('attachments-panel').scrollIntoViewIfNeeded()
+  await page.screenshot({ path: resolve(output, 'upgraded-core-mobile-attachment.png'), fullPage: true })
   await attachment.hover()
   await attachment.getByTestId('attachment-delete').click()
   await expect(attachment).toHaveCount(0)
