@@ -210,6 +210,19 @@ from the current catalog: doing so lets stale client code claim compatibility.
 After a migrated version activates, obsolete/headerless requests reject with
 reload guidance. The proof fixture's fetch adapter is test-only, not a client SDK.
 
+The generic Featherbase client is metadata-driven rather than package-built.
+Before its first authenticated metadata/data request, it resolves
+`GET /api/runtime_app_versions` and pins that active-identity snapshot for the
+signed-in page lifetime. Form saves, references, File/Comment metadata and
+multipart uploads reuse it. For requests touching several apps, the same header
+accepts distinct comma-separated identities; every accessed app still requires
+its own exact installed version. Duplicates and malformed entries are refused.
+Navigation, refetch and 409 never refresh the snapshot: reload the page after
+upgrade/activation or installing another app. Pending, disabled, unavailable and
+unversioned packages are not advertised. Public OAuth/password-reset/logout and
+public-form requests do not bootstrap first, so expired saved credentials cannot
+block their existing public contracts.
+
 ### Artifact delivery and recovery
 
 Build/pack the application separately; unpack each release into its own durable,

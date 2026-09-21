@@ -8989,3 +8989,23 @@ its own database, post-#191) green on the PR. Closes the loop on #132.
   Three useful acceptance exercises: review the nullable-column preview; verify
   asymmetric old work after activation; attempt an old-tab write and recover a
   missing target artifact. Parent must rerun combined verification before merge.
+
+## #296 generic client identity follow-up
+
+- `df8543b` planned the contract; `0f2c61f` pins host-derived identities for
+  generic metadata/data/forms/uploads; `c5dd3b9` excludes public credential
+  exchanges from protected bootstrap. No guard relaxation or new migration.
+- Red/green and final local proof: server 853 passed / 17 skipped, web 158,
+  shared 129; types and strict OpenSpec/STC/policy passed. Only worker-owned
+  `featherbase_296_identity_test` and `featherbase_296_identity_mutation_test`
+  were used. The refresh-every-request mutant failed initialization.
+- Independent reviewer executed frozen-core form save/upload/list/remove and
+  retained-v1 pending403/activated409 journeys; reload obtained v2 and saved201.
+  Public OAuth/reset/logout regression independently passed with expired bearer.
+  Evidence: `rama_dw/outputs/review296-identity-independent/` (JSON, inspected
+  screenshots and clean reviewer logs). No remaining confirmed identity defect
+  at this checkpoint; overall integrated acceptance and P2 remain parent-owned.
+- Integrator proof `dist/runtime-proof-Satva5` at `9366df4` additionally checks
+  file byte download/removal and no dangling File after refused stale uploads.
+  Its 375px screenshot exposes existing generic form clipping. This is now a
+  separately assigned responsive follow-up, not a claimed visual handoff.
