@@ -154,12 +154,17 @@ try {
   } }, 417)
   browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {})
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } })
-  await page.goto(`${origin}/tasker/`)
-  await page.waitForURL('**/featherbase/login?next=%2Ftasker%2F')
+  // @spec featherbase_human_routes_are_canonical.exact_runtime_app_location_survives_sign_in
+  const selectedTask = seeded.tasks['DEV-TASKER-TASK-INVOICE-MISMATCH']
+  const deepLink = `${origin}/tasker/?review=deep-link&note=37%20cartons%2F83#task=${selectedTask}`
+  await page.goto(deepLink)
+  await page.waitForURL(url => url.pathname === '/featherbase/login')
   await page.locator('input[name=email]').fill('Administrator')
   await page.locator('input[name=password]').fill(process.env.ADMIN_PASSWORD ?? 'admin')
   await page.locator('button[type=submit]').click()
-  await expect(page).toHaveURL(`${origin}/tasker/`)
+  await expect(page).toHaveURL(deepLink)
+  await expect(page.getByRole('region', { name: 'Task detail content' })).toContainText('Triage supplier invoice mismatch')
+  await page.screenshot({ path: resolve(output, 'signed-out-deep-link-return.png'), fullPage: true })
   await page.goto(`${origin}/admin/User?proof=compatibility#deep-link`)
   await expect(page).toHaveURL(`${origin}/featherbase/admin/User?proof=compatibility#deep-link`)
   await page.locator('a[href="/tasker/"]').click()
@@ -371,6 +376,20 @@ try {
   await api('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: preservedTask.row_id, content: 'Retain this evidence' } }, 201)
   await page.goto(`${origin}/tasker/`)
   await page.evaluate(token => localStorage.setItem('fc_token', token), token)
+  // @spec core_runtime_client_pins_active_identity.stale_generic_form_is_not_relabelled
+  const staleCore = await page.context().newPage()
+  await staleCore.goto(`${origin}/featherbase/admin/tasker.task/${preservedTask.row_id}`)
+  await expect(staleCore.locator('[data-field="task_title"]')).toHaveValue('Preserved 37 cartons')
+  await staleCore.locator('[data-field="description"]').fill('Must not save a pre-upgrade draft')
+  async function refuseStaleCore(expectedStatus) {
+    const saving = staleCore.waitForResponse(response => response.url().endsWith('/api/save_row') && response.request().method() === 'POST')
+    await staleCore.getByTestId('form-save').click()
+    assert.equal((await saving).status(), expectedStatus)
+    const uploading = staleCore.waitForResponse(response => response.url().endsWith('/api/upload_file'))
+    await staleCore.getByTestId('attach-file-input').setInputFiles({ name: 'stale-37.txt', mimeType: 'text/plain', buffer: Buffer.from('Must not attach from obsolete form') })
+    assert.equal((await uploading).status(), expectedStatus)
+    await expect(staleCore.getByTestId('attach-error')).toBeVisible()
+  }
   const preferencesBefore = await api('/api/user_settings/tasker.preferences')
   const commentsBefore = await api('/api/table/Comment?limit_page_length=1000')
   await stop()
@@ -388,11 +407,15 @@ try {
   const upgrade = { name: 'tasker', version: '2.0.0', planId: plan.planId }
   await api('/api/upgrade_app', upgrade)
   await api('/api/table/tasker.project', undefined, 403)
+  await refuseStaleCore(403)
   await stop()
   await start(upgradePaths)
   assert.equal((await api('/api/apps')).installed.find(a => a.name === 'tasker').activationPending, true)
   await api('/api/upgrade_app', upgrade)
   await api('/api/activate_app_upgrade', { name: 'tasker', version: '2.0.0' })
+  await refuseStaleCore(409)
+  await staleCore.screenshot({ path: resolve(output, 'stale-core-form-after-upgrade.png'), fullPage: true })
+  await staleCore.close()
   // The retained v1 browser cannot write against the upgraded contract.
   const staleBrowser = await page.evaluate(async () => {
     const response = await fetch('/api/save_row', { method: 'POST', headers: {
@@ -422,6 +445,30 @@ try {
   assert.equal(browserRead.status, 200)
   assert.equal(browserRead.row.description, description)
   assert.deepEqual(await api(`/api/table/tasker.task/${preservedTask.row_id}`), preservedTask)
+  const coreFilesFilter = encodeURIComponent(JSON.stringify([['ref_table', '=', 'tasker.task'], ['ref_name', '=', preservedTask.row_id]]))
+  assert.equal((await api(`/api/table/File?filters=${coreFilesFilter}`)).total, 0, 'Refused stale uploads left a File document')
+  // @spec core_runtime_client_pins_active_identity.core_form_and_attachment_after_upgrade
+  await page.getByRole('link', { name: 'Preserved 37 cartons', exact: true }).click()
+  await page.getByRole('link', { name: 'Attachments and advanced fields in Featherbase ↗' }).click()
+  await expect(page).toHaveURL(`${origin}/featherbase/admin/tasker.task/${preservedTask.row_id}`)
+  await expect(page.locator('[data-field="task_title"]')).toHaveValue('Preserved 37 cartons')
+  await page.locator('[data-field="description"]').fill('Core form confirmed 37 cartons, not 83.')
+  await page.getByTestId('form-save').click()
+  await expect(page.getByTestId('form-banner')).toHaveText('Saved')
+  assert.equal((await api(`/api/table/tasker.task/${preservedTask.row_id}`)).description, 'Core form confirmed 37 cartons, not 83.')
+  await page.getByTestId('attach-file-input').setInputFiles({ name: 'core-37.txt', mimeType: 'text/plain', buffer: Buffer.from('37 cartons independently verified') })
+  const attachment = page.getByTestId('attachment-row').filter({ hasText: 'core-37.txt' })
+  await expect(attachment).toHaveCount(1)
+  const fileUrl = await attachment.locator('a').getAttribute('href')
+  assert(fileUrl?.startsWith('/files/'))
+  const served = await page.request.get(`${origin}${fileUrl}`)
+  assert.equal(served.status(), 200)
+  assert.equal(await served.text(), '37 cartons independently verified')
+  await page.screenshot({ path: resolve(output, 'upgraded-core-form-attachment.png'), fullPage: true })
+  await attachment.hover()
+  await attachment.getByTestId('attachment-delete').click()
+  await expect(attachment).toHaveCount(0)
+  assert.equal((await page.request.get(`${origin}${fileUrl}`)).status(), 404)
   await stop()
   await start([v1, ...paths.slice(1)]) // Prior artifact is not a rollback for committed schema.
   await api('/api/table/tasker.project', undefined, 403, 'tasker@2.0.0')
@@ -433,6 +480,8 @@ try {
     plan, priorArtifact: v1, targetArtifact: v2, priorUnchanged: true,
     browserRead, restartBeforeCommit: true, restartPendingActivation: true,
     staleBrowserRejected: true, restoredTargetAfterMissing: true,
+    staleCoreSaveAndUploadRejected: [403, 409], coreFormSaveUploadReadRemove: true,
+    signedOutDeepLinkReturned: deepLink,
   }, null, 2))
   assert.equal(await digest(core), before, 'Core changed after package staging')
   assert.equal(await digest(resolve(root, 'packages/shared')), sharedBefore, 'Shared core dependency changed')
