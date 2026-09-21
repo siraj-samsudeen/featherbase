@@ -269,6 +269,11 @@ malformed paths rather than navigate to them.
 - **WHEN** a signed-out caller opens `/tasker/` and completes sign-in
 - **THEN** the browser returns to `/tasker/`, not the Featherbase home page.
 
+#### Scenario: runtime_app_root_normalization_preserves_query
+- **WHEN** a caller opens an unslashed runtime-app root with encoded query state
+- **THEN** its canonical trailing-slash redirect preserves that query exactly
+  before any authentication redirect occurs.
+
 #### Scenario: exact_runtime_app_location_survives_sign_in
 - **WHEN** a signed-out caller opens a nested direct runtime-app path with encoded
   query state and a fragment selecting app work, then completes sign-in

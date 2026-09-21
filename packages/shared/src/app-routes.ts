@@ -7,5 +7,5 @@ export const RESERVED_APP_ROOTS = [
   'admin', 'login', 'form', 'portal', 'print', 'preview', 'oauth-callback',
   'reset-password', 'sales-target', 'src', 'node_modules',
 ] as const
-export const APP_ROOT_PATTERN = `^/(?!(${RESERVED_APP_ROOTS.join('|')})(/|$))[a-z][a-z0-9_]{0,30}(/|$)`
+export const APP_ROOT_PATTERN = `^/(?!(${RESERVED_APP_ROOTS.join('|')})(/|\\?|$))[a-z][a-z0-9_]{0,30}(/|\\?|$)`
 export function appHref(name: string): string { return `/${name}/` }

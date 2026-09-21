@@ -479,10 +479,10 @@ app.get('*', (c, next) => {
 
 app.get('*', async (c, next) => {
   if (!new RegExp(APP_ROOT_PATTERN).test(c.req.path)) return next()
+  const url = new URL(c.req.url)
   const name = c.req.path.split('/')[1]
-  if (c.req.path === `/${name}`) return c.redirect(appHref(name))
+  if (c.req.path === `/${name}`) return c.redirect(`${appHref(name)}${url.search}`, 308)
   return appOperation(async () => {
-    const url = new URL(c.req.url)
     let asset: string
     try {
       asset = decodeURIComponent(url.pathname.slice(appHref(name).length))

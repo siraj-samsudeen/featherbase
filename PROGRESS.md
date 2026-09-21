@@ -1,5 +1,23 @@
 # Progress Log
 
+## 2026-09-21 — Runtime-root normalization retains exact query state (#296)
+
+The permanent trailing-slash redirect for direct runtime-app roots now retains
+the original encoded query and uses 308 semantics. The shared app-root matcher
+also recognizes a query immediately after an unslashed root, so development proxy
+behavior matches the single-origin production server while reserved roots remain
+excluded. The browser continues to own fragment inheritance; the server neither
+receives nor fabricates it.
+
+Asymmetric route proof covered signed-in and signed-out roots, an empty query,
+repeated and encoded parameters, malformed encoding, reserved/ambiguous paths and
+the already-slashed login handoff. A real browser opened unslashed Tasker with
+repeated encoded query state and a selected-task fragment, traversed slash
+normalization and canonical login, then returned to the exact URL with the task
+detail open. Proof used only `featherbase_test_issue_296_root_query`,
+`featherbase_test_issue_296_root_query_web` and
+`featherbase_issue_296_root_query_browser_e2e`, with API 8503/web 5503.
+
 ## 2026-09-21 — Exact runtime-app location survives sign-in (#296)
 
 Canonical Featherbase login now carries the exact runtime-app path and encoded

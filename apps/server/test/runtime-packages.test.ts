@@ -245,9 +245,25 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
 
   // @spec app_owns_client_root.missing_asset_is_not_html
   // @spec app_owns_client_root.app_login_returns_to_one_launch
+  // @spec featherbase_human_routes_are_canonical.runtime_app_root_normalization_preserves_query
   test('PKG-R4: ordinary member catalog and client root are separate from management and server files', async ({ api, admin, createUser }) => {
     expect(await discoverPackages([resolve('../..', 'runtime-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })
+    for (const [request, location] of [
+      ['/other', '/other/'],
+      ['/other?', '/other/'],
+      ['/other?review=deep-link&note=37%20cartons%2F83&review=again',
+        '/other/?review=deep-link&note=37%20cartons%2F83&review=again'],
+      ['/other?malformed=%E0%A4%A', '/other/?malformed=%E0%A4%A'],
+    ]) {
+      const normalized = await api.fetch(request)
+      expect(normalized.status, request).toBe(308)
+      expect(normalized.headers.get('location'), request).toBe(location)
+    }
+    for (const unsafe of ['/api?next=%2Fother', '/other%2F?review=deep-link', '/other\\evil?review=deep-link']) {
+      const refused = await api.fetch(unsafe)
+      expect(refused.headers.get('location'), unsafe).toBeNull()
+    }
     const signIn = await api.fetch('/other/', { headers: { accept: 'text/html' } })
     expect(signIn.status).toBe(302)
     expect(signIn.headers.get('location')).toBe('/featherbase/login?next=%2Fother%2F')
@@ -267,6 +283,9 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     expect(await member.get('/api/app_catalog')).toEqual([
       { name: 'other', title: 'Other tasks', href: '/other/' },
     ])
+    const signedInRoot = await member.fetch('/other?review=member&note=a%2Fb')
+    expect(signedInRoot.status).toBe(308)
+    expect(signedInRoot.headers.get('location')).toBe('/other/?review=member&note=a%2Fb')
     await expect(member.get('/api/apps')).rejects.toMatchObject({ status: 403 })
     await expect(member.post('/api/save_row', { table: 'other.task', row: { row_id: 'no', quantity: 3 } }))
       .rejects.toMatchObject({ status: 403 })

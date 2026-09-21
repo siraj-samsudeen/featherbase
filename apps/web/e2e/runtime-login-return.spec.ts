@@ -27,16 +27,16 @@ test.beforeAll(async ({ request }) => {
 
 // @spec featherbase_human_routes_are_canonical.exact_runtime_app_location_survives_sign_in
 test('signed-out runtime app query and selected-work fragment survive password sign-in', async ({ page }) => {
-  await page.goto(`/tasker/?review=deep%20link#task=${taskId}`)
+  await page.goto(`/tasker?review=deep-link&note=37%20cartons%2F83&review=again#task=${taskId}`)
   await expect(page).toHaveURL(
-    new RegExp(`/featherbase/login\\?next=%2Ftasker%2F%3Freview%3Ddeep%2520link#task=${taskId}$`),
+    new RegExp(`/featherbase/login\\?next=%2Ftasker%2F%3Freview%3Ddeep-link%26note%3D37%2520cartons%252F83%26review%3Dagain#task=${taskId}$`),
   )
 
   await page.fill('input[name=email]', 'Administrator')
   await page.fill('input[name=password]', ADMIN_PWD)
   await page.click('button[type=submit]')
 
-  await expect(page).toHaveURL(`/tasker/?review=deep%20link#task=${taskId}`)
+  await expect(page).toHaveURL(`/tasker/?review=deep-link&note=37%20cartons%2F83&review=again#task=${taskId}`)
   await expect(page.getByRole('heading', { name: 'Selected through sign-in' })).toBeVisible()
   await expect(page.getByLabel('Task details')).toBeVisible()
 })
