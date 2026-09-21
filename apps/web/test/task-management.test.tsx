@@ -23,7 +23,8 @@ async function install() {
   await installApp(APP)
 }
 
-test('Together retains responsibility whose user is outside the fetched directory page', () => {
+// @spec together_groups_active_responsibility
+test('together_groups_active_responsibility: retains a person outside the fetched directory page', () => {
   expect(peopleWithTaskResponsibility(
     [{ row_id: 'first@example.test' }],
     [{ assigned_to: 'outside-page@example.test' }],
@@ -34,7 +35,7 @@ test('Together retains responsibility whose user is outside the fetched director
   ])
 })
 
-test('TSK-J1 TSK-R1 TSK-R2: Enter captures a title-only task in Inbox', async ({ admin }) => {
+test('quick_capture_flow: Enter captures a title-only task in Inbox', async ({ admin }) => {
   await install()
   try {
     renderTasker(admin)
@@ -59,8 +60,8 @@ test('TSK-J1 TSK-R1 TSK-R2: Enter captures a title-only task in Inbox', async ({
   }
 })
 
-// @spec lightweight_project_entry.rapid_project_tasks
-test('TSK-J2 TSK-R4: a project accepts rapid unassigned task entry', async ({ admin }) => {
+// @spec lightweight_project_entry.add_initial_project_tasks
+test('lightweight_project_entry: a project accepts rapid unassigned task entry', async ({ admin }) => {
   await install()
   try {
     renderTasker(admin)
@@ -91,7 +92,7 @@ test('TSK-J2 TSK-R4: a project accepts rapid unassigned task entry', async ({ ad
   }
 })
 
-test('TSK-J1 TSK-R3 TSK-I1: triage to Personal tasks assigns its owner', async ({ admin }) => {
+test('personal_destination_assigns_owner: Inbox work moved to Personal tasks assigns its owner', async ({ admin }) => {
   await install()
   try {
     const task = (await admin.post('/api/save_row', {
@@ -124,7 +125,7 @@ test('TSK-J1 TSK-R3 TSK-I1: triage to Personal tasks assigns its owner', async (
 // @spec my_work_has_no_duplicates.focused_assigned_once
 // @spec focus_never_mutates_task.star_unassigned_task
 // @spec stale_focus_self_heals.missing_focus_reference
-test('TSK-J3 TSK-R9 TSK-R10 TSK-I3 TSK-H1: My Focus is ordered, private, and does not duplicate assigned work', async ({ admin, createUser }) => {
+test('personal_worklist_flow: My Focus is ordered, private, and does not duplicate assigned work', async ({ admin, createUser }) => {
   await install()
   try {
     const assigned = (await admin.post('/api/save_row', {
@@ -177,8 +178,8 @@ test('TSK-J3 TSK-R9 TSK-R10 TSK-I3 TSK-H1: My Focus is ordered, private, and doe
   }
 })
 
-// @spec discussion_stays_append_only.optional_blocked_explanation
-test('TSK-R7: an inactive state offers but does not require an explanation', async ({ admin }) => {
+// @spec discussion_stays_append_only.optional_inactive_explanation
+test('discussion_stays_append_only: an inactive state offers but does not require an explanation', async ({ admin }) => {
   await install()
   try {
     const task = (await admin.post('/api/save_row', {
@@ -215,7 +216,8 @@ test('TSK-R7: an inactive state offers but does not require an explanation', asy
   }
 })
 
-test('task rows offer one-click self-assignment', async ({ admin }) => {
+// @spec assignment_state_independent
+test('assignment_state_independent: task rows offer one-click self-assignment', async ({ admin }) => {
   await install()
   try {
     const task = (await admin.post('/api/save_row', {
@@ -239,7 +241,7 @@ test('task rows offer one-click self-assignment', async ({ admin }) => {
 // @spec project_name_is_correctable.rename_keeps_tasks
 // @spec project_tabs_are_private_ordered.frequent_project_switching
 // @spec together_groups_active_responsibility.assigned_unassigned_and_finished
-test('TSK-J4 TSK-R11 TSK-R12 TSK-R13: projects stay correctable, private tabs stay personal, and Together shows active responsibility', async ({ admin, createUser }) => {
+test('project_coordination_flow: rename, private tabs, and Together retain their separate rules', async ({ admin, createUser }) => {
   await install()
   try {
     const first = await admin.post<Record<string, unknown>>('/api/save_row', {
@@ -291,7 +293,7 @@ test('TSK-J4 TSK-R11 TSK-R12 TSK-R13: projects stay correctable, private tabs st
 
 // @spec task_detail_has_three_modes.choose_depth_without_losing_task
 // @spec task_activity_stays_in_tasker.comment_and_edit_are_visible
-test('TSK-R14 TSK-R15: one task switches among three detail modes with integrated comments and history', async ({ admin }) => {
+test('task_detail_flow: one task switches among three detail modes with comments and history', async ({ admin }) => {
   await install()
   try {
     const task = await admin.post<Record<string, unknown>>('/api/save_row', {

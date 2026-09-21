@@ -192,6 +192,8 @@ function lineAt(text, index) {
 
 // `## IMP-J1 — ...`, `- **DEL-I1 — ...**`, `**IMP-R2.7 — ordering guard.**`
 const DECLARATION = /^(?:#{2,4}\s+|[-*]\s+\*\*|\*\*)([A-Za-z][A-Za-z0-9._-]*)\s+—/
+// OpenSpec-style requirement heading used by feature-oriented specs.
+const REQUIREMENT_DECLARATION = /^#{2,4}\s+Requirement:\s*([a-z][a-z0-9_]*)\s*$/
 // `> evidence: proven — note` / `>   evidence IMP-R6.shape: gap #114 — note`
 const VERDICT = /^\s*>\s*evidence(?:\s+([A-Za-z][A-Za-z0-9._-]*))?:\s*(\S+)(.*)$/
 const CONTINUATION = /^\s*>(.*)$/
@@ -325,7 +327,7 @@ export function parseSpec(rel, text) {
     }
     open = null
 
-    const decl = raw.match(DECLARATION)
+    const decl = raw.match(DECLARATION) ?? raw.match(REQUIREMENT_DECLARATION)
     if (decl && owns(decl[1])) {
       if (!declared.has(decl[1])) declared.set(decl[1], lineNo)
       current = decl[1]
@@ -476,8 +478,11 @@ export function matchDelim(text, openIdx, open, close) {
 // `describe(`, `it.each(`, `test.skipIf(` — but never `re.test(` or
 // `mytest(`: a `.`-qualified or word-prefixed name is somebody else's method.
 const DECL_CALL = /(?<![\w.$])(describe|it|test)((?:\.[A-Za-z_$][\w$]*)*)\s*\(/g
-// `IMP-R2`, `UPS-J1.4`, `NAM-001`, plus `/R3` continuations in `RVT-R2/R3`
+// `IMP-R2`, `UPS-J1.4`, `NAM-001`, plus `/R3` continuations in `RVT-R2/R3`.
+// A descriptive slug is recognized only as the label before `:` in a test
+// title, avoiding incidental snake_case words elsewhere in prose.
 const ID_IN_TITLE = /\b([A-Z][A-Z0-9]{1,5})-([A-Z]?\d+(?:\.[A-Za-z0-9][\w-]*)*)((?:\/[A-Z]?\d+(?:\.[A-Za-z0-9][\w-]*)*)*)/g
+const SLUG_IN_TITLE = /(?:^|\s)([a-z][a-z0-9_]*_[a-z0-9_]+)(?=:)/g
 
 export function idsInTitle(title) {
   const found = new Set()
@@ -488,6 +493,7 @@ export function idsInTitle(title) {
       found.add(`${family}-${extra}`)
     }
   }
+  for (const m of title.matchAll(SLUG_IN_TITLE)) found.add(m[1])
   return found
 }
 

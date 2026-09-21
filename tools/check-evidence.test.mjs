@@ -554,3 +554,26 @@ test('idsInTitle reads families, sub-IDs and slash continuations', () => {
   assert.deepEqual([...idsInTitle('RVT-R2/R3: both')], ['RVT-R2', 'RVT-R3'])
   assert.deepEqual([...idsInTitle('IMP-R2.16-digit: precision')], ['IMP-R2.16-digit'])
 })
+
+test('idsInTitle reads a descriptive spec slug only as a title label', () => {
+  assert.deepEqual(
+    [...idsInTitle('capture_neutral_task: a title is enough')],
+    ['capture_neutral_task'],
+  )
+  assert.deepEqual([...idsInTitle('a test mentions capture_neutral_task in prose')], [])
+})
+
+test('OpenSpec-style requirement headings participate in evidence checking', () => {
+  const result = run({
+    'specs/tasker/quick-capture.md': `# Quick Task Capture
+
+**IDs:** \`capture_neutral_task\`
+
+### Requirement: capture_neutral_task
+
+> evidence: proven — title-only capture is exercised
+`,
+    'tests/tasker.test.ts': `test('capture_neutral_task: a title is enough', () => {})`,
+  })
+  assertPasses(result)
+})

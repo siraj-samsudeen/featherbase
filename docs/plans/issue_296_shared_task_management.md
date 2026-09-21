@@ -34,7 +34,7 @@ The prototype is deliberately a complete vertical slice: quick capture, Inbox tr
 
 **Create:**
 
-- `docs/specs/0010-task-management.md` — signed user journeys, rules, invariants and deferred scope.
+- `docs/specs/tasker/` — feature-sized product behavior, BDD scenarios, evidence and deferred scope.
 - `apps/server/src/sample-apps/task-management.ts` — installable Team Project and Team Task metadata plus lifecycle invariants.
 - `apps/server/test/task-management-app.test.ts` — real-Postgres contract and property cases.
 - `apps/web/src/pages/TaskManagement.tsx` — quick capture, Inbox triage, project entry and My Work.

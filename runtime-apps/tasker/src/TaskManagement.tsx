@@ -167,6 +167,7 @@ export function TaskManagementPage() {
   const personalRows = allTasks.filter((task) => task.personal_tasks_owner === personalOwner)
   const allProjects = projects.data?.data ?? []
   const projectById = new Map(allProjects.map((project) => [project.row_id, project]))
+  // @spec stale_project_tabs_self_heal
   const starredProjectIds = (projectPreferences.data?.settings?.project_ids ?? []).filter((id) => projectById.has(id))
   const starredProjectSet = new Set(starredProjectIds)
   const detailMode = detailPreferences.data?.settings?.mode ?? 'inspector'

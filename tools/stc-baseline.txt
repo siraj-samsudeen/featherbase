@@ -17,6 +17,16 @@ no_code refused_then_unblocked
 # return is a UI composition; neither has one marker-capable deciding line.
 no_code capture_neutral_task
 
+# The agreed guided Inbox processing loop is not implemented yet. Its current
+# gap is explicit in both Tasker spec homes rather than being hidden behind the
+# existing inline placement controls.
+no_code process_inbox_one_at_a_time
+no_test process_inbox_one_at_a_time
+
+# Tasker filters missing project ids and saves the filtered list on the next
+# preference write, but the full self-healing sequence has no dedicated test.
+no_test stale_project_tabs_self_heal
+
 # Team-wide grants are declared in strict runtime manifest JSON; the executable
 # test covers them, but JSON has no legal @spec comment location.
 no_code team_shares_tasker_work

@@ -5,7 +5,7 @@
 - **Product:** Tasker
 - **Initial users:** the Ramachandran data warehouse team
 
-This note preserves the architecture discussion that followed the working task-management prototype. The prototype plan remains in [`issue_296_shared_task_management.md`](issue_296_shared_task_management.md), and the settled task behavior remains in [`0010-task-management.md`](../specs/0010-task-management.md). This note does not retroactively claim that the prototype has the package, loading, storage or shell architecture described below.
+This note preserves the architecture discussion that followed the working task-management prototype. The prototype plan remains in [`issue_296_shared_task_management.md`](issue_296_shared_task_management.md), and the settled task behavior remains in the [Tasker feature specs](../specs/tasker/README.md). This note does not retroactively claim that the prototype has the package, loading, storage or shell architecture described below.
 
 ## Original prototype: observed, temporary seams (superseded by the slice below)
 
@@ -222,12 +222,12 @@ Do not settle later items speculatively when the preceding experiment can expose
 
 ## OpenSpec comparison checkpoint (21-Sep-2026)
 
-The owner chose an additive trial: `docs/specs/0010-task-management.md` and
-`0011-runtime-packages.md` remain authoritative, while
-`openspec/specs/tasker/spec.md` and `trusted-runtime-packages/spec.md` re-express
-the same contracts using OpenSpec requirements, scenarios, domain assumptions and
-state tables. Legacy `TSK-*` and `PKG-*` IDs remain visible. `@spec` slugs connect
-requirements to deciding code and asymmetric tests; the matrix now scans
+The owner chose an additive trial: `docs/specs/tasker/` and
+`0011-runtime-packages.md` remain authoritative, while the feature-sized
+`openspec/specs/tasker-*/spec.md` files and `trusted-runtime-packages/spec.md`
+re-express the same contracts using OpenSpec requirements and scenarios. Tasker
+uses descriptive requirement and scenario slugs only; package IDs remain unchanged.
+`@spec` slugs connect requirements to deciding code and asymmetric tests; the matrix now scans
 `runtime-apps/` and server migrations because application code is no longer all
 inside core.
 
@@ -237,7 +237,7 @@ omitted API-only security contract, and tests whose citations covered less than
 their scenario claimed. The rapid-project test now enters three tasks, private
 focus proves two users, reorder and reload, and urgency proves shared visibility
 without changing either user’s focus. One gap remains deliberately visible rather
-than laundered: `TSK-I2` says responsibility is one nullable user reference, but a
+than laundered: `responsibility_is_singular` says responsibility is one nullable user reference, but a
 dedicated server test is still absent.
 
 ## Next build-and-learn experiment
@@ -252,7 +252,7 @@ The slice should retain the existing task semantics but need not yet solve marke
 
 ## Recovery after context loss
 
-1. Read this checkpoint, then the [prototype plan](issue_296_shared_task_management.md) and [task behavior spec](../specs/0010-task-management.md).
+1. Read this checkpoint, then the [prototype plan](issue_296_shared_task_management.md) and [Tasker feature specs](../specs/tasker/README.md).
 2. Treat the current `AppManifest`, compiled `TaskManagementPage`, route and Home Page exceptions as prototype evidence, not the target architecture.
 3. Preserve the settled direction: independently installed runtime packages; manifest plus optional client/server code; app-scoped logical identities and explicit physical mappings; Tasker’s full-stage UX.
 4. Resume at the first unresolved decision above only when the narrow runtime-package experiment forces it. Do not design the marketplace or full lifecycle first.

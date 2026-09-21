@@ -14,8 +14,8 @@ async function install() {
 }
 
 // @spec capture_neutral_task.neutral_defaults
-// @spec inbox_is_destination.author_is_not_assignee
-describe('TSK-R1/TSK-R2: title-only Inbox capture', () => {
+// @spec inbox_is_destination.captured_task_waits_in_inbox
+describe('capture_neutral_task: title-only Inbox capture', () => {
   test('a title is enough; ownership, destination and urgency stay empty', async ({ admin }) => {
     await install()
     try {
@@ -40,7 +40,7 @@ describe('TSK-R1/TSK-R2: title-only Inbox capture', () => {
 })
 
 // @spec one_task_destination.dual_destination_rejected
-describe('TSK-R3: one destination', () => {
+describe('one_task_destination: one destination', () => {
   test('a task cannot belong to both a project and Personal tasks', async ({ admin }) => {
     await install()
     try {
@@ -67,8 +67,8 @@ describe('TSK-R3: one destination', () => {
     }
   })
 
-  // @spec personal_destination_assigns_owner.move_to_personal
-  test('moving to Personal tasks assigns that list owner', async ({ admin }) => {
+  // @spec personal_destination_assigns_owner.move_to_personal_tasks
+  test('personal_destination_assigns_owner: moving to Personal tasks assigns that list owner', async ({ admin }) => {
     await install()
     try {
       const task = await admin.post<Record<string, unknown>>('/api/save_row', {
@@ -92,7 +92,7 @@ describe('TSK-R3: one destination', () => {
 })
 
 // @spec completion_restores_state.undo_done_to_in_progress
-describe('TSK-R6: completion shortcut', () => {
+describe('completion_restores_state: completion shortcut', () => {
   test('unticking Done restores the state that preceded completion', async ({ admin }) => {
     await install()
     try {
@@ -149,8 +149,8 @@ describe('TSK-R6: completion shortcut', () => {
   })
 })
 
-// @spec assignment_state_independent.assign_not_started
-describe('TSK-R5: responsibility and work state are independent', () => {
+// @spec assignment_state_independent.assign_not_started_task
+describe('assignment_state_independent: responsibility and work state are independent', () => {
   test('assigning a task leaves it Not started', async ({ admin }) => {
     await install()
     try {
@@ -191,7 +191,7 @@ describe('shared team visibility', () => {
   })
 
   // @spec team_shares_tasker_work.unassigned_member_edits_task
-  test('a team member can read and update a task without being assigned', async ({
+  test('team_shares_tasker_work: a member can update a task without being assigned', async ({
     admin,
     createUser,
   }) => {
@@ -234,7 +234,7 @@ describe('shared team visibility', () => {
   })
 
   // @spec urgency_is_shared_binary.urgent_without_focus
-  test('Urgent is shared without changing either member’s private focus', async ({
+  test('urgency_is_shared_binary: Urgent is shared without changing private focus', async ({
     admin,
     createUser,
   }) => {
@@ -266,7 +266,7 @@ describe('shared team visibility', () => {
   })
 })
 
-describe('TSK-R9: private focus settings', () => {
+describe('focus_is_private_ordered: private focus settings', () => {
   // @spec focus_is_private_ordered
   test('one member’s focus is not returned to another member', async ({ admin, createUser }) => {
     await install()

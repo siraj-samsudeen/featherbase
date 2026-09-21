@@ -17,7 +17,7 @@ test.beforeAll(async ({ request }) => {
 })
 
 // @spec capture_neutral_task.entry_stays_ready
-test('PKG-J1 PKG-R4 TSK-J1 TSK-J2 TSK-J3 TSK-R8: capture, project entry, urgency, and private focus survive reload', async ({
+test('tasker_browser_flow: PKG-J1 PKG-R4 capture, project entry, urgency, and focus survive reload', async ({
   page,
 }) => {
   await page.goto('/tasker/')
@@ -82,7 +82,7 @@ test('PKG-J1 PKG-R4 TSK-J1 TSK-J2 TSK-J3 TSK-R8: capture, project entry, urgency
   await expect(page.getByText('Review September stock variance')).toBeVisible()
 })
 
-test.describe('TSK-J1: phone capture', () => {
+test.describe('phone capture', () => {
   test.use({ viewport: { width: 375, height: 720 } })
 
   test('the task workspace has no page-level horizontal overflow', async ({ page }) => {

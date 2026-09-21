@@ -8821,3 +8821,20 @@ table-prefixed fix.
 
 **Verified:** web typecheck clean; web units 65/65; CI (unit + e2e with
 its own database, post-#191) green on the PR. Closes the loop on #132.
+
+---
+
+## 2026-09-21 — Tasker specification redesigned by product feature (#296)
+
+- Replaced the single Tasker journey document with ten short capability
+  specifications and matching OpenSpec files. Requirement and scenario slugs
+  are now the only Tasker identifiers; the old `TSK-*` IDs were removed.
+- Preserved product rules, assumptions, state and destination tables, explicit
+  implementation gaps and the boundary between Tasker behavior and runtime
+  package architecture. Added the reusable feature-recognition guide under
+  `docs/design/`.
+- Extended evidence parsing for OpenSpec-style headings and descriptive test
+  labels, then migrated Tasker test and code markers.
+- Verified evidence, STC, strict OpenSpec validation, focused Tasker component
+  tests and the full server suite. Next: parent review against the current
+  implementation before any push or pull request.
