@@ -60,7 +60,9 @@ import { publicLimit, passwordAttempt, forgive } from './pre-auth-rate-limit'
 import { parseFilters, runQueryReport } from './query-report'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
-import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps } from './apps'
+import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
+import { discoverPackages, appCatalog, appAsset, packageFailures } from './runtime-packages'
+import { appOperation } from './app-lifecycle'
 import { createSite, listSites, resolveSite, siteCreateTableDef, siteListTableDefs, siteCreateUser, siteListUsers } from './tenancy'
 import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
@@ -90,6 +92,7 @@ registerApp(checklists)
 // The shared task workspace is opt-in for the same reason: structure appears
 // only on sites that choose to install it.
 registerApp(taskManagement)
+await discoverPackages(JSON.parse(process.env.FEATHERBASE_APP_PATHS ?? '[]') as string[])
 await loadInstalledApps()
 
 type Env = { Variables: { user: SessionUser } }
@@ -447,6 +450,28 @@ app.use('/api/*', async (c, next) => {
 // API-007: throttle authenticated requests per user (runs after auth so it can
 // key by the resolved user and read their budget).
 app.use('/api/*', rateLimit)
+
+// Lock the complete request, including internal SQL and post-commit work.
+// Lifecycle endpoints take the exclusive counterpart inside their handlers.
+app.use('/api/*', async (c, next) => {
+  if (['/api/install_app', '/api/uninstall_app', '/api/set_app_enabled'].includes(c.req.path))
+    return next()
+  return appOperation(next)
+})
+
+app.get('/apps/:name/*', async (c) => appOperation(async () => {
+  const user = await resolveToken(authCredential(c))
+  const name = c.req.param('name')
+  const asset = decodeURIComponent(c.req.path.slice(`/apps/${name}/`.length))
+  const { file, bytes } = await appAsset(name, asset, user.row_id)
+  const types: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript',
+    '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml',
+    '.png': 'image/png', '.woff2': 'font/woff2' }
+  return new Response(new Uint8Array(bytes), { headers: {
+    'Content-Type': types[path.extname(file)] ?? 'application/octet-stream',
+    'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+  } })
+}))
 
 const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').row_id
 
@@ -1031,7 +1056,15 @@ app.get('/api/tenancy/users', async (c) => {
 // install/uninstall their Tables + doc_events and report installed state.
 app.get('/api/apps', async (c) => {
   await assertSystemManager(who(c))
-  return c.json({ available: getAvailableApps(), installed: await listInstalledApps() })
+  return c.json({ available: getAvailableApps(), installed: await listInstalledApps(), failures: packageFailures })
+})
+app.get('/api/app_catalog', async (c) => c.json(await appCatalog(who(c))))
+app.post('/api/set_app_enabled', async (c) => {
+  await assertSystemManager(who(c))
+  const body = await c.req.json()
+  if (typeof body.name !== 'string' || typeof body.enabled !== 'boolean')
+    throw new AppError('ValidationError', 'Expected { name, enabled: boolean }')
+  return c.json(await setAppEnabled(body.name, body.enabled))
 })
 // Accepts { name } for a code-registered app, or { manifest } — a declarative
 // manifest of Tables, roles and permissions installed as pure data (#55).
@@ -1468,7 +1501,7 @@ if (webDist && existsSync(webDist)) {
   // SPA fallback: any GET the API and asset handlers didn't claim gets
   // index.html so client-side routes deep-link. Server-owned prefixes pass
   // through and keep their JSON 404 envelope (API-006).
-  const serverOwned = /^\/(api|files|private\/files|web|ws)(\/|$)/
+  const serverOwned = /^\/(api|apps|files|private\/files|web|ws)(\/|$)/
   app.get('*', (c, next) => {
     if (serverOwned.test(c.req.path)) return next()
     return serveStatic({ root: webRoot, path: 'index.html' })(c, next)

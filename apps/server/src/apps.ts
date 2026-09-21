@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { sql } from './db'
+import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { createTable, tableRelation, quoteRelation } from './table-engine'
 import { ensureHomePageForTable } from './home-pages'
@@ -7,6 +7,7 @@ import { invalidateMeta, physicalRowKey } from './meta'
 import { saveDoc, deleteDoc } from './document'
 import { reflectTables } from './sources/reflect'
 import { invalidateSources } from './sources/registry'
+import { activeApps, appOperation, provisionApp } from './app-lifecycle'
 import { cadenceSeconds, registerJob, syncScheduledJobs, type Cadence, type JobHandler } from './jobs'
 import { swapMethod, type MethodDef, type ServerMethod } from './methods'
 import {
@@ -89,6 +90,7 @@ export interface AppSource {
 
 export interface AppManifest {
   name: string
+  runtime_package?: boolean
   // Data Sources this app connects, and the relations it reflects from them.
   // Materialized FIRST — the app's own tables may be bound to them.
   sources?: AppSource[]
@@ -171,6 +173,7 @@ function asFixtureRefs(v: unknown): FixtureRef[] {
 // Wire an app's doc_events into the controller registry, tracking the created
 // controllers so uninstall can remove exactly them.
 function wireHooks(manifest: AppManifest): void {
+  if (wired.has(manifest.name)) return
   const controllers: TableController[] = []
   for (const [table, hooks] of Object.entries(manifest.doc_events ?? {})) {
     const controller: TableController = { table, hooks }
@@ -178,6 +181,7 @@ function wireHooks(manifest: AppManifest): void {
     controllers.push(controller)
   }
   wired.set(manifest.name, controllers)
+  activeApps.add(manifest.name)
 
   // scheduler_events: register the handlers; the recurring enqueue itself is
   // ensured separately (install + boot) so a dead row gets re-seeded.
@@ -195,6 +199,7 @@ function wireHooks(manifest: AppManifest): void {
 }
 
 function unwireHooks(name: string): void {
+  activeApps.delete(name)
   for (const controller of wired.get(name) ?? []) unregisterController(controller)
   wired.delete(name)
   for (const { path, prev } of overridden.get(name) ?? []) swapMethod(path, prev)
@@ -340,12 +345,15 @@ export async function isInstalled(name: string): Promise<boolean> {
   return Boolean(row)
 }
 
-export async function listInstalledApps(): Promise<{ name: string; tables: string[]; installed_at: Date }[]> {
-  const rows = await sql`select name, tables, installed_at from installed_app order by installed_at asc`
+export async function listInstalledApps() {
+  const rows = await sql`select * from installed_app order by installed_at asc`
   return rows.map((r) => ({
     name: r.name as string,
     tables: asNameList(r.tables),
     installed_at: r.installed_at as Date,
+    enabled: r.enabled !== false,
+    available: !r.runtime_package || available.get(r.name as string)?.runtime_package === true,
+    active: activeApps.has(r.name as string) && r.enabled !== false,
   }))
 }
 
@@ -472,7 +480,21 @@ async function materialize(manifest: AppManifest, stored: unknown): Promise<Inst
 export async function installApp(name: string): Promise<InstallResult> {
   const manifest = available.get(name)
   if (!manifest) throw new AppError('ValidationError', `Unknown app: ${name}`, { name: 'Not registered' })
-  return materialize(manifest, null)
+  return provisionApp(name, async () => {
+    if (!manifest.runtime_package) return materialize(manifest, null)
+    if (await isInstalled(name)) throw new AppError('ConflictError', `App ${name} is already installed`)
+    try {
+      return await withTransaction(async () => {
+        const result = await materialize(manifest, null)
+        await sql`update installed_app set runtime_package = true where name = ${name}`
+        return result
+      })
+    } catch (error) {
+      unwireHooks(name)
+      invalidateMeta()
+      throw error
+    }
+  })
 }
 
 // PLAT-005 (#55): install an app from a JSON manifest with no code in this
@@ -567,7 +589,11 @@ export async function installAppFromManifest(input: unknown): Promise<InstallRes
   return materialize(parsed.data as AppManifest, parsed.data)
 }
 
-export async function uninstallApp(name: string): Promise<{ name: string; removed: string[] }> {
+export function uninstallApp(name: string): Promise<{ name: string; removed: string[] }> {
+  return provisionApp(name, () => uninstallAppImpl(name))
+}
+
+async function uninstallAppImpl(name: string): Promise<{ name: string; removed: string[] }> {
   const [row] = await sql`
     select tables, roles, perms, fixtures, sources from installed_app where name = ${name}`
   if (!row) throw new AppError('ValidationError', `App ${name} is not installed`)
@@ -608,12 +634,39 @@ export async function uninstallApp(name: string): Promise<{ name: string; remove
 // to wire; unknown installed apps (code removed) are skipped the same way —
 // their tables simply remain until re-registered or uninstalled.
 export async function loadInstalledApps(): Promise<void> {
-  const rows = await sql`select name from installed_app`
+  const rows = await sql`select * from installed_app`
   for (const r of rows) {
     const manifest = available.get(r.name as string)
+    if (r.enabled === false || (r.runtime_package && !manifest?.runtime_package)) {
+      unwireHooks(r.name as string)
+      continue
+    }
     if (manifest && !wired.has(manifest.name)) {
       wireHooks(manifest)
       await ensureSchedulerJobs(manifest)
     }
+  }
+}
+
+export function setAppEnabled(name: string, enabled: boolean) {
+  return appOperation(async () => {
+    const [row] = await sql`select runtime_package from installed_app where name = ${name}`
+    if (!row?.runtime_package)
+      throw new AppError('ValidationError', 'Enable/disable requires an installed runtime package')
+    const manifest = available.get(name)
+    if (enabled && !manifest?.runtime_package)
+      throw new AppError('ValidationError', `Compatible package code for ${name} is unavailable`)
+    await sql`update installed_app set enabled = ${enabled} where name = ${name}`
+    if (enabled) wireHooks(manifest!)
+    else unwireHooks(name)
+    return { name, enabled }
+  }, true)
+}
+
+export function forgetRuntimePackages(): void {
+  for (const [name, manifest] of available) {
+    if (!manifest.runtime_package) continue
+    unwireHooks(name)
+    available.delete(name)
   }
 }

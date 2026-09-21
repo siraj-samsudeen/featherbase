@@ -1,5 +1,6 @@
 import postgres from 'postgres'
 import { config } from './config'
+import { AsyncLocalStorage } from 'node:async_hooks'
 
 export type Sql = postgres.Sql<Record<string, never>>
 export type TxSql = postgres.TransactionSql<Record<string, never>>
@@ -20,6 +21,13 @@ const root: Sql = postgres(config.databaseUrl, {
 // become SAVEPOINTs — a real BEGIN/COMMIT on the sandbox connection would
 // commit the outer test transaction.
 let delegate: Sql = root
+const transactions = new AsyncLocalStorage<Sql>()
+
+// An app install composes normal metadata and document operations atomically.
+// Nested begin calls remain savepoints; never swap the process-wide delegate.
+export async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  return sql.begin((tx) => transactions.run(tx as unknown as Sql, fn)) as Promise<T>
+}
 
 export function _setSqlDelegate(tx: TxSql | null) {
   delegate = (tx as unknown as Sql) ?? root
@@ -31,20 +39,21 @@ export function _getRootSql(): Sql {
 
 export const sql: Sql = new Proxy((() => {}) as unknown as Sql, {
   apply(_target, _thisArg, args) {
-    return (delegate as unknown as (...a: unknown[]) => unknown)(...args)
+    return ((transactions.getStore() ?? delegate) as unknown as (...a: unknown[]) => unknown)(...args)
   },
   get(_target, prop) {
-    if (delegate !== root) {
+    const current = transactions.getStore() ?? delegate
+    if (current !== root) {
       if (prop === 'begin') {
         return (first: unknown, second?: unknown) => {
           const fn = (typeof first === 'function' ? first : second) as (s: TxSql) => unknown
-          return (delegate as unknown as TxSql).savepoint(fn)
+          return (current as unknown as TxSql).savepoint(fn)
         }
       }
       // A sandboxed suite must not be able to close the shared pool.
       if (prop === 'end') return async () => {}
     }
-    const value = (delegate as never)[prop] as unknown
-    return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(delegate) : value
+    const value = (current as never)[prop] as unknown
+    return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(current) : value
   },
 })

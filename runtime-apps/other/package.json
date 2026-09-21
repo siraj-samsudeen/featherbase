@@ -1,0 +1,7 @@
+{
+  "name": "@featherbase-learning/other",
+  "version": "0.0.1",
+  "type": "module",
+  "featherbase": "featherbase.json",
+  "files": ["featherbase.json", "server.mjs", "client"]
+}

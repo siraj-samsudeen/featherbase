@@ -1,6 +1,7 @@
 import { sql } from './db'
 import { AppError } from './errors'
 import { ENGINE_WRITABLE, type SourceEngine } from './sources/types'
+import { assertAppAvailable } from './app-lifecycle'
 
 // Column types the engine understands (columns generated in META-002/003).
 export const COLUMN_TYPE_VALUES = [
@@ -259,6 +260,7 @@ export async function resolveTableName(input: string): Promise<string> {
 }
 
 export async function getMeta(name: string): Promise<TableMeta> {
+  await assertAppAvailable(name)
   const cached = cache.get(name)
   if (cached) {
     metaCacheStats.hits++

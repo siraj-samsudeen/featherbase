@@ -1,5 +1,6 @@
 import { sql } from './db'
 import { AppError } from './errors'
+import { appOperation } from './app-lifecycle'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableRelation } from './table-engine'
 import { getUserPermissionMap, isBypassUser, permissionScope, permittedTiers } from './permissions'
@@ -371,7 +372,10 @@ async function parentScopeCond(
 
 // DASH: count of matching rows (number card). Same permission scoping as
 // getList; returns a single integer.
-export async function countDocs(
+export function countDocs(...args: Parameters<typeof countDocsImpl>) {
+  return appOperation(() => countDocsImpl(...args))
+}
+async function countDocsImpl(
   table: string,
   filters: Filter[] = [],
   user = 'Administrator',
@@ -387,7 +391,10 @@ export async function countDocs(
 // UI-026: grouped counts for a bar chart — one { label, value } per distinct
 // value of `field`, honoring permissions and filters. Ordered by descending
 // count then label for a stable chart.
-export async function groupCount(
+export function groupCount(...args: Parameters<typeof groupCountImpl>) {
+  return appOperation(() => groupCountImpl(...args))
+}
+async function groupCountImpl(
   table: string,
   field: string,
   filters: Filter[] = [],
@@ -413,7 +420,10 @@ export async function groupCount(
 // decides how to format, the server never rounds.
 const SUMMABLE_TYPES = new Set(['Int', 'Float', 'Currency'])
 
-export async function aggregateDocs(
+export function aggregateDocs(...args: Parameters<typeof aggregateDocsImpl>) {
+  return appOperation(() => aggregateDocsImpl(...args))
+}
+async function aggregateDocsImpl(
   table: string,
   filters: Filter[] = [],
   sumField?: string,
@@ -447,7 +457,10 @@ export async function aggregateDocs(
   return { count: row.count as number, sum: row.sum as string }
 }
 
-export async function getList(table: string, args: ListArgs = {}, user = 'Administrator') {
+export function getList(...args: Parameters<typeof getListImpl>) {
+  return appOperation(() => getListImpl(...args))
+}
+async function getListImpl(table: string, args: ListArgs = {}, user = 'Administrator') {
   // M3 seam: source-bound Tables list from the source — filters, sort and
   // paging pushed down to the driver (spec EDS-5).
   const boundMeta = await getMeta(table)

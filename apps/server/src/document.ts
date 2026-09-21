@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
+import { appOperation } from './app-lifecycle'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
@@ -478,7 +479,10 @@ export interface SaveOptions {
   skipPermissions?: boolean
 }
 
-export async function saveDoc(
+export function saveDoc(...args: Parameters<typeof saveDocImpl>) {
+  return appOperation(() => saveDocImpl(...args))
+}
+async function saveDocImpl(
   table: string,
   values: RowValues,
   user = 'Administrator',
@@ -979,16 +983,19 @@ async function setStatus(
 }
 
 export function submitDoc(table: string, name: string, user = 'Administrator') {
-  return setStatus(table, name, 'draft', 'submitted', 'on_submit', user)
+  return appOperation(() => setStatus(table, name, 'draft', 'submitted', 'on_submit', user))
 }
 
 export function cancelDoc(table: string, name: string, user = 'Administrator') {
-  return setStatus(table, name, 'submitted', 'cancelled', 'on_cancel', user)
+  return appOperation(() => setStatus(table, name, 'submitted', 'cancelled', 'on_cancel', user))
 }
 
 // DOC-008: create a fresh draft from a cancelled row. The copy carries
 // amended_from and a derived NAME-n; children are copied as new rows.
-export async function amendDoc(
+export function amendDoc(...args: Parameters<typeof amendDocImpl>) {
+  return appOperation(() => amendDocImpl(...args))
+}
+async function amendDocImpl(
   table: string,
   name: string,
   user = 'Administrator',
@@ -1026,7 +1033,10 @@ export async function amendDoc(
 }
 
 // DOC-006: a row referenced by Reference columns anywhere cannot be deleted.
-export async function deleteDoc(
+export function deleteDoc(...args: Parameters<typeof deleteDocImpl>) {
+  return appOperation(() => deleteDocImpl(...args))
+}
+async function deleteDocImpl(
   table: string,
   name: string,
   user = 'Administrator',
@@ -1172,7 +1182,10 @@ async function deleteBoundDoc(
 // DOC-012: rename a row's primary key and update every Reference that
 // pointed at the old name — across all Tables and child tables — in one
 // transaction. The row keeps all its other data and children.
-export async function renameDoc(
+export function renameDoc(...args: Parameters<typeof renameDocImpl>) {
+  return appOperation(() => renameDocImpl(...args))
+}
+async function renameDocImpl(
   table: string,
   oldName: string,
   newName: string,
@@ -1228,7 +1241,10 @@ export async function renameDoc(
   return getDoc(table, target, user)
 }
 
-export async function getDoc(
+export function getDoc(...args: Parameters<typeof getDocImpl>) {
+  return appOperation(() => getDocImpl(...args))
+}
+async function getDocImpl(
   table: string,
   name: string,
   user = 'Administrator',
@@ -1314,7 +1330,10 @@ function coerceSingleValue(columnType: string, raw: string | null): unknown {
 }
 
 // SET-001: persist a Settings Table's values into the EAV store.
-export async function saveSingle(
+export function saveSingle(...args: Parameters<typeof saveSingleImpl>) {
+  return appOperation(() => saveSingleImpl(...args))
+}
+async function saveSingleImpl(
   table: string,
   values: RowValues,
   user = 'Administrator',
