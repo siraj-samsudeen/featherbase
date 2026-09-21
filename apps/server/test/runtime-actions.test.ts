@@ -69,7 +69,7 @@ describe('declared transactional runtime actions', () => {
     await admin.post('/api/save_row', { table: 'Comment', row: { ref_table: 'actionproof.work', ref_name: 'retained', content: 'Keep this discussion' } })
     const guard = { idempotencyKey: 'guard', payload: { source: 'retained', updatedAt: retained.updated_at } }
     await expect(admin.post(action + 'discard', guard)).rejects.toMatchObject({ status: 417 })
-    expect(await admin.post(action + 'discard', { ...guard, payload: { ...guard.payload, explain: true } })).toEqual({ result: { deleted: false, counts: { comments: 1, versions: 0, references: 0 } } })
+    expect(await admin.post(action + 'discard', { ...guard, payload: { ...guard.payload, explain: true } })).toEqual({ result: { deleted: false, counts: { comments: 1, versions: 0, references: 0, files: 0, shares: 0 } } })
   })
 
   // @spec action_commit_boundary_and_lifecycle_serialize
@@ -172,7 +172,7 @@ describe('declared transactional runtime actions', () => {
     const changed = await owner.post<any>('/api/save_row', { table: 'actionproof.work', row: { ...source, title: 'Retain the edit' } })
     const activity = await owner.post<any>(action + 'probe', { idempotencyKey: 'activity', payload: { operation: 'activity', table: 'actionproof.work', source: source.row_id } })
     expect(activity.result.versions[0].data.changed).toEqual([['title', 'Public input', 'Retain the edit']])
-    expect(await owner.post(action + 'discard', { idempotencyKey: 'has-history', payload: { source: source.row_id, updatedAt: changed.updated_at, explain: true } })).toEqual({ result: { deleted: false, counts: { comments: 0, versions: 1, references: 0 } } })
+    expect(await owner.post(action + 'discard', { idempotencyKey: 'has-history', payload: { source: source.row_id, updatedAt: changed.updated_at, explain: true } })).toEqual({ result: { deleted: false, counts: { comments: 0, versions: 1, references: 0, files: 0, shares: 0 } } })
     // Neither a system Table declaration nor its ordinary read grant makes
     // global Comment queries a document-authorized activity API.
     await expect(owner.post(action + 'probe', { idempotencyKey: 'global-comments', payload: { operation: 'list', table: 'Comment' } })).rejects.toMatchObject({ status: 417 })

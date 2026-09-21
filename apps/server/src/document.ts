@@ -238,12 +238,17 @@ async function validateLinks(
 }
 
 // @spec guarded_action_deletion_preserves_retained_work
-async function lockDiscussionTargets(tx: typeof sql, meta: TableMeta, row: RowValues, user: string, old?: RowValues) {
-  if (meta.name !== 'Comment' && meta.name !== 'Version') return
+// @spec core_document_links_serialize_with_runtime_deletion
+async function lockCoreDocumentTargets(tx: typeof sql, meta: TableMeta, row: RowValues, user: string, old?: RowValues) {
+  if (!['Comment', 'Version', 'File', 'Share'].includes(meta.name)) return
+  const tableField = meta.name === 'Share' ? 'share_table' : 'ref_table'
+  const nameField = meta.name === 'Share' ? 'share_name' : 'ref_name'
   for (const target of [old, row]) {
-    if (!target || typeof target.ref_table !== 'string' || !target.ref_table.includes('.')) continue
-    const table = target.ref_table
-    const name = String(target.ref_name ?? '')
+    const table = target?.[tableField]
+    if (typeof table !== 'string' || !table.includes('.')) continue
+    const name = String(target?.[nameField] ?? '')
+    // File may attach to a Table rather than one document, or be unattached.
+    if (meta.name === 'File' && !name) continue
     const targetMeta = await getMeta(table)
     const [exists] = await tx`select 1 from ${tx(await tableRelation(table))}
       where ${tx(targetMeta.row_key)} = ${name} for key share`
@@ -603,7 +608,7 @@ async function saveDocImpl(
         status: row.status,
         position: row.position,
       }
-      await lockDiscussionTargets(stx, meta, dbRow, user)
+      await lockCoreDocumentTargets(stx, meta, dbRow, user)
       await validateLinks(stx, meta, dbRow)
       const inserted = await tx`insert into ${tx(tbl)} ${tx(dbRow as unknown as Record<string, never>)} returning *`
       for (const input of finalChildInputs)
@@ -866,7 +871,7 @@ async function updateDoc(
         updated_at: new Date(),
         updated_by: user,
       }
-      await lockDiscussionTargets(stx, meta, { ...existing, ...dbRow }, user, existing as RowValues)
+      await lockCoreDocumentTargets(stx, meta, { ...existing, ...dbRow }, user, existing as RowValues)
       await validateLinks(stx, meta, dbRow)
       const [updated] = await tx`
         update ${tx(table)} set ${tx(dbRow)} where ${tx(meta.row_key)} = ${name} returning *`

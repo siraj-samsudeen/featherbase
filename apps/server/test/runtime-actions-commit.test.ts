@@ -17,7 +17,8 @@ const prove = process.env.RUNTIME_ACTION_COMMIT_PROOF === '1' ? test : test.skip
 
 // @spec guarded_action_deletion_preserves_retained_work.action_delete_races_comment_or_reference_creation
 // @spec action_commit_boundary_and_lifecycle_serialize
-prove('real commits: both sides of discussion/reference deletion races; effects observe durable results', async () => {
+// @spec core_document_links_serialize_with_runtime_deletion.core_link_creation_races_runtime_deletion
+prove('real commits: both sides of core-link/reference deletion races; effects observe durable results', async () => {
   const [identity] = await sql`select current_database() as name,
     (select value from internal_metadata where key = 'environment') as environment`
   expect(String(identity.name).endsWith('_actions_commit_e2e')).toBe(true)
@@ -38,7 +39,7 @@ prove('real commits: both sides of discussion/reference deletion races; effects 
       let entered = 0
       if (first === 'delete') add({ table: 'actionproof.work', hooks: { on_trash: async () => { entered++; await gate } } })
       else {
-        for (const table of ['Comment', 'ActionProof Ref']) add({ table, hooks: { after_insert: async () => { entered++; await gate } } })
+        for (const table of ['Comment', 'ActionProof Ref', 'File', 'Share']) add({ table, hooks: { after_insert: async () => { entered++; await gate } } })
       }
       const discard = () => runPackageAction('actionproof', 'discard', {
         idempotencyKey: first, payload: { source: first, updatedAt: stamp(source) },
@@ -46,6 +47,8 @@ prove('real commits: both sides of discussion/reference deletion races; effects 
       const writers = () => [
         saveDoc('Comment', { ref_table: 'actionproof.work', ref_name: first, content: 'Retain this exact discussion' }, 'Administrator', 'insert'),
         saveDoc('ActionProof Ref', { source: first }, 'Administrator', 'insert'),
+        saveDoc('File', { ref_table: 'actionproof.work', ref_name: first, file_name: 'invoice-83.txt' }, 'Administrator', 'insert'),
+        saveDoc('Share', { share_table: 'actionproof.work', share_name: first, user: 'Administrator', read: true }, 'Administrator', 'insert'),
       ].map(promise => promise.then(value => ({ ok: true, value }), error => ({ ok: false, error })))
       let deletion: Promise<any> | undefined
       let writing: Promise<any>[] = []
@@ -54,10 +57,10 @@ prove('real commits: both sides of discussion/reference deletion races; effects 
           deletion = discard().then(value => ({ ok: true, value }), error => ({ ok: false, error }))
           await expect.poll(() => entered).toBe(1)
           writing = writers()
-          await expect.poll(async () => Number((await sql`select count(*) as n from pg_stat_activity where datname = current_database() and wait_event = 'transactionid'`)[0].n)).toBeGreaterThanOrEqual(2)
+          await expect.poll(async () => Number((await sql`select count(*) as n from pg_stat_activity where datname = current_database() and wait_event = 'transactionid'`)[0].n)).toBeGreaterThanOrEqual(4)
         } else {
           writing = writers()
-          await expect.poll(() => entered).toBe(2)
+          await expect.poll(() => entered).toBe(4)
           deletion = discard().then(value => ({ ok: true, value }), error => ({ ok: false, error }))
           await expect.poll(async () => Number((await sql`select count(*) as n from pg_stat_activity where datname = current_database() and wait_event = 'transactionid'`)[0].n)).toBeGreaterThanOrEqual(1)
         }
@@ -66,12 +69,15 @@ prove('real commits: both sides of discussion/reference deletion races; effects 
         const written = await Promise.all(writing)
         if (first === 'delete') {
           expect(deleted).toMatchObject({ ok: true, value: { result: { deleted: true } } })
-          expect(written).toMatchObject([{ ok: false, error: { type: 'NotFoundError' } }, { ok: false, error: { type: 'ValidationError' } }])
+          expect(written).toMatchObject([{ ok: false, error: { type: 'NotFoundError' } }, { ok: false, error: { type: 'ValidationError' } },
+            { ok: false, error: { type: 'NotFoundError' } }, { ok: false, error: { type: 'NotFoundError' } }])
           expect(await sql`select row_id from comment where ref_table = 'actionproof.work' and ref_name = ${first}`).toHaveLength(0)
           expect(await sql`select row_id from actionproof_ref where source = ${first}`).toHaveLength(0)
+          expect(await sql`select row_id from file where ref_table = 'actionproof.work' and ref_name = ${first}`).toHaveLength(0)
+          expect(await sql`select row_id from share where share_table = 'actionproof.work' and share_name = ${first}`).toHaveLength(0)
         } else {
-          expect(written).toMatchObject([{ ok: true }, { ok: true }])
-          expect(deleted).toMatchObject({ ok: false, error: { type: 'ValidationError', fields: { comments: '1', versions: '0', references: '1' } } })
+          expect(written).toMatchObject([{ ok: true }, { ok: true }, { ok: true }, { ok: true }])
+          expect(deleted).toMatchObject({ ok: false, error: { type: 'ValidationError', fields: { comments: '1', versions: '0', references: '1', files: '1', shares: '1' } } })
           expect(await sql`select title from actionproof.work where row_id = ${first}`).toEqual([{ title: '43 retained units' }])
         }
       } finally { release(); await Promise.allSettled([deletion, ...writing]); clear() }
@@ -95,6 +101,8 @@ prove('real commits: both sides of discussion/reference deletion races; effects 
     clear()
     await sql`delete from comment where ref_table = 'actionproof.work'`
     await sql`delete from version where ref_table = 'actionproof.work'`
+    await sql`delete from file where ref_table = 'actionproof.work'`
+    await sql`delete from share where share_table = 'actionproof.work'`
     await sql`delete from runtime_action_result where app = 'actionproof'`
     await deleteTable('ActionProof Ref')
     await uninstallApp('actionproof')

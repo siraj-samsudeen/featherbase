@@ -131,6 +131,16 @@ try {
   const actionActivity = await api(`/api/activity/actionproof.work/${actionSource.row_id}`)
   assert.equal(actionActivity.comments.length, 1)
   assert.equal(actionActivity.versions.length, 1)
+  // @spec guarded_action_deletion_preserves_retained_work.core_attachment_and_share_refusal_replays
+  const retainedSource = await api('/api/save_row', { table: 'actionproof.work', row: { row_id: 'packaged-retained', title: 'Retain 47 units' } }, 201)
+  for (const file_name of ['invoice-17.txt', 'photo-43.png'])
+    await api('/api/save_row', { table: 'File', row: { file_name, ref_table: 'actionproof.work', ref_name: retainedSource.row_id } }, 201)
+  await api('/api/save_row', { table: 'Share', row: { share_table: 'actionproof.work', share_name: retainedSource.row_id, user: 'Administrator', read: true } }, 201)
+  const retentionRequest = { idempotencyKey: 'packaged-retention', payload: { source: retainedSource.row_id, updatedAt: retainedSource.updated_at, explain: true } }
+  await api('/api/app_actions/actionproof/transform', { idempotencyKey: 'retention-rollback', payload: { ...retentionRequest.payload, fail: true } }, 500)
+  const retentionResult = await api('/api/app_actions/actionproof/discard', retentionRequest)
+  assert.deepEqual(retentionResult, { result: { deleted: false, counts: { comments: 0, versions: 0, references: 0, files: 2, shares: 1 } } })
+  assert.equal((await api('/api/table/actionproof.destination')).total, 1)
   const seeded = await seedTasker({
     baseUrl: origin,
     password: process.env.ADMIN_PASSWORD ?? 'admin',
@@ -311,6 +321,7 @@ try {
   await stop()
   await start(paths)
   assert.deepEqual(await api('/api/app_actions/actionproof/transform', actionRequest), actionResults[0])
+  assert.deepEqual(await api('/api/app_actions/actionproof/discard', retentionRequest), retentionResult)
   await api('/api/table/tasker.task', undefined, 403)
   await api('/api/set_app_enabled', { name: 'tasker', enabled: true })
   await api('/api/set_app_enabled', { name: 'tasker', enabled: true })
@@ -334,6 +345,7 @@ try {
     destinationCount: (await api('/api/table/actionproof.destination')).total,
     activity: actionActivity, rollbackBeforeRetry: true, restartReplay: true,
     missingCodeRefused: true, restoredReplay: true,
+    retentionResult, retentionRollbackAndRestart: true,
   }, null, 2))
   assert.equal((await api(`/api/table/tasker.task/${task.row_id}`)).description, task.description)
   // @spec runtime_upgrade_preserves_owned_work.tasker_description_is_generic_migration

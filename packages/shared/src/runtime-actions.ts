@@ -19,7 +19,7 @@ export interface RuntimeActionContext {
     update(table: string, values: ActionRow): Promise<ActionRow>
     delete(table: string, rowId: string, updatedAt: string): Promise<void>
     activity(table: string, rowId: string): Promise<{ comments: ActionRow[]; versions: ActionRow[] }>
-    deletionState(table: string, rowId: string): Promise<{ comments: number; versions: number; references: number }>
+    deletionState(table: string, rowId: string): Promise<{ comments: number; versions: number; references: number; files: number; shares: number }>
   }
 }
 

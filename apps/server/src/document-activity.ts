@@ -9,7 +9,9 @@ import { AppError } from './errors'
 export async function retainedDocumentCounts(tx: typeof sql, table: string, rowId: string) {
   const [counts] = await tx`
     select (select count(*)::int from comment where ref_table = ${table} and ref_name = ${rowId}) as comments,
-           (select count(*)::int from version where ref_table = ${table} and ref_name = ${rowId}) as versions`
+           (select count(*)::int from version where ref_table = ${table} and ref_name = ${rowId}) as versions,
+           (select count(*)::int from file where ref_table = ${table} and ref_name = ${rowId}) as files,
+           (select count(*)::int from share where share_table = ${table} and share_name = ${rowId}) as shares`
   let references = 0
   const columns = await tx`select parent, column_name from column_def where column_type = 'Reference' and reference_table = ${table}`
   for (const column of columns) {
@@ -18,7 +20,8 @@ export async function retainedDocumentCounts(tx: typeof sql, table: string, rowI
     const [count] = await tx`select count(*)::int as n from ${tx(await tableRelation(meta.name))} where ${tx(String(column.column_name))} = ${rowId}`
     references += Number(count.n)
   }
-  return { comments: Number(counts.comments), versions: Number(counts.versions), references }
+  return { comments: Number(counts.comments), versions: Number(counts.versions), references,
+    files: Number(counts.files), shares: Number(counts.shares) }
 }
 
 export async function documentActivity(table: string, name: string, user: string) {
