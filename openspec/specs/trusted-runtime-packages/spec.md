@@ -142,6 +142,54 @@ Table or silently skip work.
 - **WHEN** prototype work with comments, history, files, shares, and focus migrates
 - **THEN** each pointer names the new qualified Table and the same work remains usable.
 
+### Requirement: platform_storage_is_explicit
+Legacy ID: PKG-R5 · `shape: migration invariant`
+Status: governed (#296)
+Featherbase-owned relations and functions SHALL live in PostgreSQL schema
+`featherbase`. A fresh install SHALL create them there. An upgrade SHALL move
+existing objects without replacing their identities, rows, constraints, indexes,
+grants, RLS policies, references or migration history. Core logical identities
+SHALL remain compatible and unqualified; application logical and physical
+identities SHALL remain scoped. Runtime and migration paths SHALL resolve physical
+relations deterministically without pooled mutable `search_path` routing.
+Security-definer functions SHALL restrict name resolution and explicitly address
+their dependencies.
+
+`public.site` SHALL remain an explicitly named pre-tenant host registry. It SHALL
+NOT be treated as tenant data or moved into the core schema. Site data SHALL remain
+isolated in its selected site schema.
+
+#### Scenario: fresh_and_upgrade_converge_to_same_shape
+- **WHEN** a fresh database and an asymmetric exact pre-convergence database run
+  the production migration command
+- **THEN** both expose the same Featherbase-owned object shape, preserve expected
+  upgrade rows and privileges, retain scoped app storage, and leave only the site
+  registry at `public.site`.
+
+#### Scenario: failed_convergence_retries_atomically
+- **WHEN** convergence is forced to fail before commit and then rerun
+- **THEN** the failed attempt moves no partial object set and the retry produces
+  exactly one complete migrated state without duplicated rows or grants.
+
+### Requirement: featherbase_human_routes_are_canonical
+Legacy ID: PKG-R6 · `shape: routing contract`
+Status: governed (#296)
+Featherbase-owned human routes SHALL live under `/featherbase/`. Historical human
+deep links SHALL redirect to their corresponding canonical path while preserving
+query and fragment. Technical and direct runtime-app roots SHALL retain their
+owners. Signed-out runtime-app navigation SHALL pass through canonical Featherbase
+sign-in and return to the exact app path.
+
+#### Scenario: old_and_new_deep_links_converge
+- **WHEN** a caller opens equivalent `/admin/...` and `/featherbase/admin/...`
+  deep links
+- **THEN** the old URL redirects and both arrive at the same canonical screen with
+  search and fragment state intact.
+
+#### Scenario: signed_out_tasker_returns_to_tasker
+- **WHEN** a signed-out caller opens `/tasker/` and completes sign-in
+- **THEN** the browser returns to `/tasker/`, not the Featherbase home page.
+
 ## Deferred
 
 Marketplace discovery, signing, untrusted-code isolation, distributed activation,
