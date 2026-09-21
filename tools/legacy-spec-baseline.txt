@@ -1,0 +1,25 @@
+# Non-authoritative Journey documents that predate mandatory OpenSpec adoption.
+# Remove a path in the same commit that migrates or retires its document.
+# Adding paths is forbidden: new behavior contracts belong in openspec/specs.
+docs/specs/0001-external-data-sources.md
+docs/specs/0002-virtual-doctypes.md
+docs/specs/0003-table-deletion.md
+docs/specs/0004-import-upsert.md
+docs/specs/0005-import-revert.md
+docs/specs/0006-connection-console.md
+docs/specs/0007-table-lifecycle.md
+docs/specs/0008-spreadsheet-import.md
+docs/specs/0009-grid-editing.md
+docs/specs/0011-runtime-packages.md
+docs/specs/README.md
+docs/specs/tasker/README.md
+docs/specs/tasker/manage-responsibility-and-progress.md
+docs/specs/tasker/plan-my-work.md
+docs/specs/tasker/process-inbox-items.md
+docs/specs/tasker/quick-task-capture.md
+docs/specs/tasker/reorganize-projects.md
+docs/specs/tasker/review-team-workload.md
+docs/specs/tasker/shared-team-work.md
+docs/specs/tasker/star-projects-for-quick-access.md
+docs/specs/tasker/start-a-project.md
+docs/specs/tasker/use-task-details.md

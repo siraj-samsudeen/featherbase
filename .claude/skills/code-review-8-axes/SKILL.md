@@ -25,7 +25,7 @@ Ported from the data-warehouse repo (#3664, from a design conversation with Sira
 | **Code** | Does it hold those promises? | `code-review-8-axes` |
 | **Test** | Is each promise actually checked? | `test-review-3-axes` |
 
-They drift apart continuously, whichever was written first. The edges are made greppable by **`docs/agents/stc-traceability.md`** (one `@spec <slug>` marker per vertex) and computed by `pnpm check:stc` for `openspec/specs`; `tools/check-evidence.mjs` computes the spec↔test edge for `docs/specs`.
+They drift apart continuously, whichever was written first. The edges are made greppable by **`docs/agents/stc-traceability.md`** (one `@spec <slug>` marker per vertex) and computed by `pnpm check:stc` for the sole active root, `openspec/specs`.
 
 **When artifacts disagree, never silently pick a winner and never punt.** Emit the divergence triage item defined in **`spec-review-5-axes`** — the disagreement, a recommendation, and what follows if the owner rules the other way. This repo already holds the rule in its own words: *"A discovered behaviour is not a requirement. It has three fates — ratified into the spec, filed as a defect, or raised as an open question — and choosing is the owner's call, never an agent's"* (`CLAUDE.md`).
 
@@ -338,7 +338,7 @@ The thresholds are still `lines: 86, statements: 86, functions: 91`, three weeks
 
 **Real violation, smaller — a documented check that no job runs.** `pnpm smoke` is named in `README.md:31`, `CLAUDE.md:171`, `docs/TESTING.md:109` and `docs/ARCHITECTURE.md:334`, and runs in `init.sh:271`. `.github/workflows/test.yml` never invokes it. Its web half is covered anyway (Playwright runs `e2e/smoke.spec.ts` inside the e2e job), so the honest consequence is narrow: the **server** half — `tsx src/smoke.ts` asserting a booted server answers `/api/ping` with `db: true` — is a developer-machine check that four documents present as a project check. Report it with that consequence, not with a bigger one.
 
-**And the one this change itself introduces.** `pnpm check:stc` is not in CI (see `docs/agents/stc-traceability.md` for why, while OpenSpec is on trial). It is stated there rather than left implied, because an unenforced guard that reads as enforced makes the next agent stop looking. **If your review adds a guard, apply this axis to your own guard before you finish.**
+**The STC guard is an example to verify, not assume.** `pnpm check:stc` runs through `pnpm check:specs` in CI. If that wiring disappears, traceability becomes advisory again. **If your review adds a guard, apply this axis to your own guard before you finish.**
 
 **A spec is a guard too, and usually an unenforced one.** `openspec validate --specs --strict` proves the spec is **well-formed, not true**: it reported *1 passed, 0 failed* on `openspec/specs/table-deletion/spec.md` before a single requirement had been checked against the code. Ask: *what detects spec-code drift, and does failing it stop anything?* `pnpm check:stc` checks only that the vertices reference each other, never that they agree.
 
@@ -347,7 +347,7 @@ The thresholds are still `lines: 86, statements: 86, functions: 91`, three weeks
 - **A stated contract the *default* configuration violates.** Read every doc-comment claim against the **default** path, not the first one you find.
 - **A runbook prescribing a hand-edit the code could make unnecessary.** Hunt & Thomas: *don't use manual procedures.* Ask: *does a doc document a repair the code should be doing itself?*
 
-**Two guards in this repo that pass this axis, and are worth copying.** `tools/check-evidence.mjs` refuses to count a `.skip`ped test as proof, refuses a spec that silently opts out, and is itself mutation-tested — *"A green linkage check means nothing if the checker cannot fail"* (`.github/workflows/test.yml`). And `apps/server/scripts/check-sql-escapes.ts` looks like a standalone script no CI job runs — but its `checkMigrations()` is imported by `apps/server/test/choices-newline.test.ts:107`, so it gates through the suite. **Chase the import before reporting a guard as dead; this one refutes the obvious reading.**
+**Two guards in this repo that pass this axis, and are worth copying.** `tools/stc-matrix.mjs` and `tools/check-spec-policy.mjs` are mutation-tested before their repository checks run—*a green guard means nothing if the checker cannot fail*. And `apps/server/scripts/check-sql-escapes.ts` looks like a standalone script no CI job runs — but its `checkMigrations()` is imported by `apps/server/test/choices-newline.test.ts:107`, so it gates through the suite. **Chase the import before reporting a guard as dead; this one refutes the obvious reading.**
 
 ---
 
@@ -382,7 +382,7 @@ Close with a count per axis, the single worst finding overall, and a **refuted l
 - *"`packages/shared` is missing from CI's typecheck steps, so a type error there ships."* **Refuted by experiment.** Appended a deliberate type error to `packages/shared/src/schema.ts` and ran each package's typecheck: **server and web both failed**, naming `../../packages/shared/src/schema.ts(98,7)`. Both tsconfigs follow the import into shared's source. Ninety seconds; the finding was wrong.
 - *"`docstatus` survives in `docs/specs/0001`, so the terminology rename is incomplete."* **Refuted.** That spec describes binding to a foreign Frappe database, where `docstatus` is that system's real column name.
 - *"`pnpm lint:sql` runs in no CI job, so the SQL-escape guard is dead."* **Refuted.** `apps/server/test/choices-newline.test.ts` imports `checkMigrations` and asserts it returns no hits, so the guard gates through the vitest suite.
-- *"The e2e acceptance spec for sales-target skips itself when its shared inputs are absent, so an obligation could read proven while nothing ran."* **Refuted for the CI path.** `check-evidence.mjs` treats a Playwright `skipped` result as not-executed and fails a `proven`/`rule-tier` verdict backed only by skipped tests. It remains true that the *static* pass cannot see a runtime `test.skip`, which is why the runtime pass exists.
+- *"The retired Journey evidence checker made skipped Playwright results look proven."* **Historically refuted.** Before OpenSpec adoption, `check-evidence.mjs` treated a Playwright `skipped` result as not-executed. That checker and verdict vocabulary were retired with the Journey contract; current reviews must assess the OpenSpec requirement and its cited asymmetric tests directly.
 
 ---
 

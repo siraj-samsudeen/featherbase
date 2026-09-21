@@ -1,39 +1,32 @@
-# Specs
+# Legacy Journey specs — frozen migration evidence
 
-**Evidence mode:** excluded — an index of the specs, carrying no obligations
-of its own.
+> **Non-authoritative since 2026-09-21.** OpenSpec is the sole behavior
+> specification and mandatory change workflow; see
+> [ADR 0010](../adr/0010-openspec-change-workflow.md) and root `AGENTS.md`.
+> Do not add files or behavior here. `pnpm check:spec-policy` freezes this
+> directory while each capability is baselined into `openspec/specs/` or retired.
 
-Requirements for work that is **agreed but not yet built**. Once a spec is
-implemented and verified end-to-end, it stays here as the contract the code was
-written against; `PROGRESS.md` records when that happened.
+These documents preserve the pre-adoption Journey contracts as dated migration
+evidence. They help recover existing behavior, but they do not govern current
+or future implementation. A baseline migration verifies current code and tests,
+commits the OpenSpec capability without behavior changes, then removes the
+migrated path from this directory and `tools/legacy-spec-baseline.txt`.
 
-Before splitting behavior into specification files, use
-[Recognizing product features](../design/recognizing-product-features.md) to test
-the boundary against the data model, user goal, starting context, required
-decision, completion point, shared rules, independent evolution and independent
-proof.
+When migrating one of these documents, use
+[Recognizing product features](../design/recognizing-product-features.md) to
+identify the OpenSpec capability boundary before writing the baseline.
 
-Format: feather-spec — a one-pager per
-feature with EARS acceptance criteria (`WHEN … THE SYSTEM SHALL …`) grouped by
-user capability, each group carrying a concrete example table. Capability IDs
-(`EDS-1`, `VDT-3`) are the traceability handle: use them in commits, bugs and
-review comments.
+Historical format: feather-spec — a one-pager per feature with EARS acceptance
+criteria grouped by user capability. Its legacy IDs remain useful when tracing
+history, but new code and tests cite descriptive OpenSpec slugs with `@spec`.
 
 These IDs replace the old harness feature IDs. That inventory is frozen
 history at [`docs/archive/harness-2026/`](../archive/harness-2026/README.md)
 (retired 2026-08-28, issue #236); nothing here extends it.
 
-**Evidence lives in the spec, not beside it.** Specs written in the
-journeys-and-rules form carry a `> evidence: proven | rule-tier | gap |
-pinned #N — <note>` line under every journey, rule, invariant and hazard,
-and `node tools/check-evidence.mjs` (`pnpm check:evidence`, and a CI step)
-re-derives the linkage against the test titles that back it. That local mode
-stays dependency-free; after Vitest and Playwright finish, CI supplies their
-combined JSON reports with `--results` and additionally requires every
-`proven`/`rule-tier` obligation to have a matching concrete test that actually
-executed. The
-hand-maintained `evidence/*.csv` matrices this replaced were retired
-2026-08-28 (issue #235).
+The historical `> evidence:` verdicts are preserved as migration inputs. Current
+spec↔code↔test linkage is the OpenSpec `@spec` convention documented in
+[`docs/agents/stc-traceability.md`](../agents/stc-traceability.md).
 
 | Spec | Status | Summary |
 |---|---|---|

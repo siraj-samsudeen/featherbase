@@ -35,8 +35,7 @@ const REAL_LINES = REAL_SPEC.split('\n')
 /**
  * The real spec with one line changed: `oldFragment` must appear verbatim on
  * 1-indexed `lineNo`, or the mutation is rejected rather than silently
- * missing its target (the same discipline check-evidence.test.mjs uses for
- * its fixture edits — a `.replace()` that finds nothing is not a mutation).
+ * missing its target — a `.replace()` that finds nothing is not a mutation.
  */
 function mutate(lineNo, oldFragment, newFragment) {
   const lines = [...REAL_LINES]

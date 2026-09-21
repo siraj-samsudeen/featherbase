@@ -11,8 +11,7 @@
 //     node tools/stc-matrix.mjs                # the matrix + the verdict
 //     node tools/stc-matrix.mjs --write-baseline
 //
-// Zero dependencies, like `check-evidence.mjs` — it runs before `pnpm install`
-// in CI, where a broken linkage costs nothing to discover.
+// Zero dependencies, so focused local runs do not need a package install.
 //
 // Exit codes:  0 clean  |  1 orphans (a marker naming no requirement)
 //              2 baseline regression (a NEW coverage gap)
@@ -32,14 +31,11 @@
 // promise", never "that promise holds". Agreement is what a human review
 // decides — `spec-review-5-axes` and its divergence triage.
 //
-// It is also not `check-evidence.mjs` and does not replace it. That checker
-// owns `> evidence:` verdicts in participating documents, including Tasker's
-// OpenSpec capabilities, and joins them to test TITLES. This checker joins the
-// same OpenSpec requirement to code and test markers. One spec home, two
-// complementary joins:
-//
-//   check-evidence.mjs   OpenSpec verdict  <-> test title
-//   stc-matrix.mjs       OpenSpec heading  <-> code/test @spec markers
+// This checker owns Featherbase's OpenSpec inputs: archived capability specs
+// under `openspec/specs` and delta specs under active `openspec/changes`.
+// Proposals, designs, tasks and archived change history are not contracts. The
+// frozen files under `docs/specs` are migration evidence, not another input;
+// tools/check-spec-policy.mjs prevents that root growing.
 
 import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join, relative, resolve, dirname } from 'node:path'
@@ -48,7 +44,7 @@ import { fileURLToPath } from 'node:url'
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 /** Where capability specs live. */
-export const SPEC_ROOTS = ['openspec/specs']
+export const SPEC_ROOTS = ['openspec/specs', 'openspec/changes']
 
 /** Trees whose `@spec` markers count as the CODE vertex. */
 export const CODE_DIRS = [
@@ -56,9 +52,7 @@ export const CODE_DIRS = [
   'packages/shared/src', 'runtime-apps', 'tools',
 ]
 
-/** Trees whose `@spec` markers count as the TEST vertex — the same list
- *  `check-evidence.mjs` calls TEST_DIRS, so the two checkers cannot disagree
- *  about what a test is. */
+/** Trees whose `@spec` markers count as the TEST vertex. */
 export const TEST_DIRS = ['apps/server/test', 'apps/web/test', 'apps/web/e2e', 'packages/shared/test']
 
 /**
@@ -133,6 +127,10 @@ export function collectRequirements(root, specRoots) {
   for (const specRoot of specRoots) {
     for (const path of walk(root, specRoot, ['.md'])) {
       const rel = relative(root, path).split('\\').join('/')
+      if (specRoot === 'openspec/changes') {
+        if (rel.startsWith('openspec/changes/archive/')) continue
+        if (!/^openspec\/changes\/[^/]+\/specs\/[^/]+\/spec\.md$/.test(rel)) continue
+      }
       let current = null
       for (const line of readFileSync(path, 'utf8').split('\n')) {
         const req = RE_REQUIREMENT.exec(line)
@@ -231,7 +229,7 @@ export function gapKeys(rows) {
 /**
  * Run the whole check. Returns the rows, the orphans, the gaps and the
  * failures — exported separately from the CLI so the mutation tests can drive
- * it over a throwaway tree, the way `check-evidence.mjs` is driven.
+ * it over a throwaway tree.
  */
 export function stcMatrix({
   root = ROOT,

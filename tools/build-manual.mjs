@@ -5,11 +5,12 @@
  *   node tools/build-manual.mjs      (from the repo root)
  *   pnpm manual:build
  *
- * HTML IS A VIEW, NEVER A SOURCE. docs/manual/spreadsheet-import.html used to
- * be hand-authored, which meant the manual and the spec drifted the moment
- * either was edited. This script makes the manual a rendering of exactly one
- * behavioural source — docs/specs/0008-spreadsheet-import.md — so a sentence
- * about what the wizard does exists in one place. Fix the spec, rebuild.
+ * HTML IS A VIEW, NEVER A SOURCE. docs/manual/spreadsheet-import.html is a
+ * rendering of frozen pre-OpenSpec migration evidence at
+ * docs/specs/0008-spreadsheet-import.md. That input is not an active behavior
+ * contract and must not be extended. Before changing this feature, establish
+ * its verified baseline under openspec/specs in a baseline-only commit, then
+ * move this generator to that baseline as part of the subsequent change.
  *
  * The only things this file may add on its own are FRAME: the page chrome,
  * the three lenses, "Before you start", and the session instrument (ticks,
@@ -159,8 +160,8 @@ function renderMd(md) {
  * 2. The spec parser
  * ================================================================== */
 
-// The same grammar tools/check-evidence.mjs reads, so the manual and the
-// linkage check can never disagree about what a verdict says.
+// The grammar carried by the frozen Journey document. It remains here only so
+// the existing manual can be regenerated identically before migration.
 const VERDICT = /^\s*>\s*evidence(?:\s+([A-Za-z][A-Za-z0-9._-]*))?:\s*(\S+)(.*)$/
 const CONTINUATION = /^\s*>(.*)$/
 const STATUSES = new Set(['proven', 'gap', 'pinned', 'rule-tier'])

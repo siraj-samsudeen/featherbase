@@ -5,8 +5,11 @@
     "apps:prepare": "npm ci --prefix runtime-apps/tasker --ignore-scripts && npm run build --prefix runtime-apps/tasker",
     "apps:prove": "node tools/prove-runtime-packages.mjs",
     "seed:tasker": "node tools/seed-tasker-development.mjs",
-    "check:evidence": "node --test tools/*.test.mjs && node tools/check-evidence.mjs",
+    "check:openspec:specs": "openspec validate --specs --strict --no-interactive",
+    "check:openspec:changes": "openspec validate --changes --strict --no-interactive",
+    "check:spec-policy": "node --test tools/check-spec-policy.test.mjs && node tools/check-spec-policy.mjs",
     "check:stc": "node --test tools/stc-matrix.test.mjs && node tools/stc-matrix.mjs",
+    "check:specs": "pnpm check:openspec:specs && pnpm check:openspec:changes && pnpm check:stc && pnpm check:spec-policy",
     "manual:build": "node tools/build-manual.mjs",
     "manual:fixtures": "node docs/manual/fixtures/make-fixtures.mjs",
     "smoke": "pnpm --filter server test:smoke && pnpm --filter web smoke",
@@ -14,5 +17,8 @@
     "test:coverage": "pnpm -r test:coverage",
     "test:all": "pnpm -r test && pnpm --filter web e2e"
   },
-  "packageManager": "pnpm@10.33.0"
+  "packageManager": "pnpm@10.33.0",
+  "devDependencies": {
+    "@fission-ai/openspec": "1.13.0"
+  }
 }

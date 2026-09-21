@@ -47,17 +47,17 @@ checkouts are real); compatibility with anything *outside* the repo is not.
 Revisit this section when the first real deployment happens — from that point
 the calculus changes.
 
-## The document set (ratified 2026-08-28)
+## The document set (updated 2026-09-21)
 
 > Judgment lives in the spec, mechanics live in one living doc, history
 > lives in append-only logs, and every relationship between documents is
 > checked by CI rather than maintained by discipline.
 
-Here that means: `docs/specs/` carries the judgment and the acceptance
-criteria, with an evidence matrix in which no verdict stands without naming
-its proof; `docs/TESTING.md` is the single living doc for how the suites are
-built and run; `PROGRESS.md` and `docs/adr/` are the append-only history —
-what happened, and what was decided and why. The relationships between them
+Here that means: `openspec/specs/` carries the behavior judgment and acceptance
+criteria; root `AGENTS.md` defines the mandatory OpenSpec workflow;
+`docs/TESTING.md` is the single living doc for how the suites are built and
+run; `PROGRESS.md` and `docs/adr/` are the append-only history — what happened,
+and what was decided and why. The relationships between spec, tests, and code
 are CI's job, not a reviewer's memory.
 
 The anti-pattern this retires: **a document that describes another artifact
@@ -175,13 +175,13 @@ once per run, outside any sandbox transaction. It complements
 
 1. **Orient.** Read `PROGRESS.md` (newest entry first), `git log --oneline -20`,
    the open issues labelled `ready-for-agent` (`gh issue list --label
-   ready-for-agent`), and `docs/specs/`. Do not re-derive decisions already
+   ready-for-agent`), and `openspec/specs/`. Do not re-derive decisions already
    recorded in `docs/adr/`.
 2. **Boot & smoke-test.** Run `./init.sh` and verify the app actually starts and
    the core flow passes (login → open a Table list → open a form) BEFORE
    writing new code. If the app is broken, fixing it IS the session's task.
 3. **Pick ONE piece of work.** Take direction from the `ready-for-agent`
-   issues, `docs/specs/` (a spec with no evidence is a backlog item),
+   issues, `openspec/specs/` and active `openspec/changes/`,
    `docs/design/execution-plan.md` (milestones M1–M5), and the "next" note at
    the end of the latest `PROGRESS.md` entry. Do not start a second thread of
    work in the same session.
@@ -231,19 +231,12 @@ command, that is the first finding.
 - `docs/adr/` — architecture decisions. [ADR 0006](docs/adr/0006-stack-react-hono-postgres.md)
   records the move to React + Hono + Postgres and supersedes 0001–0004.
 - `docs/VISION.md` — what this is for and who it serves.
-- `docs/specs/` — requirements for work agreed but not yet built, in
-  feather-spec form (EARS criteria + example tables). Capability IDs there
-  (`EDS-1`, `VDT-3`) are the traceability handles — use them in commits, bugs
-  and review comments.
-- `openspec/specs/` — **an evaluation, not the house format.** One capability
-  (`table-deletion`) migrated from `docs/specs/0003` so the question "should specs
-  move to OpenSpec?" could be answered from a real migration. `docs/specs` remains
-  live and is what `check-evidence.mjs` checks. Read
-  [`docs/design/openspec-vs-journey-spec.md`](docs/design/openspec-vs-journey-spec.md)
-  before writing a spec in either place — it records what the migration lost, what it
-  gained, and the recommendation awaiting the owner's ruling. **Do not migrate more
-  specs until that is ruled**, and delete one of the two table-deletion documents when
-  it is.
+- `openspec/specs/` — the sole behavior authority. Root `AGENTS.md` defines
+  the mandatory new-feature and baseline-first legacy workflows; ADR 0010
+  records why. Use descriptive requirement/scenario slugs in `@spec` markers.
+- `docs/specs/` — frozen, non-authoritative Journey documents from before the
+  2026-09-21 ruling. They are migration evidence only. Never add a behavior
+  contract there; `pnpm check:spec-policy` enforces the frozen file set.
 - `docs/research/` — Frappe architecture, Glide, and stack studies.
 - `docs/archive/` — frozen history: the 2026 build harness and its feature
   inventory (`harness-2026/`), and the specs from the retired Convex
@@ -269,10 +262,11 @@ the skill, don't improvise the equivalent:
 | Resolving an in-progress merge/rebase conflict | `mattpocock-skills:resolving-merge-conflicts` |
 | Stress-testing a plan before committing to it | `mattpocock-skills:grilling` |
 
-Requirements documents still use the featherbase-local `journey-spec`
-skill, not a plugin. When spawning sub-sessions or task chips, name the
-required skills in the prompt — spawned agents read this file, but an
-explicit instruction survives context loss.
+Behavior changes use the repository-generated OpenSpec skills. The local
+`journey-spec` skill is historical and must not author current contracts.
+When spawning sub-sessions or task chips, name the required skills in the
+prompt — spawned agents read this file, but an explicit instruction survives
+context loss.
 
 ### The STC triangle — design, test and spec review
 
@@ -300,8 +294,8 @@ divergence triage item defined in `spec-review-5-axes`. That is this repo's
 "a discovered behaviour is not a requirement" rule, in an output format.
 
 Traceability: `docs/agents/stc-traceability.md` — one `@spec <slug>` marker per vertex,
-computed by `pnpm check:stc` (`openspec/specs`, **not in CI**, run it by hand) beside
-`pnpm check:evidence` (`docs/specs`, in CI).
+computed by `pnpm check:stc` over `openspec/specs` and enforced in CI through
+`pnpm check:specs`.
 
 ### Issue tracker
 
