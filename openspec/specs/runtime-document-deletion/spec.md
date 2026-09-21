@@ -2,20 +2,32 @@
 
 ## Purpose
 
-Characterizes the generic runtime-row deletion path before closing its bypass
-around declared guarded actions. This baseline records a defect, not approval.
+Preserve retained work when deleting runtime-owned rows through either generic
+document APIs or declared actions, with revision checks and activity counts.
 
 ## Requirements
 
 ### Requirement: runtime_row_delete_guard
-Status: characterized (#296)
+Status: governed (#296)
 
-The generic native runtime-row delete path SHALL check caller delete permission
-and declared incoming References, but SHALL ignore `expectUpdatedAt` and SHALL
-leave Comment/Version soft-reference rows in place after deleting their source.
-This is recovered behavior to be superseded, not a safe deletion policy.
+Every generic runtime-owned row deletion SHALL require caller delete permission,
+the exact loaded revision, zero comments, zero recorded update Versions and zero
+incoming declared References. Refusal SHALL preserve the source and its activity.
+The raw document endpoint SHALL NOT bypass the same host retention guard exposed
+to declared actions. The host SHALL return counts without exposing hidden activity
+contents. App-specific retained-work states remain app policy.
 
 #### Scenario: native_delete_ignores_revision_and_discussion
 - **WHEN** an authorized caller deletes a runtime row with a stale expected
   revision and one comment
-- **THEN** the source disappears and the comment remains pointing to its old ID
+- **THEN** the deletion conflicts and both source and comment remain unchanged
+
+#### Scenario: correct_revision_still_preserves_discussion
+- **WHEN** an authorized caller uses the current revision to delete a runtime row
+  with recorded discussion or history
+- **THEN** the deletion refuses with activity counts and preserves every row
+
+#### Scenario: bare_row_can_be_deleted
+- **WHEN** an authorized caller supplies the current revision for an unreferenced
+  runtime row without discussion or recorded updates
+- **THEN** the generic API deletes that row
