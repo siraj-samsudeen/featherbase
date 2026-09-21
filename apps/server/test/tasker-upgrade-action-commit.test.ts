@@ -32,6 +32,8 @@ prove('Tasker upgrade waits through committed action effects, then gates obsolet
   let effects = 0
   let action: Promise<unknown> | undefined
   let upgrade: Promise<unknown> | undefined
+  let queuedReplay: Promise<unknown> | undefined
+  let disable: Promise<unknown> | undefined
   const controller: TableController = { table: 'tasker.project', hooks: { after_commit: async () => {
     effects++
     expect(await sql`select result from runtime_action_result where idempotency_key = 'upgrade-race'`).toHaveLength(1)
@@ -52,13 +54,21 @@ prove('Tasker upgrade waits through committed action effects, then gates obsolet
     let upgraded = false
     upgrade = upgradeApp('tasker', '2.1.0', plan.planId).then(result => { upgraded = true; return result })
     await expect.poll(async () => Number((await sql`select count(*) as n from pg_stat_activity where datname = current_database() and wait_event = 'advisory'`)[0].n)).toBeGreaterThanOrEqual(1)
+    queuedReplay = run('2.0.0').then(value => ({ value }), error => ({ error }))
+    disable = setAppEnabled('tasker', false)
+    await expect.poll(async () => Number((await sql`select count(*) as n from pg_stat_activity where datname = current_database() and wait_event = 'advisory'`)[0].n)).toBeGreaterThanOrEqual(3)
     expect(upgraded).toBe(false)
     release()
     const result = await action
     await upgrade
+    expect(await queuedReplay).toMatchObject({ error: { type: 'PermissionError' } })
+    await disable
     await expect(run('2.0.0')).rejects.toMatchObject({ type: 'PermissionError' })
     await expect(run('2.1.0')).rejects.toMatchObject({ type: 'PermissionError' })
     await activateAppUpgrade('tasker', '2.1.0')
+    expect(await sql`select enabled from installed_app where name = 'tasker'`).toEqual([{ enabled: false }])
+    await expect(run('2.1.0')).rejects.toMatchObject({ type: 'PermissionError' })
+    await setAppEnabled('tasker', true)
     await expect(run('2.0.0')).rejects.toMatchObject({ type: 'ConflictError' })
     expect(await run('2.1.0')).toEqual(result)
     expect(effects).toBe(1)
@@ -71,7 +81,7 @@ prove('Tasker upgrade waits through committed action effects, then gates obsolet
     expect(await sql`select result from runtime_action_result where idempotency_key = 'upgrade-race'`).toHaveLength(1)
   } finally {
     release()
-    await Promise.allSettled([action, upgrade])
+    await Promise.allSettled([action, upgrade, queuedReplay, disable])
     unregisterController(controller)
     await sql`delete from runtime_action_result where app = 'tasker'`
     await uninstallApp('tasker')

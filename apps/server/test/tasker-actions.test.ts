@@ -135,3 +135,25 @@ test('Tasker raw DELETE cannot bypass missing revision or retained discussion', 
   expect(await sql`select table_schema from information_schema.tables where table_name = 'runtime_action_result'`).toEqual([{ table_schema: 'featherbase' }])
   expect(await sql`select has_table_privilege('app_client', 'featherbase.runtime_action_result', 'select') as allowed`).toEqual([{ allowed: false }])
 })
+
+// @spec promotion_preserves_work_history
+// @spec task_activity_stays_in_tasker.retained_work_is_not_silently_deleted
+test('an attachment or shared access independently retains task identity across delete and promotion', async ({ admin, createUser }) => {
+  await install()
+  const member = await createUser({ roles: [] })
+  for (const family of ['files', 'shares']) {
+    const task = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.task', row: { task_title: `Retain ${family} independently` } })
+    const table = family === 'files' ? 'File' : 'Share'
+    const link = await admin.post<Record<string, unknown>>('/api/save_row', { table, row: family === 'files'
+      ? { file_name: '37-unit-evidence.txt', ref_table: 'tasker.task', ref_name: task.row_id }
+      : { share_table: 'tasker.task', share_name: task.row_id, user: member.user, read: true } })
+    expect(await admin.post(discard, envelope(task, true))).toMatchObject({ result: { deleted: false, counts: { [family]: 1, comments: 0, versions: 0 } } })
+    expect(await admin.post(promote, envelope(task))).toEqual({ result: { confirmationRequired: true } })
+    const result = await admin.post<{ result: { projectId: string; retainedTask: boolean } }>(promote, envelope(task, true))
+    expect(result.result.retainedTask).toBe(true)
+    expect(await admin.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({ row_id: task.row_id, project: result.result.projectId })
+    expect(await admin.get(`/api/table/${table}/${link.row_id}`)).toMatchObject(family === 'files'
+      ? { ref_table: 'tasker.task', ref_name: task.row_id }
+      : { share_table: 'tasker.task', share_name: task.row_id })
+  }
+})

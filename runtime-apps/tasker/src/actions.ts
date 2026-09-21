@@ -4,7 +4,7 @@ interface Documents {
   create(table: string, values: Row): Promise<Row>
   update(table: string, values: Row): Promise<Row>
   delete(table: string, id: string, updatedAt: string): Promise<void>
-  deletionState(table: string, id: string): Promise<{ comments: number; versions: number; references: number }>
+  deletionState(table: string, id: string): Promise<{ comments: number; versions: number; references: number; files: number; shares: number }>
 }
 interface Context {
   payload: unknown
@@ -30,7 +30,7 @@ export const actions = {
     // @spec promotion_preserves_work_history
     // Creation has no recorded update; references also require retaining the identity.
     const rich = Boolean(task.assigned_to || task.urgent || task.is_done || task.task_state !== 'Not started' ||
-      counts.comments || counts.versions || counts.references)
+      counts.comments || counts.versions || counts.references || counts.files || counts.shares)
     if (rich && !request.confirm) return { confirmationRequired: true }
     // @spec promotion_is_atomic_retryable
     // These host documents share one transaction and durable request-key receipt.
@@ -58,8 +58,8 @@ export const actions = {
     if (String(task.updated_at) !== request.updated_at) ctx.reject('This task changed. Close and reopen its details before deleting.')
     // @spec task_activity_stays_in_tasker
     const counts = await ctx.documents.deletionState('tasker.task', request.row_id)
-    if (counts.comments || counts.versions || counts.references || task.assigned_to || task.urgent || task.task_state !== 'Not started')
-      return { deleted: false, message: 'This task has retained work or references. Choose Cancelled to keep its context.', counts }
+    if (counts.comments || counts.versions || counts.references || counts.files || counts.shares || task.assigned_to || task.urgent || task.task_state !== 'Not started')
+      return { deleted: false, message: 'This task has retained work, references, attachments or shared access. Choose Cancelled to keep its context.', counts }
     await ctx.documents.delete('tasker.task', request.row_id, request.updated_at)
     return { deleted: true }
   },

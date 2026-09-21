@@ -64,7 +64,7 @@ export function TaskActions({ task, disabled, onCompleted }: {
     }}>
       <p>{confirm === 'promote'
         ? 'This task has work history that a project cannot hold directly. Tasker will create the project and keep this task as its first task so its assignment, urgency, comments, and activity are preserved. Continue?'
-        : 'Delete this accidental task permanently? This cannot be undone. Use Cancelled for retained work. Tasks with assignment, urgency, discussion, history or references cannot be deleted here.'}</p>
+        : 'Delete this accidental task permanently? This cannot be undone. Use Cancelled for retained work. Tasks with assignment, urgency, discussion, history, references, attachments or shared access cannot be deleted here.'}</p>
       <div className="tasker-editor-actions">
         <button autoFocus type="button" className="fc-btn" disabled={busy || Boolean(pending)} onClick={() => { setConfirm(null); menu.current?.querySelector('summary')?.focus() }}>Cancel</button>
         <button type="button" className="fc-btn-primary" disabled={busy || Boolean(pending)} onClick={() => void run(confirm, true)}>{confirm === 'promote' ? 'Continue' : 'Delete permanently'}</button>

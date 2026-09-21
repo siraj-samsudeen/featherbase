@@ -1,9 +1,9 @@
 ## ADDED Requirements
 
 ### Requirement: project_markdown_is_shared
-Status: governed (#296) · specified but unbuilt
+Status: governed (#296) · implemented and locally proven
 
-> evidence: gap — project description tests pending.
+> evidence: task-management.test.tsx project_description_flow and project_description_conflict; literal preserved-v1 → packaged-v2 upgrade and desktop/375px project journeys in prove-runtime-packages.mjs.
 
 A project SHALL show its shared Markdown description beneath its title under existing project permissions. Blank descriptions SHALL offer Add description. Edit SHALL expose Save and Cancel; empty content SHALL save. Saving SHALL retain the draft-start version, reject competing changes and retain the draft on failure. Cancel SHALL make no write. Reading or editing SHALL preserve project and task context, including mobile layouts.
 
@@ -16,9 +16,9 @@ A project SHALL show its shared Markdown description beneath its title under exi
 - **THEN** Save reports a conflict and does not overwrite the newer project.
 
 ### Requirement: markdown_cannot_execute_html
-Status: governed (#296) · specified but unbuilt
+Status: governed (#296) · implemented and locally proven
 
-> evidence: gap — Markdown rendering and XSS tests pending.
+> evidence: task-management.test.tsx malicious Markdown DOM assertions and inspected populated description screenshots from prove-tasker-acceptance.mjs. react-markdown 10.1.0 is pinned, raw HTML disabled, safe URL transform retained.
 
 Descriptions SHALL render ordinary Markdown links, lists and code. Raw HTML SHALL not execute or create active DOM elements, and unsafe link protocols SHALL not execute code. Content SHALL remain readable without overflowing a 375px viewport.
 
