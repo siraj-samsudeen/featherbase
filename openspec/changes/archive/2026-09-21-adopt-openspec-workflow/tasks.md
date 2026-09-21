@@ -20,4 +20,4 @@
 
 - [x] 4.1 Demonstrate the new-feature and legacy baseline-then-change paths in throwaway directories with the pinned CLI; verify strict validation passes and remove the temporary artifacts.
 - [x] 4.2 Run focused tooling tests, all OpenSpec validation scripts, STC/evidence checks, available documentation/link checks, and `git diff --check`; record exact outcomes.
-- [ ] 4.3 Mark all tasks complete, archive the change into the main capability tree, validate the archive, and leave a clean worktree with reviewable local commits.
+- [x] 4.3 Mark all tasks complete, archive the change into the main capability tree, validate the archive, and leave a clean worktree with reviewable local commits.
