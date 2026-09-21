@@ -279,9 +279,10 @@ export function previewAppUpgrade(name: string, version: string) {
 
 export function upgradeApp(name: string, version: string, planId: string) {
   return appOperation(async () => {
-    const [done] = await sql`select package_version, upgrade_plan, activation_pending from installed_app where name = ${name}`
+    const [done] = await sql`select * from installed_app where name = ${name}`
     if (done?.package_version === version && done.upgrade_plan === planId) {
-      await verifyArtifact(artifacts.get(`${name}@${version}`))
+      const target = await verifyArtifact(artifacts.get(`${name}@${version}`))
+      if (!matchesInstalled(target, done)) refuse('Restore the exact committed artifact before retrying')
       return { name, version, activationPending: done.activation_pending }
     }
     const prepared = await upgradePlan(name, version)

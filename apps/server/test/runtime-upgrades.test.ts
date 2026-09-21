@@ -268,6 +268,32 @@ describe('runtime upgrades', () => {
   })
 
   // @spec runtime_upgrade_identity
+  test('duplicate-different targets and same-version replacement after commit cannot replay success', async ({ admin }) => {
+    const source = resolve('../..', 'runtime-apps/other')
+    const { directory, manifest } = await targetPackage()
+    const duplicate = await mkdtemp(resolve('test/.upgrade-duplicate-'))
+    try {
+      await discoverPackages([source])
+      await admin.post('/api/install_app', { name: 'other' })
+      await cp(directory, duplicate, { recursive: true })
+      await writeFile(resolve(duplicate, 'featherbase.json'), JSON.stringify({ ...manifest, title: 'Different artifact, same version' }))
+      expect(await discoverPackages([source, directory, duplicate])).toHaveLength(1)
+      await expect(admin.post('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417 })
+      await discoverPackages([source, directory])
+      await loadInstalledApps()
+      const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'other', version: '2.0.0' })
+      const body = { name: 'other', version: '2.0.0', planId: plan.planId }
+      await admin.post('/api/upgrade_app', body)
+      const committed = await sql`select * from installed_app where name = 'other'`
+      await discoverPackages([source, duplicate])
+      await loadInstalledApps()
+      await expect(admin.post('/api/upgrade_app', body)).rejects.toMatchObject({ status: 417, message: expect.stringContaining('committed') })
+      await expect(admin.post('/api/activate_app_upgrade', { name: 'other', version: '2.0.0' })).rejects.toMatchObject({ status: 417 })
+      expect(await sql`select * from installed_app where name = 'other'`).toEqual(committed)
+    } finally { await rm(directory, { recursive: true, force: true }); await rm(duplicate, { recursive: true, force: true }) }
+  })
+
+  // @spec runtime_upgrade_identity
   // @spec runtime_upgrade_reviewed_plan
   test('disabled upgrade, checksum drift, downgrade, missing prior and code-only next version', async ({ admin }) => {
     const source = resolve('../..', 'runtime-apps/other')
