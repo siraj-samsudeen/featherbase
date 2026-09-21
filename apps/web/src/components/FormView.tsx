@@ -287,10 +287,10 @@ export function FormView({
     else if (!f.hidden) sections[sections.length - 1].push(f)
   }
 
-  // @spec generic_form_layout_baseline
+  // @spec generic_core_form_controls_fit_viewport
   // @spec generic_row_editor_preserves_field_contract
   return (
-    <div data-testid="form-view" className="max-w-5xl">
+    <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
       <nav className="mb-2 text-xs text-gray-500" data-testid="breadcrumbs">
         <RouterLink to="/featherbase/admin" className="hover:underline">Admin</RouterLink>
         <span className="mx-1">/</span>
@@ -305,8 +305,8 @@ export function FormView({
         <span className="mx-1">/</span>
         <span className="text-gray-700">{isNew ? 'New' : name}</span>
       </nav>
-      <div className="mb-4 flex items-center justify-between">
-        <div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 max-w-full">
           <h1 className="text-xl font-semibold text-[var(--color-ink)]">
             {table}: {isNew ? 'New' : name}
           </h1>
@@ -323,7 +323,7 @@ export function FormView({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex max-w-full flex-wrap items-center gap-2">
           {table === 'Data Source' && !isNew && (
             <RouterLink
               to="/featherbase/admin/source/$name"
@@ -386,7 +386,7 @@ export function FormView({
             </button>
           )}
           {renaming && (
-            <span className="flex items-center gap-1">
+            <span className="flex max-w-full flex-wrap items-center gap-1">
               <input
                 value={renameValue}
                 onChange={(e) => setRenameValue(e.target.value)}
@@ -524,7 +524,7 @@ export function FormView({
       )}
       {scriptError && (
         <div
-          className="mb-3 flex items-center justify-between rounded-md border border-[var(--color-warn)]/40 bg-[var(--color-warn-tint)] px-3 py-2 text-sm text-[var(--color-warn)]"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--color-warn)]/40 bg-[var(--color-warn-tint)] px-3 py-2 text-sm text-[var(--color-warn)]"
           data-testid="client-script-error"
         >
           <span>{scriptError}</span>
@@ -535,7 +535,7 @@ export function FormView({
       )}
       {staleBanner && (
         <div
-          className="mb-3 flex items-center justify-between rounded-md border border-[var(--color-warn)]/40 bg-[var(--color-warn-tint)] px-3 py-2 text-sm"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--color-warn)]/40 bg-[var(--color-warn-tint)] px-3 py-2 text-sm"
           data-testid="stale-banner"
         >
           <span className="text-[var(--color-ink)]">
@@ -648,7 +648,7 @@ function FieldControl({
 
   const wide = ['Text', 'Long Text', 'JSON', 'Sub-table'].includes(field.column_type)
   const wrap = (control: React.ReactNode) => (
-    <div className={wide ? 'md:col-span-2' : ''}>
+    <div className={`min-w-0 ${wide ? 'md:col-span-2' : ''}`}>
       {label}
       {control}
       {preview}
@@ -1087,7 +1087,7 @@ function AttachControl({
               href={url}
               target="_blank"
               rel="noreferrer"
-              className="truncate text-[var(--color-brand)] hover:underline"
+              className="min-w-0 text-[var(--color-brand)] hover:underline"
               data-testid={`attach-link-${field.column_name}`}
             >
               {url.split('/').pop()?.replace(/^[0-9a-f]{16}_/, '')}
@@ -1097,7 +1097,7 @@ function AttachControl({
                 type="button"
                 onClick={() => onChange(null)}
                 data-testid={`attach-clear-${field.column_name}`}
-                className="text-xs text-[var(--color-ink-faint)] hover:text-[var(--color-danger)]"
+                className="shrink-0 text-xs text-[var(--color-ink-faint)] hover:text-[var(--color-danger)]"
               >
                 Clear
               </button>

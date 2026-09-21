@@ -66,8 +66,9 @@ export function Attachments({ table, name }: { table: string; name: string }) {
   // same-origin, so the HttpOnly `sid` cookie authenticates it.
   const href = (f: FileRow) => f.file_url
 
+  // @spec generic_core_form_controls_fit_viewport.narrow_attachment_identity_and_actions
   return (
-    <div className="fc-card p-4" data-testid="attachments-panel">
+    <div className="fc-card min-w-0 p-4 [overflow-wrap:anywhere]" data-testid="attachments-panel">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-xs font-semibold uppercase tracking-wide text-[var(--color-ink-faint)]">
           Attachments
@@ -103,7 +104,7 @@ export function Attachments({ table, name }: { table: string; name: string }) {
         {files.data?.data.map((f) => (
           <li
             key={f.row_id}
-            className="group flex items-center justify-between gap-2 text-sm"
+            className="flex items-center justify-between gap-2 text-sm"
             data-testid="attachment-row"
           >
             <a
@@ -120,13 +121,13 @@ export function Attachments({ table, name }: { table: string; name: string }) {
                   className="h-8 w-8 shrink-0 rounded border border-[var(--color-border)] object-cover"
                 />
               ) : null}
-              <span className="truncate">{f.file_name}</span>
+              <span className="min-w-0">{f.file_name}</span>
             </a>
             <button
               aria-label={`Remove ${f.file_name}`}
               onClick={() => remove(f.row_id)}
               data-testid="attachment-delete"
-              className="text-[var(--color-ink-faint)] opacity-0 transition group-hover:opacity-100 hover:text-[var(--color-danger)]"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-[var(--color-ink-muted)] hover:text-[var(--color-danger)] focus-visible:outline-2 focus-visible:outline-[var(--color-brand)]"
             >
               ×
             </button>
