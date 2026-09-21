@@ -1,4 +1,5 @@
 export { tableSchemaToZod, zodFieldErrors, type ColumnDef } from './schema'
+export { RESERVED_APP_ROOTS, APP_ROOT_PATTERN, appHref } from './app-routes'
 export {
   autoMapColumns,
   coerceRows,

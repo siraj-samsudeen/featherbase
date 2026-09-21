@@ -1,15 +1,15 @@
 # Issue #296 — Tasker runtime-app architecture checkpoint (WIP)
 
-- **Status:** design checkpoint, not an implementation plan or a description of current platform behavior
+- **Status:** learning-slice implementation plus provisional follow-on direction; see spec 0011 for executable obligations
 - **Recorded:** 2026-09-21
 - **Product:** Tasker
 - **Initial users:** the Ramachandran data warehouse team
 
 This note preserves the architecture discussion that followed the working task-management prototype. The prototype plan remains in [`issue_296_shared_task_management.md`](issue_296_shared_task_management.md), and the settled task behavior remains in [`0010-task-management.md`](../specs/0010-task-management.md). This note does not retroactively claim that the prototype has the package, loading, storage or shell architecture described below.
 
-## Current prototype: observed, temporary seams
+## Original prototype: observed, temporary seams (superseded by the slice below)
 
-The branch currently proves the task journeys with a server-side `AppManifest`, server registration at boot, a compiled frontend `TaskManagementPage`, and hard-coded route/Home Page handling. Those are acknowledged prototype seams. In particular, installing the manifest does not independently deliver the client page, and adding this kind of app still requires rebuilding Featherbase.
+The original checkpoint proved the task journeys with a server-side `AppManifest`, server registration at boot, a compiled frontend `TaskManagementPage`, and hard-coded route/Home Page handling. Those were prototype seams: installing the manifest did not independently deliver the client page, and adding this kind of app required rebuilding Featherbase. The learning slice replaces those seams.
 
 The task behavior already settled and exercised by the prototype remains in force. The architecture work below changes how an app is packaged, loaded, named and hosted; it does not reopen the task rules in spec 0010.
 
@@ -83,9 +83,9 @@ Stable implementation checkpoints, with a red/green test at each seam:
    Serialize lifecycle transitions with admitted operations, including their
    post-commit work; reference holders and children also require activation.
 3. Extract Tasker server/client into an independently buildable npm-compatible
-   directory. Serve only its client build root under `/apps/tasker/`, with a
+   directory. Serve only its client build root under `/tasker/`, with a
    separate React root and full-stage shell. Remove core Tasker exceptions and
-   proxy `/apps/` in Vite. Add minimal Other package with a different Task rule.
+   proxy app roots in Vite. Add minimal Other package with a different Task rule.
 4. Supply deterministic local prototype transition with collision refusal.
    Inspection found an installed `task-management` app and both Team Tables in
    the developer database on 21-Sep-2026; do not uninstall/drop these for tests.
@@ -103,6 +103,94 @@ HTTP and real browser navigation. Trusted hooks receive a narrow host-owned
 validation function instead of importing AppError. Packages retain Node and
 same-origin browser powers; this is explicitly not isolation. Discovery is
 boot-only; no HTTP package installation and no dependency/capability graph.
+
+## Owner decisions recorded during the implementation (21-Sep-2026)
+
+- **Install:** Review → Install → Open; successful install enables automatically.
+  Installed and enabled remain separate durable facts. Failure exposes no partial app.
+- **Disable:** preserve package, owned data and grants; stop launchability, server
+  contributions and stale-client writes. Re-enable does not reinstall. Runtime
+  packages do not yet declare background jobs; future disabling must stop those too.
+- **Remove / Delete application data:** separate future operations. Removal archives
+  data and ownership/manifest metadata for compatible reinstall; deletion requires
+  typed confirmation and an impact count. Legacy sample uninstall is not this design.
+- **Upgrade:** future administrator-triggered Preview → Upgrade → Activate. Preview
+  shows schema, permissions, jobs, destructive/data and code-only effects; code-only
+  changes use the same path. Keep the old version active until validation, migrations
+  and activation succeed, and retain its artifact for recovery. Not implemented here.
+- **Identity/routes:** permanent platform identity/future schema `featherbase`; app
+  identities/schemas `tasker`, `helpdesk`. Apps use direct roots (`/tasker/`). Core
+  human routes will converge under `/featherbase/`; current `/admin`, login and other
+  platform roots remain reserved in this slice. No mass core schema migration here.
+- **UI ownership C:** apps own the full stage and placement of platform-supplied
+  controls. Tasker keeps a subtle switch-back atop its sidebar. Detailed SDK account,
+  theme, notification and switcher behavior is not settled; this slice exposes
+  authenticated APIs/catalog and a host unavailable page, not a generalized SDK.
+- **Preferences:** platform-owned, application-scoped, per-person, server-synced
+  meaningful choices; apps declare keys/shapes. Tasker preserves its existing private
+  focus key during the local transition. Key declarations/safe-update framework,
+  project stars and Together/Tabs remain follow-on work; pixel widths may stay local.
+- **Recents:** provisional structured private visits (person, app, kind, stable ID,
+  timestamps/frequency); owning apps resolve current title/icon/destination and
+  existence/access. A visit grants no access. No resolver framework is built here.
+
+## Friction observed, not silently promoted to a permanent contract
+
+The core and package builds are separate; `pnpm apps:prove` compiles server, shared
+code and web before packing Tasker/Other, runs plain Node against frozen JavaScript,
+then checks checksums after browser use and actual process restarts. Boot discovery
+is explicit `FEATHERBASE_APP_PATHS`; tarballs are unpacked by the operator.
+
+App-owned data currently requires the generic API. Direct `app_client` SQL and raw
+Query Reports cannot read these relations even while enabled: those paths cannot
+join process-local availability checking. The metadata override surface now
+allowlists presentation/validation properties so it cannot redirect storage or
+change hook dispatch. Lifecycle locks serialize this single-server experiment;
+multi-server activation synchronization is not a claimed capability.
+
+Tasker duplicates a small API adapter and CSS tokens, and links to the generic
+Featherbase form for comments/attachments/history. Its hash-routed description
+inspector proves app-owned navigation; starred project tabs, full task detail and
+Together/Tabs are still approved product direction, not delivered UX. No Help Desk
+implementation was added; Other is a deliberately asymmetric collision fixture.
+
+## Durable product context: Data Warehouse Operating System (DWOS)
+
+Featherbase will host a real application portfolio, not hypothetical examples:
+Tasker; Help Desk for internal DW issue reporting/triage; Report Server with
+role-based access and the signed-in person's store/section mapped to permitted
+subcategories passed as secure MotherDuck Dive filters; Learning Management for
+team/client-project onboarding; and a business Data Catalog over MotherDuck/dbt
+metadata, sample rows and freshness, able to flag data-quality issues into Help
+Desk. Together this integrated product is the **Data Warehouse Operating System
+(DWOS)**. These are future proof cases, not additions to this implementation.
+Help Desk is the next UI-boundary experiment: issue → Tasker task links, distinct
+actors, notifications, switching, recents and disabled-Tasker behavior must be tested.
+
+DWOS is the operational home for warehouse/reporting **definitions, decisions,
+exceptions, access rules and human workflows** currently stranded in email,
+Excel and seed/config files. Additional real applications are **MDM**, initially
+small/general lookup masters and source corrections/overrides when SAP is wrong,
+later Employee Master replacing StyleHR and Item Master with eventual publication
+back to SAP; and **Budget**, with monthly category-level Sales Targets (currently
+seeds) and P&L Budget (currently Excel). These need suite → app → module support:
+General Masters / Employee Masters / Item Masters and the budget modules are
+provisional boundaries, potentially sharing planning/version/approval concepts.
+Relevant warehouse-lifecycle applications belong here, not generic Airtable-style
+breadth. None of this expands the #296 implementation.
+
+Featherbase's longer-term scope is **ERP-scale applications**, comparable in breadth
+to SAP/Oracle, serving multiple clients with smooth upgrades. The contribution
+ecosystem combines WordPress-style distribution and VS Code-style declared UI,
+action and backend contributions, with independently selectable parts: a
+**distribution package is not an independently enableable capability**. Future
+capabilities need their own dependencies, ownership ledger and disable/remove/data
+purge semantics. First-party and external features must use the same governed
+public contribution API. Upgrade guarantees depend on package-owned read-only
+layers, client/site overlays, stable identities, previewed migrations and versioned
+compatibility contracts; arbitrary private-internal patches are outside that
+guarantee. Capability granularity and layer machinery remain deferred. This slice
+activates whole trusted packages only and does not claim to prove those properties.
 
 ## Earlier pending decisions, retained for context
 

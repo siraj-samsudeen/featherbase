@@ -7,7 +7,12 @@ import { AppError } from './errors'
 // A separate pool holds the operation-length lock: document work needs its
 // ordinary pool after COMMIT for assignment rules and after_commit hooks.
 // Taking both connections from one pool can deadlock under saturation.
-const locks = postgres(config.databaseUrl, { max: 10, onnotice: () => {}, prepare: false })
+const locks = postgres(config.databaseUrl, {
+  max: 10, onnotice: () => {}, prepare: false,
+  // CLI migrations also use document operations; released lock connections
+  // must not keep those short-lived processes alive after their main pool ends.
+  idle_timeout: 1,
+})
 const scope = new AsyncLocalStorage<{ exclusive: boolean; provisioning?: string }>()
 export const activeApps = new Set<string>()
 

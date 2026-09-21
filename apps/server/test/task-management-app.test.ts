@@ -1,13 +1,14 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { installApp, isInstalled, registerApp, uninstallApp } from '../src/apps'
-import taskManagement from '../src/sample-apps/task-management'
+import { installApp, isInstalled, uninstallApp } from '../src/apps'
+import { discoverPackages } from '../src/runtime-packages'
+import { resolve } from 'node:path'
 
-const APP = 'task-management'
-const TASK = 'Team Task'
+const APP = 'tasker'
+const TASK = 'tasker.task'
 
 async function install() {
-  registerApp(taskManagement)
+  expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker')])).toEqual([])
   if (await isInstalled(APP)) await uninstallApp(APP)
   await installApp(APP)
 }
@@ -41,7 +42,7 @@ describe('TSK-R3: one destination', () => {
     await install()
     try {
       const project = await admin.post<Record<string, unknown>>('/api/save_row', {
-        table: 'Team Project',
+        table: 'tasker.project',
         row: { project_name: 'September stock review' },
       })
 
@@ -170,16 +171,13 @@ describe('TSK-R5: responsibility and work state are independent', () => {
 })
 
 describe('shared team visibility', () => {
-  test('installation creates one Tasks Home Page, not a duplicate shortcut page', async ({
+  test('installation advertises one Tasker launch in the signed-in catalog', async ({
     admin,
   }) => {
     await install()
     try {
-      const pages = await admin.get<{
-        pages: { row_id: string; label: string; module: string | null }[]
-      }>('/api/home_pages')
-      expect(pages.pages.filter((page) => page.label === 'Tasks')).toEqual([
-        expect.objectContaining({ row_id: 'tasks', module: 'Tasks' }),
+      expect(await admin.get('/api/app_catalog')).toEqual([
+        { name: 'tasker', title: 'Tasker', href: '/tasker/' },
       ])
     } finally {
       await uninstallApp(APP).catch(() => {})
@@ -199,7 +197,7 @@ describe('shared team visibility', () => {
       const member = await createUser({ roles: [] })
 
       const visible = await member.get<{ data: Record<string, unknown>[] }>(
-        '/api/table/Team%20Task?fields=%5B%22row_id%22%2C%22task_title%22%5D',
+        '/api/table/tasker.task?fields=%5B%22row_id%22%2C%22task_title%22%5D',
       )
       expect(visible.data).toContainEqual(
         expect.objectContaining({ task_title: 'Choose a warehouse count date' }),

@@ -1,6 +1,7 @@
-import type { AppManifest } from '../apps'
-import type { HookContext } from '../controllers'
-import { AppError } from '../errors'
+// Frozen local prototype fixture for the one-off data transition test.
+import type { AppManifest } from '../src/apps'
+import type { HookContext } from '../src/controllers'
+import { AppError } from '../src/errors'
 
 function prepareTask(ctx: HookContext): void {
   if (ctx.row.project && ctx.row.personal_tasks_owner)

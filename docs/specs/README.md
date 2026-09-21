@@ -40,6 +40,7 @@ hand-maintained `evidence/*.csv` matrices this replaced were retired
 | [0008 — Spreadsheet Import](0008-spreadsheet-import.md) | Built (retrofit 2026-09-04) | The import wizard end to end: the file overview, merge groups and user combines, the stepper, leave-and-resume, past imports, column edits and Table merge — recovered from PR #210 plus the wizard core |
 | [0009 — Grid Editing](0009-grid-editing.md) | Proposed — specification only (#259) | Existing native business rows; server-derived eligibility, atomic per-field merge, conditional conflict confirmation, idempotent retry, keyboard editing and in-memory draft/navigation safety |
 | [0010 — Shared Task Management](0010-task-management.md) | Built 2026-09-20 (#296) | Shared Inbox capture, projects, team-visible Personal tasks, single responsibility, shared urgency and private ordered focus |
+| [0011 — Trusted Runtime Packages](0011-runtime-packages.md) | Learning slice 2026-09-21 (#296) | Independent Tasker/Other artifacts, qualified storage, disable/re-enable and fail-closed package availability |
 
 Both are shaped by [ADR 0007](../adr/0007-app-and-database-topology.md) and the
 research note [Frappe: many apps in one instance](../research/frappe-multi-app-and-multi-db.md).

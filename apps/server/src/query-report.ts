@@ -1,6 +1,16 @@
-import { sql } from './db'
+import postgres from 'postgres'
+import { config } from './config'
 import { AppError } from './errors'
 import { getDoc } from './document'
+
+// Authenticate as the restricted role, rather than SET ROLE on an owner
+// session: report SQL could reset the latter back to the session owner.
+const reportUrl = new URL(process.env.QUERY_REPORT_DATABASE_URL ?? config.databaseUrl)
+if (!process.env.QUERY_REPORT_DATABASE_URL) {
+  reportUrl.username = 'app_client'
+  reportUrl.password = 'app_client' // local role provisioned by migration 0010
+}
+const reportSql = postgres(reportUrl.toString(), { max: 5, idle_timeout: 1, prepare: false })
 
 // RPT-004: admin-authored SQL reports. The query may contain named filter
 // placeholders like {from_date}; these are bound as parameters (never string-
@@ -68,8 +78,14 @@ export async function runQueryReport(
 
   let rows: unknown
   try {
-    rows = await sql.begin(async (tx) => {
+    rows = await reportSql.begin(async (tx) => {
       await tx.unsafe('set transaction read only')
+      // Preserve the admin-authored report's public-table read semantics,
+      // without executing as the owner (which bypasses app relation ACLs).
+      // Runtime app data is API-only until app-aware raw reporting exists.
+      const [identity] = await tx`select session_user as role`
+      if (identity.role !== 'app_client') throw new Error('Query reports require the app_client database login')
+      await tx`select set_config('app.user', 'Administrator', true)`
       return tx.unsafe(text, params as never[])
     })
   } catch (err) {

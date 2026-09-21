@@ -223,6 +223,10 @@ export function AdminLayout() {
   // dedicated endpoint is its only source (role visibility and link
   // permission-filtering are computed server-side).
   const homePages = useHomePages()
+  const appCatalog = useQuery({
+    queryKey: ['app-catalog'],
+    queryFn: () => api.get<{ name: string; title: string; href: string }[]>('/api/app_catalog'),
+  })
 
   async function logout() {
     // Drain the pending event batch FIRST, while the departing user's token
@@ -706,6 +710,9 @@ export function AdminLayout() {
               table stays reachable through the All tables entry below —
               grouping and curation moved there, nothing is hidden. */}
           <nav className="flex-1 overflow-y-auto px-2 pb-4 pt-3" data-testid="home-page-nav">
+            {(appCatalog.data ?? []).map((entry) => (
+              <a key={entry.name} href={entry.href} className="block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] hover:bg-[var(--color-subtle)]">{entry.title} ↗</a>
+            ))}
             {homePages.isLoading && (
               <p className="px-2 py-1 text-xs text-[var(--color-ink-faint)]">Loading…</p>
             )}

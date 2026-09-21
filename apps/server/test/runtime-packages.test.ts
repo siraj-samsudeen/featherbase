@@ -5,8 +5,141 @@ import { tmpdir } from 'node:os'
 import { test } from './pg-test'
 import { discoverPackages } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
+import { sql } from '../src/db'
+import { saveDoc } from '../src/document'
+import { registerController, unregisterController, type TableController } from '../src/controllers'
+import { importCustomizations } from '../src/customizations'
+import { getMeta, invalidateMeta } from '../src/meta'
+import { runQueryReport } from '../src/query-report'
 
 describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
+  test('PKG-R1: reserved names fail discovery; failed installation leaves no Tables or activation', async ({ admin }) => {
+    const directory = await mkdtemp(resolve('test/.runtime-package-'))
+    try {
+      await cp(resolve('../..', 'runtime-apps/other'), directory, { recursive: true })
+      const file = resolve(directory, 'featherbase.json')
+      const manifest = JSON.parse(await readFile(file, 'utf8'))
+      for (const name of ['featherbase', 'api', 'assets']) {
+        await writeFile(file, JSON.stringify({ ...manifest, name }))
+        expect(await discoverPackages([directory])).toEqual([expect.objectContaining({ error: expect.stringContaining('reserved') })])
+      }
+      await writeFile(file, JSON.stringify({ ...manifest, permissions: [{ table: 'other.task', role: 'Role that does not exist', can_read: true }] }))
+      expect(await discoverPackages([directory])).toEqual([])
+      await expect(admin.post('/api/install_app', { name: 'other' })).rejects.toMatchObject({ status: 417 })
+      expect(await sql`select name from table_def where name = 'other.task'`).toHaveLength(0)
+      expect(await sql`select name from installed_app where name = 'other'`).toHaveLength(0)
+      expect(await admin.get('/api/app_catalog')).toEqual([])
+      await writeFile(file, JSON.stringify(manifest))
+      await discoverPackages([directory])
+      await admin.post('/api/install_app', { name: 'other' })
+      await expect(admin.post('/api/install_app', { name: 'other' })).rejects.toMatchObject({ status: 409 })
+      expect(await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'once', quantity: 17 } })).toMatchObject({ validation_runs: '1' })
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
+  test('PKG-R2: customization cannot change identity, storage, binding or hook dispatch', async ({ admin }) => {
+    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await admin.post('/api/install_app', { name: 'other' })
+    for (const property of ['name', 'owner_app', 'physical_schema', 'physical_relation', 'data_source', 'row_key', 'columns']) {
+      const row = { row_id: `override-${property}`, table_name: 'other.task', column_name: null, property, value: 'tasker' }
+      await expect(admin.post('/api/save_row', { table: 'Metadata Override', row })).rejects.toMatchObject({ status: 417, message: expect.stringContaining('cannot be overridden') })
+      await expect(importCustomizations({ property_setters: [row] })).rejects.toMatchObject({ type: 'ValidationError' })
+    }
+    await admin.post('/api/save_row', { table: 'Metadata Override', row: {
+      row_id: 'override-label', table_name: 'other.task', property: 'label', value: 'Counting task',
+    } })
+    expect(await getMeta('other.task')).toMatchObject({ name: 'other.task', label: 'Counting task', physical_schema: 'other' })
+    // A pre-existing unsafe override must not get applied on the next boot.
+    await sql`insert into metadata_override (row_id, table_name, property, value) values ('legacy-unsafe', 'other.task', 'name', 'Task')`
+    invalidateMeta('other.task')
+    await expect(getMeta('other.task')).rejects.toMatchObject({ type: 'ValidationError' })
+  })
+
+  test('PKG-R3: raw SQL reports cannot read app relations outside the availability-aware API', async ({ admin }) => {
+    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await admin.post('/api/install_app', { name: 'other' })
+    await admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'secret', quantity: 37 } })
+    await admin.post('/api/save_row', { table: 'Report', row: {
+      row_id: 'Raw app data', ref_table: 'User', report_type: 'Query Report',
+      query: "select query_to_xml('select * from other.task', true, false, set_config('role', 'none', true))",
+    } })
+    for (const enabled of [true, false]) {
+      await admin.post('/api/set_app_enabled', { name: 'other', enabled })
+      await expect(runQueryReport('Raw app data', {}, 'Administrator')).rejects.toMatchObject({ type: 'ValidationError' })
+    }
+    expect(await sql`select has_table_privilege('app_client', 'other.task', 'select') as allowed`).toMatchObject([{ allowed: false }])
+    await discoverPackages([])
+    await loadInstalledApps()
+    await expect(runQueryReport('Raw app data', {}, 'Administrator')).rejects.toMatchObject({ type: 'ValidationError' })
+  })
+
+  test('PKG-R3: disable waits for the post-commit tail, including a nested save', async ({ admin }) => {
+    await discoverPackages([resolve('../..', 'runtime-apps/other')])
+    await admin.post('/api/install_app', { name: 'other' })
+    let entered!: () => void
+    let release!: () => void
+    const started = new Promise<void>(resolve => { entered = resolve })
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const controller: TableController = { table: 'other.task', hooks: { after_commit: async ctx => {
+      if (ctx.row.row_id !== 'parent') return
+      entered()
+      await gate
+      await saveDoc('other.task', { row_id: 'tail', quantity: 29 })
+    } } }
+    registerController(controller)
+    const save = admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'parent', quantity: 41 } })
+    let disable: Promise<unknown> | undefined
+    try {
+      await started
+      disable = admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
+      await expect.poll(async () => {
+        const [row] = await sql`select count(*)::int as waiting from pg_locks where locktype = 'advisory' and classid = 296 and objid = 1 and not granted`
+        return row.waiting
+      }).toBe(1)
+      release()
+      await save
+      await disable
+      await expect(admin.post('/api/save_row', { table: 'other.task', row: { row_id: 'late', quantity: 9 } })).rejects.toMatchObject({ status: 403 })
+      await admin.post('/api/set_app_enabled', { name: 'other', enabled: true })
+      expect(await admin.get('/api/table/other.task/tail')).toMatchObject({ quantity: '29', validation_runs: '1' })
+    } finally {
+      release()
+      await Promise.allSettled([save, disable])
+      unregisterController(controller)
+    }
+  })
+
+  test('PKG-R2 PKG-H1: two real packages isolate IDs, references, rules and ordinary-user grants', async ({ admin, createUser }) => {
+    expect(await discoverPackages(['tasker', 'other'].map(name => resolve('../..', 'runtime-apps', name)))).toEqual([])
+    await admin.post('/api/install_app', { name: 'tasker' })
+    await admin.post('/api/install_app', { name: 'other' })
+    const member = await createUser({ email: 'two-packages@example.com', roles: [] })
+    const task = await member.post<Record<string, unknown>>('/api/save_row', {
+      table: 'tasker.task', row: { task_title: 'Only Tasker owns this title', task_state: 'In progress' },
+    })
+    const id = task.row_id
+    await admin.post('/api/save_row', { table: 'other.task', row: { row_id: id, quantity: 37 } })
+    expect(await member.get(`/api/table/tasker.task/${id}`)).toMatchObject({ task_title: 'Only Tasker owns this title', task_state: 'In progress' })
+    const other = await member.get<Record<string, unknown>>(`/api/table/other.task/${id}`)
+    expect(other).toMatchObject({ quantity: '37', validation_runs: '1' })
+    expect(other).not.toHaveProperty('task_title')
+    await expect(member.post('/api/save_row', { table: 'other.task', row: { ...other, quantity: 18 } })).rejects.toMatchObject({ status: 403 })
+    await expect(admin.post('/api/save_row', { table: 'other.task', row: { ...other, quantity: -2 } })).rejects.toMatchObject({ status: 417 })
+    await admin.post('/api/table_def', { name: 'Package pointer', id_pattern: 'prompt', columns: [
+      { column_name: 'target', column_type: 'Reference', reference_table: 'other.task' },
+    ] })
+    await admin.post('/api/save_row', { table: 'Package pointer', row: { row_id: 'explicit', target: id } })
+    const lone = await member.post<{ row_id: string }>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Absent from Other' } })
+    await expect(admin.post('/api/save_row', { table: 'Package pointer', row: { row_id: 'wrong-owner', target: lone.row_id } })).rejects.toMatchObject({ status: 417 })
+    await admin.post('/api/set_app_enabled', { name: 'tasker', enabled: false })
+    await expect(member.post('/api/save_row', { table: 'tasker.task', row: { ...task, is_done: true } })).rejects.toMatchObject({ status: 403 })
+    expect(await admin.post('/api/save_row', { table: 'other.task', row: { ...other, quantity: 23 } })).toMatchObject({ quantity: '23', validation_runs: '2' })
+    await admin.post('/api/set_app_enabled', { name: 'tasker', enabled: true })
+    expect(await member.post('/api/save_row', { table: 'tasker.task', row: { ...task, is_done: true } })).toMatchObject({ task_state: 'Done', state_before_done: 'In progress' })
+    await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
+    await expect(admin.post('/api/save_row', { table: 'Package pointer', row: { row_id: 'disabled-target', target: id } })).rejects.toMatchObject({ status: 403 })
+  })
+
   test('disable rejects stale writes, preserves rows, and enable wires validation once', async ({ admin }) => {
     await discoverPackages([resolve('../..', 'runtime-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
@@ -33,20 +166,23 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     expect(await discoverPackages([resolve('../..', 'runtime-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })
     const member = await createUser({ email: 'runtime-reader@example.com', roles: ['All'] })
+    await expect(admin.post('/api/uninstall_app', { name: 'other' })).rejects.toMatchObject({ status: 417 })
     expect(await member.get('/api/app_catalog')).toEqual([
-      { name: 'other', title: 'Other tasks', href: '/apps/other/' },
+      { name: 'other', title: 'Other tasks', href: '/other/' },
     ])
     await expect(member.get('/api/apps')).rejects.toMatchObject({ status: 403 })
     await expect(member.post('/api/save_row', { table: 'other.task', row: { row_id: 'no', quantity: 3 } }))
       .rejects.toMatchObject({ status: 403 })
-    const page = await member.fetch('/apps/other/')
+    const page = await member.fetch('/other/')
     expect(page.status).toBe(200)
     expect(await page.text()).toContain('<h1>Other tasks</h1>')
     for (const path of ['server.mjs', 'package.json', 'missing.js', '%2e%2e%2fserver.mjs'])
-      expect((await member.fetch(`/apps/other/${path}`)).status).toBe(404)
+      expect((await member.fetch(`/other/${path}`)).status).toBe(404)
     await admin.post('/api/set_app_enabled', { name: 'other', enabled: false })
     expect(await member.get('/api/app_catalog')).toEqual([])
-    expect((await member.fetch('/apps/other/')).status).toBe(404)
+    const unavailable = await member.fetch('/other/')
+    expect(unavailable.status).toBe(404)
+    expect(await unavailable.text()).toContain('Disabling an application preserves its data')
   })
 
   test('PKG-J2: restart without compatible code fails closed, restoring code preserves data', async ({ admin }) => {

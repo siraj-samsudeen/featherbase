@@ -21,8 +21,9 @@ import {
 // PLAT-001/002: the app system. An app is a code-defined manifest that can
 // declare Tables and doc_events (lifecycle hooks on ANY Table, including
 // ones it doesn't own). Installing an app materializes its Tables and wires
-// its hooks; uninstalling tears its Tables down and unwires its hooks —
-// without disturbing the core controllers or other apps on the same Table.
+// its hooks. Legacy in-process samples still have a destructive test teardown.
+// Runtime packages expose disable only: remove-code and delete-data are
+// distinct future operations, never aliases for that legacy teardown.
 //
 // App CODE (manifests + hook functions) lives in the process; the
 // `installed_app` table records which apps are installed and what each
@@ -91,6 +92,7 @@ export interface AppSource {
 export interface AppManifest {
   name: string
   runtime_package?: boolean
+  runtime_manifest?: unknown
   // Data Sources this app connects, and the relations it reflects from them.
   // Materialized FIRST — the app's own tables may be bound to them.
   sources?: AppSource[]
@@ -485,7 +487,7 @@ export async function installApp(name: string): Promise<InstallResult> {
     if (await isInstalled(name)) throw new AppError('ConflictError', `App ${name} is already installed`)
     try {
       return await withTransaction(async () => {
-        const result = await materialize(manifest, null)
+        const result = await materialize(manifest, manifest.runtime_manifest ?? null)
         await sql`update installed_app set runtime_package = true where name = ${name}`
         return result
       })

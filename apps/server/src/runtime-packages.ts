@@ -7,6 +7,7 @@ import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
 import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
+import { RESERVED_APP_ROOTS, appHref } from 'shared'
 
 // Public v1 hook contract is structural: packages never import core classes.
 export interface PackageHookContext {
@@ -67,6 +68,8 @@ export function discoverPackages(paths: string[]) {
           throw new Error('Expected npm package name and version')
         const manifestPath = await contained(root, pkg.featherbase ?? 'featherbase.json')
         const manifest = manifestSchema.parse(JSON.parse(await readFile(manifestPath, 'utf8')))
+        if ((RESERVED_APP_ROOTS as readonly string[]).includes(manifest.name))
+          throw new Error(`App name ${manifest.name} is reserved for Featherbase`)
         if (packages.has(manifest.name)) throw new Error(`Duplicate app ${manifest.name}`)
         const names = new Set(manifest.tables.map((t) => t.name))
         if (names.size !== manifest.tables.length || !names.has(manifest.entryTable))
@@ -97,7 +100,8 @@ export function discoverPackages(paths: string[]) {
           }
         }
         registerApp({ name: manifest.name, tables: manifest.tables,
-          permissions: manifest.permissions, doc_events, runtime_package: true })
+          permissions: manifest.permissions, doc_events, runtime_package: true,
+          runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } })
         packages.set(manifest.name, { name: manifest.name, title: manifest.title,
           entryTable: manifest.entryTable, clientRoot })
       } catch (error) {
@@ -114,7 +118,7 @@ export async function appCatalog(user: string) {
   for (const item of installed) {
     const pkg = packages.get(item.name)
     if (item.active && pkg?.clientRoot && await hasPermission(user, pkg.entryTable, 'read'))
-      result.push({ name: pkg.name, title: pkg.title, href: `/apps/${pkg.name}/` })
+      result.push({ name: pkg.name, title: pkg.title, href: appHref(pkg.name) })
   }
   return result
 }

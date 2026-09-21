@@ -2,24 +2,24 @@ import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
 async function ensureTaskManagement(request: APIRequestContext) {
   const headers = await adminAuth(request)
-  const meta = await request.get('/api/table/Team%20Task:meta', { headers })
+  const meta = await request.get('/api/table/tasker.task:meta', { headers })
   if (meta.ok()) return
   const installed = await request.post('/api/install_app', {
     headers,
-    data: { name: 'task-management' },
+    data: { name: 'tasker' },
   })
   if (installed.status() !== 201)
-    throw new Error(`install task-management: ${installed.status()} ${await installed.text()}`)
+    throw new Error(`install tasker: ${installed.status()} ${await installed.text()}`)
 }
 
 test.beforeAll(async ({ request }) => {
   await ensureTaskManagement(request)
 })
 
-test('TSK-J1 TSK-J2 TSK-J3 TSK-R8: capture, project entry, urgency, and private focus survive reload', async ({
+test('PKG-J1 PKG-R4 TSK-J1 TSK-J2 TSK-J3 TSK-R8: capture, project entry, urgency, and private focus survive reload', async ({
   page,
 }) => {
-  await page.goto('/admin/home/tasks')
+  await page.goto('/tasker/')
   const capture = page.getByRole('textbox', { name: 'Quick capture' })
   await capture.fill('Review September stock variance')
   await capture.press('Enter')
@@ -85,8 +85,9 @@ test.describe('TSK-J1: phone capture', () => {
   test.use({ viewport: { width: 375, height: 720 } })
 
   test('the task workspace has no page-level horizontal overflow', async ({ page }) => {
-    await page.goto('/admin/home/tasks')
+    await page.goto('/tasker/')
     await expect(page.getByRole('textbox', { name: 'Quick capture' })).toBeVisible()
+    await page.screenshot({ path: '../../task-management-mobile.png', fullPage: true })
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
     ).toBe(true)

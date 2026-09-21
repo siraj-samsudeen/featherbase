@@ -1,7 +1,6 @@
-import { useState } from 'react'
-import { Link } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiError, api, getSessionUser, listResource } from '../lib/api'
+import { ApiError, api, getSessionUser, listResource } from './api'
 
 type View = 'inbox' | 'work' | 'projects' | 'personal'
 
@@ -59,7 +58,7 @@ export function TaskManagementPage() {
   const tasks = useQuery({
     queryKey: ['task-management', 'tasks'],
     queryFn: () =>
-      listResource<Task>('Team Task', {
+      listResource<Task>('tasker.task', {
         fields: TASK_FIELDS,
         order_by: 'created_at asc',
         limit_page_length: 500,
@@ -68,7 +67,7 @@ export function TaskManagementPage() {
   const projects = useQuery({
     queryKey: ['task-management', 'projects'],
     queryFn: () =>
-      listResource<Project>('Team Project', {
+      listResource<Project>('tasker.project', {
         fields: ['row_id', 'project_name'],
         order_by: 'project_name asc',
         limit_page_length: 200,
@@ -94,7 +93,7 @@ export function TaskManagementPage() {
     queryKey: ['task-management', 'comments'],
     queryFn: () =>
       listResource<TaskComment>('Comment', {
-        filters: [['ref_table', '=', 'Team Task']],
+        filters: [['ref_table', '=', 'tasker.task']],
         fields: ['ref_name', 'content', 'created_at'],
         order_by: 'created_at asc',
         limit_page_length: 500,
@@ -130,7 +129,7 @@ export function TaskManagementPage() {
     setError(null)
     try {
       await api.post('/api/save_row', {
-        table: 'Team Task',
+        table: 'tasker.task',
         row: { task_title: trimmed, ...extra },
       })
       await refresh()
@@ -146,7 +145,7 @@ export function TaskManagementPage() {
     setError(null)
     try {
       await api.patch(
-        `/api/table/${encodeURIComponent('Team Task')}/${encodeURIComponent(task.row_id)}`,
+        `/api/table/tasker.task/${encodeURIComponent(task.row_id)}`,
         { ...patch, updated_at: task.updated_at },
       )
       await refresh()
@@ -186,7 +185,7 @@ export function TaskManagementPage() {
     setError(null)
     try {
       const saved = await api.post<Project>('/api/save_row', {
-        table: 'Team Project',
+        table: 'tasker.project',
         row: { project_name: name },
       })
       setProjectName('')
@@ -211,14 +210,12 @@ export function TaskManagementPage() {
   ]
 
   return (
-    <div className="mx-auto max-w-5xl" data-testid="task-management-page">
-      <div className="mb-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-brand)]">DWT team</p>
-        <h1 className="mt-1 text-2xl font-semibold text-[var(--color-ink)]">Tasks</h1>
-        <p className="mt-1 text-sm text-[var(--color-ink-muted)]">Capture first. Decide where it belongs when you are ready.</p>
-      </div>
-
-      <nav className="mb-5 flex gap-1 overflow-x-auto border-b border-[var(--color-border)]" aria-label="Task views">
+    <div className="tasker-shell" data-testid="task-management-page">
+      <aside className="tasker-sidebar">
+        <a href="/admin" className="text-xs text-[var(--color-ink-muted)]">← Featherbase</a>
+        <h1 className="mt-5 text-2xl font-semibold">Tasker</h1>
+        <p className="mt-1 text-xs text-[var(--color-ink-muted)]">Team workspace</p>
+      <nav aria-label="Task views">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -235,7 +232,10 @@ export function TaskManagementPage() {
           </button>
         ))}
       </nav>
-
+      </aside>
+      <main className="tasker-main">
+      <p className="mb-6 text-sm text-[var(--color-ink-muted)]">Capture first. Decide where it belongs when you are ready.</p>
+      {tasks.error && <p role="alert" className="mb-4">{tasks.error.message} · <a href="/admin">Back to Featherbase</a></p>}
       {error && <p role="alert" className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
       {view === 'inbox' && (
@@ -320,12 +320,62 @@ export function TaskManagementPage() {
           <TaskList tasks={personalRows} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
         </section>
       )}
+      </main>
+      <TaskInspector onSaved={refresh} />
     </div>
   )
 }
 
 function SectionTitle({ id, title, hint }: { id?: string; title: string; hint?: string }) {
   return <div className="mb-3"><h2 id={id} className="text-base font-semibold text-[var(--color-ink)]">{title}</h2>{hint && <p className="text-xs text-[var(--color-ink-muted)]">{hint}</p>}</div>
+}
+
+// Hash routing keeps app navigation inside the one explicitly served entry.
+function TaskInspector({ onSaved }: { onSaved: () => Promise<void> }) {
+  const [id, setId] = useState(() => new URLSearchParams(location.hash.slice(1)).get('task'))
+  useEffect(() => {
+    const change = () => setId(new URLSearchParams(location.hash.slice(1)).get('task'))
+    window.addEventListener('hashchange', change)
+    return () => window.removeEventListener('hashchange', change)
+  }, [])
+  return id ? <TaskDetail key={id} id={id} onSaved={onSaved} /> : null
+}
+
+function TaskDetail({ id, onSaved }: { id: string; onSaved: () => Promise<void> }) {
+  const task = useQuery({ queryKey: ['task-management', 'detail', id],
+    queryFn: () => api.get<Task & { description: string }>(`/api/table/tasker.task/${encodeURIComponent(id)}`),
+  })
+  const [description, setDescription] = useState<string | null>(null)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  return <aside className="tasker-inspector" aria-label="Task details" onKeyDown={(event) => {
+    if (event.key === 'Escape') location.hash = ''
+  }}>
+    <a href="#" className="fc-btn" autoFocus>Close details</a>
+    <h2 className="my-6 text-xl font-semibold">{task.data?.task_title ?? 'Task details'}</h2>
+    {task.error && <p role="alert">{task.error.message}</p>}
+    {error && <p role="alert">{error}</p>}
+    {task.data && <form onSubmit={async (event) => {
+      event.preventDefault()
+      setSaving(true)
+      setError('')
+      try {
+        await api.patch(`/api/table/tasker.task/${encodeURIComponent(id)}`, {
+          description: description ?? task.data.description, updated_at: task.data.updated_at,
+        })
+        await onSaved()
+      } catch (error) { setError(error instanceof Error ? error.message : 'Could not save') }
+      finally { setSaving(false) }
+    }}>
+      <p className="mb-5 text-sm text-[var(--color-ink-muted)]">{task.data.task_state} · {task.data.assigned_to ?? 'Unassigned'}</p>
+      <label className="block text-sm">Description
+        <textarea className="mt-2 w-full rounded border border-[var(--color-border)] p-3" rows={10}
+          value={description ?? task.data.description ?? ''} onChange={(event) => setDescription(event.target.value)} />
+      </label>
+      <button className="fc-btn-primary mt-4" disabled={saving}>Save description</button>
+      <a className="mt-6 block text-sm text-[var(--color-brand)]" href={`/admin/tasker.task/${encodeURIComponent(id)}`}>Open comments, attachments and history in Featherbase ↗</a>
+    </form>}
+  </aside>
 }
 
 function Empty({ text }: { text: string }) {
@@ -355,7 +405,7 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
       try {
         await api.post('/api/save_row', {
           table: 'Comment',
-          row: { ref_table: 'Team Task', ref_name: task.row_id, content },
+          row: { ref_table: 'tasker.task', ref_name: task.row_id, content },
         })
         await queryClient.invalidateQueries({ queryKey: ['task-management', 'comments'] })
       } finally {
@@ -375,7 +425,7 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
         <input aria-label={`Mark ${task.task_title} done`} type="checkbox" checked={Boolean(task.is_done)} onChange={(event) => void onPatch(task, { is_done: event.target.checked })} className="mt-1 h-4 w-4 accent-[var(--color-brand)]" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Link to="/admin/$table/$name" params={{ table: 'Team Task', name: task.row_id }} search={{ prefill: undefined }} className={`font-medium text-[var(--color-ink)] hover:text-[var(--color-brand)] ${task.is_done ? 'line-through' : ''}`}>{task.task_title}</Link>
+            <a href={`#task=${encodeURIComponent(task.row_id)}`} className={`font-medium text-[var(--color-ink)] hover:text-[var(--color-brand)] ${task.is_done ? 'line-through' : ''}`}>{task.task_title}</a>
           </div>
           <div className="mt-2 flex flex-wrap gap-2">
             <select aria-label={`State for ${task.task_title}`} value={task.task_state ?? 'Not started'} onChange={(event) => { const taskState = event.target.value; void onPatch(task, { task_state: taskState }); if (['Blocked', 'On hold', 'Cancelled'].includes(taskState)) { setExplaining(task.row_id); setExplanation('') } }} className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-ink-muted)]">{STATES.map((state) => <option key={state}>{state}</option>)}</select>

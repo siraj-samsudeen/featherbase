@@ -112,6 +112,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build independent runtime test packages
+        run: pnpm apps:prepare
+
       # The server suite renders real PDFs (test/print-pdf.test.ts →
       # src/print.ts), which launches Chromium through the server's own
       # `playwright` dependency. CHROMIUM_PATH stays unset so Playwright
@@ -202,6 +205,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build independent runtime test packages
+        run: pnpm apps:prepare
 
       - name: Install Playwright Chromium
         run: pnpm --filter web exec playwright install --with-deps chromium

@@ -62,12 +62,12 @@ import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
 import { discoverPackages, appCatalog, appAsset, packageFailures } from './runtime-packages'
+import { APP_ROOT_PATTERN, appHref } from 'shared'
 import { appOperation } from './app-lifecycle'
 import { createSite, listSites, resolveSite, siteCreateTableDef, siteListTableDefs, siteCreateUser, siteListUsers } from './tenancy'
 import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
 import checklists from './sample-apps/checklists'
-import taskManagement from './sample-apps/task-management'
 import { loadScriptReports, runScriptReport, scriptReportMeta } from './script-report'
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
@@ -78,8 +78,6 @@ await loadControllers()
 await loadMethods()
 await loadJobs()
 await loadScriptReports()
-// CUST-001: re-apply custom fields so they survive a core re-seed.
-await reapplyCustomFields()
 // PLAT-001: register the apps this build ships, then re-wire the doc_events of
 // any that are already installed (their Tables persist in the DB).
 registerApp(helloCrm)
@@ -89,11 +87,10 @@ registerApp(helpdesk)
 // Same discipline: checklist tables exist only after
 // POST /api/install_app { name: 'checklists' }.
 registerApp(checklists)
-// The shared task workspace is opt-in for the same reason: structure appears
-// only on sites that choose to install it.
-registerApp(taskManagement)
 await discoverPackages(JSON.parse(process.env.FEATHERBASE_APP_PATHS ?? '[]') as string[])
 await loadInstalledApps()
+// Custom fields may target app-owned Tables, so activation precedes replay.
+await reapplyCustomFields()
 
 type Env = { Variables: { user: SessionUser } }
 
@@ -459,19 +456,48 @@ app.use('/api/*', async (c, next) => {
   return appOperation(next)
 })
 
-app.get('/apps/:name/*', async (c) => appOperation(async () => {
-  const user = await resolveToken(authCredential(c))
-  const name = c.req.param('name')
-  const asset = decodeURIComponent(c.req.path.slice(`/apps/${name}/`.length))
-  const { file, bytes } = await appAsset(name, asset, user.row_id)
-  const types: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript',
-    '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml',
-    '.png': 'image/png', '.woff2': 'font/woff2' }
-  return new Response(new Uint8Array(bytes), { headers: {
-    'Content-Type': types[path.extname(file)] ?? 'application/octet-stream',
-    'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
-  } })
-}))
+app.get('*', async (c, next) => {
+  if (!new RegExp(APP_ROOT_PATTERN).test(c.req.path)) return next()
+  const name = c.req.path.split('/')[1]
+  if (c.req.path === `/${name}`) return c.redirect(appHref(name))
+  return appOperation(async () => {
+    const asset = decodeURIComponent(c.req.path.slice(appHref(name).length))
+    let resource
+    try {
+      const user = await resolveToken(authCredential(c))
+      resource = await appAsset(name, asset, user.row_id)
+    } catch (error) {
+      if (!(error instanceof AppError)) throw error
+      const navigation = !asset || c.req.header('accept')?.includes('text/html')
+      if (!navigation || path.extname(asset)) throw error
+      return c.html(
+        `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Application unavailable</title></head>
+      <body style="font:16px system-ui;background:#f4f5f6;color:#1c2126;margin:0;padding:8vw"><main style="max-width:36rem;margin:auto;background:white;border:1px solid #ebeef0;border-radius:8px;padding:2rem">
+      <h1>Application unavailable</h1><p>This application may be disabled, its package may be missing or incompatible, or your account may not have access.</p>
+      <p>Disabling an application preserves its data. Ask your system manager to restore access.</p>
+      <p><a href="/admin">Back to Featherbase</a> · <a href="/login">Sign in</a></p></main></body></html>`,
+        404,
+      )
+    }
+    const { file, bytes } = resource
+    const types: Record<string, string> = {
+      '.html': 'text/html',
+      '.js': 'text/javascript',
+      '.css': 'text/css',
+      '.json': 'application/json',
+      '.svg': 'image/svg+xml',
+      '.png': 'image/png',
+      '.woff2': 'font/woff2',
+    }
+    return new Response(new Uint8Array(bytes), {
+      headers: {
+        'Content-Type': types[path.extname(file)] ?? 'application/octet-stream',
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+      },
+    })
+  })
+})
 
 const who = (c: { get: (k: 'user') => SessionUser }) => c.get('user').row_id
 
@@ -1081,7 +1107,12 @@ app.post('/api/uninstall_app', async (c) => {
   await assertSystemManager(who(c))
   const { name } = (await c.req.json().catch(() => ({}))) as { name?: string }
   if (!name) throw new AppError('ValidationError', 'Expected { name }')
-  return c.json(await uninstallApp(name))
+  return appOperation(async () => {
+    const [installed] = await sql`select runtime_package from installed_app where name = ${name}`
+    if (installed?.runtime_package)
+      throw new AppError('ValidationError', 'Use disable. Removing applications and deleting their data are separate, unsupported operations')
+    return c.json(await uninstallApp(name))
+  }, true)
 })
 
 // EML-007: trigger an Auto Email Report immediately (the "run now" a scheduler

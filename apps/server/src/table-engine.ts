@@ -269,9 +269,9 @@ async function applyRls(
   await tx.unsafe(
     `create policy fc_select on ${table} for select to app_client using (${predicate})`,
   )
-  if (relation.includes('.'))
-    await tx.unsafe(`grant usage on schema ${quoteRelation(relation.split('.')[0])} to app_client`)
-  await tx.unsafe(`grant select on ${table} to app_client`)
+  // Runtime app data is API-only in this slice. A raw SQL session cannot
+  // participate in process-local package availability or validation hooks.
+  if (!def.name.includes('.')) await tx.unsafe(`grant select on ${table} to app_client`)
 }
 
 // META-004: sync an existing Table's columns to a new definition. Additions

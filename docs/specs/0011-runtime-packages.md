@@ -12,7 +12,9 @@ build. Existing local Team Task/Team Project rows must survive the transition.
 
 ## PKG-J1 — Install and use an independently delivered app
 
-> evidence: gap #296 — runtime package implementation and browser proof pending.
+> evidence: proven — task-management.spec.ts walks the separate app through
+> Vite; `pnpm apps:prove` separately freezes compiled core before npm packaging
+> and checks its hash after the real browser and restart journey.
 
 | Where / do | Must see | Bug if |
 |---|---|---|
@@ -26,7 +28,9 @@ Desktop and phone screenshots are inspected, not merely captured.
 
 ## PKG-J2 — Suspend an app without losing work
 
-> evidence: gap #296 — lifecycle and restart proof pending.
+> evidence: proven — runtime-packages.test.ts covers absent/incompatible code,
+> asymmetric permissions and hook counts; `pnpm apps:prove` repeats disable,
+> restart, re-enable and code removal against committed data and a stale browser.
 
 | Where / do | Must see | Bug if |
 |---|---|---|
@@ -40,7 +44,8 @@ rules and ordinary-user grants; reference targets are explicit identities.
 
 ## PKG-R1 — Versioned trusted artifact contract
 
-> evidence: gap #296 — loader tests pending.
+> evidence: proven — runtime-packages.test.ts rejects API mismatches and reserved
+> roots and verifies transactional failed installation and duplicate activation.
 
 A package directory carries package.json and a declarative Featherbase manifest
 with exact manifest/runtime API versions. Optional compiled server code receives
@@ -54,7 +59,9 @@ installation, node_modules scan, arbitrary app HTTP endpoints or hot discovery.
 
 ## PKG-R2 — Identity and physical location are separate
 
-> evidence: gap #296 — asymmetric API and storage proof pending.
+> evidence: proven — runtime-storage.test.ts moves physical storage without
+> changing identity; runtime-packages.test.ts checks two actual packages,
+> explicit references, permissions and forbidden metadata overrides.
 
 | Logical identity | Display label | Owner | Physical schema | Physical relation |
 |---|---|---|---|---|
@@ -70,29 +77,51 @@ cannot be changed through generic metadata edits.
 
 ## PKG-R3 — Installation, enablement and availability differ
 
-> evidence: gap #296 — lifecycle tests pending.
+> evidence: proven — runtime-packages.test.ts checks stale operations and holds
+> a post-commit barrier while disable waits, including a nested save.
 
-Installation creates Tables and grants once. Disable preserves Tables, rows,
+Normal UX is Review → Install → Open. Successful installation creates Tables
+and grants once and enables the application automatically; failed installation
+does not expose partially created Tables or activation. Disable preserves Tables, rows,
 grants and ownership, removes launchability and server contributions, and denies
 operations against those Tables even with warm metadata. Enable requires
 compatible code and wires hooks once. Missing code fails closed at boot.
 Lifecycle transitions must not remove validation halfway through an admitted
 write; complete operations and transition ordering require explicit coordination.
-Purge and complete upgrade orchestration are not part of this slice.
+Remove application (code gone, owned data archived for compatible reinstall)
+and Delete application data (destructive, typed confirmation plus impact count)
+are distinct deferred operations. The legacy sample-app uninstall endpoint is
+not the intended lifecycle and rejects runtime packages. Upgrades are deferred:
+Preview → Upgrade → Activate is explicit, with impact review and old artifact
+retention; no automatic-upgrade promise is made by this loader.
+
+This slice admits app data through authenticated generic APIs only. Direct
+`app_client` SQL and raw Query Reports cannot read app-owned relations even
+while enabled; they cannot participate in process-local package availability.
+Query Reports execute with the restricted SQL role rather than table-owner
+privileges. Ordinary public/core report behavior remains covered by its suite.
 
 ## PKG-R4 — Separate client root
 
-> evidence: gap #296 — HTTP, Vite and browser tests pending.
+> evidence: proven — runtime-packages.test.ts checks catalog and containment;
+> task-management.spec.ts opens the separate client through the Vite proxy.
 
-Tasker owns `/apps/tasker/`, its React root, navigation and CSS. Core serves only
+Tasker owns `/tasker/`, its React root, navigation and CSS. Core serves only
 the declared client build root with containment checks. Missing assets never
-fall back to either SPA. Vite proxies `/apps/`. Core router and AdminLayout
+fall back to either SPA. Vite and Hono share the app-root reservation rule.
+`featherbase`, `/api` and technical roots are reserved; existing platform human
+roots remain reserved until they converge under `/featherbase/`. Core router and AdminLayout
 contain no Tasker import, route or name conditional. App switching can reload
 the page. The signed-in app catalog is separate from manager-only management.
+Disabled/missing application navigation explains unavailability and preserved
+data with a link back; missing JS/CSS files still return errors, never HTML SPA
+fallbacks. SDK control details remain provisional, not generalized by this slice.
 
 ## PKG-H1 — Prototype residue and disabled references
 
-> evidence: gap #296 — transition and reference tests pending.
+> evidence: proven — tasker-transition.test.ts preserves real rows, references,
+> comments, focus and grants and refuses collisions; runtime-packages.test.ts
+> rejects references to disabled app-owned Tables.
 
 Inspect local prototype rows read-only. A deterministic, transactional local
 transition preserves row IDs, references, comments/history, settings and grants;
@@ -108,5 +137,8 @@ launch access does not grant data access. Shared task edits retain optimistic
 concurrency. Package failures are visible to managers; no secret paths need be
 shown to ordinary users. Package artifacts may require restart. Marketplace,
 signing, untrusted-code isolation, capability/dependency graphs, hot discovery,
-full upgrade orchestration, purge, typed recents and generalized app settings
+full upgrade orchestration, remove/delete-data, typed recents and generalized app settings
 are deliberately deferred. Spec 0010 task behavior remains authoritative.
+Per-person focus retains its existing private server-synced key for the local
+transition. Application-scoped declared preferences and structured, access-checked
+cross-app recents are future platform contracts, not claimed implemented here.

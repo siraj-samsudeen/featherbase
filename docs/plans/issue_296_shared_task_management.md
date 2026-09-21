@@ -1,5 +1,12 @@
 # Issue #296 — Build a shared task-management prototype
 
+> Superseded architecture (21-Sep-2026): this is the original prototype plan.
+> Spec 0011 and the runtime-app checkpoint replace its core-import/route seams
+> with independently delivered packages, qualified Table identities and
+> non-destructive disable/re-enable. Task rules in spec 0010 remain in force.
+> Runtime removal and data deletion are separate future operations, not the
+> legacy sample app's destructive uninstall.
+
 ## Context
 
 The Ramachandran DWT team needs a real task surface to learn from actual work rather than continuing to design from imagined cases. Featherbase already owns native metadata-backed Tables, generic Row CRUD, comments, history, users, permissions and server-side per-user settings. This change combines those primitives into one installable sample app and one task-focused Admin surface.

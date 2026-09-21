@@ -43,7 +43,6 @@ import { PrototypeConnectSourcePage } from './pages/PrototypeConnectSource'
 import { ExploreView } from './pages/Explore'
 import { parseChain, parseSelect } from './lib/explore-steps'
 import { RelationMap } from './pages/RelationMap'
-import { TaskManagementPage } from './pages/TaskManagement'
 
 const rootRoute = createRootRoute({ component: Outlet })
 
@@ -271,14 +270,6 @@ const importBatchesRoute = createRoute({
       <ImportBatches />
     </div>
   ),
-})
-
-// #296: task-focused workspace. This static route must precede the generic
-// $table route so "tasks" is not interpreted as a Table name.
-const taskManagementRoute = createRoute({
-  getParentRoute: () => adminRoute,
-  path: 'tasks',
-  component: TaskManagementPage,
 })
 
 // #209: change a Table's columns after its rows are in. A child of $table
@@ -519,10 +510,6 @@ const homePageRoute = createRoute({
 
 function HomePagePage() {
   const { name } = homePageRoute.useParams()
-  // #296: the Tasks module's one normal Home Page is its purpose-built
-  // workspace. This avoids a second, identically named sidebar entry while
-  // every other module continues through the generic Home Page renderer.
-  if (name === 'tasks') return <TaskManagementPage />
   return (
     <div data-testid="table-page">
       <HomePageView key={name} name={name} />
@@ -734,5 +721,5 @@ export const routeTree = rootRoute.addChildren([
   portalDocRoute,
   salesTargetRoute,
   printRoute,
-  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, taskManagementRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, tableRoute, docRoute]),
+  adminRoute.addChildren([adminIndexRoute, newTableRoute, importRoute, importBatchesRoute, columnsRoute, mergeRoute, exploreRoute, mapRoute, reportRoute, kanbanRoute, calendarRoute, ganttRoute, checklistRoute, queryReportRoute, scriptReportRoute, permissionsRoute, namingRoute, dashboardRoute, homePageRoute, allTablesRoute, prototypeConnectSourceRoute, sourceBrowserRoute, jobsRoute, accessTokensRoute, tableRoute, docRoute]),
 ])

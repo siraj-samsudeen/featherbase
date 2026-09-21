@@ -1,5 +1,57 @@
 # Progress Log
 
+## 2026-09-21 — Independent trusted runtime-package learning slice (#296)
+
+Tasker now builds outside the pnpm workspace as an npm-compatible package with
+a versioned manifest, compiled validation module and separate browser root at
+`/tasker/`. Featherbase core has no Tasker router/layout import or conditional.
+Explicit operator paths supply boot-time discovery; install enables atomically,
+disable preserves data/grants, and missing or incompatible code is unavailable
+and cannot operate on owned Tables. Re-enable registers hooks once. Only declared
+client assets are served, with explanatory disabled/missing navigation pages.
+
+Qualified identities (`tasker.task`, `other.task`) resolve through metadata to
+separate schema/relation pairs, not dotted single relations. The asymmetric Other
+fixture proves distinct schemas, rules and ordinary-user permissions for the same
+row ID. Complete-operation lifecycle locks include post-commit work. Metadata
+overrides cannot redirect identity/storage/hook dispatch. Raw app SQL is deliberately
+unsupported: Query Reports authenticate through a separate restricted app_client
+pool, not an owner session with SET ROLE (which a nested SQL expression escaped).
+Scoped Oracle follow-up confirmed the reproduced escape is closed after the fix.
+
+The deterministic prototype migration preserves rows, references, comments, private
+focus and grants, and aborts collisions. Read-only inspection found three tasks in
+the developer database, including TASK-00003, “Follow up with Deepak on the GoFrugal
+discrepancy discussed in the call with Bala”, in TPROJ-0001 “GoFrugal Data Quality”.
+That database was not migrated; migration tests and browser proof use disposable
+databases only. Starting normal init will run the migration and needs operator
+authorization for those existing developer rows.
+
+**Verification:** final `pnpm -r test:coverage` passed: shared 129, server 817,
+web 139 tests; 15 MySQL tests skipped without MYSQL_TEST_URL. Line coverage was
+99.56%, 88.30%, 40.76%, respectively; existing thresholds unchanged. Shared
+typecheck and server/web source-and-test typechecks passed. Isolated Playwright
+smoke + Tasker passed 4/4. The default `pnpm smoke` initially found no dev server
+on port 8000; the isolated run verified boot and proxy without touching dev data.
+`pnpm check:evidence` passed: 52 tool tests, three host-specific skips; 172 verdicts
+across ten specs. The earlier stale `/apps/tasker/` catalog assertion was corrected
+to the owner's direct-root decision before the final full coverage run.
+
+`pnpm apps:prove` passed against plain Node and compiled core frozen BEFORE
+Tasker/Other were built and packed. Install → capture → assign → complete → undo
+→ inspect → disable stale client → restart → enable → missing code → restore
+preserved rows and core checksum. Evidence and inspected desktop/mobile/inspector/
+unavailable screenshots: `dist/runtime-proof-iyFeI0/`; core SHA-256
+`ea11c0236e07e34d494f07a2dac094fdaf5ccea75a9668d47cedd112c71fc8ba`.
+
+**Provisional/deferred:** single-server activation, trusted full Node/same-origin
+code, API-only app data, a small duplicated client API/CSS seam, and the generic
+form for comments/history. Full task detail, project stars and Together/Tabs are
+not delivered. Remove versus explicit data deletion, previewed upgrades, full
+ADK controls, declared preferences/recents, capability selection/layers and core
+`/featherbase/`/schema convergence remain future work. Owner's DWOS portfolio and
+ERP-scale vision are recorded in the WIP recovery plan without expanding this slice.
+
 ## 2026-09-20 — Shared task-management prototype (#296)
 
 Built an opt-in `task-management` app on native Featherbase Tables. The task

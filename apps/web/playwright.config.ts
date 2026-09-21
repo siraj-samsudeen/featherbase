@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test'
 import { existsSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 // Resolve the Chromium binary the same way `apps/server/src/print.ts` does,
 // and for the same reason: CLAUDE.md's environment rule says Chromium is
@@ -132,6 +132,9 @@ export default defineConfig({
           env: {
             PORT: String(apiPort),
             DATABASE_URL: e2eDatabaseUrl(),
+            FEATHERBASE_APP_PATHS: JSON.stringify([
+              resolve('../../runtime-apps/tasker'), resolve('../../runtime-apps/other'),
+            ]),
             // FEATHERBASE_ENV rather than NODE_ENV: the migrator must stamp this
             // database for the 'test' environment (which is what lets the reset
             // agree to drop it next time), but src/index.ts skips starting the

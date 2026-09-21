@@ -1,6 +1,7 @@
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
+import { APP_ROOT_PATTERN } from '../../packages/shared/src/app-routes'
 
 // Parallel checkouts (git worktrees) each need their own ports: WEB_PORT
 // moves the dev server, API_PORT points the proxy at that checkout's API.
@@ -14,6 +15,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': `http://localhost:${apiPort}`,
+      [APP_ROOT_PATTERN]: `http://localhost:${apiPort}`,
       '/files': `http://localhost:${apiPort}`,
       '/private/files': `http://localhost:${apiPort}`,
       '/web': `http://localhost:${apiPort}`,

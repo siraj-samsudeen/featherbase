@@ -310,6 +310,39 @@ whatever the first green CI run reports. And coverage is per package, so a
 `packages/shared` module driven only from the server and web suites reads as
 uncovered here; `src/import.ts` alone is the whole of shared's gap.
 
+## Runtime packages (#296)
+
+Run `pnpm apps:prepare` after dependency installation and before server/web tests.
+This uses Tasker's independent npm lockfile and builds its server module and
+client; the package is deliberately not a pnpm workspace member. CI and `init.sh`
+do this explicitly. Runtime never runs npm from an HTTP request.
+
+- `pnpm --filter server exec vitest run test/runtime-storage.test.ts test/runtime-packages.test.ts test/tasker-transition.test.ts test/task-management-app.test.ts`
+- `pnpm --filter web exec vitest run test/task-management.test.tsx`
+- `pnpm --filter web e2e e2e/task-management.spec.ts` (isolated database, Vite proxy)
+- `pnpm apps:prove` (compiled core → separately built npm tarballs → plain Node +
+  browser → real restarts; core checksum must stay unchanged). Uses only the
+  dedicated `featherbase_runtime_proof_e2e` database, protected by the usual stamp
+  and suffix checks. Override `RUNTIME_PROOF_DATABASE_URL` / `RUNTIME_PROOF_PORT`
+  for parallel checkouts. Prints a `dist/runtime-proof-*/` evidence directory
+  with tarballs, compiled core, screenshots and `evidence.json`.
+
+For a regular dev server, `init.sh` configures the two example package paths.
+Otherwise set `FEATHERBASE_APP_PATHS` to a JSON array of absolute unpacked package
+directories, restart, sign in as Administrator, POST `/api/install_app` with
+`{"name":"tasker"}`, and open `/tasker/`. POST `/api/set_app_enabled` with
+`{"name":"tasker","enabled":false}` to disable, `true` to restore. `/api/apps`
+is manager-only; `/api/app_catalog` is the signed-in user's accessible launch list.
+The original prototype migration is automatic in the normal migration chain,
+but must not be run against an operator's development rows without authorization.
+
+Raw Query Reports use a separate database connection authenticated as `app_client`,
+never the owner pool or an owner session with `SET ROLE`. Local credentials come
+from migration 0010; set `QUERY_REPORT_DATABASE_URL` when those differ. The login
+is checked before executing report SQL. App-owned relations are API-only for now.
+The report's SQL sees committed data, not a test sandbox's uncommitted fixtures;
+the artifact proof supplies real committed rows for this boundary.
+
 ## Ground rules
 
 - Never mock the database or the API — if a test can't run against the

@@ -1,11 +1,24 @@
-import { screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { installApp, isInstalled, uninstallApp } from 'server/src/apps'
-import { test, expect, renderApp } from './pg-test'
+import { discoverPackages } from 'server/src/runtime-packages'
+import { resolve } from 'node:path'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { TestClient } from 'feather-testing-postgres'
+import { TaskManagementPage } from '../../../runtime-apps/tasker/src/TaskManagement'
+import { setSession } from '../src/lib/api'
+import { test, expect } from './pg-test'
 
-const APP = 'task-management'
+const APP = 'tasker'
+
+function renderTasker(as: TestClient) {
+  if (!as.token || !as.user) throw new Error('Tasker fixture requires a signed-in user')
+  setSession(as.token, { row_id: as.user, email: as.user, full_name: null })
+  return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TaskManagementPage /></QueryClientProvider>)
+}
 
 async function install() {
+  expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker')])).toEqual([])
   if (await isInstalled(APP)) await uninstallApp(APP)
   await installApp(APP)
 }
@@ -13,7 +26,7 @@ async function install() {
 test('TSK-J1 TSK-R1 TSK-R2: Enter captures a title-only task in Inbox', async ({ admin }) => {
   await install()
   try {
-    await renderApp('/admin/home/tasks', admin)
+    renderTasker(admin)
     const user = userEvent.setup()
 
     const capture = await screen.findByRole('textbox', { name: 'Quick capture' })
@@ -21,7 +34,7 @@ test('TSK-J1 TSK-R1 TSK-R2: Enter captures a title-only task in Inbox', async ({
 
     expect(await screen.findByText('Review September stock variance')).toBeInTheDocument()
     const rows = (await admin.get(
-      '/api/table/Team%20Task?fields=%5B%22task_title%22%2C%22project%22%2C%22personal_tasks_owner%22%2C%22assigned_to%22%5D',
+      '/api/table/tasker.task?fields=%5B%22task_title%22%2C%22project%22%2C%22personal_tasks_owner%22%2C%22assigned_to%22%5D',
     )) as { data: Record<string, unknown>[] }
     await waitFor(() => expect(rows.data).toHaveLength(1))
     expect(rows.data[0]).toMatchObject({
@@ -38,7 +51,7 @@ test('TSK-J1 TSK-R1 TSK-R2: Enter captures a title-only task in Inbox', async ({
 test('TSK-J2 TSK-R4: a project accepts rapid unassigned task entry', async ({ admin }) => {
   await install()
   try {
-    await renderApp('/admin/home/tasks', admin)
+    renderTasker(admin)
     const user = userEvent.setup()
 
     await user.click(await screen.findByRole('button', { name: 'Projects' }))
@@ -48,7 +61,7 @@ test('TSK-J2 TSK-R4: a project accepts rapid unassigned task entry', async ({ ad
 
     expect(await screen.findByText('Compare September closing stock')).toBeInTheDocument()
     const rows = (await admin.get(
-      '/api/table/Team%20Task?fields=%5B%22task_title%22%2C%22project%22%2C%22assigned_to%22%5D',
+      '/api/table/tasker.task?fields=%5B%22task_title%22%2C%22project%22%2C%22assigned_to%22%5D',
     )) as { data: Record<string, unknown>[] }
     expect(rows.data[0]).toMatchObject({
       task_title: 'Compare September closing stock',
@@ -64,10 +77,10 @@ test('TSK-J1 TSK-R3 TSK-I1: triage to Personal tasks assigns its owner', async (
   await install()
   try {
     const task = (await admin.post('/api/save_row', {
-      table: 'Team Task',
+      table: 'tasker.task',
       row: { task_title: 'Prepare my weekly notes' },
     })) as { row_id: string }
-    await renderApp('/admin/home/tasks', admin)
+    renderTasker(admin)
     const user = userEvent.setup()
 
     const destination = await screen.findByRole('combobox', {
@@ -78,7 +91,7 @@ test('TSK-J1 TSK-R3 TSK-I1: triage to Personal tasks assigns its owner', async (
     await waitFor(() =>
       expect(screen.queryByText('Prepare my weekly notes')).not.toBeInTheDocument(),
     )
-    const saved = (await admin.get(`/api/table/Team%20Task/${task.row_id}`)) as Record<string, unknown>
+    const saved = (await admin.get(`/api/table/tasker.task/${task.row_id}`)) as Record<string, unknown>
     expect(saved).toMatchObject({
       personal_tasks_owner: 'Administrator',
       assigned_to: 'Administrator',
@@ -93,17 +106,17 @@ test('TSK-J3 TSK-R9 TSK-R10 TSK-I3 TSK-H1: My Focus is ordered, private, and doe
   await install()
   try {
     const assigned = (await admin.post('/api/save_row', {
-      table: 'Team Task',
+      table: 'tasker.task',
       row: { task_title: 'Assigned and focused', assigned_to: 'Administrator' },
     })) as { row_id: string }
     const focusedOnly = (await admin.post('/api/save_row', {
-      table: 'Team Task',
+      table: 'tasker.task',
       row: { task_title: 'Focused only' },
     })) as { row_id: string }
     await admin.put('/api/user_settings/Task%20Management%20Focus', {
       task_ids: ['TASK-does-not-exist'],
     })
-    await renderApp('/admin/home/tasks', admin)
+    renderTasker(admin)
     const user = userEvent.setup()
 
     await user.click(await screen.findByRole('button', { name: 'Add to My Focus: Assigned and focused' }))
@@ -117,7 +130,7 @@ test('TSK-J3 TSK-R9 TSK-R10 TSK-I3 TSK-H1: My Focus is ordered, private, and doe
     }
     expect(settings.settings.task_ids).toEqual([assigned.row_id, focusedOnly.row_id])
     const rows = (await admin.get(
-      '/api/table/Team%20Task?fields=%5B%22task_title%22%2C%22assigned_to%22%5D&order_by=task_title%20asc',
+      '/api/table/tasker.task?fields=%5B%22task_title%22%2C%22assigned_to%22%5D&order_by=task_title%20asc',
     )) as { data: Record<string, unknown>[] }
     expect(rows.data).toEqual([
       { task_title: 'Assigned and focused', assigned_to: 'Administrator' },
@@ -132,10 +145,10 @@ test('TSK-R7: an inactive state offers but does not require an explanation', asy
   await install()
   try {
     const task = (await admin.post('/api/save_row', {
-      table: 'Team Task',
+      table: 'tasker.task',
       row: { task_title: 'Wait for stock ledger correction' },
     })) as { row_id: string }
-    await renderApp('/admin/home/tasks', admin)
+    renderTasker(admin)
     const user = userEvent.setup()
 
     await user.selectOptions(
@@ -169,16 +182,16 @@ test('task rows offer one-click self-assignment', async ({ admin }) => {
   await install()
   try {
     const task = (await admin.post('/api/save_row', {
-      table: 'Team Task',
+      table: 'tasker.task',
       row: { task_title: 'Own the stock follow-up' },
     })) as { row_id: string }
-    await renderApp('/admin/home/tasks', admin)
+    renderTasker(admin)
     const user = userEvent.setup()
 
     await user.click(await screen.findByRole('button', { name: 'Take it' }))
 
     await waitFor(async () => {
-      const saved = (await admin.get(`/api/table/Team%20Task/${task.row_id}`)) as Record<string, unknown>
+      const saved = (await admin.get(`/api/table/tasker.task/${task.row_id}`)) as Record<string, unknown>
       expect(saved.assigned_to).toBe('Administrator')
     })
   } finally {
