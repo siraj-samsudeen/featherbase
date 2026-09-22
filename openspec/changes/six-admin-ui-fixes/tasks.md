@@ -20,3 +20,9 @@ preference rollback, failed source load and form save failure. Independent final
 review/exploratory handoff remains the parent coordinator's gate. Existing dark-mode
 gray helper text and the child-grid's hardcoded white header are outside this role-
 contrast scope, not evidence of whole-app accessibility compliance.
+
+## 3. Independent review corrections (#293)
+
+- [x] 3.1 Give visible attachment actions field-specific accessible names and test keyboard file-chooser activation for two Attach fields and one Attach Image field.
+- [x] 3.2 Preserve persisted and unsaved child control nodes/IDs through edits, reorder and removal, with unique identities across repeated grids and positions only in accessible names.
+- [x] 3.3 Inspect attachment-action and persisted/unsaved child-grid screenshots; rerun focused and integrated verification before handing the new HEAD back for independent re-review.

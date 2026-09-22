@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import * as XLSX from 'xlsx'
 import { test, expect, adminAuth, type Page } from './fixtures'
-import { ensureFormFixtures, FORM_DT } from './fixtures-ui'
+import { ensureFormFixtures, ensureTable, FORM_DT } from './fixtures-ui'
 
 test.use({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 2 })
 
@@ -197,3 +197,83 @@ test('generated controls are reachable by labels in a browser, including child r
   await page.evaluate(() => { document.documentElement.dataset.theme = 'dark' })
   await capture(page, 'indigo-form-error')
 })
+
+// @spec generated_controls_have_accessible_names
+test('visible attachment actions identify their fields and keyboard activation opens the correct chooser', async ({ page, request }) => {
+  const auth = await adminAuth(request)
+  await ensureTable(request, auth, {
+    name: 'Accessible Attachments',
+    columns: [
+      { column_name: 'invoice', column_type: 'Attach', label: 'Invoice' },
+      { column_name: 'receipt', column_type: 'Attach', label: 'Receipt' },
+      { column_name: 'photo', column_type: 'Attach Image', label: 'Photo' },
+    ],
+  })
+  await page.goto('/admin/Accessible%20Attachments/new')
+  for (const [field, label, kind, key] of [
+    ['invoice', 'Invoice', 'file', 'Enter'],
+    ['receipt', 'Receipt', 'file', 'Space'],
+    ['photo', 'Photo', 'image', 'Enter'],
+  ]) {
+    const action = page.getByRole('button', { name: `Attach ${kind} — ${label}`, exact: true })
+    await expect(action).toBeVisible()
+    await action.focus()
+    await expect(action).toBeFocused()
+    const chooserPromise = page.waitForEvent('filechooser')
+    await page.keyboard.press(key)
+    const chooser = await chooserPromise
+    expect(await chooser.element().getAttribute('data-attach-input')).toBe(field)
+    expect(await chooser.element().getAttribute('accept')).toBe(kind === 'image' ? 'image/*' : null)
+    await chooser.setFiles([])
+  }
+  await capture(page, 'accessible-attachment-actions')
+})
+
+for (const persisted of [false, true]) {
+  // @spec generated_controls_have_accessible_names
+  test(`${persisted ? 'persisted' : 'unsaved'} child controls retain actual nodes and IDs across edit, reorder and removal`, async ({ page, request }) => {
+    const auth = await adminAuth(request)
+    await ensureTable(request, auth, {
+      name: 'Identity Line', kind: 'sub_table',
+      columns: [{ column_name: 'item', column_type: 'Data', label: 'Item' }],
+    })
+    await ensureTable(request, auth, {
+      name: 'Identity Form',
+      columns: ['items', 'extras'].map((name) => ({ column_name: name, column_type: 'Sub-table', label: name, row_table: 'Identity Line' })),
+    })
+    let rowId = 'new'
+    if (persisted) {
+      const response = await request.post('/api/table/Identity%20Form', {
+        headers: auth, data: { items: [{ item: 'bolt' }, { item: 'nut' }], extras: [{ item: 'washer' }] },
+      })
+      expect(response.status()).toBe(201)
+      rowId = (await response.json()).row_id
+    }
+    await page.goto(`/admin/Identity%20Form/${rowId}`)
+    if (!persisted) {
+      for (const grid of ['items', 'items', 'extras']) await page.getByTestId(`add-row-${grid}`).click()
+      await page.getByLabel('items, Item, row 1', { exact: true }).fill('bolt')
+      await page.getByLabel('items, Item, row 2', { exact: true }).fill('nut')
+      await page.getByLabel('extras, Item, row 1', { exact: true }).fill('washer')
+    }
+    const nut = page.getByLabel('items, Item, row 2', { exact: true })
+    await expect(nut).toHaveValue('nut')
+    const node = await nut.elementHandle()
+    const originalId = await nut.getAttribute('id')
+    const extraId = await page.getByLabel('extras, Item, row 1', { exact: true }).getAttribute('id')
+    await nut.fill('nut edited')
+    const grid = page.getByRole('group', { name: 'items', exact: true })
+    await grid.getByRole('button', { name: 'Move row up' }).nth(1).click()
+    await expect(page.getByLabel('items, Item, row 1', { exact: true })).toHaveValue('nut edited')
+    expect(await node!.evaluate((el, id) => el.isConnected && el.id === id && document.getElementById(id!) === el, originalId)).toBe(true)
+    await grid.getByRole('button', { name: 'Remove row' }).nth(1).click()
+    expect(await node!.evaluate((el, id) => el.isConnected && el.id === id && document.getElementById(id!) === el, originalId)).toBe(true)
+    expect(await node!.getAttribute('aria-label')).toBe('items, Item, row 1')
+    await page.getByTestId('add-row-items').click()
+    await page.getByLabel('items, Item, row 2', { exact: true }).fill('replacement')
+    expect(await page.getByLabel('extras, Item, row 1', { exact: true }).getAttribute('id')).toBe(extraId)
+    const ids = await page.locator('[data-childfield]').evaluateAll((els) => els.map((el) => el.id))
+    expect(new Set(ids).size).toBe(ids.length)
+    await capture(page, `stable-${persisted ? 'persisted' : 'unsaved'}-child-controls`)
+  })
+}

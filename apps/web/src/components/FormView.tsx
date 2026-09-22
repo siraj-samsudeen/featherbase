@@ -815,12 +815,32 @@ function ChildGrid({
 }) {
   const childMeta = useMeta(field.row_table ?? '')
   const { t } = useI18n()
+  const draftKeys = useRef(new WeakMap<Row, string>())
+  const nextDraftKey = useRef(0)
+  // Keep UI identity out of row data sent to the server. Edits transfer the
+  // draft key; movement/removal retains row objects. Persisted IDs already
+  // provide identity, scoped by this grid's React instance ID.
+  // @spec generated_controls_have_accessible_names
+  function rowKey(row: Row): string {
+    if (row.row_id != null) return `saved-${row.row_id}`
+    let key = draftKeys.current.get(row)
+    if (!key) {
+      key = `draft-${nextDraftKey.current++}`
+      draftKeys.current.set(row, key)
+    }
+    return key
+  }
   if (!childMeta.data) return <p className="text-xs text-gray-400">Loading rows…</p>
   const cols = childMeta.data.columns.filter(
     (f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden,
   )
   function setCell(i: number, columnName: string, value: unknown) {
-    onChange(rows.map((r, j) => (j === i ? { ...r, [columnName]: value } : r)))
+    onChange(rows.map((row, j) => {
+      if (j !== i) return row
+      const edited = { ...row, [columnName]: value }
+      if (row.row_id == null) draftKeys.current.set(edited, rowKey(row))
+      return edited
+    }))
   }
   function move(i: number, dir: -1 | 1) {
     const j = i + dir
@@ -844,11 +864,11 @@ function ChildGrid({
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={String(row.row_id ?? i)} className="border-b border-gray-100 last:border-0">
+            <tr key={rowKey(row)} className="border-b border-gray-100 last:border-0">
               {cols.map((c) => (
                 <td key={c.column_name} className="px-1 py-1">
                   <input
-                    id={`${id}-${i}-${c.column_name}`}
+                    id={`${id}-${rowKey(row)}-${c.column_name}`}
                     aria-label={`${t(field.label ?? field.column_name)}, ${t(c.label ?? c.column_name)}, row ${i + 1}`}
                     value={String(row[c.column_name] ?? '')}
                     onChange={(e) => setCell(i, c.column_name, e.target.value)}
@@ -1052,6 +1072,8 @@ function AttachControl({
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const { t } = useI18n()
+  const fieldLabel = t(field.label ?? field.column_name)
   const isImage = field.column_type === 'Attach Image'
   // #173: a private file URL carries no credential — the <img>/<a> request is
   // same-origin, so the HttpOnly `sid` cookie authenticates it.
@@ -1112,6 +1134,7 @@ function AttachControl({
             {!field.read_only && (
               <button
                 type="button"
+                aria-label={`Clear ${fieldLabel}`}
                 onClick={() => onChange(null)}
                 data-testid={`attach-clear-${field.column_name}`}
                 className="shrink-0 text-xs text-[var(--color-ink-faint)] hover:text-[var(--color-danger)]"
@@ -1124,6 +1147,7 @@ function AttachControl({
       ) : (
         <button
           type="button"
+          aria-label={`${busy ? 'Uploading' : `Attach ${isImage ? 'image' : 'file'}`} — ${fieldLabel}`}
           onClick={() => inputRef.current?.click()}
           disabled={Boolean(field.read_only) || busy}
           data-testid={`attach-btn-${field.column_name}`}
