@@ -1,5 +1,7 @@
 import { expect } from 'vitest'
 import { resolve } from 'node:path'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { test } from './pg-test'
 import { issuer } from './oidc-issuer'
 import { sql } from '../src/db'
@@ -16,6 +18,19 @@ async function finishHostedLogin(...args: Parameters<typeof completeHostedOperat
   if (result.kind !== 'session') throw new Error('Expected an authenticated session, not pending recovery')
   return result
 }
+
+// @spec provider_configuration_is_an_authentication_boundary
+test('normal runtime cannot enable the synthetic identity transport', async () => {
+  const { stdout } = await promisify(execFile)(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', `
+    import { setOidcTestTransport } from './src/hosted-providers.ts';
+    try { setOidcTestTransport(async () => new Response('{}')); process.exit(1); }
+    catch (error) {
+      if (error.message !== 'Synthetic identity transport is test-only') process.exit(2);
+      process.stdout.write('REFUSED_TEST_TRANSPORT'); process.exit(0);
+    }
+  `], { env: { ...process.env, NODE_ENV: 'development', FEATHERBASE_ENV: 'development' } })
+  expect(stdout).toBe('REFUSED_TEST_TRANSPORT')
+})
 
 // @spec hosted_login_validates_subject_and_browser_operation
 test('hosted proof requires signature, issuer, audience, nonce, expiry, PKCE and single-use code', async () => {

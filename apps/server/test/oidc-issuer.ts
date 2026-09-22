@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net'
 import { setOidcTestTransport } from '../src/hosted-providers'
 
 // Real loopback HTTP/code redemption and asymmetric signatures, never real accounts.
-export async function issuer(kind: 'google' | 'microsoft' = 'google') {
+export async function issuer(kind: 'google' | 'microsoft' = 'google', browserConsent = false) {
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
   const wrongKey = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey
   const tenant = '9188040d-6c67-4c5b-b112-36a304b66dad'
@@ -14,7 +14,13 @@ export async function issuer(kind: 'google' | 'microsoft' = 'google') {
   let badSignature = false
   let unavailable = false
   let exchanges = 0
-  const codes = new Map<string, { nonce: string; challenge: string }>()
+  const codes = new Map<string, { nonce: string; challenge: string; claims: Record<string, unknown> }>()
+  const code = (params: URLSearchParams, selected: Record<string, unknown> = {}) => {
+    const value = randomUUID()
+    codes.set(value, { nonce: params.get('nonce')!, challenge: params.get('code_challenge')!, claims: selected })
+    return value
+  }
+  const escape = (value: string) => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
   const server = createServer(async (req, res) => {
     const url = new URL(req.url!, 'http://localhost')
     res.setHeader('content-type', 'application/json')
@@ -23,8 +29,28 @@ export async function issuer(kind: 'google' | 'microsoft' = 'google') {
       res.end(JSON.stringify({ error: 'server_error', error_description: 'SENTINEL_PASSWORD_TOKEN_RESPONSE' }))
     } else if (url.pathname.includes('well-known')) {
       res.end(JSON.stringify({ issuer: kind === 'google' ? tokenIssuer : `${authority}/{tenantid}/v2.0`,
-        authorization_endpoint: `${authority}/authorize`, token_endpoint: `${authority}/token`, jwks_uri: `${authority}/jwks`,
+        authorization_endpoint: `${browserConsent ? origin : authority}/authorize`, token_endpoint: `${authority}/token`, jwks_uri: `${authority}/jwks`,
         response_types_supported: ['code'], subject_types_supported: ['public'], id_token_signing_alg_values_supported: ['RS256'] }))
+    } else if (browserConsent && url.pathname === '/authorize' && req.method === 'GET') {
+      res.setHeader('content-type', 'text/html')
+      res.end(`<!doctype html><html><body><h1>Synthetic identity provider — no real accounts</h1><form method="post">
+        ${[...url.searchParams].map(([name, value]) => `<input type="hidden" name="${escape(name)}" value="${escape(value)}">`).join('')}
+        <label>Fixture identity<select name="subject"><option>personal-subject</option><option>workspace-one</option><option>workspace-two</option><option>occupied-subject</option><option>recovery-subject</option></select></label>
+        <label>Authentication evidence<select name="freshness"><option value="fresh">Fresh signed auth_time</option><option value="missing">No auth_time</option><option value="stale">Stale auth_time</option></select></label>
+        <button>Prove selected identity</button></form></body></html>`)
+    } else if (browserConsent && url.pathname === '/authorize' && req.method === 'POST') {
+      let body = ''
+      for await (const chunk of req) body += chunk
+      const params = new URLSearchParams(body)
+      const subject = params.get('subject')!
+      const freshness = params.get('freshness')
+      const selected = { sub: subject, name: subject, email: `${subject}@example.test`,
+        ...(freshness === 'missing' ? {} : { auth_time: Math.floor(Date.now() / 1000) - (freshness === 'stale' ? 600 : 0) }) }
+      const callback = new URL(params.get('redirect_uri')!)
+      callback.searchParams.set('state', params.get('state')!)
+      callback.searchParams.set('code', code(params, selected))
+      res.writeHead(302, { location: callback.href })
+      res.end()
     } else if (url.pathname === '/jwks') {
       res.end(JSON.stringify({ keys: [{ ...publicKey.export({ format: 'jwk' }), kid: 'synthetic-key', use: 'sig', alg: 'RS256' }] }))
     } else if (url.pathname === '/token') {
@@ -42,7 +68,7 @@ export async function issuer(kind: 'google' | 'microsoft' = 'google') {
       }
       const now = Math.floor(Date.now() / 1000)
       const bodyClaims = { iss: tokenIssuer, ...(kind === 'microsoft' ? { tid: tenant } : {}), aud: 'test-client', sub: 'subject-one',
-        iat: now, exp: now + 300, nonce: operation.nonce, email: 'fixture@example.test', email_verified: true, ...claims }
+        iat: now, exp: now + 300, nonce: operation.nonce, email: 'fixture@example.test', email_verified: true, ...claims, ...operation.claims }
       const parts = [Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'synthetic-key' })).toString('base64url'),
         Buffer.from(JSON.stringify(bodyClaims)).toString('base64url')]
       const signature = sign('RSA-SHA256', Buffer.from(parts.join('.')), badSignature ? wrongKey : privateKey).toString('base64url')
@@ -59,11 +85,7 @@ export async function issuer(kind: 'google' | 'microsoft' = 'google') {
     tokenIssuer,
     setClaims(value: Record<string, unknown>, wrongSignature = false) { claims = value; badSignature = wrongSignature },
     setUnavailable(value: boolean) { unavailable = value },
-    code(url: URL) {
-      const code = randomUUID()
-      codes.set(code, { nonce: url.searchParams.get('nonce')!, challenge: url.searchParams.get('code_challenge')! })
-      return code
-    },
+    code(url: URL) { return code(url.searchParams) },
     get exchanges() { return exchanges },
     async close() {
       setOidcTestTransport(null)

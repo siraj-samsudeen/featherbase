@@ -11,7 +11,7 @@ import {
   publishUserEvent,
   type RealtimeEvent,
 } from '../src/realtime'
-import { issueSession, revokeSession, type SessionUser } from '../src/auth'
+import { issueExternalSession, issueSession, revokeSession, type SessionUser } from '../src/auth'
 import { sql } from '../src/db'
 
 // RT-001/002/003 (server side): the lifecycle publishes the right channel
@@ -92,32 +92,53 @@ describe('RT channel authorization (eval #9 fix)', () => {
 // rest of the file talks to the in-process bus.
 describe('subscription acknowledgment', () => {
   // @spec login_sessions_are_revocable_on_every_use
-  for (const revocation of ['logout', 'disable'] as const) test(`${revocation} closes an established socket before delivery`, async () => {
-    const session = await issueSession('Administrator')
+  for (const revocation of ['logout', 'disable', 'provider', 'unlink'] as const) test(`${revocation} closes an established socket before delivery`, async ({ createUser }) => {
+    await sql`insert into login_provider (id, kind, issuer, client_id, enabled)
+      values ('socket-google', 'google', 'https://accounts.google.com', 'socket-client', true)`
+    await sql`insert into external_identity (id, user_id, provider_id, issuer, subject)
+      values ('socket-identity', 'Administrator', 'socket-google', 'https://accounts.google.com', 'socket-subject')`
+    const session = await issueExternalSession('socket-google', 'https://accounts.google.com', 'socket-subject', null, new Date())
+    const unaffected = await createUser({ email: 'unaffected-socket@example.test' })
+    if (unaffected.user === null) throw new Error('Expected an authenticated unaffected user')
     const server = createServer()
     attachRealtime(server)
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
     const { port } = server.address() as AddressInfo
     const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { cookie: `sid=${session.token}` } })
+    const other = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { cookie: `sid=${unaffected.token}` } })
     const frames: RealtimeEvent[] = []
+    const delivered: string[] = []
+    const otherReady = new Promise<void>((resolve) => other.on('message', raw => {
+      const event = JSON.parse(String(raw)) as RealtimeEvent
+      if (event.event === 'ready') resolve()
+      else delivered.push(event.event)
+    }))
     const ready = new Promise<void>((resolve) => socket.on('message', (raw) => {
       const event = JSON.parse(String(raw)) as RealtimeEvent
       frames.push(event)
       if (event.event === 'ready') resolve()
     }))
     try {
-      await ready
+      await Promise.all([ready, otherReady])
       if (revocation === 'logout') await revokeSession(`Bearer ${session.token}`)
-      else {
+      else if (revocation === 'disable') {
         await sql`update "user" set enabled = false where row_id = 'Administrator'`
         await sql`update "user" set enabled = true where row_id = 'Administrator'`
+      } else if (revocation === 'provider') {
+        await sql`update login_provider set enabled = false where id = 'socket-google'`
+        await sql`update login_provider set enabled = true where id = 'socket-google'`
+      } else {
+        await sql`update external_identity set revoked_at = clock_timestamp() where id = 'socket-identity'`
       }
       const closed = new Promise<number>((resolve) => socket.on('close', resolve))
       publishUserEvent('Administrator', 'must-not-deliver', { private: 'synthetic' })
+      for (const event of ['first', 'second', 'third']) publishUserEvent(unaffected.user, event)
       expect(await Promise.race([closed, new Promise((resolve) => setTimeout(() => resolve('still open'), 500))])).toBe(4001)
       expect(frames.some((event) => event.event === 'must-not-deliver')).toBe(false)
+      await expect.poll(() => delivered).toEqual(['first', 'second', 'third'])
     } finally {
       socket.terminate()
+      other.terminate()
       server.closeAllConnections()
       await new Promise<void>((resolve) => server.close(() => resolve()))
     }

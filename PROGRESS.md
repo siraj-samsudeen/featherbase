@@ -9165,3 +9165,20 @@ its own database, post-#191) green on the PR. Closes the loop on #132.
   web5226 stopped. Evidence logs and representative inspected images retained
   in `rama_dw/outputs/issue296-core-responsive/`. Final integrated delta review
   remains with the parent/reviewer; this worker makes no deployment claim.
+
+## 2026-09-22 — Provider identity recovery checkpoint (#244)
+
+- Owner stopped feature work and authorized only finishing and pushing the
+  preserved checkpoint for recoverability. No PR or deployment is authorized.
+- Preserved the synthetic hosted-browser enrollment/linking proof, guarded
+  test transport, and established-socket revocation checks. Fixed only the
+  two test type errors found at the freeze.
+- Verification: `pnpm --filter server typecheck` passed;
+  `AUTH_BROWSER_PROOF=1 CHROMIUM_PATH=<installed Chromium> DATABASE_URL=<local disposable test database> pnpm --filter server exec vitest run test/identity-browser.test.ts test/oidc-provider.test.ts test/realtime.test.ts`
+  passed all 22 tests across three files; `git diff --check` passed.
+- Not deployable: final combined verification, independent review, Prove
+  Before Handoff, and remaining acceptance matrices are incomplete. The
+  previously reported STC removed-requirement blocker remains unresolved.
+  StyleHR activation still requires authoritative active/inactive/rehire
+  schemas and a durable non-reassigned subject contract. Native accounts
+  remain the fallback. Resume only on owner authorization.

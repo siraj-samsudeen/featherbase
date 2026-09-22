@@ -60,7 +60,7 @@ async function client(id: string) {
     timeout: 10,
     // The code flow otherwise trusts only the TLS token endpoint. Our contract
     // also requires cryptographic validation of every ID token using JWKS.
-    execute: [oidc.enableNonRepudiationChecks],
+    execute: [oidc.enableNonRepudiationChecks, ...(testTransport ? [oidc.allowInsecureRequests] : [])],
     ...(testTransport ? { [oidc.customFetch]: testTransport } : {}),
   }
   try {
