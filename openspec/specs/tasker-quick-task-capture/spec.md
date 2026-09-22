@@ -1,30 +1,27 @@
 # Quick Task Capture
 
-**IDs:** `capture_neutral_task`
+**IDs:** `title_alone_records_task`
 
 ## Purpose
 
-A team member can record something immediately without first deciding where it
-belongs or who should handle it.
+Write a task down the moment you think of it, and decide later — from the Inbox,
+the list of tasks nobody has sorted yet — where it goes and who does it.
 
 ## Requirements
 
-### Requirement: capture_neutral_task
-Status: governed (#296) · Built
+### Requirement: title_alone_records_task
+Built: yes · Checked by a server test and a browser test.
 
-> evidence: proven via quick_capture_flow — component, server and browser tests exercise title-only capture and continued entry.
+Typing a title and pressing Enter SHALL be all it takes to record a task.
 
-A non-empty title SHALL be sufficient to capture a task. The task SHALL appear
-in Inbox immediately, start Not started and Not urgent, and have no project,
-Personal tasks owner or responsible person. Its creator SHALL NOT automatically
-become responsible. After a successful capture, the entry SHALL clear and remain
-ready for another title. Pressing Enter SHALL submit the title.
-
-#### Scenario: neutral_defaults
-- **WHEN** Siraj captures `Review September stock variance`
-- **THEN** it appears in Inbox with the neutral defaults
-- **AND** Siraj is its creator but not its responsible person.
-
-#### Scenario: entry_stays_ready
-- **WHEN** a task is captured successfully
-- **THEN** the entry clears and remains focused for the next title.
+#### Scenario: capture_from_inbox
+- **GIVEN** the user is on the Inbox
+- **WHEN** the user types `Review September stock variance` in *What do you need
+  to remember?* and presses Enter
+- **THEN** a new row for the task appears in the Inbox list
+- **AND** its state dropdown shows *Not started*
+- **AND** its urgency button reads *Not urgent*
+- **AND** its person dropdown shows *Unassigned* — creating a task does not make
+  the user responsible for it
+- **AND** its destination dropdown shows *Inbox* — no project, no personal list
+- **AND** the input box is cleared and the cursor is back in it.

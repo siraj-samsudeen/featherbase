@@ -13,9 +13,9 @@ no_code nothing_dangles
 no_code refusal_changes_nothing
 no_code refused_then_unblocked
 
-# Tasker's neutral defaults are declared in strict JSON metadata and its focus
+# Tasker's capture defaults are declared in strict JSON metadata and its focus
 # return is a UI composition; neither has one marker-capable deciding line.
-no_code capture_neutral_task
+no_code title_alone_records_task
 
 # The agreed guided Inbox processing loop is not implemented yet. Its current
 # gap is explicit in the Tasker OpenSpec contract rather than being hidden

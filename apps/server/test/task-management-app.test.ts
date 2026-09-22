@@ -21,9 +21,9 @@ async function install() {
   await installApp(APP)
 }
 
-// @spec capture_neutral_task.neutral_defaults
+// @spec title_alone_records_task.capture_from_inbox
 // @spec inbox_is_destination.captured_task_waits_in_inbox
-describe('capture_neutral_task: title-only Inbox capture', () => {
+describe('title_alone_records_task: title-only Inbox capture', () => {
   test('a title is enough; ownership, destination and urgency stay empty', async ({ admin }) => {
     await install()
     try {

@@ -4,7 +4,7 @@ test.beforeAll(async ({ request }) => {
   await ensureRuntimeApp(request, 'tasker')
 })
 
-// @spec capture_neutral_task.entry_stays_ready
+// @spec title_alone_records_task.capture_from_inbox
 test('tasker_browser_flow: PKG-J1 PKG-R4 capture, project entry, urgency, and focus survive reload', async ({
   page,
 }) => {
