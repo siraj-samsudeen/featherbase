@@ -9,6 +9,7 @@ export type ErrorType =
   | 'ConflictError'
   | 'MethodNotAllowedError'
   | 'DataSourceError'
+  | 'ProviderUnavailableError'
   | 'InternalError'
 
 const STATUS: Record<ErrorType, number> = {
@@ -22,6 +23,7 @@ const STATUS: Record<ErrorType, number> = {
   // EDS-11: an external data source is unreachable/failed — an upstream
   // failure (502), never disguised as an empty result.
   DataSourceError: 502,
+  ProviderUnavailableError: 503,
   InternalError: 500,
 }
 

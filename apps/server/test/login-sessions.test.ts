@@ -4,6 +4,7 @@ import { test } from './pg-test'
 import { sql } from '../src/db'
 import { issueSession, login, resolveToken, setUserPassword } from '../src/auth'
 import { requestPasswordReset } from '../src/password-reset'
+import { bootstrapAdministrator } from '../src/admin-bootstrap'
 
 // @spec login_sessions_are_revocable_on_every_use
 test('logout revokes its copied session but not another session for the same User', async ({ api }) => {
@@ -55,4 +56,11 @@ test('password replacement revokes sessions and external-only reset never create
   expect(await requestPasswordReset('Administrator')).toBeNull()
   await expect(setUserPassword('Administrator', 'must-not-enable')).rejects.toMatchObject({ type: 'ValidationError' })
   await expect(login('Administrator', 'changed-native-only-password')).rejects.toMatchObject({ type: 'AuthenticationError' })
+})
+
+// @spec native_login_requires_an_enabled_native_method
+test('deliberate Administrator bootstrap after migration enables its native method', async () => {
+  await sql`update "user" set password_hash = null, native_login_enabled = false where row_id = 'Administrator'`
+  await bootstrapAdministrator()
+  expect((await login('Administrator', process.env.ADMIN_PASSWORD ?? 'admin')).user.row_id).toBe('Administrator')
 })

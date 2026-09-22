@@ -65,19 +65,36 @@ export async function issueSession(userName: string): Promise<{ token: string; u
   return createLoginSession(userName, 'internal', null)
 }
 
+// @spec identity_linking_requires_two_bound_proofs
+export async function reauthenticateNative(authorization: string | undefined, password: string) {
+  const source = await resolveLoginSession(authorization)
+  return withTransaction(async () => {
+    const [user] = await sql`select password_hash, native_login_enabled from "user"
+      where row_id = ${source.user.row_id} for update`
+    await resolveSessionRecord(source.id)
+    if (!user?.native_login_enabled || !user.password_hash || !verifyPassword(password, user.password_hash as string))
+      throw new AppError('AuthenticationError', 'Invalid login credentials')
+    // Resolve only the current local User, never an email or caller-selected ID.
+    return createLoginSession(source.user.row_id, 'native', new Date())
+  })
+}
+
 // Only a successfully validated provider proof may reach this server boundary.
 // Browser input must go through the operation-bound hosted verifier, never here.
 // @spec external_identity_ownership_is_subject_based
-export async function issueExternalSession(providerId: string, issuer: string, subject: string, authenticatedAt: Date | null) {
+export async function issueExternalSession(providerId: string, issuer: string, subject: string, authenticatedAt: Date | null, proofStartedAt: Date) {
   return withTransaction(async () => {
     const [provider] = await sql`select enabled, auth_generation from login_provider where id = ${providerId} for update`
     if (!provider?.enabled) throw new AppError('AuthenticationError', 'Identity cannot sign in')
     const [owner] = await sql`select user_id from external_identity
       where provider_id = ${providerId} and issuer = ${issuer} and subject = ${subject}`
     if (!owner) throw new AppError('AuthenticationError', 'Identity cannot sign in')
-    await sql`select row_id from "user" where row_id = ${owner.user_id} for update`
+    const [user] = await sql`select row_id, authentication_valid_after < ${proofStartedAt} as proof_current
+      from "user" where row_id = ${owner.user_id} for update`
+    if (!user?.proof_current) throw new AppError('AuthenticationError', 'Identity cannot sign in')
     const [identity] = await sql`select id, user_id, revoked_at, auth_generation from external_identity
-      where provider_id = ${providerId} and issuer = ${issuer} and subject = ${subject} for update`
+      where provider_id = ${providerId} and issuer = ${issuer} and subject = ${subject}
+        and authentication_valid_after < ${proofStartedAt} for update`
     if (!identity || identity.revoked_at) throw new AppError('AuthenticationError', 'Identity cannot sign in')
     return createLoginSession(identity.user_id as string, 'external', authenticatedAt, {
       id: identity.id as string,
@@ -272,6 +289,23 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   // #131: access tokens ride the same Bearer header as sessions, told apart
   // by their prefix — no JWT parse attempted on them.
   if (token.startsWith(TOKEN_PREFIX)) return resolveAccessToken(token)
+  return (await resolveLoginSession(authorization)).user
+}
+
+export interface LoginSessionRecord {
+  id: string
+  user: SessionUser
+  method: 'native' | 'internal' | 'external'
+  identityId: string | null
+  providerId: string | null
+  authenticatedAt: Date | null
+  expiresAt: Date
+  userGeneration: string
+}
+
+export async function resolveLoginSession(authorization?: string): Promise<LoginSessionRecord> {
+  const token = authorization?.match(/^Bearer (.+)$/)?.[1]
+  if (!token) throw new AppError('AuthenticationError', 'Authentication required')
   let payload: Awaited<ReturnType<typeof verify>>
   try {
     payload = await verify(token, JWT_SECRET, 'HS256')
@@ -280,11 +314,21 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
   }
   if (typeof payload.sid !== 'string' || typeof payload.sub !== 'string')
     throw new AppError('AuthenticationError', 'Invalid or expired session')
+  const session = await resolveSessionRecord(payload.sid)
+  if (session.user.row_id !== payload.sub) throw new AppError('AuthenticationError', 'Invalid or expired session')
+  return session
+}
+
+// Server-only lookup for durable operations holding a session reference. The
+// reference itself is never a browser credential and is not accepted by routes.
+export async function resolveSessionRecord(id: string): Promise<LoginSessionRecord> {
   const [user] = await sql`
-    select u.row_id, u.email, u.full_name from login_session s join "user" u on u.row_id = s.user_id
+    select u.row_id, u.email, u.full_name, s.id, s.method, s.identity_id,
+      i.provider_id, s.authenticated_at, s.expires_at, s.user_generation
+    from login_session s join "user" u on u.row_id = s.user_id
     left join external_identity i on i.id = s.identity_id
     left join login_provider p on p.id = i.provider_id
-    where s.id = ${payload.sid} and s.user_id = ${payload.sub}
+    where s.id = ${id}
       and s.revoked_at is null and s.expires_at > clock_timestamp()
       and u.enabled and u.user_type <> 'service' and u.auth_generation = s.user_generation
       and (s.method = 'internal' or (s.method = 'native' and u.native_login_enabled)
@@ -292,5 +336,8 @@ export async function resolveToken(authorization?: string): Promise<SessionUser>
           and i.auth_generation = s.identity_generation and p.auth_generation = s.provider_generation))`
   if (!user)
     throw new AppError('AuthenticationError', 'Invalid or expired session')
-  return { row_id: user.row_id as string, email: user.email as string | null, full_name: user.full_name as string | null }
+  return { id: user.id as string, user: { row_id: user.row_id as string, email: user.email as string | null, full_name: user.full_name as string | null },
+    method: user.method as LoginSessionRecord['method'], identityId: user.identity_id as string | null,
+    providerId: user.provider_id as string | null, authenticatedAt: user.authenticated_at ? new Date(user.authenticated_at as string) : null,
+    expiresAt: new Date(user.expires_at as string), userGeneration: user.user_generation as string }
 }

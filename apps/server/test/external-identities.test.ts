@@ -2,7 +2,10 @@ import { expect } from 'vitest'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { getDoc, saveDoc } from '../src/document'
-import { issueExternalSession, resolveToken } from '../src/auth'
+import { issueExternalSession as sessionFromProof, resolveToken } from '../src/auth'
+
+const issueExternalSession = (provider: string, issuer: string, subject: string, time: Date | null) =>
+  sessionFromProof(provider, issuer, subject, time, new Date())
 
 async function seedIdentities() {
   await saveDoc('User', { row_id: 'person-a', full_name: 'Person A' })
@@ -81,4 +84,18 @@ test('whole-User offboarding stops every linked provider without affecting anoth
   await sql`update "user" set enabled = true where row_id = 'person-a'`
   for (const session of [a, b]) await expect(resolveToken(`Bearer ${session.token}`)).rejects.toMatchObject({ type: 'AuthenticationError' })
   expect((await resolveToken(`Bearer ${other.token}`)).row_id).toBe('person-b')
+})
+
+// @spec login_sessions_are_revocable_on_every_use
+test('anonymous proofs begun before User disable or identity unlink cannot survive re-enable', async () => {
+  await seedIdentities()
+  const begun = new Date(Date.now() - 1000)
+  await sql`update "user" set enabled = false where row_id = 'person-a'`
+  await sql`update "user" set enabled = true where row_id = 'person-a'`
+  await expect(sessionFromProof('google-test', 'https://accounts.google.com', 'Subject-A', null, begun))
+    .rejects.toMatchObject({ type: 'AuthenticationError' })
+  await sql`update external_identity set revoked_at = clock_timestamp() where id = 'identity-b'`
+  await sql`update external_identity set revoked_at = null where id = 'identity-b'`
+  await expect(sessionFromProof('microsoft-test', 'https://login.microsoftonline.com/tenant-a/v2.0', 'Subject-A', null, begun))
+    .rejects.toMatchObject({ type: 'AuthenticationError' })
 })

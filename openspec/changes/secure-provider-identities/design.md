@@ -69,6 +69,13 @@ Operations capture/check the same generations at completion. User eligibility is
 the local enabled flag, including employment offboarding; provider choice cannot
 bypass it. Existing access-token resolution also continues checking User enablement.
 
+Anonymous hosted login does not yet know the User or identity at initiation.
+Retain a monotonic authentication-valid-after timestamp alongside their generations;
+after resolving the subject, reject any proof operation begun at or before that
+cutoff. This covers disable/re-enable and unlink/re-link during consent without
+guessing a User from an email hint. Use the operation's server-recorded start, not
+token issue time or a caller-supplied timestamp.
+
 Issue/bind/revoke inside transactions locking provider, then User, then identity/
 operation/session rows consistently. A callback that verified externally before
 disable must recheck inside this boundary before creating a session. Do not hold

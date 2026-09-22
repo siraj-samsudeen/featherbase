@@ -1,5 +1,5 @@
 import { environment } from './config'
-import { sql } from './db'
+import { sql, withTransaction } from './db'
 import { hashPassword, verifyPassword } from './auth'
 
 // Security supersession of migration 0006 (#130). Only explicit local
@@ -9,8 +9,17 @@ export async function bootstrapAdministrator() {
   const password = configured?.trim() ? configured
     : ['development', 'test'].includes(environment) ? 'admin' : null
   if (password === null) return
-  await sql`update "user" set password_hash = ${hashPassword(password)}
-    where row_id = 'Administrator' and password_hash is null`
+  await withTransaction(async () => {
+    // Migration 0083 invokes this before user_type and native eligibility exist.
+    const [policy] = await sql`select 1 from information_schema.columns
+      where table_schema = 'featherbase' and table_name = 'user' and column_name = 'native_login_enabled'`
+    const [provisioned] = await sql`update "user" set password_hash = ${hashPassword(password)}
+      where row_id = 'Administrator' and password_hash is null
+        ${policy ? sql`and user_type <> 'service'` : sql``} returning row_id`
+    if (!provisioned) return
+    // @spec native_login_requires_an_enabled_native_method
+    if (policy) await sql`update "user" set native_login_enabled = true where row_id = 'Administrator'`
+  })
 }
 
 export async function diagnoseAdminBootstrap() {

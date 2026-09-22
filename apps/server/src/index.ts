@@ -7,6 +7,7 @@ import { secureHeaders } from 'hono/secure-headers'
 import { config } from './config'
 import { sql } from './db'
 import { AppError, errorResponse } from './errors'
+import { identityRoutes } from './identity-routes'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } from './table-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
@@ -122,6 +123,8 @@ app.use(
 )
 
 // ---- Public routes (no session required) -----------------------------------
+
+app.route('/api/auth', identityRoutes)
 
 app.get('/api/ping', async (c) => {
   const [row] = await sql`select
