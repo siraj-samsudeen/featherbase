@@ -56,7 +56,7 @@ test('generic client pins v1 across real upgrade and re-resolves only on a new s
   const requests = vi.spyOn(globalThis, 'fetch') // Observe the real in-process bridge, not a stub response.
   const bootstraps = () => requests.mock.calls.filter(([path]) => path === '/api/runtime_app_versions').length
   const prior = resolve('../..', 'runtime-apps/fixtures/tasker-v1')
-  const target = resolve('../..', 'runtime-apps/tasker')
+  const target = resolve('../..', 'runtime-apps/fixtures/tasker-v2')
   await discoverPackages([prior])
   await admin.post('/api/install_app', { name: 'tasker' })
   const row = await saveDoc('tasker.project', { project_name: 'Do not relabel old editor' }, 'Administrator', 'insert')

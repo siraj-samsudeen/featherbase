@@ -9178,3 +9178,42 @@ projection. Independent-commit scope/product/duplicate lock proof passes;
 server typecheck and `pnpm check:specs` pass. Commands used dedicated local
 `featherbase_issue279_test` and `featherbase_issue279_access_commit_e2e` only.
 Independent follow-up review, final broad rerun and runtime proof remain pending.
+
+## 2026-09-22 — #279 final verification and real HTTP callback proof
+
+The independent reviewer closed the original callback/identity reproductions at
+the corrected implementation, then caught one stale opt-in Tasker expectation.
+That proof now requires the governed fixed PermissionError and a durable denial
+audit increment, preserving every later replay/disable assertion. Added an actual
+loopback TCP/Hono callback proof to the existing dedicated commit suite: ordinary
+Error and private NotFoundError from resolver/product callbacks yield identical
+403 bodies, independent committed audit rows, no business/upstream execution,
+and successful original-result replay after fault removal. Faults are injected
+only by the test harness into the proving package's exported test state; no
+production debug route or runtime-package import of private core was added.
+
+Commands: `APP_ACCESS_COMMIT_PROOF=1 DATABASE_URL=.../featherbase_issue279_access_commit_e2e
+pnpm --filter server exec vitest run test/app-access-commit.test.ts` passes 2/2;
+`TASKER_UPGRADE_ACTION_PROOF=1 DATABASE_URL=.../featherbase_issue279_actions_commit_e2e
+pnpm --filter server exec vitest run test/tasker-upgrade-action-commit.test.ts`
+passes through completion. Full server passes 869 with 18 expected skips; shared
+129/129; web 164/164; workspace typechecks pass. Web uses Node 26's
+`NODE_OPTIONS=--no-experimental-webstorage` so jsdom owns storage. One concurrent
+web run had two unrelated import-naming timing failures; the full serial rerun
+passed unchanged. The v1→v2 identity test now names the preserved exact v2 fixture
+rather than the current 2.1 package; its behavior/expected outcomes are unchanged.
+
+`CHROMIUM_PATH=<installed Chromium> RUNTIME_PROOF_DATABASE_URL=.../featherbase_issue279_runtime_e2e
+RUNTIME_PROOF_PORT=8496 node tools/prove-runtime-packages.mjs` passes the literal
+frozen-core/install/browser/upgrade/restart proof. Evidence is in ignored
+`dist/runtime-proof-OAu1BG`; desktop capture was inspected for readable content
+and unclipped controls. All databases are dedicated test-stamped on the positively
+identified directly local PostgreSQL server. The populated live exploration DB
+was not reset. Exact historical scopeproof artifact remains available separately
+for restarting its installed version, while core runs the corrected commit.
+
+Oracle's final follow-up found no remaining scoped callback/identity/replay/lock
+invariant violation. Independent live exploration confirmed store, object,
+replay and revocation scenarios and then the corrected identity matrix. Final
+independent acceptance of the verification delta remains the coordinator's gate;
+no merge, deployment or completed Budgets/DASH implementation is claimed.

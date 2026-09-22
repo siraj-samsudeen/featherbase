@@ -73,7 +73,13 @@ prove('Tasker upgrade waits through committed action effects, then gates obsolet
     expect(await sql`select enabled from installed_app where name = 'tasker'`).toEqual([{ enabled: false }])
     await expect(run(newVersion)).rejects.toMatchObject({ type: 'PermissionError' })
     await setAppEnabled('tasker', true)
-    await expect(run(oldVersion)).rejects.toMatchObject({ type: 'ConflictError' })
+    // @spec fresh_app_store_access
+    // @spec app_refusals_are_auditable
+    const [before] = await sql`select count(*)::int as n from access_log
+      where "user" = 'Administrator' and operation = 'app_access_denied' and method = 'tasker.promote:permission'`
+    await expect(run(oldVersion)).rejects.toMatchObject({ type: 'PermissionError', message: 'Application access refused' })
+    expect(await sql`select count(*)::int as n from access_log
+      where "user" = 'Administrator' and operation = 'app_access_denied' and method = 'tasker.promote:permission'`).toEqual([{ n: before.n + 1 }])
     expect(await run(newVersion)).toEqual(result)
     expect(effects).toBe(1)
     expect(await sql`select project_name from tasker.project`).toEqual([{ project_name: 'Preserve 37, not 83' }])
