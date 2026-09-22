@@ -27,12 +27,18 @@
   --color-warn: #cb9a26;
   --color-warn-tint: #fbf3e0;
 
+  /* @spec appearance_text_roles_meet_contrast */
+  --color-link: #1265a8;
+  --color-good-text: #247442;
+  --color-danger-text: #b52b2b;
+  --color-warn-text: #805800;
+
   /* UI-025: structural tokens so palettes can reshape controls without any
-     component edits. Defaults reproduce the Classic look exactly. */
+     component edits. Shape defaults retain Classic; button colors meet AA. */
   --radius-card: 0.5rem; /* .fc-card (was rounded-lg) */
   --radius-control: 0.375rem; /* .fc-input / .fc-btn (was rounded-md) */
-  --color-primary-btn: var(--color-brand); /* .fc-btn-primary bg */
-  --color-primary-btn-hover: var(--color-brand-dark);
+  --color-primary-btn: #1265a8; /* separate from decorative accents */
+  --color-primary-btn-hover: #0d548e;
   --color-primary-btn-ink: #ffffff;
 }
 
@@ -59,6 +65,10 @@
   --color-danger-tint: #38201f;
   --color-warn: #d6a634;
   --color-warn-tint: #322915;
+  --color-link: #70baff;
+  --color-good-text: #76d399;
+  --color-danger-text: #ff9393;
+  --color-warn-text: #e9c363;
 }
 
 /* ============================================================ UI-025
@@ -86,6 +96,12 @@
   --color-danger-tint: #f6e5e1;
   --color-warn: #9a6b1f;
   --color-warn-tint: #f2e7cd;
+  --color-link: #98472d;
+  --color-good-text: #386344;
+  --color-danger-text: #9f382a;
+  --color-warn-text: #765014;
+  --color-primary-btn: #9f482b;
+  --color-primary-btn-hover: #873c23;
   --radius-card: 0.75rem;
   --radius-control: 0.5rem;
 }
@@ -107,6 +123,13 @@
   --color-danger-tint: #3b241e;
   --color-warn: #d0a84f;
   --color-warn-tint: #37301c;
+  --color-link: #f3a68c;
+  --color-good-text: #a0caaa;
+  --color-danger-text: #f5a08d;
+  --color-warn-text: #e8c77e;
+  --color-primary-btn: #d97757;
+  --color-primary-btn-hover: #e08b6e;
+  --color-primary-btn-ink: #211b16;
 }
 
 /* Graphite — pure neutrals, near-black primary buttons; blue survives as
@@ -125,6 +148,10 @@
   --color-good-tint: #e4f2ec;
   --color-warn: #b0730a;
   --color-warn-tint: #faf0dd;
+  --color-link: #1265a8;
+  --color-good-text: #216b4d;
+  --color-danger-text: #b52b2b;
+  --color-warn-text: #805800;
   --radius-card: 0.625rem;
   --radius-control: 0.4375rem;
   --color-primary-btn: #171717;
@@ -149,6 +176,10 @@
   --color-danger-tint: #38201f;
   --color-warn: #d9a13f;
   --color-warn-tint: #312613;
+  --color-link: #70baff;
+  --color-good-text: #76d399;
+  --color-danger-text: #ff9393;
+  --color-warn-text: #e9c363;
   --color-primary-btn: #ededed;
   --color-primary-btn-hover: #ffffff;
   --color-primary-btn-ink: #141414;
@@ -172,6 +203,12 @@
   --color-good-tint: #e2f5ec;
   --color-warn: #b57e10;
   --color-warn-tint: #faf0d8;
+  --color-link: #4848b7;
+  --color-good-text: #216b4d;
+  --color-danger-text: #b52b2b;
+  --color-warn-text: #805800;
+  --color-primary-btn: #5b5bd6;
+  --color-primary-btn-hover: #4747b8;
   --radius-card: 0.875rem;
   --radius-control: 9999px;
 }
@@ -193,6 +230,13 @@
   --color-danger-tint: #38201f;
   --color-warn: #d8a544;
   --color-warn-tint: #33290f;
+  --color-link: #b4b4ff;
+  --color-good-text: #76d399;
+  --color-danger-text: #ff9393;
+  --color-warn-text: #e9c363;
+  --color-primary-btn: #7c7cf0;
+  --color-primary-btn-hover: #9a9af4;
+  --color-primary-btn-ink: #111125;
 }
 
 html,
@@ -245,5 +289,20 @@ body {
   }
   .fc-pill {
     @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+}
+
+/* Existing text utilities are foreground roles, not accent fills. Map them
+   here so all existing links/statuses adopt the role tokens without changing
+   their borders, backgrounds, focus rings or charts. New UI can use the role
+   tokens directly. Keep these after Tailwind's generated utilities. */
+@layer utilities {
+  .text-\[var\(--color-brand\)\] { color: var(--color-link); }
+  .text-\[var\(--color-good\)\] { color: var(--color-good-text); }
+  .text-\[var\(--color-danger\)\] { color: var(--color-danger-text); }
+  .text-\[var\(--color-warn\)\] { color: var(--color-warn-text); }
+  @media (hover: hover) {
+    .hover\:text-\[var\(--color-brand\)\]:hover { color: var(--color-link); }
+    .hover\:text-\[var\(--color-danger\)\]:hover { color: var(--color-danger-text); }
   }
 }

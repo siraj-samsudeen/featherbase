@@ -1,7 +1,5 @@
-import { useEffect, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import { api, getSessionUser } from './api'
-import { useWhoAmI } from './session'
+import { getSessionUser } from './api'
+import { useAppearancePreference } from './appearance-preference'
 
 // UI-025: per-user color palette, the second theming axis alongside
 // light/dark (lib/theme.ts). Same shape: server-authoritative, mirrored in
@@ -22,6 +20,8 @@ function isPalette(v: unknown): v is Palette {
 }
 
 // @spec appearance_preferences_persist_per_user
+// @spec appearance_text_roles_meet_contrast
+// The palette attribute selects the independent foreground roles in index.css.
 export function applyPalette(palette: Palette) {
   // `classic` is the base @theme token set — no attribute needed.
   if (palette === 'classic') delete document.documentElement.dataset.palette
@@ -45,31 +45,9 @@ try {
 }
 
 export function usePalette(): { palette: Palette; set: (p: Palette) => void } {
-  const who = useWhoAmI()
-  const qc = useQueryClient()
-  const [palette, setPaletteState] = useState<Palette>(() => {
-    const current = document.documentElement.dataset.palette
-    return isPalette(current) ? current : 'classic'
-  })
-
-  // Sync from the server value once whoami resolves.
-  useEffect(() => {
-    const serverPalette = who.data?.palette
-    if (isPalette(serverPalette)) {
-      setPaletteState(serverPalette)
-      applyPalette(serverPalette)
-    }
-  }, [who.data?.palette])
-
-  function set(next: Palette) {
-    setPaletteState(next)
-    applyPalette(next)
-    void api.post('/api/set_palette', { palette: next }).then(() => {
-      qc.setQueryData(['whoami'], (old: unknown) =>
-        old && typeof old === 'object' ? { ...(old as object), palette: next } : old,
-      )
-    })
-  }
-
+  const current = document.documentElement.dataset.palette
+  const { value: palette, set } = useAppearancePreference(
+    'palette', isPalette(current) ? current : 'classic', isPalette, applyPalette,
+  )
   return { palette, set }
 }

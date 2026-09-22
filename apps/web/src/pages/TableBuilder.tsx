@@ -124,7 +124,7 @@ export function TableBuilder() {
   const [columns, setColumns] = useState<BuilderColumn[]>([blankColumn()])
   const [view, setView] = useState<BuilderView>(initialView)
   const [imported, setImported] = useState<ImportedFile | null>(null)
-  const [moreSheets, setMoreSheets] = useState(0)
+  const [sheetNames, setSheetNames] = useState<string[]>([])
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Field-level SERVER errors, keyed by GRID row — the same mechanism
@@ -238,7 +238,7 @@ export function TableBuilder() {
       // @spec builder_infers_file_columns
       const { headers, rows, headerExcelRow } = sheets[0]
       // The quick builder handles one sheet; the Import wizard handles all.
-      setMoreSheets(sheets.length > 1 ? sheets.length : 0)
+      setSheetNames(sheets.map((sheet) => sheet.sheetName))
       const def = inferTableDef(tableNameFromFile(file.name) || 'Imported Table', headers, rows)
       setImported({ fileName: file.name, headers, rows, headerExcelRow })
       setName((n) => n.trim() || def.name)
@@ -265,7 +265,7 @@ export function TableBuilder() {
 
   function clearImport() {
     setImported(null)
-    setMoreSheets(0)
+    setSheetNames([])
     setColumns([blankColumn()])
     setColumnErrors({})
     setTouchedRows(new Set())
@@ -440,6 +440,15 @@ export function TableBuilder() {
           }}
         />
       </div>
+
+      {/* @spec builder_warns_beside_dropzone */}
+      {sheetNames.length > 1 && (
+        <div role="status" className="mb-4 rounded-md border border-[var(--color-warn)] bg-[var(--color-warn-tint)] px-3 py-2 text-sm text-[var(--color-warn-text)]" data-testid="dt-more-sheets">
+          <strong>Only “{sheetNames[0]}” will be imported.</strong>{' '}
+          Ignored sheets: {sheetNames.slice(1).map((sheet) => `“${sheet}”`).join(', ')}.{' '}
+          Use the <Link to="/featherbase/admin/import" search={{ table: undefined }} className="font-medium underline">Import wizard</Link> to import all {sheetNames.length} sheets.
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap gap-4">
         <div>
@@ -728,15 +737,6 @@ export function TableBuilder() {
         </div>
       )}
 
-      {moreSheets > 1 && (
-        <p className="mt-3 text-sm text-[var(--color-ink-muted)]" data-testid="dt-more-sheets">
-          This workbook has {moreSheets} sheets — only the first is used here. The{' '}
-          <Link to="/featherbase/admin/import" search={{ table: undefined }} className="text-[var(--color-brand)] underline">
-            Import wizard
-          </Link>{' '}
-          imports every sheet.
-        </p>
-      )}
       {progress && (
         <p className="mt-3 text-sm text-[var(--color-ink-muted)]" data-testid="dt-progress">
           {progress}
