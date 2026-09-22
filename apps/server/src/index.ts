@@ -2,12 +2,14 @@ import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono, type Context } from 'hono'
 import { cors } from 'hono/cors'
-import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
+import { deleteCookie } from 'hono/cookie'
 import { secureHeaders } from 'hono/secure-headers'
 import { config } from './config'
 import { sql } from './db'
 import { AppError, errorResponse } from './errors'
 import { identityRoutes } from './identity-routes'
+import { authCredential, setSidCookie } from './auth-http'
+import { createLoginHandoff } from './login-operations'
 import { ROW_KEY, getMeta, resolveTableName } from './meta'
 import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } from './table-engine'
 import { deleteDoc, getDoc, saveDoc } from './document'
@@ -17,7 +19,6 @@ import { getAccessToken, issueAccessToken, listAccessTokens, login, resolveToken
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled } from './service-accounts'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
-import { googleAuthorizeUrl, mockConsentHtml, mockApproveRedirect, exchangeCode, findOrCreateGoogleUser, newLoginChallenge, codeChallengeFor, verifyState, oauthClientId, assertSignInAvailable, assertMockProviderAllowed, mintHandoffCode, redeemHandoffCode, OAUTH_CALLBACK_PATH } from './oauth'
 import { assertPermission, assertSystemManager, getRoles, permissionScope } from './permissions'
 import { ensureHomePageForTable, getVisibleHomePages } from './home-pages'
 import { EMBED_ORIGIN, landingFor, salesTargetRoutes } from './sales-target'
@@ -147,27 +148,6 @@ app.get('/api/brand', async (c) => {
   const s = await getSystemSettings()
   return c.json({ app_name: s.app_name })
 })
-
-// Frappe wire parity: sessions ride an HttpOnly `sid` cookie (as in real
-// Frappe) in addition to the Bearer token the SPA stores. Either credential
-// authenticates a request; the cookie lets Frappe-style clients work
-// unchanged and keeps the token out of reach of page scripts.
-function setSidCookie(c: Context, token: string) {
-  setCookie(c, 'sid', token, {
-    httpOnly: true,
-    sameSite: 'Lax',
-    path: '/',
-    maxAge: 60 * 60 * 24 * 7,
-  })
-}
-
-// The Authorization header wins; an sid cookie is the fallback credential.
-function authCredential(c: Context): string | undefined {
-  const header = c.req.header('authorization')
-  if (header) return header
-  const sid = getCookie(c, 'sid')
-  return sid ? `Bearer ${sid}` : undefined
-}
 
 app.post('/api/login', publicLimit('LOGIN'), async (c) => {
   const { usr, pwd } = (await c.req.json()) as { usr?: string; pwd?: string }
@@ -312,127 +292,6 @@ app.on(
   },
 )
 
-// The origin a browser reaches this instance on. `SITE_URL` is configuration
-// and therefore authoritative: a request header cannot steer it. Only a
-// checkout that has not been told where it lives falls back to the request,
-// and then `x-forwarded-proto` is read as what it is — a LIST. A proxy chain
-// APPENDS its hop rather than overwriting, so a request that reached the edge
-// over TLS arrives as `https,http`; comparing that whole string to 'https'
-// read false and set the login cookies without `Secure`, and interpolated
-// `https,http://host` into the redirect_uri. Only the first hop is the
-// client's, and anything that is not http/https is not a protocol we will
-// paste into an origin.
-function externalOrigin(c: Context): URL {
-  if (config.siteUrl) return new URL(config.siteUrl)
-  const url = new URL(c.req.url)
-  const forwarded = c.req.header('x-forwarded-proto')?.split(',')[0].trim().toLowerCase()
-  const proto = forwarded === 'http' || forwarded === 'https' ? forwarded : url.protocol.slice(0, -1)
-  return new URL(`${proto}://${url.host}`)
-}
-
-// PLAT-006: Google OAuth (public — the caller is logging in). In dev a mock
-// provider stands in for Google. Flow: login → provider consent → callback →
-// find/create User → issue session → bounce back into the SPA with the token.
-// Mock flow stays same-origin (relative) so the dev proxy keeps the browser
-// on the SPA origin end to end; real Google needs an absolute redirect_uri
-// that byte-matches the registered one.
-function oauthRedirectUri(c: Context, clientId: string): string {
-  if (!clientId) return OAUTH_CALLBACK_PATH
-  return `${externalOrigin(c).origin}${OAUTH_CALLBACK_PATH}`
-}
-
-// The login challenge (OAuth `state` + PKCE verifier) rides HttpOnly cookies
-// so it is bound to the browser that started the sign-in. Same attributes as
-// the sid cookie, plus `secure` whenever the browser reached us over TLS and a
-// ten-minute life — they exist only for the length of one consent round trip.
-const OAUTH_STATE_COOKIE = 'oauth_state'
-const OAUTH_VERIFIER_COOKIE = 'oauth_verifier'
-
-// Derived from the external origin, not NODE_ENV: behind Railway's TLS-
-// terminating edge the container sees http, and a `secure` cookie on a
-// plain-http dev origin is silently dropped by the browser. Same origin the
-// redirect_uri comes from, so the two can never disagree.
-function oauthCookieOptions(c: Context) {
-  return {
-    httpOnly: true,
-    sameSite: 'Lax' as const,
-    path: '/',
-    maxAge: 600,
-    secure: externalOrigin(c).protocol === 'https:',
-  }
-}
-
-function setLoginChallengeCookies(c: Context, state: string, verifier: string) {
-  setCookie(c, OAUTH_STATE_COOKIE, state, oauthCookieOptions(c))
-  setCookie(c, OAUTH_VERIFIER_COOKIE, verifier, oauthCookieOptions(c))
-}
-
-function clearLoginChallengeCookies(c: Context) {
-  deleteCookie(c, OAUTH_STATE_COOKIE, { path: '/' })
-  deleteCookie(c, OAUTH_VERIFIER_COOKIE, { path: '/' })
-}
-
-app.get('/api/oauth/google/login', publicLimit('OAUTH_LOGIN'), async (c) => {
-  const clientId = await oauthClientId()
-  assertSignInAvailable(clientId)
-  const redirectUri = oauthRedirectUri(c, clientId)
-  const { state, verifier } = newLoginChallenge()
-  setLoginChallengeCookies(c, state, verifier)
-  const hint = { email: c.req.query('email'), name: c.req.query('name') }
-  return c.redirect(googleAuthorizeUrl(clientId, state, redirectUri, codeChallengeFor(verifier), hint))
-})
-
-app.get('/api/oauth/mock/consent', async (c) => {
-  assertMockProviderAllowed(await oauthClientId())
-  const state = c.req.query('state') ?? ''
-  const redirectUri = c.req.query('redirect_uri') ?? ''
-  const email = c.req.query('email') ?? 'demo.user@gmail.com'
-  const name = c.req.query('name') ?? 'Demo User'
-  return c.html(mockConsentHtml(state, redirectUri, email, name))
-})
-
-app.get('/api/oauth/mock/approve', async (c) => {
-  assertMockProviderAllowed(await oauthClientId())
-  const state = c.req.query('state') ?? ''
-  const redirectUri = c.req.query('redirect_uri') ?? ''
-  verifyState(state, getCookie(c, OAUTH_STATE_COOKIE))
-  const email = c.req.query('email') ?? ''
-  const name = c.req.query('name') ?? ''
-  return c.redirect(mockApproveRedirect(state, redirectUri, email, name))
-})
-
-app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) => {
-  const clientId = await oauthClientId()
-  assertSignInAvailable(clientId)
-  // The state must match the cookie this browser got at login. Without that
-  // binding an attacker could complete consent with their own account and
-  // hand the victim the callback URL, planting the attacker's session.
-  verifyState(c.req.query('state'), getCookie(c, OAUTH_STATE_COOKIE))
-  const verifier = getCookie(c, OAUTH_VERIFIER_COOKIE)
-  // One challenge, one use — clear it whether or not the exchange succeeds.
-  clearLoginChallengeCookies(c)
-  const { email, name } = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
-  const userName = await findOrCreateGoogleUser(email, name)
-  const session = await issueSession(userName)
-  // The cookie matters here too: beacons (e.g. the unload-time event batch,
-  // #101) cannot carry a bearer token, so an OAuth session without the sid
-  // cookie would silently drop them (PR #104 review).
-  setSidCookie(c, session.token)
-  // #150: the session token itself never travels in this URL — a 7-day
-  // credential in a query string lands in browser history, in the Referer of
-  // anything that page fetches next, and in every proxy log on the way. The
-  // SPA gets a one-time, one-minute handoff code and POSTs it back below.
-  return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
-})
-
-// #150: the other half of the handoff. Public — the code IS the credential,
-// alongside the sid cookie set by the callback that minted it, and the session
-// this returns is the thing being established. Redeeming burns the code.
-app.post('/api/oauth/session', async (c) => {
-  const { code } = (await c.req.json().catch(() => ({}))) as { code?: string }
-  return c.json(redeemHandoffCode(code, getCookie(c, 'sid')))
-})
-
 // A dev-preview deployment's click-through sign-in (see preview.ts). Public
 // by nature — the key IS the credential — and 404 when previews are off or
 // the key is wrong, so the route neither advertises itself nor tells a
@@ -448,7 +307,8 @@ app.get('/preview', async (c) => {
   if (!config || !previewKeyMatches(c.req.query('key'), config.key)) return c.notFound()
   const session = await issueSession(config.user)
   setSidCookie(c, session.token)
-  return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
+  c.header('Referrer-Policy', 'no-referrer')
+  return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(await createLoginHandoff(session.token))}`)
 })
 
 // ---- API-004: everything below requires a valid session --------------------

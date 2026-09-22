@@ -10,8 +10,8 @@ import {
   listAccessTokens,
   revokeAccessToken,
   setUserPassword,
+  issueExternalSession,
 } from '../src/auth'
-import { findOrCreateGoogleUser } from '../src/oauth'
 import { requestPasswordReset, resetPassword } from '../src/password-reset'
 import { createTable } from '../src/table-engine'
 import { getServiceAccount } from '../src/service-accounts'
@@ -22,6 +22,14 @@ import { getServiceAccount } from '../src/service-accounts'
 async function serviceAccount(admin: { post: (p: string, b?: unknown) => Promise<unknown> }, name: string) {
   await admin.post('/api/service_accounts', { row_id: name, roles: ['System Manager'] })
 }
+
+async function storedIdentity(user: string, subject: string) {
+  await sql`insert into login_provider (id, kind, issuer, client_id, enabled)
+    values ('guard-provider', 'google', 'https://accounts.google.com', 'guard-client', true) on conflict do nothing`
+  await sql`insert into external_identity (id, user_id, provider_id, issuer, subject)
+    values (${`guard-${subject}`}, ${user}, 'guard-provider', 'https://accounts.google.com', ${subject})`
+}
+const signIn = (subject: string) => issueExternalSession('guard-provider', 'https://accounts.google.com', subject, null, new Date())
 
 describe('#137 P1: an access token is header-only, never URL-borne', () => {
   test('a token in ?token= is refused for private files and for the websocket path', async ({
@@ -65,7 +73,8 @@ describe('#137 P1: OAuth cannot revive a disabled principal', () => {
       table: 'User',
       row: { row_id: email, email, enabled: false },
     })
-    await expect(findOrCreateGoogleUser(email, 'Disabled Human')).rejects.toMatchObject({
+    await storedIdentity(email, 'disabled-human-subject')
+    await expect(signIn('disabled-human-subject')).rejects.toMatchObject({
       type: 'AuthenticationError',
     })
     const [human] = await sql`select enabled from "user" where row_id = ${email}`
@@ -79,8 +88,9 @@ describe('#137 P1: OAuth cannot revive a disabled principal', () => {
       method: 'PATCH',
       body: JSON.stringify({ enabled: false }),
     })
+    await storedIdentity('svc-oauth-test', 'service-subject')
     await expect(
-      findOrCreateGoogleUser('svc-oauth-test@service.invalid', 'svc'),
+      signIn('service-subject'),
     ).rejects.toMatchObject({ type: 'AuthenticationError' })
     const [svc] = await sql`select enabled from "user" where row_id = 'svc-oauth-test'`
     expect(svc.enabled).toBe(false)
@@ -249,8 +259,10 @@ describe('#137 R2: OAuth refusals cannot be told apart', () => {
     })
     await serviceAccount(admin, 'svc-enum')
 
-    const a = await findOrCreateGoogleUser(disabled, 'x').catch((e: Error) => e)
-    const b = await findOrCreateGoogleUser('svc-enum@service.invalid', 'x').catch((e: Error) => e)
+    await storedIdentity(disabled, 'disabled-subject')
+    await storedIdentity('svc-enum', 'service-subject')
+    const a = await signIn('disabled-subject').catch((e: Error) => e)
+    const b = await signIn('service-subject').catch((e: Error) => e)
 
     // Distinguishable refusals let an unauthenticated caller probe an address
     // and learn whether it exists and in what state — the enumeration oracle
@@ -260,6 +272,7 @@ describe('#137 R2: OAuth refusals cannot be told apart', () => {
     if (!(a instanceof Error) || !(b instanceof Error)) throw new Error('unreachable')
     expect(a.message).toBe(b.message)
     expect((a as { type?: string }).type).toBe((b as { type?: string }).type)
+    await expect(signIn('unknown-subject')).rejects.toMatchObject({ type: 'AuthenticationError', message: a.message })
   })
 })
 

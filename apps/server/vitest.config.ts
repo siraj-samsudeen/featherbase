@@ -9,6 +9,13 @@ if (process.env.TASKER_UPGRADE_ACTION_PROOF === '1') {
     throw new Error('Tasker committed proof requires explicit DATABASE_URL naming featherbase_<worker>_actions_commit_e2e')
 }
 
+if (process.env.AUTH_IDENTITY_COMMIT_PROOF === '1') {
+  const url = process.env.DATABASE_URL ? new URL(process.env.DATABASE_URL) : null
+  if (!url || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+    || !/^\/featherbase_[a-z0-9_]+_identity_commit_e2e$/.test(url.pathname))
+    throw new Error('Identity committed proof requires an explicit local featherbase_<worker>_identity_commit_e2e database')
+}
+
 // All test files share ONE Postgres database, including the single
 // `background_job` queue. `drainJobs()` drains every queued job, so when
 // job-dependent tests (email, jobs, webhooks) run in parallel across files they
@@ -17,10 +24,6 @@ if (process.env.TASKER_UPGRADE_ACTION_PROOF === '1') {
 export default defineConfig({
   test: {
     fileParallelism: false,
-    // The mock OAuth provider is opt-in (it mints a session for any typed
-    // email). The suite drives it deliberately, so it opts in here; the
-    // fail-closed test deletes this var for the length of one test.
-    env: { ALLOW_MOCK_OAUTH: '1' },
     // Empties the tables that outlive a run — `background_job` (rows orphaned
     // by an interrupted run) and `user_event` (rows the app itself commits
     // outside any sandbox) — so neither can fail the next one. See the file.

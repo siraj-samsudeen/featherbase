@@ -1,5 +1,36 @@
 # Progress Log
 
+## 2026-09-22 — Hosted identity UI and Tasker proof checkpoint (#244, #296)
+
+Retired email-merging OAuth routes and their impersonation mock. Added account
+methods, native step-up, enrollment and exact-target recovery controls. Migrating
+legacy Google configuration preserves its client ID, never creates subject links,
+and removes the obsolete domain allowlist and single social-provider field.
+Provider-scoped source admission precedes exchange; verified issuer/subject
+budgets precede binding and session issuance across sources. Callback audit uses
+internal provider IDs and safe outcomes, including upstream unavailability.
+
+Verification: `DATABASE_URL=<worker-test-db> pnpm --filter server test` passed
+863 tests with 17 skips after route retirement. Subsequent focused
+`vitest run test/identity-routes.test.ts test/pre-auth-rate-limit.test.ts
+test/oidc-provider.test.ts` passed 22 tests, including a three-Google-identity
+journey checking the same Tasker row, assignment, creator, roles and palette
+through independent sessions, then whole-User disable. Legacy migration/settings
+tests passed 10 tests. Account UI/component tests passed 15 tests; native login,
+wrong/correct step-up and manager controls were exercised and inspected in Chromium.
+`AUTH_IDENTITY_COMMIT_PROOF=1 DATABASE_URL=<worker-identity-commit-db>
+FEATHERBASE_ENV=test pnpm --filter server exec vitest run
+test/identity-concurrency-commit.test.ts` passed on a fresh 105-migration install:
+both orders of disable/issuance and simultaneous subject claims used independent
+connections. The unconfigured-login/retired-route Playwright suite passed 3 tests.
+
+Not a final handoff. Hosted browser journeys,
+remaining refusal matrices, independent final review and broad final validation
+remain. Main specs now carry the accepted delta, but STC still incorrectly counts
+the delta's REMOVED headings as active obligations; no baseline was lowered.
+StyleHR is not delivered: its authoritative status/subject/rehire evidence is
+still missing. Native Featherbase passwords remain a separate fallback.
+
 ## 2026-09-22 — Provider identity/session foundation in progress (#244, #296)
 
 Added protected subject ownership and revocable session storage. Native logout,

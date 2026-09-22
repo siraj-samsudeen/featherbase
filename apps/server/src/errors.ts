@@ -10,6 +10,7 @@ export type ErrorType =
   | 'MethodNotAllowedError'
   | 'DataSourceError'
   | 'ProviderUnavailableError'
+  | 'RateLimitError'
   | 'InternalError'
 
 const STATUS: Record<ErrorType, number> = {
@@ -24,6 +25,7 @@ const STATUS: Record<ErrorType, number> = {
   // failure (502), never disguised as an empty result.
   DataSourceError: 502,
   ProviderUnavailableError: 503,
+  RateLimitError: 429,
   InternalError: 500,
 }
 
@@ -37,8 +39,15 @@ export class AppError extends Error {
   }
 }
 
+export class RateLimitError extends AppError {
+  constructor(readonly retryAfter: number) {
+    super('RateLimitError', 'Too many attempts; retry later')
+  }
+}
+
 export function errorResponse(c: Context, err: unknown) {
   if (err instanceof AppError) {
+    if (err instanceof RateLimitError) c.header('Retry-After', String(err.retryAfter))
     return c.json(
       // ONE envelope, and nothing beside it: `error: { type, message, fields? }`.
       // This body used to carry Frappe's top-level `exc_type` as well (with

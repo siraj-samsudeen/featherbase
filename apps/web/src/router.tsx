@@ -7,6 +7,7 @@ import {
   redirect,
 } from '@tanstack/react-router'
 import { LoginPage } from './pages/Login'
+import { AccountMethodsPage } from './pages/AccountMethods'
 import { ResetPasswordPage } from './pages/ResetPassword'
 import { WebFormPage } from './pages/WebForm'
 import { PortalListPage, PortalRowPage } from './pages/Portal'
@@ -104,6 +105,15 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/featherbase/login',
   component: LoginPage,
+})
+
+const accountMethodsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/featherbase/account',
+  beforeLoad: () => {
+    if (!getToken()) throw redirect({ to: '/featherbase/login' })
+  },
+  component: AccountMethodsPage,
 })
 
 // WEB-002: public web form (no session required).
@@ -723,6 +733,7 @@ export const routeTree = rootRoute.addChildren([
   indexRoute,
   featherbaseIndexRoute,
   loginRoute,
+  accountMethodsRoute,
   resetPasswordRoute,
   webFormRoute,
   oauthCallbackRoute,

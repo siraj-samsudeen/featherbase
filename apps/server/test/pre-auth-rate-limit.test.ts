@@ -2,6 +2,8 @@ import { afterEach, describe, expect, vi } from 'vitest'
 import { test } from './pg-test'
 import { app } from '../src/index'
 import { sql } from '../src/db'
+import { issuer } from './oidc-issuer'
+import { saveDoc } from '../src/document'
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -77,12 +79,79 @@ describe('#245 public route admission', () => {
   test('OAuth initiation and callback have separate budgets; refusal preserves challenge cookies', async () => {
     vi.stubEnv('PREAUTH_OAUTH_LOGIN_MAX', '1')
     vi.stubEnv('PREAUTH_OAUTH_CALLBACK_MAX', '1')
-    expect((await request('/api/oauth/google/login')).status).toBe(302)
-    expect((await request('/api/oauth/google/login')).status).toBe(429)
-    expect((await request('/api/oauth/google/callback?state=bad')).status).not.toBe(429)
-    const blocked = await request('/api/oauth/google/callback?state=bad', { headers: { cookie: 'oauth_state=bad; oauth_verifier=keep' } })
-    expect(blocked.status).toBe(429)
-    expect(blocked.headers.get('set-cookie')).toBeNull()
+    const upstream = await issuer()
+    try {
+      await sql`insert into login_provider (id, kind, issuer, client_id, enabled)
+        values ('limited-google', 'google', 'https://accounts.google.com', 'test-client', true)`
+      expect((await request('/api/auth/login/limited-google')).status).toBe(302)
+      expect((await request('/api/auth/login/limited-google')).status).toBe(429)
+      expect((await request('/api/auth/callback?state=bad')).status).toBe(401)
+      const blocked = await request('/api/auth/callback?state=bad', { headers: { cookie: 'fb_login_unrelated=keep' } })
+      expect(blocked.status).toBe(429)
+      expect(blocked.headers.get('set-cookie')).toBeNull()
+      expect(upstream.exchanges).toBe(0)
+    } finally { await upstream.close() }
+  })
+
+  // @spec authentication_admission_and_audit_do_not_expose_secrets
+  test('hosted source budgets separate providers and block a second callback before exchange', async () => {
+    vi.stubEnv('PREAUTH_OAUTH_LOGIN_MAX', '1')
+    vi.stubEnv('PREAUTH_OAUTH_CALLBACK_MAX', '1')
+    const upstream = await issuer()
+    try {
+      await sql`insert into login_provider (id, kind, issuer, client_id, enabled) values
+        ('first-google', 'google', 'https://accounts.google.com', 'test-client', true),
+        ('second-google', 'google', 'https://accounts.google.com', 'other-client', true)`
+      const start = await request('/api/auth/login/first-google')
+      expect(start.status).toBe(302)
+      expect((await request('/api/auth/login/first-google')).status).toBe(429)
+      expect((await request('/api/auth/login/second-google')).status).toBe(302)
+      const authorization = new URL(start.headers.get('location')!)
+      const callback = new URL(authorization.searchParams.get('redirect_uri')!)
+      callback.searchParams.set('state', authorization.searchParams.get('state')!)
+      callback.searchParams.set('code', upstream.code(authorization))
+      expect((await request(callback.pathname + callback.search)).status).toBe(401)
+      const blocked = await request(callback.pathname + callback.search, {
+        headers: { cookie: start.headers.getSetCookie()[0].split(';')[0] },
+      })
+      expect(blocked.status).toBe(429)
+      expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0)
+      expect(upstream.exchanges).toBe(0)
+    } finally { await upstream.close() }
+  })
+
+  // @spec authentication_admission_and_audit_do_not_expose_secrets
+  test('verified subject budgets survive source changes without conflating provider namespaces', async () => {
+    vi.stubEnv('PREAUTH_OAUTH_CALLBACK_MAX', '2')
+    const upstream = await issuer()
+    try {
+      await saveDoc('User', { row_id: 'budget-person', full_name: 'Budget Person' })
+      await sql`insert into login_provider (id, kind, issuer, client_id, enabled) values
+        ('budget-one', 'google', 'https://accounts.google.com', 'test-client', true),
+        ('budget-two', 'google', 'https://accounts.google.com', 'other-client', true)`
+      await sql`insert into external_identity (id, user_id, provider_id, issuer, subject) values
+        ('budget-identity-one', 'budget-person', 'budget-one', 'https://accounts.google.com', 'subject-one'),
+        ('budget-identity-two', 'budget-person', 'budget-two', 'https://accounts.google.com', 'subject-one')`
+      let source = 20
+      const attempt = async (provider: string) => {
+        const ip = `192.0.2.${source++}`
+        const start = await request(`/api/auth/login/${provider}`, {}, ip)
+        expect(start.status).toBe(302)
+        const authorization = new URL(start.headers.get('location')!)
+        const callback = new URL(authorization.searchParams.get('redirect_uri')!)
+        callback.searchParams.set('state', authorization.searchParams.get('state')!)
+        callback.searchParams.set('code', upstream.code(authorization))
+        return request(callback.pathname + callback.search, { headers: { cookie: start.headers.getSetCookie()[0].split(';')[0] } }, ip)
+      }
+      expect((await attempt('budget-one')).status).toBe(302)
+      expect((await attempt('budget-one')).status).toBe(302)
+      const refused = await attempt('budget-one')
+      expect(refused.status).toBe(429)
+      expect(Number(refused.headers.get('retry-after'))).toBeGreaterThan(0)
+      upstream.setClaims({ aud: 'other-client' })
+      expect((await attempt('budget-two')).status).toBe(302)
+      expect((await sql`select count(*)::int as count from login_session where user_id = 'budget-person'`)[0].count).toBe(3)
+    } finally { await upstream.close() }
   })
 
   test('successful public forms still consume budget even with a supplied session', async ({ admin }) => {

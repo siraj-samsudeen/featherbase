@@ -1,7 +1,10 @@
 import { expect } from 'vitest'
+import { resolve } from 'node:path'
 import { test } from './pg-test'
 import { issuer } from './oidc-issuer'
 import { sql } from '../src/db'
+import { discoverPackages } from '../src/runtime-packages'
+import { version as taskerVersion } from '../../../runtime-apps/tasker/package.json'
 import { hostedAuthorization, verifyHostedCode } from '../src/hosted-providers'
 import { beginHostedLogin, beginIdentityLink, completeHostedOperation, redeemLoginHandoff, unlinkIdentity,
   provisionExternalUser, issueIdentityInvitation, beginInvitedLogin, approveIdentityRecovery, beginIdentityReauthentication } from '../src/login-operations'
@@ -136,9 +139,11 @@ test('unlink retains ownership, revokes the removed method and refuses the last 
 
 // @spec external_enrollment_requires_explicit_authority
 // @spec identity_linking_requires_two_bound_proofs.one_person_uses_three_google_identities_for_the_same_tasker_work
-test('one admitted User enrolls a personal identity and explicitly links two Workspace identities', async () => {
+test('one admitted User enrolls a personal identity and explicitly links two Workspace identities', async ({ api, admin }) => {
   const upstream = await issuer()
   try {
+    expect(await discoverPackages([resolve('../..', 'runtime-apps/tasker')])).toEqual([])
+    await admin.post('/api/install_app', { name: 'tasker' })
     await sql`insert into login_provider (id, kind, issuer, client_id, enabled)
       values ('google-oidc', 'google', 'https://accounts.google.com', 'test-client', true)`
     const operator = await login('Administrator', process.env.ADMIN_PASSWORD ?? 'admin')
@@ -150,6 +155,13 @@ test('one admitted User enrolls a personal identity and explicitly links two Wor
     upstream.setClaims({ sub: 'personal-subject', auth_time: Math.floor(Date.now() / 1000), email: 'person@personal.example' })
     let current = await finishHostedLogin(new URL(`http://localhost/callback?state=${initial.state}&code=${upstream.code(initial.authorizationUrl)}`), initial.browserSecret)
     expect(current.session.user.row_id).toBe(userId)
+    const headers = (token: string) => ({ authorization: `Bearer ${token}`, 'X-Featherbase-App-Version': `tasker@${taskerVersion}` })
+    const created = await api.fetch('/api/save_row', { method: 'POST', headers: headers(current.session.token),
+      body: JSON.stringify({ table: 'tasker.task', row: { task_title: 'Review 37 supplier invoices', assigned_to: userId, task_state: 'Blocked' } }) })
+    expect(created.status).toBe(201)
+    const task = await created.json() as { row_id: string }
+    expect((await api.fetch('/api/set_palette', { method: 'POST', headers: headers(current.session.token),
+      body: JSON.stringify({ palette: 'indigo' }) })).status).toBe(200)
     for (const [sub, email] of [['workspace-one', 'person@work-one.example'], ['workspace-two', 'different@work-two.example']]) {
       upstream.setClaims({ sub, email, auth_time: Math.floor(Date.now() / 1000) })
       const target = await beginIdentityLink(`Bearer ${current.session.token}`, 'google-oidc', 'http://localhost/callback')
@@ -162,12 +174,22 @@ test('one admitted User enrolls a personal identity and explicitly links two Wor
     expect(person).toMatchObject({ email: null, native_login_enabled: false, password_hash: null })
     await expect(issueIdentityInvitation(actor, userId, 'google-oidc', 'enroll').then(() => null)).rejects.toMatchObject({ type: 'ValidationError' })
     await expect(issueIdentityInvitation(actor, 'Administrator', 'google-oidc', 'enroll').then(() => null)).rejects.toMatchObject({ type: 'ValidationError' })
+    const sessions: string[] = []
     for (const subject of identities.map((i) => i.subject)) {
       upstream.setClaims({ sub: subject })
       const next = await beginHostedLogin('google-oidc', 'http://localhost/callback')
       const authenticated = await finishHostedLogin(new URL(`http://localhost/callback?state=${next.state}&code=${upstream.code(next.authorizationUrl)}`), next.browserSecret)
       expect(authenticated.session.user.row_id).toBe(userId)
+      sessions.push(authenticated.session.token)
+      const ownTask = await api.fetch(`/api/table/tasker.task/${task.row_id}`, { headers: headers(authenticated.session.token) })
+      expect(ownTask.status).toBe(200)
+      expect(await ownTask.json()).toMatchObject({ row_id: task.row_id, task_title: 'Review 37 supplier invoices', assigned_to: userId, task_state: 'Blocked', created_by: userId })
+      const who = await api.fetch('/api/whoami', { headers: headers(authenticated.session.token) })
+      expect(await who.json()).toMatchObject({ row_id: userId, roles: ['All'], palette: 'indigo' })
     }
+    await sql`update "user" set enabled = false where row_id = ${userId}`
+    for (const token of sessions) expect((await api.fetch(`/api/table/tasker.task/${task.row_id}`, { headers: headers(token) })).status).toBe(401)
+    expect((await resolveToken(actor)).row_id).toBe('Administrator')
   } finally { await upstream.close() }
 })
 

@@ -1,4 +1,5 @@
 import { expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { test } from './pg-test'
 import { sql } from '../src/db'
 import { getDoc, saveDoc } from '../src/document'
@@ -98,4 +99,26 @@ test('anonymous proofs begun before User disable or identity unlink cannot survi
   await sql`update external_identity set revoked_at = null where id = 'identity-b'`
   await expect(sessionFromProof('microsoft-test', 'https://login.microsoftonline.com/tenant-a/v2.0', 'Subject-A', null, begun))
     .rejects.toMatchObject({ type: 'AuthenticationError' })
+})
+
+// @spec external_enrollment_requires_explicit_authority
+test('legacy configuration migration preserves the OAuth client but never invents subject ownership', async () => {
+  await saveDoc('User', { row_id: 'legacy-google-person', email: 'legacy@example.test', full_name: 'Legacy Person' })
+  await sql`alter table "user" add column if not exists social_login text`
+  await sql`update "user" set social_login = 'google', identity_enrolled = true where row_id = 'legacy-google-person'`
+  await sql`insert into single_value (table_name, field, value) values
+    ('System Settings', 'google_client_id', 'legacy-client'),
+    ('System Settings', 'allowed_login_domains', 'example.test')
+    on conflict (table_name, field) do update set value = excluded.value`
+  const migration = readFileSync(new URL('../migrations/0104_retire_email_login.sql', import.meta.url), 'utf8')
+  await sql.unsafe(migration)
+  expect(await sql`select kind, issuer, client_id, enabled from login_provider where client_id = 'legacy-client'`)
+    .toEqual([{ kind: 'google', issuer: 'https://accounts.google.com', client_id: 'legacy-client', enabled: true }])
+  expect(await sql`select id from external_identity where user_id = 'legacy-google-person'`).toEqual([])
+  expect(await sql`select row_id, email, identity_enrolled from "user" where row_id = 'legacy-google-person'`)
+    .toEqual([{ row_id: 'legacy-google-person', email: 'legacy@example.test', identity_enrolled: true }])
+  expect(await sql`select column_name from column_def where (parent = 'User' and column_name = 'social_login')
+    or (parent = 'System Settings' and column_name in ('google_client_id', 'allowed_login_domains'))`).toEqual([])
+  expect(await sql`select field from single_value where table_name = 'System Settings'
+    and field in ('google_client_id', 'allowed_login_domains')`).toEqual([])
 })

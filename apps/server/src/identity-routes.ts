@@ -63,12 +63,20 @@ identityRoutes.all('/login/stylehr', () => {
   throw new AppError('ProviderUnavailableError', 'StyleHR sign-in is not activated')
 })
 
-identityRoutes.get('/login/:provider', publicLimit('OAUTH_LOGIN'), async (c) => {
+// Unknown identifiers share one bucket: caller-chosen IDs cannot expand budgets.
+identityRoutes.get('/login/:provider', publicLimit('OAUTH_LOGIN', async (c) => {
+  const [provider] = await sql`select id from login_provider where id = ${text(c.req.param('provider'))}`
+  return provider?.id as string ?? 'unknown'
+}), async (c) => {
   const operation = await beginHostedLogin(text(c.req.param('provider')), callbackUri(c), c.req.query('next'))
   return c.redirect(rememberOperation(c, operation))
 })
 
-identityRoutes.get('/callback', publicLimit('OAUTH_CALLBACK'), async (c) => {
+identityRoutes.get('/callback', publicLimit('OAUTH_CALLBACK', async (c) => {
+  const [operation] = await sql`select provider_id from login_operation
+    where state_hash = ${loginSecretHash(c.req.query('state') ?? '')}`
+  return operation?.provider_id as string ?? 'unknown'
+}), async (c) => {
   const cookieName = operationCookie(c.req.query('state') ?? '')
   const browserSecret = getCookie(c, cookieName)
   deleteCookie(c, cookieName, { path: '/api/auth/callback' })

@@ -31,6 +31,30 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false)
   const [forgot, setForgot] = useState(false)
   const [resetSent, setResetSent] = useState(false)
+  const [providers, setProviders] = useState<{ id: string; label: string; kind: string }[]>([])
+  const [invited, setInvited] = useState(false)
+  const returnTo = safeLoginNext(new URLSearchParams(window.location.search).get('next') ?? undefined)
+  useEffect(() => {
+    fetch('/api/auth/providers').then((r) => {
+      if (!r.ok) throw new Error('Provider discovery failed')
+      return r.json()
+    }).then((data: { providers: typeof providers }) => setProviders(data.providers))
+      .catch(() => setError('Could not load hosted login methods. Native login is still available.'))
+  }, [])
+
+  async function acceptInvitation(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    const form = new FormData(e.currentTarget)
+    try {
+      const result = await api.post<{ authorizationUrl: string }>('/api/auth/invitation', { invitation: String(form.get('invitation')) })
+      window.location.assign(result.authorizationUrl)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not begin enrollment')
+      setBusy(false)
+    }
+  }
 
   async function onForgot(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -81,7 +105,7 @@ export function LoginPage() {
               />
             </div>
             <div>
-              <label className="fc-label" htmlFor="login-password">Password</label>
+              <label className="fc-label" htmlFor="login-password">Featherbase password</label>
               <input
                 id="login-password"
                 type="password"
@@ -100,15 +124,23 @@ export function LoginPage() {
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
-          {/* PLAT-006: social login. A full-page navigation (not fetch) so the
-              server's OAuth redirects drive the browser. */}
-          <a
-            href="/api/oauth/google/login"
-            data-testid="google-login"
-            className="fc-btn mt-3 flex w-full justify-center py-2"
-          >
-            Sign in with Google
-          </a>
+          {/* @spec provider_configuration_is_an_authentication_boundary */}
+          {providers.map((provider) => <a key={provider.id}
+            href={`/api/auth/login/${encodeURIComponent(provider.id)}${returnTo ? `?next=${encodeURIComponent(returnTo)}` : ''}`}
+            data-testid={`${provider.kind}-login`} className="fc-btn mt-3 flex w-full justify-center py-2">
+            Sign in with {provider.label}
+          </a>)}
+          <p className="mt-3 text-xs text-[var(--color-ink-muted)]">Google and Microsoft passwords stay on their hosted pages. StyleHR sign-in is not activated.</p>
+          {new URLSearchParams(window.location.search).get('recovery') === 'pending' &&
+            <p role="status" className="mt-3 text-sm">Identity proof received. An administrator must independently verify and approve the exact recovery target before you can sign in.</p>}
+          <button type="button" className="mt-3 text-sm text-[var(--color-brand)]" onClick={() => setInvited(!invited)}>
+            Use an enrollment or recovery code
+          </button>
+          {invited && <form onSubmit={acceptInvitation} className="mt-3 space-y-3">
+            <label className="fc-label" htmlFor="invitation-code">Administrator-issued code</label>
+            <input id="invitation-code" name="invitation" type="password" autoComplete="off" required className="fc-input" />
+            <button className="fc-btn" disabled={busy}>Continue to provider</button>
+          </form>}
           <div className="mt-4 border-t border-[var(--color-border)] pt-4">
             {!forgot ? (
               <button

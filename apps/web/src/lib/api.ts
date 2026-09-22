@@ -7,7 +7,7 @@ let runtimeSnapshot: { token: string; versions: Promise<string[]> } | undefined
 // expired bearer must not insert a protected request in front of them.
 // @spec core_runtime_client_pins_active_identity.public_exchange_ignores_expired_saved_token
 const PUBLIC_API_PATHS = new Set([
-  '/api/login', '/api/logout', '/api/oauth/session',
+  '/api/login', '/api/logout', '/api/auth/session', '/api/auth/providers', '/api/auth/invitation',
   '/api/reset_password_request', '/api/reset_password', '/api/brand', '/api/ping',
 ])
 
@@ -65,7 +65,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   let versions: string[] = []
   const endpoint = path.split('?')[0]
   if (token && endpoint !== '/api/runtime_app_versions' &&
-      !PUBLIC_API_PATHS.has(endpoint) && !endpoint.startsWith('/api/web_form/')) {
+      !PUBLIC_API_PATHS.has(endpoint) && !endpoint.startsWith('/api/web_form/') && !endpoint.startsWith('/api/auth/')) {
     if (runtimeSnapshot?.token !== token) {
       runtimeSnapshot = { token, versions: request<string[]>('/api/runtime_app_versions') }
     }
@@ -83,7 +83,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...(versions.length ? { 'X-Featherbase-App-Version': versions.join(', ') } : {}),
     },
   })
-  if (res.status === 401) {
+  if (res.status === 401 && endpoint !== '/api/auth/reauthenticate/native') {
     clearSession()
     // Already on the login screen there is nothing to redirect to — a hard
     // reload here just destroys in-flight state (a stale query 401ing during

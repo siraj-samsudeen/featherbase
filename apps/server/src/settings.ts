@@ -11,8 +11,6 @@ export interface SystemSettings {
   currency: string
   currency_precision: number
   float_precision: number
-  google_client_id: string
-  allowed_login_domains: string
 }
 
 const DEFAULTS: SystemSettings = {
@@ -23,8 +21,6 @@ const DEFAULTS: SystemSettings = {
   currency: 'USD',
   currency_precision: 2,
   float_precision: 2,
-  google_client_id: '',
-  allowed_login_domains: '',
 }
 
 export async function getSystemSettings(): Promise<SystemSettings> {
@@ -47,7 +43,5 @@ export async function getSystemSettings(): Promise<SystemSettings> {
     currency: str('currency'),
     currency_precision: num('currency_precision'),
     float_precision: num('float_precision'),
-    google_client_id: str('google_client_id'),
-    allowed_login_domains: str('allowed_login_domains'),
   }
 }

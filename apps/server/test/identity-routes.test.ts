@@ -97,3 +97,30 @@ test('provider administration requires fresh manager proof and cannot duplicate 
     expect(await (await api.fetch('/api/auth/providers')).json()).toMatchObject({ providers: [] })
   } finally { await upstream.close() }
 })
+
+// @spec authentication_admission_and_audit_do_not_expose_secrets
+test('provider outage is safely audited without leaking upstream bodies or callback secrets', async ({ api }) => {
+  const upstream = await issuer()
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    await sql`insert into login_provider (id, kind, issuer, client_id, enabled)
+      values ('outage-google', 'google', 'https://accounts.google.com', 'test-client', true)`
+    const start = await api.fetch('/api/auth/login/outage-google')
+    const authorization = new URL(start.headers.get('location')!)
+    const cookie = start.headers.getSetCookie()[0].split(';')[0]
+    const callback = new URL(authorization.searchParams.get('redirect_uri')!)
+    callback.searchParams.set('state', authorization.searchParams.get('state')!)
+    callback.searchParams.set('code', 'SENTINEL_PRIVATE_CODE')
+    upstream.setUnavailable(true)
+    const response = await api.fetch(callback.pathname + callback.search, { headers: { cookie } })
+    expect(response.status).toBe(503)
+    const audits = await sql`select "user", operation, ref_table, reference_name from access_log
+      where ref_table = 'Login Provider' and reference_name = 'outage-google'`
+    expect(audits).toContainEqual({ user: 'Guest', operation: 'login unavailable', ref_table: 'Login Provider', reference_name: 'outage-google' })
+    const observable = JSON.stringify([await response.json(), log.mock.calls, audits,
+      await sql`select operation, full_name from activity_log`])
+    for (const sentinel of ['SENTINEL_PASSWORD_TOKEN_RESPONSE', 'SENTINEL_PRIVATE_CODE', 'SENTINEL_ACCESS_TOKEN'])
+      expect(observable).not.toContain(sentinel)
+    expect(await sql`select id from login_session where method = 'external'`).toEqual([])
+  } finally { log.mockRestore(); await upstream.close() }
+})

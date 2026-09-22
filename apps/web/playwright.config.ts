@@ -147,9 +147,7 @@ export default defineConfig({
             PREAUTH_LOGIN_MAX: '10000',
             PREAUTH_OAUTH_LOGIN_MAX: '10000',
             PREAUTH_OAUTH_CALLBACK_MAX: '10000',
-            // The e2e specs drive the mock OAuth provider, which is opt-in and
-            // fails closed. Matches what init.sh does for a dev machine.
-            ALLOW_MOCK_OAUTH: '1',
+            SITE_URL: `http://localhost:${webPort}`,
             WEB_ORIGINS: `http://localhost:${webPort}`,
           },
         },

@@ -1,10 +1,11 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { safeLoginDestination } from 'shared'
 import { sql, withTransaction } from './db'
-import { AppError } from './errors'
+import { AppError, RateLimitError } from './errors'
+import { admit, bucketKey, preAuthPolicy } from './pre-auth-rate-limit'
 import { issueExternalSession, resolveLoginSession, resolveSessionRecord, type LoginSessionRecord } from './auth'
 import { configuredHostedProvider, hostedAuthorization, verifyHostedCode, HOSTED_ISSUERS, type VerifiedExternalProof } from './hosted-providers'
-import { logActivity } from './audit'
+import { logAccess, logActivity } from './audit'
 import { getRoles } from './permissions'
 import { saveDoc } from './document'
 
@@ -126,10 +127,23 @@ export async function completeHostedOperation(callback: URL, browserSecret: stri
     if (operation.purpose === 'link') requireRecentAuthentication(source)
   }
   const providerId = operation.provider_id as string
+  // @spec authentication_admission_and_audit_do_not_expose_secrets
+  // These fields come from our consumed operation, never an upstream response.
+  const auditFailure = async (error: unknown): Promise<never> => {
+    const outcome = error instanceof AppError && error.type === 'ProviderUnavailableError' ? 'unavailable' : 'refused'
+    await logAccess(source?.user.row_id ?? 'Guest', `${operation.purpose} ${outcome}`, { table: 'Login Provider', row_id: providerId })
+    throw error
+  }
   const proof = await verifyHostedCode(providerId, callback, {
     state, nonce: operation.nonce as string, verifier: operation.pkce_verifier as string,
     redirectUri: operation.redirect_uri as string,
-  })
+  }).catch(auditFailure)
+  // Anonymous subjects are known only after validation. Source admission has
+  // already bounded exchange; this account budget now bounds binding/issuance
+  // across sources, without trusting email hints or unsigned token payloads.
+  const policy = preAuthPolicy()
+  const account = await admit(bucketKey(['HOSTED_SUBJECT', providerId, proof.issuer, proof.subject]), policy.limits.OAUTH_CALLBACK, policy.windowMs)
+  if (!account.revision) return auditFailure(new RateLimitError(account.retryAfter))
   return withTransaction(async () => {
     if (source) {
       const { current } = await lockAccount(source, providerId)
@@ -158,6 +172,7 @@ export async function completeHostedOperation(callback: URL, browserSecret: stri
           issuer, subject, email, email_verified, display_name)
           values (${recoveryId}, ${user.row_id}, ${operation.invited_user_generation}, ${providerId}, ${operation.provider_generation},
             ${proof.issuer}, ${proof.subject}, ${proof.email}, ${proof.emailVerified}, ${proof.displayName})`
+        await logAccess('Guest', 'recovery proof collected', { table: 'Login Provider', row_id: providerId })
         return { kind: 'recovery-pending' as const, recoveryId }
       }
       if (user.identity_enrolled || user.password_hash) throw new AppError('AuthenticationError', 'Invalid or expired invitation')
@@ -167,12 +182,10 @@ export async function completeHostedOperation(callback: URL, browserSecret: stri
     // Only display metadata changes; neither verified email nor name owns a User.
     await sql`update external_identity set email = ${proof.email}, email_verified = ${proof.emailVerified}, display_name = ${proof.displayName}
       where provider_id = ${providerId} and issuer = ${proof.issuer} and subject = ${proof.subject}`
-    const record = await resolveLoginSession(`Bearer ${session.token}`)
-    const handoff = secret()
-    await sql`insert into login_handoff (code_hash, credential_hash, session_id, return_to)
-      values (${loginSecretHash(handoff)}, ${loginSecretHash(session.token)}, ${record.id}, ${operation.return_to ?? null})`
+    const handoff = await createLoginHandoff(session.token, operation.return_to as string | null)
+    await logAccess(session.user.row_id, `${operation.purpose} succeeded`, { table: 'Login Provider', row_id: providerId })
     return { kind: 'session' as const, session, handoff }
-  })
+  }).catch(auditFailure)
 }
 
 async function requireRecoveryOperator(source: LoginSessionRecord) {
@@ -323,6 +336,15 @@ export async function unlinkIdentity(authorization: string | undefined, identity
     await sql`update external_identity set revoked_at = clock_timestamp() where id = ${identityId}`
     await logActivity(source.user.row_id, 'identity unlinked')
   })
+}
+
+export async function createLoginHandoff(token: string, returnTo: string | null = null) {
+  const record = await resolveLoginSession(`Bearer ${token}`)
+  const handoff = secret()
+  await sql`delete from login_handoff where expires_at <= clock_timestamp()`
+  await sql`insert into login_handoff (code_hash, credential_hash, session_id, return_to)
+    values (${loginSecretHash(handoff)}, ${loginSecretHash(token)}, ${record.id}, ${safeLoginDestination(returnTo ?? undefined) ?? null})`
+  return handoff
 }
 
 // @spec session_handoff_is_bound_one_use_and_revocation_aware

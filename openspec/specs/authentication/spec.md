@@ -2,86 +2,123 @@
 
 ## Purpose
 
-Characterize the password, Google and session boundaries present on 2026-09-22
-before replacing email-based identity resolution under #244 and #275. These
-observations are not approval of email linking or non-revocable sessions.
+Define native and provider-hosted authentication, browser-bound login operations,
+and revocable sessions without treating mutable email as account ownership.
 
 ## Domain assumptions
 
-- Google owns its hosted authorization, token and UserInfo endpoints. Established
-  from the implementation and Google OIDC documentation on 2026-09-22. Endpoint
+- Google and Microsoft own their hosted authorization and token endpoints.
+  Established from their OIDC documentation on 2026-09-22. Endpoint
   failure is detected during exchange; provider account lifecycle is not locally
-  monitored. The development mock is not evidence of real-provider verification.
+  monitored. Synthetic protocol proof is not evidence of live-provider setup.
 
 ## Requirements
 
-### Requirement: password_authentication_baseline
-Status: characterized (#244)
+### Requirement: native_login_requires_an_enabled_native_method
+Status: governed
 
-Password login SHALL accept an enabled human User by row ID or email with a
-matching local password hash, and SHALL reject incorrect credentials. A successful
-login SHALL return a session token and the User identity.
+Native password login SHALL require an enabled human User with an enabled native
+method and a matching password. It SHALL accept row ID or nonempty email and
+return a revocable session. External-only Users SHALL NOT acquire native login
+through password reset or ordinary password assignment. Reset requests SHALL
+remain enumeration-resistant. A native password change SHALL revoke existing
+sessions and outstanding authentication operations for that User.
 
-#### Scenario: native_login_accepts_email_but_rejects_wrong_password
-- **WHEN** Administrator signs in by email with its password, then by row ID with
-  an incorrect password
-- **THEN** the first request succeeds and the second returns authentication failure
+#### Scenario: native_reset_does_not_create_external_account_fallback
+- **WHEN** reset is requested for an external-only User with a contact email
+- **THEN** the public response is indistinguishable from other reset requests,
+  no reset credential is issued and no native login method is created
 
-### Requirement: google_identity_resolution_baseline
-Status: characterized (#244)
+#### Scenario: native_password_change_revokes_copied_sessions
+- **WHEN** a native User changes a valid password
+- **THEN** copied old sessions fail and the new password can create a new session
 
-Google login SHALL resolve an existing User by case-insensitive email or row ID,
-without a stored Google subject. Unknown emails SHALL be provisioned only when
-their domain is admitted by configuration; an empty allowlist admits none and
-`*` admits any valid email domain. Existing Users SHALL bypass this provisioning
-allowlist. Disabled and service Users SHALL remain unable to sign in.
+### Requirement: hosted_login_validates_subject_and_browser_operation
+Status: governed
 
-#### Scenario: existing_google_email_ignores_provisioning_allowlist
-- **WHEN** an existing enabled human authenticates with its email and the
-  provisioning allowlist is empty
-- **THEN** login succeeds without creating another User
+Google and Microsoft authentication SHALL remain provider-hosted authorization
+code flows. Featherbase SHALL NOT accept their passwords. Every completion SHALL
+validate the configured provider, signature, issuer, audience, expiry, nonce,
+PKCE and browser-bound state. The operation SHALL be single-use, expire after ten
+minutes, and bind its purpose, provider configuration and safe return destination.
+Failed validation SHALL create no identity or session. Only minimum login claims
+SHALL persist; provider access/refresh tokens SHALL NOT persist for login-only use.
 
-### Requirement: google_browser_challenge_baseline
-Status: characterized (#244)
+#### Scenario: hosted_callback_rejects_cross_provider_and_replayed_proof
+- **WHEN** a Google operation receives a Microsoft proof, a wrong issuer/audience
+  or nonce, a missing browser cookie, an expired operation or a reused code
+- **THEN** completion fails without creating a session or changing identity ownership
 
-Google login SHALL use a hosted authorization redirect with S256 PKCE when a
-client ID is configured. A callback SHALL require a signed unexpired state
-matching this browser's state cookie. Without a client ID, mock authentication
-SHALL require explicit `ALLOW_MOCK_OAUTH=1`; missing configuration alone SHALL
-NOT enable it.
+#### Scenario: personal_and_organizational_accounts_use_hosted_pages
+- **WHEN** enrolled Gmail, Workspace, Microsoft work/school and personal Microsoft
+  Users choose their configured provider
+- **THEN** each authenticates on the provider's page and returns to its own User
+  without a Featherbase password prompt for that provider
 
-#### Scenario: google_callback_refuses_another_browser
-- **WHEN** a callback has missing or mismatched browser state cookies
-- **THEN** it is refused before creating a session
+### Requirement: login_sessions_are_revocable_on_every_use
+Status: governed
 
-### Requirement: oauth_session_handoff_baseline
-Status: characterized (#244)
+A Login Session SHALL require a live server-side record, an unexpired credential,
+an enabled human User and an available originating login method on every use.
+Its lifetime SHALL default to eight hours for missing, invalid or zero session
+hours and otherwise clamp to one through 720 hours. Logout
+SHALL revoke the presented session and clear the cookie. User disable SHALL
+permanently revoke all of that User's sessions and pending authentication
+operations; re-enable SHALL NOT revive them. Provider disable and identity unlink
+SHALL revoke sessions and operations depending on that method. HTTP requests and
+WebSocket subscriptions/deliveries SHALL enforce the same validity boundary.
+Operations already authorized before revocation need not roll back completed work.
 
-The OAuth callback SHALL put a one-use, one-minute handoff code, not the session
-token, in the browser redirect. Redemption SHALL require the matching session
-cookie; reuse, an unknown code or a different browser SHALL fail.
+#### Scenario: whole_user_offboarding_blocks_every_linked_method
+- **WHEN** an employee User with Google and Microsoft sessions is disabled
+- **THEN** both copied session credentials fail, new logins fail, pending links
+  fail, and established sockets deliver no newly authorized events
+- **AND** re-enabling the User requires new authentication for either provider
 
-#### Scenario: oauth_handoff_cannot_be_redeemed_twice
-- **WHEN** the same handoff code is redeemed twice with its matching cookie
-- **THEN** only the first redemption succeeds
+#### Scenario: provider_revocation_does_not_disable_an_independent_method
+- **WHEN** Google's provider is disabled for a User with separate Google and
+  Microsoft sessions
+- **THEN** Google sessions and pending operations fail, the Microsoft session
+  remains valid, and re-enabling Google does not revive its old sessions
 
-### Requirement: session_validity_baseline
-Status: characterized (#244)
+### Requirement: session_handoff_is_bound_one_use_and_revocation_aware
+Status: governed
 
-Session tokens SHALL be signed JWTs carrying the User ID and expiry. Every token
-resolution SHALL require a currently enabled User. Logout SHALL clear the browser
-cookie but SHALL NOT revoke a copied token. Disabling and then re-enabling the
-User SHALL allow an otherwise unexpired copied token again. Session expiry SHALL
-default to eight hours for missing, invalid or zero configuration; otherwise the
-configured hours SHALL be clamped between one and 720 hours.
+The hosted callback SHALL set a secure HttpOnly SameSite cookie and redirect with
+a browser-bound handoff code rather than a session credential. Handoff redemption
+SHALL be a one-use POST within one minute and SHALL validate the session's current
+eligibility. Cookies SHALL be Secure on HTTPS. Credentials SHALL NOT be accepted
+from URL query parameters. Successful login SHALL preserve the existing validated
+application return destination or use normal server-controlled landing.
 
-#### Scenario: copied_session_survives_logout_but_not_user_disable
-- **WHEN** a valid token is copied, the browser logs out, and the User is disabled
-  then re-enabled
-- **THEN** the token works after logout, fails while disabled, and works again
-  after re-enabling
+#### Scenario: revoked_session_cannot_be_recovered_through_handoff
+- **WHEN** a callback creates a handoff and the User is disabled before redemption
+- **THEN** redemption fails even with the original browser cookie
 
-#### Scenario: zero_session_hours_defaults_instead_of_clamping
-- **WHEN** session hours is configured as zero, negative two or 900
-- **THEN** both password login and passwordless issuance use eight, one or 720
-  hours respectively
+#### Scenario: tasker_return_survives_a_hosted_login
+- **WHEN** a signed-out User follows a Tasker link with encoded query and fragment
+  and completes a hosted login
+- **THEN** the same safe Tasker destination opens without widening redirect targets
+
+### Requirement: authentication_admission_and_audit_do_not_expose_secrets
+Status: governed
+
+Login, enrollment, reauthentication, callback, linking and recovery SHALL use
+shared cross-process rate limits before expensive work or credential exchange.
+Credential attempts SHALL use provider-separated source and account budgets;
+untrusted forwarding headers SHALL NOT choose the source. Anonymous account
+refusals SHALL not distinguish unknown, disabled or already-owned identities.
+Provider outage SHALL produce an unavailable result rather than wrong-password
+or a local fallback. Audit SHALL record operation, outcome and internal actor/
+provider identifiers without passwords, hashes, tokens, codes or raw responses.
+Error responses and application logs SHALL obey the same redaction boundary.
+
+#### Scenario: provider_exceptions_cannot_escape_into_logs
+- **WHEN** an upstream error body or exception includes sentinel password, token
+  and code values
+- **THEN** none appear in the HTTP response, application logs or audit, and the
+  safe operation outcome remains observable
+
+#### Scenario: rate_limits_precede_provider_calls
+- **WHEN** attempts exhaust the shared budget and a second process retries
+- **THEN** it receives a bounded retry response without contacting the provider

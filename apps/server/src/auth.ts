@@ -89,9 +89,10 @@ export async function issueExternalSession(providerId: string, issuer: string, s
     const [owner] = await sql`select user_id from external_identity
       where provider_id = ${providerId} and issuer = ${issuer} and subject = ${subject}`
     if (!owner) throw new AppError('AuthenticationError', 'Identity cannot sign in')
-    const [user] = await sql`select row_id, authentication_valid_after < ${proofStartedAt} as proof_current
+    const [user] = await sql`select row_id, enabled, user_type, authentication_valid_after < ${proofStartedAt} as proof_current
       from "user" where row_id = ${owner.user_id} for update`
-    if (!user?.proof_current) throw new AppError('AuthenticationError', 'Identity cannot sign in')
+    if (!user?.proof_current || !user.enabled || user.user_type === 'service')
+      throw new AppError('AuthenticationError', 'Identity cannot sign in')
     const [identity] = await sql`select id, user_id, revoked_at, auth_generation from external_identity
       where provider_id = ${providerId} and issuer = ${issuer} and subject = ${subject}
         and authentication_valid_after < ${proofStartedAt} for update`

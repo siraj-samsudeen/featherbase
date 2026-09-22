@@ -173,15 +173,11 @@ if command -v psql >/dev/null && [ "${DB_NAME:-}" = featherbase ]; then
 fi
 
 # --- 4. App servers (idempotent: kill stale, start fresh, wait for health) --
-# The mock Google provider is opt-in and nothing else: it mints a session for
-# any typed email, so it stays off unless a developer machine says otherwise.
-# This is a local dev boot, so it says otherwise. A deployment never runs
-# init.sh and so never sets this — the mock is unreachable there.
-export ALLOW_MOCK_OAUTH=1
 # These defaults are the single-checkout development ports. Export them so
 # Vite both listens on the selected web port and proxies to this stack's API.
 export API_PORT="${API_PORT:-8000}"
 export WEB_PORT="${WEB_PORT:-5173}"
+export SITE_URL="${SITE_URL:-http://localhost:${WEB_PORT}}"
 server_log="/tmp/featherbase-server-${API_PORT}.log"
 web_log="/tmp/featherbase-web-${WEB_PORT}.log"
 # Kill by listening port — pattern-matching the tsx wrapper misses the actual

@@ -102,11 +102,13 @@ function source(c: Context, trusted: string[]) {
   return sourceAddress(c.env?.incoming?.socket?.remoteAddress, c.req.header('x-forwarded-for'), trusted)
 }
 
-export function publicLimit(kind: Exclude<Kind, 'PASSWORD'>) {
+export function publicLimit(kind: Exclude<Kind, 'PASSWORD'>, namespace?: (c: Context) => string | Promise<string>) {
   return async (c: Context, next: Next) => {
     const policy = preAuthPolicy()
     await cleanExpiredBuckets()
-    const ticket = await admit(bucketKey([kind, source(c, policy.trusted)]), policy.limits[kind], policy.windowMs)
+    const parts = [kind, source(c, policy.trusted)]
+    if (namespace) parts.push(await namespace(c))
+    const ticket = await admit(bucketKey(parts), policy.limits[kind], policy.windowMs)
     if (!ticket.revision) return rejection(c, ticket.retryAfter)
     await next()
   }

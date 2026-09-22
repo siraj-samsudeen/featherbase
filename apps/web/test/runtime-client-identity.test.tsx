@@ -6,7 +6,7 @@ import { test, expect, renderApp } from './pg-test'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { loadInstalledApps } from 'server/src/apps'
 import { saveDoc } from 'server/src/document'
-import { mintHandoffCode } from 'server/src/oauth'
+import { createLoginHandoff } from 'server/src/login-operations'
 import { requestPasswordReset } from 'server/src/password-reset'
 import { api, clearSession, setSession } from '../src/lib/api'
 
@@ -19,14 +19,14 @@ test('public credential exchanges and logout do not bootstrap with an expired sa
   const member = await createUser({ email: 'fresh-reset@example.com' })
   const key = await requestPasswordReset(member.user!)
   const session = { token: admin.token!, user: { row_id: 'Administrator', email: '', full_name: null } }
-  const code = mintHandoffCode(session)
+  const code = await createLoginHandoff(session.token)
   const bridge = globalThis.fetch
   // Browser cookie transport for the real one-time redemption endpoint; all
   // responses and token/password validation still come from the real server.
   const requests = vi.spyOn(globalThis, 'fetch').mockImplementation((path, init) =>
-    bridge(path, { ...init, headers: { ...init?.headers, cookie: `sid=${admin.token}` } }))
+    bridge(path, { ...init, headers: { ...init?.headers, cookie: `sid=${admin.token}`, origin: 'http://localhost' } }))
   localStorage.setItem('fc_token', 'expired-bearer')
-  expect(await api.post('/api/oauth/session', { code })).toEqual(session)
+  expect(await api.post('/api/auth/session', { code })).toMatchObject({ token: session.token, user: { row_id: 'Administrator' }, returnTo: null })
   expect(await api.post('/api/reset_password_request', { usr: 'unknown-account@example.com' })).toEqual({ ok: true })
   expect(await api.post('/api/reset_password', { key, new_password: 'new-local-proof-password' })).toEqual({ ok: true })
   expect(await api.post('/api/logout')).toEqual({ ok: true })

@@ -634,6 +634,14 @@ export function AdminLayout() {
                     <option value="es">ES</option>
                   </select>
                 </div>
+                <a
+                  role="menuitem"
+                  href="/featherbase/account"
+                  data-testid="account-login-methods"
+                  className="block w-full px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
+                >
+                  {t('Login methods')}
+                </a>
                 <button
                   role="menuitem"
                   onClick={() => {
