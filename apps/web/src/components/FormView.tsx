@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { tableSchemaToZod, zodFieldErrors } from 'shared'
@@ -620,10 +620,14 @@ function FieldControl({
   const settings = useSettings()
   const { t } = useI18n()
   const base = 'fc-input'
+  // @spec generated_controls_have_accessible_names
+  const instanceId = useId()
+  const controlId = `${instanceId}-${field.column_name}`
+  const labelId = `${controlId}-label`
   const label = (
-    <label className="fc-label">
-      {t(field.label ?? field.column_name)}
-      {field.reqd && <span className="text-red-500"> *</span>}
+    <label htmlFor={controlId} className="fc-label">
+      <span id={labelId}>{t(field.label ?? field.column_name)}</span>
+      {field.reqd && <span aria-hidden="true" className="text-red-500"> *</span>}
     </label>
   )
   // SET-004: below Date/Currency/Float inputs, show the value as it renders
@@ -641,6 +645,9 @@ function FieldControl({
     </p>
   )
   const common = {
+    id: controlId,
+    'aria-labelledby': labelId,
+    'aria-required': field.reqd || undefined,
     disabled: field.read_only,
     'data-field': field.column_name,
     'data-fieldtype': field.column_type,
@@ -742,6 +749,8 @@ function FieldControl({
     case 'Sub-table':
       return wrap(
         <ChildGrid
+          id={controlId}
+          labelledBy={labelId}
           field={field}
           rows={(values[field.column_name] as Row[] | undefined) ?? []}
           onChange={(rows) => setField(field.column_name, rows)}
@@ -792,21 +801,46 @@ function toLocalDatetime(iso: string): string {
 // Minimal child grid: renders child rows with editable cells. Full add/
 // delete/reorder verification is UI-007.
 function ChildGrid({
+  id,
+  labelledBy,
   field,
   rows,
   onChange,
 }: {
+  id: string
+  labelledBy: string
   field: ColumnDef
   rows: Row[]
   onChange: (rows: Row[]) => void
 }) {
   const childMeta = useMeta(field.row_table ?? '')
+  const { t } = useI18n()
+  const draftKeys = useRef(new WeakMap<Row, string>())
+  const nextDraftKey = useRef(0)
+  // Keep UI identity out of row data sent to the server. Edits transfer the
+  // draft key; movement/removal retains row objects. Persisted IDs already
+  // provide identity, scoped by this grid's React instance ID.
+  // @spec generated_controls_have_accessible_names
+  function rowKey(row: Row): string {
+    if (row.row_id != null) return `saved-${row.row_id}`
+    let key = draftKeys.current.get(row)
+    if (!key) {
+      key = `draft-${nextDraftKey.current++}`
+      draftKeys.current.set(row, key)
+    }
+    return key
+  }
   if (!childMeta.data) return <p className="text-xs text-gray-400">Loading rows…</p>
   const cols = childMeta.data.columns.filter(
     (f) => !NO_COLUMN_TYPES.has(f.column_type) && !f.hidden,
   )
   function setCell(i: number, columnName: string, value: unknown) {
-    onChange(rows.map((r, j) => (j === i ? { ...r, [columnName]: value } : r)))
+    onChange(rows.map((row, j) => {
+      if (j !== i) return row
+      const edited = { ...row, [columnName]: value }
+      if (row.row_id == null) draftKeys.current.set(edited, rowKey(row))
+      return edited
+    }))
   }
   function move(i: number, dir: -1 | 1) {
     const j = i + dir
@@ -816,7 +850,7 @@ function ChildGrid({
     onChange(next)
   }
   return (
-    <div className="overflow-x-auto rounded-md border border-gray-200" data-testid={`table-${field.column_name}`}>
+    <div id={id} role="group" aria-labelledby={labelledBy} className="overflow-x-auto rounded-md border border-gray-200" data-testid={`table-${field.column_name}`}>
       <table className="w-full text-sm">
         <thead className="bg-gray-50 text-left">
           <tr>
@@ -830,10 +864,12 @@ function ChildGrid({
         </thead>
         <tbody>
           {rows.map((row, i) => (
-            <tr key={String(row.row_id ?? i)} className="border-b border-gray-100 last:border-0">
+            <tr key={rowKey(row)} className="border-b border-gray-100 last:border-0">
               {cols.map((c) => (
                 <td key={c.column_name} className="px-1 py-1">
                   <input
+                    id={`${id}-${rowKey(row)}-${c.column_name}`}
+                    aria-label={`${t(field.label ?? field.column_name)}, ${t(c.label ?? c.column_name)}, row ${i + 1}`}
                     value={String(row[c.column_name] ?? '')}
                     onChange={(e) => setCell(i, c.column_name, e.target.value)}
                     className="w-full rounded border border-transparent px-1 py-0.5 hover:border-gray-200 focus:border-gray-400"
@@ -1036,6 +1072,8 @@ function AttachControl({
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const { t } = useI18n()
+  const fieldLabel = t(field.label ?? field.column_name)
   const isImage = field.column_type === 'Attach Image'
   // #173: a private file URL carries no credential — the <img>/<a> request is
   // same-origin, so the HttpOnly `sid` cookie authenticates it.
@@ -1060,8 +1098,9 @@ function AttachControl({
   }
 
   return (
-    <div {...common}>
+    <div data-field={field.column_name} data-fieldtype={field.column_type}>
       <input
+        {...common}
         ref={inputRef}
         type="file"
         accept={isImage ? 'image/*' : undefined}
@@ -1095,6 +1134,7 @@ function AttachControl({
             {!field.read_only && (
               <button
                 type="button"
+                aria-label={`Clear ${fieldLabel}`}
                 onClick={() => onChange(null)}
                 data-testid={`attach-clear-${field.column_name}`}
                 className="shrink-0 text-xs text-[var(--color-ink-faint)] hover:text-[var(--color-danger)]"
@@ -1107,6 +1147,7 @@ function AttachControl({
       ) : (
         <button
           type="button"
+          aria-label={`${busy ? 'Uploading' : `Attach ${isImage ? 'image' : 'file'}`} — ${fieldLabel}`}
           onClick={() => inputRef.current?.click()}
           disabled={Boolean(field.read_only) || busy}
           data-testid={`attach-btn-${field.column_name}`}

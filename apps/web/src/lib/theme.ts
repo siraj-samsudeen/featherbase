@@ -1,7 +1,5 @@
-import { useEffect, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import { api, getSessionUser } from './api'
-import { useWhoAmI } from './session'
+import { getSessionUser } from './api'
+import { useAppearancePreference } from './appearance-preference'
 
 // UI-024: per-user dark/light theme. The authoritative value is stored on the
 // User (server); localStorage mirrors it so the theme applies instantly on load
@@ -9,6 +7,10 @@ import { useWhoAmI } from './session'
 // two accounts sharing a browser never see each other's theme (PR #92 review).
 
 export type Theme = 'light' | 'dark'
+
+function isTheme(value: unknown): value is Theme {
+  return value === 'light' || value === 'dark'
+}
 
 function storageKey(): string | null {
   const user = getSessionUser()
@@ -35,31 +37,11 @@ try {
 }
 
 export function useTheme(): { theme: Theme; toggle: () => void; set: (t: Theme) => void } {
-  const who = useWhoAmI()
-  const qc = useQueryClient()
-  const [theme, setThemeState] = useState<Theme>(
-    (document.documentElement.dataset.theme as Theme) || 'light',
+  const { value: theme, set } = useAppearancePreference(
+    'theme',
+    isTheme(document.documentElement.dataset.theme) ? document.documentElement.dataset.theme : 'light',
+    isTheme,
+    applyTheme,
   )
-
-  // Sync from the server value once whoami resolves.
-  useEffect(() => {
-    const serverTheme = who.data?.theme
-    if (serverTheme === 'light' || serverTheme === 'dark') {
-      setThemeState(serverTheme)
-      applyTheme(serverTheme)
-    }
-  }, [who.data?.theme])
-
-  function set(next: Theme) {
-    setThemeState(next)
-    applyTheme(next)
-    void api.post('/api/set_theme', { theme: next }).then(() => {
-      // Keep the cached whoami in sync so other consumers see the new theme.
-      qc.setQueryData(['whoami'], (old: unknown) =>
-        old && typeof old === 'object' ? { ...(old as object), theme: next } : old,
-      )
-    })
-  }
-
-  return { theme, toggle: () => set(theme === 'dark' ? 'light' : 'dark'), set }
+  return { theme, toggle: () => set((previous) => previous === 'dark' ? 'light' : 'dark'), set }
 }

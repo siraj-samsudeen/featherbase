@@ -14,6 +14,7 @@ const CSV = [
   'Chandra,1,3.25,2026-02-10,yes',
 ].join('\n')
 
+// @spec builder_infers_file_columns
 test('IMP-006: drop a CSV; inferred schema prefills the builder; create imports the rows', async ({
   page,
   request,
