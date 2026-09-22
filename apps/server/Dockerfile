@@ -77,5 +77,6 @@ COPY --from=tasker-build /app/runtime-apps/tasker/dist /app/runtime-apps/tasker/
 
 ENV NODE_ENV=production
 ENV FEATHERBASE_APP_PATHS='["/app/runtime-apps/tasker/0.0.1","/app/runtime-apps/tasker/2.1.0"]'
+RUN pnpm --filter server exec tsx scripts/verify-production-runtime-apps.ts
 EXPOSE 8000
 CMD ["pnpm", "--filter", "server", "start"]
