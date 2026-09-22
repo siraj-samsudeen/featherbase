@@ -1,7 +1,7 @@
 ## 1. Contract and proof environment
 
 - [x] 1.1 Confirm the fail-closed Google freshness limitation and exact-target operator recovery described in design.md without weakening the owner's two-proof rule; verify the implementation starts from the separately committed authentication baseline and strict `pnpm exec openspec validate secure-provider-identities --strict --no-interactive` passes.
-- [ ] 1.2 Load the available TDD workflow (the named mattpocock skill was not available in the planning session); create directly local, worker-owned stamped disposable test and browser databases and supervised API/web services; verify the existing login → Table list → form journey before behavior changes without using init.sh's unmanaged server-launch path in an orb.
+- [x] 1.2 Load the available TDD workflow (the named mattpocock skill was not available in the planning session); create directly local, worker-owned stamped disposable test and browser databases and supervised API/web services; verify the existing login → Table list → form journey before behavior changes without using init.sh's unmanaged server-launch path in an orb.
 
 ## 2. Provider-neutral ownership and sessions
 

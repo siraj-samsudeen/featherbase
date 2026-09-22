@@ -20,7 +20,7 @@ describe('API-004: authentication', () => {
     expect(body.user.row_id).toBe('Administrator')
   })
 
-  // @spec password_authentication_baseline
+  // @spec native_login_requires_an_enabled_native_method
   test('login also works by email; wrong password is 401', async ({ api }) => {
     const byEmail = await api.fetch(
       '/api/login',
@@ -52,7 +52,7 @@ describe('API-004: authentication', () => {
     expect((await api.fetch('/api/ping')).status).toBe(200)
   })
 
-  // @spec session_validity_baseline
+  // @spec login_sessions_are_revocable_on_every_use
   test('zero defaults to eight hours; negative and oversized lifetimes clamp in both issuance paths', async ({ api }) => {
     for (const [configured, expectedHours] of [[0, 8], [-2, 1], [900, 720]]) {
       await sql`insert into single_value (table_name, field, value)
@@ -72,17 +72,17 @@ describe('API-004: authentication', () => {
     }
   })
 
-  // @spec session_validity_baseline
-  test('copied session survives logout and re-enabling but not disabled state', async ({ api }) => {
+  // @spec login_sessions_are_revocable_on_every_use
+  test('copied session remains revoked after logout and User re-enable', async ({ api }) => {
     const response = await api.fetch('/api/login', json({ usr: 'Administrator', pwd: process.env.ADMIN_PASSWORD ?? 'admin' }))
     const { token } = await response.json() as { token: string }
     const headers = { authorization: `Bearer ${token}` }
     expect((await api.fetch('/api/logout', { method: 'POST', headers })).status).toBe(200)
-    expect((await api.fetch('/api/whoami', { headers })).status).toBe(200)
+    expect((await api.fetch('/api/whoami', { headers })).status).toBe(401)
     await sql`update "user" set enabled = false where row_id = 'Administrator'`
     expect((await api.fetch('/api/whoami', { headers })).status).toBe(401)
     await sql`update "user" set enabled = true where row_id = 'Administrator'`
-    expect((await api.fetch('/api/whoami', { headers })).status).toBe(200)
+    expect((await api.fetch('/api/whoami', { headers })).status).toBe(401)
   })
 
   // #101: the sid cookie is a live credential; sign-out must expire it even

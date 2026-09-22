@@ -18,11 +18,12 @@ const SITE_URL = config.siteUrl || 'http://localhost:5173'
 // mail. Returns the token in dev/test so callers can assert without scraping.
 export async function requestPasswordReset(usr: string): Promise<string | null> {
   const [user] = await sql`
-    select row_id, email, enabled, user_type from "user"
+    select row_id, email, enabled, user_type, native_login_enabled from "user"
     where (row_id = ${usr} or email = ${usr})`
   // #137: a service account has no password to reset. Fall through the same
   // silent `null` as an unknown user so this cannot be used to enumerate them.
-  if (!user || !user.enabled || user.user_type === 'service') return null
+  // @spec native_login_requires_an_enabled_native_method
+  if (!user || !user.enabled || user.user_type === 'service' || !user.native_login_enabled) return null
 
   const token = randomBytes(24).toString('hex')
   const expires = new Date(Date.now() + TOKEN_TTL_MS)

@@ -11,7 +11,8 @@ import {
   publishUserEvent,
   type RealtimeEvent,
 } from '../src/realtime'
-import type { SessionUser } from '../src/auth'
+import { issueSession, revokeSession, type SessionUser } from '../src/auth'
+import { sql } from '../src/db'
 
 // RT-001/002/003 (server side): the lifecycle publishes the right channel
 // events. The browser wiring is covered by e2e/realtime.spec.ts.
@@ -90,6 +91,38 @@ describe('RT channel authorization (eval #9 fix)', () => {
 // sleep. This is the only test that drives the socket end of realtime — the
 // rest of the file talks to the in-process bus.
 describe('subscription acknowledgment', () => {
+  // @spec login_sessions_are_revocable_on_every_use
+  for (const revocation of ['logout', 'disable'] as const) test(`${revocation} closes an established socket before delivery`, async () => {
+    const session = await issueSession('Administrator')
+    const server = createServer()
+    attachRealtime(server)
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const { port } = server.address() as AddressInfo
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { cookie: `sid=${session.token}` } })
+    const frames: RealtimeEvent[] = []
+    const ready = new Promise<void>((resolve) => socket.on('message', (raw) => {
+      const event = JSON.parse(String(raw)) as RealtimeEvent
+      frames.push(event)
+      if (event.event === 'ready') resolve()
+    }))
+    try {
+      await ready
+      if (revocation === 'logout') await revokeSession(`Bearer ${session.token}`)
+      else {
+        await sql`update "user" set enabled = false where row_id = 'Administrator'`
+        await sql`update "user" set enabled = true where row_id = 'Administrator'`
+      }
+      const closed = new Promise<number>((resolve) => socket.on('close', resolve))
+      publishUserEvent('Administrator', 'must-not-deliver', { private: 'synthetic' })
+      expect(await Promise.race([closed, new Promise((resolve) => setTimeout(() => resolve('still open'), 500))])).toBe(4001)
+      expect(frames.some((event) => event.event === 'must-not-deliver')).toBe(false)
+    } finally {
+      socket.terminate()
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  })
+
   test('the server acks the channels it registered, and only those', async ({ admin }) => {
     const server = createServer()
     attachRealtime(server)

@@ -33,8 +33,9 @@ export function onEvent(fn: Listener): () => void {
 
 interface Client {
   socket: WebSocket
-  user: SessionUser
+  credential: string | undefined
   channels: Set<string>
+  delivery: Promise<void>
 }
 
 const clients = new Set<Client>()
@@ -73,7 +74,14 @@ export function publish(channel: string, event: string, payload?: unknown): void
   }
   const data = JSON.stringify(msg)
   for (const c of clients) {
-    if (c.channels.has(channel) && c.socket.readyState === c.socket.OPEN) c.socket.send(data)
+    if (!c.channels.has(channel)) continue
+    // @spec login_sessions_are_revocable_on_every_use
+    // A single per-socket queue keeps authorization and delivery in order.
+    c.delivery = c.delivery.then(async () => {
+      if (c.socket.readyState !== c.socket.OPEN) return
+      const user = await resolveToken(c.credential)
+      if (await canSubscribe(user, channel)) c.socket.send(data)
+    }).catch(() => c.socket.close(4001, 'unauthorized'))
   }
 }
 
@@ -109,15 +117,17 @@ export function attachRealtime(server: Server): void {
       // so the HttpOnly `sid` cookie is already on it — and a `?token=` in the
       // socket URL lands in proxy logs like any other. A cross-site handshake
       // carries no SameSite=Lax cookie, so this closes that door too.
-      const user = await resolveToken(credentialFromCookieHeader(req.headers.cookie))
-      const client: Client = { socket, user, channels: new Set() }
+      const credential = credentialFromCookieHeader(req.headers.cookie)
+      const user = await resolveToken(credential)
+      const client: Client = { socket, credential, channels: new Set(), delivery: Promise.resolve() }
       clients.add(client)
       // Personal channel is always subscribed.
       client.channels.add(`user:${user.row_id}`)
       socket.send(JSON.stringify({ channel: 'system', event: 'ready', payload: { user: user.row_id } }))
 
       socket.on('message', (raw) => {
-        void (async () => {
+        client.delivery = client.delivery.then(async () => {
+          const user = await resolveToken(client.credential)
           try {
             const msg = JSON.parse(String(raw)) as {
               subscribe?: string[]
@@ -126,7 +136,7 @@ export function attachRealtime(server: Server): void {
             const registered: string[] = []
             for (const ch of msg.subscribe ?? []) {
               // Authorize each subscription; silently drop unpermitted ones.
-              if (await canSubscribe(client.user, ch)) {
+              if (await canSubscribe(user, ch)) {
                 client.channels.add(ch)
                 registered.push(ch)
               }
@@ -150,7 +160,7 @@ export function attachRealtime(server: Server): void {
           } catch {
             // ignore malformed frames
           }
-        })()
+        }).catch(() => socket.close(4001, 'unauthorized'))
       })
       socket.on('close', () => clients.delete(client))
       socket.on('error', () => clients.delete(client))

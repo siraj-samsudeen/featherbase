@@ -1,5 +1,26 @@
 # Progress Log
 
+## 2026-09-22 — Provider identity/session foundation in progress (#244, #296)
+
+Added protected subject ownership and revocable session storage. Native logout,
+password replacement and User disable/re-enable invalidate copied sessions;
+provider disable and identity unlink invalidate dependent sessions without
+revoking another linked method. WebSocket subscriptions/delivery now resolve
+the live credential, with per-socket ordering. Users may lack a contact email;
+generic metadata APIs cannot expose auth infrastructure or edit native eligibility.
+
+Test-first proof: four native revocation tests and two established-socket tests
+failed against the prior code, then passed. The first full server run passed
+862 tests with 17 skips before external-identity storage was added. The subsequent
+foundation-focused run passed 28 tests; workspace typechecks, SQL lint and strict
+OpenSpec validation passed. The disposable development server was migrated and
+native login → User list → Administrator form was exercised in Chromium.
+
+This is an implementation checkpoint, not a handoff: hosted OAuth, enrollment,
+linking/recovery operations and their UI still need implementation and proof.
+StyleHR remains unavailable pending its authoritative subject/schema contract.
+The active change's incomplete tasks remain unchecked; no STC baseline was lowered.
+
 ## 2026-09-22 — Authentication baseline and multi-provider planning checkpoint (#244, #275)
 
 Committed a behavior-neutral OpenSpec authentication baseline separately from the

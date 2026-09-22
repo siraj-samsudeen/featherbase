@@ -13,7 +13,7 @@ const PUBLIC_API_PATHS = new Set([
 
 export interface SessionUser {
   row_id: string
-  email: string
+  email: string | null
   full_name: string | null
   // #3755: where this account lands after sign-in when it is not the Admin
   // (a sales-target report viewer lands on /sales-target). Absent = /admin.

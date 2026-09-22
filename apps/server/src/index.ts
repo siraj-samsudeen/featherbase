@@ -12,7 +12,7 @@ import { createTable, deleteTable, renameColumn, setIdPattern, updateTable } fro
 import { deleteDoc, getDoc, saveDoc } from './document'
 import { countDocs, getList, groupCount } from './query'
 import { loadControllers } from './controllers'
-import { getAccessToken, issueAccessToken, listAccessTokens, login, resolveToken, revokeAccessToken, setUserPassword, issueSession, type SessionUser } from './auth'
+import { getAccessToken, issueAccessToken, listAccessTokens, login, resolveToken, revokeAccessToken, revokeSession, setUserPassword, issueSession, type SessionUser } from './auth'
 import { createServiceAccount, listServiceAccounts, setServiceAccountEnabled } from './service-accounts'
 import { deleteBatchTables, getBatch, listBatches } from './import-batches'
 import { announcePreviewLogin, previewKeyMatches, previewLogin } from './preview'
@@ -184,8 +184,9 @@ app.post('/api/login', publicLimit('LOGIN'), async (c) => {
 // a live credential and any token-less request after logout re-authenticates
 // as the departed user (found via #101: a post-logout whoami refetch answered
 // as the previous user and poisoned the cache for the next account).
-// @spec session_validity_baseline
-app.post('/api/logout', (c) => {
+// @spec login_sessions_are_revocable_on_every_use
+app.post('/api/logout', async (c) => {
+  await revokeSession(authCredential(c))
   deleteCookie(c, 'sid', { path: '/' })
   return c.json({ ok: true })
 })

@@ -1,6 +1,6 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { sign, verify } from 'hono/jwt'
-import { sql } from './db'
+import { sql, withTransaction } from './db'
 import { AppError } from './errors'
 import { getSystemSettings } from './settings'
 import { logActivity } from './audit'
@@ -30,71 +30,100 @@ export function verifyPassword(password: string, stored: string): boolean {
 // so a reset link could still stamp a password_hash onto a principal
 // documented as having none. The guard is on the write itself.
 export async function setUserPassword(name: string, password: string) {
-  const [row] = await sql`select user_type from "user" where row_id = ${name}`
-  if (row?.user_type === 'service')
-    throw new AppError(
-      'ValidationError',
-      'Service accounts have no password — issue an access token instead',
-    )
-  await sql`
-    update "user" set password_hash = ${hashPassword(password)}
-    where row_id = ${name}`
+  return withTransaction(async () => {
+    const [row] = await sql`select user_type, enabled, native_login_enabled from "user" where row_id = ${name} for update`
+    if (row?.user_type === 'service')
+      throw new AppError('ValidationError', 'Service accounts have no password — issue an access token instead')
+    // @spec native_login_requires_an_enabled_native_method
+    if (!row?.enabled || !row.native_login_enabled)
+      throw new AppError('ValidationError', 'An enabled native login method is required')
+    await sql`update "user" set password_hash = ${hashPassword(password)} where row_id = ${name}`
+  })
 }
 
 export interface SessionUser {
   row_id: string
-  email: string
+  email: string | null
   full_name: string | null
 }
 
-// @spec password_authentication_baseline
+// @spec native_login_requires_an_enabled_native_method
 export async function login(usr: string, pwd: string): Promise<{ token: string; user: SessionUser }> {
-  const [user] = await sql`
-    select row_id, email, full_name, enabled, password_hash, user_type from "user"
-    where (row_id = ${usr} or email = ${usr})`
-  // #131: service accounts never sign in interactively — tokens only. The
-  // refusal is deliberately the same generic message as a bad password.
-  if (!user || user.user_type === 'service' || !user.enabled || !user.password_hash || !verifyPassword(pwd, user.password_hash as string))
-    throw new AppError('AuthenticationError', 'Invalid login credentials')
-  // SET-004: session lifetime is driven by System Settings (session_hours),
-  // clamped to a sane range so a bad setting can't disable or eternalize logins.
-  // @spec session_validity_baseline
-  const { session_hours } = await getSystemSettings()
-  const hours = Math.min(Math.max(session_hours || 8, 1), 720)
-  const token = await sign(
-    {
-      sub: user.row_id as string,
-      exp: Math.floor(Date.now() / 1000) + hours * 3600,
-    },
-    JWT_SECRET,
-  )
-  // PLAT-007: record the successful authentication.
-  await logActivity(user.row_id as string, 'login', { full_name: user.full_name as string | null })
-  return {
-    token,
-    user: { row_id: user.row_id as string, email: user.email as string, full_name: user.full_name as string | null },
-  }
+  return withTransaction(async () => {
+    const [user] = await sql`
+      select row_id, enabled, password_hash, user_type, native_login_enabled from "user"
+      where row_id = ${usr} or (email = ${usr} and email <> '') for update`
+    if (!user || user.user_type === 'service' || !user.enabled || !user.native_login_enabled
+      || !user.password_hash || !verifyPassword(pwd, user.password_hash as string))
+      throw new AppError('AuthenticationError', 'Invalid login credentials')
+    return createLoginSession(user.row_id as string, 'native', new Date())
+  })
 }
 
-// PLAT-006: issue a session for an already-authenticated user (e.g. after a
-// successful OAuth exchange) — the password-less counterpart to login().
-// @spec session_validity_baseline
+// Trusted server callers (fixtures and gated previews) get no freshness proof.
 export async function issueSession(userName: string): Promise<{ token: string; user: SessionUser }> {
-  const [user] = await sql`
-    select row_id, email, full_name, enabled, user_type from "user" where row_id = ${userName}`
-  if (!user || !user.enabled || user.user_type === 'service')
-    throw new AppError('AuthenticationError', 'User cannot sign in')
-  const { session_hours } = await getSystemSettings()
-  const hours = Math.min(Math.max(session_hours || 8, 1), 720)
-  const token = await sign(
-    { sub: user.row_id as string, exp: Math.floor(Date.now() / 1000) + hours * 3600 },
-    JWT_SECRET,
-  )
-  await logActivity(user.row_id as string, 'login', { full_name: user.full_name as string | null })
-  return {
-    token,
-    user: { row_id: user.row_id as string, email: user.email as string, full_name: user.full_name as string | null },
-  }
+  return createLoginSession(userName, 'internal', null)
+}
+
+// Only a successfully validated provider proof may reach this server boundary.
+// Browser input must go through the operation-bound hosted verifier, never here.
+// @spec external_identity_ownership_is_subject_based
+export async function issueExternalSession(providerId: string, issuer: string, subject: string, authenticatedAt: Date | null) {
+  return withTransaction(async () => {
+    const [provider] = await sql`select enabled, auth_generation from login_provider where id = ${providerId} for update`
+    if (!provider?.enabled) throw new AppError('AuthenticationError', 'Identity cannot sign in')
+    const [owner] = await sql`select user_id from external_identity
+      where provider_id = ${providerId} and issuer = ${issuer} and subject = ${subject}`
+    if (!owner) throw new AppError('AuthenticationError', 'Identity cannot sign in')
+    await sql`select row_id from "user" where row_id = ${owner.user_id} for update`
+    const [identity] = await sql`select id, user_id, revoked_at, auth_generation from external_identity
+      where provider_id = ${providerId} and issuer = ${issuer} and subject = ${subject} for update`
+    if (!identity || identity.revoked_at) throw new AppError('AuthenticationError', 'Identity cannot sign in')
+    return createLoginSession(identity.user_id as string, 'external', authenticatedAt, {
+      id: identity.id as string,
+      identityGeneration: identity.auth_generation as string,
+      providerGeneration: provider.auth_generation as string,
+    })
+  })
+}
+
+// @spec login_sessions_are_revocable_on_every_use
+async function createLoginSession(
+  userName: string,
+  method: 'native' | 'internal' | 'external',
+  authenticatedAt: Date | null,
+  identity?: { id: string; identityGeneration: string; providerGeneration: string },
+) {
+  return withTransaction(async () => {
+    // Serialize issuance against User disable/password changes. Never hold this
+    // lock over a provider request; proof verification precedes this boundary.
+    const [user] = await sql`
+      select row_id, email, full_name, enabled, user_type, auth_generation from "user"
+      where row_id = ${userName} for update`
+    if (!user || !user.enabled || user.user_type === 'service')
+      throw new AppError('AuthenticationError', 'User cannot sign in')
+    const { session_hours } = await getSystemSettings()
+    const hours = Math.min(Math.max(Number.isFinite(session_hours) && session_hours ? session_hours : 8, 1), 720)
+    const expires = Math.floor(Date.now() / 1000) + hours * 3600
+    const id = randomBytes(32).toString('base64url')
+    await sql`insert into login_session (id, user_id, method, user_generation, authenticated_at, expires_at,
+      identity_id, identity_generation, provider_generation)
+      values (${id}, ${userName}, ${method}, ${user.auth_generation}, ${authenticatedAt}, ${new Date(expires * 1000)},
+      ${identity?.id ?? null}, ${identity?.identityGeneration ?? null}, ${identity?.providerGeneration ?? null})`
+    const token = await sign({ sub: userName, sid: id, exp: expires }, JWT_SECRET)
+    await logActivity(userName, 'login', { full_name: user.full_name as string | null })
+    return { token, user: { row_id: userName, email: user.email as string | null, full_name: user.full_name as string | null } }
+  })
+}
+
+export async function revokeSession(authorization?: string): Promise<void> {
+  const token = authorization?.match(/^Bearer (.+)$/)?.[1]
+  if (!token || token.startsWith(TOKEN_PREFIX)) return
+  let payload
+  try { payload = await verify(token, JWT_SECRET, 'HS256') } catch { return }
+  if (typeof payload.sid !== 'string' || typeof payload.sub !== 'string') return
+  await sql`update login_session set revoked_at = coalesce(revoked_at, clock_timestamp())
+    where id = ${payload.sid} and user_id = ${payload.sub}`
 }
 
 // #131: named access tokens — THE integration credential (replaces the
@@ -197,7 +226,7 @@ async function resolveAccessToken(token: string): Promise<SessionUser> {
     throw new AppError('AuthenticationError', 'Invalid or expired access token')
   return {
     row_id: user.row_id as string,
-    email: user.email as string,
+    email: user.email as string | null,
     full_name: user.full_name as string | null,
   }
 }
@@ -236,22 +265,32 @@ export function credentialFromCookieHeader(header?: string): string | undefined 
 // there is no URL-borne case left to refuse. A URL lands in browser history,
 // referrers and proxy logs, and that is as true of a session JWT as it is of
 // an access token.
-// @spec session_validity_baseline
+// @spec login_sessions_are_revocable_on_every_use
 export async function resolveToken(authorization?: string): Promise<SessionUser> {
   const token = authorization?.match(/^Bearer (.+)$/)?.[1]
   if (!token) throw new AppError('AuthenticationError', 'Authentication required')
   // #131: access tokens ride the same Bearer header as sessions, told apart
   // by their prefix — no JWT parse attempted on them.
   if (token.startsWith(TOKEN_PREFIX)) return resolveAccessToken(token)
-  let payload: { sub?: unknown }
+  let payload: Awaited<ReturnType<typeof verify>>
   try {
-    payload = (await verify(token, JWT_SECRET, 'HS256')) as { sub?: unknown }
+    payload = await verify(token, JWT_SECRET, 'HS256')
   } catch {
     throw new AppError('AuthenticationError', 'Invalid or expired session')
   }
-  const [user] = await sql`
-    select row_id, email, full_name, enabled from "user" where row_id = ${String(payload.sub)}`
-  if (!user || !user.enabled)
+  if (typeof payload.sid !== 'string' || typeof payload.sub !== 'string')
     throw new AppError('AuthenticationError', 'Invalid or expired session')
-  return { row_id: user.row_id as string, email: user.email as string, full_name: user.full_name as string | null }
+  const [user] = await sql`
+    select u.row_id, u.email, u.full_name from login_session s join "user" u on u.row_id = s.user_id
+    left join external_identity i on i.id = s.identity_id
+    left join login_provider p on p.id = i.provider_id
+    where s.id = ${payload.sid} and s.user_id = ${payload.sub}
+      and s.revoked_at is null and s.expires_at > clock_timestamp()
+      and u.enabled and u.user_type <> 'service' and u.auth_generation = s.user_generation
+      and (s.method = 'internal' or (s.method = 'native' and u.native_login_enabled)
+        or (s.method = 'external' and i.user_id = u.row_id and i.revoked_at is null and p.enabled
+          and i.auth_generation = s.identity_generation and p.auth_generation = s.provider_generation))`
+  if (!user)
+    throw new AppError('AuthenticationError', 'Invalid or expired session')
+  return { row_id: user.row_id as string, email: user.email as string | null, full_name: user.full_name as string | null }
 }
