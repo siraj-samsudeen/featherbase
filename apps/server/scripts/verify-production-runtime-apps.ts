@@ -11,7 +11,7 @@ export const PRODUCTION_TASKER_ARTIFACTS = [
   {
     path: '/app/runtime-apps/tasker/2.1.0',
     version: '2.1.0',
-    digest: 'e7febc94fd632f8dec1f1a5001b6a44f5b704806ebb462663102ac2b23a19d3a',
+    digest: '14a8d23fe2ef59c58342433d2e56ecf0c3d00b1b6a0d1ca56192820c179c8f90',
   },
 ] as const
 

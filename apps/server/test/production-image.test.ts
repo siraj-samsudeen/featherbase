@@ -1,4 +1,4 @@
-import { cp, mkdtemp, mkdir, readFile, rm } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { expect, test } from 'vitest'
@@ -32,18 +32,15 @@ test('the production image discovers exact Tasker predecessor and target artifac
   ])
   expect(dockerfile).toContain('RUN pnpm --filter server exec tsx scripts/verify-production-runtime-apps.ts')
 
+  // The predecessor is checked directly because its reviewed bytes are tracked.
+  // The target is built by Node 22 inside Docker and its digest is proved by the
+  // final-stage RUN above; rebuilding it under a different host Node is not an
+  // identity check because generated bundle bytes can differ by tool runtime.
   const staged = await mkdtemp(resolve(tmpdir(), 'featherbase-production-apps-'))
   try {
-    const roots = [resolve(staged, '0.0.1'), resolve(staged, '2.1.0')]
-    await cp(resolve(root, 'runtime-apps/fixtures/tasker-v1'), roots[0], { recursive: true })
-    await mkdir(roots[1], { recursive: true })
-    for (const file of ['package.json', 'featherbase.json'])
-      await cp(resolve(root, 'runtime-apps/tasker', file), resolve(roots[1], file))
-    await cp(resolve(root, 'runtime-apps/tasker/dist'), resolve(roots[1], 'dist'), { recursive: true })
-    await verifyRuntimeArtifacts(PRODUCTION_TASKER_ARTIFACTS.map((artifact, index) => ({
-      ...artifact,
-      path: roots[index],
-    })))
+    const predecessorRoot = resolve(staged, '0.0.1')
+    await cp(resolve(root, 'runtime-apps/fixtures/tasker-v1'), predecessorRoot, { recursive: true })
+    await verifyRuntimeArtifacts([{ ...PRODUCTION_TASKER_ARTIFACTS[0], path: predecessorRoot }])
   } finally {
     await rm(staged, { recursive: true, force: true })
   }
