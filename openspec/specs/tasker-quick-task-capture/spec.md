@@ -1,7 +1,5 @@
 # Quick Task Capture
 
-**IDs:** `title_alone_records_task`
-
 ## Purpose
 
 Write a task down the moment you think of it, and decide later — from the Inbox,
