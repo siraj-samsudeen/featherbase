@@ -50,6 +50,7 @@ import { requestPasswordReset, resetPassword } from './password-reset'
 import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
+import { recordAppAccessRefusal } from './app-access'
 import { eventSummary, recordEvents, routineSuggestion, validateEventBatch } from './events'
 import { createSavedView, deleteSavedView, listSavedViews, setSavedViewShared } from './saved-views'
 import { runApiScript } from './server-scripts'
@@ -61,9 +62,10 @@ import { parseFilters, runQueryReport } from './query-report'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
-import { discoverPackages, appCatalog, appAsset, packageFailures } from './runtime-packages'
-import { APP_ROOT_PATTERN, appHref } from 'shared'
-import { appOperation } from './app-lifecycle'
+import { discoverPackages, appCatalog, appAsset, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { documentActivity } from './document-activity'
+import { APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, appHref } from 'shared'
+import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
 import { createSite, listSites, resolveSite, siteCreateTableDef, siteListTableDefs, siteCreateUser, siteListUsers } from './tenancy'
 import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
@@ -416,7 +418,7 @@ app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) =
   // credential in a query string lands in browser history, in the Referer of
   // anything that page fetches next, and in every proxy log on the way. The
   // SPA gets a one-time, one-minute handoff code and POSTs it back below.
-  return c.redirect(`/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
+  return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
 })
 
 // #150: the other half of the handoff. Public — the code IS the credential,
@@ -442,7 +444,7 @@ app.get('/preview', async (c) => {
   if (!config || !previewKeyMatches(c.req.query('key'), config.key)) return c.notFound()
   const session = await issueSession(config.user)
   setSidCookie(c, session.token)
-  return c.redirect(`/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
+  return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
 })
 
 // ---- API-004: everything below requires a valid session --------------------
@@ -460,17 +462,42 @@ app.use('/api/*', rateLimit)
 // Lock the complete request, including internal SQL and post-commit work.
 // Lifecycle endpoints take the exclusive counterpart inside their handlers.
 app.use('/api/*', async (c, next) => {
-  if (['/api/install_app', '/api/uninstall_app', '/api/set_app_enabled'].includes(c.req.path))
+  if (['/api/install_app', '/api/uninstall_app', '/api/set_app_enabled', '/api/upgrade_app', '/api/activate_app_upgrade'].includes(c.req.path))
     return next()
-  return appOperation(next)
+  try {
+    // Do not await here: only synchronous identity parsing failures belong to
+    // this refusal path, not admitted asynchronous business-handler errors.
+    return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appOperation(next))
+  } catch (error) {
+    const protectedOperation = /^\/api\/app_(?:reads|actions)\/([^/]+)\/([^/]+)(?:\/access)?$/.exec(c.req.path)
+    if (protectedOperation) return recordAppAccessRefusal(who(c), protectedOperation[1], protectedOperation[2], 'identity')
+    throw error
+  }
+})
+
+// @spec featherbase_human_routes_are_canonical
+// Old bookmarks remain meaningful, but all Featherbase-owned human pages have
+// one canonical namespace. Runtime app roots and technical /api paths never
+// pass through this redirect.
+const legacyHumanRoot = new RegExp(LEGACY_HUMAN_ROOT_PATTERN)
+app.get('*', (c, next) => {
+  const url = new URL(c.req.url)
+  if (!legacyHumanRoot.test(url.pathname)) return next()
+  return c.redirect(`/featherbase${url.pathname}${url.search}`, 308)
 })
 
 app.get('*', async (c, next) => {
   if (!new RegExp(APP_ROOT_PATTERN).test(c.req.path)) return next()
+  const url = new URL(c.req.url)
   const name = c.req.path.split('/')[1]
-  if (c.req.path === `/${name}`) return c.redirect(appHref(name))
+  if (c.req.path === `/${name}`) return c.redirect(`${appHref(name)}${url.search}`, 308)
   return appOperation(async () => {
-    const asset = decodeURIComponent(c.req.path.slice(appHref(name).length))
+    let asset: string
+    try {
+      asset = decodeURIComponent(url.pathname.slice(appHref(name).length))
+    } catch {
+      return c.notFound()
+    }
     let resource
     try {
       const user = await resolveToken(authCredential(c))
@@ -479,14 +506,16 @@ app.get('*', async (c, next) => {
       if (!(error instanceof AppError)) throw error
       const navigation = !asset || c.req.header('accept')?.includes('text/html')
       if (navigation && error.type === 'AuthenticationError')
-        return c.redirect(`/login?next=${encodeURIComponent(appHref(name))}`)
+        return c.redirect(
+          `/featherbase/login?next=${encodeURIComponent(`${url.pathname}${url.search}`)}`,
+        )
       if (!navigation || path.extname(asset)) throw error
       return c.html(
         `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Application unavailable</title></head>
       <body style="font:16px system-ui;background:#f4f5f6;color:#1c2126;margin:0;padding:8vw"><main style="max-width:36rem;margin:auto;background:white;border:1px solid #ebeef0;border-radius:8px;padding:2rem">
       <h1>Application unavailable</h1><p>This application may be disabled, its package may be missing or incompatible, or your account may not have access.</p>
       <p>Disabling an application preserves its data. Ask your system manager to restore access.</p>
-      <p><a href="/admin">Back to Featherbase</a> · <a href="/login">Sign in</a></p></main></body></html>`,
+      <p><a href="/featherbase/admin">Back to Featherbase</a> · <a href="/featherbase/login">Sign in</a></p></main></body></html>`,
         404,
       )
     }
@@ -620,7 +649,7 @@ app.get('/api/activity_feed', async (c) => {
       kind: 'change',
       label: (v.ref_name as string | null) ?? '',
       sub: (v.ref_table as string | null) ?? undefined,
-      path: v.ref_table && v.ref_name ? `/admin/${v.ref_table}/${v.ref_name}` : '',
+      path: v.ref_table && v.ref_name ? `/featherbase/admin/${v.ref_table}/${v.ref_name}` : '',
       at: new Date(v.created_at as string).toISOString(),
     })),
     ...logins.map((l) => ({
@@ -1094,9 +1123,40 @@ app.get('/api/tenancy/users', async (c) => {
 // install/uninstall their Tables + doc_events and report installed state.
 app.get('/api/apps', async (c) => {
   await assertSystemManager(who(c))
-  return c.json({ available: getAvailableApps(), installed: await listInstalledApps(), failures: packageFailures })
+  return c.json({ available: getAvailableApps(), installed: await listInstalledApps(), versions: availableRuntimeVersions(), actions: declaredPackageActions(),
+    failures: packageFailures.map(() => ({ error: 'A configured artifact failed validation. Restore a compatible immutable package and inspect the server discovery log' })) })
 })
 app.get('/api/app_catalog', async (c) => c.json(await appCatalog(who(c))))
+// Authenticated bootstrap contains identities only, never manager metadata.
+app.get('/api/runtime_app_versions', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await activeRuntimeVersions())
+})
+app.post('/api/app_actions/:app/:action', async (c) =>
+  c.json(await runPackageAction(c.req.param('app'), c.req.param('action'), await c.req.json(), who(c))))
+app.post('/api/app_reads/:app/:read', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await runPackageRead(c.req.param('app'), c.req.param('read'), await c.req.json(), who(c)))
+})
+app.get('/api/app_reads/:app/:read/access', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  if (new URL(c.req.url).search || (await c.req.text()).length)
+    return recordAppAccessRefusal(who(c), c.req.param('app'), c.req.param('read'), 'override')
+  return c.json(await runPackageRead(c.req.param('app'), c.req.param('read'), undefined, who(c), true))
+})
+// @spec runtime_upgrade_reviewed_plan
+for (const operation of ['preview_app_upgrade', 'upgrade_app', 'activate_app_upgrade'] as const) {
+  app.post(`/api/${operation}`, async c => {
+    await assertSystemManager(who(c))
+    const body = await c.req.json().catch(() => ({}))
+    if (typeof body.name !== 'string' || typeof body.version !== 'string' ||
+        (operation === 'upgrade_app' && typeof body.planId !== 'string'))
+      throw new AppError('ValidationError', 'Expected application name, target version and reviewed planId for upgrade')
+    if (operation === 'preview_app_upgrade') return c.json(await previewAppUpgrade(body.name, body.version))
+    if (operation === 'upgrade_app') return c.json(await upgradeApp(body.name, body.version, body.planId))
+    return c.json(await activateAppUpgrade(body.name, body.version))
+  })
+}
 app.post('/api/set_app_enabled', async (c) => {
   await assertSystemManager(who(c))
   const body = await c.req.json()
@@ -1209,25 +1269,7 @@ app.put('/api/user_settings/:table', async (c) => {
 app.get('/api/activity/:table/:name', async (c) => {
   const table = c.req.param('table')
   const name = c.req.param('name')
-  const visibleDoc = await getDoc(table, name, who(c))
-  const visibleFields = new Set(Object.keys(visibleDoc))
-  const [comments, versions] = await Promise.all([
-    sql`select content, created_by, created_at from comment
-        where ref_table = ${table} and ref_name = ${name} order by created_at asc`,
-    sql`select data, created_by, created_at from version
-        where ref_table = ${table} and ref_name = ${name} order by created_at asc`,
-  ])
-  const visibleVersions = versions.map((version) => {
-    const data = version.data as { changed?: [string, unknown, unknown][] } | null
-    return {
-      ...version,
-      data: {
-        ...data,
-        changed: (data?.changed ?? []).filter(([field]) => visibleFields.has(field)),
-      },
-    }
-  })
-  return c.json({ comments, versions: visibleVersions })
+  return c.json(await documentActivity(table, name, who(c)))
 })
 
 // EML-006 / UI-017: assign a document to a user. Creates a ToDo in their

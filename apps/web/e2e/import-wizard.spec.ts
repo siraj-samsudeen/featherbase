@@ -272,7 +272,7 @@ test('IMP-010: the list view Import button preselects that Table as the target',
   // sheet's own row count in the card header.
   await expect(page.getByTestId('iw-view-target-0')).toHaveAttribute(
     'href',
-    `/admin/${encodeURIComponent(EXISTING_DT)}`,
+    `/featherbase/admin/${encodeURIComponent(EXISTING_DT)}`,
   )
   await expect(page.getByTestId('iw-view-target-0')).toHaveAttribute('target', '_blank')
   await expect(page.getByTestId('iw-target-count-0')).toContainText(

@@ -1,0 +1,27 @@
+{
+  "manifestVersion": 1, "apiVersion": 1,
+  "name": "tasker", "title": "Tasker",
+  "server": "server.mjs", "client": "client", "entryTable": "tasker.task",
+  "tables": [
+    {"name": "tasker.project", "label": "Project", "module": "Tasker", "id_pattern": "TPROJ-.####", "title_column": "project_name",
+      "columns": [{"column_name": "project_name", "label": "Project name", "column_type": "Data", "reqd": true, "in_list_view": true}]},
+    {"name": "tasker.task", "label": "Task", "module": "Tasker", "id_pattern": "TASK-.#####", "title_column": "task_title",
+      "columns": [
+        {"column_name": "task_title", "label": "Task", "column_type": "Data", "reqd": true, "in_list_view": true},
+        {"column_name": "description", "label": "Description", "column_type": "Text"},
+        {"column_name": "task_state", "label": "State", "column_type": "Choice", "choices": "Not started\nIn progress\nBlocked\nOn hold\nDone\nCancelled", "default_value": "Not started", "in_list_view": true},
+        {"column_name": "is_done", "label": "Done", "column_type": "Check", "default_value": "0", "in_list_view": true},
+        {"column_name": "urgent", "label": "Urgent", "column_type": "Check", "default_value": "0", "in_list_view": true},
+        {"column_name": "project", "label": "Project", "column_type": "Reference", "reference_table": "tasker.project", "in_list_view": true},
+        {"column_name": "personal_tasks_owner", "label": "Personal tasks owner", "column_type": "Reference", "reference_table": "User"},
+        {"column_name": "assigned_to", "label": "Assigned to", "column_type": "Reference", "reference_table": "User", "in_list_view": true},
+        {"column_name": "state_before_done", "label": "State before done", "column_type": "Data", "hidden": true}
+      ]}
+  ],
+  "permissions": [
+    {"table": "tasker.project", "role": "All", "can_read": true, "can_write": true, "can_create": true, "can_delete": true},
+    {"table": "tasker.task", "role": "All", "can_read": true, "can_write": true, "can_create": true, "can_delete": true},
+    {"table": "User", "role": "All", "can_read": true},
+    {"table": "Comment", "role": "All", "can_read": true, "can_write": true, "can_create": true}
+  ]
+}

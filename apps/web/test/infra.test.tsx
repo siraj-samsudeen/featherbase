@@ -7,7 +7,7 @@ import { test, expect, renderApp, renderSession } from './pg-test'
 let leakedName = ''
 
 test('the login page renders through the real route tree', async () => {
-  await renderApp('/login', { user: null, token: null } as never)
+  await renderApp('/featherbase/login', { user: null, token: null } as never)
   expect(await screen.findByText('Sign in to your account')).toBeInTheDocument()
 })
 
@@ -19,7 +19,7 @@ test('the Admin renders a Table list with data seeded through the API', async ({
     description: 'Review the DW sales mismatch',
     allocated_to: 'Administrator',
   })
-  await renderApp('/admin/ToDo', admin)
+  await renderApp('/featherbase/admin/ToDo', admin)
   expect(await screen.findByTestId('table-page')).toBeInTheDocument()
   expect(await screen.findByText(doc.row_id)).toBeInTheDocument()
 })
@@ -30,7 +30,7 @@ test('the Session DSL drives the page', async ({ admin, seed }) => {
     allocated_to: 'Administrator',
   })
   leakedName = doc.row_id
-  const { session } = await renderSession('/admin/ToDo', admin)
+  const { session } = await renderSession('/featherbase/admin/ToDo', admin)
   await session.assertText(doc.row_id).refuteText('No such row')
 })
 
@@ -52,7 +52,7 @@ test("previous test's seed rolled back — its ToDo is gone from the list", asyn
     description: 'Only visible inside this test’s own sandbox',
     allocated_to: 'Administrator',
   })
-  await renderApp('/admin/ToDo', admin)
+  await renderApp('/featherbase/admin/ToDo', admin)
   await expect(screen.findByTestId('table-page')).resolves.toBeInTheDocument()
   expect(await screen.findByText(mine.row_id)).toBeInTheDocument()
   expect(screen.queryByText(leakedName)).not.toBeInTheDocument()

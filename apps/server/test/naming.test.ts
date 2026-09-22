@@ -93,7 +93,7 @@ describe('META-006: naming rules', () => {
       updated_at: first.updated_at,
       title: 'v2',
     })
-    const [row] = await sql.unsafe(`select title from nm_category where row_id='Software'`)
+    const [row] = await sql.unsafe(`select title from featherbase.nm_category where row_id='Software'`)
     expect(row.title).toBe('v2')
   })
 })

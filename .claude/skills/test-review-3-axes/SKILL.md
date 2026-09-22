@@ -21,7 +21,7 @@ Ported from the data-warehouse repo (#3666, Siraj, 16-Sep-2026). The axes and th
 |---|---|---|
 | isolation | hand-built fakes, monkeypatched sinks | every test in a real Postgres transaction, rolled back (`feather-testing-postgres`) |
 | test files using a double | most | **5 of 223** — `dataset-snapshot`, `sales-target`, `app-grants`, `table-lifecycle-bound`, `client-validation` |
-| spec↔test linkage | none until #3691 | `tools/check-evidence.mjs`, in CI, static *and* runtime |
+| spec↔test linkage | none until #3691 | OpenSpec `@spec` markers, ratcheted by `pnpm check:stc` in CI |
 | pins | undeclared | `test.fails` with the issue in the title (`CLAUDE.md`'s rule) |
 
 So Axis 3A's classic costume — *the mock satisfies it* — can only live in five files, and a review that goes hunting for it elsewhere is wasting the session. **Go to those five first; then spend the rest of the time on Axis 1.**
@@ -36,7 +36,7 @@ So Axis 3A's classic costume — *the mock satisfies it* — can only live in fi
 | **Code** | Does it hold those promises? | `code-review-8-axes` |
 | **Test** | Is each promise actually checked? | `test-review-3-axes` |
 
-They drift apart continuously, whichever was written first. The edges are made greppable by **`docs/agents/stc-traceability.md`**, computed by `pnpm check:stc` (`openspec/specs`) and `pnpm check:evidence` (`docs/specs`).
+They drift apart continuously, whichever was written first. The edges are made greppable by **`docs/agents/stc-traceability.md`** and computed by `pnpm check:stc` over `openspec/specs`.
 
 **When artifacts disagree, never silently pick a winner and never punt.** Emit the divergence triage item defined in **`spec-review-5-axes`**.
 
@@ -202,7 +202,7 @@ Its comment is right that *"a comment cannot enforce this; this can"* — and th
 
 **The rule that prevents Direction A** (Freeman & Pryce, *GOOS*): **only mock types you own.** Never fake MotherDuck, the OAuth provider or the filesystem directly. Wrap them in an interface *you* define, whose contract you can state and verify separately, and fake that. `_setSourceReader` is exactly that shape, correctly done — the finding above is about what the fake *does*, not that it exists.
 
-**The honest use of a pin** (Feathers): a test that asserts what the code currently does, when nobody can derive what it *should* do, is a legitimate and valuable tool — a **characterization test**. The defect is never pinning; it is pinning *silently*. This repo already holds the rule and enforces it: `CLAUDE.md` requires `test.fails` with the issue number in the title, and `check-evidence.mjs` refuses to let a `pinned #N` verdict be satisfied by anything but an executable expected-failure naming that issue. `apps/server/test/table-lifecycle.test.ts:130` is the worked example — *"renaming a column keeps its data readable under the new name (pins #250)"*. **Do not "fix" a pin by deleting it; fixing the defect flips it to a plain test in the same change.**
+**The honest use of a pin** (Feathers): a test that asserts what the code currently does, when nobody can derive what it *should* do, is a legitimate and valuable tool — a **characterization test**. The defect is never pinning; it is pinning *silently*. `CLAUDE.md` requires `test.fails` with the issue number in the title, and `apps/server/test/table-lifecycle.test.ts:130` is the worked example — *"renaming a column keeps its data readable under the new name (pins #250)"*. The retired Journey checker once enforced that convention mechanically; after OpenSpec adoption, the capability baseline and test must both record characterized behavior, and review must verify the executable expected-failure names the issue. **Do not "fix" a pin by deleting it; fixing the defect flips it to a plain test in the same change.**
 
 ### Direction B — fails when the promise holds (false alarm)
 
@@ -222,7 +222,9 @@ This is where "too many tests" stops being a cost and becomes **harm**. A suite 
 
 **1. Write the promise list first.** Before reading a single test, list what the module guarantees. This is Beck's test list.
 
-**Start from the spec where one exists.** `docs/specs/*.md` is a governed promise list — journeys, rules, invariants, hazards, each with an ID — and `openspec/specs/**` is the same in capability form. Take those first, **then** extend from doc comments and the negative space (*what must never happen?*) — and **report what you had to add.**
+**Start from the spec where one exists.** `openspec/specs/**` is the governed
+promise list. Take it first, **then** extend from doc comments and the negative
+space (*what must never happen?*) — and **report what you had to add.**
 
 That delta is a deliverable: **every promise you had to invent is a spec gap**, and it goes back to the spec. Where a spec obligation and the code disagree, that is not yours to settle — emit the divergence triage item from `spec-review-5-axes`. This repo states the same rule as a hard rule: *"A discovered behaviour is not a requirement … choosing is the owner's call, never an agent's."*
 
@@ -233,7 +235,7 @@ Two things the list needs to be useful:
 
 **2. Review the doubles before the tests.** For every fake, stub and injection: *what production behaviour does this replace, and what argument or side-effect does it discard?* In this repo that is five files and it is the highest-yield hour of the review.
 
-**3. Map the existing tests onto the promise list.** `pnpm check:stc` and `pnpm check:evidence` give you the declared edges for free; the mapping is the part they cannot do.
+**3. Map the existing tests onto the promise list.** `pnpm check:stc` gives you the declared edges for free; the mapping is the part it cannot do.
 
 **4. Mutate. This is the verification step for all three axes**, not an optional extra for Axis 2.
 
@@ -267,7 +269,7 @@ The loader's row count is claimed by nobody → Axis 1. `'a snapshot read states
 
 **6. Axis 2 — do not manufacture findings.** See the measurement above. Report what is there.
 
-**7. Confirm the suite actually runs, and gates something.** Find the CI job. In this repo: `.github/workflows/test.yml` runs the unit/component suites with coverage, the e2e suite, and both evidence passes. `pnpm check:stc` is **not** wired in yet, and `pnpm smoke`'s server half runs nowhere in CI. State that at the top of the review, not the bottom.
+**7. Confirm the suite actually runs, and gates something.** Find the CI job. In this repo: `.github/workflows/test.yml` runs `pnpm check:specs`, the unit/component suites with coverage, and the e2e suite. `pnpm smoke`'s server half runs nowhere in CI. State that at the top of the review, not the bottom.
 
 **8. Do not edit tests while reviewing.** Findings and fixes are separate acts and separate PRs.
 

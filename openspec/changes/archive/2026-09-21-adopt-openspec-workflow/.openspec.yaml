@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-09-21
+goal: One reproducible, CI-enforced behavior contract and baseline-first path
+  for existing features.

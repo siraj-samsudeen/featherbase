@@ -177,6 +177,38 @@ button:disabled { cursor: default; opacity: .48; }
 .tasker-mode-switch button { padding: 6px 9px; border: 0; border-radius: 7px; background: transparent; color: var(--color-ink-muted); font-size: 12px; }
 .tasker-mode-switch button[aria-pressed='true'] { background: white; color: var(--color-ink); box-shadow: 0 1px 4px #14263d1f; }
 
+.tasker-detail h2 { overflow-wrap: anywhere; line-height: 1.35; }
+.tasker-detail-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 12px; margin: 0 0 24px; padding: 14px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-subtle); }
+.tasker-detail-controls label { min-width: 0; font-size: 11px; color: var(--color-ink-muted); }
+.tasker-detail-controls select { display: block; width: 100%; min-width: 0; margin-top: 4px; padding: 7px; border: 1px solid var(--color-border); border-radius: 6px; background: white; color: var(--color-ink); font-size: 12px; }
+.tasker-detail-signals { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+.tasker-description-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+.tasker-description-heading h3 { font-weight: 650; font-size: 13px; }
+.tasker-description-read, .tasker-description-editor { padding: 16px; border: 1px solid var(--color-border); border-radius: 10px; background: white; }
+.tasker-project-description { margin-bottom: 24px; padding: 16px; border: 1px solid var(--color-border); border-radius: 10px; background: white; }
+.tasker-project-description textarea { display: block; width: 100%; margin: 8px 0; padding: 10px; border: 1px solid var(--color-border); border-radius: 6px; resize: vertical; }
+.tasker-editor-actions { display: flex; gap: 8px; margin-top: 12px; }
+.tasker-hint { font-size: 12px; color: var(--color-ink-muted); }
+.tasker-markdown { min-width: 0; overflow-wrap: anywhere; font-size: 14px; line-height: 1.6; }
+.tasker-markdown > :first-child { margin-top: 0; }
+.tasker-markdown p, .tasker-markdown ul, .tasker-markdown ol, .tasker-markdown pre { margin: 10px 0; }
+.tasker-markdown ul { list-style: disc; padding-left: 22px; }
+.tasker-markdown ol { list-style: decimal; padding-left: 22px; }
+.tasker-markdown h1, .tasker-markdown h2, .tasker-markdown h3 { font-size: 16px; font-weight: 650; margin: 16px 0 8px; }
+.tasker-markdown a { color: var(--color-brand); text-decoration: underline; }
+.tasker-markdown pre { overflow-x: auto; padding: 12px; border-radius: 6px; background: var(--color-subtle); }
+.tasker-markdown code { font-size: 12px; background: var(--color-subtle); }
+.tasker-markdown img { max-width: 100%; height: auto; }
+.tasker-actions { position: relative; margin: -8px 0 16px; font-size: 13px; }
+.tasker-actions summary { width: fit-content; cursor: pointer; color: var(--color-ink-muted); padding: 6px 0; }
+.tasker-action-menu { position: absolute; right: 0; z-index: 20; display: grid; min-width: 210px; padding: 6px; border: 1px solid var(--color-border); border-radius: 8px; background: white; box-shadow: 0 8px 24px #14263d25; }
+.tasker-action-menu button { padding: 10px; border-radius: 5px; text-align: left; }
+.tasker-action-menu button:hover { background: var(--color-subtle); }
+.tasker-action-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; align-items: center; justify-items: center; padding: 18px; background: #13233366; }
+.tasker-action-confirm { width: min(100%, 480px); max-height: 85dvh; overflow: auto; padding: 24px; border-radius: 12px; background: white; box-shadow: 0 14px 48px #14263d44; line-height: 1.6; }
+html:has(.tasker-focus-detail), html:has(.tasker-focus-detail) body { overflow: hidden; }
+.tasker-shell:has(.tasker-focus-detail) > .tasker-sidebar, .tasker-shell:has(.tasker-focus-detail) > .tasker-main { visibility: hidden; }
+
 @media (max-width: 1100px) {
   html.tasker-compact-inspector-open, html.tasker-compact-inspector-open body { overflow: hidden; }
   html.tasker-compact-inspector-open .tasker-sidebar, html.tasker-compact-inspector-open .tasker-main { display: none; }

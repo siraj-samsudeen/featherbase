@@ -12,14 +12,14 @@ function routeFor(s: HomePageShortcut): string {
   const to = s.link_to
   switch (s.type) {
     case 'dashboard':
-      return `/admin/dashboard/${encodeURIComponent(to)}`
+      return `/featherbase/admin/dashboard/${encodeURIComponent(to)}`
     case 'report':
-      return `/admin/query-report/${encodeURIComponent(to)}`
+      return `/featherbase/admin/query-report/${encodeURIComponent(to)}`
     case 'url':
       return to
     case 'table':
     default:
-      return `/admin/${encodeURIComponent(to)}`
+      return `/featherbase/admin/${encodeURIComponent(to)}`
   }
 }
 
@@ -74,7 +74,7 @@ export function HomePageView({ name }: { name: string }) {
                 {card.links.map((l) => (
                   <Link
                     key={l.link_to}
-                    to="/admin/$table"
+                    to="/featherbase/admin/$table"
                     params={{ table: l.link_to }}
                     search={{ filters: undefined }}
                     data-testid={`home-link-${l.link_to}`}

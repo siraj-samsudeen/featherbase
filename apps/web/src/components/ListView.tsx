@@ -111,7 +111,7 @@ export function ListView({
       // rest of the app refetch what the sweep touched (nav, home pages).
       for (const key of ['meta', 'list', 'doc', 'delete-count'])
         queryClient.removeQueries({ queryKey: [key, table] })
-      await navigate({ to: '/admin/all-tables' })
+      await navigate({ to: '/featherbase/admin/all-tables' })
       void queryClient.invalidateQueries()
     } catch (e) {
       setDeleteError(e instanceof ApiError ? e.message : String(e))
@@ -324,7 +324,7 @@ export function ListView({
       <div className="mb-4 flex items-center justify-between">
         <div>
           <div className="text-xs text-[var(--color-ink-faint)]">
-            <Link to="/admin" className="hover:text-[var(--color-ink)]">
+            <Link to="/featherbase/admin" className="hover:text-[var(--color-ink)]">
               Home
             </Link>
             {' / '}
@@ -387,7 +387,7 @@ export function ListView({
             meta.data?.kind !== 'settings' &&
             meta.data?.kind !== 'sub_table' && (
             <Link
-              to="/admin/$table/$name"
+              to="/featherbase/admin/$table/$name"
               params={{ table, name: 'new' }}
               search={{ prefill: undefined }}
               className="fc-btn-primary"
@@ -397,7 +397,7 @@ export function ListView({
             </Link>
           )}
           <Link
-            to="/admin/$table/view/report"
+            to="/featherbase/admin/$table/view/report"
             params={{ table }}
             search={{ report: undefined }}
             className="fc-btn"
@@ -410,7 +410,7 @@ export function ListView({
               absent on read-only sources (EDS-13). */}
           {!isSourceReadOnly(meta.data) && (
             <Link
-              to="/admin/import"
+              to="/featherbase/admin/import"
               search={{ table: table }}
               className="fc-btn"
               data-testid="open-import"
@@ -423,7 +423,7 @@ export function ListView({
               platform's) and on bound ones (their storage is the source's). */}
           {!meta.data?.system && !meta.data?.data_source && (
             <Link
-              to="/admin/$table/columns"
+              to="/featherbase/admin/$table/columns"
               params={{ table }}
               className="fc-btn"
               data-testid="open-columns"
@@ -434,7 +434,7 @@ export function ListView({
           {/* #208: two Tables that turned out to be the same thing. */}
           {!meta.data?.system && !meta.data?.data_source && (
             <Link
-              to="/admin/$table/merge"
+              to="/featherbase/admin/$table/merge"
               params={{ table }}
               className="fc-btn"
               data-testid="open-merge"
@@ -444,7 +444,7 @@ export function ListView({
           )}
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Choice') && (
             <Link
-              to="/admin/$table/view/kanban"
+              to="/featherbase/admin/$table/view/kanban"
               params={{ table }}
               search={{ group_by: undefined }}
               className="fc-btn"
@@ -455,7 +455,7 @@ export function ListView({
           )}
           {(meta.data?.columns ?? []).some((f) => f.column_type === 'Date') && (
             <Link
-              to="/admin/$table/view/calendar"
+              to="/featherbase/admin/$table/view/calendar"
               params={{ table }}
               className="fc-btn"
               data-testid="open-calendar"
@@ -466,7 +466,7 @@ export function ListView({
           {/* UI-022: Gantt needs two Date columns (start + end). */}
           {(meta.data?.columns ?? []).filter((f) => f.column_type === 'Date').length >= 2 && (
             <Link
-              to="/admin/$table/view/gantt"
+              to="/featherbase/admin/$table/view/gantt"
               params={{ table }}
               className="fc-btn"
               data-testid="open-gantt"
@@ -481,7 +481,7 @@ export function ListView({
             <>
               {/* NAM-001: change how new rows in this Table are named. */}
               <Link
-                to="/admin/naming/$table"
+                to="/featherbase/admin/naming/$table"
                 params={{ table }}
                 className="fc-btn"
                 data-testid="open-naming"
@@ -489,7 +489,7 @@ export function ListView({
                 Naming
               </Link>
               <Link
-                to="/admin/permissions/$table"
+                to="/featherbase/admin/permissions/$table"
                 params={{ table }}
                 className="fc-btn"
                 data-testid="open-permissions"
@@ -719,7 +719,7 @@ export function ListView({
                         <>
                           {' — '}
                           <Link
-                            to="/admin/$table/$name"
+                            to="/featherbase/admin/$table/$name"
                             params={{ table, name: 'new' }}
                             search={{ prefill: undefined }}
                             className="text-[var(--color-brand)] underline"
@@ -822,7 +822,7 @@ function ListRow({
           <td key={col.column_name} className="px-3 py-2">
             {i === 0 ? (
               <Link
-                to="/admin/$table/$name"
+                to="/featherbase/admin/$table/$name"
                 search={{ prefill: undefined }}
                 params={{ table, name: String(row.row_id) }}
                 className={`font-medium text-[var(--color-brand)] hover:underline ${
@@ -931,7 +931,7 @@ function InlineChildGrid({
                 <td key={c.column_name} className="px-3 py-1 text-[var(--color-ink)]">
                   {c.column_type === 'Reference' && c.reference_table && r[c.column_name] ? (
                     <Link
-                      to="/admin/$table/$name"
+                      to="/featherbase/admin/$table/$name"
                       search={{ prefill: undefined }}
                         params={{ table: c.reference_table, name: String(r[c.column_name]) }}
                       className="text-[var(--color-brand)] hover:underline"
@@ -1208,7 +1208,7 @@ function RecentStrip({
       {rows.map((r) => (
         <Link
           key={r.key}
-          to="/admin/$table/$name"
+          to="/featherbase/admin/$table/$name"
           params={{ table, name: r.label }}
           search={{ prefill: undefined }}
           data-testid="recent-strip-row"
@@ -1455,7 +1455,7 @@ function ExploreSplitButton({ table }: { table: string }) {
     setPicked((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key].slice(0, 2)))
   const openExplore = (chain: Step[]) =>
     navigate({
-      to: '/admin/explore',
+      to: '/featherbase/admin/explore',
       search: {
         root: table,
         chain: chain.length ? JSON.stringify(chain) : undefined,

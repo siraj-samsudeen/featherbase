@@ -22,6 +22,7 @@ async function cleanup(request: APIRequestContext) {
 test.beforeEach(async ({ request }) => cleanup(request))
 test.afterEach(async ({ request }) => cleanup(request))
 
+// @spec generic_row_editor_preserves_field_contract.generic_attachment_lifecycle
 test('FILE-002: attach two files, both listed, delete one cleans up storage', async ({
   page,
 }) => {

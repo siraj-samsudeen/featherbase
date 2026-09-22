@@ -94,6 +94,6 @@ describe('#245 public route admission', () => {
     const send = () => request('/api/web_form/limited-intake', { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ values: { title: 'one' } }) })
     expect((await send()).status).toBe(201)
     expect((await send()).status).toBe(429)
-    expect((await sql`select count(*)::int as n from limited_intake`)[0].n).toBe(1)
+    expect((await sql`select count(*)::int as n from featherbase.limited_intake`)[0].n).toBe(1)
   })
 })

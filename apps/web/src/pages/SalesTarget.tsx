@@ -128,7 +128,7 @@ export function SalesTargetPage() {
         if (!current()) return
         if (res.status === 401) {
           clearSession()
-          window.location.href = '/login'
+          window.location.href = '/featherbase/login'
           return
         }
         if (body.no_assignment) setEmbed({ kind: 'no-assignment' })
@@ -151,7 +151,7 @@ export function SalesTargetPage() {
     abortRef.current?.abort()
     await api.post('/api/logout', {}).catch(() => {})
     clearSession()
-    await navigate({ to: '/login' })
+    await navigate({ to: '/featherbase/login' })
   }
 
   // #3783: when the assignment was derived from the Store Sections maps, name the Sections —

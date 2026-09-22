@@ -29,7 +29,7 @@ async function seedRow(admin: Admin) {
 }
 
 async function openRow(admin: Admin, rowId: string) {
-  await renderApp(`/admin/${encodeURIComponent(DT)}/${rowId}`, admin)
+  await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}/${rowId}`, admin)
   await screen.findByTestId('form-view')
   return screen.findByTestId('comments-panel')
 }

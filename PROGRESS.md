@@ -1,5 +1,43 @@
 # Progress Log
 
+## 2026-09-21 — Runtime-root normalization retains exact query state (#296)
+
+The permanent trailing-slash redirect for direct runtime-app roots now retains
+the original encoded query and uses 308 semantics. The shared app-root matcher
+also recognizes a query immediately after an unslashed root, so development proxy
+behavior matches the single-origin production server while reserved roots remain
+excluded. The browser continues to own fragment inheritance; the server neither
+receives nor fabricates it.
+
+Asymmetric route proof covered signed-in and signed-out roots, an empty query,
+repeated and encoded parameters, malformed encoding, reserved/ambiguous paths and
+the already-slashed login handoff. A real browser opened unslashed Tasker with
+repeated encoded query state and a selected-task fragment, traversed slash
+normalization and canonical login, then returned to the exact URL with the task
+detail open. Proof used only `featherbase_test_issue_296_root_query`,
+`featherbase_test_issue_296_root_query_web` and
+`featherbase_issue_296_root_query_browser_e2e`, with API 8503/web 5503.
+
+## 2026-09-21 — Exact runtime-app location survives sign-in (#296)
+
+Canonical Featherbase login now carries the exact runtime-app path and encoded
+query observed by the server, while the browser preserves its inherited fragment
+and appends it only after the return destination passes the shared runtime-root
+allow-list. External, scheme-relative, backslash, technical, legacy and malformed
+destinations fail closed to the member's normal landing page; no Tasker-specific
+route or fragment parsing entered Featherbase core.
+
+Proof used only worker-owned resources: server/web tests used
+`featherbase_test_issue_296_login_return` and
+`featherbase_test_issue_296_login_return_web`; the browser journey used
+`featherbase_issue_296_login_return_browser2_e2e` with API 8502 and web 5502.
+The browser opened a signed-out Tasker URL with encoded query state and a selected
+task fragment, passed through `/featherbase/login`, and returned to the exact URL
+with the task detail open. Focused server tests passed 10/10; full server passed
+826 with 15 MySQL-only skips; full web passed 153/153; all workspace typechecks,
+SQL lint, strict OpenSpec, policy, STC and evidence checks passed. No shared
+database, deployment or `tools/prove-runtime-packages.mjs` was touched.
+
 ## 2026-09-21 — OpenSpec becomes Tasker's sole behavior contract (#296)
 
 Reviewed the final Tasker UI revision against its implementation and tests.
@@ -18,6 +56,34 @@ coverage for the Projects landing and consistent task rows.
 evidence and STC checks passed with no new gaps or orphan markers; all 13 OpenSpec
 specifications passed strict validation; `git diff --check` passed. No push, pull
 request, merge or deployment was performed.
+
+## 2026-09-21 — Convergence worker migration and edge proof (#296)
+
+Progressive migration proof used three disposable databases. A fresh install
+produced 64 Featherbase base tables, migration ledger 95 and only `public.site`
+in public. An exact `cf88a7b` upgrade retained OIDs `2335350` (`table_def`),
+`2336342` (`Upgrade Note`) and `2336357` (`tasker.task`), two asymmetric core
+rows, one Tasker row, disabled Tasker metadata and its ACL/RLS state. A forced
+destination collision failed with both old objects and ledger 94 intact; removing
+the collision and retrying produced one complete ledger-95 state. Re-running the
+released migration remained idempotent. Legacy names with repeated interior or
+trailing whitespace retained their exact runtime-derived physical names, OIDs and
+rows. A missing metadata-required relation failed closed at ledger 94 and rolled
+earlier moves back. Focused import/revert, tenancy, RLS, Query Report and
+runtime-package tests passed 57/57; Query Reports also reject comma-join operands
+that could otherwise evade explicit-schema validation.
+
+Parallel proof is isolated: the convergence suite owns
+`featherbase_test_issue_296_convergence`, and the literal package/browser proof
+owns `featherbase_issue_296_convergence_runtime_e2e` on port 8497. The full
+server suite passed 826/826 with 15 MySQL-only skips; web passed 147/147; all
+workspace typechecks and SQL lint passed. The frozen-core proof passed with hash
+`7a722ec9bb600f40a39def1ac1063ae48259951e57169572a5c8c5aa9d2bee1a`, including
+disable/re-enable, restart, missing-code recovery, signed-out Tasker return and
+old-route query/fragment preservation. Direct Tasker and unavailable-state
+captures under `dist/runtime-proof-6L2HgG/` were visually inspected with no
+broken layout. Strict OpenSpec, STC and evidence checks are the final handoff
+gates; no shared Railway database was touched.
 
 ## 2026-09-21 — Tasker OpenSpec comparison, without replacing journey specs (#296)
 
@@ -8857,3 +8923,297 @@ its own database, post-#191) green on the PR. Closes the loop on #132.
 - Verified evidence, STC, strict OpenSpec validation, focused Tasker component
   tests and the full server suite. Next: parent review against the current
   implementation before any push or pull request.
+
+## 2026-09-21 — Transactional runtime application upgrades (#296)
+
+- Prepared and strictly validated `runtime-application-upgrades` before code.
+  Five governed requirements cover immutable cumulative identity, reviewed plan,
+  transaction/activation boundary, preservation and honest recovery. ADR 0010
+  remains unchanged; OpenSpec owns behavior. The config's unquoted YAML rule
+  containing `Status:` was corrected so the pinned CLI actually reads its rules.
+- Package-owned typed `addColumn` operations, generic ledger migration 0095,
+  manager Preview → Upgrade → Activate APIs and pinned-client version admission
+  implement the narrow slice. No Tasker-specific core migration, project editor,
+  deployment, reset of shared databases or published changes.
+- Spec five-axis review distinguished trusted immutable artifacts/single-server
+  operation from enforced promises and covered absent, active, disabled, pending,
+  missing-artifact and failed-transaction states. Semantic verification maps all
+  five new requirements to `runtime-upgrades.test.ts`, with literal restart/browser
+  evidence in `tools/prove-runtime-packages.mjs`. Strict validation/STC alone do
+  not establish that semantic agreement.
+- Code eight-axis review over loader, lifecycle, install, metadata DDL and HTTP
+  admission found one silent-success defect: a completed upgrade could replay
+  success after same-version replacement of its artifact. The regression went
+  red before the digest check and green after it (`67e7622`). No Oracle consultation
+  was needed: direct investigation settled the invariant.
+- Test three-axis review retained separate promises for rollback after the second
+  DDL, history checksums, exact retry identity, stale queued writes, disabled
+  activation and fresh-vs-upgraded schema. A scratch mutation disabling the
+  checksum-prefix guard made the expected rejection test red; its unmutated
+  baseline passed. This was an isolated copied test tree, not a production edit.
+- Standalone server: **828 passed, 15 MySQL skipped**; shared: **129 passed**;
+  server/shared typechecks and spec/STC/policy checks passed. Dedicated database
+  `featherbase_296_upgrade_test`; literal proof used
+  `featherbase_296_upgrade_e2e`, port 8497, evidence
+  `dist/runtime-proof-I5mLAk/upgrade-evidence.json` (ignored local output).
+- Convergence integration used a separate worktree, applying `29ca45b` before
+  upgrade commits `230e06d`, `0cf7f83`, `67e7622` without textual conflicts.
+  **833 server tests passed, 15 MySQL skipped**; combined focused tests: **23**.
+  Database `featherbase_296_upgrade_integrated_test`; literal proof used
+  `featherbase_296_upgrade_integrated_e2e`, port 8498, evidence
+  `dist/runtime-proof-hyVVga`. Metadata resolves to `featherbase` through
+  convergence's SQL wrapper, not a mutable pooled `search_path`; app DDL uses
+  explicit persisted physical relations. Actions 0096 and real Tasker v2 still
+  need parent integration verification; their loader/API edits overlap ours.
+- Final combined spec check exposed a missing convergence prerequisite:
+  implementation `29ca45b` alone references five markers defined by checkpoint
+  `3eac821`. Adding that committed checkpoint to the isolated integration branch
+  applied without conflicts and made strict OpenSpec/STC/policy checks pass.
+  Server/shared typechecks also passed there. Upgrade close-out `9f350ad` applied
+  cleanly. The Tasker thread already reconciles actions through `441c90f` and
+  upgrades; it was sent the combined fresh 0094→0095→0096 and action/upgrade race
+  proof contract. No action consumer API or other worker's files were changed
+  here. Combined actions evidence remains an acceptance dependency, not a pass
+  inferred from the convergence-plus-upgrades run.
+- Literal proof built core before separate npm packages, created v2 after v1
+  started, restarted before commit and while activation was pending, retried,
+  activated, rejected the retained old browser, wrote/read Markdown with v2,
+  removed/restored the target artifact, and checked unchanged core/v1 bytes.
+  Example real row: `tasker.project`, `DEV-TASKER-PROJECT-STOCK-REVIEW`,
+  `Stock review — September`, description `## Upgrade proof\n\n**37** cartons; keep the original project.`
+  Unit integration additionally compares complete existing project/task/comment/
+  preferences/grant values and fresh-v2 metadata/physical columns.
+- Desktop/mobile proof screenshots were inspected. The existing mobile project
+  chip strip clips the last chip at the viewport edge; task rows/navigation remain
+  usable. This change adds no visual UI. API manager status is the operator surface.
+- Recovery boundary: before commit, old version survives; after commit, restore
+  the exact target and activate. Retained prior artifact is not a down migration.
+  Unversioned prototype installs lack enough identity to auto-adopt safely and
+  fail closed; Dev must be inspected before planning an authorized recovery.
+  `docs/DEPLOY.md` includes package contract, immutable Railway paths, curl
+  sequence and later creation of `Tasker Test Drive` without a reset.
+- STC divergence surfaced at final sync: the older prototype scenario said work
+  immediately "remains usable", whereas the new missing-identity rule and test
+  deny access until explicit identity recovery. The delta now states that
+  prerequisite rather than leaving contradictory promises. Recommendation:
+  retain fail-closed identity matching. If the owner requires automatic legacy
+  availability, add a separately reviewed adoption path with concrete historical
+  artifact evidence; never weaken matching or reset the preserved data. The
+  lifecycle table also now includes the committed/pending state.
+- Prove Before Handoff: disposable deterministic preparation and automated
+  browser/restart checks completed. **Independent exploratory review and final
+  consolidated-diff review remain parent acceptance gates**, not claimed here:
+  this worker was instructed not to delegate. No live Dev build is handed over.
+  Three useful acceptance exercises: review the nullable-column preview; verify
+  asymmetric old work after activation; attempt an old-tab write and recover a
+  missing target artifact. Parent must rerun combined verification before merge.
+
+## #296 generic client identity follow-up
+
+- `df8543b` planned the contract; `0f2c61f` pins host-derived identities for
+  generic metadata/data/forms/uploads; `c5dd3b9` excludes public credential
+  exchanges from protected bootstrap. No guard relaxation or new migration.
+- Red/green and final local proof: server 853 passed / 17 skipped, web 158,
+  shared 129; types and strict OpenSpec/STC/policy passed. Only worker-owned
+  `featherbase_296_identity_test` and `featherbase_296_identity_mutation_test`
+  were used. The refresh-every-request mutant failed initialization.
+- Independent reviewer executed frozen-core form save/upload/list/remove and
+  retained-v1 pending403/activated409 journeys; reload obtained v2 and saved201.
+  Public OAuth/reset/logout regression independently passed with expired bearer.
+  Evidence: `rama_dw/outputs/review296-identity-independent/` (JSON, inspected
+  screenshots and clean reviewer logs). No remaining confirmed identity defect
+  at this checkpoint; overall integrated acceptance and P2 remain parent-owned.
+- Integrator proof `dist/runtime-proof-Satva5` at `9366df4` additionally checks
+  file byte download/removal and no dangling File after refused stale uploads.
+  Its 375px screenshot exposes existing generic form clipping. This is now a
+  separately assigned responsive follow-up, not a claimed visual handoff.
+
+## #296 responsive generic core forms
+
+- Separate characterized baseline `c97c95f`, validated change `137fdbe`, and
+  implementation/browser proof `d631d14`. No new ADR: this is a recoverable
+  presentation correction governed by `core-forms`, not platform architecture.
+- The browser red reproduced the defect at 375px: after focusing Save the
+  breadcrumb's left edge was -95px. The unwrapped heading/action row expanded
+  the inner scrolling canvas. Existing navigation media queries were correct;
+  wrapping/shrink boundaries restored containment without overflow hiding or
+  application-specific CSS. Attachment Remove no longer requires hover.
+- Local proof: direct375 and desktop1440 followed by live375 resize both pass
+  per-control bounds and main-canvas checks. Real blank/populated forms, save
+  and independent readback, realtime stale warning/Refresh, field validation,
+  long attachment filename, byte download/removal404 and keyboard Tab/Enter
+  with visible outline all pass. Example row: `Responsive row editor`,
+  `Stock-review-with-a-long-unbroken-identifier-3783`, title `Northern 375 crates`,
+  qty `83`, notes `Keep **this** description`.
+- Pending403/obsolete409 in the responsive test are explicitly presentation
+  probes with injected host-shaped errors. They check unsaved value retention,
+  truthful refusal text and bounds, not admission. Real upgrade/admission
+  remains covered by the identity tests and integrator's frozen-package proof.
+- Isolated resources: `featherbase_296_responsive_e2e`, API8826/web5226; directly
+  local PostgreSQL process and resolved DB name checked before reset. Browser
+  stack stopped. Full web158 passed on `featherbase_296_identity_test`; web
+  types, strict OpenSpec validation and diff checks passed. The combined spec
+  gate FAILED with two STC gaps for the removed layout baseline; an initial
+  status update incorrectly reported green because a later shell command
+  obscured the failing status. The log is authoritative. Browser2/2; screenshots
+  `dist/core-responsive-*` inspected, including live resize, blank, stale,
+  validation,403/409 and attachment keyboard focus. Vertical scrolling remains.
+- Reviews: five-axis spec review distinguishes the characterized overflow
+  limitation from the new governed promise; four scenario traces resolve to
+  code and tests. Eight-axis review refuted a sidebar-breakpoint defect through
+  live resize and isolated the actual unwrapped flex constraint. Three-axis
+  review found programmatic focus did not prove keyboard visibility; replaced
+  it with Tab plus outline assertion and inspected fresh captures. A held upload
+  response now also proves readable/disabled Uploading state. Desktop is
+  the counterexample to an unconditional stacked layout, not a duplicate case.
+  CI's required e2e job includes this browser spec; component tests alone cannot
+  prove CSS containment. No Oracle question remained unresolved.
+- Independent integrated proof at `95db87c` passed45 classes, real identity/
+  attachment lifecycle, pending403/activated409 and both login returns; touch375
+  visible32px Remove and tap→File0/download404 also passed. The unchanged
+  `347f7f0` harness passed before its follow-up `589883e` added a condition-based
+  drawer readiness wait for settled captures. Inspected actual Tasker desktop
+  and mobile captures in integrator `dist/runtime-proof-ne4Bia`: readable fields,
+  actions and heading, no horizontal clipping or drawer overlay. Attachments
+  are below native vertical scroll. Local resize test now uses the same actual
+  right-edge readiness predicate, without sleeps or hiding the drawer.
+- The parent's final ruling accepts normal sync/archive as the smallest release
+  gate resolution, superseding the temporary tooling hold. Retire the obsolete
+  canonical requirement through the accepted delta; no old markers, baseline
+  relaxation, checker redesign or Tasker archive. `3edfa78` is the separate
+  test-only readiness/busy-state checkpoint. No deployment or push.
+- Final standalone checks after sync/archive: `pnpm check:specs` exit0 (no
+  orphans/new gaps; responsive requirement has code/test and four scenarios),
+  strict archived validation6/6, full web158/158, web typechecks and diff check
+  exit0. The canonical spec contains the accepted governed requirement and no
+  obsolete layout baseline. Owned identity/mutation/responsive databases were
+  dropped only after rechecking their exact names and test stamps. API8826 and
+  web5226 stopped. Evidence logs and representative inspected images retained
+  in `rama_dw/outputs/issue296-core-responsive/`. Final integrated delta review
+  remains with the parent/reviewer; this worker makes no deployment claim.
+
+## 2026-09-22 — App roles and store access planning checkpoint (#279)
+
+Created `openspec/changes/app-roles-store-access` from merged #298. Inspected
+#279/#246/#274/#296/#298, canonical runtime/action specs, permission assignments,
+loader identity/lifecycle, action transaction/replay and existing tests. The plan
+reuses `has_role` and `data_scope` without changing legacy Table CRUD. It names
+explicit package operation policies, generic runtime reads, narrow locked scope
+resolution for persisted objects, and immutable replay authorization metadata
+separate from protected result reads. Tasker moves through a versioned explicit
+Table-policy upgrade; historical actions do not receive an implicit bypass.
+
+The spec review distinguishes trusted-package assumptions from host promises,
+records governed requirements and an ordered refusal table, and identifies the
+missing executable links rather than creating placeholder markers. Scoped Oracle
+design review found an absent product-footprint producer in two declaration
+combinations and stale generic grants after product-fact lock waits. The plan now
+rejects those unsupported action combinations and rechecks at final admission;
+Oracle's follow-up confirmed both planning findings resolved. The requested
+`mattpocock-skills:grilling` invocation failed because the skill is unavailable;
+the Oracle consultation is recorded separately, not presented as that skill.
+
+Verification: `pnpm exec openspec validate app-roles-store-access --strict
+--no-interactive` passes; status is 4/4 planning artifacts. `pnpm check:specs`
+passes strict validation of 17 canonical specs and both active changes, then
+fails STC with exactly 12 new links missing (code/test for six new requirements).
+Those are intentional unimplemented-plan gaps, not a green implementation claim;
+no baseline relaxation or fabricated markers. Separately `pnpm check:spec-policy`
+passes all seven tests and the policy check; `git diff --check` passes.
+
+No application code, database, expected test outcomes or deployment changed.
+Boot smoke, TDD implementation, full suites/typechecks, final three-axis reviews
+and Prove Before Handoff remain pending the coordinator's separate apply
+instruction, as required by the planning-only OpenSpec skill. Next: inspect the
+committed plan, apply the change, then independently review and prove its final
+implementation before offering a development build.
+
+## 2026-09-22 — #279 app roles and store access: implementation checkpoint
+
+Implemented the approved two-stage store boundary and self-only discovery using
+existing `has_role`/`data_scope`, with no legacy Table CRUD change. Added explicit
+read/action policies, narrow locked scope facts, immutable operation context,
+mandatory product gates, and separate ledger authorization/result projection.
+Tasker 2.1.0 and action-proof 1.1.0 declare table/generic policies; preserved exact
+historical artifacts for explicit upgrade proofs. Migration 0097 adds only the
+nullable private ledger authorization JSONB column. Canonical specs synchronized.
+
+Evidence at this checkpoint: `pnpm --filter server typecheck` passes;
+`DATABASE_URL=.../featherbase_issue279_test pnpm --filter server test
+test/app-access.test.ts` passes 12 tests; focused runtime action/upgrade/deletion
+suite passes 31 tests. Initial four tests failed against absent declarations.
+Oracle found mutable resolver claim state; its asymmetric test first returned
+A+B for claimed A (red), then passed after freezing the original claim. Oracle
+reviewed that resolution and closed the finding. PostgreSQL result-projection
+poison proves refused replay never selects protected result bytes. Independent
+commit/lock proof passes on the positively identified directly local, test-stamped
+`featherbase_issue279_access_commit_e2e`; CI now explicitly runs that proof.
+`pnpm check:specs` passes strict validation and STC with no orphans/new gaps.
+
+First full server run: 863 passed, one stale action-proof client-version failure,
+18 expected opt-in/MySQL skips. Corrected that test client's explicit version;
+final broad rerun, runtime/browser proof, mutation review and independent final
+review remain pending. No development-build handoff, merge or deployment yet.
+
+## 2026-09-22 — #279 independent review corrections
+
+Independent review of the implementation checkpoint found two governed defects:
+authorization callback exceptions could disclose private AppError details without
+denial audit, and the legacy pre-first-migration identity exemption leaked into
+the new boundary. Both were reproduced red with real Hono/PostgreSQL tests
+(500 instead of fixed 403; missing identity accepted with 200). Scope callback
+execution/footprint validation and product callback failures now become redacted
+refusals; admitted business errors remain unchanged. Required denial audit fails
+visibly if unavailable rather than silently using legacy optional-audit behavior.
+New protected HTTP reads/actions/discovery require exact active identity even
+before a first migration; legacy Table CRUD keeps its existing semantics.
+Consequently obsolete declared-action identities now get audited fixed 403,
+while legacy CRUD retains its existing 409 reload response.
+
+Verification: focused app-access/runtime-action/package/upgrade/deletion/Tasker
+tests pass 53/53; app-access includes fresh/pending/upgraded identity matrices,
+ordinary/private callback errors, invalid footprint, preserved business errors,
+durable redacted audits, unavailable-audit failure, and SQL-poisoned replay-result
+projection. Independent-commit scope/product/duplicate lock proof passes;
+server typecheck and `pnpm check:specs` pass. Commands used dedicated local
+`featherbase_issue279_test` and `featherbase_issue279_access_commit_e2e` only.
+Independent follow-up review, final broad rerun and runtime proof remain pending.
+
+## 2026-09-22 — #279 final verification and real HTTP callback proof
+
+The independent reviewer closed the original callback/identity reproductions at
+the corrected implementation, then caught one stale opt-in Tasker expectation.
+That proof now requires the governed fixed PermissionError and a durable denial
+audit increment, preserving every later replay/disable assertion. Added an actual
+loopback TCP/Hono callback proof to the existing dedicated commit suite: ordinary
+Error and private NotFoundError from resolver/product callbacks yield identical
+403 bodies, independent committed audit rows, no business/upstream execution,
+and successful original-result replay after fault removal. Faults are injected
+only by the test harness into the proving package's exported test state; no
+production debug route or runtime-package import of private core was added.
+
+Commands: `APP_ACCESS_COMMIT_PROOF=1 DATABASE_URL=.../featherbase_issue279_access_commit_e2e
+pnpm --filter server exec vitest run test/app-access-commit.test.ts` passes 2/2;
+`TASKER_UPGRADE_ACTION_PROOF=1 DATABASE_URL=.../featherbase_issue279_actions_commit_e2e
+pnpm --filter server exec vitest run test/tasker-upgrade-action-commit.test.ts`
+passes through completion. Full server passes 869 with 18 expected skips; shared
+129/129; web 164/164; workspace typechecks pass. Web uses Node 26's
+`NODE_OPTIONS=--no-experimental-webstorage` so jsdom owns storage. One concurrent
+web run had two unrelated import-naming timing failures; the full serial rerun
+passed unchanged. The v1→v2 identity test now names the preserved exact v2 fixture
+rather than the current 2.1 package; its behavior/expected outcomes are unchanged.
+
+`CHROMIUM_PATH=<installed Chromium> RUNTIME_PROOF_DATABASE_URL=.../featherbase_issue279_runtime_e2e
+RUNTIME_PROOF_PORT=8496 node tools/prove-runtime-packages.mjs` passes the literal
+frozen-core/install/browser/upgrade/restart proof. Evidence is in ignored
+`dist/runtime-proof-OAu1BG`; desktop capture was inspected for readable content
+and unclipped controls. All databases are dedicated test-stamped on the positively
+identified directly local PostgreSQL server. The populated live exploration DB
+was not reset. Exact historical scopeproof artifact remains available separately
+for restarting its installed version, while core runs the corrected commit.
+
+Oracle's final follow-up found no remaining scoped callback/identity/replay/lock
+invariant violation. Independent live exploration confirmed store, object,
+replay and revocation scenarios and then the corrected identity matrix. Final
+independent acceptance of the verification delta remains the coordinator's gate;
+no merge, deployment or completed Budgets/DASH implementation is claimed.

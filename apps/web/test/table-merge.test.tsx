@@ -52,7 +52,7 @@ async function seed(admin: Admin) {
 }
 
 async function openMerge(admin: Admin) {
-  await renderApp(`/admin/${encodeURIComponent(SRC)}/merge`, admin)
+  await renderApp(`/featherbase/admin/${encodeURIComponent(SRC)}/merge`, admin)
   await screen.findByTestId('table-merge')
 }
 

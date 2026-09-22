@@ -11,6 +11,7 @@ import { test } from './pg-test'
 import { installApp, uninstallApp, isInstalled } from '../src/apps'
 import { sql } from '../src/db'
 import { tableName } from '../src/table-engine'
+import { platformRelation } from '../src/platform-schema'
 import { deleteStored } from '../src/storage'
 import type { TestClient } from 'feather-testing-postgres'
 
@@ -55,7 +56,7 @@ const unwire = () => uninstallApp('checklists').catch(() => {})
 const itemNames = async (run: string): Promise<string[]> =>
   (
     await sql`
-      select row_id from ${sql(tableName(ITEM_DT))}
+      select row_id from ${sql(platformRelation(tableName(ITEM_DT)))}
       where parent = ${run} and parenttype = ${RUN_DT} order by position`
   ).map((r) => r.row_id as string)
 

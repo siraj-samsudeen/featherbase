@@ -54,7 +54,7 @@ async function seed(admin: Admin) {
  * the client even though the server accepted it.
  */
 async function mountForm(admin: Admin) {
-  const { queryClient } = await renderApp(`/admin/${encodeURIComponent(DT)}/new`, admin)
+  const { queryClient } = await renderApp(`/featherbase/admin/${encodeURIComponent(DT)}/new`, admin)
   await screen.findByTestId('form-view')
   await waitFor(() =>
     expect(queryClient.getQueryData(['whoami'])).toMatchObject({ language: 'en' }),

@@ -9,8 +9,10 @@ import { existsSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { createRequire } from 'node:module'
 import { seedTasker, TASKER_SCENARIOS } from './seed-tasker-development.mjs'
+import { proveTaskerAcceptance } from './prove-tasker-acceptance.mjs'
 
 const root = resolve(import.meta.dirname, '..')
+const taskerPackage = JSON.parse(await readFile(resolve(root, 'runtime-apps/tasker/package.json'), 'utf8'))
 const requireWeb = createRequire(resolve(root, 'apps/web/package.json'))
 const { chromium, expect } = requireWeb('@playwright/test')
 const postgres = requireWeb('postgres')
@@ -71,7 +73,7 @@ console.log(`CORE FROZEN ${before}`)
 // tarballs, not source directories or a workspace module import.
 run('pnpm', ['apps:prepare'])
 const paths = []
-for (const name of ['tasker', 'other']) {
+for (const name of ['tasker', 'other', 'action-proof']) {
   const destination = resolve(output, name)
   await mkdir(destination)
   run('npm', ['pack', '--pack-destination', destination], resolve(root, 'runtime-apps', name))
@@ -102,10 +104,11 @@ async function stop() {
   await exited
 }
 let token
-async function api(path, body, status = 200) {
+async function api(path, body, status = 200, appVersion = `tasker@${taskerPackage.version},actionproof@1.1.0`) {
   const response = await fetch(`${origin}${path}`, {
     method: body === undefined ? 'GET' : 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(appVersion ? { 'X-Featherbase-App-Version': appVersion } : {}) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
   const result = await response.json()
@@ -116,6 +119,28 @@ try {
   await start(paths)
   token = (await api('/api/login', { usr: 'Administrator', pwd: process.env.ADMIN_PASSWORD ?? 'admin' })).token
   for (const name of ['tasker', 'other']) await api('/api/install_app', { name }, 201)
+  await api('/api/install_app', { name: 'actionproof' }, 201)
+  const actionSource = await api('/api/save_row', { table: 'actionproof.work', row: { row_id: 'packaged-source', title: '73 packed units' } }, 201)
+  const actionRequest = { idempotencyKey: 'packaged-action', payload: { source: actionSource.row_id, updatedAt: actionSource.updated_at } }
+  await api('/api/app_actions/actionproof/transform', { ...actionRequest, payload: { ...actionRequest.payload, fail: true } }, 500)
+  assert.equal((await api('/api/table/actionproof.destination')).total, 0)
+  // @spec action_writes_and_replay_are_atomic
+  const actionResults = await Promise.all(Array.from({ length: 8 }, () => api('/api/app_actions/actionproof/transform', actionRequest)))
+  for (const result of actionResults) assert.deepEqual(result, actionResults[0])
+  assert.equal((await api('/api/table/actionproof.destination')).total, 1)
+  const actionActivity = await api(`/api/activity/actionproof.work/${actionSource.row_id}`)
+  assert.equal(actionActivity.comments.length, 1)
+  assert.equal(actionActivity.versions.length, 1)
+  // @spec guarded_action_deletion_preserves_retained_work.core_attachment_and_share_refusal_replays
+  const retainedSource = await api('/api/save_row', { table: 'actionproof.work', row: { row_id: 'packaged-retained', title: 'Retain 47 units' } }, 201)
+  for (const file_name of ['invoice-17.txt', 'photo-43.png'])
+    await api('/api/save_row', { table: 'File', row: { file_name, ref_table: 'actionproof.work', ref_name: retainedSource.row_id } }, 201)
+  await api('/api/save_row', { table: 'Share', row: { share_table: 'actionproof.work', share_name: retainedSource.row_id, user: 'Administrator', read: true } }, 201)
+  const retentionRequest = { idempotencyKey: 'packaged-retention', payload: { source: retainedSource.row_id, updatedAt: retainedSource.updated_at, explain: true } }
+  await api('/api/app_actions/actionproof/transform', { idempotencyKey: 'retention-rollback', payload: { ...retentionRequest.payload, fail: true } }, 500)
+  const retentionResult = await api('/api/app_actions/actionproof/discard', retentionRequest)
+  assert.deepEqual(retentionResult, { result: { deleted: false, counts: { comments: 0, versions: 0, references: 0, files: 2, shares: 1 } } })
+  assert.equal((await api('/api/table/actionproof.destination')).total, 1)
   const seeded = await seedTasker({
     baseUrl: origin,
     password: process.env.ADMIN_PASSWORD ?? 'admin',
@@ -128,14 +153,31 @@ try {
     personal_tasks_owner: 'Administrator',
   } }, 417)
   browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {})
-  const page = await browser.newPage({ viewport: { width: 1440, height: 960 } })
-  await page.goto(`${origin}/login`)
-  await page.locator('input[name=email]').fill('Administrator')
-  await page.locator('input[name=password]').fill(process.env.ADMIN_PASSWORD ?? 'admin')
-  await page.locator('button[type=submit]').click()
-  await page.waitForURL('**/admin**')
+  const context = await browser.newContext({ viewport: { width: 1440, height: 960 } })
+  const page = await context.newPage()
+  // @spec featherbase_human_routes_are_canonical.exact_runtime_app_location_survives_sign_in
+  const selectedTask = seeded.tasks['DEV-TASKER-TASK-INVOICE-MISMATCH']
+  const deepLink = `${origin}/tasker/?review=deep-link&note=37%20cartons%2F83&review=again#task=${selectedTask}`
+  async function proveSignedOutReturn(target, requested, screenshot) {
+    await target.goto(requested)
+    await target.waitForURL(url => url.pathname === '/featherbase/login')
+    await target.locator('input[name=email]').fill('Administrator')
+    await target.locator('input[name=password]').fill(process.env.ADMIN_PASSWORD ?? 'admin')
+    await target.locator('button[type=submit]').click()
+    await expect(target).toHaveURL(deepLink)
+    await expect(target.getByRole('region', { name: 'Task detail content' })).toContainText('Triage supplier invoice mismatch')
+    await target.screenshot({ path: resolve(output, screenshot), fullPage: true })
+  }
+  await proveSignedOutReturn(page, deepLink, 'signed-out-deep-link-return.png')
+  const slashlessContext = await browser.newContext({ viewport: { width: 1440, height: 960 } })
+  try {
+    await proveSignedOutReturn(await slashlessContext.newPage(), deepLink.replace('/tasker/?', '/tasker?'), 'signed-out-slashless-return.png')
+  } finally { await slashlessContext.close() }
+  await page.goto(`${origin}/admin/User?proof=compatibility#deep-link`)
+  await expect(page).toHaveURL(`${origin}/featherbase/admin/User?proof=compatibility#deep-link`)
   await page.locator('a[href="/tasker/"]').click()
   await expect(page).toHaveURL(`${origin}/tasker/`)
+  await proveTaskerAcceptance({ page, api, expect, output, origin })
   await expect(page.getByText('Triage supplier invoice mismatch')).toBeVisible()
   await expect(page.getByText('Collect ideas for the Monday review')).toBeVisible()
   await expect(page.getByText('Blocked until the warehouse confirms the night-shift roster.')).toBeVisible()
@@ -197,9 +239,12 @@ try {
   await expect(page.getByRole('combobox', { name: 'State for Package-delivered stock review' })).toHaveValue('In progress')
   await page.screenshot({ path: resolve(output, 'desktop.png'), fullPage: true })
   await page.getByRole('link', { name: 'Package-delivered stock review' }).click()
+  await page.getByRole('button', { name: 'Inspector', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Inspector', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: 'Edit task', exact: true }).click()
   await page.getByRole('textbox', { name: 'Description', exact: true }).fill('Delivered after the core artifact was frozen.')
-  await page.getByRole('button', { name: 'Save description' }).click()
-  await expect(page.getByRole('button', { name: 'Save description' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Save task', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Edit task', exact: true })).toBeVisible()
   await page.getByRole('textbox', { name: 'Add comment' }).fill('Verified in the independently built Tasker package.')
   await page.getByRole('button', { name: 'Comment' }).click()
   await expect(page.getByTestId('task-activity')).toContainText('Verified in the independently built Tasker package.')
@@ -288,6 +333,8 @@ try {
   assert.equal(other.validation_runs, '2')
   await stop()
   await start(paths)
+  assert.deepEqual(await api('/api/app_actions/actionproof/transform', actionRequest), actionResults[0])
+  assert.deepEqual(await api('/api/app_actions/actionproof/discard', retentionRequest), retentionResult)
   await api('/api/table/tasker.task', undefined, 403)
   await api('/api/set_app_enabled', { name: 'tasker', enabled: true })
   await api('/api/set_app_enabled', { name: 'tasker', enabled: true })
@@ -298,12 +345,168 @@ try {
   await expect(page.getByText('Package-delivered stock review')).toBeVisible()
   await stop()
   await start([paths[1]])
+  await api('/api/app_actions/actionproof/transform', actionRequest, 403)
   await api('/api/run_query_report', { report: 'Raw Tasker report' }, 417)
   await api('/api/save_row', { table: 'tasker.task', row: { ...task, is_done: true } }, 403)
   assert((await api('/api/apps')).installed.some(a => a.name === 'tasker' && !a.available && !a.active))
   await stop()
   await start(paths)
+  assert.deepEqual(await api('/api/app_actions/actionproof/transform', actionRequest), actionResults[0])
+  await writeFile(resolve(output, 'action-evidence.json'), JSON.stringify({
+    database: new URL(database).pathname, source: actionSource.row_id,
+    result: actionResults[0], concurrentIdenticalRequests: actionResults.length,
+    destinationCount: (await api('/api/table/actionproof.destination')).total,
+    activity: actionActivity, rollbackBeforeRetry: true, restartReplay: true,
+    missingCodeRefused: true, restoredReplay: true,
+    retentionResult, retentionRollbackAndRestart: true,
+  }, null, 2))
   assert.equal((await api(`/api/table/tasker.task/${task.row_id}`)).description, task.description)
+  // @spec runtime_upgrade_preserves_owned_work.tasker_description_is_generic_migration
+  // Independently prove preserved v1 -> the literal current v2 package.
+  // Reset only this same stamped disposable database after stopping the server.
+  await stop()
+  run('pnpm', ['--filter', 'server', 'e2e:reset'])
+  run('pnpm', ['--filter', 'server', 'migrate'])
+  run('pnpm', ['--filter', 'server', 'patches'])
+  const v1 = resolve(output, 'preserved-tasker-v1')
+  await cp(resolve(root, 'runtime-apps/fixtures/tasker-v1'), v1, { recursive: true })
+  const v2 = paths[0]
+  const v1Digest = await digest(v1)
+  const upgradePaths = [v1, v2, ...paths.slice(1)]
+  await start([v1, ...paths.slice(1)])
+  token = (await api('/api/login', { usr: 'Administrator', pwd: process.env.ADMIN_PASSWORD ?? 'admin' })).token
+  await api('/api/install_app', { name: 'tasker' }, 201)
+  const projectBefore = await api('/api/save_row', { table: 'tasker.project', row: { project_name: 'Preserved upgrade project' } }, 201)
+  const projectId = projectBefore.row_id
+  const preservedTask = await api('/api/save_row', { table: 'tasker.task', row: {
+    task_title: 'Preserved 37 cartons', project: projectId, assigned_to: 'Administrator', urgent: true, task_state: 'Blocked',
+  } }, 201)
+  await api('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: preservedTask.row_id, content: 'Retain this evidence' } }, 201)
+  await page.goto(`${origin}/tasker/`)
+  await page.evaluate(token => localStorage.setItem('fc_token', token), token)
+  // @spec core_runtime_client_pins_active_identity.stale_generic_form_is_not_relabelled
+  const staleCore = await page.context().newPage()
+  await staleCore.goto(`${origin}/featherbase/admin/tasker.task/${preservedTask.row_id}`)
+  await expect(staleCore.locator('[data-field="task_title"]')).toHaveValue('Preserved 37 cartons')
+  await staleCore.locator('[data-field="description"]').fill('Must not save a pre-upgrade draft')
+  async function refuseStaleCore(expectedStatus) {
+    const saving = staleCore.waitForResponse(response => response.url().endsWith('/api/save_row') && response.request().method() === 'POST')
+    await staleCore.getByTestId('form-save').click()
+    assert.equal((await saving).status(), expectedStatus)
+    const uploading = staleCore.waitForResponse(response => response.url().endsWith('/api/upload_file'))
+    await staleCore.getByTestId('attach-file-input').setInputFiles({ name: 'stale-37.txt', mimeType: 'text/plain', buffer: Buffer.from('Must not attach from obsolete form') })
+    assert.equal((await uploading).status(), expectedStatus)
+    await expect(staleCore.getByTestId('attach-error')).toBeVisible()
+  }
+  const preferencesBefore = await api('/api/user_settings/tasker.preferences')
+  const commentsBefore = await api('/api/table/Comment?limit_page_length=1000')
+  await stop()
+  await start(upgradePaths)
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Tasker v1 upgrade fixture' })).toBeVisible()
+  const plan = await api('/api/preview_app_upgrade', { name: 'tasker', version: taskerPackage.version })
+  assert.equal(plan.currentVersion, '0.0.1')
+  assert.deepEqual(plan.tables, ['tasker.project'])
+  assert.equal(plan.migrations[0].id, 'project_description')
+  // Restart before commit does not silently upgrade.
+  await stop()
+  await start(upgradePaths)
+  assert.deepEqual(await api(`/api/table/tasker.project/${projectId}`), projectBefore)
+  const upgrade = { name: 'tasker', version: taskerPackage.version, planId: plan.planId }
+  await api('/api/upgrade_app', upgrade)
+  await api('/api/table/tasker.project', undefined, 403)
+  await refuseStaleCore(403)
+  await stop()
+  await start(upgradePaths)
+  assert.equal((await api('/api/apps')).installed.find(a => a.name === 'tasker').activationPending, true)
+  await api('/api/upgrade_app', upgrade)
+  await api('/api/activate_app_upgrade', { name: 'tasker', version: taskerPackage.version })
+  await refuseStaleCore(409)
+  await staleCore.screenshot({ path: resolve(output, 'stale-core-form-after-upgrade.png'), fullPage: true })
+  await staleCore.close()
+  // The retained v1 browser cannot write against the upgraded contract.
+  const staleBrowser = await page.evaluate(async () => {
+    const response = await fetch('/api/save_row', { method: 'POST', headers: {
+      'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('fc_token')}`,
+      'X-Featherbase-App-Version': 'tasker@0.0.1',
+    }, body: JSON.stringify({ table: 'tasker.task', row: { task_title: 'Must not save from v1' } }) })
+    return { status: response.status, body: await response.json() }
+  })
+  assert.equal(staleBrowser.status, 409)
+  assert.match(staleBrowser.body.error.message, /was upgraded/)
+  const upgradedProject = await api(`/api/table/tasker.project/${projectId}`)
+  assert.deepEqual(upgradedProject, { ...projectBefore, description: null })
+  const description = '## Upgrade proof\n\n**37** cartons; keep the original project.'
+  await api('/api/save_row', { table: 'tasker.project', row: { ...upgradedProject, description } }, 201)
+  assert.deepEqual(await api('/api/user_settings/tasker.preferences'), preferencesBefore)
+  assert.deepEqual(await api('/api/table/Comment?limit_page_length=1000'), commentsBefore)
+  await page.reload()
+  await page.getByRole('button', { name: 'Projects', exact: true }).click()
+  await page.getByRole('button', { name: 'Open project Preserved upgrade project' }).click()
+  await expect(page.getByRole('region', { name: 'Project description' })).toContainText('37 cartons')
+  await expect(page.getByRole('link', { name: 'Preserved 37 cartons' })).toBeVisible()
+  await page.screenshot({ path: resolve(output, 'upgraded-project-markdown.png'), fullPage: true })
+  const browserRead = await page.evaluate(async ({ id, version }) => {
+    const response = await fetch(`/api/table/tasker.project/${id}`, { headers: { Authorization: `Bearer ${localStorage.getItem('fc_token')}`, 'X-Featherbase-App-Version': `tasker@${version}` } })
+    return { status: response.status, row: await response.json() }
+  }, { id: projectId, version: taskerPackage.version })
+  assert.equal(browserRead.status, 200)
+  assert.equal(browserRead.row.description, description)
+  assert.deepEqual(await api(`/api/table/tasker.task/${preservedTask.row_id}`), preservedTask)
+  const coreFilesFilter = encodeURIComponent(JSON.stringify([['ref_table', '=', 'tasker.task'], ['ref_name', '=', preservedTask.row_id]]))
+  assert.equal((await api(`/api/table/File?filters=${coreFilesFilter}`)).total, 0, 'Refused stale uploads left a File document')
+  // @spec core_runtime_client_pins_active_identity.core_form_and_attachment_after_upgrade
+  await page.setViewportSize({ width: 1440, height: 960 })
+  await page.getByRole('link', { name: 'Preserved 37 cartons', exact: true }).click()
+  await page.getByRole('link', { name: 'Attachments and advanced fields in Featherbase ↗' }).click()
+  await expect(page).toHaveURL(`${origin}/featherbase/admin/tasker.task/${preservedTask.row_id}`)
+  await expect(page.locator('[data-field="task_title"]')).toHaveValue('Preserved 37 cartons')
+  await page.locator('[data-field="description"]').fill('Core form confirmed 37 cartons, not 83.')
+  await page.getByTestId('form-save').click()
+  await expect(page.getByTestId('form-banner')).toHaveText('Saved')
+  assert.equal((await api(`/api/table/tasker.task/${preservedTask.row_id}`)).description, 'Core form confirmed 37 cartons, not 83.')
+  await page.getByTestId('attach-file-input').setInputFiles({ name: 'core-37.txt', mimeType: 'text/plain', buffer: Buffer.from('37 cartons independently verified') })
+  const attachment = page.getByTestId('attachment-row').filter({ hasText: 'core-37.txt' })
+  await expect(attachment).toHaveCount(1)
+  const fileUrl = await attachment.locator('a').getAttribute('href')
+  assert(fileUrl?.startsWith('/files/'))
+  const served = await page.request.get(`${origin}${fileUrl}`)
+  assert.equal(served.status(), 200)
+  assert.equal(await served.text(), '37 cartons independently verified')
+  await page.screenshot({ path: resolve(output, 'upgraded-core-form-attachment.png'), fullPage: true })
+  await page.setViewportSize({ width: 375, height: 900 })
+  // Resizing animates the desktop sidebar off-screen; capture the settled
+  // narrow form, not the intermediate drawer covering otherwise valid fields.
+  await expect.poll(async () => {
+    const sidebar = await page.getByTestId('admin-sidebar').boundingBox()
+    return sidebar ? sidebar.x + sidebar.width : Number.POSITIVE_INFINITY
+  }).toBeLessThanOrEqual(0)
+  await page.screenshot({ path: resolve(output, 'upgraded-core-form-mobile.png'), fullPage: true })
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Upgraded core form has horizontal page overflow at 375px')
+  for (const control of [page.locator('[data-field="task_title"]'), page.locator('[data-field="description"]'), page.getByTestId('attachments-panel'), page.getByTestId('form-save')]) {
+    const bounds = await control.boundingBox()
+    assert(bounds && bounds.x >= 0 && bounds.x + bounds.width <= 375, 'Core form control is horizontally clipped at 375px')
+  }
+  await page.getByTestId('attachments-panel').scrollIntoViewIfNeeded()
+  await page.screenshot({ path: resolve(output, 'upgraded-core-mobile-attachment.png'), fullPage: true })
+  await attachment.hover()
+  await attachment.getByTestId('attachment-delete').click()
+  await expect(attachment).toHaveCount(0)
+  assert.equal((await page.request.get(`${origin}${fileUrl}`)).status(), 404)
+  await stop()
+  await start([v1, ...paths.slice(1)]) // Prior artifact is not a rollback for committed schema.
+  await api('/api/table/tasker.project', undefined, 403)
+  await stop()
+  await start(upgradePaths)
+  assert.equal((await api(`/api/table/tasker.project/${projectId}`)).description, description)
+  assert.equal(await digest(v1), v1Digest, 'Prior artifact was modified')
+  await writeFile(resolve(output, 'upgrade-evidence.json'), JSON.stringify({
+    plan, priorArtifact: v1, targetArtifact: v2, priorUnchanged: true,
+    browserRead, restartBeforeCommit: true, restartPendingActivation: true,
+    staleBrowserRejected: true, restoredTargetAfterMissing: true,
+    staleCoreSaveAndUploadRejected: [403, 409], coreFormSaveUploadReadRemove: true,
+    signedOutDeepLinkReturned: deepLink, signedOutSlashlessReturn: true,
+  }, null, 2))
   assert.equal(await digest(core), before, 'Core changed after package staging')
   assert.equal(await digest(resolve(root, 'packages/shared')), sharedBefore, 'Shared core dependency changed')
   await writeFile(resolve(output, 'evidence.json'), JSON.stringify({ coreHash: before, coreUnchanged: true, stagedPackages: paths, database: new URL(database).pathname, seededScenarios: TASKER_SCENARIOS, seededRows: seeded, journeys: ['install', 'seed', 'inbox-content', 'projects-content', 'project-rename', 'private-project-tabs', 'together', 'private-focus-order', 'urgent-and-not-urgent', 'blocked-explanation', 'invalid-dual-destination', 'capture', 'self-assign', 'complete', 'undo-state-restoration', 'integrated-comment-history', 'three-detail-modes', 'inspect-responsive', 'disable-stale-client', 'restart', 'enable', 'missing-code', 'restore'], screenshots: ['seeded-inbox.png', 'seeded-my-work.png', 'together.png', 'desktop.png', 'inspector.png', 'focus-detail.png', 'compact-detail.png', 'inspector-tablet.png', 'inspector-mobile.png', 'mobile.png', 'disabled.png', 'unavailable.png'] }, null, 2))

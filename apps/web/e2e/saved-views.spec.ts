@@ -43,6 +43,21 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 // of assuming a fixed sleep did the job.
 const SAME_ARRIVAL_WINDOW_MS = 500 // duplicated from ListView.tsx's `now - rec.t > 500`
 
+async function waitForApplyCount(page: Page, table: string, filters: unknown, count: number): Promise<void> {
+  const key = `${table}|${JSON.stringify(filters)}`
+  await expect
+    .poll(() => page.evaluate((k) => {
+      for (let i = 0; i < localStorage.length; i++) {
+        const storageKey = localStorage.key(i)
+        if (!storageKey?.startsWith('fc-filter-count:')) continue
+        const store = JSON.parse(localStorage.getItem(storageKey) ?? '{}') as Record<string, { n: number }>
+        if (store[k]) return store[k].n
+      }
+      return 0
+    }, key))
+    .toBe(count)
+}
+
 async function waitPastDedupWindow(page: Page, table: string, filters: unknown): Promise<void> {
   const key = `${table}|${JSON.stringify(filters)}`
   await expect
@@ -72,7 +87,7 @@ async function waitPastDedupWindow(page: Page, table: string, filters: unknown):
 test('#101 P6: three applications trigger the nudge; the saved view lives as a chip', async ({
   page,
 }) => {
-  const listUrl = `/admin/${encodeURIComponent(DT)}?filters=${FILTERS}`
+  const listUrl = `/featherbase/admin/${encodeURIComponent(DT)}?filters=${FILTERS}`
 
   // First two arrivals: no nudge yet. Waiting past the dedup window (see
   // waitPastDedupWindow) between them keeps each one a distinct arrival
@@ -81,12 +96,14 @@ test('#101 P6: three applications trigger the nudge; the saved view lives as a c
   for (let i = 0; i < 2; i++) {
     await page.goto(listUrl)
     await expect(page.getByTestId('table-page')).toBeVisible()
+    await waitForApplyCount(page, DT, filters, i + 1)
     await expect(page.getByTestId('filter-nudge')).toHaveCount(0)
     await waitPastDedupWindow(page, DT, filters)
   }
 
   // Third: the nudge offers to name the habit.
   await page.goto(listUrl)
+  await waitForApplyCount(page, DT, filters, 3)
   const nudge = page.getByTestId('filter-nudge')
   await expect(nudge).toBeVisible()
   await expect(nudge).toContainText('3×')
@@ -99,7 +116,7 @@ test('#101 P6: three applications trigger the nudge; the saved view lives as a c
   await expect(page.getByTestId('filter-nudge')).toHaveCount(0)
 
   // From a clean list, the chip re-applies the whole filter set.
-  await page.goto(`/admin/${encodeURIComponent(DT)}`)
+  await page.goto(`/featherbase/admin/${encodeURIComponent(DT)}`)
   await chip.click()
   await expect(page).toHaveURL(/filters=/)
   await expect(page.getByTestId('table-page')).toContainText(DOC)
@@ -114,10 +131,11 @@ test('#101 P6: three applications trigger the nudge; the saved view lives as a c
 test('#101 P6: "Not now" silences the nudge for that filter set', async ({ page }) => {
   const coldFilters = [['note', '=', 'cold']]
   const otherFilters = encodeURIComponent(JSON.stringify(coldFilters))
-  const listUrl = `/admin/${encodeURIComponent(DT)}?filters=${otherFilters}`
+  const listUrl = `/featherbase/admin/${encodeURIComponent(DT)}?filters=${otherFilters}`
   for (let i = 0; i < 3; i++) {
     await page.goto(listUrl)
     await expect(page.getByTestId('table-page')).toBeVisible()
+    await waitForApplyCount(page, DT, coldFilters, i + 1)
     // Arrivals inside the dedup window count once — wait past it (see
     // waitPastDedupWindow) so each of these three is a distinct arrival.
     await waitPastDedupWindow(page, DT, coldFilters)

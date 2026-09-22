@@ -16,7 +16,7 @@ test('#251 refuses a mismatched body name before replacing either definition', a
     await admin.post('/api/save_row', { table: name, row: { title: name, amount: 17 } })
     definitions.push(await admin.get(`/api/table/${encodeURIComponent(name)}:meta`))
   }
-  const before = await sql`select * from rename_source union all select * from rename_target order by title`
+  const before = await sql`select * from featherbase.rename_source union all select * from featherbase.rename_target order by title`
   const response = await admin.fetch('/api/table_def/Rename%20Source', {
     method: 'PUT', body: JSON.stringify({ name: names[1], columns: [{ column_name: 'title', column_type: 'Data' }] }),
   })
@@ -24,7 +24,7 @@ test('#251 refuses a mismatched body name before replacing either definition', a
   expect(await response.json()).toMatchObject({ error: { type: 'ValidationError' } })
   for (const [i, name] of names.entries())
     expect(await admin.get(`/api/table/${encodeURIComponent(name)}:meta`)).toEqual(definitions[i])
-  expect(await sql`select * from rename_source union all select * from rename_target order by title`).toEqual(before)
+  expect(await sql`select * from featherbase.rename_source union all select * from featherbase.rename_target order by title`).toEqual(before)
   for (const name of [undefined, names[0]]) {
     const response = await admin.fetch('/api/table_def/Rename%20Source', {
       method: 'PUT', body: JSON.stringify({ name, columns: [
@@ -38,7 +38,7 @@ test('#251 refuses a mismatched body name before replacing either definition', a
 async function columns(table: string): Promise<Record<string, string>> {
   const rows = await sql`
     select column_name, data_type from information_schema.columns
-    where table_name = ${table}`
+    where table_schema = 'featherbase' and table_name = ${table}`
   return Object.fromEntries(rows.map((r) => [r.column_name, r.data_type]))
 }
 
@@ -82,7 +82,7 @@ describe('META-003: Table save generates its physical table', () => {
     expect(cols.sec).toBeUndefined()
 
     await sql.unsafe(
-      `insert into ddl_test_task (row_id, code) values ('a', 'X'), ('b', 'X')`,
+      `insert into featherbase.ddl_test_task (row_id, code) values ('a', 'X'), ('b', 'X')`,
     ).then(
       () => {
         throw new Error('unique constraint not enforced')
@@ -118,7 +118,7 @@ describe('META-003: Table save generates its physical table', () => {
   // the behaviour; the transactional guarantee it also covered is kept alive
   // by the test below, which fails DDL a way the name check cannot see.
   test('refuses a name already taken by a raw table, before any DDL', async ({ admin }) => {
-    await sql.unsafe(`create table if not exists ddl_ghost (row_id text)`)
+    await sql.unsafe(`create table if not exists featherbase.ddl_ghost (row_id text)`)
     const res = await admin.fetch('/api/table_def', {
       method: 'POST',
       body: JSON.stringify({
@@ -137,7 +137,7 @@ describe('META-003: Table save generates its physical table', () => {
     // information_schema.tables row, so the name check above lets this
     // through and the failure happens where we want it: inside the DDL, after
     // the table_def row has been written. Metadata must not survive it.
-    await sql.unsafe(`create type ddl_ghost2 as (a int)`)
+    await sql.unsafe(`create type featherbase.ddl_ghost2 as (a int)`)
     const res = await admin.fetch('/api/table_def', {
       method: 'POST',
       body: JSON.stringify({

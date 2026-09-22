@@ -3,8 +3,7 @@
 //
 //     node --test tools/*.test.mjs
 //
-// The question each case asks is the one `check-evidence.test.mjs` asks of its
-// own checker: *can a future contributor make a broken linkage look green?*
+// Each case asks: *can a future contributor make a broken linkage look green?*
 // Each takes a passing fixture tree, applies ONE mutation someone could
 // plausibly make — rename a requirement and leave the marker behind, add a
 // requirement nothing tests, nest a marker one directory deeper — and asserts
@@ -25,7 +24,7 @@ import { stcMatrix } from './stc-matrix.mjs'
 // ------------------------------------------------------------------ harness
 
 /** Write `files` into a throwaway tree and run the matrix over it. */
-function run(files) {
+function run(files, specRoots = ['openspec/specs']) {
   const root = mkdtempSync(join(tmpdir(), 'stc-matrix-'))
   try {
     for (const [rel, content] of Object.entries(files)) {
@@ -35,7 +34,7 @@ function run(files) {
     }
     return stcMatrix({
       root,
-      specRoots: ['openspec/specs'],
+      specRoots,
       codeDirs: ['src'],
       testDirs: ['test'],
       baseline: 'stc-baseline.txt',
@@ -98,6 +97,24 @@ test('a requirement with a code marker and a test marker is clean', () => {
   assertPasses(result)
   assert.equal(result.rows.length, 1)
   assert.ok(result.rows[0].hasCode && result.rows[0].hasTest)
+})
+
+test('an active delta spec owns markers before the change is archived', () => {
+  const result = run({
+    'openspec/changes/add-rule/specs/capability/spec.md': SPEC,
+    'src/feature.ts': CODE,
+    'test/feature.test.ts': TEST,
+  }, ['openspec/specs', 'openspec/changes'])
+  assertPasses(result)
+})
+
+test('proposal prose and archived change history are not behavior contracts', () => {
+  const result = run({
+    'openspec/changes/add-rule/proposal.md': SPEC,
+    'openspec/changes/archive/2026-09-21-add-rule/specs/capability/spec.md': SPEC,
+  }, ['openspec/specs', 'openspec/changes'])
+  assert.deepEqual([...result.requirements], [])
+  assertPasses(result)
 })
 
 test('renaming the requirement leaves the markers orphaned, and the run fails', () => {

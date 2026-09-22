@@ -85,7 +85,7 @@ test('TLC-R3.bound: deleting a bound row echoes the loaded revision, so the dele
   const before = (await admin.get(`/api/table/${enc}/1`)) as { updated_at: string }
   expect(Date.parse(before.updated_at)).not.toBeNaN()
 
-  await renderApp(`/admin/${enc}/1`, admin)
+  await renderApp(`/featherbase/admin/${enc}/1`, admin)
   await screen.findByTestId('form-view')
   ;(await screen.findByTestId('form-delete')).click()
   ;(await screen.findByTestId('delete-row-confirm')).click()
@@ -108,7 +108,7 @@ test('TLC-R1.bound: a read-only binding owns its rows, so the list offers no New
 }) => {
   const table = await bindCsv(admin, 'read_only')
 
-  await renderApp(`/admin/${encodeURIComponent(table)}`, admin)
+  await renderApp(`/featherbase/admin/${encodeURIComponent(table)}`, admin)
   await screen.findByTestId('list-view')
 
   // EDS-13: absent, not disabled.
@@ -120,7 +120,7 @@ test('#176 ListView falls back to row_id for a no-revision binding without a sto
   const table = await bindCsv(admin, 'read_only')
   await sql`update table_def set external_modified = null, sort_column = '' where name = ${table}`
   invalidateMeta(table)
-  await renderApp(`/admin/${encodeURIComponent(table)}`, admin)
+  await renderApp(`/featherbase/admin/${encodeURIComponent(table)}`, admin)
   await waitFor(() => expect(screen.getByTestId('list-rows')).toHaveTextContent('Thiruvananthapuram'))
   const rows = screen.getByTestId('list-rows').querySelectorAll('tr')
   expect(rows[0]).toHaveTextContent('Thiruvananthapuram')

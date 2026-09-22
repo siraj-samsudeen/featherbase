@@ -2,7 +2,9 @@ import { describe, expect } from 'vitest'
 import { resolve } from 'node:path'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { test } from './pg-test'
+import { test as base } from './pg-test'
+import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
+import { taskerClient } from './tasker-client'
 import { discoverPackages } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
@@ -13,7 +15,25 @@ import { getMeta, invalidateMeta } from '../src/meta'
 import { runQueryReport } from '../src/query-report'
 import { permittedTiers } from '../src/permissions'
 
+const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
+  admin: async ({ admin }, use) => use(taskerClient(admin)),
+  createUser: async ({ createUser }, use) => use(async options => taskerClient(await createUser(options))),
+})
+
 describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
+  // @spec featherbase_human_routes_are_canonical
+  test('PKG-R6: legacy human deep links redirect to Featherbase while technical roots remain reserved', async ({ api }) => {
+    const old = await api.fetch('/admin/Tasker%20Task/one?view=board')
+    expect(old.status).toBe(308)
+    expect(old.headers.get('location')).toBe('/featherbase/admin/Tasker%20Task/one?view=board')
+    const login = await api.fetch('/login?next=%2Ftasker%2F')
+    expect(login.status).toBe(308)
+    expect(login.headers.get('location')).toBe('/featherbase/login?next=%2Ftasker%2F')
+    const technical = await api.fetch('/api/not-a-route')
+    expect(technical.status).toBe(401)
+    expect(technical.headers.get('location')).toBeNull()
+  })
+
   // @spec versioned_trusted_artifact.incompatible_package_rejected
   test('PKG-R1: reserved names fail discovery; failed installation leaves no Tables or activation', async ({ admin }) => {
     const directory = await mkdtemp(resolve('test/.runtime-package-'))
@@ -225,18 +245,47 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
 
   // @spec app_owns_client_root.missing_asset_is_not_html
   // @spec app_owns_client_root.app_login_returns_to_one_launch
+  // @spec featherbase_human_routes_are_canonical.runtime_app_root_normalization_preserves_query
   test('PKG-R4: ordinary member catalog and client root are separate from management and server files', async ({ api, admin, createUser }) => {
     expect(await discoverPackages([resolve('../..', 'runtime-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })
+    for (const [request, location] of [
+      ['/other', '/other/'],
+      ['/other?', '/other/'],
+      ['/other?review=deep-link&note=37%20cartons%2F83&review=again',
+        '/other/?review=deep-link&note=37%20cartons%2F83&review=again'],
+      ['/other?malformed=%E0%A4%A', '/other/?malformed=%E0%A4%A'],
+    ]) {
+      const normalized = await api.fetch(request)
+      expect(normalized.status, request).toBe(308)
+      expect(normalized.headers.get('location'), request).toBe(location)
+    }
+    for (const unsafe of ['/api?next=%2Fother', '/other%2F?review=deep-link', '/other\\evil?review=deep-link']) {
+      const refused = await api.fetch(unsafe)
+      expect(refused.headers.get('location'), unsafe).toBeNull()
+    }
     const signIn = await api.fetch('/other/', { headers: { accept: 'text/html' } })
     expect(signIn.status).toBe(302)
-    expect(signIn.headers.get('location')).toBe('/login?next=%2Fother%2F')
+    expect(signIn.headers.get('location')).toBe('/featherbase/login?next=%2Fother%2F')
+    const deepSignIn = await api.fetch('/other/review/item?filter=a%26b&owner=me', {
+      headers: { accept: 'text/html' },
+    })
+    expect(deepSignIn.status).toBe(302)
+    expect(deepSignIn.headers.get('location')).toBe(
+      '/featherbase/login?next=%2Fother%2Freview%2Fitem%3Ffilter%3Da%2526b%26owner%3Dme',
+    )
+    const malformed = await api.fetch('/other/%E0%A4%A', { headers: { accept: 'text/html' } })
+    expect(malformed.status).toBe(404)
+    expect(malformed.headers.get('location')).toBeNull()
     expect(await sql`select row_id from home_page where module = 'Other'`).toEqual([])
     const member = await createUser({ email: 'runtime-reader@example.com', roles: ['All'] })
     await expect(admin.post('/api/uninstall_app', { name: 'other' })).rejects.toMatchObject({ status: 417 })
     expect(await member.get('/api/app_catalog')).toEqual([
       { name: 'other', title: 'Other tasks', href: '/other/' },
     ])
+    const signedInRoot = await member.fetch('/other?review=member&note=a%2Fb')
+    expect(signedInRoot.status).toBe(308)
+    expect(signedInRoot.headers.get('location')).toBe('/other/?review=member&note=a%2Fb')
     await expect(member.get('/api/apps')).rejects.toMatchObject({ status: 403 })
     await expect(member.post('/api/save_row', { table: 'other.task', row: { row_id: 'no', quantity: 3 } }))
       .rejects.toMatchObject({ status: 403 })

@@ -27,7 +27,7 @@ async function makeTable(admin: TestClient, name = DT, extra: object[] = []) {
 
 async function physicalExists(name: string): Promise<boolean> {
   const physical = name.toLowerCase().replace(/\s+/g, '_')
-  const [row] = await sql`select to_regclass(${'"' + physical + '"'}) as t`
+  const [row] = await sql`select to_regclass(${'featherbase.' + physical}) as t`
   return row.t != null
 }
 
@@ -76,7 +76,7 @@ describe('DEL-R2: deletion removes what creation wrote', () => {
     const childMeta = (await admin.get('/api/table/Deletion%20Child:meta')) as { name: string }
     expect(childMeta.name).toBe('Deletion Child')
     const [orphans] = await sql`
-      select count(*)::int as n from deletion_child where parenttype = ${DT}`
+      select count(*)::int as n from featherbase.deletion_child where parenttype = ${DT}`
     expect(orphans.n).toBe(0)
   })
 
@@ -274,7 +274,7 @@ describe('DEL-I2: a refusal changes nothing', () => {
       row: { ref_table: DT, role: 'All', can_read: true },
     })
     const counts = async () => {
-      const [a] = await sql`select count(*)::int as n from deletion_target`
+      const [a] = await sql`select count(*)::int as n from featherbase.deletion_target`
       const [b] = await sql`select count(*)::int as n from permission where ref_table = ${DT}`
       const [c] = await sql`select count(*)::int as n from column_def where parent = ${DT}`
       return { rows: a.n, perms: b.n, cols: c.n }
@@ -321,7 +321,7 @@ describe('DEL-R7: attachments', () => {
       await makeTable(admin, name, [{ column_name: 'lines', column_type: 'Sub-table', row_table: 'Attachment Child' }])
       await admin.post('/api/save_row', { table: name, row: { title: name, lines: [{ item: name }] } })
     }
-    const children = await sql`select row_id, parenttype from attachment_child order by parenttype`
+    const children = await sql`select row_id, parenttype from featherbase.attachment_child order by parenttype`
     const own = children.find((c) => c.parenttype === DT)!.row_id
     const other = children.find((c) => c.parenttype !== DT)!.row_id
     const urls: string[] = []
@@ -336,7 +336,7 @@ describe('DEL-R7: attachments', () => {
         ['table-level', 'Attachment Child', null, urls[3]],
       ]) await sql`insert into file (row_id, ref_table, ref_name, file_url) values (${id}, ${refTable}, ${refName}, ${url})`
       await admin.delete(`/api/table_def/${ENC}`)
-      expect(await sql`select row_id from attachment_child`).toEqual([{ row_id: other }])
+      expect(await sql`select row_id from featherbase.attachment_child`).toEqual([{ row_id: other }])
       expect((await sql`select row_id from file where row_id in ('gone-child','gone-direct','shared-gone','shared-kept','table-level') order by row_id`).map((r) => r.row_id)).toEqual(['shared-kept', 'table-level'])
       for (const url of urls.slice(0, 2)) expect(() => readFileSync(bytesPath(url))).toThrow(/ENOENT/)
       for (const url of urls.slice(2)) expect(readFileSync(bytesPath(url)).toString()).toBe('owned bytes')
@@ -355,13 +355,13 @@ describe('DEL-R7: attachments', () => {
       await sql`insert into file (row_id, ref_table, file_url) values ('rollback-file', ${DT}, ${file_url})`
       // A real database dependency causes DROP TABLE to fail after registry
       // deletion. The transaction must restore the registry and its bytes.
-      await sql.unsafe('create view deletion_guard as select title from deletion_target')
+      await sql.unsafe('create view deletion_guard as select title from featherbase.deletion_target')
       expect((await admin.fetch(`/api/table_def/${ENC}`, { method: 'DELETE' })).status).toBe(500)
       expect(readFileSync(bytesPath(file_url)).toString()).toBe('rollback bytes')
       expect(await sql`select row_id from file where row_id = 'rollback-file'`).toHaveLength(1)
       await sql.unsafe('drop view deletion_guard')
       await sql.unsafe("create function pg_temp.refuse_delete_audit() returns trigger language plpgsql as $$ begin raise exception 'test audit failure'; end $$")
-      await sql.unsafe('create trigger refuse_delete_audit before insert on access_log for each row execute function pg_temp.refuse_delete_audit()')
+      await sql.unsafe('create trigger refuse_delete_audit before insert on featherbase.access_log for each row execute function pg_temp.refuse_delete_audit()')
       expect((await admin.fetch(`/api/table_def/${ENC}`, { method: 'DELETE' })).status).toBe(200)
       expect(() => readFileSync(bytesPath(file_url))).toThrow(/ENOENT/)
       expect(await physicalExists(DT)).toBe(false)

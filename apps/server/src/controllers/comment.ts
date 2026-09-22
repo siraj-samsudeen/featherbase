@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import type { TableController } from '../controllers'
 import { sql } from '../db'
 import { publishUserEvent } from '../realtime'
+import { afterDocumentCommit } from '../action-transaction'
 
 // UI-018: when a comment is posted, every @mentioned user that exists gets
 // a Notification Log row. RT-003: each also receives a realtime notification
@@ -36,10 +37,12 @@ const controller: TableController = {
       }
       // RT-003: notify after the row exists so the recipient's unread query
       // (triggered by the event) sees the new notification.
-      for (const target of notified)
-        publishUserEvent(target, 'notification', {
-          subject: `${user} mentioned you in a comment`,
-        })
+      await afterDocumentCommit(async () => {
+        for (const target of notified)
+          publishUserEvent(target, 'notification', {
+            subject: `${user} mentioned you in a comment`,
+          })
+      })
     },
   },
 }

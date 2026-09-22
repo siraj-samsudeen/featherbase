@@ -68,7 +68,7 @@ describe('DOC-006: delete with referential integrity', () => {
     // Unlink first by deleting the invoice, then the customer is deletable.
     await admin.delete(docPath(INVOICE, String(inv.row_id)))
     const [{ count }] = await sql.unsafe(
-      `select count(*)::int as count from del_line_row where parent='${inv.row_id}'`,
+      `select count(*)::int as count from featherbase.del_line_row where parent='${inv.row_id}'`,
     )
     expect(count).toBe(0)
     await admin.delete(docPath(CUSTOMER, 'Umbrella'))

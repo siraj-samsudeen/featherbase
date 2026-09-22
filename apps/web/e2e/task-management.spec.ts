@@ -1,19 +1,7 @@
-import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
-
-async function ensureTaskManagement(request: APIRequestContext) {
-  const headers = await adminAuth(request)
-  const meta = await request.get('/api/table/tasker.task:meta', { headers })
-  if (meta.ok()) return
-  const installed = await request.post('/api/install_app', {
-    headers,
-    data: { name: 'tasker' },
-  })
-  if (installed.status() !== 201)
-    throw new Error(`install tasker: ${installed.status()} ${await installed.text()}`)
-}
+import { test, expect, ensureRuntimeApp } from './fixtures'
 
 test.beforeAll(async ({ request }) => {
-  await ensureTaskManagement(request)
+  await ensureRuntimeApp(request, 'tasker')
 })
 
 // @spec capture_neutral_task.entry_stays_ready

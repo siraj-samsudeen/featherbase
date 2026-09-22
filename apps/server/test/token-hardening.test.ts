@@ -182,6 +182,7 @@ describe('#137 R2: the access_token guard reaches databases that already ran 006
     // deliberate failure does not poison the surrounding test transaction.)
     await expect(
       sql.begin(async (tx) => {
+        await tx.unsafe(`set local search_path = featherbase, public`)
         await tx.unsafe(`alter table access_token rename to access_token_real`)
         await tx.unsafe(`create table access_token (id varchar(140) primary key, label varchar(140))`)
         await tx.unsafe(body)
@@ -350,10 +351,10 @@ describe('#137 R2: the reserved set covers every engine-owned raw table', () => 
     const raw = (
       await sql`
         select t.table_name from information_schema.tables t
-        where t.table_schema = current_schema()
-          and t.table_name in ('access_token','installed_app','internal_metadata','migration',
-                               'password_reset','patch_log','series','single_value','site',
-                               'tag_link','user_settings')
+        where ((t.table_schema = 'featherbase' and t.table_name in
+                 ('access_token','installed_app','internal_metadata','migration','password_reset',
+                  'patch_log','series','single_value','tag_link','user_settings'))
+               or (t.table_schema = 'public' and t.table_name = 'site'))
         order by 1`
     ).map((r) => r.table_name as string)
     expect(raw.length).toBe(11)

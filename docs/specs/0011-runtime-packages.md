@@ -125,6 +125,39 @@ Disabled/missing application navigation explains unavailability and preserved
 data with a link back; missing JS/CSS files still return errors, never HTML SPA
 fallbacks. SDK control details remain provisional, not generalized by this slice.
 
+## PKG-R5 — Platform-owned storage is explicit
+
+> evidence: pending — convergence migration proof covers a fresh database and
+> an exact pre-convergence `cf88a7b` database with asymmetric core/app data.
+
+Featherbase owns PostgreSQL schema `featherbase`. Fresh installations create core
+tables, sequences and functions there. Existing installations move the same
+objects from `public` without copying or recreating rows, preserving constraints,
+indexes, grants, row-level-security policies and references. Logical core Table
+identities remain unqualified and compatible. Application-owned identities and
+storage remain scoped (`tasker.task` → `tasker.task`). Runtime DDL, CRUD,
+metadata, import/revert, reports, samples, migrations and security paths resolve
+physical relations explicitly; the platform pool does not use mutable
+`search_path` as relation routing.
+
+Security-definer functions use a restricted search path and schema-qualified
+dependencies. `public.site` is the one intentional platform boundary exception:
+it is explicitly addressed as the pre-tenant host registry, while each site's
+data remains in its own isolated schema. Core convergence neither moves that
+registry nor broadens a site pool's schema visibility.
+
+## PKG-R6 — Featherbase owns one canonical human route tree
+
+> evidence: pending — route tests and inspected browser captures cover signed-in,
+> signed-out, old deep-link and runtime-app return states.
+
+Featherbase human-facing routes live under `/featherbase/`. Existing top-level
+human routes, including `/admin` deep links, redirect to the matching canonical
+route with query and fragment preserved. Technical roots such as `/api`, file
+delivery and runtime package roots remain outside that tree and reserved for their
+existing owners. A signed-out direct `/tasker/` request enters the canonical login
+route carrying `/tasker/` as its return target and opens Tasker after sign-in.
+
 ## PKG-H1 — Prototype residue and disabled references
 
 > evidence: proven — tasker-transition.test.ts preserves real rows, references,

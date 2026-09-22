@@ -5,7 +5,7 @@ import { sql } from '../src/db'
 import { getDoc, saveDoc } from '../src/document'
 
 const DT = 'Upd Test Note'
-const TABLE = 'upd_test_note'
+const TABLE = 'featherbase.upd_test_note'
 
 async function makeDT(admin: TestClient) {
   await admin.post('/api/table_def', {

@@ -1,6 +1,10 @@
-# OpenSpec vs the journey-spec form — the evaluation, with one capability migrated
+# OpenSpec vs the journey-spec form — historical evaluation
 
-**Status: open question. The arbiter is Siraj. Nothing here is decided.**
+> **Status: superseded on 2026-09-21 by [ADR 0010](../adr/0010-openspec-change-workflow.md).**
+> OpenSpec is now Featherbase's sole behavior specification and mandatory
+> change workflow. `docs/specs` is frozen, non-authoritative migration evidence.
+> The evaluation below is preserved as dated evidence; its recommendation
+> against adoption is historical and must not be followed as current guidance.
 
 OpenSpec was installed in this repo on 2026-09-18 (`openspec/`, six `opsx:` skills)
 so the question *"should `docs/specs` move to OpenSpec?"* could be answered from a
@@ -10,15 +14,9 @@ format, spec-first, built and proven with **zero rule changes** — was migrated
 `openspec/specs/table-deletion/spec.md`. This document reports what survived, what
 did not, and what the migration is actually buying.
 
-**Both files are in the repo and they say the same things.** That is a sanctioned
-duplicated fact with a known expiry: when the question is ruled, one of them is
-deleted. It should not outlive the decision, because two accountable documents about
-one capability is exactly how two specs come to disagree — `docs/specs/0008` names
-that failure mode in its own header.
-
-**`docs/specs/0003` remains the live document** until then. `tools/check-evidence.mjs`
-scans `docs/specs` only, so the migrated copy is checked by nothing but
-`pnpm check:stc`'s linkage.
+At evaluation time both files were intentionally present and said the same
+things. The ruling ended that experiment: the OpenSpec capability is live;
+`docs/specs/0003` remains only as frozen migration evidence until removed.
 
 ---
 
@@ -131,7 +129,7 @@ without touching a single existing citation.
 
 ---
 
-## Recommendation (for the arbiter to rule on, not a decision)
+## Historical recommendation (rejected by the 2026-09-21 ruling)
 
 1. **Do not migrate `docs/specs` to OpenSpec.** The journeys-and-rules form carries
    more, and the four things it carries that OpenSpec cannot were earned through use

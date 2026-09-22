@@ -53,9 +53,18 @@ export async function resetE2eDatabase(target = e2eDatabaseUrl()): Promise<strin
   // stamp has never been migrated and holds nothing to protect.
   const existing = postgres(target, { onnotice: () => {}, prepare: false, max: 1 })
   try {
-    const [present] = await existing`select to_regclass('internal_metadata') as reg`
-    if (present?.reg) {
-      const [row] = await existing`select value from internal_metadata where key = 'environment'`
+    const [present] = await existing`
+      select to_regclass('public.internal_metadata') as legacy,
+        to_regclass('featherbase.internal_metadata') as current`
+    if (present?.legacy && present?.current)
+      throw new Error(`Refusing to drop "${name}": both public and featherbase environment stamps exist.`)
+    const relation = present?.current
+      ? 'featherbase.internal_metadata'
+      : present?.legacy
+        ? 'public.internal_metadata'
+        : null
+    if (relation) {
+      const [row] = await existing.unsafe(`select value from ${relation} where key = 'environment'`)
       const stamp = row ? String(row.value) : null
       if (stamp !== null && stamp !== 'test')
         throw new Error(

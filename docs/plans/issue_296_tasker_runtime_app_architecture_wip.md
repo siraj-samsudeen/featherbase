@@ -242,6 +242,77 @@ without changing either user’s focus. One gap remains deliberately visible rat
 than laundered: `responsibility_is_singular` says responsibility is one nullable user reference, but a
 dedicated server test is still absent.
 
+## Platform convergence checkpoint (21-Sep-2026)
+
+The runtime-package experiment exposed one remaining platform split: app-owned
+relations already have explicit logical-to-physical mappings, while Featherbase
+core still relies on unqualified names in `public` and keeps its human UI under
+historical top-level routes. This checkpoint settles the migration shape without
+mixing Tasker product behavior into platform architecture.
+
+### Physical ownership and resolution
+
+- `featherbase` is the permanent PostgreSQL schema for platform-owned tables,
+  sequences and functions. Existing unqualified logical core Table identities
+  remain unchanged; `User` is still `User`, not `featherbase.user`.
+- Runtime application identities and physical defaults remain scoped. In
+  particular, logical `tasker.task` continues to map to `tasker.task`; the core
+  schema move must not absorb or rename application storage.
+- Runtime SQL resolves core relations as `featherbase.<relation>` and application
+  relations through persisted storage metadata. A pooled or request-mutated
+  `search_path` is not an acceptable resolver.
+- Historical migrations execute in a transaction-scoped, deterministic schema
+  context so an untouched install history can bootstrap directly into
+  `featherbase`; current runtime and new migrations use explicit relations. The
+  convergence migration moves an existing installation's owned objects with
+  `ALTER ... SET SCHEMA`, preserving object identity and therefore rows,
+  constraints, indexes, grants, RLS policies and foreign-key references.
+- Security-definer functions are recreated with a restricted `pg_catalog`
+  search path and schema-qualified dependencies. Generated RLS policies call the
+  qualified function.
+
+### Intentional `public.site` exception
+
+`public.site` is a host-to-site-schema registry, not a Featherbase tenant's
+application data. It intentionally remains in `public` so the server can select a
+site before entering that site's isolated schema. Every registry query names
+`public.site` explicitly. Per-site pools retain their immutable one-schema
+connection scope; the platform pool never adopts a mutable site or core
+`search_path`. The convergence migration excludes `public.site` and refuses an
+ambiguous duplicate rather than silently choosing one.
+
+### Human route ownership
+
+- Featherbase-owned UI moves below `/featherbase/`, including sign-in, password
+  reset, OAuth callback, Admin, print and platform report surfaces.
+- Direct runtime application roots remain peers (`/tasker/`), while technical
+  roots such as `/api`, `/files` and `/private/files` remain reserved.
+- Historical human deep links redirect to the corresponding `/featherbase/`
+  path with query and fragment intact. They do not become aliases rendered at
+  two canonical locations.
+- A signed-out `/tasker/` request redirects through the canonical Featherbase
+  sign-in route with its exact app return target, then returns to `/tasker/`.
+
+### Proof ladder and deployment boundary
+
+The correction corpus is asymmetric: core rows plus two runtime apps with the
+same local Table/row ID, core and app grants, RLS, import update/insert/revert,
+Tasker references and private settings, disabled and unavailable lifecycle
+states, the `public.site` sentinel, and old/new deep links. Prove in this order:
+
+1. fresh disposable database through the production migration command;
+2. exact `cf88a7b` schema/data fixture, upgraded through the same command;
+3. failure/retry from a transactionally aborted convergence attempt;
+4. API, import/revert, direct RLS, lifecycle, restart and route/browser journeys;
+5. full affected suites, typechecks, evidence/STC/OpenSpec and literal separate-
+   package proof.
+
+The existing Railway development database is a separate operational concern. It
+is disposable and carries no real user data; after local proof, the safe future
+deployment is database recreation followed by normal release migrations and
+creation of only the requested Siraj/Shahul accounts. This checkpoint grants no
+permission to push, deploy, reset Railway or write any shared environment.
+
 ## Next build-and-learn experiment
 
 Build the smallest real vertical slice that proves all three properties together:
@@ -259,3 +330,23 @@ The slice should retain the existing task semantics but need not yet solve marke
 3. Preserve the settled direction: independently installed runtime packages; manifest plus optional client/server code; app-scoped logical identities and explicit physical mappings; Tasker’s full-stage UX.
 4. Resume at the first unresolved decision above only when the narrow runtime-package experiment forces it. Do not design the marketplace or full lifecycle first.
 5. Keep assumptions provisional and update this note with observed friction before promoting any contract into a stable spec or ADR.
+
+## Runtime upgrade checkpoint (21-Sep-2026)
+
+The earlier deferral of upgrades is superseded by the governed requirements in
+`openspec/specs/trusted-runtime-packages/spec.md`. Package authors now declare
+cumulative typed optional-column additions; the manager explicitly previews,
+commits and activates each version. `docs/DEPLOY.md` contains the package contract
+and operator sequence. This note records reasoning, not a second specification.
+
+The literal Tasker proof starts at the real package version `0.0.1` and upgrades
+to `2.0.0` while retaining asymmetric data and exact v1 artifact bytes. Failed DDL
+rolls back; committed schema cannot be paired with old code. Artifact restoration
+after commit restores the target, never silently downgrades. Local prototype
+installations that never recorded their version/full manifest require explicit
+identity recovery before they can use this path. No reset or guessed adoption
+is an acceptable migration.
+
+The standalone and convergence-integrated verification, remaining independent
+review gate and integration boundaries are recorded in `PROGRESS.md`. This worker
+does not deploy Dev or supply Tasker's Markdown editor UI.

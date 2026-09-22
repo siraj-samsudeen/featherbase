@@ -3,6 +3,8 @@ import { tableSchemaToZod, zodFieldErrors } from 'shared'
 import { sql } from './db'
 import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
+import { afterDocumentCommit } from './action-transaction'
+import { retainedDocumentCounts } from './document-activity'
 import { ROW_KEY, getMeta, physicalRowKey, type TableMeta } from './meta'
 import { STANDARD_COLUMNS, tableName, tableRelation } from './table-engine'
 import { runHooks, type HookContext } from './controllers'
@@ -226,7 +228,8 @@ async function validateLinks(
     }
     const [row] = await tx`
       select 1 from ${tx(await tableRelation(target))}
-      where ${tx(physicalRowKey(target))} = ${String(value)}`
+      where ${tx(physicalRowKey(target))} = ${String(value)}
+      ${target.includes('.') ? tx`for key share` : tx``}`
     if (!row)
       errors[prefix + f.column_name] = `${target} ${String(value)} does not exist`
   }
@@ -234,8 +237,28 @@ async function validateLinks(
     throw new AppError('ValidationError', `Invalid links for ${meta.name}`, errors)
 }
 
+// @spec guarded_action_deletion_preserves_retained_work
+// @spec core_document_links_serialize_with_runtime_deletion
+async function lockCoreDocumentTargets(tx: typeof sql, meta: TableMeta, row: RowValues, user: string, old?: RowValues) {
+  if (!['Comment', 'Version', 'File', 'Share'].includes(meta.name)) return
+  const tableField = meta.name === 'Share' ? 'share_table' : 'ref_table'
+  const nameField = meta.name === 'Share' ? 'share_name' : 'ref_name'
+  for (const target of [old, row]) {
+    const table = target?.[tableField]
+    if (typeof table !== 'string' || !table.includes('.')) continue
+    const name = String(target?.[nameField] ?? '')
+    // File may attach to a Table rather than one document, or be unattached.
+    if (meta.name === 'File' && !name) continue
+    const targetMeta = await getMeta(table)
+    const [exists] = await tx`select 1 from ${tx(await tableRelation(table))}
+      where ${tx(targetMeta.row_key)} = ${name} for key share`
+    if (!exists) throw new AppError('NotFoundError', `${table} ${name} not found`)
+    await getDoc(table, name, user)
+  }
+}
+
 // PERM-005: gate a concrete row against the user's Data Scopes.
-async function assertUserPermissions(
+export async function assertUserPermissions(
   user: string,
   meta: TableMeta,
   row: RowValues,
@@ -585,6 +608,7 @@ async function saveDocImpl(
         status: row.status,
         position: row.position,
       }
+      await lockCoreDocumentTargets(stx, meta, dbRow, user)
       await validateLinks(stx, meta, dbRow)
       const inserted = await tx`insert into ${tx(tbl)} ${tx(dbRow as unknown as Record<string, never>)} returning *`
       for (const input of finalChildInputs)
@@ -600,13 +624,13 @@ async function saveDocImpl(
   const insertResult = await loadChildren(meta, { table, ...(saved as RowValues) })
   // EML-004: fire matching email rules post-commit. Frappe's Save event covers
   // inserts too, so both on_create and on_save rules are evaluated here.
-  await evaluateEmailRules('on_create', meta.name, insertResult)
-  await evaluateEmailRules('on_save', meta.name, insertResult)
-  // Auto-assignment: apply any Assignment Rules for this Table (post-commit).
-  await evaluateAssignmentRules(meta.name, insertResult)
-  // PLAT-005: fire webhooks post-commit for the create event.
-  await evaluateWebhooks('after_insert', meta.name, insertResult)
-  await runHooks('after_commit', { row: insertResult, meta, user, isNew: true, tx: sql })
+  await afterDocumentCommit(async () => {
+    await evaluateEmailRules('on_create', meta.name, insertResult)
+    await evaluateEmailRules('on_save', meta.name, insertResult)
+    await evaluateAssignmentRules(meta.name, insertResult)
+    await evaluateWebhooks('after_insert', meta.name, insertResult)
+    await runHooks('after_commit', { row: insertResult, meta, user, isNew: true, tx: sql })
+  })
   return insertResult
 }
 
@@ -847,6 +871,7 @@ async function updateDoc(
         updated_at: new Date(),
         updated_by: user,
       }
+      await lockCoreDocumentTargets(stx, meta, { ...existing, ...dbRow }, user, existing as RowValues)
       await validateLinks(stx, meta, dbRow)
       const [updated] = await tx`
         update ${tx(table)} set ${tx(dbRow)} where ${tx(meta.row_key)} = ${name} returning *`
@@ -867,16 +892,12 @@ async function updateDoc(
   const updateResult = await loadChildren(meta, { table: meta.name, ...(saved as RowValues) })
   // EML-004: on_save rules fire post-commit; the pre-save snapshot lets a
   // conditional rule fire only when the value transitions into the match.
-  await evaluateEmailRules('on_save', meta.name, updateResult, previous)
-  // PLAT-005: fire webhooks post-commit for the update event.
-  await evaluateWebhooks('on_update', meta.name, updateResult)
-  await runHooks('after_commit', {
-    row: updateResult,
-    old: previous,
-    meta,
-    user,
-    isNew: false,
-    tx: sql,
+  await afterDocumentCommit(async () => {
+    await evaluateEmailRules('on_save', meta.name, updateResult, previous)
+    await evaluateWebhooks('on_update', meta.name, updateResult)
+    await runHooks('after_commit', {
+      row: updateResult, old: previous, meta, user, isNew: false, tx: sql,
+    })
   })
   return updateResult
 }
@@ -1033,6 +1054,7 @@ async function amendDocImpl(
 }
 
 // DOC-006: a row referenced by Reference columns anywhere cannot be deleted.
+// @spec runtime_row_delete_guard
 export function deleteDoc(...args: Parameters<typeof deleteDocImpl>) {
   return appOperation(() => deleteDocImpl(...args))
 }
@@ -1054,6 +1076,15 @@ async function deleteDocImpl(
       throw new AppError('NotFoundError', `${table} ${name} not found`)
     await assertDocPermission(user, table, 'delete', String(existing.created_by))
     await assertUserPermissions(user, meta, existing as RowValues)
+    if (meta.owner_app) {
+      if (!opts.expectUpdatedAt || !Number.isFinite(Date.parse(opts.expectUpdatedAt))
+        || new Date(existing.updated_at as string).getTime() !== Date.parse(opts.expectUpdatedAt))
+        throw new AppError('ConflictError', `${table} ${name} has been modified after you loaded it; supply its current updated_at`)
+      const counts = await retainedDocumentCounts(stx, table, name)
+      if (Object.values(counts).some(Boolean))
+        throw new AppError('ValidationError', 'This document has retained activity or references and cannot be deleted',
+          Object.fromEntries(Object.entries(counts).map(([key, count]) => [key, String(count)])))
+    }
     if ((existing.status as string) === 'submitted')
       throw new AppError(
         'ValidationError',
@@ -1108,13 +1139,13 @@ async function deleteDocImpl(
   // Post-commit: caches keyed on this row (e.g. a Data Source's pool and
   // the meta of Tables bound to it) may only be dropped once the delete is
   // actually visible to other connections.
-  await runHooks('after_commit', {
+  await afterDocumentCommit(() => runHooks('after_commit', {
     row: { [ROW_KEY]: name },
     meta,
     user,
     isNew: false,
     tx: sql,
-  })
+  }))
 }
 
 // EDS-6: delete a bound row on the source. The link-integrity check runs

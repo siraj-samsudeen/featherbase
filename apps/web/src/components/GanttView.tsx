@@ -111,7 +111,7 @@ export function GanttView({ table }: { table: string }) {
     <div data-testid="gantt-view" onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-[var(--color-ink)]">{table} — Gantt</h1>
-        <RouterLink to="/admin/$table" params={{ table }} search={{ filters: undefined }} className="fc-btn" data-testid="gantt-to-list">
+        <RouterLink to="/featherbase/admin/$table" params={{ table }} search={{ filters: undefined }} className="fc-btn" data-testid="gantt-to-list">
           List view
         </RouterLink>
       </div>
@@ -148,7 +148,7 @@ export function GanttView({ table }: { table: string }) {
               return (
                 <div key={b.row_id} className="flex items-center border-b border-[var(--color-border)]" data-testid={`gantt-row-${b.row_id}`}>
                   <div className="shrink-0 truncate px-2 py-1 text-xs text-[var(--color-ink)]" style={{ width: 200 }}>
-                    <RouterLink to="/admin/$table/$name" params={{ table, name: b.row_id }} search={{ prefill: undefined }} className="hover:underline">
+                    <RouterLink to="/featherbase/admin/$table/$name" params={{ table, name: b.row_id }} search={{ prefill: undefined }} className="hover:underline">
                       {String(b.row[titleColumn] ?? b.row_id)}
                     </RouterLink>
                   </div>

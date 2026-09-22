@@ -193,7 +193,7 @@ describe('workflow: initDocState backfill', () => {
       ],
     })
     const doc = await saveDoc(DT, { title: 'pre-workflow' }, 'Administrator')
-    await sql`update cov_init_note set note_status = null where row_id = ${String(doc.row_id)}`
+    await sql`update featherbase.cov_init_note set note_status = null where row_id = ${String(doc.row_id)}`
     await admin.post('/api/save_row', {
       table: 'Workflow',
       row: {
@@ -209,7 +209,7 @@ describe('workflow: initDocState backfill', () => {
       },
     })
     await initDocState(DT)
-    const [row] = await sql`select note_status from cov_init_note where row_id = ${String(doc.row_id)}`
+    const [row] = await sql`select note_status from featherbase.cov_init_note where row_id = ${String(doc.row_id)}`
     expect(row.note_status).toBe('Open')
   })
 })

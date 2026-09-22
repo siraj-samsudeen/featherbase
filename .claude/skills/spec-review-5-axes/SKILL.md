@@ -1,6 +1,6 @@
 ---
 name: spec-review-5-axes
-description: Review a specification against five axes — world vs machine, governed vs characterized, falsifiable, complete over its input space, and bound to an executable. Also the home of the STC divergence triage, the routed decision emitted when spec, test and code disagree. Use when writing or reviewing a spec in docs/specs or openspec/specs, when a spec was recovered from shipped behaviour, when spec and code appear to disagree, before implementing from a spec, or when the owner says "review the spec", "is this spec any good", "spec review using 5 axes", or "spec vs code". Carries the requirements-engineering harvest — Jackson & Zave's S ∧ D ⟹ R, Parnas tables, Adzic's specification by example, Lamport on what-not-how — and an explicit REJECT list so sign-off ceremony and traceability-to-business-objective do not get imported by accident.
+description: Review an OpenSpec specification against five axes — world vs machine, governed vs characterized, falsifiable, complete over its input space, and bound to an executable. Also the home of the STC divergence triage, the routed decision emitted when spec, test and code disagree. Use when writing or reviewing a spec in openspec/specs, when a spec was recovered from shipped behaviour, when spec and code appear to disagree, before implementing from a spec, or when the owner says "review the spec", "is this spec any good", "spec review using 5 axes", or "spec vs code". Carries the requirements-engineering harvest — Jackson & Zave's S ∧ D ⟹ R, Parnas tables, Adzic's specification by example, Lamport on what-not-how — and an explicit REJECT list so sign-off ceremony and traceability-to-business-objective do not get imported by accident.
 ---
 
 # spec-review-5-axes
@@ -13,17 +13,10 @@ Five axes for reviewing a specification, plus the **divergence triage** — the 
 
 Ported from the data-warehouse repo (#3691, from a design conversation with Siraj, 16/17-Sep-2026, prompted by a reverse-engineered spec that contradicted its own code). The axes are that skill's; the examples were re-derived from this repo's specs on 18-Sep-2026.
 
-**This repo already has a requirements framework, and it is not a lesser one.** `docs/design/requirements-framework.md` (ratified 2026-08-28) defines the journeys-and-rules form, the evidence verdicts, the shape tags, the closure sweep, negative space and assertion polarity, and — in §4 — a treatment of un-oracled judgement that these five axes do **not** have. Read the map before reviewing:
-
-| Axis | Does the local framework already hold it? |
-|---|---|
-| 1 — World or machine | **No.** The closure sweep has an *external-dependency failure* slot, which is about what happens when a dependency breaks, not about which statements are assumptions we do not control. This axis adds something. |
-| 2 — Governed or characterized | **Partly.** `CLAUDE.md`'s *"a discovered behaviour is not a requirement"* is the rule; what is missing is a per-requirement **label**, so a reader of a retrofit spec can tell which is which. |
-| 3 — Falsifiable | **Yes, and further.** §4 "Judgement has no oracle" splits conformance from fitness and scores heuristics against a corpus rather than passing/failing them. Do not overwrite that with a cruder "make it falsifiable". |
-| 4 — Complete over its input space | **Yes.** The example-table discipline and the `shape:` tags already produce Parnas-style tables. This axis is a check, not a new practice. |
-| 5 — Bound to an executable | **Yes, and mechanised.** The `> evidence:` verdict plus `tools/check-evidence.mjs` — static *and* runtime — is a stronger binding than the origin repo has. |
-
-So a review here spends its time on **Axes 1 and 2**, checks 3–5, and does not lecture the format about things it already does better.
+The historical Journey framework in `docs/design/requirements-framework.md`
+still contains useful review techniques—closure sweeps, negative space,
+assertion polarity, and treatment of un-oracled judgment. Use those techniques
+inside OpenSpec review; do not revive `docs/specs` as a second contract.
 
 ---
 
@@ -35,7 +28,7 @@ So a review here spends its time on **Axes 1 and 2**, checks 3–5, and does not
 | **Code** | Does it hold those promises? | `code-review-8-axes` |
 | **Test** | Is each promise actually checked? | `test-review-3-axes` |
 
-They drift apart continuously — whichever was written first, and however carefully one was generated from another. Agreement at a moment is not a property that persists. The edges are made greppable by **`docs/agents/stc-traceability.md`**; `pnpm check:evidence` computes spec↔test for `docs/specs` and `pnpm check:stc` computes spec↔code↔test for `openspec/specs`.
+They drift apart continuously — whichever was written first, and however carefully one was generated from another. Agreement at a moment is not a property that persists. The edges are made greppable by **`docs/agents/stc-traceability.md`** and computed by `pnpm check:stc` for the sole active root, `openspec/specs`.
 
 ---
 
@@ -174,17 +167,20 @@ Parnas's complaint: **prose cannot be checked for completeness or determinism.**
 
 Adzic's claim: **a specification that cannot be executed will rot, and the only reliable anti-rot mechanism is to bind the spec and the test together.** Not "traceable to" in a spreadsheet — bound by a token a script checks.
 
-**This repo is the strong case, not the weak one.** `> evidence: proven | rule-tier | gap | pinned #N` sits under every obligation, and `tools/check-evidence.mjs` re-derives the linkage from the test titles in CI, twice: statically before install, and again after the suites run, where a `proven` verdict backed only by tests that were **skipped at runtime** fails. It refuses to let a spec opt out silently, refuses a skipped test as proof, and refuses a counterfeit pin. That is further than most projects get.
+**This repo binds all three vertices directly.** A descriptive OpenSpec
+requirement/scenario slug appears in the heading, at the deciding code line,
+and beside the asymmetric test as `@spec <slug>`. `pnpm check:stc` computes the
+matrix and ratchets known gaps.
 
-**What it does not do is the code edge.** The join is spec ↔ test *title*; nothing points at the line that decides the behaviour. `pnpm check:stc` and the `@spec` marker close that for `openspec/specs`.
-
-**The test.** Run `pnpm check:evidence` and `pnpm check:stc`. A requirement with no test is an unverified promise; an orphan marker is a rename that was left half-finished.
+**The test.** Run `pnpm check:specs`. A requirement with no test is an
+unverified promise; an orphan marker is a rename that was left half-finished.
 
 **And the trap this axis is really for** — from `code-review-8-axes` Axis 8, applied to the spec's own tooling:
 
 > `openspec validate --specs --strict` passing means the spec is **well-formed, not true.** It reported *1 passed, 0 failed* on `openspec/specs/table-deletion/spec.md` before a single requirement had been read against the code. A spec with a green validator and no drift detection is an **unenforced guard** — worse than no spec, because a document saying SHALL makes the next agent stop looking.
 
-The same caution applies to a green `check-evidence` run: it proves a **matching test title exists and executed**, never that the test asserts the thing. Its own header says so — *"What this check cannot see, stated plainly: whether an executable test asserts anything."*
+A green STC run proves that markers exist, never that the test asserts the
+promise. Read the assertion and the deciding code.
 
 ---
 
@@ -195,7 +191,7 @@ The same caution applies to a green `check-evidence` run: it proves a **matching
 Do not fold this into an axis — it is a **vocabulary check**, cheap and mechanical:
 
 ```
-grep -nE '\b(DocType|DocPerm|doctype|docstatus|frappe\.)' docs/specs openspec/specs
+grep -nE '\b(DocType|DocPerm|doctype|docstatus|frappe\.)' openspec/specs
 ```
 
 and then the judgement that matters: **which system does the word belong to?** In the same file, `docstatus` at line 146 names a column on a **foreign Frappe table** and is correct. At line 152 it names ours and is not. Axis 6 of `code-review-8-axes` is the same test applied to code.
@@ -208,7 +204,7 @@ and then the judgement that matters: **which system does the word belong to?** I
 2. **Label each requirement** governed or characterized (Axis 2). Do this before anything that depends on who wins a disagreement, and do it first on any retrofit spec.
 3. **Check each evidence pointer actually reaches the deciding code.** A citation naming the caller while the behaviour lives in the callee is how drift survives review.
 4. **Falsifiability pass** (Axis 3) — respecting `shape: judgement` — then **tables** for anything state-machine-shaped (Axis 4).
-5. **Run `pnpm check:evidence` and `pnpm check:stc`** (Axis 5). Report orphans as failures, gaps against the baseline. Then run the vocabulary grep above.
+5. **Run `pnpm check:specs`** (Axis 5). Report orphans as failures and gaps against the baseline. Then run the vocabulary grep above.
 6. **Verify before reporting.** Read the code the requirement describes; do not trust the spec's own citation. Mark each finding **VERIFIED** or **UNVERIFIED** and never present the second as the first. In the trial that produced these skills, the most thorough reviewer produced a confident, specifically-cited, **fabricated** correction, and the fastest one reported findings it had read in the skill while sincerely believing it had found them. **Self-assessment is not reliable.**
 7. **Emit divergence triage items**, one per disagreement. Do not fix the code and do not edit the spec — this review routes decisions; it does not settle them. `CLAUDE.md`: the choice is the owner's, never an agent's.
 

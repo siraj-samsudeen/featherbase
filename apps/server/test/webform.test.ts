@@ -56,7 +56,7 @@ describe('WEB-002: web forms', () => {
     })
     expect(res.row_id).toMatch(/^[0-9a-f]{10}$/)
     const [doc] =
-      await sql`select full_name, message, secret_note from wf_srv_msg where row_id = ${res.row_id}`
+      await sql`select full_name, message, secret_note from featherbase.wf_srv_msg where row_id = ${res.row_id}`
     expect(doc.full_name).toBe('Alice')
     expect(doc.message).toBe('Hi')
     expect(doc.secret_note).toBeNull() // whitelist kept it out

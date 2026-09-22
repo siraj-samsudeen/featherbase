@@ -48,7 +48,7 @@ describe('#101: GET /api/activity_feed', () => {
       '/api/activity_feed?scope=team',
     )
     const change = feed.items.find((i) => i.kind === 'change' && i.label === 'feed-row')
-    expect(change).toMatchObject({ sub: 'Feed DT', path: '/admin/Feed DT/feed-row' })
+    expect(change).toMatchObject({ sub: 'Feed DT', path: '/featherbase/admin/Feed DT/feed-row' })
     expect(feed.items.some((i) => i.kind === 'login')).toBe(true)
     expect(feed.items.every((i) => !['row', 'list', 'page', 'search'].includes(i.kind as string))).toBe(
       true,

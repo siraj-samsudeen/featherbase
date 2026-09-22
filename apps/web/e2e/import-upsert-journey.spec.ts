@@ -131,7 +131,7 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
 
   // J1.6 — still 8 rows, Alpha corrected, every row keeps its original id.
   await session
-    .assertPath(`/admin/${encodeURIComponent(DT)}`)
+    .assertPath(`/featherbase/admin/${encodeURIComponent(DT)}`)
     .assertHas('[data-testid="list-rows"]', { text: 'Alpha' })
   await snap(page, 'UPS-J1.6')
   const after = (await (

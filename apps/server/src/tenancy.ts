@@ -4,9 +4,9 @@ import { config } from './config'
 import { AppError } from './errors'
 
 // PLAT-008: multi-tenancy, schema-per-site. Each site is an isolated Postgres
-// SCHEMA (site_<name>) holding its own tables. A site-scoped client sets
-// its search_path to ONLY that schema, so a query can never reach another
-// site's tables — isolation is enforced by Postgres, not by app-level filters.
+// SCHEMA (site_<name>) holding its own tables. A site-scoped client has an
+// immutable one-schema search_path for ordinary site operations; database
+// privileges remain the authorization boundary.
 // A `public.site` registry maps an inbound Host to its schema; the resolver
 // turns the request Host header into the site to serve.
 
@@ -61,16 +61,16 @@ export async function siteMigrate(site: string): Promise<void> {
 
 export async function createSite(site: string, host?: string): Promise<{ site: string; host: string; schema: string }> {
   const name = sanitize(site)
-  const [exists] = await sql`select 1 from site where name = ${name}`
+  const [exists] = await sql`select 1 from public.site where name = ${name}`
   if (exists) throw new AppError('ConflictError', `Site ${name} already exists`)
   const resolvedHost = (host ?? `${name}.localhost`).toLowerCase()
   await siteMigrate(name)
-  await sql`insert into site ${sql({ name, host: resolvedHost, schema: siteSchema(name) })}`
+  await sql`insert into public.site ${sql({ name, host: resolvedHost, schema: siteSchema(name) })}`
   return { site: name, host: resolvedHost, schema: siteSchema(name) }
 }
 
 export async function listSites(): Promise<{ name: string; host: string; schema: string }[]> {
-  const rows = await sql`select name, host, schema from site order by name`
+  const rows = await sql`select name, host, schema from public.site order by name`
   return rows.map((r) => ({ name: r.name as string, host: r.host as string, schema: r.schema as string }))
 }
 
@@ -79,10 +79,10 @@ export async function listSites(): Promise<{ name: string; host: string; schema:
 export async function resolveSite(hostHeader: string | undefined): Promise<string> {
   if (!hostHeader) throw new AppError('ValidationError', 'Missing Host header')
   const host = hostHeader.toLowerCase().split(':')[0]
-  const [byHost] = await sql`select name from site where host = ${host}`
+  const [byHost] = await sql`select name from public.site where host = ${host}`
   if (byHost) return byHost.name as string
   const label = host.split('.')[0]
-  const [byLabel] = await sql`select name from site where name = ${label}`
+  const [byLabel] = await sql`select name from public.site where name = ${label}`
   if (byLabel) return byLabel.name as string
   throw new AppError('NotFoundError', `No site for host ${host}`)
 }

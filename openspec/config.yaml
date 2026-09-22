@@ -1,32 +1,25 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Featherbase is a TypeScript monorepo for a metadata-driven low-code platform.
+  OpenSpec is the sole behavior specification and mandatory change workflow.
+  New behavior starts with a change. Existing behavior without an OpenSpec
+  capability is first recovered and committed as a verified, behavior-neutral
+  baseline; only a later change may modify it. See root AGENTS.md and ADR 0010.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+rules:
+  specs:
+    - Use globally unique descriptive snake_case requirement and scenario slugs.
+    - 'Label every requirement `Status: governed` or `Status: characterized (#issue)`.'
+    - Record facts outside Featherbase's control as dated domain assumptions with a detector.
+  tasks:
+    - Include strict OpenSpec validation and STC verification for behavior changes.
 
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+operations:
+  apply:
+    guidance:
+      - Put `@spec <slug>` at the deciding code line and beside each asymmetric checking test.
+      - Never combine a legacy baseline recovery commit with behavior modifications.
+  archive:
+    guidance:
+      - Run `pnpm check:specs` after syncing the delta into main specs.

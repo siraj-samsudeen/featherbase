@@ -11,15 +11,16 @@ detectable by a script instead of by someone happening to notice. It is
 unique greppable token* — promoted from within-code to across-artifact.
 
 Ported from the data-warehouse repo's `docs/agents/stc-traceability.md` (#3691)
-with this repo's paths, file types and existing checkers.
+with this repo's paths and file types. [ADR 0010](../adr/0010-openspec-change-workflow.md)
+makes `openspec/specs` the sole active behavior-specification root.
 
 ---
 
-## This repo already had half of it
+## One checker, one active spec root
 
-Read this before concluding anything is missing. `docs/specs` obligations carry
-IDs (`DEL-R3`, `IMP-J1`, `GRD-R2`), and those IDs are already cited in code
-comments and test titles by hand. Measured 2026-09-18:
+The pre-adoption Journey documents carried IDs in code comments and test titles,
+which proved that greppable traceability was useful before OpenSpec was chosen.
+Measured 2026-09-18:
 
 | | count |
 |---|---|
@@ -27,26 +28,18 @@ comments and test titles by hand. Measured 2026-09-18:
 | distinct IDs cited in a test title | 54 |
 | distinct IDs cited in `apps/*/src` or `packages/*/src` | 39 |
 
-So the *convention* exists. What did not exist is a script that computes the
-matrix and fails when a vertex is left behind, and `check-evidence.mjs` does not
-close that gap: it joins the spec to **test titles** and never looks at the code.
-The spec↔code edge was unchecked.
+Those figures are historical evidence, not a second current ID scheme. New and
+migrated capabilities use descriptive OpenSpec slugs.
 
-Two checkers now, one per spec home, with no overlap:
+The current gate is:
 
-| checker | spec home | join key | in CI |
+| checker | OpenSpec inputs | join key | in CI |
 |---|---|---|---|
-| `tools/check-evidence.mjs` | `docs/specs/*.md` | `> evidence:` verdict ↔ test **title**, plus runtime execution from the Vitest/Playwright JSON | yes — two jobs |
-| `tools/stc-matrix.mjs` | `openspec/specs/**/spec.md` | requirement **heading** ↔ `@spec` marker in code and tests | **no — `pnpm check:stc`, run by hand** |
+| `tools/stc-matrix.mjs` | capabilities in `openspec/specs/**/spec.md`; delta specs in active `openspec/changes/*/specs/**/spec.md` | requirement **heading** ↔ `@spec` marker in code and tests | yes — `pnpm check:specs` |
 
-**That second "no" is deliberate and is the honest state of the guard.** The
-OpenSpec root holds one migrated capability as a worked example; wiring a
-checker into CI to police a single evaluation spec would be ceremony. When the
-evaluation concludes in OpenSpec's favour, the CI step is one block in
-`.github/workflows/test.yml` next to the evidence one. Until then, treat the
-matrix as a review aid and **do not describe it as enforced** — an unenforced
-guard that reads as enforced is worse than no guard, because it makes the next
-reader stop looking (`code-review-8-axes` Axis 8).
+`pnpm check:specs` also runs strict OpenSpec validation and the guard that
+freezes `docs/specs`. Strict validation proves well-formedness; the matrix
+proves linkage. Neither proves that the three vertices agree.
 
 ---
 
@@ -70,12 +63,9 @@ Two readers, two needs, and they point the same way:
 - **A human needs to read it in prose.** You see `stale_pointer_gets_tombstone`
   in a PR comment and know what is being discussed. `DEL-R9` tells you nothing.
 
-The counter-argument this repo has to weigh honestly: `DEL-R3` is **shorter**,
-and 87 of them are already in circulation across code, tests, commits and issue
-threads. That is why the migrated spec records `Legacy ID: DEL-R3` on every
-requirement rather than dropping it — see
-`docs/design/openspec-vs-journey-spec.md`, which is where the two ID schemes are
-compared rather than ranked here.
+Legacy IDs such as `DEL-R3` may remain as aliases while a capability is
+migrated, so old commits and issue threads keep resolving. They are not the
+handle for new code or tests.
 
 ### Why snake_case specifically
 
@@ -154,8 +144,8 @@ test('DEL-R3: a Reference column blocks — even with zero rows — naming Table
 ```
 
 The marker goes on the test, not on the `describe`. A suite title proves
-nothing: `check-evidence.mjs` learned that the hard way (see its header, "the
-same lie wears a fourth dress").
+nothing: only the asymmetric test containing the relevant assertion owns the
+test vertex.
 
 A file is treated as a TEST by **path**, not by which directory list it came
 from: anything under `apps/server/test`, `apps/web/test`, `apps/web/e2e`,
@@ -168,7 +158,8 @@ requirement would read "has code" on the strength of a test file.
 ## Running it
 
 ```bash
-pnpm check:stc                       # the matrix, the mutation tests, the verdict
+pnpm check:specs                     # strict OpenSpec + STC + root policy
+pnpm check:stc                       # the matrix and its mutation tests only
 node tools/stc-matrix.mjs --write-baseline
 ```
 

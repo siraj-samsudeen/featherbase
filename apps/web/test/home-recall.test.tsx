@@ -27,7 +27,7 @@ function habit(days: number) {
       key: 'list:Customer?rtn',
       label: 'Customer',
       sub: 'region = South',
-      path: '/admin/Customer',
+      path: '/featherbase/admin/Customer',
       at: now - d * DAY,
     })
     events.push({
@@ -35,7 +35,7 @@ function habit(days: number) {
       key: 'page:query-report/Sales Register',
       label: 'Sales Register',
       sub: 'Report',
-      path: '/admin/query-report/Sales%20Register',
+      path: '/featherbase/admin/query-report/Sales%20Register',
       at: now - d * DAY,
     })
   }
@@ -43,7 +43,7 @@ function habit(days: number) {
 }
 
 async function openHome(as: Client) {
-  const rendered = await renderApp('/admin', as)
+  const rendered = await renderApp('/featherbase/admin', as)
   await screen.findByTestId('home-page')
   return rendered
 }
@@ -111,7 +111,7 @@ test('clicking a chip navigates to the destination it stands for', async ({ crea
   within(chips).getAllByTestId('workspace-chip')[0].click()
   await waitFor(() =>
     expect((router.state as { location: { pathname: string } }).location.pathname).toBe(
-      '/admin/Customer',
+      '/featherbase/admin/Customer',
     ),
   )
 })

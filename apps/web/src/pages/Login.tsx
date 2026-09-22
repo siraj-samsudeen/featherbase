@@ -1,13 +1,27 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { APP_ROOT_PATTERN } from 'shared'
 import { ApiError, api, landingPath, login } from '../lib/api'
 import { Logo } from '../components/Logo'
 
-export function safeLoginNext(next: string | undefined): string | undefined {
+export function safeLoginNext(
+  next: string | undefined,
+  inheritedHash = window.location.hash,
+): string | undefined {
   if (!next || !next.startsWith('/') || next.startsWith('//') || next.includes('\\')) return undefined
-  const parsed = new URL(next, window.location.origin)
-  if (parsed.origin !== window.location.origin) return undefined
-  return `${parsed.pathname}${parsed.search}${parsed.hash}`
+  try {
+    if (decodeURIComponent(next).includes('\\')) return undefined
+    const parsed = new URL(next, window.location.origin)
+    if (parsed.origin !== window.location.origin) return undefined
+    const canonicalFeatherbase = parsed.pathname.startsWith('/featherbase/')
+      && !/^\/featherbase\/login(?:\/|$)/.test(parsed.pathname)
+    const runtimeApp = new RegExp(APP_ROOT_PATTERN).test(parsed.pathname)
+    if (!canonicalFeatherbase && !runtimeApp) return undefined
+    const hash = parsed.hash || (inheritedHash.startsWith('#') ? inheritedHash : '')
+    return `${parsed.pathname}${parsed.search}${hash}`
+  } catch {
+    return undefined
+  }
 }
 
 export function LoginPage() {

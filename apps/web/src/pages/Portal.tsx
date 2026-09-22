@@ -25,7 +25,7 @@ function PortalShell({ children }: { children: React.ReactNode }) {
             data-testid="portal-logout"
             onClick={() => {
               clearSession()
-              window.location.href = '/login'
+              window.location.href = '/featherbase/login'
             }}
             className="hover:text-[var(--color-ink)]"
           >
@@ -81,7 +81,7 @@ export function PortalListPage({ table }: { table: string }) {
               <tr key={String(row.row_id)} className="border-t border-[var(--color-border)]" data-testid="portal-row">
                 <td className="px-3 py-1.5">
                   <Link
-                    to="/portal/$table/$name"
+                    to="/featherbase/portal/$table/$name"
                     params={{ table, name: String(row.row_id) }}
                     className="text-[var(--color-brand)] hover:underline"
                   >
@@ -121,7 +121,7 @@ export function PortalRowPage({ table, name }: { table: string; name: string }) 
 
   return (
     <PortalShell>
-      <Link to="/portal/$table" params={{ table }} className="mb-4 inline-block text-sm text-[var(--color-brand)] hover:underline">
+      <Link to="/featherbase/portal/$table" params={{ table }} className="mb-4 inline-block text-sm text-[var(--color-brand)] hover:underline">
         ← Back to my {table}
       </Link>
       {forbidden ? (
