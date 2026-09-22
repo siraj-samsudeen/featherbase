@@ -104,7 +104,7 @@ async function stop() {
   await exited
 }
 let token
-async function api(path, body, status = 200, appVersion = `tasker@${taskerPackage.version}`) {
+async function api(path, body, status = 200, appVersion = `tasker@${taskerPackage.version},actionproof@1.1.0`) {
   const response = await fetch(`${origin}${path}`, {
     method: body === undefined ? 'GET' : 'POST',
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -404,7 +404,7 @@ try {
   await start(upgradePaths)
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Tasker v1 upgrade fixture' })).toBeVisible()
-  const plan = await api('/api/preview_app_upgrade', { name: 'tasker', version: '2.0.0' })
+  const plan = await api('/api/preview_app_upgrade', { name: 'tasker', version: taskerPackage.version })
   assert.equal(plan.currentVersion, '0.0.1')
   assert.deepEqual(plan.tables, ['tasker.project'])
   assert.equal(plan.migrations[0].id, 'project_description')
@@ -412,7 +412,7 @@ try {
   await stop()
   await start(upgradePaths)
   assert.deepEqual(await api(`/api/table/tasker.project/${projectId}`), projectBefore)
-  const upgrade = { name: 'tasker', version: '2.0.0', planId: plan.planId }
+  const upgrade = { name: 'tasker', version: taskerPackage.version, planId: plan.planId }
   await api('/api/upgrade_app', upgrade)
   await api('/api/table/tasker.project', undefined, 403)
   await refuseStaleCore(403)
@@ -420,7 +420,7 @@ try {
   await start(upgradePaths)
   assert.equal((await api('/api/apps')).installed.find(a => a.name === 'tasker').activationPending, true)
   await api('/api/upgrade_app', upgrade)
-  await api('/api/activate_app_upgrade', { name: 'tasker', version: '2.0.0' })
+  await api('/api/activate_app_upgrade', { name: 'tasker', version: taskerPackage.version })
   await refuseStaleCore(409)
   await staleCore.screenshot({ path: resolve(output, 'stale-core-form-after-upgrade.png'), fullPage: true })
   await staleCore.close()
@@ -434,10 +434,10 @@ try {
   })
   assert.equal(staleBrowser.status, 409)
   assert.match(staleBrowser.body.error.message, /was upgraded/)
-  const upgradedProject = await api(`/api/table/tasker.project/${projectId}`, undefined, 200, 'tasker@2.0.0')
+  const upgradedProject = await api(`/api/table/tasker.project/${projectId}`)
   assert.deepEqual(upgradedProject, { ...projectBefore, description: null })
   const description = '## Upgrade proof\n\n**37** cartons; keep the original project.'
-  await api('/api/save_row', { table: 'tasker.project', row: { ...upgradedProject, description } }, 201, 'tasker@2.0.0')
+  await api('/api/save_row', { table: 'tasker.project', row: { ...upgradedProject, description } }, 201)
   assert.deepEqual(await api('/api/user_settings/tasker.preferences'), preferencesBefore)
   assert.deepEqual(await api('/api/table/Comment?limit_page_length=1000'), commentsBefore)
   await page.reload()
@@ -446,10 +446,10 @@ try {
   await expect(page.getByRole('region', { name: 'Project description' })).toContainText('37 cartons')
   await expect(page.getByRole('link', { name: 'Preserved 37 cartons' })).toBeVisible()
   await page.screenshot({ path: resolve(output, 'upgraded-project-markdown.png'), fullPage: true })
-  const browserRead = await page.evaluate(async id => {
-    const response = await fetch(`/api/table/tasker.project/${id}`, { headers: { Authorization: `Bearer ${localStorage.getItem('fc_token')}`, 'X-Featherbase-App-Version': 'tasker@2.0.0' } })
+  const browserRead = await page.evaluate(async ({ id, version }) => {
+    const response = await fetch(`/api/table/tasker.project/${id}`, { headers: { Authorization: `Bearer ${localStorage.getItem('fc_token')}`, 'X-Featherbase-App-Version': `tasker@${version}` } })
     return { status: response.status, row: await response.json() }
-  }, projectId)
+  }, { id: projectId, version: taskerPackage.version })
   assert.equal(browserRead.status, 200)
   assert.equal(browserRead.row.description, description)
   assert.deepEqual(await api(`/api/table/tasker.task/${preservedTask.row_id}`), preservedTask)
@@ -495,10 +495,10 @@ try {
   assert.equal((await page.request.get(`${origin}${fileUrl}`)).status(), 404)
   await stop()
   await start([v1, ...paths.slice(1)]) // Prior artifact is not a rollback for committed schema.
-  await api('/api/table/tasker.project', undefined, 403, 'tasker@2.0.0')
+  await api('/api/table/tasker.project', undefined, 403)
   await stop()
   await start(upgradePaths)
-  assert.equal((await api(`/api/table/tasker.project/${projectId}`, undefined, 200, 'tasker@2.0.0')).description, description)
+  assert.equal((await api(`/api/table/tasker.project/${projectId}`)).description, description)
   assert.equal(await digest(v1), v1Digest, 'Prior artifact was modified')
   await writeFile(resolve(output, 'upgrade-evidence.json'), JSON.stringify({
     plan, priorArtifact: v1, targetArtifact: v2, priorUnchanged: true,

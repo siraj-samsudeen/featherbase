@@ -9127,3 +9127,30 @@ and Prove Before Handoff remain pending the coordinator's separate apply
 instruction, as required by the planning-only OpenSpec skill. Next: inspect the
 committed plan, apply the change, then independently review and prove its final
 implementation before offering a development build.
+
+## 2026-09-22 — #279 app roles and store access: implementation checkpoint
+
+Implemented the approved two-stage store boundary and self-only discovery using
+existing `has_role`/`data_scope`, with no legacy Table CRUD change. Added explicit
+read/action policies, narrow locked scope facts, immutable operation context,
+mandatory product gates, and separate ledger authorization/result projection.
+Tasker 2.1.0 and action-proof 1.1.0 declare table/generic policies; preserved exact
+historical artifacts for explicit upgrade proofs. Migration 0097 adds only the
+nullable private ledger authorization JSONB column. Canonical specs synchronized.
+
+Evidence at this checkpoint: `pnpm --filter server typecheck` passes;
+`DATABASE_URL=.../featherbase_issue279_test pnpm --filter server test
+test/app-access.test.ts` passes 12 tests; focused runtime action/upgrade/deletion
+suite passes 31 tests. Initial four tests failed against absent declarations.
+Oracle found mutable resolver claim state; its asymmetric test first returned
+A+B for claimed A (red), then passed after freezing the original claim. Oracle
+reviewed that resolution and closed the finding. PostgreSQL result-projection
+poison proves refused replay never selects protected result bytes. Independent
+commit/lock proof passes on the positively identified directly local, test-stamped
+`featherbase_issue279_access_commit_e2e`; CI now explicitly runs that proof.
+`pnpm check:specs` passes strict validation and STC with no orphans/new gaps.
+
+First full server run: 863 passed, one stale action-proof client-version failure,
+18 expected opt-in/MySQL skips. Corrected that test client's explicit version;
+final broad rerun, runtime/browser proof, mutation review and independent final
+review remain pending. No development-build handoff, merge or deployment yet.

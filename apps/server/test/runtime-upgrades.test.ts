@@ -30,7 +30,7 @@ describe('runtime upgrades', () => {
   test('core identity snapshot is host derived; multiple identities never override availability or version', async ({ admin, createUser }) => {
     const { directory } = await targetPackage()
     try {
-      await discoverPackages([resolve('../..', 'runtime-apps/tasker'), directory])
+      await discoverPackages([resolve('../..', 'runtime-apps/fixtures/tasker-v2'), directory])
       await admin.post('/api/install_app', { name: 'tasker' })
       await admin.post('/api/install_app', { name: 'other' })
       const member = await createUser({ email: 'identity-reader@example.com', roles: [] })

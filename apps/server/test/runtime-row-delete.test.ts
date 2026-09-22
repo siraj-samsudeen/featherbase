@@ -1,10 +1,17 @@
 import { resolve } from 'node:path'
 import { expect } from 'vitest'
-import { test } from './pg-test'
+import { makeClient, type TestClient } from 'feather-testing-postgres'
+import { test as base } from './pg-test'
 import { discoverPackages } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { deleteDoc } from '../src/document'
 import { sql } from '../src/db'
+
+const test = base.extend<{ admin: TestClient }>({
+  admin: async ({ admin }, use) => use(makeClient({ request: (path, init) => admin.fetch(String(path), {
+    ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'actionproof@1.1.0' },
+  }) }, admin.token, admin.user)),
+})
 
 // @spec runtime_row_delete_guard
 test('generic runtime deletion cannot bypass source revision or retained discussion', async ({ admin }) => {
