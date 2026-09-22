@@ -1,17 +1,25 @@
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import type { CreateUserFn, TestClient } from 'feather-testing-postgres'
+import { makeClient, type CreateUserFn, type TestClient } from 'feather-testing-postgres'
 import { describe, expect } from 'vitest'
-import { test } from './pg-test'
+import { test as pgTest } from './pg-test'
 import { discoverPackages, availableRuntimeVersions } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { sql, withTransaction } from '../src/db'
 import { actionDeclaration, readDeclaration, validateOperationFacts } from '../src/app-access'
+import { AppError } from '../src/errors'
 
 const directory = resolve('../..', 'runtime-apps/scope-proof')
 const read = '/api/app_reads/scopeproof/'
 const action = '/api/app_actions/scopeproof/'
+const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
+  ...init, headers: { 'X-Featherbase-App-Version': 'scopeproof@1.0.0,tasker@2.1.0', ...init?.headers },
+}) }, client.token, client.user)
+const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
+  admin: async ({ admin }, use) => use(pinned(admin)),
+  createUser: async ({ createUser }, use) => use(async options => pinned(await createUser(options))),
+})
 async function setup(admin: TestClient, createUser: CreateUserFn, roles = ['Scope Planner'], stores = ['A', 'C']) {
   expect(await discoverPackages([directory])).toEqual([])
   await admin.post('/api/install_app', { name: 'scopeproof' })
@@ -21,6 +29,7 @@ async function setup(admin: TestClient, createUser: CreateUserFn, roles = ['Scop
   const digest = availableRuntimeVersions().find(p => p.name === 'scopeproof')!.digest
   const module = await import(`${pathToFileURL(resolve(directory, 'server.mjs')).href}?artifact=${digest}`)
   Object.assign(module.calls, { handler: 0, resolver: 0, authorizer: 0, upstream: 0 })
+  for (const key of Object.keys(module.faults)) delete module.faults[key]
   return { user, module }
 }
 
@@ -84,7 +93,7 @@ describe('fresh app roles and store access', () => {
     await admin.post('/api/upgrade_app', { name: 'tasker', version: '2.1.0', planId: plan.planId })
     expect((await invoke('2.1.0')).status).toBe(403)
     await admin.post('/api/activate_app_upgrade', { name: 'tasker', version: '2.1.0' })
-    expect((await invoke('2.0.0')).status).toBe(409)
+    expect((await invoke('2.0.0')).status).toBe(403)
     const replay = await invoke('2.1.0')
     expect(replay.status).toBe(200)
     expect(await replay.json()).toEqual({ result: { project: 'original-37' } })
@@ -104,6 +113,141 @@ describe('fresh app roles and store access', () => {
     expect(await sql`select method from access_log where "user" = ${user.user} and operation = 'app_access_denied' order by method`).toEqual([
       { method: 'scopeproof.missing:configuration' }, { method: 'scopeproof.stores:override' }, { method: 'scopeproof.stores:scope' },
     ])
+  })
+
+  // @spec app_refusals_are_auditable
+  // @spec declared_product_gate_composes
+  test('callback errors and invalid footprints refuse without disclosure, while admitted handler errors remain intact', async ({ admin, createUser }) => {
+    const { user, module } = await setup(admin, createUser, ['Scope Planner'], ['A'])
+    await admin.post('/api/save_row', { table: 'scopeproof.access', row: { row_id: user.user, pairs: [['A', 'X']] } })
+    const replay = { idempotencyKey: 'private-result', payload: { storeCodes: ['A'], pairs: [['A', 'X']] } }
+    await user.post(action + 'product', replay)
+    await sql.unsafe(`alter table featherbase.runtime_action_result rename to protected_receipts;
+      create function pg_temp.forbidden_result(jsonb) returns jsonb language plpgsql stable as
+      $$ begin raise exception 'Protected result was read'; end $$;
+      create view featherbase.runtime_action_result as select caller, app, action, idempotency_key, payload,
+        "authorization", pg_temp.forbidden_result(result) as result from featherbase.protected_receipts`)
+    const before = { ...module.calls }
+    let refusals = 0
+    const refused = async (path: string, body: unknown) => {
+      const response = await user.fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
+      refusals++
+      const logs = await sql`select method from access_log where "user" = ${user.user} and operation = 'app_access_denied'`
+      expect(logs).toHaveLength(refusals)
+      expect(logs.every(row => /^scopeproof\.(object|product):(scope|product)$/.test(row.method))).toBe(true)
+      expect(module.calls.handler).toBe(before.handler)
+      expect(module.calls.upstream).toBe(before.upstream)
+    }
+    for (const error of [new Error('Private object 37 missing'), new AppError('NotFoundError', 'Private object 37 missing', { secret: '37' })]) {
+      module.faults.resolver = error
+      await refused(read + 'object', { payload: { id: 'private-37', storeCodes: ['A'] } })
+      delete module.faults.resolver
+      module.faults.authorizer = error
+      await refused(read + 'product', { payload: replay.payload })
+      await refused(action + 'product', replay)
+      delete module.faults.authorizer
+    }
+    module.faults.scopeResult = { storeCodes: ['A'], productScope: { private: undefined } }
+    await refused(read + 'object', { payload: { id: 'private-37', storeCodes: ['A'] } })
+    delete module.faults.scopeResult
+    module.faults.handler = new AppError('NotFoundError', 'Admitted business error')
+    await expect(user.post(read + 'stores', { payload: { storeCodes: ['A'] } })).rejects.toMatchObject({ status: 404 })
+    expect(await sql`select row_id from access_log where "user" = ${user.user} and operation = 'app_access_denied'`).toHaveLength(refusals)
+    delete module.faults.handler
+  })
+
+  // @spec fresh_app_store_access
+  // @spec self_store_access_discovery
+  test('every HTTP admission requires exact active identity even before the first migration', async ({ admin, createUser }) => {
+    const { user, module } = await setup(admin, createUser, ['Scope Planner'], ['A'])
+    expect((await sql`select migration_ledger from installed_app where name = 'scopeproof'`)[0].migration_ledger).toEqual([])
+    const send = (identity: string, path: string, payload?: unknown) => user.fetch(path, {
+      method: payload === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': identity },
+      ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
+    })
+    let refusals = 0
+    for (const identity of ['', 'bad private-37', 'tasker@1.0.0', 'scopeproof@9.9.9', 'scopeproof@0.9.0']) {
+      for (const [path, body] of [[read + 'stores/access', undefined], [read + 'object', { payload: { id: 'missing', storeCodes: ['A'] } }],
+        [action + 'product', { idempotencyKey: 'private', payload: { storeCodes: ['A'], pairs: [['A', 'X']] } }]] as const) {
+        const response = await send(identity, path, body)
+        expect(response.status).toBe(403)
+        expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
+        refusals++
+      }
+    }
+    expect(module.calls).toEqual({ handler: 0, resolver: 0, authorizer: 0, upstream: 0 })
+    expect(await sql`select row_id from access_log where "user" = ${user.user} and operation = 'app_access_denied'`).toHaveLength(refusals)
+    expect((await send('scopeproof@1.0.0', read + 'stores/access')).status).toBe(200)
+    expect((await send('scopeproof@1.0.0', read + 'stores', { payload: { storeCodes: ['A'] } })).status).toBe(200)
+    expect((await send('scopeproof@1.0.0', action + 'write', { idempotencyKey: 'exact', payload: { storeCodes: ['A'], effect: 'exact' } })).status).toBe(200)
+  })
+
+  // @spec fresh_app_store_access
+  // @spec runtime_reads_have_no_mutations
+  // @spec app_refusals_are_auditable
+  test('unavailable required audit fails closed as a visible server failure', async ({ admin, createUser }) => {
+    const { user, module } = await setup(admin, createUser, ['Scope Reader'], ['A'])
+    await sql`alter table featherbase.access_log rename to unavailable_audit`
+    const response = await user.fetch(read + 'stores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: { storeCodes: ['B'] } }) })
+    expect(response.status).toBe(500)
+    expect(await response.json()).toEqual({ error: { type: 'InternalError', message: 'Internal server error' } })
+    expect(module.calls).toEqual({ handler: 0, resolver: 0, authorizer: 0, upstream: 0 })
+  })
+
+  // @spec fresh_app_store_access
+  // @spec self_store_access_discovery
+  test('pending and upgraded app identities refuse every protected route until exact activation', async ({ admin, createUser }) => {
+    const { user } = await setup(admin, createUser, ['Scope Planner'], ['A'])
+    await admin.post('/api/save_row', { table: 'scopeproof.access', row: { row_id: user.user, pairs: [['A', 'X']] } })
+    const receipt = { idempotencyKey: 'upgrade-replay', payload: { storeCodes: ['A'], pairs: [['A', 'X']] } }
+    const original = await user.post(action + 'product', receipt)
+    const target = await mkdtemp(resolve('test/.scope-upgrade-'))
+    try {
+      await cp(directory, target, { recursive: true })
+      const pkg = JSON.parse(await readFile(resolve(target, 'package.json'), 'utf8'))
+      await writeFile(resolve(target, 'package.json'), JSON.stringify({ ...pkg, version: '1.1.0' }))
+      const manifest = JSON.parse(await readFile(resolve(target, 'featherbase.json'), 'utf8'))
+      manifest.migrations = [{ id: 'identity_upgrade', fromVersion: '1.0.0', toVersion: '1.1.0', operations: [] }]
+      await writeFile(resolve(target, 'featherbase.json'), JSON.stringify(manifest))
+      expect(await discoverPackages([directory, target])).toEqual([])
+      await loadInstalledApps()
+      const { planId } = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'scopeproof', version: '1.1.0' })
+      await admin.post('/api/upgrade_app', { name: 'scopeproof', version: '1.1.0', planId })
+      const digest = availableRuntimeVersions().find(p => p.name === 'scopeproof' && p.version === '1.1.0')!.digest
+      const module = await import(`${pathToFileURL(resolve(target, 'server.mjs')).href}?artifact=${digest}`)
+      const send = (identity: string, path: string, body?: unknown) => user.fetch(path, {
+        method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', 'X-Featherbase-App-Version': identity },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      })
+      await sql.unsafe(`alter table featherbase.runtime_action_result rename to protected_receipts;
+        create function pg_temp.forbidden_result(jsonb) returns jsonb language plpgsql stable as
+        $$ begin raise exception 'Protected result was read'; end $$;
+        create view featherbase.runtime_action_result as select caller, app, action, idempotency_key, payload,
+          "authorization", pg_temp.forbidden_result(result) as result from featherbase.protected_receipts`)
+      const paths = [[read + 'stores/access', undefined], [read + 'object', { payload: { id: 'missing', storeCodes: ['A'] } }], [action + 'product', receipt]] as const
+      let refusals = 0
+      for (const phase of ['pending', 'active']) {
+        if (phase === 'active') await admin.post('/api/activate_app_upgrade', { name: 'scopeproof', version: '1.1.0' })
+        for (const identity of ['', 'private malformed', 'other@1.1.0', 'scopeproof@1.0.0', 'scopeproof@9.9.9', ...(phase === 'pending' ? ['scopeproof@1.1.0'] : [])]) {
+          for (const [path, body] of paths) {
+            const response = await send(identity, path, body)
+            expect(response.status).toBe(403)
+            expect(await response.json()).toEqual({ error: { type: 'PermissionError', message: 'Application access refused' } })
+            refusals++
+          }
+        }
+      }
+      expect(module.calls).toEqual({ handler: 0, resolver: 0, authorizer: 0, upstream: 0 })
+      expect(await sql`select row_id from access_log where "user" = ${user.user} and operation = 'app_access_denied'`).toHaveLength(refusals)
+      await sql.unsafe(`drop view featherbase.runtime_action_result;
+        alter table featherbase.protected_receipts rename to runtime_action_result`)
+      expect(await (await send('scopeproof@1.1.0', read + 'stores/access')).json()).toEqual({ storeCodes: ['A'] })
+      expect(await (await send('scopeproof@1.1.0', read + 'stores', { payload: { storeCodes: ['A'] } })).json()).toEqual(original)
+      expect(await (await send('scopeproof@1.1.0', action + 'product', receipt)).json()).toEqual(original)
+      expect(module.calls).toEqual({ handler: 1, resolver: 0, authorizer: 1, upstream: 1 })
+    } finally { await rm(target, { recursive: true, force: true }) }
   })
 
   // @spec fresh_app_store_access

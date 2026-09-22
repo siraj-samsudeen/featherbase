@@ -9154,3 +9154,27 @@ First full server run: 863 passed, one stale action-proof client-version failure
 18 expected opt-in/MySQL skips. Corrected that test client's explicit version;
 final broad rerun, runtime/browser proof, mutation review and independent final
 review remain pending. No development-build handoff, merge or deployment yet.
+
+## 2026-09-22 — #279 independent review corrections
+
+Independent review of the implementation checkpoint found two governed defects:
+authorization callback exceptions could disclose private AppError details without
+denial audit, and the legacy pre-first-migration identity exemption leaked into
+the new boundary. Both were reproduced red with real Hono/PostgreSQL tests
+(500 instead of fixed 403; missing identity accepted with 200). Scope callback
+execution/footprint validation and product callback failures now become redacted
+refusals; admitted business errors remain unchanged. Required denial audit fails
+visibly if unavailable rather than silently using legacy optional-audit behavior.
+New protected HTTP reads/actions/discovery require exact active identity even
+before a first migration; legacy Table CRUD keeps its existing semantics.
+Consequently obsolete declared-action identities now get audited fixed 403,
+while legacy CRUD retains its existing 409 reload response.
+
+Verification: focused app-access/runtime-action/package/upgrade/deletion/Tasker
+tests pass 53/53; app-access includes fresh/pending/upgraded identity matrices,
+ordinary/private callback errors, invalid footprint, preserved business errors,
+durable redacted audits, unavailable-audit failure, and SQL-poisoned replay-result
+projection. Independent-commit scope/product/duplicate lock proof passes;
+server typecheck and `pnpm check:specs` pass. Commands used dedicated local
+`featherbase_issue279_test` and `featherbase_issue279_access_commit_e2e` only.
+Independent follow-up review, final broad rerun and runtime proof remain pending.

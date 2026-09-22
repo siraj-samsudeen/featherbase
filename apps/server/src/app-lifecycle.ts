@@ -59,7 +59,7 @@ export function provisionApp<T>(name: string, fn: () => Promise<T>): Promise<T> 
   return appOperation(() => scope.run({ exclusive: true, provisioning: name }, fn), true)
 }
 
-export async function assertAppAvailable(name: string): Promise<void> {
+export async function assertAppAvailable(name: string, exactClientIdentity = false): Promise<void> {
   if (!name.includes('.')) return
   const owner = name.split('.')[0]
   if (scope.getStore()?.provisioning === owner) return
@@ -68,6 +68,11 @@ export async function assertAppAvailable(name: string): Promise<void> {
     throw new AppError('PermissionError', `App ${owner} is disabled or unavailable`)
   // @spec runtime_upgrade_commit_and_activation.upgrade_drains_admitted_work
   const supplied = clientVersion.getStore()
+  // @spec fresh_app_store_access
+  // The declared boundary requires an exact HTTP identity even on first install.
+  // Trusted in-process calls have no HTTP client snapshot; legacy CRUD is unchanged.
+  if (exactClientIdentity && supplied !== undefined && supplied.get(owner) !== `${owner}@${installed.package_version}`)
+    throw new AppError('PermissionError', 'Application access refused')
   if (supplied !== undefined && (installed.migration_ledger as unknown[]).length > 0 &&
       supplied.get(owner) !== `${owner}@${installed.package_version}`)
     throw new AppError('ConflictError', `App ${owner} was upgraded. Reload its current client and retry with the installed application version`)

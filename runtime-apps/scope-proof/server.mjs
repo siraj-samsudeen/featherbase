@@ -1,9 +1,12 @@
 export const apiVersion = 1
 export const calls = { handler: 0, resolver: 0, authorizer: 0, upstream: 0 }
+export const faults = {}
 export let escapedFacts
 export const scopeResolvers = {
   async object({ payload, requestedStoreCodes, facts, reject }) {
     calls.resolver++
+    if (faults.resolver) throw faults.resolver
+    if (faults.scopeResult) return faults.scopeResult
     escapedFacts = facts
     if (payload.mutateClaim) {
       try { requestedStoreCodes.push('B') } catch {}
@@ -24,6 +27,7 @@ export const scopeResolvers = {
 export const authorizers = {
   async pairs({ authorization, facts, reject }) {
     calls.authorizer++
+    if (faults.authorizer) throw faults.authorizer
     const current = await facts.get('scopeproof.access', authorization.user)
     const requested = authorization.productScope
     if (!Array.isArray(requested) || !requested.length || requested.some(pair =>
@@ -34,6 +38,7 @@ export const authorizers = {
 }
 function result(context) {
   calls.handler++
+  if (faults.handler) throw faults.handler
   calls.upstream++ // Observable stand-in for where a trusted package starts work.
   return { stores: context.authorization.storeCodes, marker: 37 }
 }

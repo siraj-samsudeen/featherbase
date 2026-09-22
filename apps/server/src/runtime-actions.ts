@@ -126,7 +126,7 @@ export function executeRuntimeAction(app: string, name: string, input: unknown, 
     const parsed = requestSchema.safeParse(input)
     if (!parsed.success) reject('Expected { idempotencyKey, payload }')
     if (!user || user === 'Guest') throw new AppError('AuthenticationError', 'Sign in to run an application action')
-    try { await assertAppAvailable(`${app}.__action`) }
+    try { await assertAppAvailable(`${app}.__action`, true) }
     catch (error) {
       if (error instanceof AppError && error.type === 'PermissionError') return recordAppAccessRefusal(user, app, name, 'permission')
       throw error

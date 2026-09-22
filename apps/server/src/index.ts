@@ -464,7 +464,15 @@ app.use('/api/*', rateLimit)
 app.use('/api/*', async (c, next) => {
   if (['/api/install_app', '/api/uninstall_app', '/api/set_app_enabled', '/api/upgrade_app', '/api/activate_app_upgrade'].includes(c.req.path))
     return next()
-  return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appOperation(next))
+  try {
+    // Do not await here: only synchronous identity parsing failures belong to
+    // this refusal path, not admitted asynchronous business-handler errors.
+    return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appOperation(next))
+  } catch (error) {
+    const protectedOperation = /^\/api\/app_(?:reads|actions)\/([^/]+)\/([^/]+)(?:\/access)?$/.exec(c.req.path)
+    if (protectedOperation) return recordAppAccessRefusal(who(c), protectedOperation[1], protectedOperation[2], 'identity')
+    throw error
+  }
 })
 
 // @spec featherbase_human_routes_are_canonical

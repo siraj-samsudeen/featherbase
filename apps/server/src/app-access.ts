@@ -66,7 +66,7 @@ export function refuseAppAccess(reason = 'scope'): never { throw new AccessRefus
 
 export async function recordAppAccessRefusal(user: string, app: string, operation: string, reason: string): Promise<never> {
   const boundedName = (value: string) => name.safeParse(value).success ? value : 'unknown'
-  await logAccess(user, 'app_access_denied', { method: `${boundedName(app)}.${boundedName(operation)}:${reason}` })
+  await logAccess(user, 'app_access_denied', { method: `${boundedName(app)}.${boundedName(operation)}:${reason}`, required: true })
   throw new AppError('PermissionError', 'Application access refused')
 }
 
@@ -108,7 +108,7 @@ async function currentAccess(request: AccessRequest, declaration: AppOperationDe
   const { user, app, entryTable, kind } = request
   const [enabled] = await sql`select enabled from "user" where row_id = ${user}`
   if (!user || user === 'Guest' || !enabled?.enabled) refuseAppAccess('user')
-  await assertAppAvailable(`${app}.__access`)
+  await assertAppAvailable(`${app}.__access`, true)
   await assertPermission(user, entryTable, 'read')
   const policy = declaration.policy
   if (policy.kind === 'table') return new Set()
@@ -205,15 +205,17 @@ export function withAppAuthorization<T>(request: AccessRequest,
             } else if (metadata.storeTable || metadata.storeCodes.length) refuseAppAccess('replay')
           }
         } else {
-          let resolved = { storeCodes: requested ?? [] } as { storeCodes: readonly string[]; productScope?: unknown }
-          if ('scope' in declaration && declaration.scope.kind === 'resolver') {
-            resolved = await withFacts(request.app, declaration.scope.facts, async facts =>
-              resolver!(Object.freeze({ user: request.user, payload, requestedStoreCodes: requested, facts, reject: () => refuseAppAccess('scope') })))
-          }
-          const storeCodes = policy.kind === 'stores' ? codes(resolved?.storeCodes) : []
-          if (requested && JSON.stringify(requested) !== JSON.stringify(storeCodes)) refuseAppAccess()
-          metadata = { version: 1, policy: policy.kind, ...(policy.kind === 'stores' ? { storeTable: policy.storeTable } : {}),
-            storeCodes, ...(resolved.productScope !== undefined ? { productScope: JSON.parse(canonicalJson(resolved.productScope)) } : {}) }
+          try {
+            let resolved = { storeCodes: requested ?? [] } as { storeCodes: readonly string[]; productScope?: unknown }
+            if ('scope' in declaration && declaration.scope.kind === 'resolver') {
+              resolved = await withFacts(request.app, declaration.scope.facts, async facts =>
+                resolver!(Object.freeze({ user: request.user, payload, requestedStoreCodes: requested, facts, reject: () => refuseAppAccess('scope') })))
+            }
+            const storeCodes = policy.kind === 'stores' ? codes(resolved?.storeCodes) : []
+            if (requested && JSON.stringify(requested) !== JSON.stringify(storeCodes)) refuseAppAccess()
+            metadata = { version: 1, policy: policy.kind, ...(policy.kind === 'stores' ? { storeTable: policy.storeTable } : {}),
+              storeCodes, ...(resolved.productScope !== undefined ? { productScope: JSON.parse(canonicalJson(resolved.productScope)) } : {}) }
+          } catch { refuseAppAccess('scope') }
         }
         if (policy.kind === 'stores') subset(metadata.storeCodes, await currentAccess(request, declaration))
         const authorization = freezeJson({ app: request.app, operation: request.operation, user: request.user, policy: policy.kind,
@@ -223,6 +225,7 @@ export function withAppAuthorization<T>(request: AccessRequest,
           if (request.kind === 'action' && metadata.productScope === undefined) refuseAppAccess('product')
           const approved = await withFacts(request.app, declaration.authorization.facts, async facts =>
             authorizer!(Object.freeze({ authorization, payload, facts, reject: () => refuseAppAccess('product') })))
+            .catch(() => refuseAppAccess('product'))
           if (approved !== true) refuseAppAccess('product')
         }
         // Final barrier after every possible authorization-fact lock wait.
