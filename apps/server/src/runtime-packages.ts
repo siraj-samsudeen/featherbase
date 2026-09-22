@@ -8,8 +8,9 @@ import { tableDefSchema } from './table-engine'
 import { hasPermission } from './permissions'
 import { AppError } from './errors'
 import { appOperation } from './app-lifecycle'
-import { RESERVED_APP_ROOTS, appHref, type RuntimeActionHandler } from 'shared'
-import { actionDeclaration, executeRuntimeAction, type DeclaredActions } from './runtime-actions'
+import { RESERVED_APP_ROOTS, appHref, type AppScopeResolver, type AppProductAuthorizer, type AppOperationDeclaration, type RuntimeActionHandler, type RuntimeReadHandler } from 'shared'
+import { executeRuntimeAction, executeRuntimeRead, type DeclaredOperations } from './runtime-actions'
+import { actionDeclaration, readDeclaration, validateOperationFacts, freezeJson, type DeclaredAppOperation } from './app-access'
 import { sql, withTransaction } from './db'
 import { invalidateMeta } from './meta'
 import { migrationSchema, migrationLedger, packageVersion, validateMigrations, canonical, checksum, compareVersions, applyAdditions, refuse } from './runtime-migrations'
@@ -31,6 +32,7 @@ const manifestSchema = z.object({
   name: z.string().regex(/^[a-z][a-z0-9_]{0,30}$/),
   title: z.string().min(1),
   tables: z.array(tableDefSchema).min(1),
+  roles: z.array(z.string().min(1)).optional(),
   permissions: z.array(z.object({
     table: z.string(), role: z.string(),
     tier: z.enum(['basic', 'restricted']).optional(),
@@ -44,6 +46,7 @@ const manifestSchema = z.object({
   client: z.string().optional(),
   entryTable: z.string(),
   actions: actionDeclaration.optional(),
+  reads: readDeclaration.optional(),
   migrations: z.array(migrationSchema).default([]),
 }).strict()
 
@@ -52,7 +55,8 @@ interface RuntimePackage {
   title: string
   entryTable: string
   clientRoot?: string
-  actions?: DeclaredActions
+  actions?: DeclaredOperations
+  reads?: DeclaredOperations<RuntimeReadHandler>
   root: string
   version: string
   digest: string
@@ -62,6 +66,15 @@ interface RuntimePackage {
 const packages = new Map<string, RuntimePackage>()
 const artifacts = new Map<string, RuntimePackage>()
 export const packageFailures: { path: string; error: string }[] = []
+
+function namedFunctions<H>(value: unknown, names: string[]): Map<string, H> {
+  const exported = value ?? {}
+  if (!exported || typeof exported !== 'object' || Array.isArray(exported)) throw new Error('Expected named package functions')
+  const entries = Object.entries(exported)
+  if (entries.length !== new Set(names).size || entries.some(([name, handler]) => !names.includes(name) || typeof handler !== 'function'))
+    throw new Error('Package handlers and authorization callbacks must match declared names')
+  return new Map(entries as [string, H][])
+}
 
 export function availableRuntimeVersions() {
   return [...artifacts.values()].map(({ name, version, digest }) => ({ name, version, digest }))
@@ -172,14 +185,19 @@ export function discoverPackages(paths: string[]) {
           await contained(clientRoot, 'index.html')
         }
         const doc_events: AppManifest['doc_events'] = {}
-        const handlers = new Map<string, RuntimeActionHandler>()
+        let handlers = new Map<string, RuntimeActionHandler>()
+        let readHandlers = new Map<string, RuntimeReadHandler>()
+        let resolvers = new Map<string, AppScopeResolver>()
+        let authorizers = new Map<string, AppProductAuthorizer>()
+        const actionOperations = manifest.actions?.version === 2 ? manifest.actions.operations : {}
+        const readOperations = manifest.reads?.operations ?? {}
+        const allOperations = [...Object.values(actionOperations), ...Object.values(readOperations)]
+        for (const operation of allOperations) validateOperationFacts(operation, manifest.tables)
         // @spec declared_app_actions_fail_closed
-        if (manifest.actions) {
-          if (!manifest.server) throw new Error('Declared actions require a server module')
-          if (new Set(manifest.actions.names).size !== manifest.actions.names.length
-            || new Set(manifest.actions.tables).size !== manifest.actions.tables.length)
-            throw new Error('Duplicate action names or Tables')
-          for (const table of manifest.actions.tables) {
+        for (const declaration of [manifest.actions, manifest.reads]) {
+          if (!declaration) continue
+          if (!manifest.server) throw new Error('Declared operations require a server module')
+          for (const table of declaration.tables) {
             if (!names.has(table) && (!manifest.permissions.some(permission => permission.table === table) || table.includes('.')))
               throw new Error('Shared action Tables require declared permissions; other apps are not allowed')
           }
@@ -189,14 +207,10 @@ export function discoverPackages(paths: string[]) {
           if (!/\.(mjs|js)$/.test(modulePath)) throw new Error('Server module must be compiled JavaScript')
           const module = await import(/* @vite-ignore */ `${pathToFileURL(modulePath).href}?artifact=${digest}`)
           if (module.apiVersion !== 1) throw new Error('Incompatible server API version')
-          const exported = module.actions ?? {}
-          if (!exported || typeof exported !== 'object' || Array.isArray(exported)) throw new Error('Expected named action handlers')
-          for (const [name, handler] of Object.entries(exported)) {
-            if (!manifest.actions?.names.includes(name) || typeof handler !== 'function')
-              throw new Error('Action handlers must match declared names')
-            handlers.set(name, handler as RuntimeActionHandler)
-          }
-          if (handlers.size !== (manifest.actions?.names.length ?? 0)) throw new Error('Missing declared action handler')
+          handlers = namedFunctions(module.actions, manifest.actions?.version === 1 ? manifest.actions.names : Object.keys(actionOperations))
+          readHandlers = namedFunctions(module.reads, Object.keys(readOperations))
+          resolvers = namedFunctions(module.scopeResolvers, allOperations.flatMap(o => 'scope' in o && o.scope.kind === 'resolver' ? [o.scope.name] : []))
+          authorizers = namedFunctions(module.authorizers, allOperations.flatMap(o => o.authorization.kind === 'product' ? [o.authorization.name] : []))
           for (const [table, validator] of Object.entries(module.validators ?? {})) {
             if (!names.has(table) || typeof validator !== 'function')
               throw new Error('Validators must target owned Tables')
@@ -206,13 +220,19 @@ export function discoverPackages(paths: string[]) {
             }) }
           }
         }
+        const bindOperations = (operations: Record<string, AppOperationDeclaration>) => new Map(Object.entries(operations).map(([name, declaration]): [string, DeclaredAppOperation] =>
+          [name, { declaration: freezeJson(declaration), resolver: 'scope' in declaration && declaration.scope.kind === 'resolver' ? resolvers.get(declaration.scope.name) : undefined,
+            authorizer: declaration.authorization.kind === 'product' ? authorizers.get(declaration.authorization.name) : undefined }]))
         const app: AppManifest = { name: manifest.name, tables: manifest.tables,
-          permissions: manifest.permissions, doc_events, runtime_package: true,
+          roles: manifest.roles, permissions: manifest.permissions, doc_events, runtime_package: true,
           runtime_identity: { version: pkg.version, digest, ledger: migrationLedger(manifest.migrations) },
           runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
         artifacts.set(key, { name: manifest.name, title: manifest.title,
           entryTable: manifest.entryTable, clientRoot, root, version: pkg.version, digest, manifest, app,
-          actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers } : undefined })
+          // @spec explicit_runtime_policy_upgrade
+          // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
+          actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations) } : undefined,
+          reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations) } : undefined })
       } catch (error) {
         packageFailures.push({ path: directory, error: error instanceof Error ? error.message : String(error) })
         console.warn('[runtime-packages] Artifact rejected:', directory, error instanceof Error ? error.message : String(error))
@@ -233,8 +253,13 @@ export function runPackageAction(app: string, action: string, input: unknown, us
   return executeRuntimeAction(app, action, input, user, () => packages.get(app)?.actions)
 }
 
+export function runPackageRead(app: string, read: string, input: unknown, user: string, discovery = false) {
+  return executeRuntimeRead(app, read, input, user, () => packages.get(app)?.reads, discovery)
+}
+
 export function declaredPackageActions() {
-  return [...packages.values()].map(pkg => ({ app: pkg.name, actions: [...(pkg.actions?.handlers.keys() ?? [])] }))
+  return [...packages.values()].map(pkg => ({ app: pkg.name, actions: [...(pkg.actions?.handlers.keys() ?? [])],
+    ...(pkg.manifest.actions?.version === 1 ? { diagnostic: 'Explicit action policy upgrade required' } : {}) }))
 }
 
 async function upgradePlan(name: string, version: string) {

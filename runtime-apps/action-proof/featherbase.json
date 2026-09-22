@@ -5,7 +5,12 @@
   "title": "Transactional action proof",
   "entryTable": "actionproof.work",
   "server": "server.mjs",
-  "actions": {"version": 1, "names": ["transform", "discard", "probe"], "tables": ["actionproof.work", "actionproof.destination", "Comment"]},
+  "actions": {"version": 2, "operations": {
+    "transform": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "discard": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}},
+    "probe": {"policy": {"kind": "table"}, "authorization": {"kind": "generic"}}
+  }, "tables": ["actionproof.work", "actionproof.destination", "Comment"]},
+  "migrations": [{"id":"explicit_action_policies","fromVersion":"1.0.0","toVersion":"1.1.0","operations":[]}],
   "tables": [
     {"name":"actionproof.work","label":"Work","id_pattern":"prompt","track_changes":true,"columns":[
       {"column_name":"title","column_type":"Data","reqd":true},

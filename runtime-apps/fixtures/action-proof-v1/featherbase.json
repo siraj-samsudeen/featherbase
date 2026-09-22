@@ -1,0 +1,23 @@
+{
+  "manifestVersion": 1,
+  "apiVersion": 1,
+  "name": "actionproof",
+  "title": "Transactional action proof",
+  "entryTable": "actionproof.work",
+  "server": "server.mjs",
+  "actions": {"version": 1, "names": ["transform", "discard", "probe"], "tables": ["actionproof.work", "actionproof.destination", "Comment"]},
+  "tables": [
+    {"name":"actionproof.work","label":"Work","id_pattern":"prompt","track_changes":true,"columns":[
+      {"column_name":"title","column_type":"Data","reqd":true},
+      {"column_name":"destination","column_type":"Reference","reference_table":"actionproof.destination"}
+    ]},
+    {"name":"actionproof.destination","label":"Destination","id_pattern":"hash","columns":[
+      {"column_name":"title","column_type":"Data","reqd":true}
+    ]}
+  ],
+  "permissions": [
+    {"table":"actionproof.work","role":"All","can_read":true,"can_create":true,"can_write":true,"can_delete":true,"own_rows_only":true},
+    {"table":"actionproof.destination","role":"All","can_read":true,"can_create":true,"can_write":true,"own_rows_only":true},
+    {"table":"Comment","role":"All","can_read":true,"can_create":true,"can_write":true,"own_rows_only":true}
+  ]
+}

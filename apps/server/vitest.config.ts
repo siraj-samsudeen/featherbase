@@ -1,5 +1,11 @@
 import { defineConfig } from 'vitest/config'
 
+if (process.env.APP_ACCESS_COMMIT_PROOF === '1') {
+  const url = process.env.DATABASE_URL
+  if (!url || new URL(url).pathname !== '/featherbase_issue279_access_commit_e2e')
+    throw new Error('App access committed proof requires its explicit disposable database')
+}
+
 // Opt-in committed writes must reject shared/default databases before global
 // setup migrates or clears test telemetry. Each reviewer chooses their own DB.
 if (process.env.TASKER_UPGRADE_ACTION_PROOF === '1') {

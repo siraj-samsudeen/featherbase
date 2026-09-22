@@ -9091,3 +9091,129 @@ its own database, post-#191) green on the PR. Closes the loop on #132.
   web5226 stopped. Evidence logs and representative inspected images retained
   in `rama_dw/outputs/issue296-core-responsive/`. Final integrated delta review
   remains with the parent/reviewer; this worker makes no deployment claim.
+
+## 2026-09-22 — App roles and store access planning checkpoint (#279)
+
+Created `openspec/changes/app-roles-store-access` from merged #298. Inspected
+#279/#246/#274/#296/#298, canonical runtime/action specs, permission assignments,
+loader identity/lifecycle, action transaction/replay and existing tests. The plan
+reuses `has_role` and `data_scope` without changing legacy Table CRUD. It names
+explicit package operation policies, generic runtime reads, narrow locked scope
+resolution for persisted objects, and immutable replay authorization metadata
+separate from protected result reads. Tasker moves through a versioned explicit
+Table-policy upgrade; historical actions do not receive an implicit bypass.
+
+The spec review distinguishes trusted-package assumptions from host promises,
+records governed requirements and an ordered refusal table, and identifies the
+missing executable links rather than creating placeholder markers. Scoped Oracle
+design review found an absent product-footprint producer in two declaration
+combinations and stale generic grants after product-fact lock waits. The plan now
+rejects those unsupported action combinations and rechecks at final admission;
+Oracle's follow-up confirmed both planning findings resolved. The requested
+`mattpocock-skills:grilling` invocation failed because the skill is unavailable;
+the Oracle consultation is recorded separately, not presented as that skill.
+
+Verification: `pnpm exec openspec validate app-roles-store-access --strict
+--no-interactive` passes; status is 4/4 planning artifacts. `pnpm check:specs`
+passes strict validation of 17 canonical specs and both active changes, then
+fails STC with exactly 12 new links missing (code/test for six new requirements).
+Those are intentional unimplemented-plan gaps, not a green implementation claim;
+no baseline relaxation or fabricated markers. Separately `pnpm check:spec-policy`
+passes all seven tests and the policy check; `git diff --check` passes.
+
+No application code, database, expected test outcomes or deployment changed.
+Boot smoke, TDD implementation, full suites/typechecks, final three-axis reviews
+and Prove Before Handoff remain pending the coordinator's separate apply
+instruction, as required by the planning-only OpenSpec skill. Next: inspect the
+committed plan, apply the change, then independently review and prove its final
+implementation before offering a development build.
+
+## 2026-09-22 — #279 app roles and store access: implementation checkpoint
+
+Implemented the approved two-stage store boundary and self-only discovery using
+existing `has_role`/`data_scope`, with no legacy Table CRUD change. Added explicit
+read/action policies, narrow locked scope facts, immutable operation context,
+mandatory product gates, and separate ledger authorization/result projection.
+Tasker 2.1.0 and action-proof 1.1.0 declare table/generic policies; preserved exact
+historical artifacts for explicit upgrade proofs. Migration 0097 adds only the
+nullable private ledger authorization JSONB column. Canonical specs synchronized.
+
+Evidence at this checkpoint: `pnpm --filter server typecheck` passes;
+`DATABASE_URL=.../featherbase_issue279_test pnpm --filter server test
+test/app-access.test.ts` passes 12 tests; focused runtime action/upgrade/deletion
+suite passes 31 tests. Initial four tests failed against absent declarations.
+Oracle found mutable resolver claim state; its asymmetric test first returned
+A+B for claimed A (red), then passed after freezing the original claim. Oracle
+reviewed that resolution and closed the finding. PostgreSQL result-projection
+poison proves refused replay never selects protected result bytes. Independent
+commit/lock proof passes on the positively identified directly local, test-stamped
+`featherbase_issue279_access_commit_e2e`; CI now explicitly runs that proof.
+`pnpm check:specs` passes strict validation and STC with no orphans/new gaps.
+
+First full server run: 863 passed, one stale action-proof client-version failure,
+18 expected opt-in/MySQL skips. Corrected that test client's explicit version;
+final broad rerun, runtime/browser proof, mutation review and independent final
+review remain pending. No development-build handoff, merge or deployment yet.
+
+## 2026-09-22 — #279 independent review corrections
+
+Independent review of the implementation checkpoint found two governed defects:
+authorization callback exceptions could disclose private AppError details without
+denial audit, and the legacy pre-first-migration identity exemption leaked into
+the new boundary. Both were reproduced red with real Hono/PostgreSQL tests
+(500 instead of fixed 403; missing identity accepted with 200). Scope callback
+execution/footprint validation and product callback failures now become redacted
+refusals; admitted business errors remain unchanged. Required denial audit fails
+visibly if unavailable rather than silently using legacy optional-audit behavior.
+New protected HTTP reads/actions/discovery require exact active identity even
+before a first migration; legacy Table CRUD keeps its existing semantics.
+Consequently obsolete declared-action identities now get audited fixed 403,
+while legacy CRUD retains its existing 409 reload response.
+
+Verification: focused app-access/runtime-action/package/upgrade/deletion/Tasker
+tests pass 53/53; app-access includes fresh/pending/upgraded identity matrices,
+ordinary/private callback errors, invalid footprint, preserved business errors,
+durable redacted audits, unavailable-audit failure, and SQL-poisoned replay-result
+projection. Independent-commit scope/product/duplicate lock proof passes;
+server typecheck and `pnpm check:specs` pass. Commands used dedicated local
+`featherbase_issue279_test` and `featherbase_issue279_access_commit_e2e` only.
+Independent follow-up review, final broad rerun and runtime proof remain pending.
+
+## 2026-09-22 — #279 final verification and real HTTP callback proof
+
+The independent reviewer closed the original callback/identity reproductions at
+the corrected implementation, then caught one stale opt-in Tasker expectation.
+That proof now requires the governed fixed PermissionError and a durable denial
+audit increment, preserving every later replay/disable assertion. Added an actual
+loopback TCP/Hono callback proof to the existing dedicated commit suite: ordinary
+Error and private NotFoundError from resolver/product callbacks yield identical
+403 bodies, independent committed audit rows, no business/upstream execution,
+and successful original-result replay after fault removal. Faults are injected
+only by the test harness into the proving package's exported test state; no
+production debug route or runtime-package import of private core was added.
+
+Commands: `APP_ACCESS_COMMIT_PROOF=1 DATABASE_URL=.../featherbase_issue279_access_commit_e2e
+pnpm --filter server exec vitest run test/app-access-commit.test.ts` passes 2/2;
+`TASKER_UPGRADE_ACTION_PROOF=1 DATABASE_URL=.../featherbase_issue279_actions_commit_e2e
+pnpm --filter server exec vitest run test/tasker-upgrade-action-commit.test.ts`
+passes through completion. Full server passes 869 with 18 expected skips; shared
+129/129; web 164/164; workspace typechecks pass. Web uses Node 26's
+`NODE_OPTIONS=--no-experimental-webstorage` so jsdom owns storage. One concurrent
+web run had two unrelated import-naming timing failures; the full serial rerun
+passed unchanged. The v1→v2 identity test now names the preserved exact v2 fixture
+rather than the current 2.1 package; its behavior/expected outcomes are unchanged.
+
+`CHROMIUM_PATH=<installed Chromium> RUNTIME_PROOF_DATABASE_URL=.../featherbase_issue279_runtime_e2e
+RUNTIME_PROOF_PORT=8496 node tools/prove-runtime-packages.mjs` passes the literal
+frozen-core/install/browser/upgrade/restart proof. Evidence is in ignored
+`dist/runtime-proof-OAu1BG`; desktop capture was inspected for readable content
+and unclipped controls. All databases are dedicated test-stamped on the positively
+identified directly local PostgreSQL server. The populated live exploration DB
+was not reset. Exact historical scopeproof artifact remains available separately
+for restarting its installed version, while core runs the corrected commit.
+
+Oracle's final follow-up found no remaining scoped callback/identity/replay/lock
+invariant violation. Independent live exploration confirmed store, object,
+replay and revocation scenarios and then the corrected identity matrix. Final
+independent acceptance of the verification delta remains the coordinator's gate;
+no merge, deployment or completed Budgets/DASH implementation is claimed.

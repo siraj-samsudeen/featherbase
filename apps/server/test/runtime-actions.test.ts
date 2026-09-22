@@ -2,7 +2,8 @@ import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { describe, expect } from 'vitest'
-import { test } from './pg-test'
+import { makeClient, type TestClient, type CreateUserFn } from 'feather-testing-postgres'
+import { test as pgTest } from './pg-test'
 import { discoverPackages, availableRuntimeVersions } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { sql } from '../src/db'
@@ -11,6 +12,13 @@ import { registerController, unregisterController, type TableController } from '
 
 const directory = resolve('../..', 'runtime-apps/action-proof')
 const action = '/api/app_actions/actionproof/'
+const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
+  ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'actionproof@1.1.0,actionproof2@1.1.0' },
+}) }, client.token, client.user)
+const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
+  admin: async ({ admin }, use) => use(pinned(admin)),
+  createUser: async ({ createUser }, use) => use(async options => pinned(await createUser(options))),
+})
 
 describe('declared transactional runtime actions', () => {
   // @spec declared_app_actions_fail_closed
@@ -117,7 +125,7 @@ describe('declared transactional runtime actions', () => {
     const request = { idempotencyKey: 'probe', payload: { operation: 'shape' } }
     expect((await app.request(action + 'probe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request) })).status).toBe(401)
     await expect(admin.post(action + 'constructor', request)).rejects.toMatchObject({ status: 404 })
-    expect(await admin.post(action + 'probe', request)).toEqual({ result: ['documents', 'payload', 'reject', 'user'] })
+    expect(await admin.post(action + 'probe', request)).toEqual({ result: ['authorization', 'documents', 'payload', 'reject', 'user'] })
     for (const table of ['Permission', 'runtime_action_result', 'other.task']) {
       await expect(admin.post(action + 'probe', { idempotencyKey: table, payload: { operation: 'create', table, values: { row_id: 'forbidden' } } })).rejects.toMatchObject({ status: 417 })
     }
@@ -146,7 +154,7 @@ describe('declared transactional runtime actions', () => {
       expect(await sql`select title from actionproof2.destination`).toEqual([{ title: '53 / destination' }])
       const manifestPath = resolve(second, 'featherbase.json')
       const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
-      for (const actions of [{ ...manifest.actions, version: 2 }, { ...manifest.actions, names: ['transform'] }, { ...manifest.actions, names: ['transform', 'discard', 'probe', 'absent'] }, { ...manifest.actions, tables: ['Undeclared Shared'] }]) {
+      for (const actions of [{ ...manifest.actions, version: 3 }, { ...manifest.actions, names: ['transform'] }, { ...manifest.actions, names: ['transform', 'discard', 'probe', 'absent'] }, { ...manifest.actions, tables: ['Undeclared Shared'] }]) {
         await writeFile(manifestPath, JSON.stringify({ ...manifest, actions }))
         expect(await discoverPackages([second])).toHaveLength(1)
       }

@@ -8,9 +8,11 @@ import { withAppClientVersion } from '../src/app-lifecycle'
 import { saveDoc } from '../src/document'
 import { registerController, unregisterController, type TableController } from '../src/controllers'
 import { app } from '../src/index'
+import { version as oldVersion } from '../../../runtime-apps/tasker/package.json'
 
 void app
 const prove = process.env.TASKER_UPGRADE_ACTION_PROOF === '1' ? test : test.skip
+const newVersion = '3.0.0'
 
 // @spec action_commit_boundary_and_lifecycle_serialize
 // @spec runtime_upgrade_commit_and_activation.upgrade_drains_admitted_work
@@ -25,10 +27,10 @@ prove('Tasker upgrade waits through committed action effects, then gates obsolet
   await cp(source, target, { recursive: true, filter: file => !file.split('/').includes('node_modules') })
   const manifestPath = resolve(target, 'featherbase.json')
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
-  manifest.migrations.push({ id: 'action_race_probe', fromVersion: '2.0.0', toVersion: '2.1.0', operations: [] })
+  manifest.migrations.push({ id: 'action_race_probe', fromVersion: oldVersion, toVersion: newVersion, operations: [] })
   await writeFile(manifestPath, JSON.stringify(manifest))
   const packagePath = resolve(target, 'package.json')
-  await writeFile(packagePath, JSON.stringify({ ...JSON.parse(await readFile(packagePath, 'utf8')), version: '2.1.0' }))
+  await writeFile(packagePath, JSON.stringify({ ...JSON.parse(await readFile(packagePath, 'utf8')), version: newVersion }))
   let release!: () => void
   const gate = new Promise<void>(resolve => { release = resolve })
   let effects = 0
@@ -49,14 +51,14 @@ prove('Tasker upgrade waits through committed action effects, then gates obsolet
     const task = await saveDoc('tasker.task', { task_title: 'Preserve 37, not 83' }, 'Administrator', 'insert')
     const request = { idempotencyKey: 'upgrade-race', payload: { row_id: task.row_id, updated_at: new Date(task.updated_at as string).toISOString() } }
     const run = (version: string) => withAppClientVersion(`tasker@${version}`, () => runPackageAction('tasker', 'promote', request, 'Administrator'))
-    const plan = await previewAppUpgrade('tasker', '2.1.0')
+    const plan = await previewAppUpgrade('tasker', newVersion)
     registerController(controller)
-    action = run('2.0.0')
+    action = run(oldVersion)
     await expect.poll(() => effects).toBe(1)
     let upgraded = false
-    upgrade = upgradeApp('tasker', '2.1.0', plan.planId).then(result => { upgraded = true; return result })
+    upgrade = upgradeApp('tasker', newVersion, plan.planId).then(result => { upgraded = true; return result })
     await expect.poll(async () => Number((await sql`select count(*) as n from pg_stat_activity where datname = current_database() and wait_event = 'advisory'`)[0].n)).toBeGreaterThanOrEqual(1)
-    queuedReplay = run('2.0.0').then(value => ({ value }), error => ({ error }))
+    queuedReplay = run(oldVersion).then(value => ({ value }), error => ({ error }))
     disable = setAppEnabled('tasker', false)
     await expect.poll(async () => Number((await sql`select count(*) as n from pg_stat_activity where datname = current_database() and wait_event = 'advisory'`)[0].n)).toBeGreaterThanOrEqual(3)
     expect(upgraded).toBe(false)
@@ -65,20 +67,26 @@ prove('Tasker upgrade waits through committed action effects, then gates obsolet
     await upgrade
     expect(await queuedReplay).toMatchObject({ error: { type: 'PermissionError' } })
     await disable
-    await expect(run('2.0.0')).rejects.toMatchObject({ type: 'PermissionError' })
-    await expect(run('2.1.0')).rejects.toMatchObject({ type: 'PermissionError' })
-    await activateAppUpgrade('tasker', '2.1.0')
+    await expect(run(oldVersion)).rejects.toMatchObject({ type: 'PermissionError' })
+    await expect(run(newVersion)).rejects.toMatchObject({ type: 'PermissionError' })
+    await activateAppUpgrade('tasker', newVersion)
     expect(await sql`select enabled from installed_app where name = 'tasker'`).toEqual([{ enabled: false }])
-    await expect(run('2.1.0')).rejects.toMatchObject({ type: 'PermissionError' })
+    await expect(run(newVersion)).rejects.toMatchObject({ type: 'PermissionError' })
     await setAppEnabled('tasker', true)
-    await expect(run('2.0.0')).rejects.toMatchObject({ type: 'ConflictError' })
-    expect(await run('2.1.0')).toEqual(result)
+    // @spec fresh_app_store_access
+    // @spec app_refusals_are_auditable
+    const [before] = await sql`select count(*)::int as n from access_log
+      where "user" = 'Administrator' and operation = 'app_access_denied' and method = 'tasker.promote:permission'`
+    await expect(run(oldVersion)).rejects.toMatchObject({ type: 'PermissionError', message: 'Application access refused' })
+    expect(await sql`select count(*)::int as n from access_log
+      where "user" = 'Administrator' and operation = 'app_access_denied' and method = 'tasker.promote:permission'`).toEqual([{ n: before.n + 1 }])
+    expect(await run(newVersion)).toEqual(result)
     expect(effects).toBe(1)
     expect(await sql`select project_name from tasker.project`).toEqual([{ project_name: 'Preserve 37, not 83' }])
     expect(await sql`select row_id from tasker.task`).toHaveLength(0)
     await setAppEnabled('tasker', false)
-    await activateAppUpgrade('tasker', '2.1.0')
-    await expect(run('2.1.0')).rejects.toMatchObject({ type: 'PermissionError' })
+    await activateAppUpgrade('tasker', newVersion)
+    await expect(run(newVersion)).rejects.toMatchObject({ type: 'PermissionError' })
     expect(await sql`select enabled from installed_app where name = 'tasker'`).toEqual([{ enabled: false }])
     expect(await sql`select result from runtime_action_result where idempotency_key = 'upgrade-race'`).toHaveLength(1)
   } finally {

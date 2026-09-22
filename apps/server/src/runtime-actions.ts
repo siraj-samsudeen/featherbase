@@ -1,26 +1,20 @@
 import { z } from 'zod'
-import type { ActionRow, RuntimeActionContext, RuntimeActionHandler } from 'shared'
+import type { ActionRow, RuntimeActionContext, RuntimeActionHandler, RuntimeReadHandler } from 'shared'
 import { sql } from './db'
 import { appOperation, assertAppAvailable } from './app-lifecycle'
-import { actionTransaction } from './action-transaction'
+import { canonicalJson, recordAppAccessRefusal, withAppAuthorization, type DeclaredAppOperation } from './app-access'
 import { AppError } from './errors'
 import { getMeta } from './meta'
 import { tableRelation } from './table-engine'
-import { assertPermission } from './permissions'
 import { assertUserPermissions, deleteDoc, getDoc, saveDoc } from './document'
 import { documentActivity, retainedDocumentCounts } from './document-activity'
 import { getList } from './query'
 
-export const actionDeclaration = z.object({
-  version: z.literal(1),
-  names: z.array(z.string().regex(/^[a-z][a-z0-9_]{0,63}$/)).min(1),
-  tables: z.array(z.string().min(1)).min(1),
-}).strict()
-
-export interface DeclaredActions {
+export interface DeclaredOperations<H = RuntimeActionHandler> {
   entryTable: string
   tables: string[]
-  handlers: Map<string, RuntimeActionHandler>
+  handlers: Map<string, H>
+  operations: Map<string, DeclaredAppOperation>
 }
 
 const requestSchema = z.object({
@@ -30,17 +24,6 @@ const requestSchema = z.object({
 
 function reject(message: string, fields?: Record<string, string>): never {
   throw new AppError('ValidationError', message, fields)
-}
-
-// Canonical JSON preserves array order and sorts object keys; malformed result
-// types fail before commit rather than producing an unreplayable response.
-function canonical(value: unknown): string {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value)
-  if (typeof value === 'number' && Number.isFinite(value)) return JSON.stringify(value)
-  if (Array.isArray(value)) return `[${Array.from(value, canonical).join(',')}]`
-  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype)
-    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical((value as ActionRow)[key])}`).join(',')}}`
-  return reject('Action payload and result must be JSON values')
 }
 
 // @spec action_helpers_preserve_caller_authority
@@ -138,34 +121,66 @@ function callerDocuments(app: string, allowed: string[], user: string) {
 }
 
 // @spec action_writes_and_replay_are_atomic
-export function executeRuntimeAction(app: string, name: string, input: unknown, user: string, declaration: () => DeclaredActions | undefined) {
+export function executeRuntimeAction(app: string, name: string, input: unknown, user: string, declaration: () => DeclaredOperations | undefined) {
   return appOperation(async () => {
     const parsed = requestSchema.safeParse(input)
     if (!parsed.success) reject('Expected { idempotencyKey, payload }')
     if (!user || user === 'Guest') throw new AppError('AuthenticationError', 'Sign in to run an application action')
-    await assertAppAvailable(`${app}.__action`)
+    try { await assertAppAvailable(`${app}.__action`, true) }
+    catch (error) {
+      if (error instanceof AppError && error.type === 'PermissionError') return recordAppAccessRefusal(user, app, name, 'permission')
+      throw error
+    }
     const contribution = declaration()
     const handler = contribution?.handlers.get(name)
     if (!contribution || !handler) throw new AppError('NotFoundError', 'Application action is undeclared or unavailable')
-    await assertPermission(user, contribution.entryTable, 'read')
     const { idempotencyKey, payload } = parsed.data
-    const encoded = canonical(payload)
-    return actionTransaction(async () => {
-      await sql`select pg_advisory_xact_lock(hashtextextended(${JSON.stringify([user, app, name, idempotencyKey])}, 296))`
-      const [previous] = await sql`select payload, result from runtime_action_result
-        where caller = ${user} and app = ${app} and action = ${name} and idempotency_key = ${idempotencyKey}`
-      if (previous) {
-        if (previous.payload !== encoded) throw new AppError('ConflictError', 'Idempotency key was already used with a different payload')
+    return withAppAuthorization({ app, operation: name, kind: 'action', user, payload, idempotencyKey,
+      entryTable: contribution.entryTable, contribution: contribution.operations.get(name),
+      loadReplay: async normalized => {
+        const [previous] = await sql`select payload, "authorization" from runtime_action_result
+          where caller = ${user} and app = ${app} and action = ${name} and idempotency_key = ${idempotencyKey}`
+        if (previous && previous.payload !== canonicalJson(normalized)) throw new AppError('ConflictError', 'Idempotency key was already used with a different payload')
+        return previous ? { authorization: previous.authorization } : undefined
+      },
+    }, async (authorization, normalized, metadata, replay) => {
+      if (replay) {
+        const [previous] = await sql`select result from runtime_action_result
+          where caller = ${user} and app = ${app} and action = ${name} and idempotency_key = ${idempotencyKey}`
         return { result: previous.result }
       }
       const context = callerDocuments(app, contribution.tables, user)
       let result: unknown
-      try { result = await handler(Object.freeze({ user, payload, documents: context.documents, reject })) }
+      try { result = await handler(Object.freeze({ user, payload: normalized, authorization, documents: context.documents, reject })) }
       finally { await context.close() }
-      const json = canonical(result)
-      await sql`insert into runtime_action_result (caller, app, action, idempotency_key, payload, result)
-        values (${user}, ${app}, ${name}, ${idempotencyKey}, ${encoded}, ${sql.json(JSON.parse(json))})`
+      const json = canonicalJson(result)
+      await sql`insert into runtime_action_result (caller, app, action, idempotency_key, payload, result, "authorization")
+        values (${user}, ${app}, ${name}, ${idempotencyKey}, ${canonicalJson(normalized)}, ${sql.json(JSON.parse(json))}, ${sql.json(JSON.parse(JSON.stringify(metadata)))})`
       return { result: JSON.parse(json) as unknown }
+    })
+  })
+}
+
+export function executeRuntimeRead(app: string, name: string, input: unknown, user: string,
+  declaration: () => DeclaredOperations<RuntimeReadHandler> | undefined, discovery = false) {
+  return appOperation(async () => {
+    const parsed = requestSchema.omit({ idempotencyKey: true }).safeParse(input)
+    if (!discovery && !parsed.success) reject('Expected { payload }')
+    const contribution = declaration()
+    const handler = contribution?.handlers.get(name)
+    if (!contribution || !handler) return recordAppAccessRefusal(user, app, name, 'configuration')
+    return withAppAuthorization({ app, operation: name, kind: discovery ? 'discovery' : 'read', user,
+      payload: parsed.success ? parsed.data.payload : undefined, entryTable: contribution.entryTable,
+      contribution: contribution.operations.get(name),
+    }, async (authorization, payload) => {
+      if (discovery) return { storeCodes: authorization.storeCodes }
+      const context = callerDocuments(app, contribution.tables, user)
+      // @spec runtime_reads_have_no_mutations
+      const { get, list, activity } = context.documents
+      try {
+        const result = await handler(Object.freeze({ user, payload, authorization, reject, documents: Object.freeze({ get, list, activity }) }))
+        return { result: JSON.parse(canonicalJson(result)) as unknown }
+      } finally { await context.close() }
     })
   })
 }
