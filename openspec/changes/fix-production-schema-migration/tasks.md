@@ -14,4 +14,4 @@
 
 - [x] 3.1 Run targeted migration/release tests, server typecheck, SQL lint, check:specs and relevant broader server tests against disposable local PostgreSQL; report decisive results and limitations.
 - [x] 3.2 Inspect the final diff, obtain scoped independent final Oracle review of the migration boundary, resolve findings, and execute applicable Prove Before Handoff checks.
-- [ ] 3.3 Commit and push the authorized review branch/PR, watch CI, and report root cause, evidence, verification, production maintenance/backup sequence, reset trade-offs and any blockers to the parent; do not merge or operate production.
+- [x] 3.3 Commit and push the authorized review branch/PR, watch CI, and report root cause, evidence, verification, production maintenance/backup sequence, reset trade-offs and any blockers to the parent; do not merge or operate production.
