@@ -11,7 +11,7 @@
 
 - [x] 2.1 Run web unit tests, targeted e2e, web typecheck and pnpm check:specs; record exact results and limitations.
 - [x] 2.2 Render affected default/non-default/error states, inspect captured screenshots and retain representative evidence.
-- [ ] 2.3 Refresh origin/main, verify final diff, push one branch and open one PR linking the six issues; hand final diff/evidence to the parent for independent review.
+- [x] 2.3 Refresh origin/main, verify final diff, push one branch and open one PR linking the six issues; hand final diff/evidence to the parent for independent review (PR #306).
 
 Verification on 2026-09-22: 27 web unit files / 171 tests, 19 PostgreSQL source tests,
 21 targeted browser tests (including 144 WCAG contrast pairs), web typecheck and
