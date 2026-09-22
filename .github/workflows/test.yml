@@ -78,6 +78,10 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The release regression runs the exact production-era source, not
+          # a hand-maintained approximation of its schema.
+          fetch-depth: 0
 
       # No `version` input: pnpm/action-setup reads the `packageManager`
       # field from package.json, so the CI pnpm always matches the repo.
