@@ -9091,3 +9091,39 @@ its own database, post-#191) green on the PR. Closes the loop on #132.
   web5226 stopped. Evidence logs and representative inspected images retained
   in `rama_dw/outputs/issue296-core-responsive/`. Final integrated delta review
   remains with the parent/reviewer; this worker makes no deployment claim.
+
+## 2026-09-22 — App roles and store access planning checkpoint (#279)
+
+Created `openspec/changes/app-roles-store-access` from merged #298. Inspected
+#279/#246/#274/#296/#298, canonical runtime/action specs, permission assignments,
+loader identity/lifecycle, action transaction/replay and existing tests. The plan
+reuses `has_role` and `data_scope` without changing legacy Table CRUD. It names
+explicit package operation policies, generic runtime reads, narrow locked scope
+resolution for persisted objects, and immutable replay authorization metadata
+separate from protected result reads. Tasker moves through a versioned explicit
+Table-policy upgrade; historical actions do not receive an implicit bypass.
+
+The spec review distinguishes trusted-package assumptions from host promises,
+records governed requirements and an ordered refusal table, and identifies the
+missing executable links rather than creating placeholder markers. Scoped Oracle
+design review found an absent product-footprint producer in two declaration
+combinations and stale generic grants after product-fact lock waits. The plan now
+rejects those unsupported action combinations and rechecks at final admission;
+Oracle's follow-up confirmed both planning findings resolved. The requested
+`mattpocock-skills:grilling` invocation failed because the skill is unavailable;
+the Oracle consultation is recorded separately, not presented as that skill.
+
+Verification: `pnpm exec openspec validate app-roles-store-access --strict
+--no-interactive` passes; status is 4/4 planning artifacts. `pnpm check:specs`
+passes strict validation of 17 canonical specs and both active changes, then
+fails STC with exactly 12 new links missing (code/test for six new requirements).
+Those are intentional unimplemented-plan gaps, not a green implementation claim;
+no baseline relaxation or fabricated markers. Separately `pnpm check:spec-policy`
+passes all seven tests and the policy check; `git diff --check` passes.
+
+No application code, database, expected test outcomes or deployment changed.
+Boot smoke, TDD implementation, full suites/typechecks, final three-axis reviews
+and Prove Before Handoff remain pending the coordinator's separate apply
+instruction, as required by the planning-only OpenSpec skill. Next: inspect the
+committed plan, apply the change, then independently review and prove its final
+implementation before offering a development build.
