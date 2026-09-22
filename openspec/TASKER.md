@@ -6,17 +6,20 @@ installation, storage and hosting behavior remains separate in
 
 ## Capabilities
 
-- [Share Work Across the Team](specs/tasker-shared-team-work/spec.md)
-- [Quick Task Capture](specs/tasker-quick-task-capture/spec.md)
-- [Process Inbox Items](specs/tasker-process-inbox-items/spec.md)
-- [Start a Project](specs/tasker-start-a-project/spec.md)
-- [Star Projects for Quick Access](specs/tasker-star-projects/spec.md)
-- [Reorganize Projects](specs/tasker-reorganize-projects/spec.md)
-- [Manage Responsibility and Progress](specs/tasker-responsibility-and-progress/spec.md)
-- [Plan My Work](specs/tasker-plan-my-work/spec.md)
-- [Review Team Workload](specs/tasker-review-team-workload/spec.md)
-- [Use Task Details](specs/tasker-use-task-details/spec.md)
-- [Use the Tasker Workspace](specs/tasker-use-workspace/spec.md)
+In the order a newcomer learns and tests them: each one uses what the ones
+before it created, and the team capabilities come after the single-person ones.
+
+1. [Quick Task Capture](specs/tasker-quick-task-capture/spec.md)
+2. [Process Inbox Items](specs/tasker-process-inbox-items/spec.md)
+3. [Start a Project](specs/tasker-start-a-project/spec.md)
+4. [Star Projects for Quick Access](specs/tasker-star-projects/spec.md)
+5. [Reorganize Projects](specs/tasker-reorganize-projects/spec.md)
+6. [Manage Responsibility and Progress](specs/tasker-responsibility-and-progress/spec.md)
+7. [Plan My Work](specs/tasker-plan-my-work/spec.md)
+8. [Share Work Across the Team](specs/tasker-shared-team-work/spec.md)
+9. [Review Team Workload](specs/tasker-review-team-workload/spec.md)
+10. [Use Task Details](specs/tasker-use-task-details/spec.md)
+11. [Use the Tasker Workspace](specs/tasker-use-workspace/spec.md)
 
 ## Specified but not built
 
