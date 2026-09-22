@@ -22,6 +22,7 @@ test.afterEach(async ({ request }) => resetPalette(request))
 
 // UI-025: the palette picker re-skins the UI (second theming axis alongside
 // light/dark), persists per-user on the server, and survives a reload.
+// @spec appearance_preferences_persist_per_user
 test('UI-025: palette switches, persists across reload, and is stored per-user', async ({ page, request }) => {
   await loginAs(page)
   const html = page.locator('html')

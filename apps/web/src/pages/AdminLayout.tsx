@@ -305,6 +305,7 @@ export function AdminLayout() {
     router.history.push(entry.path)
   }
 
+  // @spec awesomebar_opens_matching_destinations
   function openDoc(hit: SearchHit) {
     recordSearch(search.trim())
     setSearch('')

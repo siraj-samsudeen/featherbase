@@ -21,6 +21,7 @@ function isPalette(v: unknown): v is Palette {
   return PALETTES.includes(v as Palette)
 }
 
+// @spec appearance_preferences_persist_per_user
 export function applyPalette(palette: Palette) {
   // `classic` is the base @theme token set — no attribute needed.
   if (palette === 'classic') delete document.documentElement.dataset.palette

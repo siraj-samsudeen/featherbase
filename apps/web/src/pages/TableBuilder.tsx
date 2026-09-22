@@ -235,6 +235,7 @@ export function TableBuilder() {
     }
     try {
       const sheets = await parseWorkbook(file)
+      // @spec builder_infers_file_columns
       const { headers, rows, headerExcelRow } = sheets[0]
       // The quick builder handles one sheet; the Import wizard handles all.
       setMoreSheets(sheets.length > 1 ? sheets.length : 0)

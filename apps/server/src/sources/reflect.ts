@@ -99,6 +99,7 @@ async function candidateFor(
   return { ...base, bindable: true }
 }
 
+// @spec source_candidates_preserve_fk_metadata
 export async function introspectSource(
   sourceName: string,
   schema?: string,

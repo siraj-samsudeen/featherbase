@@ -381,6 +381,7 @@ describe('EDS-11: source failure', () => {
 })
 
 describe('EDS-2: foreign keys reflect as References', () => {
+  // @spec source_candidates_preserve_fk_metadata
   test('FK edges surface on introspect and converge in child-first order', async ({ admin }) => {
     await makeSource(admin)
     const intro = (await admin.get(
