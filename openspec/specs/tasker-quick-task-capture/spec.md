@@ -7,9 +7,7 @@ the list of tasks nobody has sorted yet — where it goes and who does it.
 
 ## Requirements
 
-### Requirement: title_alone_records_task
-Built: yes · Checked by a server test and a browser test.
-
+### Requirement: quick_task_capture
 Typing a title and pressing Enter SHALL be all it takes to record a task. A new
 task starts with these defaults:
 
@@ -18,8 +16,7 @@ task starts with these defaults:
 - it is **Not started** and **not urgent**.
 
 #### Scenario: capture_from_inbox
-- **GIVEN** the user is on the Inbox
-- **WHEN** the user types `Review September stock variance` in *What do you need
+- **WHEN** the user, on the Inbox, types `Review September stock variance` in *What do you need
   to remember?* and presses Enter
 - **THEN** the task appears in the Inbox with the defaults above
 - **AND** the input box is cleared and the cursor is back in it.
