@@ -102,6 +102,24 @@ read inputs without creating package-specific routes or allowing arbitrary SQL.
 Both use ordinary authentication, error envelope and pinned app identity.
 This is the generic named read contribution needed here, not all of #274.
 
+### Self-only store discovery (approved amendment, 2026-09-22)
+
+A stores-policy read may opt in with `discoverStoreAccess: true` on its operation
+declaration. `GET /api/app_reads/:app/:read/access` returns only `{storeCodes}`:
+sorted exact current Data Scope values for this caller and this declared store
+dimension, after fresh enabled-user, active exact app identity, entry-permission
+and declared read-role checks. Empty grants return `[]`; other missing gates
+refuse. The dimension must be an owned local Table; foreign/malformed declarations
+refuse. Reject the option on table policies, actions and unsupported versions.
+No query/body user, role, store or dimension override is accepted.
+
+Discovery invokes no package handler, scope resolver, product authorizer, upstream,
+cache/result read or mutation helper. It returns no labels, roles, product data
+or other grants. Responses use no-store and are not authority or reusable contexts.
+All subsequent operations independently resolve fresh complete scope. This closes
+the initial picker gap without mirroring ACL assignments or widening facts.get.
+Audit contains only fixed reason/caller/app/operation, never discovered store codes.
+
 For stores policies `payload` is an object. `payload.storeCodes`, when present,
 must be an array of nonblank exact strings; normalize to a sorted unique set
 without trimming/coercion. Request scope requires a nonempty set. Resolver scope

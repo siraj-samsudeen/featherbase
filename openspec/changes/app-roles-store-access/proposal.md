@@ -12,6 +12,8 @@ authority over a non-Table application resource.
   Viewer reads from Planner mutations and deny missing policy or scope.
 - Add a generic runtime-package read contribution and shared callable admission
   boundary, with trusted normalized scope in read/action contexts.
+- Add explicitly declared self-only current store-code discovery for initial
+  pickers, without running package callbacks or granting authority to later calls.
 - Permit declared, narrow authorization-fact reads before business handlers so
   object-addressed operations prove complete persisted scope, not client claims.
 - Bind original scope to durable action results and authorize before disclosure,

@@ -179,3 +179,34 @@ configuration diagnostics. Refusal audit SHALL survive business rollback.
 - **WHEN** a protected action is refused
 - **THEN** no business handler/upstream effect or result disclosure occurs
 - **AND** the refusal audit remains without sensitive request/result contents
+
+### Requirement: self_store_access_discovery
+Status: governed (#279)
+
+A stores-policy read MAY explicitly enable self-only store discovery. Discovery
+SHALL freshly verify enabled caller, active exact app identity, entry access,
+declared read role and valid owned store dimension, then return only sorted exact
+current store codes from that caller's Data Scope. No current grants SHALL return
+an empty array after other gates pass. Missing role/user/app/policy SHALL refuse.
+No caller-selected user, role, dimension or scope override SHALL be accepted.
+Discovery SHALL be operation-specific and invalid on table policies, actions or
+unsupported declaration versions. It SHALL invoke no package handler, resolver,
+product authorizer, upstream, protected-result/cache path or mutation helper.
+It SHALL disclose no labels, role names, product rows or broader assignments.
+Responses SHALL not be cached or accepted as authority for another request;
+subsequent protected reads/actions SHALL independently recheck current full scope.
+Audit SHALL preserve the same redaction contract as protected operations.
+
+#### Scenario: discovery_is_self_only_and_fresh
+- **WHEN** an A-only caller discovers access, then loses A in the same session
+- **THEN** the first response is exactly A without B metadata and the next is empty
+- **AND** a later read cannot use that old discovery to regain A
+
+#### Scenario: discovery_rechecks_role_and_lifecycle
+- **WHEN** the discovery caller loses its role or the user/app is disabled
+- **THEN** the next discovery refuses without invoking any package callback
+
+#### Scenario: discovery_does_not_cross_operations
+- **WHEN** discovery is attempted on another operation lacking opt-in, with
+  overrides, or with a malformed/foreign dimension declaration
+- **THEN** activation or admission refuses without assignment disclosure
