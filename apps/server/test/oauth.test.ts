@@ -115,6 +115,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   // #150: the code is a one-shot. The copy left behind in browser history, in
   // a Referer header or in a proxy log is already spent by the time anyone
   // reads it — unlike the 7-day session JWT that used to be in that URL.
+  // @spec oauth_session_handoff_baseline
   test('a handoff code cannot be redeemed twice', async ({ api }) => {
     await setAllowedDomains('*')
     const res = await mockSignIn(api, 'replay@gmail.com')
@@ -185,6 +186,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
     expect(admitted.headers.get('location')).toContain('/oauth-callback?code=')
   })
 
+  // @spec google_identity_resolution_baseline
   test('an existing user signs in when auto-provisioning is disabled', async ({ api }) => {
     await saveDoc(
       'User',
@@ -249,6 +251,7 @@ describe('PLAT-006: OAuth sign-in (mock provider)', () => {
   // browser did. Without the cookie binding, an attacker completes consent
   // with their own account and feeds the victim the callback URL, planting the
   // attacker's session in the victim's browser (login CSRF / session fixation).
+  // @spec google_browser_challenge_baseline
   test('a callback whose state cookie is missing or mismatched is rejected', async ({ api }) => {
     await setAllowedDomains('*')
     // "No user was provisioned" only means something if none existed to begin

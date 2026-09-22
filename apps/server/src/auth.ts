@@ -47,6 +47,7 @@ export interface SessionUser {
   full_name: string | null
 }
 
+// @spec password_authentication_baseline
 export async function login(usr: string, pwd: string): Promise<{ token: string; user: SessionUser }> {
   const [user] = await sql`
     select row_id, email, full_name, enabled, password_hash, user_type from "user"
@@ -57,6 +58,7 @@ export async function login(usr: string, pwd: string): Promise<{ token: string; 
     throw new AppError('AuthenticationError', 'Invalid login credentials')
   // SET-004: session lifetime is driven by System Settings (session_hours),
   // clamped to a sane range so a bad setting can't disable or eternalize logins.
+  // @spec session_validity_baseline
   const { session_hours } = await getSystemSettings()
   const hours = Math.min(Math.max(session_hours || 8, 1), 720)
   const token = await sign(
@@ -76,6 +78,7 @@ export async function login(usr: string, pwd: string): Promise<{ token: string; 
 
 // PLAT-006: issue a session for an already-authenticated user (e.g. after a
 // successful OAuth exchange) — the password-less counterpart to login().
+// @spec session_validity_baseline
 export async function issueSession(userName: string): Promise<{ token: string; user: SessionUser }> {
   const [user] = await sql`
     select row_id, email, full_name, enabled, user_type from "user" where row_id = ${userName}`
@@ -233,6 +236,7 @@ export function credentialFromCookieHeader(header?: string): string | undefined 
 // there is no URL-borne case left to refuse. A URL lands in browser history,
 // referrers and proxy logs, and that is as true of a session JWT as it is of
 // an access token.
+// @spec session_validity_baseline
 export async function resolveToken(authorization?: string): Promise<SessionUser> {
   const token = authorization?.match(/^Bearer (.+)$/)?.[1]
   if (!token) throw new AppError('AuthenticationError', 'Authentication required')

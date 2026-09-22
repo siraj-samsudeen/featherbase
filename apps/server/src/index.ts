@@ -184,6 +184,7 @@ app.post('/api/login', publicLimit('LOGIN'), async (c) => {
 // a live credential and any token-less request after logout re-authenticates
 // as the departed user (found via #101: a post-logout whoami refetch answered
 // as the previous user and poisoned the cache for the next account).
+// @spec session_validity_baseline
 app.post('/api/logout', (c) => {
   deleteCookie(c, 'sid', { path: '/' })
   return c.json({ ok: true })

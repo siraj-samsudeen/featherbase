@@ -94,6 +94,7 @@ export function codeChallengeFor(verifier: string): string {
 
 // `cookieState` is the value of the state cookie set at login. Both must be
 // present and identical, and the state must still carry a valid signature.
+// @spec google_browser_challenge_baseline
 export function verifyState(state: string | undefined, cookieState: string | undefined): void {
   if (!state) throw new AppError('AuthenticationError', 'Missing OAuth state')
   if (!cookieState)
@@ -267,6 +268,7 @@ export function mintHandoffCode(session: HandoffSession): string {
 
 // One code, one use. The entry is deleted whatever the outcome — an expired or
 // wrong-browser attempt burns it too, so nothing is left to retry against.
+// @spec oauth_session_handoff_baseline
 export function redeemHandoffCode(code: string | undefined, sid: string | undefined): HandoffSession {
   const invalid = () => new AppError('AuthenticationError', 'Invalid or expired sign-in code')
   if (!code) throw invalid()
@@ -298,6 +300,7 @@ async function domainAdmitted(email: string): Promise<boolean> {
 
 // Map an OAuth identity to a User: link an existing account by email/name or
 // create one, mark it as a Google login, and return its name.
+// @spec google_identity_resolution_baseline
 export async function findOrCreateGoogleUser(email: string, name: string): Promise<string> {
   const [existing] = await sql`
     select row_id, enabled, user_type from "user"
