@@ -204,7 +204,7 @@ changes, existing-column edits, new Tables, changed permission declarations,
 jobs and dependency declarations. Fresh installation uses the final schema
 and records the complete ledger; upgrades apply only its missing suffix.
 
-The built client must pin `X-Featherbase-App-Version: tasker@2.0.0` on requests
+The built client must pin `X-Featherbase-App-Version: tasker@2.1.0` on requests
 that access Tasker Tables (reads as well as writes). Do not obtain that header
 from the current catalog: doing so lets stale client code claim compatibility.
 After a migrated version activates, obsolete/headerless requests reject with
@@ -232,15 +232,16 @@ all shipped bytes, including manifests and lockfiles: the fingerprint covers
 the package tree except `node_modules` and `.git`. Symlinks are refused. Review
 trusted module imports; import-time side effects are not sandboxed.
 
-For example, operator-managed persistent paths can be
-`["/data/apps/tasker/0.0.1","/data/apps/tasker/2.0.0"]`. Railway must mount those
-artifacts into the actual running container and preserve them across releases.
-The current Dockerfile bundles just one Tasker directory; overwriting it with
-v2 is **not** a safe upgrade delivery strategy. Provision the immutable paths
-and override the environment variable explicitly. No package upload API exists.
-Once this generic core capability ships, later app-only upgrades need no core
-rebuild. Run the normal core release step once to install ledger migration 0095;
-never use a reset or demo seed as an application migration.
+The production image carries the reviewed Tasker artifacts at
+`/app/runtime-apps/tasker/0.0.1` and `/app/runtime-apps/tasker/2.1.0`, and its
+`FEATHERBASE_APP_PATHS` names both immutable roots. An operator-managed delivery
+may instead use persistent versioned directories, but it must mount every named
+artifact into the running container and preserve it across releases. Never
+overwrite one package directory in place. No package upload API exists. Once
+this generic core capability ships, later app-only upgrades need no core rebuild
+provided their required predecessor and target artifacts are delivered. Run the
+normal core release step once to install ledger migration 0095; never use a
+reset or demo seed as an application migration.
 
 Discovery selects the installed exact version, not the newest available one.
 Missing/changed code makes an installed application unavailable without deleting
@@ -269,36 +270,37 @@ applied twice. For a stale plan, obtain and review a new preview.
 These steps are instructions, not authorization to deploy or mutate Dev:
 
 1. Integrate convergence 0094, upgrades 0095 and actions 0096; verify the combined
-   build plus the real Tasker v2 package/client. Back up Dev and retain the exact
+   build plus the real Tasker 2.1.0 package/client. Back up Dev and retain the exact
    installed artifact. Check `/api/apps` for a known installed identity; stop for
    explicit recovery if it is an unversioned prototype.
 2. Deliver both immutable artifacts and deploy the generic core release normally
-   with the paths above. Inspect `/api/apps`: v1 must still be installed/active
-   and v2 merely available. Do not seed or reset Dev. Use a System Manager bearer
+   with the paths above. Inspect `/api/apps`: 0.0.1 must still be installed/active
+   and 2.1.0 merely available. Do not seed or reset Dev. Use a System Manager bearer
    token in the following requests; `BASE` must name the reviewed Dev origin.
 3. Preview, inspect the complete output and save its `planId`:
 
    ```sh
-   curl --fail-with-body "$BASE/api/preview_app_upgrade" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data '{"name":"tasker","version":"2.0.0"}'
+   curl --fail-with-body "$BASE/api/preview_app_upgrade" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data '{"name":"tasker","version":"2.1.0"}'
    ```
 
-4. Expect only `project_description`, no permissions/jobs/indexes/destructive
-   effects, existing values unchanged and a nullable new column. Substitute the
-   reviewed plan ID, then commit and explicitly activate:
+4. Expect `project_description` plus code-only `explicit_action_policies`, no
+   permissions/jobs/indexes/destructive effects, existing values unchanged and
+   one nullable new column. Substitute the reviewed plan ID, then commit and
+   explicitly activate:
 
    ```sh
-   curl --fail-with-body "$BASE/api/upgrade_app" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data '{"name":"tasker","version":"2.0.0","planId":"REVIEWED_PLAN_ID"}'
-   curl --fail-with-body "$BASE/api/activate_app_upgrade" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data '{"name":"tasker","version":"2.0.0"}'
+   curl --fail-with-body "$BASE/api/upgrade_app" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data '{"name":"tasker","version":"2.1.0","planId":"REVIEWED_PLAN_ID"}'
+   curl --fail-with-body "$BASE/api/activate_app_upgrade" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data '{"name":"tasker","version":"2.1.0"}'
    ```
 
-5. Confirm `/api/apps` reports v2, no pending activation and the intended enabled
+5. Confirm `/api/apps` reports 2.1.0, no pending activation and the intended enabled
    state. Reload Tasker and verify prior project/task/comment/settings/grant
    values. Only now, with authorization to create the project, create **Tasker
    Test Drive** (check that it does not already exist before retrying a lost
    create response; row creation is not the upgrade's idempotent operation):
 
    ```sh
-   curl --fail-with-body "$BASE/api/table/tasker.project" -H "Authorization: Bearer $TOKEN" -H 'X-Featherbase-App-Version: tasker@2.0.0' -H 'Content-Type: application/json' --data '{"project_name":"Tasker Test Drive","description":"## Tasker Test Drive\n\nTry projects, tasks and Markdown descriptions without changing existing work."}'
+   curl --fail-with-body "$BASE/api/table/tasker.project" -H "Authorization: Bearer $TOKEN" -H 'X-Featherbase-App-Version: tasker@2.1.0' -H 'Content-Type: application/json' --data '{"project_name":"Tasker Test Drive","description":"## Tasker Test Drive\n\nTry projects, tasks and Markdown descriptions without changing existing work."}'
    ```
 
    Read the returned row back with the same pinned header, inspect its Markdown

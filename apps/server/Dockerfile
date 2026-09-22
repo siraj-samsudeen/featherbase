@@ -69,11 +69,13 @@ RUN pnpm install --frozen-lockfile --filter server... --prod
 COPY packages/shared packages/shared
 COPY apps/server apps/server
 COPY --from=web-build /app/apps/web/dist apps/web/dist
-COPY --from=tasker-build /app/runtime-apps/tasker/package.json runtime-apps/tasker/package.json
-COPY --from=tasker-build /app/runtime-apps/tasker/featherbase.json runtime-apps/tasker/featherbase.json
-COPY --from=tasker-build /app/runtime-apps/tasker/dist runtime-apps/tasker/dist
+# @spec runtime_upgrade_recovery_boundary.packaged_upgrade_retains_exact_predecessor
+COPY runtime-apps/fixtures/tasker-v1 /app/runtime-apps/tasker/0.0.1
+COPY --from=tasker-build /app/runtime-apps/tasker/package.json /app/runtime-apps/tasker/2.1.0/package.json
+COPY --from=tasker-build /app/runtime-apps/tasker/featherbase.json /app/runtime-apps/tasker/2.1.0/featherbase.json
+COPY --from=tasker-build /app/runtime-apps/tasker/dist /app/runtime-apps/tasker/2.1.0/dist
 
 ENV NODE_ENV=production
-ENV FEATHERBASE_APP_PATHS='["/app/runtime-apps/tasker"]'
+ENV FEATHERBASE_APP_PATHS='["/app/runtime-apps/tasker/0.0.1","/app/runtime-apps/tasker/2.1.0"]'
 EXPOSE 8000
 CMD ["pnpm", "--filter", "server", "start"]
