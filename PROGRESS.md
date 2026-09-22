@@ -1,5 +1,27 @@
 # Progress Log
 
+## 2026-09-22 — Authentication baseline and multi-provider planning checkpoint (#244, #275)
+
+Committed a behavior-neutral OpenSpec authentication baseline separately from the
+`secure-provider-identities` proposal. Characterization includes copied-session
+logout/disable/re-enable behavior and asymmetric zero/negative/oversized lifetime
+configuration; no existing expected outcome or runtime behavior changed.
+
+The separate plan records whole-User offboarding, no provider-password storage,
+subject-based identity ownership, durable revocable sessions, explicit linking
+and exact-target operator recovery. Google-only sensitive operations fail closed
+without trustworthy recent authentication; passkeys are deferred. The three-Google-
+identity Tasker acceptance journey uses generic fixtures only. StyleHR activation
+still requires an authoritative sanitized success/subject contract.
+
+Proof: 46 focused server authentication tests passed on the directly local,
+worker-owned `featherbase_244_auth_test`; server typecheck passed. Strict OpenSpec
+change validation passed. `pnpm check:specs` passed for the baseline; after adding
+the proposal it correctly reports 22 new STC gaps (11 proposed requirements lack
+both code and tests). The ratchet was not weakened. This is a planning checkpoint,
+not an implemented feature or development-build handoff. Apply the reviewed change
+next, retaining the baseline as a separate commit and proving UI at implementation.
+
 ## 2026-09-21 — Runtime-root normalization retains exact query state (#296)
 
 The permanent trailing-slash redirect for direct runtime-app roots now retains
