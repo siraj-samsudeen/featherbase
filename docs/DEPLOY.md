@@ -233,8 +233,10 @@ the package tree except `node_modules` and `.git`. Symlinks are refused. Review
 trusted module imports; import-time side effects are not sandboxed.
 
 The production image carries the reviewed Tasker artifacts at
-`/app/runtime-apps/tasker/0.0.1` and `/app/runtime-apps/tasker/2.1.0`, and its
-`FEATHERBASE_APP_PATHS` names both immutable roots. An operator-managed delivery
+`/app/runtime-apps/tasker/0.0.1` and `/app/runtime-apps/tasker/2.1.0`, and the
+reviewed Feather Dash artifact at `/app/runtime-apps/feather_dash/0.1.3`. Its
+`FEATHERBASE_APP_PATHS` names all three immutable roots. The image also preserves
+Feather Dash's fixture-provider bootstrap and durable state path. An operator-managed delivery
 may instead use persistent versioned directories, but it must mount every named
 artifact into the running container and preserve it across releases. Never
 overwrite one package directory in place. No package upload API exists. Once

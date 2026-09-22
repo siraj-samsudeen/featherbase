@@ -1,5 +1,7 @@
 node_modules/
 dist/
+!runtime-apps/fixtures/feather-dash-v0.1.3/dist/
+!runtime-apps/fixtures/feather-dash-v0.1.3/dist/**
 .pgdata/
 *.log
 .env

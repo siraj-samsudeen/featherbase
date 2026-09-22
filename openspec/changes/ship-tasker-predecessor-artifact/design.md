@@ -16,6 +16,7 @@ volume contains site files rather than repository-reviewed application bytes.
   Tasker upgrade.
 - Keep artifact bytes and runtime digests independent of directory spelling.
 - Make a restart before upgrade select 0.0.1 and merely advertise 2.1.0.
+- Preserve the separately installed Feather Dash 0.1.3 package and runtime wiring.
 - Prove the actual image configuration names both immutable package roots.
 
 **Non-Goals:**
@@ -23,7 +24,7 @@ volume contains site files rather than repository-reviewed application bytes.
 - No package upload or registry mechanism.
 - No automatic upgrade, legacy identity adoption, downgrade or down migration.
 - No database ledger edits, row changes, seeding, uninstall or Feather Dash
-  packaging changes.
+  behavior changes.
 - No generic retention policy for an unbounded number of app versions.
 
 ## Decisions
@@ -41,6 +42,13 @@ predecessor in upgrade tests. Rebuilding or synthesizing v1 was rejected because
 any byte or declaration drift would defeat identity recovery. Writing artifacts
 to `/data` during deployment was rejected because it creates mutable state
 outside the reviewed image and can leave stale bytes across rollback.
+
+The same image retains the exact reviewed Feather Dash 0.1.3 package at
+`/app/runtime-apps/feather_dash/0.1.3`, including its existing fixture-provider
+wiring. Omitting that separately installed package would make it unavailable on
+the Tasker deployment even though no Feather Dash lifecycle operation was
+requested. Its bytes are reproduced from Data Warehouse commit
+`eb12f18b283617f272a40c125c2baff90cf1ef05` and pinned by runtime digest.
 
 ### Keep runtime artifact identity unchanged
 
@@ -77,7 +85,8 @@ a substitute for the repository test.
 1. Build and test the image with both artifact roots; record both digests.
 2. Back up and read back Dev Tasker rows, permissions and user settings.
 3. Deploy the reviewed image to Featherbase Dev and verify 0.0.1 remains the
-   installed active version while 2.1.0 is only available.
+   installed active version while 2.1.0 is only available and Feather Dash
+   0.1.3 remains active.
 4. Preview and review the two cumulative migrations, commit the exact plan, then
    activate 2.1.0 explicitly.
 5. Restart and read back preserved state, package status and both application

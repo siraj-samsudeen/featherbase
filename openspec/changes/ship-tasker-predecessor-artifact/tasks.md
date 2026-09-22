@@ -9,6 +9,7 @@
 - [x] 2.1 Build and test Tasker, run focused runtime package/upgrade tests, and verify the reviewed 0.0.1 and 2.1.0 runtime digests independently.
 - [x] 2.2 Run `pnpm check:specs`, the production image build or strongest available image-content check, and `git diff --check`; verify no discovery failure and no unrelated artifact enters either package root.
 - [x] 2.3 Obtain independent final-form code review under the repository review gate, resolve any findings, and rerun affected verification.
+- [x] 2.4 Retain the exact installed Feather Dash 0.1.3 artifact and runtime wiring in the final image; prove its reviewed digest and obtain independent review of the integration delta.
 
 ## 3. Recover and upgrade Featherbase Dev
 

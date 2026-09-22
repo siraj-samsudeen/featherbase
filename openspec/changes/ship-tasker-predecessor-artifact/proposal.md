@@ -12,6 +12,8 @@ upgraded without resetting retained work.
   separate immutable, versioned image directories.
 - Configure runtime discovery with both directories so restart selects the exact
   installed version while exposing the newer version for preview.
+- Retain the exact already-installed Feather Dash 0.1.3 artifact while changing
+  the production image's runtime package set.
 - Add image-level proof that both artifacts are present with their reviewed
   runtime digests and that the supported preview/upgrade/activation path remains
   data-preserving.
@@ -32,7 +34,8 @@ None.
 
 ## Impact
 
-The production Docker image, its runtime application path configuration,
-deployment documentation, and focused image/runtime-package tests change. The
+The production Docker image, its runtime application path configuration, the
+retained Feather Dash artifact, deployment documentation, and focused
+image/runtime-package tests change. The
 runtime APIs, Tasker migrations, database ledger, retained rows, permissions,
-settings, and Feather Dash packaging do not change.
+settings, and Feather Dash behavior do not change.

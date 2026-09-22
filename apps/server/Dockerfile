@@ -74,9 +74,14 @@ COPY runtime-apps/fixtures/tasker-v1 /app/runtime-apps/tasker/0.0.1
 COPY --from=tasker-build /app/runtime-apps/tasker/package.json /app/runtime-apps/tasker/2.1.0/package.json
 COPY --from=tasker-build /app/runtime-apps/tasker/featherbase.json /app/runtime-apps/tasker/2.1.0/featherbase.json
 COPY --from=tasker-build /app/runtime-apps/tasker/dist /app/runtime-apps/tasker/2.1.0/dist
+# @spec runtime_upgrade_recovery_boundary.packaged_upgrade_preserves_unrelated_installed_apps
+COPY runtime-apps/fixtures/feather-dash-v0.1.3 /app/runtime-apps/feather_dash/0.1.3
 
 ENV NODE_ENV=production
-ENV FEATHERBASE_APP_PATHS='["/app/runtime-apps/tasker/0.0.1","/app/runtime-apps/tasker/2.1.0"]'
+ENV FEATHERBASE_APP_PATHS='["/app/runtime-apps/tasker/0.0.1","/app/runtime-apps/tasker/2.1.0","/app/runtime-apps/feather_dash/0.1.3"]'
+ENV FEATHER_DASH_FIXTURE=/app/runtime-apps/feather_dash/0.1.3/fixtures/source.json
+ENV FEATHER_DASH_PROVIDER_STATE=/data/apps/feather_dash/fixture-provider.json
 RUN pnpm --filter server exec tsx scripts/verify-production-runtime-apps.ts
+ENV NODE_OPTIONS=--import=/app/runtime-apps/feather_dash/0.1.3/dist/development-bootstrap.mjs
 EXPOSE 8000
 CMD ["pnpm", "--filter", "server", "start"]
