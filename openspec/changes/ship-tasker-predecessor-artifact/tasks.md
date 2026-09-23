@@ -13,9 +13,9 @@
 
 ## 3. Recover and upgrade Featherbase Dev
 
-- [ ] 3.1 Before deployment, back up and read back Dev Tasker projects, tasks, permissions and user settings; record counts and a content hash without exposing private preview credentials or retained row contents.
-- [ ] 3.2 Deploy the reviewed branch artifact to the authorized Featherbase Dev service, verify Railway reports SUCCESS by deployment ID, and confirm `/api/apps` reports exact Tasker 0.0.1 active plus 2.1.0 available before mutation.
-- [ ] 3.3 Through the private Dev preview, review the exact 2.1.0 plan, commit and explicitly activate it; verify only `project_description` and code-only `explicit_action_policies` are applied and no destructive, permission, job or index effect is present.
-- [ ] 3.4 Restart the service and compare post-upgrade projects, tasks, permissions and user settings with the pre-upgrade backup; verify Tasker 2.1.0 is installed, enabled, available, active and not pending, with the reviewed digest and no discovery failures.
-- [ ] 3.5 Exercise Tasker landing, project/task reads and one reversible or disposable write in Chromium; inspect desktop and touch-emulated mobile captures, verify normal host shell behavior separately, and smoke Feather Dash without changing it.
-- [ ] 3.6 Apply Prove Before Handoff against the relevant Tasker/runtime-package specs, inspect runtime error logs, retain the prior successful deployment as the pre-commit rollback identity, and record the post-commit forward-recovery limitation.
+- [x] 3.1 Before deployment, back up and read back Dev Tasker projects, tasks, permissions and user settings; record counts and a content hash without exposing private preview credentials or retained row contents.
+- [x] 3.2 Deploy the reviewed branch artifact to the authorized Featherbase Dev service, verify Railway reports SUCCESS by deployment ID, and confirm `/api/apps` reports exact Tasker 0.0.1 active plus 2.1.0 available before mutation.
+- [x] 3.3 Through the private Dev preview, review the exact 2.1.0 plan, commit and explicitly activate it; verify only `project_description` and code-only `explicit_action_policies` are applied and no destructive, permission, job or index effect is present.
+- [x] 3.4 Restart the service and compare post-upgrade projects, tasks, permissions and user settings with the pre-upgrade backup; verify Tasker 2.1.0 is installed, enabled, available, active and not pending, with the reviewed digest and no discovery failures.
+- [x] 3.5 Exercise Tasker landing, project/task reads and one reversible or disposable write in Chromium; inspect desktop and touch-emulated mobile captures, verify normal host shell behavior separately, and smoke Feather Dash without changing it.
+- [x] 3.6 Apply Prove Before Handoff against the relevant Tasker/runtime-package specs, inspect runtime error logs, retain the prior successful deployment as the pre-commit rollback identity, and record the post-commit forward-recovery limitation.
