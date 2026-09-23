@@ -8,15 +8,20 @@ const root = resolve('../..')
 
 // @spec runtime_upgrade_recovery_boundary.packaged_upgrade_retains_exact_predecessor
 test('the production image discovers exact Tasker predecessor and target artifacts', async () => {
-  const [dockerfile, predecessor, target] = await Promise.all([
+  const [dockerfile, predecessor, predecessorManifest, target] = await Promise.all([
     readFile(resolve(root, 'apps/server/Dockerfile'), 'utf8'),
-    readFile(resolve(root, 'runtime-apps/fixtures/tasker-v1/package.json'), 'utf8').then(JSON.parse),
+    readFile(resolve(root, 'runtime-apps/fixtures/tasker-v1-production/package.json'), 'utf8').then(JSON.parse),
+    readFile(resolve(root, 'runtime-apps/fixtures/tasker-v1-production/featherbase.json'), 'utf8').then(JSON.parse),
     readFile(resolve(root, 'runtime-apps/tasker/package.json'), 'utf8').then(JSON.parse),
   ])
   expect([predecessor.version, target.version]).toEqual(['0.0.1', '2.1.0'])
+  expect([predecessorManifest.server, predecessorManifest.client]).toEqual([
+    'dist/server.mjs',
+    'dist/client',
+  ])
 
   expect(dockerfile).toContain(
-    'COPY runtime-apps/fixtures/tasker-v1 /app/runtime-apps/tasker/0.0.1',
+    'COPY runtime-apps/fixtures/tasker-v1-production /app/runtime-apps/tasker/0.0.1',
   )
   for (const file of ['package.json', 'featherbase.json', 'dist']) {
     expect(dockerfile).toContain(
@@ -30,6 +35,7 @@ test('the production image discovers exact Tasker predecessor and target artifac
     '/app/runtime-apps/tasker/0.0.1',
     '/app/runtime-apps/tasker/2.1.0',
     '/app/runtime-apps/feather_dash/0.1.3',
+    '/app/runtime-apps/feather_dash/0.2.1',
   ])
   expect(dockerfile).toContain('RUN pnpm --filter server exec tsx scripts/verify-production-runtime-apps.ts')
 
@@ -40,7 +46,7 @@ test('the production image discovers exact Tasker predecessor and target artifac
   const staged = await mkdtemp(resolve(tmpdir(), 'featherbase-production-apps-'))
   try {
     const predecessorRoot = resolve(staged, '0.0.1')
-    await cp(resolve(root, 'runtime-apps/fixtures/tasker-v1'), predecessorRoot, { recursive: true })
+    await cp(resolve(root, 'runtime-apps/fixtures/tasker-v1-production'), predecessorRoot, { recursive: true })
     await verifyRuntimeArtifacts([{ ...PRODUCTION_RUNTIME_ARTIFACTS[0], path: predecessorRoot }])
   } finally {
     await rm(staged, { recursive: true, force: true })
@@ -48,7 +54,7 @@ test('the production image discovers exact Tasker predecessor and target artifac
 })
 
 // @spec runtime_upgrade_recovery_boundary.packaged_upgrade_preserves_unrelated_installed_apps
-test('the production image retains the exact installed Feather Dash artifact', async () => {
+test('the production image retains exact installed Feather Dash artifacts', async () => {
   const dockerfile = await readFile(resolve(root, 'apps/server/Dockerfile'), 'utf8')
   expect(dockerfile).toContain(
     'COPY runtime-apps/fixtures/feather-dash-v0.1.3 /app/runtime-apps/feather_dash/0.1.3',
@@ -57,14 +63,25 @@ test('the production image retains the exact installed Feather Dash artifact', a
     'ENV FEATHER_DASH_FIXTURE=/app/runtime-apps/feather_dash/0.1.3/fixtures/source.json',
   )
   expect(dockerfile).toContain(
-    'ENV NODE_OPTIONS=--import=/app/runtime-apps/feather_dash/0.1.3/dist/development-bootstrap.mjs',
+    'COPY runtime-apps/fixtures/feather-dash-v0.2.1 /app/runtime-apps/feather_dash/0.2.1',
+  )
+  expect(dockerfile).toContain(
+    'ENV FEATHER_DASH_MOTHERDUCK_PRINCIPAL=motherduck_dive_service_account',
+  )
+  expect(dockerfile).toContain(
+    'ENV NODE_OPTIONS="--import=/app/runtime-apps/feather_dash/0.1.3/dist/development-bootstrap.mjs --import=/app/runtime-apps/feather_dash/0.2.1/dist/development-bootstrap.mjs"',
   )
 
   const staged = await mkdtemp(resolve(tmpdir(), 'featherbase-production-dash-'))
   try {
-    const dashRoot = resolve(staged, '0.1.3')
-    await cp(resolve(root, 'runtime-apps/fixtures/feather-dash-v0.1.3'), dashRoot, { recursive: true })
-    await verifyRuntimeArtifacts([{ ...PRODUCTION_RUNTIME_ARTIFACTS[2], path: dashRoot }])
+    const oldRoot = resolve(staged, '0.1.3')
+    const currentRoot = resolve(staged, '0.2.1')
+    await cp(resolve(root, 'runtime-apps/fixtures/feather-dash-v0.1.3'), oldRoot, { recursive: true })
+    await cp(resolve(root, 'runtime-apps/fixtures/feather-dash-v0.2.1'), currentRoot, { recursive: true })
+    await verifyRuntimeArtifacts([
+      { ...PRODUCTION_RUNTIME_ARTIFACTS[2], path: oldRoot },
+      { ...PRODUCTION_RUNTIME_ARTIFACTS[3], path: currentRoot },
+    ])
   } finally {
     await rm(staged, { recursive: true, force: true })
   }

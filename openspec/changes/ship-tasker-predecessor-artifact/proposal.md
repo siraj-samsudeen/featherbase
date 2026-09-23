@@ -10,10 +10,12 @@ upgraded without resetting retained work.
 
 - Ship the exact reviewed Tasker 0.0.1 predecessor and current Tasker release in
   separate immutable, versioned image directories.
+- Match the predecessor's package layout to Dev's recorded declaration
+  (`dist/server.mjs` and `dist/client`) so recovery does not rewrite its ledger.
 - Configure runtime discovery with both directories so restart selects the exact
   installed version while exposing the newer version for preview.
-- Retain the exact already-installed Feather Dash 0.1.3 artifact while changing
-  the production image's runtime package set.
+- Retain exact Feather Dash 0.1.3 and active 0.2.1 artifacts while changing the
+  production image's runtime package set.
 - Add image-level proof that both artifacts are present with their reviewed
   runtime digests and that the supported preview/upgrade/activation path remains
   data-preserving.

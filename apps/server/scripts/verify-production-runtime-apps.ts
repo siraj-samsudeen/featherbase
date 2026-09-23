@@ -7,7 +7,7 @@ export const PRODUCTION_RUNTIME_ARTIFACTS = [
     name: 'tasker',
     path: '/app/runtime-apps/tasker/0.0.1',
     version: '0.0.1',
-    digest: '39dcd5973c65f13e20a2432e70c7152092af84bac34b2669164e1093df61ba4e',
+    digest: '54f1f14c29bf2e14b617cc56e8e5552a0d7a2055b87bdb8b18f735d1c415fe26',
   },
   {
     name: 'tasker',
@@ -20,6 +20,12 @@ export const PRODUCTION_RUNTIME_ARTIFACTS = [
     path: '/app/runtime-apps/feather_dash/0.1.3',
     version: '0.1.3',
     digest: '96e8a2b1110b5c2fde3609c3ccccc12ce69a8708d8ed06fac85539e534f38e5e',
+  },
+  {
+    name: 'feather_dash',
+    path: '/app/runtime-apps/feather_dash/0.2.1',
+    version: '0.2.1',
+    digest: '0c35a7266c0cb7ddab0f181ac4509cf0a3fa2de8212248ffaa1976df20c9178a',
   },
 ] as const
 

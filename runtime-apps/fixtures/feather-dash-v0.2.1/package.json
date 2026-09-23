@@ -1,0 +1,25 @@
+{
+  "name": "@jeyaramagroup/feather-dash",
+  "version": "0.2.1",
+  "private": true,
+  "type": "module",
+  "featherbase": "featherbase.json",
+  "files": [
+    "featherbase.json",
+    "dist",
+    "README.md",
+    "seed"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@duckdb/node-api": "1.5.5-r.5",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.9"
+  }
+}

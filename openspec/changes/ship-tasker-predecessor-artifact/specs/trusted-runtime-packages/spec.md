@@ -19,10 +19,10 @@ delivery, explicit preview/upgrade/activation and backup restoration.
 
 #### Scenario: packaged_upgrade_retains_exact_predecessor
 - **WHEN** an operator deploys an image advertised to upgrade an installed Tasker 0.0.1 application
-- **THEN** discovery reports the reviewed 0.0.1 artifact and the advertised target as separate immutable versions
+- **THEN** discovery reports a reviewed 0.0.1 artifact whose declaration matches the installed identity and the advertised target as separate immutable versions
 - **AND** restart keeps 0.0.1 available and active until an administrator previews, commits and activates the target
 
 #### Scenario: packaged_upgrade_preserves_unrelated_installed_apps
-- **WHEN** an operator deploys that Tasker upgrade image beside an installed Feather Dash 0.1.3 application
-- **THEN** the image also discovers the exact reviewed Feather Dash 0.1.3 artifact
+- **WHEN** an operator deploys that Tasker upgrade image beside an active Feather Dash 0.2.1 application with retained predecessor 0.1.3
+- **THEN** the image also discovers both exact reviewed Feather Dash artifacts and retains the active version's provider wiring
 - **AND** Feather Dash remains installed, enabled, available and active without a package lifecycle mutation

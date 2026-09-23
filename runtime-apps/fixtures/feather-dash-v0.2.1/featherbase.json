@@ -1,0 +1,88 @@
+{
+  "manifestVersion": 1,
+  "apiVersion": 1,
+  "name": "feather_dash",
+  "title": "Feather Dash",
+  "entryTable": "feather_dash.report",
+  "server": "dist/server.mjs",
+  "client": "dist/client",
+  "tables": [
+    {
+      "name": "feather_dash.report",
+      "label": "Feather Dash Report",
+      "id_pattern": "prompt",
+      "columns": [
+        { "column_name": "title", "column_type": "Data" },
+        { "column_name": "description", "column_type": "Data" },
+        { "column_name": "publication_revision", "column_type": "Data" },
+        { "column_name": "publication_status", "column_type": "Data" }
+      ]
+    },
+    {
+      "name": "feather_dash.store",
+      "label": "Feather Dash Store",
+      "id_pattern": "prompt",
+      "columns": [{ "column_name": "label", "column_type": "Data" }]
+    },
+    {
+      "name": "feather_dash.access",
+      "label": "Feather Dash Employee Scope",
+      "id_pattern": "prompt",
+      "columns": [
+        { "column_name": "employee_id", "column_type": "Data" },
+        { "column_name": "employee_kind", "column_type": "Data" },
+        { "column_name": "graph_complete", "column_type": "Check" },
+        { "column_name": "sections", "column_type": "JSON" },
+        { "column_name": "pairs", "column_type": "JSON" }
+      ]
+    }
+  ],
+  "roles": ["Feather Dash Viewer", "Feather Dash Publisher"],
+  "permissions": [
+    { "table": "feather_dash.report", "role": "All", "can_read": true },
+    { "table": "feather_dash.store", "role": "Feather Dash Viewer", "can_read": true }
+  ],
+  "migrations": [
+    {
+      "id": "live_motherduck_source",
+      "fromVersion": "0.1.3",
+      "toVersion": "0.2.1",
+      "operations": []
+    }
+  ],
+  "reads": {
+    "version": 1,
+    "tables": ["feather_dash.report", "feather_dash.store", "feather_dash.access"],
+    "operations": {
+      "catalog": {
+        "policy": { "kind": "table" },
+        "authorization": { "kind": "generic" }
+      },
+      "sales_target": {
+        "policy": {
+          "kind": "stores",
+          "storeTable": "feather_dash.store",
+          "readRoles": ["Feather Dash Viewer"],
+          "actionRoles": []
+        },
+        "scope": {
+          "kind": "resolver",
+          "name": "employee_scope",
+          "facts": [{
+            "table": "feather_dash.access",
+            "columns": ["employee_id", "employee_kind", "graph_complete", "sections", "pairs"]
+          }]
+        },
+        "authorization": {
+          "kind": "product",
+          "name": "employee_scope",
+          "facts": [{
+            "table": "feather_dash.access",
+            "columns": ["employee_id", "employee_kind", "graph_complete", "sections", "pairs"]
+          }]
+        },
+        "discoverStoreAccess": true
+      }
+    }
+  }
+}

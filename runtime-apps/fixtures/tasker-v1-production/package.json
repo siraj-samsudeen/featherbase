@@ -1,0 +1,8 @@
+{
+  "name": "@featherbase-learning/tasker",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "featherbase": "featherbase.json",
+  "files": ["featherbase.json", "dist"]
+}
