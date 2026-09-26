@@ -28,13 +28,17 @@ rules:
     - Write from the user's side. Say what the user can do and what they get.
     - Tell the user what they benefit from knowing, including what the system does for them, in their words. Leave out incidental detail such as field defaults, every field, or internal mechanics.
     - "Example: 'Typing a title and pressing Enter is all it takes to record a task. The task gets added to the Inbox for later processing.' Not a list of the fields a new task starts with."
-    - One requirement per promise to the user. Keep scenarios to the few that show the promise, usually one to three.
+    - One requirement makes one promise, in one or two short sentences. If it needs more, it holds several promises (split them) or repeats what the Purpose already says (cut it). Keep scenarios to the few that show the promise, usually one or two.
+    - Don't state the obvious, such as "looking at a list changes nothing".
     - A scenario gives a concrete example the reader can try; it does not repeat the requirement. Scenarios say "the user".
     - No screen labels, button text or placeholder text; they change with the UI.
+    - Don't write out lists that can grow, such as every page in the navigation. State the promise and name one or two examples.
+    - No layout detail, such as where a panel opens or a pixel width. Product-wide promises (works on a phone, works by keyboard, nothing shown by colour alone, controls clearly named) live in the usable-on-any-device spec; don't repeat them in feature specs.
     - Explain a term the first time it is used.
     - Name requirements and scenarios in plain words, for example "Capture a task", not identifiers. A capability with one requirement names it after the capability.
     - Use only OpenSpec's own structure (Purpose, Requirements, WHEN/THEN scenarios). Fold any precondition into WHEN; no GIVEN. No status, evidence, ID or legacy labels.
     - A spec written for existing behavior describes what it does today. Changing that behavior is a separate change.
+    - Main specs describe what is built. A promise that isn't built yet belongs in an OpenSpec change.
   proposal:
     - Keep it short and say why in terms of what users get.
 
