@@ -21,8 +21,8 @@ owner-approved wording word for word. Behaviour, code and tests are unchanged
   strict validation.
 - `openspec/TASKER.md` is now a numbered index in learning order. The
   hand-kept "not built" and "evidence gap" tables are gone.
-- New `docs/testing/tasker-test-notes.md` has one section per scenario (43),
-  generated from the specs.
+- No test-notes skeleton is committed: a per-scenario copy of the spec
+  headings would drift as soon as a scenario is renamed (owner's call).
 
 **Verified:**
 - `pnpm check:specs`: 19/19 specs and 5/5 changes, strict, 0 failed.
