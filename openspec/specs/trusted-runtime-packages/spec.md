@@ -7,10 +7,10 @@ disabled, restored, and used without rebuilding Featherbase core. Application
 identity, storage, UI, rules, and lifecycle remain isolated even when two apps
 use the same local names.
 
-This OpenSpec capability is the behavior authority. The earlier
-`docs/specs/0011-runtime-packages.md` is frozen, non-authoritative migration
-evidence. This capability describes the first build-and-learn slice, not a
-stable public or untrusted plugin API.
+This OpenSpec capability is the behavior authority. The earlier Journey
+document `docs/specs/0011-runtime-packages.md` was converted into this
+capability and deleted on 2026-09-26 (ADR 0010). This capability describes
+the first build-and-learn slice, not a stable public or untrusted plugin API.
 
 ## Domain assumptions
 

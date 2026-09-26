@@ -128,7 +128,8 @@ and flips false claims back to `failing`, looped by `run.sh`.
 **That harness is retired** — archived 2026-08-28 (issue #236) at
 `docs/archive/harness-2026/`, statuses and all, because they were
 self-attested by the sessions that wrote the code. The capability specs
-in `docs/specs/` are the *successor artifact*, replicating the harness
+that used to live in `docs/specs/` (since converted into OpenSpec
+capabilities and deleted — ADR 0010) were the *successor artifact*, replicating the harness
 mechanics at the next level: capability IDs (EDS-1 style) play the role
 of feature IDs, each EARS criterion + example table is the `verify`
 field, the spec's definition-of-done is the evaluator's checklist, and
