@@ -1,5 +1,28 @@
 # Progress Log
 
+## 2026-09-26 — ListView toolbar fits phone and desktop widths (#316)
+
+The generic ListView header now stacks its title and wraps every existing
+metadata-gated action on narrow screens while retaining desktop alignment. No
+action moved into a menu, and no visibility gate or behavior changed. A
+metadata-rich browser fixture activates all 15 header controls, including the
+split Explore action, every optional view, system-manager actions, and a real
+checklist shape.
+
+The responsive regression first failed because Admin `<main>` overflowed at
+both 375px and 1280px. After the two responsive class changes, all controls are
+inside the main bounds at both widths. At 375px the deliberately wide rows
+table still overflows only inside its existing `overflow-x-auto` card; at
+desktop width the same container remains ready to scroll but its contents fit.
+
+**Verified:** `./init.sh` smoke (3 browser tests), focused
+`e2e/listview.spec.ts` (3 passed), web typecheck, `pnpm check:specs` (45 specs,
+12 changes), `pnpm check:e2e-dsl` (8 policy tests, 78 files), and
+`git diff --check`. Inspected fresh 375px and 1280px screenshots: every action
+is readable and reachable, with the desktop title/action alignment preserved.
+
+**Next:** independent parent review and merge of the ListView toolbar PR.
+
 ## 2026-09-26 — Session cookies follow configured session lifetime (#337)
 
 Password, Google and preview sign-in now issue the browser's `sid` cookie for
