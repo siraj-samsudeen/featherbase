@@ -30,6 +30,94 @@ directly per the assignment, with independent parent review still required.
 No appearance changed; browser DOM checks cover the conflict and retained input.
 Next: parent independently verifies the scoped PR before merging.
 
+After independent parent acceptance, merged current main (through PR #355)
+without changing the rename implementation or tests. Resolved only the additive
+progress-log conflict. Repeated the component command above (21 passed),
+`pnpm --filter web e2e e2e/task-management.spec.ts` (4 passed), runtime tests
+(5 passed), runtime build, web/server/runtime typechecks, strict specs
+(45 specs, 18 changes), DSL guard (8 tests, 78 files), and whitespace checks.
+Final integration and CI remain with the parent; PR #357 is not merged here.
+
+## 2026-09-26 — ListView toolbar fits phone and desktop widths (#316)
+
+The generic ListView header now stacks its title and wraps every existing
+metadata-gated action on narrow screens while retaining desktop alignment. No
+action moved into a menu, and no visibility gate or behavior changed. A
+metadata-rich browser fixture activates all 15 header controls, including the
+split Explore action, every optional view, system-manager actions, and a real
+checklist shape.
+
+The responsive regression first failed because Admin `<main>` overflowed at
+both 375px and 1280px. After the two responsive class changes, all controls are
+inside the main bounds at both widths. At 375px the deliberately wide rows
+table still overflows only inside its existing `overflow-x-auto` card; at
+desktop width the same container remains ready to scroll but its contents fit.
+
+**Verified:** `./init.sh` smoke (3 browser tests), focused
+`e2e/listview.spec.ts` (3 passed), web typecheck, `pnpm check:specs` (45 specs,
+12 changes), `pnpm check:e2e-dsl` (8 policy tests, 78 files), and
+`git diff --check`. Inspected fresh 375px and 1280px screenshots: every action
+is readable and reachable, with the desktop title/action alignment preserved.
+
+**Next:** independent parent review and merge of the ListView toolbar PR.
+
+## 2026-09-26 — Session cookies follow configured session lifetime (#337)
+
+Password, Google and preview sign-in now issue the browser's `sid` cookie for
+the same clamped 1–720 hour lifetime used by its JWT instead of a fixed seven
+days. One auth helper reads the setting once and returns the signed token with
+its lifetime in seconds; routes use that internal value without adding fields
+to login or handoff responses. Cookie creation keeps its existing HttpOnly,
+SameSite=Lax and Path=/ attributes unchanged.
+
+Test-first verification captured four failures at the old 604800-second cookie,
+then `pnpm --filter server exec vitest run test/auth.test.ts test/oauth.test.ts
+test/preview-login.test.ts` passed 40/40. `pnpm --filter server test` passed 883
+tests with 19 expected skips; `pnpm --filter server typecheck`, `pnpm
+check:specs`, `git diff --check`, and `./init.sh` smoke (3 browser tests)
+passed. Parent review caught an unrelated addition of Secure to `sid`; it was
+removed while the existing OAuth challenge-cookie Secure behavior stayed
+unchanged. That possible hardening is tracked separately in #353. After merging
+PRs #348 and #349 from current main, the three focused files passed 40/40,
+server typecheck passed, and strict checks passed 45 specs and 12 changes.
+Feather review's lifetime-unit naming and public-response assertion fixes remain.
+Follow-up review moved the preview lifetime case onto the Postgres sandbox;
+an exact query before and after that test stayed `<missing>|0` for configured
+session hours and preview login activity, proving both writes roll back.
+The OpenSpec change stays unarchived pending independent parent verification
+and merge.
+
+## 2026-09-26 — Closed mobile Admin drawer leaves the tab order (#320)
+
+The shared Admin sidebar now follows its responsive state in the accessibility
+tree. On phones, a closed drawer is inert and hidden from assistive technology;
+keyboard-opening restores its links, and keyboard-closing removes them again
+without changing the existing slide transition. The static desktop sidebar
+remains exposed and keyboard-reachable.
+
+The Session DSL browser journey tabs from the last header control in the closed,
+open and re-closed phone states, waits for each transform transition, and checks
+the first sidebar link's focus directly. Its desktop case proves the same link
+remains in the tab order. The new check failed first because the offscreen New
+Table link received focus. After the fix, the isolated responsive journey passed
+2/2; web typecheck passed; the AdminLayout theme component tests passed 4/4 with
+their existing jsdom `scrollTo` warnings; strict OpenSpec passed 45 specs and 11
+changes; and the DSL guard passed 8 policy tests across 77 files. Feather review
+found and fixed one first-render gap by initializing the media query
+synchronously; the focused checks passed again afterward. No appearance or
+shared-style change was made, so browser semantics and focus were inspected
+rather than screenshots. The OpenSpec change remains unarchived pending owner
+acceptance.
+
+Parent review then caught a fractional-width gap between the first media query
+and Tailwind's desktop breakpoint, plus raw keyboard actions in the migrated
+journey. The query is now the exact `< 48rem` complement of `md:`. The same
+mounted page crosses 767 → 768 → 767 and proves the media listener changes both
+semantics and tab order; closed-state focus is checked against every sidebar
+descendant. Keyboard and supported link actions use the Session DSL, with named
+steps only for focus, viewport and layout measurements. The focused browser
+journey still passes 2/2 and web typecheck passes after merging PRs #348/#349.
+
 ## 2026-09-26 — App-owned rows delete from the generic form (#322)
 
 The generic FormView now echoes the revision it loaded whenever a row has one,
@@ -55,6 +143,21 @@ No appearance changed, so semantic DOM checks were used instead of a visual
 capture. Feather review found and corrected an overly broad delta-spec promise;
 no in-scope code or test findings remain. Next: independent parent verification
 before merge.
+
+## 2026-09-26 — Report toolbar fits a phone (#317)
+
+ReportView now wraps its existing title/export, report configuration, and chart
+configuration control rows at narrow widths while retaining the desktop flex
+arrangement and every report calculation/interaction. A DSL-backed browser
+regression proves the Admin main area does not overflow and every Report and
+chart control remains within it at 375px and 1280px.
+
+Verification: the focused isolated Report browser suite passes 3/3; web
+typecheck, strict OpenSpec validation (45 specs/12 changes), the E2E DSL guard
+(8 checks/78 files), and `git diff --check` pass. An inspected 375px capture
+shows the export, configuration, and chart controls fully visible with no
+horizontal clipping. The OpenSpec change is ready to archive after acceptance;
+the scoped branch/PR awaits parent verification and merge.
 
 ## 2026-09-26 — Global search respects row and title access (#339)
 
@@ -9590,3 +9693,41 @@ invariant violation. Independent live exploration confirmed store, object,
 replay and revocation scenarios and then the corrected identity matrix. Final
 independent acceptance of the verification delta remains the coordinator's gate;
 no merge, deployment or completed Budgets/DASH implementation is claimed.
+
+## 2026-09-26 — One active workflow per Table (#266)
+
+Approved OpenSpec change `enforce-single-active-workflow` adds a partial unique
+index, refuses conflicting saves with a 409 naming the active workflow, and
+removes newest-edited selection. Error translation matches the exact index,
+schema, and relation after rollback; unrelated uniqueness errors keep their
+field validation response. Existing duplicates fail index installation without
+data changes. Inactive alternatives, explicit switching, and independent Tables
+remain supported. The invalid-state-field test now deactivates its valid
+workflow first, preserving the original binding-error assertion.
+
+Red→green evidence: direct duplicate activation initially succeeded; the HTTP
+conflict initially returned generic 417; duplicate lookup initially chose the
+newer rules. Focused tests now cover those cases plus rollback, retargeting,
+same-workflow edits, switching, and unrelated constraint errors. Two independent
+committed HTTP races (insert and activation) observe the exact losing backend
+blocked on the winner before release. Removing the index on a separate disposable
+database made both proofs fail and permitted two active rows; that mutation
+database was then discarded. No shared database was changed.
+
+Verification on local PostgreSQL:
+- `DATABASE_URL=.../featherbase_266_test pnpm --filter server test` — 891 passed,
+  21 opt-in/MySQL skips on a fresh test database.
+- `FEATHERBASE_ENV=test WORKFLOW_COMMIT_PROOF=1 DATABASE_URL=.../featherbase_266_workflow_commit_e2e pnpm --filter server exec vitest run test/workflow-active.test.ts test/workflow-active-commit.test.ts test/workflow.test.ts test/workflow-state-field.test.ts test/workflow-condition.test.ts test/workflow-notify.test.ts` — 26 passed.
+- `pnpm --filter server typecheck`, `pnpm check:specs`, `git diff --check`.
+- Baseline `./init.sh` and final `pnpm smoke` — server and 3 browser checks.
+  Live HTTP saves confirmed first/inactive 201, named 409, then explicit-switch
+  success. Browser login → Workflow list → alternative form → conflicting save
+  displayed the conflict. No visual appearance changed.
+
+The first full suite run used the committed-proof database and failed one
+home-page seed test because proof Tables persisted without navigation seeds;
+the fresh-database full rerun passed unchanged. Keep the committed proof database
+separate from ordinary suite data, as documented in `docs/TESTING.md`.
+Feather standards/spec/module-shape review found no remaining scoped concerns;
+it added the unrelated-constraint regression. Next: parent independent review
+and verification before merge. No merge or deployment is claimed.
