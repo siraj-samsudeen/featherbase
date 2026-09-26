@@ -98,6 +98,24 @@ shows the export, configuration, and chart controls fully visible with no
 horizontal clipping. The OpenSpec change is ready to archive after acceptance;
 the scoped branch/PR awaits parent verification and merge.
 
+## 2026-09-26 — Consume Core 0.5 and migrate supported E2E operations (#346/#295)
+
+The web app now pins `feather-testing-core@0.5.0` exactly. The Postgres
+harness remains on 0.2.0 with its intentional Core 0.4 dependency, so both
+Core versions remain in the lockfile. Fifteen browser specs now use Core's
+scoped exact-text, attribute, computed-style, reload, layout, containment and
+horizontal-scroll operations where those operations preserve the existing
+proof. Drag/resize mechanics, API and local-storage inspection, focus proofs,
+screenshots, exact mobile geometry and cookie clearing remain named Playwright
+steps. No product behavior or behavior spec changed.
+
+Verification: `pnpm --filter web typecheck`; `pnpm check:e2e-dsl` (8 guard
+tests, 78 files); and `pnpm --filter web e2e` (164 passed, 28 expected
+environment-gated skips). Focused Tasker reruns passed all 3 states after its
+runtime package was built. Reserved responsive/ListView/report-view and
+FormView-owned suites were not edited; their remaining escapes are for their
+owners to reconcile.
+
 ## 2026-09-26 — Global search respects row and title access (#339)
 
 Search reuses the query module's existing own-row/Data Scope predicate and

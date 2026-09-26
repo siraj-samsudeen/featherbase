@@ -49,10 +49,7 @@ test.beforeAll(async ({ request }) => {
   })
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// the group-by/pin controls are testid-addressed native <select>s and the
-// chart values are exact-text checks, so the whole walk stays in named
-// steps; session.visit carries the two page navigations around it.
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 test('RPT-006: chart reflects report data and pinning shows it on the dashboard', async ({ session }) => {
   // Open the saved report; group by region so the chart shows per-region counts.
   await session.visit(`/admin/${encodeURIComponent(DT)}/view/report?report=${encodeURIComponent(REPORT)}`)
@@ -60,11 +57,11 @@ test('RPT-006: chart reflects report data and pinning shows it on the dashboard'
     await expect(page.getByTestId('report-view')).toBeVisible()
     await page.getByTestId('report-groupby').selectOption('region')
 
-    // The chart reflects the report data: North 2, South 1.
     await expect(page.getByTestId('report-chart')).toBeVisible()
-    await expect(page.getByTestId('chart-bar-value-North')).toHaveText('2')
-    await expect(page.getByTestId('chart-bar-value-South')).toHaveText('1')
   })
+  await session
+    .within('[data-testid="chart-bar-value-North"]', (value) => value.assertExactText('2'))
+    .within('[data-testid="chart-bar-value-South"]', (value) => value.assertExactText('1'))
 
   await session.step('pin the chart to the dashboard', async ({ page }) => {
     await page.getByTestId('pin-dashboard').selectOption(DASH)
@@ -74,9 +71,8 @@ test('RPT-006: chart reflects report data and pinning shows it on the dashboard'
 
   // The dashboard now shows the pinned report chart, recomputed from live data.
   await session.visit(`/admin/dashboard/${encodeURIComponent(DASH)}`)
-  await session.step('the dashboard shows the pinned chart, recomputed live', async ({ page }) => {
-    await expect(page.getByTestId(`chart-${REPORT}`)).toBeVisible()
-    await expect(page.getByTestId('bar-value-North')).toHaveText('2')
-    await expect(page.getByTestId('bar-value-South')).toHaveText('1')
-  })
+  await session
+    .assertHas(`[data-testid="chart-${REPORT}"]`)
+    .within('[data-testid="bar-value-North"]', (value) => value.assertExactText('2'))
+    .within('[data-testid="bar-value-South"]', (value) => value.assertExactText('1'))
 })

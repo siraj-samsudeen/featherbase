@@ -48,26 +48,16 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   if (doc.status() !== 201) throw new Error(`row: ${doc.status()}`)
 })
 
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// the state/action checks are exact-text on testids and the audit-trail
-// check reads the browser's own localStorage token and hits the API through
-// `page.request`, none of which any Session verb expresses, so the whole
-// approve + audit-trail check stays in one named step; session.visit
-// carries the plain navigation.
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 test('WF-002: Approve button transitions state and records the audit trail', async ({ session }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}/${DOC}`)
-  await session.step('approve the transition; the audit trail records who/what', async ({ page }) => {
-    // Current state shown, Approve action available (admin sees all).
-    await expect(page.getByTestId('workflow-state')).toHaveText('Draft')
-    const approve = page.getByTestId('workflow-action-Approve')
-    await expect(approve).toBeVisible()
-    await approve.click()
+  await session
+    .visit(`/admin/${encodeURIComponent(DT)}/${DOC}`)
+    .within('[data-testid="workflow-state"]', (state) => state.assertExactText('Draft'))
+    .clickButton('Approve')
+    .within('[data-testid="workflow-state"]', (state) => state.assertExactText('Approved'))
+    .refuteHas('[data-testid="workflow-action-Approve"]')
 
-    // State flips to Approved.
-    await expect(page.getByTestId('workflow-state')).toHaveText('Approved')
-    await expect(page.getByTestId('workflow-action-Approve')).toHaveCount(0)
-
-    // Audit trail persisted (who/what).
+  await session.step('the audit trail records who and what', async ({ page }) => {
     const token = await page.evaluate(() => localStorage.getItem('fc_token'))
     const filters = encodeURIComponent(JSON.stringify([['ref_name', '=', DOC]]))
     const fields = encodeURIComponent(JSON.stringify(['action', 'to_state', 'actor']))

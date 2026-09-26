@@ -1,4 +1,4 @@
-import { test, expect, adminAuth } from './fixtures'
+import { test, adminAuth } from './fixtures'
 
 const DT = 'Dash E2E Task'
 const DASH = 'Dash E2E Board'
@@ -44,22 +44,16 @@ test.beforeAll(async ({ request }) => {
 })
 
 // UI-026: a dashboard shows a count card and a bar chart that match the data.
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// the card/bar values are exact `toHaveText` checks, which assertHas'
-// substring semantics can't safely stand in for, so they stay in steps.
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 test('UI-026: dashboard number cards and bar chart match the underlying data', async ({ session }) => {
   await session
     .visit(`/admin/dashboard/${encodeURIComponent(DASH)}`)
     .assertHas('[data-testid="dashboard-title"]')
 
-  await session.step('number cards match the counts', async ({ page }) => {
-    await expect(page.getByTestId('card-value-All Tasks')).toHaveText('6')
-    await expect(page.getByTestId('card-value-Open Tasks')).toHaveText('3')
-  })
-
-  await session.step('bar chart values match the grouped counts', async ({ page }) => {
-    await expect(page.getByTestId('bar-value-Open')).toHaveText('3')
-    await expect(page.getByTestId('bar-value-Closed')).toHaveText('2')
-    await expect(page.getByTestId('bar-value-Pending')).toHaveText('1')
-  })
+  await session
+    .within('[data-testid="card-value-All Tasks"]', (value) => value.assertExactText('6'))
+    .within('[data-testid="card-value-Open Tasks"]', (value) => value.assertExactText('3'))
+    .within('[data-testid="bar-value-Open"]', (value) => value.assertExactText('3'))
+    .within('[data-testid="bar-value-Closed"]', (value) => value.assertExactText('2'))
+    .within('[data-testid="bar-value-Pending"]', (value) => value.assertExactText('1'))
 })

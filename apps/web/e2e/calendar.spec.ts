@@ -37,12 +37,13 @@ test('UI-021: events appear on their date and dragging updates the date field', 
 }) => {
   await session.visit(`/admin/${encodeURIComponent(DT)}`).clickLink('Calendar').assertHas('[data-testid="calendar-view"]')
 
-  await session.step('the event shows on its date cell', async ({ page }) => {
-    const fromCell = page.getByTestId(`cal-cell-${DAY_FROM}`)
-    const toCell = page.getByTestId(`cal-cell-${DAY_TO}`)
-    await expect(fromCell.getByTestId('cal-event')).toHaveCount(1)
-    await expect(toCell.getByTestId('cal-event')).toHaveCount(0)
-  })
+  await session
+    .within(`[data-testid="cal-cell-${DAY_FROM}"]`, (cell) =>
+      cell.assertHas('[data-testid="cal-event"]', { count: 1 }),
+    )
+    .within(`[data-testid="cal-cell-${DAY_TO}"]`, (cell) =>
+      cell.refuteHas('[data-testid="cal-event"]'),
+    )
 
   await session.step('drag the event from the 10th to the 20th', async ({ page }) => {
     const toCell = page.getByTestId(`cal-cell-${DAY_TO}`)
@@ -54,10 +55,14 @@ test('UI-021: events appear on their date and dragging updates the date field', 
     await page.mouse.move(toBox!.x + toBox!.width / 2, toBox!.y + toBox!.height / 2, { steps: 8 })
     await page.mouse.up()
 
-    const fromCell = page.getByTestId(`cal-cell-${DAY_FROM}`)
-    await expect(toCell.getByTestId('cal-event')).toHaveCount(1, { timeout: 10_000 })
-    await expect(fromCell.getByTestId('cal-event')).toHaveCount(0)
   })
+  await session
+    .within(`[data-testid="cal-cell-${DAY_TO}"]`, (cell) =>
+      cell.assertHas('[data-testid="cal-event"]', { count: 1, timeout: 10_000 }),
+    )
+    .within(`[data-testid="cal-cell-${DAY_FROM}"]`, (cell) =>
+      cell.refuteHas('[data-testid="cal-event"]'),
+    )
 
   await session.step('the date field changed in the DB', async ({ page }) => {
     const token = await page.evaluate(() => localStorage.getItem('fc_token'))
@@ -70,35 +75,26 @@ test('UI-021: events appear on their date and dragging updates the date field', 
   })
 })
 
-async function assertCalendarHeaderFits(page: import('./fixtures').Page): Promise<void> {
-  const main = page.locator('main')
-  expect(await main.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
-
-  const mainBox = await main.boundingBox()
-  expect(mainBox).not.toBeNull()
-
-  for (const control of [
-    page.getByRole('heading', { name: `${DT} — Calendar` }),
-    page.getByTestId('cal-prev'),
-    page.getByTestId('cal-next'),
-    page.getByTestId('cal-to-list'),
-  ]) {
-    await expect(control).toBeVisible()
-    const box = await control.boundingBox()
-    expect(box).not.toBeNull()
-    expect(box!.x).toBeGreaterThanOrEqual(mainBox!.x)
-    expect(box!.x + box!.width).toBeLessThanOrEqual(mainBox!.x + mainBox!.width)
-  }
-}
-
 test.describe('Calendar header responsiveness', () => {
   test.use({ viewport: { width: 375, height: 812 } })
 
   test('keeps its long title, month navigation, and List view link reachable on a phone', async ({ session }) => {
-    await session.visit(`/admin/${encodeURIComponent(DT)}/view/calendar`).assertHas('[data-testid="calendar-view"]')
-    await session.step('the Calendar header fits the phone width and all navigation is reachable', async ({ page }) => {
-      await assertCalendarHeaderFits(page)
-    })
+    await session
+      .visit(`/admin/${encodeURIComponent(DT)}/view/calendar`)
+      .assertHas('[data-testid="calendar-view"]')
+      .assertHas('h1')
+      .assertHas('[data-testid="cal-prev"]')
+      .assertHas('[data-testid="cal-next"]')
+      .assertHas('[data-testid="cal-to-list"]')
+      .within('h1', (heading) => heading.assertExactText(`${DT} — Calendar`))
+      .within('main', (main) =>
+        main
+          .assertNoHorizontalOverflow()
+          .assertHorizontallyContained('h1', { tolerance: 0 })
+          .assertHorizontallyContained('[data-testid="cal-prev"]', { tolerance: 0 })
+          .assertHorizontallyContained('[data-testid="cal-next"]', { tolerance: 0 })
+          .assertHorizontallyContained('[data-testid="cal-to-list"]', { tolerance: 0 }),
+      )
   })
 })
 
@@ -106,9 +102,21 @@ test.describe('Calendar header desktop layout', () => {
   test.use({ viewport: { width: 1280, height: 800 } })
 
   test('keeps its long title, month navigation, and List view link reachable on desktop', async ({ session }) => {
-    await session.visit(`/admin/${encodeURIComponent(DT)}/view/calendar`).assertHas('[data-testid="calendar-view"]')
-    await session.step('the Calendar header fits the desktop width and all navigation is reachable', async ({ page }) => {
-      await assertCalendarHeaderFits(page)
-    })
+    await session
+      .visit(`/admin/${encodeURIComponent(DT)}/view/calendar`)
+      .assertHas('[data-testid="calendar-view"]')
+      .assertHas('h1')
+      .assertHas('[data-testid="cal-prev"]')
+      .assertHas('[data-testid="cal-next"]')
+      .assertHas('[data-testid="cal-to-list"]')
+      .within('h1', (heading) => heading.assertExactText(`${DT} — Calendar`))
+      .within('main', (main) =>
+        main
+          .assertNoHorizontalOverflow()
+          .assertHorizontallyContained('h1', { tolerance: 0 })
+          .assertHorizontallyContained('[data-testid="cal-prev"]', { tolerance: 0 })
+          .assertHorizontallyContained('[data-testid="cal-next"]', { tolerance: 0 })
+          .assertHorizontallyContained('[data-testid="cal-to-list"]', { tolerance: 0 }),
+      )
   })
 })
