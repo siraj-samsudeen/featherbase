@@ -1,21 +1,40 @@
+# Project Descriptions
+
+## Purpose
+
+A project can carry a short shared description of what it is for, so everyone
+working in it starts from the same understanding.
+
 ## ADDED Requirements
 
-### Requirement: project_markdown_is_shared
+### Requirement: Describe a project
 
-A project SHALL show its shared Markdown description beneath its title under existing project permissions. Blank descriptions SHALL offer Add description. Edit SHALL expose Save and Cancel; empty content SHALL save. Saving SHALL retain the draft-start version, reject competing changes and retain the draft on failure. Cancel SHALL make no write. Reading or editing SHALL preserve project and task context, including mobile layouts.
+Each project SHALL be able to have a description that the whole team sees under
+its name, written in Markdown, a simple way to add links, lists and code. A
+project without a description offers to add one. Editing is deliberate, with
+save and cancel: saving an empty description clears it, and cancelling saves
+nothing. If someone else changed the project after the user started editing,
+the save is refused and the draft is kept. Reading or editing a description
+never takes the user out of the project, on a desktop or a phone.
 
-#### Scenario: shared_context_and_empty_content
-- **WHEN** a project editor saves a description or clears it
-- **THEN** another editor reads the same persisted content and an empty value shows Add description.
+#### Scenario: Share a project's purpose
 
-#### Scenario: stale_project_draft
-- **WHEN** another editor changes the project after a description draft begins
-- **THEN** Save reports a conflict and does not overwrite the newer project.
+- **WHEN** the user saves the description "Count every shelf before the 30th" on a project
+- **THEN** Shahul sees the same description on that project
+- **AND** when the user later clears it and saves, the project offers to add a description again
 
-### Requirement: markdown_cannot_execute_html
+#### Scenario: Someone else saved first
 
-Descriptions SHALL render ordinary Markdown links, lists and code. Raw HTML SHALL not execute or create active DOM elements, and unsafe link protocols SHALL not execute code. Content SHALL remain readable without overflowing a 375px viewport.
+- **WHEN** the user starts editing a project's description, Shahul changes the same project, and the user then saves
+- **THEN** the user is told the project has changed and Shahul's change stays
 
-#### Scenario: malicious_markup_is_inert
-- **WHEN** a description contains script tags, event-handler HTML or a javascript link
-- **THEN** it creates no executable script, handler or unsafe navigation URL.
+### Requirement: Descriptions cannot run code
+
+Descriptions SHALL show ordinary formatting, but nothing written into them can
+run: embedded web page code is ignored and links cannot run scripts. Long
+content stays readable on a phone without the page scrolling sideways.
+
+#### Scenario: Harmful content stays harmless
+
+- **WHEN** the user writes a description containing a script and a link that tries to run code
+- **THEN** the description is shown and nothing in it runs

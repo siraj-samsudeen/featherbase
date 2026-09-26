@@ -1,36 +1,71 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
-### Requirement: task_activity_stays_in_tasker
+### Requirement: Correct a task's title and description
 
-Task details SHALL show description, append-only comments and chronological field history with actor and time. Inspector and focused modes SHALL let a member correct task title and plain/Markdown description, Save or Cancel the draft. Compact mode SHALL provide an explicit path to editing. Empty description SHALL be valid; blank title SHALL not save. Saving SHALL use the version at draft start, surface a conflict without losing the draft, and refresh every task-bearing view without reloading. Switching selected task SHALL not carry another task's draft.
+In the side panel and full page, the user SHALL be able to correct a task's
+title and description, then save or cancel. Until they choose to edit, the
+description is shown for reading, or as not written yet; the summary layout
+points them to where they can edit. A title cannot be left blank, but an empty
+description is fine. A saved correction shows in every list straight away. If
+someone else changed the task after the user started editing, the save is
+refused and the user's draft is kept. Moving to another task never carries a
+draft across.
 
-Descriptions SHALL start in a calm read or empty state, not an always-open editor. Editing SHALL be intentional. Detail modes SHALL expose state, responsibility, destination, urgency and completion controls, with discoverable promotion/deletion actions. Focus SHALL preserve workspace context when closed and prevent focus or scrolling from leaking to the hidden background. Take SHALL update responsibility without changing state or destination; My Work SHALL reflect the persisted assignment, while Personal tasks remains a separate destination.
+#### Scenario: Fix a title and clear a description
 
-Deletion SHALL require explicit confirmation explaining permanent removal versus Cancelled for retained work. It SHALL preserve comments/history/references by refusing unsafe removal, reject a stale version and close or explain a deleted selected task. Private focus SHALL ignore removed IDs. Until the generic host can enforce those conditions atomically, deletion SHALL remain unavailable rather than promise client-only safety.
+- **WHEN** the user changes a task's title to "Call the new supplier", empties its description and saves
+- **THEN** both changes are kept
+- **AND** the task list shows "Call the new supplier" without reloading
 
-#### Scenario: comment_and_edit_are_visible
-- **WHEN** a member adds a comment and changes a shared task field
-- **THEN** Tasker shows both events with their actor and time.
+#### Scenario: Cancel an edit
 
-#### Scenario: correct_title_and_description
-- **WHEN** a member saves a changed title and an empty description
-- **THEN** both persist and the task list shows the new title without a reload.
+- **WHEN** the user edits a task's title and then cancels
+- **THEN** the task keeps its old title and nothing is saved
 
-#### Scenario: cancel_or_conflict_preserves_work
-- **WHEN** a member cancels a draft
-- **THEN** no write occurs
-- **AND** a competing change after draft start causes Save to report conflict without overwriting it.
+#### Scenario: Someone else saved first
 
-#### Scenario: retained_work_is_not_silently_deleted
-- **WHEN** a task has discussion, meaningful history or references
-- **THEN** Delete does not silently discard that work and explains Cancelled as the retained-work option.
+- **WHEN** the user starts editing a task, Shahul changes the same task, and the user then saves
+- **THEN** the user is told the task has changed and Shahul's change stays
+- **AND** the user's draft is still there
 
-#### Scenario: focus_is_a_working_surface
-- **WHEN** a member opens a task with no description in Focus
-- **THEN** an empty read state and workflow controls appear without a textarea or Save button
-- **AND** Edit task opens title and description with Save and Cancel.
+#### Scenario: Nothing opens for editing until asked
 
-#### Scenario: take_updates_my_work
-- **WHEN** a member takes an unassigned Blocked urgent Inbox task
-- **THEN** responsibility persists and My Work contains the task
-- **AND** Blocked, urgency and Inbox destination remain unchanged; Personal tasks does not gain it.
+- **WHEN** the user opens a task with no description as a full page
+- **THEN** it shows that there is no description yet, along with the task's controls, and no editing box
+- **AND** choosing to edit opens the title and description with save and cancel
+
+### Requirement: Work on a task from its details
+
+Task details SHALL let the user change a task's state, responsible person,
+place, urgency and done tick, and take the task themselves if nobody has.
+Taking a task makes the user responsible for it without changing its state or
+place, so it shows in their My Work, not on their personal list. Closing the
+details returns the user to where they were, and while the details cover the
+screen the keyboard stays within them.
+
+#### Scenario: Take a task from its details
+
+- **WHEN** the user takes a Blocked, urgent Inbox task that nobody is responsible for
+- **THEN** the user is responsible for it and it shows in their My Work
+- **AND** it is still Blocked, urgent and in the Inbox, and it is not on the user's personal list
+
+### Requirement: Delete a task created by accident
+
+The user SHALL be able to permanently delete a task created by accident, after
+confirming. Tasker explains that this cannot be undone and that Cancelled is the
+way to keep work that is no longer needed. Tasker refuses to delete a task that
+has anything worth keeping, such as someone responsible, urgency, a state other
+than Not started, comments, change history, attachments or links to it, and
+refuses if the task changed after the user opened it. A deleted task disappears
+from lists, from My Focus and from the open task details.
+
+#### Scenario: Delete a mistaken capture
+
+- **WHEN** the user deletes a task they just captured by mistake and confirms
+- **THEN** it disappears from the Inbox and its details close
+
+#### Scenario: Work worth keeping is not deleted
+
+- **WHEN** the user tries to delete a task that has a comment
+- **THEN** Tasker refuses and points to Cancelled instead
+- **AND** the task and its comment remain
