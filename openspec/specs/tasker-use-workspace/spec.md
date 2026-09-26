@@ -23,12 +23,12 @@ things are.
 
 Every list SHALL show tasks the same way. From each row the user can tick the
 task done, change its state, its place and its responsible person, mark it
-urgent and add it to My Focus. A Blocked or On hold task also shows its latest
-explanation under its title.
+urgent and add it to My Focus. A Blocked, On hold or Cancelled task also shows
+its latest comment under its title, so the reason it stopped is at hand.
 
 #### Scenario: One row, everything at hand
 
-- **WHEN** a Blocked, urgent task explained with "Waiting for supplier" appears in any list
+- **WHEN** a Blocked, urgent task whose latest comment is "Waiting for supplier" appears in any list
 - **THEN** its row offers all of those controls
 - **AND** "Waiting for supplier" is shown with it
 
