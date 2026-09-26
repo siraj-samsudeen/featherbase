@@ -124,7 +124,7 @@ test('#87: a filters URL applies when opened cold, not just when the app built i
   await session.visit(`/admin/${encodeURIComponent(DT_COLD)}?filters=${filters}`)
   await session
     .assertHas('[data-testid="filter-chip"]', { count: 1 })
-    .assertHas('[data-testid="list-total"]', { text: '3 total' })
+    .step('the list shows exactly 3 total', async ({ page }) => { await expect(page.getByTestId('list-total')).toHaveText('3 total') })
   // The parameter is still in the address bar — not silently stripped.
   await session.step('the filters param is still in the address bar', async ({ page }) => {
     expect(page.url()).toContain('filters=')
@@ -136,7 +136,7 @@ test('#87: a filters URL applies when opened cold, not just when the app built i
   })
   await session
     .assertHas('[data-testid="filter-chip"]', { count: 1 })
-    .assertHas('[data-testid="list-total"]', { text: '3 total' })
+    .step('the list shows exactly 3 total', async ({ page }) => { await expect(page.getByTestId('list-total')).toHaveText('3 total') })
 
   // A URL is user input. Values that parse as JSON but are the wrong shape are
   // discarded, not handed to ListView — which indexes each entry as a triple
@@ -144,7 +144,7 @@ test('#87: a filters URL applies when opened cold, not just when the app built i
   for (const bad of ['{}', '[null]', '["qty",">=",7]', '[["qty"]]', 'not json']) {
     await session.visit(`/admin/${encodeURIComponent(DT_COLD)}?filters=${encodeURIComponent(bad)}`)
     await session
-      .assertHas('[data-testid="list-total"]', { text: '10 total' })
+      .step('the list shows exactly 10 total', async ({ page }) => { await expect(page.getByTestId('list-total')).toHaveText('10 total') })
       .assertHas('[data-testid="filter-chip"]', { count: 0 })
   }
 })
