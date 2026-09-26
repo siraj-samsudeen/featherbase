@@ -4,27 +4,13 @@ This repository uses a coordinator-and-workers workflow whenever the owner is
 working with an agent. For those sessions, this protocol supersedes contrary
 default guidance to implement directly in the main thread.
 
-## OpenSpec is mandatory
+## OpenSpec
 
-OpenSpec is Featherbase's sole behavior specification and mandatory change
-workflow. `openspec/specs/` is the only active behavior-contract root; design
-notes may preserve alternatives and reasoning, but are never a second contract.
-
-- **New feature or behavior:** create and strictly validate an OpenSpec change
-  before implementation. Implement from its requirements and scenarios.
-- **Existing feature without an OpenSpec capability:** first reverse-engineer
-  current behavior into a baseline under `openspec/specs/`, verify it against
-  the deciding code and asymmetric tests, and commit that baseline separately.
-  **The baseline commit must not modify application behavior or expected test
-  outcomes.** Only after that commit, create and apply a separate OpenSpec
-  change for the intended behavior modification.
-- Code and asymmetric tests cite the same descriptive requirement or scenario
-  slug with `@spec <slug>` at the deciding line and checking test. Run
-  `pnpm check:specs`; strict OpenSpec validation proves structure, while the
-  STC check proves linkage—not semantic agreement.
-- Use the repository-pinned CLI through `pnpm exec openspec`. When upgrading
-  OpenSpec, change the exact dependency and refresh the generated workflow
-  files with that same version in one reviewable change.
+Behavior specs live in `openspec/specs/`. New or changed behavior goes through
+an OpenSpec change — start one with `/opsx:propose`. Writing style for specs
+and proposals is set in `openspec/config.yaml`. The CLI is pinned to an exact
+version in root `package.json` and bumped by the weekly `openspec-update`
+workflow.
 
 The rationale is [ADR 0010](docs/adr/0010-openspec-change-workflow.md). Legacy
 files under `docs/specs/` are frozen, non-authoritative migration evidence;

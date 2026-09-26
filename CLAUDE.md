@@ -57,8 +57,7 @@ Here that means: `openspec/specs/` carries the behavior judgment and acceptance
 criteria; root `AGENTS.md` defines the mandatory OpenSpec workflow;
 `docs/TESTING.md` is the single living doc for how the suites are built and
 run; `PROGRESS.md` and `docs/adr/` are the append-only history — what happened,
-and what was decided and why. The relationships between spec, tests, and code
-are CI's job, not a reviewer's memory.
+and what was decided and why.
 
 The anti-pattern this retires: **a document that describes another artifact
 at a distance will drift**, and nothing catches it. Statuses, inventories
@@ -223,8 +222,7 @@ command, that is the first finding.
   flip it to a plain test in the same change.)
 - **A discovered behaviour is not a requirement.** It has three fates —
   ratified into the spec, filed as a defect, or raised as an open question —
-  and choosing is the owner's call, never an agent's. See
-  `docs/design/requirements-framework.md`.
+  and choosing is the owner's call, never an agent's.
 
 ## Where decisions live
 
@@ -233,10 +231,10 @@ command, that is the first finding.
 - `docs/VISION.md` — what this is for and who it serves.
 - `openspec/specs/` — the sole behavior authority. Root `AGENTS.md` defines
   the mandatory new-feature and baseline-first legacy workflows; ADR 0010
-  records why. Use descriptive requirement/scenario slugs in `@spec` markers.
+  records why. Use plain, descriptive requirement and scenario names.
 - `docs/specs/` — frozen, non-authoritative Journey documents from before the
   2026-09-21 ruling. They are migration evidence only. Never add a behavior
-  contract there; `pnpm check:spec-policy` enforces the frozen file set.
+  contract there.
 - `docs/research/` — Frappe architecture, Glide, and stack studies.
 - `docs/archive/` — frozen history: the 2026 build harness and its feature
   inventory (`harness-2026/`), and the specs from the retired Convex
@@ -262,18 +260,15 @@ the skill, don't improvise the equivalent:
 | Resolving an in-progress merge/rebase conflict | `mattpocock-skills:resolving-merge-conflicts` |
 | Stress-testing a plan before committing to it | `mattpocock-skills:grilling` |
 
-Behavior changes use the repository-generated OpenSpec skills. The local
-`journey-spec` skill is historical and must not author current contracts.
-When spawning sub-sessions or task chips, name the required skills in the
-prompt — spawned agents read this file, but an explicit instruction survives
-context loss.
+Behavior changes use the repository-generated OpenSpec skills. When spawning
+sub-sessions or task chips, name the required skills in the prompt — spawned
+agents read this file, but an explicit instruction survives context loss.
 
-### The STC triangle — design, test and spec review
+### Deeper design, test and spec review
 
-Three repo-local skills, ported from the data-warehouse repo (#3664/#3666/#3691)
-with every worked example re-derived from this codebase: **`/code-review-8-axes`**,
-**`/test-review-3-axes`**, **`/spec-review-5-axes`**. Spec says what to promise, code
-holds the promises, tests check them — and they drift apart continuously.
+Two repo-local skills, ported from the data-warehouse repo (#3664/#3666) with
+every worked example re-derived from this codebase: **`/code-review-8-axes`**
+and **`/test-review-3-axes`**.
 
 They are **deeper and slower than the routing table's review row above**, and they do
 not replace it: reach for `mattpocock-skills:code-review` on an ordinary PR, and for
@@ -287,15 +282,10 @@ These axes almost never fire on the lines you edited: they find the seventh copy
 fact you changed in six places, the guard that silently stopped running, the promise
 nothing tests. **Report what you found, what you fixed here, and what you filed
 instead** — fixing everything found is not expected and usually widens the PR wrongly.
-All three carry a REJECT list: **file and function length are not findings.**
+Both carry a REJECT list: **file and function length are not findings.**
 
-**When the artifacts disagree, never silently pick a winner and never punt** — emit the
-divergence triage item defined in `spec-review-5-axes`. That is this repo's
-"a discovered behaviour is not a requirement" rule, in an output format.
-
-Traceability: `docs/agents/stc-traceability.md` — one `@spec <slug>` marker per vertex,
-computed by `pnpm check:stc` over `openspec/specs` and enforced in CI through
-`pnpm check:specs`.
+When a spec, the code and the tests disagree, that disagreement is not yours to
+settle silently — see "A discovered behaviour is not a requirement" above.
 
 ### Issue tracker
 
