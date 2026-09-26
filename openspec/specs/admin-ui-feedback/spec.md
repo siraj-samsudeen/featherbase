@@ -6,7 +6,6 @@ Describe existing Admin navigation, appearance preferences and import/source fee
 ## Requirements
 
 ### Requirement: awesomebar_opens_matching_destinations
-Status: characterized (#67)
 
 The awesomebar SHALL offer matching Table lists, new-row actions, commands and record hits.
 
@@ -15,7 +14,6 @@ The awesomebar SHALL offer matching Table lists, new-row actions, commands and r
 - **THEN** the record hit opens its form and the new-row action opens the matched Table's blank form
 
 ### Requirement: appearance_preferences_persist_per_user
-Status: characterized (#96)
 
 The Admin SHALL apply a user's theme and palette to the document, persist successful selections on that user, and restore server preferences on a fresh load without inheriting another user's choices.
 
@@ -24,7 +22,6 @@ The Admin SHALL apply a user's theme and palette to the document, persist succes
 - **THEN** both choices remain active and another account retains its own preferences
 
 ### Requirement: builder_infers_file_columns
-Status: characterized (#109)
 
 The Table Builder SHALL infer editable columns and preview rows from the first parsed sheet of an accepted file. It SHALL import only those rows when creating the Table.
 
@@ -33,7 +30,6 @@ The Table Builder SHALL infer editable columns and preview rows from the first p
 - **THEN** the builder previews those rows, proposes their types and creates a Table containing three rows
 
 ### Requirement: source_candidates_preserve_fk_metadata
-Status: characterized (#163)
 
 Source introspection SHALL retain driver-provided column types and FK metadata. Reflection SHALL turn FK edges into References when their targets are reflected from the same source with a matching bound primary key.
 

@@ -1,7 +1,6 @@
 ## ADDED Requirements
 
 ### Requirement: explicit_runtime_policy_upgrade
-Status: governed (#279)
 
 Package discovery SHALL validate read/action policy and required callback
 declarations as immutable artifact contents. Missing policies SHALL NOT become

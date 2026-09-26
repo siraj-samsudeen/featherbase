@@ -1,7 +1,5 @@
 # Start a Project
 
-**IDs:** `lightweight_project_entry` · `projects_landing_connects_directory_and_creation`
-
 ## Purpose
 
 A team member can turn a body of work into a named project and begin listing its
@@ -10,9 +8,6 @@ tasks without completing project administration first.
 ## Requirements
 
 ### Requirement: lightweight_project_entry
-Status: governed (#296) · Built
-
-> evidence: proven — component and browser tests create a name-only project and enter several neutral tasks without leaving it.
 
 A non-empty name SHALL be sufficient to create a project. An empty project SHALL
 remain valid. The new project SHALL open with task entry ready. Each non-empty
@@ -31,9 +26,6 @@ and task entry SHALL remain ready after each addition.
 - **AND** no full task form opens between entries.
 
 ### Requirement: projects_landing_connects_directory_and_creation
-Status: governed (#296) · Built
-
-> evidence: proven via projects_landing_flow — the component test checks the complete directory, task counts, project selection and retained project context behind task details.
 
 Choosing the main Projects destination SHALL clear the selected project and open
 a central landing page. The landing page SHALL list every readable project with

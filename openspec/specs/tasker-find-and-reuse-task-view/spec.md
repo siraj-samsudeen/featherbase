@@ -1,7 +1,5 @@
 # Find and Reuse a Task View
 
-**IDs:** `task_search_stays_in_scope` · `task_filters_combine_dimensions` · `task_view_state_is_visible` · `saved_task_views_are_private_fixed` · `saved_view_changes_are_explicit` · `task_view_controls_are_accessible`
-
 ## Purpose
 
 A person can find a useful slice of work, understand why each task is present,
@@ -10,8 +8,6 @@ and privately return to the same slice without changing shared tasks.
 ## Requirements
 
 ### Requirement: task_search_stays_in_scope
-Status: governed (#296) · Built
-> evidence: proven via find_and_reuse_task_view — unit and component tests search titles and current descriptions while excluding tasks outside the supplied project boundary.
 
 Search SHALL match task titles and current descriptions without leaving the
 open task boundary. It SHALL NOT match comments or field-change history. A
@@ -25,8 +21,6 @@ surface SHALL remain inside that surface.
 - **AND** a task from another project does not appear.
 
 ### Requirement: task_filters_combine_dimensions
-Status: governed (#296) · Built
-> evidence: proven via find_and_reuse_task_view — unit and component tests exercise OR inside state and responsibility dimensions and AND across active dimensions.
 
 Task-bearing surfaces SHALL filter by work state, responsible person and
 urgency. A surface spanning projects SHALL also filter by project. Multiple
@@ -39,8 +33,6 @@ search SHALL combine with AND.
 - **AND** a non-urgent task does not match even when its state and responsibility match.
 
 ### Requirement: task_view_state_is_visible
-Status: governed (#296) · Built
-> evidence: proven via find_and_reuse_task_view — component and browser tests verify removable criteria, live match counts, preserved zero-match criteria and explicit clear actions.
 
 Tasker SHALL show every active criterion as labelled removable text, together
 with the matching and available task counts. Clearing one criterion SHALL leave
@@ -56,8 +48,6 @@ boundary, while other unfiltered surfaces retain their existing status scope.
 - **AND** the member can clear search or all filters without losing the boundary.
 
 ### Requirement: saved_task_views_are_private_fixed
-Status: governed (#296) · Built
-> evidence: proven via find_and_reuse_task_view — the two-user component journey verifies private server persistence, fixed project scope and unchanged shared task records.
 
 A named saved task view SHALL be a private, server-synced preference containing
 its fixed boundary, search text and filters. A member SHALL be able to save the
@@ -75,8 +65,6 @@ Another member SHALL NOT be able to read the name or definition.
 - **THEN** reopening it never includes a matching task from Store opening readiness.
 
 ### Requirement: saved_view_changes_are_explicit
-Status: governed (#296) · Built
-> evidence: proven via find_and_reuse_task_view — unit and component tests exercise dirty detection, reset, rename, delete and restrictive stale-reference handling.
 
 Opening a saved view and changing criteria SHALL create visible unsaved changes;
 it SHALL NOT overwrite the saved definition until the member chooses Update.
@@ -97,8 +85,6 @@ without broadening the result set.
 - **AND** it does not remove that criterion and expose a broader task set.
 
 ### Requirement: task_view_controls_are_accessible
-Status: governed (#296) · Built
-> evidence: proven via tasker_browser_flow — browser tests operate filters by keyboard, restore focus on Escape and verify the live count; responsive_workspace_flow checks mobile bottom-sheet geometry.
 
 The desktop workspace SHALL use a compact filter popover and the mobile
 workspace SHALL use a scrollable bottom sheet. Search, filter, view, chip,

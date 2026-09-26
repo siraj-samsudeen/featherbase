@@ -1,7 +1,5 @@
 # Process Inbox Items
 
-**IDs:** `inbox_is_destination` · `one_task_destination` · `personal_destination_assigns_owner` · `process_inbox_one_at_a_time`
-
 ## Purpose
 
 A team member can review work whose destination was postponed and decide where
@@ -10,9 +8,6 @@ each item belongs without changing unrelated task information.
 ## Requirements
 
 ### Requirement: inbox_is_destination
-Status: governed (#296) · Built
-
-> evidence: proven via quick_capture_flow — captured work appears in Inbox without assigning its creator.
 
 Inbox SHALL contain exactly the tasks with neither a project nor a Personal
 tasks owner. Opening Inbox SHALL show each task's current shared signals without
@@ -24,9 +19,6 @@ changing it.
 - **THEN** the task appears there and remains unchanged.
 
 ### Requirement: one_task_destination
-Status: governed (#296) · Built
-
-> evidence: proven — server coverage rejects a project and Personal tasks owner together.
 
 A task SHALL belong to exactly one of Inbox, one project, or one person's
 Personal tasks. A write supplying both a project and a Personal tasks owner
@@ -48,9 +40,6 @@ SHALL be rejected.
 - **THEN** the write is refused and the impossible state is not saved.
 
 ### Requirement: personal_destination_assigns_owner
-Status: governed (#296) · Built · evidence gap
-
-> evidence: rule-tier — placement assigns the owner; preserving an In progress state lacks a dedicated asymmetric test.
 
 Moving a task to one person's Personal tasks SHALL make that person responsible.
 Its work state and other shared information SHALL remain unchanged.
@@ -61,9 +50,6 @@ Its work state and other shared information SHALL remain unchanged.
 - **THEN** Siraj becomes responsible and it remains In progress.
 
 ### Requirement: process_inbox_one_at_a_time
-Status: governed (#296) · Specified, not built
-
-> evidence: gap — project and Personal placement work, but Tasker has no guided Save and next or Skip loop.
 
 Inbox processing SHALL present one item at a time with the remaining count. Save
 and next SHALL apply the chosen destination and open the next item. Skip SHALL

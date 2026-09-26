@@ -1,7 +1,6 @@
 ## ADDED Requirements
 
 ### Requirement: generated_controls_have_accessible_names
-Status: governed
 
 Generated form controls SHALL be programmatically associated with their visible labels using stable IDs unique to the mounted form. Required markers SHALL not replace the field name. Sub-table cell controls SHALL have distinct stable IDs and accessible names including their grid, column and row position. Labels SHALL remain associated after editing, adding, removing or reordering rows. Reference and attachment fields SHALL associate labels with an actual control rather than a wrapper.
 

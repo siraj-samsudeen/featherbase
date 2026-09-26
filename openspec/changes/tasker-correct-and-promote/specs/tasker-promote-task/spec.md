@@ -1,9 +1,6 @@
 ## ADDED Requirements
 
 ### Requirement: promotion_preserves_work_history
-Status: governed (#296) · implemented and locally proven for supported host retention
-
-> evidence: tasker-actions.test.ts independently exercises assignment, state, urgency, comment and previous-assignment history, creation-only simple tasks, retained Personal assignment and File-only/Share-only links. Browser proof checks exact prompt, Cancel and Continue. Independent exploration remains parent-owned.
 
 Promotion SHALL create a project named from the task title and copy its optional description. A simple task SHALL be removed without a preservation prompt. A rich task SHALL remain as the new project's first task with its assignment, urgency, comments and activity preserved, only after confirmation. Cancel SHALL change nothing.
 
@@ -23,9 +20,6 @@ The rich confirmation SHALL say in substance: “This task has work history that
 - **THEN** its activity requires the preservation prompt and Continue retains the original task.
 
 ### Requirement: promotion_is_atomic_retryable
-Status: governed (#296) · implemented and locally proven
-
-> evidence: tasker-actions.test.ts injected post-project-creation failure rolls back project/source/receipt; literal browser proof loses a committed response then reloads/replays one project; tasker-upgrade-action-commit.test.ts verifies real-commit lifecycle/replay boundaries.
 
 Promotion SHALL enforce source and destination permissions, stale/concurrent edits and a durable idempotency key in one host transaction. A failed operation SHALL leave neither a partial project nor a partially moved/deleted task. Retrying the same successful request SHALL return the same outcome without another project. A newly rich task SHALL never be deleted based on an earlier simple classification.
 

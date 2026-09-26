@@ -1,8 +1,6 @@
 ## MODIFIED Requirements
 
 ### Requirement: platform_storage_is_explicit
-Legacy ID: PKG-R5 · `shape: migration invariant`
-Status: governed (#296)
 Featherbase-owned relations and functions SHALL live in PostgreSQL schema
 `featherbase`. A fresh install SHALL create them there. An upgrade SHALL move
 existing objects without replacing their identities, rows, constraints, indexes,
