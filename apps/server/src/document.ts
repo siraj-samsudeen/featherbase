@@ -11,7 +11,7 @@ import { runHooks, type HookContext } from './controllers'
 import { evaluateEmailRules, type LifecycleEvent } from './email-rules'
 import { evaluateAssignmentRules } from './assignment-rules'
 import { applySla } from './sla'
-import { getActiveWorkflow, stateField } from './workflow'
+import { getActiveWorkflow, stateField, rethrowWorkflowConflict } from './workflow'
 import { evaluateWebhooks } from './webhooks'
 import { runDocEventScripts } from './server-scripts'
 import { SENSITIVE_COLUMNS } from './sensitive-columns'
@@ -174,7 +174,8 @@ function applyDefaults(meta: TableMeta, values: RowValues): RowValues {
 
 // META-010: translate Postgres constraint violations into field-wise
 // ValidationErrors instead of opaque 500s.
-function mapDbError(meta: TableMeta, err: unknown): never {
+async function mapDbError(meta: TableMeta, err: unknown, refTable?: unknown): Promise<never> {
+  if (meta.name === 'Workflow') await rethrowWorkflowConflict(err, refTable)
   const e = err as {
     code?: string
     constraint_name?: string
@@ -567,6 +568,7 @@ async function saveDocImpl(
 
   const childInputs = pickChildInputs(meta, values)
   const tbl = await tableRelation(table)
+  let attemptedRow: RowValues = {}
   const [saved] = await sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
@@ -608,6 +610,7 @@ async function saveDocImpl(
       }
       await lockCoreDocumentTargets(stx, meta, dbRow, user)
       await validateLinks(stx, meta, dbRow)
+      attemptedRow = dbRow
       const inserted = await tx`insert into ${tx(tbl)} ${tx(dbRow as unknown as Record<string, never>)} returning *`
       for (const input of finalChildInputs)
         await saveChildren(stx, meta, rowId, input, user)
@@ -618,7 +621,7 @@ async function saveDocImpl(
       await runDocEventScripts('after_save', meta.name, ctx.row, ctx.tx)
       return inserted
     })
-    .catch((err) => mapDbError(meta, err))
+    .catch((err) => mapDbError(meta, err, attemptedRow.ref_table))
   const insertResult = await loadChildren(meta, { table, ...(saved as RowValues) })
   // EML-004: fire matching email rules post-commit. Frappe's Save event covers
   // inserts too, so both on_create and on_save rules are evaluated here.
@@ -818,6 +821,7 @@ async function updateDoc(
 
   // Snapshot of the row before this save, for post-commit transition checks.
   let previous: RowValues | undefined
+  let attemptedRow: RowValues = {}
   const saved = await sql
     .begin(async (tx) => {
       const stx = tx as unknown as typeof sql
@@ -871,6 +875,7 @@ async function updateDoc(
       }
       await lockCoreDocumentTargets(stx, meta, { ...existing, ...dbRow }, user, existing as RowValues)
       await validateLinks(stx, meta, dbRow)
+      attemptedRow = dbRow
       const [updated] = await tx`
         update ${tx(table)} set ${tx(dbRow)} where ${tx(meta.row_key)} = ${name} returning *`
       // Re-picked from the hooked row, as on insert. An absent key still
@@ -886,7 +891,7 @@ async function updateDoc(
       await runDocEventScripts('after_save', meta.name, ctx.row, ctx.tx)
       return updated
     })
-    .catch((err) => mapDbError(meta, err))
+    .catch((err) => mapDbError(meta, err, attemptedRow.ref_table))
   const updateResult = await loadChildren(meta, { table: meta.name, ...(saved as RowValues) })
   // EML-004: on_save rules fire post-commit; the pre-save snapshot lets a
   // conditional rule fire only when the value transitions into the match.
