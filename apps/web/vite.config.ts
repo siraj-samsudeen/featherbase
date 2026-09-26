@@ -15,6 +15,8 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': `http://localhost:${apiPort}`,
+      '/featherbase/runtime-shell.css': `http://localhost:${apiPort}`,
+      '/featherbase/runtime-shell.js': `http://localhost:${apiPort}`,
       [APP_ROOT_PATTERN]: `http://localhost:${apiPort}`,
       [LEGACY_HUMAN_ROOT_PATTERN]: `http://localhost:${apiPort}`,
       '/files': `http://localhost:${apiPort}`,

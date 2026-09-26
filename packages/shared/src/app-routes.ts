@@ -9,3 +9,8 @@ export const RESERVED_APP_ROOTS = [
 export const APP_ROOT_PATTERN = `^/(?!(${RESERVED_APP_ROOTS.join('|')})(/|\\?|$))[a-z][a-z0-9_]{0,30}(/|\\?|$)`
 export const LEGACY_HUMAN_ROOT_PATTERN = '^/(admin|login|form|portal|print|oauth-callback|reset-password|sales-target)(/|\\?|$)'
 export function appHref(name: string): string { return `/${name}/` }
+
+export const FEATHERBASE_HOME_DESTINATION = {
+  label: 'Featherbase Home',
+  href: '/featherbase/admin',
+} as const
