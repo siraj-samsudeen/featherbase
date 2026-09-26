@@ -8,19 +8,16 @@ relearning anything.
 
 ## Requirements
 
-### Requirement: The places to go stay in the same order
+### Requirement: Navigation is the same everywhere
 
-Tasker SHALL always offer the same places, in this order: Inbox (tasks not yet
-placed), My Work (the user's focus and responsibilities), Together (the team's
-active work by person), Personal tasks (each person's personal list), Views (the
-user's private saved views) and Projects. Below Projects, every project is
-listed by name with its number of tasks, and choosing one opens it.
+Tasker SHALL offer the same places to go, in the same order, on every page, such
+as the Inbox, My Work and each project, so the user never has to relearn where
+things are.
 
-#### Scenario: Go from the main places to a project
+#### Scenario: Open a project from anywhere
 
-- **WHEN** Tasker has two projects and the user looks at the navigation
-- **THEN** Inbox, My Work, Together, Personal tasks, Views and Projects appear in that order
-- **AND** both projects are listed below Projects with their task counts, and choosing one opens its tasks
+- **WHEN** the user is in the Inbox and chooses the project "Warehouse review" from the navigation
+- **THEN** the project's tasks open, and the navigation looks the same as before
 
 ### Requirement: Every task row offers the same controls
 
