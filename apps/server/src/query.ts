@@ -118,12 +118,12 @@ function assertColumn(cols: Set<string>, field: string, what: string) {
     })
 }
 
-// Builds the permission-scoped WHERE fragment shared by list, count, and
-// group-count: read permission + created_by narrowing + user-permission
+// Builds the permission-scoped WHERE fragment shared by list, count,
+// group-count, and search: read permission + created_by narrowing + user-permission
 // narrowing + caller filters. Throws PermissionError (none) or
 // ValidationError (single / bad filter). Returns the resolved meta, table
 // name, and column set too.
-async function scopedWhere(
+export async function scopedWhere(
   table: string,
   user: string,
   callerFilters: Filter[],

@@ -1,5 +1,23 @@
 # Progress Log
 
+## 2026-09-26 — Global search respects row and title access (#339)
+
+Search reuses the query module's existing own-row/Data Scope predicate and
+readable-column set. ID/title matching is parenthesized under that predicate;
+unreadable titles are neither matched nor returned, with row IDs as fallback.
+Direct shares remain openable by known link without widening discovery.
+Caps, wire shape and connected-table exclusion are unchanged. Approved
+OpenSpec deltas cover both row scope and sensitive-title protection.
+
+Parent Feather review required the browser proof to assert fixture creation
+and read both rows back, preventing an absent forbidden fixture from producing
+a false pass. Its search action uses the Session DSL; the exact-result assertion
+uses a named step until the new Core assertion is released. Independent checks:
+`pnpm --filter server exec vitest run test/global-search-permissions.test.ts`
+(6 passed), `test/sources-security.test.ts` (18 passed), server/web typechecks,
+isolated `e2e/global-search-permissions.spec.ts` (1 passed), strict spec checks
+(45 specs/11 changes), DSL guard (78 files), and `git diff --check`.
+
 ## 2026-09-26 — Consume the published Postgres testing harness (#225)
 
 Both consumers now pin npm `feather-testing-postgres@0.2.0`, replacing the
