@@ -1,5 +1,43 @@
 # Progress Log
 
+## 2026-09-26 — Tasker project rename protects newer changes (#315)
+
+Project rename now snapshots the project at edit start, following task detail
+drafts. A refetch no longer replaces typed text or supplies a newer revision
+to an older edit. Conflicts retain the draft and display the server message;
+Cancel/reopen uses the refreshed project, and project navigation discards the
+previous draft. No server, dependency, Admin, toolbar, or authentication changes.
+
+The real-Postgres regression saves a competing name as another team member,
+adds a task to refresh projects, and waits for the newer sidebar name before
+saving the older draft. It failed twice before the fix (no conflict alert).
+Removing the heading identity key also made the navigation test fail; the key
+was restored. The Session DSL browser regression proves the built package
+retains the draft and the newer persisted name after a witnessed refetch.
+
+**Verified:** `./init.sh` under an orb supervised service (server smoke and
+3 browser smoke tests); `NODE_OPTIONS=--no-experimental-webstorage pnpm
+--filter web test test/task-management.test.tsx` (21 passed);
+`pnpm --filter web e2e e2e/task-management.spec.ts e2e/admin.spec.ts
+e2e/formview.spec.ts` (7 passed, including login, list, and form);
+`npm test --prefix runtime-apps/tasker` (5 passed);
+`npm run build --prefix runtime-apps/tasker`;
+`npm run typecheck --prefix runtime-apps/tasker`;
+`pnpm --filter web typecheck`; `pnpm check:specs` (45 specs, 13 changes);
+`pnpm check:e2e-dsl` (8 guard tests, 78 files); `git diff --check`.
+Feather self-review found no remaining standards or spec concerns; performed
+directly per the assignment, with independent parent review still required.
+No appearance changed; browser DOM checks cover the conflict and retained input.
+Next: parent independently verifies the scoped PR before merging.
+
+After independent parent acceptance, merged current main (through PR #355)
+without changing the rename implementation or tests. Resolved only the additive
+progress-log conflict. Repeated the component command above (21 passed),
+`pnpm --filter web e2e e2e/task-management.spec.ts` (4 passed), runtime tests
+(5 passed), runtime build, web/server/runtime typechecks, strict specs
+(45 specs, 18 changes), DSL guard (8 tests, 78 files), and whitespace checks.
+Final integration and CI remain with the parent; PR #357 is not merged here.
+
 ## 2026-09-26 — ListView toolbar fits phone and desktop widths (#316)
 
 The generic ListView header now stacks its title and wraps every existing
