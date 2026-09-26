@@ -21,13 +21,18 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   await request.delete(`/api/table/Metadata%20Override/${encodeURIComponent(`${DT}-title-label`)}`, { headers })
 })
 
-test('CUST-002: a label override shows in the form and reverts when removed', async ({ page, request }) => {
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// the checks target a bare `<label>` by text rather than a labelled control
+// (there's nothing to fill/select — the label text itself is the subject),
+// which assertHas/assertText can't address, so each round trip stays a
+// named step; session.visit carries the one plain navigation.
+test('CUST-002: a label override shows in the form and reverts when removed', async ({ session, request }) => {
   const headers = await adminAuth(request)
 
-  // Base label.
-  await page.goto(`/admin/${encodeURIComponent(DT)}/ps-doc`)
-  const label = page.locator('label', { hasText: 'Title' })
-  await expect(label.first()).toBeVisible()
+  await session.visit(`/admin/${encodeURIComponent(DT)}/ps-doc`)
+  await session.step('base label reads "Title"', async ({ page }) => {
+    await expect(page.locator('label', { hasText: 'Title' }).first()).toBeVisible()
+  })
 
   // Add a Property Setter via the API (Customize-Form mechanism).
   const ps = await request.post('/api/save_row', {
@@ -39,13 +44,16 @@ test('CUST-002: a label override shows in the form and reverts when removed', as
   })
   expect([200, 201]).toContain(ps.status())
 
-  // Reload → the form shows the new label.
-  await page.reload()
-  await expect(page.locator('label', { hasText: 'Headline' }).first()).toBeVisible()
+  await session.step('reload: the form shows the overridden label', async ({ page }) => {
+    await page.reload()
+    await expect(page.locator('label', { hasText: 'Headline' }).first()).toBeVisible()
+  })
 
   // Base docfield unchanged: removing the setter reverts the label.
   await request.delete(`/api/table/Metadata%20Override/${encodeURIComponent(`${DT}-title-label`)}`, { headers })
-  await page.reload()
-  await expect(page.locator('label', { hasText: 'Title' }).first()).toBeVisible()
-  await expect(page.locator('label', { hasText: 'Headline' })).toHaveCount(0)
+  await session.step('removing the setter reverts to the base label on reload', async ({ page }) => {
+    await page.reload()
+    await expect(page.locator('label', { hasText: 'Title' }).first()).toBeVisible()
+    await expect(page.locator('label', { hasText: 'Headline' })).toHaveCount(0)
+  })
 })

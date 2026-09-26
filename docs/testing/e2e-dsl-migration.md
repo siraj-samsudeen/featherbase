@@ -372,9 +372,10 @@ below.** Plain `test`, testid/grid/list mechanics similar to
 `form-sidebar.spec.ts`, `gantt.spec.ts`, `home-page.spec.ts`,
 `kanban.spec.ts`, `keyboard-shortcuts.spec.ts`, `naming-series.spec.ts`.
 
-**Batch 4 — Admin UI mechanics, P–W (19).** Same shape as batch 3, rest of
-the alphabet plus the two non-idempotent-across-reruns files flagged above
-(no extra care needed beyond a fresh database when verifying).
+**Batch 4 — Admin UI mechanics, P–W (19). Done** (branch `e2e-dsl-b4`,
+db `featherbase_e2e_b4`, web `:5214` / API `:8034`). Same shape as batch 3,
+rest of the alphabet plus the two non-idempotent-across-reruns files flagged
+above.
 `print-formats.spec.ts`, `print-view.spec.ts`,
 `private-file-cookie.spec.ts`, `property-setter.spec.ts`,
 `recents.spec.ts`, `report-chart.spec.ts`, `report-export.spec.ts`,
@@ -383,6 +384,60 @@ the alphabet plus the two non-idempotent-across-reruns files flagged above
 `system-settings-global.spec.ts`, `task-management.spec.ts`,
 `thumbnail.spec.ts`, `ticketing.spec.ts`, `timeline.spec.ts`,
 `ui-feedback.spec.ts`, `workflow.spec.ts`.
+
+### Batch 4 results
+
+Baseline (unmodified files, fresh `featherbase_e2e_b4`, booted with the
+raised `PREAUTH_*` envs per "Environment gotcha" above):
+`WEB_URL=http://localhost:5214 pnpm exec playwright test <batch 4 files>
+--reporter=list` → **34 passed, 0 skipped, 0 failed** (~33s, single worker).
+No pre-existing failures, so no GitHub issue was filed for this batch.
+
+Almost every file in this batch is testid-only (no `<label>`-associated
+controls at all, unlike the pilot's `admin.spec.ts`/`filters.spec.ts`), so
+nearly the whole body of each test stays inside one or a few named
+`session.step()`s; `session.visit`/`assertHas`/`assertText` carry the plain
+navigations and presence/text/count checks around them. Two files
+(`recents.spec.ts`, `saved-views.spec.ts`, `ui-feedback.spec.ts`,
+`task-management.spec.ts`) are long, stateful command-bar/nudge/localStorage
+walks where splitting into several small steps would have meant threading
+the same `page` and local variables across step boundaries for no gain, so
+each test there is one step end to end — consistent with the "one long
+step" precedent `link-autocomplete.spec.ts` already set in the pilot.
+
+All 19 files migrated, all pass, matching baseline exactly (same test names,
+same assertions, same 34/0/0 split):
+
+| File | Shape | Notes |
+|---|---|---|
+| `print-formats.spec.ts` | testid + attribute checks | format picker `<select>`, `data-format` attribute |
+| `print-view.spec.ts` | testid, regex URL landing | Print-button round trip in a step (assertPath is exact-match only) |
+| `private-file-cookie.spec.ts` | href/token attribute + raw status check | one step, no labelled controls at all |
+| `property-setter.spec.ts` | bare `<label>` text checks | no fillable control — the label text itself is the assertion |
+| `recents.spec.ts` | command-bar/sidebar/strip, keyboard | 5 tests, each one long step (regex URLs, keyboard, testid trails) |
+| `report-chart.spec.ts` | testid selects, chart text | group-by + pin flow, two navigations |
+| `report-export.spec.ts` | CSV/XLSX download parsing | one step: download events aren't expressible by any verb |
+| `report-view.spec.ts` | group/column-picker testids | counts/sums against `[data-group=...]` |
+| `responsive.spec.ts` | bounding-box/overflow measurement | `test.use({ viewport })` unchanged; both tests one step |
+| `saved-report.spec.ts` | configure/save/restore | 3 navigations, each with its own step |
+| `saved-views.spec.ts` | localStorage polling, nudge/chip testids | 2 tests, each one long step |
+| `submit-actions.spec.ts` | field enabled/disabled + regex URL | draft→submit→cancel→amend, one step |
+| `system-settings-global.spec.ts` | exact-text cells, API calls mid-flow | `setSettings` via `page.request` inside the step |
+| `task-management.spec.ts` | Tasker runtime app, role/keyboard-heavy | 2 tests, each one long step; screenshots preserved |
+| `thumbnail.spec.ts` | file input, image decode/dimension check | one step |
+| `ticketing.spec.ts` | plain-text row click + workflow testids | `assertText`/`assertHas` carry most of it |
+| `timeline.spec.ts` | `[data-field]` edit + DOM-attribute ordering check | one step |
+| `ui-feedback.spec.ts` | route mocks, `page.evaluate`, filechooser, computed style | 7 tests, each one step (heaviest file in the batch) |
+| `workflow.spec.ts` | exact-text testids + localStorage token + `page.request` | one step |
+
+Verification: ran the batch's 19 files together once against a fresh
+database (34/34 pass), then again with `dropdb`/`createdb` + re-boot in
+between (34/34 pass, identical) — the second run matters because
+`task-management.spec.ts` is one of the files flagged above as non-idempotent
+across reruns on the same database; running it a second time *without*
+resetting the db reproduces exactly that (a `toHaveText` miss on stale
+localStorage/task state), confirming it's the known pre-existing property,
+not a migration regression. `pnpm --filter web typecheck` is clean.
 
 Whoever picks up a batch: re-read "The pattern" above, re-derive the
 environment gotcha section (boot with the raised `PREAUTH_*` envs, reset
