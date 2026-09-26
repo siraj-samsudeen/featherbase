@@ -200,14 +200,24 @@ captured once per worker by driving the real login form — no `/login` round
 trip per spec — and is the right import for the majority of specs, whose
 subject is something *behind* the login. `anonymousTest` starts signed out,
 for specs whose subject is the login surface itself, an identity other than
-Administrator, or a page that must be reached with no session at all.
-`journeyTest` is the `feather-testing-core` DSL entry point; those specs
-walk the sign-in as a step of the journey they narrate, so they deliberately
-don't reuse the stored session. Shared UI fixture builders (`ensureTable`,
-the FormView Table trio, `fillRows`) live in `e2e/fixtures-ui.ts` — every
-spec still creates its own fixtures idempotently in its own `beforeAll`;
-what's shared is the *definition*, so the Table shapes can't drift apart
-across specs (#215/#216).
+Administrator, or a page that must be reached with no session at all. Shared
+UI fixture builders (`ensureTable`, the FormView Table trio, `fillRows`) live
+in `e2e/fixtures-ui.ts` — every spec still creates its own fixtures
+idempotently in its own `beforeAll`; what's shared is the *definition*, so
+the Table shapes can't drift apart across specs (#215/#216).
+
+**Every behavioural e2e suite uses the `feather-testing-core` DSL** — both
+`test` and `anonymousTest` are DSL-backed (`feather-testing-core/playwright`),
+so every spec's `{ session }` fixture is the entry point for browser
+behaviour: `session.visit`/`clickButton`/`fillIn`/`assertText`/`assertHas`/
+`assertPath`/etc. Raw Playwright (`page`, `context`, …) is legitimate only
+inside a descriptively named `session.step('<what this does>', async ({
+page }) => { ... })` — for mechanics the DSL can't express (testid/attribute
+addressing, file inputs, drag/reorder, `page.evaluate`). `request` stays the
+tool for API setup in `beforeAll`/`afterEach`, unchanged. See
+`docs/testing/e2e-dsl-migration.md` for the full before/after pattern, the
+step rule, and the migration's per-file status — as of this writing 14 of 76
+files are migrated; the doc lists the rest in batches.
 
 `pnpm --filter web e2e` sets `E2E_ISOLATED=1`: Playwright brings up its own
 database and its own API/web ports (default 8020/5193, overridable),
