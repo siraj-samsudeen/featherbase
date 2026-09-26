@@ -1,5 +1,19 @@
 # Progress Log
 
+## 2026-09-26 — Calendar header fits a phone (#318)
+
+CalendarView's header now wraps its title, month navigation and List view link
+at narrow widths without changing the normal desktop layout. The focused browser
+test uses a valid 58-character Table title and asserts the main scroll width and
+every header control's bounds at 375px and 1280px; it keeps Calendar's event-drag
+coverage and uses the feather-testing-core session link verb for navigation.
+
+**Verified:** `./init.sh` smoke (3 browser tests),
+`pnpm --filter web exec playwright test e2e/calendar.spec.ts` (3 passed),
+`pnpm --filter web typecheck`, `pnpm check:specs`, and `pnpm check:e2e-dsl`.
+Chromium screenshots at 375px and 1280px were inspected: title, both month
+buttons and List view are visible; main width equalled its scroll width in both.
+
 ## 2026-09-26 — Every platform feature has a plain-language OpenSpec spec
 
 The Featherbase platform is now specified in `openspec/specs/` in the style
