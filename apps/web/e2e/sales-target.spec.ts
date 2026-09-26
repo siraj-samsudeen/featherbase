@@ -19,6 +19,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createSession } from 'feather-testing-core/playwright'
 import { anonymousTest as test, expect, adminAuth, type Page } from './fixtures'
 import { startStub, type Stub } from './sales-target-stub'
 
@@ -219,64 +220,79 @@ const needsLive = () => test.skip(!live.ok, blockedReason())
 const needsFrame = () => test.skip(!live.ok && MODE === 'live', blockedReason())
 
 // ── 1. Local login ───────────────────────────────────────────────────────────
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
+// Every check here reads an embed iframe, a bounding box, or the raw `login`
+// helper (a non-Administrator identity, so it isn't `signIn(session)`) —
+// nothing a Session verb reaches — so each test's body stays exactly the
+// original Playwright, wrapped in one descriptively named `session.step`.
 test.describe('1. Local login', () => {
   for (const n of [1, 2, 3, 4]) {
-    test(`test_employee_${n} lands on /sales-target with no selector`, async ({ page }) => {
-      await login(page, n)
-      await expect(page).toHaveURL(/\/sales-target$/)
-      const a = A(n)
-      await expect(page.getByTestId('identity')).toHaveText(
-        `${a.display_name} · ${a.plant_code} — ${a.store_label} · 01-Sep-2026 to 17-Sep-2026`,
-      )
-      expect(await page.locator('select').count()).toBe(0)
-      const o = await embedOutcome(page)
-      if (live.ok || MODE === 'stub') expect(o.kind).toBe('frame')
-      else {
-        expect(o.kind).toBe('error')
-        const text = (o as { text: string }).text
-        expect(text).toContain('Report unavailable')
-        expect(text).toContain(`HTTP ${live.upstream}`) // the upstream refusal, verbatim — never a zero
-        expect(text).not.toMatch(/₹/)
-      }
+    test(`test_employee_${n} lands on /sales-target with no selector`, async ({ session, page }) => {
+      await session.step(`sign in as test_employee_${n} and inspect the landing page`, async () => {
+        await login(page, n)
+        await expect(page).toHaveURL(/\/sales-target$/)
+        const a = A(n)
+        await expect(page.getByTestId('identity')).toHaveText(
+          `${a.display_name} · ${a.plant_code} — ${a.store_label} · 01-Sep-2026 to 17-Sep-2026`,
+        )
+        expect(await page.locator('select').count()).toBe(0)
+        const o = await embedOutcome(page)
+        if (live.ok || MODE === 'stub') expect(o.kind).toBe('frame')
+        else {
+          expect(o.kind).toBe('error')
+          const text = (o as { text: string }).text
+          expect(text).toContain('Report unavailable')
+          expect(text).toContain(`HTTP ${live.upstream}`) // the upstream refusal, verbatim — never a zero
+          expect(text).not.toMatch(/₹/)
+        }
+      })
     })
   }
-  test('wrong password is refused and no report opens', async ({ page, request }) => {
-    await login(page, 2, 'definitely-wrong')
-    await expect(page.getByTestId('login-error')).toHaveText('Invalid login credentials')
-    await expect(page).toHaveURL(/\/login$/)
-    expect(await page.locator('[data-testid="report-frame"]').count()).toBe(0)
-    expect((await request.post('/api/sales_target/embed_session')).status()).toBe(401)
+  test('wrong password is refused and no report opens', async ({ session, page, request }) => {
+    await session.step('login with the wrong password shows the error and stays on /login', async () => {
+      await login(page, 2, 'definitely-wrong')
+      await expect(page.getByTestId('login-error')).toHaveText('Invalid login credentials')
+      await expect(page).toHaveURL(/\/login$/)
+      expect(await page.locator('[data-testid="report-frame"]').count()).toBe(0)
+      expect((await request.post('/api/sales_target/embed_session')).status()).toBe(401)
+    })
   })
-  test('unauthenticated report page and embed-session requests are refused', async ({ page, request }) => {
+  test('unauthenticated report page and embed-session requests are refused', async ({ session, page, request }) => {
     expect((await request.post('/api/sales_target/embed_session')).status()).toBe(401)
     expect((await request.get('/api/sales_target/me')).status()).toBe(401)
-    await page.goto('/sales-target')
-    await expect(page).toHaveURL(/\/login$/)
-    expect(await page.locator('[data-testid="report-frame"]').count()).toBe(0)
+    await session.visit('/sales-target')
+    await session.step('bounces to login with no report frame', async () => {
+      await expect(page).toHaveURL(/\/login$/)
+      expect(await page.locator('[data-testid="report-frame"]').count()).toBe(0)
+    })
   })
 })
 
 // ── 2. Four initial reports ──────────────────────────────────────────────────
 test.describe('2. Four initial reports', () => {
   for (const n of [1, 2, 3, 4]) {
-    test(`test_employee_${n}: report opened with exactly the assigned store and codes`, async ({ page }) => {
+    test(`test_employee_${n}: report opened with exactly the assigned store and codes`, async ({ session, page }) => {
       needsFrame()
-      await login(page, n)
-      const a = A(n)
-      const o = await openedCodes(page)
-      expect(o.plant).toBe(a.plant_code)
-      expect([...o.codes].sort()).toEqual([...a.material_groups].sort())
-      if (o.stub) {
-        expect(o.stub.username).toBe(env.SERVICE_ACCOUNT)
-        expect(o.stub.version).toBe(Number(env.DIVE_VERSION))
-        expect(o.stub.dive_id).toBe(env.DIVE_ID)
-        expect(o.stub.initial_state).toEqual({ plant_code: a.plant_code, material_groups: a.material_groups, period_start: '2026-09-01', period_end: '2026-09-17' })
-      }
+      await session.step(`sign in as test_employee_${n} and inspect the opened codes`, async () => {
+        await login(page, n)
+        const a = A(n)
+        const o = await openedCodes(page)
+        expect(o.plant).toBe(a.plant_code)
+        expect([...o.codes].sort()).toEqual([...a.material_groups].sort())
+        if (o.stub) {
+          expect(o.stub.username).toBe(env.SERVICE_ACCOUNT)
+          expect(o.stub.version).toBe(Number(env.DIVE_VERSION))
+          expect(o.stub.dive_id).toBe(env.DIVE_ID)
+          expect(o.stub.initial_state).toEqual({ plant_code: a.plant_code, material_groups: a.material_groups, period_start: '2026-09-01', period_end: '2026-09-17' })
+        }
+      })
     })
-    test(`test_employee_${n}: exact amounts equal baseline.csv`, async ({ page }) => {
+    test(`test_employee_${n}: exact amounts equal baseline.csv`, async ({ session, page }) => {
       needsLive()
-      await login(page, n)
-      assertDiveMatchesBaseline(await readDive(await reportFrame(page)), A(n).plant_code, A(n).material_groups)
+      await session.step(`sign in as test_employee_${n} and compare the Dive to baseline.csv`, async () => {
+        await login(page, n)
+        assertDiveMatchesBaseline(await readDive(await reportFrame(page)), A(n).plant_code, A(n).material_groups)
+      })
     })
   }
 })
@@ -300,14 +316,20 @@ test.describe('3. Store separation', () => {
     })
     expect(dup.status()).toBe(417)
   })
+  // Two simultaneous viewers — the DSL's `session` is bound to one `page`, so
+  // each context gets its own `createSession(page)` (as in realtime.spec.ts);
+  // the iframe/Dive-reading mechanics stay one named step per viewer.
   test('Employees 1 and 3: same subcategory names, only their own store’s amounts', async ({ browser }) => {
     needsLive()
     const results: Record<number, Dive> = {}
     for (const n of [1, 3]) {
       const ctx = await browser.newContext()
       const page = await ctx.newPage()
-      await login(page, n)
-      results[n] = await readDive(await reportFrame(page))
+      const session = createSession(page)
+      await session.step(`sign in as test_employee_${n} and read the Dive`, async () => {
+        await login(page, n)
+        results[n] = await readDive(await reportFrame(page))
+      })
       await ctx.close()
     }
     expect(results[1].rows.map((r) => r.code)).toEqual(results[3].rows.map((r) => r.code))
@@ -340,96 +362,115 @@ test.describe('4. Period and arithmetic', () => {
     expect((100 * a) / t).toBe(100)
     expect(rows.map((r) => r.actual - r.target)).toEqual([-10000, 10000])
   })
-  test('the report shows the recomputed row and one shared cutoff for every row', async ({ page }) => {
+  test('the report shows the recomputed row and one shared cutoff for every row', async ({ session, page }) => {
     needsLive()
-    await login(page, 1)
-    const d = await readDive(await reportFrame(page))
-    const r = d.rows.find((x) => x.code === '010101001')!
-    expect(r.target).toBe(inr(644191.37))
-    expect(r.actual).toBe(inr(487118.68))
-    expect(r.gap).toBe(inr(-157072.69))
-    expect(r.achievement).toBe('75.6%')
-    expect(d.header).toContain('01-Sep-2026 to 17-Sep-2026 · Data through 17-Sep-2026')
-    expect(d.total.achievement).toBe('76.7%') // ratio of sums; the mean of 75.6 and 77.5 would be 76.6
+    await session.step('sign in as test_employee_1 and read the recomputed row', async () => {
+      await login(page, 1)
+      const d = await readDive(await reportFrame(page))
+      const r = d.rows.find((x) => x.code === '010101001')!
+      expect(r.target).toBe(inr(644191.37))
+      expect(r.actual).toBe(inr(487118.68))
+      expect(r.gap).toBe(inr(-157072.69))
+      expect(r.achievement).toBe('75.6%')
+      expect(d.header).toContain('01-Sep-2026 to 17-Sep-2026 · Data through 17-Sep-2026')
+      expect(d.total.achievement).toBe('76.7%') // ratio of sums; the mean of 75.6 and 77.5 would be 76.6
+    })
   })
 })
 
 // ── 5. Simultaneous viewers ──────────────────────────────────────────────────
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
+// A single two-viewer choreography, so it stays one named step on a Session
+// bound to the acting viewer (p1); the mechanics inside (iframe locators,
+// stub/Dive reads) are all things the DSL doesn't reach.
 test('5. Simultaneous viewers: changing Employee 1’s selection leaves Employee 3 unchanged', async ({ browser }) => {
   needsFrame()
   const c1 = await browser.newContext()
   const c3 = await browser.newContext()
   const p1 = await c1.newPage()
   const p3 = await c3.newPage()
-  await login(p1, 1)
-  await login(p3, 3)
-  const f1 = await reportFrame(p1)
-  const f3 = await reportFrame(p3)
-  const src1 = await p1.locator('[data-testid="report-frame"]').getAttribute('src')
-  const src3 = await p3.locator('[data-testid="report-frame"]').getAttribute('src')
-  expect(src1).not.toBe(src3) // each viewer holds its own embed session
-  if (MODE === 'stub') {
-    const before3 = await readStub(f3)
-    await f1.locator('[data-testid="stub-change"]').click()
-    expect((await readStub(f1)).changed).toBe(true)
-    expect(await readStub(f3)).toEqual(before3)
-  } else {
-    const before3 = await readDive(f3)
-    await f1.locator('[data-testid="picker-toggle"]').click()
-    await f1.locator('[data-testid="picker-filter"]').fill('010102001')
-    await f1.locator('[data-testid="picker-option"][data-code="010102001"]').check()
-    await expect(f1.locator('[data-testid="row"]')).toHaveCount(3)
-    expect((await readDive(f1)).rows.map((r) => r.code)).toEqual(['010101001', '010101003', '010102001'])
-    await p3.waitForTimeout(3000)
-    const after3 = await readDive(f3)
-    expect(after3.rows).toEqual(before3.rows)
-    expect(after3.total).toEqual(before3.total)
-  }
+  const session1 = createSession(p1)
+  await session1.step('Employee 1 changes their selection while Employee 3 keeps watching', async () => {
+    await login(p1, 1)
+    await login(p3, 3)
+    const f1 = await reportFrame(p1)
+    const f3 = await reportFrame(p3)
+    const src1 = await p1.locator('[data-testid="report-frame"]').getAttribute('src')
+    const src3 = await p3.locator('[data-testid="report-frame"]').getAttribute('src')
+    expect(src1).not.toBe(src3) // each viewer holds its own embed session
+    if (MODE === 'stub') {
+      const before3 = await readStub(f3)
+      await f1.locator('[data-testid="stub-change"]').click()
+      expect((await readStub(f1)).changed).toBe(true)
+      expect(await readStub(f3)).toEqual(before3)
+    } else {
+      const before3 = await readDive(f3)
+      await f1.locator('[data-testid="picker-toggle"]').click()
+      await f1.locator('[data-testid="picker-filter"]').fill('010102001')
+      await f1.locator('[data-testid="picker-option"][data-code="010102001"]').check()
+      await expect(f1.locator('[data-testid="row"]')).toHaveCount(3)
+      expect((await readDive(f1)).rows.map((r) => r.code)).toEqual(['010101001', '010101003', '010102001'])
+      await p3.waitForTimeout(3000)
+      const after3 = await readDive(f3)
+      expect(after3.rows).toEqual(before3.rows)
+      expect(after3.total).toEqual(before3.total)
+    }
+  })
   await c1.close()
   await c3.close()
 })
 
 // ── 6. Shared-tablet login change ────────────────────────────────────────────
-test('6. Shared tablet: Employee 1 → logout → Employee 2; refresh keeps 2; logout removes the report', async ({ page }) => {
-  await login(page, 1)
-  await expect(page.getByTestId('identity')).toContainText('Employee 1 · 1501 — ATK')
-  await embedOutcome(page)
-  await page.getByTestId('logout').click()
-  await expect(page).toHaveURL(/\/login$/)
-  await login(page, 2)
-  await expect(page.getByTestId('identity')).toContainText('Employee 2 · 1501 — ATK')
-  await expect(page.locator('body')).not.toContainText('Employee 1')
-  if (live.ok || MODE === 'stub') {
+test('6. Shared tablet: Employee 1 → logout → Employee 2; refresh keeps 2; logout removes the report', async ({ session, page }) => {
+  await session.step('Employee 1 signs in and sees their identity/report', async () => {
+    await login(page, 1)
+    await expect(page.getByTestId('identity')).toContainText('Employee 1 · 1501 — ATK')
+    await embedOutcome(page)
+  })
+  await session.step('Employee 1 logs out; Employee 2 signs in on the same tablet', async () => {
+    await page.getByTestId('logout').click()
+    await expect(page).toHaveURL(/\/login$/)
+    await login(page, 2)
+    await expect(page.getByTestId('identity')).toContainText('Employee 2 · 1501 — ATK')
+    await expect(page.locator('body')).not.toContainText('Employee 1')
+    if (live.ok || MODE === 'stub') {
+      const o = await openedCodes(page)
+      expect(o.plant).toBe('1501')
+      expect([...o.codes].sort()).toEqual(['010102001', '010102002'])
+    }
+  })
+  await session.step('a reload keeps Employee 2; logging out removes the report and re-guards the route', async () => {
+    await page.reload()
+    await expect(page).toHaveURL(/\/sales-target$/)
+    await expect(page.getByTestId('identity')).toContainText('Employee 2 · 1501 — ATK')
+    await page.getByTestId('logout').click()
+    await expect(page).toHaveURL(/\/login$/)
+    expect(await page.locator('[data-testid="report-frame"]').count()).toBe(0)
+    await page.goto('/sales-target')
+    await expect(page).toHaveURL(/\/login$/)
+  })
+})
+
+test('6b. Stale in-flight embed response after an account change is never rendered', async ({ session, page }) => {
+  test.skip(MODE !== 'stub', 'needs the stub’s controllable delay')
+  await session.step('Employee 1 signs in with a 4s-delayed embed response, then Employee 2 signs in before it resolves', async () => {
+    stub!.setDelay(4000)
+    await login(page, 1) // Employee 1's embed request is now in flight for 4 s
+    await expect(page.getByTestId('identity')).toContainText('Employee 1')
+    await page.waitForTimeout(300)
+    await page.getByTestId('logout').click()
+    await expect(page).toHaveURL(/\/login$/)
+    await login(page, 2)
     const o = await openedCodes(page)
     expect(o.plant).toBe('1501')
     expect([...o.codes].sort()).toEqual(['010102001', '010102002'])
-  }
-  await page.reload()
-  await expect(page).toHaveURL(/\/sales-target$/)
-  await expect(page.getByTestId('identity')).toContainText('Employee 2 · 1501 — ATK')
-  await page.getByTestId('logout').click()
-  await expect(page).toHaveURL(/\/login$/)
-  expect(await page.locator('[data-testid="report-frame"]').count()).toBe(0)
-  await page.goto('/sales-target')
-  await expect(page).toHaveURL(/\/login$/)
-})
-
-test('6b. Stale in-flight embed response after an account change is never rendered', async ({ page }) => {
-  test.skip(MODE !== 'stub', 'needs the stub’s controllable delay')
-  stub!.setDelay(4000)
-  await login(page, 1) // Employee 1's embed request is now in flight for 4 s
-  await expect(page.getByTestId('identity')).toContainText('Employee 1')
-  await page.waitForTimeout(300)
-  await page.getByTestId('logout').click()
-  await expect(page).toHaveURL(/\/login$/)
-  await login(page, 2)
-  const o = await openedCodes(page)
-  expect(o.plant).toBe('1501')
-  expect([...o.codes].sort()).toEqual(['010102001', '010102002'])
-  await page.waitForTimeout(4500)
-  expect([...(await openedCodes(page)).codes].sort()).toEqual(['010102001', '010102002'])
-  await expect(page.locator('body')).not.toContainText('010101001')
-  expect(await page.locator('[data-testid="report-frame"]').count()).toBe(1)
+  })
+  await session.step("Employee 1's stale in-flight response never overwrites Employee 2's report", async () => {
+    await page.waitForTimeout(4500)
+    expect([...(await openedCodes(page)).codes].sort()).toEqual(['010102001', '010102002'])
+    await expect(page.locator('body')).not.toContainText('010101001')
+    expect(await page.locator('[data-testid="report-frame"]').count()).toBe(1)
+  })
 })
 
 // ── 7. Assignment transfer ───────────────────────────────────────────────────
@@ -447,8 +488,12 @@ test('7. Assignment transfer: 1501/010101003 moves from Employee 1 to Employee 2
   const openAs = async (n: number) => {
     const ctx = await browser.newContext()
     const page = await ctx.newPage()
-    await login(page, n)
-    const o = await openedCodes(page)
+    const session = createSession(page)
+    let o!: Awaited<ReturnType<typeof openedCodes>>
+    await session.step(`sign in as test_employee_${n} and read the opened codes`, async () => {
+      await login(page, n)
+      o = await openedCodes(page)
+    })
     await ctx.close()
     return o
   }
@@ -473,23 +518,29 @@ test('7. Assignment transfer: 1501/010101003 moves from Employee 1 to Employee 2
 })
 
 // ── 9. Usable live report ────────────────────────────────────────────────────
+// Each viewport gets its own context/page, so its own Session; the whole
+// screenshot/credential-scan flow is a single named step (no DSL verb
+// reaches a screenshot or a raw page.content() scan).
 test('9. Usable report at tablet and desktop sizes; captures contain no credential', async ({ browser }) => {
   const prefix = live.ok ? '' : `${MODE === 'stub' ? 'stub' : 'blocked'}_`
   const secrets = [process.env.MOTHERDUCK_TOKEN, env.SESSION_SECRET, pw(1), pw(2), pw(3), pw(4)].filter((s): s is string => Boolean(s))
   for (const [name, viewport] of [['tablet', { width: 800, height: 1100 }], ['desktop', { width: 1440, height: 900 }]] as const) {
     const ctx = await browser.newContext({ viewport })
     const page = await ctx.newPage()
-    await page.goto('/login')
-    await page.screenshot({ path: path.join(EVIDENCE, `${prefix}${name}_login.png`) })
-    await login(page, 1)
-    const o = await embedOutcome(page)
-    if (live.ok) expect((await readDive(await reportFrame(page))).rows).toHaveLength(2)
-    else if (MODE === 'stub') await readStub(await reportFrame(page))
-    else expect(o.kind).toBe('error')
-    await page.waitForTimeout(1500)
-    await page.screenshot({ path: path.join(EVIDENCE, `${prefix}${name}_employee_1.png`) })
-    const text = await page.content()
-    for (const s of secrets) expect(text).not.toContain(s)
+    const session = createSession(page)
+    await session.step(`capture ${name} screenshots and scan them for leaked credentials`, async () => {
+      await page.goto('/login')
+      await page.screenshot({ path: path.join(EVIDENCE, `${prefix}${name}_login.png`) })
+      await login(page, 1)
+      const o = await embedOutcome(page)
+      if (live.ok) expect((await readDive(await reportFrame(page))).rows).toHaveLength(2)
+      else if (MODE === 'stub') await readStub(await reportFrame(page))
+      else expect(o.kind).toBe('error')
+      await page.waitForTimeout(1500)
+      await page.screenshot({ path: path.join(EVIDENCE, `${prefix}${name}_employee_1.png`) })
+      const text = await page.content()
+      for (const s of secrets) expect(text).not.toContain(s)
+    })
     await ctx.close()
   }
 })

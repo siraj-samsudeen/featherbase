@@ -36,21 +36,32 @@ test.beforeAll(async ({ request }) => {
 
 // WEB-002: an anonymous visitor submits a public web form and it creates a doc;
 // server validation still applies.
-test('WEB-002: anonymous web form submit creates a document', async ({ page, context, request }) => {
-  await context.clearCookies()
+//
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
+// `context.clearCookies()` is a raw Playwright fixture with no DSL verb, and
+// every field here is `data-testid`-addressed rather than labelled, so the
+// whole interactive flow stays in named steps around `session.visit`.
+test('WEB-002: anonymous web form submit creates a document', async ({ session, context, request }) => {
+  await session.step('clear cookies so there is genuinely no session', async () => {
+    await context.clearCookies()
+  })
   const unique = `E2E ${Date.now()}`
-  await page.goto(`/form/${ROUTE}`)
-  await expect(page.getByTestId('web-form-title')).toHaveText('Contact E2E')
+  await session.visit(`/form/${ROUTE}`)
+  await session.step('the form title renders', async ({ page }) => {
+    await expect(page.getByTestId('web-form-title')).toHaveText('Contact E2E')
+  })
 
-  // Submitting with a required field blank surfaces the server validation error.
-  await page.getByTestId('wf-field-full_name').fill(unique)
-  await page.getByTestId('web-form-submit').click()
-  await expect(page.getByTestId('web-form-submit-error')).toBeVisible()
+  await session.step('submitting with a required field blank surfaces the server validation error', async ({ page }) => {
+    await page.getByTestId('wf-field-full_name').fill(unique)
+    await page.getByTestId('web-form-submit').click()
+    await expect(page.getByTestId('web-form-submit-error')).toBeVisible()
+  })
 
-  // Filling everything creates the document.
-  await page.getByTestId('wf-field-message').fill('Hello from the public web form')
-  await page.getByTestId('web-form-submit').click()
-  await expect(page.getByTestId('web-form-success')).toBeVisible()
+  await session.step('filling everything creates the document', async ({ page }) => {
+    await page.getByTestId('wf-field-message').fill('Hello from the public web form')
+    await page.getByTestId('web-form-submit').click()
+    await expect(page.getByTestId('web-form-success')).toBeVisible()
+  })
 
   // The doc really exists (checked as admin).
   const headers = await adminAuth(request)

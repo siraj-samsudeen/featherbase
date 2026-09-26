@@ -45,33 +45,43 @@ test.beforeAll(async ({ request }) => {
 
 // SET-002: a user resets their password via the emailed link, then logs in
 // with the new password.
-test('SET-002: password reset via emailed link works end to end', async ({ page, request }) => {
-  // Request a reset through the login page's "Forgot password?" flow.
-  await page.goto('/login')
-  await page.getByTestId('forgot-password').click()
-  await page.getByTestId('forgot-usr').fill(USER)
-  await page.getByTestId('forgot-submit').click()
-  await expect(page.getByTestId('reset-sent')).toBeVisible()
+//
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
+// The forgot-password/reset-password screens are testid-addressed, so that
+// mechanics stays in named steps; the real login form at the end IS
+// label-friendly, so it becomes DSL verbs (mirrors admin.spec.ts).
+test('SET-002: password reset via emailed link works end to end', async ({ session, request }) => {
+  await session.visit('/login')
+  await session.step("request a password reset via the login page's Forgot password flow", async ({ page }) => {
+    await page.getByTestId('forgot-password').click()
+    await page.getByTestId('forgot-usr').fill(USER)
+    await page.getByTestId('forgot-submit').click()
+    await expect(page.getByTestId('reset-sent')).toBeVisible()
+  })
 
   // The reset link (with its key) landed in the sink; open it and set a new pw.
   const key = await resetKeyFromSink(request)
-  await page.goto(`/featherbase/reset-password?key=${key}`)
-  await page.getByTestId('reset-password').fill('brandnewpw456')
-  await page.getByTestId('reset-confirm').fill('brandnewpw456')
-  await page.getByTestId('reset-submit').click()
-  await expect(page.getByTestId('reset-done')).toBeVisible()
+  await session.visit(`/featherbase/reset-password?key=${key}`)
+  await session.step('set a new password', async ({ page }) => {
+    await page.getByTestId('reset-password').fill('brandnewpw456')
+    await page.getByTestId('reset-confirm').fill('brandnewpw456')
+    await page.getByTestId('reset-submit').click()
+    await expect(page.getByTestId('reset-done')).toBeVisible()
+  })
 
   // The new password logs in; the old one is gone.
-  await page.getByTestId('reset-to-login').click()
-  await page.fill('input[name=email]', USER)
-  await page.fill('input[name=password]', 'brandnewpw456')
-  await page.click('button[type=submit]')
-  await page.waitForURL(/\/admin/)
-  await expect(page.getByTestId('session-user')).toBeVisible()
+  await session.step('back to login', async ({ page }) => {
+    await page.getByTestId('reset-to-login').click()
+  })
+  await session.fillIn('Email or username', USER).fillIn('Password', 'brandnewpw456').clickButton('Sign in')
+  await session.step('lands somewhere inside /admin', async ({ page }) => {
+    await page.waitForURL(/\/admin/)
+    await expect(page.getByTestId('session-user')).toBeVisible()
+  })
 })
 
 // SET-002: a disabled user cannot log in.
-test('SET-002: a disabled user cannot log in', async ({ page, request }) => {
+test('SET-002: a disabled user cannot log in', async ({ session, request }) => {
   const headers = await adminAuth(request)
   const doc = (await (
     await request.get(`/api/table/User/${encodeURIComponent(USER)}`, { headers })
@@ -82,10 +92,11 @@ test('SET-002: a disabled user cannot log in', async ({ page, request }) => {
   })
   expect(put.status()).toBe(200)
 
-  await page.goto('/login')
-  await page.fill('input[name=email]', USER)
-  await page.fill('input[name=password]', 'brandnewpw456')
-  await page.click('button[type=submit]')
-  await expect(page.getByTestId('login-error')).toBeVisible()
-  await expect(page).toHaveURL(/\/login/)
+  await session
+    .visit('/login')
+    .fillIn('Email or username', USER)
+    .fillIn('Password', 'brandnewpw456')
+    .clickButton('Sign in')
+    .assertHas('[data-testid="login-error"]')
+    .assertPath('/featherbase/login')
 })
