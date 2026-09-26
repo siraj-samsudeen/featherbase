@@ -9,12 +9,13 @@ import { loadInstalledApps } from '../src/apps'
 import { sql, withTransaction } from '../src/db'
 import { actionDeclaration, readDeclaration, validateOperationFacts } from '../src/app-access'
 import { AppError } from '../src/errors'
+import { version as currentTaskerVersion } from '../../../runtime-apps/tasker/package.json'
 
 const directory = resolve('../..', 'runtime-apps/scope-proof')
 const read = '/api/app_reads/scopeproof/'
 const action = '/api/app_actions/scopeproof/'
 const pinned = (client: TestClient) => makeClient({ request: (path, init) => client.fetch(String(path), {
-  ...init, headers: { 'X-Featherbase-App-Version': 'scopeproof@1.0.0,tasker@2.1.0', ...init?.headers },
+  ...init, headers: { 'X-Featherbase-App-Version': `scopeproof@1.0.0,tasker@${currentTaskerVersion}`, ...init?.headers },
 }) }, client.token, client.user)
 const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
   admin: async ({ admin }, use) => use(pinned(admin)),
@@ -84,17 +85,17 @@ describe('fresh app roles and store access', () => {
       values ('Administrator', 'tasker', 'promote', 'old', '{"row_id":"deleted"}', '{"project":"original-37"}')`
     expect(await discoverPackages([historical, current])).toEqual([])
     await loadInstalledApps()
-    const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'tasker', version: '2.1.0' })
-    await admin.post('/api/upgrade_app', { name: 'tasker', version: '2.1.0', planId: plan.planId })
-    expect((await invoke('2.1.0')).status).toBe(403)
-    await admin.post('/api/activate_app_upgrade', { name: 'tasker', version: '2.1.0' })
+    const plan = await admin.post<{ planId: string }>('/api/preview_app_upgrade', { name: 'tasker', version: currentTaskerVersion })
+    await admin.post('/api/upgrade_app', { name: 'tasker', version: currentTaskerVersion, planId: plan.planId })
+    expect((await invoke(currentTaskerVersion)).status).toBe(403)
+    await admin.post('/api/activate_app_upgrade', { name: 'tasker', version: currentTaskerVersion })
     expect((await invoke('2.0.0')).status).toBe(403)
-    const replay = await invoke('2.1.0')
+    const replay = await invoke(currentTaskerVersion)
     expect(replay.status).toBe(200)
     expect(await replay.json()).toEqual({ result: { project: 'original-37' } })
     expect(await discoverPackages([current, historical])).toEqual([])
     await loadInstalledApps()
-    expect((await invoke('2.1.0')).status).toBe(200)
+    expect((await invoke(currentTaskerVersion)).status).toBe(200)
   })
 
   test('refusals survive rollback with fixed redacted audit reasons', async ({ admin, createUser }) => {

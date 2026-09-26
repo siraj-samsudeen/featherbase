@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { FEATHERBASE_HOME_DESTINATION } from 'shared'
 import { ApiError, api, clearSession, getSessionUser, listResource } from '../lib/api'
 import {
   actionForLocation,
@@ -370,23 +371,31 @@ export function AdminLayout() {
     <div className="flex h-full flex-col">
       <PreviewBanner />
       {/* Navbar */}
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 sm:gap-4 sm:px-4">
+      <header className="flex h-24 shrink-0 flex-wrap items-center gap-x-0.5 gap-y-1 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-1 py-1 sm:h-12 sm:flex-nowrap sm:gap-4 sm:px-4 sm:py-0">
+        <Link to={FEATHERBASE_HOME_DESTINATION.href} aria-label={FEATHERBASE_HOME_DESTINATION.label} title={app_name} className="order-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-md hover:bg-[var(--color-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] focus-visible:ring-offset-2 sm:order-none sm:h-9 sm:w-9">
+          <Logo className="h-7 w-7" />
+        </Link>
+        <label className="sr-only" htmlFor="admin-app-switcher">Switch application</label>
+        <select
+          id="admin-app-switcher"
+          aria-label="Switch application"
+          value={FEATHERBASE_HOME_DESTINATION.href}
+          onChange={(event) => { window.location.assign(event.target.value) }}
+          className="order-2 h-11 w-[9.5rem] shrink-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm font-semibold text-[var(--color-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] focus-visible:ring-offset-2 sm:order-none sm:h-9 sm:w-52"
+        >
+          <option value={FEATHERBASE_HOME_DESTINATION.href}>{FEATHERBASE_HOME_DESTINATION.label}</option>
+          {(appCatalog.data ?? []).map((entry) => <option key={entry.name} value={entry.href}>{entry.title}</option>)}
+        </select>
         <button
           onClick={() => setSidebarOpen((o) => !o)}
           data-testid="sidebar-toggle"
           aria-label="Toggle menu"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)] md:hidden"
+          className="order-3 flex h-8 w-8 shrink-0 items-center justify-center rounded text-[var(--color-ink-muted)] hover:bg-[var(--color-subtle)] sm:order-none md:hidden"
         >
           ☰
         </button>
-        <Link to="/featherbase/admin" className="flex items-center gap-2">
-          <Logo className="h-6 w-6" />
-          {/* SET-004: the instance names itself via System Settings
-              app_name; "Featherbase" is only the default. */}
-          <span className="hidden text-sm font-semibold text-[var(--color-ink)] sm:inline">{app_name}</span>
-        </Link>
 
-        <form onSubmit={runSearch} className="relative mx-auto w-full max-w-md" data-testid="awesomebar">
+        <form onSubmit={runSearch} className="relative order-5 mx-auto w-full basis-full sm:order-none sm:basis-auto sm:max-w-md" data-testid="awesomebar">
           <input
             ref={searchRef}
             value={search}
@@ -538,10 +547,10 @@ export function AdminLayout() {
           )}
         </form>
 
-        <div className="flex items-center gap-3">
+        <div className="order-4 flex shrink-0 items-center gap-1 sm:order-none sm:gap-3">
           {/* On narrow screens these selects move into the account menu —
-              the navbar's controls don't wrap, so extra always-visible
-              controls overflow at mobile widths (PR #92 review). */}
+              the primary controls and search already consume both mobile
+              header rows (PR #92 review). */}
           <select
             data-testid="language-select"
             value={language}
@@ -677,7 +686,7 @@ export function AdminLayout() {
         {/* UI-025: on mobile, a backdrop closes the drawer. */}
         {sidebarOpen && (
           <div
-            className="fixed inset-0 top-12 z-20 bg-black/30 md:hidden"
+            className="fixed inset-0 top-24 z-20 bg-black/30 sm:top-12 md:hidden"
             data-testid="sidebar-backdrop"
             onClick={() => setSidebarOpen(false)}
           />
@@ -689,7 +698,7 @@ export function AdminLayout() {
           onClick={(e) => {
             if ((e.target as HTMLElement).closest('a')) setSidebarOpen(false)
           }}
-          className={`fixed bottom-0 left-0 top-12 z-30 flex w-64 flex-col overflow-y-auto border-r border-[var(--color-border)] bg-[var(--color-surface)] transition-transform md:static md:top-0 md:w-60 md:shrink-0 md:translate-x-0 ${
+          className={`fixed bottom-0 left-0 top-24 z-30 flex w-64 flex-col overflow-y-auto border-r border-[var(--color-border)] bg-[var(--color-surface)] transition-transform sm:top-12 md:static md:top-0 md:w-60 md:shrink-0 md:translate-x-0 ${
             sidebarOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
@@ -723,9 +732,6 @@ export function AdminLayout() {
               table stays reachable through the All tables entry below —
               grouping and curation moved there, nothing is hidden. */}
           <nav className="flex-1 overflow-y-auto px-2 pb-4 pt-3" data-testid="home-page-nav">
-            {(appCatalog.data ?? []).map((entry) => (
-              <a key={entry.name} href={entry.href} className="block rounded-md px-2 py-1.5 text-sm font-medium text-[var(--color-brand)] hover:bg-[var(--color-subtle)]">{entry.title} ↗</a>
-            ))}
             {homePages.isLoading && (
               <p className="px-2 py-1 text-xs text-[var(--color-ink-faint)]">Loading…</p>
             )}

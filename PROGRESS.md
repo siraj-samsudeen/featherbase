@@ -62,6 +62,50 @@ coverage and uses the feather-testing-core session link verb for navigation.
 Chromium screenshots at 375px and 1280px were inspected: title, both month
 buttons and List view are visible; main width equalled its scroll width in both.
 
+## 2026-09-26 — #309 runtime host shell implementation and review fixes
+
+Every packaged runtime entry document now receives a compact Featherbase bar
+with Home and one authorization-filtered app switcher. Entry-document resources
+are rooted selectively at the app root without a `<base>` element, so package
+hash and query links retain the current deep path and query. This covers quoted
+and unquoted resource attributes, every `srcset` candidate, object data, and CSS
+`url()` values in style attributes and blocks. A generic asymmetric `other`
+package regression and real deep-URL browser clicks cover these independently
+of Tasker.
+
+The production Featherbase Home destination is one shared server/web fact.
+Live catalog refresh returns to Home if the current app disappears. Admin uses
+the same Home-plus-switcher model with identifiable touch-sized mobile controls
+and visible focus. Below 640px its command field occupies a dedicated full-width
+header row instead of collapsing beside the switcher; the 375px journey requires
+at least 280px of usable search width. Tasker 2.2.0 keeps its own path/query and
+hash navigation while its fixed mobile details clear the host bar.
+
+The browser journeys use the shared chainable `session` DSL, await asynchronous
+catalog refresh, delete every seeded Tasker row at its current revision, and
+restore disabled app state in `finally`. The login-return fixture's pre-existing
+row leak is removed too. Current `main` was merged after its repository-wide DSL
+and plain-language OpenSpec migrations; the host-shell journey passes the new DSL
+guard and its delta exactly matches the rewritten main requirement.
+
+**Verified:** `./init.sh` smoke 3/3; server 878 passed, 19 skipped; web 172/172
+with `NODE_OPTIONS=--no-experimental-webstorage`; shared 130/130; isolated
+Playwright 159 passed, 28 opt-in skips; all three workspace typechecks;
+`pnpm check:e2e-dsl` 8/8 policy tests and 77 files accepted; strict OpenSpec
+45 specs and 7 changes; Tasker/package preparation 5/5 and both builds;
+`pnpm apps:prove` PKG-J1/PKG-J2; `git diff --check`. For the final review fixes,
+the new server regression first failed on the unrooted resources and the 375px
+browser assertion measured a 55px command field against its 280px minimum;
+afterward the focused server file passed 13/13 and the focused browser file 3/3,
+followed by the complete suite results above. Inspected 375px Admin and 412px
+coarse-pointer Tasker captures: controls are unclipped and focus-visible, the
+command placeholder is readable at near-full width, and content/details clear
+the measured host bar. A raw web run without the documented Node storage flag
+failed because jsdom storage was unavailable; the flagged full run above passed.
+No data-warehouse change, merge to `main`, or deployment.
+
+**Next:** independent final review and merge of PR #345.
+
 ## 2026-09-26 — Every platform feature has a plain-language OpenSpec spec
 
 The Featherbase platform is now specified in `openspec/specs/` in the style

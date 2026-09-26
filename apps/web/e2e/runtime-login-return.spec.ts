@@ -1,11 +1,12 @@
 import { anonymousTest as test, expect, ensureRuntimeApp, ADMIN_PWD } from './fixtures'
 
 let taskId: string
+let taskHeaders: { Authorization: string; 'X-Featherbase-App-Version': string }
 
 test.beforeAll(async ({ request }) => {
-  const headers = await ensureRuntimeApp(request, 'tasker')
+  taskHeaders = await ensureRuntimeApp(request, 'tasker')
   const saved = await request.post('/api/save_row', {
-    headers,
+    headers: taskHeaders,
     data: {
       table: 'tasker.task',
       row: { task_title: 'Selected through sign-in' },
@@ -14,6 +15,16 @@ test.beforeAll(async ({ request }) => {
   if (!saved.ok())
     throw new Error(`seed selected task: ${saved.status()} ${await saved.text()}`)
   taskId = ((await saved.json()) as { row_id: string }).row_id
+})
+
+test.afterAll(async ({ request }) => {
+  const path = `/api/table/${encodeURIComponent('tasker.task')}/${encodeURIComponent(taskId)}`
+  const current = await request.get(path, { headers: taskHeaders })
+  if (current.status() === 404) return
+  if (!current.ok()) throw new Error(`load selected task cleanup revision: ${current.status()} ${await current.text()}`)
+  const { updated_at } = (await current.json()) as { updated_at: string }
+  const deleted = await request.delete(`${path}?updated_at=${encodeURIComponent(updated_at)}`, { headers: taskHeaders })
+  if (!deleted.ok()) throw new Error(`delete selected task: ${deleted.status()} ${await deleted.text()}`)
 })
 
 // Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).

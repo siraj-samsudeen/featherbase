@@ -87,10 +87,6 @@ function savedViewHash(viewId: string, taskId?: string) {
   return `#${params}`
 }
 
-function sameDocumentHash(hash: string) {
-  return `${location.pathname}${location.search}${hash}`
-}
-
 type TaskerIconName = 'inbox' | 'work' | 'together' | 'projects' | 'personal' | 'views'
 
 function TaskerIcon({ name }: { name: TaskerIconName }) {
@@ -540,6 +536,7 @@ export function TaskManagementPage() {
   return (
     <div className="tasker-shell" data-view={view} data-testid="task-management-page">
       <aside className="tasker-sidebar">
+        <a href="/featherbase/admin" className="tasker-back-link">← Featherbase</a>
         <h1 className="tasker-brand">Tasker</h1>
         <p className="tasker-brand-subtitle">Team workspace</p>
       <nav aria-label="Task views" className="tasker-primary-nav">
@@ -1203,7 +1200,7 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
     }
   }}>
     <div className="tasker-detail-toolbar">
-      <a href={sameDocumentHash(hashSavedViewId() ? savedViewHash(hashSavedViewId()!) : '#')} className="fc-btn" autoFocus>Close</a>
+      <a href={hashSavedViewId() ? savedViewHash(hashSavedViewId()!) : '#'} className="fc-btn" autoFocus>Close</a>
       <div className="tasker-mode-switch" aria-label="Task detail view">
         {([['compact', 'Compact'], ['inspector', 'Inspector'], ['focus', 'Focus']] as [DetailMode, string][]).map(([value, label]) =>
           <button key={value} type="button" aria-pressed={mode === value} onClick={() => void onMode(value)}>{label}</button>)}
@@ -1368,7 +1365,7 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
       <article key={task.row_id} className={`tasker-task-row ${task.is_done ? 'is-done' : ''}`}>
         <input aria-label={`Mark ${task.task_title} done`} type="checkbox" checked={Boolean(task.is_done)} onChange={(event) => void onPatch(task, { is_done: event.target.checked })} className="tasker-task-checkbox" />
         <div className="tasker-task-copy">
-          <a href={sameDocumentHash(savedViewId ? savedViewHash(savedViewId, task.row_id) : `#task=${encodeURIComponent(task.row_id)}`)} className={task.is_done ? 'line-through' : ''}>{task.task_title}</a>
+          <a href={savedViewId ? savedViewHash(savedViewId, task.row_id) : `#task=${encodeURIComponent(task.row_id)}`} className={task.is_done ? 'line-through' : ''}>{task.task_title}</a>
           {explaining === task.row_id && (
             <form className="tasker-explanation-form" onSubmit={(event) => { event.preventDefault(); void addExplanation(task) }}>
               <label className="sr-only" htmlFor={`explain-${task.row_id}`}>Optional explanation</label>
@@ -1391,7 +1388,7 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
         </div>
         <div className="tasker-task-signals">
           <button type="button" aria-label={`${task.urgent ? 'Remove urgent flag from' : 'Mark urgent'} ${task.task_title}`} aria-pressed={task.urgent} title="Urgent is visible to the team" onClick={() => void onPatch(task, { urgent: !task.urgent })} className={`tasker-urgent ${task.urgent ? 'is-urgent' : ''}`}>{task.urgent && <span aria-hidden="true" />}{task.urgent ? 'Urgent' : 'Not urgent'}</button>
-          <button type="button" aria-label={`${focused ? 'Remove from' : 'Add to'} My Focus: ${task.task_title}`} title="My Focus is private to you" onClick={() => void onFocus(task.row_id)} className={`tasker-focus-star ${focused ? 'is-focused' : ''}`}>{focused ? '★' : '☆'} <span>Focus</span></button>
+          <button type="button" aria-label={`${focused ? 'Remove from' : 'Add to'} My Focus: ${task.task_title}`} title="My Focus is private to you" onClick={() => void onFocus(task.row_id)} className={`tasker-focus-star ${focused ? 'is-focused' : ''}`}>{focused ? '★' : '☆'}</button>
           {onMove && focused && <div className="tasker-focus-order"><button type="button" aria-label={`Move ${task.task_title} up`} onClick={() => void onMove(task.row_id, -1)}>↑</button><button type="button" aria-label={`Move ${task.task_title} down`} onClick={() => void onMove(task.row_id, 1)}>↓</button></div>}
         </div>
       </article>

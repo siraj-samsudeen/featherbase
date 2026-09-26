@@ -172,7 +172,7 @@ try {
   } finally { await slashlessContext.close() }
   await page.goto(`${origin}/admin/User?proof=compatibility#deep-link`)
   await expect(page).toHaveURL(`${origin}/featherbase/admin/User?proof=compatibility#deep-link`)
-  await page.locator('a[href="/tasker/"]').click()
+  await page.getByRole('combobox', { name: 'Switch application' }).selectOption('/tasker/')
   await expect(page).toHaveURL(`${origin}/tasker/`)
   await proveTaskerAcceptance({ page, api, expect, output, origin })
   await expect(page.getByText('Triage supplier invoice mismatch')).toBeVisible()
@@ -185,7 +185,7 @@ try {
   await page.screenshot({ path: resolve(output, 'seeded-inbox.png'), fullPage: true })
 
   await page.getByRole('button', { name: /My Work/ }).click()
-  const workTitles = await page.locator('main article a[href^="#task="]').allTextContents()
+  const workTitles = await page.locator('main article a[href*="#task="]').allTextContents()
   assert.deepEqual(workTitles.slice(0, 3), TASKER_SCENARIOS.focus.map(id => TASKER_SCENARIOS.tasks.find(task => task.row_id === id).task_title))
   await page.screenshot({ path: resolve(output, 'seeded-my-work.png'), fullPage: true })
 
