@@ -83,3 +83,18 @@ it, open any of them, and remove one without disturbing the others.
 - **THEN** it is listed among the row's attachments until removed
 - **AND** removing it takes it out of that list, leaving any other attachment
   untouched
+
+### Requirement: Peek at a linked row without leaving the page
+
+Clicking a link to another row SHALL open it in a read-only panel over the
+current page rather than navigating away. From there the user can follow
+another link deeper, step back one link at a time, or open what they're
+looking at as a full page; closing the panel always returns to the page they
+started from unchanged.
+
+#### Scenario: Follow a chain of links and come back
+
+- **WHEN** the user clicks a linked row, then clicks one of its own links, and
+  then closes the panel
+- **THEN** they see both linked rows in turn without leaving the original page
+- **AND** closing the panel leaves them back on the original page
