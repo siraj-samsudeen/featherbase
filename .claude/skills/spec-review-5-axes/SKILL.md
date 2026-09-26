@@ -1,6 +1,6 @@
 ---
 name: spec-review-5-axes
-description: Review an OpenSpec specification against five axes — world vs machine, governed vs characterized, falsifiable, complete over its input space, and bound to an executable. Also the home of the STC divergence triage, the routed decision emitted when spec, test and code disagree. Use when writing or reviewing a spec in openspec/specs, when a spec was recovered from shipped behaviour, when spec and code appear to disagree, before implementing from a spec, or when the owner says "review the spec", "is this spec any good", "spec review using 5 axes", or "spec vs code". Carries the requirements-engineering harvest — Jackson & Zave's S ∧ D ⟹ R, Parnas tables, Adzic's specification by example, Lamport on what-not-how — and an explicit REJECT list so sign-off ceremony and traceability-to-business-objective do not get imported by accident.
+description: Review an OpenSpec specification against five axes — world vs machine, governed vs characterized, falsifiable, complete over its input space, and bound to an executable — and emit the STC divergence triage whenever spec, test and code disagree. Use when writing, reviewing or implementing from a spec in openspec/specs, when a spec was recovered from shipped behaviour, when spec and code appear to disagree, or when the owner asks for a spec review or "the 5 axes".
 ---
 
 # spec-review-5-axes
@@ -11,7 +11,7 @@ Five axes for reviewing a specification, plus the **divergence triage** — the 
 
 **Prerequisite, not restated here:** the three framing rules in **`code-review-8-axes`** — unknown unknowns are the binding failure mode, the owner is the binding reader, prose cannot fail. **A spec is the purest case of "prose cannot fail"**: it is entirely prose, so nothing in it can break.
 
-Ported from the data-warehouse repo (#3691, from a design conversation with Siraj, 16/17-Sep-2026, prompted by a reverse-engineered spec that contradicted its own code). The axes are that skill's; the examples were re-derived from this repo's specs on 18-Sep-2026.
+Ported from the data-warehouse repo (#3691, from a design conversation with Siraj, 16/17-Sep-2026, prompted by a reverse-engineered spec that contradicted its own code). The axes are that skill's; the examples were re-derived from this repo's specs on 18-Sep-2026. Line numbers are as of that date — re-read before citing.
 
 The historical Journey framework in `docs/design/requirements-framework.md`
 still contains useful review techniques—closure sweeps, negative space,
@@ -97,7 +97,7 @@ Each of those can be false while our code is perfectly correct, and then the req
 
 **Every D gets four fields**: the assumption, how it was established, **when**, and **what would detect its violation**. An undated D is a guess with a citation. `openspec/specs/table-deletion/spec.md` carries the section in the shape this axis asks for — three assumptions, each with a *Detected by* line, two of which honestly say "nothing".
 
-**Real gap, stated plainly:** not one spec in `docs/specs` has a Domain assumptions section, so the most dangerous statements in an external-data-sources feature are written down nowhere as assumptions. That is the single highest-value thing this axis adds to this repo.
+**Real gap, stated plainly:** external data sources have no OpenSpec capability yet, and the frozen Journey document (`docs/specs/0001`) never had a Domain assumptions section — so the most dangerous statements in that feature are written down nowhere as assumptions. When it is baselined into `openspec/specs`, the D section is the single highest-value thing this axis adds. Do not add it to the frozen file; `pnpm check:spec-policy` enforces the frozen set.
 
 ---
 
@@ -186,7 +186,7 @@ promise. Read the assertion and the deciding code.
 
 ## A defect that is none of the five, and which this repo produces
 
-**A spec that speaks retired vocabulary.** `docs/specs/0001-external-data-sources.md:152–153` says *"SHALL reject `submit`, `cancel` and `amend` for that **DocType**"* and *"reject any `if_owner` **DocPerm**"*. Those are Frappe's names for concepts this product renamed to **Table** and **Permission** (`docs/GLOSSARY.md`), and `CLAUDE.md` is explicit that the old vocabulary survives only where it is a dated record of the past. A live Proposed spec is not that.
+**A spec that speaks retired vocabulary.** `docs/specs/0001-external-data-sources.md:152–153` says *"SHALL reject `submit`, `cancel` and `amend` for that **DocType**"* and *"reject any `if_owner` **DocPerm**"*. Those are Frappe's names for concepts this product renamed to **Table** and **Permission** (`docs/GLOSSARY.md`). That file is now frozen migration evidence and stays as it is; the check matters when behaviour like it is baselined into `openspec/specs`, where the old vocabulary must not survive.
 
 Do not fold this into an axis — it is a **vocabulary check**, cheap and mechanical:
 
@@ -205,7 +205,7 @@ and then the judgement that matters: **which system does the word belong to?** I
 3. **Check each evidence pointer actually reaches the deciding code.** A citation naming the caller while the behaviour lives in the callee is how drift survives review.
 4. **Falsifiability pass** (Axis 3) — respecting `shape: judgement` — then **tables** for anything state-machine-shaped (Axis 4).
 5. **Run `pnpm check:specs`** (Axis 5). Report orphans as failures and gaps against the baseline. Then run the vocabulary grep above.
-6. **Verify before reporting.** Read the code the requirement describes; do not trust the spec's own citation. Mark each finding **VERIFIED** or **UNVERIFIED** and never present the second as the first. In the trial that produced these skills, the most thorough reviewer produced a confident, specifically-cited, **fabricated** correction, and the fastest one reported findings it had read in the skill while sincerely believing it had found them. **Self-assessment is not reliable.**
+6. **Verify before reporting.** Read the code the requirement describes; do not trust the spec's own citation. Mark each finding **VERIFIED** or **UNVERIFIED** and never present the second as the first. In the trial that produced these skills, the most thorough reviewer produced a confident, specifically-cited, **fabricated** correction, and the fastest one reported findings it had read in the skill while sincerely believing it had found them. **Self-assessment is not reliable.** The divergence example above is a known defect; if it falls in scope, report it as known, not as a discovery.
 7. **Emit divergence triage items**, one per disagreement. Do not fix the code and do not edit the spec — this review routes decisions; it does not settle them. `CLAUDE.md`: the choice is the owner's, never an agent's.
 
 ### Output format

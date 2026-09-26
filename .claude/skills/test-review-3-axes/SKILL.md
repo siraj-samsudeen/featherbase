@@ -1,6 +1,6 @@
 ---
 name: test-review-3-axes
-description: Review a test suite against three axes — missing promise, duplicate promise, and a verdict that does not track the promise. Use when a test file feels bloated or untouchable, when deciding what survives a rewrite, when asked "do we have enough tests", "are these tests any good", "why are there so many tests", "what should we delete", or "test review using 3 axes". Treats MECE as the organising idea but partitions PROMISES, not lines of code — which is why coverage is rejected. Carries the testing-book harvest (Beck's test list, Meszaros's smells, GOOS's mocking rule, Feathers's characterization tests, property-based and metamorphic testing) and an explicit REJECT list so coverage targets, one-assertion-per-test and the strict test pyramid do not get imported by accident.
+description: Review a test suite against three axes — missing promise, duplicate promise, and a verdict that does not track the promise — partitioning the promises the code makes rather than its lines, which is why coverage is rejected. Use when judging whether a suite is sufficient, bloated or trustworthy, when deciding which tests survive a rewrite or can be deleted, or when the owner asks for a test review or "the 3 axes".
 ---
 
 # test-review-3-axes
@@ -13,18 +13,18 @@ Three axes. Not seven — an earlier draft of the origin skill had seven to mirr
 
 **The two skills chain.** `code-review-8-axes` Axis 1 finds an assumption nothing verifies. Its output *is* a missing promise — Axis 1 here. Reviewing code produces test work; reviewing tests produces code work.
 
-Ported from the data-warehouse repo (#3666, Siraj, 16-Sep-2026). The axes and the REJECT list are that skill's; the worked examples were re-derived from this repo's suites on 18-Sep-2026.
+Ported from the data-warehouse repo (#3666, Siraj, 16-Sep-2026). The axes and the REJECT list are that skill's; the worked examples were re-derived from this repo's suites on 18-Sep-2026. Line numbers are as of that date — re-read before citing.
 
 **Read this before applying the origin skill's instincts.** That skill was written against a Python suite where mocked sinks decided more findings than the tests did. **This suite is the opposite shape**, and it changes where the yield is:
 
 | | data-warehouse | featherbase |
 |---|---|---|
 | isolation | hand-built fakes, monkeypatched sinks | every test in a real Postgres transaction, rolled back (`feather-testing-postgres`) |
-| test files using a double | most | **5 of 223** — `dataset-snapshot`, `sales-target`, `app-grants`, `table-lifecycle-bound`, `client-validation` |
+| test files using a double | most | **a handful** — the grep under Axis 1 lists them (5 of 223 on 18-Sep-2026) |
 | spec↔test linkage | none until #3691 | OpenSpec `@spec` markers, ratcheted by `pnpm check:stc` in CI |
 | pins | undeclared | `test.fails` with the issue in the title (`CLAUDE.md`'s rule) |
 
-So Axis 3A's classic costume — *the mock satisfies it* — can only live in five files, and a review that goes hunting for it elsewhere is wasting the session. **Go to those five first; then spend the rest of the time on Axis 1.**
+So Axis 3A's classic costume — *the mock satisfies it* — can only live in the files that grep returns, and a review that goes hunting for it elsewhere is wasting the session. **Go to those first; then spend the rest of the time on Axis 1.**
 
 ---
 
@@ -105,7 +105,7 @@ The first line is the positive case and shows the harvest is worth doing: *"an i
 grep -rn "_setSourceReader\|_setEmbedFetch\|vi\.fn(\|vi\.mock(\|vi\.spyOn(" apps/*/test apps/web/e2e packages/*/test
 ```
 
-Five files. Everything they replace is a promise no test in that file can see.
+A handful of files. Everything they replace is a promise no test in that file can see.
 
 ### Property-based and metamorphic testing — the two ways out of "I can't enumerate the inputs"
 
@@ -197,12 +197,12 @@ Its comment is right that *"a comment cannot enforce this; this can"* — and th
 
 **Two more shapes to grep for in this repo:**
 
-- **A teardown that cannot fail.** `.catch(() => {})` appears 22 times in `apps/server/test`, mostly as `await uninstallApp(APP).catch(() => {})`. With `fileParallelism: false` and one shared database, a silently failed uninstall leaks state into the next file, where the failure surfaces as something unrelated. The cleanup is not the promise — but a cleanup that cannot fail is how one file's bug becomes another file's mystery.
+- **A teardown that cannot fail.** `.catch(() => {})` is common in `apps/server/test`, mostly as `await uninstallApp(APP).catch(() => {})`. With `fileParallelism: false` and one shared database, a silently failed uninstall leaks state into the next file, where the failure surfaces as something unrelated. The cleanup is not the promise — but a cleanup that cannot fail is how one file's bug becomes another file's mystery.
 - **A test whose only assertion is that its own injected error came back.** Read every test beside its siblings: **a test missing the assertion its neighbours all make is the highest-yield signal in this whole skill.**
 
 **The rule that prevents Direction A** (Freeman & Pryce, *GOOS*): **only mock types you own.** Never fake MotherDuck, the OAuth provider or the filesystem directly. Wrap them in an interface *you* define, whose contract you can state and verify separately, and fake that. `_setSourceReader` is exactly that shape, correctly done — the finding above is about what the fake *does*, not that it exists.
 
-**The honest use of a pin** (Feathers): a test that asserts what the code currently does, when nobody can derive what it *should* do, is a legitimate and valuable tool — a **characterization test**. The defect is never pinning; it is pinning *silently*. `CLAUDE.md` requires `test.fails` with the issue number in the title, and `apps/server/test/table-lifecycle.test.ts:130` is the worked example — *"renaming a column keeps its data readable under the new name (pins #250)"*. The retired Journey checker once enforced that convention mechanically; after OpenSpec adoption, the capability baseline and test must both record characterized behavior, and review must verify the executable expected-failure names the issue. **Do not "fix" a pin by deleting it; fixing the defect flips it to a plain test in the same change.**
+**The honest use of a pin** (Feathers): a test that asserts what the code currently does, when nobody can derive what it *should* do, is a legitimate and valuable tool — a **characterization test**. The defect is never pinning; it is pinning *silently*. `CLAUDE.md` requires `test.fails` with the issue number in the title, and `apps/server/test/table-lifecycle.test.ts:130` is the worked example — *"renaming a column keeps its data readable under the new name (pins #250)"*. No checker enforces this convention, so the review does: the capability baseline and the test both record the characterized behaviour, and the expected-failure names the issue. **Do not "fix" a pin by deleting it; fixing the defect flips it to a plain test in the same change.**
 
 ### Direction B — fails when the promise holds (false alarm)
 
@@ -233,7 +233,7 @@ Two things the list needs to be useful:
 - **Granularity: one promise per predicate or branch-of-decision, not per function.**
 - **The list is fallible, and step 3 feeds back into it.** A test that maps to nothing may be a duplicate, a test of the implementation — or evidence your list was incomplete. Take the third reading seriously.
 
-**2. Review the doubles before the tests.** For every fake, stub and injection: *what production behaviour does this replace, and what argument or side-effect does it discard?* In this repo that is five files and it is the highest-yield hour of the review.
+**2. Review the doubles before the tests.** For every fake, stub and injection: *what production behaviour does this replace, and what argument or side-effect does it discard?* In this repo that is the handful of files the Axis 1 grep returns, and it is the highest-yield hour of the review.
 
 **3. Map the existing tests onto the promise list.** `pnpm check:stc` gives you the declared edges for free; the mapping is the part it cannot do.
 
@@ -242,10 +242,11 @@ Two things the list needs to be useful:
 Never edit the working tree while reviewing. Use a throwaway worktree:
 
 ```bash
+ROOT=$(git rev-parse --show-toplevel)                   # the checkout you must not touch
 git worktree add /tmp/mutate HEAD && cd /tmp/mutate && pnpm install --frozen-lockfile
 # edit ONE line, then run only the file that should care:
 pnpm --filter server test -- test/dataset-snapshot.test.ts
-git -C /home/user/featherbase status --porcelain        # prove you touched nothing
+git -C "$ROOT" status --porcelain                       # prove you touched nothing
 ```
 
 Read the result by axis:
@@ -275,7 +276,7 @@ The loader's row count is claimed by nobody → Axis 1. `'a snapshot read states
 
 ### Output format
 
-Lead with the promise list — it is the most valuable artifact the review produces, and it outlives the findings. Then, per finding:
+Lead with the promise list — it is the most valuable artifact the review produces, and it outlives the findings. Then, per finding (the example below is a known defect; if it is in scope, report it as known, not as a discovery):
 
 ```
 [VERIFIED] Axis 3A — passes when the promise is broken
