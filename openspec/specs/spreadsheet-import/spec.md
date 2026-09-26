@@ -60,11 +60,12 @@ user says so, shown real values from each to help decide.
 ### Requirement: Add new rows or update the ones that match
 
 The user SHALL be able to choose a column to match file rows against the
-table's existing rows: a match updates that row, and a file row matching
-nothing is added instead, with both counts shown before anything commits.
-An update only changes columns the file maps, and the user chooses, for
-each import, whether a mapped cell left blank clears the matched row's
-existing value there or leaves it as is.
+table's existing rows: a match updates that row, a file row matching
+nothing is added instead, and a row with nothing in any mapped column is
+counted and skipped rather than silently mismatched — all three counts
+shown before anything commits. An update only changes columns the file
+maps, and the user chooses, for each import, whether a mapped cell left
+blank clears the matched row's existing value there or leaves it as is.
 
 #### Scenario: Re-importing a corrected file updates instead of duplicating
 
@@ -79,11 +80,30 @@ existing value there or leaves it as is.
   chosen to clear blanks
 - **THEN** the matched row keeps whatever value it already had there
 
+#### Scenario: Rows with nothing to import are skipped, not guessed at
+
+- **WHEN** a file has rows with no value in any mapped column
+- **THEN** those rows are counted separately and skipped
+- **AND** the counts still add up to the file's total rows
+
+### Requirement: The matching column is remembered
+
+Re-importing into a table that was matched with a column before SHALL
+suggest that same column again, named for the user to confirm or change —
+never applied silently.
+
+#### Scenario: The same matching column is suggested next time
+
+- **WHEN** a table was last imported into using one column as the match,
+  and the user imports into it again
+- **THEN** that column is offered as the suggested match, named on screen
+- **AND** the import doesn't use it until the user confirms or changes it
+
 ### Requirement: The file's own codes can become the row ids
 
-Mapping a file column onto the table's row-identity column SHALL make that
-column's values the imported rows' ids directly, instead of generating new
-ones. Rows the file doesn't supply an id for still get one however the
+Every table gives each new row an id automatically; mapping a file column
+onto that id column instead SHALL make its values the imported rows' ids
+directly. Rows the file doesn't supply an id for still get one however the
 table normally identifies new rows.
 
 #### Scenario: A file's reference codes become the ids
@@ -104,13 +124,25 @@ column is never clicked past by accident.
 - **THEN** the user must type the exact number back before the import runs
 - **AND** a missing or wrong number leaves the import blocked
 
-### Requirement: A problem with one part doesn't stop the rest
+### Requirement: A bad row doesn't stop the others
+
+A row that fails to import SHALL not stop the other rows in the same
+import — they still land — and the failed row is named by the row number
+the user would see in their own spreadsheet, counting any blank rows above
+it.
+
+#### Scenario: A failed row is found where the user expects it
+
+- **WHEN** a bad value sits several blank rows into a file
+- **THEN** the other rows still import
+- **AND** the failure names that row the way it appears in the user's own
+  spreadsheet, not its position among only the good rows
+
+### Requirement: Several targets in one run don't stop each other
 
 Importing several targets in one run SHALL attempt every target even after
 one is refused, reporting what imported, what failed and why, and what is
-left — never stopping silently at the first problem. A row that fails to
-import is named by the row number the user would see in their own
-spreadsheet, counting any blank rows above it.
+left — never stopping silently at the first problem.
 
 #### Scenario: The rest continue after one target fails
 
@@ -118,18 +150,14 @@ spreadsheet, counting any blank rows above it.
 - **THEN** the first and third still import
 - **AND** the second is named as failed, with its reason
 
-#### Scenario: A failed row is found where the user expects it
-
-- **WHEN** a bad value sits several blank rows into a file
-- **THEN** the failure names that row the way it appears in the user's own
-  spreadsheet, not its position among only the good rows
-
 ### Requirement: Leaving the import screen doesn't lose the work
 
 Leaving the import screen and coming back, including a full reload, SHALL
 restore the file, every choice made so far and any results already
-committed. Returning after an import has fully finished instead starts
-fresh, ready for the next one.
+committed — except that a workbook too large for the browser to hold keeps
+only the choices, and the user is told before leaving and asked to drop the
+file again on return. Returning after an import has fully finished instead
+starts fresh, ready for the next one.
 
 #### Scenario: Come back mid-import
 
@@ -137,6 +165,13 @@ fresh, ready for the next one.
   rows it created, and comes back
 - **THEN** the file, the remaining choices, and the already-imported result
   are still there
+
+#### Scenario: A file too big to keep still keeps the choices
+
+- **WHEN** a workbook too large for the browser to hold is dropped, and the
+  user leaves the page
+- **THEN** the choices made so far are still there on return
+- **AND** the user is asked to drop the same file again before continuing
 
 #### Scenario: A finished import doesn't come back
 
