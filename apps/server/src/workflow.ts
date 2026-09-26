@@ -60,13 +60,28 @@ async function hasWorkflowSchema(): Promise<boolean> {
   return workflowSchemaReady
 }
 
+// Called after the failed save transaction/savepoint has rolled back. Only
+// this index means an active-workflow conflict; other errors keep their mapper.
+export async function rethrowWorkflowConflict(err: unknown, refTable: unknown): Promise<void> {
+  const e = err as { code?: string; constraint_name?: string; schema_name?: string; table_name?: string }
+  if (e?.code !== '23505' || e.constraint_name !== 'workflow_one_active_per_table'
+    || e.schema_name !== 'featherbase' || e.table_name !== 'workflow') return
+  const [active] = await sql`
+    select row_id from workflow where ref_table = ${String(refTable)} and is_active = true`
+  throw new AppError('ConflictError', active
+    ? `Workflow "${active.row_id}" is already active for ${refTable}. Deactivate it before activating another workflow.`
+    : `Another workflow was activated for ${refTable}. Reload and try again.`)
+}
+
 // The active workflow for a Table (at most one), with its child rows.
 export async function getActiveWorkflow(table: string): Promise<Workflow | null> {
   if (!(await hasWorkflowSchema())) return null
-  const [wf] = await sql`
+  const workflows = await sql`
     select row_id, ref_table, state_field from workflow
-    where ref_table = ${table} and is_active = true
-    order by updated_at desc limit 1`
+    where ref_table = ${table} and is_active = true`
+  if (workflows.length > 1)
+    throw new AppError('ConflictError', `${table} has multiple active workflows. Deactivate the duplicates before continuing.`)
+  const [wf] = workflows
   if (!wf) return null
   const states = await sql<WorkflowState[]>`
     select state, target_status from workflow_document_state
