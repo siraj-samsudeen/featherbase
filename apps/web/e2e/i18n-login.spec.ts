@@ -1,4 +1,4 @@
-import { anonymousTest as test, expect, adminAuth, loginAs } from './fixtures'
+import { anonymousTest as test, expect, adminAuth } from './fixtures'
 import { clearTranslations, seedTranslations } from './translations'
 
 const DT = 'I18n2 E2E Doc'
@@ -43,19 +43,35 @@ test.afterAll(async ({ request }) => {
 
 // I18N-002: a user's stored language is applied on a fresh login (no manual
 // switch), and dates render in the System-Settings-configured format.
-test('I18N-002: stored language applied on login + configured date format', async ({ page }) => {
-  await loginAs(page, USER, PWD)
+//
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
+// The login form is label-friendly (mirrors admin.spec.ts's `signIn`, but for
+// a non-Administrator user so it stays inline rather than reusing that
+// helper); the account-menu/testid checks that follow stay in named steps.
+test('I18N-002: stored language applied on login + configured date format', async ({ session }) => {
+  await session
+    .visit('/login')
+    .fillIn('Email or username', USER)
+    .fillIn('Password', PWD)
+    .clickButton('Sign in')
+  await session.step('lands somewhere inside /admin', async ({ page }) => {
+    await expect(page).toHaveURL(/\/admin/)
+  })
 
   // The French preference is applied straight after login — chrome is French
   // without touching the language switcher.
-  await page.getByTestId('session-user').click() // Log out lives in the account menu (#72)
-  await expect(page.getByTestId('logout')).toHaveText('Déconnexion')
-  await page.keyboard.press('Escape')
-  await expect(page.getByTestId('language-select')).toHaveValue('fr')
+  await session.step('open the account menu and confirm French chrome', async ({ page }) => {
+    await page.getByTestId('session-user').click() // Log out lives in the account menu (#72)
+    await expect(page.getByTestId('logout')).toHaveText('Déconnexion')
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('language-select')).toHaveValue('fr')
+  })
 
   // The date renders THROUGH the System-Settings formatter (one of the
   // configured orders of 9 March 2026) — never the raw ISO string. Which order
   // is active depends on the shared global, so accept any valid one.
-  await page.goto(`/admin/${encodeURIComponent(DT)}`)
-  await expect(page.getByTestId('cell-due').first()).toHaveText(/^(2026-03-09|09-03-2026|03-09-2026)$/)
+  await session.visit(`/admin/${encodeURIComponent(DT)}`)
+  await session.step('the due date cell renders through the date formatter', async ({ page }) => {
+    await expect(page.getByTestId('cell-due').first()).toHaveText(/^(2026-03-09|09-03-2026|03-09-2026)$/)
+  })
 })

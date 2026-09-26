@@ -27,8 +27,13 @@ async function cleanup(request: APIRequestContext) {
 test.beforeEach(async ({ request }) => cleanup(request))
 test.afterEach(async ({ request }) => cleanup(request))
 
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// every check here is an attribute/response-status assertion the DSL has no
+// verb for (href value, absence of a query param, a raw navigation's HTTP
+// status), so the whole flow stays in one named step; session.visit carries
+// the one plain navigation.
 test('#173: a private attachment links without a token and serves on the cookie', async ({
-  page,
+  session,
   request,
 }) => {
   const uploaded = await request.post('/api/upload_file', {
@@ -43,18 +48,20 @@ test('#173: a private attachment links without a token and serves on the cookie'
   const { file_url } = (await uploaded.json()) as { file_url: string }
   expect(file_url).toMatch(/^\/private\/files\//)
 
-  await page.goto('/admin/User/Guest')
-  const row = page.getByTestId('attachment-row').filter({ hasText: 'secret.txt' })
-  const href = await row.locator('a').getAttribute('href')
+  await session.visit('/admin/User/Guest')
+  await session.step('the attachment link carries no token and still serves on the cookie', async ({ page }) => {
+    const row = page.getByTestId('attachment-row').filter({ hasText: 'secret.txt' })
+    const href = await row.locator('a').getAttribute('href')
 
-  // The regression this pins: the link used to be `${file_url}?token=<7-day
-  // session JWT>`, which lands in history, `Referer` and proxy logs.
-  expect(href).toBe(file_url)
-  expect(href).not.toContain('token=')
+    // The regression this pins: the link used to be `${file_url}?token=<7-day
+    // session JWT>`, which lands in history, `Referer` and proxy logs.
+    expect(href).toBe(file_url)
+    expect(href).not.toContain('token=')
 
-  // And it still opens — a real browser navigation, credential-free URL, the
-  // cookie doing the authenticating.
-  const served = await page.goto(href!)
-  expect(served?.status()).toBe(200)
-  expect(await page.locator('body').innerText()).toContain(SECRET)
+    // And it still opens — a real browser navigation, credential-free URL,
+    // the cookie doing the authenticating.
+    const served = await page.goto(href!)
+    expect(served?.status()).toBe(200)
+    expect(await page.locator('body').innerText()).toContain(SECRET)
+  })
 })

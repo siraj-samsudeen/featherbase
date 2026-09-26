@@ -1,4 +1,4 @@
-import { anonymousTest as test, expect, adminAuth, type Page } from './fixtures'
+import { anonymousTest as test, expect, adminAuth } from './fixtures'
 
 const ROUTE = 'about-e2e'
 
@@ -21,21 +21,28 @@ test.beforeAll(async ({ request }) => {
   if (res.status() !== 201) throw new Error(`create web page: ${res.status()} ${await res.text()}`)
 })
 
-// WEB-001: a published Web Page is publicly reachable and rendered without login.
-test('WEB-001: a published Web Page renders publicly without a session', async ({ page, context }) => {
+// WEB-001, migrated to the feather-testing-core DSL
+// (docs/testing/e2e-dsl-migration.md). `context.clearCookies()` is a raw
+// Playwright fixture the DSL has no verb for, so it opens a named step; the
+// rendered content is plain text the DSL's own assertText/assertPath reach.
+test('WEB-001: a published Web Page renders publicly without a session', async ({ session, context }) => {
   // Ensure there is genuinely no session.
-  await context.clearCookies()
-  await page.goto(`/web/${ROUTE}`)
-
-  await expect(page.getByTestId('web-page')).toBeVisible()
-  await expect(page.locator('h1')).toHaveText('About This Company')
-  await expect(page.locator('#tagline')).toHaveText('We ship features.')
-  // We were never redirected to login.
-  await expect(page).toHaveURL(new RegExp(`/web/${ROUTE}$`))
+  await session.step('clear cookies so there is genuinely no session', async () => {
+    await context.clearCookies()
+  })
+  await session
+    .visit(`/web/${ROUTE}`)
+    .assertHas('[data-testid="web-page"]')
+    .step('the heading and tagline show the page content exactly', async ({ page }) => {
+      await expect(page.locator('h1')).toHaveText('About This Company')
+      await expect(page.locator('#tagline')).toHaveText('We ship features.')
+    })
+    // We were never redirected to login.
+    .assertPath(`/web/${ROUTE}`)
 })
 
 // WEB-001: an unpublished Web Page is not reachable.
-test('WEB-001: an unpublished Web Page is not served', async ({ page, request }) => {
+test('WEB-001: an unpublished Web Page is not served', async ({ session, request }) => {
   const headers = await adminAuth(request)
   await request.delete('/api/table/Web%20Page/draft-e2e-doc', { headers })
   await request.post('/api/save_row', {
@@ -47,6 +54,5 @@ test('WEB-001: an unpublished Web Page is not served', async ({ page, request })
   })
   const res = await request.get('/web/draft-e2e')
   expect(res.status()).toBe(404)
-  await page.goto('/web/draft-e2e')
-  await expect(page.locator('body')).not.toContainText('hidden')
+  await session.visit('/web/draft-e2e').refuteText('hidden')
 })

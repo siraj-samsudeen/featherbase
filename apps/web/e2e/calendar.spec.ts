@@ -4,7 +4,9 @@ const DT = 'Cal DT'
 
 // UI-021: docs appear on their dates; dragging an event updates the date
 // field. Dates are chosen inside the current month so the calendar's default
-// month shows them.
+// month shows them. Migrated to the feather-testing-core DSL
+// (docs/testing/e2e-dsl-migration.md): mouse-drag mechanics and the
+// date-cell/testid checks around them stay in named steps.
 const now = new Date()
 const pad = (n: number) => String(n).padStart(2, '0')
 const monthPrefix = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`
@@ -30,35 +32,44 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { row_id: 'evt-1', title: 'Deadline', due: DAY_FROM } })
 })
 
-test('UI-021: events appear on their date and dragging updates the date field', async ({ page }) => {
-  await page.goto(`/admin/${encodeURIComponent(DT)}`)
-  await page.getByTestId('open-calendar').click()
-  await expect(page.getByTestId('calendar-view')).toBeVisible()
+test('UI-021: events appear on their date and dragging updates the date field', async ({
+  session,
+}) => {
+  await session.visit(`/admin/${encodeURIComponent(DT)}`)
+  await session.step('open the calendar view', async ({ page }) => {
+    await page.getByTestId('open-calendar').click()
+  })
+  await session.assertHas('[data-testid="calendar-view"]')
 
-  // The event shows on its date cell.
-  const fromCell = page.getByTestId(`cal-cell-${DAY_FROM}`)
-  const toCell = page.getByTestId(`cal-cell-${DAY_TO}`)
-  await expect(fromCell.getByTestId('cal-event')).toHaveCount(1)
-  await expect(toCell.getByTestId('cal-event')).toHaveCount(0)
+  await session.step('the event shows on its date cell', async ({ page }) => {
+    const fromCell = page.getByTestId(`cal-cell-${DAY_FROM}`)
+    const toCell = page.getByTestId(`cal-cell-${DAY_TO}`)
+    await expect(fromCell.getByTestId('cal-event')).toHaveCount(1)
+    await expect(toCell.getByTestId('cal-event')).toHaveCount(0)
+  })
 
-  // Drag the event from the 10th to the 20th.
-  const ev = page.locator('[data-event="evt-1"]')
-  const evBox = await ev.boundingBox()
-  const toBox = await toCell.boundingBox()
-  await page.mouse.move(evBox!.x + evBox!.width / 2, evBox!.y + evBox!.height / 2)
-  await page.mouse.down()
-  await page.mouse.move(toBox!.x + toBox!.width / 2, toBox!.y + toBox!.height / 2, { steps: 8 })
-  await page.mouse.up()
+  await session.step('drag the event from the 10th to the 20th', async ({ page }) => {
+    const toCell = page.getByTestId(`cal-cell-${DAY_TO}`)
+    const ev = page.locator('[data-event="evt-1"]')
+    const evBox = await ev.boundingBox()
+    const toBox = await toCell.boundingBox()
+    await page.mouse.move(evBox!.x + evBox!.width / 2, evBox!.y + evBox!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(toBox!.x + toBox!.width / 2, toBox!.y + toBox!.height / 2, { steps: 8 })
+    await page.mouse.up()
 
-  await expect(toCell.getByTestId('cal-event')).toHaveCount(1, { timeout: 10_000 })
-  await expect(fromCell.getByTestId('cal-event')).toHaveCount(0)
+    const fromCell = page.getByTestId(`cal-cell-${DAY_FROM}`)
+    await expect(toCell.getByTestId('cal-event')).toHaveCount(1, { timeout: 10_000 })
+    await expect(fromCell.getByTestId('cal-event')).toHaveCount(0)
+  })
 
-  // The date field changed in the DB.
-  const token = await page.evaluate(() => localStorage.getItem('fc_token'))
-  const doc = (await (
-    await page.request.get(`/api/table/${encodeURIComponent(DT)}/evt-1`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-  ).json()) as { due: string }
-  expect(String(doc.due).slice(0, 10)).toBe(DAY_TO)
+  await session.step('the date field changed in the DB', async ({ page }) => {
+    const token = await page.evaluate(() => localStorage.getItem('fc_token'))
+    const doc = (await (
+      await page.request.get(`/api/table/${encodeURIComponent(DT)}/evt-1`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    ).json()) as { due: string }
+    expect(String(doc.due).slice(0, 10)).toBe(DAY_TO)
+  })
 })

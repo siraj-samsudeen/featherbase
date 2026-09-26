@@ -1,4 +1,4 @@
-import { test, expect, adminToken, type APIRequestContext, type Page } from './fixtures'
+import { test, expect, adminToken, type APIRequestContext } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
 // #208 (issue #197): "suppose I imported two things and then I realized they
@@ -9,6 +9,10 @@ import { deleteTableIfExists } from './cleanup'
 // Q5 (owner decision): Featherbase never guesses Glor → Floor. Names that
 // FOLD to the same thing pair themselves; the rest is the user's to say, and
 // the screen exists so they can.
+//
+// Migrated to the feather-testing-core DSL
+// (docs/testing/e2e-dsl-migration.md). Every control here is testid-addressed,
+// so the walk stays inside named steps; `session.visit` carries navigation.
 
 const SRC = 'Merge Source Zones'
 const DST = 'Merge Target Zones'
@@ -66,36 +70,42 @@ test.afterEach(async ({ request }) => {
   for (const n of [SRC, DST]) await deleteTableIfExists(request, token, n)
 })
 
-test('folding pairs what it can, and refuses to guess the rest', async ({ page }) => {
-  await page.goto(`/admin/${encodeURIComponent(SRC)}`)
-  await page.getByTestId('open-merge').click()
-  await expect(page.getByTestId('table-merge')).toBeVisible()
+test('folding pairs what it can, and refuses to guess the rest', async ({ session }) => {
+  await session.visit(`/admin/${encodeURIComponent(SRC)}`)
+  await session.step('open the merge screen and pick the target', async ({ page }) => {
+    await page.getByTestId('open-merge').click()
+    await expect(page.getByTestId('table-merge')).toBeVisible()
 
-  await page.getByTestId('tm-target').selectOption(DST)
-  await expect(page.getByTestId('tm-mapping')).toBeVisible()
+    await page.getByTestId('tm-target').selectOption(DST)
+    await expect(page.getByTestId('tm-mapping')).toBeVisible()
 
-  // zone_name and pop fold to the same names, so they pair themselves.
-  await expect(page.getByTestId('tm-map-zone_name')).toHaveValue('zone_name')
-  await expect(page.getByTestId('tm-map-pop')).toHaveValue('pop')
-  // glor and floor do NOT fold together, and nothing pretends otherwise.
-  await expect(page.getByTestId('tm-map-glor')).toHaveValue('')
-  await expect(page.getByTestId('tm-tally')).toContainText('2 of 3 columns mapped')
-  await expect(page.getByTestId('tm-tally')).toContainText('glor will be left behind')
+    // zone_name and pop fold to the same names, so they pair themselves.
+    await expect(page.getByTestId('tm-map-zone_name')).toHaveValue('zone_name')
+    await expect(page.getByTestId('tm-map-pop')).toHaveValue('pop')
+    // glor and floor do NOT fold together, and nothing pretends otherwise.
+    await expect(page.getByTestId('tm-map-glor')).toHaveValue('')
+    await expect(page.getByTestId('tm-tally')).toContainText('2 of 3 columns mapped')
+    await expect(page.getByTestId('tm-tally')).toContainText('glor will be left behind')
 
-  // Sample values are shown, so "are these the same thing?" is answerable.
-  await expect(page.getByTestId('tm-sample-glor')).toContainText('Ground')
+    // Sample values are shown, so "are these the same thing?" is answerable.
+    await expect(page.getByTestId('tm-sample-glor')).toContainText('Ground')
+  })
 })
 
-test('the user pairs Glor with Floor, and every row lands', async ({ page, request }) => {
+test('the user pairs Glor with Floor, and every row lands', async ({ session, request }) => {
   const token = await adminToken(request)
-  await page.goto(`/admin/${encodeURIComponent(SRC)}/merge`)
-  await page.getByTestId('tm-target').selectOption(DST)
+  await session.visit(`/admin/${encodeURIComponent(SRC)}/merge`)
+  await session.step('pick the target, pair Glor with Floor, and merge', async ({ page }) => {
+    await page.getByTestId('tm-target').selectOption(DST)
 
-  await page.getByTestId('tm-map-glor').selectOption('floor')
-  await expect(page.getByTestId('tm-tally')).toContainText('3 of 3 columns mapped')
+    await page.getByTestId('tm-map-glor').selectOption('floor')
+    await expect(page.getByTestId('tm-tally')).toContainText('3 of 3 columns mapped')
 
-  await page.getByTestId('tm-go').click()
-  await expect(page.getByTestId('tm-outcome')).toContainText(`Merged 2 rows into ${DST}`)
+    await page.getByTestId('tm-go').click()
+    await expect(page.getByTestId('tm-outcome')).toContainText(`Merged 2 rows into ${DST}`)
+    // The source is left alone — this copied its rows, and says so.
+    await expect(page.getByTestId('tm-outcome')).toContainText('still has its own rows')
+  })
 
   const rows = await request.get(
     `/api/table/${encodeURIComponent(DST)}?fields=${encodeURIComponent(
@@ -113,23 +123,23 @@ test('the user pairs Glor with Floor, and every row lands', async ({ page, reque
   // target's own pre-existing row reads the same way.)
   expect(data.map((r) => Number(r.pop)).sort((a, b) => a - b)).toEqual([3, 7, 12])
 
-  // The source is left alone — this copied its rows, and says so.
-  await expect(page.getByTestId('tm-outcome')).toContainText('still has its own rows')
   const src = await request.get(`/api/table/${encodeURIComponent(SRC)}:count`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   expect(((await src.json()) as { count: number }).count).toBe(2)
 })
 
-test('a column left behind is left behind, and nothing else moves', async ({ page, request }) => {
+test('a column left behind is left behind, and nothing else moves', async ({ session, request }) => {
   const token = await adminToken(request)
-  await page.goto(`/admin/${encodeURIComponent(SRC)}/merge`)
-  await page.getByTestId('tm-target').selectOption(DST)
-  // Deliberately drop pop.
-  await page.getByTestId('tm-map-pop').selectOption('')
-  await expect(page.getByTestId('tm-tally')).toContainText('pop will be left behind')
-  await page.getByTestId('tm-go').click()
-  await expect(page.getByTestId('tm-outcome')).toContainText('Merged 2 rows')
+  await session.visit(`/admin/${encodeURIComponent(SRC)}/merge`)
+  await session.step('deliberately drop pop, then merge', async ({ page }) => {
+    await page.getByTestId('tm-target').selectOption(DST)
+    // Deliberately drop pop.
+    await page.getByTestId('tm-map-pop').selectOption('')
+    await expect(page.getByTestId('tm-tally')).toContainText('pop will be left behind')
+    await page.getByTestId('tm-go').click()
+    await expect(page.getByTestId('tm-outcome')).toContainText('Merged 2 rows')
+  })
 
   const rows = await request.get(
     `/api/table/${encodeURIComponent(DST)}?fields=${encodeURIComponent('["zone_name","pop"]')}&limit_page_length=50`,
@@ -141,35 +151,43 @@ test('a column left behind is left behind, and nothing else moves', async ({ pag
   expect(merged.every((r) => r.pop === null || r.pop === undefined)).toBe(true)
 })
 
-test('a merge is an import, so it appears in the history and can be undone', async ({ page }) => {
-  await page.goto(`/admin/${encodeURIComponent(SRC)}/merge`)
-  await page.getByTestId('tm-target').selectOption(DST)
-  await page.getByTestId('tm-map-glor').selectOption('floor')
-  await page.getByTestId('tm-go').click()
-  await expect(page.getByTestId('tm-outcome')).toBeVisible()
+test('a merge is an import, so it appears in the history and can be undone', async ({ session }) => {
+  await session.visit(`/admin/${encodeURIComponent(SRC)}/merge`)
+  await session.step('merge, then find it in the batches view', async ({ page }) => {
+    await page.getByTestId('tm-target').selectOption(DST)
+    await page.getByTestId('tm-map-glor').selectOption('floor')
+    await page.getByTestId('tm-go').click()
+    await expect(page.getByTestId('tm-outcome')).toBeVisible()
+  })
 
-  // Recorded as an import of the source Table — the provenance a merge would
-  // otherwise lose entirely.
-  await page.goto('/admin/imports')
-  const card = page.locator('[data-testid^="ib-batch-"]').first()
-  await expect(card).toContainText(`Merged from ${SRC}`)
-  await expect(card.getByTestId(`ib-target-${DST}`)).toBeVisible()
-  await expect(card.getByTestId(`ib-appended-${DST}`)).toContainText('existing Table')
+  await session.visit('/admin/imports')
+  await session.step('recorded as an import of the source Table', async ({ page }) => {
+    // Recorded as an import of the source Table — the provenance a merge would
+    // otherwise lose entirely.
+    const card = page.locator('[data-testid^="ib-batch-"]').first()
+    await expect(card).toContainText(`Merged from ${SRC}`)
+    await expect(card.getByTestId(`ib-target-${DST}`)).toBeVisible()
+    await expect(card.getByTestId(`ib-appended-${DST}`)).toContainText('existing Table')
+  })
 
-  // And undoable through the run history, like any other import.
-  await page.goto(`/admin/import?table=${encodeURIComponent(DST)}`)
-  await expect(page.getByTestId('iw-run-history')).toBeVisible()
-  await expect(page.getByTestId('iw-run-0')).toContainText(`Merged from ${SRC}`)
+  await session.visit(`/admin/import?table=${encodeURIComponent(DST)}`)
+  await session.step('undoable through the run history, like any other import', async ({ page }) => {
+    // And undoable through the run history, like any other import.
+    await expect(page.getByTestId('iw-run-history')).toBeVisible()
+    await expect(page.getByTestId('iw-run-0')).toContainText(`Merged from ${SRC}`)
+  })
 })
 
-test('nothing can be merged until a target and a column are chosen', async ({ page }) => {
-  await page.goto(`/admin/${encodeURIComponent(SRC)}/merge`)
-  await expect(page.getByTestId('tm-go')).toBeDisabled()
+test('nothing can be merged until a target and a column are chosen', async ({ session }) => {
+  await session.visit(`/admin/${encodeURIComponent(SRC)}/merge`)
+  await session.step('the merge button stays disabled until a target and a column exist', async ({ page }) => {
+    await expect(page.getByTestId('tm-go')).toBeDisabled()
 
-  await page.getByTestId('tm-target').selectOption(DST)
-  await expect(page.getByTestId('tm-go')).toBeEnabled()
+    await page.getByTestId('tm-target').selectOption(DST)
+    await expect(page.getByTestId('tm-go')).toBeEnabled()
 
-  for (const c of ['zone_name', 'pop']) await page.getByTestId(`tm-map-${c}`).selectOption('')
-  await expect(page.getByTestId('tm-go')).toContainText('Map at least one column')
-  await expect(page.getByTestId('tm-go')).toBeDisabled()
+    for (const c of ['zone_name', 'pop']) await page.getByTestId(`tm-map-${c}`).selectOption('')
+    await expect(page.getByTestId('tm-go')).toContainText('Map at least one column')
+    await expect(page.getByTestId('tm-go')).toBeDisabled()
+  })
 })

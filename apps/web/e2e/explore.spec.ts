@@ -9,6 +9,11 @@ import { deleteTableIfExists } from './cleanup'
 // the first dependent of 'EX Vehicle', making the deep links deterministic):
 //   EX Vehicle ← EX Accident.vehicle ← EX Claim.accident
 //   EX Vehicle ← EX Service.vehicle
+//
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// pane counts are exact `toHaveText` checks that assertHas' substring
+// semantics can't safely stand in for, and the split-button/checkbox
+// mechanics are testid-addressed, so both stay in named steps.
 
 const VEHICLE = 'EX Vehicle'
 const ACCIDENT = 'EX Accident'
@@ -72,7 +77,7 @@ test.beforeAll(async ({ request }) => {
 })
 
 test('a root+chain+select URL renders three panes, pane 1 preselected, downstream narrowed', async ({
-  page,
+  session,
 }) => {
   const chain = encodeURIComponent(
     JSON.stringify([
@@ -81,32 +86,37 @@ test('a root+chain+select URL renders three panes, pane 1 preselected, downstrea
     ]),
   )
   const select = encodeURIComponent(JSON.stringify([v1]))
-  await page.goto(`/admin/explore?root=${encodeURIComponent(VEHICLE)}&chain=${chain}&select=${select}`)
+  await session.visit(`/admin/explore?root=${encodeURIComponent(VEHICLE)}&chain=${chain}&select=${select}`)
 
-  // pane 1: both vehicles listed, Truck 1 arrives already selected (chip + row)
-  await expect(page.getByTestId('explore-pane1-count')).toHaveText('2')
-  await expect(page.getByTestId('explore-chip')).toContainText(`${VEHICLE}: ${v1}`)
-  await expect(
-    page.getByTestId('explore-pane1').locator('[data-testid=explore-row][data-selected]'),
-  ).toContainText('Truck 1')
+  await session.step('pane 1: both vehicles listed, Truck 1 arrives already selected', async ({ page }) => {
+    await expect(page.getByTestId('explore-pane1-count')).toHaveText('2')
+    await expect(page.getByTestId('explore-chip')).toContainText(`${VEHICLE}: ${v1}`)
+    await expect(
+      page.getByTestId('explore-pane1').locator('[data-testid=explore-row][data-selected]'),
+    ).toContainText('Truck 1')
+  })
 
-  // pane 2: only Truck 1's accidents (2 of the 3)
-  await expect(page.getByTestId('explore-pane2-count')).toHaveText('2')
-  await expect(page.getByTestId('explore-pane2')).toContainText('Rear bump')
-  await expect(page.getByTestId('explore-pane2')).not.toContainText('Windshield')
+  await session.step("pane 2: only Truck 1's accidents (2 of the 3)", async ({ page }) => {
+    await expect(page.getByTestId('explore-pane2-count')).toHaveText('2')
+    await expect(page.getByTestId('explore-pane2')).toContainText('Rear bump')
+    await expect(page.getByTestId('explore-pane2')).not.toContainText('Windshield')
+  })
 
-  // pane 3: claims of those accidents
-  await expect(page.getByTestId('explore-pane3-count')).toHaveText('1')
-  await expect(page.getByTestId('explore-pane3')).toContainText('Claim rear bump')
+  await session.step('pane 3: claims of those accidents', async ({ page }) => {
+    await expect(page.getByTestId('explore-pane3-count')).toHaveText('1')
+    await expect(page.getByTestId('explore-pane3')).toContainText('Claim rear bump')
+  })
 })
 
 test('a malformed or stale chain degrades to the plain root, never a blank page', async ({
-  page,
+  session,
 }) => {
   // malformed JSON: ignored outright
-  await page.goto(`/admin/explore?root=${encodeURIComponent(VEHICLE)}&chain=not-json`)
-  await expect(page.getByTestId('explore-pane1-count')).toHaveText('2')
-  await expect(page.getByTestId('explore-pane2')).toHaveCount(0)
+  await session.visit(`/admin/explore?root=${encodeURIComponent(VEHICLE)}&chain=not-json`)
+  await session.step('malformed JSON: ignored outright', async ({ page }) => {
+    await expect(page.getByTestId('explore-pane1-count')).toHaveText('2')
+    await expect(page.getByTestId('explore-pane2')).toHaveCount(0)
+  })
 
   // stale but well-formed: names a table that doesn't resolve — the step and
   // everything after it drop, the root pane stays up
@@ -116,50 +126,56 @@ test('a malformed or stale chain degrades to the plain root, never a blank page'
       { mode: 'backlink', table: CLAIM, column: 'accident' },
     ]),
   )
-  await page.goto(`/admin/explore?root=${encodeURIComponent(VEHICLE)}&chain=${stale}`)
-  await expect(page.getByTestId('explore-pane1-count')).toHaveText('2')
-  await expect(page.getByTestId('explore-pane2')).toHaveCount(0)
+  await session.visit(`/admin/explore?root=${encodeURIComponent(VEHICLE)}&chain=${stale}`)
+  await session.step('stale but well-formed: names a table that does not resolve; root pane stays up', async ({ page }) => {
+    await expect(page.getByTestId('explore-pane1-count')).toHaveText('2')
+    await expect(page.getByTestId('explore-pane2')).toHaveCount(0)
+  })
 })
 
 test('ListView split button: pick dependents, Open lands on a chained Explore', async ({
-  page,
+  session,
 }) => {
-  await page.goto(`/admin/${encodeURIComponent(VEHICLE)}`)
+  await session.visit(`/admin/${encodeURIComponent(VEHICLE)}`).assertHas('[data-testid="open-explore"]')
 
-  // main face: bare Explore rooted at the table
-  await expect(page.getByTestId('open-explore')).toBeVisible()
+  await session.step("chevron panel lists the same chainable dependents Explore's pickers offer", async ({ page }) => {
+    await page.getByTestId('explore-split-toggle').click()
+    const panel = page.getByTestId('explore-split-panel')
+    await expect(panel).toContainText(`${ACCIDENT} · vehicle`)
+    await expect(panel).toContainText(`${SERVICE} · vehicle`)
 
-  // chevron panel lists the SAME chainable dependents Explore's pickers offer
-  await page.getByTestId('explore-split-toggle').click()
-  const panel = page.getByTestId('explore-split-panel')
-  await expect(panel).toContainText(`${ACCIDENT} · vehicle`)
-  await expect(panel).toContainText(`${SERVICE} · vehicle`)
+    // check two dependents (the pane cap) and open
+    await panel.locator('label', { hasText: `${ACCIDENT} · vehicle` }).getByRole('checkbox').check()
+    await panel.locator('label', { hasText: `${SERVICE} · vehicle` }).getByRole('checkbox').check()
+    await panel.getByTestId('explore-split-open').click()
+  })
 
-  // check two dependents (the pane cap) and open
-  await panel.locator('label', { hasText: `${ACCIDENT} · vehicle` }).getByRole('checkbox').check()
-  await panel.locator('label', { hasText: `${SERVICE} · vehicle` }).getByRole('checkbox').check()
-  await panel.getByTestId('explore-split-open').click()
-
-  await expect(page).toHaveURL(/\/admin\/explore\?/)
-  expect(page.url()).toContain('chain=')
-  // pane 1 (all vehicles) + pane 2 (all accidents — nothing selected yet)
-  await expect(page.getByTestId('explore-pane1-count')).toHaveText('2')
-  await expect(page.getByTestId('explore-pane2-count')).toHaveText('3')
-  // the second sibling cannot chain off the first (pane 3 follows pane 2's
-  // table), so it degrades gracefully rather than blanking the page
-  await expect(page.getByTestId('explore-pane3')).toHaveCount(0)
+  await session.step('lands on a chained Explore with pane 1 + pane 2, pane 3 degrades gracefully', async ({ page }) => {
+    await expect(page).toHaveURL(/\/admin\/explore\?/)
+    expect(page.url()).toContain('chain=')
+    // pane 1 (all vehicles) + pane 2 (all accidents — nothing selected yet)
+    await expect(page.getByTestId('explore-pane1-count')).toHaveText('2')
+    await expect(page.getByTestId('explore-pane2-count')).toHaveText('3')
+    // the second sibling cannot chain off the first (pane 3 follows pane 2's
+    // table), so it degrades gracefully rather than blanking the page
+    await expect(page.getByTestId('explore-pane3')).toHaveCount(0)
+  })
 })
 
 test('RelationMap: Open in Explore materializes the neighborhood narrowed to the row', async ({
-  page,
+  session,
 }) => {
-  await page.goto(`/admin/map/${encodeURIComponent(VEHICLE)}/${encodeURIComponent(v1)}`)
-  await page.getByTestId('map-open-explore').click()
+  await session.visit(`/admin/map/${encodeURIComponent(VEHICLE)}/${encodeURIComponent(v1)}`)
+  await session.step('open in Explore', async ({ page }) => {
+    await page.getByTestId('map-open-explore').click()
+  })
 
-  await expect(page).toHaveURL(/\/admin\/explore\?/)
-  // pane 1 preselected to the mapped row
-  await expect(page.getByTestId('explore-chip')).toContainText(`${VEHICLE}: ${v1}`)
-  // first hop: accidents of Truck 1; second hop: claims of those accidents
-  await expect(page.getByTestId('explore-pane2-count')).toHaveText('2')
-  await expect(page.getByTestId('explore-pane3-count')).toHaveText('1')
+  await session.step('pane 1 preselected to the mapped row; hops narrow correctly', async ({ page }) => {
+    await expect(page).toHaveURL(/\/admin\/explore\?/)
+    // pane 1 preselected to the mapped row
+    await expect(page.getByTestId('explore-chip')).toContainText(`${VEHICLE}: ${v1}`)
+    // first hop: accidents of Truck 1; second hop: claims of those accidents
+    await expect(page.getByTestId('explore-pane2-count')).toHaveText('2')
+    await expect(page.getByTestId('explore-pane3-count')).toHaveText('1')
+  })
 })

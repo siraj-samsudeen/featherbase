@@ -39,10 +39,15 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   }
 })
 
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// the download events, XLSX/CSV parsing, and every check that follows them
+// are outside what any Session verb can express, so the whole comparison
+// stays in one named step; session.visit carries the plain navigation.
 test('RPT-003: CSV and XLSX downloads match on-screen rows and grouping order', async ({
-  page,
+  session,
 }) => {
-  await page.goto(`/admin/${encodeURIComponent(DT)}/view/report`)
+  await session.visit(`/admin/${encodeURIComponent(DT)}/view/report`)
+  await session.step('group by stage; downloaded CSV and XLSX match the on-screen rows', async ({ page }) => {
   await expect(page.getByTestId('report-row')).toHaveCount(3)
   await page.getByTestId('report-groupby').selectOption('stage')
   await expect(page.getByTestId('group-header')).toHaveCount(2)
@@ -105,4 +110,5 @@ test('RPT-003: CSV and XLSX downloads match on-screen rows and grouping order', 
     .map((r) => r[1])
     .filter((t) => t != null && t !== '')
   expect(xlsxTitles).toEqual(screenTitles)
+  })
 })

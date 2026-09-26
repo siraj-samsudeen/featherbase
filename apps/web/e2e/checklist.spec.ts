@@ -9,6 +9,10 @@ import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 //
 // The checklists sample app installs through the real endpoint, exactly like
 // the helpdesk spec. Idempotent: an existing structure is left as-is.
+//
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// the camera upload and viewport/box-model checks aren't expressible by DSL
+// verbs, so they stay in named steps.
 async function ensureChecklistStructure(request: APIRequestContext) {
   const H = await adminAuth(request)
   const has = await request.get('/api/table/Checklist%20Run:meta', { headers: H })
@@ -50,43 +54,51 @@ test.afterAll(async ({ request }) => {
   if (openRunName) await request.delete(`/api/table/Checklist%20Run/${openRunName}`, { headers: H })
 })
 
-test('a photo_proof item takes a camera upload and shows its thumbnail', async ({ page }) => {
-  await page.goto(`/admin/Checklist%20Run/view/checklist?run=${openRunName}`)
-  await expect(page.getByTestId('checklist-run-view')).toBeVisible()
+test('a photo_proof item takes a camera upload and shows its thumbnail', async ({ session }) => {
+  await session
+    .visit(`/admin/Checklist%20Run/view/checklist?run=${openRunName}`)
+    .assertHas('[data-testid="checklist-run-view"]')
 
-  // A real 1×1 PNG so the server generates a thumbnail data URI.
-  await page.getByTestId('checklist-photo-input').first().setInputFiles({
-    name: 'fast-mover.png',
-    mimeType: 'image/png',
-    buffer: Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-      'base64',
-    ),
+  await session.step('a camera upload produces a thumbnail', async ({ page }) => {
+    // A real 1×1 PNG so the server generates a thumbnail data URI.
+    await page.getByTestId('checklist-photo-input').first().setInputFiles({
+      name: 'fast-mover.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    })
+    await expect(page.getByTestId('checklist-photo-thumb').first()).toBeVisible()
   })
-  await expect(page.getByTestId('checklist-photo-thumb').first()).toBeVisible()
 
-  // Tapping the thumbnail opens the full-screen viewer with the real image.
-  await page.getByTestId('checklist-photo-thumb').first().click()
-  await expect(page.getByTestId('checklist-photo-view')).toBeVisible()
-  await expect(page.getByTestId('checklist-photo-view').locator('img')).toBeVisible()
-  await page.getByRole('button', { name: 'Close photo' }).click()
-  await expect(page.getByTestId('checklist-photo-view')).not.toBeVisible()
+  await session.step('tapping the thumbnail opens the full-screen viewer with the real image', async ({ page }) => {
+    await page.getByTestId('checklist-photo-thumb').first().click()
+    await expect(page.getByTestId('checklist-photo-view')).toBeVisible()
+    await expect(page.getByTestId('checklist-photo-view').locator('img')).toBeVisible()
+    await page.getByRole('button', { name: 'Close photo' }).click()
+    await expect(page.getByTestId('checklist-photo-view')).not.toBeVisible()
+  })
 })
 
 test.describe('mobile width', () => {
   test.use({ viewport: { width: 375, height: 720 } })
 
-  test('the run list and items stay usable at phone width', async ({ page }) => {
-    await page.goto('/admin/Checklist%20Run/view/checklist')
-    await expect(page.getByTestId('checklist-view')).toBeVisible()
-    await page.goto(`/admin/Checklist%20Run/view/checklist?run=${openRunName}`)
-    await expect(page.getByTestId('checklist-run-view')).toBeVisible()
-    // No horizontal overflow, and the tap target is comfortably tall.
-    expect(
-      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
-    ).toBe(true)
-    const box = await page.getByTestId('checklist-item').first().boundingBox()
-    expect(box).not.toBeNull()
-    expect(box!.height).toBeGreaterThanOrEqual(44)
+  test('the run list and items stay usable at phone width', async ({ session }) => {
+    await session
+      .visit('/admin/Checklist%20Run/view/checklist')
+      .assertHas('[data-testid="checklist-view"]')
+    await session
+      .visit(`/admin/Checklist%20Run/view/checklist?run=${openRunName}`)
+      .assertHas('[data-testid="checklist-run-view"]')
+
+    await session.step('no horizontal overflow, and the tap target is comfortably tall', async ({ page }) => {
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
+      ).toBe(true)
+      const box = await page.getByTestId('checklist-item').first().boundingBox()
+      expect(box).not.toBeNull()
+      expect(box!.height).toBeGreaterThanOrEqual(44)
+    })
   })
 })

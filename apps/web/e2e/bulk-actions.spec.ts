@@ -3,6 +3,10 @@ import { test, expect, adminToken, bearer, type APIRequestContext } from './fixt
 const DT = 'Bulk DT'
 
 // UI-012: select rows, bulk edit a field, bulk delete.
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// checkboxes and bulk controls are testid-addressed with no accessible label
+// distinct from their siblings, so the whole flow stays in named steps;
+// assertHas covers the plain count check around it.
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const token = await adminToken(request)
@@ -31,44 +35,49 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   }
 })
 
-test('UI-012: bulk edit a field then bulk delete selected rows', async ({ page }) => {
-  await page.goto(`/admin/${encodeURIComponent(DT)}`)
-  await expect(page.getByTestId('list-total')).toContainText('5 total')
+test('UI-012: bulk edit a field then bulk delete selected rows', async ({ session }) => {
+  await session
+    .visit(`/admin/${encodeURIComponent(DT)}`)
+    .assertHas('[data-testid="list-total"]', { text: '5 total' })
 
-  // Select 3 rows and bulk-edit the stage field.
-  const checks = page.getByTestId('row-check')
-  await checks.nth(0).check()
-  await checks.nth(1).check()
-  await checks.nth(2).check()
-  await expect(page.getByTestId('bulk-count')).toContainText('3 selected')
-  await page.getByTestId('bulk-edit-field').selectOption('stage')
-  await page.getByTestId('bulk-edit-value').fill('done')
-  await page.getByTestId('bulk-edit-apply').click()
-  await expect(page.getByTestId('bulk-bar')).toHaveCount(0)
-  // Exactly 3 stage cells read 'done' (exact match — substring matching
-  // catches transient re-render states and flakes).
-  await expect(
-    page.getByTestId('list-rows').locator('td').filter({ hasText: /^done$/ }),
-  ).toHaveCount(3)
+  await session.step('select 3 rows and bulk-edit the stage field', async ({ page }) => {
+    const checks = page.getByTestId('row-check')
+    await checks.nth(0).check()
+    await checks.nth(1).check()
+    await checks.nth(2).check()
+    await expect(page.getByTestId('bulk-count')).toContainText('3 selected')
+    await page.getByTestId('bulk-edit-field').selectOption('stage')
+    await page.getByTestId('bulk-edit-value').fill('done')
+    await page.getByTestId('bulk-edit-apply').click()
+    await expect(page.getByTestId('bulk-bar')).toHaveCount(0)
+    // Exactly 3 stage cells read 'done' (exact match — substring matching
+    // catches transient re-render states and flakes).
+    await expect(
+      page.getByTestId('list-rows').locator('td').filter({ hasText: /^done$/ }),
+    ).toHaveCount(3)
+  })
 
-  // Token for API verification.
-  const token = await page.evaluate(() => localStorage.getItem('fc_token'))
-  const listed = (await (
-    await page.request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-  ).json()) as { data: { row_id: string }[] }
-  expect(listed.data.length).toBe(5)
+  await session.step('the API confirms all 5 rows still exist', async ({ page }) => {
+    const token = await page.evaluate(() => localStorage.getItem('fc_token'))
+    const listed = (await (
+      await page.request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    ).json()) as { data: { row_id: string }[] }
+    expect(listed.data.length).toBe(5)
+  })
 
-  // Select-all then bulk delete removes every row on the page.
-  await page.getByTestId('select-all').check()
-  await expect(page.getByTestId('bulk-count')).toContainText('5 selected')
-  await page.getByTestId('bulk-delete').click()
-  await expect(page.getByTestId('list-total')).toContainText('0 total')
-  const after = (await (
-    await page.request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-  ).json()) as { data: { row_id: string }[] }
-  expect(after.data.length).toBe(0)
+  await session.step('select-all then bulk delete removes every row on the page', async ({ page }) => {
+    await page.getByTestId('select-all').check()
+    await expect(page.getByTestId('bulk-count')).toContainText('5 selected')
+    await page.getByTestId('bulk-delete').click()
+    await expect(page.getByTestId('list-total')).toContainText('0 total')
+    const token = await page.evaluate(() => localStorage.getItem('fc_token'))
+    const after = (await (
+      await page.request.get(`/api/table/${encodeURIComponent(DT)}?limit_page_length=100`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    ).json()) as { data: { row_id: string }[] }
+    expect(after.data.length).toBe(0)
+  })
 })

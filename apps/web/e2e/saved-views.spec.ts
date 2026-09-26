@@ -84,67 +84,75 @@ async function waitPastDedupWindow(page: Page, table: string, filters: unknown):
     .toBeGreaterThan(SAME_ARRIVAL_WINDOW_MS)
 }
 
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// this whole flow polls page-local localStorage state between repeated
+// navigations and drives testid-addressed chip/nudge controls, so each test
+// stays as one named step operating on the raw `page`.
 test('#101 P6: three applications trigger the nudge; the saved view lives as a chip', async ({
-  page,
+  session,
 }) => {
-  const listUrl = `/featherbase/admin/${encodeURIComponent(DT)}?filters=${FILTERS}`
+  await session.step('3 filter applications trigger the nudge; saving makes it a chip', async ({ page }) => {
+    const listUrl = `/featherbase/admin/${encodeURIComponent(DT)}?filters=${FILTERS}`
 
-  // First two arrivals: no nudge yet. Waiting past the dedup window (see
-  // waitPastDedupWindow) between them keeps each one a distinct arrival
-  // instead of collapsing into the client's same-arrival dedup.
-  const filters = [['note', '=', 'hot']]
-  for (let i = 0; i < 2; i++) {
+    // First two arrivals: no nudge yet. Waiting past the dedup window (see
+    // waitPastDedupWindow) between them keeps each one a distinct arrival
+    // instead of collapsing into the client's same-arrival dedup.
+    const filters = [['note', '=', 'hot']]
+    for (let i = 0; i < 2; i++) {
+      await page.goto(listUrl)
+      await expect(page.getByTestId('table-page')).toBeVisible()
+      await waitForApplyCount(page, DT, filters, i + 1)
+      await expect(page.getByTestId('filter-nudge')).toHaveCount(0)
+      await waitPastDedupWindow(page, DT, filters)
+    }
+
+    // Third: the nudge offers to name the habit.
     await page.goto(listUrl)
-    await expect(page.getByTestId('table-page')).toBeVisible()
-    await waitForApplyCount(page, DT, filters, i + 1)
+    await waitForApplyCount(page, DT, filters, 3)
+    const nudge = page.getByTestId('filter-nudge')
+    await expect(nudge).toBeVisible()
+    await expect(nudge).toContainText('3×')
+    await page.getByTestId('nudge-name').fill('Hot notes')
+    await page.getByTestId('nudge-save').click()
+
+    // The chip appears (active), the nudge is gone.
+    const chip = page.getByTestId('saved-view-chip').filter({ hasText: 'Hot notes' })
+    await expect(chip).toBeVisible()
     await expect(page.getByTestId('filter-nudge')).toHaveCount(0)
-    await waitPastDedupWindow(page, DT, filters)
-  }
 
-  // Third: the nudge offers to name the habit.
-  await page.goto(listUrl)
-  await waitForApplyCount(page, DT, filters, 3)
-  const nudge = page.getByTestId('filter-nudge')
-  await expect(nudge).toBeVisible()
-  await expect(nudge).toContainText('3×')
-  await page.getByTestId('nudge-name').fill('Hot notes')
-  await page.getByTestId('nudge-save').click()
+    // From a clean list, the chip re-applies the whole filter set.
+    await page.goto(`/featherbase/admin/${encodeURIComponent(DT)}`)
+    await chip.click()
+    await expect(page).toHaveURL(/filters=/)
+    await expect(page.getByTestId('table-page')).toContainText(DOC)
 
-  // The chip appears (active), the nudge is gone.
-  const chip = page.getByTestId('saved-view-chip').filter({ hasText: 'Hot notes' })
-  await expect(chip).toBeVisible()
-  await expect(page.getByTestId('filter-nudge')).toHaveCount(0)
-
-  // From a clean list, the chip re-applies the whole filter set.
-  await page.goto(`/featherbase/admin/${encodeURIComponent(DT)}`)
-  await chip.click()
-  await expect(page).toHaveURL(/filters=/)
-  await expect(page.getByTestId('table-page')).toContainText(DOC)
-
-  // Share it (control shows on the active own chip), then delete it.
-  await page.getByTestId('saved-view-share').click()
-  await expect(chip).toContainText('shared')
-  await page.getByTestId('saved-view-delete').click()
-  await expect(page.getByTestId('saved-view-chip')).toHaveCount(0)
+    // Share it (control shows on the active own chip), then delete it.
+    await page.getByTestId('saved-view-share').click()
+    await expect(chip).toContainText('shared')
+    await page.getByTestId('saved-view-delete').click()
+    await expect(page.getByTestId('saved-view-chip')).toHaveCount(0)
+  })
 })
 
-test('#101 P6: "Not now" silences the nudge for that filter set', async ({ page }) => {
-  const coldFilters = [['note', '=', 'cold']]
-  const otherFilters = encodeURIComponent(JSON.stringify(coldFilters))
-  const listUrl = `/featherbase/admin/${encodeURIComponent(DT)}?filters=${otherFilters}`
-  for (let i = 0; i < 3; i++) {
+test('#101 P6: "Not now" silences the nudge for that filter set', async ({ session }) => {
+  await session.step('"Not now" silences the nudge, remembered across a later application', async ({ page }) => {
+    const coldFilters = [['note', '=', 'cold']]
+    const otherFilters = encodeURIComponent(JSON.stringify(coldFilters))
+    const listUrl = `/featherbase/admin/${encodeURIComponent(DT)}?filters=${otherFilters}`
+    for (let i = 0; i < 3; i++) {
+      await page.goto(listUrl)
+      await expect(page.getByTestId('table-page')).toBeVisible()
+      await waitForApplyCount(page, DT, coldFilters, i + 1)
+      // Arrivals inside the dedup window count once — wait past it (see
+      // waitPastDedupWindow) so each of these three is a distinct arrival.
+      await waitPastDedupWindow(page, DT, coldFilters)
+    }
+    await expect(page.getByTestId('filter-nudge')).toBeVisible()
+    await page.getByTestId('nudge-dismiss').click()
+    await expect(page.getByTestId('filter-nudge')).toHaveCount(0)
+    // A fourth application stays quiet — the dismissal is remembered.
     await page.goto(listUrl)
     await expect(page.getByTestId('table-page')).toBeVisible()
-    await waitForApplyCount(page, DT, coldFilters, i + 1)
-    // Arrivals inside the dedup window count once — wait past it (see
-    // waitPastDedupWindow) so each of these three is a distinct arrival.
-    await waitPastDedupWindow(page, DT, coldFilters)
-  }
-  await expect(page.getByTestId('filter-nudge')).toBeVisible()
-  await page.getByTestId('nudge-dismiss').click()
-  await expect(page.getByTestId('filter-nudge')).toHaveCount(0)
-  // A fourth application stays quiet — the dismissal is remembered.
-  await page.goto(listUrl)
-  await expect(page.getByTestId('table-page')).toBeVisible()
-  await expect(page.getByTestId('filter-nudge')).toHaveCount(0)
+    await expect(page.getByTestId('filter-nudge')).toHaveCount(0)
+  })
 })

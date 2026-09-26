@@ -1,10 +1,14 @@
-import { test, expect, adminToken, type APIRequestContext, type Page } from './fixtures'
+import { test, expect, adminToken, type Page } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
 
 // #199/#200 (issue #197): the file overview. A workbook opens on a list of
 // sheets — no column grids — with the sheets the workbook was hiding in their
 // own collapsed section, and NOTHING selected until the user says so.
+//
+// Migrated to the feather-testing-core DSL
+// (docs/testing/e2e-dsl-migration.md). Every control here is testid-addressed,
+// so the walk stays inside named steps; `session.visit` carries navigation.
 
 const PICKED_DT = 'Overview Picked'
 
@@ -71,93 +75,99 @@ async function dropWorkbook(page: Page) {
 }
 
 test('the overview lists sheets only, sections the hidden ones, and starts empty', async ({
-  page,
+  session,
 }) => {
-  await page.goto('/admin')
-  await dropWorkbook(page)
+  await session.visit('/admin')
+  await session.step('drop the workbook', async ({ page }) => dropWorkbook(page))
 
-  // Sheets only — none of the column grids the wizard used to open on.
-  await expect(page.getByTestId('iw-new-grid-0')).toHaveCount(0)
-  await expect(page.getByTestId('iw-mapping-0')).toHaveCount(0)
+  await session.step('sheets only, sectioned by hidden state, nothing selected', async ({ page }) => {
+    // Sheets only — none of the column grids the wizard used to open on.
+    await expect(page.getByTestId('iw-new-grid-0')).toHaveCount(0)
+    await expect(page.getByTestId('iw-mapping-0')).toHaveCount(0)
 
-  // Two sections: visible above, hidden below, each counting its own.
-  await expect(page.getByTestId('iw-ov-section-visible')).toContainText('Visible sheets (2)')
-  await expect(page.getByTestId('iw-ov-section-hidden')).toContainText('Hidden sheets (2)')
-  // 'very hidden' is not flattened into 'hidden' — the workbook meant more.
-  await expect(page.getByTestId('iw-ov-row-3')).toContainText('very hidden')
-  await expect(page.getByTestId('iw-ov-row-2')).toContainText('hidden')
+    // Two sections: visible above, hidden below, each counting its own.
+    await expect(page.getByTestId('iw-ov-section-visible')).toContainText('Visible sheets (2)')
+    await expect(page.getByTestId('iw-ov-section-hidden')).toContainText('Hidden sheets (2)')
+    // 'very hidden' is not flattened into 'hidden' — the workbook meant more.
+    await expect(page.getByTestId('iw-ov-row-3')).toContainText('very hidden')
+    await expect(page.getByTestId('iw-ov-row-2')).toContainText('hidden')
 
-  // #200's whole point: nothing is included by default.
-  await expect(page.getByTestId('iw-ov-count')).toHaveText('0 of 4 sheets selected')
-  for (const i of [0, 1, 2, 3]) {
-    await expect(page.getByTestId(`iw-ov-sheet-${i}`)).not.toBeChecked()
-  }
+    // #200's whole point: nothing is included by default.
+    await expect(page.getByTestId('iw-ov-count')).toHaveText('0 of 4 sheets selected')
+    for (const i of [0, 1, 2, 3]) {
+      await expect(page.getByTestId(`iw-ov-sheet-${i}`)).not.toBeChecked()
+    }
 
-  // Continuing with nothing chosen is refused in words, not a dead button.
-  await page.getByTestId('iw-ov-continue').click()
-  await expect(page.getByTestId('iw-ov-refusal')).toBeVisible()
-  await expect(page.getByTestId('iw-overview')).toBeVisible()
+    // Continuing with nothing chosen is refused in words, not a dead button.
+    await page.getByTestId('iw-ov-continue').click()
+    await expect(page.getByTestId('iw-ov-refusal')).toBeVisible()
+    await expect(page.getByTestId('iw-overview')).toBeVisible()
+  })
 })
 
 test('group toggles act on their own section, and the master reports tri-state', async ({
-  page,
+  session,
 }) => {
-  await page.goto('/admin')
-  await dropWorkbook(page)
+  await session.visit('/admin')
+  await session.step('drop the workbook', async ({ page }) => dropWorkbook(page))
 
-  // "Select all visible" must leave the hidden sheets alone.
-  await page.getByTestId('iw-ov-all-visible').click()
-  await expect(page.getByTestId('iw-ov-count')).toHaveText('2 of 4 sheets selected')
-  await expect(page.getByTestId('iw-ov-sheet-0')).toBeChecked()
-  await expect(page.getByTestId('iw-ov-sheet-1')).toBeChecked()
-  await expect(page.getByTestId('iw-ov-sheet-2')).not.toBeChecked()
+  await session.step('group toggles and the master tri-state', async ({ page }) => {
+    // "Select all visible" must leave the hidden sheets alone.
+    await page.getByTestId('iw-ov-all-visible').click()
+    await expect(page.getByTestId('iw-ov-count')).toHaveText('2 of 4 sheets selected')
+    await expect(page.getByTestId('iw-ov-sheet-0')).toBeChecked()
+    await expect(page.getByTestId('iw-ov-sheet-1')).toBeChecked()
+    await expect(page.getByTestId('iw-ov-sheet-2')).not.toBeChecked()
 
-  // A partial selection reports itself rather than picking a side.
-  await expect(
-    page.getByTestId('iw-ov-master').evaluate((el: HTMLInputElement) => el.indeterminate),
-  ).resolves.toBe(true)
+    // A partial selection reports itself rather than picking a side.
+    await expect(
+      page.getByTestId('iw-ov-master').evaluate((el: HTMLInputElement) => el.indeterminate),
+    ).resolves.toBe(true)
 
-  // The same control clears the group it filled.
-  await page.getByTestId('iw-ov-all-visible').click()
-  await expect(page.getByTestId('iw-ov-count')).toHaveText('0 of 4 sheets selected')
+    // The same control clears the group it filled.
+    await page.getByTestId('iw-ov-all-visible').click()
+    await expect(page.getByTestId('iw-ov-count')).toHaveText('0 of 4 sheets selected')
 
-  // Hidden sheets are reachable and selectable, in their own group.
-  await page.getByTestId('iw-ov-all-hidden').click()
-  await expect(page.getByTestId('iw-ov-count')).toHaveText('2 of 4 sheets selected')
-  await expect(page.getByTestId('iw-ov-sheet-2')).toBeChecked()
-  await expect(page.getByTestId('iw-ov-sheet-0')).not.toBeChecked()
+    // Hidden sheets are reachable and selectable, in their own group.
+    await page.getByTestId('iw-ov-all-hidden').click()
+    await expect(page.getByTestId('iw-ov-count')).toHaveText('2 of 4 sheets selected')
+    await expect(page.getByTestId('iw-ov-sheet-2')).toBeChecked()
+    await expect(page.getByTestId('iw-ov-sheet-0')).not.toBeChecked()
 
-  // Master selects everything, and then reads as fully checked.
-  await page.getByTestId('iw-ov-master').check()
-  await expect(page.getByTestId('iw-ov-count')).toHaveText('4 of 4 sheets selected')
-  await expect(
-    page.getByTestId('iw-ov-master').evaluate((el: HTMLInputElement) => el.indeterminate),
-  ).resolves.toBe(false)
+    // Master selects everything, and then reads as fully checked.
+    await page.getByTestId('iw-ov-master').check()
+    await expect(page.getByTestId('iw-ov-count')).toHaveText('4 of 4 sheets selected')
+    await expect(
+      page.getByTestId('iw-ov-master').evaluate((el: HTMLInputElement) => el.indeterminate),
+    ).resolves.toBe(false)
+  })
 })
 
 test('only the chosen sheet reaches the column step, and importing it leaves the rest alone', async ({
-  page,
+  session,
   request,
 }) => {
   const token = await adminToken(request)
-  await page.goto('/admin')
-  await dropWorkbook(page)
+  await session.visit('/admin')
+  await session.step('drop the workbook', async ({ page }) => dropWorkbook(page))
 
-  // One sheet of four.
-  await page.getByTestId('iw-ov-sheet-0').check()
-  await expect(page.getByTestId('iw-ov-tally')).toContainText('2 rows will be imported')
-  await expect(page.getByTestId('iw-ov-tally')).toContainText('3 left out')
-  await page.getByTestId('iw-ov-continue').click()
+  await session.step('choose one sheet of four and import it', async ({ page }) => {
+    // One sheet of four.
+    await page.getByTestId('iw-ov-sheet-0').check()
+    await expect(page.getByTestId('iw-ov-tally')).toContainText('2 rows will be imported')
+    await expect(page.getByTestId('iw-ov-tally')).toContainText('3 left out')
+    await page.getByTestId('iw-ov-continue').click()
 
-  // The column step shows that sheet and no other.
-  await expect(page.getByTestId('iw-sheet-0')).toBeVisible()
-  await expect(page.getByTestId('iw-sheet-1')).toHaveCount(0)
-  await expect(page.getByTestId('iw-sheet-2')).toHaveCount(0)
-  await expect(page.getByTestId('iw-chosen-count')).toHaveText('1 of 4 sheets selected')
+    // The column step shows that sheet and no other.
+    await expect(page.getByTestId('iw-sheet-0')).toBeVisible()
+    await expect(page.getByTestId('iw-sheet-1')).toHaveCount(0)
+    await expect(page.getByTestId('iw-sheet-2')).toHaveCount(0)
+    await expect(page.getByTestId('iw-chosen-count')).toHaveText('1 of 4 sheets selected')
 
-  await page.getByTestId('iw-new-name-0').fill(PICKED_DT)
-  await page.getByTestId('iw-import').click()
-  await expect(page.getByTestId('iw-result-0')).toContainText('Imported 2 rows')
+    await page.getByTestId('iw-new-name-0').fill(PICKED_DT)
+    await page.getByTestId('iw-import').click()
+    await expect(page.getByTestId('iw-result-0')).toContainText('Imported 2 rows')
+  })
 
   // The three sheets left unselected created nothing — the defect that made
   // one import produce eleven unwanted Tables.
@@ -173,31 +183,35 @@ test('only the chosen sheet reaches the column step, and importing it leaves the
   await deleteTableIfExists(request, token, PICKED_DT)
 })
 
-test('going back to the overview keeps the choices already made', async ({ page }) => {
-  await page.goto('/admin')
-  await dropWorkbook(page)
+test('going back to the overview keeps the choices already made', async ({ session }) => {
+  await session.visit('/admin')
+  await session.step('drop the workbook', async ({ page }) => dropWorkbook(page))
 
-  await page.getByTestId('iw-ov-sheet-0').check()
-  await page.getByTestId('iw-ov-continue').click()
-  await page.getByTestId('iw-new-name-0').fill('Renamed Before Going Back')
+  await session.step('choose a sheet, rename it, go back, and come forward again', async ({ page }) => {
+    await page.getByTestId('iw-ov-sheet-0').check()
+    await page.getByTestId('iw-ov-continue').click()
+    await page.getByTestId('iw-new-name-0').fill('Renamed Before Going Back')
 
-  await page.getByTestId('iw-back-to-overview').click()
-  await expect(page.getByTestId('iw-ov-sheet-0')).toBeChecked()
-  await expect(page.getByTestId('iw-ov-count')).toHaveText('1 of 4 sheets selected')
+    await page.getByTestId('iw-back-to-overview').click()
+    await expect(page.getByTestId('iw-ov-sheet-0')).toBeChecked()
+    await expect(page.getByTestId('iw-ov-count')).toHaveText('1 of 4 sheets selected')
 
-  // The rename survives the round trip — leaving the step is not a reset.
-  await page.getByTestId('iw-ov-continue').click()
-  await expect(page.getByTestId('iw-new-name-0')).toHaveValue('Renamed Before Going Back')
+    // The rename survives the round trip — leaving the step is not a reset.
+    await page.getByTestId('iw-ov-continue').click()
+    await expect(page.getByTestId('iw-new-name-0')).toHaveValue('Renamed Before Going Back')
+  })
 })
 
-test('a CSV has nothing to choose, so the overview never appears', async ({ page }) => {
-  await page.goto('/admin')
-  await page.getByTestId('import-data-link').click()
-  await page.getByTestId('iw-file-input').setInputFiles({
-    name: 'single.csv',
-    mimeType: 'text/csv',
-    buffer: Buffer.from('Solo Ref,Solo Amount\nS-1,5\n'),
+test('a CSV has nothing to choose, so the overview never appears', async ({ session }) => {
+  await session.visit('/admin')
+  await session.step('drop a CSV and see the overview skipped', async ({ page }) => {
+    await page.getByTestId('import-data-link').click()
+    await page.getByTestId('iw-file-input').setInputFiles({
+      name: 'single.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from('Solo Ref,Solo Amount\nS-1,5\n'),
+    })
+    await expect(page.getByTestId('iw-overview')).toHaveCount(0)
+    await expect(page.getByTestId('iw-new-grid-0')).toBeVisible()
   })
-  await expect(page.getByTestId('iw-overview')).toHaveCount(0)
-  await expect(page.getByTestId('iw-new-grid-0')).toBeVisible()
 })

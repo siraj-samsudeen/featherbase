@@ -4,6 +4,9 @@ const DT = 'Cf Target'
 const FIELD = 'priority_note'
 
 // CUST-001: a custom field appears in the generic form and list views.
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// the field is `[data-field]`-addressed, so the form check stays in a step;
+// assertHas covers the list-view column/text check.
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const headers = await adminAuth(request)
@@ -31,13 +34,16 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   })
 })
 
-test('CUST-001: the custom field renders in the form and the list', async ({ page }) => {
+test('CUST-001: the custom field renders in the form and the list', async ({ session }) => {
   // Form shows the custom field with its saved value.
-  await page.goto(`/admin/${encodeURIComponent(DT)}/cf-doc`)
-  await expect(page.locator(`[data-field=${FIELD}]`)).toHaveValue('urgent')
+  await session.visit(`/admin/${encodeURIComponent(DT)}/cf-doc`)
+  await session.step('form shows the custom field with its saved value', async ({ page }) => {
+    await expect(page.locator(`[data-field=${FIELD}]`)).toHaveValue('urgent')
+  })
 
   // List shows a column for the in_list_view custom field.
-  await page.goto(`/admin/${encodeURIComponent(DT)}`)
-  await expect(page.getByTestId(`col-${FIELD}`)).toBeVisible()
-  await expect(page.getByTestId('list-rows')).toContainText('urgent')
+  await session
+    .visit(`/admin/${encodeURIComponent(DT)}`)
+    .assertHas(`[data-testid="col-${FIELD}"]`)
+    .assertHas('[data-testid="list-rows"]', { text: 'urgent' })
 })
