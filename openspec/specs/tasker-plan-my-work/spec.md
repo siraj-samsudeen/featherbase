@@ -2,47 +2,55 @@
 
 ## Purpose
 
-A person can assemble and order a private daily shortlist from shared work
-without accepting responsibility or changing the tasks.
+Each person can pick tasks from anywhere into My Focus, a private and ordered
+shortlist, and see it together with everything they are responsible for in My
+Work. Picking a task does not make them responsible for it or change it for
+anyone else.
 
 ## Requirements
 
-### Requirement: focus_is_private_ordered
+### Requirement: My Focus is private and ordered
 
-Each person SHALL own an independent, server-synced ordered My Focus list.
-Starring, unstarring and reordering SHALL preserve that person's order across
-reload. Focus and reorder controls SHALL have visible labels and work by keyboard.
+Each person SHALL have their own My Focus. They can star any task into it,
+whether or not they are responsible for it, unstar it, and change the order. The
+list and its order follow them across reloads and devices, and nobody else sees
+it.
 
-#### Scenario: mixed_daily_shortlist
-- **WHEN** a member stars assigned and unassigned tasks and reorders them
-- **THEN** the order survives reload and another member's focus remains unchanged.
+#### Scenario: Build a daily shortlist
 
-### Requirement: my_work_has_no_duplicates
+- **WHEN** Siraj stars a task he is responsible for and a task nobody has taken, then moves the second one to the top
+- **THEN** after a reload both are in his My Focus in that order
+- **AND** Shahul's My Focus is unchanged
 
-My Work SHALL show My Focus first, followed by tasks assigned to the person that
-are not already focused. Each task SHALL appear at most once.
+### Requirement: My Work shows each task once
 
-#### Scenario: focused_assigned_once
-- **WHEN** an assigned task is also starred
-- **THEN** it appears once in My Focus and not again under Assigned to me.
+My Work SHALL show the user's My Focus first, then the other tasks they are
+responsible for. A task that belongs in both parts appears only once, in My
+Focus.
 
-### Requirement: focus_never_mutates_task
+#### Scenario: A focused task I am responsible for
 
-Every focus operation SHALL change only the caller's preference. It SHALL NOT
-change destination, responsibility, state, urgency or any other shared task
-field.
+- **WHEN** the user stars a task they are already responsible for
+- **THEN** My Work lists it once, in the My Focus part
 
-#### Scenario: star_unassigned_task
-- **WHEN** a member stars an unassigned project task
-- **THEN** it enters only that member's My Focus and stays unassigned.
+### Requirement: Focusing never changes the task
 
-### Requirement: stale_focus_self_heals
+Starring, unstarring or reordering My Focus SHALL change only the user's own
+list, never the task's place, responsible person, state, urgency or anything
+else the team sees.
 
-A deleted or unreadable focused task SHALL be omitted rather than failing My
-Work. The stale reference SHALL be removed on the next focus write while the
-readable order remains.
+#### Scenario: Focus on someone else's work
 
-#### Scenario: missing_focus_reference
-- **GIVEN** focus contains one missing id between two readable task ids
-- **WHEN** My Work loads and focus is next saved
-- **THEN** the readable tasks remain ordered and the missing id is dropped.
+- **WHEN** the user stars a project task that nobody is responsible for
+- **THEN** it is in the user's My Focus
+- **AND** for everyone it is still unassigned and in the same project
+
+### Requirement: Missing tasks drop out of My Focus
+
+If a task in My Focus is deleted or can no longer be opened, My Work SHALL still
+load and leave that task out, keeping the rest in order.
+
+#### Scenario: A focused task is deleted
+
+- **WHEN** the middle task of the user's three focused tasks is deleted
+- **THEN** My Work opens with the other two focused tasks, in their original order
