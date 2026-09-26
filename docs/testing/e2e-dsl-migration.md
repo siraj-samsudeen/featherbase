@@ -355,3 +355,39 @@ environment gotcha section (boot with the raised `PREAUTH_*` envs, reset
 the database before the final full-suite verification), and update the
 table above with the files you finish — don't leave this doc describing a
 state the repo has moved past.
+
+## Batch 2 status — anonymous / session identity (13 files, done)
+
+Booted on `featherbase_e2e_b2` (`WEB_PORT=5212 API_PORT=8032`), the same
+raised-`PREAUTH_*`/`ALLOW_MOCK_OAUTH=1` envs as the pilot. Baseline was
+captured by copying each file's pre-migration content (from `HEAD` on
+`e2e-dsl-migration`) back into the worktree, running it against a freshly
+reset database, then restoring the migrated files and re-running against
+another freshly reset database — both runs came back identical: **20
+passed, 28 skipped, 0 failed**. `pnpm --filter web typecheck` is clean on
+the migrated code. No baseline failures were found in this batch, so no
+GitHub issue was filed.
+
+| File | Shape | Baseline → after | Notes |
+|---|---|---|---|
+| `core-form-responsive.spec.ts` | plain `test`, testid/attribute-only, 2 parametrized widths | pass → pass | The whole body is bounding-box/CSS/screenshot/route-stub probes with no DSL verb reach; login is label-friendly DSL verbs, navigation is `session.visit`, everything else is named steps grouped by logical phase (blank form, stale-row refresh, validation, permission/version-error probes, attachment upload/removal). |
+| `dark-mode.spec.ts` | plain `test`, single attribute/evaluate test | pass → pass | Whole body is one named step (`data-theme` attribute + computed-style evaluate — no verb reaches either). |
+| `i18n-login.spec.ts` | `anonymousTest`, non-Administrator login | pass → pass | Login form is label-friendly (`fillIn`/`clickButton`, mirrors `admin.spec.ts`'s `signIn` but for a different user); account-menu/date-cell checks are testid-addressed steps. |
+| `oauth.spec.ts` | `anonymousTest`, mock-OAuth flow, 3 tests | pass → pass | Mock consent screen is entirely testid-addressed (steps); `session.visit('/login')` carries navigation. Third test is API-only, untouched. |
+| `palette.spec.ts` | `anonymousTest`, `loginAs`, 3 tests | pass → pass | Every check is a `data-*` attribute assertion or a computed-style/localStorage evaluate — no verb reaches any of them — so each test is a sequence of named steps around `loginAs`/`serverPalette`, unchanged from baseline. |
+| `portal.spec.ts` | `anonymousTest`, `loginAs` with a non-Administrator identity, 3 tests | pass → pass | `loginAs` (a website-user identity, not Administrator) stays a step; navigation to `/portal/...` moves onto `session.visit`. |
+| `preview-login.spec.ts` | `anonymousTest`, env-gated `describe`, 4 tests | skip → skip (same reason: no `PREVIEW_LOGIN_KEY`/`PREVIEW_LOGIN_USER`) | Navigation via `session.visit`; every check (URL regex, localStorage, framenavigated recording) stays a named step. |
+| `realtime.spec.ts` | `anonymousTest`, `browser.newContext()` multi-viewer, 3 tests | pass → pass | `session` (bound to the default `page`) can't reach a second browser context, so each context gets its own `createSession(page)` — the same factory `fixtures.ts`'s own DSL-backed `test` is built on — and both go through `.visit`/`.assertHas`/`.refuteHas`/`.step()` rather than raw Playwright throughout. |
+| `runtime-login-return.spec.ts` | `anonymousTest`, deep-link + login round trip | pass → pass | Login form is DSL verbs; the exact query+hash-fragment URL round trip is a `toHaveURL` regex `assertPath`/`refutePath` (exact-match only) can't express, so it and the by-role/by-label heading check stay steps. |
+| `sales-target.spec.ts` | `anonymousTest`, env-gated (data-warehouse shared inputs), 24 tests across single-page, two-viewer, and multi-context flows | skip → skip (all 24; same reason) | Migrated the shape per the coordinator's explicit "don't try to exercise the live-embed parts" instruction: single-page tests get `{ session, page }` with the existing `login()`/testid mechanics wrapped in named steps; multi-context tests (`browser.newContext()`) get one `createSession(page)` per context, same as `realtime.spec.ts`, wrapping their (unavoidably raw) iframe/Dive-reading mechanics in one named step per viewer/context. Every assertion is untouched. Because the whole file is currently skipped locally, this could not be exercised against the live/stub embed paths — only the skip path was verified, both before and after. |
+| `smoke.spec.ts` | `anonymousTest`, 3 tests; **`./init.sh`'s non-isolated smoke gate runs this file directly** | pass → pass | `./init.sh` was re-run end to end after the change (`WEB_PORT=5212 API_PORT=8032`, fresh `featherbase_e2e_b2`) and its `pnpm --filter web smoke` step reported `3 passed` against the migrated file — no change to how `./init.sh` invokes it (`apps/web/package.json`'s `smoke` script, `WEB_URL` env) was needed. The root-redirect and legacy-query-preservation checks became `session.visit`/`assertPath` (the exact-URL and query-param cases `assertPath`'s `queryParams` option was built for); the by-role button-visibility check stays a step. |
+| `user-management.spec.ts` | `anonymousTest`, serial `describe`, password-reset journey, 2 tests | pass → pass | Forgot-password/reset-password screens are testid-addressed steps; the real login form at the end is DSL verbs (mirrors `admin.spec.ts`). |
+| `web-form.spec.ts` | `anonymousTest`, public web form, 1 test | pass → pass | `context.clearCookies()` has no DSL verb; every form field is testid-addressed, not labelled — the whole interactive flow is named steps around `session.visit`. |
+
+Verification: ran each file individually against a freshly booted stack
+(`WEB_URL=http://localhost:5212 pnpm exec playwright test e2e/<file>.spec.ts
+--reporter=list`), then the batch together twice — once immediately after
+migrating, once again after `./init.sh` rebuilt the stack from a dropped
+and recreated database — both came back **20 passed / 28 skipped / 0
+failed**, matching the baseline captured the same way. `pnpm --filter web
+typecheck` is clean.
