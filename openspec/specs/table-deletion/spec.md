@@ -28,12 +28,10 @@ and its exact current row count, and saying the action cannot be undone.
 
 ### Requirement: Deleting a table removes what creating it built
 
-Deleting a table SHALL remove its definition, every one of its rows, and any
-repeating rows it stores for its own columns, all at once. A table that
-holds a single record and no list SHALL lose only its definition, since it
-never had rows of its own to remove. A repeating-rows table that other
-tables also nest their own rows in SHALL keep its own definition when one of
-those parents is deleted — only the rows that belonged to that parent go.
+Deleting a table SHALL remove its definition, its rows, their nested
+repeating rows and the files attached to them, all at once. A nested-rows
+table that other tables also use keeps its own definition; only this table's
+rows in it go, and a stored file another row still uses is kept.
 
 #### Scenario: A table with nested repeating rows
 

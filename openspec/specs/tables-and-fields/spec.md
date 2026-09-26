@@ -31,12 +31,9 @@ Building lands the builder on the new table's own list, ready to use.
 
 ### Requirement: A column's type says what it holds and how it's shown
 
-A column SHALL be typed as one of a set of kinds — among them plain text, a
-longer text block, a whole number, a decimal, money, a date or date and time,
-yes/no, one choice from a list the builder defines, a link to a row in
-another table, a file attachment, or a repeating group of rows nested inside
-this one. The set can grow; each kind decides how the column is entered and
-shown, not just how it's stored.
+Each column SHALL have a type, such as text, a number, a date, a choice from
+a list, or a link to a row in another table. The type decides how the column
+is filled in and shown, not just how it's stored.
 
 #### Scenario: Link one table's rows to another's
 
