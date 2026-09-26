@@ -40,39 +40,48 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   await request.delete(`/api/table/Report/${encodeURIComponent(REPORT)}`, { headers: auth })
 })
 
-test('RPT-002: saved report restores columns, filters, and grouping', async ({ page }) => {
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// column/filter/groupby controls are testid-addressed selects/checkboxes and
+// the checks are regex URL matches and exact-value assertions, so the whole
+// configure/save/restore walk stays in named steps; session.visit carries
+// the plain navigations between them.
+test('RPT-002: saved report restores columns, filters, and grouping', async ({ session }) => {
   // Configure: drop qty column, filter status=Open, group by status.
-  await page.goto(`/admin/${encodeURIComponent(DT)}/view/report`)
-  await expect(page.getByTestId('report-row')).toHaveCount(3)
-  await page.getByTestId('report-columns').click()
-  await page.getByTestId('report-col-qty').uncheck()
-  await page.getByTestId('report-columns').click()
-  await page.getByTestId('filter-field').selectOption('stage')
-  await page.getByTestId('filter-value').fill('Open')
-  await page.getByTestId('filter-add').click()
-  await expect(page.getByTestId('report-row')).toHaveCount(2)
-  await page.getByTestId('report-groupby').selectOption('stage')
+  await session.visit(`/admin/${encodeURIComponent(DT)}/view/report`)
+  await session.step('drop the qty column, filter status=Open, group by status, and save', async ({ page }) => {
+    await expect(page.getByTestId('report-row')).toHaveCount(3)
+    await page.getByTestId('report-columns').click()
+    await page.getByTestId('report-col-qty').uncheck()
+    await page.getByTestId('report-columns').click()
+    await page.getByTestId('filter-field').selectOption('stage')
+    await page.getByTestId('filter-value').fill('Open')
+    await page.getByTestId('filter-add').click()
+    await expect(page.getByTestId('report-row')).toHaveCount(2)
+    await page.getByTestId('report-groupby').selectOption('stage')
 
-  // Save it.
-  await page.getByTestId('report-save').click()
-  await page.getByTestId('report-save-name').fill(REPORT)
-  await page.getByTestId('report-save-confirm').click()
-  await expect(page).toHaveURL(/report=/)
+    // Save it.
+    await page.getByTestId('report-save').click()
+    await page.getByTestId('report-save-name').fill(REPORT)
+    await page.getByTestId('report-save-confirm').click()
+    await expect(page).toHaveURL(/report=/)
+  })
 
   // Fresh navigation to the saved URL restores everything.
-  await page.goto(
-    `/admin/${encodeURIComponent(DT)}/view/report?report=${encodeURIComponent(REPORT)}`,
-  )
-  await expect(page.getByTestId('report-head-qty')).toHaveCount(0) // column choice
-  await expect(page.getByTestId('report-groupby')).toHaveValue('stage') // grouping
-  await expect(page.getByTestId('report-row')).toHaveCount(2) // filter applied
-  const open = page.locator('[data-group="Open"]')
-  await expect(open.getByTestId('group-count')).toContainText('(2)')
+  await session.visit(`/admin/${encodeURIComponent(DT)}/view/report?report=${encodeURIComponent(REPORT)}`)
+  await session.step('the saved URL restores columns, filter, and grouping', async ({ page }) => {
+    await expect(page.getByTestId('report-head-qty')).toHaveCount(0) // column choice
+    await expect(page.getByTestId('report-groupby')).toHaveValue('stage') // grouping
+    await expect(page.getByTestId('report-row')).toHaveCount(2) // filter applied
+    const open = page.locator('[data-group="Open"]')
+    await expect(open.getByTestId('group-count')).toContainText('(2)')
+  })
 
   // The picker also opens it from scratch.
-  await page.goto(`/admin/${encodeURIComponent(DT)}/view/report`)
-  await expect(page.getByTestId('report-row')).toHaveCount(3) // default state first
-  await page.getByTestId('saved-report-picker').selectOption(REPORT)
-  await expect(page.getByTestId('report-row')).toHaveCount(2)
-  await expect(page.getByTestId('report-groupby')).toHaveValue('stage')
+  await session.visit(`/admin/${encodeURIComponent(DT)}/view/report`)
+  await session.step('the saved-report picker also restores it', async ({ page }) => {
+    await expect(page.getByTestId('report-row')).toHaveCount(3) // default state first
+    await page.getByTestId('saved-report-picker').selectOption(REPORT)
+    await expect(page.getByTestId('report-row')).toHaveCount(2)
+    await expect(page.getByTestId('report-groupby')).toHaveValue('stage')
+  })
 })
