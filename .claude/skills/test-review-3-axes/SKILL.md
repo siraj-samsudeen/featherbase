@@ -21,24 +21,10 @@ Ported from the data-warehouse repo (#3666, Siraj, 16-Sep-2026). The axes and th
 |---|---|---|
 | isolation | hand-built fakes, monkeypatched sinks | every test in a real Postgres transaction, rolled back (`feather-testing-postgres`) |
 | test files using a double | most | **5 of 223** — `dataset-snapshot`, `sales-target`, `app-grants`, `table-lifecycle-bound`, `client-validation` |
-| spec↔test linkage | none until #3691 | OpenSpec `@spec` markers, ratcheted by `pnpm check:stc` in CI |
+| spec↔test linkage | none until #3691 | OpenSpec `openspec/specs` capabilities |
 | pins | undeclared | `test.fails` with the issue in the title (`CLAUDE.md`'s rule) |
 
 So Axis 3A's classic costume — *the mock satisfies it* — can only live in five files, and a review that goes hunting for it elsewhere is wasting the session. **Go to those five first; then spend the rest of the time on Axis 1.**
-
----
-
-## The STC triangle — this skill is one vertex of three
-
-| Artifact | Question | Skill |
-|---|---|---|
-| **Spec** | What should the system promise? | `spec-review-5-axes` |
-| **Code** | Does it hold those promises? | `code-review-8-axes` |
-| **Test** | Is each promise actually checked? | `test-review-3-axes` |
-
-They drift apart continuously, whichever was written first. The edges are made greppable by **`docs/agents/stc-traceability.md`** and computed by `pnpm check:stc` over `openspec/specs`.
-
-**When artifacts disagree, never silently pick a winner and never punt.** Emit the divergence triage item defined in **`spec-review-5-axes`**.
 
 ---
 
@@ -226,7 +212,7 @@ This is where "too many tests" stops being a cost and becomes **harm**. A suite 
 promise list. Take it first, **then** extend from doc comments and the negative
 space (*what must never happen?*) — and **report what you had to add.**
 
-That delta is a deliverable: **every promise you had to invent is a spec gap**, and it goes back to the spec. Where a spec obligation and the code disagree, that is not yours to settle — emit the divergence triage item from `spec-review-5-axes`. This repo states the same rule as a hard rule: *"A discovered behaviour is not a requirement … choosing is the owner's call, never an agent's."*
+That delta is a deliverable: **every promise you had to invent is a spec gap**, and it goes back to the spec. Where a spec obligation and the code disagree, that is not yours to settle. This repo states the same rule as a hard rule: *"A discovered behaviour is not a requirement … choosing is the owner's call, never an agent's."*
 
 Two things the list needs to be useful:
 
@@ -235,7 +221,7 @@ Two things the list needs to be useful:
 
 **2. Review the doubles before the tests.** For every fake, stub and injection: *what production behaviour does this replace, and what argument or side-effect does it discard?* In this repo that is five files and it is the highest-yield hour of the review.
 
-**3. Map the existing tests onto the promise list.** `pnpm check:stc` gives you the declared edges for free; the mapping is the part it cannot do.
+**3. Map the existing tests onto the promise list.** This mapping is manual work; nothing generates it for you.
 
 **4. Mutate. This is the verification step for all three axes**, not an optional extra for Axis 2.
 
