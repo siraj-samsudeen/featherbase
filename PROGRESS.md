@@ -1,5 +1,38 @@
 # Progress Log
 
+## 2026-09-26 — Every platform feature has a plain-language OpenSpec spec
+
+The Featherbase platform is now specified in `openspec/specs/` in the style
+of `openspec/config.yaml`'s `rules.specs`. There are 32 platform capabilities
+beside the 12 Tasker ones and the product-wide usable-on-any-device.
+
+- **Old specs rewritten:** table-deletion (422 lines → about 110),
+  core-forms (row editing), runtime-document-deletion (now row-deletion),
+  the three installable-app specs and admin-ui-feedback.
+- **New capabilities:** tables and fields, merge, naming, list view, saved
+  views, boards/calendar/timeline, checklists, reports, dashboards, search
+  and Explore, spreadsheet import, import history and undo, external data
+  sources, sign-in, permissions, access tokens, files and sharing, comments
+  and history, assignments, workflow, notifications/email/webhooks, jobs,
+  web forms and portal, printing, personal preferences.
+- **Journey docs deleted:** `docs/specs/`. Each was converted, moved to a
+  planned-work change (sources-planned-work), or filed (#333 virtual tables,
+  #259 grid editing).
+- **Method:** Sonnet writers, one adversarial reviewer per batch checking
+  every requirement against the code, then coordinator review. Specs
+  describe what the code does today. Where the code looked wrong, the promise
+  was scoped down and an issue filed. That produced #321–#342, several of
+  them permission leaks (#338–#342).
+- **Verified:** `pnpm check:specs` (strict specs and changes: 45 and 6
+  passed). Nothing outside `openspec/` and docs changed.
+- **Gotchas:**
+  - A MODIFIED delta in an active change locks both the requirement name and
+    its scenario names in the main spec, or `--changes --strict` fails.
+    That's why four requirements in the installable-app specs keep
+    snake_case names.
+  - Agents that launch helper agents and then wait lose their work when their
+    turn ends. Briefs must say "no sub-agents, one turn".
+
 ## 2026-09-26 — Tasker specs rewritten in plain language (pilot, #301)
 
 The pilot for the `rules.specs` style in `openspec/config.yaml`. The 12
