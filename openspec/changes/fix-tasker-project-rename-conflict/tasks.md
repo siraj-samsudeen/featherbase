@@ -10,4 +10,4 @@
 
 - [x] 2.1 Add and run a scoped Session DSL browser regression against the real installed Tasker package, proving the competing save and completed refetch precede submission, the conflict is visible, and HTTP readback retains the newer name.
 - [x] 2.2 Run the full Tasker component test file, Tasker package tests/build/typecheck, web typecheck, strict OpenSpec validation, DSL guard, and `git diff --check`; record exact runnable commands and outcomes.
-- [ ] 2.3 Run feather-code-review, resolve in-scope findings, and append verified evidence and remaining handoff to `PROGRESS.md`; commit the scoped implementation, push, and open a PR linked to #315 without merging. Report the exact head and runnable evidence to the parent.
+- [x] 2.3 Run feather-code-review, resolve in-scope findings, and append verified evidence and remaining handoff to `PROGRESS.md`; commit the scoped implementation, push, and open a PR linked to #315 without merging. Report the exact head and runnable evidence to the parent.
