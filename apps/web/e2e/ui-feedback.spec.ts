@@ -1,3 +1,8 @@
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// every test here drives route mocks, `page.evaluate`, keyboard/filechooser
+// events, or computed-style/DOM-identity checks — none of which any Session
+// verb expresses — so each stays as one named step operating on the raw
+// `page`; `session.visit` carries the first plain navigation into it.
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import * as XLSX from 'xlsx'
@@ -13,20 +18,22 @@ async function capture(page: Page, name: string) {
   await page.screenshot({ path: join(dir, `${name}.png`), fullPage: true })
 }
 
-test('Table collision describes four destinations without changing Enter precedence', async ({ page }) => {
-  await page.goto('/admin')
-  const input = page.getByTestId('awesomebar').locator('input')
-  await input.fill('Table')
-  for (const kind of ['commands', 'tables', 'create', 'records'])
-    await expect(page.getByTestId(`awesomebar-${kind}-heading`)).toBeVisible()
-  await expect(page.getByTestId('awesomebar-cmd-new-table')).toHaveText('› New Table')
-  await expect(page.getByTestId('awesomebar-table').filter({ hasText: /^TableCore module/ })).toHaveCount(1)
-  await expect(page.getByTestId('awesomebar-new').filter({ hasText: 'New Table row' })).toHaveCount(1)
-  await expect(page.getByTestId('awesomebar-doc').filter({ hasText: /row in Table/ }).first()).toBeVisible()
-  await capture(page, 'awesomebar-destinations')
-  await input.press('Enter')
-  await expect(page).toHaveURL(/\/admin\/Table$/)
-  await expect(page.getByTestId('list-view')).toBeVisible()
+test('Table collision describes four destinations without changing Enter precedence', async ({ session }) => {
+  await session.visit('/admin')
+  await session.step('typing "Table" in the awesomebar shows four destination kinds; Enter still opens the Table', async ({ page }) => {
+    const input = page.getByTestId('awesomebar').locator('input')
+    await input.fill('Table')
+    for (const kind of ['commands', 'tables', 'create', 'records'])
+      await expect(page.getByTestId(`awesomebar-${kind}-heading`)).toBeVisible()
+    await expect(page.getByTestId('awesomebar-cmd-new-table')).toHaveText('› New Table')
+    await expect(page.getByTestId('awesomebar-table').filter({ hasText: /^TableCore module/ })).toHaveCount(1)
+    await expect(page.getByTestId('awesomebar-new').filter({ hasText: 'New Table row' })).toHaveCount(1)
+    await expect(page.getByTestId('awesomebar-doc').filter({ hasText: /row in Table/ }).first()).toBeVisible()
+    await capture(page, 'awesomebar-destinations')
+    await input.press('Enter')
+    await expect(page).toHaveURL(/\/admin\/Table$/)
+    await expect(page.getByTestId('list-view')).toBeVisible()
+  })
 })
 
 function workbook(names: string[]) {
@@ -36,27 +43,30 @@ function workbook(names: string[]) {
   return { name: 'zones.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer }
 }
 
-test('multi-sheet warning names omissions next to the drop and disappears on replacement or clear', async ({ page }) => {
-  await page.goto('/admin/new-table')
-  await page.getByTestId('dt-file-input').setInputFiles(workbook(['Zones', 'Stores', 'Prices']))
-  const warning = page.getByTestId('dt-more-sheets')
-  await expect(warning).toHaveText('Only “Zones” will be imported. Ignored sheets: “Stores”, “Prices”. Use the Import wizard to import all 3 sheets.')
-  await expect(warning).toHaveAttribute('role', 'status')
-  expect(await page.getByTestId('dt-dropzone').evaluate((el) => el.nextElementSibling?.getAttribute('data-testid'))).toBe('dt-more-sheets')
-  await expect(page.getByTestId('dt-preview')).toContainText('Zones')
-  await expect(page.getByTestId('dt-preview')).not.toContainText('Stores')
-  await expect(warning.getByRole('link', { name: 'Import wizard' })).toHaveAttribute('href', /\/admin\/import/)
-  await capture(page, 'builder-multi-sheet-warning')
-  await page.getByTestId('dt-file-input').setInputFiles(workbook(['Solo']))
-  await expect(warning).toHaveCount(0)
-  await page.getByTestId('dt-file-input').setInputFiles(workbook(['North', 'South']))
-  await expect(warning).toContainText('“South”')
-  await expect(warning).not.toContainText('Stores')
-  await page.getByTestId('dt-clear-file').click()
-  await expect(warning).toHaveCount(0)
+test('multi-sheet warning names omissions next to the drop and disappears on replacement or clear', async ({ session }) => {
+  await session.visit('/admin/new-table')
+  await session.step('the multi-sheet warning names omissions and clears on replacement/clear', async ({ page }) => {
+    await page.getByTestId('dt-file-input').setInputFiles(workbook(['Zones', 'Stores', 'Prices']))
+    const warning = page.getByTestId('dt-more-sheets')
+    await expect(warning).toHaveText('Only “Zones” will be imported. Ignored sheets: “Stores”, “Prices”. Use the Import wizard to import all 3 sheets.')
+    await expect(warning).toHaveAttribute('role', 'status')
+    expect(await page.getByTestId('dt-dropzone').evaluate((el) => el.nextElementSibling?.getAttribute('data-testid'))).toBe('dt-more-sheets')
+    await expect(page.getByTestId('dt-preview')).toContainText('Zones')
+    await expect(page.getByTestId('dt-preview')).not.toContainText('Stores')
+    await expect(warning.getByRole('link', { name: 'Import wizard' })).toHaveAttribute('href', /\/admin\/import/)
+    await capture(page, 'builder-multi-sheet-warning')
+    await page.getByTestId('dt-file-input').setInputFiles(workbook(['Solo']))
+    await expect(warning).toHaveCount(0)
+    await page.getByTestId('dt-file-input').setInputFiles(workbook(['North', 'South']))
+    await expect(warning).toContainText('“South”')
+    await expect(warning).not.toContainText('Stores')
+    await page.getByTestId('dt-clear-file').click()
+    await expect(warning).toHaveCount(0)
+  })
 })
 
-test('source preview distinguishes bound, selected, wrong-schema and wrong-key FK proposals', async ({ page }) => {
+test('source preview distinguishes bound, selected, wrong-schema and wrong-key FK proposals', async ({ session }) => {
+  await session.step('the source preview distinguishes bound/selected/wrong-schema/wrong-key FK proposals', async ({ page }) => {
   const col = (name: string, references: { schema: string; table: string; column: string } | null = null, reference_table: string | null = null) =>
     ({ name, data_type: 'integer', column_type: 'Int', is_pk: name === 'id', references, reference_table })
   const target = (schema: string, table: string, reflected: string | null = null) =>
@@ -98,6 +108,7 @@ test('source preview distinguishes bound, selected, wrong-schema and wrong-key F
   await expect(page.getByText('Preview unavailable')).toBeVisible({ timeout: 12000 })
   await expect(preview).toHaveCount(0)
   await capture(page, 'source-preview-error')
+  })
 })
 
 function luminance(hex: string) {
@@ -108,7 +119,8 @@ function luminance(hex: string) {
   return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
 }
 
-test('all palette/mode text roles meet AA, and existing text utilities resolve to the new roles', async ({ page }) => {
+test('all palette/mode text roles meet AA, and existing text utilities resolve to the new roles', async ({ session }) => {
+  await session.step('every palette/mode text role meets AA contrast; legacy text utilities resolve to the new roles', async ({ page }) => {
   const who = page.waitForResponse((r) => r.url().endsWith('/api/whoami'))
   await page.goto('/admin/new-table')
   await expect(page.getByTestId('session-user')).toBeVisible()
@@ -145,9 +157,11 @@ test('all palette/mode text roles meet AA, and existing text utilities resolve t
       }
     }
   }
+  })
 })
 
-test('a rejected latest preference returns the rendered picker to the confirmed choice', async ({ page }) => {
+test('a rejected latest preference returns the rendered picker to the confirmed choice', async ({ session }) => {
+  await session.step('a rejected preference update rolls the rendered picker back to the confirmed choice', async ({ page }) => {
   await page.goto('/admin/new-table')
   const picker = page.getByTestId('palette-select')
   await expect(picker).toBeVisible()
@@ -166,11 +180,13 @@ test('a rejected latest preference returns the rendered picker to the confirmed 
   await page.unroute('**/api/set_palette')
   await page.request.post('/api/set_palette', { data: { palette: 'classic' } })
   await page.request.post('/api/set_theme', { data: { theme: 'light' } })
+  })
 })
 
-test('generated controls are reachable by labels in a browser, including child rows and error/saved states', async ({ page, request }) => {
+test('generated controls are reachable by labels in a browser, including child rows and error/saved states', async ({ session, request }) => {
   const row = await ensureFormFixtures(request, await adminAuth(request))
-  await page.goto(`/admin/${encodeURIComponent(FORM_DT)}/${row}`)
+  await session.visit(`/admin/${encodeURIComponent(FORM_DT)}/${row}`)
+  await session.step('generated controls are reachable by label, including child rows and error/saved states', async ({ page }) => {
   await expect(page.getByLabel('Title', { exact: true })).toHaveValue('form fixture')
   await expect(page.getByLabel('Done', { exact: true })).toBeChecked()
   await expect(page.getByLabel('Status', { exact: true })).toHaveValue('Open')
@@ -189,9 +205,10 @@ test('generated controls are reachable by labels in a browser, including child r
   await expect(page.getByTestId('form-banner')).toContainText('Save refused')
   await page.evaluate(() => { document.documentElement.dataset.theme = 'dark' })
   await capture(page, 'indigo-form-error')
+  })
 })
 
-test('visible attachment actions identify their fields and keyboard activation opens the correct chooser', async ({ page, request }) => {
+test('visible attachment actions identify their fields and keyboard activation opens the correct chooser', async ({ session, request }) => {
   const auth = await adminAuth(request)
   await ensureTable(request, auth, {
     name: 'Accessible Attachments',
@@ -201,7 +218,8 @@ test('visible attachment actions identify their fields and keyboard activation o
       { column_name: 'photo', column_type: 'Attach Image', label: 'Photo' },
     ],
   })
-  await page.goto('/admin/Accessible%20Attachments/new')
+  await session.visit('/admin/Accessible%20Attachments/new')
+  await session.step('attachment actions identify their fields; keyboard activation opens the right chooser', async ({ page }) => {
   for (const [field, label, kind, key] of [
     ['invoice', 'Invoice', 'file', 'Enter'],
     ['receipt', 'Receipt', 'file', 'Space'],
@@ -219,10 +237,11 @@ test('visible attachment actions identify their fields and keyboard activation o
     await chooser.setFiles([])
   }
   await capture(page, 'accessible-attachment-actions')
+  })
 })
 
 for (const persisted of [false, true]) {
-  test(`${persisted ? 'persisted' : 'unsaved'} child controls retain actual nodes and IDs across edit, reorder and removal`, async ({ page, request }) => {
+  test(`${persisted ? 'persisted' : 'unsaved'} child controls retain actual nodes and IDs across edit, reorder and removal`, async ({ session, request }) => {
     const auth = await adminAuth(request)
     await ensureTable(request, auth, {
       name: 'Identity Line', kind: 'sub_table',
@@ -240,7 +259,8 @@ for (const persisted of [false, true]) {
       expect(response.status()).toBe(201)
       rowId = (await response.json()).row_id
     }
-    await page.goto(`/admin/Identity%20Form/${rowId}`)
+    await session.visit(`/admin/Identity%20Form/${rowId}`)
+    await session.step('child rows keep their actual DOM nodes and IDs across edit, reorder, and removal', async ({ page }) => {
     if (!persisted) {
       for (const grid of ['items', 'items', 'extras']) await page.getByTestId(`add-row-${grid}`).click()
       await page.getByLabel('items, Item, row 1', { exact: true }).fill('bolt')
@@ -266,5 +286,6 @@ for (const persisted of [false, true]) {
     const ids = await page.locator('[data-childfield]').evaluateAll((els) => els.map((el) => el.id))
     expect(new Set(ids).size).toBe(ids.length)
     await capture(page, `stable-${persisted ? 'persisted' : 'unsaved'}-child-controls`)
+    })
   })
 }
