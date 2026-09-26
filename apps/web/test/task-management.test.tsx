@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { installApp, isInstalled, uninstallApp } from 'server/src/apps'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { resolve } from 'node:path'
+import { vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { TestClient, CreateUserFn } from 'feather-testing-postgres'
 import { peopleWithTaskResponsibility, TaskManagementPage } from '../../../runtime-apps/tasker/src/TaskManagement'
@@ -30,7 +31,6 @@ async function install() {
   await installApp(APP)
 }
 
-// @spec together_groups_active_responsibility
 test('together_groups_active_responsibility: retains a person outside the fetched directory page', () => {
   expect(peopleWithTaskResponsibility(
     [{ row_id: 'first@example.test' }],
@@ -67,7 +67,6 @@ test('quick_capture_flow: Enter captures a title-only task in Inbox', async ({ a
   }
 })
 
-// @spec lightweight_project_entry.add_initial_project_tasks
 test('lightweight_project_entry: a project accepts rapid unassigned task entry', async ({ admin }) => {
   await install()
   try {
@@ -104,9 +103,6 @@ test('lightweight_project_entry: a project accepts rapid unassigned task entry',
   }
 })
 
-// @spec projects_landing_connects_directory_and_creation
-// @spec responsive_detail_preserves_workspace_context
-// @spec workspace_navigation_is_stable
 test('projects_landing_flow: the directory opens a project and keeps its context behind task details', async ({ admin }) => {
   await install()
   try {
@@ -115,7 +111,7 @@ test('projects_landing_flow: the directory opens a project and keeps its context
 
     const navigation = await screen.findByRole('navigation', { name: 'Task views' })
     expect(Array.from(navigation.querySelectorAll(':scope > button')).map((button) => button.textContent?.replace(/\d+$/, ''))).toEqual([
-      'Inbox', 'My Work', 'Together', 'Personal tasks', 'Projects',
+      'Inbox', 'My Work', 'Together', 'Personal tasks', 'Views', 'Projects',
     ])
     await user.click(await screen.findByRole('button', { name: 'Projects' }))
     await user.type(screen.getByRole('textbox', { name: 'New project' }), 'Warehouse review{Enter}')
@@ -136,6 +132,121 @@ test('projects_landing_flow: the directory opens a project and keeps its context
     await user.click(screen.getByRole('link', { name: 'Count closing stock' }))
     expect(await screen.findByRole('complementary', { name: 'Task details' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Warehouse review' })).toBeInTheDocument()
+  } finally {
+    location.hash = ''
+    await uninstallApp(APP).catch(() => {})
+  }
+})
+
+test('find_and_reuse_task_view: compound project criteria stay visible and save privately without changing tasks', async ({ admin, createUser }) => {
+  await install()
+  try {
+    const member = await createUser({ roles: [] })
+    const stockProject = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: 'tasker.project', row: { project_name: 'September stock review' },
+    })
+    const otherProject = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: 'tasker.project', row: { project_name: 'Store opening readiness' },
+    })
+    const matching = await admin.post<Record<string, unknown>>('/api/save_row', {
+      table: 'tasker.task', row: {
+        task_title: 'Reconcile receiving variance',
+        description: 'Check the warehouse transfer evidence.',
+        project: stockProject.row_id,
+        assigned_to: member.user,
+        task_state: 'Not started',
+        urgent: true,
+      },
+    })
+    await admin.post('/api/save_row', { table: 'tasker.task', row: {
+      task_title: 'Book the count date', project: stockProject.row_id,
+      assigned_to: member.user, task_state: 'In progress', urgent: false,
+    } })
+    await admin.post('/api/save_row', { table: 'tasker.task', row: {
+      task_title: 'Escalate damaged stock', project: stockProject.row_id,
+      assigned_to: 'Administrator', task_state: 'Blocked', urgent: true,
+    } })
+    await admin.post('/api/save_row', { table: 'tasker.task', row: {
+      task_title: 'Review another warehouse transfer',
+      description: 'The same search words are outside this project.',
+      project: otherProject.row_id,
+      assigned_to: member.user,
+      task_state: 'Not started',
+      urgent: true,
+    } })
+    const taskBefore = await admin.get(`/api/table/tasker.task/${matching.row_id}`)
+
+    renderTasker(admin)
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Projects' }))
+    await user.click(await screen.findByRole('button', { name: 'September stock review' }))
+
+    const search = await screen.findByRole('searchbox', { name: 'Search task titles and descriptions' })
+    await user.type(search, 'warehouse transfer')
+    expect(await screen.findByText('Reconcile receiving variance')).toBeInTheDocument()
+    expect(screen.queryByText('Review another warehouse transfer')).not.toBeInTheDocument()
+    expect(screen.getByText('1 of 3 tasks')).toBeInTheDocument()
+    await user.clear(search)
+
+    await user.click(screen.getByRole('button', { name: 'Filter' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Not started' }))
+    await user.click(screen.getByRole('checkbox', { name: 'In progress' }))
+    await user.click(screen.getByRole('checkbox', { name: member.user! }))
+    await user.click(screen.getByRole('checkbox', { name: 'Urgent' }))
+    await user.click(screen.getAllByRole('button', { name: 'Close filters' }).at(-1)!)
+
+    expect(screen.getByText('1 of 3 tasks')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove Not started filter' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove In progress filter' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: `Remove ${member.user} filter` })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove Urgent filter' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Save view' }))
+    await user.type(screen.getByRole('textbox', { name: 'View name' }), 'Urgent open stock work')
+    await user.click(screen.getByRole('button', { name: 'Save private view' }))
+    expect(await screen.findByRole('heading', { name: 'Urgent open stock work' })).toBeInTheDocument()
+    const stored = await admin.get('/api/user_settings/tasker.saved-views') as {
+      settings: { views: { id: string; name: string; scope: { kind: string; projectId?: string } }[] }
+    }
+    expect(stored.settings.views).toHaveLength(1)
+    expect(stored.settings.views[0]).toMatchObject({
+      name: 'Urgent open stock work',
+      scope: { kind: 'project', projectId: stockProject.row_id },
+    })
+    expect(location.hash).toBe(`#view=${stored.settings.views[0].id}`)
+    expect(await member.get('/api/user_settings/tasker.saved-views')).toEqual({ settings: null })
+    expect(await admin.get(`/api/table/tasker.task/${matching.row_id}`)).toEqual(taskBefore)
+
+    await user.click(screen.getByRole('button', { name: 'Filter (4)' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Blocked' }))
+    await user.click(screen.getAllByRole('button', { name: 'Close filters' }).at(-1)!)
+    expect(screen.getByRole('button', { name: 'Update view' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Reset' }))
+    expect(screen.queryByRole('button', { name: 'Remove Blocked filter' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Update view' })).not.toBeInTheDocument()
+
+    const savedViewSearch = screen.getByRole('searchbox', { name: 'Search task titles and descriptions' })
+    await user.type(savedViewSearch, 'does not exist')
+    expect(await screen.findByText('No tasks match this search and filters')).toBeInTheDocument()
+    expect(screen.getAllByText('0 of 3 tasks').length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: 'Remove Urgent filter' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Clear search' }))
+    expect(await screen.findByText('Reconcile receiving variance')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Views/ }))
+    await user.click(screen.getByRole('button', { name: 'Rename' }))
+    const rename = screen.getByRole('textbox', { name: 'Rename saved view' })
+    await user.clear(rename)
+    await user.type(rename, 'September urgent work')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText('September urgent work')).toBeInTheDocument()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    confirm.mockRestore()
+    await waitFor(async () => expect(await admin.get('/api/user_settings/tasker.saved-views')).toEqual({
+      settings: { views: [] },
+    }))
+    expect(await admin.get(`/api/table/tasker.task/${matching.row_id}`)).toEqual(taskBefore)
   } finally {
     location.hash = ''
     await uninstallApp(APP).catch(() => {})
@@ -171,10 +282,6 @@ test('personal_destination_assigns_owner: Inbox work moved to Personal tasks ass
   }
 })
 
-// @spec focus_is_private_ordered.mixed_daily_shortlist
-// @spec my_work_has_no_duplicates.focused_assigned_once
-// @spec focus_never_mutates_task.star_unassigned_task
-// @spec stale_focus_self_heals.missing_focus_reference
 test('personal_worklist_flow: My Focus is ordered, private, and does not duplicate assigned work', async ({ admin, createUser }) => {
   await install()
   try {
@@ -228,7 +335,6 @@ test('personal_worklist_flow: My Focus is ordered, private, and does not duplica
   }
 })
 
-// @spec discussion_stays_append_only.optional_inactive_explanation
 test('discussion_stays_append_only: an inactive state offers but does not require an explanation', async ({ admin }) => {
   await install()
   try {
@@ -266,7 +372,6 @@ test('discussion_stays_append_only: an inactive state offers but does not requir
   }
 })
 
-// @spec assignment_state_independent
 test('assignment_state_independent: task rows offer one-click self-assignment', async ({ admin }) => {
   await install()
   try {
@@ -288,9 +393,6 @@ test('assignment_state_independent: task rows offer one-click self-assignment', 
   }
 })
 
-// @spec project_name_is_correctable.rename_keeps_tasks
-// @spec project_tabs_are_private_ordered.frequent_project_switching
-// @spec together_groups_active_responsibility.assigned_unassigned_and_finished
 test('project_coordination_flow: rename, private tabs, and Together retain their separate rules', async ({ admin, createUser }) => {
   await install()
   try {
@@ -342,7 +444,6 @@ test('project_coordination_flow: rename, private tabs, and Together retain their
   }
 })
 
-// @spec markdown_cannot_execute_html.malicious_markup_is_inert
 test('markdown_safety: links lists and code render but HTML and unsafe URLs remain inert', () => {
   const { container } = render(<Markdown>{'- First\n- Second\n\n[Safe](https://example.test) [Unsafe](javascript:alert(1))\n\n`inline`\n\n```js\nconst n = 3\n```\n\n<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>\n\n<iframe src="https://example.test"></iframe>'}</Markdown>)
   expect(screen.getAllByRole('listitem')).toHaveLength(2)
@@ -352,7 +453,6 @@ test('markdown_safety: links lists and code render but HTML and unsafe URLs rema
   expect(container.querySelector('a[href^="javascript:"]')).toBeNull()
 })
 
-// @spec project_markdown_is_shared.shared_context_and_empty_content
 test('project_description_flow: explicit editing cancel save clear and a second member see shared context', async ({ admin, createUser }) => {
   await install()
   try {
@@ -379,7 +479,6 @@ test('project_description_flow: explicit editing cancel save clear and a second 
   } finally { await uninstallApp(APP).catch(() => {}) }
 })
 
-// @spec project_markdown_is_shared.stale_project_draft
 test('project_description_conflict: competing project edit is not overwritten', async ({ admin }) => {
   await install()
   try {
@@ -398,8 +497,6 @@ test('project_description_conflict: competing project edit is not overwritten', 
   } finally { await uninstallApp(APP).catch(() => {}) }
 })
 
-// @spec assignment_state_independent.assign_not_started_task
-// @spec my_work_has_no_duplicates
 test('take_membership: Take persists responsibility into My Work, not the Personal destination', async ({ admin, createUser }) => {
   await install()
   try {
@@ -421,7 +518,6 @@ test('take_membership: Take persists responsibility into My Work, not the Person
   } finally { location.hash = ''; await uninstallApp(APP).catch(() => {}) }
 })
 
-// @spec task_activity_stays_in_tasker.correct_title_and_description
 test('task_correction_flow: save and cancel correct the title and permit an empty description', async ({ admin }) => {
   await install()
   try {
@@ -455,7 +551,6 @@ test('task_correction_flow: save and cancel correct the title and permit an empt
   }
 })
 
-// @spec task_activity_stays_in_tasker.cancel_or_conflict_preserves_work
 test('task_correction_conflict: a background refresh cannot rebase an unsaved draft', async ({ admin }) => {
   await install()
   try {
@@ -481,8 +576,6 @@ test('task_correction_conflict: a background refresh cannot rebase an unsaved dr
   }
 })
 
-// @spec task_detail_has_three_modes.choose_depth_without_losing_task
-// @spec task_activity_stays_in_tasker.comment_and_edit_are_visible
 test('task_detail_flow: one task switches among three detail modes with comments and history', async ({ admin }) => {
   await install()
   try {
@@ -552,7 +645,6 @@ test('task details do not carry unsaved text into another task', async ({ admin 
   }
 })
 
-// @spec task_lists_present_one_consistent_control_set
 test('task_list_surface: every task row exposes the same shared and private controls', async ({ admin }) => {
   await install()
   try {

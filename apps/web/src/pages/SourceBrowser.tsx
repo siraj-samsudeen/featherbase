@@ -16,7 +16,14 @@ interface Candidate {
   reason?: string
   proposed_name: string
   already_reflected: string | null
-  columns: { name: string; data_type: string; column_type: string; is_pk: boolean }[]
+  columns: {
+    name: string
+    data_type: string
+    column_type: string
+    is_pk: boolean
+    references?: { schema: string; table: string; column: string } | null
+    reference_table?: string | null
+  }[]
 }
 
 interface IntrospectResult {
@@ -51,6 +58,17 @@ export default function SourceBrowser({ name }: { name: string }) {
         }${prefix ? `${schema ? '&' : '?'}prefix=${encodeURIComponent(prefix)}` : ''}`,
       ),
   })
+
+  function referenceTarget(column: Candidate['columns'][number]) {
+    const fk = column.references
+    if (!fk || column.is_pk) return null
+    if (column.reference_table) return column.reference_table
+    const target = introspect.data?.tables.find((t) =>
+      t.schema === fk.schema && t.table === fk.table && t.pk === fk.column &&
+      t.bindable && !t.already_reflected && selected.has(t.schema ? `${t.schema}.${t.table}` : t.table),
+    )
+    return target?.proposed_name ?? null
+  }
 
   async function testConnection() {
     setBusy(true)
@@ -235,6 +253,7 @@ export default function SourceBrowser({ name }: { name: string }) {
                     <td className="px-3 py-2">
                       <input
                         type="checkbox"
+                        aria-label={`Reflect ${key}`}
                         disabled={!selectable}
                         checked={selected.has(key)}
                         onChange={() =>
@@ -253,7 +272,32 @@ export default function SourceBrowser({ name }: { name: string }) {
                     </td>
                     <td className="px-3 py-2 font-mono text-xs">{t.pk ?? '—'}</td>
                     <td className="px-3 py-2 text-xs text-[var(--color-ink-muted)]">
-                      {t.columns.length}
+                      <details>
+                        <summary className="cursor-pointer text-[var(--color-link)]">
+                          {t.columns.length} columns · preview
+                        </summary>
+                        <ul className="mt-2 space-y-2" aria-label={`Columns of ${key}`}>
+                          {t.columns.map((column) => {
+                            const rowId = column.name === t.pk
+                            const target = rowId ? null : referenceTarget(column)
+                            const fk = column.references
+                            return (
+                              <li key={column.name}>
+                                <span className="font-mono text-[var(--color-ink)]">{column.name}</span>{' '}
+                                <span>({column.data_type}) → {rowId ? 'Row ID' : target ? `Reference → ${target}` : column.column_type}</span>
+                                {fk && (
+                                  <div>
+                                    FK → {[fk.schema, fk.table, fk.column].filter(Boolean).join('.')}
+                                    {!rowId && !target && (
+                                      <span> · Reference requires a reflected or selected target with this key.</span>
+                                    )}
+                                  </div>
+                                )}
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      </details>
                     </td>
                     <td className="px-3 py-2 text-xs">
                       {t.already_reflected ? (

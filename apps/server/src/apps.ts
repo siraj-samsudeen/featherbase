@@ -663,7 +663,6 @@ export async function loadInstalledApps(): Promise<void> {
   const rows = await sql`select * from installed_app`
   for (const r of rows) {
     const manifest = available.get(r.name as string)
-    // @spec runtime_upgrade_commit_and_activation.restart_at_upgrade_boundary
     if (r.enabled === false || r.activation_pending || (r.runtime_package && (!manifest?.runtime_package ||
       manifest.runtime_identity?.version !== r.package_version ||
       (r.artifact_digest && manifest.runtime_identity?.digest !== r.artifact_digest)))) {

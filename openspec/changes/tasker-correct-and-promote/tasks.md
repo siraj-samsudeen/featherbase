@@ -15,7 +15,7 @@
 - [x] 3.3 Implement promotion UI and exact preservation prompt.
 
 ## 4. Handoff
-- [x] 4.1 Run relevant suites, strict OpenSpec/policy/STC/evidence and literal package proof.
+- [x] 4.1 Run relevant suites, strict OpenSpec validation and literal package proof.
 - [x] 4.2 Inspect desktop/mobile screenshots and apply code/test review axes.
 - [x] 4.3 Obtain parent-coordinated independent review and browser exploration, including final spec synchronization.
 - [ ] 4.4 Complete owner Dev exploration and exact-deployed-commit smoke under parent coordination; keep this Tasker change active until then.

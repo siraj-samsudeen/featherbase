@@ -78,6 +78,10 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The release regression runs the exact production-era source, not
+          # a hand-maintained approximation of its schema.
+          fetch-depth: 0
 
       # No `version` input: pnpm/action-setup reads the `packageManager`
       # field from package.json, so the CI pnpm always matches the repo.
@@ -98,9 +102,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # The repository-pinned OpenSpec validates both main capabilities and
-      # active changes strictly. The STC matrix then checks @spec links across
-      # spec, deciding code, and asymmetric tests; the root-policy ratchet
-      # prevents a second behavior-contract tree reappearing under docs/specs.
+      # active changes strictly.
       - name: Validate behavior specifications
         run: pnpm check:specs
 
@@ -139,6 +141,14 @@ jobs:
       # coverage regression fails this job exactly like a failing test does.
       - name: Run unit and component suites with coverage
         run: pnpm -r test:coverage
+
+      - name: Prove app authorization across real commit and lock waits
+        run: |
+          createdb --maintenance-db="$DATABASE_URL" featherbase_issue279_access_commit_e2e
+          export DATABASE_URL="${DATABASE_URL%/*}/featherbase_issue279_access_commit_e2e"
+          pnpm --filter server migrate
+          pnpm --filter server patches
+          APP_ACCESS_COMMIT_PROOF=1 pnpm --filter server test test/app-access-commit.test.ts
 
   e2e:
     runs-on: ubuntu-latest

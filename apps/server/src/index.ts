@@ -50,6 +50,7 @@ import { requestPasswordReset, resetPassword } from './password-reset'
 import { renderWebPage } from './website'
 import { getWebFormConfig, submitWebForm } from './webform'
 import { logAccess } from './audit'
+import { recordAppAccessRefusal } from './app-access'
 import { eventSummary, recordEvents, routineSuggestion, validateEventBatch } from './events'
 import { createSavedView, deleteSavedView, listSavedViews, setSavedViewShared } from './saved-views'
 import { runApiScript } from './server-scripts'
@@ -61,7 +62,7 @@ import { parseFilters, runQueryReport } from './query-report'
 import { deliverAutoEmailReport } from './auto-email-report'
 import { runReportChart, pinChartToDashboard } from './report-chart'
 import { registerApp, loadInstalledApps, installApp, installAppFromManifest, uninstallApp, listInstalledApps, getAvailableApps, setAppEnabled } from './apps'
-import { discoverPackages, appCatalog, appAsset, packageFailures, runPackageAction, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
+import { discoverPackages, appCatalog, appAsset, packageFailures, runPackageAction, runPackageRead, declaredPackageActions, previewAppUpgrade, upgradeApp, activateAppUpgrade, availableRuntimeVersions } from './runtime-packages'
 import { documentActivity } from './document-activity'
 import { APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, appHref } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
@@ -463,10 +464,17 @@ app.use('/api/*', rateLimit)
 app.use('/api/*', async (c, next) => {
   if (['/api/install_app', '/api/uninstall_app', '/api/set_app_enabled', '/api/upgrade_app', '/api/activate_app_upgrade'].includes(c.req.path))
     return next()
-  return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appOperation(next))
+  try {
+    // Do not await here: only synchronous identity parsing failures belong to
+    // this refusal path, not admitted asynchronous business-handler errors.
+    return withAppClientVersion(c.req.header('X-Featherbase-App-Version') ?? '', () => appOperation(next))
+  } catch (error) {
+    const protectedOperation = /^\/api\/app_(?:reads|actions)\/([^/]+)\/([^/]+)(?:\/access)?$/.exec(c.req.path)
+    if (protectedOperation) return recordAppAccessRefusal(who(c), protectedOperation[1], protectedOperation[2], 'identity')
+    throw error
+  }
 })
 
-// @spec featherbase_human_routes_are_canonical
 // Old bookmarks remain meaningful, but all Featherbase-owned human pages have
 // one canonical namespace. Runtime app roots and technical /api paths never
 // pass through this redirect.
@@ -828,7 +836,6 @@ app.post('/api/import/batches/:id/delete_tables', async (c) => {
 
 // DEL-R1/R2 (docs/specs/0003-table-deletion.md): delete a Table outright.
 app.delete('/api/table_def/:name', async (c) => {
-  // @spec system_manager_only
   await assertSystemManager(who(c))
   await deleteTable(c.req.param('name'), who(c))
   return c.json({ ok: true })
@@ -1125,7 +1132,16 @@ app.get('/api/runtime_app_versions', async (c) => {
 })
 app.post('/api/app_actions/:app/:action', async (c) =>
   c.json(await runPackageAction(c.req.param('app'), c.req.param('action'), await c.req.json(), who(c))))
-// @spec runtime_upgrade_reviewed_plan
+app.post('/api/app_reads/:app/:read', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json(await runPackageRead(c.req.param('app'), c.req.param('read'), await c.req.json(), who(c)))
+})
+app.get('/api/app_reads/:app/:read/access', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  if (new URL(c.req.url).search || (await c.req.text()).length)
+    return recordAppAccessRefusal(who(c), c.req.param('app'), c.req.param('read'), 'override')
+  return c.json(await runPackageRead(c.req.param('app'), c.req.param('read'), undefined, who(c), true))
+})
 for (const operation of ['preview_app_upgrade', 'upgrade_app', 'activate_app_upgrade'] as const) {
   app.post(`/api/${operation}`, async c => {
     await assertSystemManager(who(c))

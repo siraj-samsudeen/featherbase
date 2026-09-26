@@ -464,7 +464,9 @@ export function AdminLayout() {
                   <span className="ml-2 text-xs text-[var(--color-ink-faint)]">recent search</span>
                 </button>
               ))}
-              {/* PR-2-style command actions, matched by name. */}
+              {commandHits.length > 0 && (
+                <h2 data-testid="awesomebar-commands-heading" className="px-3 pt-2 text-xs font-semibold text-[var(--color-ink-muted)]">Commands</h2>
+              )}
               {commandHits.map((cmd) => (
                 <button
                   key={cmd.id}
@@ -479,6 +481,9 @@ export function AdminLayout() {
                   <span className="text-[var(--color-brand)]">›</span> {cmd.label}
                 </button>
               ))}
+              {suggestions.length > 0 && (
+                <h2 data-testid="awesomebar-tables-heading" className="px-3 pt-2 text-xs font-semibold text-[var(--color-ink-muted)]">Tables</h2>
+              )}
               {suggestions.map((d) => (
                 <Link
                   key={d.row_id}
@@ -486,13 +491,17 @@ export function AdminLayout() {
                   params={{ table: d.row_id }}
                   search={{ filters: undefined }}
                   onClick={() => setSearch('')}
+                  data-testid="awesomebar-table"
                   className="block px-3 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
                 >
                   {d.row_id}
-                  <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{d.module}</span>
+                  <span className="ml-2 text-xs text-[var(--color-ink-muted)]">{d.module} module · open list</span>
                 </Link>
               ))}
               {/* UI-014: "new X" action for matched Tables */}
+              {suggestions.length > 0 && (
+                <h2 data-testid="awesomebar-create-heading" className="px-3 pt-2 text-xs font-semibold text-[var(--color-ink-muted)]">Create rows</h2>
+              )}
               {suggestions.slice(0, 2).map((d) => (
                 <Link
                   key={`new-${d.row_id}`}
@@ -503,13 +512,17 @@ export function AdminLayout() {
                   data-testid="awesomebar-new"
                   className="block px-3 py-1.5 text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
                 >
-                  <span className="text-[var(--color-brand)]">+</span> New {d.row_id}
+                  <span className="text-[var(--color-brand)]">+</span> New {d.row_id} row
                 </Link>
               ))}
               {/* UI-014: row hits */}
+              {(docHits.data?.results.length ?? 0) > 0 && (
+                <h2 data-testid="awesomebar-records-heading" className="px-3 pt-2 text-xs font-semibold text-[var(--color-ink-muted)]">Records</h2>
+              )}
               {docHits.data?.results.map((h) => (
                 <button
                   key={`${h.table}/${h.row_id}`}
+                  type="button"
                   onClick={() => openDoc(h)}
                   data-testid="awesomebar-doc"
                   className="block w-full px-3 py-1.5 text-left text-sm text-[var(--color-ink)] hover:bg-[var(--color-brand-tint)]"
@@ -518,7 +531,7 @@ export function AdminLayout() {
                   {h.title !== h.row_id && (
                     <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{h.row_id}</span>
                   )}
-                  <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{h.table}</span>
+                  <span className="ml-2 text-xs text-[var(--color-ink-muted)]">row in {h.table}</span>
                 </button>
               ))}
             </div>

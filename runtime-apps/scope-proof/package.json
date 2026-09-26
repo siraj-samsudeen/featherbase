@@ -1,0 +1,1 @@
+{"name":"featherbase-scope-proof","version":"1.0.0","type":"module","scripts":{"build":"node build.mjs && node --check server.mjs"},"files":["featherbase.json","server.mjs"]}

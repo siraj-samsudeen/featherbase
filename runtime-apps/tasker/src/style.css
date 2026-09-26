@@ -42,6 +42,7 @@ button:disabled { cursor: default; opacity: .48; }
 .tasker-nav-together .tasker-nav-icon { color: #38c99d; }
 .tasker-nav-projects .tasker-nav-icon { color: #a584ff; }
 .tasker-nav-personal .tasker-nav-icon { color: #35c9cf; }
+.tasker-nav-views .tasker-nav-icon { color: #ff8fc4; }
 .tasker-nav-item[aria-current] .tasker-nav-icon { color: white; }
 .tasker-count { display: inline-flex; min-width: 23px; height: 23px; align-items: center; justify-content: center; border-radius: 8px; background: #ffffff18; color: inherit; font-size: 11px; font-variant-numeric: tabular-nums; }
 .tasker-nav-item[aria-current] .tasker-count { background: #ffffff26; }
@@ -79,6 +80,52 @@ button:disabled { cursor: default; opacity: .48; }
 .tasker-project-directory-item strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .tasker-project-directory-item small { margin-top: 2px; color: var(--color-ink-muted); font-size: 12px; }
 .tasker-project-directory-item > span:last-child { color: var(--color-ink-faint); font-size: 24px; }
+
+.tasker-view-controls { position: relative; margin: 0 0 14px; }
+.tasker-view-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tasker-view-select-label select, .tasker-search { height: 38px; border: 1px solid var(--color-border); border-radius: 9px; background: white; }
+.tasker-view-select-label select { min-width: 165px; padding: 0 32px 0 11px; color: #155cc8; font-size: 13px; font-weight: 650; }
+.tasker-search { display: flex; min-width: 220px; flex: 1; align-items: center; gap: 7px; padding: 0 10px; color: var(--color-ink-faint); }
+.tasker-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; }
+.tasker-filter-button[aria-expanded='true'] { border-color: #9fc0ff; background: var(--color-brand-tint); color: #145bc7; }
+.tasker-active-criteria { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-top: 9px; }
+.tasker-filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tasker-filter-chips button, .tasker-filter-chips > span { min-height: 29px; padding: 5px 9px; border: 1px solid #bed4fb; border-radius: 999px; background: #edf4ff; color: #145bc7; font-size: 11px; }
+.tasker-filter-chips > span { border-color: #d9e0e7; background: #f3f6f8; color: var(--color-ink-muted); }
+.tasker-match-count { flex: 0 0 auto; color: var(--color-ink-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.tasker-filter-backdrop { display: none; }
+.tasker-filter-popover { position: absolute; top: 46px; right: 0; z-index: 25; width: min(360px, 100%); max-height: min(650px, calc(100vh - 130px)); overflow: auto; padding: 17px; border: 1px solid var(--color-border); border-radius: 12px; background: white; box-shadow: 0 18px 55px #14263d2b; }
+.tasker-filter-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; font-size: 16px; }
+.tasker-filter-heading button { width: 32px; height: 32px; border: 0; border-radius: 7px; background: transparent; color: var(--color-ink-muted); font-size: 24px; }
+.tasker-filter-heading button:hover { background: var(--color-subtle); }
+.tasker-filter-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 12px; margin: 0; padding: 13px 0; border: 0; border-bottom: 1px solid var(--color-border); }
+.tasker-filter-group legend { grid-column: 1 / -1; margin-bottom: 2px; color: var(--color-ink); font-size: 12px; font-weight: 700; }
+.tasker-filter-group label { display: flex; min-width: 0; align-items: flex-start; gap: 7px; color: var(--color-ink-muted); font-size: 12px; overflow-wrap: anywhere; }
+.tasker-filter-group input { flex: 0 0 auto; width: 16px; height: 16px; margin: 1px 0 0; accent-color: var(--color-brand); }
+.tasker-filter-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 14px; }
+.tasker-filter-actions > button:first-child { border: 0; background: transparent; color: #145bc7; font-weight: 650; }
+.tasker-save-view { display: grid; grid-template-columns: minmax(210px, 1fr) minmax(230px, auto) auto; gap: 12px; align-items: end; margin-top: 10px; padding: 14px; border: 1px solid #cbdcfb; border-radius: 11px; background: #f5f8ff; }
+.tasker-save-view > label { display: grid; gap: 5px; font-size: 12px; font-weight: 650; }
+.tasker-save-view input[type='text'], .tasker-save-view > label input { min-width: 0; height: 36px; padding: 0 10px; border: 1px solid var(--color-border); border-radius: 8px; background: white; }
+.tasker-save-view fieldset { display: flex; gap: 12px; margin: 0; padding: 0; border: 0; }
+.tasker-save-view legend { margin-bottom: 5px; font-size: 12px; font-weight: 650; }
+.tasker-save-view fieldset label { color: var(--color-ink-muted); font-size: 12px; white-space: nowrap; }
+.tasker-save-view > div { display: flex; gap: 7px; }
+.tasker-save-view > p { grid-column: 1 / -1; margin: -3px 0 0; color: var(--color-ink-muted); font-size: 11px; }
+.tasker-no-matches { padding: 34px 18px; text-align: center; }
+.tasker-no-matches p { margin: 5px 0 14px; color: var(--color-ink-muted); font-size: 12px; }
+.tasker-no-matches > div { display: flex; justify-content: center; gap: 8px; }
+.tasker-view-warning { margin: 0 0 12px; padding: 10px 12px; border: 1px solid #f0d193; border-radius: 9px; background: #fff8e9; color: #80500a; font-size: 12px; }
+.tasker-saved-view-directory { overflow: hidden; border: 1px solid var(--color-border); border-radius: 12px; background: white; box-shadow: 0 8px 28px #18344e08; }
+.tasker-saved-view-directory article { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 70px; padding: 12px 16px; border-bottom: 1px solid #e9eef2; }
+.tasker-saved-view-directory article:last-child { border-bottom: 0; }
+.tasker-saved-view-open { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; border: 0; background: transparent; color: var(--color-ink); text-align: left; }
+.tasker-saved-view-open:hover strong { color: var(--color-brand); }
+.tasker-saved-view-open span { margin-top: 3px; color: var(--color-ink-muted); font-size: 12px; }
+.tasker-saved-view-open em { margin-top: 3px; color: #9a5a00; font-size: 11px; font-style: normal; }
+.tasker-saved-view-actions, .tasker-saved-view-directory form { display: flex; gap: 7px; }
+.tasker-saved-view-directory form { grid-column: 1 / -1; }
+.tasker-saved-view-directory form input { min-width: 0; flex: 1; padding: 7px 9px; border: 1px solid var(--color-border); border-radius: 8px; }
 
 .tasker-task-list { overflow: hidden; border: 1px solid var(--color-border); border-radius: 12px; background: white; box-shadow: 0 8px 28px #18344e08; }
 .tasker-task-guide, .tasker-task-row { display: grid; grid-template-columns: 24px minmax(210px, 1.35fr) minmax(480px, 2.3fr) auto; gap: 12px; align-items: center; }
@@ -196,6 +243,18 @@ html:has(.tasker-focus-detail), html:has(.tasker-focus-detail) body { overflow: 
   .tasker-project-heading-actions { flex-wrap: wrap; justify-content: flex-end; }
   .tasker-project-create > div { align-items: stretch; }
   .tasker-composer { padding: 8px; }
+  .tasker-view-toolbar { align-items: stretch; }
+  .tasker-view-select-label { flex: 1 1 100%; }
+  .tasker-view-select-label select { width: 100%; }
+  .tasker-search { min-width: 0; }
+  .tasker-active-criteria { align-items: flex-start; }
+  .tasker-filter-backdrop { position: fixed; inset: 0; z-index: 39; display: block; width: 100%; border: 0; background: #0d20355c; }
+  .tasker-filter-popover { position: fixed; inset: auto 0 0; z-index: 40; width: 100%; max-height: 70dvh; padding: 18px 18px max(18px, env(safe-area-inset-bottom)); border-radius: 18px 18px 0 0; box-shadow: 0 -18px 60px #0d20353d; }
+  .tasker-filter-popover::before { content: ''; display: block; width: 58px; height: 5px; margin: -8px auto 12px; border-radius: 99px; background: #b8c2cc; }
+  .tasker-save-view { grid-template-columns: 1fr; align-items: stretch; }
+  .tasker-save-view > p { grid-column: auto; }
+  .tasker-saved-view-directory article { grid-template-columns: 1fr; }
+  .tasker-saved-view-actions { justify-content: flex-start; }
   .tasker-task-row { gap: 8px; padding: 11px 10px; }
   .tasker-task-metadata { grid-template-columns: minmax(125px, .85fr) minmax(120px, 1.15fr); gap: 6px; }
   .tasker-responsibility { grid-column: 1 / -1; }

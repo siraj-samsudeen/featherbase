@@ -8,7 +8,6 @@ document APIs or declared actions, with revision checks and activity counts.
 ## Requirements
 
 ### Requirement: runtime_row_delete_guard
-Status: governed (#296)
 
 Every generic runtime-owned row deletion SHALL require caller delete permission,
 the exact loaded revision, zero comments, zero recorded update Versions, zero
@@ -34,7 +33,6 @@ contents. App-specific retained-work states remain app policy.
 - **THEN** the generic API deletes that row
 
 ### Requirement: core_document_links_serialize_with_runtime_deletion
-Status: governed (#296)
 
 Core File attachment and Share link creates or target changes SHALL check runtime
 target availability and caller read access and serialize with target deletion.

@@ -16,6 +16,7 @@ installation, storage and hosting behavior remains separate in
 - [Plan My Work](specs/tasker-plan-my-work/spec.md)
 - [Review Team Workload](specs/tasker-review-team-workload/spec.md)
 - [Use Task Details](specs/tasker-use-task-details/spec.md)
+- [Find and Reuse a Task View](specs/tasker-find-and-reuse-task-view/spec.md)
 - [Use the Tasker Workspace](specs/tasker-use-workspace/spec.md)
 
 ## Specified but not built

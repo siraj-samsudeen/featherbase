@@ -94,23 +94,41 @@ export async function runMigrations() {
   if (state?.legacy && state?.current)
     throw new Error('Refusing to run: both public and featherbase migration ledgers exist')
   const legacy = Boolean(state?.legacy)
-  await root.unsafe('create schema if not exists featherbase')
-  if (!legacy) await root.unsafe(`create table if not exists featherbase.migration (
-    name text primary key,
-    applied_at timestamptz not null default now()
-  )`)
   const ledger = legacy ? 'public.migration' : 'featherbase.migration'
   const applied = new Set(
-    (await root.unsafe(`select name from ${ledger}`)).map((r) => r.name as string),
+    state?.legacy || state?.current
+      ? (await root.unsafe(`select name from ${ledger}`)).map((r) => r.name as string)
+      : [],
   )
   const files = migrationFiles()
   const duplicatePrefixErrors = findDuplicateMigrationPrefixes(files)
   if (duplicatePrefixErrors.length > 0) {
     throw new Error(`duplicate migration numbers:\n${duplicatePrefixErrors.join('\n')}`)
   }
+  // Earlier TS migrations invoke today's qualified engine, not the historical
+  // one. Reject unsupported ledgers before creating any destination storage.
+  if (legacy) {
+    const missing = files.filter((file) => file < '0088_runtime_storage.sql' && !applied.has(file))
+    if (missing.length) throw new Error(
+      `Legacy database requires an intermediate historical upgrade through 0087; missing migrations:\n${missing.join('\n')}`,
+    )
+  }
+  await root.unsafe('create schema if not exists featherbase')
+  if (!legacy) await root.unsafe(`create table if not exists featherbase.migration (
+    name text primary key,
+    applied_at timestamptz not null default now()
+  )`)
   for (const file of files) {
     if (applied.has(file)) continue
-    await withTransaction(async () => {
+    // 0088–0093 require public storage; 0094 needs their columns and prototype
+    // conversion before it can move that storage. Never rewrite shipped SQL.
+    if (legacy && file < '0094_featherbase_schema.sql') {
+      await root.begin(async (tx) => {
+        await tx.unsafe('set local search_path = public, pg_temp')
+        await tx.unsafe(readFileSync(join(dir, file), 'utf8'))
+        await tx`insert into public.migration (name) values (${file})`
+      })
+    } else await withTransaction(async () => {
       await sql.unsafe(`set local search_path = ${file === '0045_site_registry.ts' ? 'public' : 'featherbase'}, pg_temp`)
       if (file.endsWith('.sql')) {
         let body = readFileSync(join(dir, file), 'utf8')
@@ -136,6 +154,8 @@ export async function runMigrations() {
       const [after] = await sql`
         select to_regclass('public.migration') as legacy,
           to_regclass('featherbase.migration') as current`
+      if (Boolean(after.legacy) === Boolean(after.current))
+        throw new Error('Migration must leave exactly one platform migration ledger')
       const target = after.current ? 'featherbase.migration' : 'public.migration'
       await sql.unsafe(`insert into ${target} (name) values ($1)`, [file])
     })

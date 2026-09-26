@@ -4,13 +4,25 @@ import { ApiError, api, getSessionUser, listResource } from './api'
 import { Markdown } from './Markdown'
 import { ProjectDescription } from './ProjectDescription'
 import { TaskActions } from './TaskActions'
+import {
+  UNASSIGNED,
+  emptyTaskViewSetup,
+  filterTasks,
+  parseSavedTaskViews,
+  taskViewSetupEquals,
+  type SavedTaskView,
+  type SavedTaskViewScope,
+  type TaskViewFilters,
+  type TaskViewSetup,
+} from './taskViews'
 
-type View = 'inbox' | 'work' | 'together' | 'projects' | 'personal'
+type View = 'inbox' | 'work' | 'together' | 'projects' | 'personal' | 'views'
 type DetailMode = 'compact' | 'inspector' | 'focus'
 
 interface Task {
   row_id: string
   task_title: string
+  description: string | null
   task_state: string
   is_done: boolean
   urgent: boolean
@@ -44,6 +56,7 @@ interface TaskVersion {
 const TASK_FIELDS = [
   'row_id',
   'task_title',
+  'description',
   'task_state',
   'is_done',
   'urgent',
@@ -58,12 +71,23 @@ const STATES = ['Not started', 'In progress', 'Blocked', 'On hold', 'Done', 'Can
 const FOCUS_SETTINGS = 'Task Management Focus'
 const PROJECT_SETTINGS = 'tasker.projects'
 const PREFERENCE_SETTINGS = 'tasker.preferences'
+const SAVED_VIEWS_SETTINGS = 'tasker.saved-views'
 
 function hashTaskId() {
   return new URLSearchParams(location.hash.slice(1)).get('task')
 }
 
-type TaskerIconName = 'inbox' | 'work' | 'together' | 'projects' | 'personal'
+function hashSavedViewId() {
+  return new URLSearchParams(location.hash.slice(1)).get('view')
+}
+
+function savedViewHash(viewId: string, taskId?: string) {
+  const params = new URLSearchParams({ view: viewId })
+  if (taskId) params.set('task', taskId)
+  return `#${params}`
+}
+
+type TaskerIconName = 'inbox' | 'work' | 'together' | 'projects' | 'personal' | 'views'
 
 function TaskerIcon({ name }: { name: TaskerIconName }) {
   const paths: Record<TaskerIconName, ReactNode> = {
@@ -72,6 +96,7 @@ function TaskerIcon({ name }: { name: TaskerIconName }) {
     together: <><circle cx="9" cy="8" r="2.5" /><circle cx="16.5" cy="9" r="2" /><path d="M3.5 19c.5-3.5 2.3-5.2 5.5-5.2s5 1.7 5.5 5.2" /><path d="M14.5 14.4c3.3-.4 5.3 1.1 6 4.1" /></>,
     projects: <><path d="M3.5 7.5h6l2-2h9v13h-17z" /><path d="M3.5 9.5h17" /></>,
     personal: <><rect x="5" y="4" width="14" height="16" rx="2" /><path d="M9 4V2.8M15 4V2.8M8.5 10h7M8.5 14h5" /></>,
+    views: <><path d="M5 7h14M5 12h14M5 17h14" /><circle cx="8" cy="7" r="1.5" /><circle cx="15" cy="12" r="1.5" /><circle cx="11" cy="17" r="1.5" /></>,
   }
   return <svg className="tasker-nav-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>
 }
@@ -91,7 +116,7 @@ export function peopleWithTaskResponsibility(
 export function TaskManagementPage() {
   const queryClient = useQueryClient()
   const me = getSessionUser()?.row_id ?? ''
-  const [view, setView] = useState<View>('inbox')
+  const [view, setView] = useState<View>(() => hashSavedViewId() ? 'views' : 'inbox')
   const [capture, setCapture] = useState('')
   const [projectName, setProjectName] = useState('')
   const [projectTask, setProjectTask] = useState('')
@@ -101,9 +126,17 @@ export function TaskManagementPage() {
   const [saving, setSaving] = useState(false)
   const [creatingProject, setCreatingProject] = useState(false)
   const [selectedTask, setSelectedTask] = useState(hashTaskId)
+  const [activeSavedViewId, setActiveSavedViewId] = useState(hashSavedViewId)
+  const [taskViewSetup, setTaskViewSetup] = useState<TaskViewSetup>(emptyTaskViewSetup)
+  const previousSurface = useRef('')
 
   useEffect(() => {
-    const change = () => setSelectedTask(hashTaskId())
+    const change = () => {
+      setSelectedTask(hashTaskId())
+      const savedViewId = hashSavedViewId()
+      setActiveSavedViewId(savedViewId)
+      if (savedViewId) setView('views')
+    }
     window.addEventListener('hashchange', change)
     return () => window.removeEventListener('hashchange', change)
   }, [])
@@ -154,6 +187,12 @@ export function TaskManagementPage() {
       `/api/user_settings/${encodeURIComponent(PREFERENCE_SETTINGS)}`,
     ),
   })
+  const savedViewPreferences = useQuery({
+    queryKey: ['task-management', 'saved-views'],
+    queryFn: () => api.get<{ settings: { views?: unknown[] } | null }>(
+      `/api/user_settings/${encodeURIComponent(SAVED_VIEWS_SETTINGS)}`,
+    ),
+  })
   const comments = useQuery({
     queryKey: ['task-management', 'comments'],
     queryFn: () =>
@@ -170,13 +209,10 @@ export function TaskManagementPage() {
   const latestExplanation = new Map<string, string>()
   for (const comment of comments.data?.data ?? [])
     latestExplanation.set(comment.ref_name, comment.content)
-  // @spec stale_focus_self_heals
   const focusIds = (focus.data?.settings?.task_ids ?? []).filter((id) => byId.has(id))
   const focusSet = new Set(focusIds)
-  // @spec inbox_is_destination
   const inbox = allTasks.filter((task) => !task.project && !task.personal_tasks_owner)
   const focused = focusIds.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []))
-  // @spec my_work_has_no_duplicates
   const myWork = [
     ...focused,
     ...allTasks.filter((task) => task.assigned_to === me && !focusSet.has(task.row_id)),
@@ -189,11 +225,70 @@ export function TaskManagementPage() {
     project.row_id,
     allTasks.filter((task) => task.project === project.row_id).length,
   ]))
-  // @spec stale_project_tabs_self_heal
   const starredProjectIds = (projectPreferences.data?.settings?.project_ids ?? []).filter((id) => projectById.has(id))
   const starredProjectSet = new Set(starredProjectIds)
   const detailMode = detailPreferences.data?.settings?.mode ?? 'inspector'
   const people = peopleWithTaskResponsibility(users.data?.data ?? [], allTasks, me)
+  const savedViews = parseSavedTaskViews(savedViewPreferences.data?.settings)
+  const activeSavedView = savedViews.find((savedView) => savedView.id === activeSavedViewId)
+  const activeTogetherTasks = allTasks.filter((task) => !['Done', 'Cancelled'].includes(task.task_state))
+
+  function copySetup(setup: TaskViewSetup): TaskViewSetup {
+    return {
+      search: setup.search,
+      filters: {
+        states: [...setup.filters.states],
+        responsiblePeople: [...setup.filters.responsiblePeople],
+        urgencies: [...setup.filters.urgencies],
+        projects: [...setup.filters.projects],
+      },
+    }
+  }
+
+  function tasksForScope(scope: SavedTaskViewScope): Task[] {
+    if (scope.kind === 'all') return allTasks
+    if (scope.kind === 'project') return allTasks.filter((task) => task.project === scope.projectId)
+    if (scope.kind === 'inbox') return inbox
+    if (scope.kind === 'work') return myWork
+    if (scope.kind === 'together') return activeTogetherTasks
+    return allTasks.filter((task) => task.personal_tasks_owner === scope.owner)
+  }
+
+  function openSavedView(savedView: SavedTaskView) {
+    setTaskViewSetup(copySetup(savedView.setup))
+    setActiveSavedViewId(savedView.id)
+    setView('views')
+    location.hash = savedViewHash(savedView.id)
+  }
+
+  function leaveSavedView(nextView: View, projectId?: string) {
+    if (projectId !== undefined) setSelectedProject(projectId)
+    setActiveSavedViewId(null)
+    setTaskViewSetup(emptyTaskViewSetup())
+    setView(nextView)
+    location.hash = ''
+  }
+
+  useEffect(() => {
+    if (!activeSavedView) return
+    setTaskViewSetup(copySetup(activeSavedView.setup))
+  }, [activeSavedViewId, savedViewPreferences.data])
+
+  const surfaceKey = view === 'projects'
+    ? `projects:${selectedProject}`
+    : view === 'personal'
+      ? `personal:${personalOwner}`
+      : view
+  useEffect(() => {
+    if (!previousSurface.current) {
+      previousSurface.current = surfaceKey
+      return
+    }
+    if (previousSurface.current !== surfaceKey && view !== 'views') {
+      setTaskViewSetup(emptyTaskViewSetup())
+      previousSurface.current = surfaceKey
+    }
+  }, [surfaceKey, view])
 
   async function refresh() {
     await queryClient.invalidateQueries({ queryKey: ['task-management'] })
@@ -207,7 +302,6 @@ export function TaskManagementPage() {
   }
 
   async function createTask(title: string, extra: Partial<Task> = {}) {
-    // @spec lightweight_project_entry
     const trimmed = title.trim()
     if (!trimmed) return
     setSaving(true)
@@ -243,8 +337,6 @@ export function TaskManagementPage() {
     setError(null)
     queryClient.setQueryData(['task-management', 'focus'], { settings: { task_ids: ids } })
     try {
-      // @spec focus_is_private_ordered
-      // @spec focus_never_mutates_task
       await api.put(`/api/user_settings/${encodeURIComponent(FOCUS_SETTINGS)}`, { task_ids: ids })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not update My Focus')
@@ -269,7 +361,6 @@ export function TaskManagementPage() {
     setError(null)
     queryClient.setQueryData(['task-management', 'project-preferences'], { settings: { project_ids: ids } })
     try {
-      // @spec project_tabs_are_private_ordered
       await api.put(`/api/user_settings/${encodeURIComponent(PROJECT_SETTINGS)}`, { project_ids: ids })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not update project tabs')
@@ -295,7 +386,6 @@ export function TaskManagementPage() {
   async function setDetailMode(mode: DetailMode) {
     queryClient.setQueryData(['task-management', 'detail-preferences'], { settings: { mode } })
     try {
-      // @spec task_detail_has_three_modes
       await api.put(`/api/user_settings/${encodeURIComponent(PREFERENCE_SETTINGS)}`, { mode })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save detail view')
@@ -303,10 +393,63 @@ export function TaskManagementPage() {
     }
   }
 
+  async function saveViews(next: SavedTaskView[]) {
+    setError(null)
+    queryClient.setQueryData(['task-management', 'saved-views'], { settings: { views: next } })
+    try {
+      await api.put(`/api/user_settings/${encodeURIComponent(SAVED_VIEWS_SETTINGS)}`, { views: next })
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save task views')
+      await queryClient.invalidateQueries({ queryKey: ['task-management', 'saved-views'] })
+      throw err
+    }
+  }
+
+  async function createSavedView(name: string, scope: SavedTaskViewScope) {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    if (savedViews.some((savedView) => savedView.name.toLocaleLowerCase() === trimmed.toLocaleLowerCase())) {
+      setError(`A saved view named “${trimmed}” already exists`)
+      return
+    }
+    const savedView: SavedTaskView = {
+      id: crypto.randomUUID(),
+      name: trimmed,
+      scope,
+      setup: copySetup(taskViewSetup),
+    }
+    await saveViews([...savedViews, savedView])
+    openSavedView(savedView)
+  }
+
+  async function updateSavedView(savedView: SavedTaskView) {
+    const next = { ...savedView, setup: copySetup(taskViewSetup) }
+    await saveViews(savedViews.map((candidate) => candidate.id === savedView.id ? next : candidate))
+    setTaskViewSetup(copySetup(next.setup))
+  }
+
+  async function renameSavedView(savedView: SavedTaskView, name: string) {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    if (savedViews.some((candidate) => candidate.id !== savedView.id && candidate.name.toLocaleLowerCase() === trimmed.toLocaleLowerCase())) {
+      setError(`A saved view named “${trimmed}” already exists`)
+      return
+    }
+    await saveViews(savedViews.map((candidate) => candidate.id === savedView.id ? { ...candidate, name: trimmed } : candidate))
+  }
+
+  async function deleteSavedView(savedView: SavedTaskView) {
+    await saveViews(savedViews.filter((candidate) => candidate.id !== savedView.id))
+    if (activeSavedViewId === savedView.id) {
+      setActiveSavedViewId(null)
+      setTaskViewSetup(emptyTaskViewSetup())
+      location.hash = ''
+    }
+  }
+
   async function renameProject(project: Project, project_name: string) {
     setError(null)
     try {
-      // @spec project_name_is_correctable
       await api.patch(`/api/table/tasker.project/${encodeURIComponent(project.row_id)}`, {
         project_name, updated_at: project.updated_at,
       })
@@ -318,7 +461,6 @@ export function TaskManagementPage() {
   }
 
   async function createProject() {
-    // @spec lightweight_project_entry
     const name = projectName.trim()
     if (!name) return
     setCreatingProject(true)
@@ -349,9 +491,48 @@ export function TaskManagementPage() {
       count: allTasks.filter((task) => task.personal_tasks_owner === me).length,
     },
   ]
+  const filteredInbox = filterTasks(inbox, taskViewSetup)
+  const filteredMyWork = filterTasks(myWork, taskViewSetup)
+  const filteredTogether = filterTasks(activeTogetherTasks, taskViewSetup)
+  const filteredProjectRows = filterTasks(projectRows, taskViewSetup)
+  const filteredPersonalRows = filterTasks(personalRows, taskViewSetup)
+  const savedViewBaseTasks = activeSavedView ? tasksForScope(activeSavedView.scope) : []
+  const filteredSavedViewTasks = filterTasks(savedViewBaseTasks, taskViewSetup)
 
-  // @spec workspace_navigation_is_stable
-  // @spec workspace_visual_hierarchy_is_clear
+  function toolbarFor(
+    baseTasks: Task[],
+    matchedTasks: Task[],
+    scope: SavedTaskViewScope,
+    scopeLabel: string,
+    showProjects: boolean,
+    builtInCriterion?: string,
+    selectedSavedView?: SavedTaskView,
+  ) {
+    return <TaskViewToolbar
+      setup={taskViewSetup}
+      onSetup={setTaskViewSetup}
+      total={baseTasks.length}
+      matched={matchedTasks.length}
+      people={people}
+      projects={allProjects}
+      showProjects={showProjects}
+      builtInCriterion={builtInCriterion}
+      savedViews={savedViews}
+      activeSavedView={selectedSavedView}
+      currentScope={scope}
+      currentScopeLabel={scopeLabel}
+      onOpenSaved={openSavedView}
+      onDefault={() => {
+        setActiveSavedViewId(null)
+        setTaskViewSetup(emptyTaskViewSetup())
+        if (view === 'views') location.hash = ''
+      }}
+      onCreate={createSavedView}
+      onUpdate={updateSavedView}
+      onReset={() => selectedSavedView && setTaskViewSetup(copySetup(selectedSavedView.setup))}
+    />
+  }
+
   return (
     <div className="tasker-shell" data-view={view} data-testid="task-management-page">
       <aside className="tasker-sidebar">
@@ -363,7 +544,7 @@ export function TaskManagementPage() {
           <button
             key={tab.id}
             type="button"
-            onClick={() => setView(tab.id)}
+            onClick={() => leaveSavedView(tab.id)}
             aria-current={view === tab.id ? 'page' : undefined}
             className={`tasker-nav-item tasker-nav-${tab.id}`}
           >
@@ -373,20 +554,25 @@ export function TaskManagementPage() {
           </button>
         ))}
         {primaryTabs.slice(3).map((tab) => (
-          <button key={tab.id} type="button" onClick={() => setView(tab.id)} aria-current={view === tab.id ? 'page' : undefined} className={`tasker-nav-item tasker-nav-${tab.id}`}>
+          <button key={tab.id} type="button" onClick={() => leaveSavedView(tab.id)} aria-current={view === tab.id ? 'page' : undefined} className={`tasker-nav-item tasker-nav-${tab.id}`}>
             <TaskerIcon name={tab.icon} />
             <span>{tab.label}</span>
             {tab.count != null && <span className="tasker-count">{tab.count}</span>}
           </button>
         ))}
-        <button type="button" onClick={() => { setSelectedProject(''); setView('projects') }} aria-current={view === 'projects' ? 'page' : undefined} className="tasker-nav-item tasker-nav-projects">
+        <button type="button" onClick={() => leaveSavedView('views')} aria-current={view === 'views' ? 'page' : undefined} className="tasker-nav-item tasker-nav-views">
+          <TaskerIcon name="views" />
+          <span>Views</span>
+          {savedViews.length > 0 && <span className="tasker-count">{savedViews.length}</span>}
+        </button>
+        <button type="button" onClick={() => leaveSavedView('projects', '')} aria-current={view === 'projects' ? 'page' : undefined} className="tasker-nav-item tasker-nav-projects">
           <TaskerIcon name="projects" />
           <span>Projects</span>
         </button>
         <div className="tasker-sidebar-projects" aria-label="Projects">
           {allProjects.map((project) => (
             <div key={project.row_id} className={`tasker-sidebar-project ${view === 'projects' && selectedProject === project.row_id ? 'is-selected' : ''}`}>
-              <button type="button" className="tasker-sidebar-project-name" aria-label={project.project_name} onClick={() => { setSelectedProject(project.row_id); setView('projects') }}>
+              <button type="button" className="tasker-sidebar-project-name" aria-label={project.project_name} onClick={() => leaveSavedView('projects', project.row_id)}>
                 <span>{project.project_name}</span>
                 <span className="tasker-count">{projectTaskCounts.get(project.row_id) ?? 0}</span>
               </button>
@@ -400,7 +586,7 @@ export function TaskManagementPage() {
         <div className="tasker-project-tabs" aria-label="Starred projects">
           {starredProjectIds.map((id) => (
             <button key={id} type="button" aria-current={view === 'projects' && selectedProject === id ? 'page' : undefined}
-              onClick={() => { setSelectedProject(id); setView('projects') }}>
+              onClick={() => leaveSavedView('projects', id)}>
               {projectById.get(id)?.project_name}
             </button>
           ))}
@@ -439,34 +625,40 @@ export function TaskManagementPage() {
             />
             <button className="fc-btn-primary" disabled={saving || !capture.trim()}>Add</button>
           </form>
-          <TaskList tasks={inbox} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+          {toolbarFor(inbox, filteredInbox, { kind: 'inbox' }, 'Inbox', true)}
+          {filteredInbox.length
+            ? <TaskList tasks={filteredInbox} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+            : <NoTaskMatches total={inbox.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
         </section>
       )}
 
       {view === 'work' && (
         <section aria-labelledby="work-heading">
           <SectionTitle id="work-heading" title="My Work" hint="Your private focus order, followed by work assigned to you" />
-          <TaskList tasks={myWork} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} onMove={moveFocus} />
+          {toolbarFor(myWork, filteredMyWork, { kind: 'work' }, 'My Work', true)}
+          {filteredMyWork.length
+            ? <TaskList tasks={filteredMyWork} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} onMove={moveFocus} />
+            : <NoTaskMatches total={myWork.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
         </section>
       )}
 
       {view === 'together' && (
         <section aria-labelledby="together-heading">
           <SectionTitle id="together-heading" title="Together" hint="Active work grouped by who has responsibility" />
+          {toolbarFor(activeTogetherTasks, filteredTogether, { kind: 'together' }, 'Together', true, 'Active work only')}
           {[null, ...people.map((person) => person.row_id)].map((owner) => {
-            const rows = allTasks.filter((task) => task.assigned_to === owner && !['Done', 'Cancelled'].includes(task.task_state))
+            const rows = filteredTogether.filter((task) => task.assigned_to === owner)
             if (!rows.length) return null
             return <div key={owner ?? 'unassigned'} className="mb-7">
               <h3 className="mb-2 text-sm font-semibold">{owner ?? 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
-              {/* @spec together_groups_active_responsibility */}
               <TaskList tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
             </div>
           })}
+          {!filteredTogether.length && <NoTaskMatches total={activeTogetherTasks.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
         </section>
       )}
 
       {view === 'projects' && (
-        // @spec projects_landing_connects_directory_and_creation
         <section aria-labelledby="projects-heading" className="tasker-project-workspace">
             {selectedProject && projectById.has(selectedProject) ? (
               <>
@@ -483,7 +675,10 @@ export function TaskManagementPage() {
                   <input id="project-task" value={projectTask} onChange={(event) => setProjectTask(event.target.value)} placeholder="Add a task, then press Enter" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" autoFocus />
                   <button className="fc-btn-primary" disabled={saving || !projectTask.trim()}>Add</button>
                 </form>
-                <TaskList tasks={projectRows} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+                {toolbarFor(projectRows, filteredProjectRows, { kind: 'project', projectId: selectedProject }, 'This project', false)}
+                {filteredProjectRows.length
+                  ? <TaskList tasks={filteredProjectRows} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+                  : <NoTaskMatches total={projectRows.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
               </>
             ) : <>
               <SectionTitle id="projects-heading" title="Projects" hint="Choose an existing project or create a new shared workspace." />
@@ -523,12 +718,58 @@ export function TaskManagementPage() {
             <input id="personal-capture" value={capture} onChange={(event) => setCapture(event.target.value)} placeholder="Add a personal task" className="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm" autoFocus />
             <button className="fc-btn-primary" disabled={saving || !capture.trim()}>Add</button>
           </form>
-          <TaskList tasks={personalRows} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+          {toolbarFor(personalRows, filteredPersonalRows, { kind: 'personal', owner: personalOwner }, `${personalOwner}'s Personal tasks`, true)}
+          {filteredPersonalRows.length
+            ? <TaskList tasks={filteredPersonalRows} users={people} projects={projects.data?.data ?? []} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
+            : <NoTaskMatches total={personalRows.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
+        </section>
+      )}
+
+      {view === 'views' && (
+        <section aria-labelledby="views-heading">
+          {activeSavedView ? <>
+            <SectionTitle id="views-heading" title={activeSavedView.name} hint={`Private saved view · ${scopeLabel(activeSavedView.scope, projectById)}`} />
+            {savedViewUnavailableReason(activeSavedView, projectById, people) && (
+              <p role="status" className="tasker-view-warning">{savedViewUnavailableReason(activeSavedView, projectById, people)}. The saved criteria remain unchanged.</p>
+            )}
+            {toolbarFor(
+              savedViewBaseTasks,
+              filteredSavedViewTasks,
+              activeSavedView.scope,
+              scopeLabel(activeSavedView.scope, projectById),
+              activeSavedView.scope.kind !== 'project',
+              activeSavedView.scope.kind === 'together' ? 'Active work only' : undefined,
+              activeSavedView,
+            )}
+            {activeSavedView.scope.kind === 'together' ? <>
+              {[null, ...people.map((person) => person.row_id)].map((owner) => {
+                const rows = filteredSavedViewTasks.filter((task) => task.assigned_to === owner)
+                if (!rows.length) return null
+                return <div key={owner ?? 'unassigned'} className="mb-7">
+                  <h3 className="mb-2 text-sm font-semibold">{owner ?? 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
+                  <TaskList tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} savedViewId={activeSavedView.id} />
+                </div>
+              })}
+            </> : filteredSavedViewTasks.length
+              ? <TaskList tasks={filteredSavedViewTasks} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} savedViewId={activeSavedView.id} />
+              : null}
+            {!filteredSavedViewTasks.length && <NoTaskMatches total={savedViewBaseTasks.length} setup={taskViewSetup} onSetup={setTaskViewSetup} />}
+          </> : <>
+            <SectionTitle id="views-heading" title="Views" hint="Your private saved ways of finding work" />
+            {activeSavedViewId && <p role="status" className="tasker-view-warning">This private saved view is unavailable. It may have been deleted in another session.</p>}
+            <SavedViewDirectory
+              savedViews={savedViews}
+              projects={projectById}
+              people={people}
+              onOpen={openSavedView}
+              onRename={renameSavedView}
+              onDelete={deleteSavedView}
+            />
+          </>}
         </section>
       )}
       </main>
       {selectedTask && detailMode === 'inspector' && (
-        // @spec responsive_detail_preserves_workspace_context
         <aside className="tasker-inspector" aria-label="Task details">
           <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} people={people} projects={allProjects} onCompleted={actionCompleted} />
         </aside>
@@ -540,6 +781,301 @@ export function TaskManagementPage() {
       )}
     </div>
   )
+}
+
+function scopeLabel(scope: SavedTaskViewScope, projects: Map<string, Project>): string {
+  if (scope.kind === 'all') return 'Across all tasks'
+  if (scope.kind === 'project') return projects.get(scope.projectId)?.project_name ?? 'Unavailable project'
+  if (scope.kind === 'work') return 'My Work'
+  if (scope.kind === 'together') return 'Together'
+  if (scope.kind === 'personal') return `${scope.owner}'s Personal tasks`
+  return 'Inbox'
+}
+
+function savedViewUnavailableReason(
+  savedView: SavedTaskView,
+  projects: Map<string, Project>,
+  people: { row_id: string }[],
+): string | null {
+  if (savedView.scope.kind === 'project' && !projects.has(savedView.scope.projectId)) return 'Project unavailable'
+  if (savedView.scope.kind === 'personal') {
+    const owner = savedView.scope.owner
+    if (!people.some((person) => person.row_id === owner)) return 'Person unavailable'
+  }
+  if (savedView.setup.filters.projects.some((projectId) => !projects.has(projectId))) return 'One or more projects are unavailable'
+  if (savedView.setup.filters.responsiblePeople.some((personId) => personId !== UNASSIGNED && !people.some((person) => person.row_id === personId))) return 'One or more people are unavailable'
+  return null
+}
+
+function TaskViewToolbar({
+  setup,
+  onSetup,
+  total,
+  matched,
+  people,
+  projects,
+  showProjects,
+  builtInCriterion,
+  savedViews,
+  activeSavedView,
+  currentScope,
+  currentScopeLabel,
+  onOpenSaved,
+  onDefault,
+  onCreate,
+  onUpdate,
+  onReset,
+}: {
+  setup: TaskViewSetup
+  onSetup: (setup: TaskViewSetup) => void
+  total: number
+  matched: number
+  people: { row_id: string }[]
+  projects: Project[]
+  showProjects: boolean
+  builtInCriterion?: string
+  savedViews: SavedTaskView[]
+  activeSavedView?: SavedTaskView
+  currentScope: SavedTaskViewScope
+  currentScopeLabel: string
+  onOpenSaved: (savedView: SavedTaskView) => void
+  onDefault: () => void
+  onCreate: (name: string, scope: SavedTaskViewScope) => Promise<void>
+  onUpdate: (savedView: SavedTaskView) => Promise<void>
+  onReset: () => void
+}) {
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const filterButton = useRef<HTMLButtonElement>(null)
+  const [savingAsNew, setSavingAsNew] = useState(false)
+  const [name, setName] = useState('')
+  const [scopeKind, setScopeKind] = useState<'current' | 'all'>('current')
+  const dirty = Boolean(activeSavedView && !taskViewSetupEquals(activeSavedView.setup, setup))
+
+  const setFilters = (filters: TaskViewFilters) => onSetup({ ...setup, filters })
+  const clearFilters = () => setFilters(emptyTaskViewSetup().filters)
+
+  function closeFilters() {
+    setFiltersOpen(false)
+    requestAnimationFrame(() => filterButton.current?.focus())
+  }
+
+  function removeFilter(dimension: keyof TaskViewFilters, value: string) {
+    setFilters({
+      ...setup.filters,
+      [dimension]: setup.filters[dimension].filter((candidate) => candidate !== value),
+    })
+  }
+
+  const chips: { key: string; label: string; remove?: () => void }[] = []
+  if (builtInCriterion) chips.push({ key: 'built-in', label: builtInCriterion })
+  for (const state of setup.filters.states)
+    chips.push({ key: `state:${state}`, label: state, remove: () => removeFilter('states', state) })
+  for (const person of setup.filters.responsiblePeople)
+    chips.push({ key: `person:${person}`, label: person === UNASSIGNED ? 'Unassigned' : person, remove: () => removeFilter('responsiblePeople', person) })
+  for (const urgency of setup.filters.urgencies)
+    chips.push({ key: `urgency:${urgency}`, label: urgency === 'urgent' ? 'Urgent' : 'Not urgent', remove: () => removeFilter('urgencies', urgency) })
+  for (const projectId of setup.filters.projects)
+    chips.push({ key: `project:${projectId}`, label: projects.find((project) => project.row_id === projectId)?.project_name ?? 'Unavailable project', remove: () => removeFilter('projects', projectId) })
+
+  async function submitSavedView(event: React.FormEvent) {
+    event.preventDefault()
+    const scope = scopeKind === 'all' ? { kind: 'all' as const } : currentScope
+    await onCreate(name, scope)
+    setName('')
+    setSavingAsNew(false)
+  }
+
+  return <div className="tasker-view-controls">
+    <div className="tasker-view-toolbar">
+      <label className="tasker-view-select-label">
+        <span className="sr-only">Task view</span>
+        <select
+          aria-label="Task view"
+          value={activeSavedView?.id ?? ''}
+          onChange={(event) => {
+            if (!event.target.value) onDefault()
+            else {
+              const savedView = savedViews.find((candidate) => candidate.id === event.target.value)
+              if (savedView) onOpenSaved(savedView)
+            }
+          }}
+        >
+          <option value="">Default view</option>
+          {savedViews.map((savedView) => <option key={savedView.id} value={savedView.id}>{savedView.name}</option>)}
+        </select>
+      </label>
+      <label className="tasker-search">
+        <span className="sr-only">Search task titles and descriptions</span>
+        <span aria-hidden="true">⌕</span>
+        <input
+          type="search"
+          value={setup.search}
+          onChange={(event) => onSetup({ ...setup, search: event.target.value })}
+          placeholder="Search tasks"
+        />
+      </label>
+      <button
+        ref={filterButton}
+        type="button"
+        className="fc-btn tasker-filter-button"
+        aria-expanded={filtersOpen}
+        aria-controls="tasker-filter-controls"
+        onClick={() => setFiltersOpen((open) => !open)}
+      >
+        Filter{chips.filter((chip) => chip.remove).length ? ` (${chips.filter((chip) => chip.remove).length})` : ''}
+      </button>
+      {activeSavedView && dirty && <>
+        <button type="button" className="fc-btn" onClick={() => void onUpdate(activeSavedView)}>Update view</button>
+        <button type="button" className="fc-btn" onClick={onReset}>Reset</button>
+      </>}
+      <button type="button" className="fc-btn" onClick={() => setSavingAsNew((open) => !open)}>
+        {activeSavedView ? 'Save as new' : 'Save view'}
+      </button>
+    </div>
+    {filtersOpen && <TaskFilterControls
+      filters={setup.filters}
+      people={people}
+      projects={projects}
+      showProjects={showProjects}
+      onFilters={setFilters}
+      onClear={clearFilters}
+      onClose={closeFilters}
+    />}
+    {(chips.length > 0 || setup.search || total > 0) && <div className="tasker-active-criteria">
+      <div className="tasker-filter-chips">
+        {chips.map((chip) => chip.remove
+          ? <button key={chip.key} type="button" onClick={chip.remove} aria-label={`Remove ${chip.label} filter`}>{chip.label} <span aria-hidden="true">×</span></button>
+          : <span key={chip.key}>{chip.label}</span>)}
+      </div>
+      <span className="tasker-match-count" aria-live="polite">{matched} of {total} {total === 1 ? 'task' : 'tasks'}</span>
+    </div>}
+    {savingAsNew && <form className="tasker-save-view" onSubmit={(event) => void submitSavedView(event)}>
+      <label>View name
+        <input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. My blocked work" />
+      </label>
+      <fieldset>
+        <legend>Task boundary</legend>
+        <label><input type="radio" name="view-scope" checked={scopeKind === 'current'} onChange={() => setScopeKind('current')} /> {currentScopeLabel}</label>
+        {currentScope.kind !== 'all' && <label><input type="radio" name="view-scope" checked={scopeKind === 'all'} onChange={() => setScopeKind('all')} /> Across all tasks</label>}
+      </fieldset>
+      <div>
+        <button className="fc-btn-primary" disabled={!name.trim()}>Save private view</button>
+        <button type="button" className="fc-btn" onClick={() => { setSavingAsNew(false); setName('') }}>Cancel</button>
+      </div>
+      <p>Only you can see this saved view. Tasks are not changed.</p>
+    </form>}
+  </div>
+}
+
+function TaskFilterControls({ filters, people, projects, showProjects, onFilters, onClear, onClose }: {
+  filters: TaskViewFilters
+  people: { row_id: string }[]
+  projects: Project[]
+  showProjects: boolean
+  onFilters: (filters: TaskViewFilters) => void
+  onClear: () => void
+  onClose: () => void
+}) {
+  const firstControl = useRef<HTMLInputElement>(null)
+  useEffect(() => firstControl.current?.focus(), [])
+
+  function toggle<K extends keyof TaskViewFilters>(dimension: K, value: TaskViewFilters[K][number]) {
+    const selected = filters[dimension] as readonly string[]
+    onFilters({
+      ...filters,
+      [dimension]: selected.includes(value)
+        ? selected.filter((candidate) => candidate !== value)
+        : [...selected, value],
+    } as TaskViewFilters)
+  }
+
+  return <div className="tasker-filter-layer">
+    <button type="button" className="tasker-filter-backdrop" aria-label="Close filters" onClick={onClose} />
+    <div id="tasker-filter-controls" className="tasker-filter-popover" role="dialog" aria-label="Filter tasks" onKeyDown={(event) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation()
+        onClose()
+      }
+    }}>
+      <div className="tasker-filter-heading"><strong>Filters</strong><button type="button" aria-label="Close filters" onClick={onClose}>×</button></div>
+      <FilterGroup label="State" values={STATES} selected={filters.states} onToggle={(value) => toggle('states', value)} firstControl={firstControl} />
+      <FilterGroup label="Responsible person" values={[UNASSIGNED, ...people.map((person) => person.row_id)]} labels={new Map([[UNASSIGNED, 'Unassigned']])} selected={filters.responsiblePeople} onToggle={(value) => toggle('responsiblePeople', value)} />
+      <FilterGroup label="Urgency" values={['urgent', 'not_urgent']} labels={new Map([['urgent', 'Urgent'], ['not_urgent', 'Not urgent']])} selected={filters.urgencies} onToggle={(value) => toggle('urgencies', value as TaskViewFilters['urgencies'][number])} />
+      {showProjects && <FilterGroup label="Project" values={projects.map((project) => project.row_id)} labels={new Map(projects.map((project) => [project.row_id, project.project_name]))} selected={filters.projects} onToggle={(value) => toggle('projects', value)} />}
+      <div className="tasker-filter-actions"><button type="button" onClick={onClear}>Clear all</button><button type="button" className="fc-btn-primary" onClick={onClose}>Close</button></div>
+    </div>
+  </div>
+}
+
+function FilterGroup({ label, values, labels = new Map(), selected, onToggle, firstControl }: {
+  label: string
+  values: string[]
+  labels?: Map<string, string>
+  selected: readonly string[]
+  onToggle: (value: string) => void
+  firstControl?: React.RefObject<HTMLInputElement | null>
+}) {
+  return <fieldset className="tasker-filter-group">
+    <legend>{label}</legend>
+    {values.map((value, index) => <label key={value}>
+      <input ref={index === 0 ? firstControl : undefined} type="checkbox" checked={selected.includes(value)} onChange={() => onToggle(value)} />
+      <span>{labels.get(value) ?? value}</span>
+    </label>)}
+  </fieldset>
+}
+
+function NoTaskMatches({ total, setup, onSetup }: { total: number; setup: TaskViewSetup; onSetup: (setup: TaskViewSetup) => void }) {
+  if (total === 0) return <Empty text="Nothing here yet." />
+  return <div className="fc-card tasker-no-matches">
+    <strong>No tasks match this search and filters</strong>
+    <p>0 of {total} tasks. Your criteria are still applied.</p>
+    <div>
+      {setup.search && <button type="button" className="fc-btn" onClick={() => onSetup({ ...setup, search: '' })}>Clear search</button>}
+      <button type="button" className="fc-btn" onClick={() => onSetup({ ...setup, filters: emptyTaskViewSetup().filters })}>Clear all filters</button>
+    </div>
+  </div>
+}
+
+function SavedViewDirectory({ savedViews, projects, people, onOpen, onRename, onDelete }: {
+  savedViews: SavedTaskView[]
+  projects: Map<string, Project>
+  people: { row_id: string }[]
+  onOpen: (savedView: SavedTaskView) => void
+  onRename: (savedView: SavedTaskView, name: string) => Promise<void>
+  onDelete: (savedView: SavedTaskView) => Promise<void>
+}) {
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [name, setName] = useState('')
+  if (!savedViews.length) return <Empty text="No saved views yet. Filter any task list, then choose Save view." />
+  return <div className="tasker-saved-view-directory">
+    {savedViews.map((savedView) => {
+      const unavailable = savedViewUnavailableReason(savedView, projects, people)
+      return <article key={savedView.id}>
+        {renaming === savedView.id ? <form onSubmit={async (event) => {
+          event.preventDefault()
+          await onRename(savedView, name)
+          setRenaming(null)
+        }}>
+          <label className="sr-only" htmlFor={`rename-view-${savedView.id}`}>Rename saved view</label>
+          <input id={`rename-view-${savedView.id}`} autoFocus value={name} onChange={(event) => setName(event.target.value)} />
+          <button className="fc-btn-primary" disabled={!name.trim()}>Save</button>
+          <button type="button" className="fc-btn" onClick={() => setRenaming(null)}>Cancel</button>
+        </form> : <>
+          <button type="button" className="tasker-saved-view-open" onClick={() => onOpen(savedView)}>
+            <strong>{savedView.name}</strong>
+            <span>{scopeLabel(savedView.scope, projects)}</span>
+            {unavailable && <em>{unavailable}</em>}
+          </button>
+          <div className="tasker-saved-view-actions">
+            <button type="button" className="fc-btn" onClick={() => { setRenaming(savedView.id); setName(savedView.name) }}>Rename</button>
+            <button type="button" className="fc-btn" onClick={() => {
+              if (window.confirm(`Delete private saved view “${savedView.name}”?`)) void onDelete(savedView)
+            }}>Delete</button>
+          </div>
+        </>}
+      </article>
+    })}
+  </div>
 }
 
 function SectionTitle({ id, title, hint }: { id?: string; title: string; hint?: string }) {
@@ -633,7 +1169,6 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
   useEffect(() => {
     if (mode !== 'inspector') return
     if (!window.matchMedia) return
-    // @spec workspace_adapts_to_available_space
     const compact = window.matchMedia('(max-width: 1100px)')
     const sync = () => document.documentElement.classList.toggle('tasker-compact-inspector-open', compact.matches)
     sync()
@@ -652,7 +1187,10 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
   const formatValue = (value: unknown) => value == null || value === '' ? 'empty' : String(value)
 
   return <section ref={detail} className="tasker-detail" aria-label="Task detail content" onKeyDown={(event) => {
-    if (event.key === 'Escape') { if (draft && !saving) cancelDraft(); else if (!saving) location.hash = '' }
+    if (event.key === 'Escape') {
+      if (draft && !saving) cancelDraft()
+      else if (!saving) location.hash = hashSavedViewId() ? savedViewHash(hashSavedViewId()!) : ''
+    }
     if (event.key === 'Tab' && (mode === 'focus' || (mode === 'inspector' && window.matchMedia?.('(max-width: 1100px)').matches))) {
       const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('a[href], summary, button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled)')]
         .filter(control => control.getClientRects().length > 0)
@@ -662,7 +1200,7 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
     }
   }}>
     <div className="tasker-detail-toolbar">
-      <a href="#" className="fc-btn" autoFocus>Close</a>
+      <a href={hashSavedViewId() ? savedViewHash(hashSavedViewId()!) : '#'} className="fc-btn" autoFocus>Close</a>
       <div className="tasker-mode-switch" aria-label="Task detail view">
         {([['compact', 'Compact'], ['inspector', 'Inspector'], ['focus', 'Focus']] as [DetailMode, string][]).map(([value, label]) =>
           <button key={value} type="button" aria-pressed={mode === value} onClick={() => void onMode(value)}>{label}</button>)}
@@ -700,7 +1238,6 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
         <p className="mt-3 text-xs text-[var(--color-ink-muted)]">Open Inspector to edit or join the discussion.</p>
       </div> : <>
       {draft ? <form className="tasker-description-editor" onSubmit={async (event) => {
-        // @spec task_activity_stays_in_tasker
         // Keep the draft's original revision even if another action refetches this row.
         event.preventDefault(); setSaving(true); setError('')
         if (!draft?.task_title.trim()) { setSaving(false); return }
@@ -745,7 +1282,6 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
           if (!content) return
           setSaving(true); setError('')
           try {
-            // @spec task_activity_stays_in_tasker
             await api.post('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: id, content } })
             setComment('')
             await Promise.all([
@@ -779,7 +1315,7 @@ function Empty({ text }: { text: string }) {
   return <div className="fc-card border-dashed px-4 py-10 text-center text-sm text-[var(--color-ink-muted)]">{text}</div>
 }
 
-function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch, onFocus, onMove }: {
+function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch, onFocus, onMove, savedViewId }: {
   tasks: Task[]
   users: { row_id: string }[]
   projects: Project[]
@@ -789,6 +1325,7 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
   onPatch: (task: Task, patch: Partial<Task>) => Promise<void>
   onFocus: (id: string) => Promise<void>
   onMove?: (id: string, offset: -1 | 1) => Promise<void>
+  savedViewId?: string
 }) {
   const queryClient = useQueryClient()
   const [explaining, setExplaining] = useState<string | null>(null)
@@ -800,7 +1337,6 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
     if (content) {
       setPosting(true)
       try {
-        // @spec discussion_stays_append_only
         await api.post('/api/save_row', {
           table: 'Comment',
           row: { ref_table: 'tasker.task', ref_name: task.row_id, content },
@@ -815,7 +1351,6 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
   }
 
   if (!tasks.length) return <Empty text="Nothing here yet." />
-  // @spec task_lists_present_one_consistent_control_set
   return <div className="tasker-task-list">
     <div className="tasker-task-guide" aria-hidden="true">
       <span />
@@ -830,7 +1365,7 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
       <article key={task.row_id} className={`tasker-task-row ${task.is_done ? 'is-done' : ''}`}>
         <input aria-label={`Mark ${task.task_title} done`} type="checkbox" checked={Boolean(task.is_done)} onChange={(event) => void onPatch(task, { is_done: event.target.checked })} className="tasker-task-checkbox" />
         <div className="tasker-task-copy">
-          <a href={`#task=${encodeURIComponent(task.row_id)}`} className={task.is_done ? 'line-through' : ''}>{task.task_title}</a>
+          <a href={savedViewId ? savedViewHash(savedViewId, task.row_id) : `#task=${encodeURIComponent(task.row_id)}`} className={task.is_done ? 'line-through' : ''}>{task.task_title}</a>
           {explaining === task.row_id && (
             <form className="tasker-explanation-form" onSubmit={(event) => { event.preventDefault(); void addExplanation(task) }}>
               <label className="sr-only" htmlFor={`explain-${task.row_id}`}>Optional explanation</label>
@@ -847,13 +1382,11 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
           <select data-state={task.task_state} aria-label={`State for ${task.task_title}`} value={task.task_state ?? 'Not started'} onChange={(event) => { const taskState = event.target.value; void onPatch(task, { task_state: taskState }); if (['Blocked', 'On hold', 'Cancelled'].includes(taskState)) { setExplaining(task.row_id); setExplanation('') } }}>{STATES.map((state) => <option key={state}>{state}</option>)}</select>
           <select aria-label={`Destination for ${task.task_title}`} value={task.personal_tasks_owner ? `personal:${task.personal_tasks_owner}` : task.project ? `project:${task.project}` : ''} onChange={(event) => { const [kind, value] = event.target.value.split(':', 2); void onPatch(task, kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }) }}><option value="">Inbox</option><optgroup label="Projects">{projects.map((project) => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}</optgroup><optgroup label="Personal tasks">{users.map((user) => <option key={user.row_id} value={`personal:${user.row_id}`}>{user.row_id}</option>)}</optgroup></select>
           <div className="tasker-responsibility">
-            {/* @spec assignment_state_independent */}
             <select aria-label={`Assign ${task.task_title}`} value={task.assigned_to ?? ''} onChange={(event) => void onPatch(task, { assigned_to: event.target.value || null })}><option value="">Unassigned</option>{users.map((user) => <option key={user.row_id} value={user.row_id}>{user.row_id}</option>)}</select>
             {!task.assigned_to && me && <button type="button" onClick={() => void onPatch(task, { assigned_to: me })} className="tasker-take-button">Take it</button>}
           </div>
         </div>
         <div className="tasker-task-signals">
-          {/* @spec urgency_is_shared_binary */}
           <button type="button" aria-label={`${task.urgent ? 'Remove urgent flag from' : 'Mark urgent'} ${task.task_title}`} aria-pressed={task.urgent} title="Urgent is visible to the team" onClick={() => void onPatch(task, { urgent: !task.urgent })} className={`tasker-urgent ${task.urgent ? 'is-urgent' : ''}`}>{task.urgent && <span aria-hidden="true" />}{task.urgent ? 'Urgent' : 'Not urgent'}</button>
           <button type="button" aria-label={`${focused ? 'Remove from' : 'Add to'} My Focus: ${task.task_title}`} title="My Focus is private to you" onClick={() => void onFocus(task.row_id)} className={`tasker-focus-star ${focused ? 'is-focused' : ''}`}>{focused ? '★' : '☆'}</button>
           {onMove && focused && <div className="tasker-focus-order"><button type="button" aria-label={`Move ${task.task_title} up`} onClick={() => void onMove(task.row_id, -1)}>↑</button><button type="button" aria-label={`Move ${task.task_title} down`} onClick={() => void onMove(task.row_id, 1)}>↓</button></div>}

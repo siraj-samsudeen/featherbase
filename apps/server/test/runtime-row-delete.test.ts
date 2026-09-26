@@ -1,12 +1,18 @@
 import { resolve } from 'node:path'
 import { expect } from 'vitest'
-import { test } from './pg-test'
+import { makeClient, type TestClient } from 'feather-testing-postgres'
+import { test as base } from './pg-test'
 import { discoverPackages } from '../src/runtime-packages'
 import { loadInstalledApps } from '../src/apps'
 import { deleteDoc } from '../src/document'
 import { sql } from '../src/db'
 
-// @spec runtime_row_delete_guard
+const test = base.extend<{ admin: TestClient }>({
+  admin: async ({ admin }, use) => use(makeClient({ request: (path, init) => admin.fetch(String(path), {
+    ...init, headers: { ...init?.headers, 'X-Featherbase-App-Version': 'actionproof@1.1.0' },
+  }) }, admin.token, admin.user)),
+})
+
 test('generic runtime deletion cannot bypass source revision or retained discussion', async ({ admin }) => {
   await discoverPackages([resolve('../..', 'runtime-apps/other')])
   await admin.post('/api/install_app', { name: 'other' })
@@ -18,8 +24,6 @@ test('generic runtime deletion cannot bypass source revision or retained discuss
   expect(await sql`select content from comment where ref_table = 'other.task' and ref_name = 'discard'`).toEqual([{ content: 'Keep 17 comments separate from 37 units' }])
 })
 
-// @spec core_document_links_serialize_with_runtime_deletion
-// @spec guarded_action_deletion_preserves_retained_work.core_attachment_and_share_refusal_replays
 test('Admin attachments and shares retain exact targets through raw/action deletion and restart', async ({ admin }) => {
   const directory = resolve('../..', 'runtime-apps/action-proof')
   await discoverPackages([directory])

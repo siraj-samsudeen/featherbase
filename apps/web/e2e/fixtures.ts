@@ -170,15 +170,6 @@ export const anonymousTest = base
 /** The feather-testing DSL entry point. Journey specs import this as `test`. */
 export const journeyTest = featherTest
 
-// Framework §12 (the manual is a view): under SNAP=1, capture this moment
-// into the manual's slot for the given step id. The document never changes;
-// its assets mature — a slot's PNG overwrites the ASCII fallback's place.
-// No-op on normal runs, so snapping can never make the suite flaky.
-export async function snap(page: Page, slot: string): Promise<void> {
-  if (!process.env.SNAP) return
-  await page.screenshot({ path: `../../docs/manual/shots/${slot}.png` })
-}
-
 // Composable step: sign in as Administrator. Structural typing so it works
 // with whatever context type the adapter gives the Session.
 export function signIn<

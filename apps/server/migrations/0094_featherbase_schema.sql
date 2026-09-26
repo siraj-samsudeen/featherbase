@@ -1,4 +1,3 @@
--- @spec platform_storage_is_explicit.fresh_and_upgrade_converge_to_same_shape
 -- Move platform-owned objects without replacing their OIDs. App schemas and
 -- the pre-tenant public.site registry are intentionally outside this move.
 create schema if not exists featherbase;

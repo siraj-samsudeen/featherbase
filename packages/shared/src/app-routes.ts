@@ -1,6 +1,5 @@
 // Canonical Featherbase pages and their compatibility roots are not runtime
 // apps. Technical roots and Vite's development URLs are reserved too.
-// @spec app_owns_client_root
 export const RESERVED_APP_ROOTS = [
   'featherbase', 'public', 'pg_catalog', 'information_schema',
   'api', 'assets', 'files', 'private', 'web', 'ws',

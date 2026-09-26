@@ -38,10 +38,13 @@ export async function logActivity(
 export async function logAccess(
   user: string,
   operation: string,
-  ref: { table?: string; row_id?: string; method?: string } = {},
+  ref: { table?: string; row_id?: string; method?: string; required?: boolean } = {},
   db: Sql | TxSql = sql,
 ): Promise<void> {
-  if (!(await tableExists('access_log', db))) return
+  if (!(await tableExists('access_log', db))) {
+    if (ref.required) throw new Error('Required access audit is unavailable')
+    return
+  }
   const now = new Date()
   await db`insert into access_log ${db({
     row_id: id(),

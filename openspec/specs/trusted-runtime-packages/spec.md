@@ -50,8 +50,6 @@ stable public or untrusted plugin API.
 ## Requirements
 
 ### Requirement: versioned_trusted_artifact
-Legacy ID: PKG-R1 · `shape: contract`
-Status: governed (#296)
 A package directory SHALL contain npm package metadata and a strict declarative
 manifest with exact manifest/runtime API versions. Discovery SHALL use only
 operator-configured local directories. Optional compiled hooks SHALL target only
@@ -66,8 +64,6 @@ process privileges and browser code has same-origin authenticated privileges.
   is partially activated.
 
 ### Requirement: logical_identity_maps_storage
-Legacy ID: PKG-R2 · `shape: invariant`
-Status: governed (#296)
 Each app-owned Table SHALL have a qualified logical identity and persisted owner,
 physical schema, and physical relation. Every DDL, CRUD, permission, reference,
 and query path SHALL resolve that metadata rather than infer storage from spelling.
@@ -79,7 +75,6 @@ Generic metadata edits SHALL NOT alter identity, storage, binding, or hook dispa
 
 ### Requirement: lifecycle_fails_closed
 Legacy IDs: PKG-R3, PKG-J2 · `shape: state machine`
-Status: governed (#296)
 Install SHALL provision once and enable atomically. Disable SHALL preserve Tables,
 rows, grants, and ownership while removing launchability, hooks, package-owned
 permissions, and data access. Re-enable SHALL require compatible code and register
@@ -97,8 +92,6 @@ by another active package SHALL remain effective.
   of hooks after restoration.
 
 ### Requirement: app_data_is_api_only
-Legacy ID: PKG-R3 · `shape: security contract`
-Status: governed (#296)
 App-owned data SHALL be admitted through authenticated, availability-aware APIs.
 Direct `app_client` SQL and raw Query Reports SHALL NOT read app-owned relations,
 whether the app is enabled, disabled, or unavailable. Query Reports SHALL connect
@@ -111,7 +104,6 @@ as the restricted database role rather than a table owner that can reset its rol
 
 ### Requirement: app_owns_client_root
 Legacy IDs: PKG-R4, PKG-J1 · `shape: contract`
-Status: governed (#296)
 An app SHALL own its direct root, React tree, navigation, and CSS. Featherbase
 core SHALL serve only the declared contained client build, SHALL reserve platform
 and technical roots, and SHALL NOT fall back to an SPA for missing assets. The
@@ -134,8 +126,6 @@ unavailability and preserved data without exposing manager-only controls.
 - **THEN** sign-in returns to its client root and normal navigation has no competing generated Table page.
 
 ### Requirement: prototype_transition_preserves_work
-Legacy ID: PKG-H1 · `shape: hazard`
-Status: governed (#296)
 The local prototype transition SHALL transactionally preserve row IDs, projects,
 references, comments, history, files, shares, focus preferences, and grants. A
 destination collision SHALL abort rather than merge or discard data. References
@@ -152,7 +142,6 @@ Table or silently skip work.
 - **AND** access resumes once the installation has a reviewed package identity and compatible code; unversioned legacy installations follow `unversioned_legacy_install_fails_closed`
 
 ### Requirement: runtime_upgrade_identity
-Status: governed (#296)
 
 Installed runtime applications SHALL persist exact package version and an ordered immutable migration checksum ledger. Artifacts SHALL declare complete cumulative migration history and final schema. Missing, malformed, duplicate-different, reordered, skipped, downgrade and incompatible artifacts SHALL be rejected before mutation. Discovery SHALL NOT upgrade an installed application. Same-version retries SHALL not reapply migrations.
 
@@ -171,7 +160,6 @@ Installed runtime applications SHALL persist exact package version and an ordere
 - **AND** the operator must recover its reviewed version/declaration before using the upgrade API
 
 ### Requirement: runtime_upgrade_reviewed_plan
-Status: governed (#296)
 
 An administrator SHALL preview a stable plan before upgrade, including current/target version, migration IDs, owned Tables/columns/indexes, permissions, jobs, destructive/data effects and code-only status. Upgrade SHALL require the exact preview identity and revalidate it under the lifecycle lock. This slice SHALL accept only additive optional scalar columns and code-only changes, refusing destructive operations, SQL, changed existing definitions, permissions, jobs and undeclared dependencies.
 
@@ -184,7 +172,6 @@ An administrator SHALL preview a stable plan before upgrade, including current/t
 - **THEN** preview refuses it rather than claiming rollback support
 
 ### Requirement: runtime_upgrade_commit_and_activation
-Status: governed (#296)
 
 Upgrade SHALL serialize with admitted operations and enable/disable, validate code before mutation, and commit physical schema, metadata, version and ledger together. Failure SHALL preserve the previous active code, contributions, data and durable state. Successful commit SHALL suspend old code and client access until explicit administrator activation; restart SHALL preserve this pending state. Activation SHALL require the committed artifact, wire hooks once and preserve the enabled choice. Disabled upgrades SHALL stay disabled. HTTP operations using an obsolete application version SHALL be rejected rather than invoking new hooks for old clients.
 
@@ -201,7 +188,6 @@ Upgrade SHALL serialize with admitted operations and enable/disable, validate co
 - **THEN** it respectively restores the prior version, leaves the target pending activation, or restores the activated target without duplicate hooks
 
 ### Requirement: runtime_upgrade_preserves_owned_work
-Status: governed (#296)
 
 Upgrade SHALL preserve existing app rows, identifiers, comments, preferences and grants. A fresh target install and upgrade SHALL yield equivalent metadata and physical column schema. Package operations SHALL target explicit owned relations and never another app with the same local Table name.
 
@@ -211,7 +197,6 @@ Upgrade SHALL preserve existing app rows, identifiers, comments, preferences and
 - **AND** fresh v2 schema equals upgraded v2 schema without Tasker-specific core migration code
 
 ### Requirement: runtime_upgrade_recovery_boundary
-Status: governed (#296)
 
 Upgrade SHALL require the prior and target operator artifacts to be available and retain prior identity for recovery. Missing artifacts SHALL produce actionable unavailable status without reset or automatic downgrade. After commit, recovery SHALL use the committed target or a forward upgrade, not run old code against the target schema or promise down migrations. Operator instructions SHALL distinguish package delivery, explicit preview/upgrade/activation and backup restoration.
 
@@ -220,8 +205,6 @@ Upgrade SHALL require the prior and target operator artifacts to be available an
 - **THEN** the application remains unavailable and directs the operator to restore the target artifact without modifying rows or ledger
 
 ### Requirement: platform_storage_is_explicit
-Legacy ID: PKG-R5 · `shape: migration invariant`
-Status: governed (#296)
 Featherbase-owned relations and functions SHALL live in PostgreSQL schema
 `featherbase`. A fresh install SHALL create them there. An upgrade SHALL move
 existing objects without replacing their identities, rows, constraints, indexes,
@@ -236,6 +219,14 @@ their dependencies.
 NOT be treated as tenant data or moved into the core schema. Site data SHALL remain
 isolated in its selected site schema.
 
+Legacy databases SHALL have all migrations through `0087_dataset_snapshot_tables.ts`
+recorded before upgrading directly with the current release. Older or incomplete
+legacy ledgers SHALL be rejected before migration mutation, naming the missing
+migrations and requiring an intermediate historical upgrade. Supported legacy
+upgrades SHALL apply pending prerequisites in order before convergence. Every
+migration's effects and ledger entry SHALL commit together; retries SHALL skip
+committed prerequisites and resume the first pending migration.
+
 #### Scenario: fresh_and_upgrade_converge_to_same_shape
 - **WHEN** a fresh database and an asymmetric exact pre-convergence database run
   the production migration command
@@ -248,9 +239,24 @@ isolated in its selected site schema.
 - **THEN** the failed attempt moves no partial object set and the retry produces
   exactly one complete migrated state without duplicated rows or grants.
 
+#### Scenario: production_era_prerequisites_precede_convergence
+- **WHEN** a database released by commit 3a6770ff651a308bfae0e31b5c525705c356a5a5
+  with all migrations through 0087 recorded runs the current release command
+- **THEN** pending runtime-storage prerequisites and schema convergence complete,
+  preserving existing object identities, rows, grants and ledger timestamps
+- **AND** rerunning release makes no duplicate history or grant contributions.
+
+#### Scenario: failed_legacy_prerequisite_retries_atomically
+- **WHEN** a pending legacy prerequisite fails after beginning its changes
+- **THEN** neither its changes nor its ledger entry survive
+- **AND** retry applies it once while retaining earlier committed prerequisites.
+
+#### Scenario: unsupported_legacy_ledger_rejected
+- **WHEN** a legacy database lacks any migration recorded by the supported 0087 floor
+- **THEN** release names the missing migrations and required intermediate upgrade
+  without applying migrations or creating destination storage.
+
 ### Requirement: featherbase_human_routes_are_canonical
-Legacy ID: PKG-R6 · `shape: routing contract`
-Status: governed (#296)
 Featherbase-owned human routes SHALL live under `/featherbase/`. Historical human
 deep links SHALL redirect to their corresponding canonical path while preserving
 query and fragment. Technical and direct runtime-app roots SHALL retain their
@@ -287,7 +293,6 @@ malformed paths rather than navigate to them.
   page without navigating to the supplied destination.
 
 ### Requirement: core_runtime_client_pins_active_identity
-Status: governed (#296)
 
 The generic Featherbase client SHALL resolve runtime application identities from an authenticated host snapshot before loading metadata or application data. The host SHALL derive the snapshot from installed, enabled, activated packages with a known version, excluding unavailable, pending and unversioned packages. The client SHALL pin this snapshot for its signed-in page session and send the same identities for reads, writes, form operations and attachment API operations. Refetch, navigation and a version conflict SHALL NOT silently replace the snapshot. Reload or a new authenticated session MAY resolve a new snapshot. Host permission and availability checks SHALL remain authoritative.
 
@@ -315,6 +320,33 @@ The generic Featherbase client SHALL resolve runtime application identities from
 - **WHEN** a browser with an expired saved bearer redeems a valid OAuth handoff, resets a password, signs out or uses a public form
 - **THEN** the public request reaches its existing host contract without requiring an authenticated identity snapshot first
 - **AND** subsequent authenticated data operations still require the pinned snapshot and normal admission
+
+### Requirement: explicit_runtime_policy_upgrade
+
+Package discovery SHALL validate read/action policy and required callback
+declarations as immutable artifact contents. Missing policies SHALL NOT become
+implicit unscoped grants. The host SHALL recognize exact historical version-1
+artifacts for predecessor verification and reviewed upgrade planning without
+executing undeclared actions. Install/restart SHALL expose their policy-upgrade
+diagnostic while preserving data and unaffected contributions. Adding explicit
+policies SHALL require a new package version and ordinary preview, upgrade and
+activation; stored artifacts SHALL NOT be rewritten or automatically upgraded.
+Pending/obsolete clients SHALL retain existing fail-closed identity behavior.
+
+#### Scenario: tasker_policy_upgrade_preserves_work
+- **WHEN** exact Tasker 2.0.0 is upgraded to a new artifact with explicit Table
+  policies through a code-only cumulative migration and activated
+- **THEN** existing work and retry identities remain intact and actions execute
+  under current Table permissions, without imposing store roles on Tasker
+
+#### Scenario: historical_artifact_is_not_relabelled
+- **WHEN** a policy is inserted into an installed artifact without a new version
+- **THEN** identity verification rejects it rather than trusting edited code
+
+#### Scenario: policy_restart_is_fail_closed
+- **WHEN** a required scope resolver/product authorizer is absent across restart
+- **THEN** the protected contribution remains unavailable with a diagnostic
+- **AND** restoring the exact artifact restores one registration, not duplicate gates
 
 ## Deferred
 

@@ -1,3 +1,5 @@
+import type { AppAuthorizationContext } from './app-access'
+
 export type ActionRow = Record<string, unknown>
 export interface ActionListArgs {
   filters?: [string, string, unknown][]
@@ -11,6 +13,7 @@ export interface ActionListArgs {
 export interface RuntimeActionContext {
   readonly user: string
   readonly payload: unknown
+  readonly authorization: AppAuthorizationContext
   reject(message: string, fields?: Record<string, string>): never
   readonly documents: {
     get(table: string, rowId: string): Promise<ActionRow>
@@ -24,3 +27,8 @@ export interface RuntimeActionContext {
 }
 
 export type RuntimeActionHandler = (context: RuntimeActionContext) => unknown | Promise<unknown>
+
+export interface RuntimeReadContext extends Omit<RuntimeActionContext, 'documents'> {
+  readonly documents: Pick<RuntimeActionContext['documents'], 'get' | 'list' | 'activity'>
+}
+export type RuntimeReadHandler = (context: RuntimeReadContext) => unknown | Promise<unknown>

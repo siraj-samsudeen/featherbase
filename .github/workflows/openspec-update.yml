@@ -1,0 +1,126 @@
+# Weekly check for a newer @fission-ai/openspec release. The CLI is exactly
+# pinned in root package.json (ADR 0010) rather than left on a caret range, so
+# this workflow is the deliberate substitute for a human remembering to bump
+# it: it compares the published version to the pin, and when there is a newer
+# one it bumps the pin, regenerates the core-profile generated files for the
+# same tool targets the repo already uses (Claude Code's .claude/ and the
+# generic .agents/ target), and opens a PR for review. It never merges
+# anything itself.
+name: openspec-update
+
+on:
+  schedule:
+    # Monday 06:00 UTC. Cron runs on the default branch only.
+    - cron: '0 6 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-and-open-pr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Fetch GitHub git deps over https
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      - name: Read current pin and latest published version
+        id: versions
+        run: |
+          current=$(node -p "require('./package.json').devDependencies['@fission-ai/openspec']")
+          latest=$(npm view @fission-ai/openspec version)
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "Current pin: $current"
+          echo "Latest on npm: $latest"
+
+      - name: Skip if already current
+        if: steps.versions.outputs.current == steps.versions.outputs.latest
+        run: echo "Already pinned to the latest published version; nothing to do." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Skip if a PR for this version already exists
+        if: steps.versions.outputs.current != steps.versions.outputs.latest
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="OpenSpec ${{ steps.versions.outputs.current }} → ${{ steps.versions.outputs.latest }}"
+          count=$(gh pr list --state all --search "in:title \"$title\"" --json number --jq 'length')
+          echo "exists=$([ "$count" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Bump the pin
+        if: steps.versions.outputs.current != steps.versions.outputs.latest && steps.existing.outputs.exists == 'false'
+        run: |
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            p.devDependencies['@fission-ai/openspec'] = '${{ steps.versions.outputs.latest }}';
+            fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+          "
+          pnpm install
+
+      # Regenerate the core-profile files in place for the repo's two tool
+      # targets. `openspec init --force` refreshes the managed files for
+      # every workflow the CLI ships (core plus the six extra ones) without
+      # touching openspec/config.yaml; the repo keeps only the core six, so
+      # the extra ones this run may (re)create are removed immediately after.
+      - name: Regenerate OpenSpec generated files (core profile)
+        if: steps.versions.outputs.current != steps.versions.outputs.latest && steps.existing.outputs.exists == 'false'
+        run: |
+          node_modules/.bin/openspec init --tools claude,agents --profile core --force --no-animation
+          rm -rf .claude/skills/openspec-bulk-archive-change .claude/skills/openspec-continue-change \
+                 .claude/skills/openspec-ff-change .claude/skills/openspec-new-change \
+                 .claude/skills/openspec-onboard .claude/skills/openspec-verify-change
+          rm -f .claude/commands/opsx/bulk-archive.md .claude/commands/opsx/continue.md \
+                .claude/commands/opsx/ff.md .claude/commands/opsx/new.md \
+                .claude/commands/opsx/onboard.md .claude/commands/opsx/verify.md
+          rm -rf .agents/skills/openspec-bulk-archive-change .agents/skills/openspec-continue-change \
+                 .agents/skills/openspec-ff-change .agents/skills/openspec-new-change \
+                 .agents/skills/openspec-onboard .agents/skills/openspec-verify-change
+          git diff --stat -- openspec/config.yaml | (! grep .) || (echo "openspec/config.yaml changed unexpectedly; refusing to open a PR" && exit 1)
+
+      - name: Validate
+        if: steps.versions.outputs.current != steps.versions.outputs.latest && steps.existing.outputs.exists == 'false'
+        run: pnpm check:specs
+
+      - name: Open PR
+        if: steps.versions.outputs.current != steps.versions.outputs.latest && steps.existing.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current='${{ steps.versions.outputs.current }}'
+          latest='${{ steps.versions.outputs.latest }}'
+          branch="openspec-update-$latest"
+          git checkout -b "$branch"
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" \
+            commit -m "OpenSpec $current → $latest" \
+                   -m "Weekly automated bump: pin @fission-ai/openspec to $latest and regenerate the core-profile files under .claude/ and .agents/. openspec/config.yaml is untouched." \
+                   -m "🤖 Generated by the openspec-update workflow"
+          git push -u origin "$branch"
+          # A PR opened with GITHUB_TOKEN does not trigger other workflows, so
+          # test.yml will not run on it; the Validate step above is the check.
+          {
+            echo "Automated weekly check found a newer \`@fission-ai/openspec\` release."
+            echo
+            echo "- Pin: \`$current\` → \`$latest\`"
+            echo "- Regenerated: core-profile skills/commands under \`.claude/\` and \`.agents/\`"
+            echo "- Untouched: \`openspec/config.yaml\`"
+            echo "- \`pnpm check:specs\` passed in the workflow run"
+            echo
+            echo "Review the generated-file diff before merging: an upstream template change can alter skill instructions."
+          } > "$RUNNER_TEMP/pr-body.md"
+          gh pr create --title "OpenSpec $current → $latest" --body-file "$RUNNER_TEMP/pr-body.md"

@@ -12,6 +12,7 @@ import { test, patchDoc } from './pg-test'
 import { config } from '../src/config'
 import { sql } from '../src/db'
 import { invalidateSources } from '../src/sources/registry'
+import type { ReflectionCandidate } from '../src/sources/reflect'
 
 const EXT_URL_ENV = 'EXT_FIXTURE_URL'
 process.env[EXT_URL_ENV] = config.databaseUrl
@@ -451,6 +452,15 @@ describe('EDS-2: foreign keys reflect as References', () => {
         columns: [{ column_name: 'reg_no', column_type: 'Data' }],
       })
     }
+    const preview = await admin.get('/api/table/Data%20Source/ext-fixture:introspect?schema=ext_fixture') as { tables: ReflectionCandidate[] }
+    const columns = preview.tables.find((t) => t.table === 'accident')!.columns
+    expect(columns.find((c) => c.name === 'vehicle_id')).toMatchObject({
+      column_type: 'Int', reference_table: 'Alpha Vehicle',
+    })
+    expect(columns.find((c) => c.name === 'garage_id')).toMatchObject({
+      column_type: 'Int', reference_table: null,
+    })
+    expect(columns.find((c) => c.name === 'id')!.reference_table).toBeNull()
     const res = await admin.fetch('/api/table/Data%20Source/ext-fixture:reflect', {
       method: 'POST',
       body: JSON.stringify({ schema: 'ext_fixture', tables: ['accident'] }),
@@ -463,6 +473,23 @@ describe('EDS-2: foreign keys reflect as References', () => {
     expect(meta.columns.find((c) => c.column_name === 'vehicle_id')).toMatchObject({
       column_type: 'Reference',
       reference_table: 'Alpha Vehicle',
+    })
+  })
+
+  test('Reference preview does not substitute a later matching key for the first binding', async ({ admin }) => {
+    await makeSource(admin)
+    for (const [name, key] of [['Alpha Alternate', 'reg_no'], ['Zeta Primary', 'id']]) {
+      await admin.post('/api/table_def', {
+        name, data_source: 'ext-fixture', external_schema: 'ext_fixture',
+        external_table: 'vehicle', external_pk: key,
+        columns: [{ column_name: 'reg_no', column_type: 'Data' }],
+      })
+    }
+    const preview = await admin.get('/api/table/Data%20Source/ext-fixture:introspect?schema=ext_fixture') as { tables: ReflectionCandidate[] }
+    const column = preview.tables.find((t) => t.table === 'accident')!.columns.find((c) => c.name === 'vehicle_id')!
+    expect(column).toMatchObject({
+      column_type: 'Int', reference_table: null,
+      references: { schema: 'ext_fixture', table: 'vehicle', column: 'id' },
     })
   })
 

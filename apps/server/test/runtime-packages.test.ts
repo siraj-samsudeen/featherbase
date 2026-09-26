@@ -21,7 +21,6 @@ const test = base.extend<{ admin: TestClient; createUser: CreateUserFn }>({
 })
 
 describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
-  // @spec featherbase_human_routes_are_canonical
   test('PKG-R6: legacy human deep links redirect to Featherbase while technical roots remain reserved', async ({ api }) => {
     const old = await api.fetch('/admin/Tasker%20Task/one?view=board')
     expect(old.status).toBe(308)
@@ -34,7 +33,6 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     expect(technical.headers.get('location')).toBeNull()
   })
 
-  // @spec versioned_trusted_artifact.incompatible_package_rejected
   test('PKG-R1: reserved names fail discovery; failed installation leaves no Tables or activation', async ({ admin }) => {
     const directory = await mkdtemp(resolve('test/.runtime-package-'))
     try {
@@ -77,7 +75,6 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     await expect(getMeta('other.task')).rejects.toMatchObject({ type: 'ValidationError' })
   })
 
-  // @spec app_data_is_api_only.query_report_cannot_escape_role
   test('PKG-R3: raw SQL reports cannot read app relations outside the availability-aware API', async ({ admin }) => {
     await discoverPackages([resolve('../..', 'runtime-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
@@ -96,7 +93,6 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     await expect(runQueryReport('Raw app data', {}, 'Administrator')).rejects.toMatchObject({ type: 'ValidationError' })
   })
 
-  // @spec lifecycle_fails_closed.stale_write_after_disable
   test('PKG-R3: disable waits for the post-commit tail, including a nested save', async ({ admin }) => {
     await discoverPackages([resolve('../..', 'runtime-apps/other')])
     await admin.post('/api/install_app', { name: 'other' })
@@ -243,9 +239,6 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     })).toMatchObject({ validation_runs: '2' })
   })
 
-  // @spec app_owns_client_root.missing_asset_is_not_html
-  // @spec app_owns_client_root.app_login_returns_to_one_launch
-  // @spec featherbase_human_routes_are_canonical.runtime_app_root_normalization_preserves_query
   test('PKG-R4: ordinary member catalog and client root are separate from management and server files', async ({ api, admin, createUser }) => {
     expect(await discoverPackages([resolve('../..', 'runtime-apps/other')])).toEqual([])
     await admin.post('/api/install_app', { name: 'other' })
@@ -301,7 +294,6 @@ describe('PKG-R1/PKG-R3: trusted package lifecycle', () => {
     expect(await unavailable.text()).toContain('Disabling an application preserves its data')
   })
 
-  // @spec lifecycle_fails_closed.restart_and_restore
   test('PKG-J2: restart without compatible code fails closed, restoring code preserves data', async ({ admin }) => {
     const source = resolve('../..', 'runtime-apps/other')
     await discoverPackages([source])

@@ -1,7 +1,5 @@
 # Share Work Across the Team
 
-**IDs:** `team_shares_tasker_work`
-
 ## Purpose
 
 The trusted team can collaborate on shared work without assignment becoming an
@@ -19,9 +17,6 @@ These assumptions apply across Tasker and are not permanent product rules:
 ## Requirements
 
 ### Requirement: team_shares_tasker_work
-Status: governed (#296) · Built · evidence gap
-
-> evidence: rule-tier — ordinary-member coverage proves task reading, editing and discussion; equivalent project creation and editing breadth lacks a dedicated test.
 
 Every signed-in team member SHALL be able to read, create and edit every Tasker
 project and task. A member SHALL NOT need to become responsible for a task to

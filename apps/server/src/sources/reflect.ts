@@ -32,6 +32,8 @@ export interface ReflectionCandidate {
     is_pk: boolean
     // FK edge on the source, when the driver reports one (EDS-2).
     references: { schema: string; table: string; column: string } | null
+    // Read-only preview of the effective existing Reference target.
+    reference_table?: string | null
   }[]
 }
 
@@ -107,14 +109,28 @@ export async function introspectSource(
   const cfg = await getSource(sourceName)
   const driver = getDriver(cfg)
   const introspected = await driver.introspect(cfg, schema)
-  const rows = await sql<{ name: string; external_schema: string | null; external_table: string | null }[]>`
-    select name, external_schema, external_table from table_def
-    where data_source = ${sourceName}`
+  const rows = await sql<{ name: string; external_schema: string | null; external_table: string | null; external_pk: string | null }[]>`
+    select name, external_schema, external_table, external_pk from table_def
+    where data_source = ${sourceName}
+    order by created_at asc, name asc`
   const reflected = new Map(
     rows.map((r) => [`${r.external_schema ?? ''}\u0000${r.external_table ?? ''}`, r.name]),
   )
   const tables: ReflectionCandidate[] = []
-  for (const t of introspected) tables.push(await candidateFor(cfg, t, prefix, reflected))
+  for (const t of introspected) {
+    const candidate = await candidateFor(cfg, t, prefix, reflected)
+    // Match buildBoundTable's earliest-binding and exact-key rule. Keep the
+    // driver's primitive type and raw edge intact; this is presentation only.
+    for (const column of candidate.columns) {
+      const fk = column.references
+      const target = fk && rows.find((r) =>
+        (r.external_schema ?? '') === fk.schema && r.external_table === fk.table,
+      )
+      column.reference_table = column.name !== candidate.pk && target && target.external_pk === fk?.column
+        ? target.name : null
+    }
+    tables.push(candidate)
+  }
   return { source: cfg.name, engine: cfg.engine, access: cfg.access, tables }
 }
 

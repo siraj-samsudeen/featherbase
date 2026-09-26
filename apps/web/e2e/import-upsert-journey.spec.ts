@@ -1,4 +1,4 @@
-import { journeyTest as test, expect, adminToken, signIn, snap } from './fixtures'
+import { journeyTest as test, expect, adminToken, signIn } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
 // UPS-J1 + UPS-J2 — the upsert journeys of docs/specs/0004-import-upsert.md,
@@ -74,7 +74,6 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
   await session.step('J1.1: Import from the list view preselects the Table', async ({ page }) => {
     await page.getByTestId('open-import').click()
   })
-  await snap(page, 'UPS-J1.1')
 
   // J1.2 — drop the corrected file: the mapping step as today PLUS the
   // Match key control — labelled, keyboard-reachable, defaulting to none
@@ -94,7 +93,6 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
     await expect(page.getByTestId('iw-key-suggested-0')).toHaveCount(0)
     await expect(page.getByTestId('iw-empty-cells-0')).toHaveCount(0)
   })
-  await snap(page, 'UPS-J1.2')
 
   // J1.3 — mark Zone Name as the match key: real counts BEFORE anything
   // commits, and the empty-cells choice appears beside it, defaulting keep.
@@ -107,7 +105,6 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
     await expect(page.getByTestId('iw-empty-keep-0')).toBeChecked()
     await expect(page.getByTestId('iw-empty-clear-0')).not.toBeChecked()
   })
-  await snap(page, 'UPS-J1.3')
 
   // J1.4 — rehearse: the report is action-aware, nothing written.
   await session.clickButton('Check')
@@ -120,20 +117,17 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
     ).json()) as { count: number }
     expect(count.count).toBe(8)
   })
-  await snap(page, 'UPS-J1.4')
 
   // J1.5 — Import: completion reports updated / inserted as separate counts.
   await session.clickButton('Import 8 rows')
   await session.step('J1.5: completion reports separate counts', async ({ page }) => {
     await expect(page.getByTestId('iw-result-0')).toContainText('Updated 8 and added 0 rows')
   })
-  await snap(page, 'UPS-J1.5')
 
   // J1.6 — still 8 rows, Alpha corrected, every row keeps its original id.
   await session
     .assertPath(`/featherbase/admin/${encodeURIComponent(DT)}`)
     .assertHas('[data-testid="list-rows"]', { text: 'Alpha' })
-  await snap(page, 'UPS-J1.6')
   const after = (await (
     await request.get(
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
@@ -175,7 +169,6 @@ test('UPS-J1: re-import the corrected file on the Zone Name key', async ({
     await expect(page.getByTestId('iw-key-0')).toHaveValue('zone_name')
     await expect(page.getByTestId('iw-empty-keep-0')).toBeChecked()
   })
-  await snap(page, 'UPS-R5')
 
   // Teardown — self-cleaning via table deletion (spec 0003), no skip path.
   const del = await request.delete(`/api/table_def/${encodeURIComponent(DT)}`, { headers })
@@ -214,7 +207,6 @@ test('UPS-J2: the file’s codes become the ids', async ({ session, page, reques
     await page.getByTestId('iw-map-0-0').selectOption('row_id') // Code → Row ID
     await expect(page.getByTestId('iw-map-0-0')).toHaveValue('row_id')
   })
-  await snap(page, 'UPS-J2.3')
 
   // J2.6′ + branch — import WITHOUT a match key: REF-101 lands verbatim,
   // REF-102 collides and fails by its true spreadsheet row, the code-less
@@ -226,7 +218,6 @@ test('UPS-J2: the file’s codes become the ids', async ({ session, page, reques
     await expect(page.getByTestId('iw-result-0')).toContainText('row 3')
     await expect(page.getByTestId('iw-result-0')).toContainText('already exists')
   })
-  await snap(page, 'UPS-J2.6')
 
   const rows = (await (
     await request.get(

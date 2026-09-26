@@ -66,7 +66,6 @@ export function Attachments({ table, name }: { table: string; name: string }) {
   // same-origin, so the HttpOnly `sid` cookie authenticates it.
   const href = (f: FileRow) => f.file_url
 
-  // @spec generic_core_form_controls_fit_viewport.narrow_attachment_identity_and_actions
   return (
     <div className="fc-card min-w-0 p-4 [overflow-wrap:anywhere]" data-testid="attachments-panel">
       <div className="mb-2 flex items-center justify-between">

@@ -1,5 +1,4 @@
 -- Private durable command results, committed alongside the command's writes.
--- @spec action_writes_and_replay_are_atomic
 create table runtime_action_result (
   caller text not null,
   app text not null,

@@ -15,9 +15,6 @@ import { app } from '../src/index'
 void app
 const prove = process.env.RUNTIME_ACTION_COMMIT_PROOF === '1' ? test : test.skip
 
-// @spec guarded_action_deletion_preserves_retained_work.action_delete_races_comment_or_reference_creation
-// @spec action_commit_boundary_and_lifecycle_serialize
-// @spec core_document_links_serialize_with_runtime_deletion.core_link_creation_races_runtime_deletion
 prove('real commits: both sides of core-link/reference deletion races; effects observe durable results', async () => {
   const [identity] = await sql`select current_database() as name,
     (select value from internal_metadata where key = 'environment') as environment`

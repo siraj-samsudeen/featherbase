@@ -14,7 +14,6 @@ import { api, clearSession, setSession } from '../src/lib/api'
 beforeEach(clearSession)
 afterEach(() => vi.restoreAllMocks())
 
-// @spec core_runtime_client_pins_active_identity.public_exchange_ignores_expired_saved_token
 test('public credential exchanges and logout do not bootstrap with an expired saved bearer', async ({ admin, createUser }) => {
   const member = await createUser({ email: 'fresh-reset@example.com' })
   const key = await requestPasswordReset(member.user!)
@@ -34,7 +33,6 @@ test('public credential exchanges and logout do not bootstrap with an expired sa
   expect(requests.mock.calls.some(([path]) => path === '/api/runtime_app_versions')).toBe(false)
 })
 
-// @spec core_runtime_client_pins_active_identity.core_form_and_attachment_after_upgrade
 test('generic core form can read and save a versioned runtime row', async ({ admin }) => {
   await discoverPackages([resolve('../..', 'runtime-apps/tasker')])
   await admin.post('/api/install_app', { name: 'tasker' })
@@ -50,13 +48,11 @@ test('generic core form can read and save a versioned runtime row', async ({ adm
   expect(await api.get(`/api/table/tasker.project/${row.row_id}`)).toMatchObject({ project_name: 'Northern 83 crates', description: '**Keep** this text' })
 })
 
-// @spec core_runtime_client_pins_active_identity.stale_generic_form_is_not_relabelled
-// @spec core_runtime_client_pins_active_identity.parallel_requests_share_session_snapshot
 test('generic client pins v1 across real upgrade and re-resolves only on a new session', async ({ admin }) => {
   const requests = vi.spyOn(globalThis, 'fetch') // Observe the real in-process bridge, not a stub response.
   const bootstraps = () => requests.mock.calls.filter(([path]) => path === '/api/runtime_app_versions').length
   const prior = resolve('../..', 'runtime-apps/fixtures/tasker-v1')
-  const target = resolve('../..', 'runtime-apps/tasker')
+  const target = resolve('../..', 'runtime-apps/fixtures/tasker-v2')
   await discoverPackages([prior])
   await admin.post('/api/install_app', { name: 'tasker' })
   const row = await saveDoc('tasker.project', { project_name: 'Do not relabel old editor' }, 'Administrator', 'insert')
