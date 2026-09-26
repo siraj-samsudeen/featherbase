@@ -198,6 +198,11 @@ async function assertResponsiveListLayout(
       return moved
     })
     expect(scrollLeft, 'wide rows table must scroll independently').toBeGreaterThan(0)
+  } else {
+    expect(
+      await tableArea.evaluate((element) => element.scrollWidth <= element.clientWidth),
+      'rows table must fit its desktop container for this fixture',
+    ).toBe(true)
   }
   await page.screenshot({ path: screenshot, fullPage: true })
 }
@@ -238,6 +243,16 @@ test.describe('ListView toolbar desktop layout', () => {
         '../../.amp/in/artifacts/listview-toolbar-desktop.png',
         false,
       )
+
+      const titleBox = await page.getByRole('heading', { name: RESPONSIVE_DT }).boundingBox()
+      const firstActionBox = await page.getByTestId('list-columns').boundingBox()
+      expect(titleBox).not.toBeNull()
+      expect(firstActionBox).not.toBeNull()
+      expect(
+        Math.min(titleBox!.y + titleBox!.height, firstActionBox!.y + firstActionBox!.height) -
+          Math.max(titleBox!.y, firstActionBox!.y),
+        'desktop title and toolbar must share a vertical band',
+      ).toBeGreaterThan(0)
     })
   })
 })
