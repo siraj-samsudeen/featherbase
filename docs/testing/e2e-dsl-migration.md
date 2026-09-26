@@ -307,7 +307,7 @@ across a batch — not by directory, since these repos don't have
 subdirectories. Each batch is independent; hand batches to different agents
 in parallel if desired.
 
-**Batch 1 — Import wizard family (12).** Same shape as
+**Batch 1 — Import wizard family (12). DONE.** Same shape as
 `import-revert-journey.spec.ts`: testid-heavy wizard mechanics, mostly
 steps, `assertPath`/`assertHas` around the edges.
 `import-batches.spec.ts`, `import-combine.spec.ts`, `import-file.spec.ts`,
@@ -316,6 +316,39 @@ steps, `assertPath`/`assertHas` around the edges.
 `import-row-numbers.spec.ts`, `import-stepper.spec.ts`,
 `import-typed-confirmation.spec.ts`, `import-wizard.spec.ts`,
 `table-merge.spec.ts`.
+
+### Batch 1 status
+
+Migrated on `e2e-dsl-b1` (db `featherbase_e2e_b1`, ports 5211/8031). No app
+code, `fixtures.ts`, or other batch's files touched.
+
+Baseline (unmodified files, this batch only):
+`WEB_URL=http://localhost:5211 pnpm exec playwright test e2e/import-batches.spec.ts e2e/import-combine.spec.ts e2e/import-file.spec.ts e2e/import-merge.spec.ts e2e/import-overview.spec.ts e2e/import-partial-failure.spec.ts e2e/import-resume.spec.ts e2e/import-row-numbers.spec.ts e2e/import-stepper.spec.ts e2e/import-typed-confirmation.spec.ts e2e/import-wizard.spec.ts e2e/table-merge.spec.ts --reporter=list`
+— **41 passed, 0 skipped, 0 failed.** Same command after migrating, run
+twice (once immediately, once again against the same un-reset database) —
+both **41 passed, 0 skipped, 0 failed**, identical to baseline. No baseline
+failure existed to file as an issue.
+
+| File | Tests | Notes |
+|---|---|---|
+| `import-batches.spec.ts` | 3 | batch/import-log view; `page.goto`→`session.visit`, rest in steps |
+| `import-combine.spec.ts` | 4 | column-combine grid; `openMergedGroup(page)` helper called from inside a step |
+| `import-file.spec.ts` | 3 | drag-and-drop + file picker onto the Table Builder |
+| `import-merge.spec.ts` | 4 | multi-sheet merge-to-one-Table; revert step included |
+| `import-overview.spec.ts` | 5 | file overview: hidden-sheet sections, tri-state master toggle |
+| `import-partial-failure.spec.ts` | 3 | `page.route` network stub stays inside its step, unchanged |
+| `import-resume.spec.ts` | 5 | `page.reload()`/sessionStorage-quota simulation stay inside steps |
+| `import-row-numbers.spec.ts` | 1 | dry-run row-number attribution |
+| `import-stepper.spec.ts` | 4 | one-target-at-a-time column stepper |
+| `import-typed-confirmation.spec.ts` | 1 | typed-number mass-update guard |
+| `import-wizard.spec.ts` | 3 | the biggest file; new-Table + existing-Table-by-column-match in one run |
+| `table-merge.spec.ts` | 5 | standalone Table→Table merge screen |
+
+Every file kept its exact assertions (same testids, same text, same counts) —
+only the call sites moved into named `session.step()` blocks; `session.visit`
+replaced bare `page.goto`. No Session verb (`fillIn`/`clickButton`/etc.) fit
+any of these controls — every one is testid- or attribute-addressed, matching
+`import-revert-journey.spec.ts`'s shape exactly.
 
 **Batch 2 — Anonymous / session identity (13).** `anonymousTest` shape,
 like `admin.spec.ts`/`web-page.spec.ts`: often has a label-friendly login
