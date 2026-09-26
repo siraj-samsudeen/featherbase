@@ -5,7 +5,9 @@
 Beyond opening a matching Table, record or command from the search bar, the
 user can also follow a row's relationships two other ways: Explore chains
 tables together and narrows them by clicking, and the relationship map shows
-one row's neighborhood as a walkable diagram.
+one row's neighborhood as a walkable diagram. The search bar's matching of
+Tables, new-row actions, commands and records is specified in Admin UI
+Feedback; this capability covers what that one doesn't.
 
 ## Requirements
 

@@ -19,18 +19,20 @@ group and for everything together.
 - **WHEN** the user opens the Order summary, groups it by Status, with Amount
   among the shown columns
 - **THEN** each status shows its orders, a count, and the sum of their Amount
-- **AND** the bottom shows the same count and sum across every order
+- **AND** the bottom shows the same count and sum across the whole summary
 
 ### Requirement: Export a summary exactly as shown
 
 The user SHALL be able to download the summary exactly as it appears on
-screen — the same columns, in the same groups, with the same totals.
+screen — the same columns, in the same groups, with the same totals shown
+there.
 
 #### Scenario: Download a grouped summary
 
 - **WHEN** the user exports the Order summary grouped by Status
 - **THEN** the file has one row per order under its status group, each
-  group's totals, and the grand total, in that order
+  group's totals as shown on screen, and the grand total as shown on screen,
+  in that order
 
 ### Requirement: Save and rerun a summary
 
@@ -45,15 +47,16 @@ Anyone who can read the report can run it.
 - **THEN** the same columns, grouping and filters apply, over whatever orders
   exist now
 
-### Requirement: Chart a report and pin it to a dashboard
+### Requirement: Chart a summary report and pin it to a dashboard
 
-A saved report SHALL offer a bar chart of its current rows, and the user can
-pin that chart onto a dashboard so it keeps recomputing from live data.
+A saved summary report SHALL offer a bar chart of its current rows, and the
+user can pin that chart onto a dashboard so it keeps recomputing from live
+data.
 
 #### Scenario: Pin a report chart
 
-- **WHEN** the user saves an orders-by-status report, previews its chart, and
-  pins it to the "Sales" dashboard
+- **WHEN** the user saves an orders-by-status summary report, previews its
+  chart, and pins it to the "Sales" dashboard
 - **THEN** the chart appears on the dashboard and reflects new orders the
   next time it loads
 
@@ -62,6 +65,8 @@ pin that chart onto a dashboard so it keeps recomputing from live data.
 A query report SHALL run an admin-authored question against the data and
 fill in the user's own values for its blanks; it can only read data, never
 change it. Only a System Manager may write or change the question itself.
+Anyone who can open the report sees its results in full, not narrowed to
+what they could otherwise read.
 
 #### Scenario: Run a query report with a filter
 
