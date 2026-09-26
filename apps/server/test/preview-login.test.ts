@@ -7,6 +7,7 @@ import {
   previewLogin,
   resolvePreviewLogin,
 } from '../src/preview'
+import { test as sandboxTest } from './pg-test'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
 
 // The preview sign-in link is an authentication bypass, so what is pinned
@@ -78,33 +79,28 @@ describe('the key is compared as a credential', () => {
 })
 
 describe('the /preview route', () => {
-  test('preview sign-in gives the sid cookie the configured session lifetime', async () => {
+  sandboxTest('preview sign-in gives the sid cookie the configured session lifetime', async ({ api }) => {
     const email = 'preview-session@example.com'
-    await sql`delete from "user" where row_id = ${email}`
     await sql`
       insert into "user" (row_id, email, full_name, enabled, user_type)
       values (${email}, ${email}, 'Preview Session Visitor', true, 'website')`
     configure(GOOD_KEY, email)
-    try {
-      for (const hours of [1, 720]) {
-        await setSessionHours(hours)
-        const before = Math.floor(Date.now() / 1000)
-        const res = await app.request(`/preview?key=${GOOD_KEY}`)
-        const after = Math.floor(Date.now() / 1000)
-        expect(res.status).toBe(302)
-        const cookie = expectSessionCookie(res, hours, { before, after })
-        const location = res.headers.get('location') as string
-        const code = new URLSearchParams(location.split('?')[1] ?? '').get('code')
-        const redeemed = await app.request('/api/oauth/session', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json', cookie },
-          body: JSON.stringify({ code }),
-        })
-        expect(redeemed.status).toBe(200)
-        expect(Object.keys((await redeemed.json()) as object).sort()).toEqual(['token', 'user'])
-      }
-    } finally {
-      await sql`delete from "user" where row_id = ${email}`
+    for (const hours of [1, 720]) {
+      await setSessionHours(hours)
+      const before = Math.floor(Date.now() / 1000)
+      const res = await api.fetch(`/preview?key=${GOOD_KEY}`)
+      const after = Math.floor(Date.now() / 1000)
+      expect(res.status).toBe(302)
+      const cookie = expectSessionCookie(res, hours, { before, after })
+      const location = res.headers.get('location') as string
+      const code = new URLSearchParams(location.split('?')[1] ?? '').get('code')
+      const redeemed = await api.fetch('/api/oauth/session', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify({ code }),
+      })
+      expect(redeemed.status).toBe(200)
+      expect(Object.keys((await redeemed.json()) as object).sort()).toEqual(['token', 'user'])
     }
   })
 

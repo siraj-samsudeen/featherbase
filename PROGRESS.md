@@ -20,6 +20,9 @@ unchanged. That possible hardening is tracked separately in #353. After merging
 PRs #348 and #349 from current main, the three focused files passed 40/40,
 server typecheck passed, and strict checks passed 45 specs and 12 changes.
 Feather review's lifetime-unit naming and public-response assertion fixes remain.
+Follow-up review moved the preview lifetime case onto the Postgres sandbox;
+an exact query before and after that test stayed `<missing>|0` for configured
+session hours and preview login activity, proving both writes roll back.
 The OpenSpec change stays unarchived pending independent parent verification
 and merge.
 
