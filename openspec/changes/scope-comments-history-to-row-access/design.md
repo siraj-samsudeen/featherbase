@@ -7,9 +7,9 @@
 Two existing behaviors constrain the fix:
 
 - Tasker deliberately uses one generic Comment list, filtered to `tasker.task`, to derive the latest explanation for up to 500 visible tasks. Removing generic Comment reads would break a shipped promise.
-- Direct row shares bypass role, owner and Data Scope checks and grant full field visibility for that parent row. Activity reached through the row must follow the same rule without making activity for other rows discoverable.
+- As an observed implementation behavior, not a ratified product promise, direct row shares bypass role, owner and Data Scope checks and grant full sensitive-field visibility for that parent row. Whether history should inherit that visibility is unresolved.
 
-The pending #349 search change exports and reuses `scopedWhere`, but it is not part of the current base. This design works on either integration order and does not take on #349's general search corrections.
+#349 is now on main and exports `scopedWhere` for search. This planning branch predates that merge and must be rebased before implementation; this change does not take on #349's general search corrections.
 
 ## Goals / Non-Goals
 
@@ -18,7 +18,7 @@ The pending #349 search change exports and reuses `scopedWhere`, but it is not p
 - Put one parent-row authorization rule beneath every ordinary Comment/Version read.
 - Preserve accurate pagination, totals and aggregates after inaccessible activity is removed.
 - Preserve Tasker's bulk Comment query and the parent-gated activity response.
-- Make restricted Version values impossible to recover through an alternate read shape.
+- Make Version values hidden by ordinary role tiers impossible to recover through an alternate read shape.
 
 **Non-Goals:**
 
@@ -41,7 +41,7 @@ Alternative rejected: deny all generic Comment/Version reads to non-managers. It
 
 Add a reusable activity-target authorization helper beside the generic query scoping code. For locally stored targets it builds branches by referenced Table and reuses that target's owner and Data Scope predicate, then widens only that branch with parent row IDs directly shared to the caller. It must not widen ordinary parent lists or search results merely because a row is shared; the widening exists only while deciding whether attached activity is readable.
 
-`scopedWhere` applies this extra predicate for Comment and Version before caller filters and before SQL pagination. Consequently list totals, collection counts, grouped counts, aggregate actions, Report Builder output, auto-email Report Builder output and, once #349 lands, search all see the same authorized set. On a base without #349, search must explicitly invoke the same activity scope for these two Tables without absorbing #349's unrelated title/row changes.
+`scopedWhere` applies this extra predicate for Comment and Version before caller filters and before SQL pagination. Consequently list totals, collection counts, grouped counts, aggregate actions, Report Builder output, auto-email Report Builder output and #349's search path all see the same authorized set.
 
 For a source-bound parent, resolve the candidate parent IDs through the existing source dispatch and combine them with direct shares before selecting activity rows. Do this before pagination/counting; fetching a page and discarding forbidden rows afterward would produce short pages and leaked totals. Settings Tables are authorized as their single named row. Unknown, deleted, cyclic Comment/Version targets are unreadable to non-bypass users rather than recursively authorizing forever.
 
@@ -53,9 +53,17 @@ After loading a Comment or Version row by ID, generic detail/print/row-action re
 
 ### 4. Sanitize Version data once, after parent authorization
 
-Extract the Version-change sanitizer currently embedded in `documentActivity`. Its visible-field set comes from the parent as the caller sees it: ordinary role reads use permitted tiers, while a direct parent share uses full visibility, matching `getDoc` today. Apply it to document activity, generic Version detail and every generic list/report result that selects Version data. Filtering, ordering or grouping by the JSON payload remains governed by Version's own column permission; the payload returned to the caller is still sanitized.
+Extract the Version-change sanitizer currently embedded in `documentActivity`. For ordinary role reads, its visible-field set comes from the parent as the caller sees it and therefore uses permitted tiers. Apply it to document activity, generic Version detail and every generic list/report result that selects Version data. Filtering, ordering or grouping by the JSON payload remains governed by Version's own column permission; the payload returned to the caller is still sanitized.
 
 Alternative rejected: hide the entire Version whenever one changed field is restricted. That also hides allowed changes from the same edit and disagrees with current document-activity behavior.
+
+**Owner decision required before apply:** choose the sensitive-field rule for a directly shared parent.
+
+1. History matches current `getDoc`: the share reveals all current sensitive fields and their historical changes.
+2. History remains tier-filtered even though the same share currently reveals the row's sensitive current values. This is more conservative for history but intentionally inconsistent.
+3. First change direct-share field semantics so both the row and its history honor tiers. This is the coherent privacy alternative but is broader than #342 and needs its own approved scope.
+
+The current code establishes only the implementation fact behind option 1; it does not establish that option as product intent. Do not implement direct-share Version expectations until the owner ratifies one option.
 
 ### 5. Use document activity in row UI; retain Tasker's scoped bulk query
 
@@ -73,7 +81,7 @@ Alternative rejected: make publish asynchronous and authorize every event for ev
 - **[Source-bound targets require extra remote work]** → Group candidate IDs by target Table and batch through the source dispatcher before applying pagination; add an asymmetric source-backed regression if comments can be attached there.
 - **[A future read path bypasses the helper]** → Put list/count/aggregate enforcement inside `scopedWhere`, detail enforcement inside `getDoc`, and keep a route inventory regression for search/reports/realtime rather than route-local patches.
 - **[Version JSON leaks through a new projection]** → Centralize sanitization and test full serialized responses for forbidden old and new values, not only field names.
-- **[Integration with #349 conflicts]** → Rebase before implementation. If #349 is present, retain its exported `scopedWhere` and let the new activity predicate flow through it; do not duplicate or revert its search tests.
+- **[Integration with #349 conflicts]** → Rebase onto current main before implementation, retain its exported `scopedWhere`, and let the new activity predicate flow through it; do not duplicate or revert its search tests.
 
 ## Migration Plan
 
