@@ -1,5 +1,88 @@
 # Progress Log
 
+## 2026-09-26 — Session cookies follow configured session lifetime (#337)
+
+Password, Google and preview sign-in now issue the browser's `sid` cookie for
+the same clamped 1–720 hour lifetime used by its JWT instead of a fixed seven
+days. One auth helper reads the setting once and returns the signed token with
+its lifetime in seconds; routes use that internal value without adding fields
+to login or handoff responses. Cookie creation keeps its existing HttpOnly,
+SameSite=Lax and Path=/ attributes unchanged.
+
+Test-first verification captured four failures at the old 604800-second cookie,
+then `pnpm --filter server exec vitest run test/auth.test.ts test/oauth.test.ts
+test/preview-login.test.ts` passed 40/40. `pnpm --filter server test` passed 883
+tests with 19 expected skips; `pnpm --filter server typecheck`, `pnpm
+check:specs`, `git diff --check`, and `./init.sh` smoke (3 browser tests)
+passed. Parent review caught an unrelated addition of Secure to `sid`; it was
+removed while the existing OAuth challenge-cookie Secure behavior stayed
+unchanged. That possible hardening is tracked separately in #353. After merging
+PRs #348 and #349 from current main, the three focused files passed 40/40,
+server typecheck passed, and strict checks passed 45 specs and 12 changes.
+Feather review's lifetime-unit naming and public-response assertion fixes remain.
+Follow-up review moved the preview lifetime case onto the Postgres sandbox;
+an exact query before and after that test stayed `<missing>|0` for configured
+session hours and preview login activity, proving both writes roll back.
+The OpenSpec change stays unarchived pending independent parent verification
+and merge.
+
+## 2026-09-26 — Closed mobile Admin drawer leaves the tab order (#320)
+
+The shared Admin sidebar now follows its responsive state in the accessibility
+tree. On phones, a closed drawer is inert and hidden from assistive technology;
+keyboard-opening restores its links, and keyboard-closing removes them again
+without changing the existing slide transition. The static desktop sidebar
+remains exposed and keyboard-reachable.
+
+The Session DSL browser journey tabs from the last header control in the closed,
+open and re-closed phone states, waits for each transform transition, and checks
+the first sidebar link's focus directly. Its desktop case proves the same link
+remains in the tab order. The new check failed first because the offscreen New
+Table link received focus. After the fix, the isolated responsive journey passed
+2/2; web typecheck passed; the AdminLayout theme component tests passed 4/4 with
+their existing jsdom `scrollTo` warnings; strict OpenSpec passed 45 specs and 11
+changes; and the DSL guard passed 8 policy tests across 77 files. Feather review
+found and fixed one first-render gap by initializing the media query
+synchronously; the focused checks passed again afterward. No appearance or
+shared-style change was made, so browser semantics and focus were inspected
+rather than screenshots. The OpenSpec change remains unarchived pending owner
+acceptance.
+
+Parent review then caught a fractional-width gap between the first media query
+and Tailwind's desktop breakpoint, plus raw keyboard actions in the migrated
+journey. The query is now the exact `< 48rem` complement of `md:`. The same
+mounted page crosses 767 → 768 → 767 and proves the media listener changes both
+semantics and tab order; closed-state focus is checked against every sidebar
+descendant. Keyboard and supported link actions use the Session DSL, with named
+steps only for focus, viewport and layout measurements. The focused browser
+journey still passes 2/2 and web typecheck passes after merging PRs #348/#349.
+
+## 2026-09-26 — App-owned rows delete from the generic form (#322)
+
+The generic FormView now echoes the revision it loaded whenever a row has one,
+instead of limiting delete revisions to source-bound Tables. A fresh row from
+an installed app can therefore be deleted, while a row changed after the form
+opened still conflicts and preserves the newer value. Revisionless bindings
+still omit the query, and the existing writable CSV binding behavior is
+unchanged.
+
+The PostgreSQL-backed component regressions discover and install the real
+`actionproof` package through the app lifecycle. The fresh-row test failed
+before the fix while the stale-row branch already conflicted; after the fix,
+both pass and assert the rendered success/error states plus database outcomes.
+
+**Verified:** `./init.sh` (server smoke and 3 browser smoke tests),
+`NODE_OPTIONS=--no-experimental-webstorage pnpm --filter web test
+test/table-lifecycle-app-owned.test.tsx test/table-lifecycle-bound.test.tsx`
+(5 passed), `pnpm --filter server exec vitest run
+test/runtime-row-delete.test.ts` (2 passed), `pnpm --filter web typecheck`,
+`pnpm check:specs` (45 specs and 11 changes), and `git diff --check`.
+The component run emits jsdom's known unsupported `window.scrollTo` warning.
+No appearance changed, so semantic DOM checks were used instead of a visual
+capture. Feather review found and corrected an overly broad delta-spec promise;
+no in-scope code or test findings remain. Next: independent parent verification
+before merge.
+
 ## 2026-09-26 — Report toolbar fits a phone (#317)
 
 ReportView now wraps its existing title/export, report configuration, and chart

@@ -47,7 +47,29 @@ export interface SessionUser {
   full_name: string | null
 }
 
-export async function login(usr: string, pwd: string): Promise<{ token: string; user: SessionUser }> {
+export interface IssuedSession {
+  token: string
+  user: SessionUser
+  maxAgeSeconds: number
+}
+
+async function issueSessionToken(userName: string): Promise<{ token: string; maxAgeSeconds: number }> {
+  // SET-004: session lifetime is driven by System Settings (session_hours),
+  // clamped to a sane range so a bad setting can't disable or eternalize logins.
+  const { session_hours } = await getSystemSettings()
+  const hours = Math.min(Math.max(session_hours || 8, 1), 720)
+  const maxAgeSeconds = hours * 3600
+  const token = await sign(
+    {
+      sub: userName,
+      exp: Math.floor(Date.now() / 1000) + maxAgeSeconds,
+    },
+    JWT_SECRET,
+  )
+  return { token, maxAgeSeconds }
+}
+
+export async function login(usr: string, pwd: string): Promise<IssuedSession> {
   const [user] = await sql`
     select row_id, email, full_name, enabled, password_hash, user_type from "user"
     where (row_id = ${usr} or email = ${usr})`
@@ -55,42 +77,29 @@ export async function login(usr: string, pwd: string): Promise<{ token: string; 
   // refusal is deliberately the same generic message as a bad password.
   if (!user || user.user_type === 'service' || !user.enabled || !user.password_hash || !verifyPassword(pwd, user.password_hash as string))
     throw new AppError('AuthenticationError', 'Invalid login credentials')
-  // SET-004: session lifetime is driven by System Settings (session_hours),
-  // clamped to a sane range so a bad setting can't disable or eternalize logins.
-  const { session_hours } = await getSystemSettings()
-  const hours = Math.min(Math.max(session_hours || 8, 1), 720)
-  const token = await sign(
-    {
-      sub: user.row_id as string,
-      exp: Math.floor(Date.now() / 1000) + hours * 3600,
-    },
-    JWT_SECRET,
-  )
+  const session = await issueSessionToken(user.row_id as string)
   // PLAT-007: record the successful authentication.
   await logActivity(user.row_id as string, 'login', { full_name: user.full_name as string | null })
   return {
-    token,
+    token: session.token,
     user: { row_id: user.row_id as string, email: user.email as string, full_name: user.full_name as string | null },
+    maxAgeSeconds: session.maxAgeSeconds,
   }
 }
 
 // PLAT-006: issue a session for an already-authenticated user (e.g. after a
 // successful OAuth exchange) — the password-less counterpart to login().
-export async function issueSession(userName: string): Promise<{ token: string; user: SessionUser }> {
+export async function issueSession(userName: string): Promise<IssuedSession> {
   const [user] = await sql`
     select row_id, email, full_name, enabled, user_type from "user" where row_id = ${userName}`
   if (!user || !user.enabled || user.user_type === 'service')
     throw new AppError('AuthenticationError', 'User cannot sign in')
-  const { session_hours } = await getSystemSettings()
-  const hours = Math.min(Math.max(session_hours || 8, 1), 720)
-  const token = await sign(
-    { sub: user.row_id as string, exp: Math.floor(Date.now() / 1000) + hours * 3600 },
-    JWT_SECRET,
-  )
+  const session = await issueSessionToken(user.row_id as string)
   await logActivity(user.row_id as string, 'login', { full_name: user.full_name as string | null })
   return {
-    token,
+    token: session.token,
     user: { row_id: user.row_id as string, email: user.email as string, full_name: user.full_name as string | null },
+    maxAgeSeconds: session.maxAgeSeconds,
   }
 }
 
