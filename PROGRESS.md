@@ -1,5 +1,31 @@
 # Progress Log
 
+## 2026-09-26 — Session cookies follow configured session lifetime (#337)
+
+Password, Google and preview sign-in now issue the browser's `sid` cookie for
+the same clamped 1–720 hour lifetime used by its JWT instead of a fixed seven
+days. One auth helper reads the setting once and returns the signed token with
+its lifetime in seconds; routes use that internal value without adding fields
+to login or handoff responses. Cookie creation keeps its existing HttpOnly,
+SameSite=Lax and Path=/ attributes unchanged.
+
+Test-first verification captured four failures at the old 604800-second cookie,
+then `pnpm --filter server exec vitest run test/auth.test.ts test/oauth.test.ts
+test/preview-login.test.ts` passed 40/40. `pnpm --filter server test` passed 883
+tests with 19 expected skips; `pnpm --filter server typecheck`, `pnpm
+check:specs`, `git diff --check`, and `./init.sh` smoke (3 browser tests)
+passed. Parent review caught an unrelated addition of Secure to `sid`; it was
+removed while the existing OAuth challenge-cookie Secure behavior stayed
+unchanged. That possible hardening is tracked separately in #353. After merging
+PRs #348 and #349 from current main, the three focused files passed 40/40,
+server typecheck passed, and strict checks passed 45 specs and 12 changes.
+Feather review's lifetime-unit naming and public-response assertion fixes remain.
+Follow-up review moved the preview lifetime case onto the Postgres sandbox;
+an exact query before and after that test stayed `<missing>|0` for configured
+session hours and preview login activity, proving both writes roll back.
+The OpenSpec change stays unarchived pending independent parent verification
+and merge.
+
 ## 2026-09-26 — Closed mobile Admin drawer leaves the tab order (#320)
 
 The shared Admin sidebar now follows its responsive state in the accessibility

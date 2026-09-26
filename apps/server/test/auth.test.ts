@@ -1,5 +1,6 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
+import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
 
 const json = (body: unknown) => ({
   method: 'POST',
@@ -7,6 +8,39 @@ const json = (body: unknown) => ({
 })
 
 describe('API-004: authentication', () => {
+  test('password sign-in gives the sid cookie the configured session lifetime', async ({ api }) => {
+    for (const hours of [1, 720]) {
+      await setSessionHours(hours)
+      const before = Math.floor(Date.now() / 1000)
+      const res = await api.fetch(
+        '/api/login',
+        json({ usr: 'Administrator', pwd: process.env.ADMIN_PASSWORD ?? 'admin' }),
+      )
+      const after = Math.floor(Date.now() / 1000)
+      expect(res.status).toBe(200)
+      expectSessionCookie(res, hours, { before, after })
+      const body = (await res.json()) as Record<string, unknown>
+      expect(Object.keys(body).filter((key) => !['token', 'user', 'landing'].includes(key))).toEqual([])
+    }
+  })
+
+  test('session lifetime keeps its eight-hour fallback and 1–720 hour bounds', async ({ api }) => {
+    for (const [configured, expected] of [
+      [0, 8],
+      [-2, 1],
+      [900, 720],
+    ]) {
+      await setSessionHours(configured)
+      const before = Math.floor(Date.now() / 1000)
+      const res = await api.fetch(
+        '/api/login',
+        json({ usr: 'Administrator', pwd: process.env.ADMIN_PASSWORD ?? 'admin' }),
+      )
+      const after = Math.floor(Date.now() / 1000)
+      expectSessionCookie(res, expected, { before, after })
+    }
+  })
+
   test('login with valid credentials yields a token and user', async ({ api }) => {
     const res = await api.fetch(
       '/api/login',
