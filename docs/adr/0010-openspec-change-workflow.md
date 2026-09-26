@@ -32,9 +32,10 @@ OpenSpec is Featherbase's sole behavior specification and mandatory change
 workflow, run as plain, stock upstream OpenSpec.
 
 - New behavior begins as an OpenSpec change before implementation.
-- Existing behavior without an OpenSpec capability is first recovered as a
-  verified baseline and committed without behavior changes. A later OpenSpec
-  delta and implementation commit make the intended change.
+- A spec written for existing behavior describes what it does today. Changing
+  that behavior is a separate OpenSpec change, so a reviewer can tell a
+  description from a decision. This is a writing rule (in
+  `openspec/config.yaml`), not a tooling-enforced commit ceremony.
 - Design, ADR, and research documents may retain alternatives and rationale,
   but do not form a second behavior contract.
 - **Stock core profile.** The repository runs the CLI's `core` profile
@@ -53,9 +54,8 @@ workflow, run as plain, stock upstream OpenSpec.
   STC matrix, no spec-policy check, no mandatory baseline-first commit
   enforced by tooling, and no `Status:` / evidence / legacy-ID labels inside
   spec requirement text. `openspec validate --strict` is the only mechanical
-  gate; linking code and tests back to a spec is a human review activity
-  (`code-review-8-axes`, `test-review-3-axes`), not a CI-enforced marker
-  convention.
+  gate; whether code and tests agree with a spec is checked in ordinary
+  code review, not by a CI-enforced marker convention.
 - **Journey specs are transitional.** The Journey documents under `docs/specs/`
   are migration evidence, not a governed contract. Each is converted into an
   OpenSpec capability and then deleted from `docs/specs/`; there is no
@@ -64,7 +64,7 @@ workflow, run as plain, stock upstream OpenSpec.
 ## Why
 
 **One source of truth** removes reconciliation between equally authoritative
-documents. **Baseline first** separates “what exists” from “what should
+documents. **Describe before changing** separates “what exists” from “what should
 change,” so each can be reviewed on its own evidence. **Delta changes** make
 behavior modifications explicit and archive them into the capability contract
 instead of rewriting history invisibly. **Explicit upgrades** keep the CLI,
@@ -75,12 +75,11 @@ version.
 
 `openspec/specs/` is the only active behavior root. Pre-adoption Journey
 documents may remain temporarily as frozen migration evidence but carry no
-authority and cannot grow. They leave as capabilities are baselined or retired.
+authority and cannot grow. They leave as they are converted into capabilities.
 
 OpenSpec strict validation is necessary but not sufficient: it proves artifact
-shape, not agreement with implementation. Linking spec, code and tests is now
-a human review activity (the `code-review-8-axes` and `test-review-3-axes`
-skills), not a CI-enforced marker convention — the tradeoff is less mechanical
+shape, not agreement with implementation. Whether code and tests agree with a spec is
+now checked in ordinary code review, not by a CI-enforced marker convention — the tradeoff is less mechanical
 ratcheting in exchange for a spec vocabulary that a product person, not only a
 programmer, can read and own.
 
