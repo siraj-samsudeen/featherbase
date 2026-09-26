@@ -32,6 +32,8 @@ interface SearchHit {
   title: string
 }
 
+const MOBILE_SIDEBAR_QUERY = '(width < 48rem)'
+
 // #101 Phase 3: recorded actions also stream to the server's user_event log
 // (batched; a beacon carries the final batch through unload). The sink is
 // injected here so lib/recents stays network-free for unit tests. Auth rides
@@ -112,6 +114,17 @@ export function AdminLayout() {
   // UI-025: on narrow (mobile) widths the sidebar collapses into a drawer
   // toggled from the navbar; on md+ it is always shown.
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isMobileSidebar, setIsMobileSidebar] = useState(
+    () => typeof window.matchMedia === 'function' && window.matchMedia(MOBILE_SIDEBAR_QUERY).matches,
+  )
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const media = window.matchMedia(MOBILE_SIDEBAR_QUERY)
+    const sync = () => setIsMobileSidebar(media.matches)
+    sync()
+    media.addEventListener('change', sync)
+    return () => media.removeEventListener('change', sync)
+  }, [])
 
   // #72: the avatar opens an account menu (Change password, Log out).
   const [accountOpen, setAccountOpen] = useState(false)
@@ -695,6 +708,8 @@ export function AdminLayout() {
             link inside closes the drawer. */}
         <aside
           data-testid="admin-sidebar"
+          inert={isMobileSidebar && !sidebarOpen ? true : undefined}
+          aria-hidden={isMobileSidebar && !sidebarOpen ? true : undefined}
           onClick={(e) => {
             if ((e.target as HTMLElement).closest('a')) setSidebarOpen(false)
           }}

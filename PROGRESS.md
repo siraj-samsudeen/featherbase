@@ -1,5 +1,36 @@
 # Progress Log
 
+## 2026-09-26 — Closed mobile Admin drawer leaves the tab order (#320)
+
+The shared Admin sidebar now follows its responsive state in the accessibility
+tree. On phones, a closed drawer is inert and hidden from assistive technology;
+keyboard-opening restores its links, and keyboard-closing removes them again
+without changing the existing slide transition. The static desktop sidebar
+remains exposed and keyboard-reachable.
+
+The Session DSL browser journey tabs from the last header control in the closed,
+open and re-closed phone states, waits for each transform transition, and checks
+the first sidebar link's focus directly. Its desktop case proves the same link
+remains in the tab order. The new check failed first because the offscreen New
+Table link received focus. After the fix, the isolated responsive journey passed
+2/2; web typecheck passed; the AdminLayout theme component tests passed 4/4 with
+their existing jsdom `scrollTo` warnings; strict OpenSpec passed 45 specs and 11
+changes; and the DSL guard passed 8 policy tests across 77 files. Feather review
+found and fixed one first-render gap by initializing the media query
+synchronously; the focused checks passed again afterward. No appearance or
+shared-style change was made, so browser semantics and focus were inspected
+rather than screenshots. The OpenSpec change remains unarchived pending owner
+acceptance.
+
+Parent review then caught a fractional-width gap between the first media query
+and Tailwind's desktop breakpoint, plus raw keyboard actions in the migrated
+journey. The query is now the exact `< 48rem` complement of `md:`. The same
+mounted page crosses 767 → 768 → 767 and proves the media listener changes both
+semantics and tab order; closed-state focus is checked against every sidebar
+descendant. Keyboard and supported link actions use the Session DSL, with named
+steps only for focus, viewport and layout measurements. The focused browser
+journey still passes 2/2 and web typecheck passes after merging PRs #348/#349.
+
 ## 2026-09-26 — App-owned rows delete from the generic form (#322)
 
 The generic FormView now echoes the revision it loaded whenever a row has one,
