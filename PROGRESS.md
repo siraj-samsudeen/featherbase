@@ -1,5 +1,23 @@
 # Progress Log
 
+## 2026-09-26 — Consume the published Postgres testing harness (#225)
+
+Both consumers now pin npm `feather-testing-postgres@0.2.0`, replacing the
+temporary Git dependency. The released harness delegates its Session DSL to
+Core and accepts Hono's synchronous response type and row-id session profiles,
+so both Hono wrappers and the web user-shape cast are removed. Git-only install
+workarounds in CI and the image build are no longer needed. The exact version
+pin follows the owner's request; no product behavior changes.
+
+Verification: frozen-lockfile installation, server/web typechecks, and
+`NODE_OPTIONS=--no-experimental-webstorage pnpm test` pass (shared 130,
+server 879 with 19 opt-in skips, web 172). `pnpm smoke` passes server checks
+and 3 browser checks. Feather review caught the remaining shared-server shim;
+the full suites were rerun after removing it. Workflow YAML parses and
+`git diff --check` passes. Docker image execution was not verified because
+this orb has no running Docker daemon. The preceding four-fix batch merged
+in PR #347; its GitHub unit and E2E jobs both passed.
+
 ## 2026-09-26 — Public forms render and preserve Choice answers (#331)
 
 Choice options now reach public forms through a shared config contract and

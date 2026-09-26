@@ -19,18 +19,11 @@ import { invalidateSources } from '../src/sources/registry'
 import { resetRateLimit } from '../src/rate-limit'
 import { issueSession } from '../src/auth'
 import { saveDoc } from '../src/document'
-import { createPgTest, type AppLike } from 'feather-testing-postgres'
-
-// Stale harness type: the pinned feather-testing-postgres commit declares
-// AppLike.request() -> Promise<Response>, but Hono's actual request() may
-// resolve synchronously (Response | Promise<Response>). Promise.resolve
-// preserves behavior exactly for every caller, which always awaits it —
-// this shim is removable once the harness releases a corrected AppLike.
-const appLike: AppLike = { request: (input, init) => Promise.resolve(app.request(input, init)) }
+import { createPgTest } from 'feather-testing-postgres'
 
 export const test = createPgTest(
   {
-    app: appLike,
+    app,
     sql,
     setDelegate: _setSqlDelegate,
     // A test may create/alter Tables inside its transaction; after rollback
