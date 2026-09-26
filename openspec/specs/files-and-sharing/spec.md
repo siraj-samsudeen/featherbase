@@ -3,9 +3,8 @@
 ## Purpose
 
 A file the user uploads is a row in its own right, not just something
-attached to a form, so it can be found and managed on its own, kept private
-or opened to anyone with its link, and a row can be opened to one more
-person without changing what that person can normally see.
+attached to a form, so it can be found and managed on its own, and kept
+private or opened to anyone with its link.
 
 ## Requirements
 
@@ -50,31 +49,3 @@ the meantime.
 - **WHEN** a user opens a private file while they still have access, and
   that access is removed moments later
 - **THEN** the link they already have keeps working until it expires
-
-### Requirement: Share a row with one more person
-
-The user SHALL be able to give one more person view, edit, or reshare
-access to a single row, without changing anything about that person's
-normal role. Taking that access away SHALL remove it immediately.
-
-#### Scenario: Share a row for viewing only
-
-- **WHEN** the user shares a row with a colleague for viewing only
-- **THEN** the colleague can open it
-- **AND** the colleague cannot edit it
-
-#### Scenario: Removing a share takes effect at once
-
-- **WHEN** the user removes a share they had granted
-- **THEN** the person it was shared with can no longer open that row
-
-### Requirement: Attachments and shares protect a row from deletion
-
-In an installed app, a row that still has a file attached or is shared with
-someone SHALL NOT be deleted until those are removed first.
-
-#### Scenario: A shared row resists deletion
-
-- **WHEN** a user tries to delete a row of an installed app that is still
-  shared with a colleague
-- **THEN** the deletion is refused

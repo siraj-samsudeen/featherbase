@@ -10,15 +10,15 @@ its own, spreading the work evenly across a pool of people.
 
 ### Requirement: Assign a row to someone
 
-The user SHALL be able to assign a row to a person. Assigning it SHALL add
-it to that person's own list of what's assigned to them and notify them,
-and a row SHALL be assignable to more than one person at once.
+Anyone who can read a row SHALL be able to assign it to a person. Assigning
+it SHALL add it to that person's own list of what's assigned to them and
+notify them (see Notifications, Email and Webhooks), and a row SHALL be
+assignable to more than one person at once.
 
 #### Scenario: Assign a row
 
 - **WHEN** the user assigns a row to Priya
 - **THEN** it appears on Priya's own list of assignments
-- **AND** Priya is notified
 
 ### Requirement: Tag a row freely
 
