@@ -34,9 +34,6 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Fetch GitHub git deps over https
-        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
-
       - name: Read current pin and latest published version
         id: versions
         run: |
