@@ -1,7 +1,7 @@
 import { resolve } from 'node:path'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, vi } from 'vitest'
+import { beforeEach } from 'vitest'
 import { discoverPackages } from 'server/src/runtime-packages'
 import { saveDoc } from 'server/src/document'
 import { sql } from 'server/src/db'
@@ -12,7 +12,6 @@ const TABLE = 'actionproof.work'
 const TABLE_PATH = encodeURIComponent(TABLE)
 
 beforeEach(clearSession)
-afterEach(() => vi.restoreAllMocks())
 
 async function installActionProof(admin: { post: (path: string, body: unknown) => Promise<unknown> }) {
   await discoverPackages([resolve('../..', 'runtime-apps/action-proof')])
@@ -37,19 +36,22 @@ test('generic form deletes a fresh app-owned row using the revision it loaded', 
 
 test('generic form refuses a stale app-owned delete and preserves the newer row', async ({ admin }) => {
   await installActionProof(admin)
-  const loaded = await saveDoc(TABLE, { row_id: 'stale-delete', title: 'Original 19 crates' }, 'Administrator', 'insert')
-  const rowId = String(loaded.row_id)
+  const created = await saveDoc(TABLE, { row_id: 'stale-delete', title: 'Original 19 crates' }, 'Administrator', 'insert')
+  const rowId = String(created.row_id)
+  const loadedRevision = new Date('2000-01-01T00:00:00.000Z')
+  await sql`update actionproof.work set updated_at = ${loadedRevision} where row_id = ${rowId}`
 
   await renderApp(`/featherbase/admin/${TABLE_PATH}/${rowId}`, admin)
   expect(await screen.findByDisplayValue('Original 19 crates')).toBeInTheDocument()
 
-  await new Promise(resolve => setTimeout(resolve, 5))
   const newer = await saveDoc(TABLE, {
     row_id: rowId,
-    updated_at: loaded.updated_at,
+    updated_at: loadedRevision,
     title: 'Newer 83 crates',
   }, 'Administrator')
-  expect(new Date(newer.updated_at as Date).getTime()).toBeGreaterThan(new Date(loaded.updated_at as Date).getTime())
+  const newerRevision = newer.updated_at as Date
+  expect(newerRevision).toBeInstanceOf(Date)
+  expect(newerRevision.getTime()).toBeGreaterThan(loadedRevision.getTime())
 
   const user = userEvent.setup()
   await user.click(screen.getByTestId('form-delete'))
@@ -57,7 +59,7 @@ test('generic form refuses a stale app-owned delete and preserves the newer row'
 
   await waitFor(() => expect(screen.getByTestId('delete-row-error')).toHaveTextContent('has been modified after you loaded it'))
   expect(screen.getByTestId('delete-row-dialog')).toBeInTheDocument()
-  expect(await sql`select row_id, title from actionproof.work where row_id = ${rowId}`).toEqual([
-    { row_id: 'stale-delete', title: 'Newer 83 crates' },
+  expect(await sql`select row_id, title, updated_at from actionproof.work where row_id = ${rowId}`).toEqual([
+    { row_id: 'stale-delete', title: 'Newer 83 crates', updated_at: newerRevision },
   ])
 })
