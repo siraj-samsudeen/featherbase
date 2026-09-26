@@ -52,29 +52,43 @@ test.beforeAll(async ({ request }) => {
   bobDoc = ((await b.json()) as { row_id: string }).row_id
 })
 
-test('WEB-003: portal user sees only their own documents', async ({ page }) => {
-  await loginAs(page, ALICE, PWD, LANDING)
-  await page.goto(`/portal/${encodeURIComponent(DT)}`)
-
-  await expect(page.getByTestId('portal-title')).toContainText(DT)
-  await expect(page.getByTestId('portal-user')).toContainText(ALICE)
-  // Alice's own ticket is listed; Bob's is not.
-  await expect(page.getByTestId('portal-list')).toContainText('Alice cannot log in')
-  await expect(page.getByTestId('portal-list')).not.toContainText('Bob billing question')
-  await expect(page.getByTestId('portal-row')).toHaveCount(1)
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
+// `loginAs` drives an identity other than Administrator, so it stays a named
+// step; navigation to the portal page moves onto `session.visit`.
+test('WEB-003: portal user sees only their own documents', async ({ session }) => {
+  await session.step('sign in as Alice', async ({ page }) => {
+    await loginAs(page, ALICE, PWD, LANDING)
+  })
+  await session.visit(`/portal/${encodeURIComponent(DT)}`)
+  await session.step('sees only her own ticket', async ({ page }) => {
+    await expect(page.getByTestId('portal-title')).toContainText(DT)
+    await expect(page.getByTestId('portal-user')).toContainText(ALICE)
+    // Alice's own ticket is listed; Bob's is not.
+    await expect(page.getByTestId('portal-list')).toContainText('Alice cannot log in')
+    await expect(page.getByTestId('portal-list')).not.toContainText('Bob billing question')
+    await expect(page.getByTestId('portal-row')).toHaveCount(1)
+  })
 })
 
-test("WEB-003: opening another user's document returns 403", async ({ page }) => {
-  await loginAs(page, ALICE, PWD, LANDING)
+test("WEB-003: opening another user's document returns 403", async ({ session }) => {
+  await session.step('sign in as Alice', async ({ page }) => {
+    await loginAs(page, ALICE, PWD, LANDING)
+  })
   // Directly navigate to Bob's ticket — the API denies it (if_owner).
-  await page.goto(`/portal/${encodeURIComponent(DT)}/${encodeURIComponent(bobDoc)}`)
-  await expect(page.getByTestId('portal-forbidden')).toBeVisible()
-  await expect(page.getByTestId('portal-doc')).toHaveCount(0)
+  await session.visit(`/portal/${encodeURIComponent(DT)}/${encodeURIComponent(bobDoc)}`)
+  await session.step('the API denies it', async ({ page }) => {
+    await expect(page.getByTestId('portal-forbidden')).toBeVisible()
+    await expect(page.getByTestId('portal-doc')).toHaveCount(0)
+  })
 })
 
-test('WEB-003: the owner CAN open their own document', async ({ page }) => {
-  await loginAs(page, BOB, PWD, LANDING)
-  await page.goto(`/portal/${encodeURIComponent(DT)}/${encodeURIComponent(bobDoc)}`)
-  await expect(page.getByTestId('portal-doc')).toBeVisible()
-  await expect(page.getByTestId('portal-field-subject')).toContainText('Bob billing question')
+test('WEB-003: the owner CAN open their own document', async ({ session }) => {
+  await session.step('sign in as Bob', async ({ page }) => {
+    await loginAs(page, BOB, PWD, LANDING)
+  })
+  await session.visit(`/portal/${encodeURIComponent(DT)}/${encodeURIComponent(bobDoc)}`)
+  await session.step('sees his own ticket', async ({ page }) => {
+    await expect(page.getByTestId('portal-doc')).toBeVisible()
+    await expect(page.getByTestId('portal-field-subject')).toContainText('Bob billing question')
+  })
 })
