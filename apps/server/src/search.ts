@@ -1,7 +1,6 @@
 import { sql } from './db'
-import { getMeta } from './meta'
 import { hasPermission } from './permissions'
-import { tableRelation } from './table-engine'
+import { scopedWhere } from './query'
 
 // UI-014: awesomebar global search. Matches row names (and the
 // Table's title_column) across every regular Table the user can read.
@@ -32,18 +31,18 @@ export async function globalSearch(query: string, user: string): Promise<SearchH
   for (const t of tables) {
     if (hits.length >= TOTAL_CAP) break
     if (!(await hasPermission(user, t.name as string, 'read'))) continue
-    const meta = await getMeta(t.name as string)
-    const title = meta.title_column
+    const { meta, table, where, cols } = await scopedWhere(t.name as string, user, [])
+    const title = meta.title_column && cols.has(meta.title_column) ? meta.title_column : null
     // The wire key is always `row_id`; `Table` alone stores it as `name`.
     const key = sql(meta.row_key)
     const rows = title
       ? await sql`
-          select ${key} as row_id, ${sql(title)} as title from ${sql(await tableRelation(meta.name))}
-          where ${key} ilike ${like} or ${sql(title)} ilike ${like}
+          select ${key} as row_id, ${sql(title)} as title from ${sql(table)}
+          where ${where} and (${key} ilike ${like} or ${sql(title)} ilike ${like})
           limit ${PER_TABLE}`
       : await sql`
-          select ${key} as row_id, ${key} as title from ${sql(await tableRelation(meta.name))}
-          where ${key} ilike ${like}
+          select ${key} as row_id, ${key} as title from ${sql(table)}
+          where ${where} and ${key} ilike ${like}
           limit ${PER_TABLE}`
     for (const row of rows) {
       hits.push({
