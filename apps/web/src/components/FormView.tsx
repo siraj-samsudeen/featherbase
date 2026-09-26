@@ -287,8 +287,6 @@ export function FormView({
     else if (!f.hidden) sections[sections.length - 1].push(f)
   }
 
-  // @spec generic_core_form_controls_fit_viewport
-  // @spec generic_row_editor_preserves_field_contract
   return (
     <div data-testid="form-view" className="min-w-0 max-w-5xl [overflow-wrap:anywhere]">
       <nav className="mb-2 text-xs text-gray-500" data-testid="breadcrumbs">
@@ -620,7 +618,6 @@ function FieldControl({
   const settings = useSettings()
   const { t } = useI18n()
   const base = 'fc-input'
-  // @spec generated_controls_have_accessible_names
   const instanceId = useId()
   const controlId = `${instanceId}-${field.column_name}`
   const labelId = `${controlId}-label`
@@ -820,7 +817,6 @@ function ChildGrid({
   // Keep UI identity out of row data sent to the server. Edits transfer the
   // draft key; movement/removal retains row objects. Persisted IDs already
   // provide identity, scoped by this grid's React instance ID.
-  // @spec generated_controls_have_accessible_names
   function rowKey(row: Row): string {
     if (row.row_id != null) return `saved-${row.row_id}`
     let key = draftKeys.current.get(row)

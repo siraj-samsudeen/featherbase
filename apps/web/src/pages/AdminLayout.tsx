@@ -305,7 +305,6 @@ export function AdminLayout() {
     router.history.push(entry.path)
   }
 
-  // @spec awesomebar_opens_matching_destinations
   function openDoc(hit: SearchHit) {
     recordSearch(search.trim())
     setSearch('')
@@ -465,7 +464,6 @@ export function AdminLayout() {
                   <span className="ml-2 text-xs text-[var(--color-ink-faint)]">recent search</span>
                 </button>
               ))}
-              {/* @spec awesomebar_results_disambiguate_destinations */}
               {commandHits.length > 0 && (
                 <h2 data-testid="awesomebar-commands-heading" className="px-3 pt-2 text-xs font-semibold text-[var(--color-ink-muted)]">Commands</h2>
               )}

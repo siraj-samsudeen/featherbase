@@ -25,8 +25,6 @@ async function targetPackage() {
 }
 
 describe('runtime upgrades', () => {
-  // @spec core_runtime_client_pins_active_identity.identity_bootstrap_fails_closed
-  // @spec core_runtime_client_pins_active_identity.indirect_requests_pin_each_app
   test('core identity snapshot is host derived; multiple identities never override availability or version', async ({ admin, createUser }) => {
     const { directory } = await targetPackage()
     try {
@@ -59,7 +57,6 @@ describe('runtime upgrades', () => {
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
-  // @spec runtime_upgrade_preserves_owned_work.tasker_description_is_generic_migration
   test('Tasker upgrade preserves complete existing work and matches fresh v2 schema', async ({ admin }) => {
     const source = resolve('../..', 'runtime-apps/fixtures/tasker-v1')
     const directory = await mkdtemp(resolve('test/.tasker-upgrade-'))
@@ -130,11 +127,6 @@ describe('runtime upgrades', () => {
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
-  // @spec runtime_upgrade_identity
-  // @spec runtime_upgrade_reviewed_plan
-  // @spec runtime_upgrade_commit_and_activation
-  // @spec runtime_upgrade_preserves_owned_work
-  // @spec runtime_upgrade_recovery_boundary
   test('preview, commit, restart, activate and retry preserve asymmetric rows and grants', async ({ admin, createUser }) => {
     const source = resolve('../..', 'runtime-apps/other')
     const { directory } = await targetPackage()
@@ -175,7 +167,6 @@ describe('runtime upgrades', () => {
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
-  // @spec runtime_upgrade_commit_and_activation.failed_migration_preserves_active_version
   test('second DDL failure rolls back first addition and ledger; retry runs exactly once', async ({ admin }) => {
     const source = resolve('../..', 'runtime-apps/other')
     const { directory, manifest } = await targetPackage()
@@ -205,8 +196,6 @@ describe('runtime upgrades', () => {
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
-  // @spec runtime_upgrade_identity.upgrade_history_is_a_prefix
-  // @spec runtime_upgrade_reviewed_plan.destructive_upgrade_refused
   test('malformed, incompatible, skipped, changed permissions and undeclared destructive changes fail closed', async ({ admin }) => {
     const source = resolve('../..', 'runtime-apps/other')
     const { directory, manifest } = await targetPackage()
@@ -239,8 +228,6 @@ describe('runtime upgrades', () => {
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
-  // @spec runtime_upgrade_reviewed_plan.reviewed_artifact_changes
-  // @spec runtime_upgrade_recovery_boundary
   test('preview digest changes on enablement; missing and edited artifact cannot mutate schema', async ({ admin }) => {
     const source = resolve('../..', 'runtime-apps/other')
     const { directory } = await targetPackage()
@@ -261,7 +248,6 @@ describe('runtime upgrades', () => {
     } finally { await rm(directory, { recursive: true, force: true }) }
   })
 
-  // @spec runtime_upgrade_commit_and_activation.upgrade_drains_admitted_work
   test('upgrade waits for admitted post-commit save; queued disable preserves disabled activation', async ({ admin }) => {
     const source = resolve('../..', 'runtime-apps/other')
     const { directory } = await targetPackage()
@@ -301,7 +287,6 @@ describe('runtime upgrades', () => {
     }
   })
 
-  // @spec runtime_upgrade_identity
   test('duplicate-different targets and same-version replacement after commit cannot replay success', async ({ admin }) => {
     const source = resolve('../..', 'runtime-apps/other')
     const { directory, manifest } = await targetPackage()
@@ -327,8 +312,6 @@ describe('runtime upgrades', () => {
     } finally { await rm(directory, { recursive: true, force: true }); await rm(duplicate, { recursive: true, force: true }) }
   })
 
-  // @spec runtime_upgrade_identity
-  // @spec runtime_upgrade_reviewed_plan
   test('disabled upgrade, checksum drift, downgrade, missing prior and code-only next version', async ({ admin }) => {
     const source = resolve('../..', 'runtime-apps/other')
     const { directory, manifest } = await targetPackage()

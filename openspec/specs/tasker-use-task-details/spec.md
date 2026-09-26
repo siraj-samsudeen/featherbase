@@ -1,7 +1,5 @@
 # Use Task Details
 
-**IDs:** `task_detail_has_three_modes` · `task_activity_stays_in_tasker` · `responsive_detail_preserves_workspace_context`
-
 ## Purpose
 
 A team member can open a task at the depth the work needs and understand its
@@ -10,9 +8,6 @@ current context, discussion and changes without leaving Tasker.
 ## Requirements
 
 ### Requirement: task_detail_has_three_modes
-Status: governed (#296) · Built
-
-> evidence: proven via task_detail_flow — one task switches among inspector, focused and compact modes and saves the private preference.
 
 Task details SHALL support compact, right-inspector and focused-page modes. The
 right inspector SHALL be the initial default. Switching modes SHALL retain the
@@ -24,9 +19,6 @@ survives reload.
 - **THEN** the same task remains selected and every mode remains reversible.
 
 ### Requirement: task_activity_stays_in_tasker
-Status: governed (#296) · Built · evidence gap
-
-> evidence: rule-tier via task_detail_flow — description, comments and field history are asserted; actor and time rendering lacks a dedicated assertion.
 
 Task details SHALL show the current description, append-only comment entry,
 existing comments and shared field-change history in chronological order. Each
@@ -40,9 +32,6 @@ SHALL NOT require navigation to the generic Featherbase form.
 Attachments may continue to use the generic Featherbase surface in this slice.
 
 ### Requirement: responsive_detail_preserves_workspace_context
-Status: governed (#296) · Built · rule-tier evidence
-
-> evidence: rule-tier via projects_landing_flow, responsive_workspace_flow — project context and mobile overflow are executable; compact full-screen locking and background hiding were visually inspected, not asserted by a browser test.
 
 Opening a task on a wide desktop SHALL use the right Inspector while retaining
 the current list or project context. At compact and mobile widths, the Inspector

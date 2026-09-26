@@ -21,7 +21,6 @@ const runTransition = (body: string) => sql.begin(async tx => {
   await tx.unsafe(body)
 })
 
-// @spec prototype_transition_preserves_work.occupied_destination_aborts
 test('PKG-H1: prototype transition refuses occupied destinations without changing old work', async ({ admin }) => {
   registerApp(prototype)
   await installApp('task-management')
@@ -33,7 +32,6 @@ test('PKG-H1: prototype transition refuses occupied destinations without changin
   expect(await admin.get(`/api/table/Team%20Task/${task.row_id}`)).toMatchObject({ task_title: 'Do not discard' })
 })
 
-// @spec prototype_transition_preserves_work.transition_keeps_discussion_and_focus
 test('PKG-H1: prototype transition preserves work, references, comments, focus and grants', async ({ admin, createUser }) => {
   registerApp(prototype)
   await installApp('task-management')
@@ -89,7 +87,6 @@ test('PKG-H1: prototype transition preserves work, references, comments, focus a
   invalidateMeta()
   expect(await discoverPackages([resolve('../..', 'runtime-apps/fixtures/tasker-v1')])).toEqual([])
   await loadInstalledApps()
-  // @spec runtime_upgrade_identity.unversioned_legacy_install_fails_closed
   // 0090 recorded permissions only. Discovery cannot infer which package
   // version produced that schema; recovering a reviewed identity is explicit.
   await expect(member.get(`/api/table/tasker.task/${task.row_id}`)).rejects.toMatchObject({ status: 403 })

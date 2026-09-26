@@ -25,7 +25,6 @@ export interface PackageHookContext {
 }
 type Validator = (context: PackageHookContext) => void | Promise<void>
 
-// @spec versioned_trusted_artifact
 const manifestSchema = z.object({
   manifestVersion: z.literal(1),
   apiVersion: z.literal(1),
@@ -128,8 +127,6 @@ export async function verifySelectedRuntimePackage(name: string) {
   if (row && !matchesInstalled(pkg, row)) refuse('Restore the exact installed artifact before enabling')
 }
 
-// @spec runtime_upgrade_identity
-// @spec runtime_upgrade_identity.unversioned_legacy_install_fails_closed
 function matchesInstalled(pkg: RuntimePackage, row: Record<string, unknown>) {
   if (row.package_version !== pkg.version) return false
   if (row.artifact_digest) return row.artifact_digest === pkg.digest
@@ -174,7 +171,6 @@ export function discoverPackages(paths: string[]) {
         if (names.size !== manifest.tables.length || !names.has(manifest.entryTable))
           throw new Error('Duplicate Tables or unknown entryTable')
         for (const table of manifest.tables) {
-          // @spec logical_identity_maps_storage
           if (!table.name.startsWith(`${manifest.name}.`) || !table.label || table.system || table.data_source)
             throw new Error('Package Tables require qualified ownership, label and local storage')
         }
@@ -193,7 +189,6 @@ export function discoverPackages(paths: string[]) {
         const readOperations = manifest.reads?.operations ?? {}
         const allOperations = [...Object.values(actionOperations), ...Object.values(readOperations)]
         for (const operation of allOperations) validateOperationFacts(operation, manifest.tables)
-        // @spec declared_app_actions_fail_closed
         for (const declaration of [manifest.actions, manifest.reads]) {
           if (!declaration) continue
           if (!manifest.server) throw new Error('Declared operations require a server module')
@@ -229,7 +224,6 @@ export function discoverPackages(paths: string[]) {
           runtime_manifest: { ...manifest, packageName: pkg.name, packageVersion: pkg.version } }
         artifacts.set(key, { name: manifest.name, title: manifest.title,
           entryTable: manifest.entryTable, clientRoot, root, version: pkg.version, digest, manifest, app,
-          // @spec explicit_runtime_policy_upgrade
           // V1 stays recognizable as an exact upgrade predecessor, never gets a default policy.
           actions: manifest.actions ? { entryTable: manifest.entryTable, tables: manifest.actions.tables, handlers, operations: bindOperations(actionOperations) } : undefined,
           reads: manifest.reads ? { entryTable: manifest.entryTable, tables: manifest.reads.tables, handlers: readHandlers, operations: bindOperations(readOperations) } : undefined })
@@ -238,7 +232,6 @@ export function discoverPackages(paths: string[]) {
         console.warn('[runtime-packages] Artifact rejected:', directory, error instanceof Error ? error.message : String(error))
       }
     }
-    // @spec runtime_upgrade_identity.restart_selects_installed_code
     const installed = await sql`select * from installed_app where runtime_package`
     for (const pkg of artifacts.values()) {
       const row = installed.find(r => r.name === pkg.name)
@@ -288,7 +281,6 @@ async function upgradePlan(name: string, version: string) {
   if (canonical(prior.manifest.permissions) !== canonical(target.manifest.permissions) || prior.app.runtime_manifest == null ||
       (prior.app.runtime_manifest as { packageName: string }).packageName !== (target.app.runtime_manifest as { packageName: string }).packageName)
     refuse('Permission or package identity changes are unsupported')
-  // @spec runtime_upgrade_reviewed_plan.reviewed_artifact_changes
   const plan = { name, currentVersion: prior.version, targetVersion: target.version,
     currentArtifact: prior.digest, targetArtifact: target.digest, enabled: row.enabled,
     migrations: pending.map(m => ({ id: m.id, checksum: checksum(m), operations: m.operations })),
@@ -312,8 +304,6 @@ export function upgradeApp(name: string, version: string, planId: string) {
     }
     const prepared = await upgradePlan(name, version)
     if (prepared.plan.planId !== planId) throw new AppError('ConflictError', 'Upgrade plan is stale; preview and review again')
-    // @spec runtime_upgrade_commit_and_activation
-    // @spec runtime_upgrade_commit_and_activation.failed_migration_preserves_active_version
     try {
       await withTransaction(async () => {
         await applyAdditions(prepared.pending, name)
@@ -338,8 +328,6 @@ export function activateAppUpgrade(name: string, version: string) {
   return appOperation(async () => {
     const [row] = await sql`select * from installed_app where name = ${name} and runtime_package`
     if (!row || row.package_version !== version) refuse('Activate requires the committed package version')
-    // @spec runtime_upgrade_recovery_boundary
-    // @spec runtime_upgrade_recovery_boundary.committed_target_disappears
     const target = await verifyArtifact(artifacts.get(`${name}@${version}`))
     if (!matchesInstalled(target, row)) refuse('Restore the exact committed artifact before activation')
     selectPackage(target)
@@ -350,7 +338,6 @@ export function activateAppUpgrade(name: string, version: string) {
 }
 
 export async function appCatalog(user: string) {
-  // @spec app_owns_client_root
   const installed = await listInstalledApps()
   const result = []
   for (const item of installed) {
@@ -367,7 +354,6 @@ export async function appAsset(name: string, asset: string, user: string) {
     throw new AppError('NotFoundError', 'App is unavailable')
   const pkg = packages.get(name)!
   try {
-    // @spec app_owns_client_root
     const file = await contained(pkg.clientRoot!, asset || 'index.html')
     if (!(await stat(file)).isFile()) throw new Error('Not a file')
     return { file, bytes: await readFile(file) }

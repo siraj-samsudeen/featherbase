@@ -1,25 +1,51 @@
 schema: spec-driven
 
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
 context: |
-  Featherbase is a TypeScript monorepo for a metadata-driven low-code platform.
-  OpenSpec is the sole behavior specification and mandatory change workflow.
-  New behavior starts with a change. Existing behavior without an OpenSpec
-  capability is first recovered and committed as a verified, behavior-neutral
-  baseline; only a later change may modify it. See root AGENTS.md and ADR 0010.
+  Featherbase is a metadata-driven low-code app platform (TypeScript monorepo:
+  apps/server, apps/web, runtime apps such as Tasker). Specs are read by
+  product people and new contributors, not just programmers.
 
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
 rules:
   specs:
-    - Use globally unique descriptive snake_case requirement and scenario slugs.
-    - 'Label every requirement `Status: governed` or `Status: characterized (#issue)`.'
-    - Record facts outside Featherbase's control as dated domain assumptions with a detector.
-  tasks:
-    - Include strict OpenSpec validation and STC verification for behavior changes.
+    - Write for a product person. Plain words, short sentences. No code, table, column, endpoint, file or function names.
+    - Write from the user's side. Say what the user can do and what they get.
+    - Tell the user what they benefit from knowing, including what the system does for them, in their words. Leave out incidental detail such as field defaults, every field, or internal mechanics.
+    - "Example: 'Typing a title and pressing Enter is all it takes to record a task. The task gets added to the Inbox for later processing.' Not a list of the fields a new task starts with."
+    - One requirement per promise to the user. Keep scenarios to the few that show the promise, usually one to three.
+    - A scenario gives a concrete example the reader can try; it does not repeat the requirement. Scenarios say "the user".
+    - No screen labels, button text or placeholder text; they change with the UI.
+    - Explain a term the first time it is used.
+    - Name requirements and scenarios in plain words, for example "Capture a task", not identifiers. A capability with one requirement names it after the capability.
+    - Use only OpenSpec's own structure (Purpose, Requirements, WHEN/THEN scenarios). Fold any precondition into WHEN; no GIVEN. No status, evidence, ID or legacy labels.
+    - A spec written for existing behavior describes what it does today. Changing that behavior is a separate change.
+  proposal:
+    - Keep it short and say why in terms of what users get.
 
-operations:
-  apply:
-    guidance:
-      - Put `@spec <slug>` at the deciding code line and beside each asymmetric checking test.
-      - Never combine a legacy baseline recovery commit with behavior modifications.
-  archive:
-    guidance:
-      - Run `pnpm check:specs` after syncing the delta into main specs.
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing

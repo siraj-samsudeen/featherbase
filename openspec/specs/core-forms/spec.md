@@ -6,7 +6,6 @@ Describes the generic metadata-driven row editor and its attachment operations, 
 ## Requirements
 
 ### Requirement: generic_row_editor_preserves_field_contract
-Status: characterized (#296)
 
 The generic editor SHALL render metadata-defined fields, mark edited values unsaved, persist valid edits on Save, and keep invalid edits visible with field errors. Existing rows SHALL expose linked attachments with upload, download and removal operations.
 
@@ -19,7 +18,6 @@ The generic editor SHALL render metadata-defined fields, mark edited values unsa
 - **THEN** both are initially listed and downloadable, and removal deletes only the selected attachment and its storage object
 
 ### Requirement: generic_core_form_controls_fit_viewport
-Status: governed (#296)
 
 At 375px and desktop widths, generic forms SHALL keep navigation, heading, status, editable fields, Save and attachment upload/download/removal readable and horizontally reachable without page-level clipping. Long identifiers, filenames and error text SHALL not push controls outside the available width. Desktop sections and supplemental panels SHALL retain their wider layout. Keyboard users SHALL be able to focus and operate attachment controls without hover.
 

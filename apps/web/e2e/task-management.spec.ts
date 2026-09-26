@@ -4,7 +4,6 @@ test.beforeAll(async ({ request }) => {
   await ensureRuntimeApp(request, 'tasker')
 })
 
-// @spec capture_neutral_task.entry_stays_ready
 test('tasker_browser_flow: PKG-J1 PKG-R4 capture, project entry, urgency, and focus survive reload', async ({
   page,
 }) => {
@@ -64,8 +63,6 @@ test('tasker_browser_flow: PKG-J1 PKG-R4 capture, project entry, urgency, and fo
     name: 'Assign Compare September closing stock',
   })).toHaveValue('')
 
-  // @spec task_view_controls_are_accessible.filter_without_pointer
-  // @spec task_view_state_is_visible
   const filterButton = page.locator('.tasker-filter-button')
   await filterButton.focus()
   await page.keyboard.press('Enter')
@@ -103,7 +100,6 @@ test('tasker_browser_flow: PKG-J1 PKG-R4 capture, project entry, urgency, and fo
 test.describe('phone capture', () => {
   test.use({ viewport: { width: 375, height: 720 } })
 
-  // @spec workspace_adapts_to_available_space.mobile_projects_landing
   test('responsive_workspace_flow: Tasker and its Projects landing have no page-level horizontal overflow', async ({ page }) => {
     await page.goto('/tasker/')
     await expect(page.getByRole('textbox', { name: 'Quick capture' })).toBeVisible()

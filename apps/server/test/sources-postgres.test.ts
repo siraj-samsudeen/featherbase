@@ -382,7 +382,6 @@ describe('EDS-11: source failure', () => {
 })
 
 describe('EDS-2: foreign keys reflect as References', () => {
-  // @spec source_candidates_preserve_fk_metadata
   test('FK edges surface on introspect and converge in child-first order', async ({ admin }) => {
     await makeSource(admin)
     const intro = (await admin.get(
@@ -436,7 +435,6 @@ describe('EDS-2: foreign keys reflect as References', () => {
     expect(cols.get('garage_id')).toMatchObject({ column_type: 'Int', reference_table: null })
   })
 
-  // @spec source_preview_explains_references
   test('a doubly-bound relation resolves to a deterministic Reference target', async ({
     admin,
   }) => {
@@ -478,7 +476,6 @@ describe('EDS-2: foreign keys reflect as References', () => {
     })
   })
 
-  // @spec source_preview_explains_references
   test('Reference preview does not substitute a later matching key for the first binding', async ({ admin }) => {
     await makeSource(admin)
     for (const [name, key] of [['Alpha Alternate', 'reg_no'], ['Zeta Primary', 'id']]) {

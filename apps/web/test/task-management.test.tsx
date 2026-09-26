@@ -31,7 +31,6 @@ async function install() {
   await installApp(APP)
 }
 
-// @spec together_groups_active_responsibility
 test('together_groups_active_responsibility: retains a person outside the fetched directory page', () => {
   expect(peopleWithTaskResponsibility(
     [{ row_id: 'first@example.test' }],
@@ -68,7 +67,6 @@ test('quick_capture_flow: Enter captures a title-only task in Inbox', async ({ a
   }
 })
 
-// @spec lightweight_project_entry.add_initial_project_tasks
 test('lightweight_project_entry: a project accepts rapid unassigned task entry', async ({ admin }) => {
   await install()
   try {
@@ -105,9 +103,6 @@ test('lightweight_project_entry: a project accepts rapid unassigned task entry',
   }
 })
 
-// @spec projects_landing_connects_directory_and_creation
-// @spec responsive_detail_preserves_workspace_context
-// @spec workspace_navigation_is_stable
 test('projects_landing_flow: the directory opens a project and keeps its context behind task details', async ({ admin }) => {
   await install()
   try {
@@ -143,12 +138,6 @@ test('projects_landing_flow: the directory opens a project and keeps its context
   }
 })
 
-// @spec task_search_stays_in_scope.title_and_description_search
-// @spec task_filters_combine_dimensions.or_within_and_between
-// @spec task_view_state_is_visible.zero_matches_are_recoverable
-// @spec saved_task_views_are_private_fixed.saved_definition_round_trip
-// @spec saved_task_views_are_private_fixed.project_view_keeps_project_boundary
-// @spec saved_view_changes_are_explicit.reset_detects_changes
 test('find_and_reuse_task_view: compound project criteria stay visible and save privately without changing tasks', async ({ admin, createUser }) => {
   await install()
   try {
@@ -293,10 +282,6 @@ test('personal_destination_assigns_owner: Inbox work moved to Personal tasks ass
   }
 })
 
-// @spec focus_is_private_ordered.mixed_daily_shortlist
-// @spec my_work_has_no_duplicates.focused_assigned_once
-// @spec focus_never_mutates_task.star_unassigned_task
-// @spec stale_focus_self_heals.missing_focus_reference
 test('personal_worklist_flow: My Focus is ordered, private, and does not duplicate assigned work', async ({ admin, createUser }) => {
   await install()
   try {
@@ -350,7 +335,6 @@ test('personal_worklist_flow: My Focus is ordered, private, and does not duplica
   }
 })
 
-// @spec discussion_stays_append_only.optional_inactive_explanation
 test('discussion_stays_append_only: an inactive state offers but does not require an explanation', async ({ admin }) => {
   await install()
   try {
@@ -388,7 +372,6 @@ test('discussion_stays_append_only: an inactive state offers but does not requir
   }
 })
 
-// @spec assignment_state_independent
 test('assignment_state_independent: task rows offer one-click self-assignment', async ({ admin }) => {
   await install()
   try {
@@ -410,9 +393,6 @@ test('assignment_state_independent: task rows offer one-click self-assignment', 
   }
 })
 
-// @spec project_name_is_correctable.rename_keeps_tasks
-// @spec project_tabs_are_private_ordered.frequent_project_switching
-// @spec together_groups_active_responsibility.assigned_unassigned_and_finished
 test('project_coordination_flow: rename, private tabs, and Together retain their separate rules', async ({ admin, createUser }) => {
   await install()
   try {
@@ -464,7 +444,6 @@ test('project_coordination_flow: rename, private tabs, and Together retain their
   }
 })
 
-// @spec markdown_cannot_execute_html.malicious_markup_is_inert
 test('markdown_safety: links lists and code render but HTML and unsafe URLs remain inert', () => {
   const { container } = render(<Markdown>{'- First\n- Second\n\n[Safe](https://example.test) [Unsafe](javascript:alert(1))\n\n`inline`\n\n```js\nconst n = 3\n```\n\n<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>\n\n<iframe src="https://example.test"></iframe>'}</Markdown>)
   expect(screen.getAllByRole('listitem')).toHaveLength(2)
@@ -474,7 +453,6 @@ test('markdown_safety: links lists and code render but HTML and unsafe URLs rema
   expect(container.querySelector('a[href^="javascript:"]')).toBeNull()
 })
 
-// @spec project_markdown_is_shared.shared_context_and_empty_content
 test('project_description_flow: explicit editing cancel save clear and a second member see shared context', async ({ admin, createUser }) => {
   await install()
   try {
@@ -501,7 +479,6 @@ test('project_description_flow: explicit editing cancel save clear and a second 
   } finally { await uninstallApp(APP).catch(() => {}) }
 })
 
-// @spec project_markdown_is_shared.stale_project_draft
 test('project_description_conflict: competing project edit is not overwritten', async ({ admin }) => {
   await install()
   try {
@@ -520,8 +497,6 @@ test('project_description_conflict: competing project edit is not overwritten', 
   } finally { await uninstallApp(APP).catch(() => {}) }
 })
 
-// @spec assignment_state_independent.assign_not_started_task
-// @spec my_work_has_no_duplicates
 test('take_membership: Take persists responsibility into My Work, not the Personal destination', async ({ admin, createUser }) => {
   await install()
   try {
@@ -543,7 +518,6 @@ test('take_membership: Take persists responsibility into My Work, not the Person
   } finally { location.hash = ''; await uninstallApp(APP).catch(() => {}) }
 })
 
-// @spec task_activity_stays_in_tasker.correct_title_and_description
 test('task_correction_flow: save and cancel correct the title and permit an empty description', async ({ admin }) => {
   await install()
   try {
@@ -577,7 +551,6 @@ test('task_correction_flow: save and cancel correct the title and permit an empt
   }
 })
 
-// @spec task_activity_stays_in_tasker.cancel_or_conflict_preserves_work
 test('task_correction_conflict: a background refresh cannot rebase an unsaved draft', async ({ admin }) => {
   await install()
   try {
@@ -603,8 +576,6 @@ test('task_correction_conflict: a background refresh cannot rebase an unsaved dr
   }
 })
 
-// @spec task_detail_has_three_modes.choose_depth_without_losing_task
-// @spec task_activity_stays_in_tasker.comment_and_edit_are_visible
 test('task_detail_flow: one task switches among three detail modes with comments and history', async ({ admin }) => {
   await install()
   try {
@@ -674,7 +645,6 @@ test('task details do not carry unsaved text into another task', async ({ admin 
   }
 })
 
-// @spec task_lists_present_one_consistent_control_set
 test('task_list_surface: every task row exposes the same shared and private controls', async ({ admin }) => {
   await install()
   try {

@@ -3,7 +3,6 @@ import { sql } from '../src/db'
 import { qualifyPlatformSql } from '../src/platform-schema'
 
 describe('platform SQL relation mapping', () => {
-  // @spec platform_storage_is_explicit.fresh_and_upgrade_converge_to_same_shape
   it('PKG-R5: a fresh install owns core storage and hardened functions while public retains only the site registry', async () => {
     const [shape] = await sql`
       select to_regclass('featherbase.table_def') is not null as core,

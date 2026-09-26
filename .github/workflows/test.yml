@@ -102,9 +102,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # The repository-pinned OpenSpec validates both main capabilities and
-      # active changes strictly. The STC matrix then checks @spec links across
-      # spec, deciding code, and asymmetric tests; the root-policy ratchet
-      # prevents a second behavior-contract tree reappearing under docs/specs.
+      # active changes strictly.
       - name: Validate behavior specifications
         run: pnpm check:specs
 

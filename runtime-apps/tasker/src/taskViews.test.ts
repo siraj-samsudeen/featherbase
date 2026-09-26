@@ -16,7 +16,6 @@ const tasks: (FilterableTask & { id: string })[] = [
 ]
 
 describe('task view criteria', () => {
-  // @spec task_search_stays_in_scope.title_and_description_search
   it('searches title and current description without adding tasks outside the supplied scope', () => {
     const setup = emptyTaskViewSetup()
     setup.search = 'warehouse'
@@ -24,7 +23,6 @@ describe('task view criteria', () => {
     expect(filterTasks(tasks, setup).map((task) => task.id)).toEqual(['a', 'c', 'd'])
   })
 
-  // @spec task_filters_combine_dimensions.or_within_and_between
   it('uses OR within one dimension and AND between dimensions', () => {
     const setup = emptyTaskViewSetup()
     setup.filters.states = ['Not started', 'In progress']
@@ -34,7 +32,6 @@ describe('task view criteria', () => {
     expect(filterTasks(tasks, setup).map((task) => task.id)).toEqual(['a'])
   })
 
-  // @spec saved_task_views_are_private_fixed.saved_definition_round_trip
   it('accepts complete saved definitions and rejects malformed preference entries', () => {
     const setup = emptyTaskViewSetup()
     setup.filters.states = ['Blocked']
@@ -42,7 +39,6 @@ describe('task view criteria', () => {
     expect(parseSavedTaskViews({ views: [valid, { id: 'broken' }, null] })).toEqual([valid])
   })
 
-  // @spec saved_view_changes_are_explicit.reset_detects_changes
   it('detects meaningful changes without depending on checkbox selection order', () => {
     const saved = emptyTaskViewSetup()
     saved.filters.states = ['Blocked', 'In progress']
@@ -53,7 +49,6 @@ describe('task view criteria', () => {
     expect(taskViewSetupEquals(saved, reordered)).toBe(false)
   })
 
-  // @spec saved_view_changes_are_explicit.stale_reference_never_broadens
   it('keeps unavailable person and project criteria restrictive', () => {
     const missingPerson = emptyTaskViewSetup()
     missingPerson.filters.responsiblePeople = ['Former teammate']

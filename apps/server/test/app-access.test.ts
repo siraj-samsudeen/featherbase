@@ -34,8 +34,6 @@ async function setup(admin: TestClient, createUser: CreateUserFn, roles = ['Scop
 }
 
 describe('fresh app roles and store access', () => {
-  // @spec declared_app_actions_fail_closed
-  // @spec self_store_access_discovery
   test('policies cannot omit their scope, use foreign dimensions, or opt actions/table policies into discovery', async () => {
     const policy = { kind: 'stores', storeTable: 'foreign.store', readRoles: ['Reader'], actionRoles: ['Writer'] }
     const operation = { policy, scope: { kind: 'request' }, authorization: { kind: 'generic' } }
@@ -52,8 +50,6 @@ describe('fresh app roles and store access', () => {
         [{ name: 'foreign.store', columns: [{ column_name: 'layout', column_type }] }] as any)).toThrow('missing or unsupported')
   })
 
-  // @spec declared_product_gate_composes.missing_declared_product_callback
-  // @spec explicit_runtime_policy_upgrade.policy_restart_is_fail_closed
   test('missing declared callbacks on restart cannot fall back to generic access', async ({ admin, createUser }) => {
     const copy = await mkdtemp(resolve('test/.scope-package-'))
     try {
@@ -76,7 +72,6 @@ describe('fresh app roles and store access', () => {
     } finally { await rm(copy, { recursive: true, force: true }) }
   })
 
-  // @spec explicit_runtime_policy_upgrade
   test('historical exact Tasker refuses v1 actions, upgrades explicitly and can replay only table/generic legacy results', async ({ admin }) => {
     const historical = resolve('../..', 'runtime-apps/fixtures/tasker-v2')
     const current = resolve('../..', 'runtime-apps/tasker')
@@ -102,7 +97,6 @@ describe('fresh app roles and store access', () => {
     expect((await invoke('2.1.0')).status).toBe(200)
   })
 
-  // @spec app_refusals_are_auditable
   test('refusals survive rollback with fixed redacted audit reasons', async ({ admin, createUser }) => {
     const { user } = await setup(admin, createUser, ['Scope Reader'], ['A'])
     await expect(user.post(read + 'stores', { payload: { storeCodes: ['private-store'], sql: 'secret-query', token: 'secret-token' } })).rejects.toMatchObject({ status: 403 })
@@ -115,8 +109,6 @@ describe('fresh app roles and store access', () => {
     ])
   })
 
-  // @spec app_refusals_are_auditable
-  // @spec declared_product_gate_composes
   test('callback errors and invalid footprints refuse without disclosure, while admitted handler errors remain intact', async ({ admin, createUser }) => {
     const { user, module } = await setup(admin, createUser, ['Scope Planner'], ['A'])
     await admin.post('/api/save_row', { table: 'scopeproof.access', row: { row_id: user.user, pairs: [['A', 'X']] } })
@@ -158,8 +150,6 @@ describe('fresh app roles and store access', () => {
     delete module.faults.handler
   })
 
-  // @spec fresh_app_store_access
-  // @spec self_store_access_discovery
   test('every HTTP admission requires exact active identity even before the first migration', async ({ admin, createUser }) => {
     const { user, module } = await setup(admin, createUser, ['Scope Planner'], ['A'])
     expect((await sql`select migration_ledger from installed_app where name = 'scopeproof'`)[0].migration_ledger).toEqual([])
@@ -184,9 +174,6 @@ describe('fresh app roles and store access', () => {
     expect((await send('scopeproof@1.0.0', action + 'write', { idempotencyKey: 'exact', payload: { storeCodes: ['A'], effect: 'exact' } })).status).toBe(200)
   })
 
-  // @spec fresh_app_store_access
-  // @spec runtime_reads_have_no_mutations
-  // @spec app_refusals_are_auditable
   test('unavailable required audit fails closed as a visible server failure', async ({ admin, createUser }) => {
     const { user, module } = await setup(admin, createUser, ['Scope Reader'], ['A'])
     await sql`alter table featherbase.access_log rename to unavailable_audit`
@@ -196,8 +183,6 @@ describe('fresh app roles and store access', () => {
     expect(module.calls).toEqual({ handler: 0, resolver: 0, authorizer: 0, upstream: 0 })
   })
 
-  // @spec fresh_app_store_access
-  // @spec self_store_access_discovery
   test('pending and upgraded app identities refuse every protected route until exact activation', async ({ admin, createUser }) => {
     const { user } = await setup(admin, createUser, ['Scope Planner'], ['A'])
     await admin.post('/api/save_row', { table: 'scopeproof.access', row: { row_id: user.user, pairs: [['A', 'X']] } })
@@ -250,8 +235,6 @@ describe('fresh app roles and store access', () => {
     } finally { await rm(target, { recursive: true, force: true }) }
   })
 
-  // @spec fresh_app_store_access
-  // @spec runtime_reads_have_no_mutations
   test('read role may read A but direct mutation and client role tampering never invoke work', async ({ admin, createUser }) => {
     const { user, module } = await setup(admin, createUser, ['Scope Reader'], ['A'])
     expect(await user.post(read + 'stores', { payload: { storeCodes: ['A'] } })).toEqual({ result: { stores: ['A'], marker: 37 } })
@@ -262,7 +245,6 @@ describe('fresh app roles and store access', () => {
     expect(await sql`select * from scopeproof.effect`).toEqual([])
   })
 
-  // @spec fresh_app_store_access.entire_requested_set_is_checked
   test('whole set admits A and C+A but refuses A+B, empty, missing and malformed scopes', async ({ admin, createUser }) => {
     const { user, module } = await setup(admin, createUser)
     for (const [effect, stores] of [['one', ['A']], ['two', ['C', 'A']]] as const)
@@ -275,7 +257,6 @@ describe('fresh app roles and store access', () => {
     expect(await sql`select value from scopeproof.effect order by row_id`).toEqual([{ value: 'A' }, { value: 'A,C' }])
   })
 
-  // @spec self_store_access_discovery
   test('discovery is self-only and runs no callback; removal changes the same session and old discovery grants nothing', async ({ admin, createUser }) => {
     const { user, module } = await setup(admin, createUser, ['Scope Reader'], ['A'])
     expect(await user.get(read + 'product/access')).toEqual({ storeCodes: ['A'] })
@@ -290,8 +271,6 @@ describe('fresh app roles and store access', () => {
     expect(module.calls).toEqual({ handler: 0, resolver: 0, authorizer: 0, upstream: 0 })
   })
 
-  // @spec fresh_app_store_access.session_survives_assignment_removal
-  // @spec runtime_reads_have_no_mutations.independent_read_install_restart_disable
   test('restart keeps fresh grants and disabled app/user refuse with no business work', async ({ admin, createUser }) => {
     const { user, module } = await setup(admin, createUser)
     await discoverPackages([directory]); await loadInstalledApps()
@@ -304,7 +283,6 @@ describe('fresh app roles and store access', () => {
     expect(module.calls.handler).toBe(0)
   })
 
-  // @spec authoritative_object_store_scope
   test('persisted A+B cannot be underclaimed as A; exact scope and parent identity precede work', async ({ admin, createUser }) => {
     const { user, module } = await setup(admin, createUser, ['Scope Planner'], ['A'])
     await admin.post('/api/save_row', { table: 'scopeproof.object', row: { row_id: 'draft', stores: ['B', 'A'], secret: 'private' } })
@@ -321,7 +299,6 @@ describe('fresh app roles and store access', () => {
     await expect(module.escapedFacts.get('scopeproof.object', 'draft')).rejects.toThrow('Application access refused')
   })
 
-  // @spec action_writes_and_replay_are_atomic
   test('deleted-source replay uses immutable original scope, never a narrowed retry', async ({ admin, createUser }) => {
     const { user, module } = await setup(admin, createUser, ['Scope Planner'], ['A', 'B'])
     const draft = await admin.post<{ updated_at: string }>('/api/save_row', { table: 'scopeproof.object', row: { row_id: 'draft', stores: ['A', 'B'] } })
@@ -337,7 +314,6 @@ describe('fresh app roles and store access', () => {
     expect(module.calls).toEqual(before)
   })
 
-  // @spec declared_product_gate_composes
   test('exact pairs do not form a cross product and fresh product scope blocks replay', async ({ admin, createUser }) => {
     const { user, module } = await setup(admin, createUser, ['Scope Planner'], ['A', 'B'])
     await admin.post('/api/save_row', { table: 'scopeproof.access', row: { row_id: user.user, pairs: [['A', 'X'], ['B', 'Y']] } })
@@ -353,7 +329,6 @@ describe('fresh app roles and store access', () => {
     expect(module.calls.authorizer).toBe(3)
   })
 
-  // @spec action_writes_and_replay_are_atomic
   test('revoked original scope and malformed metadata refuse before a SQL result projection can run', async ({ admin, createUser }) => {
     const { user, module } = await setup(admin, createUser, ['Scope Planner'], ['A', 'B'])
     const draft = await admin.post<{ updated_at: string }>('/api/save_row', { table: 'scopeproof.object', row: { row_id: 'original', stores: ['A', 'B'] } })

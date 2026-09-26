@@ -17,20 +17,6 @@ Ported from the data-warehouse repo (#3664, from a design conversation with Sira
 
 ---
 
-## The STC triangle — this skill is one vertex of three
-
-| Artifact | Question | Skill |
-|---|---|---|
-| **Spec** | What should the system promise? | `spec-review-5-axes` |
-| **Code** | Does it hold those promises? | `code-review-8-axes` |
-| **Test** | Is each promise actually checked? | `test-review-3-axes` |
-
-They drift apart continuously, whichever was written first. The edges are made greppable by **`docs/agents/stc-traceability.md`** (one `@spec <slug>` marker per vertex) and computed by `pnpm check:stc` for the sole active root, `openspec/specs`.
-
-**When artifacts disagree, never silently pick a winner and never punt.** Emit the divergence triage item defined in **`spec-review-5-axes`** — the disagreement, a recommendation, and what follows if the owner rules the other way. This repo already holds the rule in its own words: *"A discovered behaviour is not a requirement. It has three fates — ratified into the spec, filed as a defect, or raised as an open question — and choosing is the owner's call, never an agent's"* (`CLAUDE.md`).
-
----
-
 ## The three framing rules — read these before the axes
 
 ### 1. Unknown unknowns are the binding failure mode
@@ -174,7 +160,7 @@ try { msg = JSON.parse(String(raw)) } catch { return }   // genuinely a malforme
 
 The word doing the work is **knowledge**. This is **not** "don't write similar-looking code" — that misreading produces bad abstractions built to satisfy a rule. The unit is a *fact about the world*: a set of valid types, a threshold, a default, a table name, an enumerated vocabulary.
 
-**A spec is a SANCTIONED duplicated fact.** Where a spec covers this code, it is by construction a second representation. The duplication is accepted; **the price is that drift must be detectable.** So: does the code agree with the spec, at the grain the spec claims? Does the evidence pointer reach the code that *decides* the behaviour, or only its caller? Disagreement → a divergence triage item, not a fix.
+**A spec is a SANCTIONED duplicated fact.** Where a spec covers this code, it is by construction a second representation. The duplication is accepted; **the price is that drift must be detectable.** So: does the code agree with the spec, at the grain the spec claims? Does the evidence pointer reach the code that *decides* the behaviour, or only its caller?
 
 **Real violation — one fact, seven homes, three names.** "Column types that hold no value" (layout markers and sub-tables — the columns you must skip when reading or writing a row):
 
@@ -217,7 +203,7 @@ All seven are `['Sub-table', 'Section Break', 'Column Break']` today. The failur
 - **The renamed copy.** `apps/web/src/pages/TableMerge.tsx:27` calls it `SKIP_TYPES`. Same fact, different token, different order; no grep joins them.
 - **A named constant with no counterpart across the wire.** `apps/server/src/meta.ts:60` defines `ROW_KEY = 'row_id'` and the server uses it in ~75 places. `apps/web` never imports it — the wire key appears there as a bare string (`ListView.tsx:183`'s sort expression) and as ~270 property accesses. The server half of the contract is greppable; the client half is not.
 
-**The fix shape.** Give the contract a name and make every site say it: a shared constant imported by name, a named type, or — where the literal genuinely cannot be replaced (a SQL fragment, a JSX prop) — a distinctive marker token in a comment at that exact line, so one grep still returns all of them. `docs/agents/stc-traceability.md`'s `@spec` marker is this rule applied across artifacts rather than within code.
+**The fix shape.** Give the contract a name and make every site say it: a shared constant imported by name, a named type, or — where the literal genuinely cannot be replaced (a SQL fragment, a JSX prop) — a distinctive marker token in a comment at that exact line, so one grep still returns all of them.
 
 ---
 
@@ -338,16 +324,14 @@ The thresholds are still `lines: 86, statements: 86, functions: 91`, three weeks
 
 **Real violation, smaller — a documented check that no job runs.** `pnpm smoke` is named in `README.md:31`, `CLAUDE.md:171`, `docs/TESTING.md:109` and `docs/ARCHITECTURE.md:334`, and runs in `init.sh:271`. `.github/workflows/test.yml` never invokes it. Its web half is covered anyway (Playwright runs `e2e/smoke.spec.ts` inside the e2e job), so the honest consequence is narrow: the **server** half — `tsx src/smoke.ts` asserting a booted server answers `/api/ping` with `db: true` — is a developer-machine check that four documents present as a project check. Report it with that consequence, not with a bigger one.
 
-**The STC guard is an example to verify, not assume.** `pnpm check:stc` runs through `pnpm check:specs` in CI. If that wiring disappears, traceability becomes advisory again. **If your review adds a guard, apply this axis to your own guard before you finish.**
-
-**A spec is a guard too, and usually an unenforced one.** `openspec validate --specs --strict` proves the spec is **well-formed, not true**: it reported *1 passed, 0 failed* on `openspec/specs/table-deletion/spec.md` before a single requirement had been checked against the code. Ask: *what detects spec-code drift, and does failing it stop anything?* `pnpm check:stc` checks only that the vertices reference each other, never that they agree.
+**A spec is a guard too, and usually an unenforced one.** `openspec validate --specs --strict` proves the spec is **well-formed, not true**: it reported *1 passed, 0 failed* on `openspec/specs/table-deletion/spec.md` before a single requirement had been checked against the code. Ask: *what detects spec-code drift, and does failing it stop anything?*
 
 **Two smaller members of the same family:**
 
 - **A stated contract the *default* configuration violates.** Read every doc-comment claim against the **default** path, not the first one you find.
 - **A runbook prescribing a hand-edit the code could make unnecessary.** Hunt & Thomas: *don't use manual procedures.* Ask: *does a doc document a repair the code should be doing itself?*
 
-**Two guards in this repo that pass this axis, and are worth copying.** `tools/stc-matrix.mjs` and `tools/check-spec-policy.mjs` are mutation-tested before their repository checks run—*a green guard means nothing if the checker cannot fail*. And `apps/server/scripts/check-sql-escapes.ts` looks like a standalone script no CI job runs — but its `checkMigrations()` is imported by `apps/server/test/choices-newline.test.ts:107`, so it gates through the suite. **Chase the import before reporting a guard as dead; this one refutes the obvious reading.**
+**A guard in this repo that passes this axis, and is worth copying.** `apps/server/scripts/check-sql-escapes.ts` looks like a standalone script no CI job runs — but its `checkMigrations()` is imported by `apps/server/test/choices-newline.test.ts:107`, so it gates through the suite. **Chase the import before reporting a guard as dead; this one refutes the obvious reading.**
 
 ---
 

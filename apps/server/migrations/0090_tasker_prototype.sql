@@ -1,6 +1,5 @@
 -- One local prototype transition, not a general app upgrade mechanism.
 -- Preserve row IDs, physical rows, grants and metadata-backed Table pointers.
--- @spec prototype_transition_preserves_work
 do $$
 declare
   mapping record;

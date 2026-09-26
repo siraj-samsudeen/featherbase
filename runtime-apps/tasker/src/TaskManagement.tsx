@@ -209,13 +209,10 @@ export function TaskManagementPage() {
   const latestExplanation = new Map<string, string>()
   for (const comment of comments.data?.data ?? [])
     latestExplanation.set(comment.ref_name, comment.content)
-  // @spec stale_focus_self_heals
   const focusIds = (focus.data?.settings?.task_ids ?? []).filter((id) => byId.has(id))
   const focusSet = new Set(focusIds)
-  // @spec inbox_is_destination
   const inbox = allTasks.filter((task) => !task.project && !task.personal_tasks_owner)
   const focused = focusIds.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []))
-  // @spec my_work_has_no_duplicates
   const myWork = [
     ...focused,
     ...allTasks.filter((task) => task.assigned_to === me && !focusSet.has(task.row_id)),
@@ -228,7 +225,6 @@ export function TaskManagementPage() {
     project.row_id,
     allTasks.filter((task) => task.project === project.row_id).length,
   ]))
-  // @spec stale_project_tabs_self_heal
   const starredProjectIds = (projectPreferences.data?.settings?.project_ids ?? []).filter((id) => projectById.has(id))
   const starredProjectSet = new Set(starredProjectIds)
   const detailMode = detailPreferences.data?.settings?.mode ?? 'inspector'
@@ -306,7 +302,6 @@ export function TaskManagementPage() {
   }
 
   async function createTask(title: string, extra: Partial<Task> = {}) {
-    // @spec lightweight_project_entry
     const trimmed = title.trim()
     if (!trimmed) return
     setSaving(true)
@@ -342,8 +337,6 @@ export function TaskManagementPage() {
     setError(null)
     queryClient.setQueryData(['task-management', 'focus'], { settings: { task_ids: ids } })
     try {
-      // @spec focus_is_private_ordered
-      // @spec focus_never_mutates_task
       await api.put(`/api/user_settings/${encodeURIComponent(FOCUS_SETTINGS)}`, { task_ids: ids })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not update My Focus')
@@ -368,7 +361,6 @@ export function TaskManagementPage() {
     setError(null)
     queryClient.setQueryData(['task-management', 'project-preferences'], { settings: { project_ids: ids } })
     try {
-      // @spec project_tabs_are_private_ordered
       await api.put(`/api/user_settings/${encodeURIComponent(PROJECT_SETTINGS)}`, { project_ids: ids })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not update project tabs')
@@ -394,7 +386,6 @@ export function TaskManagementPage() {
   async function setDetailMode(mode: DetailMode) {
     queryClient.setQueryData(['task-management', 'detail-preferences'], { settings: { mode } })
     try {
-      // @spec task_detail_has_three_modes
       await api.put(`/api/user_settings/${encodeURIComponent(PREFERENCE_SETTINGS)}`, { mode })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save detail view')
@@ -406,7 +397,6 @@ export function TaskManagementPage() {
     setError(null)
     queryClient.setQueryData(['task-management', 'saved-views'], { settings: { views: next } })
     try {
-      // @spec saved_task_views_are_private_fixed
       await api.put(`/api/user_settings/${encodeURIComponent(SAVED_VIEWS_SETTINGS)}`, { views: next })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save task views')
@@ -433,7 +423,6 @@ export function TaskManagementPage() {
   }
 
   async function updateSavedView(savedView: SavedTaskView) {
-    // @spec saved_view_changes_are_explicit
     const next = { ...savedView, setup: copySetup(taskViewSetup) }
     await saveViews(savedViews.map((candidate) => candidate.id === savedView.id ? next : candidate))
     setTaskViewSetup(copySetup(next.setup))
@@ -461,7 +450,6 @@ export function TaskManagementPage() {
   async function renameProject(project: Project, project_name: string) {
     setError(null)
     try {
-      // @spec project_name_is_correctable
       await api.patch(`/api/table/tasker.project/${encodeURIComponent(project.row_id)}`, {
         project_name, updated_at: project.updated_at,
       })
@@ -473,7 +461,6 @@ export function TaskManagementPage() {
   }
 
   async function createProject() {
-    // @spec lightweight_project_entry
     const name = projectName.trim()
     if (!name) return
     setCreatingProject(true)
@@ -546,8 +533,6 @@ export function TaskManagementPage() {
     />
   }
 
-  // @spec workspace_navigation_is_stable
-  // @spec workspace_visual_hierarchy_is_clear
   return (
     <div className="tasker-shell" data-view={view} data-testid="task-management-page">
       <aside className="tasker-sidebar">
@@ -666,7 +651,6 @@ export function TaskManagementPage() {
             if (!rows.length) return null
             return <div key={owner ?? 'unassigned'} className="mb-7">
               <h3 className="mb-2 text-sm font-semibold">{owner ?? 'Unassigned'} <span className="font-normal text-[var(--color-ink-muted)]">{rows.length}</span></h3>
-              {/* @spec together_groups_active_responsibility */}
               <TaskList tasks={rows} users={people} projects={allProjects} focusSet={focusSet} me={me} explanations={latestExplanation} onPatch={patchTask} onFocus={toggleFocus} />
             </div>
           })}
@@ -675,7 +659,6 @@ export function TaskManagementPage() {
       )}
 
       {view === 'projects' && (
-        // @spec projects_landing_connects_directory_and_creation
         <section aria-labelledby="projects-heading" className="tasker-project-workspace">
             {selectedProject && projectById.has(selectedProject) ? (
               <>
@@ -787,7 +770,6 @@ export function TaskManagementPage() {
       )}
       </main>
       {selectedTask && detailMode === 'inspector' && (
-        // @spec responsive_detail_preserves_workspace_context
         <aside className="tasker-inspector" aria-label="Task details">
           <TaskDetail id={selectedTask} mode={detailMode} onMode={setDetailMode} onSaved={refresh} people={people} projects={allProjects} onCompleted={actionCompleted} />
         </aside>
@@ -862,7 +844,6 @@ function TaskViewToolbar({
   onUpdate: (savedView: SavedTaskView) => Promise<void>
   onReset: () => void
 }) {
-  // @spec task_view_state_is_visible
   const [filtersOpen, setFiltersOpen] = useState(false)
   const filterButton = useRef<HTMLButtonElement>(null)
   const [savingAsNew, setSavingAsNew] = useState(false)
@@ -904,7 +885,6 @@ function TaskViewToolbar({
     setSavingAsNew(false)
   }
 
-  // @spec task_view_controls_are_accessible
   return <div className="tasker-view-controls">
     <div className="tasker-view-toolbar">
       <label className="tasker-view-select-label">
@@ -1189,7 +1169,6 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
   useEffect(() => {
     if (mode !== 'inspector') return
     if (!window.matchMedia) return
-    // @spec workspace_adapts_to_available_space
     const compact = window.matchMedia('(max-width: 1100px)')
     const sync = () => document.documentElement.classList.toggle('tasker-compact-inspector-open', compact.matches)
     sync()
@@ -1259,7 +1238,6 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
         <p className="mt-3 text-xs text-[var(--color-ink-muted)]">Open Inspector to edit or join the discussion.</p>
       </div> : <>
       {draft ? <form className="tasker-description-editor" onSubmit={async (event) => {
-        // @spec task_activity_stays_in_tasker
         // Keep the draft's original revision even if another action refetches this row.
         event.preventDefault(); setSaving(true); setError('')
         if (!draft?.task_title.trim()) { setSaving(false); return }
@@ -1304,7 +1282,6 @@ function TaskDetail({ id, mode, onMode, onSaved, people, projects, onCompleted }
           if (!content) return
           setSaving(true); setError('')
           try {
-            // @spec task_activity_stays_in_tasker
             await api.post('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: id, content } })
             setComment('')
             await Promise.all([
@@ -1360,7 +1337,6 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
     if (content) {
       setPosting(true)
       try {
-        // @spec discussion_stays_append_only
         await api.post('/api/save_row', {
           table: 'Comment',
           row: { ref_table: 'tasker.task', ref_name: task.row_id, content },
@@ -1375,7 +1351,6 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
   }
 
   if (!tasks.length) return <Empty text="Nothing here yet." />
-  // @spec task_lists_present_one_consistent_control_set
   return <div className="tasker-task-list">
     <div className="tasker-task-guide" aria-hidden="true">
       <span />
@@ -1407,13 +1382,11 @@ function TaskList({ tasks, users, projects, focusSet, me, explanations, onPatch,
           <select data-state={task.task_state} aria-label={`State for ${task.task_title}`} value={task.task_state ?? 'Not started'} onChange={(event) => { const taskState = event.target.value; void onPatch(task, { task_state: taskState }); if (['Blocked', 'On hold', 'Cancelled'].includes(taskState)) { setExplaining(task.row_id); setExplanation('') } }}>{STATES.map((state) => <option key={state}>{state}</option>)}</select>
           <select aria-label={`Destination for ${task.task_title}`} value={task.personal_tasks_owner ? `personal:${task.personal_tasks_owner}` : task.project ? `project:${task.project}` : ''} onChange={(event) => { const [kind, value] = event.target.value.split(':', 2); void onPatch(task, kind === 'project' ? { project: value, personal_tasks_owner: null } : kind === 'personal' ? { project: null, personal_tasks_owner: value } : { project: null, personal_tasks_owner: null }) }}><option value="">Inbox</option><optgroup label="Projects">{projects.map((project) => <option key={project.row_id} value={`project:${project.row_id}`}>{project.project_name}</option>)}</optgroup><optgroup label="Personal tasks">{users.map((user) => <option key={user.row_id} value={`personal:${user.row_id}`}>{user.row_id}</option>)}</optgroup></select>
           <div className="tasker-responsibility">
-            {/* @spec assignment_state_independent */}
             <select aria-label={`Assign ${task.task_title}`} value={task.assigned_to ?? ''} onChange={(event) => void onPatch(task, { assigned_to: event.target.value || null })}><option value="">Unassigned</option>{users.map((user) => <option key={user.row_id} value={user.row_id}>{user.row_id}</option>)}</select>
             {!task.assigned_to && me && <button type="button" onClick={() => void onPatch(task, { assigned_to: me })} className="tasker-take-button">Take it</button>}
           </div>
         </div>
         <div className="tasker-task-signals">
-          {/* @spec urgency_is_shared_binary */}
           <button type="button" aria-label={`${task.urgent ? 'Remove urgent flag from' : 'Mark urgent'} ${task.task_title}`} aria-pressed={task.urgent} title="Urgent is visible to the team" onClick={() => void onPatch(task, { urgent: !task.urgent })} className={`tasker-urgent ${task.urgent ? 'is-urgent' : ''}`}>{task.urgent && <span aria-hidden="true" />}{task.urgent ? 'Urgent' : 'Not urgent'}</button>
           <button type="button" aria-label={`${focused ? 'Remove from' : 'Add to'} My Focus: ${task.task_title}`} title="My Focus is private to you" onClick={() => void onFocus(task.row_id)} className={`tasker-focus-star ${focused ? 'is-focused' : ''}`}>{focused ? '★' : '☆'}</button>
           {onMove && focused && <div className="tasker-focus-order"><button type="button" aria-label={`Move ${task.task_title} up`} onClick={() => void onMove(task.row_id, -1)}>↑</button><button type="button" aria-label={`Move ${task.task_title} down`} onClick={() => void onMove(task.row_id, 1)}>↓</button></div>}

@@ -21,8 +21,6 @@ const test = pgTest.extend<{ admin: TestClient; createUser: CreateUserFn }>({
 })
 
 describe('declared transactional runtime actions', () => {
-  // @spec declared_app_actions_fail_closed
-  // @spec action_writes_and_replay_are_atomic
   test('asymmetric multi-row writes commit once, replay after restart, and reject payload reuse', async ({ admin }) => {
     expect(await discoverPackages([directory])).toEqual([])
     await admin.post('/api/install_app', { name: 'actionproof' })
@@ -43,8 +41,6 @@ describe('declared transactional runtime actions', () => {
     await expect(admin.post(action + 'transform', request)).rejects.toMatchObject({ status: 403 })
   })
 
-  // @spec action_writes_and_replay_are_atomic
-  // @spec action_helpers_preserve_caller_authority
   test('handler failure and stale revisions leave no destination, discussion, version or result', async ({ admin, createUser }) => {
     await discoverPackages([directory]); await admin.post('/api/install_app', { name: 'actionproof' })
     const member = await createUser({ email: 'action-owner@example.com', roles: [] })
@@ -63,7 +59,6 @@ describe('declared transactional runtime actions', () => {
     await member.post(action + 'transform', { ...request, payload: { ...request.payload, fail: false } })
   })
 
-  // @spec guarded_action_deletion_preserves_retained_work
   test('guard reports retained history and refuses stale deletion; successful deletion replays', async ({ admin }) => {
     await discoverPackages([directory]); await admin.post('/api/install_app', { name: 'actionproof' })
     const source = await admin.post<any>('/api/save_row', { table: 'actionproof.work', row: { row_id: 'accident', title: 'Discard me' } })
@@ -80,7 +75,6 @@ describe('declared transactional runtime actions', () => {
     expect(await admin.post(action + 'discard', { ...guard, payload: { ...guard.payload, explain: true } })).toEqual({ result: { deleted: false, counts: { comments: 1, versions: 0, references: 0, files: 0, shares: 0 } } })
   })
 
-  // @spec action_commit_boundary_and_lifecycle_serialize
   test('effects wait for result commit, never run on rollback/replay, and disable waits through a failed effect', async ({ admin }) => {
     await discoverPackages([directory]); await admin.post('/api/install_app', { name: 'actionproof' })
     const source = await admin.post<any>('/api/save_row', { table: 'actionproof.work', row: { row_id: 'tail', title: '41 units' } })
@@ -118,8 +112,6 @@ describe('declared transactional runtime actions', () => {
     }
   })
 
-  // @spec declared_app_actions_fail_closed
-  // @spec action_helpers_preserve_caller_authority
   test('authentication, closed declarations, private APIs and missing-code restarts reject', async ({ admin }) => {
     await discoverPackages([directory]); await admin.post('/api/install_app', { name: 'actionproof' })
     const request = { idempotencyKey: 'probe', payload: { operation: 'shape' } }
@@ -137,7 +129,6 @@ describe('declared transactional runtime actions', () => {
     await expect(admin.post(action + 'probe', request)).rejects.toMatchObject({ status: 403 })
   })
 
-  // @spec declared_app_actions_fail_closed
   test('two packages isolate the same local action and key; incomplete declarations never load', async ({ admin }) => {
     const second = await mkdtemp(resolve('test/.runtime-actions-'))
     try {
@@ -161,8 +152,6 @@ describe('declared transactional runtime actions', () => {
     } finally { await rm(second, { recursive: true, force: true }) }
   })
 
-  // @spec action_helpers_preserve_caller_authority
-  // @spec guarded_action_deletion_preserves_retained_work
   test('finalized references, retained update counts, related queries and helper overlap cannot evade authority', async ({ admin, createUser }) => {
     await discoverPackages([directory]); await admin.post('/api/install_app', { name: 'actionproof' })
     const owner = await createUser({ email: 'reference-owner@example.com', roles: [] })
@@ -187,7 +176,6 @@ describe('declared transactional runtime actions', () => {
     await expect(owner.post(action + 'probe', { idempotencyKey: 'related', payload: { operation: 'list', table: 'actionproof.work', values: { filters: [['destination', 'related', { table: 'actionproof.destination' }]] } } })).rejects.toMatchObject({ status: 417 })
   })
 
-  // @spec action_commit_boundary_and_lifecycle_serialize
   test('escaped helpers, unawaited writes, swallowed failures and non-JSON results fail without partial commits', async ({ admin }) => {
     await discoverPackages([directory]); await admin.post('/api/install_app', { name: 'actionproof' })
     for (const operation of ['unawaited', 'swallow', 'nonjson']) {

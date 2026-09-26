@@ -1,5 +1,83 @@
 # Progress Log
 
+## 2026-09-26 — Stock OpenSpec (core, 1.13.2) and the STC layer removed
+
+Restored OpenSpec to plain upstream `core` profile and removed the local STC
+(spec/test/code traceability) apparatus built on top of it — the owner's
+explicit decision, reversing part of the 2026-09-21 ADR 0010 adoption while
+keeping OpenSpec as the sole behavior contract.
+
+Upgraded the exact CLI pin from `1.13.0` to `1.13.2` and regenerated the
+generated skills/commands for both tool targets (`.claude/` and `.agents/`)
+with `openspec init --tools claude,agents --profile core --force`, then
+deleted the six non-core workflows (new/continue/ff/verify/onboard/bulk-archive).
+Proved the result byte-identical to a fresh `openspec init --profile core`
+scratch run at the same version, for every file both share.
+
+`openspec/config.yaml` now carries the stock init template's comment
+scaffolding with plain-language spec/proposal writing rules (no more
+`Status:`/evidence/legacy-ID vocabulary in the config, and no `operations:`
+guidance block).
+
+Removed: `check:stc` and `check:spec-policy` npm scripts and their
+`tools/stc-matrix.mjs`, `tools/check-spec-policy.mjs` (+ tests and baseline
+files); all ~360 `@spec <slug>` code/test/migration markers (confirmed the
+migration runner tracks only applied filenames, no content checksum, so the
+four migration files with markers were edited too); `Status:`/`Evidence:`/
+`Verdict:`/`Legacy ID:`/`**IDs:**` labels from `openspec/specs/**` and the
+active changes' delta specs (requirement and scenario text untouched —
+`openspec validate --specs --strict` and `--changes --strict` both still
+pass, 19/19 and 4/4); the `repository-change-workflow` spec and the archived
+`2026-09-21-adopt-openspec-workflow` change; `.claude/skills/spec-review-5-axes`
+and `docs/agents/stc-traceability.md`; STC/`@spec`/divergence-triage mentions
+from `code-review-8-axes` and `test-review-3-axes` (their own axes and worked
+examples otherwise untouched); `docs/design/requirements-framework.md` and
+`docs/design/openspec-vs-journey-spec.md`; the Journey manual machinery
+(`tools/build-manual.mjs` + test, `docs/manual/`, the `manual:build`/
+`manual:fixtures` scripts, the `snap()` helper in `apps/web/e2e/fixtures.ts`
+and its 16 call sites across two import-journey specs, and the now-dangling
+`.claude/launch.json` manual dev-server entry).
+
+Rewrote AGENTS.md's "OpenSpec is mandatory" section down to a pointer (specs
+live in `openspec/specs/`, start a change with `/opsx:propose`, style is in
+`openspec/config.yaml`, the CLI is pinned and bumped by the weekly update
+workflow) and CLAUDE.md's STC-triangle section, document-set paragraph and
+dangling links. Rewrote ADR 0010 in place (not a new ADR — the owner's
+choice) to record the 2026-09-26 agreement, with a dated note pointing back
+at the original 2026-09-21 text in git history.
+
+Added `.github/workflows/openspec-update.yml`: a weekly (+ manual-dispatch)
+job that compares the published `@fission-ai/openspec` version to the pin,
+and on a newer one bumps it, regenerates the core-profile files for the same
+tool targets, runs `pnpm check:specs`, and opens a PR — never merges. Verified
+the regenerate step in a scratch copy: installed 1.13.0 with the expanded
+(11-skill) profile the repo had before this change, upgraded in place to
+1.13.2, ran the same `openspec init --force` + prune commands the workflow
+uses, and diffed the result against this PR's committed `.claude`/`.agents`
+trees — identical except for two unrelated repo-local skills.
+
+Left deliberately alone (dated history, not live instruction): PROGRESS.md's
+own older entries; `docs/archive/**`; STC/`@spec`/`spec-review-5-axes`
+mentions inside already-completed `[x]` task-list items in
+`openspec/changes/{app-roles-store-access,fix-production-schema-migration}/tasks.md`
+and `openspec/changes/six-admin-ui-fixes/design.md`; ADR 0010's own prose
+describing what it retired (necessarily names the retired things once).
+
+**Verified:**
+- `pnpm check:specs` — 19/19 specs, 4/4 changes, strict, 0 failed
+- `pnpm --filter server typecheck` — clean
+- `pnpm --filter web typecheck` — fails identically on `origin/main` before
+  this change too (`runtime-apps/tasker/src/TaskManagement.tsx` type errors,
+  unrelated to this PR; confirmed by stashing this change and rerunning)
+- `node --test tools/*.test.mjs` — 10 passed, 0 failed, 3 skipped
+  (pre-existing environment skips: no local Debian cluster/passwordless sudo)
+- `pnpm --filter web e2e e2e/import-journey.spec.ts e2e/import-upsert-journey.spec.ts`
+  — 2 passed; the third (`UPS-J2`'s "verbatim ids" step) fails identically on
+  `origin/main`, confirmed the same way
+
+**Next:** PR #304 (editing `openspec/TASKER.md`, untouched here) needs a
+mechanical rebase onto this branch once both land.
+
 ## 2026-09-21 — Runtime-root normalization retains exact query state (#296)
 
 The permanent trailing-slash redirect for direct runtime-app roots now retains

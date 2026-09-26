@@ -5,7 +5,6 @@ const USER_KEY = 'fc_user'
 let runtimeSnapshot: { token: string; versions: Promise<string[]> } | undefined
 // These requests establish/end credentials or serve public content. A saved
 // expired bearer must not insert a protected request in front of them.
-// @spec core_runtime_client_pins_active_identity.public_exchange_ignores_expired_saved_token
 const PUBLIC_API_PATHS = new Set([
   '/api/login', '/api/logout', '/api/oauth/session',
   '/api/reset_password_request', '/api/reset_password', '/api/brand', '/api/ping',
@@ -60,8 +59,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken()
   // Pin before metadata/data reads. Refetch and 409 must never relabel an old
   // form as new code; only a new login or page reload obtains another snapshot.
-  // @spec core_runtime_client_pins_active_identity.stale_generic_form_is_not_relabelled
-  // @spec core_runtime_client_pins_active_identity.parallel_requests_share_session_snapshot
   let versions: string[] = []
   const endpoint = path.split('?')[0]
   if (token && endpoint !== '/api/runtime_app_versions' &&
@@ -110,7 +107,6 @@ export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) }),
-  // @spec core_runtime_client_pins_active_identity.core_form_and_attachment_after_upgrade
   upload: <T>(body: FormData) => request<T>('/api/upload_file', { method: 'POST', body }),
   // API surface design (#61): PATCH, not PUT, for row updates — Tables gain
   // columns at runtime via Custom Field, and a PUT from a client that read a

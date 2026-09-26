@@ -21,7 +21,6 @@ const scope = z.discriminatedUnion('kind', [z.object({ kind: z.literal('request'
 const storePolicy = z.object({ kind: z.literal('stores'), storeTable: text,
   readRoles: z.array(text).refine(distinct), actionRoles: z.array(text).refine(distinct),
 }).strict().refine(p => p.readRoles.length + p.actionRoles.length > 0)
-// @spec declared_app_actions_fail_closed
 const operationSchema = z.union([
   z.object({ policy: z.object({ kind: z.literal('table') }).strict(), authorization: product }).strict(),
   z.object({ policy: storePolicy, scope, authorization: product, discoverStoreAccess: z.literal(true).optional() }).strict(),
@@ -103,7 +102,6 @@ interface AccessRequest {
   loadReplay?: (payload: unknown) => Promise<{ authorization: unknown } | undefined>
 }
 
-// @spec fresh_app_store_access
 async function currentAccess(request: AccessRequest, declaration: AppOperationDeclaration): Promise<Set<string>> {
   const { user, app, entryTable, kind } = request
   const [enabled] = await sql`select enabled from "user" where row_id = ${user}`
@@ -124,7 +122,6 @@ function subset(requested: readonly string[], allowed: Set<string>) {
 
 // A separate capability from documents: only declared authorization columns,
 // under locks that survive callback completion until the outer transaction ends.
-// @spec authoritative_object_store_scope
 async function withFacts<T>(app: string, declarations: AppFactDeclaration[], fn: (facts: AppScopeFacts) => Promise<T>): Promise<T> {
   let open = true
   let pending: Promise<unknown> | undefined
@@ -171,7 +168,6 @@ export function withAppAuthorization<T>(request: AccessRequest,
         if (declaration.authorization.kind === 'product' && !authorizer) refuseAppAccess('configuration')
         if (request.idempotencyKey) await sql`select pg_advisory_xact_lock(hashtextextended(${JSON.stringify([request.user, request.app, request.operation, request.idempotencyKey])}, 296))`
         const allowed = await currentAccess(request, declaration)
-        // @spec self_store_access_discovery
         if (request.kind === 'discovery') {
           if (!('discoverStoreAccess' in declaration) || !declaration.discoverStoreAccess || policy.kind !== 'stores') refuseAppAccess('configuration')
           const storeCodes = [...allowed].sort()
@@ -192,7 +188,6 @@ export function withAppAuthorization<T>(request: AccessRequest,
         const previous = await request.loadReplay?.(payload)
         let metadata: RuntimeActionAuthorization
         if (previous) {
-          // @spec action_writes_and_replay_are_atomic
           if (previous.authorization === null && policy.kind === 'table' && declaration.authorization.kind === 'generic')
             metadata = { version: 1, policy: 'table', storeCodes: [] }
           else {
@@ -220,7 +215,6 @@ export function withAppAuthorization<T>(request: AccessRequest,
         if (policy.kind === 'stores') subset(metadata.storeCodes, await currentAccess(request, declaration))
         const authorization = freezeJson({ app: request.app, operation: request.operation, user: request.user, policy: policy.kind,
           storeCodes: metadata.storeCodes, ...(metadata.productScope !== undefined ? { productScope: metadata.productScope } : {}) })
-        // @spec declared_product_gate_composes
         if (declaration.authorization.kind === 'product') {
           if (request.kind === 'action' && metadata.productScope === undefined) refuseAppAccess('product')
           const approved = await withFacts(request.app, declaration.authorization.facts, async facts =>
@@ -234,7 +228,6 @@ export function withAppAuthorization<T>(request: AccessRequest,
         return handler(authorization, payload, freezeJson(metadata), !!previous)
       })
     } catch (error) {
-      // @spec app_refusals_are_auditable
       // Outside the failed business transaction so the audit survives rollback.
       if (error instanceof AccessRefusal || (error instanceof AppError && error.type === 'PermissionError')) {
         return recordAppAccessRefusal(request.user, request.app, request.operation, error instanceof AccessRefusal ? error.reason : 'permission')

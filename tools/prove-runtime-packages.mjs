@@ -124,14 +124,12 @@ try {
   const actionRequest = { idempotencyKey: 'packaged-action', payload: { source: actionSource.row_id, updatedAt: actionSource.updated_at } }
   await api('/api/app_actions/actionproof/transform', { ...actionRequest, payload: { ...actionRequest.payload, fail: true } }, 500)
   assert.equal((await api('/api/table/actionproof.destination')).total, 0)
-  // @spec action_writes_and_replay_are_atomic
   const actionResults = await Promise.all(Array.from({ length: 8 }, () => api('/api/app_actions/actionproof/transform', actionRequest)))
   for (const result of actionResults) assert.deepEqual(result, actionResults[0])
   assert.equal((await api('/api/table/actionproof.destination')).total, 1)
   const actionActivity = await api(`/api/activity/actionproof.work/${actionSource.row_id}`)
   assert.equal(actionActivity.comments.length, 1)
   assert.equal(actionActivity.versions.length, 1)
-  // @spec guarded_action_deletion_preserves_retained_work.core_attachment_and_share_refusal_replays
   const retainedSource = await api('/api/save_row', { table: 'actionproof.work', row: { row_id: 'packaged-retained', title: 'Retain 47 units' } }, 201)
   for (const file_name of ['invoice-17.txt', 'photo-43.png'])
     await api('/api/save_row', { table: 'File', row: { file_name, ref_table: 'actionproof.work', ref_name: retainedSource.row_id } }, 201)
@@ -155,7 +153,6 @@ try {
   browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {})
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 } })
   const page = await context.newPage()
-  // @spec featherbase_human_routes_are_canonical.exact_runtime_app_location_survives_sign_in
   const selectedTask = seeded.tasks['DEV-TASKER-TASK-INVOICE-MISMATCH']
   const deepLink = `${origin}/tasker/?review=deep-link&note=37%20cartons%2F83&review=again#task=${selectedTask}`
   async function proveSignedOutReturn(target, requested, screenshot) {
@@ -361,7 +358,6 @@ try {
     retentionResult, retentionRollbackAndRestart: true,
   }, null, 2))
   assert.equal((await api(`/api/table/tasker.task/${task.row_id}`)).description, task.description)
-  // @spec runtime_upgrade_preserves_owned_work.tasker_description_is_generic_migration
   // Independently prove preserved v1 -> the literal current v2 package.
   // Reset only this same stamped disposable database after stopping the server.
   await stop()
@@ -384,7 +380,6 @@ try {
   await api('/api/save_row', { table: 'Comment', row: { ref_table: 'tasker.task', ref_name: preservedTask.row_id, content: 'Retain this evidence' } }, 201)
   await page.goto(`${origin}/tasker/`)
   await page.evaluate(token => localStorage.setItem('fc_token', token), token)
-  // @spec core_runtime_client_pins_active_identity.stale_generic_form_is_not_relabelled
   const staleCore = await page.context().newPage()
   await staleCore.goto(`${origin}/featherbase/admin/tasker.task/${preservedTask.row_id}`)
   await expect(staleCore.locator('[data-field="task_title"]')).toHaveValue('Preserved 37 cartons')
@@ -455,7 +450,6 @@ try {
   assert.deepEqual(await api(`/api/table/tasker.task/${preservedTask.row_id}`), preservedTask)
   const coreFilesFilter = encodeURIComponent(JSON.stringify([['ref_table', '=', 'tasker.task'], ['ref_name', '=', preservedTask.row_id]]))
   assert.equal((await api(`/api/table/File?filters=${coreFilesFilter}`)).total, 0, 'Refused stale uploads left a File document')
-  // @spec core_runtime_client_pins_active_identity.core_form_and_attachment_after_upgrade
   await page.setViewportSize({ width: 1440, height: 960 })
   await page.getByRole('link', { name: 'Preserved 37 cartons', exact: true }).click()
   await page.getByRole('link', { name: 'Attachments and advanced fields in Featherbase ↗' }).click()

@@ -5,7 +5,6 @@ import { useWhoAmI } from './session'
 
 // The Admin owns one hook per preference. Each queue lives with that session's
 // mounted Admin, so a queued selection never becomes a different user's write.
-// @spec appearance_writes_settle_consistently
 export function useAppearancePreference<T extends string>(
   key: 'theme' | 'palette',
   initial: T,

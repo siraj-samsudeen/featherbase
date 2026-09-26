@@ -17,7 +17,6 @@ app roles and complete explicit store access before disclosing or changing data.
 ## ADDED Requirements
 
 ### Requirement: fresh_app_store_access
-Status: governed (#279)
 
 Every protected read and action SHALL resolve the authenticated user's enabled
 state, app availability, declared operation roles and explicit store values from
@@ -62,7 +61,6 @@ matching refusal wins without disclosing inaccessible resource details:
 - **AND** disabling the user or app likewise prevents the next request
 
 ### Requirement: authoritative_object_store_scope
-Status: governed (#279)
 
 Object-addressed stores-policy operations SHALL declare a trusted scope resolver
 separate from the business handler. After fresh principal/app/role and claimed-scope checks,
@@ -103,7 +101,6 @@ the same non-disclosing refusal.
 - **AND** a request waiting on the scope lock rechecks current assignments afterward
 
 ### Requirement: declared_product_gate_composes
-Status: governed (#279)
 
 An immutable operation declaration SHALL explicitly select generic-only or named
 product authorization. A named gate SHALL run fresh after generic store approval
@@ -148,7 +145,6 @@ permission and complete store access before result disclosure or business work.
 - **THEN** activation or request admission refuses rather than using generic-only
 
 ### Requirement: runtime_reads_have_no_mutations
-Status: governed (#279)
 
 Independently installed trusted packages SHALL contribute named reads without
 core app-specific routing. Reads and declared actions SHALL use the same callable
@@ -167,7 +163,6 @@ SHALL drain admitted work and prevent subsequent disabled/unavailable execution.
 - **THEN** create/update/delete and action-only helpers are absent at runtime
 
 ### Requirement: app_refusals_are_auditable
-Status: governed (#279)
 
 Authorization refusals SHALL not disclose resource existence or inaccessible scope.
 The host SHALL record an operator-visible decision with caller, app, operation
@@ -181,7 +176,6 @@ configuration diagnostics. Refusal audit SHALL survive business rollback.
 - **AND** the refusal audit remains without sensitive request/result contents
 
 ### Requirement: self_store_access_discovery
-Status: governed (#279)
 
 A stores-policy read MAY explicitly enable self-only store discovery. Discovery
 SHALL freshly verify enabled caller, active exact app identity, entry access,

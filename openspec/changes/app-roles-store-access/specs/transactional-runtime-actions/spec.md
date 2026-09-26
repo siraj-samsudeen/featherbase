@@ -1,7 +1,6 @@
 ## MODIFIED Requirements
 
 ### Requirement: declared_app_actions_fail_closed
-Status: governed (#296, #279)
 
 The host SHALL execute only version-2 declared named actions with an explicit
 recognized policy for every operation through one authenticated app-identity/
@@ -26,7 +25,6 @@ for exact-identity upgrade planning but SHALL NOT acquire a default policy.
   data/results remain intact for an explicit reviewed package upgrade
 
 ### Requirement: action_helpers_preserve_caller_authority
-Status: governed (#296, #279)
 
 Handlers SHALL receive unknown payload, caller identity, immutable host-authorized
 operation scope, host validation rejection and narrow document helpers, never a
@@ -46,7 +44,6 @@ labelling an action read-only SHALL NOT grant mutation helpers to read-only role
 - **THEN** the command fails and no partial rows or history survive
 
 ### Requirement: action_writes_and_replay_are_atomic
-Status: governed (#296, #279)
 
 An action SHALL execute within one host-owned transaction. A successful command
 SHALL atomically persist its JSON result, immutable complete authorization scope

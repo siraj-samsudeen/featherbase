@@ -23,7 +23,6 @@ export function canonical(value: unknown): string {
 export const checksum = (value: unknown) => createHash('sha256').update(canonical(value)).digest('hex')
 export function refuse(message: string): never { throw new AppError('ValidationError', message) }
 
-// @spec runtime_upgrade_reviewed_plan.destructive_upgrade_refused
 const addition = z.object({
   kind: z.literal('addColumn'),
   table: z.string(),
@@ -45,7 +44,6 @@ export const migrationLedger = (migrations: PackageMigration[]): MigrationEntry[
   migrations.map(m => ({ id: m.id, checksum: checksum(m) }))
 
 // Reverse/replay makes the final declaration and cumulative history one contract.
-// @spec runtime_upgrade_identity.upgrade_history_is_a_prefix
 export function validateMigrations(name: string, version: string, tables: TableDef[], migrations: PackageMigration[]) {
   const ids = new Set<string>()
   let previous: string | undefined
@@ -75,7 +73,6 @@ export function validateMigrations(name: string, version: string, tables: TableD
   return baseline
 }
 
-// @spec runtime_upgrade_preserves_owned_work
 export async function applyAdditions(migrations: PackageMigration[], owner: string) {
   for (const migration of migrations) for (const op of migration.operations) {
     const [table] = await sql`select owner_app, physical_schema, physical_relation, kind

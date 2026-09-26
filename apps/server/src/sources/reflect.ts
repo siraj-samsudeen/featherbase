@@ -101,7 +101,6 @@ async function candidateFor(
   return { ...base, bindable: true }
 }
 
-// @spec source_candidates_preserve_fk_metadata
 export async function introspectSource(
   sourceName: string,
   schema?: string,
@@ -120,7 +119,6 @@ export async function introspectSource(
   const tables: ReflectionCandidate[] = []
   for (const t of introspected) {
     const candidate = await candidateFor(cfg, t, prefix, reflected)
-    // @spec source_preview_explains_references
     // Match buildBoundTable's earliest-binding and exact-key rule. Keep the
     // driver's primitive type and raw edge intact; this is presentation only.
     for (const column of candidate.columns) {

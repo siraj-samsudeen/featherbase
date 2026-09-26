@@ -91,7 +91,6 @@ export function ListView({
   useEffect(() => setStart(0), [filterKey])
   useEffect(() => setSelected(new Set()), [filterKey, start, table])
   // DEL-J1 (docs/specs/0003-table-deletion.md): deleting the whole Table.
-  // @spec irreversible_one_click
   // The confirmation must carry the LIVE row count, never a bare "sure?".
   const navigate = useNavigate()
   const [confirmingDelete, setConfirmingDelete] = useState(false)

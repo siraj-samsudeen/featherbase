@@ -16,7 +16,6 @@ test.beforeAll(async ({ request }) => {
   taskId = ((await saved.json()) as { row_id: string }).row_id
 })
 
-// @spec featherbase_human_routes_are_canonical.exact_runtime_app_location_survives_sign_in
 test('signed-out runtime app query and selected-work fragment survive password sign-in', async ({ page }) => {
   await page.goto(`/tasker?review=deep-link&note=37%20cartons%2F83&review=again#task=${taskId}`)
   await expect(page).toHaveURL(

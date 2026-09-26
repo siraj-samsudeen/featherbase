@@ -9,18 +9,15 @@ export const validators = { 'tasker.task': prepareTask }
 export { actions } from './actions'
 
 function prepareTask(ctx: Context): void {
-  // @spec one_task_destination
   if (ctx.row.project && ctx.row.personal_tasks_owner)
     ctx.reject('Choose either a project or Personal tasks, not both', {
       personal_tasks_owner: 'Remove the project before choosing Personal tasks',
     })
-  // @spec personal_destination_assigns_owner
   if (ctx.row.personal_tasks_owner)
     ctx.row.assigned_to = ctx.row.personal_tasks_owner
   else if (ctx.old?.personal_tasks_owner && ctx.row.assigned_to === ctx.old.personal_tasks_owner)
     ctx.row.assigned_to = null
 
-  // @spec completion_restores_state
   const oldDone = Boolean(ctx.old?.is_done)
   const nextDone = Boolean(ctx.row.is_done)
   const oldState = String(ctx.old?.task_state ?? 'Not started')

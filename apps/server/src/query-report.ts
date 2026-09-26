@@ -5,7 +5,6 @@ import { getDoc } from './document'
 
 // Authenticate as the restricted role, rather than SET ROLE on an owner
 // session: report SQL could reset the latter back to the session owner.
-// @spec app_data_is_api_only
 const reportUrl = new URL(process.env.QUERY_REPORT_DATABASE_URL ?? config.databaseUrl)
 if (!process.env.QUERY_REPORT_DATABASE_URL) {
   reportUrl.username = 'app_client'

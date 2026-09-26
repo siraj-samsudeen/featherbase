@@ -3,7 +3,6 @@ import { withTransaction } from './db'
 
 const effects = new AsyncLocalStorage<(() => Promise<void>)[]>()
 
-// @spec action_commit_boundary_and_lifecycle_serialize
 export async function afterDocumentCommit(effect: () => Promise<void>): Promise<void> {
   const pending = effects.getStore()
   if (pending) pending.push(effect)

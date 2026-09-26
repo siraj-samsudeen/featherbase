@@ -3,8 +3,8 @@
 > **Non-authoritative since 2026-09-21.** OpenSpec is the sole behavior
 > specification and mandatory change workflow; see
 > [ADR 0010](../adr/0010-openspec-change-workflow.md) and root `AGENTS.md`.
-> Do not add files or behavior here. `pnpm check:spec-policy` freezes this
-> directory while each capability is baselined into `openspec/specs/` or retired.
+> Do not add files or behavior here. This directory is frozen while each
+> capability is baselined into `openspec/specs/` or retired.
 
 These documents preserve the pre-adoption Journey contracts as dated migration
 evidence. They help recover existing behavior, but they do not govern current
@@ -18,15 +18,15 @@ identify the OpenSpec capability boundary before writing the baseline.
 
 Historical format: feather-spec — a one-pager per feature with EARS acceptance
 criteria grouped by user capability. Its legacy IDs remain useful when tracing
-history, but new code and tests cite descriptive OpenSpec slugs with `@spec`.
+history, but new code and tests cite descriptive OpenSpec requirement and
+scenario names instead.
 
 These IDs replace the old harness feature IDs. That inventory is frozen
 history at [`docs/archive/harness-2026/`](../archive/harness-2026/README.md)
 (retired 2026-08-28, issue #236); nothing here extends it.
 
-The historical `> evidence:` verdicts are preserved as migration inputs. Current
-spec↔code↔test linkage is the OpenSpec `@spec` convention documented in
-[`docs/agents/stc-traceability.md`](../agents/stc-traceability.md).
+The historical `> evidence:` verdicts are preserved as migration inputs only;
+current behavior is governed by `openspec/specs/`.
 
 | Spec | Status | Summary |
 |---|---|---|
