@@ -1,5 +1,20 @@
 # Progress Log
 
+## 2026-09-26 — Report toolbar fits a phone (#317)
+
+ReportView now wraps its existing title/export, report configuration, and chart
+configuration control rows at narrow widths while retaining the desktop flex
+arrangement and every report calculation/interaction. A DSL-backed browser
+regression proves the Admin main area does not overflow and every Report and
+chart control remains within it at 375px and 1280px.
+
+Verification: the focused isolated Report browser suite passes 3/3; web
+typecheck, strict OpenSpec validation (45 specs/12 changes), the E2E DSL guard
+(8 checks/78 files), and `git diff --check` pass. An inspected 375px capture
+shows the export, configuration, and chart controls fully visible with no
+horizontal clipping. The OpenSpec change is ready to archive after acceptance;
+the scoped branch/PR awaits parent verification and merge.
+
 ## 2026-09-26 — Global search respects row and title access (#339)
 
 Search reuses the query module's existing own-row/Data Scope predicate and
