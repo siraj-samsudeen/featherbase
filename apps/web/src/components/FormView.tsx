@@ -209,13 +209,10 @@ export function FormView({
     setDeleteBusy(true)
     setDeleteError(null)
     try {
-      // A source-bound row carries a revision (the mapped modified column, or
-      // a csv file's mtime). `deleteBoundDoc` REFUSES a delete that omits it,
-      // so without this the button would render and never work on a writable
-      // binding. The form echoes the stamp it actually loaded — a stronger
-      // check than re-reading a fresh one, because it is what the user was
-      // looking at when they decided to delete.
-      const stamp = m.data_source && m.external_modified ? baseline.updated_at : null
+      // Echo the stamp the form actually loaded. Source-bound rows with a
+      // mapped revision require it, as do local rows owned by an installed
+      // app. A revisionless binding naturally keeps the query empty.
+      const stamp = baseline.updated_at
       const query =
         stamp == null ? '' : `?updated_at=${encodeURIComponent(String(stamp))}`
       await api.delete(
