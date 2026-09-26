@@ -417,7 +417,7 @@ app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) =
   // #101) cannot carry a bearer token, so an OAuth session without the sid
   // cookie would silently drop them (PR #104 review).
   setSidCookie(c, session.token, issued.maxAgeSeconds)
-  // #150: the session token itself never travels in this URL — a 7-day
+  // #150: the session token itself never travels in this URL — a long-lived
   // credential in a query string lands in browser history, in the Referer of
   // anything that page fetches next, and in every proxy log on the way. The
   // SPA gets a one-time, one-minute handoff code and POSTs it back below.
@@ -437,7 +437,7 @@ app.post('/api/oauth/session', async (c) => {
 // the key is wrong, so the route neither advertises itself nor tells a
 // guesser they were close.
 //
-// The session token does not travel in this redirect. #150 removed 7-day
+// The session token does not travel in this redirect. #150 removed long-lived
 // JWTs from URLs (they land in history, in the Referer of the next request,
 // and in every proxy log); this reuses the same one-time handoff code and the
 // SPA's existing /oauth-callback page, so there is no second way in and no
