@@ -2,24 +2,19 @@
 
 ## Purpose
 
-A team member can record something immediately without first deciding where it
-belongs or who should handle it.
+Anyone on the team can write a task down the moment it comes to mind, without
+first deciding where it belongs or who will do it. The Inbox is where such tasks
+wait until someone decides where they belong.
 
 ## Requirements
 
-### Requirement: capture_neutral_task
+### Requirement: Quick task capture
 
-A non-empty title SHALL be sufficient to capture a task. The task SHALL appear
-in Inbox immediately, start Not started and Not urgent, and have no project,
-Personal tasks owner or responsible person. Its creator SHALL NOT automatically
-become responsible. After a successful capture, the entry SHALL clear and remain
-ready for another title. Pressing Enter SHALL submit the title.
+Typing a title and pressing Enter SHALL be all it takes to record a task. The
+task gets added to the Inbox for later processing.
 
-#### Scenario: neutral_defaults
-- **WHEN** Siraj captures `Review September stock variance`
-- **THEN** it appears in Inbox with the neutral defaults
-- **AND** Siraj is its creator but not its responsible person.
+#### Scenario: Capture a task
 
-#### Scenario: entry_stays_ready
-- **WHEN** a task is captured successfully
-- **THEN** the entry clears and remains focused for the next title.
+- **WHEN** the user types "Call the supplier" and presses Enter
+- **THEN** it appears in the Inbox
+- **AND** the box is empty, ready for the next one

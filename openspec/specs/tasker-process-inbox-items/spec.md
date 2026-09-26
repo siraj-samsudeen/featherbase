@@ -1,64 +1,44 @@
-# Process Inbox Items
+# Process Inbox
 
 ## Purpose
 
-A team member can review work whose destination was postponed and decide where
-each item belongs without changing unrelated task information.
+The Inbox holds tasks nobody has placed yet. The user moves each one to where it
+belongs: a project (a named group of shared work) or one person's personal list
+(the team-visible list of tasks that belong to that person).
 
 ## Requirements
 
-### Requirement: inbox_is_destination
+### Requirement: What the Inbox holds
 
-Inbox SHALL contain exactly the tasks with neither a project nor a Personal
-tasks owner. Opening Inbox SHALL show each task's current shared signals without
-changing it.
+The Inbox SHALL show every task that is not in a project or on anyone's personal
+list, and only those.
 
-#### Scenario: captured_task_waits_in_inbox
-- **GIVEN** a task has no project and no Personal tasks owner
-- **WHEN** a team member opens Inbox
-- **THEN** the task appears there and remains unchanged.
+#### Scenario: A new task waits in the Inbox
 
-### Requirement: one_task_destination
+- **WHEN** the user captures "Order packing tape" and opens the Inbox
+- **THEN** "Order packing tape" is listed there
 
-A task SHALL belong to exactly one of Inbox, one project, or one person's
-Personal tasks. A write supplying both a project and a Personal tasks owner
-SHALL be rejected.
+### Requirement: A task lives in one place
 
-| Destination | Project | Personal tasks owner | Responsible person |
-|---|---|---|---|
-| Inbox | None | None | Unchanged |
-| Project | One project | None | Unchanged |
-| Personal tasks | None | One person | That person |
+A task SHALL be in exactly one place: the Inbox, one project, or one person's
+personal list.
 
-#### Scenario: move_to_project_without_assignment
-- **GIVEN** an unassigned Not started task is in Inbox
-- **WHEN** it is moved to `Warehouse review` without choosing a person
-- **THEN** it leaves Inbox and remains unassigned and Not started.
+#### Scenario: Move a task to a project
 
-#### Scenario: dual_destination_rejected
-- **WHEN** one write supplies both a project and a Personal tasks owner
-- **THEN** the write is refused and the impossible state is not saved.
+- **WHEN** the user moves an Inbox task into the project "Warehouse review"
+- **THEN** it appears in "Warehouse review" and is no longer in the Inbox
 
-### Requirement: personal_destination_assigns_owner
+### Requirement: A personal list decides who is responsible
 
-Moving a task to one person's Personal tasks SHALL make that person responsible.
-Its work state and other shared information SHALL remain unchanged.
+Putting a task on someone's personal list SHALL make them responsible for it,
+and taking it off their list also takes it off them.
 
-#### Scenario: move_to_personal_tasks
-- **GIVEN** an In progress task is in Inbox
-- **WHEN** it is moved to Siraj's Personal tasks
-- **THEN** Siraj becomes responsible and it remains In progress.
+#### Scenario: Put a task on someone's list
 
-### Requirement: process_inbox_one_at_a_time
+- **WHEN** the user moves a task from the Inbox to Shahul's personal list
+- **THEN** Shahul is responsible for it
 
-Inbox processing SHALL present one item at a time with the remaining count. Save
-and next SHALL apply the chosen destination and open the next item. Skip SHALL
-leave the current task unchanged and open the next item.
+#### Scenario: Take a task off someone's list
 
-#### Scenario: save_and_continue
-- **WHEN** a member places the current Inbox item in a project and chooses Save and next
-- **THEN** that task leaves Inbox and the next item opens.
-
-#### Scenario: skip_unresolved_item
-- **WHEN** a member cannot yet decide and chooses Skip
-- **THEN** the task remains unchanged in Inbox and the next item opens.
+- **WHEN** the user moves a task from Shahul's personal list to "Warehouse review"
+- **THEN** it appears in "Warehouse review" and Shahul is no longer responsible for it
