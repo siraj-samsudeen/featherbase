@@ -97,7 +97,7 @@ Each of those can be false while our code is perfectly correct, and then the req
 
 **Every D gets four fields**: the assumption, how it was established, **when**, and **what would detect its violation**. An undated D is a guess with a citation. `openspec/specs/table-deletion/spec.md` carries the section in the shape this axis asks for — three assumptions, each with a *Detected by* line, two of which honestly say "nothing".
 
-**Real gap, stated plainly:** external data sources have no OpenSpec capability yet, and the frozen Journey document (`docs/specs/0001`) never had a Domain assumptions section — so the most dangerous statements in that feature are written down nowhere as assumptions. When it is baselined into `openspec/specs`, the D section is the single highest-value thing this axis adds. Do not add it to the frozen file; `pnpm check:spec-policy` enforces the frozen set.
+**Real gap, stated plainly:** external data sources have no OpenSpec capability yet, and the frozen Journey document (`docs/specs/0001`) never had a Domain assumptions section — so the most dangerous statements in that feature are written down nowhere as assumptions. When it is baselined into `openspec/specs`, the D section is the single highest-value thing this axis adds. Do not add it to the frozen file. Nothing will stop you: `pnpm check:spec-policy` only rejects legacy spec files being added or removed, never edits to an existing one's contents.
 
 ---
 
