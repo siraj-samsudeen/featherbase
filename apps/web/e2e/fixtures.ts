@@ -1,4 +1,7 @@
 // The e2e suite's fixture seam — and, since #216, its single auth story.
+// Since the feather-testing-core DSL migration (docs/testing/e2e-dsl-migration.md),
+// both `test` and `anonymousTest` are DSL-backed: every spec gets a `session`
+// fixture, whether or not it uses one yet.
 //
 // WHICH `test` A SPEC IMPORTS *IS* ITS AUTH STORY:
 //
@@ -7,21 +10,19 @@
 //       storageState captured once per worker, so the spec navigates straight
 //       to `/admin/...` — no `/login` round trip, no local `login(page)`
 //       helper. This is the right import for the ~70 specs whose subject is
-//       something *behind* the login, not the login itself.
+//       something *behind* the login, not the login itself. `{ session }` is
+//       the feather-testing-core DSL entry point (framework Part I §6:
+//       journeys compile to fluent chains) — behaviour goes through Session
+//       verbs, mechanics the DSL can't express go in a named `session.step()`.
 //
 //   import { anonymousTest as test } from './fixtures'
-//       Signed out. The spec drives `/login` itself with `loginAs()` below.
-//       Correct when the login surface IS the subject (smoke, admin,
-//       account-menu, i18n-login, oauth, palette, user-management), when the
-//       identity that matters is NOT Administrator (portal, realtime), or
-//       when the page under test must be reached with no session at all
-//       (web-page, web-form).
-//
-//   import { journeyTest as test } from './fixtures'
-//       The feather-testing DSL (framework Part I §6: journeys compile to
-//       fluent chains). These specs walk the sign-in as part of the journey —
-//       `signIn(session)` below is a step of the story they tell — so they
-//       deliberately do NOT reuse the stored session.
+//       Signed out — no stored session, so the spec drives `/login` itself
+//       with `loginAs()` or `signIn(session)` below. Correct when the login
+//       surface IS the subject (smoke, admin, account-menu, i18n-login,
+//       oauth, palette, user-management), when the identity that matters is
+//       NOT Administrator (portal, realtime), or when the page under test
+//       must be reached with no session at all (web-page, web-form). Also
+//       DSL-backed, for the same reason `test` is.
 //
 // The request-side setup every spec does (`POST /api/login` for a bearer
 // token) collapses to the `adminAuth()` / `adminToken()` helpers here. They
@@ -31,13 +32,8 @@
 // save nothing and only add a second way to say the same thing.
 import fs from 'node:fs'
 import path from 'node:path'
-import {
-  expect,
-  test as base,
-  type APIRequestContext,
-  type Page,
-} from '@playwright/test'
-import { test as featherTest } from 'feather-testing-core/playwright'
+import { expect, type APIRequestContext, type Page } from '@playwright/test'
+import { test as dslTest } from 'feather-testing-core/playwright'
 
 export { expect }
 export type { APIRequestContext, Page }
@@ -133,7 +129,7 @@ interface AuthWorkerFixtures {
   adminStorageState: string
 }
 
-export const test = base.extend<object, AuthWorkerFixtures>({
+export const test = dslTest.extend<object, AuthWorkerFixtures>({
   // Sign in for real, once per worker, and keep the resulting browser storage.
   // Doing it through the UI rather than synthesising the localStorage entries
   // keeps the suite ignorant of *how* the app writes a session down — the
@@ -160,15 +156,12 @@ export const test = base.extend<object, AuthWorkerFixtures>({
 })
 
 /**
- * Plain Playwright `test`: no stored session, so the browser starts signed
+ * DSL-backed `test` with no stored session, so the browser starts signed
  * out. Specs whose subject is the login surface, an identity other than
  * Administrator, or a page that must be reached with no session import this
- * as `test` and drive `loginAs()` themselves.
+ * as `test` and drive `loginAs()` / `signIn(session)` themselves.
  */
-export const anonymousTest = base
-
-/** The feather-testing DSL entry point. Journey specs import this as `test`. */
-export const journeyTest = featherTest
+export const anonymousTest = dslTest
 
 // Composable step: sign in as Administrator. Structural typing so it works
 // with whatever context type the adapter gives the Session.

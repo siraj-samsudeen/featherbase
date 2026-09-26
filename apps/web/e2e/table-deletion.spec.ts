@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { journeyTest as test, expect, adminToken, signIn } from './fixtures'
+import { test, expect, adminToken, signIn } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
 // DEL-J1 / DEL-J2 — docs/specs/0003-table-deletion.md, in the feather-testing

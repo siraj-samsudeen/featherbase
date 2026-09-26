@@ -1,4 +1,4 @@
-import { journeyTest as test, expect, adminToken, signIn } from './fixtures'
+import { test, expect, adminToken, signIn } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
 // IMP-J1 — the first-import golden path of

@@ -1,4 +1,4 @@
-import { journeyTest as test, expect, adminToken, signIn } from './fixtures'
+import { test, expect, adminToken, signIn } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
 // UPS-J1 + UPS-J2 — the upsert journeys of docs/specs/0004-import-upsert.md,

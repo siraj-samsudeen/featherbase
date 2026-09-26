@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test'
-import { journeyTest as test, expect, adminToken, signIn } from './fixtures'
+import { test, expect, adminToken, signIn } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
 // TLC-J1 / TLC-J2 — docs/specs/0007-table-lifecycle.md, in the feather-testing
