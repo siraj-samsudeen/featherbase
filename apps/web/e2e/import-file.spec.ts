@@ -3,6 +3,11 @@ import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
 
 // IMP-006: drag & drop a CSV/Excel file -> inferred Table + imported rows.
+//
+// Migrated to the feather-testing-core DSL
+// (docs/testing/e2e-dsl-migration.md). The Table Builder's grid and dropzone
+// are testid-addressed, not label-associated, so the walk stays inside named
+// steps; `session.visit` carries navigation.
 
 const CSV_DT = 'Import Sales' // from "import sales.csv"
 const XLSX_DT = 'Import Inventory' // from "import inventory.xlsx"
@@ -15,47 +20,52 @@ const CSV = [
 ].join('\n')
 
 test('IMP-006: drop a CSV; inferred schema prefills the builder; create imports the rows', async ({
-  page,
+  session,
   request,
 }) => {
   const token = await adminToken(request)
   await deleteTableIfExists(request, token, CSV_DT)
 
-  await page.goto('/admin')
-  await page.getByTestId('new-table-link').click()
-  await expect(page.getByTestId('table-builder')).toBeVisible()
+  await session.visit('/admin')
+  await session.step('open the builder and drag-and-drop a CSV onto the dropzone', async ({ page }) => {
+    await page.getByTestId('new-table-link').click()
+    await expect(page.getByTestId('table-builder')).toBeVisible()
 
-  // A real drag-and-drop onto the dropzone (DataTransfer built in-page).
-  const dataTransfer = await page.evaluateHandle((csv) => {
-    const dt = new DataTransfer()
-    dt.items.add(new File([csv], 'import sales.csv', { type: 'text/csv' }))
-    return dt
-  }, CSV)
-  await page.getByTestId('dt-dropzone').dispatchEvent('drop', { dataTransfer })
+    // A real drag-and-drop onto the dropzone (DataTransfer built in-page).
+    const dataTransfer = await page.evaluateHandle((csv) => {
+      const dt = new DataTransfer()
+      dt.items.add(new File([csv], 'import sales.csv', { type: 'text/csv' }))
+      return dt
+    }, CSV)
+    await page.getByTestId('dt-dropzone').dispatchEvent('drop', { dataTransfer })
+  })
 
-  // Inference prefills everything from the file.
-  await expect(page.getByTestId('dt-file-name')).toContainText('import sales.csv')
-  await expect(page.getByTestId('dt-file-name')).toContainText('3 rows')
-  await expect(page.getByTestId('dt-name')).toHaveValue(CSV_DT)
-  const grid = page.getByTestId('dt-fields').locator('tbody tr[data-columnrow]')
-  await expect(grid).toHaveCount(5)
-  const expectType = async (row: number, name: string, type: string) => {
-    await expect(grid.nth(row).locator('[data-rowfield=column_name]')).toHaveValue(name)
-    await expect(grid.nth(row).locator('[data-rowfield=column_type]')).toHaveValue(type)
-  }
-  await expectType(0, 'customer_name', 'Data')
-  await expectType(1, 'qty', 'Int')
-  await expectType(2, 'unit_price', 'Float')
-  await expectType(3, 'ship_date', 'Date')
-  await expectType(4, 'paid', 'Check')
-  await expect(page.getByTestId('dt-preview')).toContainText('Alice')
+  await session.step('inference prefills everything from the file', async ({ page }) => {
+    await expect(page.getByTestId('dt-file-name')).toContainText('import sales.csv')
+    await expect(page.getByTestId('dt-file-name')).toContainText('3 rows')
+    await expect(page.getByTestId('dt-name')).toHaveValue(CSV_DT)
+    const grid = page.getByTestId('dt-fields').locator('tbody tr[data-columnrow]')
+    await expect(grid).toHaveCount(5)
+    const expectType = async (row: number, name: string, type: string) => {
+      await expect(grid.nth(row).locator('[data-rowfield=column_name]')).toHaveValue(name)
+      await expect(grid.nth(row).locator('[data-rowfield=column_type]')).toHaveValue(type)
+    }
+    await expectType(0, 'customer_name', 'Data')
+    await expectType(1, 'qty', 'Int')
+    await expectType(2, 'unit_price', 'Float')
+    await expectType(3, 'ship_date', 'Date')
+    await expectType(4, 'paid', 'Check')
+    await expect(page.getByTestId('dt-preview')).toContainText('Alice')
+  })
 
-  await page.getByTestId('dt-create').click()
+  await session.step('create the Table and land on its list with the imported rows', async ({ page }) => {
+    await page.getByTestId('dt-create').click()
 
-  // Lands on the new Table's list with the imported rows visible.
-  await expect(page).toHaveURL(new RegExp('/admin/Import%20Sales'))
-  await expect(page.getByTestId('list-rows')).toContainText('Alice')
-  await expect(page.getByTestId('list-rows')).toContainText('Chandra')
+    // Lands on the new Table's list with the imported rows visible.
+    await expect(page).toHaveURL(new RegExp('/admin/Import%20Sales'))
+    await expect(page.getByTestId('list-rows')).toContainText('Alice')
+    await expect(page.getByTestId('list-rows')).toContainText('Chandra')
+  })
 
   // Server-side truth: inferred types persisted, rows really inserted.
   const meta = await request.get(`/api/table/${encodeURIComponent(CSV_DT)}:meta`, {
@@ -77,7 +87,7 @@ test('IMP-006: drop a CSV; inferred schema prefills the builder; create imports 
 })
 
 test('IMP-006: a real .xlsx imports the same way (via the file picker)', async ({
-  page,
+  session,
   request,
 }) => {
   const token = await adminToken(request)
@@ -92,24 +102,28 @@ test('IMP-006: a real .xlsx imports the same way (via the file picker)', async (
   XLSX.utils.book_append_sheet(wb, ws, 'Stock')
   const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
 
-  await page.goto('/admin')
-  await page.getByTestId('new-table-link').click()
-  await page.getByTestId('dt-file-input').setInputFiles({
-    name: 'import inventory.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer,
+  await session.visit('/admin')
+  await session.step('open the builder and pick an xlsx file', async ({ page }) => {
+    await page.getByTestId('new-table-link').click()
+    await page.getByTestId('dt-file-input').setInputFiles({
+      name: 'import inventory.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer,
+    })
+
+    await expect(page.getByTestId('dt-name')).toHaveValue(XLSX_DT)
+    const grid = page.getByTestId('dt-fields').locator('tbody tr[data-columnrow]')
+    await expect(grid).toHaveCount(3)
+    await expect(grid.nth(0).locator('[data-rowfield=column_name]')).toHaveValue('item')
+    await expect(grid.nth(1).locator('[data-rowfield=column_type]')).toHaveValue('Int')
   })
 
-  await expect(page.getByTestId('dt-name')).toHaveValue(XLSX_DT)
-  const grid = page.getByTestId('dt-fields').locator('tbody tr[data-columnrow]')
-  await expect(grid).toHaveCount(3)
-  await expect(grid.nth(0).locator('[data-rowfield=column_name]')).toHaveValue('item')
-  await expect(grid.nth(1).locator('[data-rowfield=column_type]')).toHaveValue('Int')
-
-  await page.getByTestId('dt-create').click()
-  await expect(page).toHaveURL(new RegExp('/admin/Import%20Inventory'))
-  await expect(page.getByTestId('list-rows')).toContainText('Widget')
-  await expect(page.getByTestId('list-rows')).toContainText('Gadget')
+  await session.step('create the Table and land on its list with the imported rows', async ({ page }) => {
+    await page.getByTestId('dt-create').click()
+    await expect(page).toHaveURL(new RegExp('/admin/Import%20Inventory'))
+    await expect(page.getByTestId('list-rows')).toContainText('Widget')
+    await expect(page.getByTestId('list-rows')).toContainText('Gadget')
+  })
 
   const count = await request.get(`/api/table/${encodeURIComponent(XLSX_DT)}:count`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -117,13 +131,15 @@ test('IMP-006: a real .xlsx imports the same way (via the file picker)', async (
   expect(((await count.json()) as { count: number }).count).toBe(2)
 })
 
-test('IMP-006: a non-tabular file is refused with a message', async ({ page }) => {
-  await page.goto('/admin')
-  await page.getByTestId('new-table-link').click()
-  await page.getByTestId('dt-file-input').setInputFiles({
-    name: 'notes.txt',
-    mimeType: 'text/plain',
-    buffer: Buffer.from('hello'),
+test('IMP-006: a non-tabular file is refused with a message', async ({ session }) => {
+  await session.visit('/admin')
+  await session.step('drop a .txt file and see the refusal', async ({ page }) => {
+    await page.getByTestId('new-table-link').click()
+    await page.getByTestId('dt-file-input').setInputFiles({
+      name: 'notes.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('hello'),
+    })
+    await expect(page.getByTestId('dt-error')).toContainText('not a CSV or Excel file')
   })
-  await expect(page.getByTestId('dt-error')).toContainText('not a CSV or Excel file')
 })
