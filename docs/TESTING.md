@@ -214,7 +214,10 @@ behaviour: `session.visit`/`clickButton`/`fillIn`/`assertText`/`assertHas`/
 inside a descriptively named `session.step('<what this does>', async ({
 page }) => { ... })` — for mechanics the DSL can't express (testid/attribute
 addressing, file inputs, drag/reorder, `page.evaluate`). `request` stays the
-tool for API setup in `beforeAll`/`afterEach`, unchanged. See
+tool for API setup in `beforeAll`/`afterEach`, unchanged. A CI check
+(`pnpm check:e2e-dsl`) enforces this: every `apps/web/e2e/*.spec.ts` must
+import `test` or `anonymousTest` from `./fixtures`; a file whose first line
+is `// e2e-dsl: exempt — <reason>` is skipped. See
 `docs/testing/e2e-dsl-migration.md` for the full before/after pattern, the
 step rule, and the migration's per-file status — as of this writing 14 of 76
 files are migrated; the doc lists the rest in batches.
