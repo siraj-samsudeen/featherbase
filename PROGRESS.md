@@ -1,5 +1,40 @@
 # Progress Log
 
+## 2026-09-26 — Tasker specs rewritten in plain language (pilot, #301)
+
+The pilot for the `rules.specs` style in `openspec/config.yaml`. The 12
+Tasker capability specs are rewritten in plain words: plain requirement and
+scenario names, WHEN/THEN only, no screen text, terms explained on first use,
+and concrete scenarios a tester can try. Quick Task Capture uses the
+owner-approved wording word for word. Behaviour, code and tests are unchanged
+(`git diff origin/main -- apps runtime-apps packages` is empty).
+
+- Keyboard, label and colour promises that each capability used to repeat are
+  gathered into one Workspace requirement.
+- Two promises that were never built left the main specs and became the new
+  `tasker-planned-work` change: one-at-a-time Inbox processing, and the
+  optional "why it stopped" prompt when the state is changed from task details
+  (task lists already offer it).
+- The `tasker-correct-and-promote` deltas were rewritten the same way. Its old
+  MODIFIED block became three ADDED requirements, and its two new capabilities
+  now carry a Purpose. Without one, archiving leaves a placeholder that fails
+  strict validation.
+- `openspec/TASKER.md` is now a numbered index in learning order. The
+  hand-kept "not built" and "evidence gap" tables are gone.
+- New `docs/testing/tasker-test-notes.md` has one section per scenario (43),
+  generated from the specs.
+
+**Verified:**
+- `pnpm check:specs`: 19/19 specs and 5/5 changes, strict, 0 failed.
+- Archiving both Tasker changes on a scratch copy of `openspec/` with
+  `openspec archive <change> -y` succeeded, and the resulting specs passed
+  strict validation (21/21).
+
+**Next:** the owner decides the spec-vs-code items listed in the PR (the
+biggest is whether leaving a personal list should clear responsibility). Test
+titles still quote the old snake_case requirement names. Renaming them is a
+separate, test-only change.
+
 ## 2026-09-26 — Stock OpenSpec (core, 1.13.2) and the STC layer removed
 
 Restored OpenSpec to plain upstream `core` profile and removed the local STC
