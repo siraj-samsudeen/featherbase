@@ -3,7 +3,9 @@ import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 const DT = 'Kb DT'
 
 // UI-020: drag a card to another column; the underlying field value changes
-// in the DB.
+// in the DB. Migrated to the feather-testing-core DSL
+// (docs/testing/e2e-dsl-migration.md): drag mechanics and DB verification
+// aren't expressible by DSL verbs, so they stay in named steps.
 
 test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   const headers = await adminAuth(request)
@@ -25,37 +27,46 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   await request.post(`/api/table/${encodeURIComponent(DT)}`, { headers, data: { row_id: 'card-a', title: 'Card A', stage: 'Todo' } })
 })
 
-test('UI-020: dragging a card to another column updates its field in the DB', async ({ page }) => {
+test('UI-020: dragging a card to another column updates its field in the DB', async ({
+  session,
+}) => {
   // Reach the Kanban from the list.
-  await page.goto(`/admin/${encodeURIComponent(DT)}`)
-  await page.getByTestId('open-kanban').click()
-  await expect(page.getByTestId('kanban-view')).toBeVisible()
+  await session.visit(`/admin/${encodeURIComponent(DT)}`)
+  await session.step('reach the Kanban from the list', async ({ page }) => {
+    await page.getByTestId('open-kanban').click()
+  })
+  await session.assertHas('[data-testid="kanban-view"]')
 
-  // Card A starts in Todo.
-  const todoCol = page.getByTestId('kanban-column-Todo')
-  const doneCol = page.getByTestId('kanban-column-Done')
-  await expect(todoCol.getByTestId('kanban-card')).toHaveCount(1)
-  await expect(doneCol.getByTestId('kanban-card')).toHaveCount(0)
+  await session.step('Card A starts in Todo', async ({ page }) => {
+    const todoCol = page.getByTestId('kanban-column-Todo')
+    const doneCol = page.getByTestId('kanban-column-Done')
+    await expect(todoCol.getByTestId('kanban-card')).toHaveCount(1)
+    await expect(doneCol.getByTestId('kanban-card')).toHaveCount(0)
+  })
 
-  // Drag Card A from Todo to Done using pointer events.
-  const card = page.locator('[data-card="card-a"]')
-  const cardBox = await card.boundingBox()
-  const doneBox = await doneCol.boundingBox()
-  await page.mouse.move(cardBox!.x + cardBox!.width / 2, cardBox!.y + cardBox!.height / 2)
-  await page.mouse.down()
-  await page.mouse.move(doneBox!.x + doneBox!.width / 2, doneBox!.y + 40, { steps: 8 })
-  await page.mouse.up()
+  await session.step('drag Card A from Todo to Done using pointer events', async ({ page }) => {
+    const todoCol = page.getByTestId('kanban-column-Todo')
+    const doneCol = page.getByTestId('kanban-column-Done')
+    const card = page.locator('[data-card="card-a"]')
+    const cardBox = await card.boundingBox()
+    const doneBox = await doneCol.boundingBox()
+    await page.mouse.move(cardBox!.x + cardBox!.width / 2, cardBox!.y + cardBox!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(doneBox!.x + doneBox!.width / 2, doneBox!.y + 40, { steps: 8 })
+    await page.mouse.up()
 
-  // The card moved on screen…
-  await expect(doneCol.getByTestId('kanban-card')).toHaveCount(1, { timeout: 10_000 })
-  await expect(todoCol.getByTestId('kanban-card')).toHaveCount(0)
+    // The card moved on screen…
+    await expect(doneCol.getByTestId('kanban-card')).toHaveCount(1, { timeout: 10_000 })
+    await expect(todoCol.getByTestId('kanban-card')).toHaveCount(0)
+  })
 
-  // …and the field changed in the DB.
-  const token = await page.evaluate(() => localStorage.getItem('fc_token'))
-  const doc = (await (
-    await page.request.get(`/api/table/${encodeURIComponent(DT)}/card-a`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-  ).json()) as { stage: string }
-  expect(doc.stage).toBe('Done')
+  await session.step('…and the field changed in the DB', async ({ page }) => {
+    const token = await page.evaluate(() => localStorage.getItem('fc_token'))
+    const doc = (await (
+      await page.request.get(`/api/table/${encodeURIComponent(DT)}/card-a`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    ).json()) as { stage: string }
+    expect(doc.stage).toBe('Done')
+  })
 })
