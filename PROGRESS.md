@@ -1,5 +1,19 @@
 # Progress Log
 
+## 2026-09-26 — Columns editor contains phone-width overflow (#319)
+
+The Columns table scrolls inside its card, keeping the Admin page within the
+phone viewport. Rename buttons have column-specific accessible names. Parent
+verification reran `pnpm --filter web exec playwright test e2e/column-editor.spec.ts`
+(7 passed), web typecheck, `pnpm check:specs` and `pnpm check:e2e-dsl`.
+The inspected narrow screenshot shows both Rename controls within the card.
+
+The component suite initially failed under this orb's Node 26 native Web Storage
+setting. `NODE_OPTIONS=--no-experimental-webstorage pnpm --filter web test
+test/column-editor.test.tsx` passes all 8 tests; jsdom still logs its unsupported
+scrollTo warning. No test expectations or environment code were changed.
+The broader test-environment compatibility issue remains outside this UI fix.
+
 ## 2026-09-26 — Calendar header fits a phone (#318)
 
 CalendarView's header now wraps its title, month navigation and List view link
