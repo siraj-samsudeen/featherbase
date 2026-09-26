@@ -1,5 +1,19 @@
 # Progress Log
 
+## 2026-09-26 — Tasker's Focus action is visibly named (#314)
+
+Task rows show `☆ Focus` and `★ Focus` while retaining their task-specific
+accessible names. This implements the existing usable-on-any-device promise.
+Parent review found the first regression could match a different task's button;
+the final DSL test targets the new task's exact accessible name in every state.
+
+Parent verification: `pnpm apps:prepare` (5 Tasker tests and builds),
+`E2E_ISOLATED=1 pnpm --filter web exec playwright test e2e/task-management.spec.ts`
+(3 passed), web typecheck, `pnpm check:specs`, and `pnpm check:e2e-dsl`.
+Inspected desktop and 390px captures show both Focus states without task-row
+overlap. The narrow capture also shows clipped navigation/project strips,
+outside this label change; broader Tasker mobile usability needs follow-up.
+
 ## 2026-09-26 — Columns editor contains phone-width overflow (#319)
 
 The Columns table scrolls inside its card, keeping the Admin page within the
