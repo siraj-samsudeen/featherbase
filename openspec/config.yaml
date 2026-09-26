@@ -28,7 +28,8 @@ rules:
     - Write from the user's side. Say what the user can do and what they get.
     - Tell the user what they benefit from knowing, including what the system does for them, in their words. Leave out incidental detail such as field defaults, every field, or internal mechanics.
     - "Example: 'Typing a title and pressing Enter is all it takes to record a task. The task gets added to the Inbox for later processing.' Not a list of the fields a new task starts with."
-    - One requirement per promise to the user. Keep scenarios to the few that show the promise, usually one to three.
+    - One requirement makes one promise, in one or two short sentences. If it needs more, it holds several promises (split them) or repeats what the Purpose already says (cut it). Keep scenarios to the few that show the promise, usually one or two.
+    - Don't state the obvious, such as "looking at a list changes nothing".
     - A scenario gives a concrete example the reader can try; it does not repeat the requirement. Scenarios say "the user".
     - No screen labels, button text or placeholder text; they change with the UI.
     - Explain a term the first time it is used.

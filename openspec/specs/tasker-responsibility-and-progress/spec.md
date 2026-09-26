@@ -8,19 +8,10 @@ another.
 
 ## Requirements
 
-### Requirement: At most one responsible person
+### Requirement: One responsible person
 
-The responsible person is the one teammate who has taken on a task. A task SHALL
-have at most one. Any team member can give a task to someone, hand it on to
-someone else, or take a task nobody has taken. Creating a task does not make its
-creator responsible. Changing who is responsible never changes the task's state,
-and changing the state never changes who is responsible.
-
-#### Scenario: Assign without starting
-
-- **WHEN** the user gives a task that has not been started to Shahul
-- **THEN** Shahul is responsible for it
-- **AND** it is still Not started
+A task SHALL have at most one responsible person, the teammate who has taken it
+on. Anyone can assign, reassign or take a task.
 
 #### Scenario: Hand a task on
 

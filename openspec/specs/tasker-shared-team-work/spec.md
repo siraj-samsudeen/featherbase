@@ -12,8 +12,8 @@ is on it; it does not lock anyone else out.
 
 Every signed-in team member SHALL be able to see, create and change every
 project and task, whether or not they are responsible for it. Each person's own
-settings, such as My Focus, starred projects and saved views, stay private to
-them.
+settings, such as My Focus (a private shortlist of tasks), starred projects and
+saved views (named searches to come back to), stay private to them.
 
 #### Scenario: Help with a task nobody has taken
 
