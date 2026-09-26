@@ -82,14 +82,18 @@ test.describe('Calendar header responsiveness', () => {
     await session
       .visit(`/admin/${encodeURIComponent(DT)}/view/calendar`)
       .assertHas('[data-testid="calendar-view"]')
+      .assertHas('h1')
+      .assertHas('[data-testid="cal-prev"]')
+      .assertHas('[data-testid="cal-next"]')
+      .assertHas('[data-testid="cal-to-list"]')
       .within('h1', (heading) => heading.assertExactText(`${DT} — Calendar`))
       .within('main', (main) =>
         main
           .assertNoHorizontalOverflow()
-          .assertHorizontallyContained('h1')
-          .assertHorizontallyContained('[data-testid="cal-prev"]')
-          .assertHorizontallyContained('[data-testid="cal-next"]')
-          .assertHorizontallyContained('[data-testid="cal-to-list"]'),
+          .assertHorizontallyContained('h1', { tolerance: 0 })
+          .assertHorizontallyContained('[data-testid="cal-prev"]', { tolerance: 0 })
+          .assertHorizontallyContained('[data-testid="cal-next"]', { tolerance: 0 })
+          .assertHorizontallyContained('[data-testid="cal-to-list"]', { tolerance: 0 }),
       )
   })
 })
@@ -101,14 +105,18 @@ test.describe('Calendar header desktop layout', () => {
     await session
       .visit(`/admin/${encodeURIComponent(DT)}/view/calendar`)
       .assertHas('[data-testid="calendar-view"]')
+      .assertHas('h1')
+      .assertHas('[data-testid="cal-prev"]')
+      .assertHas('[data-testid="cal-next"]')
+      .assertHas('[data-testid="cal-to-list"]')
       .within('h1', (heading) => heading.assertExactText(`${DT} — Calendar`))
       .within('main', (main) =>
         main
           .assertNoHorizontalOverflow()
-          .assertHorizontallyContained('h1')
-          .assertHorizontallyContained('[data-testid="cal-prev"]')
-          .assertHorizontallyContained('[data-testid="cal-next"]')
-          .assertHorizontallyContained('[data-testid="cal-to-list"]'),
+          .assertHorizontallyContained('h1', { tolerance: 0 })
+          .assertHorizontallyContained('[data-testid="cal-prev"]', { tolerance: 0 })
+          .assertHorizontallyContained('[data-testid="cal-next"]', { tolerance: 0 })
+          .assertHorizontallyContained('[data-testid="cal-to-list"]', { tolerance: 0 }),
       )
   })
 })

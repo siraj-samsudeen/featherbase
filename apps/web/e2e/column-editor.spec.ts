@@ -116,14 +116,22 @@ test('a name the server would reject is caught before the round trip', async ({ 
   await session
     .fillIn('Label', 'Glor')
     .assertHas('[data-testid="ce-add-problem"]', { text: 'already has glor' })
-    .within('[data-testid="ce-add-go"]', (button) => button.assertAttribute('disabled'))
+  await session.step('a duplicate name disables Add column', async ({ page }) => {
+    await expect(page.getByTestId('ce-add-go')).toBeDisabled()
+  })
+  await session
     .fillIn('Column name', 'created_at')
     .assertHas('[data-testid="ce-add-problem"]', { text: 'standard column' })
-    .within('[data-testid="ce-add-go"]', (button) => button.assertAttribute('disabled'))
+  await session.step('a standard column name disables Add column', async ({ page }) => {
+    await expect(page.getByTestId('ce-add-go')).toBeDisabled()
+  })
+  await session
     .fillIn('Column name', 'Not Snake')
     .assertHas('[data-testid="ce-add-problem"]', { text: 'snake_case' })
     .fillIn('Column name', 'aisle')
-    .within('[data-testid="ce-add-go"]', (button) => button.refuteAttribute('disabled'))
+  await session.step('a valid column name enables Add column', async ({ page }) => {
+    await expect(page.getByTestId('ce-add-go')).toBeEnabled()
+  })
 })
 
 test('a label is changed without touching the column or its data', async ({ session, request }) => {
@@ -160,7 +168,7 @@ test.describe('phone layout', () => {
     await session.visit(`/admin/${encodeURIComponent(DT)}/columns`)
 
     await session
-      .within('main', (main) => main.assertNoHorizontalOverflow())
+      .within('main', (main) => main.assertNoHorizontalOverflow({ tolerance: 0 }))
       .within('[data-testid="ce-columns-table"]', (table) =>
         table.assertHorizontalOverflow().scrollToHorizontalEnd(),
       )

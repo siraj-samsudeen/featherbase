@@ -1,9 +1,9 @@
 # E2E → feather-testing-core DSL migration
 
-Working doc for the migration of `apps/web/e2e/*.spec.ts` onto the owner's
-`feather-testing-core` DSL. This is the pilot (10 files); it sets the pattern
-the remaining ~62 files should follow. Not a spec — a mechanics doc, kept
-current by whoever does the next batch.
+Working doc for the partial migration of `apps/web/e2e/*.spec.ts` onto the
+owner's `feather-testing-core` DSL. It records migration mechanics and examples,
+not behavior requirements or a manually maintained inventory of current
+coverage. Derive current coverage from the test files and the DSL guard.
 
 ## Version decision
 
@@ -46,8 +46,8 @@ spec gets `{ session }` now, whether it uses it yet or not; `{ page,
 request, context, ... }` all still work because the DSL's `test` is a
 normal Playwright `TestType`, not a replacement for one.
 
-Net effect: **no import needs to change** in the ~62 files not yet
-migrated. `import { test, ... } from './fixtures'` and `import {
+Net effect: **no import needs to change** in files whose bodies have not yet
+been migrated. `import { test, ... } from './fixtures'` and `import {
 anonymousTest as test, ... } from './fixtures'` both still work exactly as
 before; they simply start receiving an unused `session` fixture until
 someone migrates that file's body.
@@ -272,7 +272,7 @@ migrating anything click-heavy like the Table Builder or Import Wizard —
    `page` inside step callbacks (which get their own `page` param); drop
    the fixture you don't use at the outer scope.
 
-## Files migrated in this pilot (10 + 4 renamed)
+## Original pilot notes
 
 Renamed only (`journeyTest as test` → `test`, no body changes beyond that
 and the 0.4.0 bump): `import-journey.spec.ts`,
@@ -301,12 +301,11 @@ then the full suite twice (once immediately after, once against a freshly
 reset database) — both full runs came back **156 passed / 28 skipped / 0
 failed**, identical to baseline. `pnpm --filter web typecheck` is clean.
 
-## Remaining files, batched for follow-up agents
+## Historical follow-up batch notes
 
-62 files left. Grouped by shape so one agent's context stays coherent
-across a batch — not by directory, since these repos don't have
-subdirectories. Each batch is independent; hand batches to different agents
-in parallel if desired.
+The notes below preserve the mechanics and verification used by earlier
+migration batches. They are not a current inventory or status tracker; use the
+test files and DSL guard to determine present coverage.
 
 **Batch 1 — Import wizard family (12). DONE.** Same shape as
 `import-revert-journey.spec.ts`: testid-heavy wizard mechanics, mostly
@@ -440,11 +439,10 @@ resetting the db reproduces exactly that (a `toHaveText` miss on stale
 localStorage/task state), confirming it's the known pre-existing property,
 not a migration regression. `pnpm --filter web typecheck` is clean.
 
-Whoever picks up a batch: re-read "The pattern" above, re-derive the
-environment gotcha section (boot with the raised `PREAUTH_*` envs, reset
-the database before the final full-suite verification), and update the
-table above with the files you finish — don't leave this doc describing a
-state the repo has moved past.
+Whoever picks up another batch should re-read "The pattern" above and the
+environment gotcha section (boot with the raised `PREAUTH_*` envs and reset
+the database before final full-suite verification). Current migration status
+belongs in the code and DSL guard, not in these historical tables.
 
 ## Batch 2 status — anonymous / session identity (13 files, done)
 

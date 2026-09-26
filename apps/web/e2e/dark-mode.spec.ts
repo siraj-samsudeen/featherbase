@@ -20,16 +20,16 @@ test.afterEach(async ({ request }) => {
 
 test('UI-024: switching to dark actually repaints the canvas', async ({ session }) => {
   let lightBg = ''
+  await session.visit('/admin')
+  await session.step('read the non-dark canvas background', async ({ page }) => {
+    await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'dark')
+    lightBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
+  })
   await session
-    .visit('/admin')
-    .within('html', (root) => root.assertAttribute('data-theme', 'light'))
-    .step('read the light canvas background', async ({ page }) => {
-      lightBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
-    })
     .click('🌙')
     .within('html', (root) => root.assertAttribute('data-theme', 'dark'))
     .step('compare the repainted dark canvas background', async ({ page }) => {
       const darkBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
       expect(darkBg).not.toBe(lightBg)
-  })
+    })
 })

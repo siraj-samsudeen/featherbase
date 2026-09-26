@@ -32,6 +32,12 @@ test('tasker_browser_flow: PKG-J1 PKG-R4 capture, project entry, urgency, and fo
       button.assertExactText('Not urgent'),
     )
     .clickButton('Mark urgent Confirm warehouse count date')
+
+  await session.step('marking a later task urgent preserves capture order', async ({ page }) => {
+    await expect(page.locator('article').nth(0)).toContainText('Review September stock variance')
+  })
+
+  await session
     .clickButton('Add to My Focus: Review September stock variance')
     .within('button[aria-label="Remove urgent flag from Confirm warehouse count date"]', (button) =>
       button.assertExactText('Urgent'),
