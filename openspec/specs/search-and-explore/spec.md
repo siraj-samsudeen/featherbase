@@ -57,7 +57,9 @@ Explore SHALL let the user start from a Table and add up to two more, each
 connected to the one before by a reference or a child relationship. Clicking
 rows in one selects them, narrowing every table after it to what relates to
 that selection, with an exact count and sum; with nothing selected, a table
-follows everything related to what's above it.
+follows everything related to what's above it. Opening a row from Explore
+SHALL open it in the same peek panel a form's own links open, rather than
+leaving Explore.
 
 #### Scenario: Narrow by clicking
 
@@ -66,6 +68,12 @@ follows everything related to what's above it.
 - **THEN** Purchase Order narrows to that supplier's orders, and PO Line
   narrows to those orders' lines, with an accurate count and sum at every
   stage
+
+#### Scenario: Open a row without leaving Explore
+
+- **WHEN** the user opens one of the rows Explore is showing
+- **THEN** it opens in the same peek panel a form's linked rows open in, and
+  closing it returns to Explore unchanged
 
 ### Requirement: An Explore chain can be shared and reopened
 
