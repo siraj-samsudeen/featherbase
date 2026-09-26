@@ -31,6 +31,32 @@ descendant. Keyboard and supported link actions use the Session DSL, with named
 steps only for focus, viewport and layout measurements. The focused browser
 journey still passes 2/2 and web typecheck passes after merging PRs #348/#349.
 
+## 2026-09-26 — App-owned rows delete from the generic form (#322)
+
+The generic FormView now echoes the revision it loaded whenever a row has one,
+instead of limiting delete revisions to source-bound Tables. A fresh row from
+an installed app can therefore be deleted, while a row changed after the form
+opened still conflicts and preserves the newer value. Revisionless bindings
+still omit the query, and the existing writable CSV binding behavior is
+unchanged.
+
+The PostgreSQL-backed component regressions discover and install the real
+`actionproof` package through the app lifecycle. The fresh-row test failed
+before the fix while the stale-row branch already conflicted; after the fix,
+both pass and assert the rendered success/error states plus database outcomes.
+
+**Verified:** `./init.sh` (server smoke and 3 browser smoke tests),
+`NODE_OPTIONS=--no-experimental-webstorage pnpm --filter web test
+test/table-lifecycle-app-owned.test.tsx test/table-lifecycle-bound.test.tsx`
+(5 passed), `pnpm --filter server exec vitest run
+test/runtime-row-delete.test.ts` (2 passed), `pnpm --filter web typecheck`,
+`pnpm check:specs` (45 specs and 11 changes), and `git diff --check`.
+The component run emits jsdom's known unsupported `window.scrollTo` warning.
+No appearance changed, so semantic DOM checks were used instead of a visual
+capture. Feather review found and corrected an overly broad delta-spec promise;
+no in-scope code or test findings remain. Next: independent parent verification
+before merge.
+
 ## 2026-09-26 — Global search respects row and title access (#339)
 
 Search reuses the query module's existing own-row/Data Scope predicate and
