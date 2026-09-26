@@ -3,13 +3,9 @@
 ### Requirement: Correct a task's title and description
 
 In the side panel and full page, the user SHALL be able to correct a task's
-title and description, then save or cancel. Until they choose to edit, the
-description is shown for reading, or as not written yet; the summary layout
-points them to where they can edit. A title cannot be left blank, but an empty
-description is fine. A saved correction shows in every list straight away. If
-someone else changed the task after the user started editing, the save is
-refused and the user's draft is kept. Moving to another task never carries a
-draft across.
+title and description, then save or cancel. Until then, the description is
+shown for reading, or as not written yet; a title cannot be left blank, and a
+saved correction shows in every list straight away.
 
 #### Scenario: Fix a title and clear a description
 
@@ -22,26 +18,30 @@ draft across.
 - **WHEN** the user edits a task's title and then cancels
 - **THEN** the task keeps its old title and nothing is saved
 
-#### Scenario: Someone else saved first
-
-- **WHEN** the user starts editing a task, Shahul changes the same task, and the user then saves
-- **THEN** the user is told the task has changed and Shahul's change stays
-- **AND** the user's draft is still there
-
 #### Scenario: Nothing opens for editing until asked
 
 - **WHEN** the user opens a task with no description as a full page
 - **THEN** it shows that there is no description yet, along with the task's controls, and no editing box
 - **AND** choosing to edit opens the title and description with save and cancel
 
+### Requirement: A correction in progress is never lost or overwritten
+
+If someone else changed the task after the user started editing it, saving
+SHALL be refused and the user's draft kept; moving to another task drops any
+draft instead of carrying it along.
+
+#### Scenario: Someone else saved first
+
+- **WHEN** the user starts editing a task, Shahul changes the same task, and the user then saves
+- **THEN** the user is told the task has changed and Shahul's change stays
+- **AND** the user's draft is still there
+
 ### Requirement: Work on a task from its details
 
 Task details SHALL let the user change a task's state, responsible person,
 place, urgency and done tick, and take the task themselves if nobody has.
 Taking a task makes the user responsible for it without changing its state or
-place, so it shows in their My Work, not on their personal list. Closing the
-details returns the user to where they were, and while the details cover the
-screen the keyboard stays within them.
+place, so it shows in their My Work, not on their personal list.
 
 #### Scenario: Take a task from its details
 
@@ -52,12 +52,10 @@ screen the keyboard stays within them.
 ### Requirement: Delete a task created by accident
 
 The user SHALL be able to permanently delete a task created by accident, after
-confirming. Tasker explains that this cannot be undone and that Cancelled is the
-way to keep work that is no longer needed. Tasker refuses to delete a task that
-has anything worth keeping, such as someone responsible, urgency, a state other
-than Not started, comments, change history, attachments or links to it, and
-refuses if the task changed after the user opened it. A deleted task disappears
-from lists, from My Focus and from the open task details.
+confirming; Tasker explains this cannot be undone and that Cancelled is the way
+to keep work that is no longer needed. Tasker refuses if the task has anything
+worth keeping, such as a responsible person or comments, or if it changed since
+the user opened it.
 
 #### Scenario: Delete a mistaken capture
 

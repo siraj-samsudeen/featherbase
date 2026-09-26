@@ -20,11 +20,11 @@ on. Anyone can assign, reassign or take a task.
 
 ### Requirement: Ticking done can be undone
 
-A task's state is one of Not started, In progress, Blocked, On hold, Done and
-Cancelled. Ticking a task SHALL mark it Done, and unticking it SHALL put it back
-in the state it had just before, so an accidental tick loses nothing. Only Done
-tasks show as ticked: choosing Done from the list of states ticks the task too,
-and a Cancelled task is not ticked. Every other state is chosen on purpose.
+A task's state is Not started, In progress, Blocked, On hold, Done or
+Cancelled. Ticking a task SHALL mark it Done, and unticking it SHALL restore
+the state it had just before, so an accidental tick loses nothing. Only Done
+shows as ticked, whether reached by ticking or by choosing Done directly;
+Cancelled never does.
 
 #### Scenario: Undo an accidental tick
 
@@ -41,8 +41,8 @@ and a Cancelled task is not ticked. Every other state is chosen on purpose.
 A task's description holds the current understanding of it; comments add dated
 discussion underneath. When the user sets a task to Blocked, On hold or
 Cancelled from a task list, Tasker SHALL offer a place to say why, without
-requiring it. A saved explanation is added as a dated comment and does not
-replace the description.
+requiring it, and save it as a dated comment rather than changing the
+description.
 
 #### Scenario: Say why a task is on hold
 

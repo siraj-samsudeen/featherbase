@@ -12,8 +12,7 @@ else.
 
 Starring a project SHALL add it to the user's own row of project tabs, and
 unstarring removes only that user's tab. The user can reorder their tabs, and
-the tabs and their order are kept across reloads and devices. Starring and
-reordering are done from inside a project.
+the tabs and their order are kept across reloads and devices.
 
 #### Scenario: Each person keeps their own tabs
 

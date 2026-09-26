@@ -11,12 +11,10 @@ about it.
 ### Requirement: Turn a task into a project
 
 Promoting a task SHALL create a project named after the task, carrying over its
-description. A task nobody has worked on yet simply becomes the project and is
-removed as a task. A task with work history, such as someone responsible, a
-state other than Not started, urgency, comments, any change since it was
-captured, or attachments or links to it, is kept as the new project's first
-task so that nothing is lost. Tasker explains this and asks before going ahead,
-and cancelling changes nothing.
+description. A task nobody has worked on yet simply becomes the project; one
+with work history, such as someone responsible or comments, is instead kept as
+the new project's first task, so nothing is lost. Tasker explains this and asks
+first, and cancelling changes nothing.
 
 #### Scenario: Promote a fresh task
 
@@ -32,11 +30,11 @@ and cancelling changes nothing.
 
 ### Requirement: Promotion is all or nothing
 
-Promotion SHALL either finish completely or change nothing, never leaving a
-half-made project or a lost task, and it only goes ahead for someone allowed to
-change both. If the answer is lost and the user retries, they get the same
-result, not a second project. If the task changes after the user started
-promoting it, Tasker refuses or asks again rather than deleting the new work.
+Promotion SHALL either finish completely or change nothing — never a
+half-made project or a lost task — and only for someone allowed to change
+both. Retrying after a lost answer gives the same result, not a second
+project, and a task that changes mid-promotion is refused or re-asked rather
+than losing the new work.
 
 #### Scenario: Retrying does not duplicate
 

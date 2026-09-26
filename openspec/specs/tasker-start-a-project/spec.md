@@ -32,17 +32,10 @@ with nobody responsible, so the team can decide later who takes each one.
 ### Requirement: One place to see and start projects
 
 The Projects page SHALL list every project with how many tasks it holds, and it
-is where new projects are started. Choosing a project opens its tasks. Opening
-one of those tasks keeps the project selected behind the task details.
+is where new projects are started. Choosing a project opens its tasks.
 
 #### Scenario: See all projects before choosing
 
 - **WHEN** "Warehouse review" has three tasks, "Store opening" has one, and the user opens the Projects page
 - **THEN** both projects are listed, with three and one tasks
 - **AND** a new project can be started from the same page
-
-#### Scenario: Task details keep the project in view
-
-- **WHEN** the user opens "Warehouse review" from the Projects page and then opens one of its tasks
-- **THEN** the task details open
-- **AND** "Warehouse review" is still the selected project behind them
