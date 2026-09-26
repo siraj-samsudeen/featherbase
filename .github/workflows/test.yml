@@ -106,6 +106,12 @@ jobs:
       - name: Build independent runtime test packages
         run: pnpm apps:prepare
 
+      # The final image itself recomputes both immutable Tasker digests after
+      # COPY. This catches missing, extra or changed package-root bytes rather
+      # than treating Dockerfile text as proof of deployed contents.
+      - name: Build production image with verified runtime artifacts
+        run: docker build -f apps/server/Dockerfile -t featherbase-ci:${{ github.sha }} .
+
       # The server suite renders real PDFs (test/print-pdf.test.ts →
       # src/print.ts), which launches Chromium through the server's own
       # `playwright` dependency. CHROMIUM_PATH stays unset so Playwright

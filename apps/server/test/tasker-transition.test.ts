@@ -91,7 +91,7 @@ test('PKG-H1: prototype transition preserves work, references, comments, focus a
   // version produced that schema; recovering a reviewed identity is explicit.
   await expect(member.get(`/api/table/tasker.task/${task.row_id}`)).rejects.toMatchObject({ status: 403 })
   expect(await sql`select task_title from tasker.task where row_id = ${task.row_id}`).toEqual([{ task_title: 'Keep this work' }])
-  const packageRoot = resolve('../..', 'runtime-apps/fixtures/tasker-v1')
+  const packageRoot = resolve('../..', 'runtime-apps/fixtures/tasker-v1-production')
   const packageInfo = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
   const recoveredManifest = { ...JSON.parse(await readFile(resolve(packageRoot, 'featherbase.json'), 'utf8')),
     migrations: [], packageName: packageInfo.name, packageVersion: packageInfo.version }
