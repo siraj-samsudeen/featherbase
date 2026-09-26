@@ -43,8 +43,9 @@
   DBs in one instance) — or the data lives elsewhere: SAP master data
   (author here, sync there, periodically or on every write), SaaS products
   (bidirectional master-data sync), a control plane in Railway Postgres
-  (overlay UI — now specced as `docs/specs/0001-external-data-sources.md`
-  under [ADR 0007](../adr/0007-app-and-database-topology.md)), config
+  (overlay UI — now specced as the `external-data-sources` OpenSpec capability
+  (`openspec/specs/external-data-sources/spec.md`) under
+  [ADR 0007](../adr/0007-app-and-database-topology.md)), config
   CSVs in a GitHub repo edited by agents (clients need a UI **without
   losing git diffability**).
 - Storage flexibility, second round: some apps on **Convex**, some on
@@ -199,7 +200,8 @@ sync bindings (per DocType, zero or more — a separate object, NOT a mode)
 
 v1's classes map onto this cleanly: native = `postgres/owned`; adopted =
 `postgres/adopted`; external-live (the Railway case) = `postgres/foreign`
-— specced in detail as `docs/specs/0001-external-data-sources.md` under
+— specced in detail as the `external-data-sources` OpenSpec capability
+(`openspec/specs/external-data-sources/spec.md`) under
 [ADR 0007](../adr/0007-app-and-database-topology.md); git-backed =
 `git-files/owned-or-adopted`; mirrored = a local owned/adopted DocType
 **plus a sync binding** — mirroring stops being a storage location and

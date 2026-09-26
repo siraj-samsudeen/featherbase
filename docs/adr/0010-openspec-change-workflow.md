@@ -56,10 +56,11 @@ workflow, run as plain, stock upstream OpenSpec.
   spec requirement text. `openspec validate --strict` is the only mechanical
   gate; whether code and tests agree with a spec is checked in ordinary
   code review, not by a CI-enforced marker convention.
-- **Journey specs are transitional.** The Journey documents under `docs/specs/`
-  are migration evidence, not a governed contract. Each is converted into an
-  OpenSpec capability and then deleted from `docs/specs/`; there is no
-  standing requirement to keep both forms in sync.
+- **Journey specs were transitional.** The Journey documents under `docs/specs/`
+  were migration evidence, not a governed contract. Each was converted into an
+  OpenSpec capability and then deleted from `docs/specs/` on 2026-09-26; there
+  was no standing requirement to keep both forms in sync while the migration
+  was in progress.
 
 ## Why
 
@@ -73,9 +74,10 @@ version.
 
 ## Consequences
 
-`openspec/specs/` is the only active behavior root. Pre-adoption Journey
-documents may remain temporarily as frozen migration evidence but carry no
-authority and cannot grow. They leave as they are converted into capabilities.
+`openspec/specs/` is the only active behavior root. The pre-adoption Journey
+documents carried no authority and could not grow; each was converted into a
+capability and, once all of them were accounted for, the whole `docs/specs/`
+directory was deleted on 2026-09-26.
 
 OpenSpec strict validation is necessary but not sufficient: it proves artifact
 shape, not agreement with implementation. Whether code and tests agree with a spec is
