@@ -2,20 +2,26 @@
 
 ## Purpose
 
-The team can correct how existing work is named or grouped without recreating
-the work.
+The team can fix a project's name after the fact, without recreating the project
+or moving its tasks.
 
 ## Requirements
 
-### Requirement: project_name_is_correctable
+### Requirement: Rename a project
 
-A team member SHALL be able to rename a project while retaining its stable
-identity and connected tasks. The new name SHALL appear wherever that identity
-is shown. A stale rename SHALL be rejected rather than overwrite a newer edit.
+Any team member SHALL be able to rename a project. Its tasks stay with it, and
+the new name shows everywhere the project appears. If someone else changed the
+project after the user started renaming it, the rename is refused rather than
+overwriting their change.
 
-#### Scenario: rename_keeps_tasks
-- **WHEN** `September stock review` is renamed `Stock review — September`
-- **THEN** existing tasks, quick-access projects and destination choices show the new name
-- **AND** no task or project is recreated.
+#### Scenario: Rename keeps the tasks
 
-Combining and splitting projects are future ideas, not current requirements.
+- **WHEN** the user renames "September stock review" to "Stock review — September"
+- **THEN** all of its tasks are still in it
+- **AND** the new name shows in the user's project tabs and wherever a task can be moved to it
+
+#### Scenario: A newer change wins
+
+- **WHEN** the user starts renaming a project, Shahul renames it first, and the user then saves
+- **THEN** the user's rename is refused
+- **AND** Shahul's name stays
