@@ -1,6 +1,6 @@
 import { test, expect, adminAuth, type APIRequestContext } from './fixtures'
 
-const DT = 'Cal DT'
+const DT = 'Calendar header responsiveness with a very long Table name'
 
 // UI-021: docs appear on their dates; dragging an event updates the date
 // field. Dates are chosen inside the current month so the calendar's default
@@ -35,11 +35,7 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
 test('UI-021: events appear on their date and dragging updates the date field', async ({
   session,
 }) => {
-  await session.visit(`/admin/${encodeURIComponent(DT)}`)
-  await session.step('open the calendar view', async ({ page }) => {
-    await page.getByTestId('open-calendar').click()
-  })
-  await session.assertHas('[data-testid="calendar-view"]')
+  await session.visit(`/admin/${encodeURIComponent(DT)}`).clickLink('Calendar').assertHas('[data-testid="calendar-view"]')
 
   await session.step('the event shows on its date cell', async ({ page }) => {
     const fromCell = page.getByTestId(`cal-cell-${DAY_FROM}`)
@@ -71,5 +67,48 @@ test('UI-021: events appear on their date and dragging updates the date field', 
       })
     ).json()) as { due: string }
     expect(String(doc.due).slice(0, 10)).toBe(DAY_TO)
+  })
+})
+
+async function assertCalendarHeaderFits(page: import('./fixtures').Page): Promise<void> {
+  const main = page.locator('main')
+  expect(await main.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+
+  const mainBox = await main.boundingBox()
+  expect(mainBox).not.toBeNull()
+
+  for (const control of [
+    page.getByRole('heading', { name: `${DT} — Calendar` }),
+    page.getByTestId('cal-prev'),
+    page.getByTestId('cal-next'),
+    page.getByTestId('cal-to-list'),
+  ]) {
+    await expect(control).toBeVisible()
+    const box = await control.boundingBox()
+    expect(box).not.toBeNull()
+    expect(box!.x).toBeGreaterThanOrEqual(mainBox!.x)
+    expect(box!.x + box!.width).toBeLessThanOrEqual(mainBox!.x + mainBox!.width)
+  }
+}
+
+test.describe('Calendar header responsiveness', () => {
+  test.use({ viewport: { width: 375, height: 812 } })
+
+  test('keeps its long title, month navigation, and List view link reachable on a phone', async ({ session }) => {
+    await session.visit(`/admin/${encodeURIComponent(DT)}/view/calendar`).assertHas('[data-testid="calendar-view"]')
+    await session.step('the Calendar header fits the phone width and all navigation is reachable', async ({ page }) => {
+      await assertCalendarHeaderFits(page)
+    })
+  })
+})
+
+test.describe('Calendar header desktop layout', () => {
+  test.use({ viewport: { width: 1280, height: 800 } })
+
+  test('keeps its long title, month navigation, and List view link reachable on desktop', async ({ session }) => {
+    await session.visit(`/admin/${encodeURIComponent(DT)}/view/calendar`).assertHas('[data-testid="calendar-view"]')
+    await session.step('the Calendar header fits the desktop width and all navigation is reachable', async ({ page }) => {
+      await assertCalendarHeaderFits(page)
+    })
   })
 })

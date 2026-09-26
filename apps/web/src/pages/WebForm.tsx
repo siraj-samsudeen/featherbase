@@ -1,23 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
+import type { WebFormColumn, WebFormConfig } from 'shared'
 import { api, ApiError } from '../lib/api'
 
 // WEB-002: a public, session-less form. Fetches its column config and creates
 // a row on submit; server validation errors surface inline.
-
-interface WebFormColumn {
-  column_name: string
-  label: string
-  column_type: string
-  reference_table: string | null
-  reqd: boolean
-}
-interface WebFormConfig {
-  route: string
-  title: string
-  columns: WebFormColumn[]
-  success_message: string
-}
 
 function Column({
   def,
@@ -29,17 +16,27 @@ function Column({
   onChange: (v: string) => void
 }) {
   const testid = `wf-field-${def.column_name}`
-  const common = { 'data-testid': testid, className: 'fc-input', value, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => onChange(e.target.value) }
+  const common = { id: testid, 'data-testid': testid, className: 'fc-input', value, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => onChange(e.target.value) }
   if (def.column_type === 'Long Text' || def.column_type === 'Text') return <textarea rows={4} {...common} />
   if (def.column_type === 'Choice')
     return (
       <select {...common}>
         <option value="">—</option>
+        {(def.choices ?? '')
+          .split('\n')
+          .map((choice) => choice.trim())
+          .filter(Boolean)
+          .map((choice) => (
+            <option key={choice} value={choice}>
+              {choice}
+            </option>
+          ))}
       </select>
     )
   if (def.column_type === 'Check')
     return (
       <input
+        id={testid}
         type="checkbox"
         data-testid={testid}
         checked={value === '1'}
@@ -72,7 +69,11 @@ export function WebFormPage() {
     setBusy(true)
     try {
       const payload: Record<string, unknown> = {}
-      for (const [k, v] of Object.entries(values)) if (v !== '') payload[k] = v === '1' ? true : v
+      for (const [k, v] of Object.entries(values)) {
+        if (v === '') continue
+        const column = config?.columns.find((candidate) => candidate.column_name === k)
+        payload[k] = column?.column_type === 'Check' ? v === '1' : v
+      }
       const res = await api.post<{ message: string }>(`/api/web_form/${encodeURIComponent(route)}`, { values: payload })
       setDone(res.message)
     } catch (err) {
@@ -103,9 +104,9 @@ export function WebFormPage() {
         <form className="fc-card space-y-4 p-6" data-testid="web-form-form" onSubmit={submit}>
           {config.columns.map((c) => (
             <div key={c.column_name}>
-              <label className="fc-label">
+              <label htmlFor={`wf-field-${c.column_name}`} className="fc-label">
                 {c.label}
-                {c.reqd && <span className="text-red-500"> *</span>}
+                {c.reqd && <span aria-hidden="true" className="text-red-500"> *</span>}
               </label>
               <Column def={c} value={values[c.column_name] ?? ''} onChange={(v) => setValues((s) => ({ ...s, [c.column_name]: v }))} />
             </div>

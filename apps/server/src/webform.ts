@@ -2,27 +2,12 @@ import { sql } from './db'
 import { AppError } from './errors'
 import { getMeta } from './meta'
 import { saveDoc } from './document'
+import type { WebFormColumn, WebFormConfig } from 'shared'
 
 // WEB-002: public web forms. A published Web Form exposes a whitelist of a
 // target Table's columns; an (anonymous) submit creates a row of that Table
 // through the normal save lifecycle, so server validation still applies.
 // Only whitelisted columns are accepted, and only for the configured Table.
-
-export interface WebFormColumn {
-  column_name: string
-  label: string
-  column_type: string
-  reference_table: string | null
-  reqd: boolean
-}
-
-export interface WebFormConfig {
-  route: string
-  title: string
-  ref_table: string
-  success_message: string
-  columns: WebFormColumn[]
-}
 
 async function loadForm(route: string) {
   const [form] = await sql`
@@ -57,6 +42,7 @@ export async function getWebFormConfig(route: string): Promise<WebFormConfig> {
       label: f.label ?? f.column_name,
       column_type: f.column_type,
       reference_table: f.reference_table ?? null,
+      choices: f.choices ?? null,
       reqd: Boolean(f.reqd),
     }))
   return {

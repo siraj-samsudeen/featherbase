@@ -1,5 +1,67 @@
 # Progress Log
 
+## 2026-09-26 — Public forms render and preserve Choice answers (#331)
+
+Choice options now reach public forms through a shared config contract and
+render in metadata order. Labels identify their controls. Parent review caught
+the existing blanket conversion of the string `1` to boolean true; only Check
+fields now receive that conversion. The browser regression persists both an
+ordinary answer and literal `1`, leaving an optional choice empty. Review also
+restored exact heading and required-flag assertions weakened in the first draft.
+
+Parent verification: `pnpm --filter server exec vitest run test/webform.test.ts`
+(7 passed); `E2E_ISOLATED=1 pnpm --filter web exec playwright test
+e2e/calendar.spec.ts e2e/column-editor.spec.ts e2e/task-management.spec.ts
+e2e/web-form.spec.ts` (14 passed together); shared/server/web typechecks;
+`pnpm check:specs` (45 specs, 9 changes); `pnpm check:e2e-dsl` (8 guard tests,
+76 files). Inspected a fresh 2× render with Expedited and quantity code 1
+selected, optional Contact method blank. Parent Feather review, including the
+recovered upstream code-review and codebase-design guidance, found no remaining
+in-scope blocker after the corrections. The OpenSpec delta remains unarchived
+pending acceptance; all four fixes are local commits, not published.
+
+## 2026-09-26 — Tasker's Focus action is visibly named (#314)
+
+Task rows show `☆ Focus` and `★ Focus` while retaining their task-specific
+accessible names. This implements the existing usable-on-any-device promise.
+Parent review found the first regression could match a different task's button;
+the final DSL test targets the new task's exact accessible name in every state.
+
+Parent verification: `pnpm apps:prepare` (5 Tasker tests and builds),
+`E2E_ISOLATED=1 pnpm --filter web exec playwright test e2e/task-management.spec.ts`
+(3 passed), web typecheck, `pnpm check:specs`, and `pnpm check:e2e-dsl`.
+Inspected desktop and 390px captures show both Focus states without task-row
+overlap. The narrow capture also shows clipped navigation/project strips,
+outside this label change; broader Tasker mobile usability needs follow-up.
+
+## 2026-09-26 — Columns editor contains phone-width overflow (#319)
+
+The Columns table scrolls inside its card, keeping the Admin page within the
+phone viewport. Rename buttons have column-specific accessible names. Parent
+verification reran `pnpm --filter web exec playwright test e2e/column-editor.spec.ts`
+(7 passed), web typecheck, `pnpm check:specs` and `pnpm check:e2e-dsl`.
+The inspected narrow screenshot shows both Rename controls within the card.
+
+The component suite initially failed under this orb's Node 26 native Web Storage
+setting. `NODE_OPTIONS=--no-experimental-webstorage pnpm --filter web test
+test/column-editor.test.tsx` passes all 8 tests; jsdom still logs its unsupported
+scrollTo warning. No test expectations or environment code were changed.
+The broader test-environment compatibility issue remains outside this UI fix.
+
+## 2026-09-26 — Calendar header fits a phone (#318)
+
+CalendarView's header now wraps its title, month navigation and List view link
+at narrow widths without changing the normal desktop layout. The focused browser
+test uses a valid 58-character Table title and asserts the main scroll width and
+every header control's bounds at 375px and 1280px; it keeps Calendar's event-drag
+coverage and uses the feather-testing-core session link verb for navigation.
+
+**Verified:** `./init.sh` smoke (3 browser tests),
+`pnpm --filter web exec playwright test e2e/calendar.spec.ts` (3 passed),
+`pnpm --filter web typecheck`, `pnpm check:specs`, and `pnpm check:e2e-dsl`.
+Chromium screenshots at 375px and 1280px were inspected: title, both month
+buttons and List view are visible; main width equalled its scroll width in both.
+
 ## 2026-09-26 — #309 runtime host shell implementation and review fixes
 
 Every packaged runtime entry document now receives a compact Featherbase bar

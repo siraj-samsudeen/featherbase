@@ -104,6 +104,20 @@ test('tasker_browser_flow: PKG-J1 PKG-R4 capture, project entry, urgency, and fo
   })
 })
 
+test('tasker_focus_label: Focus identifies the star in both states without changing its accessible name', async ({
+  session,
+}) => {
+  await session
+    .visit('/tasker/')
+    .fillIn('Quick capture', 'Plan the weekly review')
+    .pressKey('Enter')
+    .assertHas('button.tasker-focus-star[aria-label="Add to My Focus: Plan the weekly review"]', { text: '☆ Focus' })
+    .clickButton('Add to My Focus: Plan the weekly review')
+    .assertHas('button.tasker-focus-star.is-focused[aria-label="Remove from My Focus: Plan the weekly review"]', { text: '★ Focus' })
+    .clickButton('Remove from My Focus: Plan the weekly review')
+    .assertHas('button.tasker-focus-star[aria-label="Add to My Focus: Plan the weekly review"]', { text: '☆ Focus' })
+})
+
 test.describe('phone capture', () => {
   test.use({ viewport: { width: 375, height: 720 } })
 

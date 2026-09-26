@@ -170,3 +170,25 @@ test('a system Table refuses the whole editor', async ({ session }) => {
     .refuteHas('[data-testid="ce-add"]')
     .refuteHas('[data-testid="ce-rename-file_name"]')
 })
+
+test.describe('phone layout', () => {
+  test.use({ viewport: { width: 375, height: 812 } })
+
+  test('keeps the Columns table inside its own scroll area and Rename reachable', async ({ session }) => {
+    await session.visit(`/admin/${encodeURIComponent(DT)}/columns`)
+
+    await session.step('the Admin canvas stays within the phone viewport while the table owns its width', async ({ page }) => {
+      expect(await page.locator('main').evaluate((main) => main.scrollWidth <= main.clientWidth)).toBe(true)
+
+      const tableArea = page.getByTestId('ce-columns-table')
+      expect(await tableArea.evaluate((area) => area.scrollWidth > area.clientWidth)).toBe(true)
+      const scrollLeft = await tableArea.evaluate((area) => {
+        area.scrollLeft = area.scrollWidth
+        return area.scrollLeft
+      })
+      expect(scrollLeft).toBeGreaterThan(0)
+    })
+
+    await session.clickButton('Rename glor').assertHas('[data-testid="ce-rename-input-glor"]')
+  })
+})

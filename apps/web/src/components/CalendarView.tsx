@@ -99,8 +99,8 @@ export function CalendarView({ table }: { table: string }) {
 
   return (
     <div data-testid="calendar-view" onPointerUp={onPointerUp}>
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-xl font-semibold text-[var(--color-ink)]">{table} — Calendar</h1>
           <div className="flex items-center gap-1">
             <button onClick={() => shiftMonth(-1)} className="fc-btn" data-testid="cal-prev">‹</button>

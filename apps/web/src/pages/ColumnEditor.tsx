@@ -75,6 +75,7 @@ function RenameRow({ table, column }: { table: string; column: { column_name: st
       <button
         type="button"
         className="underline"
+        aria-label={`Rename ${column.column_name}`}
         data-testid={`ce-rename-${column.column_name}`}
         onClick={() => {
           setTo(column.column_name)
@@ -238,55 +239,57 @@ export function ColumnEditor() {
 
       <div className="fc-card mb-4 p-3">
         <div className="fc-label mb-1">Columns</div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-xs uppercase tracking-wide text-gray-400">
-              <th className="py-1">Label</th>
-              <th>Column name</th>
-              <th>Type</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {def.columns.map((column) => (
-              <tr
-                key={column.column_name}
-                className="border-t border-[var(--color-border)]"
-                data-testid={`ce-row-${column.column_name}`}
-              >
-                <td className="py-1 pr-2">
-                  <input
-                    className="fc-input w-48 py-0.5"
-                    aria-label={`Label for ${column.column_name}`}
-                    data-testid={`ce-label-${column.column_name}`}
-                    disabled={def.system}
-                    value={labels[column.column_name] ?? column.label ?? column.column_name}
-                    onChange={(e) =>
-                      setLabels((l) => ({ ...l, [column.column_name]: e.target.value }))
-                    }
-                  />
-                  {labels[column.column_name] != null &&
-                    labels[column.column_name].trim() !== (column.label ?? '') && (
-                      <button
-                        type="button"
-                        className="fc-btn-primary ml-1 py-0.5"
-                        data-testid={`ce-label-save-${column.column_name}`}
-                        disabled={put.isPending}
-                        onClick={() => saveLabel(column.column_name)}
-                      >
-                        Save
-                      </button>
-                    )}
-                </td>
-                <td className="pr-2 font-mono text-xs text-gray-500">{column.column_name}</td>
-                <td className="pr-2 text-xs text-gray-500">{column.column_type}</td>
-                <td className="text-xs">
-                  {!def.system && <RenameRow table={def.name} column={column} />}
-                </td>
+        <div className="overflow-x-auto" data-testid="ce-columns-table">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wide text-gray-400">
+                <th className="py-1">Label</th>
+                <th>Column name</th>
+                <th>Type</th>
+                <th />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {def.columns.map((column) => (
+                <tr
+                  key={column.column_name}
+                  className="border-t border-[var(--color-border)]"
+                  data-testid={`ce-row-${column.column_name}`}
+                >
+                  <td className="py-1 pr-2">
+                    <input
+                      className="fc-input w-48 py-0.5"
+                      aria-label={`Label for ${column.column_name}`}
+                      data-testid={`ce-label-${column.column_name}`}
+                      disabled={def.system}
+                      value={labels[column.column_name] ?? column.label ?? column.column_name}
+                      onChange={(e) =>
+                        setLabels((l) => ({ ...l, [column.column_name]: e.target.value }))
+                      }
+                    />
+                    {labels[column.column_name] != null &&
+                      labels[column.column_name].trim() !== (column.label ?? '') && (
+                        <button
+                          type="button"
+                          className="fc-btn-primary ml-1 py-0.5"
+                          data-testid={`ce-label-save-${column.column_name}`}
+                          disabled={put.isPending}
+                          onClick={() => saveLabel(column.column_name)}
+                        >
+                          Save
+                        </button>
+                      )}
+                  </td>
+                  <td className="pr-2 font-mono text-xs text-gray-500">{column.column_name}</td>
+                  <td className="pr-2 text-xs text-gray-500">{column.column_type}</td>
+                  <td className="text-xs">
+                    {!def.system && <RenameRow table={def.name} column={column} />}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {!def.system && (

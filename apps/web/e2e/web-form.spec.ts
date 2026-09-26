@@ -10,8 +10,28 @@ test.beforeAll(async ({ request }) => {
     data: {
       name: DT,
       columns: [
-        { column_name: 'full_name', column_type: 'Data', reqd: true, in_list_view: true },
-        { column_name: 'message', column_type: 'Long Text', reqd: true },
+        { column_name: 'full_name', label: 'Full name', column_type: 'Data', reqd: true, in_list_view: true },
+        { column_name: 'message', label: 'Message', column_type: 'Long Text', reqd: true },
+        {
+          column_name: 'delivery_speed',
+          label: 'Delivery speed',
+          column_type: 'Choice',
+          choices: 'Standard\nExpedited\nSame day',
+          reqd: true,
+        },
+        {
+          column_name: 'contact_method',
+          label: 'Contact method',
+          column_type: 'Choice',
+          choices: 'Email\nPhone',
+        },
+        {
+          column_name: 'quantity_code',
+          label: 'Quantity code',
+          column_type: 'Choice',
+          choices: '0\n1\n2',
+          reqd: true,
+        },
       ],
     },
   })
@@ -26,7 +46,13 @@ test.beforeAll(async ({ request }) => {
         title: 'Contact E2E',
         route: ROUTE,
         ref_table: DT,
-        web_fields: ['full_name', 'message'],
+        web_fields: [
+          'full_name',
+          'message',
+          'delivery_speed',
+          'contact_method',
+          'quantity_code',
+        ],
         published: true,
       },
     },
@@ -38,36 +64,55 @@ test.beforeAll(async ({ request }) => {
 // server validation still applies.
 //
 // Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
-// `context.clearCookies()` is a raw Playwright fixture with no DSL verb, and
-// every field here is `data-testid`-addressed rather than labelled, so the
-// whole interactive flow stays in named steps around `session.visit`.
+// `context.clearCookies()` is a raw Playwright fixture with no DSL verb. The
+// rendered controls are labelled, so every supported form interaction uses a
+// Session verb.
 test('WEB-002: anonymous web form submit creates a document', async ({ session, context, request }) => {
   await session.step('clear cookies so there is genuinely no session', async () => {
     await context.clearCookies()
   })
   const unique = `E2E ${Date.now()}`
-  await session.visit(`/form/${ROUTE}`)
-  await session.step('the form title renders', async ({ page }) => {
+  await session
+    .visit(`/form/${ROUTE}`)
+    .assertOptions('Delivery speed *', ['—', 'Standard', 'Expedited', 'Same day'])
+    .assertOptions('Contact method', ['—', 'Email', 'Phone'])
+    .assertOptions('Quantity code *', ['—', '0', '1', '2'])
+
+  await session.step('the form title renders exactly', async ({ page }) => {
     await expect(page.getByTestId('web-form-title')).toHaveText('Contact E2E')
   })
 
-  await session.step('submitting with a required field blank surfaces the server validation error', async ({ page }) => {
-    await page.getByTestId('wf-field-full_name').fill(unique)
-    await page.getByTestId('web-form-submit').click()
-    await expect(page.getByTestId('web-form-submit-error')).toBeVisible()
-  })
+  await session
+    .fillIn('Full name *', unique)
+    .clickButton('Submit')
+    .assertHas('[data-testid="web-form-submit-error"]')
 
-  await session.step('filling everything creates the document', async ({ page }) => {
-    await page.getByTestId('wf-field-message').fill('Hello from the public web form')
-    await page.getByTestId('web-form-submit').click()
-    await expect(page.getByTestId('web-form-success')).toBeVisible()
-  })
+  await session
+    .fillIn('Message *', 'Hello from the public web form')
+    .selectOption('Delivery speed *', 'Expedited')
+    .assertSelected('Delivery speed *', 'Expedited')
+    .selectOption('Quantity code *', '1')
+    .assertSelected('Quantity code *', '1')
+    .clickButton('Submit')
+    .assertHas('[data-testid="web-form-success"]')
 
-  // The doc really exists (checked as admin).
+  // Both selected required choices are persisted as their exact strings,
+  // while the optional choice can stay on its placeholder and remains empty.
   const headers = await adminAuth(request)
   const filters = encodeURIComponent(JSON.stringify([['full_name', '=', unique]]))
   const list = (await (
-    await request.get(`/api/table/${encodeURIComponent(DT)}?filters=${filters}`, { headers })
-  ).json()) as { total: number }
+    await request.get(
+      `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
+        '["delivery_speed","contact_method","quantity_code"]',
+      )}&filters=${filters}`,
+      { headers },
+    )
+  ).json()) as {
+    total: number
+    data: { delivery_speed: string; contact_method: string | null; quantity_code: string }[]
+  }
   expect(list.total).toBe(1)
+  expect(list.data).toEqual([
+    { delivery_speed: 'Expedited', contact_method: null, quantity_code: '1' },
+  ])
 })
