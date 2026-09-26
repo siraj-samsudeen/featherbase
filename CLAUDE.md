@@ -252,7 +252,7 @@ the skill, don't improvise the equivalent:
 |---|---|
 | Building a feature or fixing a bug test-first | `mattpocock-skills:tdd` |
 | Diagnosing a bug, failure, or perf regression | `mattpocock-skills:diagnosing-bugs` |
-| Reviewing a PR, branch, or "changes since X" | `mattpocock-skills:code-review` (Standards + Spec axes) |
+| Reviewing a PR, branch, or "changes since X" — code or tests | `/review` (repo-local; runs `mattpocock-skills:code-review` and `codebase-design`, plus this repo's checks) |
 | Answering a design question with throwaway code | `mattpocock-skills:prototype` |
 | Designing or deepening a module interface/seam | `mattpocock-skills:codebase-design` |
 | Pinning domain vocabulary or recording an ADR | `mattpocock-skills:domain-modeling` |
@@ -264,25 +264,10 @@ Behavior changes use the repository-generated OpenSpec skills. When spawning
 sub-sessions or task chips, name the required skills in the prompt — spawned
 agents read this file, but an explicit instruction survives context loss.
 
-### Deeper design, test and spec review
+### One review skill
 
-Two repo-local skills, ported from the data-warehouse repo (#3664/#3666) with
-every worked example re-derived from this codebase: **`/code-review-8-axes`**
-and **`/test-review-3-axes`**.
-
-They are **deeper and slower than the routing table's review row above**, and they do
-not replace it: reach for `mattpocock-skills:code-review` on an ordinary PR, and for
-these when the blast radius of what you are touching is a module's behaviour — a save
-path, a permission rule, a status vocabulary, a guard. The trigger is the blast radius,
-**not the size of your change**. A three-line edit to the row engine qualifies; a typo
-fix does not. (Whether the two review routes should collapse into one is an open
-question for the owner.)
-
-These axes almost never fire on the lines you edited: they find the seventh copy of a
-fact you changed in six places, the guard that silently stopped running, the promise
-nothing tests. **Report what you found, what you fixed here, and what you filed
-instead** — fixing everything found is not expected and usually widens the PR wrongly.
-Both carry a REJECT list: **file and function length are not findings.**
+Every code and test review goes through **`/review`** (owner decision, 2026-09-26;
+it replaced `code-review-8-axes` and `test-review-3-axes`).
 
 When a spec, the code and the tests disagree, that disagreement is not yours to
 settle silently — see "A discovered behaviour is not a requirement" above.
