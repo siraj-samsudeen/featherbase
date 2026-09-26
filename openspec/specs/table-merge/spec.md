@@ -61,9 +61,8 @@ first portion.
 ### Requirement: A finished merge reports its outcome and can be undone
 
 After a merge, the builder SHALL see how many rows were added and any that
-failed. The merge can be undone later from the destination table's import
-history; a merged row someone has edited since is left as it is and named as
-skipped.
+failed. The merge can be undone later from the destination's import history
+(see Import History and Undo).
 
 #### Scenario: Undo removes exactly the merged rows
 
