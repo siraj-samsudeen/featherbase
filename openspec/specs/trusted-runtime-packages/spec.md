@@ -81,8 +81,8 @@ preview was taken, the upgrade SHALL be refused and ask for a fresh preview.
 Upgrading an app SHALL keep every existing row and its id exactly as it was,
 and SHALL only add new, optional information — it SHALL refuse an upgrade
 that would remove or change anything already there. Once an upgrade is
-applied, the app SHALL stay on its previous version, unusable by anyone,
-until the admin explicitly turns the new version on.
+applied, the app SHALL be unavailable to everyone — not still running on
+its previous version — until the admin explicitly activates the new one.
 
 #### Scenario: Existing rows survive, extra fields start empty
 
@@ -94,8 +94,8 @@ until the admin explicitly turns the new version on.
 #### Scenario: Turning it on is a separate, explicit step
 
 - **WHEN** an admin applies a reviewed upgrade
-- **THEN** the previous version keeps running until the admin separately
-  activates the new one
+- **THEN** the app is unavailable to everyone until the admin separately
+  activates the new version
 
 ### Requirement: A failed upgrade leaves the app exactly as it was
 
@@ -252,11 +252,9 @@ originally declare.
 
 ### Requirement: A row with retained activity or an outdated view resists deletion
 
-An installed app's row SHALL NOT be deleted while it still has a comment or
-a recorded edit — an attached file or an active share already block deletion
-under the Files and Sharing capability, and that rule extends to these too.
-Deleting SHALL also be refused if the row has changed since whoever is
-deleting it last looked at it.
+A row in an installed app's table SHALL NOT be deleted while it has a
+comment, a recorded edit, an attached file or an active share, or when the
+delete was made against an out-of-date view of it.
 
 #### Scenario: A commented row resists deletion
 

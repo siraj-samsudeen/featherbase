@@ -122,12 +122,12 @@ and its follow-up work already under way to finish first.
 
 ### Requirement: Deleting through an action respects the same delete guard
 
-An action that deletes a row SHALL be refused under the same conditions
-that block deleting it any other way — such as a comment, a recorded edit,
-an attached file, or an active share still on it — and SHALL tell the app
-what's holding the row back so it can explain that to the person who asked.
-That refusal SHALL survive being replayed later exactly as it was first
-given.
+An action that deletes a row SHALL be refused under the same rule that
+blocks deleting an installed app's row any other way — a comment, a
+recorded edit, an attached file or an active share still on it, or an
+out-of-date view of it — and SHALL tell the app what's holding the row back
+so it can explain that to the person who asked. That refusal SHALL survive
+being replayed later exactly as it was first given.
 
 #### Scenario: An action explains why deletion was refused
 
