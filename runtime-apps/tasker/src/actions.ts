@@ -27,12 +27,10 @@ export const actions = {
     const task = await ctx.documents.get('tasker.task', request.row_id)
     if (String(task.updated_at) !== request.updated_at) ctx.reject('This task changed. Close and reopen its details before promoting.')
     const counts = await ctx.documents.deletionState('tasker.task', request.row_id)
-    // @spec promotion_preserves_work_history
     // Creation has no recorded update; references also require retaining the identity.
     const rich = Boolean(task.assigned_to || task.urgent || task.is_done || task.task_state !== 'Not started' ||
       counts.comments || counts.versions || counts.references || counts.files || counts.shares)
     if (rich && !request.confirm) return { confirmationRequired: true }
-    // @spec promotion_is_atomic_retryable
     // These host documents share one transaction and durable request-key receipt.
     const project = await ctx.documents.create('tasker.project', {
       project_name: task.task_title, description: task.description ?? null,
@@ -56,7 +54,6 @@ export const actions = {
     if (!request.confirm) ctx.reject('Confirm permanent deletion of this accidental task')
     const task = await ctx.documents.get('tasker.task', request.row_id)
     if (String(task.updated_at) !== request.updated_at) ctx.reject('This task changed. Close and reopen its details before deleting.')
-    // @spec task_activity_stays_in_tasker
     const counts = await ctx.documents.deletionState('tasker.task', request.row_id)
     if (counts.comments || counts.versions || counts.references || counts.files || counts.shares || task.assigned_to || task.urgent || task.task_state !== 'Not started')
       return { deleted: false, message: 'This task has retained work, references, attachments or shared access. Choose Cancelled to keep its context.', counts }

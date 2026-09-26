@@ -1,4 +1,4 @@
-import { journeyTest as test, expect, adminToken, signIn, snap } from './fixtures'
+import { journeyTest as test, expect, adminToken, signIn } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
 // IMP-J1 — the first-import golden path of
@@ -28,7 +28,6 @@ test('IMP-J1: first import creates a typed Table from zones.csv', async ({
   await signIn(session)
     .click('Import Data')
     .assertText('Drag & drop a CSV or Excel workbook here')
-  await snap(page, 'IMP-J1.1')
 
   // J1.2 — drop the fixture; the counts describe the FILE, never a Table
   await session
@@ -36,7 +35,6 @@ test('IMP-J1: first import creates a typed Table from zones.csv', async ({
     .assertHas('[data-testid="iw-file-name"]', { text: 'zones\\.csv' })
     .assertText('1 sheet')
     .assertText('8 rows, 6 columns in the file')
-  await snap(page, 'IMP-J1.2')
 
   // J1.3 — on a fresh DB the target reads New Table… and nothing suggests
   // appending. On a DB that has already seen a "Zones" Table (this fixture's
@@ -59,7 +57,6 @@ test('IMP-J1: first import creates a typed Table from zones.csv', async ({
     })
   }
 
-  await snap(page, 'IMP-J1.3')
 
   // J1.4 — six editable rows matching R1–R4 exactly (R2.7: Is Active stays
   // Check even though it clears the Choice bar, because yes/no runs first)
@@ -79,11 +76,9 @@ test('IMP-J1: first import creates a typed Table from zones.csv', async ({
     await expectCol(5, 'is_active', 'Check')
   })
 
-  await snap(page, 'IMP-J1.4')
 
   // J1.5 — the locked Row ID row heads the grid
   await session.assertHas('[data-testid="iw-row-id-0"]', { text: 'Row ID' })
-  await snap(page, 'IMP-J1.5')
 
   // Hermeticity rename (deviation from J1.3 "changes nothing", recorded
   // above): the prefill was asserted first, so the promise is proven.
@@ -93,7 +88,6 @@ test('IMP-J1: first import creates a typed Table from zones.csv', async ({
 
   // J1.6 — the button counted the file's rows BEFORE the click
   await session.assertHas('[data-testid="iw-import"]', { text: 'Import 8 rows' })
-  await snap(page, 'IMP-J1.6')
   await session.clickButton('Import 8 rows')
 
   // J1.7 — lands on the new Table's list: all eight zones, ids in the series
@@ -101,7 +95,6 @@ test('IMP-J1: first import creates a typed Table from zones.csv', async ({
     .assertPath(`/featherbase/admin/${encodeURIComponent(DT)}`)
     .assertHas('[data-testid="list-rows"]', { text: 'Alpha' })
     .assertHas('[data-testid="list-rows"]', { text: 'Hotel' })
-  await snap(page, 'IMP-J1.7')
 
   // J1.8 + J1.9 — typed values and the import record, witnessed at the
   // contract tier: FormView's field labels are not yet label-associated, so

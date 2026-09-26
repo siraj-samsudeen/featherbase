@@ -76,7 +76,6 @@ afterAll(async () => {
   if (historical) rmSync(historical, { recursive: true, force: true })
 })
 
-// @spec platform_storage_is_explicit.production_era_prerequisites_precede_convergence
 it('upgrades exact production-era storage, preserving rows, OIDs, grants and ledger timestamps', async () => {
   await withDatabase(template, async (name, db) => {
     const oldServer = resolve(historical, 'apps/server')
@@ -115,7 +114,6 @@ it('upgrades exact production-era storage, preserving rows, OIDs, grants and led
   })
 }, 120_000)
 
-// @spec platform_storage_is_explicit.fresh_and_upgrade_converge_to_same_shape
 it('fresh release and empty production-era upgrade converge', async () => {
   const shape = (db: ReturnType<typeof postgres>) => db`
     select table_schema, table_name, column_name, data_type, is_nullable, column_default
@@ -132,8 +130,6 @@ it('fresh release and empty production-era upgrade converge', async () => {
   })
 }, 120_000)
 
-// @spec platform_storage_is_explicit.failed_legacy_prerequisite_retries_atomically
-// @spec platform_storage_is_explicit.failed_convergence_retries_atomically
 it.each(['0088_runtime_storage.sql', '0094_featherbase_schema.sql'])('rolls back %s even when its ledger insert fails, then resumes once', async file => {
   await withDatabase(template, async (name, db) => {
     await db.unsafe(`create function public.reject_migration() returns trigger language plpgsql as $$
@@ -154,7 +150,6 @@ it.each(['0088_runtime_storage.sql', '0094_featherbase_schema.sql'])('rolls back
   })
 }, 120_000)
 
-// @spec platform_storage_is_explicit.unsupported_legacy_ledger_rejected
 it('rejects a ledger hole before any destination DDL', async () => {
   await withDatabase(template, async (name, db) => {
     await db`delete from public.migration where name = '0086_scheduled_job.ts'`

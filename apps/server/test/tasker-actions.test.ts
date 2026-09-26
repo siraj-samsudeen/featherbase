@@ -23,8 +23,6 @@ const envelope = (task: Record<string, unknown>, confirm = false) => ({
 const promote = '/api/app_actions/tasker/promote'
 const discard = '/api/app_actions/tasker/delete_accidental'
 
-// @spec promotion_preserves_work_history.creation_only_is_simple
-// @spec promotion_is_atomic_retryable.failure_or_retry_does_not_duplicate
 test('simple promotion copies optional Markdown, removes original and replays once', async ({ admin, createUser }) => {
   await install()
   const member = await createUser({ roles: [] })
@@ -41,7 +39,6 @@ test('simple promotion copies optional Markdown, removes original and replays on
   expect(await sql`select row_id from tasker.project`).toHaveLength(2)
 })
 
-// @spec promotion_preserves_work_history.previously_assigned_is_rich
 test('each rich signal requires confirmation, including historical assignment after clearing it', async ({ admin }) => {
   await install()
   for (const signal of ['assignment', 'state', 'urgency', 'comment', 'history']) {
@@ -71,7 +68,6 @@ test('each rich signal requires confirmation, including historical assignment af
   }
 })
 
-// @spec promotion_preserves_work_history
 test('rich Personal promotion preserves its owner assignment while leaving Personal destination', async ({ admin }) => {
   await install()
   const task = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Personal project idea', personal_tasks_owner: 'Administrator', task_state: 'In progress' } })
@@ -79,7 +75,6 @@ test('rich Personal promotion preserves its owner assignment while leaving Perso
   expect(await admin.get(`/api/table/tasker.task/${task.row_id}`)).toMatchObject({ assigned_to: 'Administrator', personal_tasks_owner: null, project: result.projectId, task_state: 'In progress' })
 })
 
-// @spec promotion_is_atomic_retryable.concurrent_history_is_preserved
 test('concurrent comment becomes rich and stale task edits reject before creating a project', async ({ admin }) => {
   await install()
   const task = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Concurrent promotion' } })
@@ -90,7 +85,6 @@ test('concurrent comment becomes rich and stale task edits reject before creatin
   expect(await sql`select row_id from tasker.project`).toHaveLength(0)
 })
 
-// @spec promotion_is_atomic_retryable.failure_or_retry_does_not_duplicate
 test('failure after project creation rolls back project task and idempotency receipt', async ({ admin }) => {
   await install()
   const task = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Atomic failure' } })
@@ -105,7 +99,6 @@ test('failure after project creation rolls back project task and idempotency rec
   expect(await admin.post(promote, request)).toMatchObject({ result: { retainedTask: false } })
 })
 
-// @spec task_activity_stays_in_tasker.retained_work_is_not_silently_deleted
 test('accidental deletion requires confirmation and refuses retained work, history and stale revision', async ({ admin }) => {
   await install()
   const task = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Accidental capture' } })
@@ -121,7 +114,6 @@ test('accidental deletion requires confirmation and refuses retained work, histo
   expect(await admin.get(`/api/activity/tasker.task/${kept.row_id}`)).toMatchObject({ comments: [{ content: 'Meaningful discussion' }] })
 })
 
-// @spec runtime_row_delete_guard
 test('Tasker raw DELETE cannot bypass missing revision or retained discussion', async ({ admin }) => {
   await install()
   const task = await admin.post<Record<string, unknown>>('/api/save_row', { table: 'tasker.task', row: { task_title: 'Keep evidence through both delete paths' } })
@@ -136,8 +128,6 @@ test('Tasker raw DELETE cannot bypass missing revision or retained discussion', 
   expect(await sql`select has_table_privilege('app_client', 'featherbase.runtime_action_result', 'select') as allowed`).toEqual([{ allowed: false }])
 })
 
-// @spec promotion_preserves_work_history
-// @spec task_activity_stays_in_tasker.retained_work_is_not_silently_deleted
 test('an attachment or shared access independently retains task identity across delete and promotion', async ({ admin, createUser }) => {
   await install()
   const member = await createUser({ roles: [] })

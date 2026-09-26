@@ -13,7 +13,6 @@ const test = base.extend<{ admin: TestClient }>({
   }) }, admin.token, admin.user)),
 })
 
-// @spec runtime_row_delete_guard
 test('generic runtime deletion cannot bypass source revision or retained discussion', async ({ admin }) => {
   await discoverPackages([resolve('../..', 'runtime-apps/other')])
   await admin.post('/api/install_app', { name: 'other' })
@@ -25,8 +24,6 @@ test('generic runtime deletion cannot bypass source revision or retained discuss
   expect(await sql`select content from comment where ref_table = 'other.task' and ref_name = 'discard'`).toEqual([{ content: 'Keep 17 comments separate from 37 units' }])
 })
 
-// @spec core_document_links_serialize_with_runtime_deletion
-// @spec guarded_action_deletion_preserves_retained_work.core_attachment_and_share_refusal_replays
 test('Admin attachments and shares retain exact targets through raw/action deletion and restart', async ({ admin }) => {
   const directory = resolve('../..', 'runtime-apps/action-proof')
   await discoverPackages([directory])

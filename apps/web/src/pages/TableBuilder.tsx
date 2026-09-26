@@ -235,7 +235,6 @@ export function TableBuilder() {
     }
     try {
       const sheets = await parseWorkbook(file)
-      // @spec builder_infers_file_columns
       const { headers, rows, headerExcelRow } = sheets[0]
       // The quick builder handles one sheet; the Import wizard handles all.
       setSheetNames(sheets.map((sheet) => sheet.sheetName))
@@ -441,7 +440,6 @@ export function TableBuilder() {
         />
       </div>
 
-      {/* @spec builder_warns_beside_dropzone */}
       {sheetNames.length > 1 && (
         <div role="status" className="mb-4 rounded-md border border-[var(--color-warn)] bg-[var(--color-warn-tint)] px-3 py-2 text-sm text-[var(--color-warn-text)]" data-testid="dt-more-sheets">
           <strong>Only “{sheetNames[0]}” will be imported.</strong>{' '}

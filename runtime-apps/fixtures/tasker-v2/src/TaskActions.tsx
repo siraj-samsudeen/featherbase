@@ -23,7 +23,6 @@ export function TaskActions({ task, disabled, onCompleted }: {
   async function run(action: 'promote' | 'delete_accidental', confirmed: boolean) {
     menu.current?.removeAttribute('open')
     setBusy(true); setError('')
-    // @spec promotion_is_atomic_retryable
     // Keep the exact envelope when a response is lost; a confirmation is a new request.
     const request = pending ?? { action, idempotencyKey: crypto.randomUUID(), payload: { row_id: task.row_id, updated_at: confirmed ? confirmedRevision.current : task.updated_at, confirm: confirmed } }
     remember(request)

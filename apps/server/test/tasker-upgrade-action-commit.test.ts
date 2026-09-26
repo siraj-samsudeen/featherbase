@@ -14,8 +14,6 @@ void app
 const prove = process.env.TASKER_UPGRADE_ACTION_PROOF === '1' ? test : test.skip
 const newVersion = '3.0.0'
 
-// @spec action_commit_boundary_and_lifecycle_serialize
-// @spec runtime_upgrade_commit_and_activation.upgrade_drains_admitted_work
 prove('Tasker upgrade waits through committed action effects, then gates obsolete replay and preserves disable', async () => {
   const [identity] = await sql`select current_database() as name,
     (select value from internal_metadata where key = 'environment') as environment`
@@ -73,8 +71,6 @@ prove('Tasker upgrade waits through committed action effects, then gates obsolet
     expect(await sql`select enabled from installed_app where name = 'tasker'`).toEqual([{ enabled: false }])
     await expect(run(newVersion)).rejects.toMatchObject({ type: 'PermissionError' })
     await setAppEnabled('tasker', true)
-    // @spec fresh_app_store_access
-    // @spec app_refusals_are_auditable
     const [before] = await sql`select count(*)::int as n from access_log
       where "user" = 'Administrator' and operation = 'app_access_denied' and method = 'tasker.promote:permission'`
     await expect(run(oldVersion)).rejects.toMatchObject({ type: 'PermissionError', message: 'Application access refused' })

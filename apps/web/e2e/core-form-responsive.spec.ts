@@ -45,10 +45,6 @@ const controls = ['[data-testid=breadcrumbs]', 'h1', '[data-field]', '[data-test
   '[data-testid=error-title]', '[data-testid=attach-error]', '[data-testid=attach-file]',
   '[data-testid=attachment-row] a', '[data-testid=attachment-delete]']
 
-// @spec generic_core_form_controls_fit_viewport.narrow_blank_and_populated_form
-// @spec generic_core_form_controls_fit_viewport.narrow_form_errors_remain_visible
-// @spec generic_core_form_controls_fit_viewport.narrow_attachment_identity_and_actions
-// @spec generic_core_form_controls_fit_viewport.desktop_keeps_generic_form_layout
 for (const width of [375, 1440]) {
   test(`core form and attachments remain reachable at ${width}px`, async ({ page, request }) => {
     await page.setViewportSize({ width, height: 1000 })

@@ -1,4 +1,3 @@
-// @spec platform_storage_is_explicit
 export const PLATFORM_SCHEMA = 'featherbase'
 export const SITE_REGISTRY_RELATION = 'public.site'
 

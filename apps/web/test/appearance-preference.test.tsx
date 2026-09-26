@@ -30,7 +30,6 @@ function mount(cached = true) {
   return { ...hook, qc }
 }
 
-// @spec appearance_writes_settle_consistently
 test('a slow older palette success cannot snap Indigo back, but latest failure rolls back to Ivory', async () => {
   const first = deferred(), second = deferred()
   const post = vi.spyOn(api, 'post').mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise)
@@ -51,7 +50,6 @@ test('a slow older palette success cannot snap Indigo back, but latest failure r
   expect(qc.getQueryData(['whoami'])).toMatchObject({ palette: 'ivory', theme: 'light' })
 })
 
-// @spec appearance_writes_settle_consistently
 test('an older palette failure does not erase a later successful choice or poison the queue', async () => {
   const first = deferred(), second = deferred()
   const post = vi.spyOn(api, 'post').mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise)
@@ -66,7 +64,6 @@ test('an older palette failure does not erase a later successful choice or poiso
   expect(localStorage.getItem('fc_palette:Appearance A')).toBe('indigo')
 })
 
-// @spec appearance_writes_settle_consistently
 test('rapid theme toggles use latest intent and roll all representations back to the successful dark write', async () => {
   const first = deferred(), second = deferred()
   const post = vi.spyOn(api, 'post').mockImplementationOnce(() => first.promise).mockImplementationOnce(() => second.promise)
@@ -85,7 +82,6 @@ test('rapid theme toggles use latest intent and roll all representations back to
   expect(qc.getQueryData(['whoami'])).toMatchObject({ theme: 'dark', palette: 'graphite' })
 })
 
-// @spec appearance_writes_settle_consistently
 test('a failed theme write restores the server value rather than leaving its optimistic mirror', async () => {
   vi.spyOn(api, 'post').mockRejectedValue(new Error('refused'))
   const { result, qc } = mount()
@@ -96,7 +92,6 @@ test('a failed theme write restores the server value rather than leaving its opt
   expect(qc.getQueryData(['whoami'])).toMatchObject({ theme: 'light' })
 })
 
-// @spec appearance_writes_settle_consistently
 test('unmount and account switch prevent pending completion or queued choices reaching the next account', async () => {
   const first = deferred()
   const post = vi.spyOn(api, 'post').mockImplementation(() => first.promise)
@@ -113,7 +108,6 @@ test('unmount and account switch prevent pending completion or queued choices re
   expect(qc.getQueryData(['whoami'])).toMatchObject({ palette: 'graphite' })
 })
 
-// @spec appearance_writes_settle_consistently
 test('a click before whoami resolves rolls back to the server confirmation, not the stale mirror', async () => {
   const identity = deferred(), write = deferred()
   vi.spyOn(api, 'get').mockImplementation(() => identity.promise)

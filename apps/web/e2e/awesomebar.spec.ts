@@ -25,7 +25,6 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   if (![201, 409].includes(doc.status())) throw new Error(`doc: ${doc.status()}`)
 })
 
-// @spec awesomebar_opens_matching_destinations
 test('UI-014: typing a doc name surfaces it and Enter opens its form', async ({ page }) => {
   await page.goto('/admin')
   const bar = page.getByTestId('awesomebar').locator('input')

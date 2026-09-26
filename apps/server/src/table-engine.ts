@@ -573,11 +573,9 @@ export async function createTable(input: unknown, ownerApp?: string): Promise<Ta
 // definition, columns, physical table, and every live pointer at it.
 export async function deleteTable(name: string, user = 'Administrator'): Promise<void> {
   const meta = await getMeta(name)
-  // @spec schema_reference_blocks.system_tables_refused
   if (meta.system)
     throw new AppError('ValidationError', `${meta.name} is a system table and cannot be deleted`)
 
-  // @spec schema_reference_blocks
   // DEL-R3: DOC-006's reverse lookup, one level up. Any OTHER Table whose
   // schema targets this one — a Reference column or a Sub-table's row
   // storage — blocks, even with zero data rows: the column is the dependency.
@@ -594,7 +592,6 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
         .join(', ')}`,
     )
 
-  // @spec live_pointer_sweep
   // DEL-R4: "live pointer" is defined by metadata — every column anywhere
   // declared Reference → Table. Plain-text mentions (Data columns like the
   // Access Log's) are testimony, not pointers, and survive. Settings-kind
@@ -607,7 +604,6 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
       and td.kind <> 'settings' and td.data_source is null`
 
   const physical = quoteRelation(await tableRelation(meta.name))
-  // @spec deletion_reverses_creation
   const files = await sql.begin(async (tx) => {
     const removedFiles: { file_url: string | null }[] = []
     // This Table's own child rows; the child Table definition is not
@@ -629,18 +625,15 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
         where ${tx(p.column_name)} = ${meta.name}`
     await tx`delete from column_def where parent = ${meta.name}`
     await tx`delete from table_def where name = ${meta.name}`
-    // @spec bound_table_sheds_binding_only
     // DEL-R6/BV1: a bound Table sheds its binding, never its source's
     // storage; a settings Table never had a physical table. RLS policies
     // drop with the table. Series counters are deliberately untouched
     // (DEL-R5 / IMP-R6: the pattern is the promise, not the number).
-    // @spec id_series_survive_deletion
     if (!meta.data_source && meta.kind !== 'settings')
       await tx.unsafe(`drop table if exists ${physical}`)
     return removedFiles
   })
   invalidateMeta(meta.name)
-  // @spec attachment_bytes_unreachable
   // DEL-R7: bytes are removed best-effort after commit — a survivor is disk
   // garbage, not a leak. Only managed URLs qualify; another File row may
   // still own these bytes. Failure here cannot undo the committed deletion.
@@ -653,7 +646,6 @@ export async function deleteTable(name: string, user = 'Administrator'): Promise
       console.warn('Table deleted; attachment cleanup could not complete')
     }
   }
-  // @spec deletion_logged_in_plain_text
   // DEL-R8: audit is independent of cleanup, and an audit outage must not
   // claim that an already committed deletion was refused.
   await sql.begin((tx) => logAccess(user, 'delete_table', { table: meta.name }, tx))

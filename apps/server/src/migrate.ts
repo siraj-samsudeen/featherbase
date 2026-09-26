@@ -105,7 +105,6 @@ export async function runMigrations() {
   if (duplicatePrefixErrors.length > 0) {
     throw new Error(`duplicate migration numbers:\n${duplicatePrefixErrors.join('\n')}`)
   }
-  // @spec platform_storage_is_explicit.unsupported_legacy_ledger_rejected
   // Earlier TS migrations invoke today's qualified engine, not the historical
   // one. Reject unsupported ledgers before creating any destination storage.
   if (legacy) {
@@ -121,11 +120,9 @@ export async function runMigrations() {
   )`)
   for (const file of files) {
     if (applied.has(file)) continue
-    // @spec platform_storage_is_explicit.production_era_prerequisites_precede_convergence
     // 0088–0093 require public storage; 0094 needs their columns and prototype
     // conversion before it can move that storage. Never rewrite shipped SQL.
     if (legacy && file < '0094_featherbase_schema.sql') {
-      // @spec platform_storage_is_explicit.failed_legacy_prerequisite_retries_atomically
       await root.begin(async (tx) => {
         await tx.unsafe('set local search_path = public, pg_temp')
         await tx.unsafe(readFileSync(join(dir, file), 'utf8'))
@@ -157,7 +154,6 @@ export async function runMigrations() {
       const [after] = await sql`
         select to_regclass('public.migration') as legacy,
           to_regclass('featherbase.migration') as current`
-      // @spec platform_storage_is_explicit.failed_convergence_retries_atomically
       if (Boolean(after.legacy) === Boolean(after.current))
         throw new Error('Migration must leave exactly one platform migration ledger')
       const target = after.current ? 'featherbase.migration' : 'public.migration'

@@ -11,7 +11,6 @@ export function ProjectDescription({ project, onSaved }: {
   const [error, setError] = useState('')
   const edit = useRef<HTMLButtonElement>(null)
   function cancel() { setDraft(null); setError(''); requestAnimationFrame(() => edit.current?.focus()) }
-  // @spec project_markdown_is_shared
   return <section className="tasker-project-description" aria-label="Project description">
     {draft ? <form onSubmit={async (event) => {
       event.preventDefault(); setSaving(true); setError('')

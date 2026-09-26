@@ -2,7 +2,6 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { test, expect, renderApp } from './pg-test'
 
-// @spec generated_controls_have_accessible_names
 test('generated labels resolve real controls, stay stable on edits, and distinguish repeated child cells', async ({ admin }) => {
   await admin.post('/api/table_def', {
     name: 'Label Line', kind: 'sub_table',

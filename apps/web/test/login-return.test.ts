@@ -2,7 +2,6 @@ import { describe, expect, test } from 'vitest'
 import { safeLoginNext } from '../src/pages/Login'
 
 describe('login return path', () => {
-  // @spec featherbase_human_routes_are_canonical.exact_runtime_app_location_survives_sign_in
   test('accepts canonical and application paths, preserving explicit or inherited state', () => {
     expect(safeLoginNext('/tasker/', '#task=TASK-00001'))
       .toBe('/tasker/#task=TASK-00001')
@@ -14,7 +13,6 @@ describe('login return path', () => {
       .toBe('/featherbase/admin/User?view=active#row=Administrator')
   })
 
-  // @spec featherbase_human_routes_are_canonical.unsafe_login_return_is_refused
   test.each([
     'https://attacker.example/tasker/',
     '//attacker.example/tasker/',

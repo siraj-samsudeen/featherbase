@@ -47,8 +47,6 @@ function selectedOrAll<T>(selected: T[], value: T): boolean {
   return selected.length === 0 || selected.includes(value)
 }
 
-// @spec task_filters_combine_dimensions
-// @spec task_search_stays_in_scope
 export function filterTasks<T extends FilterableTask>(tasks: T[], setup: TaskViewSetup): T[] {
   const query = setup.search.trim().toLocaleLowerCase()
   const { states, responsiblePeople, urgencies, projects } = setup.filters

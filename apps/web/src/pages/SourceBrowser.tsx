@@ -59,7 +59,6 @@ export default function SourceBrowser({ name }: { name: string }) {
       ),
   })
 
-  // @spec source_preview_explains_references
   function referenceTarget(column: Candidate['columns'][number]) {
     const fk = column.references
     if (!fk || column.is_pk) return null

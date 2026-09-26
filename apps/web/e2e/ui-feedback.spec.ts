@@ -13,7 +13,6 @@ async function capture(page: Page, name: string) {
   await page.screenshot({ path: join(dir, `${name}.png`), fullPage: true })
 }
 
-// @spec awesomebar_results_disambiguate_destinations
 test('Table collision describes four destinations without changing Enter precedence', async ({ page }) => {
   await page.goto('/admin')
   const input = page.getByTestId('awesomebar').locator('input')
@@ -37,7 +36,6 @@ function workbook(names: string[]) {
   return { name: 'zones.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer }
 }
 
-// @spec builder_warns_beside_dropzone
 test('multi-sheet warning names omissions next to the drop and disappears on replacement or clear', async ({ page }) => {
   await page.goto('/admin/new-table')
   await page.getByTestId('dt-file-input').setInputFiles(workbook(['Zones', 'Stores', 'Prices']))
@@ -58,7 +56,6 @@ test('multi-sheet warning names omissions next to the drop and disappears on rep
   await expect(warning).toHaveCount(0)
 })
 
-// @spec source_preview_explains_references
 test('source preview distinguishes bound, selected, wrong-schema and wrong-key FK proposals', async ({ page }) => {
   const col = (name: string, references: { schema: string; table: string; column: string } | null = null, reference_table: string | null = null) =>
     ({ name, data_type: 'integer', column_type: 'Int', is_pk: name === 'id', references, reference_table })
@@ -111,7 +108,6 @@ function luminance(hex: string) {
   return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
 }
 
-// @spec appearance_text_roles_meet_contrast
 test('all palette/mode text roles meet AA, and existing text utilities resolve to the new roles', async ({ page }) => {
   const who = page.waitForResponse((r) => r.url().endsWith('/api/whoami'))
   await page.goto('/admin/new-table')
@@ -151,7 +147,6 @@ test('all palette/mode text roles meet AA, and existing text utilities resolve t
   }
 })
 
-// @spec appearance_writes_settle_consistently
 test('a rejected latest preference returns the rendered picker to the confirmed choice', async ({ page }) => {
   await page.goto('/admin/new-table')
   const picker = page.getByTestId('palette-select')
@@ -173,8 +168,6 @@ test('a rejected latest preference returns the rendered picker to the confirmed 
   await page.request.post('/api/set_theme', { data: { theme: 'light' } })
 })
 
-// @spec generated_controls_have_accessible_names
-// @spec appearance_text_roles_meet_contrast
 test('generated controls are reachable by labels in a browser, including child rows and error/saved states', async ({ page, request }) => {
   const row = await ensureFormFixtures(request, await adminAuth(request))
   await page.goto(`/admin/${encodeURIComponent(FORM_DT)}/${row}`)
@@ -198,7 +191,6 @@ test('generated controls are reachable by labels in a browser, including child r
   await capture(page, 'indigo-form-error')
 })
 
-// @spec generated_controls_have_accessible_names
 test('visible attachment actions identify their fields and keyboard activation opens the correct chooser', async ({ page, request }) => {
   const auth = await adminAuth(request)
   await ensureTable(request, auth, {
@@ -230,7 +222,6 @@ test('visible attachment actions identify their fields and keyboard activation o
 })
 
 for (const persisted of [false, true]) {
-  // @spec generated_controls_have_accessible_names
   test(`${persisted ? 'persisted' : 'unsaved'} child controls retain actual nodes and IDs across edit, reorder and removal`, async ({ page, request }) => {
     const auth = await adminAuth(request)
     await ensureTable(request, auth, {

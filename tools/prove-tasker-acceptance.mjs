@@ -3,9 +3,6 @@ import { resolve } from 'node:path'
 import { writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 
-// @spec task_activity_stays_in_tasker
-// @spec project_markdown_is_shared
-// @spec my_work_has_no_duplicates
 export async function proveTaskerAcceptance({ page, api, expect, output, origin }) {
   const evidence = []
   async function capture(name, expected) {

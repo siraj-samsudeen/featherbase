@@ -475,7 +475,6 @@ app.use('/api/*', async (c, next) => {
   }
 })
 
-// @spec featherbase_human_routes_are_canonical
 // Old bookmarks remain meaningful, but all Featherbase-owned human pages have
 // one canonical namespace. Runtime app roots and technical /api paths never
 // pass through this redirect.
@@ -837,7 +836,6 @@ app.post('/api/import/batches/:id/delete_tables', async (c) => {
 
 // DEL-R1/R2 (docs/specs/0003-table-deletion.md): delete a Table outright.
 app.delete('/api/table_def/:name', async (c) => {
-  // @spec system_manager_only
   await assertSystemManager(who(c))
   await deleteTable(c.req.param('name'), who(c))
   return c.json({ ok: true })
@@ -1144,7 +1142,6 @@ app.get('/api/app_reads/:app/:read/access', async (c) => {
     return recordAppAccessRefusal(who(c), c.req.param('app'), c.req.param('read'), 'override')
   return c.json(await runPackageRead(c.req.param('app'), c.req.param('read'), undefined, who(c), true))
 })
-// @spec runtime_upgrade_reviewed_plan
 for (const operation of ['preview_app_upgrade', 'upgrade_app', 'activate_app_upgrade'] as const) {
   app.post(`/api/${operation}`, async c => {
     await assertSystemManager(who(c))

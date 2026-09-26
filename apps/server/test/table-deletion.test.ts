@@ -32,7 +32,6 @@ async function physicalExists(name: string): Promise<boolean> {
 }
 
 describe('DEL-R1: who may delete', () => {
-  // @spec system_manager_only
   test('DEL-R1: a non-manager is refused whole-request; the Table survives', async ({
     admin,
     createUser,
@@ -49,7 +48,6 @@ describe('DEL-R1: who may delete', () => {
 })
 
 describe('DEL-R2: deletion removes what creation wrote', () => {
-  // @spec deletion_reverses_creation
   test('DEL-R2: def row, column defs, physical table + rows, and its own child rows go; the child Table stays', async ({
     admin,
   }) => {
@@ -80,7 +78,6 @@ describe('DEL-R2: deletion removes what creation wrote', () => {
     expect(orphans.n).toBe(0)
   })
 
-  // @spec deletion_reverses_creation.settings_table_sheds_metadata_only
   test('DEL-R2: a settings Table sheds metadata only; a nonexistent name 404s', async ({
     admin,
   }) => {
@@ -100,7 +97,6 @@ describe('DEL-R2: deletion removes what creation wrote', () => {
 })
 
 describe('DEL-R3: schema references block, and say who', () => {
-  // @spec schema_reference_blocks.zero_rows_still_blocks
   test('DEL-R3: a Reference column blocks — even with zero rows — naming Table.column', async ({
     admin,
   }) => {
@@ -121,7 +117,6 @@ describe('DEL-R3: schema references block, and say who', () => {
     await expect(admin.get(`/api/table/${ENC}:meta`)).rejects.toMatchObject({ status: 404 })
   })
 
-  // @spec schema_reference_blocks.sub_table_storage_blocks
   test('DEL-R3: a Sub-table column blocks its row-storage Table; self-references never block', async ({
     admin,
   }) => {
@@ -149,7 +144,6 @@ describe('DEL-R3: schema references block, and say who', () => {
     })
   })
 
-  // @spec schema_reference_blocks.system_tables_refused
   test('DEL-R3: system tables are platform anatomy — refused', async ({ admin }) => {
     for (const name of ['User', 'Table', 'Column']) {
       await expect(admin.delete(`/api/table_def/${name}`)).rejects.toMatchObject({
@@ -160,9 +154,7 @@ describe('DEL-R3: schema references block, and say who', () => {
   })
 })
 
-// @spec nothing_dangles
 describe('DEL-R4 + DEL-I1: the sidecar sweep', () => {
-  // @spec live_pointer_sweep
   test('DEL-R4: live pointers (Permission, Import Log, home-page link) go; text testimony (Access Log) stays', async ({
     admin,
   }) => {
@@ -208,7 +200,6 @@ describe('DEL-R4 + DEL-I1: the sidecar sweep', () => {
     expect(cols.n).toBe(0)
   })
 
-  // @spec deletion_logged_in_plain_text
   test('DEL-R8: the deletion writes an Access Log line that survives the sweep', async ({
     admin,
   }) => {
@@ -222,7 +213,6 @@ describe('DEL-R4 + DEL-I1: the sidecar sweep', () => {
 })
 
 describe('DEL-R9: a stale pointer gets a tombstone, not a shrug', () => {
-  // @spec stale_pointer_gets_tombstone
   test('DEL-R9: a deleted Table answers with who and when; a never-created name stays plain', async ({
     admin,
   }) => {
@@ -240,7 +230,6 @@ describe('DEL-R9: a stale pointer gets a tombstone, not a shrug', () => {
     })
   })
 
-  // @spec stale_pointer_gets_tombstone.latest_burial_speaks
   test('DEL-R9: recreated and deleted again — the latest burial speaks', async ({ admin }) => {
     await makeTable(admin)
     await admin.delete(`/api/table_def/${ENC}`)
@@ -259,7 +248,6 @@ describe('DEL-R9: a stale pointer gets a tombstone, not a shrug', () => {
 })
 
 describe('DEL-I2: a refusal changes nothing', () => {
-  // @spec refusal_changes_nothing
   test('DEL-I2: after a blocked delete every row count is exactly as before', async ({
     admin,
   }) => {
@@ -287,7 +275,6 @@ describe('DEL-I2: a refusal changes nothing', () => {
 })
 
 describe('DEL-R5: row-id series survive deletion', () => {
-  // @spec id_series_survive_deletion
   test('DEL-R5: recreate the same Table — ids continue, never restart', async ({ admin }) => {
     await admin.post('/api/table_def', {
       name: DT,
@@ -314,7 +301,6 @@ describe('DEL-R5: row-id series survive deletion', () => {
 })
 
 describe('DEL-R7: attachments', () => {
-  // @spec attachment_bytes_unreachable.shared_storage_survives
   test('DEL-I1 #123: delete only actual child-row attachments; preserve shared storage and surviving URL references', async ({ admin }) => {
     await admin.post('/api/table_def', { name: 'Attachment Child', kind: 'sub_table', columns: [{ column_name: 'item', column_type: 'Data' }] })
     for (const name of [DT, 'Attachment Other']) {
@@ -347,7 +333,6 @@ describe('DEL-R7: attachments', () => {
     }
   })
 
-  // @spec attachment_bytes_unreachable.rollback_never_unlinks
   test('DEL-R7: rollback never unlinks; audit failure after commit cannot skip cleanup or report refusal', async ({ admin }) => {
     await makeTable(admin)
     const { file_url } = await saveUpload(Buffer.from('rollback bytes'), 'rollback.txt', false)
@@ -370,7 +355,6 @@ describe('DEL-R7: attachments', () => {
     }
   })
 
-  // @spec attachment_bytes_unreachable
   test('DEL-R7: File registry rows sweep with the Table and the bytes are gone', async ({
     admin,
   }) => {
@@ -403,7 +387,6 @@ describe('DEL-R6: a bound Table sheds its binding, never its source', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
-  // @spec bound_table_sheds_binding_only
   test('DEL-R6: the binding goes; the source file keeps its bytes', async ({ admin }) => {
     invalidateSources()
     await admin.post('/api/table/Data%20Source', {

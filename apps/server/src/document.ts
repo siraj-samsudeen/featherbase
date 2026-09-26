@@ -237,8 +237,6 @@ async function validateLinks(
     throw new AppError('ValidationError', `Invalid links for ${meta.name}`, errors)
 }
 
-// @spec guarded_action_deletion_preserves_retained_work
-// @spec core_document_links_serialize_with_runtime_deletion
 async function lockCoreDocumentTargets(tx: typeof sql, meta: TableMeta, row: RowValues, user: string, old?: RowValues) {
   if (!['Comment', 'Version', 'File', 'Share'].includes(meta.name)) return
   const tableField = meta.name === 'Share' ? 'share_table' : 'ref_table'
@@ -1054,7 +1052,6 @@ async function amendDocImpl(
 }
 
 // DOC-006: a row referenced by Reference columns anywhere cannot be deleted.
-// @spec runtime_row_delete_guard
 export function deleteDoc(...args: Parameters<typeof deleteDocImpl>) {
   return appOperation(() => deleteDocImpl(...args))
 }

@@ -17,10 +17,6 @@ const prove = process.env.APP_ACCESS_COMMIT_PROOF === '1' ? test : test.skip
 const user = 'scope-race@example.test'
 const outcome = (promise: Promise<unknown>) => promise.then(value => ({ value }), error => ({ error }))
 
-// @spec authoritative_object_store_scope
-// @spec declared_product_gate_composes
-// @spec fresh_app_store_access
-// @spec action_writes_and_replay_are_atomic
 prove('scope locks, product locks and duplicate waits never retain pre-wait grants', async () => {
   const [identity] = await sql`select current_database() as name,
     (select value from internal_metadata where key = 'environment') as environment`
@@ -75,8 +71,6 @@ prove('scope locks, product locks and duplicate waits never retain pre-wait gran
   }
 }, 30_000)
 
-// @spec app_refusals_are_auditable
-// @spec declared_product_gate_composes
 prove('actual HTTP callback failures are redacted and audited after committed rollback', async () => {
   const [identity] = await sql`select current_database() as name,
     (select value from internal_metadata where key = 'environment') as environment`

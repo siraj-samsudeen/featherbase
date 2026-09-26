@@ -26,7 +26,6 @@ function reject(message: string, fields?: Record<string, string>): never {
   throw new AppError('ValidationError', message, fields)
 }
 
-// @spec action_helpers_preserve_caller_authority
 function callerDocuments(app: string, allowed: string[], user: string) {
   let open = true
   let pending: Promise<unknown> | undefined
@@ -102,7 +101,6 @@ function callerDocuments(app: string, allowed: string[], user: string) {
     update: (table, values) => operation(() => save(table, values, false)),
     activity: (table, id) => operation(async () => { await locked(table, id); return documentActivity(table, id, user) }),
     deletionState: (table, id) => operation(() => state(table, id)),
-    // @spec guarded_action_deletion_preserves_retained_work
     delete: (table, id, updatedAt) => operation(async () => {
       if ((await metaFor(table)).owner_app !== app) reject('Actions may delete only their owned rows')
       await locked(table, id)
@@ -120,7 +118,6 @@ function callerDocuments(app: string, allowed: string[], user: string) {
   } }
 }
 
-// @spec action_writes_and_replay_are_atomic
 export function executeRuntimeAction(app: string, name: string, input: unknown, user: string, declaration: () => DeclaredOperations | undefined) {
   return appOperation(async () => {
     const parsed = requestSchema.safeParse(input)
@@ -175,7 +172,6 @@ export function executeRuntimeRead(app: string, name: string, input: unknown, us
     }, async (authorization, payload) => {
       if (discovery) return { storeCodes: authorization.storeCodes }
       const context = callerDocuments(app, contribution.tables, user)
-      // @spec runtime_reads_have_no_mutations
       const { get, list, activity } = context.documents
       try {
         const result = await handler(Object.freeze({ user, payload, authorization, reject, documents: Object.freeze({ get, list, activity }) }))
