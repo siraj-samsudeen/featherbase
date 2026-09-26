@@ -68,3 +68,44 @@ automatically, creating that page first if it doesn't exist yet.
 
 - **WHEN** the user builds a Table in a module with no home page yet
 - **THEN** a home page for that module appears with a link to the new Table
+
+### Requirement: Resume where you left off
+
+The home page SHALL offer one-click tiles back to the user's last opened
+row, last opened list, and last search. Once the user has kept returning to
+the same couple of destinations across several separate days, the home page
+SHALL also offer to pin them together, and pinning replaces that offer with
+shortcuts to those destinations that stay until the user unpins them.
+
+#### Scenario: Tiles back to what the user was just doing
+
+- **WHEN** the user opened a row, then a list, then ran a search, and later
+  returns to the home page
+- **THEN** they find a tile back to each of the three, ready to reopen with
+  one click
+
+#### Scenario: A routine gets offered as a pin
+
+- **WHEN** the user has kept opening the same two destinations on several
+  different days
+- **THEN** the home page offers to pin them, and pinning turns the offer
+  into shortcuts that stay on the home page until the user unpins them
+
+### Requirement: A private trail of the user's own activity
+
+The home page SHALL show the user a running trail of what they themselves
+have opened and searched, visible to no one but them. A System Manager can
+also switch to a team view, which shows everyone's changes and sign-ins but
+never what a colleague merely looked at.
+
+#### Scenario: Only the user sees their own trail
+
+- **WHEN** the user opens a row and later runs a search
+- **THEN** both show up in their own activity trail, and nobody else can see
+  it
+
+#### Scenario: The team view stays to changes, not views
+
+- **WHEN** a System Manager switches to the team view
+- **THEN** they see who changed what and who signed in, but not what anyone
+  merely looked at
