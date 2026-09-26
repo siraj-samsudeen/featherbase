@@ -49,18 +49,77 @@ export function composeRuntimeShell(html: string, currentApp: string, destinatio
 export function rootRuntimeEntryAssets(html: string, app: string): string {
   const root = `https://runtime.invalid/${encodeURIComponent(app)}/`
   const rooted = (value: string) => {
-    if (/^(?:[/?#]|[a-z][a-z\d+.-]*:)/i.test(value)) return value
+    if (!value || /^(?:[/?#]|[a-z][a-z\d+.-]*:)/i.test(value)) return value
     const url = new URL(value, root)
     return `${url.pathname}${url.search}${url.hash}`
   }
-  const rewrite = (tag: string, attribute: 'src' | 'href' | 'poster') => tag.replace(
-    new RegExp(`(\\s${attribute}\\s*=\\s*)(["'])([^"']+)\\2`, 'i'),
-    (_match, prefix: string, quote: string, value: string) => `${prefix}${quote}${rooted(value)}${quote}`,
+  const rewriteAttribute = (tag: string, attribute: string, transform = rooted) => tag.replace(
+    new RegExp(`(\\s${attribute}\\s*=\\s*)(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>\\x60]+))`, 'gi'),
+    (_match, prefix: string, doubleQuoted: string | undefined, singleQuoted: string | undefined, unquoted: string | undefined) => {
+      const value = doubleQuoted ?? singleQuoted ?? unquoted ?? ''
+      const quote = doubleQuoted !== undefined ? '"' : singleQuoted !== undefined ? "'" : ''
+      return `${prefix}${quote}${transform(value)}${quote}`
+    },
   )
-  return html.replace(/<(?:script|img|iframe|embed|source|track|audio|video|input)\b[^>]*>/gi, tag => {
-    const withSource = rewrite(tag, 'src')
-    return /^<video\b/i.test(tag) ? rewrite(withSource, 'poster') : withSource
-  }).replace(/<link\b[^>]*>/gi, tag => rewrite(tag, 'href'))
+  const rewriteSrcset = (value: string) => {
+    let result = ''
+    let position = 0
+    while (position < value.length) {
+      const whitespace = value.slice(position).match(/^\s+/)?.[0]
+      if (whitespace) {
+        result += whitespace
+        position += whitespace.length
+      }
+      if (position >= value.length) break
+      if (value[position] === ',') {
+        result += ','
+        position += 1
+        continue
+      }
+
+      const start = position
+      const dataUrl = value.slice(position, position + 5).toLowerCase() === 'data:'
+      while (position < value.length && !/\s/.test(value[position]) && (dataUrl || value[position] !== ',')) position += 1
+      result += rooted(value.slice(start, position))
+      while (position < value.length && value[position] !== ',') {
+        result += value[position]
+        position += 1
+      }
+    }
+    return result
+  }
+  const rewriteCssUrls = (css: string) => css.replace(
+    /url\(\s*(?:(["'])(.*?)\1|([^)]*?))\s*\)/gi,
+    (_match, quote: string | undefined, quoted: string | undefined, unquoted: string | undefined) => {
+      const value = quote ? (quoted ?? '') : (unquoted ?? '').trim()
+      return `url(${quote ?? ''}${rooted(value)}${quote ?? ''})`
+    },
+  )
+
+  const resources: Record<string, string[]> = {
+    script: ['src'],
+    img: ['src', 'srcset'],
+    iframe: ['src'],
+    embed: ['src'],
+    source: ['src', 'srcset'],
+    track: ['src'],
+    audio: ['src'],
+    video: ['src', 'poster'],
+    input: ['src'],
+    object: ['data'],
+    link: ['href'],
+  }
+  const withResourceAttributes = html.replace(/<([a-z][\w:-]*)\b[^>]*>/gi, (tag, rawName: string) => {
+    const name = rawName.toLowerCase()
+    let rewritten = tag
+    for (const attribute of resources[name] ?? [])
+      rewritten = rewriteAttribute(rewritten, attribute, attribute === 'srcset' ? rewriteSrcset : rooted)
+    return rewriteAttribute(rewritten, 'style', rewriteCssUrls)
+  })
+  return withResourceAttributes.replace(
+    /(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi,
+    (_match, opening: string, css: string, closing: string) => `${opening}${rewriteCssUrls(css)}${closing}`,
+  )
 }
 
 export const runtimeShellCss = `

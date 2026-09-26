@@ -101,21 +101,24 @@ test('runtime shell preserves deep package navigation and refreshes its destinat
           .locator('option').allTextContents()).sort()).toEqual(['Featherbase Home', 'Other tasks', 'Tasker'])
       })
       .step('narrow Admin keeps identifiable touch-sized controls and visible focus', async ({ page }: { page: Page }) => {
-        await page.setViewportSize({ width: 390, height: 844 })
+        await page.setViewportSize({ width: 375, height: 812 })
         const home = page.getByRole('link', { name: 'Featherbase Home' })
         const switcher = page.getByRole('combobox', { name: 'Switch application' })
+        const search = page.getByPlaceholder('Search or type a command…')
         await expect(home).toBeVisible()
         await expect(switcher).toHaveValue('/featherbase/admin')
         const homeBox = await home.boundingBox()
         const switcherBox = await switcher.boundingBox()
+        const searchBox = await search.boundingBox()
         expect(homeBox?.width).toBeGreaterThanOrEqual(44)
         expect(homeBox?.height).toBeGreaterThanOrEqual(44)
         expect(switcherBox?.width).toBeGreaterThanOrEqual(152)
         expect(switcherBox?.height).toBeGreaterThanOrEqual(44)
+        expect(searchBox?.width).toBeGreaterThanOrEqual(280)
         const headerRight = await page.locator('header').first().evaluate(element => element.getBoundingClientRect().right)
         const accountRight = await page.getByTestId('session-user').evaluate(element => element.getBoundingClientRect().right)
-        expect(headerRight).toBeLessThanOrEqual(390)
-        expect(accountRight).toBeLessThanOrEqual(390)
+        expect(headerRight).toBeLessThanOrEqual(375)
+        expect(accountRight).toBeLessThanOrEqual(375)
         await home.focus()
         await expect(home).toBeFocused()
         const focus = await home.evaluate(element => {
@@ -133,7 +136,17 @@ test('runtime shell preserves deep package navigation and refreshes its destinat
 test('runtime shell leaves an app whose access disappears', async ({ session, request }) => {
   const auth = await adminAuth(request)
   await signIn(session)
-  await session.visit('/other/').assertSelected('Switch application', 'Other tasks')
+  await session
+    .visit('/other/review/37?owner=all')
+    .assertSelected('Switch application', 'Other tasks')
+    .clickLink('Selected task')
+    .step('a package hash link retains its deep path and query', async ({ page }: { page: Page }) => {
+      await expect(page).toHaveURL('/other/review/37?owner=all#task=1')
+    })
+    .clickLink('My tasks')
+    .step('a package query link retains its deep path', async ({ page }: { page: Page }) => {
+      await expect(page).toHaveURL('/other/review/37?owner=me')
+    })
 
   const disabled = await request.post('/api/set_app_enabled', {
     headers: auth,
