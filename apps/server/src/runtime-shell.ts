@@ -1,3 +1,5 @@
+import { FEATHERBASE_HOME_DESTINATION } from 'shared'
+
 interface RuntimeDestination {
   name: string
   title: string
@@ -22,18 +24,18 @@ const mark = `<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">
 
 export function composeRuntimeShell(html: string, currentApp: string, destinations: RuntimeDestination[]): string {
   const options = [
-    '<option value="/featherbase/admin">Featherbase Home</option>',
+    `<option value="${FEATHERBASE_HOME_DESTINATION.href}">${FEATHERBASE_HOME_DESTINATION.label}</option>`,
     ...destinations.map(destination => `<option value="${escapeHtml(destination.href)}"${destination.name === currentApp ? ' selected' : ''}>${escapeHtml(destination.title)}</option>`),
   ].join('')
   const head = '<link rel="stylesheet" href="/featherbase/runtime-shell.css">'
   const shell = `<header class="fc-runtime-shell" data-testid="runtime-shell">
-    <a class="fc-runtime-home" href="/featherbase/admin" aria-label="Featherbase Home" title="Featherbase Home">${mark}</a>
+    <a class="fc-runtime-home" href="${FEATHERBASE_HOME_DESTINATION.href}" aria-label="${FEATHERBASE_HOME_DESTINATION.label}" title="${FEATHERBASE_HOME_DESTINATION.label}">${mark}</a>
     <label class="fc-runtime-label" for="fc-runtime-switcher">Switch application</label>
     <select id="fc-runtime-switcher" class="fc-runtime-switcher" aria-label="Switch application" data-current-app="${escapeHtml(currentApp)}">${options}</select>
   </header>`
   const script = '<script src="/featherbase/runtime-shell.js" defer></script>'
-  const basedHtml = setRuntimeClientBase(html, currentApp)
-  const withHead = /<\/head>/i.test(basedHtml) ? basedHtml.replace(/<\/head>/i, `${head}</head>`) : `${head}${basedHtml}`
+  const rootedHtml = rootRuntimeEntryAssets(html, currentApp)
+  const withHead = /<\/head>/i.test(rootedHtml) ? rootedHtml.replace(/<\/head>/i, `${head}</head>`) : `${head}${rootedHtml}`
   const withBody = /<body(?:\s[^>]*)?>/i.test(withHead)
     ? withHead.replace(/<body(\s[^>]*)?>/i, '<body$1 data-featherbase-runtime-shell>')
       .replace(/<body(?:\s[^>]*)?>/i, match => `${match}${shell}`)
@@ -41,19 +43,29 @@ export function composeRuntimeShell(html: string, currentApp: string, destinatio
   return /<\/body>/i.test(withBody) ? withBody.replace(/<\/body>/i, `${script}</body>`) : `${withBody}${script}`
 }
 
-// A nested navigation still serves the app's declared entry document. Its
-// relative assets must continue resolving from the app root, while the browser
-// keeps the nested URL in history and across refresh.
-export function setRuntimeClientBase(html: string, app: string): string {
-  const base = `<base href="/${escapeHtml(app)}/">`
-  return /<head(?:\s[^>]*)?>/i.test(html)
-    ? html.replace(/<head(?:\s[^>]*)?>/i, match => `${match}${base}`)
-    : `${base}${html}`
+// A nested navigation still serves the app's declared entry document. Root
+// only the document's resource URLs: a <base> would also rewrite package-owned
+// hash and query links away from the current deep location.
+export function rootRuntimeEntryAssets(html: string, app: string): string {
+  const root = `https://runtime.invalid/${encodeURIComponent(app)}/`
+  const rooted = (value: string) => {
+    if (/^(?:[/?#]|[a-z][a-z\d+.-]*:)/i.test(value)) return value
+    const url = new URL(value, root)
+    return `${url.pathname}${url.search}${url.hash}`
+  }
+  const rewrite = (tag: string, attribute: 'src' | 'href' | 'poster') => tag.replace(
+    new RegExp(`(\\s${attribute}\\s*=\\s*)(["'])([^"']+)\\2`, 'i'),
+    (_match, prefix: string, quote: string, value: string) => `${prefix}${quote}${rooted(value)}${quote}`,
+  )
+  return html.replace(/<(?:script|img|iframe|embed|source|track|audio|video|input)\b[^>]*>/gi, tag => {
+    const withSource = rewrite(tag, 'src')
+    return /^<video\b/i.test(tag) ? rewrite(withSource, 'poster') : withSource
+  }).replace(/<link\b[^>]*>/gi, tag => rewrite(tag, 'href'))
 }
 
 export const runtimeShellCss = `
 body[data-featherbase-runtime-shell] { --featherbase-runtime-shell-inset: 48px; padding-top: var(--featherbase-runtime-shell-inset) !important; }
-.fc-runtime-shell { box-sizing: border-box !important; position: fixed !important; inset: 0 0 auto 0 !important; z-index: 2147483647 !important; display: flex !important; height: 48px !important; align-items: center !important; gap: 8px !important; padding: 0 12px !important; border-bottom: 1px solid #ebeef0 !important; background: #fff !important; color: #1c2126 !important; font: 14px Inter, ui-sans-serif, system-ui, sans-serif !important; }
+.fc-runtime-shell { box-sizing: border-box !important; position: fixed !important; inset: 0 0 auto 0 !important; z-index: 2147483647 !important; display: flex !important; height: var(--featherbase-runtime-shell-inset) !important; align-items: center !important; gap: 8px !important; padding: 0 12px !important; border-bottom: 1px solid #ebeef0 !important; background: #fff !important; color: #1c2126 !important; font: 14px Inter, ui-sans-serif, system-ui, sans-serif !important; }
 .fc-runtime-home { box-sizing: border-box !important; display: inline-flex !important; width: 36px !important; height: 36px !important; flex: 0 0 36px !important; align-items: center !important; justify-content: center !important; border-radius: 7px !important; }
 .fc-runtime-home:hover { background: #f7f7f8 !important; }
 .fc-runtime-home svg { display: block !important; width: 26px !important; height: 26px !important; }
@@ -75,7 +87,11 @@ export const runtimeShellJs = `(() => {
       .then(response => response.ok ? response.json() : Promise.reject(new Error('catalog unavailable')))
       .then(destinations => {
         const focused = document.activeElement === switcher;
-        switcher.replaceChildren(new Option('Featherbase Home', '/featherbase/admin'), ...destinations.map(destination => new Option(destination.title, destination.href, false, destination.name === current)));
+        if (!destinations.some(destination => destination.name === current)) {
+          window.location.assign(${JSON.stringify(FEATHERBASE_HOME_DESTINATION.href)});
+          return;
+        }
+        switcher.replaceChildren(new Option(${JSON.stringify(FEATHERBASE_HOME_DESTINATION.label)}, ${JSON.stringify(FEATHERBASE_HOME_DESTINATION.href)}), ...destinations.map(destination => new Option(destination.title, destination.href, false, destination.name === current)));
         if (focused) switcher.focus();
       })
       .catch(() => {})

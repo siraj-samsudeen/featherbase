@@ -1,5 +1,12 @@
 import { expect, test } from 'vitest'
-import { APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref } from '../src/index'
+import { APP_ROOT_PATTERN, FEATHERBASE_HOME_DESTINATION, LEGACY_HUMAN_ROOT_PATTERN, RESERVED_APP_ROOTS, appHref } from '../src/index'
+
+test('the canonical Featherbase Home destination has its product label and path', () => {
+  expect(FEATHERBASE_HOME_DESTINATION).toEqual({
+    label: 'Featherbase Home',
+    href: '/featherbase/admin',
+  })
+})
 
 test('PKG-R4: app routes and reserved platform prefixes are disjoint', () => {
   const app = new RegExp(APP_ROOT_PATTERN)

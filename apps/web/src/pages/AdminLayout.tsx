@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { FEATHERBASE_HOME_DESTINATION } from 'shared'
 import { ApiError, api, clearSession, getSessionUser, listResource } from '../lib/api'
 import {
   actionForLocation,
@@ -370,19 +371,19 @@ export function AdminLayout() {
     <div className="flex h-full flex-col">
       <PreviewBanner />
       {/* Navbar */}
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 sm:gap-4 sm:px-4">
-        <Link to="/featherbase/admin" aria-label="Featherbase Home" title={app_name} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md hover:bg-[var(--color-subtle)]">
+      <header className="flex h-12 shrink-0 items-center gap-0.5 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-1 sm:gap-4 sm:px-4">
+        <Link to={FEATHERBASE_HOME_DESTINATION.href} aria-label={FEATHERBASE_HOME_DESTINATION.label} title={app_name} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md hover:bg-[var(--color-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] focus-visible:ring-offset-2 sm:h-9 sm:w-9">
           <Logo className="h-7 w-7" />
         </Link>
         <label className="sr-only" htmlFor="admin-app-switcher">Switch application</label>
         <select
           id="admin-app-switcher"
           aria-label="Switch application"
-          value="/featherbase/admin"
+          value={FEATHERBASE_HOME_DESTINATION.href}
           onChange={(event) => { window.location.assign(event.target.value) }}
-          className="h-9 w-24 min-w-0 shrink rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm font-semibold text-[var(--color-ink)] sm:w-52 sm:shrink-0"
+          className="h-11 w-[9.5rem] shrink-0 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-2 text-sm font-semibold text-[var(--color-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)] focus-visible:ring-offset-2 sm:h-9 sm:w-52"
         >
-          <option value="/featherbase/admin">Featherbase Home</option>
+          <option value={FEATHERBASE_HOME_DESTINATION.href}>{FEATHERBASE_HOME_DESTINATION.label}</option>
           {(appCatalog.data ?? []).map((entry) => <option key={entry.name} value={entry.href}>{entry.title}</option>)}
         </select>
         <button
@@ -546,7 +547,7 @@ export function AdminLayout() {
           )}
         </form>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1 sm:gap-3">
           {/* On narrow screens these selects move into the account menu —
               the navbar's controls don't wrap, so extra always-visible
               controls overflow at mobile widths (PR #92 review). */}

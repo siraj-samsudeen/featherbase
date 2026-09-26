@@ -1,5 +1,47 @@
 # Progress Log
 
+## 2026-09-26 — #309 runtime host shell implementation and review fixes
+
+Implemented the narrowed always-shell contract: every packaged runtime entry
+document receives a server-composed compact Featherbase bar with a Home icon
+and one authorization-filtered native app switcher. Entry-document resources
+are rooted selectively at the app root without a `<base>` element, so package
+hash and query links retain the current deep path and query. Secondary HTML and
+assets remain package-owned. A generic asymmetric `other` package regression
+covers both navigation forms independently of Tasker's implementation.
+
+The production Featherbase Home destination is now one shared server/web fact.
+Admin uses the same Home-plus-switcher model, with identifiable touch-sized
+mobile controls and visible focus, and no longer duplicates runtime apps in its
+sidebar. Live shell catalog refresh now returns a user to Home if access to the
+current app disappears. Tasker 2.2.0 still removes only its duplicate Home link,
+preserves path/query while changing hash-owned task state, and offsets fixed
+mobile details below the host bar. There is intentionally no presentation or
+fullscreen manifest capability; an immersive case still needs a separate
+exit/re-entry contract.
+
+The host-shell browser journey now uses the shared chainable `session` DSL and
+waits for asynchronous catalog refresh. Every created Tasker row is deleted
+using its current revision, and disabled app state is restored in `finally`, so
+the journey is independently repeatable and cannot poison the later Tasker
+journey. The login-return fixture's pre-existing Tasker row leak was removed too.
+
+**Verified:** `./init.sh` smoke 3/3; server 878 passed, 19 skipped; web 172/172
+with `NODE_OPTIONS=--no-experimental-webstorage`; shared 130/130; isolated
+Playwright 159 passed, 28 opt-in skips; focused runtime server 13/13 and 29/29;
+focused shell/login-return/Tasker Playwright 6/6; prior CI-failing import/UI
+Playwright 12/12; Tasker/package preparation 5/5 and both builds; all three
+workspace typechecks; `pnpm apps:prove` PKG-J1/PKG-J2; strict OpenSpec 20 specs
+and 6 changes; `git diff --check`. Inspected 390px Admin and 412px coarse-pointer
+Tasker captures: controls are unclipped and focus-visible, and content/details
+clear the measured host bar. The first isolated browser run exposed one 375px
+Admin overflow (158 passed, 28 skipped, 1 failed); compact spacing fixed it and
+the complete rerun above passed. A raw web run under Node's experimental web
+storage failed because jsdom storage was unavailable; the documented flag above
+produced the clean full result. No data-warehouse change, merge, or deployment.
+
+**Next:** independent final review and merge of PR #345.
+
 ## 2026-09-26 — Tasker specs rewritten in plain language (pilot, #301)
 
 The pilot for the `rules.specs` style in `openspec/config.yaml`. The 12
@@ -9330,36 +9372,3 @@ invariant violation. Independent live exploration confirmed store, object,
 replay and revocation scenarios and then the corrected identity matrix. Final
 independent acceptance of the verification delta remains the coordinator's gate;
 no merge, deployment or completed Budgets/DASH implementation is claimed.
-
-## 2026-09-26 — #309 runtime host shell implementation
-
-Implemented the narrowed always-shell contract: every packaged runtime entry
-document now receives a server-composed compact Featherbase bar with a Home icon
-and one authorization-filtered native app switcher. The server preserves package
-document ownership, secondary HTML and assets, and exact extensionless deep-link
-locations while adding an app-root base for relative assets. Admin uses the same
-Home-plus-switcher model and no longer duplicates runtime apps in its sidebar.
-There is intentionally no `presentation`/fullscreen manifest capability; a future
-immersive case requires a separate contract with explicit exit/re-entry design.
-
-Tasker 2.2.0 removes only its duplicate Featherbase back-link, preserves the
-current path/query while changing hash-owned task state, and offsets fixed mobile
-detail surfaces below the host bar. An exact built 2.1.0 predecessor fixture
-proves the code-only upgrade. Server tests cover composed entry versus unchanged
-secondary HTML, deep navigation, unauthorized omission, and upgrade. Playwright
-covers desktop and coarse-pointer mobile shell layout, keyboard focus, catalog
-refresh after access changes, Home controls, refresh, and fixed Tasker details.
-
-Verification: focused server suites pass 13/13 and 16/16; focused Playwright
-passes 3/3, including exact sign-in return; Tasker passes 5/5; server and web typechecks pass; `pnpm apps:prepare`
-and `pnpm apps:prove` pass (PKG-J1/PKG-J2); strict OpenSpec validates 20 specs and
-6 changes. The broad web run passed 169/172; its three unrelated import-naming
-failures reproduce alone because this orb's shared test database retains an
-unavailable `actionproof` installation from earlier interrupted concurrent runs.
-No database reset or product workaround was made. Desktop and coarse-pointer
-mobile screenshots under `docs/assets/issue-309/` were inspected: host controls
-are unclipped, touch targets are usable, and Tasker content/fixed details remain
-below the bar. No data-warehouse change, merge, or deployment was performed.
-Issue branch `issue-309-runtime-host-shell` was pushed and PR #345 opened for
-independent final review; the PR records the migration, architecture, evidence,
-and shared-test-database limitation.
