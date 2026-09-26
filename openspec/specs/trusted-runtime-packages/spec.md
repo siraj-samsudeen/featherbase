@@ -2,355 +2,276 @@
 
 ## Purpose
 
-A trusted application such as Tasker can be built, delivered, installed,
-disabled, restored, and used without rebuilding Featherbase core. Application
-identity, storage, UI, rules, and lifecycle remain isolated even when two apps
-use the same local names.
-
-This OpenSpec capability is the behavior authority. The earlier
-`docs/specs/0011-runtime-packages.md` is frozen, non-authoritative migration
-evidence. This capability describes the first build-and-learn slice, not a
-stable public or untrusted plugin API.
-
-## Domain assumptions
-
-### Assumption: packages_are_fully_trusted
-- **Assumption:** an operator installs only reviewed package code from trusted
-  provenance.
-- **Established by:** the explicitly trusted first-slice boundary in issue #296.
-- **When:** 2026-09-21.
-- **Detected by:** package review and operational provenance. The current runtime
-  deliberately provides no sandbox capable of detecting a trust violation.
-
-### Assumption: activation_is_single_server
-- **Assumption:** one server process coordinates package activation; distributed
-  activation is not promised.
-- **Established by:** the current process-local runtime registry and lifecycle lock.
-- **When:** 2026-09-21.
-- **Detected by:** deployment topology review before multi-instance operation.
-
-### Assumption: browser_fragment_is_client_only
-- **Assumption:** a browser does not include its URL fragment in an HTTP request.
-- **Established by:** the URL and HTTP platform contract.
-- **When:** 2026-09-21.
-- **Detected by:** the runtime-app login browser journey observes server-carried
-  path/query separately from the fragment inherited by canonical login.
-
-## Lifecycle table
-
-| Installed | Enabled | Compatible code found | Activation pending | State | Data access |
-|---|---|---|---|---|---|
-| no | — | compatible package discovered | — | available to install | no owned data |
-| no | — | absent or incompatible | — | unavailable | no owned data |
-| yes | yes | yes | no | active | normal permissions and hooks |
-| yes | yes/no | yes | yes | awaiting activation | denied; data preserved |
-| yes | no | yes/no | no | disabled | denied; data preserved |
-| yes | yes | no | yes/no | unavailable | denied; data preserved |
+An app such as Tasker is built and delivered on its own, separately from
+Featherbase itself. Installing it, opening it, upgrading it, and turning it
+off keeps its data safe, keeps it out of every other app's way, and never
+requires rebuilding Featherbase. Featherbase only installs apps that have
+been reviewed and trusted beforehand — it does not sandbox untrusted code.
 
 ## Requirements
 
-### Requirement: versioned_trusted_artifact
-A package directory SHALL contain npm package metadata and a strict declarative
-manifest with exact manifest/runtime API versions. Discovery SHALL use only
-operator-configured local directories. Optional compiled hooks SHALL target only
-owned Tables through the public structural context. Reserved roots, escaping
-paths, incompatible APIs, undeclared hooks, and partial failed installs SHALL be
-rejected. This is a trust boundary, not a sandbox: server code has full Node
-process privileges and browser code has same-origin authenticated privileges.
+### Requirement: Install and open an app
 
-#### Scenario: incompatible_package_rejected
-- **WHEN** discovery encounters an incompatible API version or reserved app name
-- **THEN** the package is unavailable and no Table, grant, hook, or catalog entry
-  is partially activated.
+Installing an app SHALL make it available to install once, and only to the
+people the admin allows. An app that isn't installed, or that nobody has
+access to, SHALL NOT appear in anyone's app catalog.
 
-### Requirement: logical_identity_maps_storage
-Each app-owned Table SHALL have a qualified logical identity and persisted owner,
-physical schema, and physical relation. Every DDL, CRUD, permission, reference,
-and query path SHALL resolve that metadata rather than infer storage from spelling.
-Generic metadata edits SHALL NOT alter identity, storage, binding, or hook dispatch.
+#### Scenario: Only the accessible apps show up
 
-#### Scenario: same_local_name_and_row_id
-- **WHEN** `tasker.task` and `other.task` both store row `same`
-- **THEN** each returns only its own asymmetric columns and values.
+- **WHEN** an admin installs Tasker and gives a colleague access to it
+- **THEN** the colleague sees Tasker in their app catalog and can open it
+- **AND** someone without access does not see it there
 
-### Requirement: lifecycle_fails_closed
-Legacy IDs: PKG-R3, PKG-J2 · `shape: state machine`
-Install SHALL provision once and enable atomically. Disable SHALL preserve Tables,
-rows, grants, and ownership while removing launchability, hooks, package-owned
-permissions, and data access. Re-enable SHALL require compatible code and register
-hooks once. Missing code SHALL fail closed. A lifecycle change SHALL wait for every
-admitted operation, including its post-commit work. Equivalent grants contributed
-by another active package SHALL remain effective.
+### Requirement: Disabling keeps the data safe
 
-#### Scenario: stale_write_after_disable
-- **WHEN** an already-open browser submits after Tasker is disabled
-- **THEN** the write is rejected rather than bypassing Tasker validation.
+Disabling an app SHALL immediately stop anyone from opening it or writing to
+it, including a browser tab that was already open, while leaving every row
+it holds untouched.
 
-#### Scenario: restart_and_restore
-- **WHEN** code is absent across one restart and restored on the next
-- **THEN** access is denied while absent and preserved data returns with one set
-  of hooks after restoration.
+#### Scenario: A stale tab can't sneak a write through
 
-### Requirement: app_data_is_api_only
-App-owned data SHALL be admitted through authenticated, availability-aware APIs.
-Direct `app_client` SQL and raw Query Reports SHALL NOT read app-owned relations,
-whether the app is enabled, disabled, or unavailable. Query Reports SHALL connect
-as the restricted database role rather than a table owner that can reset its role.
+- **WHEN** an admin disables Tasker while a colleague still has it open, and
+  that colleague tries to save a change
+- **THEN** the save is refused
+- **AND** every row Tasker held before is still there afterward
 
-#### Scenario: query_report_cannot_escape_role
-- **WHEN** an administrator-authored Query Report attempts a nested role reset and
-  reads an app-owned relation
-- **THEN** it is refused without returning app data in every lifecycle state.
+### Requirement: Re-enabling needs the app's code in place
 
-### Requirement: app_owns_client_root
-Legacy IDs: PKG-R4, PKG-J1 · `shape: contract`
-An app SHALL own its direct root, React tree, navigation, and CSS. Featherbase
-core SHALL serve only the declared contained client build, SHALL reserve platform
-and technical roots, and SHALL NOT fall back to an SPA for missing assets. The
-signed-in catalog SHALL show only active accessible apps. Opening an app while
-signed out SHALL return to that app after sign-in. An app with its own client
-SHALL NOT also create a competing generated Home Page; its Tables remain
-available to administrators. Disabled or missing app navigation SHALL explain
-unavailability and preserved data without exposing manager-only controls.
+Turning a disabled app back on SHALL require its code to still be present.
+If it's missing, the app SHALL stay unavailable — never active without it —
+and its data SHALL stay intact and untouched until it's restored.
 
-#### Scenario: tasker_opens_without_core_import
-- **WHEN** built Tasker is staged after Featherbase core was built
-- **THEN** `/tasker/` opens without a core rebuild or Tasker-specific core route.
+#### Scenario: Code goes missing and comes back
 
-#### Scenario: missing_asset_is_not_html
-- **WHEN** a caller requests an undeclared Tasker JavaScript asset
-- **THEN** the response is not found rather than either application’s index page.
+- **WHEN** Tasker's code is unavailable during a restart and is restored on
+  the next one
+- **THEN** Tasker stays unavailable in between
+- **AND** once restored, its work is exactly as it was, with nothing run twice
 
-#### Scenario: app_login_returns_to_one_launch
-- **WHEN** a signed-out member opens an accessible application
-- **THEN** sign-in returns to its client root and normal navigation has no competing generated Table page.
+### Requirement: Removing an app isn't offered yet
 
-### Requirement: prototype_transition_preserves_work
-The local prototype transition SHALL transactionally preserve row IDs, projects,
-references, comments, history, files, shares, focus preferences, and grants. A
-destination collision SHALL abort rather than merge or discard data. References
-to disabled app-owned Tables SHALL reject rather than resolve a same-local-name
-Table or silently skip work.
+Featherbase SHALL only let an admin disable or re-enable an app that has its
+own separately delivered code — never remove it or delete its data. Only an
+older, simpler kind of add-on (plain data with no separate code) can be
+removed this way, and it SHALL refuse to remove one of these more capable
+apps.
 
-#### Scenario: occupied_destination_aborts
-- **WHEN** the target Tasker relation already contains unrelated storage
-- **THEN** migration aborts and every prototype row remains unchanged.
+#### Scenario: Removal is refused
 
-#### Scenario: transition_keeps_discussion_and_focus
-- **WHEN** prototype work with comments, history, files, shares, and focus migrates
-- **THEN** each pointer names the new qualified Table and all work is preserved
-- **AND** access resumes once the installation has a reviewed package identity and compatible code; unversioned legacy installations follow `unversioned_legacy_install_fails_closed`
+- **WHEN** an admin tries to remove an installed app that has its own code
+- **THEN** Featherbase refuses and says to disable it instead
 
-### Requirement: runtime_upgrade_identity
+### Requirement: Preview an upgrade before applying it
 
-Installed runtime applications SHALL persist exact package version and an ordered immutable migration checksum ledger. Artifacts SHALL declare complete cumulative migration history and final schema. Missing, malformed, duplicate-different, reordered, skipped, downgrade and incompatible artifacts SHALL be rejected before mutation. Discovery SHALL NOT upgrade an installed application. Same-version retries SHALL not reapply migrations.
+Before upgrading an app to a new version, an admin SHALL be able to see what
+that upgrade will do — the version it moves to and what it changes — without
+changing anything yet. Upgrading SHALL only proceed against that exact
+reviewed preview; if anything about the app changed underneath since the
+preview was taken, the upgrade SHALL be refused and ask for a fresh preview.
 
-#### Scenario: upgrade_history_is_a_prefix
-- **WHEN** a target changes or omits any previously installed migration or skips a declared predecessor
-- **THEN** preview and upgrade reject it without changing installed state
+#### Scenario: A changed target asks for a new preview
 
-#### Scenario: restart_selects_installed_code
-- **WHEN** old and new artifacts are configured on restart
-- **THEN** only the exact installed version is eligible for activation
-- **AND** missing installed code leaves data preserved and unavailable
+- **WHEN** an admin previews an upgrade and the app's delivered code changes
+  before they apply it
+- **THEN** applying the old preview is refused
+- **AND** the admin is asked to preview again
 
-#### Scenario: unversioned_legacy_install_fails_closed
-- **WHEN** a legacy installation has no recorded package version or complete manifest
-- **THEN** discovery leaves its rows and grants intact but does not infer an installed code version
-- **AND** the operator must recover its reviewed version/declaration before using the upgrade API
+### Requirement: An upgrade only adds, and needs turning on afterward
 
-### Requirement: runtime_upgrade_reviewed_plan
+Upgrading an app SHALL keep every existing row and its id exactly as it was,
+and SHALL only add new, optional information — it SHALL refuse an upgrade
+that would remove or change anything already there. Once an upgrade is
+applied, the app SHALL stay on its previous version, unusable by anyone,
+until the admin explicitly turns the new version on.
 
-An administrator SHALL preview a stable plan before upgrade, including current/target version, migration IDs, owned Tables/columns/indexes, permissions, jobs, destructive/data effects and code-only status. Upgrade SHALL require the exact preview identity and revalidate it under the lifecycle lock. This slice SHALL accept only additive optional scalar columns and code-only changes, refusing destructive operations, SQL, changed existing definitions, permissions, jobs and undeclared dependencies.
+#### Scenario: Existing rows survive, extra fields start empty
 
-#### Scenario: reviewed_artifact_changes
-- **WHEN** artifact or installed identity differs from the reviewed plan
-- **THEN** upgrade rejects and asks for a new preview
+- **WHEN** Tasker is upgraded to a version that adds an optional project
+  description
+- **THEN** every existing project keeps its data
+- **AND** the new description starts empty until someone fills it in
 
-#### Scenario: destructive_upgrade_refused
-- **WHEN** a package removes a column or requests a data rewrite
-- **THEN** preview refuses it rather than claiming rollback support
+#### Scenario: Turning it on is a separate, explicit step
 
-### Requirement: runtime_upgrade_commit_and_activation
+- **WHEN** an admin applies a reviewed upgrade
+- **THEN** the previous version keeps running until the admin separately
+  activates the new one
 
-Upgrade SHALL serialize with admitted operations and enable/disable, validate code before mutation, and commit physical schema, metadata, version and ledger together. Failure SHALL preserve the previous active code, contributions, data and durable state. Successful commit SHALL suspend old code and client access until explicit administrator activation; restart SHALL preserve this pending state. Activation SHALL require the committed artifact, wire hooks once and preserve the enabled choice. Disabled upgrades SHALL stay disabled. HTTP operations using an obsolete application version SHALL be rejected rather than invoking new hooks for old clients.
+### Requirement: A failed upgrade leaves the app exactly as it was
 
-#### Scenario: failed_migration_preserves_active_version
-- **WHEN** a later migration fails after an earlier column addition
-- **THEN** neither addition nor ledger update remains and old hooks continue
+If an upgrade fails partway through, SHALL leave the app on its previous
+version, fully working, with nothing partially changed.
 
-#### Scenario: upgrade_drains_admitted_work
-- **WHEN** a write is admitted before upgrade and has pending post-commit work
-- **THEN** upgrade waits for that work and queued obsolete writes reject after transition
+#### Scenario: A broken migration changes nothing
 
-#### Scenario: restart_at_upgrade_boundary
-- **WHEN** the process restarts before commit, after commit or after activation
-- **THEN** it respectively restores the prior version, leaves the target pending activation, or restores the activated target without duplicate hooks
+- **WHEN** one step of an upgrade fails after an earlier step already ran
+- **THEN** neither step's change is kept
+- **AND** the app keeps running on its old version as if the upgrade had
+  never been attempted
 
-### Requirement: runtime_upgrade_preserves_owned_work
+### Requirement: Task work from before Tasker existed carries into it
 
-Upgrade SHALL preserve existing app rows, identifiers, comments, preferences and grants. A fresh target install and upgrade SHALL yield equivalent metadata and physical column schema. Package operations SHALL target explicit owned relations and never another app with the same local Table name.
+An account that already had tasks and projects before Tasker existed as an
+installed app SHALL, on upgrading to a Featherbase release that includes
+Tasker, keep every one of them exactly as it was — id, references, comments,
+files, shares and who's responsible for each — now living inside Tasker
+instead of the built-in place they used to be. If Tasker's own storage
+already has something in the way, that upgrade SHALL refuse rather than
+merge or overwrite either side.
 
-#### Scenario: tasker_description_is_generic_migration
-- **WHEN** Tasker v1 with asymmetric project/task/comment/preferences/grant values upgrades to v2
-- **THEN** every previous value remains and the new optional Project description can be read and written through normal APIs
-- **AND** fresh v2 schema equals upgraded v2 schema without Tasker-specific core migration code
+#### Scenario: Nothing is lost in the handover
 
-### Requirement: runtime_upgrade_recovery_boundary
+- **WHEN** an account with existing tasks and projects upgrades to a release
+  that includes Tasker
+- **THEN** every task and project keeps its id, its comments and files, and
+  who it's shared with, now inside Tasker
 
-Upgrade SHALL require the prior and target operator artifacts to be available and retain prior identity for recovery. Missing artifacts SHALL produce actionable unavailable status without reset or automatic downgrade. After commit, recovery SHALL use the committed target or a forward upgrade, not run old code against the target schema or promise down migrations. Operator instructions SHALL distinguish package delivery, explicit preview/upgrade/activation and backup restoration.
+#### Scenario: A collision is refused, not merged
 
-#### Scenario: committed_target_disappears
-- **WHEN** committed target code is absent but the previous artifact is present
-- **THEN** the application remains unavailable and directs the operator to restore the target artifact without modifying rows or ledger
+- **WHEN** Tasker's own storage already holds something where that existing
+  work would land
+- **THEN** the upgrade refuses
+- **AND** neither side's data is changed
+
+### Requirement: An app's tables belong only to it
+
+Two apps SHALL be able to use the very same name for one of their own tables
+without ever colliding, even if a row in each happens to share the same id.
+Each table an app declares SHALL belong to that app alone.
+
+#### Scenario: Same name, same id, no mix-up
+
+- **WHEN** two different installed apps each keep a table they both happen
+  to call "Task," and a row with the same id exists in both
+- **THEN** opening one never shows the other's data
+
+### Requirement: App data is reachable only through the app
+
+Data an installed app owns SHALL be reachable only by going through that
+app itself — never through a raw data query or a generic report — whether
+the app is on, off, or unavailable.
+
+#### Scenario: A raw query can't read around the app
+
+- **WHEN** someone tries to read an installed app's data through a generic
+  report instead of the app's own screens
+- **THEN** it's refused, regardless of whether the app is enabled
+
+### Requirement: An app owns its own screen
+
+An app that brings its own screen SHALL fully control what appears under
+its own address; Featherbase SHALL NOT show one app's screen, or its own,
+in place of a missing piece of another. A visitor who isn't signed in yet
+SHALL land back on the exact app they opened once they sign in.
+
+#### Scenario: A missing piece stays missing
+
+- **WHEN** something inside Tasker's screen fails to load
+- **THEN** it shows as missing
+- **AND** neither Tasker's own home screen nor Featherbase's is shown instead
+
+#### Scenario: Signing in returns to the app that was opened
+
+- **WHEN** a signed-out person opens Tasker directly
+- **THEN** after signing in they land back in Tasker, not on Featherbase's
+  own home page
+
+### Requirement: Featherbase and every app keep one working address
+
+An older link to a Featherbase screen SHALL still work, redirecting to its
+current address and keeping the rest of what was being looked at intact.
+
+#### Scenario: An old link still gets you there
+
+- **WHEN** someone opens a Featherbase admin link saved from before its
+  addresses changed
+- **THEN** it lands on the same screen at the current address, showing the
+  same thing that link pointed to
 
 ### Requirement: platform_storage_is_explicit
-Featherbase-owned relations and functions SHALL live in PostgreSQL schema
-`featherbase`. A fresh install SHALL create them there. An upgrade SHALL move
-existing objects without replacing their identities, rows, constraints, indexes,
-grants, RLS policies, references or migration history. Core logical identities
-SHALL remain compatible and unqualified; application logical and physical
-identities SHALL remain scoped. Runtime and migration paths SHALL resolve physical
-relations deterministically without pooled mutable `search_path` routing.
-Security-definer functions SHALL restrict name resolution and explicitly address
-their dependencies.
 
-`public.site` SHALL remain an explicitly named pre-tenant host registry. It SHALL
-NOT be treated as tenant data or moved into the core schema. Site data SHALL remain
-isolated in its selected site schema.
-
-Legacy databases SHALL have all migrations through `0087_dataset_snapshot_tables.ts`
-recorded before upgrading directly with the current release. Older or incomplete
-legacy ledgers SHALL be rejected before migration mutation, naming the missing
-migrations and requiring an intermediate historical upgrade. Supported legacy
-upgrades SHALL apply pending prerequisites in order before convergence. Every
-migration's effects and ledger entry SHALL commit together; retries SHALL skip
-committed prerequisites and resume the first pending migration.
+Featherbase SHALL keep its own data in a clearly separate place from every
+installed app's data, and from every other app's. Upgrading Featherbase
+itself SHALL NOT move, rewrite, or lose an app's stored rows, permissions,
+or history. A database created before this separation existed SHALL be
+brought up to it automatically, in one uninterrupted step, before Featherbase
+starts using it — nothing already there is lost or duplicated, including if
+that step has to be retried after a failure.
 
 #### Scenario: fresh_and_upgrade_converge_to_same_shape
-- **WHEN** a fresh database and an asymmetric exact pre-convergence database run
-  the production migration command
-- **THEN** both expose the same Featherbase-owned object shape, preserve expected
-  upgrade rows and privileges, retain scoped app storage, and leave only the site
-  registry at `public.site`.
+
+- **WHEN** a brand-new database and a database created before this
+  separation existed both run the same current upgrade
+- **THEN** both end up with Featherbase's own data and every installed app's
+  data in the same clearly separated shape
+- **AND** existing rows, grants and history are preserved either way
 
 #### Scenario: failed_convergence_retries_atomically
-- **WHEN** convergence is forced to fail before commit and then rerun
-- **THEN** the failed attempt moves no partial object set and the retry produces
-  exactly one complete migrated state without duplicated rows or grants.
+
+- **WHEN** that one-time move is forced to fail partway through and is then
+  retried
+- **THEN** the failed attempt leaves nothing partially moved
+- **AND** the retry finishes cleanly, without duplicating anything
 
 #### Scenario: production_era_prerequisites_precede_convergence
-- **WHEN** a database released by commit 3a6770ff651a308bfae0e31b5c525705c356a5a5
-  with all migrations through 0087 recorded runs the current release command
-- **THEN** pending runtime-storage prerequisites and schema convergence complete,
-  preserving existing object identities, rows, grants and ledger timestamps
-- **AND** rerunning release makes no duplicate history or grant contributions.
+
+- **WHEN** a database from an older, still-supported release runs the
+  current upgrade
+- **THEN** every upgrade step it still needs runs first, in order, before
+  the separation itself completes
+- **AND** existing rows, grants and history are preserved throughout
 
 #### Scenario: failed_legacy_prerequisite_retries_atomically
-- **WHEN** a pending legacy prerequisite fails after beginning its changes
-- **THEN** neither its changes nor its ledger entry survive
-- **AND** retry applies it once while retaining earlier committed prerequisites.
+
+- **WHEN** one of those still-pending older upgrade steps fails partway
+  through
+- **THEN** neither its change nor its record of having run survives
+- **AND** retrying applies it exactly once, keeping every earlier step that
+  had already finished
 
 #### Scenario: unsupported_legacy_ledger_rejected
-- **WHEN** a legacy database lacks any migration recorded by the supported 0087 floor
-- **THEN** release names the missing migrations and required intermediate upgrade
-  without applying migrations or creating destination storage.
 
-### Requirement: featherbase_human_routes_are_canonical
-Featherbase-owned human routes SHALL live under `/featherbase/`. Historical human
-deep links SHALL redirect to their corresponding canonical path while preserving
-query and fragment. Technical and direct runtime-app roots SHALL retain their
-owners. Signed-out runtime-app navigation SHALL pass through canonical Featherbase
-sign-in and return to the exact safe local app path, query, and browser fragment.
-Login return destinations SHALL reject external, ambiguous, technical, legacy, or
-malformed paths rather than navigate to them.
+- **WHEN** a database is too old — missing upgrade steps from further back
+  than Featherbase still supports catching up on
+- **THEN** the upgrade refuses and says which earlier steps are missing,
+  without touching anything
 
-#### Scenario: old_and_new_deep_links_converge
-- **WHEN** a caller opens equivalent `/admin/...` and `/featherbase/admin/...`
-  deep links
-- **THEN** the old URL redirects and both arrive at the same canonical screen with
-  search and fragment state intact.
+### Requirement: A new access rule needs a new, reviewed version
 
-#### Scenario: signed_out_tasker_returns_to_tasker
-- **WHEN** a signed-out caller opens `/tasker/` and completes sign-in
-- **THEN** the browser returns to `/tasker/`, not the Featherbase home page.
+An app SHALL only gain a new access rule — such as who may read or act on
+one of its tables — by shipping a new, reviewed version; Featherbase SHALL
+NOT let an already-installed version quietly pick up a rule it didn't
+originally declare.
 
-#### Scenario: runtime_app_root_normalization_preserves_query
-- **WHEN** a caller opens an unslashed runtime-app root with encoded query state
-- **THEN** its canonical trailing-slash redirect preserves that query exactly
-  before any authentication redirect occurs.
+#### Scenario: An old version can't gain a new rule for free
 
-#### Scenario: exact_runtime_app_location_survives_sign_in
-- **WHEN** a signed-out caller opens a nested direct runtime-app path with encoded
-  query state and a fragment selecting app work, then completes sign-in
-- **THEN** canonical Featherbase login returns the browser to that exact safe path,
-  query, and fragment so the selected work is open.
+- **WHEN** an app adds an access rule that its currently installed version
+  never declared
+- **THEN** using it requires installing that reviewed new version, previewed
+  and turned on like any other upgrade
 
-#### Scenario: unsafe_login_return_is_refused
-- **WHEN** a login return destination is external, ambiguous, technical, legacy,
-  non-canonical, or malformed
-- **THEN** Featherbase ignores it and uses the signed-in member's normal landing
-  page without navigating to the supplied destination.
+### Requirement: A row with retained activity or an outdated view resists deletion
 
-### Requirement: core_runtime_client_pins_active_identity
+An installed app's row SHALL NOT be deleted while it still has a comment or
+a recorded edit — an attached file or an active share already block deletion
+under the Files and Sharing capability, and that rule extends to these too.
+Deleting SHALL also be refused if the row has changed since whoever is
+deleting it last looked at it.
 
-The generic Featherbase client SHALL resolve runtime application identities from an authenticated host snapshot before loading metadata or application data. The host SHALL derive the snapshot from installed, enabled, activated packages with a known version, excluding unavailable, pending and unversioned packages. The client SHALL pin this snapshot for its signed-in page session and send the same identities for reads, writes, form operations and attachment API operations. Refetch, navigation and a version conflict SHALL NOT silently replace the snapshot. Reload or a new authenticated session MAY resolve a new snapshot. Host permission and availability checks SHALL remain authoritative.
+#### Scenario: A commented row resists deletion
 
-#### Scenario: core_form_and_attachment_after_upgrade
-- **WHEN** an Administrator opens a generic form after a package's v1→v2 upgrade and activation
-- **THEN** the form reads and saves the row and uploads/lists/removes attachments using the activated package identity without app-specific core code
+- **WHEN** someone tries to delete a task that has a comment on it
+- **THEN** the deletion is refused
+- **AND** the task and its comment are both still there afterward
 
-#### Scenario: stale_generic_form_is_not_relabelled
-- **WHEN** a generic form loaded under v1 attempts a read, save or upload after v2 commits or activates
-- **THEN** access rejects while pending or obsolete and the client does not retry with v2 identity
+#### Scenario: An outdated view can't delete a row that has since changed
 
-#### Scenario: identity_bootstrap_fails_closed
-- **WHEN** a package is disabled, pending activation, unavailable or missing its installed version
-- **THEN** bootstrap does not advertise that package as active and a caller cannot gain data access by submitting a claimed identity
-
-#### Scenario: indirect_requests_pin_each_app
-- **WHEN** a generic operation accesses references or attachments belonging to multiple runtime apps
-- **THEN** each app is checked against its own pinned identity, and malformed or duplicate identities are rejected rather than selecting a caller-preferred match
-
-#### Scenario: parallel_requests_share_session_snapshot
-- **WHEN** a signed-in page begins multiple metadata/data requests concurrently
-- **THEN** they use one resolved snapshot until reload or a new login, while a new login cannot inherit the previous session's snapshot
-
-#### Scenario: public_exchange_ignores_expired_saved_token
-- **WHEN** a browser with an expired saved bearer redeems a valid OAuth handoff, resets a password, signs out or uses a public form
-- **THEN** the public request reaches its existing host contract without requiring an authenticated identity snapshot first
-- **AND** subsequent authenticated data operations still require the pinned snapshot and normal admission
-
-### Requirement: explicit_runtime_policy_upgrade
-
-Package discovery SHALL validate read/action policy and required callback
-declarations as immutable artifact contents. Missing policies SHALL NOT become
-implicit unscoped grants. The host SHALL recognize exact historical version-1
-artifacts for predecessor verification and reviewed upgrade planning without
-executing undeclared actions. Install/restart SHALL expose their policy-upgrade
-diagnostic while preserving data and unaffected contributions. Adding explicit
-policies SHALL require a new package version and ordinary preview, upgrade and
-activation; stored artifacts SHALL NOT be rewritten or automatically upgraded.
-Pending/obsolete clients SHALL retain existing fail-closed identity behavior.
-
-#### Scenario: tasker_policy_upgrade_preserves_work
-- **WHEN** exact Tasker 2.0.0 is upgraded to a new artifact with explicit Table
-  policies through a code-only cumulative migration and activated
-- **THEN** existing work and retry identities remain intact and actions execute
-  under current Table permissions, without imposing store roles on Tasker
-
-#### Scenario: historical_artifact_is_not_relabelled
-- **WHEN** a policy is inserted into an installed artifact without a new version
-- **THEN** identity verification rejects it rather than trusting edited code
-
-#### Scenario: policy_restart_is_fail_closed
-- **WHEN** a required scope resolver/product authorizer is absent across restart
-- **THEN** the protected contribution remains unavailable with a diagnostic
-- **AND** restoring the exact artifact restores one registration, not duplicate gates
+- **WHEN** someone tries to delete a row using a copy of it they loaded
+  before someone else changed it
+- **THEN** the deletion is refused
 
 ## Deferred
 
-Marketplace discovery, signing, untrusted-code isolation, distributed activation,
-capability/dependency graphs, hot discovery, remove versus
-delete-data, typed recents, and generalized application preferences remain outside
-the first contract.
+Marketplace discovery, code signing, isolating untrusted code, running more
+than one server at once, removing an app or deleting its data outright, and
+letting an app remember its own settings are not built yet.
