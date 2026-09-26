@@ -7,22 +7,17 @@ current by whoever does the next batch.
 
 ## Version decision
 
-Upgraded `feather-testing-core` from the pinned `^0.2.0` to `^0.4.0`
-(latest on npm). 0.4.0 is purely additive over 0.2.0's Session API:
-`attachFile` (renamed from `upload`, which still works as a deprecated
-alias), `pressKey`, `hover`, `assertDownload`, `until`, and the `raw()`
-escape hatch. The `Session`/`TestDriver`/exports shape used by
-`e2e/fixtures.ts` (`test as base.extend({ session })`) is unchanged. No
-CHANGELOG is published with the package; this was verified by downloading
-and diffing the `dist/session.d.ts` type signatures between 0.2.0 and 0.4.0
-rather than reading prose.
+`apps/web` pins `feather-testing-core` exactly at `0.5.0`. This release adds
+scoped exact-text, attribute, computed-style, horizontal-layout, scrolling,
+and reload operations. The installed `dist/session.d.ts` is the source used
+for migrations: `assertExactText` compares normalized whole text;
+`assertHorizontallyContained` requires exactly one descendant; and all of
+these element-level operations are scoped with `within(selector, callback)`.
 
-`@playwright/test` in this repo is `^1.50.0`, comfortably inside 0.4.0's
-peer range (`>=1.40.0`). `pnpm install` picked up 0.4.0 cleanly; `pnpm
---filter web typecheck` and the four pre-existing DSL suites
-(`import-journey`, `import-upsert-journey`, `table-deletion`,
-`table-lifecycle`) all pass unchanged after the bump. **Decision: take
-0.4.0.** No breakage found, so there was nothing to stay on 0.2.0 for.
+`feather-testing-postgres@0.2.0` intentionally retains its own `^0.4.0`
+dependency, so the lockfile contains both Core versions. Do not widen that
+harness dependency or publish another harness merely to deduplicate the
+lockfile.
 
 ## Fixture design (`apps/web/e2e/fixtures.ts`)
 
@@ -162,7 +157,13 @@ Concretely, per verb:
 | "this text is/isn't on the page" | `assertText` / `refuteText` |
 | "this element exists / has N of them / contains text" (CSS selector, e.g. `[data-testid=...]`) | `assertHas` / `refuteHas` (`{ text, count }`) |
 | Exact pathname | `assertPath` / `refutePath` — **exact match only**; a "somewhere under /admin" check (landing path varies) still needs a step with `expect(page).toHaveURL(/regex/)` |
-| Anything else: file inputs by testid, native `<select>` by testid, drag/reorder, `page.evaluate`, `context.clearCookies()`, attribute assertions (`toHaveAttribute`, `toHaveValue` on a non-label field), keyboard shortcuts, multi-field forms addressed by `data-field` | `session.step('<name>', async ({ page }) => { ... })` |
+| Whole normalized text of one element | `within(selector, s => s.assertExactText(text))` |
+| Attribute or computed CSS on one element | `within(selector, s => s.assertAttribute(...) / refuteAttribute(...) / assertComputedStyle(...))` |
+| Reload the current document | `reload()` |
+| Page/element horizontal overflow | `assertNoHorizontalOverflow()` / `assertHorizontalOverflow()` inside `within` when scoped |
+| One descendant contained horizontally by a scope | `within(scope, s => s.assertHorizontallyContained(descendant))` — the descendant selector must resolve to exactly one element |
+| Prove and perform horizontal scrolling | `within(selector, s => s.assertHorizontalOverflow().scrollToHorizontalEnd())` |
+| Anything else: synthetic in-memory file inputs, drag/reorder/resize, focus proofs, screenshots, API/localStorage inspection, `page.evaluate`, `context.clearCookies()`, positional/dynamic locator logic | `session.step('<name>', async ({ page }) => { ... })` |
 
 `assertHas`/`refuteHas` cover more than they look like they do — they take
 `{ text, count }`, so "list-total shows '30 total'" or "exactly 3 filter

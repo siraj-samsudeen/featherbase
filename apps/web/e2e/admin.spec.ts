@@ -55,10 +55,7 @@ test('UI-001: full login flow into the Admin shell', async ({ session }) => {
     .assertHas('[data-testid="table-page"]', { text: 'User' })
 
   // Deep link survives reload (token persisted)
-  await session.step('reload keeps the same Table page', async ({ page }) => {
-    await page.reload()
-  })
-  await session.assertHas('[data-testid="table-page"]', { text: 'User' })
+  await session.reload().assertHas('[data-testid="table-page"]', { text: 'User' })
 
   // Logout (inside the avatar's account menu, #72) returns to login and
   // guards /admin

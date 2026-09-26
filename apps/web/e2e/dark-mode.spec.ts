@@ -8,8 +8,6 @@ import { test, expect, adminToken } from './fixtures'
 // repaints the canvas. That one assertion is what is left here.
 //
 // Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
-// Every check here is an attribute assertion or a computed-style evaluate —
-// neither has a Session verb — so the whole body stays one named step.
 
 test.beforeEach(async ({ request }) => {
   const token = await adminToken(request)
@@ -21,14 +19,17 @@ test.afterEach(async ({ request }) => {
 })
 
 test('UI-024: switching to dark actually repaints the canvas', async ({ session }) => {
-  await session.visit('/admin')
-  await session.step('toggle to dark and compare the repainted background', async ({ page }) => {
-    await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'dark')
-    const lightBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
-
-    await page.getByTestId('theme-toggle').click()
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-    const darkBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
-    expect(darkBg).not.toBe(lightBg)
+  let lightBg = ''
+  await session
+    .visit('/admin')
+    .within('html', (root) => root.assertAttribute('data-theme', 'light'))
+    .step('read the light canvas background', async ({ page }) => {
+      lightBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
+    })
+    .click('🌙')
+    .within('html', (root) => root.assertAttribute('data-theme', 'dark'))
+    .step('compare the repainted dark canvas background', async ({ page }) => {
+      const darkBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor)
+      expect(darkBg).not.toBe(lightBg)
   })
 })

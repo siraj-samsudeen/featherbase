@@ -1,4 +1,4 @@
-import { test, expect, adminToken, type APIRequestContext, type Page } from './fixtures'
+import { test, expect, adminToken, type APIRequestContext } from './fixtures'
 import { deleteTableIfExists } from './cleanup'
 
 // #209 (issue #197): "after importing I want to add a certain column but
@@ -10,9 +10,7 @@ import { deleteTableIfExists } from './cleanup'
 // the PUT route matches columns by name, so a changed name reads as
 // delete-plus-add and orphans the rows.
 //
-// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
-// the Column Editor's controls are all testid-addressed, so the mechanics
-// stay in named steps; assertHas/refuteHas cover the plain presence checks.
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
 
 const DT = 'Column Editor Zones'
 
@@ -49,22 +47,17 @@ test.afterEach(async ({ request }) => {
 
 test('a misspelled column is renamed, and its rows come with it', async ({ session, request }) => {
   const token = await adminToken(request)
-  await session.visit(`/admin/${encodeURIComponent(DT)}`)
-
-  await session.step('reachable from the Table it belongs to', async ({ page }) => {
-    await page.getByTestId('open-columns').click()
-  })
   await session
+    .visit(`/admin/${encodeURIComponent(DT)}`)
+    .clickLink('Columns')
     .assertHas('[data-testid="column-editor"]')
     .assertHas('[data-testid="ce-row-glor"]')
-
-  await session.step('rename glor to floor', async ({ page }) => {
-    await page.getByTestId('ce-rename-glor').click()
-    await page.getByTestId('ce-rename-input-glor').fill('floor')
-    await page.getByTestId('ce-rename-go-glor').click()
-  })
-
-  await session
+    .within('[data-testid="ce-row-glor"]', (row) =>
+      row
+        .clickButton('Rename glor')
+        .fillIn('New name for glor', 'floor')
+        .clickButton('Rename'),
+    )
     .assertHas('[data-testid="ce-row-floor"]')
     .refuteHas('[data-testid="ce-row-glor"]')
 
@@ -80,13 +73,13 @@ test('a misspelled column is renamed, and its rows come with it', async ({ sessi
 test('a rename that collides is refused, in place, with the reason', async ({ session }) => {
   await session.visit(`/admin/${encodeURIComponent(DT)}/columns`)
 
-  await session.step('attempt to rename glor to pop, which already exists', async ({ page }) => {
-    await page.getByTestId('ce-rename-glor').click()
-    await page.getByTestId('ce-rename-input-glor').fill('pop')
-    await page.getByTestId('ce-rename-go-glor').click()
-  })
-
   await session
+    .within('[data-testid="ce-row-glor"]', (row) =>
+      row
+        .clickButton('Rename glor')
+        .fillIn('New name for glor', 'pop')
+        .clickButton('Rename'),
+    )
     .assertHas('[data-testid="ce-rename-error-glor"]', { text: 'already has' })
     // And nothing moved.
     .assertHas('[data-testid="ce-row-glor"]')
@@ -97,13 +90,10 @@ test('a column is added to a Table that already has rows', async ({ session, req
   const token = await adminToken(request)
   await session.visit(`/admin/${encodeURIComponent(DT)}/columns`)
 
-  await session.step('the machine name follows the label until it is claimed', async ({ page }) => {
-    await page.getByTestId('ce-add-label').fill('Aisle Code')
-    await expect(page.getByTestId('ce-add-name')).toHaveValue('aisle_code')
-    await page.getByTestId('ce-add-go').click()
-  })
-
   await session
+    .fillIn('Label', 'Aisle Code')
+    .assertValue('Column name', 'aisle_code')
+    .clickButton('Add column')
     .assertHas('[data-testid="ce-saved"]', { text: 'Added aisle_code' })
     .assertHas('[data-testid="ce-row-aisle_code"]')
 
@@ -123,37 +113,29 @@ test('a column is added to a Table that already has rows', async ({ session, req
 test('a name the server would reject is caught before the round trip', async ({ session }) => {
   await session.visit(`/admin/${encodeURIComponent(DT)}/columns`)
 
-  await session.step('typing rejected names surfaces the reason and disables Go', async ({ page }) => {
-    await page.getByTestId('ce-add-label').fill('Glor')
-    await expect(page.getByTestId('ce-add-problem')).toContainText('already has glor')
-    await expect(page.getByTestId('ce-add-go')).toBeDisabled()
-
-    await page.getByTestId('ce-add-name').fill('created_at')
-    await expect(page.getByTestId('ce-add-problem')).toContainText('standard column')
-    await expect(page.getByTestId('ce-add-go')).toBeDisabled()
-
-    await page.getByTestId('ce-add-name').fill('Not Snake')
-    await expect(page.getByTestId('ce-add-problem')).toContainText('snake_case')
-
-    await page.getByTestId('ce-add-name').fill('aisle')
-    await expect(page.getByTestId('ce-add-go')).toBeEnabled()
-  })
+  await session
+    .fillIn('Label', 'Glor')
+    .assertHas('[data-testid="ce-add-problem"]', { text: 'already has glor' })
+    .within('[data-testid="ce-add-go"]', (button) => button.assertAttribute('disabled'))
+    .fillIn('Column name', 'created_at')
+    .assertHas('[data-testid="ce-add-problem"]', { text: 'standard column' })
+    .within('[data-testid="ce-add-go"]', (button) => button.assertAttribute('disabled'))
+    .fillIn('Column name', 'Not Snake')
+    .assertHas('[data-testid="ce-add-problem"]', { text: 'snake_case' })
+    .fillIn('Column name', 'aisle')
+    .within('[data-testid="ce-add-go"]', (button) => button.refuteAttribute('disabled'))
 })
 
 test('a label is changed without touching the column or its data', async ({ session, request }) => {
   const token = await adminToken(request)
   await session.visit(`/admin/${encodeURIComponent(DT)}/columns`)
 
-  await session.step('change the label and save', async ({ page }) => {
-    await page.getByTestId('ce-label-glor').fill('Floor')
-    await page.getByTestId('ce-label-save-glor').click()
-  })
-
-  await session.assertHas('[data-testid="ce-saved"]', { text: 'glor' })
-
-  await session.step('the label input reflects the change', async ({ page }) => {
-    await expect(page.getByTestId('ce-label-glor')).toHaveValue('Floor')
-  })
+  await session
+    .within('[data-testid="ce-row-glor"]', (row) =>
+      row.fillIn('Label for glor', 'Floor').clickButton('Save'),
+    )
+    .assertHas('[data-testid="ce-saved"]', { text: 'glor' })
+    .assertValue('Label for glor', 'Floor')
 
   // The machine name — and therefore every row — is untouched.
   const meta = await request.get(`/api/table/${encodeURIComponent(DT)}:meta`, {
@@ -177,18 +159,12 @@ test.describe('phone layout', () => {
   test('keeps the Columns table inside its own scroll area and Rename reachable', async ({ session }) => {
     await session.visit(`/admin/${encodeURIComponent(DT)}/columns`)
 
-    await session.step('the Admin canvas stays within the phone viewport while the table owns its width', async ({ page }) => {
-      expect(await page.locator('main').evaluate((main) => main.scrollWidth <= main.clientWidth)).toBe(true)
-
-      const tableArea = page.getByTestId('ce-columns-table')
-      expect(await tableArea.evaluate((area) => area.scrollWidth > area.clientWidth)).toBe(true)
-      const scrollLeft = await tableArea.evaluate((area) => {
-        area.scrollLeft = area.scrollWidth
-        return area.scrollLeft
-      })
-      expect(scrollLeft).toBeGreaterThan(0)
-    })
-
-    await session.clickButton('Rename glor').assertHas('[data-testid="ce-rename-input-glor"]')
+    await session
+      .within('main', (main) => main.assertNoHorizontalOverflow())
+      .within('[data-testid="ce-columns-table"]', (table) =>
+        table.assertHorizontalOverflow().scrollToHorizontalEnd(),
+      )
+      .clickButton('Rename glor')
+      .assertHas('[data-testid="ce-rename-input-glor"]')
   })
 })
