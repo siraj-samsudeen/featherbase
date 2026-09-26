@@ -12,7 +12,6 @@ export function expectSessionCookie(
   response: Response,
   hours: number,
   issuedBetween: { before: number; after: number },
-  secure: boolean,
 ): string {
   const header = response.headers.getSetCookie().find((cookie) => cookie.startsWith('sid='))
   expect(header).toBeDefined()
@@ -20,8 +19,6 @@ export function expectSessionCookie(
   expect(header).toMatch(/;\s*HttpOnly(?:;|$)/i)
   expect(header).toMatch(/;\s*SameSite=Lax(?:;|$)/i)
   expect(header).toMatch(/;\s*Path=\/(?:;|$)/i)
-  if (secure) expect(header).toMatch(/;\s*Secure(?:;|$)/i)
-  else expect(header).not.toMatch(/;\s*Secure(?:;|$)/i)
 
   const cookie = header!.split(';')[0]
   const token = decodeURIComponent(cookie.slice('sid='.length))

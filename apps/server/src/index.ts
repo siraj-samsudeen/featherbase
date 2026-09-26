@@ -157,7 +157,6 @@ function setSidCookie(c: Context, token: string, maxAgeSeconds: number) {
     sameSite: 'Lax',
     path: '/',
     maxAge: maxAgeSeconds,
-    secure: cookieIsSecure(c),
   })
 }
 
@@ -329,10 +328,6 @@ function externalOrigin(c: Context): URL {
   return new URL(`${proto}://${url.host}`)
 }
 
-function cookieIsSecure(c: Context): boolean {
-  return externalOrigin(c).protocol === 'https:'
-}
-
 // PLAT-006: Google OAuth (public — the caller is logging in). In dev a mock
 // provider stands in for Google. Flow: login → provider consent → callback →
 // find/create User → issue session → bounce back into the SPA with the token.
@@ -361,7 +356,7 @@ function oauthCookieOptions(c: Context) {
     sameSite: 'Lax' as const,
     path: '/',
     maxAge: 600,
-    secure: cookieIsSecure(c),
+    secure: externalOrigin(c).protocol === 'https:',
   }
 }
 

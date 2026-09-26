@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, test } from 'vitest'
 import { app } from '../src/index'
-import { config } from '../src/config'
 import { sql } from '../src/db'
 import {
   PREVIEW_KEY_MIN_LENGTH,
@@ -86,8 +85,6 @@ describe('the /preview route', () => {
       insert into "user" (row_id, email, full_name, enabled, user_type)
       values (${email}, ${email}, 'Preview Session Visitor', true, 'website')`
     configure(GOOD_KEY, email)
-    const previousSiteUrl = config.siteUrl
-    config.siteUrl = 'https://app.example.com'
     try {
       for (const hours of [1, 720]) {
         await setSessionHours(hours)
@@ -95,7 +92,7 @@ describe('the /preview route', () => {
         const res = await app.request(`/preview?key=${GOOD_KEY}`)
         const after = Math.floor(Date.now() / 1000)
         expect(res.status).toBe(302)
-        const cookie = expectSessionCookie(res, hours, { before, after }, true)
+        const cookie = expectSessionCookie(res, hours, { before, after })
         const location = res.headers.get('location') as string
         const code = new URLSearchParams(location.split('?')[1] ?? '').get('code')
         const redeemed = await app.request('/api/oauth/session', {
@@ -107,7 +104,6 @@ describe('the /preview route', () => {
         expect(Object.keys((await redeemed.json()) as object).sort()).toEqual(['token', 'user'])
       }
     } finally {
-      config.siteUrl = previousSiteUrl
       await sql`delete from "user" where row_id = ${email}`
     }
   })

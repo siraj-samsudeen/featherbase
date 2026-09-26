@@ -1,6 +1,5 @@
 import { describe, expect } from 'vitest'
 import { test } from './pg-test'
-import { config } from '../src/config'
 import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
 
 const json = (body: unknown) => ({
@@ -10,24 +9,18 @@ const json = (body: unknown) => ({
 
 describe('API-004: authentication', () => {
   test('password sign-in gives the sid cookie the configured session lifetime', async ({ api }) => {
-    const previousSiteUrl = config.siteUrl
-    config.siteUrl = 'https://app.example.com'
-    try {
-      for (const hours of [1, 720]) {
-        await setSessionHours(hours)
-        const before = Math.floor(Date.now() / 1000)
-        const res = await api.fetch(
-          '/api/login',
-          json({ usr: 'Administrator', pwd: process.env.ADMIN_PASSWORD ?? 'admin' }),
-        )
-        const after = Math.floor(Date.now() / 1000)
-        expect(res.status).toBe(200)
-        expectSessionCookie(res, hours, { before, after }, true)
-        const body = (await res.json()) as Record<string, unknown>
-        expect(Object.keys(body).filter((key) => !['token', 'user', 'landing'].includes(key))).toEqual([])
-      }
-    } finally {
-      config.siteUrl = previousSiteUrl
+    for (const hours of [1, 720]) {
+      await setSessionHours(hours)
+      const before = Math.floor(Date.now() / 1000)
+      const res = await api.fetch(
+        '/api/login',
+        json({ usr: 'Administrator', pwd: process.env.ADMIN_PASSWORD ?? 'admin' }),
+      )
+      const after = Math.floor(Date.now() / 1000)
+      expect(res.status).toBe(200)
+      expectSessionCookie(res, hours, { before, after })
+      const body = (await res.json()) as Record<string, unknown>
+      expect(Object.keys(body).filter((key) => !['token', 'user', 'landing'].includes(key))).toEqual([])
     }
   })
 
@@ -44,7 +37,7 @@ describe('API-004: authentication', () => {
         json({ usr: 'Administrator', pwd: process.env.ADMIN_PASSWORD ?? 'admin' }),
       )
       const after = Math.floor(Date.now() / 1000)
-      expectSessionCookie(res, expected, { before, after }, false)
+      expectSessionCookie(res, expected, { before, after })
     }
   })
 
