@@ -329,8 +329,9 @@ the shape, don't try to exercise the live-embed parts), `smoke.spec.ts`
 non-isolated smoke check — verify `./init.sh` still passes after touching
 it), `user-management.spec.ts`, `web-form.spec.ts`.
 
-**Batch 3 — Admin UI mechanics, A–K (18).** Plain `test`, testid/grid/list
-mechanics similar to `listview.spec.ts`/`grid-layout.spec.ts`.
+**Batch 3 — Admin UI mechanics, A–K (18). DONE — see "Batch 3 completed"
+below.** Plain `test`, testid/grid/list mechanics similar to
+`listview.spec.ts`/`grid-layout.spec.ts`.
 `access-tokens.spec.ts`, `attach-field.spec.ts`, `attachments.spec.ts`,
 `awesomebar.spec.ts`, `bulk-actions.spec.ts`, `calendar.spec.ts`,
 `checklist.spec.ts`, `client-script.spec.ts`, `column-editor.spec.ts`,
@@ -355,3 +356,76 @@ environment gotcha section (boot with the raised `PREAUTH_*` envs, reset
 the database before the final full-suite verification), and update the
 table above with the files you finish — don't leave this doc describing a
 state the repo has moved past.
+
+## Batch 3 completed
+
+All 18 files, all pass, matching baseline exactly (same test names, same
+assertions, same pass/skip status). One gotcha hit and worked around, not a
+migration regression:
+
+| File | Notes |
+|---|---|
+| `access-tokens.spec.ts` | show-once secret modal, service-account lifecycle; all steps |
+| `attach-field.spec.ts` | Attach/Attach Image round trip; file inputs + attribute reads, all steps |
+| `attachments.spec.ts` | attach/serve/delete cycle; `href`/served-content checks, all steps |
+| `awesomebar.spec.ts` | no accessible label on the input itself; three search rounds, each a step |
+| `bulk-actions.spec.ts` | checkbox selection + bulk edit/delete; testid-only, all steps |
+| `calendar.spec.ts` | drag-to-reschedule; mouse mechanics + date-cell checks, all steps |
+| `checklist.spec.ts` | camera upload + phone-width layout; 2 tests, both step-heavy |
+| `client-script.spec.ts` | `[data-field]`-only auto-fill + broken-script error surfacing |
+| `column-editor.spec.ts` | 6 tests; rename/add/label mechanics in steps, `assertHas`/`refuteHas` for presence |
+| `custom-field.spec.ts` | shortest of the batch; one step for the `[data-field]` check |
+| `dashboard.spec.ts` | number-card/bar-chart values are exact `toHaveText`, kept in steps (assertHas is substring-only — see gotcha below) |
+| `explore.spec.ts` | 4 tests; pane counts are exact `toHaveText`, kept in steps for the same reason |
+| `form-sidebar.spec.ts` | assign/tag/attach + reload persistence; testid-only |
+| `gantt.spec.ts` | bar attribute checks (`data-start`/`data-end`/`data-days`) + resize drag, all steps |
+| `home-page.spec.ts` | 2 tests; home-page title is exact `toHaveText`, kept in steps |
+| `kanban.spec.ts` | drag-card-to-column; DB verification after |
+| `keyboard-shortcuts.spec.ts` | Ctrl+S/Ctrl+B/`g d` leader sequence; all steps (no label-addressable controls) |
+| `naming-series.spec.ts` | `test.skip()` static escape still works inside the DSL `test`, unchanged |
+
+**Gotcha found this batch, beyond the pilot's four:** `assertHas`/`refuteHas`
+with `{ text }` do a **substring** match even with `opts.exact` (confirmed by
+reading `feather-testing-core`'s `playwright/driver.js`: the `exact` branch
+still uses `locator.filter({ hasText: opts.text })`, which is Playwright's
+own substring `hasText`, not `toHaveText`'s whole-string equality). Several
+of this batch's original assertions were exact `toHaveText('2')`,
+`toHaveText('Sales')`, etc. — swapping those for `assertHas(selector, {
+text: '2' })` would have been a real weakening (a card showing "12" would
+still pass a `{ text: '2' }` filter). Every exact `toHaveText`/attribute
+assertion in this batch was kept as a raw `expect(...).toHaveText(...)`
+inside a named `session.step()` instead — `assertHas`/`refuteHas` were used
+only where the original assertion was itself a substring check
+(`toContainText`) or a plain visibility/count check.
+
+**Non-idempotency gotcha reproduced, not introduced:** `dashboard.spec.ts`
+is one of the five files flagged in the pilot's "second gotcha" as not
+idempotent across reruns on the same database (it appends rows every run
+without a 404-tolerant reset). Running the batch twice against the same
+`featherbase_e2e_b3` without resetting reproduced exactly that: card counts
+doubled (`6` → `12`) and the test failed on the second run. Confirmed
+pre-existing (not a migration regression) by dropping and recreating the
+database and re-running: **33/33 passed**, twice in a row on a fresh
+database, matching the 33/0/0 baseline exactly both times.
+
+Verification commands used throughout:
+
+```bash
+createdb featherbase_e2e_b3   # dropdb first if rerunning
+WEB_PORT=5213 API_PORT=8033 DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/featherbase_e2e_b3 \
+PREAUTH_LOGIN_MAX=100000 PREAUTH_OAUTH_LOGIN_MAX=100000 PREAUTH_OAUTH_CALLBACK_MAX=100000 \
+PREAUTH_PASSWORD_MAX=100000 PREAUTH_FORM_MAX=100000 ALLOW_MOCK_OAUTH=1 ./init.sh
+
+cd apps/web && WEB_URL=http://localhost:5213 pnpm exec playwright test \
+  e2e/access-tokens.spec.ts e2e/attach-field.spec.ts e2e/attachments.spec.ts \
+  e2e/awesomebar.spec.ts e2e/bulk-actions.spec.ts e2e/calendar.spec.ts \
+  e2e/checklist.spec.ts e2e/client-script.spec.ts e2e/column-editor.spec.ts \
+  e2e/custom-field.spec.ts e2e/dashboard.spec.ts e2e/explore.spec.ts \
+  e2e/form-sidebar.spec.ts e2e/gantt.spec.ts e2e/home-page.spec.ts \
+  e2e/kanban.spec.ts e2e/keyboard-shortcuts.spec.ts e2e/naming-series.spec.ts \
+  --reporter=list
+
+pnpm --filter web typecheck
+```
+
+No baseline failures were found in this batch, so no GitHub issue was filed.
