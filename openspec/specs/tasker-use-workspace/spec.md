@@ -48,8 +48,9 @@ its own rather than squeezing the names.
 ### Requirement: Easy to find your way and use by keyboard
 
 Tasker SHALL keep navigation visibly separate from the work area and give each
-main place its own icon. Every control SHALL have a visible label, work by
-keyboard and show clearly when it has keyboard focus. No signal, such as state
+main place its own icon. Every control SHALL be clearly named, by visible text or
+an obvious symbol such as an arrow, work by keyboard and show clearly when it
+has keyboard focus. No signal, such as state
 or urgency, is shown by colour alone.
 
 #### Scenario: Keyboard focus stays visible
