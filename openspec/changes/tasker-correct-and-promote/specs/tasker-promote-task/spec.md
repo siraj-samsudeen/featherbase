@@ -1,32 +1,49 @@
+# Promote a Task
+
+## Purpose
+
+When a task turns out to be a bigger piece of work, the user can turn it into a
+project in one step, without losing anything the team has already recorded
+about it.
+
 ## ADDED Requirements
 
-### Requirement: promotion_preserves_work_history
+### Requirement: Turn a task into a project
 
-Promotion SHALL create a project named from the task title and copy its optional description. A simple task SHALL be removed without a preservation prompt. A rich task SHALL remain as the new project's first task with its assignment, urgency, comments and activity preserved, only after confirmation. Cancel SHALL change nothing.
+Promoting a task SHALL create a project named after the task, carrying over its
+description. A task nobody has worked on or linked to since it was captured
+simply becomes the project; any other task, for example one with someone
+responsible or a comment, is kept as the new project's first task, so nothing
+is lost. Tasker explains this and asks
+first, and cancelling changes nothing.
 
-| Task condition | Result |
-|---|---|
-| Default Not started, not urgent, unassigned, no comments or meaningful activity | Simple, including optional description and creation-only activity |
-| Any assignee, non-default state, urgency, comment or changed-field activity beyond creation | Rich |
+#### Scenario: Promote a fresh task
 
-The rich confirmation SHALL say in substance: “This task has work history that a project cannot hold directly. Tasker will create the project and keep this task as its first task so its assignment, urgency, comments, and activity are preserved. Continue?”
+- **WHEN** the user promotes a task "Plan the store opening" that has a description and has not been touched since it was captured
+- **THEN** a project "Plan the store opening" with the same description opens
+- **AND** the task is gone, without any question asked
 
-#### Scenario: creation_only_is_simple
-- **WHEN** an unassigned default task with a description has only its creation event
-- **THEN** promotion copies title/description and removes the source without a preservation prompt.
+#### Scenario: Promote a task with history
 
-#### Scenario: previously_assigned_is_rich
-- **WHEN** an otherwise default task was assigned and later unassigned
-- **THEN** its activity requires the preservation prompt and Continue retains the original task.
+- **WHEN** a task was given to Shahul and later handed back to nobody, and the user promotes it
+- **THEN** Tasker explains that the task will be kept inside the new project and asks first
+- **AND** on confirming, the new project's first task is the original task with its history
 
-### Requirement: promotion_is_atomic_retryable
+### Requirement: Promotion is all or nothing
 
-Promotion SHALL enforce source and destination permissions, stale/concurrent edits and a durable idempotency key in one host transaction. A failed operation SHALL leave neither a partial project nor a partially moved/deleted task. Retrying the same successful request SHALL return the same outcome without another project. A newly rich task SHALL never be deleted based on an earlier simple classification.
+Promotion SHALL either finish completely or change nothing — never a
+half-made project or a lost task — and only for someone allowed to change
+both. Retrying after a lost answer gives the same result, not a second
+project, and a task that changes mid-promotion is refused or re-asked rather
+than losing the new work.
 
-#### Scenario: failure_or_retry_does_not_duplicate
-- **WHEN** promotion fails after project creation or the successful response is lost and retried
-- **THEN** failure leaves the original state intact and retry returns one project only.
+#### Scenario: Retrying does not duplicate
 
-#### Scenario: concurrent_history_is_preserved
-- **WHEN** a comment or task edit arrives after the promotion preview
-- **THEN** promotion rejects the stale request or requires rich-task confirmation; it never silently removes that history.
+- **WHEN** the user promotes a task, the connection drops before the answer arrives, and the user retries
+- **THEN** there is exactly one new project
+
+#### Scenario: New work is not lost
+
+- **WHEN** Shahul comments on a fresh task while the user is promoting it
+- **THEN** Tasker does not delete the task and its comment
+- **AND** it either refuses or asks the user to keep the task inside the new project

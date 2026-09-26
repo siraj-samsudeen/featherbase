@@ -2,20 +2,20 @@
 
 ## Purpose
 
-The team can review active work by responsible person and see work that nobody
-has taken.
+Together is the team's view of active work, grouped by who is responsible, so
+anyone can see who is carrying what and what nobody has taken yet.
 
 ## Requirements
 
-### Requirement: together_groups_active_responsibility
+### Requirement: Review team workload
 
-Together SHALL group active tasks by their sole responsible person and show
-tasks with no responsible person in Unassigned. Done and Cancelled tasks SHALL
-not appear. A responsible person SHALL remain visible even when outside the
-first fetched directory page.
+Together SHALL show every task that is not Done or Cancelled, grouped under its
+responsible person, with the tasks nobody is responsible for grouped as
+Unassigned. Everyone responsible for active work gets a group, however large the
+team.
 
-#### Scenario: assigned_unassigned_and_finished
-- **GIVEN** one assigned active task, one unassigned active task and one Done task
-- **WHEN** a member opens Together
-- **THEN** the active tasks appear in their respective groups
-- **AND** the Done task is absent.
+#### Scenario: Open work by person
+
+- **WHEN** Shahul is responsible for one open task, another open task has nobody responsible, a third task is Done, and the user opens Together
+- **THEN** the first task is under Shahul and the second under Unassigned
+- **AND** the Done task is not shown
