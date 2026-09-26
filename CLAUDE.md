@@ -108,14 +108,6 @@ belongs, dated.
 - [`feather-testing-postgres`](https://github.com/siraj-samsudeen/feather-testing-postgres)
   — the SQL Sandbox test harness, consumed as a published npm dependency. It
   lives in its own repo; fix it there and release, never vendor it back in.
-  *Temporarily pinned to a git commit* — `59b7b84`, which teaches `seed()`
-  the Table/Row wire (`POST /api/save_row { table, row }`) and corrects its
-  `{ name }` return type to `{ row_id }`. That work merged to the harness's
-  `main` on 2026-08-14 (its PR #3), but the repo has published no release
-  yet, so the pin stays and `apps/web/test/pg-test.ts` still carries two type
-  shims for the stale published shapes. Move both `package.json`s to a
-  version range and delete the shims on the first release (issue #225; the
-  2026-07-31 and 2026-08-14 `PROGRESS.md` entries)
 - Monorepo — pnpm workspaces; boot everything with `./init.sh`
 
 **Visual identity is a standing directive.** Every new UI feature must inherit
