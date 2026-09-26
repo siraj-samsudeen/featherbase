@@ -33,19 +33,16 @@ shows only tasks that match all of them.
 - **THEN** an urgent In progress task of Shahul's is shown
 - **AND** a task with the same state and person that is not urgent is not shown
 
-### Requirement: The user always sees what is filtering the list
+### Requirement: See what is narrowing the list
 
-Tasker SHALL show each search and filter in use as something the user can remove
-one at a time, along with how many tasks match out of how many in the list.
-When nothing matches, Tasker says so and keeps the search and filters, offering
-to clear them; it never quietly loosens them. In Together, Tasker shows that
-only active work is included.
+Tasker SHALL show every search and filter in use, and how many tasks match, and
+let the user remove each one.
 
 #### Scenario: Nothing matches
 
 - **WHEN** a project has 12 tasks and the user's filters match none of them
-- **THEN** Tasker shows 0 of 12 tasks and the filters in use
-- **AND** the user can clear the search or all the filters and see the project's tasks again
+- **THEN** Tasker shows 0 of 12 tasks
+- **AND** the user can clear the filters and see all 12 again
 
 ### Requirement: Saved views are private
 
@@ -66,22 +63,22 @@ renaming or deleting it never changes a task or project.
 - **WHEN** the user saves a view for "September stock review" and reopens it
 - **THEN** it never shows tasks from "Store opening readiness", even ones that match its filters
 
-### Requirement: Changing a saved view is deliberate
+### Requirement: A saved view changes only when the user saves it
 
-After the user opens a saved view, changing its search or filters SHALL show
-that there are unsaved changes; the saved view only changes when the user
-chooses to update it, and they can reset back to it. Saving as a new view,
-renaming and deleting are separate, deliberate actions. A link to a saved view
-reopens it for its owner. If a saved view refers to a project or person that no
-longer exists, Tasker says so and keeps that filter rather than dropping it and
-showing more tasks.
+Changing a saved view's search or filters SHALL leave the saved view as it was
+until the user chooses to update it. The user can reset back to it.
 
 #### Scenario: Reset a changed view
 
 - **WHEN** the user opens a saved view of Blocked tasks, also ticks In progress, and then resets
 - **THEN** the view shows Blocked tasks only, and the saved view is unchanged
 
-#### Scenario: A missing project never widens a view
+### Requirement: A missing project never widens a view
+
+If a saved view's project or person no longer exists, Tasker SHALL say so and
+keep that filter rather than show more tasks.
+
+#### Scenario: A deleted project
 
 - **WHEN** a saved view filters on a project that has since been deleted and the user opens it
 - **THEN** Tasker says the project is unavailable
