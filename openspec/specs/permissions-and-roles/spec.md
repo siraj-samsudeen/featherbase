@@ -36,7 +36,8 @@ grant for an action on a table SHALL be refused that action there.
 ### Requirement: A grant can be limited to rows someone created
 
 A role's grant on a table SHALL optionally apply only to the rows the
-person themselves created, rather than every row.
+person themselves created, rather than every row. This holds for the
+table's list, its form, and any counts of it.
 
 #### Scenario: Limited to your own rows
 
@@ -46,9 +47,10 @@ person themselves created, rather than every row.
 
 ### Requirement: Access can be narrowed to specific rows
 
-Beyond what a role grants, a person's access to a table SHALL be narrowable
-to a chosen set of its rows, or to rows that reference a chosen set of rows
-in another table. This narrowing SHALL NOT apply to a System Manager.
+Beyond what a role grants, a person's access to a table's list, its form,
+and any counts of it SHALL be narrowable to a chosen set of its rows, or to
+rows that reference a chosen set of rows in another table. This narrowing
+SHALL NOT apply to a System Manager.
 
 #### Scenario: Narrowed to one region's rows
 
@@ -72,9 +74,9 @@ wouldn't grant that on the table it belongs to.
 ### Requirement: A column can be marked sensitive
 
 A column SHALL be markable so that only roles with the deeper access it
-requires can see or change it; everyone else's view of that row simply omits
-it, and a write to it from anyone else is silently dropped rather than
-saved.
+requires can see or change it. In the table's list and form, and when a
+single row is opened, it's omitted from what other roles see, and a write to
+it from them is silently dropped rather than saved.
 
 #### Scenario: A sensitive column is hidden
 
