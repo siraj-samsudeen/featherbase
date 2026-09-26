@@ -38,10 +38,48 @@ test.describe('UI-025: responsive Admin (mobile)', () => {
       const closedBox = await page.getByTestId('admin-sidebar').boundingBox()
       expect(closedBox).not.toBeNull()
       expect(closedBox!.x).toBeLessThan(0) // off-screen to the left
+      await expect(page.getByTestId('admin-sidebar')).toHaveAttribute('inert', '')
+      await expect(page.getByTestId('admin-sidebar')).toHaveAttribute('aria-hidden', 'true')
 
-      // Opening the drawer brings the sidebar on-screen (wait out the transition).
-      await page.getByTestId('sidebar-toggle').click()
+      // The account control is the last focusable header item. Tabbing past
+      // it must skip every link in the closed, off-screen drawer and land on
+      // a control the user can actually see.
+      await page.getByTestId('session-user').focus()
+      await page.keyboard.press('Tab')
+      const closedDrawerFocus = page.locator(':focus')
+      await expect(closedDrawerFocus).not.toHaveAttribute('data-testid', 'new-table-link')
+      await expect(closedDrawerFocus).toBeInViewport()
+
+      // Keyboard-opening the drawer brings it on-screen and restores its
+      // links to the tab order (wait out the transition).
+      await page.getByTestId('sidebar-toggle').focus()
+      await page.keyboard.press('Enter')
       await expect(page.getByTestId('sidebar-backdrop')).toBeVisible()
+      await expect
+        .poll(async () => (await page.getByTestId('admin-sidebar').boundingBox())!.x)
+        .toBeGreaterThanOrEqual(0)
+      await expect(page.getByTestId('admin-sidebar')).not.toHaveAttribute('inert')
+      await expect(page.getByTestId('admin-sidebar')).not.toHaveAttribute('aria-hidden')
+      await page.getByTestId('session-user').focus()
+      await page.keyboard.press('Tab')
+      await expect(page.getByTestId('new-table-link')).toBeFocused()
+
+      // Keyboard-closing it removes those links again once the slide-out
+      // transition completes.
+      await page.getByTestId('sidebar-toggle').focus()
+      await page.keyboard.press('Enter')
+      await expect(page.getByTestId('sidebar-backdrop')).toHaveCount(0)
+      await expect
+        .poll(async () => (await page.getByTestId('admin-sidebar').boundingBox())!.x)
+        .toBeLessThan(0)
+      await expect(page.getByTestId('admin-sidebar')).toHaveAttribute('inert', '')
+      await page.getByTestId('session-user').focus()
+      await page.keyboard.press('Tab')
+      await expect(page.locator(':focus')).not.toHaveAttribute('data-testid', 'new-table-link')
+
+      // Reopen the drawer for its navigation journey below.
+      await page.getByTestId('sidebar-toggle').focus()
+      await page.keyboard.press('Enter')
       await expect
         .poll(async () => (await page.getByTestId('admin-sidebar').boundingBox())!.x)
         .toBeGreaterThanOrEqual(0)
@@ -84,6 +122,14 @@ test.describe('UI-025: desktop keeps a static sidebar', () => {
       await expect(page.getByTestId('sidebar-toggle')).toBeHidden()
       const box = await page.getByTestId('admin-sidebar').boundingBox()
       expect(box!.x).toBeGreaterThanOrEqual(0)
+      await expect(page.getByTestId('admin-sidebar')).not.toHaveAttribute('inert')
+      await expect(page.getByTestId('admin-sidebar')).not.toHaveAttribute('aria-hidden')
+
+      // The static desktop sidebar remains in the tab order even though the
+      // mobile drawer state starts closed.
+      await page.getByTestId('session-user').focus()
+      await page.keyboard.press('Tab')
+      await expect(page.getByTestId('new-table-link')).toBeFocused()
     })
   })
 })
