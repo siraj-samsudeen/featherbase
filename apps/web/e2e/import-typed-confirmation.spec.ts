@@ -7,11 +7,15 @@ import { deleteTableIfExists } from './cleanup'
 // typed back. The preview count is passive and easy to click past; typing
 // 25 is not. Small runs stay friction-free — the existing UPS journey (8
 // rows, no prompt) is the other half of this proof.
+//
+// Migrated to the feather-testing-core DSL
+// (docs/testing/e2e-dsl-migration.md). Every control here is testid-addressed,
+// so the walk stays inside named steps; `session.visit` carries navigation.
 
 const DT = 'Confirm Guard Zones'
 const N = 25 // > CONFIRM_UPDATES_OVER
 
-test(`UPS-H1: updating ${N} rows demands the number typed back`, async ({ page, request }) => {
+test(`UPS-H1: updating ${N} rows demands the number typed back`, async ({ session, request }) => {
   const token = await adminToken(request)
   const headers = { Authorization: `Bearer ${token}` }
   await deleteTableIfExists(request, token, DT)
@@ -40,20 +44,23 @@ test(`UPS-H1: updating ${N} rows demands the number typed back`, async ({ page, 
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Zones')
 
-  await page.goto('/admin')
-  await page.getByTestId('import-data-link').click()
-  await page.getByTestId('iw-file-input').setInputFiles({
-    name: 'mass-update.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
-  })
-  await expect(page.getByTestId('iw-target-0')).toHaveValue(DT)
-  await page.getByTestId('iw-key-0').selectOption('zone')
+  await session.visit('/admin')
+  await session.step('drop the corrected file and attempt the mass update', async ({ page }) => {
+    await page.getByTestId('import-data-link').click()
+    await page.getByTestId('iw-file-input').setInputFiles({
+      name: 'mass-update.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+    })
+    await expect(page.getByTestId('iw-target-0')).toHaveValue(DT)
+    await page.getByTestId('iw-key-0').selectOption('zone')
 
-  // Import → the guard appears instead of the run; nothing was written.
-  await page.getByTestId('iw-import').click()
-  const guard = page.getByTestId('iw-confirm-updates')
-  await expect(guard).toContainText(`update ${N} existing rows`)
+    // Import → the guard appears instead of the run; nothing was written.
+    await page.getByTestId('iw-import').click()
+    const guard = page.getByTestId('iw-confirm-updates')
+    await expect(guard).toContainText(`update ${N} existing rows`)
+  })
+
   const anyRow = (await (
     await request.get(
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
@@ -64,15 +71,17 @@ test(`UPS-H1: updating ${N} rows demands the number typed back`, async ({ page, 
   ).json()) as { data: { pop: unknown }[] }
   expect(Number(anyRow.data[0].pop)).toBeLessThan(1000) // still the seeded value
 
-  // A wrong number keeps the trigger disabled; the exact number arms it.
-  await page.getByTestId('iw-confirm-input').fill(String(N - 1))
-  await expect(page.getByTestId('iw-confirm-go')).toBeDisabled()
-  await page.getByTestId('iw-confirm-input').fill(String(N))
-  await expect(page.getByTestId('iw-confirm-go')).toBeEnabled()
-  await page.getByTestId('iw-confirm-go').click()
+  await session.step('a wrong number keeps the trigger disabled; the exact number arms it', async ({ page }) => {
+    await page.getByTestId('iw-confirm-input').fill(String(N - 1))
+    await expect(page.getByTestId('iw-confirm-go')).toBeDisabled()
+    await page.getByTestId('iw-confirm-input').fill(String(N))
+    await expect(page.getByTestId('iw-confirm-go')).toBeEnabled()
+    await page.getByTestId('iw-confirm-go').click()
 
-  // The run proceeds normally (single sheet → the ratified auto-navigation).
-  await expect(page).toHaveURL(new RegExp(`/admin/${encodeURIComponent(DT)}`))
+    // The run proceeds normally (single sheet → the ratified auto-navigation).
+    await expect(page).toHaveURL(new RegExp(`/admin/${encodeURIComponent(DT)}`))
+  })
+
   const after = (await (
     await request.get(
       `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(

@@ -1,4 +1,4 @@
-import { test, expect, adminToken, type APIRequestContext, type Page } from './fixtures'
+import { test, expect, adminToken, type APIRequestContext } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
 
@@ -8,6 +8,10 @@ import { deleteTableIfExists } from './cleanup'
 //
 // The Import Log always held the facts — a row per part per target. What it
 // could not say is that eleven Tables were ONE thing the user did.
+//
+// Migrated to the feather-testing-core DSL
+// (docs/testing/e2e-dsl-migration.md). Every control here is testid-addressed,
+// so the walk stays inside named steps; `session.visit` carries navigation.
 
 const ONE = 'Batch Sheet One'
 const TWO = 'Batch Sheet Two'
@@ -44,58 +48,66 @@ test.beforeEach(async ({ request }) => {
   }
 })
 
-test('three sheets become one import, and go away together', async ({ page, request }) => {
+test('three sheets become one import, and go away together', async ({ session, request }) => {
   const token = await adminToken(request)
-  await page.goto('/admin')
-  await page.getByTestId('import-data-link').click()
-  await page.getByTestId('iw-file-input').setInputFiles({
-    name: 'batch fixture.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer: workbook(),
+  await session.visit('/admin')
+
+  await session.step('import three sheets, one Table each, through the wizard', async ({ page }) => {
+    await page.getByTestId('import-data-link').click()
+    await page.getByTestId('iw-file-input').setInputFiles({
+      name: 'batch fixture.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer: workbook(),
+    })
+    await page.getByTestId('iw-ov-master').check()
+    await page.getByTestId('iw-ov-continue').click()
+    await page.getByTestId('iw-new-name-0').fill(ONE)
+    await page.getByTestId('iw-next').click()
+    await page.getByTestId('iw-new-name-1').fill(TWO)
+    await page.getByTestId('iw-next').click()
+    await page.getByTestId('iw-new-name-2').fill(THREE)
+    await page.getByTestId('iw-import').click()
+    await expect(page.getByTestId('iw-done')).toContainText('Import complete.')
   })
-  await page.getByTestId('iw-ov-master').check()
-  await page.getByTestId('iw-ov-continue').click()
-  await page.getByTestId('iw-new-name-0').fill(ONE)
-  await page.getByTestId('iw-next').click()
-  await page.getByTestId('iw-new-name-1').fill(TWO)
-  await page.getByTestId('iw-next').click()
-  await page.getByTestId('iw-new-name-2').fill(THREE)
-  await page.getByTestId('iw-import').click()
-  await expect(page.getByTestId('iw-done')).toContainText('Import complete.')
 
   // The link the owner went looking for and could not find.
-  await page.getByTestId('iw-batches-link').click()
-  await expect(page.getByTestId('import-batches')).toBeVisible()
+  await session.step('open the batches view from the wizard', async ({ page }) => {
+    await page.getByTestId('iw-batches-link').click()
+    await expect(page.getByTestId('import-batches')).toBeVisible()
+  })
 
-  // ONE entry for the file, listing all three Tables — not three unrelated
-  // runs to be matched up by timestamp.
-  const card = page.locator('[data-testid^="ib-batch-"]').first()
-  await expect(card).toContainText('batch fixture.xlsx')
-  for (const name of [ONE, TWO, THREE]) {
-    await expect(card.getByTestId(`ib-target-${name}`)).toBeVisible()
-    await expect(card.getByTestId(`ib-created-${name}`)).toBeVisible()
-  }
-  await expect(card).toContainText('6 rows added')
+  await session.step('ONE entry lists all three Tables the file created', async ({ page }) => {
+    const card = page.locator('[data-testid^="ib-batch-"]').first()
+    await expect(card).toContainText('batch fixture.xlsx')
+    for (const name of [ONE, TWO, THREE]) {
+      await expect(card.getByTestId(`ib-target-${name}`)).toBeVisible()
+      await expect(card.getByTestId(`ib-created-${name}`)).toBeVisible()
+    }
+    await expect(card).toContainText('6 rows added')
+  })
 
   // And the whole import can be taken back in one action — with the Tables
   // named before anything happens.
-  await expect(card.locator('[data-testid^="ib-delete-"]')).toContainText(
-    'Delete the 3 Tables this import created',
-  )
-  await card.locator('[data-testid^="ib-delete-"]').click()
-  await expect(card.locator('[data-testid^="ib-confirm-"]').first()).toContainText(ONE)
-  await card.locator('[data-testid^="ib-confirm-go-"]').click()
+  await session.step('take the whole import back, Tables named up front', async ({ page }) => {
+    const card = page.locator('[data-testid^="ib-batch-"]').first()
+    await expect(card.locator('[data-testid^="ib-delete-"]')).toContainText(
+      'Delete the 3 Tables this import created',
+    )
+    await card.locator('[data-testid^="ib-delete-"]').click()
+    await expect(card.locator('[data-testid^="ib-confirm-"]').first()).toContainText(ONE)
+    await card.locator('[data-testid^="ib-confirm-go-"]').click()
+    // Reported by the page, because the batch itself is gone: its Import Log
+    // rows pointed at Tables that no longer exist.
+    await expect(page.getByTestId('ib-outcome')).toContainText('Deleted')
+    await expect(page.getByTestId('ib-outcome')).toContainText('no longer listed')
+  })
 
-  // Reported by the page, because the batch itself is gone: its Import Log
-  // rows pointed at Tables that no longer exist.
-  await expect(page.getByTestId('ib-outcome')).toContainText('Deleted')
-  await expect(page.getByTestId('ib-outcome')).toContainText('no longer listed')
   const names = await tableNames(request, token)
   for (const name of [ONE, TWO, THREE]) expect(names).not.toContain(name)
 })
 
 test('a Table that only received rows is never deleted with the batch', async ({
-  page,
+  session,
   request,
 }) => {
   const token = await adminToken(request)
@@ -116,39 +128,45 @@ test('a Table that only received rows is never deleted with the batch', async ({
     data: { table: EXISTING, row: { bch_alpha: 'pre-existing', bch_note: 'mine' } },
   })
 
-  await page.goto('/admin')
-  await page.getByTestId('import-data-link').click()
-  await page.getByTestId('iw-file-input').setInputFiles({
-    name: 'batch mixed.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer: workbook(),
+  await session.visit('/admin')
+  await session.step('import sheet 1 onto the pre-existing Table, sheet 2 into a new one', async ({ page }) => {
+    await page.getByTestId('import-data-link').click()
+    await page.getByTestId('iw-file-input').setInputFiles({
+      name: 'batch mixed.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer: workbook(),
+    })
+    await page.getByTestId('iw-ov-sheet-0').check()
+    await page.getByTestId('iw-ov-sheet-1').check()
+    await page.getByTestId('iw-ov-continue').click()
+    await page.getByTestId('iw-target-0').click()
+    await page.getByTestId(`iw-target-opt-0-${EXISTING}`).click()
+    await page.getByTestId('iw-next').click()
+    await page.getByTestId('iw-new-name-1').fill(TWO)
+    await page.getByTestId('iw-import').click()
+    await expect(page.getByTestId('iw-done')).toContainText('Import complete.')
   })
-  await page.getByTestId('iw-ov-sheet-0').check()
-  await page.getByTestId('iw-ov-sheet-1').check()
-  await page.getByTestId('iw-ov-continue').click()
-  // Sheet 1 (Alpha) onto the pre-existing Table; sheet 2 into a new one.
-  await page.getByTestId('iw-target-0').click()
-  await page.getByTestId(`iw-target-opt-0-${EXISTING}`).click()
-  await page.getByTestId('iw-next').click()
-  await page.getByTestId('iw-new-name-1').fill(TWO)
-  await page.getByTestId('iw-import').click()
-  await expect(page.getByTestId('iw-done')).toContainText('Import complete.')
 
-  await page.getByTestId('iw-batches-link').click()
-  const card = page.locator('[data-testid^="ib-batch-"]').first()
-  await expect(card.getByTestId(`ib-appended-${EXISTING}`)).toContainText('existing Table')
-  await expect(card.getByTestId(`ib-created-${TWO}`)).toBeVisible()
+  await session.step(
+    'the batches view distinguishes an appended Table from a created one',
+    async ({ page }) => {
+      await page.getByTestId('iw-batches-link').click()
+      const card = page.locator('[data-testid^="ib-batch-"]').first()
+      await expect(card.getByTestId(`ib-appended-${EXISTING}`)).toContainText('existing Table')
+      await expect(card.getByTestId(`ib-created-${TWO}`)).toBeVisible()
 
-  // The button counts only what the import CREATED. Deleting the Table the
-  // rows merely went INTO would destroy data this import never made — that
-  // is what the per-run revert is for.
-  await expect(card.locator('[data-testid^="ib-delete-"]')).toContainText(
-    'Delete the 1 Table this import created',
+      // The button counts only what the import CREATED. Deleting the Table the
+      // rows merely went INTO would destroy data this import never made — that
+      // is what the per-run revert is for.
+      await expect(card.locator('[data-testid^="ib-delete-"]')).toContainText(
+        'Delete the 1 Table this import created',
+      )
+      await card.locator('[data-testid^="ib-delete-"]').click()
+      await expect(card.locator('[data-testid^="ib-confirm-"]').first()).not.toContainText(EXISTING)
+      await card.locator('[data-testid^="ib-confirm-go-"]').click()
+      await expect(page.getByTestId('ib-outcome')).toContainText('Deleted')
+    },
   )
-  await card.locator('[data-testid^="ib-delete-"]').click()
-  await expect(card.locator('[data-testid^="ib-confirm-"]').first()).not.toContainText(EXISTING)
-  await card.locator('[data-testid^="ib-confirm-go-"]').click()
-  await expect(page.getByTestId('ib-outcome')).toContainText('Deleted')
 
   const names = await tableNames(request, token)
   expect(names).not.toContain(TWO)
@@ -160,31 +178,36 @@ test('a Table that only received rows is never deleted with the batch', async ({
   await deleteTableIfExists(request, token, EXISTING)
 })
 
-test('a merge group is one Table in the import, not one per sheet', async ({ page, request }) => {
+test('a merge group is one Table in the import, not one per sheet', async ({ session, request }) => {
   const token = await adminToken(request)
-  await page.goto('/admin')
-  await page.getByTestId('import-data-link').click()
-  await page.getByTestId('iw-file-input').setInputFiles({
-    name: 'batch merged.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer: workbook(),
+  await session.visit('/admin')
+  await session.step('import all three sheets merged into one Table', async ({ page }) => {
+    await page.getByTestId('import-data-link').click()
+    await page.getByTestId('iw-file-input').setInputFiles({
+      name: 'batch merged.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer: workbook(),
+    })
+    await page.getByTestId('iw-ov-master').check()
+    await page.getByTestId('iw-ov-mode-merge').check()
+    await page.getByTestId('iw-ov-merge-name').fill(ONE)
+    await page.getByTestId('iw-ov-continue').click()
+    await page.getByTestId('iw-import').click()
+    // Wait for the run to finish: navigating mid-import would unmount the
+    // wizard between its per-sheet parts and log only the first.
+    await expect(page.getByTestId('iw-done')).toContainText('Import complete.')
   })
-  await page.getByTestId('iw-ov-master').check()
-  await page.getByTestId('iw-ov-mode-merge').check()
-  await page.getByTestId('iw-ov-merge-name').fill(ONE)
-  await page.getByTestId('iw-ov-continue').click()
-  await page.getByTestId('iw-import').click()
-  // Wait for the run to finish: navigating mid-import would unmount the
-  // wizard between its per-sheet parts and log only the first.
-  await expect(page.getByTestId('iw-done')).toContainText('Import complete.')
 
-  await page.goto('/admin/imports')
-  const card = page.locator('[data-testid^="ib-batch-"]').first()
-  // #201 sends a part per member sheet. The import must still read as the
-  // one Table the user asked for, naming the sheets that fed it.
-  await expect(card.locator('[data-testid^="ib-target-"]')).toHaveCount(1)
-  await expect(card.getByTestId(`ib-target-${ONE}`)).toContainText('3 sheets')
-  await expect(card.getByTestId(`ib-target-${ONE}`)).toContainText('Alpha, Beta, Gamma')
+  await session.visit('/admin/imports')
+  await session.step(
+    '#201 sends a part per member sheet, but the batch reads as one Table',
+    async ({ page }) => {
+      const card = page.locator('[data-testid^="ib-batch-"]').first()
+      await expect(card.locator('[data-testid^="ib-target-"]')).toHaveCount(1)
+      await expect(card.getByTestId(`ib-target-${ONE}`)).toContainText('3 sheets')
+      await expect(card.getByTestId(`ib-target-${ONE}`)).toContainText('Alpha, Beta, Gamma')
+    },
+  )
 
   await deleteTableIfExists(request, token, ONE)
 })

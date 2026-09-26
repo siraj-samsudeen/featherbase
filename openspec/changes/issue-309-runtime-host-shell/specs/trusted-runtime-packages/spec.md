@@ -1,64 +1,69 @@
 ## MODIFIED Requirements
 
-### Requirement: app_owns_client_root
-Legacy IDs: PKG-R4, PKG-J1 · `shape: contract`
+### Requirement: An app owns its own screen
 
-An app SHALL own its direct root, document content, React tree, inner navigation,
-and CSS. Featherbase core SHALL serve only the declared contained client build,
-SHALL reserve platform and technical roots, and SHALL NOT substitute either
-application's HTML for a missing asset. A navigation request for an app-owned
-deep link SHALL retain the exact path, query, and fragment across sign-in and
-refresh while loading that app's declared client entry.
+An app that brings its own screen SHALL fully control its address, document,
+inner navigation and styling. Featherbase SHALL serve only that app's declared
+client files, SHALL NOT show one app's screen or its own in place of a missing
+piece, and SHALL preserve an app-owned deep path, query and fragment across
+sign-in and refresh while loading the app's entry document.
 
-Featherbase SHALL render every runtime client inside its responsive host shell on
-desktop and touch/mobile. Runtime presentation SHALL NOT be inferred from the
-package's client root, document, or CSS.
+Featherbase SHALL render every app screen inside its responsive host shell on
+desktop and touch/mobile. The shell SHALL keep a persistent Featherbase Home
+icon immediately followed by one keyboard-operable app switcher. The switcher
+SHALL identify the current destination and contain Featherbase Home plus every
+active installed app the current member is allowed to open. It SHALL refresh
+after the document regains focus or visibility, omit unavailable destinations,
+and return to Featherbase Home if the current destination becomes unavailable.
 
-The runtime host shell SHALL keep a persistent Featherbase Home icon immediately
-followed by one keyboard-operable app switcher. The switcher SHALL contain
-Featherbase Home and every active installed app the current member is authorized
-to open, SHALL identify the current destination, SHALL refresh after the document
-regains focus or visibility so access changes are reflected without a page reload,
-and SHALL omit unauthorized, disabled, unavailable, pending, and unversioned apps.
-The Home destination SHALL be the single responsive route to the ordinary
-Featherbase host controls; neither the shell nor an app SHALL create a second app
-list. Shell controls SHALL have accessible names, visible keyboard focus, and a
-usable touch target without obscuring or replacing app-owned content.
+The Home destination SHALL be the single responsive route to Featherbase's
+ordinary host controls; neither the shell nor an app SHALL create a second app
+list. Shell controls SHALL have accessible names, visible keyboard focus and
+usable touch targets without obscuring or replacing app-owned content. An app
+with its own screen SHALL NOT also create a competing generated Home Page; its
+tables remain available to administrators.
 
-Opening an app while signed out SHALL return to that exact app location after
-sign-in. An app with its own client SHALL NOT also create a competing generated
-Home Page; its Tables remain available to administrators. Disabled or missing app
-navigation SHALL explain unavailability and preserved data without exposing
-manager-only controls.
+#### Scenario: A missing piece stays missing
 
-#### Scenario: default_runtime_uses_host_shell
-- **WHEN** an authorized member opens a runtime app on desktop or coarse-pointer mobile
-- **THEN** the host Home icon and unified app switcher remain available while the app's own navigation and content render unchanged below them
+- **WHEN** something inside Tasker's screen fails to load
+- **THEN** it shows as missing
+- **AND** neither Tasker's own home screen nor Featherbase's is shown instead
 
-#### Scenario: runtime_switcher_tracks_authorized_catalog
-- **WHEN** the current member opens the switcher and app access is then granted, revoked, disabled, made unavailable, or restored before the document regains focus or visibility
-- **THEN** its next refreshed options contain Featherbase Home plus exactly the active authorized installed apps, with no separate runtime-app list
+#### Scenario: Signing in returns to the app that was opened
 
-#### Scenario: runtime_shell_keyboard_and_touch_access
-- **WHEN** a member uses Tab and arrow/selection keys on desktop or a coarse-pointer mobile viewport
-- **THEN** the Home icon and switcher have accessible names, visible focus and usable targets, selection navigates to the exact destination, and app-owned controls remain operable
+- **WHEN** a signed-out person opens a nested Tasker address with query state
+  and a selected task in its fragment
+- **THEN** after signing in and refreshing they remain at that exact address
+  with the selected task open
 
-#### Scenario: runtime_home_restores_host_controls
-- **WHEN** a member activates the shell Home icon or chooses Featherbase Home in the switcher
-- **THEN** the ordinary responsive Featherbase shell is reached with its navigation, command, account, appearance, language, notification, and administration controls governed by the member's existing permissions
+#### Scenario: Every app opens in the host shell
 
-#### Scenario: tasker_opens_without_core_import
+- **WHEN** an authorized member opens an app on desktop or touch/mobile
+- **THEN** the Home icon and unified app switcher remain available while the
+  app's own navigation and content render unchanged below them
+
+#### Scenario: The switcher follows current access
+
+- **WHEN** app access is granted, removed, disabled, made unavailable or
+  restored before the document regains focus or visibility
+- **THEN** the refreshed switcher contains Featherbase Home plus exactly the
+  active installed apps that member can open
+- **AND** if the current app disappeared, the member returns to Featherbase Home
+
+#### Scenario: Host controls work with keyboard and touch
+
+- **WHEN** a member uses the shell on desktop or a touch/mobile viewport
+- **THEN** Home and the switcher have accessible names, visible focus and
+  usable targets, and app-owned controls remain operable
+
+#### Scenario: Home restores Featherbase controls
+
+- **WHEN** a member activates the Home icon or chooses Featherbase Home
+- **THEN** they reach Featherbase's responsive navigation, command, account,
+  appearance, language, notification and permitted administration controls
+
+#### Scenario: An app can be delivered without rebuilding core
+
 - **WHEN** built Tasker is staged after Featherbase core was built
-- **THEN** `/tasker/` opens inside the default host shell without a core rebuild or Tasker-specific core route
-
-#### Scenario: app_deep_link_survives_login_and_refresh
-- **WHEN** a signed-out member opens an authorized nested runtime-app path with encoded query state and a fragment, signs in, and refreshes
-- **THEN** the browser retains that exact app location and loads the same app-owned content inside the host shell
-
-#### Scenario: missing_asset_is_not_html
-- **WHEN** a caller requests an undeclared runtime-app JavaScript, stylesheet, image, or font asset
-- **THEN** the response is not found rather than either application's index page
-
-#### Scenario: app_login_returns_to_one_launch
-- **WHEN** a signed-out member opens an accessible application
-- **THEN** sign-in returns to its client root and normal navigation has no competing generated Table page
+- **THEN** Tasker opens inside the host shell without a core rebuild or a
+  Tasker-specific core route

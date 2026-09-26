@@ -15,8 +15,10 @@
 > ownership, the `Installed Application` ledger). This note adds the
 > Featherbase codebase audit (§5) and the source links. The requirements
 > both notes ground now live in
-> [ADR 0007](../adr/0007-app-and-database-topology.md) and
-> `docs/specs/0001-external-data-sources.md` / `0002-virtual-doctypes.md`.
+> [ADR 0007](../adr/0007-app-and-database-topology.md) and the
+> `external-data-sources` OpenSpec capability
+> (`openspec/specs/external-data-sources/spec.md`); virtual DocTypes are
+> tracked as [issue #333](https://github.com/siraj-samsudeen/featherbase/issues/333).
 
 The four questions this answers:
 
@@ -193,9 +195,10 @@ DocTypes. Featherbase can do one better than Frappe here precisely because it
 is metadata-driven end-to-end: make the external mapping *declarative*
 (connection registry + table adoption by reflection) instead of per-DocType
 controller code. That is what [ADR 0007](../adr/0007-app-and-database-topology.md)
-decides and **`docs/specs/0001-external-data-sources.md`** (declarative
-Postgres binding) plus **`0002-virtual-doctypes.md`** (controller protocol
-for everything else) specify.
+decides and the **`external-data-sources`** OpenSpec capability (declarative
+Postgres binding) specifies; the controller protocol for everything else
+(virtual DocTypes) is not yet specced — see
+[issue #333](https://github.com/siraj-samsudeen/featherbase/issues/333).
 
 ---
 

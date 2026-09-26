@@ -51,44 +51,51 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   }
 })
 
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// group-by/column-picker are testid-addressed selects/checkboxes with no
+// accessible label distinct enough for the DSL, and the checks are group
+// counts/sums against `[data-group=...]`, so the whole walk stays in one
+// named step; session.visit carries the plain navigation.
 test('RPT-001: group by Select shows correct counts and sums; column picker works', async ({
-  page,
+  session,
 }) => {
-  // Enter through the list view's Report button.
-  await page.goto(`/admin/${encodeURIComponent(DT)}`)
-  await page.getByTestId('open-report').click()
-  await expect(page.getByTestId('report-view')).toBeVisible()
-  await expect(page.getByTestId('report-total')).toContainText('3 rows')
-  await expect(page.getByTestId('report-row')).toHaveCount(3)
+  await session.visit(`/admin/${encodeURIComponent(DT)}`)
+  await session.step('open the report, group by status, and verify counts/sums/columns', async ({ page }) => {
+    // Enter through the list view's Report button.
+    await page.getByTestId('open-report').click()
+    await expect(page.getByTestId('report-view')).toBeVisible()
+    await expect(page.getByTestId('report-total')).toContainText('3 rows')
+    await expect(page.getByTestId('report-row')).toHaveCount(3)
 
-  // Grand total row sums qty across all rows: 1 + 2 + 5 = 8.
-  await expect(page.getByTestId('grand-sum-qty')).toContainText('8')
+    // Grand total row sums qty across all rows: 1 + 2 + 5 = 8.
+    await expect(page.getByTestId('grand-sum-qty')).toContainText('8')
 
-  // Group by status: Open (2) sum 3, Closed (1) sum 5.
-  await page.getByTestId('report-groupby').selectOption('stage')
-  const headers = page.getByTestId('group-header')
-  await expect(headers).toHaveCount(2)
+    // Group by status: Open (2) sum 3, Closed (1) sum 5.
+    await page.getByTestId('report-groupby').selectOption('stage')
+    const headers = page.getByTestId('group-header')
+    await expect(headers).toHaveCount(2)
 
-  const closed = page.locator('[data-group="Closed"]')
-  await expect(closed.getByTestId('group-count')).toContainText('(1)')
-  await expect(closed.getByTestId('group-sum-qty')).toContainText('5')
+    const closed = page.locator('[data-group="Closed"]')
+    await expect(closed.getByTestId('group-count')).toContainText('(1)')
+    await expect(closed.getByTestId('group-sum-qty')).toContainText('5')
 
-  const open = page.locator('[data-group="Open"]')
-  await expect(open.getByTestId('group-count')).toContainText('(2)')
-  await expect(open.getByTestId('group-sum-qty')).toContainText('3')
+    const open = page.locator('[data-group="Open"]')
+    await expect(open.getByTestId('group-count')).toContainText('(2)')
+    await expect(open.getByTestId('group-sum-qty')).toContainText('3')
 
-  // Collapsing a group hides its member rows.
-  await open.click()
-  await expect(page.getByTestId('report-row')).toHaveCount(1)
-  await open.click()
-  await expect(page.getByTestId('report-row')).toHaveCount(3)
+    // Collapsing a group hides its member rows.
+    await open.click()
+    await expect(page.getByTestId('report-row')).toHaveCount(1)
+    await open.click()
+    await expect(page.getByTestId('report-row')).toHaveCount(3)
 
-  // Column picker: dropping qty removes its column header.
-  await expect(page.getByTestId('report-head-qty')).toBeVisible()
-  await page.getByTestId('report-columns').click()
-  await page.getByTestId('report-col-qty').uncheck()
-  await expect(page.getByTestId('report-head-qty')).toHaveCount(0)
-  // …and adding one brings it in.
-  await page.getByTestId('report-col-qty').check()
-  await expect(page.getByTestId('report-head-qty')).toBeVisible()
+    // Column picker: dropping qty removes its column header.
+    await expect(page.getByTestId('report-head-qty')).toBeVisible()
+    await page.getByTestId('report-columns').click()
+    await page.getByTestId('report-col-qty').uncheck()
+    await expect(page.getByTestId('report-head-qty')).toHaveCount(0)
+    // …and adding one brings it in.
+    await page.getByTestId('report-col-qty').check()
+    await expect(page.getByTestId('report-head-qty')).toBeVisible()
+  })
 })

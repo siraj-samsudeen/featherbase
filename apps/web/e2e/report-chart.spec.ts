@@ -49,25 +49,34 @@ test.beforeAll(async ({ request }) => {
   })
 })
 
-test('RPT-006: chart reflects report data and pinning shows it on the dashboard', async ({ page }) => {
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// the group-by/pin controls are testid-addressed native <select>s and the
+// chart values are exact-text checks, so the whole walk stays in named
+// steps; session.visit carries the two page navigations around it.
+test('RPT-006: chart reflects report data and pinning shows it on the dashboard', async ({ session }) => {
   // Open the saved report; group by region so the chart shows per-region counts.
-  await page.goto(`/admin/${encodeURIComponent(DT)}/view/report?report=${encodeURIComponent(REPORT)}`)
-  await expect(page.getByTestId('report-view')).toBeVisible()
-  await page.getByTestId('report-groupby').selectOption('region')
+  await session.visit(`/admin/${encodeURIComponent(DT)}/view/report?report=${encodeURIComponent(REPORT)}`)
+  await session.step('group by region; the chart reflects report data', async ({ page }) => {
+    await expect(page.getByTestId('report-view')).toBeVisible()
+    await page.getByTestId('report-groupby').selectOption('region')
 
-  // The chart reflects the report data: North 2, South 1.
-  await expect(page.getByTestId('report-chart')).toBeVisible()
-  await expect(page.getByTestId('chart-bar-value-North')).toHaveText('2')
-  await expect(page.getByTestId('chart-bar-value-South')).toHaveText('1')
+    // The chart reflects the report data: North 2, South 1.
+    await expect(page.getByTestId('report-chart')).toBeVisible()
+    await expect(page.getByTestId('chart-bar-value-North')).toHaveText('2')
+    await expect(page.getByTestId('chart-bar-value-South')).toHaveText('1')
+  })
 
-  // Pin the chart to the dashboard.
-  await page.getByTestId('pin-dashboard').selectOption(DASH)
-  await page.getByTestId('pin-chart').click()
-  await expect(page.getByTestId('pin-msg')).toContainText(`Pinned to ${DASH}`)
+  await session.step('pin the chart to the dashboard', async ({ page }) => {
+    await page.getByTestId('pin-dashboard').selectOption(DASH)
+    await page.getByTestId('pin-chart').click()
+    await expect(page.getByTestId('pin-msg')).toContainText(`Pinned to ${DASH}`)
+  })
 
   // The dashboard now shows the pinned report chart, recomputed from live data.
-  await page.goto(`/admin/dashboard/${encodeURIComponent(DASH)}`)
-  await expect(page.getByTestId(`chart-${REPORT}`)).toBeVisible()
-  await expect(page.getByTestId('bar-value-North')).toHaveText('2')
-  await expect(page.getByTestId('bar-value-South')).toHaveText('1')
+  await session.visit(`/admin/dashboard/${encodeURIComponent(DASH)}`)
+  await session.step('the dashboard shows the pinned chart, recomputed live', async ({ page }) => {
+    await expect(page.getByTestId(`chart-${REPORT}`)).toBeVisible()
+    await expect(page.getByTestId('bar-value-North')).toHaveText('2')
+    await expect(page.getByTestId('bar-value-South')).toHaveText('1')
+  })
 })

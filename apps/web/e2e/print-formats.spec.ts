@@ -50,29 +50,42 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   }
 })
 
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// the format picker is a testid-addressed native <select>, and the checks are
+// attribute assertions / "does NOT contain" checks the DSL's assertHas can't
+// express, so the whole flow stays in named steps; session.visit carries the
+// navigation between print URLs.
 test('PRN-002: default format respected; a second format renders differently', async ({
-  page,
+  session,
 }) => {
   // No format named → the default (Invoice) is used, interpolated.
-  await page.goto(`/print/${encodeURIComponent(DT)}/${docName}`)
-  await expect(page.getByTestId('print-format-body')).toHaveAttribute('data-format', 'Pf Invoice')
-  await expect(page.getByTestId('tpl-invoice')).toBeVisible()
-  await expect(page.getByTestId('tpl-invoice')).toContainText('Bill to: Stark Industries')
-  await expect(page.getByTestId('tpl-invoice')).toContainText('Total: 500')
-  await expect(page.getByTestId('print-view')).not.toContainText('RECEIPT')
+  await session.visit(`/print/${encodeURIComponent(DT)}/${docName}`)
+  await session.step('the default (Invoice) format renders, interpolated', async ({ page }) => {
+    await expect(page.getByTestId('print-format-body')).toHaveAttribute('data-format', 'Pf Invoice')
+    await expect(page.getByTestId('tpl-invoice')).toBeVisible()
+    await expect(page.getByTestId('tpl-invoice')).toContainText('Bill to: Stark Industries')
+    await expect(page.getByTestId('tpl-invoice')).toContainText('Total: 500')
+    await expect(page.getByTestId('print-view')).not.toContainText('RECEIPT')
+  })
 
   // Switch to the Receipt format → visibly different output.
-  await page.getByTestId('print-format-picker').selectOption('Pf Receipt')
-  await expect(page.getByTestId('tpl-receipt')).toBeVisible()
-  await expect(page.getByTestId('tpl-receipt')).toContainText('RECEIPT — Stark Industries paid 500')
-  await expect(page.getByTestId('tpl-invoice')).toHaveCount(0)
+  await session.step('switch to the Receipt format via the picker', async ({ page }) => {
+    await page.getByTestId('print-format-picker').selectOption('Pf Receipt')
+    await expect(page.getByTestId('tpl-receipt')).toBeVisible()
+    await expect(page.getByTestId('tpl-receipt')).toContainText('RECEIPT — Stark Industries paid 500')
+    await expect(page.getByTestId('tpl-invoice')).toHaveCount(0)
+  })
 
   // The picker choice is a shareable URL.
-  await page.goto(`/print/${encodeURIComponent(DT)}/${docName}?format=Pf%20Receipt`)
-  await expect(page.getByTestId('tpl-receipt')).toBeVisible()
+  await session.visit(`/print/${encodeURIComponent(DT)}/${docName}?format=Pf%20Receipt`)
+  await session.step('the format query param alone renders the Receipt', async ({ page }) => {
+    await expect(page.getByTestId('tpl-receipt')).toBeVisible()
+  })
 
   // Explicitly choosing Standard (auto) falls back to the metadata layout.
-  await page.goto(`/print/${encodeURIComponent(DT)}/${docName}`)
-  await page.getByTestId('print-format-picker').selectOption('standard')
-  await expect(page.getByTestId('print-auto-layout')).toBeVisible()
+  await session.visit(`/print/${encodeURIComponent(DT)}/${docName}`)
+  await session.step('choosing Standard falls back to the auto layout', async ({ page }) => {
+    await page.getByTestId('print-format-picker').selectOption('standard')
+    await expect(page.getByTestId('print-auto-layout')).toBeVisible()
+  })
 })

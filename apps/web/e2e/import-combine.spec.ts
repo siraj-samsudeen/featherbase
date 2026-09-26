@@ -1,4 +1,4 @@
-import { test, expect, adminToken, type APIRequestContext, type Page } from './fixtures'
+import { test, expect, adminToken, type Page } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
 
@@ -8,6 +8,10 @@ import { deleteTableIfExists } from './cleanup'
 // (STR-009), others `Store Name` (Anna Nagar). The values look nothing alike,
 // which is exactly why nothing should propose it (Q5 — no guessing) and why
 // the user must be able to say it themselves.
+//
+// Migrated to the feather-testing-core DSL
+// (docs/testing/e2e-dsl-migration.md). Every control here is testid-addressed,
+// so the walk stays inside named steps; `session.visit` carries navigation.
 
 const DT = 'Combine Sections'
 
@@ -55,49 +59,54 @@ test.beforeEach(async ({ request }) => {
   for (const name of [DT, 'By Code', 'By Name']) await deleteTableIfExists(request, token, name)
 })
 
-test('folding leaves the two store columns apart — nothing is guessed', async ({ page }) => {
-  await page.goto('/admin')
-  await openMergedGroup(page)
+test('folding leaves the two store columns apart — nothing is guessed', async ({ session }) => {
+  await session.visit('/admin')
+  await session.step('open the merged group from a fresh workbook', async ({ page }) => openMergedGroup(page))
 
-  // Three columns, because `Cmb Store Code` and `Cmb Store Name` fold to
-  // nothing in common. Featherbase does NOT propose that they are one.
-  const grid = page.getByTestId('iw-new-grid-0').locator('tbody tr[data-columnrow]')
-  await expect(grid).toHaveCount(3)
-  await expect(grid.nth(0).locator('[data-rowfield=column_name]')).toHaveValue('cmb_store_code')
-  await expect(grid.nth(2).locator('[data-rowfield=column_name]')).toHaveValue('cmb_store_name')
+  await session.step(
+    'three columns remain — Store Code and Store Name do not fold together',
+    async ({ page }) => {
+      const grid = page.getByTestId('iw-new-grid-0').locator('tbody tr[data-columnrow]')
+      await expect(grid).toHaveCount(3)
+      await expect(grid.nth(0).locator('[data-rowfield=column_name]')).toHaveValue('cmb_store_code')
+      await expect(grid.nth(2).locator('[data-rowfield=column_name]')).toHaveValue('cmb_store_name')
 
-  // The invitation to say so is there, and says what it is for.
-  await expect(page.getByTestId('iw-combine-0')).toContainText('store code and a store name')
+      // The invitation to say so is there, and says what it is for.
+      await expect(page.getByTestId('iw-combine-0')).toContainText('store code and a store name')
+    },
+  )
 })
 
-test('the user combines them, and every row lands in one column', async ({ page, request }) => {
+test('the user combines them, and every row lands in one column', async ({ session, request }) => {
   const token = await adminToken(request)
   const headers = { Authorization: `Bearer ${token}` }
-  await page.goto('/admin')
-  await openMergedGroup(page)
+  await session.visit('/admin')
+  await session.step('open the merged group from a fresh workbook', async ({ page }) => openMergedGroup(page))
 
-  // Tick the two store columns (rows 0 and 2 of the grid).
-  await page.getByTestId('iw-combine-pick-0-0').check()
-  await page.getByTestId('iw-combine-pick-0-2').check()
+  await session.step('tick the two store columns and combine them', async ({ page }) => {
+    // Tick the two store columns (rows 0 and 2 of the grid).
+    await page.getByTestId('iw-combine-pick-0-0').check()
+    await page.getByTestId('iw-combine-pick-0-2').check()
 
-  // Sample values are shown for both, so "same thing?" is answerable.
-  await expect(page.getByTestId('iw-combine-sample-0-cmb_store_code')).toContainText('STR-009')
-  await expect(page.getByTestId('iw-combine-sample-0-cmb_store_name')).toContainText('Anna Nagar')
+    // Sample values are shown for both, so "same thing?" is answerable.
+    await expect(page.getByTestId('iw-combine-sample-0-cmb_store_code')).toContainText('STR-009')
+    await expect(page.getByTestId('iw-combine-sample-0-cmb_store_name')).toContainText('Anna Nagar')
 
-  // No sheet has both, so there is nothing to resolve — and it says so
-  // rather than asking a question with no consequence.
-  await expect(page.getByTestId('iw-combine-no-overlap-0')).toBeVisible()
+    // No sheet has both, so there is nothing to resolve — and it says so
+    // rather than asking a question with no consequence.
+    await expect(page.getByTestId('iw-combine-no-overlap-0')).toBeVisible()
 
-  await page.getByTestId('iw-combine-name-0').fill('Store')
-  await page.getByTestId('iw-combine-go-0').click()
+    await page.getByTestId('iw-combine-name-0').fill('Store')
+    await page.getByTestId('iw-combine-go-0').click()
 
-  // Two columns became one, and the grid says who did it.
-  const grid = page.getByTestId('iw-new-grid-0').locator('tbody tr[data-columnrow]')
-  await expect(grid).toHaveCount(2)
-  await expect(page.getByTestId('iw-combine-0')).toContainText('combined by you')
+    // Two columns became one, and the grid says who did it.
+    const grid = page.getByTestId('iw-new-grid-0').locator('tbody tr[data-columnrow]')
+    await expect(grid).toHaveCount(2)
+    await expect(page.getByTestId('iw-combine-0')).toContainText('combined by you')
 
-  await page.getByTestId('iw-import').click()
-  await expect(page.getByTestId('iw-result-0')).toContainText('Imported 3 rows')
+    await page.getByTestId('iw-import').click()
+    await expect(page.getByTestId('iw-result-0')).toContainText('Imported 3 rows')
+  })
 
   const rows = await request.get(
     `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent(
@@ -113,66 +122,72 @@ test('the user combines them, and every row lands in one column', async ({ page,
   await deleteTableIfExists(request, token, DT)
 })
 
-test('a combine can be undone, and the columns come back', async ({ page }) => {
-  await page.goto('/admin')
-  await openMergedGroup(page)
+test('a combine can be undone, and the columns come back', async ({ session }) => {
+  await session.visit('/admin')
+  await session.step('open the merged group from a fresh workbook', async ({ page }) => openMergedGroup(page))
 
-  await page.getByTestId('iw-combine-pick-0-0').check()
-  await page.getByTestId('iw-combine-pick-0-2').check()
-  await page.getByTestId('iw-combine-name-0').fill('Store')
-  await page.getByTestId('iw-combine-go-0').click()
-  await expect(page.getByTestId('iw-new-grid-0').locator('tbody tr[data-columnrow]')).toHaveCount(2)
+  await session.step('combine the columns, then undo it', async ({ page }) => {
+    await page.getByTestId('iw-combine-pick-0-0').check()
+    await page.getByTestId('iw-combine-pick-0-2').check()
+    await page.getByTestId('iw-combine-name-0').fill('Store')
+    await page.getByTestId('iw-combine-go-0').click()
+    await expect(page.getByTestId('iw-new-grid-0').locator('tbody tr[data-columnrow]')).toHaveCount(2)
 
-  await page.getByTestId('iw-uncombine-0').click()
-  // Back to three, so a wrong call is not a dead end.
-  await expect(page.getByTestId('iw-new-grid-0').locator('tbody tr[data-columnrow]')).toHaveCount(3)
+    await page.getByTestId('iw-uncombine-0').click()
+    // Back to three, so a wrong call is not a dead end.
+    await expect(page.getByTestId('iw-new-grid-0').locator('tbody tr[data-columnrow]')).toHaveCount(3)
+  })
 })
 
-test('a sheet holding BOTH columns must be given a rule', async ({ page, request }) => {
+test('a sheet holding BOTH columns must be given a rule', async ({ session, request }) => {
   const token = await adminToken(request)
   const headers = { Authorization: `Bearer ${token}` }
-  await page.goto('/admin')
+  await session.visit('/admin')
 
-  // Sheet 1 carries both. Silently picking one would be a data-loss bug.
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.aoa_to_sheet([
-      ['Cmb Store Code', 'Cmb Store Name', 'Cmb Zone'],
-      ['STR-001', 'Anna Nagar', 'Fresh'],
-    ]),
-    'Both',
-  )
-  XLSX.utils.book_append_sheet(
-    wb,
-    XLSX.utils.aoa_to_sheet([
-      ['Cmb Store Name', 'Cmb Zone'],
-      ['T Nagar', 'Dairy'],
-    ]),
-    'Name Only',
-  )
-  await page.getByTestId('import-data-link').click()
-  await page.getByTestId('iw-file-input').setInputFiles({
-    name: 'overlap fixture.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+  await session.step('drop a workbook where one sheet carries both columns', async ({ page }) => {
+    // Sheet 1 carries both. Silently picking one would be a data-loss bug.
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([
+        ['Cmb Store Code', 'Cmb Store Name', 'Cmb Zone'],
+        ['STR-001', 'Anna Nagar', 'Fresh'],
+      ]),
+      'Both',
+    )
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.aoa_to_sheet([
+        ['Cmb Store Name', 'Cmb Zone'],
+        ['T Nagar', 'Dairy'],
+      ]),
+      'Name Only',
+    )
+    await page.getByTestId('import-data-link').click()
+    await page.getByTestId('iw-file-input').setInputFiles({
+      name: 'overlap fixture.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+    })
+    await page.getByTestId('iw-ov-master').check()
+    await page.getByTestId('iw-ov-mode-merge').check()
+    await page.getByTestId('iw-ov-merge-name').fill(DT)
+    await page.getByTestId('iw-ov-continue').click()
   })
-  await page.getByTestId('iw-ov-master').check()
-  await page.getByTestId('iw-ov-mode-merge').check()
-  await page.getByTestId('iw-ov-merge-name').fill(DT)
-  await page.getByTestId('iw-ov-continue').click()
 
-  await page.getByTestId('iw-combine-pick-0-0').check()
-  await page.getByTestId('iw-combine-pick-0-1').check()
+  await session.step('the overlap is named, and a join rule resolves it', async ({ page }) => {
+    await page.getByTestId('iw-combine-pick-0-0').check()
+    await page.getByTestId('iw-combine-pick-0-1').check()
 
-  // The overlap is named, with the sheet that causes it.
-  await expect(page.getByTestId('iw-combine-overlap-0')).toContainText('Both')
-  await page.getByTestId('iw-combine-rule-join-0').check()
-  await page.getByTestId('iw-combine-name-0').fill('Store')
-  await page.getByTestId('iw-combine-go-0').click()
+    // The overlap is named, with the sheet that causes it.
+    await expect(page.getByTestId('iw-combine-overlap-0')).toContainText('Both')
+    await page.getByTestId('iw-combine-rule-join-0').check()
+    await page.getByTestId('iw-combine-name-0').fill('Store')
+    await page.getByTestId('iw-combine-go-0').click()
 
-  await page.getByTestId('iw-import').click()
-  await expect(page.getByTestId('iw-result-0')).toContainText('Imported 2 rows')
+    await page.getByTestId('iw-import').click()
+    await expect(page.getByTestId('iw-result-0')).toContainText('Imported 2 rows')
+  })
 
   const rows = await request.get(
     `/api/table/${encodeURIComponent(DT)}?fields=${encodeURIComponent('["store"]')}`,

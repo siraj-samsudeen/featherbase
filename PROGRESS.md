@@ -2,45 +2,101 @@
 
 ## 2026-09-26 — #309 runtime host shell implementation and review fixes
 
-Implemented the narrowed always-shell contract: every packaged runtime entry
-document receives a server-composed compact Featherbase bar with a Home icon
-and one authorization-filtered native app switcher. Entry-document resources
+Every packaged runtime entry document now receives a compact Featherbase bar
+with Home and one authorization-filtered app switcher. Entry-document resources
 are rooted selectively at the app root without a `<base>` element, so package
-hash and query links retain the current deep path and query. Secondary HTML and
-assets remain package-owned. A generic asymmetric `other` package regression
-covers both navigation forms independently of Tasker's implementation.
+hash and query links retain the current deep path and query. A generic asymmetric
+`other` package regression covers both forms independently of Tasker.
 
-The production Featherbase Home destination is now one shared server/web fact.
-Admin uses the same Home-plus-switcher model, with identifiable touch-sized
-mobile controls and visible focus, and no longer duplicates runtime apps in its
-sidebar. Live shell catalog refresh now returns a user to Home if access to the
-current app disappears. Tasker 2.2.0 still removes only its duplicate Home link,
-preserves path/query while changing hash-owned task state, and offsets fixed
-mobile details below the host bar. There is intentionally no presentation or
-fullscreen manifest capability; an immersive case still needs a separate
-exit/re-entry contract.
+The production Featherbase Home destination is one shared server/web fact.
+Live catalog refresh returns to Home if the current app disappears. Admin uses
+the same Home-plus-switcher model with identifiable touch-sized mobile controls
+and visible focus. Tasker 2.2.0 keeps its own path/query and hash navigation while
+its fixed mobile details clear the host bar.
 
-The host-shell browser journey now uses the shared chainable `session` DSL and
-waits for asynchronous catalog refresh. Every created Tasker row is deleted
-using its current revision, and disabled app state is restored in `finally`, so
-the journey is independently repeatable and cannot poison the later Tasker
-journey. The login-return fixture's pre-existing Tasker row leak was removed too.
+The browser journeys use the shared chainable `session` DSL, await asynchronous
+catalog refresh, delete every seeded Tasker row at its current revision, and
+restore disabled app state in `finally`. The login-return fixture's pre-existing
+row leak is removed too. Current `main` was merged after its repository-wide DSL
+and plain-language OpenSpec migrations; the host-shell journey passes the new DSL
+guard and its delta exactly matches the rewritten main requirement.
 
 **Verified:** `./init.sh` smoke 3/3; server 878 passed, 19 skipped; web 172/172
 with `NODE_OPTIONS=--no-experimental-webstorage`; shared 130/130; isolated
-Playwright 159 passed, 28 opt-in skips; focused runtime server 13/13 and 29/29;
-focused shell/login-return/Tasker Playwright 6/6; prior CI-failing import/UI
-Playwright 12/12; Tasker/package preparation 5/5 and both builds; all three
-workspace typechecks; `pnpm apps:prove` PKG-J1/PKG-J2; strict OpenSpec 20 specs
-and 6 changes; `git diff --check`. Inspected 390px Admin and 412px coarse-pointer
-Tasker captures: controls are unclipped and focus-visible, and content/details
-clear the measured host bar. The first isolated browser run exposed one 375px
-Admin overflow (158 passed, 28 skipped, 1 failed); compact spacing fixed it and
-the complete rerun above passed. A raw web run under Node's experimental web
-storage failed because jsdom storage was unavailable; the documented flag above
-produced the clean full result. No data-warehouse change, merge, or deployment.
+Playwright 159 passed, 28 opt-in skips; all three workspace typechecks;
+`pnpm check:e2e-dsl` 8/8 policy tests and 77 files accepted; strict OpenSpec
+45 specs and 7 changes; Tasker/package preparation 5/5 and both builds;
+`pnpm apps:prove` PKG-J1/PKG-J2; `git diff --check`. The first browser run
+exposed one 375px Admin overflow (158 passed, 1 failed, 28 skipped); compact
+spacing fixed it and two complete reruns passed. Inspected 390px Admin and 412px
+coarse-pointer Tasker captures: controls are unclipped and focus-visible, and
+content/details clear the measured host bar. A raw web run without the documented
+Node storage flag failed because jsdom storage was unavailable; the flagged full
+run above passed. No data-warehouse change, merge to `main`, or deployment.
 
 **Next:** independent final review and merge of PR #345.
+
+## 2026-09-26 — Every platform feature has a plain-language OpenSpec spec
+
+The Featherbase platform is now specified in `openspec/specs/` in the style
+of `openspec/config.yaml`'s `rules.specs`. There are 32 platform capabilities
+beside the 12 Tasker ones and the product-wide usable-on-any-device.
+
+- **Old specs rewritten:** table-deletion (422 lines → about 110),
+  core-forms (row editing), runtime-document-deletion (now row-deletion),
+  the three installable-app specs and admin-ui-feedback.
+- **New capabilities:** tables and fields, merge, naming, list view, saved
+  views, boards/calendar/timeline, checklists, reports, dashboards, search
+  and Explore, spreadsheet import, import history and undo, external data
+  sources, sign-in, permissions, access tokens, files and sharing, comments
+  and history, assignments, workflow, notifications/email/webhooks, jobs,
+  web forms and portal, printing, personal preferences.
+- **Journey docs deleted:** `docs/specs/`. Each was converted, moved to a
+  planned-work change (sources-planned-work), or filed (#333 virtual tables,
+  #259 grid editing).
+- **Method:** Sonnet writers, one adversarial reviewer per batch checking
+  every requirement against the code, then coordinator review. Specs
+  describe what the code does today. Where the code looked wrong, the promise
+  was scoped down and an issue filed. That produced #321–#342, several of
+  them permission leaks (#338–#342).
+- **Verified:** `pnpm check:specs` (strict specs and changes: 45 and 6
+  passed). Nothing outside `openspec/` and docs changed.
+- **Gotchas:**
+  - A MODIFIED delta in an active change locks both the requirement name and
+    its scenario names in the main spec, or `--changes --strict` fails.
+    That's why four requirements in the installable-app specs keep
+    snake_case names.
+  - Agents that launch helper agents and then wait lose their work when their
+    turn ends. Briefs must say "no sub-agents, one turn".
+## 2026-09-26 — Every E2E suite runs on the feather-testing-core DSL
+
+All 76 `apps/web/e2e/*.spec.ts` files now use the DSL-backed `test` /
+`anonymousTest` from `fixtures.ts` and its `{ session }`. Only 4 did before.
+`feather-testing-core` moved from 0.2.0 to 0.4.0 (additive). Browser actions
+use Session verbs; anything the DSL can't express (test ids, attributes,
+drag, exact-text checks) sits inside a named `session.step`. Every original
+assertion is kept at the same strength. `journeyTest` is retired.
+
+- **Guard:** `pnpm check:e2e-dsl` (tools/check-e2e-dsl.mjs, run in CI) fails
+  any spec that imports `test` from anywhere but `./fixtures`. Exemption:
+  first line `// e2e-dsl: exempt — <reason>`.
+- **Pattern and batch record:** docs/testing/e2e-dsl-migration.md.
+- **Verified:** full suite on a fresh isolated stack, 156 passed / 28 skipped
+  / 0 failed, identical to the pre-migration baseline (the 28 skips need
+  outside credentials). Command:
+  `WEB_URL=http://localhost:<web> pnpm exec playwright test`, with the stack
+  booted with raised `PREAUTH_*` limits and its own database (the doc has the
+  line). The review then found three loosened checks in pilot files (filters
+  #87, web-page WEB-001, and the journey suites starting signed in). They're
+  fixed, and the six files re-run: 13 passed.
+- **Gotchas:**
+  - `assertHas(sel, { text })` is a substring match even with `exact`;
+    exact checks stay as `expect(...).toHaveText` inside a step.
+  - A manually booted stack needs the raised `PREAUTH_*` limits, or the
+    suite rate-limits itself about 15 tests in.
+  - Five suites (dashboard, palette, portal, task-management,
+    user-management) aren't idempotent on a reused database; reset it
+    between full runs.
 
 ## 2026-09-26 — Tasker specs rewritten in plain language (pilot, #301)
 

@@ -72,36 +72,43 @@ async function cleanupFiles(request: APIRequestContext) {
 test.beforeEach(async ({ request }) => cleanupFiles(request))
 test.afterEach(async ({ request }) => cleanupFiles(request))
 
-test('FILE-004: image attachment gets a thumbnail; text does not', async ({ page }) => {
-  await page.goto(`/admin/${encodeURIComponent(DT)}/${DOC}`)
-  await expect(page.getByTestId('attachments-panel')).toBeVisible()
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// file input by testid, an attribute/dimension check on the decoded
+// thumbnail, and an absence check for a non-image row are all outside the
+// DSL's verbs, so the whole attach/verify round trip stays in one named
+// step; session.visit carries the plain navigation.
+test('FILE-004: image attachment gets a thumbnail; text does not', async ({ session }) => {
+  await session.visit(`/admin/${encodeURIComponent(DT)}/${DOC}`)
+  await session.step('an image attachment gets a decodable thumbnail; a text file does not', async ({ page }) => {
+    await expect(page.getByTestId('attachments-panel')).toBeVisible()
 
-  // Attach a real (decodable) image.
-  await page.getByTestId('attach-file-input').setInputFiles({
-    name: 'picture.png',
-    mimeType: 'image/png',
-    buffer: makePng(240, 160),
+    // Attach a real (decodable) image.
+    await page.getByTestId('attach-file-input').setInputFiles({
+      name: 'picture.png',
+      mimeType: 'image/png',
+      buffer: makePng(240, 160),
+    })
+    const imgRow = page.getByTestId('attachment-row').filter({ hasText: 'picture.png' })
+    await expect(imgRow).toHaveCount(1)
+
+    // A thumbnail image is shown, sourced from an inline JPEG data URI.
+    const thumb = imgRow.getByTestId('attachment-thumb')
+    await expect(thumb).toBeVisible()
+    const src = await thumb.getAttribute('src')
+    expect(src).toMatch(/^data:image\/jpeg;base64,/)
+    // The thumbnail actually decodes and is small (≤128px on its longest side).
+    const dims = await thumb.evaluate((el: HTMLImageElement) => ({ w: el.naturalWidth, h: el.naturalHeight }))
+    expect(Math.max(dims.w, dims.h)).toBeLessThanOrEqual(128)
+    expect(dims.w).toBeGreaterThan(0)
+
+    // Attach a text file → no thumbnail on its row.
+    await page.getByTestId('attach-file-input').setInputFiles({
+      name: 'note.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('not an image'),
+    })
+    const txtRow = page.getByTestId('attachment-row').filter({ hasText: 'note.txt' })
+    await expect(txtRow).toHaveCount(1)
+    await expect(txtRow.getByTestId('attachment-thumb')).toHaveCount(0)
   })
-  const imgRow = page.getByTestId('attachment-row').filter({ hasText: 'picture.png' })
-  await expect(imgRow).toHaveCount(1)
-
-  // A thumbnail image is shown, sourced from an inline JPEG data URI.
-  const thumb = imgRow.getByTestId('attachment-thumb')
-  await expect(thumb).toBeVisible()
-  const src = await thumb.getAttribute('src')
-  expect(src).toMatch(/^data:image\/jpeg;base64,/)
-  // The thumbnail actually decodes and is small (≤128px on its longest side).
-  const dims = await thumb.evaluate((el: HTMLImageElement) => ({ w: el.naturalWidth, h: el.naturalHeight }))
-  expect(Math.max(dims.w, dims.h)).toBeLessThanOrEqual(128)
-  expect(dims.w).toBeGreaterThan(0)
-
-  // Attach a text file → no thumbnail on its row.
-  await page.getByTestId('attach-file-input').setInputFiles({
-    name: 'note.txt',
-    mimeType: 'text/plain',
-    buffer: Buffer.from('not an image'),
-  })
-  const txtRow = page.getByTestId('attachment-row').filter({ hasText: 'note.txt' })
-  await expect(txtRow).toHaveCount(1)
-  await expect(txtRow.getByTestId('attachment-thumb')).toHaveCount(0)
 })

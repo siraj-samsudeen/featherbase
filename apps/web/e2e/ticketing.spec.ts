@@ -43,15 +43,23 @@ test.afterAll(async ({ request }) => {
   await request.delete(`/api/table/HD%20Ticket/${name}`, { headers: H })
 })
 
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// navigation/presence checks are plain assertText/assertHas; clicking the
+// row by its plain text (no accessible name distinct from a label) stays a
+// named step.
 test('helpdesk: a ticket renders in the Admin and opens with workflow actions', async ({
-  page,
+  session,
 }) => {
-  await page.goto('/admin/HD%20Ticket')
-  await expect(page.getByText(name)).toBeVisible()
-  await expect(page.getByText(SUBJECT)).toBeVisible()
+  await session
+    .visit('/admin/HD%20Ticket')
+    .assertText(name)
+    .assertText(SUBJECT)
 
-  await page.getByText(name).click()
-  await expect(page.getByTestId('form-view')).toBeVisible()
-  await expect(page.getByTestId('workflow-actions')).toContainText('Open')
-  await expect(page.getByTestId('workflow-action-Start')).toBeVisible()
+  await session.step('click the ticket row to open its form', async ({ page }) => {
+    await page.getByText(name).click()
+  })
+  await session
+    .assertHas('[data-testid="form-view"]')
+    .assertHas('[data-testid="workflow-actions"]', { text: 'Open' })
+    .assertHas('[data-testid="workflow-action-Start"]')
 })

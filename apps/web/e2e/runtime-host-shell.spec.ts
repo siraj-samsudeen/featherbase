@@ -1,5 +1,4 @@
-import type { APIRequestContext, Page } from '@playwright/test'
-import { journeyTest as test, expect, ensureRuntimeApp, adminAuth, signIn } from './fixtures'
+import { test, expect, ensureRuntimeApp, adminAuth, signIn, type APIRequestContext, type Page } from './fixtures'
 
 async function deleteTask(request: APIRequestContext, headers: Record<string, string>, rowId: string) {
   const path = `/api/table/${encodeURIComponent('tasker.task')}/${encodeURIComponent(rowId)}`

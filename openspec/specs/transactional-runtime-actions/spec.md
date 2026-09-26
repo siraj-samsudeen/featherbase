@@ -1,142 +1,143 @@
-# transactional-runtime-actions Specification
+# Transactional Runtime Actions
 
 ## Purpose
-Let trusted runtime applications contribute caller-authorized atomic commands
-with durable retry results, while the host retains permissions and lifecycle control.
+
+An installed app can offer its own named actions — one command that does
+several things at once, like moving a task and telling someone about it.
+Featherbase guarantees that action either fully happens or doesn't happen at
+all, that repeating the same request never runs it twice, and that the app
+still answers only to what the calling person is actually allowed to do.
 
 ## Requirements
 
 ### Requirement: declared_app_actions_fail_closed
 
-The host SHALL execute only version-2 declared named actions with an explicit
-recognized policy for every operation through one authenticated app-identity/
-action-name endpoint. Declaration and handler names SHALL match exactly. Missing,
-disabled, incompatible, inaccessible or undeclared actions SHALL fail before
-handler execution or replay-result disclosure. Manager diagnostics SHALL expose
-declared names and policy-upgrade requirements. Identical local names in different
-apps SHALL remain distinct. Historical version-1 artifacts SHALL remain readable
-for exact-identity upgrade planning but SHALL NOT acquire a default policy.
+Only actions an app has explicitly declared, by name, SHALL run, and only
+for someone with a recognized reason to use them. A stale request — from
+someone signed out, or from after the app was disabled — SHALL be refused
+before anything runs, and without revealing what a successful call would
+have returned. Two different apps SHALL be able to declare an action with
+the same name without either one reaching the other's.
 
 #### Scenario: stale_or_unauthenticated_action_call
-- **WHEN** a caller has no session or submits a stale action after disable
-- **THEN** the host rejects without running the handler or replaying private results
+
+- **WHEN** someone with no session, or a signed-in person calling an action
+  after its app was disabled, submits that action
+- **THEN** it's refused before anything runs
+- **AND** no result is returned, successful or otherwise
 
 #### Scenario: two_applications_declare_same_action_name
-- **WHEN** two active applications declare `transform`
-- **THEN** the app identity selects only that application's implementation
+
+- **WHEN** two installed apps each declare an action called "transform"
+- **THEN** calling one only ever runs that app's own version
 
 #### Scenario: absent_policy_requires_explicit_upgrade
-- **WHEN** an exact installed historical action artifact has no policy declaration
-- **THEN** actions fail with an operator-visible upgrade requirement and stored
-  data/results remain intact for an explicit reviewed package upgrade
+
+- **WHEN** an app's already-installed version declared an action with no
+  recognized rule for who may use it
+- **THEN** calling that action is refused, and using it needs a reviewed,
+  upgraded version that declares the rule
+- **AND** the app's existing data and any results already recorded stay
+  exactly as they were
 
 ### Requirement: action_helpers_preserve_caller_authority
 
-Handlers SHALL receive unknown payload, caller identity, immutable host-authorized
-operation scope, host validation rejection and narrow document helpers, never a
-raw SQL transaction or caller override. Helpers SHALL restrict access to declared
-local tables, ordinary caller table, row, field and reference permissions, and
-current app availability. Shared tables SHALL require package permission
-declarations as well as caller permission. Bound sources and privileged platform
-configuration SHALL be refused. Activity reads SHALL require document read access
-and redact inaccessible version fields. Comment helpers SHALL be append-only;
-discussion reads SHALL use the authorized document activity helper. Action
-deletion SHALL be limited to owned rows. List helpers SHALL refuse cross-table
-related filters. Every action SHALL use the declaration's action-role semantics;
-labelling an action read-only SHALL NOT grant mutation helpers to read-only roles.
+An action SHALL only be able to do what the person calling it could already
+do themselves — it SHALL NOT read or change anything outside what its app
+owns and what the caller has permission for, and it SHALL NOT be handed
+raw, unrestricted access to the database. Deleting through an action SHALL
+be limited to rows the action itself is allowed to remove.
 
 #### Scenario: malformed_action_payload_or_attempted_bypass
-- **WHEN** a handler rejects malformed payload or requests undeclared/private storage
-- **THEN** the command fails and no partial rows or history survive
+
+- **WHEN** an action rejects a request it doesn't recognize, or the request
+  asks for something the action was never given access to
+- **THEN** the action fails
+- **AND** nothing it already changed survives
 
 ### Requirement: action_writes_and_replay_are_atomic
 
-An action SHALL execute within one host-owned transaction. A successful command
-SHALL atomically persist its JSON result, immutable complete authorization scope
-metadata and payload identity under caller, app, action and idempotency key.
-Same-key identical-payload retries SHALL return that result without business
-handler execution only after fresh current authorization of the original scope;
-different-payload retries SHALL conflict without result disclosure. Store sets
-SHALL be normalized before identity comparison while object IDs and all other
-payload fields remain bound. Authorization metadata MAY be read before full scope
-approval; protected result data SHALL NOT be read until approval. Fresh checks
-SHALL follow idempotency/scope lock waits. Missing/incompatible required scope
-metadata SHALL deny replay. Explicit table/generic policies MAY replay historical
-metadata-null table results under their current permissions, but stores/product
-policies SHALL NOT treat those results as authorized.
-
-Failed handlers or stale source revisions SHALL roll back all writes and Versions
-and SHALL NOT consume a key. Update and delete SHALL require source revision
-checks. Replay SHALL authorize the original recorded scope without requiring a
-deleted source row or rerunning its scope resolver. Required current product gates
-SHALL run against the immutable original footprint before result disclosure.
+An action SHALL either fully succeed — every change it makes, together — or
+leave nothing changed at all. Retrying the exact same request SHALL return
+the exact same result without running the action's work again, but only
+after checking the caller still has the same access they had the first
+time; retrying with a changed request under the same retry marker SHALL be
+refused rather than reusing the old answer. If access that a first, saved
+result depended on is later removed, replaying that request SHALL refuse
+rather than hand back what it once returned.
 
 #### Scenario: asymmetric_multi_row_command_rolls_back
-- **WHEN** a handler creates one row, changes a different row and then throws
-- **THEN** neither change, shared relation change nor partial Version persists
+
+- **WHEN** an action changes one row, then a different one, then fails
+- **THEN** neither change survives
 
 #### Scenario: action_response_lost_and_caller_retries
-- **WHEN** a committed request is repeated, including across restart
-- **THEN** current authorization is checked before the original result returns
-- **AND** no second destination is created, even when the source was deleted
+
+- **WHEN** a request is submitted again after its response was lost,
+  including after a restart
+- **THEN** the same result comes back
+- **AND** nothing the action does happens a second time
 
 #### Scenario: narrowed_retry_cannot_disclose_old_scope
-- **WHEN** an A+B result is committed and B access is removed
-- **THEN** the unchanged request refuses and the same key rewritten to A cannot
-  disclose the A+B result
-- **AND** neither request reads the protected result or executes the handler
+
+- **WHEN** the same retry marker is resubmitted with different details
+- **THEN** it's refused rather than treated as a repeat of the original
 
 #### Scenario: equivalent_store_order_replays_once
-- **WHEN** unchanged authorized stores A+B are retried as B+A with the same IDs/key
-- **THEN** the original result returns without a second mutation
+
+- **WHEN** the same request is resubmitted with the same retry marker and the
+  same underlying access, just listed in a different order
+- **THEN** the original result is returned once, without repeating the
+  action's work
 
 #### Scenario: queued_retry_sees_revocation
-- **WHEN** a duplicate waits for its idempotency lock while rights are removed
-- **THEN** post-wait authorization refuses without result disclosure
 
-### Requirement: action_commit_boundary_and_lifecycle_serialize
+- **WHEN** access that a saved result depended on is removed, and that same
+  request is submitted again
+- **THEN** it's refused rather than returning the old result
 
-Actions and their deferred post-commit work SHALL hold the existing admitted
-operation lock against lifecycle transitions. Post-commit effects SHALL run only
-after the outer commit, never on rollback or replay. An effect failure SHALL NOT
-undo committed documents, change the durable successful result, or permit
-duplicate action execution. Effects are best effort, not durable delivery.
-Restart/re-enable SHALL NOT accumulate handlers. Helpers SHALL be invalid after
-handler completion and SHALL NOT allow overlapping document operations.
+### Requirement: Work that happens after an action commits doesn't repeat
 
-#### Scenario: disable_waits_for_admitted_action
-- **WHEN** disable races an admitted action or its post-commit tail
-- **THEN** disable waits, then subsequent calls fail closed
+An action may schedule follow-up work — such as a notification — to happen
+right after its changes are saved. That follow-up SHALL run only once the
+action's own changes are safely saved, never if the action failed, and a
+failure in the follow-up itself SHALL NOT undo what was already saved or let
+the action run again on retry. Disabling an app SHALL wait for any action
+and its follow-up work already under way to finish first.
 
-#### Scenario: action_post_commit_effect_fails
-- **WHEN** an effect throws after successful command commit
-- **THEN** writes and replay result remain committed and retry does not repeat effects
+#### Scenario: A failed follow-up doesn't undo the action or repeat it
 
-### Requirement: guarded_action_deletion_preserves_retained_work
+- **WHEN** an action's own changes are saved but its follow-up work then
+  fails
+- **THEN** the saved changes and the result already returned stay exactly
+  as they were
+- **AND** retrying does not run the follow-up work again
 
-Action helpers SHALL expose document-authorized counts of comments, recorded
-update Versions, declared incoming References, core File attachments and core
-Share links under the source row lock. Counts SHALL use numeric comments,
-versions, references, files and shares fields; deletion refusals SHALL expose
-the same names with string values. Action deletion SHALL require an exact loaded
-revision and SHALL refuse nonzero counts without deleting the source or links.
-Runtime-target Comment, Version, File, Share and declared Reference writes SHALL
-serialize with that source lock and SHALL reject a missing target. Apps MAY return
-explanatory refusal results without a platform-specific retained-work status policy.
-Previously committed replay results SHALL remain unchanged by additive count fields.
+#### Scenario: Disabling waits for work already under way
 
-#### Scenario: action_delete_races_comment_or_reference_creation
-- **WHEN** guarded deletion races a writer linking to the same runtime row
-- **THEN** either the link commits first and deletion refuses, or deletion commits
-  first and the writer refuses; no orphan link survives
+- **WHEN** an app is disabled while one of its actions, or that action's
+  follow-up work, is still running
+- **THEN** disabling waits for it to finish
+- **AND** any further call after that is refused
 
-#### Scenario: app_returns_retained_work_refusal
-- **WHEN** a readable source has two comments or one recorded update
-- **THEN** the helper reports those counts and the app can return an explanatory
-  result while source and discussion remain unchanged
+### Requirement: Deleting through an action respects the same delete guard
 
-#### Scenario: core_attachment_and_share_refusal_replays
-- **WHEN** an action explains refusal for a source with two File attachments and
-  one Share link, then its committed request is retried after restart
-- **THEN** files=2 and shares=1 remain in the original result and no source or link
-  is deleted; a thrown command leaves no partial write or consumed retry key
+An action that deletes a row SHALL be refused under the same rule that
+blocks deleting an installed app's row any other way — a comment, a
+recorded edit, an attached file or an active share still on it, or an
+out-of-date view of it — and SHALL tell the app what's holding the row back
+so it can explain that to the person who asked. That refusal SHALL survive
+being replayed later exactly as it was first given.
+
+#### Scenario: An action explains why deletion was refused
+
+- **WHEN** an action tries to delete a row that still has a comment and a
+  file attached
+- **THEN** the action is told what's still attached
+- **AND** neither the row nor what's attached to it is deleted
+
+#### Scenario: A replayed refusal stays the same
+
+- **WHEN** that same refused request is submitted again later
+- **THEN** it reports the same reason as before
+- **AND** still deletes nothing
