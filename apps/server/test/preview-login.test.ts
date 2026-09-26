@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'vitest'
 import { app } from '../src/index'
+import { config } from '../src/config'
 import { sql } from '../src/db'
 import {
   PREVIEW_KEY_MIN_LENGTH,
@@ -7,6 +8,7 @@ import {
   previewLogin,
   resolvePreviewLogin,
 } from '../src/preview'
+import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
 
 // The preview sign-in link is an authentication bypass, so what is pinned
 // here is mostly what it REFUSES. A regression that makes it work more
@@ -77,6 +79,39 @@ describe('the key is compared as a credential', () => {
 })
 
 describe('the /preview route', () => {
+  test('preview sign-in gives the sid cookie the configured session lifetime', async () => {
+    const email = 'preview-session@example.com'
+    await sql`delete from "user" where row_id = ${email}`
+    await sql`
+      insert into "user" (row_id, email, full_name, enabled, user_type)
+      values (${email}, ${email}, 'Preview Session Visitor', true, 'website')`
+    configure(GOOD_KEY, email)
+    const previousSiteUrl = config.siteUrl
+    config.siteUrl = 'https://app.example.com'
+    try {
+      for (const hours of [1, 720]) {
+        await setSessionHours(hours)
+        const before = Math.floor(Date.now() / 1000)
+        const res = await app.request(`/preview?key=${GOOD_KEY}`)
+        const after = Math.floor(Date.now() / 1000)
+        expect(res.status).toBe(302)
+        const cookie = expectSessionCookie(res, hours, { before, after }, true)
+        const location = res.headers.get('location') as string
+        const code = new URLSearchParams(location.split('?')[1] ?? '').get('code')
+        const redeemed = await app.request('/api/oauth/session', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie },
+          body: JSON.stringify({ code }),
+        })
+        expect(redeemed.status).toBe(200)
+        expect(Object.keys((await redeemed.json()) as object).sort()).toEqual(['token', 'user'])
+      }
+    } finally {
+      config.siteUrl = previousSiteUrl
+      await sql`delete from "user" where row_id = ${email}`
+    }
+  })
+
   test('404s when previews are off — it does not advertise itself', async () => {
     configure(undefined, undefined)
     const res = await app.request(`/preview?key=${GOOD_KEY}`)

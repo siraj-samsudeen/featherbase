@@ -1,5 +1,26 @@
 # Progress Log
 
+## 2026-09-26 — Session cookies follow configured session lifetime (#337)
+
+Password, Google and preview sign-in now issue the browser's `sid` cookie for
+the same clamped 1–720 hour lifetime used by its JWT instead of a fixed seven
+days. One auth helper reads the setting once and returns the signed token with
+its lifetime in seconds; routes use that internal value without adding fields
+to login or handoff responses. Cookie creation keeps HttpOnly, SameSite=Lax and
+Path=/, and now shares the existing external-origin rule that adds Secure for
+configured or forwarded HTTPS without breaking plain-HTTP development.
+
+Test-first verification captured four failures at the old 604800-second cookie,
+then `pnpm --filter server exec vitest run test/auth.test.ts test/oauth.test.ts
+test/preview-login.test.ts` passed 40/40. `pnpm --filter server test` passed 883
+tests with 19 expected skips; `pnpm --filter server typecheck`, `pnpm
+check:specs` (45 specs and 11 changes), `git diff --check`, and `./init.sh`
+smoke (3 browser tests) passed. Feather review found and fixed an ambiguous
+lifetime unit name, duplicate Secure-origin logic, and a response assertion
+that could miss a differently named internal field; no in-scope findings
+remain. The OpenSpec change remains unarchived pending independent parent
+verification and merge.
+
 ## 2026-09-26 — Public forms render and preserve Choice answers (#331)
 
 Choice options now reach public forms through a shared config contract and

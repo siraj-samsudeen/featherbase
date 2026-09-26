@@ -34,7 +34,7 @@ Alternative: decode the newly signed JWT in the route. Rejected because the issu
 
 ### Pass seconds explicitly to the existing cookie helper
 
-Extend `setSidCookie` with a `maxAge` argument and retain its existing `httpOnly`, `sameSite`, and `path` options unchanged. Every current caller must pass the lifetime from the session it just issued.
+Extend `setSidCookie` with a `maxAgeSeconds` argument and retain its existing `httpOnly`, `sameSite`, and `path` options unchanged. Every current caller must pass the lifetime from the session it just issued. Follow the existing OAuth-cookie origin rule for `secure`: HTTPS configured through `SITE_URL` or reported by the trusted proxy produces a Secure cookie, while plain HTTP development does not. Keep that origin rule in one helper shared by session and OAuth challenge cookies.
 
 Alternative: introduce separate cookie helpers for each sign-in route. Rejected because it would duplicate security attributes and make future drift more likely.
 
@@ -42,7 +42,7 @@ Alternative: introduce separate cookie helpers for each sign-in route. Rejected 
 
 - [A route forgets to pass or strips the lifetime incorrectly] → Cover password, Google, and preview responses independently, and type the cookie helper so lifetime is required.
 - [Internal lifetime metadata leaks into the public session or one-use handoff] → Assert existing response fields and construct the handoff session from only `token` and `user`.
-- [Cookie protections regress while changing `Max-Age`] → Assert `HttpOnly`, `SameSite=Lax`, and `Path=/` alongside short and long lifetime checks.
+- [Cookie protections regress while changing `Max-Age`] → Assert `HttpOnly`, `SameSite=Lax`, `Path=/`, and both HTTPS/plain-HTTP `Secure` behavior alongside short and long lifetime checks.
 
 ## Migration Plan
 

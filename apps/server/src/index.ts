@@ -151,12 +151,13 @@ app.get('/api/brand', async (c) => {
 // Frappe) in addition to the Bearer token the SPA stores. Either credential
 // authenticates a request; the cookie lets Frappe-style clients work
 // unchanged and keeps the token out of reach of page scripts.
-function setSidCookie(c: Context, token: string) {
+function setSidCookie(c: Context, token: string, maxAgeSeconds: number) {
   setCookie(c, 'sid', token, {
     httpOnly: true,
     sameSite: 'Lax',
     path: '/',
-    maxAge: 60 * 60 * 24 * 7,
+    maxAge: maxAgeSeconds,
+    secure: cookieIsSecure(c),
   })
 }
 
@@ -173,9 +174,10 @@ app.post('/api/login', publicLimit('LOGIN'), async (c) => {
   if (typeof usr !== 'string' || typeof pwd !== 'string' || !usr || !pwd) throw new AppError('ValidationError', 'Expected { usr, pwd }')
   const attempt = await passwordAttempt(c, usr)
   if (attempt.refusal) return attempt.refusal
-  const session = await login(usr, pwd)
+  const issued = await login(usr, pwd)
+  const session = { token: issued.token, user: issued.user }
   await forgive(attempt.ticket)
-  setSidCookie(c, session.token)
+  setSidCookie(c, session.token, issued.maxAgeSeconds)
   // #3755: report viewers land on their report, not the Admin.
   const landing = await landingFor(session.user.row_id)
   return c.json(landing ? { ...session, landing } : session)
@@ -327,6 +329,10 @@ function externalOrigin(c: Context): URL {
   return new URL(`${proto}://${url.host}`)
 }
 
+function cookieIsSecure(c: Context): boolean {
+  return externalOrigin(c).protocol === 'https:'
+}
+
 // PLAT-006: Google OAuth (public — the caller is logging in). In dev a mock
 // provider stands in for Google. Flow: login → provider consent → callback →
 // find/create User → issue session → bounce back into the SPA with the token.
@@ -355,7 +361,7 @@ function oauthCookieOptions(c: Context) {
     sameSite: 'Lax' as const,
     path: '/',
     maxAge: 600,
-    secure: externalOrigin(c).protocol === 'https:',
+    secure: cookieIsSecure(c),
   }
 }
 
@@ -410,11 +416,12 @@ app.get('/api/oauth/google/callback', publicLimit('OAUTH_CALLBACK'), async (c) =
   clearLoginChallengeCookies(c)
   const { email, name } = await exchangeCode(c.req.query('code'), oauthRedirectUri(c, clientId), clientId, verifier)
   const userName = await findOrCreateGoogleUser(email, name)
-  const session = await issueSession(userName)
+  const issued = await issueSession(userName)
+  const session = { token: issued.token, user: issued.user }
   // The cookie matters here too: beacons (e.g. the unload-time event batch,
   // #101) cannot carry a bearer token, so an OAuth session without the sid
   // cookie would silently drop them (PR #104 review).
-  setSidCookie(c, session.token)
+  setSidCookie(c, session.token, issued.maxAgeSeconds)
   // #150: the session token itself never travels in this URL — a 7-day
   // credential in a query string lands in browser history, in the Referer of
   // anything that page fetches next, and in every proxy log on the way. The
@@ -443,8 +450,9 @@ app.post('/api/oauth/session', async (c) => {
 app.get('/preview', async (c) => {
   const config = previewLogin()
   if (!config || !previewKeyMatches(c.req.query('key'), config.key)) return c.notFound()
-  const session = await issueSession(config.user)
-  setSidCookie(c, session.token)
+  const issued = await issueSession(config.user)
+  const session = { token: issued.token, user: issued.user }
+  setSidCookie(c, session.token, issued.maxAgeSeconds)
   return c.redirect(`/featherbase/oauth-callback?code=${encodeURIComponent(mintHandoffCode(session))}`)
 })
 

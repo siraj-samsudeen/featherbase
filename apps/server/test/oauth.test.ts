@@ -5,6 +5,7 @@ import { sql } from '../src/db'
 import { saveDoc } from '../src/document'
 import { mockConsentHtml } from '../src/oauth'
 import type { TestClient } from 'feather-testing-postgres'
+import { expectSessionCookie, setSessionHours } from './session-cookie-test-utils'
 
 // PLAT-006: Google OAuth server-side flow, driven through the dev mock
 // provider (no google_client_id in System Settings, ALLOW_MOCK_OAUTH=1 from
@@ -77,6 +78,27 @@ function redeem(api: TestClient, code: string | null, cookie: string) {
 }
 
 describe('PLAT-006: OAuth sign-in (mock provider)', () => {
+  test('Google sign-in gives the sid cookie the configured session lifetime', async ({ api }) => {
+    await setAllowedDomains('*')
+    const previousSiteUrl = config.siteUrl
+    config.siteUrl = 'https://app.example.com'
+    try {
+      for (const hours of [1, 720]) {
+        await setSessionHours(hours)
+        const before = Math.floor(Date.now() / 1000)
+        const res = await mockSignIn(api, `session-${hours}@example.com`)
+        const after = Math.floor(Date.now() / 1000)
+        expect(res.status).toBe(302)
+        const cookie = expectSessionCookie(res, hours, { before, after }, true)
+        const redeemed = await redeem(api, handoffCode(res), cookie)
+        expect(redeemed.status).toBe(200)
+        expect(Object.keys((await redeemed.json()) as object).sort()).toEqual(['token', 'user'])
+      }
+    } finally {
+      config.siteUrl = previousSiteUrl
+    }
+  })
+
   test('the mock consent page begins with a standards-mode doctype', () => {
     expect(mockConsentHtml('state', '/api/oauth/google/callback', 'person@example.com', 'Test User'))
       .toMatch(/^<!DOCTYPE html>/)
