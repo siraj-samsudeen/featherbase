@@ -54,7 +54,7 @@ the calculus changes.
 > checked by CI rather than maintained by discipline.
 
 Here that means: `openspec/specs/` carries the behavior judgment and acceptance
-criteria; root `AGENTS.md` defines the mandatory OpenSpec workflow;
+criteria; the OpenSpec section below defines how behavior changes go through it;
 `docs/TESTING.md` is the single living doc for how the suites are built and
 run; `PROGRESS.md` and `docs/adr/` are the append-only history — what happened,
 and what was decided and why.
@@ -191,6 +191,8 @@ once per run, outside any sandbox transaction. It complements
 6. **Update state.** Only after verification: append a dated entry to
    `PROGRESS.md` (what was done, how it was verified, what to pick up next, any
    gotchas), and commit. Leave the working tree clean.
+7. **Hand off.** Tell the owner how to try it: the URL and login, which data to
+   look at, a few things worth trying, and any known gaps.
 
 ### Accepting delegated work
 
@@ -229,9 +231,9 @@ command, that is the first finding.
 - `docs/adr/` — architecture decisions. [ADR 0006](docs/adr/0006-stack-react-hono-postgres.md)
   records the move to React + Hono + Postgres and supersedes 0001–0004.
 - `docs/VISION.md` — what this is for and who it serves.
-- `openspec/specs/` — the sole behavior authority. Root `AGENTS.md` defines
-  the mandatory new-feature and baseline-first legacy workflows; ADR 0010
-  records why. Use plain, descriptive requirement and scenario names.
+- `openspec/specs/` — the sole behavior authority. The OpenSpec section below
+  defines the workflow; ADR 0010 records why. Use plain, descriptive
+  requirement and scenario names.
 - `docs/specs/` — frozen, non-authoritative Journey documents from before the
   2026-09-21 ruling. They are migration evidence only. Never add a behavior
   contract there.
@@ -241,48 +243,47 @@ command, that is the first finding.
   implementation (`convex-capabilities/`, preserved on the `archive/convex-v1`
   tag). Read for lineage; never as a statement about today's code.
 
+## OpenSpec
+
+Behavior specs live in `openspec/specs/`. New or changed behavior goes through
+an OpenSpec change — start one with `/opsx:propose` (Claude Code) or
+`/openspec-propose` (Codex). Writing style for specs and proposals is set in
+`openspec/config.yaml`. The CLI is pinned to an exact version in root
+`package.json` and bumped by the weekly `openspec-update` workflow.
+
+The rationale is [ADR 0010](docs/adr/0010-openspec-change-workflow.md). Legacy
+files under `docs/specs/` are frozen, non-authoritative migration evidence;
+never add a new behavior specification there.
+
 ## Agent skills
 
 ### SDLC skill routing (owner directive, 2026-08-11)
 
-Use the mattpocock-skills plugin at the matching lifecycle stage — invoke
-the skill, don't improvise the equivalent:
+Use Matt Pocock's skills (installed globally with `npx skills add
+mattpocock/skills`, so Claude Code and Codex share them) at the matching
+lifecycle stage — invoke the skill, don't improvise the equivalent:
 
 | Stage | Skill |
 |---|---|
-| Building a feature or fixing a bug test-first | `mattpocock-skills:tdd` |
-| Diagnosing a bug, failure, or perf regression | `mattpocock-skills:diagnosing-bugs` |
-| Reviewing a PR, branch, or "changes since X" | `mattpocock-skills:code-review` (Standards + Spec axes) |
-| Answering a design question with throwaway code | `mattpocock-skills:prototype` |
-| Designing or deepening a module interface/seam | `mattpocock-skills:codebase-design` |
-| Pinning domain vocabulary or recording an ADR | `mattpocock-skills:domain-modeling` |
-| Delegating reading/API-fact gathering | `mattpocock-skills:research` |
-| Resolving an in-progress merge/rebase conflict | `mattpocock-skills:resolving-merge-conflicts` |
-| Stress-testing a plan before committing to it | `mattpocock-skills:grilling` |
+| Building a feature or fixing a bug test-first | `tdd` |
+| Diagnosing a bug, failure, or perf regression | `diagnosing-bugs` |
+| Reviewing a PR, branch, or "changes since X" — code or tests | `feather-code-review` (this repo's; it runs Matt's `code-review` and `codebase-design` plus this repo's checks) |
+| Answering a design question with throwaway code | `prototype` |
+| Designing or deepening a module interface/seam | `codebase-design` |
+| Pinning domain vocabulary or recording an ADR | `domain-modeling` |
+| Delegating reading/API-fact gathering | `research` |
+| Resolving an in-progress merge/rebase conflict | `resolving-merge-conflicts` |
+| Stress-testing a plan before committing to it | `grilling` |
 
 Behavior changes use the repository-generated OpenSpec skills. When spawning
 sub-sessions or task chips, name the required skills in the prompt — spawned
 agents read this file, but an explicit instruction survives context loss.
 
-### Deeper design, test and spec review
+### One review skill
 
-Two repo-local skills, ported from the data-warehouse repo (#3664/#3666) with
-every worked example re-derived from this codebase: **`/code-review-8-axes`**
-and **`/test-review-3-axes`**.
-
-They are **deeper and slower than the routing table's review row above**, and they do
-not replace it: reach for `mattpocock-skills:code-review` on an ordinary PR, and for
-these when the blast radius of what you are touching is a module's behaviour — a save
-path, a permission rule, a status vocabulary, a guard. The trigger is the blast radius,
-**not the size of your change**. A three-line edit to the row engine qualifies; a typo
-fix does not. (Whether the two review routes should collapse into one is an open
-question for the owner.)
-
-These axes almost never fire on the lines you edited: they find the seventh copy of a
-fact you changed in six places, the guard that silently stopped running, the promise
-nothing tests. **Report what you found, what you fixed here, and what you filed
-instead** — fixing everything found is not expected and usually widens the PR wrongly.
-Both carry a REJECT list: **file and function length are not findings.**
+Every code and test review goes through **`feather-code-review`** (owner
+decision, 2026-09-26; it replaced `code-review-8-axes` and `test-review-3-axes`).
+It lives in `.claude/skills/` and is linked into `.agents/skills/` for Codex.
 
 When a spec, the code and the tests disagree, that disagreement is not yours to
 settle silently — see "A discovered behaviour is not a requirement" above.
