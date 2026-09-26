@@ -22,6 +22,15 @@ shared-style change was made, so browser semantics and focus were inspected
 rather than screenshots. The OpenSpec change remains unarchived pending owner
 acceptance.
 
+Parent review then caught a fractional-width gap between the first media query
+and Tailwind's desktop breakpoint, plus raw keyboard actions in the migrated
+journey. The query is now the exact `< 48rem` complement of `md:`. The same
+mounted page crosses 767 → 768 → 767 and proves the media listener changes both
+semantics and tab order; closed-state focus is checked against every sidebar
+descendant. Keyboard and supported link actions use the Session DSL, with named
+steps only for focus, viewport and layout measurements. The focused browser
+journey still passes 2/2 and web typecheck passes after merging PRs #348/#349.
+
 ## 2026-09-26 — Global search respects row and title access (#339)
 
 Search reuses the query module's existing own-row/Data Scope predicate and

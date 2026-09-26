@@ -32,7 +32,7 @@ interface SearchHit {
   title: string
 }
 
-const MOBILE_SIDEBAR_QUERY = '(max-width: 767px)'
+const MOBILE_SIDEBAR_QUERY = '(width < 48rem)'
 
 // #101 Phase 3: recorded actions also stream to the server's user_event log
 // (batched; a beacon carries the final batch through unload). The sink is
