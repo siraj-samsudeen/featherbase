@@ -15,4 +15,4 @@
 
 - [x] 3.1 Add and run an opt-in committed concurrency test on a dedicated directly local test-stamped database: observe actual transaction overlap/lock wait, release the first writer, assert only one activation commits and the loser names the winner, and read final durable state independently. Document the exact command beside the proof.
 - [x] 3.2 Run the workflow suites, committed proof, server typecheck, strict OpenSpec validation, and smoke checks; use feather-code-review (including its codebase-design guidance) and resolve scoped findings with rerun evidence.
-- [ ] 3.3 Record verified commands and remaining caveats in PROGRESS.md, commit the scoped implementation, push the branch and open a PR for independent parent review; report the exact head and runnable verification without merging.
+- [x] 3.3 Record verified commands and remaining caveats in PROGRESS.md, commit the scoped implementation, push the branch and open a PR for independent parent review; report the exact head and runnable verification without merging.
