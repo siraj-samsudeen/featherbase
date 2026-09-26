@@ -234,9 +234,6 @@ command, that is the first finding.
 - `openspec/specs/` — the sole behavior authority. The OpenSpec section below
   defines the workflow; ADR 0010 records why. Use plain, descriptive
   requirement and scenario names.
-- `docs/specs/` — frozen, non-authoritative Journey documents from before the
-  2026-09-21 ruling. They are migration evidence only. Never add a behavior
-  contract there.
 - `docs/research/` — Frappe architecture, Glide, and stack studies.
 - `docs/archive/` — frozen history: the 2026 build harness and its feature
   inventory (`harness-2026/`), and the specs from the retired Convex
@@ -251,9 +248,7 @@ an OpenSpec change — start one with `/opsx:propose` (Claude Code) or
 `openspec/config.yaml`. The CLI is pinned to an exact version in root
 `package.json` and bumped by the weekly `openspec-update` workflow.
 
-The rationale is [ADR 0010](docs/adr/0010-openspec-change-workflow.md). Legacy
-files under `docs/specs/` are frozen, non-authoritative migration evidence;
-never add a new behavior specification there.
+The rationale is [ADR 0010](docs/adr/0010-openspec-change-workflow.md).
 
 ## Agent skills
 

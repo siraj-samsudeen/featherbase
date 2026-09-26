@@ -123,10 +123,12 @@ handing them to a controller.
 
 Both mechanisms are specified:
 
-- `docs/specs/0001-external-data-sources.md` — connections plus DocTypes bound
-  to existing Postgres tables (the SQL-native path).
-- `docs/specs/0002-virtual-doctypes.md` — the controller protocol for sources
-  that are not Postgres tables (the escape hatch, mirroring Frappe).
+- the `external-data-sources` OpenSpec capability
+  (`openspec/specs/external-data-sources/spec.md`) — connections plus
+  DocTypes bound to existing Postgres tables (the SQL-native path).
+- virtual DocTypes (the controller protocol for sources that are not
+  Postgres tables, the escape hatch mirroring Frappe) — not yet specced;
+  tracked as [issue #333](https://github.com/siraj-samsudeen/featherbase/issues/333).
 - `docs/adr/0007-app-and-database-topology.md` — why apps still share one
   control database, and why binding is per-DocType rather than per-app.
 

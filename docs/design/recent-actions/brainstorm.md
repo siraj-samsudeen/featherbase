@@ -1,8 +1,9 @@
 # Brainstorm — Recent Actions & Activity Recency
 
 *Captured 2026-07-31, feather-brainstorm phase. This is a discussion log in
-the owner's words plus horizon expansion — not a spec. The spec (feather-spec
-form, in `docs/specs/`) comes after the owner picks a direction.*
+the owner's words plus horizon expansion — not a spec. The spec (an OpenSpec
+change under `openspec/changes/`, landing as a capability under
+`openspec/specs/`) comes after the owner picks a direction.*
 
 ## The owner's framing (verbatim intent)
 
