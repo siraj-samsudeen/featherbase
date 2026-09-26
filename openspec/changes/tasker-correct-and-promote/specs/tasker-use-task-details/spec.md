@@ -53,9 +53,10 @@ place, so it shows in their My Work, not on their personal list.
 
 The user SHALL be able to permanently delete a task created by accident, after
 confirming; Tasker explains this cannot be undone and that Cancelled is the way
-to keep work that is no longer needed. Tasker refuses if the task has anything
-worth keeping, such as a responsible person or comments, or if it changed since
-the user opened it.
+to keep work that is no longer needed. Only a task nobody has worked on or
+linked to since it was captured can be deleted; any other, for example one with
+someone responsible or a comment, is refused, as is one that changed since the
+user opened it.
 
 #### Scenario: Delete a mistaken capture
 

@@ -11,9 +11,10 @@ about it.
 ### Requirement: Turn a task into a project
 
 Promoting a task SHALL create a project named after the task, carrying over its
-description. A task nobody has worked on yet simply becomes the project; one
-with work history, such as someone responsible or comments, is instead kept as
-the new project's first task, so nothing is lost. Tasker explains this and asks
+description. A task nobody has worked on or linked to since it was captured
+simply becomes the project; any other task, for example one with someone
+responsible or a comment, is kept as the new project's first task, so nothing
+is lost. Tasker explains this and asks
 first, and cancelling changes nothing.
 
 #### Scenario: Promote a fresh task
