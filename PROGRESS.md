@@ -32,6 +32,35 @@ beside the 12 Tasker ones and the product-wide usable-on-any-device.
     snake_case names.
   - Agents that launch helper agents and then wait lose their work when their
     turn ends. Briefs must say "no sub-agents, one turn".
+## 2026-09-26 — Every E2E suite runs on the feather-testing-core DSL
+
+All 76 `apps/web/e2e/*.spec.ts` files now use the DSL-backed `test` /
+`anonymousTest` from `fixtures.ts` and its `{ session }`. Only 4 did before.
+`feather-testing-core` moved from 0.2.0 to 0.4.0 (additive). Browser actions
+use Session verbs; anything the DSL can't express (test ids, attributes,
+drag, exact-text checks) sits inside a named `session.step`. Every original
+assertion is kept at the same strength. `journeyTest` is retired.
+
+- **Guard:** `pnpm check:e2e-dsl` (tools/check-e2e-dsl.mjs, run in CI) fails
+  any spec that imports `test` from anywhere but `./fixtures`. Exemption:
+  first line `// e2e-dsl: exempt — <reason>`.
+- **Pattern and batch record:** docs/testing/e2e-dsl-migration.md.
+- **Verified:** full suite on a fresh isolated stack, 156 passed / 28 skipped
+  / 0 failed, identical to the pre-migration baseline (the 28 skips need
+  outside credentials). Command:
+  `WEB_URL=http://localhost:<web> pnpm exec playwright test`, with the stack
+  booted with raised `PREAUTH_*` limits and its own database (the doc has the
+  line). The review then found three loosened checks in pilot files (filters
+  #87, web-page WEB-001, and the journey suites starting signed in). They're
+  fixed, and the six files re-run: 13 passed.
+- **Gotchas:**
+  - `assertHas(sel, { text })` is a substring match even with `exact`;
+    exact checks stay as `expect(...).toHaveText` inside a step.
+  - A manually booted stack needs the raised `PREAUTH_*` limits, or the
+    suite rate-limits itself about 15 tests in.
+  - Five suites (dashboard, palette, portal, task-management,
+    user-management) aren't idempotent on a reused database; reset it
+    between full runs.
 
 ## 2026-09-26 — Tasker specs rewritten in plain language (pilot, #301)
 

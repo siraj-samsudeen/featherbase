@@ -1,3 +1,4 @@
+import { createSession } from 'feather-testing-core/playwright'
 import {
   anonymousTest as test,
   expect,
@@ -36,21 +37,28 @@ test.beforeAll(async ({ request }) => {
     await request.delete(`/api/table/Notification%20Log/${n.row_id}`, { headers })
 })
 
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
+// Every test here drives TWO independent browser contexts, which the `session`
+// fixture (bound to the default `page`) cannot reach — `createSession(page)`
+// (the same factory `fixtures.ts`'s own DSL-backed `test` is built on) gives
+// each context its own Session so both still go through Session verbs/steps
+// rather than raw Playwright throughout.
 test('RT-001: a doc created in one session appears in another session list', async ({ browser }) => {
   const ctxA = await browser.newContext()
   const ctxB = await browser.newContext()
   const a = await ctxA.newPage()
   const b = await ctxB.newPage()
+  const sessionA = createSession(a)
+  const sessionB = createSession(b)
 
-  await loginAs(a, 'Administrator', ADMIN_PWD)
-  await loginAs(b, 'Administrator', ADMIN_PWD)
+  await sessionA.step('sign in as Administrator', () => loginAs(a, 'Administrator', ADMIN_PWD))
+  await sessionB.step('sign in as Administrator', () => loginAs(b, 'Administrator', ADMIN_PWD))
 
   // Both watch the list; wait for B's list to render and its realtime
   // socket to connect+subscribe before A creates.
-  await a.goto(`/admin/${encodeURIComponent(DT)}`)
-  await b.goto(`/admin/${encodeURIComponent(DT)}`)
-  await expect(b.getByTestId('list-total')).toBeVisible()
-  await waitForRealtime(b, `list:${DT}`)
+  await sessionA.visit(`/admin/${encodeURIComponent(DT)}`)
+  await sessionB.visit(`/admin/${encodeURIComponent(DT)}`).assertHas('[data-testid="list-total"]')
+  await sessionB.step('wait for the realtime subscription to the list channel', () => waitForRealtime(b, `list:${DT}`))
   const uniq = `rt-live-${Date.now()}`
 
   // A creates a doc via the API (its own session); B's list should update
@@ -62,7 +70,9 @@ test('RT-001: a doc created in one session appears in another session list', asy
   })
   expect(res.status()).toBe(201)
 
-  await expect(b.getByTestId('list-rows')).toContainText(uniq, { timeout: 10_000 })
+  await sessionB.step('the list updates with no reload', async ({ page }) => {
+    await expect(page.getByTestId('list-rows')).toContainText(uniq, { timeout: 10_000 })
+  })
   await ctxA.close()
   await ctxB.close()
 })
@@ -72,8 +82,10 @@ test('RT-002: saving a doc in one session shows a refresh banner in another', as
   const ctxB = await browser.newContext()
   const a = await ctxA.newPage()
   const b = await ctxB.newPage()
-  await loginAs(a, 'Administrator', ADMIN_PWD)
-  await loginAs(b, 'Administrator', ADMIN_PWD)
+  const sessionA = createSession(a)
+  const sessionB = createSession(b)
+  await sessionA.step('sign in as Administrator', () => loginAs(a, 'Administrator', ADMIN_PWD))
+  await sessionB.step('sign in as Administrator', () => loginAs(b, 'Administrator', ADMIN_PWD))
 
   // Seed a doc and open it in both.
   const tokenA = await a.evaluate(() => localStorage.getItem('fc_token'))
@@ -82,28 +94,32 @@ test('RT-002: saving a doc in one session shows a refresh banner in another', as
     headers: { Authorization: `Bearer ${tokenA}` },
     data: { row_id: docName, title: 'before' },
   })
-  await a.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
-  await b.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
-  await expect(a.getByTestId('form-view')).toBeVisible()
-  await expect(b.getByTestId('form-view')).toBeVisible()
+  await sessionA.visit(`/admin/${encodeURIComponent(DT)}/${docName}`).assertHas('[data-testid="form-view"]')
+  await sessionB.visit(`/admin/${encodeURIComponent(DT)}/${docName}`).assertHas('[data-testid="form-view"]')
   // No banner initially.
-  await expect(b.getByTestId('stale-banner')).toHaveCount(0)
+  await sessionB.refuteHas('[data-testid="stale-banner"]')
   // B's subscription to the row channel must be live before A saves,
   // otherwise the event is published to nobody.
-  await waitForRealtime(b, `row:${DT}:${docName}`)
+  await sessionB.step('wait for the realtime subscription to the row channel', () => waitForRealtime(b, `row:${DT}:${docName}`))
 
   // A edits + saves; B gets the refresh banner without reloading.
-  await a.locator('[data-field=title]').fill('after')
-  await a.getByTestId('form-save').click()
-  await expect(a.getByTestId('form-banner')).toContainText('Saved')
+  await sessionA.step('edit and save the title', async ({ page }) => {
+    await page.locator('[data-field=title]').fill('after')
+    await page.getByTestId('form-save').click()
+    await expect(page.getByTestId('form-banner')).toContainText('Saved')
+  })
 
-  await expect(b.getByTestId('stale-banner')).toBeVisible({ timeout: 10_000 })
+  await sessionB.step('gets the refresh banner without reloading', async ({ page }) => {
+    await expect(page.getByTestId('stale-banner')).toBeVisible({ timeout: 10_000 })
+  })
   // A (the saver) does NOT see a stale banner for its own save.
-  await expect(a.getByTestId('stale-banner')).toHaveCount(0)
+  await sessionA.refuteHas('[data-testid="stale-banner"]')
 
   // Refreshing pulls the new value.
-  await b.getByTestId('stale-refresh').click()
-  await expect(b.locator('[data-field=title]')).toHaveValue('after')
+  await sessionB.step('refreshing pulls the new value', async ({ page }) => {
+    await page.getByTestId('stale-refresh').click()
+    await expect(page.locator('[data-field=title]')).toHaveValue('after')
+  })
   await ctxA.close()
   await ctxB.close()
 })
@@ -113,14 +129,15 @@ test('RT-003: an @mention pops the mentioned user unread count live', async ({ b
   const ctxB = await browser.newContext()
   const a = await ctxA.newPage()
   const b = await ctxB.newPage()
+  const sessionA = createSession(a)
+  const sessionB = createSession(b)
 
-  await loginAs(a, 'Administrator', ADMIN_PWD)
-  await loginAs(b, OTHER_USER, OTHER_PWD)
+  await sessionA.step('sign in as Administrator', () => loginAs(a, 'Administrator', ADMIN_PWD))
+  await sessionB.step('sign in as the other user', () => loginAs(b, OTHER_USER, OTHER_PWD))
 
   // B sits in the Admin; wait for its personal channel to be live.
-  await b.goto('/admin')
-  await expect(b.getByTestId('session-user')).toBeVisible()
-  await waitForRealtime(b, `user:${OTHER_USER}`)
+  await sessionB.visit('/admin').assertHas('[data-testid="session-user"]')
+  await sessionB.step('wait for the realtime subscription to the personal channel', () => waitForRealtime(b, `user:${OTHER_USER}`))
   const startCount = await b.getByTestId('unread-count').count() // 0 badge if none
 
   const tokenA = await a.evaluate(() => localStorage.getItem('fc_token'))
@@ -129,16 +146,20 @@ test('RT-003: an @mention pops the mentioned user unread count live', async ({ b
     headers: { Authorization: `Bearer ${tokenA}` },
     data: { row_id: docName, title: 'discuss' },
   })
-  await a.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
-  // Trailing space closes the @mention autocomplete so it doesn't overlay
-  // the submit button.
-  await a.getByTestId('comment-input').fill(`ping @${OTHER_USER} `)
-  await expect(a.getByTestId('mention-list')).toHaveCount(0)
-  await a.getByTestId('comment-submit').click()
+  await sessionA.visit(`/admin/${encodeURIComponent(DT)}/${docName}`)
+  await sessionA.step('post a comment mentioning the other user', async ({ page }) => {
+    // Trailing space closes the @mention autocomplete so it doesn't overlay
+    // the submit button.
+    await page.getByTestId('comment-input').fill(`ping @${OTHER_USER} `)
+    await expect(page.getByTestId('mention-list')).toHaveCount(0)
+    await page.getByTestId('comment-submit').click()
+  })
 
   // B's unread badge appears/increments without a reload.
-  await expect(b.getByTestId('unread-count')).toBeVisible({ timeout: 10_000 })
-  await expect(b.getByTestId('unread-count')).toHaveText(/[1-9]/)
+  await sessionB.step('the unread badge appears/increments without a reload', async ({ page }) => {
+    await expect(page.getByTestId('unread-count')).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByTestId('unread-count')).toHaveText(/[1-9]/)
+  })
   expect(startCount).toBe(0)
   await ctxA.close()
   await ctxB.close()

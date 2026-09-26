@@ -25,7 +25,10 @@ test.afterEach(async ({ request }) => {
   await setAllowedDomains(request, '')
 })
 
-test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', async ({ page, request }) => {
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md).
+// The mock-OAuth screen and its outcome are all testid-addressed, so the
+// flow lives in named steps; `session` carries the plain navigation.
+test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', async ({ session, page, request }) => {
   await setAllowedDomains(request, '*')
   // #150: every URL this flow puts in the address bar — and therefore in
   // history, in the Referer of anything the page fetches next, and in every
@@ -36,19 +39,20 @@ test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', asyn
     if (frame === page.mainFrame()) visited.push(frame.url())
   })
 
-  await page.goto('/login')
-  // Kick off the OAuth flow (full-page navigation to the server endpoint).
-  await page.getByTestId('google-login').click()
-
-  // The mock consent screen appears; choose the identity.
-  await expect(page.getByTestId('mock-approve')).toBeVisible()
-  await page.getByTestId('mock-email').fill(EMAIL)
-  await page.getByTestId('mock-name').fill('OAuth E2E User')
-  await page.getByTestId('mock-approve').click()
+  await session.visit('/login')
+  await session.step('kick off the mock OAuth flow and approve the mock consent screen', async ({ page }) => {
+    await page.getByTestId('google-login').click()
+    await expect(page.getByTestId('mock-approve')).toBeVisible()
+    await page.getByTestId('mock-email').fill(EMAIL)
+    await page.getByTestId('mock-name').fill('OAuth E2E User')
+    await page.getByTestId('mock-approve').click()
+  })
 
   // We land in the Admin, signed in as the new user.
-  await page.waitForURL(/\/admin/)
-  await expect(page.getByTestId('session-user')).toBeVisible()
+  await session.step('lands in the Admin, signed in as the new user', async ({ page }) => {
+    await page.waitForURL(/\/admin/)
+    await expect(page.getByTestId('session-user')).toBeVisible()
+  })
 
   // #150: the landing carried a one-time handoff code, never the session
   // token; the SPA POSTed that code back and holds the real token now.
@@ -68,7 +72,7 @@ test('PLAT-006: Google OAuth (mock) creates a User and lands in the Admin', asyn
   expect(doc.enabled).toBe(true)
 })
 
-test('PLAT-006: a second OAuth sign-in links the same User (no duplicate)', async ({ page, request }) => {
+test('PLAT-006: a second OAuth sign-in links the same User (no duplicate)', async ({ session, request }) => {
   // Pre-create the user (as if from a first sign-in) to prove the flow LINKS
   // rather than duplicating. It is created enabled on purpose: since #137 a
   // disabled account is refused, never re-enabled by signing in.
@@ -78,11 +82,13 @@ test('PLAT-006: a second OAuth sign-in links the same User (no duplicate)', asyn
     data: { table: 'User', row: { row_id: EMAIL, email: EMAIL, full_name: 'Existing', enabled: true, roles: [] } },
   })
 
-  await page.goto('/login')
-  await page.getByTestId('google-login').click()
-  await page.getByTestId('mock-email').fill(EMAIL)
-  await page.getByTestId('mock-approve').click()
-  await page.waitForURL(/\/admin/)
+  await session.visit('/login')
+  await session.step('sign in through the mock OAuth flow', async ({ page }) => {
+    await page.getByTestId('google-login').click()
+    await page.getByTestId('mock-email').fill(EMAIL)
+    await page.getByTestId('mock-approve').click()
+    await page.waitForURL(/\/admin/)
+  })
 
   // Exactly one User with that email.
   const listed = (await (

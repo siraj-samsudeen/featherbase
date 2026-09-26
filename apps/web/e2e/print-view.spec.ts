@@ -52,27 +52,31 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   if (doc.status() !== 201) throw new Error(`row: ${doc.status()}`)
 })
 
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// the round trip through the form's Print button and the URL-regex landing
+// check aren't expressible by assertPath (which is exact-match only), so they
+// stay in a step; the rest is plain presence/text/count assertHas checks.
 test('PRN-001: print view shows labels, values, and child tables with no chrome', async ({
-  page,
+  session,
 }) => {
-  // Reach print view via the form's Print button.
-  await page.goto(`/admin/${encodeURIComponent(DT)}/${docName}`)
-  await page.getByTestId('form-print').click()
-  await expect(page).toHaveURL(new RegExp(`/print/${encodeURIComponent(DT)}/${docName}`))
+  await session.visit(`/admin/${encodeURIComponent(DT)}/${docName}`)
+  await session.step('click Print and land on the print view', async ({ page }) => {
+    await page.getByTestId('form-print').click()
+    await expect(page).toHaveURL(new RegExp(`/print/${encodeURIComponent(DT)}/${docName}`))
+  })
 
-  // No app chrome: navbar/sidebar/awesomebar absent.
-  await expect(page.getByTestId('awesomebar')).toHaveCount(0)
-  await expect(page.getByTestId('table-nav')).toHaveCount(0)
-
-  // Labels + values shown.
-  await expect(page.getByTestId('print-view')).toBeVisible()
-  await expect(page.getByTestId('print-docname')).toContainText(docName)
-  await expect(page.getByTestId('print-field-customer')).toContainText('Customer')
-  await expect(page.getByTestId('print-field-customer')).toContainText('Wayne Enterprises')
-
-  // Child table rendered with rows.
-  await expect(page.getByTestId('print-table-lines')).toBeVisible()
-  await expect(page.getByTestId('print-table-row')).toHaveCount(2)
-  await expect(page.getByTestId('print-table-lines')).toContainText('Widget')
-  await expect(page.getByTestId('print-table-lines')).toContainText('Gadget')
+  await session
+    // No app chrome: navbar/sidebar/awesomebar absent.
+    .assertHas('[data-testid="awesomebar"]', { count: 0 })
+    .assertHas('[data-testid="table-nav"]', { count: 0 })
+    // Labels + values shown.
+    .assertHas('[data-testid="print-view"]')
+    .assertHas('[data-testid="print-docname"]', { text: docName })
+    .assertHas('[data-testid="print-field-customer"]', { text: 'Customer' })
+    .assertHas('[data-testid="print-field-customer"]', { text: 'Wayne Enterprises' })
+    // Child table rendered with rows.
+    .assertHas('[data-testid="print-table-lines"]')
+    .assertHas('[data-testid="print-table-row"]', { count: 2 })
+    .assertHas('[data-testid="print-table-lines"]', { text: 'Widget' })
+    .assertHas('[data-testid="print-table-lines"]', { text: 'Gadget' })
 })

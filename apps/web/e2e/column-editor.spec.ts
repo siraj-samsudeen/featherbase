@@ -9,6 +9,10 @@ import { deleteTableIfExists } from './cleanup'
 // no way to grow a column, and a misspelled column name had no way back —
 // the PUT route matches columns by name, so a changed name reads as
 // delete-plus-add and orphans the rows.
+//
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// the Column Editor's controls are all testid-addressed, so the mechanics
+// stay in named steps; assertHas/refuteHas cover the plain presence checks.
 
 const DT = 'Column Editor Zones'
 
@@ -43,21 +47,26 @@ test.afterEach(async ({ request }) => {
   await deleteTableIfExists(request, token, DT)
 })
 
-test('a misspelled column is renamed, and its rows come with it', async ({ page, request }) => {
+test('a misspelled column is renamed, and its rows come with it', async ({ session, request }) => {
   const token = await adminToken(request)
-  await page.goto(`/admin/${encodeURIComponent(DT)}`)
+  await session.visit(`/admin/${encodeURIComponent(DT)}`)
 
-  // Reachable from the Table it belongs to.
-  await page.getByTestId('open-columns').click()
-  await expect(page.getByTestId('column-editor')).toBeVisible()
-  await expect(page.getByTestId('ce-row-glor')).toBeVisible()
+  await session.step('reachable from the Table it belongs to', async ({ page }) => {
+    await page.getByTestId('open-columns').click()
+  })
+  await session
+    .assertHas('[data-testid="column-editor"]')
+    .assertHas('[data-testid="ce-row-glor"]')
 
-  await page.getByTestId('ce-rename-glor').click()
-  await page.getByTestId('ce-rename-input-glor').fill('floor')
-  await page.getByTestId('ce-rename-go-glor').click()
+  await session.step('rename glor to floor', async ({ page }) => {
+    await page.getByTestId('ce-rename-glor').click()
+    await page.getByTestId('ce-rename-input-glor').fill('floor')
+    await page.getByTestId('ce-rename-go-glor').click()
+  })
 
-  await expect(page.getByTestId('ce-row-floor')).toBeVisible()
-  await expect(page.getByTestId('ce-row-glor')).toHaveCount(0)
+  await session
+    .assertHas('[data-testid="ce-row-floor"]')
+    .refuteHas('[data-testid="ce-row-glor"]')
 
   // The whole point: the values were already right.
   const rows = await request.get(
@@ -68,29 +77,35 @@ test('a misspelled column is renamed, and its rows come with it', async ({ page,
   expect(data.map((r) => r.floor).sort()).toEqual(['Ground', 'Mezzanine'])
 })
 
-test('a rename that collides is refused, in place, with the reason', async ({ page }) => {
-  await page.goto(`/admin/${encodeURIComponent(DT)}/columns`)
-  await page.getByTestId('ce-rename-glor').click()
-  await page.getByTestId('ce-rename-input-glor').fill('pop')
-  await page.getByTestId('ce-rename-go-glor').click()
+test('a rename that collides is refused, in place, with the reason', async ({ session }) => {
+  await session.visit(`/admin/${encodeURIComponent(DT)}/columns`)
 
-  await expect(page.getByTestId('ce-rename-error-glor')).toContainText('already has')
-  // And nothing moved.
-  await expect(page.getByTestId('ce-row-glor')).toBeVisible()
-  await expect(page.getByTestId('ce-row-pop')).toBeVisible()
+  await session.step('attempt to rename glor to pop, which already exists', async ({ page }) => {
+    await page.getByTestId('ce-rename-glor').click()
+    await page.getByTestId('ce-rename-input-glor').fill('pop')
+    await page.getByTestId('ce-rename-go-glor').click()
+  })
+
+  await session
+    .assertHas('[data-testid="ce-rename-error-glor"]', { text: 'already has' })
+    // And nothing moved.
+    .assertHas('[data-testid="ce-row-glor"]')
+    .assertHas('[data-testid="ce-row-pop"]')
 })
 
-test('a column is added to a Table that already has rows', async ({ page, request }) => {
+test('a column is added to a Table that already has rows', async ({ session, request }) => {
   const token = await adminToken(request)
-  await page.goto(`/admin/${encodeURIComponent(DT)}/columns`)
+  await session.visit(`/admin/${encodeURIComponent(DT)}/columns`)
 
-  // The machine name follows the label until it is claimed.
-  await page.getByTestId('ce-add-label').fill('Aisle Code')
-  await expect(page.getByTestId('ce-add-name')).toHaveValue('aisle_code')
-  await page.getByTestId('ce-add-go').click()
+  await session.step('the machine name follows the label until it is claimed', async ({ page }) => {
+    await page.getByTestId('ce-add-label').fill('Aisle Code')
+    await expect(page.getByTestId('ce-add-name')).toHaveValue('aisle_code')
+    await page.getByTestId('ce-add-go').click()
+  })
 
-  await expect(page.getByTestId('ce-saved')).toContainText('Added aisle_code')
-  await expect(page.getByTestId('ce-row-aisle_code')).toBeVisible()
+  await session
+    .assertHas('[data-testid="ce-saved"]', { text: 'Added aisle_code' })
+    .assertHas('[data-testid="ce-row-aisle_code"]')
 
   // Empty on the rows that were already there, and the old values are intact.
   const rows = await request.get(
@@ -105,32 +120,40 @@ test('a column is added to a Table that already has rows', async ({ page, reques
   expect(data.map((r) => r.glor).sort()).toEqual(['Ground', 'Mezzanine'])
 })
 
-test('a name the server would reject is caught before the round trip', async ({ page }) => {
-  await page.goto(`/admin/${encodeURIComponent(DT)}/columns`)
+test('a name the server would reject is caught before the round trip', async ({ session }) => {
+  await session.visit(`/admin/${encodeURIComponent(DT)}/columns`)
 
-  await page.getByTestId('ce-add-label').fill('Glor')
-  await expect(page.getByTestId('ce-add-problem')).toContainText('already has glor')
-  await expect(page.getByTestId('ce-add-go')).toBeDisabled()
+  await session.step('typing rejected names surfaces the reason and disables Go', async ({ page }) => {
+    await page.getByTestId('ce-add-label').fill('Glor')
+    await expect(page.getByTestId('ce-add-problem')).toContainText('already has glor')
+    await expect(page.getByTestId('ce-add-go')).toBeDisabled()
 
-  await page.getByTestId('ce-add-name').fill('created_at')
-  await expect(page.getByTestId('ce-add-problem')).toContainText('standard column')
-  await expect(page.getByTestId('ce-add-go')).toBeDisabled()
+    await page.getByTestId('ce-add-name').fill('created_at')
+    await expect(page.getByTestId('ce-add-problem')).toContainText('standard column')
+    await expect(page.getByTestId('ce-add-go')).toBeDisabled()
 
-  await page.getByTestId('ce-add-name').fill('Not Snake')
-  await expect(page.getByTestId('ce-add-problem')).toContainText('snake_case')
+    await page.getByTestId('ce-add-name').fill('Not Snake')
+    await expect(page.getByTestId('ce-add-problem')).toContainText('snake_case')
 
-  await page.getByTestId('ce-add-name').fill('aisle')
-  await expect(page.getByTestId('ce-add-go')).toBeEnabled()
+    await page.getByTestId('ce-add-name').fill('aisle')
+    await expect(page.getByTestId('ce-add-go')).toBeEnabled()
+  })
 })
 
-test('a label is changed without touching the column or its data', async ({ page, request }) => {
+test('a label is changed without touching the column or its data', async ({ session, request }) => {
   const token = await adminToken(request)
-  await page.goto(`/admin/${encodeURIComponent(DT)}/columns`)
+  await session.visit(`/admin/${encodeURIComponent(DT)}/columns`)
 
-  await page.getByTestId('ce-label-glor').fill('Floor')
-  await page.getByTestId('ce-label-save-glor').click()
-  await expect(page.getByTestId('ce-saved')).toContainText('glor')
-  await expect(page.getByTestId('ce-label-glor')).toHaveValue('Floor')
+  await session.step('change the label and save', async ({ page }) => {
+    await page.getByTestId('ce-label-glor').fill('Floor')
+    await page.getByTestId('ce-label-save-glor').click()
+  })
+
+  await session.assertHas('[data-testid="ce-saved"]', { text: 'glor' })
+
+  await session.step('the label input reflects the change', async ({ page }) => {
+    await expect(page.getByTestId('ce-label-glor')).toHaveValue('Floor')
+  })
 
   // The machine name — and therefore every row — is untouched.
   const meta = await request.get(`/api/table/${encodeURIComponent(DT)}:meta`, {
@@ -140,9 +163,10 @@ test('a label is changed without touching the column or its data', async ({ page
   expect(def.columns.find((c) => c.column_name === 'glor')?.label).toBe('Floor')
 })
 
-test('a system Table refuses the whole editor', async ({ page }) => {
-  await page.goto('/admin/Import%20Log/columns')
-  await expect(page.getByTestId('ce-system')).toContainText('system Table')
-  await expect(page.getByTestId('ce-add')).toHaveCount(0)
-  await expect(page.getByTestId('ce-rename-file_name')).toHaveCount(0)
+test('a system Table refuses the whole editor', async ({ session }) => {
+  await session
+    .visit('/admin/Import%20Log/columns')
+    .assertHas('[data-testid="ce-system"]', { text: 'system Table' })
+    .refuteHas('[data-testid="ce-add"]')
+    .refuteHas('[data-testid="ce-rename-file_name"]')
 })

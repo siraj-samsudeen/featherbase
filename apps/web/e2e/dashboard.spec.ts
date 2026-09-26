@@ -44,16 +44,22 @@ test.beforeAll(async ({ request }) => {
 })
 
 // UI-026: a dashboard shows a count card and a bar chart that match the data.
-test('UI-026: dashboard number cards and bar chart match the underlying data', async ({ page }) => {
-  await page.goto(`/admin/dashboard/${encodeURIComponent(DASH)}`)
-  await expect(page.getByTestId('dashboard-title')).toBeVisible()
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// the card/bar values are exact `toHaveText` checks, which assertHas'
+// substring semantics can't safely stand in for, so they stay in steps.
+test('UI-026: dashboard number cards and bar chart match the underlying data', async ({ session }) => {
+  await session
+    .visit(`/admin/dashboard/${encodeURIComponent(DASH)}`)
+    .assertHas('[data-testid="dashboard-title"]')
 
-  // Number cards match the counts.
-  await expect(page.getByTestId('card-value-All Tasks')).toHaveText('6')
-  await expect(page.getByTestId('card-value-Open Tasks')).toHaveText('3')
+  await session.step('number cards match the counts', async ({ page }) => {
+    await expect(page.getByTestId('card-value-All Tasks')).toHaveText('6')
+    await expect(page.getByTestId('card-value-Open Tasks')).toHaveText('3')
+  })
 
-  // Bar chart values match the grouped counts.
-  await expect(page.getByTestId('bar-value-Open')).toHaveText('3')
-  await expect(page.getByTestId('bar-value-Closed')).toHaveText('2')
-  await expect(page.getByTestId('bar-value-Pending')).toHaveText('1')
+  await session.step('bar chart values match the grouped counts', async ({ page }) => {
+    await expect(page.getByTestId('bar-value-Open')).toHaveText('3')
+    await expect(page.getByTestId('bar-value-Closed')).toHaveText('2')
+    await expect(page.getByTestId('bar-value-Pending')).toHaveText('1')
+  })
 })

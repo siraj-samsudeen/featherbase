@@ -1,10 +1,14 @@
-import { test, expect, adminToken, type APIRequestContext, type Page } from './fixtures'
+import { test, expect, adminToken } from './fixtures'
 import * as XLSX from 'xlsx'
 import { deleteTableIfExists } from './cleanup'
 
 // #201 (issue #197): several sheets of the same shape become ONE Table.
 // The reported case: eleven sheets of section data, one per supermarket in a
 // chain, which the wizard could only turn into eleven Tables.
+//
+// Migrated to the feather-testing-core DSL
+// (docs/testing/e2e-dsl-migration.md). Every control here is testid-addressed,
+// so the walk stays inside named steps; `session.visit` carries navigation.
 
 const MERGED_DT = 'Merge Sections'
 
@@ -49,48 +53,55 @@ test.beforeEach(async ({ request }) => {
 })
 
 test('three sheets merge into one Table, folding the spellings apart from case and spaces', async ({
-  page,
+  session,
   request,
 }) => {
   const token = await adminToken(request)
   const headers = { Authorization: `Bearer ${token}` }
-  await page.goto('/admin')
-  await page.getByTestId('import-data-link').click()
-  await page.getByTestId('iw-file-input').setInputFiles({
-    name: 'chain sections.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer: workbook(),
+  await session.visit('/admin')
+
+  await session.step('drop the workbook and merge all three sheets into one Table', async ({ page }) => {
+    await page.getByTestId('import-data-link').click()
+    await page.getByTestId('iw-file-input').setInputFiles({
+      name: 'chain sections.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer: workbook(),
+    })
+    await expect(page.getByTestId('iw-overview')).toBeVisible()
+
+    // Take all three, and say what they are: one Table, not three.
+    await page.getByTestId('iw-ov-master').check()
+    await page.getByTestId('iw-ov-mode-merge').check()
+    await page.getByTestId('iw-ov-merge-name').fill(MERGED_DT)
+    // The tally answers "and what will that give me?" before committing.
+    await expect(page.getByTestId('iw-ov-tally')).toContainText('4 rows will be imported')
+    await expect(page.getByTestId('iw-ov-tally')).toContainText('1 Table')
+    await page.getByTestId('iw-ov-continue').click()
   })
-  await expect(page.getByTestId('iw-overview')).toBeVisible()
 
-  // Take all three, and say what they are: one Table, not three.
-  await page.getByTestId('iw-ov-master').check()
-  await page.getByTestId('iw-ov-mode-merge').check()
-  await page.getByTestId('iw-ov-merge-name').fill(MERGED_DT)
-  // The tally answers "and what will that give me?" before committing.
-  await expect(page.getByTestId('iw-ov-tally')).toContainText('4 rows will be imported')
-  await expect(page.getByTestId('iw-ov-tally')).toContainText('1 Table')
-  await page.getByTestId('iw-ov-continue').click()
+  await session.step('one group card, folded columns, absent-column notes', async ({ page }) => {
+    // ONE card for the group, not three.
+    await expect(page.getByTestId('iw-group-0')).toContainText('3 sheets → one Table')
+    await expect(page.getByTestId('iw-sheet-1')).toHaveCount(0)
+    await expect(page.getByTestId('iw-sheet-2')).toHaveCount(0)
 
-  // ONE card for the group, not three.
-  await expect(page.getByTestId('iw-group-0')).toContainText('3 sheets → one Table')
-  await expect(page.getByTestId('iw-sheet-1')).toHaveCount(0)
-  await expect(page.getByTestId('iw-sheet-2')).toHaveCount(0)
+    // Folded to four columns: zone, floor, count — plus the note only store 3
+    // has, which is kept rather than dropped.
+    const grid = page.getByTestId('iw-new-grid-0').locator('tbody tr[data-columnrow]')
+    await expect(grid).toHaveCount(4)
+    await expect(grid.nth(0).locator('[data-rowfield=column_name]')).toHaveValue('merge_zone')
+    await expect(grid.nth(1).locator('[data-rowfield=column_name]')).toHaveValue('merge_floor')
+    await expect(grid.nth(2).locator('[data-rowfield=column_name]')).toHaveValue('merge_count')
 
-  // Folded to four columns: zone, floor, count — plus the note only store 3
-  // has, which is kept rather than dropped.
-  const grid = page.getByTestId('iw-new-grid-0').locator('tbody tr[data-columnrow]')
-  await expect(grid).toHaveCount(4)
-  await expect(grid.nth(0).locator('[data-rowfield=column_name]')).toHaveValue('merge_zone')
-  await expect(grid.nth(1).locator('[data-rowfield=column_name]')).toHaveValue('merge_floor')
-  await expect(grid.nth(2).locator('[data-rowfield=column_name]')).toHaveValue('merge_count')
+    // The sheets that lack that column say so, so the blanks are not a mystery.
+    await expect(page.getByTestId('iw-group-members-0')).toContainText('Store 001')
+    await expect(page.getByTestId('iw-group-members-0')).toContainText('no Merge Note')
+  })
 
-  // The sheets that lack that column say so, so the blanks are not a mystery.
-  await expect(page.getByTestId('iw-group-members-0')).toContainText('Store 001')
-  await expect(page.getByTestId('iw-group-members-0')).toContainText('no Merge Note')
-
-  await page.getByTestId('iw-import').click()
-  await expect(page.getByTestId('iw-result-0')).toContainText('Imported 4 rows')
+  await session.step('import the group', async ({ page }) => {
+    await page.getByTestId('iw-import').click()
+    await expect(page.getByTestId('iw-result-0')).toContainText('Imported 4 rows')
+  })
 
   // Every sheet's rows landed in the one Table, under the folded columns.
   const rows = await request.get(
@@ -119,24 +130,27 @@ test('three sheets merge into one Table, folding the spellings apart from case a
 })
 
 test('a merged run is logged per sheet under one run id, so reverting takes back all of them', async ({
-  page,
+  session,
   request,
 }) => {
   const token = await adminToken(request)
   const headers = { Authorization: `Bearer ${token}` }
-  await page.goto('/admin')
-  await page.getByTestId('import-data-link').click()
-  await page.getByTestId('iw-file-input').setInputFiles({
-    name: 'chain sections.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer: workbook(),
+  await session.visit('/admin')
+
+  await session.step('merge and import all three sheets', async ({ page }) => {
+    await page.getByTestId('import-data-link').click()
+    await page.getByTestId('iw-file-input').setInputFiles({
+      name: 'chain sections.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer: workbook(),
+    })
+    await page.getByTestId('iw-ov-master').check()
+    await page.getByTestId('iw-ov-mode-merge').check()
+    await page.getByTestId('iw-ov-merge-name').fill(MERGED_DT)
+    await page.getByTestId('iw-ov-continue').click()
+    await page.getByTestId('iw-import').click()
+    await expect(page.getByTestId('iw-result-0')).toContainText('Imported 4 rows')
   })
-  await page.getByTestId('iw-ov-master').check()
-  await page.getByTestId('iw-ov-mode-merge').check()
-  await page.getByTestId('iw-ov-merge-name').fill(MERGED_DT)
-  await page.getByTestId('iw-ov-continue').click()
-  await page.getByTestId('iw-import').click()
-  await expect(page.getByTestId('iw-result-0')).toContainText('Imported 4 rows')
 
   // IMP-011: one Import Log part per member sheet — the provenance that a
   // single blended batch would destroy — all sharing one run id (RVT-R1).
@@ -158,10 +172,12 @@ test('a merged run is logged per sheet under one run id, so reverting takes back
   expect(parts.filter((p) => p.table_created).length).toBe(1)
 
   // One revert takes back the whole group, not one sheet of it.
-  await page.getByTestId('iw-revert-open-0').click()
-  await expect(page.getByTestId('iw-revert-preview-0')).toContainText('delete 4 added rows')
-  await page.getByTestId('iw-revert-confirm-0').click()
-  await expect(page.getByTestId('iw-revert-result-0')).toContainText('4 deleted')
+  await session.step('one revert takes back the whole merged group', async ({ page }) => {
+    await page.getByTestId('iw-revert-open-0').click()
+    await expect(page.getByTestId('iw-revert-preview-0')).toContainText('delete 4 added rows')
+    await page.getByTestId('iw-revert-confirm-0').click()
+    await expect(page.getByTestId('iw-revert-result-0')).toContainText('4 deleted')
+  })
 
   const count = await request.get(`/api/table/${encodeURIComponent(MERGED_DT)}:count`, { headers })
   expect(((await count.json()) as { count: number }).count).toBe(0)
@@ -169,37 +185,42 @@ test('a merged run is logged per sheet under one run id, so reverting takes back
   await deleteTableIfExists(request, token, MERGED_DT)
 })
 
-test('choosing separate still makes one Table per sheet', async ({ page, request }) => {
+test('choosing separate still makes one Table per sheet', async ({ session, request }) => {
   const token = await adminToken(request)
-  const headers = { Authorization: `Bearer ${token}` }
-  await page.goto('/admin')
-  await page.getByTestId('import-data-link').click()
-  await page.getByTestId('iw-file-input').setInputFiles({
-    name: 'chain sections.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer: workbook(),
+  await session.visit('/admin')
+
+  await session.step('drop the workbook and choose two sheets, kept separate', async ({ page }) => {
+    await page.getByTestId('import-data-link').click()
+    await page.getByTestId('iw-file-input').setInputFiles({
+      name: 'chain sections.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      buffer: workbook(),
+    })
+    await page.getByTestId('iw-ov-sheet-0').check()
+    await page.getByTestId('iw-ov-sheet-1').check()
+    await page.getByTestId('iw-ov-mode-separate').check()
+    await expect(page.getByTestId('iw-ov-tally')).toContainText('2 Tables')
+    await page.getByTestId('iw-ov-continue').click()
   })
-  await page.getByTestId('iw-ov-sheet-0').check()
-  await page.getByTestId('iw-ov-sheet-1').check()
-  await page.getByTestId('iw-ov-mode-separate').check()
-  await expect(page.getByTestId('iw-ov-tally')).toContainText('2 Tables')
-  await page.getByTestId('iw-ov-continue').click()
 
-  // Two targets, walked one at a time (#202), and no group pill on either.
-  await expect(page.getByTestId('iw-step-of')).toContainText('Table 1 of 2')
-  await expect(page.getByTestId('iw-sheet-0')).toBeVisible()
-  await expect(page.getByTestId('iw-sheet-1')).toHaveCount(0)
-  await expect(page.getByTestId('iw-group-0')).toHaveCount(0)
-  await page.getByTestId('iw-next').click()
-  await expect(page.getByTestId('iw-sheet-1')).toBeVisible()
-  await expect(page.getByTestId('iw-sheet-0')).toHaveCount(0)
+  await session.step('two targets, walked one at a time, no group pill', async ({ page }) => {
+    // Two targets, walked one at a time (#202), and no group pill on either.
+    await expect(page.getByTestId('iw-step-of')).toContainText('Table 1 of 2')
+    await expect(page.getByTestId('iw-sheet-0')).toBeVisible()
+    await expect(page.getByTestId('iw-sheet-1')).toHaveCount(0)
+    await expect(page.getByTestId('iw-group-0')).toHaveCount(0)
+    await page.getByTestId('iw-next').click()
+    await expect(page.getByTestId('iw-sheet-1')).toBeVisible()
+    await expect(page.getByTestId('iw-sheet-0')).toHaveCount(0)
+  })
 
-  await page.getByTestId('iw-import').click()
-  await expect(page.getByTestId('iw-result-0')).toContainText('Imported 2 rows')
-  await expect(page.getByTestId('iw-result-1')).toContainText('Imported 1 row')
+  await session.step('import both targets', async ({ page }) => {
+    await page.getByTestId('iw-import').click()
+    await expect(page.getByTestId('iw-result-0')).toContainText('Imported 2 rows')
+    await expect(page.getByTestId('iw-result-1')).toContainText('Imported 1 row')
+  })
 
   for (const name of ['Store 001', 'Store 002']) await deleteTableIfExists(request, token, name)
-  void headers
 })
 
 // Review finding 4 on PR #210: `table_created` used to be stamped on member
@@ -232,7 +253,7 @@ function headerFirstWorkbook(): Buffer {
 }
 
 test('a group whose first sheet is header-only still records that it created the Table', async ({
-  page,
+  session,
   request,
 }) => {
   const token = await adminToken(request)
@@ -240,20 +261,25 @@ test('a group whose first sheet is header-only still records that it created the
   for (const name of [HEADER_FIRST_DT, 'Store 010', 'Store 011'])
     await deleteTableIfExists(request, token, name)
 
-  await page.goto('/admin')
-  await page.getByTestId('import-data-link').click()
-  await page.getByTestId('iw-file-input').setInputFiles({
-    name: 'header first.xlsx',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    buffer: headerFirstWorkbook(),
-  })
-  await expect(page.getByTestId('iw-overview')).toBeVisible()
-  await page.getByTestId('iw-ov-master').check()
-  await page.getByTestId('iw-ov-mode-merge').check()
-  await page.getByTestId('iw-ov-merge-name').fill(HEADER_FIRST_DT)
-  await page.getByTestId('iw-ov-continue').click()
-  await page.getByTestId('iw-import').click()
-  await expect(page.getByTestId('iw-result-0')).toContainText('Imported 1 row')
+  await session.visit('/admin')
+  await session.step(
+    'merge a group whose first sheet is header-only and import it',
+    async ({ page }) => {
+      await page.getByTestId('import-data-link').click()
+      await page.getByTestId('iw-file-input').setInputFiles({
+        name: 'header first.xlsx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        buffer: headerFirstWorkbook(),
+      })
+      await expect(page.getByTestId('iw-overview')).toBeVisible()
+      await page.getByTestId('iw-ov-master').check()
+      await page.getByTestId('iw-ov-mode-merge').check()
+      await page.getByTestId('iw-ov-merge-name').fill(HEADER_FIRST_DT)
+      await page.getByTestId('iw-ov-continue').click()
+      await page.getByTestId('iw-import').click()
+      await expect(page.getByTestId('iw-result-0')).toContainText('Imported 1 row')
+    },
+  )
 
   // Past imports must show the Table as one this import CREATED — that is
   // what makes it offerable for deletion.
@@ -261,9 +287,7 @@ test('a group whose first sheet is header-only still records that it created the
   const list = (await batches.json()) as {
     batches: { targets: { table: string; created: boolean }[] }[]
   }
-  const target = list.batches
-    .flatMap((b) => b.targets)
-    .find((t) => t.table === HEADER_FIRST_DT)
+  const target = list.batches.flatMap((b) => b.targets).find((t) => t.table === HEADER_FIRST_DT)
   expect(target).toMatchObject({ table: HEADER_FIRST_DT, created: true })
 
   await deleteTableIfExists(request, token, HEADER_FIRST_DT)

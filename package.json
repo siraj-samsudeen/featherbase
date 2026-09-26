@@ -8,6 +8,7 @@
     "check:openspec:specs": "openspec validate --specs --strict --no-interactive",
     "check:openspec:changes": "openspec validate --changes --strict --no-interactive",
     "check:specs": "pnpm check:openspec:specs && pnpm check:openspec:changes",
+    "check:e2e-dsl": "node --test tools/check-e2e-dsl.test.mjs && node tools/check-e2e-dsl.mjs",
     "smoke": "pnpm --filter server test:smoke && pnpm --filter web smoke",
     "test": "pnpm -r test",
     "test:coverage": "pnpm -r test:coverage",

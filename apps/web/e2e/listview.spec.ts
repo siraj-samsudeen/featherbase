@@ -18,37 +18,56 @@ test.beforeAll(async ({ request }) => {
   await fillRows(request, auth, DT_B, 3, (i) => ({ city: `city-${i}`, active: i % 2 === 0 }))
 })
 
-test('UI-002: one generic ListView renders two different Tables with sort + pagination', async ({ page }) => {
+// UI-002, migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// counts, sort clicks and pagination controls are all addressed by
+// data-testid rather than a label or button name, so they stay in named
+// steps — assertHas covers the plain presence/text/count checks the DSL CAN
+// express.
+test('UI-002: one generic ListView renders two different Tables with sort + pagination', async ({ session }) => {
   // --- Table A: metadata columns, pagination
-  await page.goto(`/admin/${encodeURIComponent(DT_A)}`)
-  await expect(page.getByTestId('col-title')).toContainText('Title')
-  await expect(page.getByTestId('col-qty')).toContainText('Qty')
-  await expect(page.getByTestId('list-total')).toContainText('30 total')
-  await expect(page.getByTestId('list-rows').locator('tr')).toHaveCount(20)
-  await expect(page.getByTestId('page-info')).toContainText('1–20 of 30')
+  await session
+    .visit(`/admin/${encodeURIComponent(DT_A)}`)
+    .assertHas('[data-testid="col-title"]', { text: 'Title' })
+    .assertHas('[data-testid="col-qty"]', { text: 'Qty' })
+    .assertHas('[data-testid="list-total"]', { text: '30 total' })
+    .assertHas('[data-testid="list-rows"] tr', { count: 20 })
+    .assertHas('[data-testid="page-info"]', { text: '1–20 of 30' })
 
-  await page.getByTestId('next-page').click()
-  await expect(page.getByTestId('page-info')).toContainText('21–30 of 30')
-  await expect(page.getByTestId('list-rows').locator('tr')).toHaveCount(10)
-  await expect(page.getByTestId('prev-page')).toBeEnabled()
-  await expect(page.getByTestId('next-page')).toBeDisabled()
+  await session.step('click to the second page', async ({ page }) => {
+    await page.getByTestId('next-page').click()
+  })
+  await session
+    .assertHas('[data-testid="page-info"]', { text: '21–30 of 30' })
+    .assertHas('[data-testid="list-rows"] tr', { count: 10 })
+  await session.step('pagination buttons flip state at the last page', async ({ page }) => {
+    await expect(page.getByTestId('prev-page')).toBeEnabled()
+    await expect(page.getByTestId('next-page')).toBeDisabled()
+  })
 
   // --- Sorting: qty asc puts qty=0 first; desc puts qty=29 first
-  await page.getByTestId('col-qty').click()
-  await expect(page.getByTestId('page-info')).toContainText('1–20 of 30')
-  await expect(page.getByTestId('list-rows').locator('tr').first()).toContainText('item-00')
-  await page.getByTestId('col-qty').click()
-  await expect(page.getByTestId('list-rows').locator('tr').first()).toContainText('item-29')
+  await session.step('sort ascending by clicking the Qty column header', async ({ page }) => {
+    await page.getByTestId('col-qty').click()
+  })
+  await session
+    .assertHas('[data-testid="page-info"]', { text: '1–20 of 30' })
+    .assertHas('[data-testid="list-rows"] tr:first-child', { text: 'item-00' })
+  await session.step('sort descending by clicking Qty again', async ({ page }) => {
+    await page.getByTestId('col-qty').click()
+  })
+  await session.assertHas('[data-testid="list-rows"] tr:first-child', { text: 'item-29' })
 
   // --- Table B: same component, entirely different columns
-  await page.goto(`/admin/${encodeURIComponent(DT_B)}`)
-  await expect(page.getByTestId('col-city')).toContainText('City')
-  await expect(page.getByTestId('col-active')).toContainText('Active')
-  await expect(page.getByTestId('list-total')).toContainText('3 total')
-  await expect(page.getByTestId('list-rows').locator('tr')).toHaveCount(3)
-  await expect(page.getByTestId('list-rows')).toContainText('✓')
+  await session
+    .visit(`/admin/${encodeURIComponent(DT_B)}`)
+    .assertHas('[data-testid="col-city"]', { text: 'City' })
+    .assertHas('[data-testid="col-active"]', { text: 'Active' })
+    .assertHas('[data-testid="list-total"]', { text: '3 total' })
+    .assertHas('[data-testid="list-rows"] tr', { count: 3 })
+    .assertHas('[data-testid="list-rows"]', { text: '✓' })
 
   // Row link navigates to the document route
-  await page.getByTestId('list-rows').locator('tr').first().locator('a').click()
-  await expect(page.getByTestId('doc-page')).toBeVisible()
+  await session.step('click the first row link', async ({ page }) => {
+    await page.getByTestId('list-rows').locator('tr').first().locator('a').click()
+  })
+  await session.assertHas('[data-testid="doc-page"]')
 })

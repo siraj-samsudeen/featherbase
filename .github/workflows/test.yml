@@ -106,6 +106,9 @@ jobs:
       - name: Validate behavior specifications
         run: pnpm check:specs
 
+      - name: Validate E2E suite uses DSL fixtures
+        run: pnpm check:e2e-dsl
+
       - name: Build independent runtime test packages
         run: pnpm apps:prepare
 

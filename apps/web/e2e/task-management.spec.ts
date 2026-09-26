@@ -4,10 +4,16 @@ test.beforeAll(async ({ request }) => {
   await ensureRuntimeApp(request, 'tasker')
 })
 
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// this is one long, stateful keyboard/focus/combobox journey (Tasker is a
+// runtime app, not the generic Admin UI) with screenshots interspersed, so it
+// stays as a single named step; session.visit carries the one plain
+// navigation into it.
 test('tasker_browser_flow: PKG-J1 PKG-R4 capture, project entry, urgency, and focus survive reload', async ({
-  page,
+  session,
 }) => {
-  await page.goto('/tasker/')
+  await session.visit('/tasker/')
+  await session.step('capture, project entry, urgency, filters, and focus all survive reload', async ({ page }) => {
   const capture = page.getByRole('textbox', { name: 'Quick capture' })
   await capture.fill('Review September stock variance')
   await capture.press('Enter')
@@ -95,30 +101,33 @@ test('tasker_browser_flow: PKG-J1 PKG-R4 capture, project entry, urgency, and fo
   await expect(page.getByText('Compare September closing stock')).toBeVisible()
   await page.getByRole('button', { name: /My Work/ }).click()
   await expect(page.getByText('Review September stock variance')).toBeVisible()
+  })
 })
 
 test.describe('phone capture', () => {
   test.use({ viewport: { width: 375, height: 720 } })
 
-  test('responsive_workspace_flow: Tasker and its Projects landing have no page-level horizontal overflow', async ({ page }) => {
-    await page.goto('/tasker/')
-    await expect(page.getByRole('textbox', { name: 'Quick capture' })).toBeVisible()
-    await page.getByRole('button', { name: 'Filter' }).click()
-    const sheet = page.getByRole('dialog', { name: 'Filter tasks' })
-    await expect(sheet).toBeVisible()
-    const sheetBox = await sheet.boundingBox()
-    expect(sheetBox).not.toBeNull()
-    expect(sheetBox!.x).toBe(0)
-    expect(sheetBox!.width).toBe(375)
-    expect(Math.abs(sheetBox!.y + sheetBox!.height - 720)).toBeLessThanOrEqual(1)
-    await page.screenshot({ path: '../../task-management-filter-mobile.png' })
-    await page.keyboard.press('Escape')
-    await expect(sheet).toHaveCount(0)
-    await page.getByRole('button', { name: 'Projects' }).click()
-    await expect(page.getByRole('textbox', { name: 'New project' })).toBeVisible()
-    await page.screenshot({ path: '../../task-management-mobile.png', fullPage: true })
-    expect(
-      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
-    ).toBe(true)
+  test('responsive_workspace_flow: Tasker and its Projects landing have no page-level horizontal overflow', async ({ session }) => {
+    await session.visit('/tasker/')
+    await session.step('the filter sheet and Projects landing have no horizontal overflow at mobile width', async ({ page }) => {
+      await expect(page.getByRole('textbox', { name: 'Quick capture' })).toBeVisible()
+      await page.getByRole('button', { name: 'Filter' }).click()
+      const sheet = page.getByRole('dialog', { name: 'Filter tasks' })
+      await expect(sheet).toBeVisible()
+      const sheetBox = await sheet.boundingBox()
+      expect(sheetBox).not.toBeNull()
+      expect(sheetBox!.x).toBe(0)
+      expect(sheetBox!.width).toBe(375)
+      expect(Math.abs(sheetBox!.y + sheetBox!.height - 720)).toBeLessThanOrEqual(1)
+      await page.screenshot({ path: '../../task-management-filter-mobile.png' })
+      await page.keyboard.press('Escape')
+      await expect(sheet).toHaveCount(0)
+      await page.getByRole('button', { name: 'Projects' }).click()
+      await expect(page.getByRole('textbox', { name: 'New project' })).toBeVisible()
+      await page.screenshot({ path: '../../task-management-mobile.png', fullPage: true })
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
+      ).toBe(true)
+    })
   })
 })

@@ -43,33 +43,42 @@ test.beforeAll(async ({ request }) => {
 })
 
 // CUST-003: a client script auto-fills a field on change.
-test('CUST-003: a client script auto-fills a field on change', async ({ page }) => {
-  await page.goto(`/admin/${encodeURIComponent(DT)}`)
-  await page.getByTestId('list-new').click()
-  await expect(page.getByTestId('form-view')).toBeVisible()
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// the field is `[data-field]`-addressed with no label, so it stays in steps.
+test('CUST-003: a client script auto-fills a field on change', async ({ session }) => {
+  await session.visit(`/admin/${encodeURIComponent(DT)}`)
+  await session.step('open a new document', async ({ page }) => {
+    await page.getByTestId('list-new').click()
+  })
+  await session.assertHas('[data-testid="form-view"]')
 
-  await page.locator('[data-field=qty]').fill('7')
-  // Blur to fire the change handler.
-  await page.locator('[data-field=qty]').blur()
-  await expect(page.locator('[data-field=total]')).toHaveValue('70')
+  await session.step('qty change auto-fills total = qty * 10', async ({ page }) => {
+    await page.locator('[data-field=qty]').fill('7')
+    // Blur to fire the change handler.
+    await page.locator('[data-field=qty]').blur()
+    await expect(page.locator('[data-field=total]')).toHaveValue('70')
 
-  // Changing qty again re-runs the script.
-  await page.locator('[data-field=qty]').fill('3')
-  await page.locator('[data-field=qty]').blur()
-  await expect(page.locator('[data-field=total]')).toHaveValue('30')
+    // Changing qty again re-runs the script.
+    await page.locator('[data-field=qty]').fill('3')
+    await page.locator('[data-field=qty]').blur()
+    await expect(page.locator('[data-field=total]')).toHaveValue('30')
+  })
 })
 
 // CUST-003: a broken client script surfaces an error but does not crash the Admin.
-test('CUST-003: a broken client script surfaces an error without crashing', async ({ page }) => {
-  await page.goto(`/admin/${encodeURIComponent(DT_BAD)}`)
-  await page.getByTestId('list-new').click()
+test('CUST-003: a broken client script surfaces an error without crashing', async ({ session }) => {
+  await session.visit(`/admin/${encodeURIComponent(DT_BAD)}`)
+  await session.step('open a new document', async ({ page }) => {
+    await page.getByTestId('list-new').click()
+  })
 
-  // The form still renders and the error is shown.
-  await expect(page.getByTestId('form-view')).toBeVisible()
-  await expect(page.getByTestId('client-script-error')).toContainText('boom in client script')
+  await session
+    .assertHas('[data-testid="form-view"]')
+    .assertHas('[data-testid="client-script-error"]', { text: 'boom in client script' })
 
-  // The Admin is still interactive: the field edits and the form is usable.
-  await page.locator('[data-field=qty]').fill('5')
-  await expect(page.locator('[data-field=qty]')).toHaveValue('5')
-  await expect(page.getByTestId('session-user')).toBeVisible()
+  await session.step('the Admin is still interactive: the field edits and the form is usable', async ({ page }) => {
+    await page.locator('[data-field=qty]').fill('5')
+    await expect(page.locator('[data-field=qty]')).toHaveValue('5')
+  })
+  await session.assertHas('[data-testid="session-user"]')
 })

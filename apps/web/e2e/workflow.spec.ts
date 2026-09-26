@@ -48,30 +48,37 @@ test.beforeAll(async ({ request }: { request: APIRequestContext }) => {
   if (doc.status() !== 201) throw new Error(`row: ${doc.status()}`)
 })
 
-test('WF-002: Approve button transitions state and records the audit trail', async ({ page }) => {
-  await page.goto(`/admin/${encodeURIComponent(DT)}/${DOC}`)
+// Migrated to the feather-testing-core DSL (docs/testing/e2e-dsl-migration.md):
+// the state/action checks are exact-text on testids and the audit-trail
+// check reads the browser's own localStorage token and hits the API through
+// `page.request`, none of which any Session verb expresses, so the whole
+// approve + audit-trail check stays in one named step; session.visit
+// carries the plain navigation.
+test('WF-002: Approve button transitions state and records the audit trail', async ({ session }) => {
+  await session.visit(`/admin/${encodeURIComponent(DT)}/${DOC}`)
+  await session.step('approve the transition; the audit trail records who/what', async ({ page }) => {
+    // Current state shown, Approve action available (admin sees all).
+    await expect(page.getByTestId('workflow-state')).toHaveText('Draft')
+    const approve = page.getByTestId('workflow-action-Approve')
+    await expect(approve).toBeVisible()
+    await approve.click()
 
-  // Current state shown, Approve action available (admin sees all).
-  await expect(page.getByTestId('workflow-state')).toHaveText('Draft')
-  const approve = page.getByTestId('workflow-action-Approve')
-  await expect(approve).toBeVisible()
-  await approve.click()
+    // State flips to Approved.
+    await expect(page.getByTestId('workflow-state')).toHaveText('Approved')
+    await expect(page.getByTestId('workflow-action-Approve')).toHaveCount(0)
 
-  // State flips to Approved.
-  await expect(page.getByTestId('workflow-state')).toHaveText('Approved')
-  await expect(page.getByTestId('workflow-action-Approve')).toHaveCount(0)
-
-  // Audit trail persisted (who/what).
-  const token = await page.evaluate(() => localStorage.getItem('fc_token'))
-  const filters = encodeURIComponent(JSON.stringify([['ref_name', '=', DOC]]))
-  const fields = encodeURIComponent(JSON.stringify(['action', 'to_state', 'actor']))
-  const trail = (await (
-    await page.request.get(`/api/table/Workflow%20Action?filters=${filters}&fields=${fields}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-  ).json()) as { data: { action: string; to_state: string; actor: string }[] }
-  expect(trail.data.length).toBeGreaterThanOrEqual(1)
-  expect(trail.data[0].action).toBe('Approve')
-  expect(trail.data[0].to_state).toBe('Approved')
-  expect(trail.data[0].actor).toBe('Administrator')
+    // Audit trail persisted (who/what).
+    const token = await page.evaluate(() => localStorage.getItem('fc_token'))
+    const filters = encodeURIComponent(JSON.stringify([['ref_name', '=', DOC]]))
+    const fields = encodeURIComponent(JSON.stringify(['action', 'to_state', 'actor']))
+    const trail = (await (
+      await page.request.get(`/api/table/Workflow%20Action?filters=${filters}&fields=${fields}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    ).json()) as { data: { action: string; to_state: string; actor: string }[] }
+    expect(trail.data.length).toBeGreaterThanOrEqual(1)
+    expect(trail.data[0].action).toBe('Approve')
+    expect(trail.data[0].to_state).toBe('Approved')
+    expect(trail.data[0].actor).toBe('Administrator')
+  })
 })
