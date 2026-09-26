@@ -66,6 +66,7 @@ import { discoverPackages, appCatalog, appAsset, packageFailures, runPackageActi
 import { documentActivity } from './document-activity'
 import { APP_ROOT_PATTERN, LEGACY_HUMAN_ROOT_PATTERN, appHref } from 'shared'
 import { activeRuntimeVersions, appOperation, withAppClientVersion } from './app-lifecycle'
+import { composeRuntimeShell, runtimeShellCss, runtimeShellJs } from './runtime-shell'
 import { createSite, listSites, resolveSite, siteCreateTableDef, siteListTableDefs, siteCreateUser, siteListUsers } from './tenancy'
 import helloCrm from './sample-apps/hello-crm'
 import helpdesk from './sample-apps/helpdesk'
@@ -485,6 +486,9 @@ app.get('*', (c, next) => {
   return c.redirect(`/featherbase${url.pathname}${url.search}`, 308)
 })
 
+app.get('/featherbase/runtime-shell.css', c => c.body(runtimeShellCss, 200, { 'Content-Type': 'text/css', 'Cache-Control': 'no-store' }))
+app.get('/featherbase/runtime-shell.js', c => c.body(runtimeShellJs, 200, { 'Content-Type': 'text/javascript', 'Cache-Control': 'no-store' }))
+
 app.get('*', async (c, next) => {
   if (!new RegExp(APP_ROOT_PATTERN).test(c.req.path)) return next()
   const url = new URL(c.req.url)
@@ -500,7 +504,7 @@ app.get('*', async (c, next) => {
     let resource
     try {
       const user = await resolveToken(authCredential(c))
-      resource = await appAsset(name, asset, user.row_id)
+      resource = await appAsset(name, asset, user.row_id, c.req.header('accept')?.includes('text/html'))
     } catch (error) {
       if (!(error instanceof AppError)) throw error
       const navigation = !asset || c.req.header('accept')?.includes('text/html')
@@ -518,7 +522,7 @@ app.get('*', async (c, next) => {
         404,
       )
     }
-    const { file, bytes } = resource
+    const { file, bytes, catalog, clientEntry } = resource
     const types: Record<string, string> = {
       '.html': 'text/html',
       '.js': 'text/javascript',
@@ -528,7 +532,10 @@ app.get('*', async (c, next) => {
       '.png': 'image/png',
       '.woff2': 'font/woff2',
     }
-    return new Response(new Uint8Array(bytes), {
+    const html = bytes.toString('utf8')
+    const body = path.extname(file) !== '.html' || !clientEntry ? new Uint8Array(bytes)
+      : new TextEncoder().encode(composeRuntimeShell(html, name, catalog))
+    return new Response(body, {
       headers: {
         'Content-Type': types[path.extname(file)] ?? 'application/octet-stream',
         'Cache-Control': 'no-store',

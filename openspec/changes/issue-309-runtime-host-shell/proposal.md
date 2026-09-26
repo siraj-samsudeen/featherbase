@@ -4,10 +4,9 @@ Launching a runtime application currently replaces Featherbase's entire document
 
 ## What Changes
 
-- **BREAKING**: runtime clients default to host-shell presentation instead of an app-owned full stage when `presentation` is absent.
-- Add one strict manifest value, `presentation: "fullscreen"`, for packages that explicitly require the existing full-stage behavior; reject every other presentation value.
+- **BREAKING**: every packaged runtime client gains a compact Featherbase host bar instead of owning the full browser stage.
 - Keep the app's direct root, document content, React tree, inner navigation, CSS, deep links, refresh behavior, and authentication return while the host composes reusable chrome around its client root.
-- Give shell-presented runtime apps one host-owned Featherbase Home icon immediately followed by one accessible app switcher containing Featherbase Home and the current member's active authorized installed apps.
+- Give runtime apps one host-owned Featherbase Home icon immediately followed by one accessible app switcher containing Featherbase Home and the current member's active authorized installed apps.
 - Keep ordinary Featherbase controls reachable through the Home destination on desktop and touch/mobile, without introducing a second app list.
 - Remove only Tasker's package-owned back-to-Featherbase control once equivalent host navigation exists; retain Tasker's inner workspace navigation and content.
 
@@ -19,8 +18,8 @@ None.
 
 ### Modified Capabilities
 
-- `trusted-runtime-packages`: replace the full-stage implication of `app_owns_client_root` with explicit runtime presentation, host-shell composition, and authorization-aware switching while preserving direct-root ownership and navigation semantics.
+- `trusted-runtime-packages`: replace the full-stage implication of `app_owns_client_root` with host-shell composition and authorization-aware switching while preserving direct-root ownership and navigation semantics.
 
 ## Impact
 
-The strict runtime manifest and artifact identity gain one optional presentation field. Runtime HTML delivery composes host-owned shell markup, styling, and behavior for default packages while serving explicit full-screen packages unchanged. Runtime catalog entries remain the authorization source for both Admin and runtime-shell navigation. Focused server, web/browser, Tasker, package-proof, OpenSpec, and STC evidence changes; no iframe, database migration, new dependency, data-warehouse override, or build-time route/plugin work from #277.
+Runtime HTML delivery composes host-owned shell markup, styling, and behavior around every package entry document. Runtime catalog entries remain the authorization source for both Admin and runtime-shell navigation. There is deliberately no manifest presentation mode: a future immersive use case requires its own issue and explicit exit/re-entry design rather than weakening the consistent shell contract here. Focused server, web/browser, Tasker, package-proof, and OpenSpec evidence changes; no iframe, database migration, new dependency, data-warehouse override, or build-time route/plugin work from #277.

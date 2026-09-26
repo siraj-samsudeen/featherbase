@@ -9330,3 +9330,33 @@ invariant violation. Independent live exploration confirmed store, object,
 replay and revocation scenarios and then the corrected identity matrix. Final
 independent acceptance of the verification delta remains the coordinator's gate;
 no merge, deployment or completed Budgets/DASH implementation is claimed.
+
+## 2026-09-26 — #309 runtime host shell implementation
+
+Implemented the narrowed always-shell contract: every packaged runtime entry
+document now receives a server-composed compact Featherbase bar with a Home icon
+and one authorization-filtered native app switcher. The server preserves package
+document ownership, secondary HTML and assets, and exact extensionless deep-link
+locations while adding an app-root base for relative assets. Admin uses the same
+Home-plus-switcher model and no longer duplicates runtime apps in its sidebar.
+There is intentionally no `presentation`/fullscreen manifest capability; a future
+immersive case requires a separate contract with explicit exit/re-entry design.
+
+Tasker 2.2.0 removes only its duplicate Featherbase back-link, preserves the
+current path/query while changing hash-owned task state, and offsets fixed mobile
+detail surfaces below the host bar. An exact built 2.1.0 predecessor fixture
+proves the code-only upgrade. Server tests cover composed entry versus unchanged
+secondary HTML, deep navigation, unauthorized omission, and upgrade. Playwright
+covers desktop and coarse-pointer mobile shell layout, keyboard focus, catalog
+refresh after access changes, Home controls, refresh, and fixed Tasker details.
+
+Verification: focused server suites pass 13/13 and 16/16; focused Playwright
+passes 3/3, including exact sign-in return; Tasker passes 5/5; server and web typechecks pass; `pnpm apps:prepare`
+and `pnpm apps:prove` pass (PKG-J1/PKG-J2); strict OpenSpec validates 20 specs and
+6 changes. The broad web run passed 169/172; its three unrelated import-naming
+failures reproduce alone because this orb's shared test database retains an
+unavailable `actionproof` installation from earlier interrupted concurrent runs.
+No database reset or product workaround was made. Desktop and coarse-pointer
+mobile screenshots under `docs/assets/issue-309/` were inspected: host controls
+are unclipped, touch targets are usable, and Tasker content/fixed details remain
+below the bar. No data-warehouse change, merge, or deployment was performed.

@@ -8,8 +8,7 @@
   }, "tables": ["tasker.task", "tasker.project"]},
   "migrations": [{"id": "project_description", "fromVersion": "0.0.1", "toVersion": "2.0.0", "operations": [
     {"kind": "addColumn", "table": "tasker.project", "column": {"column_name": "description", "label": "Description", "column_type": "Text"}}
-  ]}, {"id": "explicit_action_policies", "fromVersion": "2.0.0", "toVersion": "2.1.0", "operations": []},
-  {"id": "runtime_host_shell", "fromVersion": "2.1.0", "toVersion": "2.2.0", "operations": []}],
+  ]}, {"id": "explicit_action_policies", "fromVersion": "2.0.0", "toVersion": "2.1.0", "operations": []}],
   "tables": [
     {"name": "tasker.project", "label": "Project", "module": "Tasker", "id_pattern": "TPROJ-.####", "title_column": "project_name",
       "columns": [{"column_name": "project_name", "label": "Project name", "column_type": "Data", "reqd": true, "in_list_view": true},

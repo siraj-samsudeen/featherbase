@@ -348,15 +348,23 @@ export async function appCatalog(user: string) {
   return result
 }
 
-export async function appAsset(name: string, asset: string, user: string) {
+export async function appAsset(name: string, asset: string, user: string, clientNavigation = false) {
   const catalog = await appCatalog(user)
   if (!catalog.some((entry) => entry.name === name))
     throw new AppError('NotFoundError', 'App is unavailable')
   const pkg = packages.get(name)!
   try {
-    const file = await contained(pkg.clientRoot!, asset || 'index.html')
+    let file: string
+    try {
+      file = await contained(pkg.clientRoot!, asset || 'index.html')
+      if (!(await stat(file)).isFile()) throw new Error('Not a file')
+    } catch (error) {
+      if (!clientNavigation || !asset || asset.includes('.')) throw error
+      file = await contained(pkg.clientRoot!, 'index.html')
+    }
     if (!(await stat(file)).isFile()) throw new Error('Not a file')
-    return { file, bytes: await readFile(file) }
+    const clientEntry = file === await contained(pkg.clientRoot!, 'index.html')
+    return { file, bytes: await readFile(file), catalog, clientEntry }
   } catch {
     throw new AppError('NotFoundError', 'App asset not found')
   }

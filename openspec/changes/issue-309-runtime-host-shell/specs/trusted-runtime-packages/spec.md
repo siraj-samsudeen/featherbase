@@ -2,7 +2,6 @@
 
 ### Requirement: app_owns_client_root
 Legacy IDs: PKG-R4, PKG-J1 · `shape: contract`
-Status: governed (#309)
 
 An app SHALL own its direct root, document content, React tree, inner navigation,
 and CSS. Featherbase core SHALL serve only the declared contained client build,
@@ -11,12 +10,9 @@ application's HTML for a missing asset. A navigation request for an app-owned
 deep link SHALL retain the exact path, query, and fragment across sign-in and
 refresh while loading that app's declared client entry.
 
-Featherbase SHALL own runtime presentation around that client. An absent
-`presentation` manifest declaration SHALL render the client inside the responsive
-host shell on desktop and touch/mobile. The only non-default declaration SHALL be
-`presentation: "fullscreen"`, which SHALL render the client without host chrome;
-unknown values SHALL reject the artifact rather than infer presentation from its
-client root, document, or CSS.
+Featherbase SHALL render every runtime client inside its responsive host shell on
+desktop and touch/mobile. Runtime presentation SHALL NOT be inferred from the
+package's client root, document, or CSS.
 
 The runtime host shell SHALL keep a persistent Featherbase Home icon immediately
 followed by one keyboard-operable app switcher. The switcher SHALL contain
@@ -36,16 +32,8 @@ navigation SHALL explain unavailability and preserved data without exposing
 manager-only controls.
 
 #### Scenario: default_runtime_uses_host_shell
-- **WHEN** an authorized member opens a runtime app whose manifest omits `presentation` on desktop or coarse-pointer mobile
+- **WHEN** an authorized member opens a runtime app on desktop or coarse-pointer mobile
 - **THEN** the host Home icon and unified app switcher remain available while the app's own navigation and content render unchanged below them
-
-#### Scenario: explicit_fullscreen_omits_host_shell
-- **WHEN** an authorized member opens a runtime app declaring `presentation: "fullscreen"`
-- **THEN** the app owns the full stage and Featherbase does not inject host-shell controls
-
-#### Scenario: unknown_runtime_presentation_is_rejected
-- **WHEN** discovery reads a runtime manifest with any presentation value other than `fullscreen`
-- **THEN** the artifact is unavailable and no presentation is inferred from its client files or styles
 
 #### Scenario: runtime_switcher_tracks_authorized_catalog
 - **WHEN** the current member opens the switcher and app access is then granted, revoked, disabled, made unavailable, or restored before the document regains focus or visibility
@@ -65,7 +53,7 @@ manager-only controls.
 
 #### Scenario: app_deep_link_survives_login_and_refresh
 - **WHEN** a signed-out member opens an authorized nested runtime-app path with encoded query state and a fragment, signs in, and refreshes
-- **THEN** the browser retains that exact app location and loads the same app-owned content inside its declared presentation
+- **THEN** the browser retains that exact app location and loads the same app-owned content inside the host shell
 
 #### Scenario: missing_asset_is_not_html
 - **WHEN** a caller requests an undeclared runtime-app JavaScript, stylesheet, image, or font asset
